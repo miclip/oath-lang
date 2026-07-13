@@ -46,7 +46,11 @@ everything else is honestly `termination unproven` and fuel-bounded) and
 **spec strength** (mutation-tested: do the properties notice when the body
 changes?).
 
-See [DESIGN.md](DESIGN.md) for the full rationale and roadmap.
+See [DESIGN.md](DESIGN.md) for the full rationale and roadmap,
+[docs/SPEC.md](docs/SPEC.md) for the normative kernel specification
+(canonical encoding, exact hash bytes, semantics, generation, proof
+boundaries — the conformance target for any second implementation), and
+[docs/effects.md](docs/effects.md) for the capability model.
 
 ## Quickstart
 
