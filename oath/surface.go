@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -28,9 +29,10 @@ import (
 //   Int, Bool, tyvar, (-> a b c), (Name tyargs...), Name
 
 type sx struct {
-	K    string // list | brack | sym | int
+	K    string // list | brack | brace | sym | int | str
 	Sym  string
 	Int  int64
+	Str  string
 	Kids []sx
 	Line int
 }
@@ -40,9 +42,10 @@ func (x sx) isSym(s string) bool { return x.K == "sym" && x.Sym == s }
 // --- lexer + reader ---
 
 type token struct {
-	kind string // ( ) [ ] sym int
+	kind string // ( ) [ ] { } sym int str
 	sym  string
 	i    int64
+	s    string
 	line int
 }
 
@@ -62,12 +65,43 @@ func lex(src string) ([]token, error) {
 			for i < len(src) && src[i] != '\n' {
 				i++
 			}
-		case ch == '(' || ch == ')' || ch == '[' || ch == ']':
+		case ch == '(' || ch == ')' || ch == '[' || ch == ']' || ch == '{' || ch == '}':
 			toks = append(toks, token{kind: string(ch), line: line})
 			i++
+		case ch == '"':
+			j := i + 1
+			var b strings.Builder
+			for j < len(src) && src[j] != '"' {
+				if src[j] == '\\' && j+1 < len(src) {
+					switch src[j+1] {
+					case 'n':
+						b.WriteByte('\n')
+					case 't':
+						b.WriteByte('\t')
+					case '"':
+						b.WriteByte('"')
+					case '\\':
+						b.WriteByte('\\')
+					default:
+						return nil, fmt.Errorf("line %d: unknown escape \\%c", line, src[j+1])
+					}
+					j += 2
+					continue
+				}
+				if src[j] == '\n' {
+					line++
+				}
+				b.WriteByte(src[j])
+				j++
+			}
+			if j >= len(src) {
+				return nil, fmt.Errorf("line %d: unclosed string literal", line)
+			}
+			toks = append(toks, token{kind: "str", s: b.String(), line: line})
+			i = j + 1
 		default:
 			j := i
-			for j < len(src) && !strings.ContainsRune(" \t\r\n()[];", rune(src[j])) {
+			for j < len(src) && !strings.ContainsRune(" \t\r\n()[]{};\"", rune(src[j])) {
 				j++
 			}
 			word := src[i:j]
@@ -96,14 +130,20 @@ func (r *reader) read() (sx, error) {
 	switch t.kind {
 	case "int":
 		return sx{K: "int", Int: t.i, Line: t.line}, nil
+	case "str":
+		return sx{K: "str", Str: t.s, Line: t.line}, nil
 	case "sym":
 		return sx{K: "sym", Sym: t.sym, Line: t.line}, nil
-	case "(", "[":
+	case "(", "[", "{":
 		closer := ")"
 		kind := "list"
 		if t.kind == "[" {
 			closer = "]"
 			kind = "brack"
+		}
+		if t.kind == "{" {
+			closer = "}"
+			kind = "brace"
 		}
 		var kids []sx
 		for {
@@ -177,12 +217,19 @@ func (e *elab) lookupTyVar(name string) (int, bool) {
 
 func (e *elab) parseTy(x sx) (*Ty, error) {
 	switch x.K {
+	case "brace":
+		// Record type: {name Ty name Ty ...}. Author order is irrelevant —
+		// fields are sorted into canonical form here, so two spellings of
+		// the same record are the same type with the same hash.
+		return e.parseRecord(x, func(v sx) (*Ty, error) { return e.parseTy(v) })
 	case "sym":
 		switch x.Sym {
 		case "Int":
 			return tInt(), nil
 		case "Bool":
 			return tBool(), nil
+		case "Str":
+			return tStr(), nil
 		}
 		if i, ok := e.lookupTyVar(x.Sym); ok {
 			return tVar(i), nil
@@ -269,12 +316,78 @@ func (e *elab) parseTy(x sx) (*Ty, error) {
 var primArity = map[string]int{
 	"+": 2, "-": 2, "*": 2, "/": 2, "%": 2, "neg": 1,
 	"==": 2, "<": 2, "<=": 2, "and": 2, "or": 2, "not": 1,
+	"++": 2, "str-len": 1,
+}
+
+// parseRecord elaborates {name X name X ...} into sorted (names, items),
+// shared by record types and record literals.
+func (e *elab) parseRecord(x sx, elabItem func(sx) (*Ty, error)) (*Ty, error) {
+	if len(x.Kids)%2 != 0 {
+		return nil, e.errAt(x, "record needs name/value pairs")
+	}
+	type pair struct {
+		name string
+		ty   Ty
+	}
+	var pairs []pair
+	for i := 0; i < len(x.Kids); i += 2 {
+		if x.Kids[i].K != "sym" {
+			return nil, e.errAt(x.Kids[i], "record field name must be a symbol")
+		}
+		t, err := elabItem(x.Kids[i+1])
+		if err != nil {
+			return nil, err
+		}
+		pairs = append(pairs, pair{name: x.Kids[i].Sym, ty: *t})
+	}
+	sort.Slice(pairs, func(a, b int) bool { return pairs[a].name < pairs[b].name })
+	out := &Ty{K: "record"}
+	for i, p := range pairs {
+		if i > 0 && p.name == pairs[i-1].name {
+			return nil, e.errAt(x, "duplicate record field %q", p.name)
+		}
+		out.Names = append(out.Names, p.name)
+		out.Args = append(out.Args, p.ty)
+	}
+	return out, nil
 }
 
 func (e *elab) elabTerm(x sx) (*Term, error) {
 	switch x.K {
 	case "int":
 		return &Term{K: "int", Int: x.Int}, nil
+	case "str":
+		return &Term{K: "str", Str: x.Str}, nil
+	case "brace":
+		// Record literal: {name expr name expr ...}, sorted like the type.
+		if len(x.Kids)%2 != 0 {
+			return nil, e.errAt(x, "record literal needs name/value pairs")
+		}
+		type fpair struct {
+			name string
+			term Term
+		}
+		var pairs []fpair
+		for i := 0; i < len(x.Kids); i += 2 {
+			if x.Kids[i].K != "sym" {
+				return nil, e.errAt(x.Kids[i], "record field name must be a symbol")
+			}
+			t, err := e.elabTerm(x.Kids[i+1])
+			if err != nil {
+				return nil, err
+			}
+			pairs = append(pairs, fpair{name: x.Kids[i].Sym, term: *t})
+		}
+		sort.Slice(pairs, func(a, b int) bool { return pairs[a].name < pairs[b].name })
+		out := &Term{K: "record"}
+		for i, p := range pairs {
+			if i > 0 && p.name == pairs[i-1].name {
+				return nil, e.errAt(x, "duplicate record field %q", p.name)
+			}
+			out.Names = append(out.Names, p.name)
+			out.Args = append(out.Args, p.term)
+		}
+		return out, nil
 	case "sym":
 		switch x.Sym {
 		case "true":
@@ -313,6 +426,15 @@ func (e *elab) elabTerm(x sx) (*Term, error) {
 				return &Term{K: "if", A: c, B: th, C: el}, nil
 			case "match":
 				return e.elabMatch(x)
+			case ".":
+				if len(x.Kids) != 3 || x.Kids[2].K != "sym" {
+					return nil, e.errAt(x, ". needs a record expression and a field name")
+				}
+				r, err := e.elabTerm(x.Kids[1])
+				if err != nil {
+					return nil, err
+				}
+				return &Term{K: "field", A: r, Op: x.Kids[2].Sym}, nil
 			}
 			if arity, ok := primArity[head.Sym]; ok {
 				if len(x.Kids)-1 != arity {

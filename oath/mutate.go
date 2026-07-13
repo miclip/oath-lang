@@ -55,6 +55,11 @@ var opMutations = map[string][]string{
 	"<": {"<="}, "<=": {"<"}, "and": {"or"}, "or": {"and"},
 }
 
+// Non-commutative binary primitives where swapping operands changes meaning.
+var swappablePrims = map[string]bool{
+	"-": true, "/": true, "%": true, "<": true, "<=": true, "++": true,
+}
+
 // genMutants produces every single-node mutation of the definition's body
 // that still typechecks. Props are copied unchanged: the question is whether
 // THEY notice the body changed.
@@ -84,6 +89,18 @@ func genMutants(st *Store, d *Def) []mutantDef {
 				n.Op = op
 				add(fmt.Sprintf("%s → %s", old, op))
 				n.Op = old
+			}
+			if swappablePrims[n.Op] && len(n.Args) == 2 {
+				n.Args[0], n.Args[1] = n.Args[1], n.Args[0]
+				add(fmt.Sprintf("swapped operands of %s", n.Op))
+				n.Args[0], n.Args[1] = n.Args[1], n.Args[0]
+			}
+		case "str":
+			if n.Str != "" {
+				old := n.Str
+				n.Str = ""
+				add(fmt.Sprintf("string %q → \"\"", old))
+				n.Str = old
 			}
 		case "int":
 			old := n.Int

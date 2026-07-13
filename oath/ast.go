@@ -9,17 +9,24 @@ package main
 // they live in Meta.
 
 // Ty is a type expression.
+//
+// Records (k=record) are structural: Names/Args hold field names and types,
+// canonically sorted by name. Field names are semantic — part of the
+// interface and therefore part of the hash — unlike variable binders, which
+// are alpha-erasable metadata.
 type Ty struct {
-	K    string `json:"k"`              // int | bool | var | fun | data | rec
-	Var  int    `json:"var,omitempty"`  // k=var: index into the enclosing def's type params
-	A    *Ty    `json:"a,omitempty"`    // k=fun: domain
-	B    *Ty    `json:"b,omitempty"`    // k=fun: codomain
-	Hash string `json:"hash,omitempty"` // k=data: content hash of the ADT
-	Args []Ty   `json:"args,omitempty"` // k=data|rec: type arguments
+	K     string   `json:"k"`               // int | bool | str | var | fun | data | rec | record
+	Var   int      `json:"var,omitempty"`   // k=var: index into the enclosing def's type params
+	A     *Ty      `json:"a,omitempty"`     // k=fun: domain
+	B     *Ty      `json:"b,omitempty"`     // k=fun: codomain
+	Hash  string   `json:"hash,omitempty"`  // k=data: content hash of the ADT
+	Args  []Ty     `json:"args,omitempty"`  // k=data|rec: type arguments; k=record: field types
+	Names []string `json:"names,omitempty"` // k=record: field names, sorted, parallel to Args
 }
 
 func tInt() *Ty                     { return &Ty{K: "int"} }
 func tBool() *Ty                    { return &Ty{K: "bool"} }
+func tStr() *Ty                     { return &Ty{K: "str"} }
 func tVar(i int) *Ty                { return &Ty{K: "var", Var: i} }
 func tFun(a, b *Ty) *Ty             { return &Ty{K: "fun", A: a, B: b} }
 func tDataTy(h string, args []Ty) *Ty { return &Ty{K: "data", Hash: h, Args: args} }
@@ -29,19 +36,21 @@ func tRec(args []Ty) *Ty            { return &Ty{K: "rec", Args: args} }
 // definition currently being defined — the standard escape hatch that makes
 // recursion compatible with content addressing (a hash cannot contain itself).
 type Term struct {
-	K      string `json:"k"`                // var | int | bool | lam | app | let | if | prim | ref | self | ctor | match
-	Idx    int    `json:"idx,omitempty"`    // k=var: de Bruijn index; k=ctor: constructor index
-	Int    int64  `json:"int,omitempty"`    // k=int
-	Bool   bool   `json:"bool,omitempty"`   // k=bool
-	Ty     *Ty    `json:"ty,omitempty"`     // k=lam: param type; k=let: bound type
-	A      *Term  `json:"a,omitempty"`      // lam body | app fn | let bound | if cond | match scrutinee
-	B      *Term  `json:"b,omitempty"`      // app arg | let body | if then
-	C      *Term  `json:"c,omitempty"`      // if else
-	Op     string `json:"op,omitempty"`     // k=prim: + - * / % neg == < <= and or not
-	Hash   string `json:"hash,omitempty"`   // k=ref|ctor|match: hash of the referenced def / ADT
-	TyArgs []Ty   `json:"tyargs,omitempty"` // k=ref|self|ctor: type instantiation
-	Args   []Term `json:"args,omitempty"`   // k=prim|ctor: arguments
-	Arms   []Term `json:"arms,omitempty"`   // k=match: one arm per constructor, in constructor order; arm i has ctor i's fields pushed as binders
+	K      string   `json:"k"`                // var | int | bool | str | lam | app | let | if | prim | ref | self | ctor | match | record | field
+	Idx    int      `json:"idx,omitempty"`    // k=var: de Bruijn index; k=ctor: constructor index
+	Int    int64    `json:"int,omitempty"`    // k=int
+	Bool   bool     `json:"bool,omitempty"`   // k=bool
+	Str    string   `json:"str,omitempty"`    // k=str: literal value
+	Ty     *Ty      `json:"ty,omitempty"`     // k=lam: param type; k=let: bound type
+	A      *Term    `json:"a,omitempty"`      // lam body | app fn | let bound | if cond | match scrutinee | field record
+	B      *Term    `json:"b,omitempty"`      // app arg | let body | if then
+	C      *Term    `json:"c,omitempty"`      // if else
+	Op     string   `json:"op,omitempty"`     // k=prim: + - * / % neg == < <= and or not ++ str-len; k=field: field name
+	Hash   string   `json:"hash,omitempty"`   // k=ref|ctor|match: hash of the referenced def / ADT
+	TyArgs []Ty     `json:"tyargs,omitempty"` // k=ref|self|ctor: type instantiation
+	Args   []Term   `json:"args,omitempty"`   // k=prim|ctor: arguments; k=record: field values
+	Names  []string `json:"names,omitempty"`  // k=record: field names, sorted, parallel to Args
+	Arms   []Term   `json:"arms,omitempty"`   // k=match: one arm per constructor, in constructor order; arm i has ctor i's fields pushed as binders
 }
 
 // Prop is a machine-checkable property: forall binders, body evaluates to true.

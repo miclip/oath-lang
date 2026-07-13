@@ -1,0 +1,41 @@
+; Strings, structural records, and Option: the first step out of list-math.
+; Record field names are semantic — part of the type and its hash — but
+; field ORDER is not: {last "b" first "a"} and {first "a" last "b"} are the
+; same term, canonicalized at elaboration.
+
+(data Option [a]
+  (None)
+  (Some a))
+
+(defn or-else [a] [(o (Option a)) (d a)] a
+  (match o
+    ((None) d)
+    ((Some x) x))
+  (prop none-yields-default [(d Int)]
+    (== (or-else [Int] (None [Int]) d) d))
+  (prop some-wins [(x Int) (d Int)]
+    (== (or-else [Int] (Some [Int] x) d) x)))
+
+(defn shout [] [(s Str)] Str
+  (++ s "!")
+  (prop grows-by-one [(s Str)]
+    (== (str-len (shout s)) (+ (str-len s) 1)))
+  (prop preserves-emptiness-never [(s Str)]
+    (< 0 (str-len (shout s)))))
+
+(defn full-name [] [(p {first Str last Str})] Str
+  (++ (++ (. p first) " ") (. p last))
+  (prop length-adds-up [(p {first Str last Str})]
+    (== (str-len (full-name p))
+        (+ (+ (str-len (. p first)) 1) (str-len (. p last)))))
+  (prop starts-from-parts [(a Str) (b Str)]
+    (== (full-name {first a last b}) (++ (++ a " ") b))))
+
+(defn initials-or [] [(o (Option {first Str last Str})) (fallback Str)] Str
+  (match o
+    ((None) fallback)
+    ((Some p) (full-name p)))
+  (prop none-falls-back [(s Str)]
+    (== (initials-or (None [{first Str last Str}]) s) s))
+  (prop some-formats [(p {first Str last Str}) (s Str)]
+    (== (initials-or (Some [{first Str last Str}] p) s) (full-name p))))

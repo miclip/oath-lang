@@ -4,9 +4,11 @@ import "fmt"
 
 // Value is a runtime value. Types are fully erased at runtime.
 type Value struct {
-	K      string // int | bool | closure | data | native
+	K      string // int | bool | str | closure | data | record | native
 	Int    int64
 	Bool   bool
+	Str    string   // str: value
+	Names  []string // record: field names, sorted, parallel to Fields
 	Env    []Value // closure: captured environment
 	Body   *Term   // closure: the lam term
 	Slf    string  // closure: hash of the def it belongs to (for self-references)
@@ -58,6 +60,29 @@ func (e *evaluator) evalInner(env []Value, slf string, t *Term) (Value, error) {
 		return Value{K: "int", Int: t.Int}, nil
 	case "bool":
 		return Value{K: "bool", Bool: t.Bool}, nil
+	case "str":
+		return Value{K: "str", Str: t.Str}, nil
+	case "record":
+		fields := make([]Value, len(t.Args))
+		for i := range t.Args {
+			v, err := e.eval(env, slf, &t.Args[i])
+			if err != nil {
+				return Value{}, err
+			}
+			fields[i] = v
+		}
+		return Value{K: "record", Names: t.Names, Fields: fields}, nil
+	case "field":
+		rv, err := e.eval(env, slf, t.A)
+		if err != nil {
+			return Value{}, err
+		}
+		for i, n := range rv.Names {
+			if n == t.Op {
+				return rv.Fields[i], nil
+			}
+		}
+		return Value{}, fmt.Errorf("record has no field %q at runtime", t.Op)
 	case "lam":
 		cenv := make([]Value, len(env))
 		copy(cenv, env)
@@ -198,6 +223,10 @@ func (e *evaluator) evalPrim(env []Value, slf string, t *Term) (Value, error) {
 		return vBool(args[0].Bool || args[1].Bool), nil
 	case "not":
 		return vBool(!args[0].Bool), nil
+	case "++":
+		return Value{K: "str", Str: args[0].Str + args[1].Str}, nil
+	case "str-len":
+		return vInt(int64(len([]rune(args[0].Str)))), nil
 	case "==":
 		eq, err := structEq(args[0], args[1])
 		if err != nil {
@@ -220,6 +249,19 @@ func structEq(a, b Value) (bool, error) {
 		return a.Int == b.Int, nil
 	case "bool":
 		return a.Bool == b.Bool, nil
+	case "str":
+		return a.Str == b.Str, nil
+	case "record":
+		if len(a.Fields) != len(b.Fields) {
+			return false, nil
+		}
+		for i := range a.Fields {
+			eq, err := structEq(a.Fields[i], b.Fields[i])
+			if err != nil || !eq {
+				return eq, err
+			}
+		}
+		return true, nil
 	case "data":
 		if a.Hash != b.Hash || a.Idx != b.Idx || len(a.Fields) != len(b.Fields) {
 			return false, nil

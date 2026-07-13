@@ -36,6 +36,24 @@ func genValue(st *Store, ty *Ty, size int, r *rng) (Value, error) {
 		return Value{K: "int", Int: r.intIn(-20, 20)}, nil
 	case "bool":
 		return Value{K: "bool", Bool: r.below(2) == 0}, nil
+	case "str":
+		const alphabet = "ab xyz!"
+		n := r.below(size + 1)
+		buf := make([]byte, n)
+		for i := range buf {
+			buf[i] = alphabet[r.below(len(alphabet))]
+		}
+		return Value{K: "str", Str: string(buf)}, nil
+	case "record":
+		fields := make([]Value, len(ty.Args))
+		for i := range ty.Args {
+			v, err := genValue(st, &ty.Args[i], size, r)
+			if err != nil {
+				return Value{}, err
+			}
+			fields[i] = v
+		}
+		return Value{K: "record", Names: ty.Names, Fields: fields}, nil
 	case "fun":
 		if ty.A.K == "int" && ty.B.K == "int" {
 			switch r.below(4) {

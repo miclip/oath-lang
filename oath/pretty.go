@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -35,6 +36,14 @@ func printTy(st *Store, t *Ty, tvs []string) string {
 		return "Int"
 	case "bool":
 		return "Bool"
+	case "str":
+		return "Str"
+	case "record":
+		parts := make([]string, 0, len(t.Names))
+		for i, n := range t.Names {
+			parts = append(parts, n+" "+printTy(st, &t.Args[i], tvs))
+		}
+		return "{" + strings.Join(parts, " ") + "}"
 	case "var":
 		if t.Var < len(tvs) {
 			return tvs[t.Var]
@@ -101,6 +110,16 @@ func (p *printer) term(t *Term, selfName string) string {
 		return fmt.Sprintf("%d", t.Int)
 	case "bool":
 		return fmt.Sprintf("%v", t.Bool)
+	case "str":
+		return strconv.Quote(t.Str)
+	case "record":
+		parts := make([]string, 0, len(t.Names))
+		for i, n := range t.Names {
+			parts = append(parts, n+" "+p.term(&t.Args[i], selfName))
+		}
+		return "{" + strings.Join(parts, " ") + "}"
+	case "field":
+		return "(. " + p.term(t.A, selfName) + " " + t.Op + ")"
 	case "lam":
 		var params []string
 		cur := t
@@ -185,6 +204,14 @@ func printValue(st *Store, v Value) string {
 		return fmt.Sprintf("%d", v.Int)
 	case "bool":
 		return fmt.Sprintf("%v", v.Bool)
+	case "str":
+		return strconv.Quote(v.Str)
+	case "record":
+		parts := make([]string, 0, len(v.Names))
+		for i, n := range v.Names {
+			parts = append(parts, n+" "+printValue(st, v.Fields[i]))
+		}
+		return "{" + strings.Join(parts, " ") + "}"
 	case "data":
 		name := ctorName(st, v.Hash, v.Idx)
 		if len(v.Fields) == 0 {

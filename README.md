@@ -75,6 +75,19 @@ Everything is explicitly annotated — type arguments included (`length [a] t`).
 Annotations are cheap for a machine author, and they keep the kernel free of
 inference: checking is pure structural synthesis, small enough to audit.
 
+Strings and structural records are in (`examples/records.oath`):
+
+```lisp
+(defn full-name [] [(p {first Str last Str})] Str
+  (++ (++ (. p first) " ") (. p last))
+  (prop starts-from-parts [(a Str) (b Str)]
+    (== (full-name {first a last b}) (++ (++ a " ") b))))
+```
+
+Record field names are part of the type (and the hash); field *order* is
+canonicalized away — `{last "b" first "a"}` and `{first "a" last "b"}` are
+the same term.
+
 ## The agent interface (phase 3, v0)
 
 Three verbs turn the store into what an AI author actually consumes —

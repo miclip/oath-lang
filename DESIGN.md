@@ -120,8 +120,10 @@ Oath is a synthesis, not an invention; the pieces have owners:
   runtime. This was the first `proven` fact to enter the metadata.
 - **No canonical binary encoding** — v0 hashes Go's deterministic JSON; a
   real spec must define encoding independent of any host language.
-- **No mutual recursion, strings, floats, records, or effects.** The effect
-  /capability system is the next major design piece.
+- **No mutual recursion, floats, or effects.** The effect/capability system
+  is the next major design piece. (Strings and structural records landed
+  after v0: record field names are semantic — part of the type and hash —
+  but field order is canonicalized away, like variable names before it.)
 - **e-graph canonicalization** (collapsing semantically-equivalent forms,
   not just alpha-equivalent ones) is future work.
 

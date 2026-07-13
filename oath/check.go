@@ -16,7 +16,7 @@ type checker struct {
 // substTy replaces type variables with the given arguments.
 func substTy(t *Ty, args []Ty) *Ty {
 	switch t.K {
-	case "int", "bool":
+	case "int", "bool", "str":
 		return t
 	case "var":
 		if t.Var < len(args) {
@@ -26,7 +26,7 @@ func substTy(t *Ty, args []Ty) *Ty {
 		return t
 	case "fun":
 		return tFun(substTy(t.A, args), substTy(t.B, args))
-	case "data", "rec":
+	case "data", "rec", "record":
 		as := make([]Ty, len(t.Args))
 		for i := range t.Args {
 			as[i] = *substTy(&t.Args[i], args)
@@ -42,11 +42,11 @@ func substTy(t *Ty, args []Ty) *Ty {
 // reference once the ADT's hash is known.
 func resolveRec(t *Ty, h string) *Ty {
 	switch t.K {
-	case "int", "bool", "var":
+	case "int", "bool", "str", "var":
 		return t
 	case "fun":
 		return tFun(resolveRec(t.A, h), resolveRec(t.B, h))
-	case "data", "rec":
+	case "data", "rec", "record":
 		as := make([]Ty, len(t.Args))
 		for i := range t.Args {
 			as[i] = *resolveRec(&t.Args[i], h)
@@ -65,8 +65,13 @@ func tyEq(a, b *Ty) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
-	if a.K != b.K || a.Var != b.Var || a.Hash != b.Hash || len(a.Args) != len(b.Args) {
+	if a.K != b.K || a.Var != b.Var || a.Hash != b.Hash || len(a.Args) != len(b.Args) || len(a.Names) != len(b.Names) {
 		return false
+	}
+	for i := range a.Names {
+		if a.Names[i] != b.Names[i] {
+			return false
+		}
 	}
 	if !tyEq(a.A, b.A) || !tyEq(a.B, b.B) {
 		return false
@@ -113,7 +118,20 @@ func tyIsConcrete(t *Ty) bool {
 // exist with matching arity, "rec" only where allowed.
 func checkTyWF(st *Store, t *Ty, ntyvars int, allowRec bool) error {
 	switch t.K {
-	case "int", "bool":
+	case "int", "bool", "str":
+		return nil
+	case "record":
+		if len(t.Names) != len(t.Args) {
+			return fmt.Errorf("record field names and types out of sync")
+		}
+		for i := range t.Names {
+			if i > 0 && t.Names[i] <= t.Names[i-1] {
+				return fmt.Errorf("record fields must be sorted and unique (canonical form): %q after %q", t.Names[i], t.Names[i-1])
+			}
+			if err := checkTyWF(st, &t.Args[i], ntyvars, allowRec); err != nil {
+				return err
+			}
+		}
 		return nil
 	case "var":
 		if t.Var < 0 || t.Var >= ntyvars {
@@ -190,6 +208,38 @@ func (c *checker) synth(ctx []*Ty, t *Term) (*Ty, error) {
 		return tInt(), nil
 	case "bool":
 		return tBool(), nil
+	case "str":
+		return tStr(), nil
+	case "record":
+		if len(t.Names) != len(t.Args) {
+			return nil, fmt.Errorf("record field names and values out of sync")
+		}
+		out := &Ty{K: "record", Names: append([]string{}, t.Names...)}
+		for i := range t.Args {
+			if i > 0 && t.Names[i] <= t.Names[i-1] {
+				return nil, fmt.Errorf("record fields must be sorted and unique (canonical form)")
+			}
+			ft, err := c.synth(ctx, &t.Args[i])
+			if err != nil {
+				return nil, err
+			}
+			out.Args = append(out.Args, *ft)
+		}
+		return out, nil
+	case "field":
+		rt, err := c.synth(ctx, t.A)
+		if err != nil {
+			return nil, err
+		}
+		if rt.K != "record" {
+			return nil, fmt.Errorf("field access on non-record (type %s)", debugTy(rt))
+		}
+		for i, n := range rt.Names {
+			if n == t.Op {
+				return &rt.Args[i], nil
+			}
+		}
+		return nil, fmt.Errorf("record %s has no field %q", debugTy(rt), t.Op)
 	case "lam":
 		if err := checkTyWF(c.st, t.Ty, c.selfTyVars, false); err != nil {
 			return nil, err
@@ -382,7 +432,31 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 		}
 		return nil
 	}
+	allStr := func() error {
+		for _, a := range argTys {
+			if a.K != "str" {
+				return fmt.Errorf("primitive %s requires Str arguments, got %s", t.Op, debugTy(a))
+			}
+		}
+		return nil
+	}
 	switch t.Op {
+	case "++":
+		if err := need(2); err != nil {
+			return nil, err
+		}
+		if err := allStr(); err != nil {
+			return nil, err
+		}
+		return tStr(), nil
+	case "str-len":
+		if err := need(1); err != nil {
+			return nil, err
+		}
+		if err := allStr(); err != nil {
+			return nil, err
+		}
+		return tInt(), nil
 	case "+", "-", "*", "/", "%":
 		if err := need(2); err != nil {
 			return nil, err
@@ -503,6 +577,17 @@ func debugTy(t *Ty) string {
 		return "Int"
 	case "bool":
 		return "Bool"
+	case "str":
+		return "Str"
+	case "record":
+		s := "{"
+		for i, n := range t.Names {
+			if i > 0 {
+				s += " "
+			}
+			s += n + " " + debugTy(&t.Args[i])
+		}
+		return s + "}"
 	case "var":
 		return fmt.Sprintf("t%d", t.Var)
 	case "fun":
