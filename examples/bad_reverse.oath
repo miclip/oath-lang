@@ -1,0 +1,13 @@
+; A deliberately wrong implementation: "reverse" that returns its input
+; unchanged. Note that the involution property (reverse (reverse xs)) == xs
+; PASSES on this lie — a single property is a weak oath. The second property
+; catches it and the kernel records the definition as FALSIFIED, with a
+; counterexample.
+
+(defn bad-reverse [a] [(xs (List a))] (List a)
+  xs
+  (prop involution [(xs (List Int))]
+    (== (bad-reverse [Int] (bad-reverse [Int] xs)) xs))
+  (prop antidistributes-over-append [(xs (List Int)) (ys (List Int))]
+    (== (bad-reverse [Int] (append [Int] xs ys))
+        (append [Int] (bad-reverse [Int] ys) (bad-reverse [Int] xs)))))

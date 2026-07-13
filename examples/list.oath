@@ -1,0 +1,51 @@
+; The canonical first module: lists, with machine-checked properties.
+; Every defn carries its spec; the kernel runs the spec before the name
+; is trusted. Type arguments are always explicit — annotations are cheap
+; for a machine author, and they keep the kernel free of inference.
+
+(data List [a]
+  (Nil)
+  (Cons a (List a)))
+
+(defn length [a] [(xs (List a))] Int
+  (match xs
+    ((Nil) 0)
+    ((Cons h t) (+ 1 (length [a] t))))
+  (prop non-negative [(xs (List Int))]
+    (<= 0 (length [Int] xs))))
+
+(defn append [a] [(xs (List a)) (ys (List a))] (List a)
+  (match xs
+    ((Nil) ys)
+    ((Cons h t) (Cons [a] h (append [a] t ys))))
+  (prop length-adds [(xs (List Int)) (ys (List Int))]
+    (== (length [Int] (append [Int] xs ys))
+        (+ (length [Int] xs) (length [Int] ys))))
+  (prop nil-right-identity [(xs (List Int))]
+    (== (append [Int] xs (Nil [Int])) xs)))
+
+(defn map [a b] [(f (-> a b)) (xs (List a))] (List b)
+  (match xs
+    ((Nil) (Nil [b]))
+    ((Cons h t) (Cons [b] (f h) (map [a b] f t))))
+  (prop preserves-length [(f (-> Int Int)) (xs (List Int))]
+    (== (length [Int] (map [Int Int] f xs)) (length [Int] xs))))
+
+(defn reverse [a] [(xs (List a))] (List a)
+  (match xs
+    ((Nil) (Nil [a]))
+    ((Cons h t) (append [a] (reverse [a] t) (Cons [a] h (Nil [a])))))
+  (prop involution [(xs (List Int))]
+    (== (reverse [Int] (reverse [Int] xs)) xs))
+  (prop antidistributes-over-append [(xs (List Int)) (ys (List Int))]
+    (== (reverse [Int] (append [Int] xs ys))
+        (append [Int] (reverse [Int] ys) (reverse [Int] xs)))))
+
+(defn sum [] [(xs (List Int))] Int
+  (match xs
+    ((Nil) 0)
+    ((Cons h t) (+ h (sum t))))
+  (prop reverse-invariant [(xs (List Int))]
+    (== (sum (reverse [Int] xs)) (sum xs)))
+  (prop distributes-over-append [(xs (List Int)) (ys (List Int))]
+    (== (sum (append [Int] xs ys)) (+ (sum xs) (sum ys)))))
