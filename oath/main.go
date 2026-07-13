@@ -1,19 +1,23 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 )
 
 const usage = `oath — a content-addressed, spec-carrying language kernel
 
 usage:
-  oath put <file.oath>     elaborate, typecheck, store, and verify definitions
-  oath ls                  list named definitions and their guarantees
-  oath get <name>          print the human projection of a definition
-  oath verify <name>       re-run a definition's properties
-  oath eval "<expr>"       typecheck and evaluate an expression
+  oath put [--json] <file.oath>       elaborate, typecheck, store, verify; --json for machine-readable verdicts
+  oath ls                             list named definitions and their guarantees
+  oath get <name>                     print the human projection of a definition
+  oath context <name...> [--budget N] spec-only slice of the named defs + transitive deps (no bodies)
+  oath dependents <name>              list definitions that reference a definition
+  oath verify <name>                  re-run a definition's properties
+  oath eval "<expr>"                  typecheck and evaluate an expression
 
 the codebase lives in ./codebase (override with OATH_STORE)`
 
@@ -33,10 +37,43 @@ func main() {
 	}
 	switch args[0] {
 	case "put":
-		if len(args) != 2 {
-			fail(fmt.Errorf("usage: oath put <file.oath>"))
+		jsonMode := false
+		var files []string
+		for _, a := range args[1:] {
+			if a == "--json" {
+				jsonMode = true
+			} else {
+				files = append(files, a)
+			}
 		}
-		cmdPut(st, args[1])
+		if len(files) != 1 {
+			fail(fmt.Errorf("usage: oath put [--json] <file.oath>"))
+		}
+		cmdPut(st, files[0], jsonMode)
+	case "context":
+		budget := 0
+		var names []string
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			if rest[i] == "--budget" && i+1 < len(rest) {
+				budget, err = strconv.Atoi(rest[i+1])
+				if err != nil {
+					fail(fmt.Errorf("--budget needs a number"))
+				}
+				i++
+			} else {
+				names = append(names, rest[i])
+			}
+		}
+		if len(names) == 0 {
+			fail(fmt.Errorf("usage: oath context <name...> [--budget N]"))
+		}
+		cmdContext(st, names, budget)
+	case "dependents":
+		if len(args) != 2 {
+			fail(fmt.Errorf("usage: oath dependents <name>"))
+		}
+		cmdDependents(st, args[1])
 	case "ls":
 		cmdLs(st)
 	case "get":
@@ -65,7 +102,27 @@ func fail(err error) {
 	os.Exit(1)
 }
 
-func cmdPut(st *Store, path string) {
+// putReport is the machine-readable verdict for one definition — the exact
+// feedback an AI author needs to regenerate: what failed, and on which inputs.
+type putReport struct {
+	Name      string     `json:"name"`
+	Hash      string     `json:"hash,omitempty"`
+	Kind      string     `json:"kind"`
+	Status    string     `json:"status"` // accepted | falsified | rejected
+	Guarantee string     `json:"guarantee,omitempty"`
+	Error     string     `json:"error,omitempty"`
+	Props     []propJSON `json:"props,omitempty"`
+}
+
+type propJSON struct {
+	Name           string `json:"name"`
+	Passed         int    `json:"passed"`
+	Failed         bool   `json:"failed"`
+	Counterexample string `json:"counterexample,omitempty"`
+	Error          string `json:"error,omitempty"`
+}
+
+func cmdPut(st *Store, path string, jsonMode bool) {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		fail(err)
@@ -73,6 +130,16 @@ func cmdPut(st *Store, path string) {
 	forms, err := parseForms(string(src))
 	if err != nil {
 		fail(err)
+	}
+	var results []putReport
+	finish := func(code int) {
+		if jsonMode {
+			b, _ := json.MarshalIndent(results, "", "  ")
+			fmt.Println(string(b))
+		}
+		if code != 0 {
+			os.Exit(code)
+		}
 	}
 	anyFalsified := false
 	for _, f := range forms {
@@ -95,8 +162,11 @@ func cmdPut(st *Store, path string) {
 
 		// The kernel gate: nothing enters the codebase without typechecking.
 		if err := checkDef(st, def); err != nil {
-			fmt.Printf("✗ %-16s REJECTED: %v\n", meta.Name, err)
-			os.Exit(1)
+			results = append(results, putReport{Name: meta.Name, Kind: def.K, Status: "rejected", Error: err.Error()})
+			if !jsonMode {
+				fmt.Printf("✗ %-16s REJECTED: %v\n", meta.Name, err)
+			}
+			finish(1)
 		}
 
 		h, prev, err := st.Put(def, meta)
@@ -109,35 +179,50 @@ func cmdPut(st *Store, path string) {
 			status = fmt.Sprintf("  (name repointed; old version %s remains immutable)", shortHash(prev))
 		}
 
+		rep := putReport{Name: meta.Name, Hash: h, Kind: def.K, Status: "accepted"}
 		if def.K == "func" {
 			reports, err := verifyDef(st, h)
 			if err != nil {
 				fail(err)
 			}
 			m, _ := st.GetMeta(h)
-			mark := "✓"
+			rep.Guarantee = guaranteeString(m.Guarantee)
 			if m.Guarantee.Level == "falsified" {
-				mark = "✗"
+				rep.Status = "falsified"
 				anyFalsified = true
 			}
-			fmt.Printf("%s %-16s #%s  %s%s\n", mark, meta.Name, shortHash(h), guaranteeString(m.Guarantee), status)
 			for _, r := range reports {
-				if r.Failed {
-					fmt.Printf("    prop %-24s FALSIFIED after %d cases\n", r.Name, r.Passed)
-					fmt.Printf("      counterexample: %s\n", r.Counter)
-				} else if r.Err != "" {
-					fmt.Printf("    prop %-24s ERROR: %s\n", r.Name, r.Err)
-				} else {
-					fmt.Printf("    prop %-24s passed %d cases\n", r.Name, r.Passed)
+				rep.Props = append(rep.Props, propJSON{
+					Name: r.Name, Passed: r.Passed, Failed: r.Failed,
+					Counterexample: r.Counter, Error: r.Err,
+				})
+			}
+			if !jsonMode {
+				mark := "✓"
+				if rep.Status == "falsified" {
+					mark = "✗"
+				}
+				fmt.Printf("%s %-16s #%s  %s%s\n", mark, meta.Name, shortHash(h), rep.Guarantee, status)
+				for _, r := range reports {
+					if r.Failed {
+						fmt.Printf("    prop %-24s FALSIFIED after %d cases\n", r.Name, r.Passed)
+						fmt.Printf("      counterexample: %s\n", r.Counter)
+					} else if r.Err != "" {
+						fmt.Printf("    prop %-24s ERROR: %s\n", r.Name, r.Err)
+					} else {
+						fmt.Printf("    prop %-24s passed %d cases\n", r.Name, r.Passed)
+					}
 				}
 			}
-		} else {
+		} else if !jsonMode {
 			fmt.Printf("✓ %-16s #%s  data (%d constructors)%s\n", meta.Name, shortHash(h), len(def.Ctors), status)
 		}
+		results = append(results, rep)
 	}
 	if anyFalsified {
-		os.Exit(2)
+		finish(2)
 	}
+	finish(0)
 }
 
 func cmdLs(st *Store) {

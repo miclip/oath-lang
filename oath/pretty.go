@@ -222,6 +222,67 @@ func guaranteeString(g Guarantee) string {
 	return "asserted (no properties checked)"
 }
 
+// printSpec renders the spec-only projection: everything an author needs to
+// BUILD ON a definition (signature, properties, guarantee) and nothing it
+// doesn't (the body). For data definitions the constructors are the spec.
+func printSpec(st *Store, h string) (string, error) {
+	d, err := st.GetDef(h)
+	if err != nil {
+		return "", err
+	}
+	m, err := st.GetMeta(h)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	tvs := m.TyVarNames
+	switch d.K {
+	case "data":
+		fmt.Fprintf(&b, "data %s", m.Name)
+		if len(tvs) > 0 {
+			fmt.Fprintf(&b, " [%s]", strings.Join(tvs, " "))
+		}
+		fmt.Fprintf(&b, "\n")
+		for i, fields := range d.Ctors {
+			cn := "?"
+			if i < len(m.CtorNames) {
+				cn = m.CtorNames[i]
+			}
+			fmt.Fprintf(&b, "  (%s", cn)
+			for fi := range fields {
+				fmt.Fprintf(&b, " %s", printTy(st, &fields[fi], tvs))
+			}
+			fmt.Fprintf(&b, ")\n")
+		}
+		fmt.Fprintf(&b, "  #%s\n", shortHash(h))
+	case "func":
+		fmt.Fprintf(&b, "%s : %s", m.Name, printTy(st, d.Ty, tvs))
+		if len(tvs) > 0 {
+			fmt.Fprintf(&b, "   forall %s", strings.Join(tvs, " "))
+		}
+		fmt.Fprintf(&b, "\n")
+		for pi, p := range d.Props {
+			pn := fmt.Sprintf("prop%d", pi)
+			if pi < len(m.PropNames) {
+				pn = m.PropNames[pi]
+			}
+			pp := &printer{st: st, tvs: nil}
+			var binders []string
+			for range p.Binders {
+				binders = append(binders, pp.fresh())
+			}
+			pp.names = binders
+			var bparts []string
+			for bi := range p.Binders {
+				bparts = append(bparts, "("+binders[bi]+" "+printTy(st, &p.Binders[bi], nil)+")")
+			}
+			fmt.Fprintf(&b, "  prop %s: forall [%s]. %s\n", pn, strings.Join(bparts, " "), pp.term(&p.Body, m.Name))
+		}
+		fmt.Fprintf(&b, "  guarantee: %s   #%s\n", guaranteeString(m.Guarantee), shortHash(h))
+	}
+	return b.String(), nil
+}
+
 // printDef renders the full human projection of a definition.
 func printDef(st *Store, h string) (string, error) {
 	d, err := st.GetDef(h)

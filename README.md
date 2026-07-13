@@ -69,6 +69,25 @@ Everything is explicitly annotated — type arguments included (`length [a] t`).
 Annotations are cheap for a machine author, and they keep the kernel free of
 inference: checking is pure structural synthesis, small enough to audit.
 
+## The agent interface (phase 3, v0)
+
+Three verbs turn the store into what an AI author actually consumes —
+queries and transactions instead of files:
+
+```sh
+./oath/oath context sort append --budget 500   # spec-only slice: signatures, props,
+                                               # guarantees — never bodies; anything
+                                               # omitted for budget is named explicitly
+./oath/oath put --json examples/sort.oath      # machine-readable verdicts: accepted /
+                                               # rejected / falsified + counterexamples
+./oath/oath dependents append                  # reverse dependency query
+```
+
+`examples/sort.oath` was authored this way: written against the `context`
+output for `List`/`length`/`append` — their specs, never their bodies — and
+accepted with 12 properties verified, including the strong permutation oath
+(`count x (sort xs) == count x xs`).
+
 ## Layout
 
 ```
