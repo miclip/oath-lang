@@ -1,0 +1,33 @@
+; Integer functions living entirely in the provable fragment: non-recursive,
+; Int/Bool only. Their properties can be PROVEN by `oath prove` — true for
+; all inputs by SMT, not sampled. (Semantics caveat: Z3 proves over
+; unbounded integers; the evaluator uses int64.)
+
+(defn abs [] [(x Int)] Int
+  (if (< x 0) (neg x) x)
+  (prop non-negative [(x Int)]
+    (<= 0 (abs x)))
+  (prop idempotent [(x Int)]
+    (== (abs (abs x)) (abs x)))
+  (prop is-x-or-negx [(x Int)]
+    (or (== (abs x) x) (== (abs x) (neg x)))))
+
+(defn sign [] [(x Int)] Int
+  (if (< x 0) -1 (if (< 0 x) 1 0))
+  (prop bounded [(x Int)]
+    (and (<= -1 (sign x)) (<= (sign x) 1)))
+  (prop reconstructs [(x Int)]
+    (== (* (sign x) (abs x)) x)))
+
+(defn clamp [] [(lo Int) (hi Int) (x Int)] Int
+  (max2 lo (if (< hi x) hi x))
+  (prop within-bounds [(lo Int) (hi Int) (x Int)]
+    (if (<= lo hi)
+        (and (<= lo (clamp lo hi x)) (<= (clamp lo hi x) hi))
+        true))
+  (prop idempotent [(lo Int) (hi Int) (x Int)]
+    (== (clamp lo hi (clamp lo hi x)) (clamp lo hi x)))
+  (prop identity-inside [(lo Int) (hi Int) (x Int)]
+    (if (and (<= lo x) (<= x hi))
+        (== (clamp lo hi x) x)
+        true)))

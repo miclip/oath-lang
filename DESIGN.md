@@ -154,9 +154,12 @@ Oath is a synthesis, not an invention; the pieces have owners:
 
 ## What v0 deliberately is not
 
-- **Not proven.** `proven` is reserved; v0's strongest oath is deterministic
-  property testing. The road to real proofs is SMT-discharged obligations
-  (Z3) and a Lean-style kernel.
+- **Proven only for a fragment.** `oath prove` discharges properties in the
+  non-recursive Int/Bool fragment via Z3 (unbounded-int semantics, stated on
+  every proof). Recursion needs induction — the road there is a Lean-style
+  kernel. Everything outside the fragment bails with a reason and stays
+  `tested`; `examples/undertested.oath` shows why the distinction matters
+  (200 cases passed, refuted at x = -401).
 - **Termination is proven only structurally** — a Foetus-lite check (after
   Agda): total iff some fixed argument position strictly descends at every
   self-call and all callees are total (hash-acyclicity makes this compose

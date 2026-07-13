@@ -1,0 +1,9 @@
+; Exhibit: why `proven` outranks `tested`. This property passes 200
+; deterministic cases — the generator draws from [-20,20] plus boundary
+; values, so testing will NEVER falsify it. Z3 refutes it in milliseconds
+; with a counterexample far outside the sampled range.
+
+(defn abs-small [] [(x Int)] Int
+  (abs x)
+  (prop bounded-wrongly [(x Int)]
+    (<= (abs-small x) 400)))

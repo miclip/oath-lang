@@ -252,11 +252,15 @@ func printValue(st *Store, v Value) string {
 func guaranteeString(g Guarantee) string {
 	switch g.Level {
 	case "tested":
-		return fmt.Sprintf("tested (%d cases per property)", g.Cases)
+		s := fmt.Sprintf("tested (%d cases per property)", g.Cases)
+		if g.Proven > 0 {
+			s += fmt.Sprintf(", %d proven", g.Proven)
+		}
+		return s
 	case "falsified":
 		return "FALSIFIED: " + strings.Join(g.Falsified, ", ")
 	case "proven":
-		return "proven"
+		return fmt.Sprintf("PROVEN (all %d properties, Z3 over unbounded ints)", g.Proven)
 	}
 	return "asserted (no properties checked)"
 }

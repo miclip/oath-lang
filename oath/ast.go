@@ -78,6 +78,7 @@ type Def struct {
 type Guarantee struct {
 	Level     string   `json:"level"`               // asserted | tested | falsified | proven
 	Cases     int      `json:"cases,omitempty"`     // tested: cases per property
+	Proven    int      `json:"proven,omitempty"`    // properties proven by SMT (unbounded-int semantics)
 	Falsified []string `json:"falsified,omitempty"` // falsified: names of failed properties
 }
 

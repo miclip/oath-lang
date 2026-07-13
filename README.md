@@ -13,9 +13,18 @@ deterministic inputs before a name is trusted, and records an **honest
 guarantee level** on every definition:
 
 ```
-asserted  →  tested (N cases)  →  proven (reserved for v1)
+asserted  →  tested (N cases)  →  PROVEN (all inputs, Z3)
                       ↘  FALSIFIED (with counterexample)
 ```
+
+`proven` is real (no longer reserved): `oath prove <name>` translates
+properties in the non-recursive Int/Bool fragment to SMT-LIB and asks Z3
+(`brew install z3`) to hold them for *all* inputs — `abs`, `sign`, `clamp`,
+and `max2` are fully proven. `examples/undertested.oath` is the exhibit for
+why the rungs differ: its property passes all 200 test cases and is refuted
+by Z3 at x = -401, outside anything the generator draws. Semantics caveat
+stated on every proof: Z3 proves over unbounded integers; the evaluator uses
+int64. Recursion needs induction — future work, honestly bailed.
 
 Two more dimensions ride alongside: **termination** (a structural checker
 proves totality where recursion visibly descends — `total` in listings;

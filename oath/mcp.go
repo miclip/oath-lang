@@ -86,6 +86,11 @@ func mcpTools() []map[string]any {
 			"inputSchema": obj(map[string]any{"name": str("definition name")}, "name"),
 		},
 		{
+			"name":        "prove",
+			"description": "SMT-prove a definition's properties for ALL inputs (Z3, unbounded-int semantics). Works on the non-recursive Int/Bool fragment; properties outside it stay tested with the bail reason explained. Refutations return a concrete counterexample model.",
+			"inputSchema": obj(map[string]any{"name": str("definition name")}, "name"),
+		},
+		{
 			"name":        "dependents",
 			"description": "Reverse dependency query: which definitions reference this one.",
 			"inputSchema": obj(map[string]any{"name": str("definition name")}, "name"),
@@ -135,6 +140,8 @@ func mcpCallTool(st *Store, name string, args json.RawMessage) (string, error) {
 		return apiVerify(st, a.Name)
 	case "mutate":
 		return apiMutate(st, a.Name)
+	case "prove":
+		return apiProve(st, a.Name)
 	case "dependents":
 		return apiDependents(st, a.Name)
 	case "log":
