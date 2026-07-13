@@ -278,9 +278,16 @@ func printSpec(st *Store, h string) (string, error) {
 			}
 			fmt.Fprintf(&b, "  prop %s: forall [%s]. %s\n", pn, strings.Join(bparts, " "), pp.term(&p.Body, m.Name))
 		}
-		fmt.Fprintf(&b, "  guarantee: %s   #%s\n", guaranteeString(m.Guarantee), shortHash(h))
+		fmt.Fprintf(&b, "  guarantee: %s%s   #%s\n", guaranteeString(m.Guarantee), specStrengthString(m), shortHash(h))
 	}
 	return b.String(), nil
+}
+
+func specStrengthString(m *Meta) string {
+	if m.MutantsTotal == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" · spec strength %d/%d mutants killed", m.MutantsKilled, m.MutantsTotal)
 }
 
 // printDef renders the full human projection of a definition.
@@ -342,7 +349,7 @@ func printDef(st *Store, h string) (string, error) {
 	}
 
 	fmt.Fprintf(&b, "hash: %s\n", h)
-	fmt.Fprintf(&b, "guarantee: %s\n", guaranteeString(m.Guarantee))
+	fmt.Fprintf(&b, "guarantee: %s%s\n", guaranteeString(m.Guarantee), specStrengthString(m))
 
 	deps := collectDeps(d)
 	if len(deps) > 0 {

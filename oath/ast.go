@@ -75,11 +75,13 @@ type Guarantee struct {
 // Meta is everything humans need and machines don't: names. Pure metadata,
 // never hashed, freely editable.
 type Meta struct {
-	Name       string    `json:"name"`
-	TyVarNames []string  `json:"tyvar_names,omitempty"`
-	CtorNames  []string  `json:"ctor_names,omitempty"`
-	PropNames  []string  `json:"prop_names,omitempty"`
-	Guarantee  Guarantee `json:"guarantee"`
+	Name          string    `json:"name"`
+	TyVarNames    []string  `json:"tyvar_names,omitempty"`
+	CtorNames     []string  `json:"ctor_names,omitempty"`
+	PropNames     []string  `json:"prop_names,omitempty"`
+	Guarantee     Guarantee `json:"guarantee"`
+	MutantsKilled int       `json:"mutants_killed,omitempty"` // spec strength: mutants the props caught
+	MutantsTotal  int       `json:"mutants_total,omitempty"`  // spec strength: mutants generated
 }
 
 // collectDeps returns the set of definition hashes a def references.

@@ -46,7 +46,7 @@ func verifyDef(st *Store, h string) ([]PropReport, error) {
 		if pi < len(m.PropNames) {
 			name = m.PropNames[pi]
 		}
-		reports = append(reports, runProp(st, h, &d.Props[pi], name, base, pi))
+		reports = append(reports, runProp(st, h, &d.Props[pi], name, base, pi, propCases, propFuel))
 	}
 
 	g := Guarantee{Level: "asserted"}
@@ -70,9 +70,9 @@ func verifyDef(st *Store, h string) ([]PropReport, error) {
 	return reports, nil
 }
 
-func runProp(st *Store, h string, p *Prop, name string, base uint64, pi int) PropReport {
+func runProp(st *Store, h string, p *Prop, name string, base uint64, pi int, cases int, fuel int64) PropReport {
 	rep := PropReport{Name: name}
-	for c := 0; c < propCases; c++ {
+	for c := 0; c < cases; c++ {
 		r := &rng{s: base ^ (uint64(pi) << 32) ^ uint64(c)*0xD1B54A32D192ED03}
 		size := c % 8
 
@@ -93,7 +93,7 @@ func runProp(st *Store, h string, p *Prop, name string, base uint64, pi int) Pro
 			return rep
 		}
 
-		ev := &evaluator{st: st, fuel: propFuel}
+		ev := &evaluator{st: st, fuel: fuel}
 		out, err := ev.eval(env, h, &p.Body)
 		if err != nil {
 			rep.Failed = true

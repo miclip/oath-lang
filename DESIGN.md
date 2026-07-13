@@ -65,6 +65,48 @@ whose first property *passes* (weak oath) and whose second property is
 falsified with a concrete counterexample. Specs are the unit of trust;
 redundant, diverse specs are the defense.
 
+## Spec strength: who verifies the specs?
+
+The system's load-bearing weakness, named plainly: Oath relocates trust from
+implementations to specs — so what stops an author (especially an AI author
+writing both sides) from swearing weak oaths? A tautological property passes
+trivially; the phase-4 "verification is an unfakeable reward signal" claim is
+only as good as the specs, or it becomes reward hacking moved up a level.
+
+The kernel's partial answer is **mutation testing** (`oath mutate`): generate
+type-preserving mutations of the implementation and check whether the
+properties notice. The killed/total score is recorded next to the guarantee
+— `tested` says the promises held; spec strength says whether the promises
+say anything. The `length` case study is instructive: its original
+`non-negative` property scored 1/5 (mutants returning `length+1`, `length·0`
+and `const 0` all survived); adding a base-case anchor and a step law took it
+to 5/5. Survivors demand judgment, not automation: `insert`'s `<= → <`
+mutant survives because on bare Ints the output list is literally identical —
+the classic equivalent-mutant problem.
+
+This is a mitigation, not a solution. The remaining defenses are structural:
+separating spec-authorship from implementation-authorship (different agents,
+adversarial spec review), human-owned specs at trust boundaries, and treating
+low spec-strength scores as publication blockers. Fully closing the loop is
+an open problem, and DESIGN.md will keep saying so until it isn't.
+
+## Prior art
+
+Oath is a synthesis, not an invention; the pieces have owners:
+
+- **Unison** — content-addressed definitions, names-as-metadata, and the
+  codebase-as-database. Oath's store is directly in its lineage. Unison's
+  hard lesson is also inherited and unsolved here: the cost is rebuilding the
+  entire tooling ecosystem (diff, blame, review, refactoring) from scratch.
+- **Lean / Agda** — the small-trusted-kernel architecture, and structural
+  termination checking (Agda's Foetus) planned for the next kernel rung.
+- **QuickCheck** — property-based testing with generated inputs.
+- **Mutation testing** (DeMillo/Lipton/Sayward) — spec-strength scoring.
+- **Dafny / Liquid Haskell** — specs carried in signatures and checked
+  mechanically.
+- **egg / e-graphs** — the future answer to canonicalizing semantically
+  (not just alpha-) equivalent forms.
+
 ## What v0 deliberately is not
 
 - **Not proven.** `proven` is reserved; v0's strongest oath is deterministic

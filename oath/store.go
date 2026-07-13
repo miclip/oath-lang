@@ -76,6 +76,10 @@ func (s *Store) Put(d *Def, m *Meta) (string, string, error) {
 	return h, prev, nil
 }
 
+// CacheDef registers a definition in memory only — used to evaluate
+// candidate/mutant definitions without admitting them to the codebase.
+func (s *Store) CacheDef(h string, d *Def) { s.defs[h] = d }
+
 func (s *Store) GetDef(h string) (*Def, error) {
 	if d, ok := s.defs[h]; ok {
 		return d, nil

@@ -17,6 +17,7 @@ usage:
   oath context <name...> [--budget N] spec-only slice of the named defs + transitive deps (no bodies)
   oath dependents <name>              list definitions that reference a definition
   oath verify <name>                  re-run a definition's properties
+  oath mutate <name>                  score spec strength: do the properties notice mutations?
   oath eval "<expr>"                  typecheck and evaluate an expression
 
 the codebase lives in ./codebase (override with OATH_STORE)`
@@ -86,6 +87,11 @@ func main() {
 			fail(fmt.Errorf("usage: oath verify <name>"))
 		}
 		cmdVerify(st, args[1])
+	case "mutate":
+		if len(args) != 2 {
+			fail(fmt.Errorf("usage: oath mutate <name>"))
+		}
+		cmdMutate(st, args[1])
 	case "eval":
 		if len(args) != 2 {
 			fail(fmt.Errorf("usage: oath eval \"<expr>\""))

@@ -81,7 +81,13 @@ queries and transactions instead of files:
 ./oath/oath put --json examples/sort.oath      # machine-readable verdicts: accepted /
                                                # rejected / falsified + counterexamples
 ./oath/oath dependents append                  # reverse dependency query
+./oath/oath mutate length                      # spec strength: do the properties
+                                               # notice mutations of the body?
 ```
+
+`mutate` is the answer to "who verifies the specs?" — survivors are printed
+with their bodies, and the killed/total score sits next to the guarantee.
+`length`'s original spec scored 1/5; two added anchor properties took it to 5/5.
 
 `examples/sort.oath` was authored this way: written against the `context`
 output for `List`/`length`/`append` — their specs, never their bodies — and

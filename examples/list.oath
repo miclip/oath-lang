@@ -12,7 +12,14 @@
     ((Nil) 0)
     ((Cons h t) (+ 1 (length [a] t))))
   (prop non-negative [(xs (List Int))]
-    (<= 0 (length [Int] xs))))
+    (<= 0 (length [Int] xs)))
+  ; anchors added after `oath mutate length` showed 4/5 mutants surviving:
+  ; without a base-case anchor and a step law, non-negativity alone cannot
+  ; tell length apart from (length + k) or from (const 0).
+  (prop empty-is-zero [(x Int)]
+    (== (length [Int] (Nil [Int])) 0))
+  (prop cons-adds-one [(x Int) (xs (List Int))]
+    (== (length [Int] (Cons [Int] x xs)) (+ 1 (length [Int] xs)))))
 
 (defn append [a] [(xs (List a)) (ys (List a))] (List a)
   (match xs
