@@ -33,6 +33,15 @@ func (r *rng) intIn(lo, hi int64) int64 {
 func genValue(st *Store, ty *Ty, size int, r *rng) (Value, error) {
 	switch ty.K {
 	case "int":
+		// Bias toward boundary values: off-by-one and base-case mutants live
+		// at small magnitudes that uniform sampling rarely witnesses. (Found
+		// by the split-agent experiment: a correct relational property let
+		// six take/drop mutants survive purely because 60 uniform draws from
+		// [-20,20] seldom produce the distinguishing n ∈ {0,1,2}.)
+		if r.below(4) == 0 {
+			boundary := []int64{-2, -1, 0, 1, 2}
+			return Value{K: "int", Int: boundary[r.below(len(boundary))]}, nil
+		}
 		return Value{K: "int", Int: r.intIn(-20, 20)}, nil
 	case "bool":
 		return Value{K: "bool", Bool: r.below(2) == 0}, nil

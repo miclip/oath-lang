@@ -1,0 +1,40 @@
+(defn max2 [] [(a Int) (b Int)] Int
+  (if (< a b) b a)
+  (prop ge-left [(a Int) (b Int)] (<= a (max2 a b)))
+  (prop ge-right [(a Int) (b Int)] (<= b (max2 a b)))
+  (prop is-one-of [(a Int) (b Int)] (or (== (max2 a b) a) (== (max2 a b) b)))
+  (prop picks-larger [(a Int) (b Int)] (if (<= b a) (== (max2 a b) a) (== (max2 a b) b))))
+
+(defn drop [] [(n Int) (xs (List Int))] (List Int)
+  (if (<= n 0)
+      xs
+      (match xs
+        ((Nil) (Nil [Int]))
+        ((Cons h t) (drop (- n 1) t))))
+  (prop drop-all [(xs (List Int))] (== (drop (length [Int] xs) xs) (Nil [Int])))
+  (prop drop-zero [] (== (drop 0 (Cons [Int] 5 (Cons [Int] 6 (Nil [Int])))) (Cons [Int] 5 (Cons [Int] 6 (Nil [Int])))))
+  (prop drop-one [] (== (drop 1 (Cons [Int] 5 (Cons [Int] 6 (Nil [Int])))) (Cons [Int] 6 (Nil [Int]))))
+  (prop drop-length [(n Int) (xs (List Int))]
+    (if (and (<= 0 n) (<= n (length [Int] xs)))
+        (== (length [Int] (drop n xs)) (- (length [Int] xs) n))
+        true)))
+
+(defn take [] [(n Int) (xs (List Int))] (List Int)
+  (if (<= n 0)
+      (Nil [Int])
+      (match xs
+        ((Nil) (Nil [Int]))
+        ((Cons h t) (Cons [Int] h (take (- n 1) t)))))
+  (prop take-then-drop-rebuilds [(n Int) (xs (List Int))] (== (append [Int] (take n xs) (drop n xs)) xs))
+  (prop take-zero [] (== (take 0 (Cons [Int] 5 (Nil [Int]))) (Nil [Int])))
+  (prop take-one [] (== (take 1 (Cons [Int] 5 (Cons [Int] 6 (Nil [Int])))) (Cons [Int] 5 (Nil [Int]))))
+  (prop take-two [] (== (take 2 (Cons [Int] 5 (Cons [Int] 6 (Cons [Int] 7 (Nil [Int]))))) (Cons [Int] 5 (Cons [Int] 6 (Nil [Int]))))))
+
+(defn contains [] [(x Int) (xs (List Int))] Bool
+  (match xs
+    ((Nil) false)
+    ((Cons h t) (if (== x h) true (contains x t))))
+  (prop found-at-head [(x Int) (xs (List Int))] (contains x (Cons [Int] x xs)))
+  (prop absent-from-empty [(x Int)] (not (contains x (Nil [Int]))))
+  (prop agrees-with-count [(x Int) (xs (List Int))]
+    (if (contains x xs) (< 0 (count x xs)) (== 0 (count x xs)))))

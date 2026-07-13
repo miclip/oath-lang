@@ -90,6 +90,51 @@ adversarial spec review), human-owned specs at trust boundaries, and treating
 low spec-strength scores as publication blockers. Fully closing the loop is
 an open problem, and DESIGN.md will keep saying so until it isn't.
 
+## The split-agent workflow experiment (2026-07-13)
+
+External review proposed treating separated spec/implementation authorship as
+central, and proving the workflow rather than asserting it. Ran, with two
+independent agents against this repo:
+
+**Setup.** Agent A (implementer) was given the language cheat sheet, four
+contracts with seed properties (max2, drop, take, contains), and `oath
+context` output only — reading any implementation body was forbidden. Agent B
+(spec adversary) then mutation-scored A's work and strengthened the specs,
+allowed to touch only `prop` forms.
+
+**Results.**
+- A implemented all four correctly with no falsified submissions (the
+  immutable store proves this: exactly one object per name, no branded
+  predecessors). Spec-only context was sufficient; its slice cost ~700 tokens
+  vs ~1,500 for the then-full source corpus. The ratio is unremarkable at 17
+  definitions — the claim that matters is asymptotic: slices grow with the
+  task's dependency frontier, repo-reading grows with the codebase.
+- B's baseline scores exposed real under-specification the verdicts had
+  called done: drop 5/9, take 3/9. After strengthening: 9/9 and 9/9, with
+  max2's one survivor correctly classified as an equivalent mutant.
+- B found no implementation bugs — the gate plus seed properties had already
+  forced correctness.
+
+**Two findings worth keeping:**
+1. *Witness reliability ≠ logical strength.* `take-then-drop-rebuilds` is a
+   correct, general law, yet six mutants survived under it — uniform random
+   ints rarely produce the boundary n ∈ {0,1,2} that distinguishes off-by-one
+   mutants. Deterministic ground anchors killed them instantly. Kernel fix
+   applied: the generator now biases toward boundary values.
+2. *Mutation scores are a floor, not a target.* B's two most valuable
+   strengthenings — max2's "result is one of the inputs" (the original
+   lower-bound-only spec would bless a `max+1` implementation) and contains'
+   count-characterization — moved no score at all: no available single
+   mutation expresses those gaps. Spec quality above the floor still needs an
+   adversarial reader.
+
+**Positioning consequence.** Two independent reviews converged on the same
+reframe, and the experiment supports it: Oath's value is not as a
+general-purpose language but as an AI-facing verified codebase kernel — a
+substrate where agents submit small units, get deterministic verdicts,
+retrieve dependency contracts sized to a token budget, and regenerate safely.
+The syntax is disposable; the substrate is the product.
+
 ## Prior art
 
 Oath is a synthesis, not an invention; the pieces have owners:
