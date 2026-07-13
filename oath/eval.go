@@ -22,11 +22,28 @@ type Value struct {
 // proven in v0, so every execution is bounded: running out of fuel is an
 // error, and a property that exhausts fuel counts as a failure, not a pass.
 type evaluator struct {
-	st   *Store
-	fuel int64
+	st    *Store
+	fuel  int64
+	depth int64
 }
 
+// maxEvalDepth bounds recursion depth separately from fuel: fuel limits total
+// work, but the interpreter borrows the host stack for Oath recursion, so an
+// unproductive loop can exhaust the stack long before it exhausts fuel.
+// (Found the hard way: examples/nontotal.oath overflowed a 1GB goroutine
+// stack with plenty of fuel left.)
+const maxEvalDepth = 100_000
+
 func (e *evaluator) eval(env []Value, slf string, t *Term) (Value, error) {
+	e.depth++
+	defer func() { e.depth-- }()
+	if e.depth > maxEvalDepth {
+		return Value{}, fmt.Errorf("recursion too deep (likely non-termination)")
+	}
+	return e.evalInner(env, slf, t)
+}
+
+func (e *evaluator) evalInner(env []Value, slf string, t *Term) (Value, error) {
 	e.fuel--
 	if e.fuel < 0 {
 		return Value{}, fmt.Errorf("out of fuel (likely non-termination)")

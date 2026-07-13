@@ -115,9 +115,10 @@ type putReport struct {
 	Hash      string     `json:"hash,omitempty"`
 	Kind      string     `json:"kind"`
 	Status    string     `json:"status"` // accepted | falsified | rejected
-	Guarantee string     `json:"guarantee,omitempty"`
-	Error     string     `json:"error,omitempty"`
-	Props     []propJSON `json:"props,omitempty"`
+	Guarantee   string     `json:"guarantee,omitempty"`
+	Termination string     `json:"termination,omitempty"`
+	Error       string     `json:"error,omitempty"`
+	Props       []propJSON `json:"props,omitempty"`
 }
 
 type propJSON struct {
@@ -192,7 +193,12 @@ func cmdPut(st *Store, path string, jsonMode bool) {
 				fail(err)
 			}
 			m, _ := st.GetMeta(h)
+			m.Termination = terminationOf(st, def)
+			if err := st.SetMeta(h, m); err != nil {
+				fail(err)
+			}
 			rep.Guarantee = guaranteeString(m.Guarantee)
+			rep.Termination = m.Termination
 			if m.Guarantee.Level == "falsified" {
 				rep.Status = "falsified"
 				anyFalsified = true
@@ -208,7 +214,7 @@ func cmdPut(st *Store, path string, jsonMode bool) {
 				if rep.Status == "falsified" {
 					mark = "✗"
 				}
-				fmt.Printf("%s %-16s #%s  %s%s\n", mark, meta.Name, shortHash(h), rep.Guarantee, status)
+				fmt.Printf("%s %-16s #%s  %s%s%s\n", mark, meta.Name, shortHash(h), rep.Guarantee, termSuffix(m), status)
 				for _, r := range reports {
 					if r.Failed {
 						fmt.Printf("    prop %-24s FALSIFIED after %d cases\n", r.Name, r.Passed)
@@ -249,7 +255,7 @@ func cmdLs(st *Store) {
 			continue
 		}
 		kind := "func"
-		g := guaranteeString(m.Guarantee)
+		g := guaranteeString(m.Guarantee) + termSuffix(m)
 		if d.K == "data" {
 			kind = "data"
 			g = fmt.Sprintf("%d constructors", len(d.Ctors))

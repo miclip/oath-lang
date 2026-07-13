@@ -82,6 +82,7 @@ type Meta struct {
 	Guarantee     Guarantee `json:"guarantee"`
 	MutantsKilled int       `json:"mutants_killed,omitempty"` // spec strength: mutants the props caught
 	MutantsTotal  int       `json:"mutants_total,omitempty"`  // spec strength: mutants generated
+	Termination   string    `json:"termination,omitempty"`    // structural | nonrecursive | unknown (funcs only)
 }
 
 // collectDeps returns the set of definition hashes a def references.

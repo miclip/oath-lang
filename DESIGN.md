@@ -112,7 +112,12 @@ Oath is a synthesis, not an invention; the pieces have owners:
 - **Not proven.** `proven` is reserved; v0's strongest oath is deterministic
   property testing. The road to real proofs is SMT-discharged obligations
   (Z3) and a Lean-style kernel.
-- **No termination checking** — fuel bounds stand in for it.
+- **Termination is proven only structurally** — a Foetus-lite check (after
+  Agda): total iff some fixed argument position strictly descends at every
+  self-call and all callees are total (hash-acyclicity makes this compose
+  bottom-up for free). Non-structural recursion is labeled `termination
+  unproven`, never rejected; fuel and a recursion-depth bound contain it at
+  runtime. This was the first `proven` fact to enter the metadata.
 - **No canonical binary encoding** — v0 hashes Go's deterministic JSON; a
   real spec must define encoding independent of any host language.
 - **No mutual recursion, strings, floats, records, or effects.** The effect

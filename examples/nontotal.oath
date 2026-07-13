@@ -1,0 +1,10 @@
+; A function the type system happily accepts and the termination checker
+; refuses to bless: the recursion never descends, so no structural argument
+; exists. The kernel labels it `termination unproven` rather than rejecting
+; it — and when its oath runs, the fuel bound converts the infinite loop
+; into an honest FALSIFIED verdict instead of a hang.
+
+(defn spin [] [(x Int)] Int
+  (spin x)
+  (prop claims-zero [(x Int)]
+    (== (spin x) 0)))

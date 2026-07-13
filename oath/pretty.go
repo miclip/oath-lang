@@ -278,9 +278,31 @@ func printSpec(st *Store, h string) (string, error) {
 			}
 			fmt.Fprintf(&b, "  prop %s: forall [%s]. %s\n", pn, strings.Join(bparts, " "), pp.term(&p.Body, m.Name))
 		}
-		fmt.Fprintf(&b, "  guarantee: %s%s   #%s\n", guaranteeString(m.Guarantee), specStrengthString(m), shortHash(h))
+		fmt.Fprintf(&b, "  guarantee: %s%s%s   #%s\n", guaranteeString(m.Guarantee), specStrengthString(m), termSuffix(m), shortHash(h))
 	}
 	return b.String(), nil
+}
+
+func termSuffix(m *Meta) string {
+	switch m.Termination {
+	case "structural", "nonrecursive":
+		return " · total"
+	case "unknown":
+		return " · termination unproven"
+	}
+	return ""
+}
+
+func terminationString(term string) string {
+	switch term {
+	case "structural":
+		return "total (structural recursion)"
+	case "nonrecursive":
+		return "total (non-recursive, all callees total)"
+	case "unknown":
+		return "not proven total (fuel-bounded at runtime)"
+	}
+	return ""
 }
 
 func specStrengthString(m *Meta) string {
@@ -350,6 +372,9 @@ func printDef(st *Store, h string) (string, error) {
 
 	fmt.Fprintf(&b, "hash: %s\n", h)
 	fmt.Fprintf(&b, "guarantee: %s%s\n", guaranteeString(m.Guarantee), specStrengthString(m))
+	if ts := terminationString(m.Termination); ts != "" {
+		fmt.Fprintf(&b, "termination: %s\n", ts)
+	}
 
 	deps := collectDeps(d)
 	if len(deps) > 0 {

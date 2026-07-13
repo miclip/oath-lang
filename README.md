@@ -17,6 +17,12 @@ asserted  →  tested (N cases)  →  proven (reserved for v1)
                       ↘  FALSIFIED (with counterexample)
 ```
 
+Two more dimensions ride alongside: **termination** (a structural checker
+proves totality where recursion visibly descends — `total` in listings;
+everything else is honestly `termination unproven` and fuel-bounded) and
+**spec strength** (mutation-tested: do the properties notice when the body
+changes?).
+
 See [DESIGN.md](DESIGN.md) for the full rationale and roadmap.
 
 ## Quickstart
