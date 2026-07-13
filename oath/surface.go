@@ -793,6 +793,6 @@ func elabFunc(st *Store, x sx) (*Def, *Meta, error) {
 	}
 
 	def := &Def{K: "func", TyVars: len(tvs), Ty: fullTy, Body: body, Props: props}
-	meta := &Meta{Name: name, TyVarNames: tvs, PropNames: propNames, Guarantee: Guarantee{Level: "asserted"}}
+	meta := &Meta{Name: name, TyVarNames: tvs, PropNames: propNames, ParamNames: pnames, Guarantee: Guarantee{Level: "asserted"}}
 	return def, meta, nil
 }

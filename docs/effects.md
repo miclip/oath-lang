@@ -59,10 +59,17 @@ demonstrates the pattern end to end.
 1. **Now (shipped):** capability convention + simulated-world generation.
    Capabilities are unforgeable only by discipline — nothing stops a def
    from storing one in a data structure and using it later.
-2. **Linearity / no-escape checking:** a kernel pass (like the termination
-   checker: metadata verdict, conservative) proving a capability parameter
-   is used but never stored, returned, or captured in a constructor — making
-   attenuation and confinement auditable facts, not conventions.
+2. **No-escape checking — SHIPPED.** A kernel pass (like the termination
+   checker: conservative metadata verdict, never a rejection) proves a
+   higher-order parameter is only exercised — applied, projected-and-applied,
+   passed recursively at the same position, or passed whole to a callee
+   position already verdicted confined — and never returned, stored, or
+   captured in an inner lambda. `greet-or-guest` proves confined
+   *compositionally* through `greet`'s verdict; `examples/leaky.oath` shows
+   the brands (`net: ESCAPES`) for returning or stashing a capability.
+   Known conservatism: closure capture always counts as escape, so wrapping
+   a capability inside a callback passed to a confined `map`-style consumer
+   is flagged even though it is safe; refining this needs closure tracking.
 3. **Stateful worlds:** today's tables are pure functions, so they model
    read-only worlds. Sequenced effects (write-then-read) need explicit
    state threading in the function's own signature; a `World`-state

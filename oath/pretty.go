@@ -79,10 +79,16 @@ type printer struct {
 	st      *Store
 	tvs     []string
 	names   []string // binder names, innermost last
+	preset  []string // surface parameter names from metadata, consumed first
 	counter int
 }
 
 func (p *printer) fresh() string {
+	if len(p.preset) > 0 {
+		n := p.preset[0]
+		p.preset = p.preset[1:]
+		return n
+	}
 	n := fmt.Sprintf("x%d", p.counter)
 	p.counter++
 	return n
@@ -312,6 +318,9 @@ func printSpec(st *Store, h string) (string, error) {
 			fmt.Fprintf(&b, "  prop %s: forall [%s]. %s\n", pn, strings.Join(bparts, " "), pp.term(&p.Body, m.Name))
 		}
 		fmt.Fprintf(&b, "  guarantee: %s%s%s   #%s\n", guaranteeString(m.Guarantee), specStrengthString(m), termSuffix(m), shortHash(h))
+		if cs := confinementString(m); cs != "" {
+			fmt.Fprintf(&b, "  capabilities: %s\n", cs)
+		}
 	}
 	return b.String(), nil
 }
@@ -343,6 +352,27 @@ func specStrengthString(m *Meta) string {
 		return ""
 	}
 	return fmt.Sprintf(" · spec strength %d/%d mutants killed", m.MutantsKilled, m.MutantsTotal)
+}
+
+// confinementString renders per-parameter capability verdicts, e.g.
+// "net: confined, on-miss: ESCAPES". Empty when no param is higher-order.
+func confinementString(m *Meta) string {
+	var parts []string
+	for i, v := range m.Confinement {
+		if v == "" {
+			continue
+		}
+		name := fmt.Sprintf("param %d", i)
+		if i < len(m.ParamNames) {
+			name = m.ParamNames[i]
+		}
+		if v == "escapes" {
+			parts = append(parts, name+": ESCAPES")
+		} else {
+			parts = append(parts, name+": confined")
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 // printDef renders the full human projection of a definition.
@@ -382,7 +412,7 @@ func printDef(st *Store, h string) (string, error) {
 			fmt.Fprintf(&b, "   forall %s", strings.Join(tvs, " "))
 		}
 		fmt.Fprintf(&b, "\n")
-		pr := &printer{st: st, tvs: tvs}
+		pr := &printer{st: st, tvs: tvs, preset: m.ParamNames}
 		fmt.Fprintf(&b, "  = %s\n", pr.term(d.Body, m.Name))
 		for pi, p := range d.Props {
 			pn := fmt.Sprintf("prop%d", pi)
@@ -407,6 +437,9 @@ func printDef(st *Store, h string) (string, error) {
 	fmt.Fprintf(&b, "guarantee: %s%s\n", guaranteeString(m.Guarantee), specStrengthString(m))
 	if ts := terminationString(m.Termination); ts != "" {
 		fmt.Fprintf(&b, "termination: %s\n", ts)
+	}
+	if cs := confinementString(m); cs != "" {
+		fmt.Fprintf(&b, "capabilities: %s\n", cs)
 	}
 
 	deps := collectDeps(d)

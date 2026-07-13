@@ -1,0 +1,13 @@
+; Two functions that typecheck, verify, and are still wrong in a way only
+; the confinement checker can see: they KEEP the capability they were
+; handed. The kernel brands them ESCAPES rather than rejecting them —
+; policy above the kernel decides whether escaping capabilities may cross
+; a boundary.
+
+(defn leak [] [(net {fetch (-> Str Str)})] {fetch (-> Str Str)}
+  net)
+
+(defn stash [] [(net {fetch (-> Str Str)}) (keep Bool)] (Option {fetch (-> Str Str)})
+  (if keep
+      (Some [{fetch (-> Str Str)}] net)
+      (None [{fetch (-> Str Str)}])))

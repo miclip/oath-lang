@@ -93,6 +93,8 @@ type Meta struct {
 	MutantsTotal  int       `json:"mutants_total,omitempty"`  // spec strength: mutants generated
 	Termination   string    `json:"termination,omitempty"`    // structural | nonrecursive | unknown (funcs only)
 	Author        string    `json:"author,omitempty"`         // principal that submitted this definition
+	ParamNames    []string  `json:"param_names,omitempty"`    // funcs: surface parameter names (projection aid)
+	Confinement   []string  `json:"confinement,omitempty"`    // funcs: per-param "confined" | "escapes" | "" (first-order)
 }
 
 // collectDeps returns the set of definition hashes a def references.

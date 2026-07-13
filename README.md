@@ -128,6 +128,12 @@ quantify over generated simulated worlds — see `examples/service.oath`:
     (== (greet net id) (greet net id))))
 ```
 
+The kernel also proves capability **confinement** where it can: a
+higher-order parameter that is only exercised — never returned, stored, or
+captured — is verdicted `confined` in metadata (`net: confined` on `greet`;
+`net: ESCAPES` on `examples/leaky.oath`'s capability-hoarders), and verdicts
+compose bottom-up through the dependency graph like totality does.
+
 Every `put` attempt — accepted, falsified, or rejected — is retained in an
 append-only journal (`oath log`) with principal attribution (`--author` /
 `OATH_AUTHOR`), timestamp, and verifier version. Rejections store no object

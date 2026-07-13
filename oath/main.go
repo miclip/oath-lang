@@ -219,6 +219,7 @@ func cmdPut(st *Store, path string, jsonMode bool, author string) {
 			}
 			m, _ := st.GetMeta(h)
 			m.Termination = terminationOf(st, def)
+			m.Confinement = confinementOf(st, def)
 			if err := st.SetMeta(h, m); err != nil {
 				fail(err)
 			}
