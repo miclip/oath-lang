@@ -232,6 +232,12 @@ func printValue(st *Store, v Value) string {
 			return fmt.Sprintf("<fn x. %d*x + %d>", v.NA, v.NB)
 		case "const":
 			return fmt.Sprintf("<fn _. %s>", printValue(st, *v.NVal))
+		case "table":
+			var pairs []string
+			for i := range v.Fields {
+				pairs = append(pairs, printValue(st, v.Fields[i])+"→"+printValue(st, v.TVals[i]))
+			}
+			return fmt.Sprintf("<fn {%s} else %s>", strings.Join(pairs, " "), printValue(st, *v.NVal))
 		}
 	}
 	return "?"

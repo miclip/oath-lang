@@ -11,7 +11,9 @@ import (
 const usage = `oath — a content-addressed, spec-carrying language kernel
 
 usage:
-  oath put [--json] <file.oath>       elaborate, typecheck, store, verify; --json for machine-readable verdicts
+  oath put [--json] [--author <id>] <file.oath>
+                                      elaborate, typecheck, store, verify; every attempt is journaled
+  oath log [name]                     append-only submission journal (all attempts, incl. rejections)
   oath ls                             list named definitions and their guarantees
   oath get <name>                     print the human projection of a definition
   oath context <name...> [--budget N] spec-only slice of the named defs + transitive deps (no bodies)
@@ -39,18 +41,33 @@ func main() {
 	switch args[0] {
 	case "put":
 		jsonMode := false
+		author := os.Getenv("OATH_AUTHOR")
 		var files []string
-		for _, a := range args[1:] {
-			if a == "--json" {
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			switch {
+			case rest[i] == "--json":
 				jsonMode = true
-			} else {
-				files = append(files, a)
+			case rest[i] == "--author" && i+1 < len(rest):
+				author = rest[i+1]
+				i++
+			default:
+				files = append(files, rest[i])
 			}
 		}
-		if len(files) != 1 {
-			fail(fmt.Errorf("usage: oath put [--json] <file.oath>"))
+		if author == "" {
+			author = "unattributed"
 		}
-		cmdPut(st, files[0], jsonMode)
+		if len(files) != 1 {
+			fail(fmt.Errorf("usage: oath put [--json] [--author <id>] <file.oath>"))
+		}
+		cmdPut(st, files[0], jsonMode, author)
+	case "log":
+		filter := ""
+		if len(args) > 1 {
+			filter = args[1]
+		}
+		cmdLog(st, filter)
 	case "context":
 		budget := 0
 		var names []string
@@ -129,7 +146,7 @@ type propJSON struct {
 	Error          string `json:"error,omitempty"`
 }
 
-func cmdPut(st *Store, path string, jsonMode bool) {
+func cmdPut(st *Store, path string, jsonMode bool, author string) {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		fail(err)
@@ -153,6 +170,10 @@ func cmdPut(st *Store, path string, jsonMode bool) {
 		if f.K != "list" || len(f.Kids) == 0 || f.Kids[0].K != "sym" {
 			fail(fmt.Errorf("line %d: top-level forms must be (data ...) or (defn ...)", f.Line))
 		}
+		formName := "?"
+		if len(f.Kids) >= 2 && f.Kids[1].K == "sym" {
+			formName = f.Kids[1].Sym
+		}
 		var def *Def
 		var meta *Meta
 		switch f.Kids[0].Sym {
@@ -164,11 +185,15 @@ func cmdPut(st *Store, path string, jsonMode bool) {
 			err = fmt.Errorf("line %d: unknown top-level form %q", f.Line, f.Kids[0].Sym)
 		}
 		if err != nil {
+			_ = st.AppendLog(&LogEntry{Author: author, Name: formName, Status: "rejected", Error: err.Error()})
 			fail(err)
 		}
+		meta.Author = author
 
 		// The kernel gate: nothing enters the codebase without typechecking.
+		// Rejections store no object, but the journal retains the attempt.
 		if err := checkDef(st, def); err != nil {
+			_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K, Status: "rejected", Error: err.Error()})
 			results = append(results, putReport{Name: meta.Name, Kind: def.K, Status: "rejected", Error: err.Error()})
 			if !jsonMode {
 				fmt.Printf("✗ %-16s REJECTED: %v\n", meta.Name, err)
@@ -229,12 +254,50 @@ func cmdPut(st *Store, path string, jsonMode bool) {
 		} else if !jsonMode {
 			fmt.Printf("✓ %-16s #%s  data (%d constructors)%s\n", meta.Name, shortHash(h), len(def.Ctors), status)
 		}
+		_ = st.AppendLog(&LogEntry{
+			Author: author, Name: meta.Name, Kind: def.K, Status: rep.Status,
+			Hash: h, Prev: prev, Guarantee: rep.Guarantee, Termination: rep.Termination,
+		})
 		results = append(results, rep)
 	}
 	if anyFalsified {
 		finish(2)
 	}
 	finish(0)
+}
+
+func cmdLog(st *Store, filter string) {
+	entries := st.ReadLog()
+	if len(entries) == 0 {
+		fmt.Println("journal is empty")
+		return
+	}
+	for _, e := range entries {
+		if filter != "" && e.Name != filter {
+			continue
+		}
+		mark := "✓"
+		detail := e.Guarantee
+		if e.Termination == "structural" || e.Termination == "nonrecursive" {
+			detail += " · total"
+		}
+		switch e.Status {
+		case "rejected":
+			mark = "✗"
+			detail = e.Error
+		case "falsified":
+			mark = "✗"
+		}
+		h := ""
+		if e.Hash != "" {
+			h = "#" + shortHash(e.Hash)
+		}
+		if e.Prev != "" {
+			h += " (was #" + shortHash(e.Prev) + ")"
+		}
+		fmt.Printf("%-4d %s  %-20s %-14s %s %-10s %-16s %s  %s\n",
+			e.Seq, e.Time, e.Author, e.Verifier[len(e.Verifier)-3:], mark, e.Status, e.Name, h, detail)
+	}
 }
 
 func cmdLs(st *Store) {

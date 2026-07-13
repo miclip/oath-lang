@@ -15,9 +15,10 @@ type Value struct {
 	Hash   string  // data: ADT hash
 	Idx    int     // data: constructor index
 	Fields []Value // data: constructor arguments
-	Native string  // native (test-generated function): id | affine | const
+	Native string  // native (test-generated function): id | affine | const | table
 	NA, NB int64   // native affine: NA*x + NB
-	NVal   *Value  // native const: the returned value
+	NVal   *Value  // native const: the returned value; table: the default
+	TVals  []Value // native table: outputs, parallel to Fields (the inputs)
 }
 
 // evaluator interprets kernel terms with a fuel budget. Termination is not
@@ -178,6 +179,13 @@ func (e *evaluator) apply(f, a Value) (Value, error) {
 				return Value{}, fmt.Errorf("native affine function applied to non-Int")
 			}
 			return Value{K: "int", Int: f.NA*a.Int + f.NB}, nil
+		case "table":
+			for i := range f.Fields {
+				if eq, err := structEq(f.Fields[i], a); err == nil && eq {
+					return f.TVals[i], nil
+				}
+			}
+			return *f.NVal, nil
 		}
 	}
 	return Value{}, fmt.Errorf("applied a non-function value at runtime")

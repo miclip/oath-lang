@@ -70,16 +70,32 @@ func genValue(st *Store, ty *Ty, size int, r *rng) (Value, error) {
 				return Value{K: "native", Native: "id"}, nil
 			case 1, 2:
 				return Value{K: "native", Native: "affine", NA: r.intIn(-3, 3), NB: r.intIn(-10, 10)}, nil
-			default:
-				v := Value{K: "int", Int: r.intIn(-20, 20)}
-				return Value{K: "native", Native: "const", NVal: &v}, nil
 			}
+			// fall through to a table
 		}
-		v, err := genValue(st, ty.B, size, r)
+		// Generated functions are finite tables (input → output pairs plus a
+		// default). Rich enough to simulate a world behind a capability
+		// record — the same machinery tests pure higher-order code and
+		// effectful-style code against deterministic fake environments.
+		n := 1 + r.below(3)
+		var keys, vals []Value
+		for i := 0; i < n; i++ {
+			k, err := genValue(st, ty.A, size, r)
+			if err != nil {
+				return Value{}, err
+			}
+			v, err := genValue(st, ty.B, size, r)
+			if err != nil {
+				return Value{}, err
+			}
+			keys = append(keys, k)
+			vals = append(vals, v)
+		}
+		d, err := genValue(st, ty.B, size, r)
 		if err != nil {
 			return Value{}, err
 		}
-		return Value{K: "native", Native: "const", NVal: &v}, nil
+		return Value{K: "native", Native: "table", Fields: keys, TVals: vals, NVal: &d}, nil
 	case "data":
 		d, err := st.GetDef(ty.Hash)
 		if err != nil {

@@ -92,6 +92,7 @@ type Meta struct {
 	MutantsKilled int       `json:"mutants_killed,omitempty"` // spec strength: mutants the props caught
 	MutantsTotal  int       `json:"mutants_total,omitempty"`  // spec strength: mutants generated
 	Termination   string    `json:"termination,omitempty"`    // structural | nonrecursive | unknown (funcs only)
+	Author        string    `json:"author,omitempty"`         // principal that submitted this definition
 }
 
 // collectDeps returns the set of definition hashes a def references.

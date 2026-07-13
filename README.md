@@ -113,6 +113,26 @@ output for `List`/`length`/`append` — their specs, never their bodies — and
 accepted with 12 properties verified, including the strong permutation oath
 (`count x (sort xs) == count x xs`).
 
+## Effects, and the audit journal
+
+Effects use capability passing, not an effect system (rationale and roadmap
+in [docs/effects.md](docs/effects.md)): a capability is a record of functions
+passed as an ordinary parameter, so the signature is the authority audit and
+purity is visible as the absence of capability parameters. Properties
+quantify over generated simulated worlds — see `examples/service.oath`:
+
+```lisp
+(defn greet [] [(net {fetch (-> Str Str)}) (id Str)] Str
+  (++ "Hello, " (++ ((. net fetch) id) "!"))
+  (prop same-world-same-answer [(net {fetch (-> Str Str)}) (id Str)]
+    (== (greet net id) (greet net id))))
+```
+
+Every `put` attempt — accepted, falsified, or rejected — is retained in an
+append-only journal (`oath log`) with principal attribution (`--author` /
+`OATH_AUTHOR`), timestamp, and verifier version. Rejections store no object
+but leave a permanent record.
+
 ## Layout
 
 ```

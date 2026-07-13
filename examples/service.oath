@@ -1,0 +1,21 @@
+; Effects without an effect system (see docs/effects.md): a capability is a
+; record of functions passed as an ordinary argument. The signature IS the
+; authority audit — greet can query the network it was handed and do nothing
+; else. Properties quantify over generated simulated worlds: deterministic
+; finite-table functions standing in for the real network.
+
+(defn greet [] [(net {fetch (-> Str Str)}) (id Str)] Str
+  (++ "Hello, " (++ ((. net fetch) id) "!"))
+  (prop exact-shape [(net {fetch (-> Str Str)}) (id Str)]
+    (== (greet net id) (++ "Hello, " (++ ((. net fetch) id) "!"))))
+  (prop never-shorter-than-frame [(net {fetch (-> Str Str)}) (id Str)]
+    (<= 8 (str-len (greet net id))))
+  (prop same-world-same-answer [(net {fetch (-> Str Str)}) (id Str)]
+    (== (greet net id) (greet net id))))
+
+(defn greet-or-guest [] [(net {fetch (-> Str Str)}) (o (Option Str))] Str
+  (greet net (or-else [Str] o "guest"))
+  (prop none-means-guest [(net {fetch (-> Str Str)})]
+    (== (greet-or-guest net (None [Str])) (greet net "guest")))
+  (prop some-passes-through [(net {fetch (-> Str Str)}) (id Str)]
+    (== (greet-or-guest net (Some [Str] id)) (greet net id))))

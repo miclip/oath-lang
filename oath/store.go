@@ -7,7 +7,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
+
+const kernelVersion = "oath-kernel/0.6"
 
 // Store is the codebase: a content-addressed object database plus a mutable
 // name index. Objects are immutable — a "change" to a definition is a new
@@ -160,6 +163,65 @@ func (s *Store) FindCtor(name string) (string, int, bool) {
 		}
 	}
 	return "", 0, false
+}
+
+// LogEntry is one line of the append-only submission journal: every put
+// attempt is retained — including typecheck rejections, which store no
+// object and would otherwise vanish — attributed to a principal and stamped
+// with the verifier version that judged it. The journal is audit metadata:
+// it is never hashed, so the wall-clock timestamp does not violate the
+// kernel's no-clocks rule, which protects verification semantics only.
+type LogEntry struct {
+	Seq         int    `json:"seq"`
+	Time        string `json:"time"`
+	Author      string `json:"author"`
+	Verifier    string `json:"verifier"`
+	Name        string `json:"name"`
+	Kind        string `json:"kind,omitempty"`
+	Status      string `json:"status"` // accepted | falsified | rejected
+	Hash        string `json:"hash,omitempty"`
+	Prev        string `json:"prev,omitempty"` // hash the name pointed at before this repoint
+	Error       string `json:"error,omitempty"`
+	Guarantee   string `json:"guarantee,omitempty"`
+	Termination string `json:"termination,omitempty"`
+}
+
+func (s *Store) logPath() string { return filepath.Join(s.Root, "log.jsonl") }
+
+func (s *Store) AppendLog(e *LogEntry) error {
+	e.Verifier = kernelVersion
+	e.Time = time.Now().UTC().Format(time.RFC3339)
+	n := 0
+	if b, err := os.ReadFile(s.logPath()); err == nil {
+		n = strings.Count(string(b), "\n")
+	}
+	e.Seq = n + 1
+	b, _ := json.Marshal(e)
+	f, err := os.OpenFile(s.logPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(append(b, '\n'))
+	return err
+}
+
+func (s *Store) ReadLog() []LogEntry {
+	b, err := os.ReadFile(s.logPath())
+	if err != nil {
+		return nil
+	}
+	var out []LogEntry
+	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		if line == "" {
+			continue
+		}
+		var e LogEntry
+		if json.Unmarshal([]byte(line), &e) == nil {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // AllHashes lists every object in the store, sorted.
