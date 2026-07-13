@@ -4,236 +4,616 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
 
-// SMT-backed proof: the top rung of the guarantee ladder, made real for an
-// honest fragment. A property whose meaning (after transitively inlining
-// non-recursive callees) lies in quantifier-free Int/Bool arithmetic — with
-// higher-order binders as uninterpreted functions — is translated to SMT-LIB
-// and its negation handed to Z3. `unsat` means the property holds for ALL
-// inputs, not 200 samples: the definition's guarantee can say `proven`.
+// SMT-backed proof with structural induction: the top rung of the guarantee
+// ladder. Three layers:
 //
-// Everything outside the fragment bails with a reason and stays `tested`:
-// recursion and pattern matching (induction is future work), strings,
-// records, division/modulo (SMT-LIB's Euclidean semantics differ from the
-// kernel's truncated semantics — translating them would prove the wrong
-// theorem). One honest caveat is inherent and documented: Z3 proves over
-// unbounded integers while the evaluator uses int64, so `proven` here means
-// "true in ideal integer arithmetic".
+//  1. Translation. Monomorphic data instances become SMT algebraic
+//     datatypes; pattern matches become tester/selector ite-chains; strings
+//     map to SMT strings; non-recursive callees are inlined; RECURSIVE
+//     functions are declared uninterpreted with their defining equations
+//     asserted as quantified axioms.
+//  2. Proof search. Each property is attempted directly (negate, check-sat),
+//     then by structural induction on each datatype-typed binder: one
+//     subgoal per constructor, with induction hypotheses for recursive
+//     fields GENERALIZED over the remaining binders.
+//  3. The lemma library. Proven properties of referenced definitions — and
+//     earlier proven properties of the same definition — are asserted as
+//     axioms. Proof power composes bottom-up through the hash graph exactly
+//     like totality and confinement verdicts do.
+//
+// Honest bail-outs remain: division/modulo (kernel truncates, SMT-LIB is
+// Euclidean — translating would prove the wrong theorem), records, partial
+// application. And the standing caveat on every proof: Z3 reasons over
+// unbounded integers; the evaluator uses int64.
 
-const proveTimeout = 10 * time.Second
+const proveTimeout = 15 * time.Second
 
-// smtEnv maps de Bruijn binders to either a translated expression or an
-// uninterpreted function symbol with its arity.
+var smtNameRe = regexp.MustCompile(`[^A-Za-z0-9]`)
+
+func smtName(s string) string { return smtNameRe.ReplaceAllString(s, "_") }
+
+type dtInfo struct {
+	name    string
+	ctors   []string
+	sels    [][]string
+	fields  [][]string        // field sorts
+	recSel  map[string]string // records: field name → selector
+	recSort map[string]string // records: field name → sort
+}
+
 type smtVal struct {
-	expr  string
-	fn    string
-	arity int
+	expr     string
+	sort     string
+	fn       string
+	argSorts []string
+	ret      string
+}
+
+type lemma struct {
+	ownIdx int // index of the prop this lemma came from in the def under proof; -1 for dependency lemmas
+	text   string
 }
 
 type smtCtx struct {
-	st      *Store
-	selfDef *Def // the definition whose props are being proven: "self" inlines to this
-	decls   []string
-	depth   int
+	st         *Store
+	selfDef    *Def
+	selfHash   string
+	decls      []string
+	axioms     []string // defining equations of axiomatized recursive functions
+	lemmas     []lemma  // proven properties usable as axioms (filtered per goal)
+	dts        map[string]*dtInfo // by instance key
+	dtBySort   map[string]*dtInfo
+	fns        map[string]smtVal // by instance key
+	arrows     map[string][2]string // array sort → (domain, codomain)
+	quantified bool
+	depth      int
+	fresh      int
 }
 
-func smtSortOf(t *Ty) (string, bool) {
+func newSmtCtx(st *Store, d *Def, h string) *smtCtx {
+	return &smtCtx{st: st, selfDef: d, selfHash: h,
+		dts: map[string]*dtInfo{}, dtBySort: map[string]*dtInfo{}, fns: map[string]smtVal{}}
+}
+
+func (c *smtCtx) gensym(prefix string) string {
+	c.fresh++
+	return fmt.Sprintf("%s%d", prefix, c.fresh)
+}
+
+func tyKey(h string, args []Ty) string {
+	parts := []string{h}
+	for i := range args {
+		parts = append(parts, debugTy(&args[i]))
+	}
+	return strings.Join(parts, "|")
+}
+
+func (c *smtCtx) sortOf(t *Ty) (string, error) {
 	switch t.K {
 	case "int":
-		return "Int", true
+		return "Int", nil
 	case "bool":
-		return "Bool", true
+		return "Bool", nil
+	case "str":
+		return "String", nil
+	case "fun":
+		// Function values are SMT arrays, applied via select. This makes
+		// them first-class: quantifiable in induction hypotheses and legal
+		// as datatype fields (capability records).
+		dom, err := c.sortOf(t.A)
+		if err != nil {
+			return "", err
+		}
+		cod, err := c.sortOf(t.B)
+		if err != nil {
+			return "", err
+		}
+		s := fmt.Sprintf("(Array %s %s)", dom, cod)
+		if c.arrows == nil {
+			c.arrows = map[string][2]string{}
+		}
+		c.arrows[s] = [2]string{dom, cod}
+		return s, nil
+	case "data":
+		dt, err := c.ensureDT(t.Hash, t.Args)
+		if err != nil {
+			return "", err
+		}
+		return dt.name, nil
+	case "record":
+		dt, err := c.ensureRecordDT(t)
+		if err != nil {
+			return "", err
+		}
+		return dt.name, nil
 	}
-	return "", false
+	return "", fmt.Errorf("type %s is outside the provable fragment", debugTy(t))
 }
 
-// declareBinder turns a prop binder into SMT declarations, or fails if the
-// binder's type is outside the fragment.
-func (c *smtCtx) declareBinder(i int, t *Ty) (smtVal, error) {
-	name := fmt.Sprintf("b%d", i)
-	if s, ok := smtSortOf(t); ok {
-		c.decls = append(c.decls, fmt.Sprintf("(declare-const %s %s)", name, s))
-		return smtVal{expr: name}, nil
+// ensureRecordDT declares a structural record as a single-constructor
+// datatype. Records with function-typed fields (capabilities) stay outside
+// the fragment — SMT datatype fields must be first-order.
+func (c *smtCtx) ensureRecordDT(t *Ty) (*dtInfo, error) {
+	var sorts []string
+	for i := range t.Args {
+		s, err := c.sortOf(&t.Args[i])
+		if err != nil {
+			return nil, err
+		}
+		sorts = append(sorts, s)
 	}
-	if t.K == "fun" {
-		var argSorts []string
-		cur := t
-		for cur.K == "fun" {
-			s, ok := smtSortOf(cur.A)
-			if !ok {
-				return smtVal{}, fmt.Errorf("function binder with non-Int/Bool argument")
+	name := "Rec"
+	for i, n := range t.Names {
+		name += "_" + smtName(n) + "_" + smtName(sorts[i])
+	}
+	if dt, ok := c.dtBySort[name]; ok {
+		return dt, nil
+	}
+	mk := "mk_" + name
+	dt := &dtInfo{name: name, ctors: []string{mk}, recSel: map[string]string{}, recSort: map[string]string{}}
+	var parts, sels []string
+	for i, n := range t.Names {
+		sel := mk + "_" + smtName(n)
+		dt.recSel[n] = sel
+		dt.recSort[n] = sorts[i]
+		sels = append(sels, sel)
+		parts = append(parts, fmt.Sprintf("(%s %s)", sel, sorts[i]))
+	}
+	dt.sels = [][]string{sels}
+	dt.fields = [][]string{sorts}
+	c.dts[name] = dt
+	c.dtBySort[name] = dt
+	c.decls = append(c.decls, fmt.Sprintf("(declare-datatypes ((%s 0)) (((%s %s))))", name, mk, strings.Join(parts, " ")))
+	return dt, nil
+}
+
+// ensureDT declares the monomorphic datatype instance for (hash, args).
+func (c *smtCtx) ensureDT(h string, args []Ty) (*dtInfo, error) {
+	key := tyKey(h, args)
+	if dt, ok := c.dts[key]; ok {
+		return dt, nil
+	}
+	d, err := c.st.GetDef(h)
+	if err != nil {
+		return nil, err
+	}
+	m, err := c.st.GetMeta(h)
+	if err != nil {
+		return nil, err
+	}
+	name := smtName(m.Name)
+	for i := range args {
+		s, err := c.sortOf(&args[i])
+		if err != nil {
+			return nil, err
+		}
+		name += "_" + smtName(s)
+	}
+	dt := &dtInfo{name: name}
+	c.dts[key] = dt // pre-register: recursive fields resolve to this name
+	c.dtBySort[name] = dt
+	var ctorDecls []string
+	for ci := range d.Ctors {
+		cn := smtName(m.CtorNames[ci]) + "_" + name
+		dt.ctors = append(dt.ctors, cn)
+		fields := instCtorFields(d, h, args, ci)
+		var sels, sorts, parts []string
+		for fi, f := range fields {
+			s, err := c.sortOf(f)
+			if err != nil {
+				return nil, err
 			}
-			argSorts = append(argSorts, s)
-			cur = cur.B
+			sel := fmt.Sprintf("%s_%d", cn, fi)
+			sels = append(sels, sel)
+			sorts = append(sorts, s)
+			parts = append(parts, fmt.Sprintf("(%s %s)", sel, s))
 		}
-		ret, ok := smtSortOf(cur)
-		if !ok {
-			return smtVal{}, fmt.Errorf("function binder with non-Int/Bool result")
-		}
-		c.decls = append(c.decls, fmt.Sprintf("(declare-fun %s (%s) %s)", name, strings.Join(argSorts, " "), ret))
-		return smtVal{fn: name, arity: len(argSorts)}, nil
+		dt.sels = append(dt.sels, sels)
+		dt.fields = append(dt.fields, sorts)
+		ctorDecls = append(ctorDecls, fmt.Sprintf("(%s %s)", cn, strings.Join(parts, " ")))
 	}
-	return smtVal{}, fmt.Errorf("binder type %s is outside the provable fragment", debugTy(t))
+	c.decls = append(c.decls, fmt.Sprintf("(declare-datatypes ((%s 0)) ((%s)))", name, strings.Join(ctorDecls, " ")))
+	return dt, nil
+}
+
+// ensureFn declares a recursive function instance and asserts its defining
+// equation as a quantified axiom.
+func (c *smtCtx) ensureFn(h string, d *Def, args []Ty) (smtVal, error) {
+	key := tyKey(h, args)
+	if v, ok := c.fns[key]; ok {
+		return v, nil
+	}
+	name := "fn_" + smtName(c.st.NameOf(h))
+	ty := substTy(d.Ty, args)
+	var argSorts []string
+	cur := ty
+	for cur.K == "fun" {
+		s, err := c.sortOf(cur.A)
+		if err != nil {
+			return smtVal{}, err
+		}
+		argSorts = append(argSorts, s)
+		cur = cur.B
+	}
+	ret, err := c.sortOf(cur)
+	if err != nil {
+		return smtVal{}, err
+	}
+	for i := range args {
+		s, _ := c.sortOf(&args[i])
+		name += "_" + smtName(s)
+	}
+	v := smtVal{fn: name, argSorts: argSorts, ret: ret}
+	c.fns[key] = v // pre-register: recursive self-calls resolve here
+	c.decls = append(c.decls, fmt.Sprintf("(declare-fun %s (%s) %s)", name, strings.Join(argSorts, " "), ret))
+
+	body := termSubstTy(d.Body, args)
+	var env []smtVal
+	var params []string
+	for i := 0; body.K == "lam"; i++ {
+		p := c.gensym("p")
+		s, err := c.sortOf(body.Ty)
+		if err != nil {
+			return smtVal{}, err
+		}
+		params = append(params, fmt.Sprintf("(%s %s)", p, s))
+		env = append(env, smtVal{expr: p, sort: s})
+		body = body.A
+	}
+	// Translate the body in the callee's own frame: self is (h, d).
+	saveDef, saveHash := c.selfDef, c.selfHash
+	c.selfDef, c.selfHash = d, h
+	bexpr, _, err := c.tr(body, env)
+	c.selfDef, c.selfHash = saveDef, saveHash
+	if err != nil {
+		return smtVal{}, err
+	}
+	app := name
+	if len(env) > 0 {
+		var syms []string
+		for _, e := range env {
+			syms = append(syms, e.expr)
+		}
+		app = fmt.Sprintf("(%s %s)", name, strings.Join(syms, " "))
+		c.axioms = append(c.axioms, fmt.Sprintf("(assert (forall (%s) (! (= %s %s) :pattern (%s))))",
+			strings.Join(params, " "), app, bexpr, app))
+		c.quantified = true
+	} else {
+		c.axioms = append(c.axioms, fmt.Sprintf("(assert (= %s %s))", app, bexpr))
+	}
+	return v, nil
 }
 
 var smtPrimOps = map[string]string{
 	"+": "+", "-": "-", "*": "*", "neg": "-",
-	"<": "<", "<=": "<=", "and": "and", "or": "or", "not": "not", "==": "=",
+	"<": "<", "<=": "<=", "and": "and", "or": "or", "not": "not",
+	"==": "=", "++": "str.++", "str-len": "str.len",
 }
 
-func (c *smtCtx) tr(t *Term, env []smtVal) (string, error) {
+var smtPrimSorts = map[string]string{
+	"+": "Int", "-": "Int", "*": "Int", "neg": "Int",
+	"<": "Bool", "<=": "Bool", "and": "Bool", "or": "Bool", "not": "Bool",
+	"==": "Bool", "++": "String", "str-len": "Int",
+}
+
+func (c *smtCtx) tr(t *Term, env []smtVal) (string, string, error) {
 	c.depth++
 	defer func() { c.depth-- }()
-	if c.depth > 256 {
-		return "", fmt.Errorf("inlining too deep")
+	if c.depth > 512 {
+		return "", "", fmt.Errorf("inlining too deep")
 	}
 	switch t.K {
 	case "var":
 		v := env[len(env)-1-t.Idx]
-		if v.fn != "" {
-			return "", fmt.Errorf("function binder used as a value (only full application is translatable)")
-		}
-		return v.expr, nil
+		return v.expr, v.sort, nil
 	case "int":
 		if t.Int < 0 {
-			return fmt.Sprintf("(- %d)", -t.Int), nil
+			return fmt.Sprintf("(- %d)", -t.Int), "Int", nil
 		}
-		return fmt.Sprintf("%d", t.Int), nil
+		return fmt.Sprintf("%d", t.Int), "Int", nil
 	case "bool":
-		return fmt.Sprintf("%v", t.Bool), nil
+		return fmt.Sprintf("%v", t.Bool), "Bool", nil
+	case "str":
+		return `"` + strings.ReplaceAll(t.Str, `"`, `""`) + `"`, "String", nil
 	case "if":
-		cnd, err := c.tr(t.A, env)
+		cnd, _, err := c.tr(t.A, env)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		th, err := c.tr(t.B, env)
+		th, s1, err := c.tr(t.B, env)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		el, err := c.tr(t.C, env)
+		el, _, err := c.tr(t.C, env)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		return fmt.Sprintf("(ite %s %s %s)", cnd, th, el), nil
+		return fmt.Sprintf("(ite %s %s %s)", cnd, th, el), s1, nil
 	case "let":
-		bound, err := c.tr(t.A, env)
+		bound, s, err := c.tr(t.A, env)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		return c.tr(t.B, append(append([]smtVal{}, env...), smtVal{expr: bound}))
+		return c.tr(t.B, append(append([]smtVal{}, env...), smtVal{expr: bound, sort: s}))
 	case "prim":
 		if t.Op == "/" || t.Op == "%" {
-			return "", fmt.Errorf("%s is untranslatable (kernel truncates, SMT-LIB is Euclidean)", t.Op)
+			return "", "", fmt.Errorf("%s is untranslatable (kernel truncates, SMT-LIB is Euclidean)", t.Op)
 		}
 		op, ok := smtPrimOps[t.Op]
 		if !ok {
-			return "", fmt.Errorf("primitive %s is outside the provable fragment", t.Op)
+			return "", "", fmt.Errorf("primitive %s is outside the provable fragment", t.Op)
 		}
 		var parts []string
 		for i := range t.Args {
-			a, err := c.tr(&t.Args[i], env)
+			a, _, err := c.tr(&t.Args[i], env)
 			if err != nil {
-				return "", err
+				return "", "", err
 			}
 			parts = append(parts, a)
 		}
-		return "(" + op + " " + strings.Join(parts, " ") + ")", nil
+		return "(" + op + " " + strings.Join(parts, " ") + ")", smtPrimSorts[t.Op], nil
+	case "ctor":
+		dt, err := c.ensureDT(t.Hash, t.TyArgs)
+		if err != nil {
+			return "", "", err
+		}
+		if len(t.Args) == 0 {
+			return dt.ctors[t.Idx], dt.name, nil
+		}
+		var parts []string
+		for i := range t.Args {
+			a, _, err := c.tr(&t.Args[i], env)
+			if err != nil {
+				return "", "", err
+			}
+			parts = append(parts, a)
+		}
+		return fmt.Sprintf("(%s %s)", dt.ctors[t.Idx], strings.Join(parts, " ")), dt.name, nil
+	case "record":
+		// Reconstruct the record's type from field sorts to locate its
+		// datatype; fields are canonically sorted so names align.
+		var sorts []string
+		var exprs []string
+		for i := range t.Args {
+			e, s, err := c.tr(&t.Args[i], env)
+			if err != nil {
+				return "", "", err
+			}
+			exprs = append(exprs, e)
+			sorts = append(sorts, s)
+		}
+		name := "Rec"
+		for i, n := range t.Names {
+			name += "_" + smtName(n) + "_" + smtName(sorts[i])
+		}
+		dt, ok := c.dtBySort[name]
+		if !ok {
+			// Declare on first sight, mirroring ensureRecordDT.
+			mk := "mk_" + name
+			dt = &dtInfo{name: name, ctors: []string{mk}, recSel: map[string]string{}, recSort: map[string]string{}}
+			var parts []string
+			for i, n := range t.Names {
+				sel := mk + "_" + smtName(n)
+				dt.recSel[n] = sel
+				dt.recSort[n] = sorts[i]
+				parts = append(parts, fmt.Sprintf("(%s %s)", sel, sorts[i]))
+			}
+			c.dts[name] = dt
+			c.dtBySort[name] = dt
+			c.decls = append(c.decls, fmt.Sprintf("(declare-datatypes ((%s 0)) (((%s %s))))", name, mk, strings.Join(parts, " ")))
+		}
+		return fmt.Sprintf("(%s %s)", dt.ctors[0], strings.Join(exprs, " ")), name, nil
+	case "field":
+		re, rs, err := c.tr(t.A, env)
+		if err != nil {
+			return "", "", err
+		}
+		dt, ok := c.dtBySort[rs]
+		if !ok || dt.recSel == nil {
+			return "", "", fmt.Errorf("field access on non-record sort %s", rs)
+		}
+		sel, ok := dt.recSel[t.Op]
+		if !ok {
+			return "", "", fmt.Errorf("record sort %s has no field %q", rs, t.Op)
+		}
+		return fmt.Sprintf("(%s %s)", sel, re), dt.recSort[t.Op], nil
+	case "match":
+		s, ssort, err := c.tr(t.A, env)
+		if err != nil {
+			return "", "", err
+		}
+		dt, ok := c.dtBySort[ssort]
+		if !ok {
+			return "", "", fmt.Errorf("match on non-datatype sort %s", ssort)
+		}
+		var armExprs []string
+		var resSort string
+		for i := range t.Arms {
+			env2 := append([]smtVal{}, env...)
+			for fi, sel := range dt.sels[i] {
+				env2 = append(env2, smtVal{expr: fmt.Sprintf("(%s %s)", sel, s), sort: dt.fields[i][fi]})
+			}
+			a, as, err := c.tr(&t.Arms[i], env2)
+			if err != nil {
+				return "", "", err
+			}
+			armExprs = append(armExprs, a)
+			resSort = as
+		}
+		out := armExprs[len(armExprs)-1]
+		for i := len(armExprs) - 2; i >= 0; i-- {
+			out = fmt.Sprintf("(ite ((_ is %s) %s) %s %s)", dt.ctors[i], s, armExprs[i], out)
+		}
+		return out, resSort, nil
 	case "app":
 		head, args := unwindApp(t)
 		switch head.K {
 		case "var":
+			// Array-encoded function value: apply via nested select.
 			v := env[len(env)-1-head.Idx]
-			if v.fn == "" {
-				return "", fmt.Errorf("application of a non-binder value")
-			}
-			if len(args) != v.arity {
-				return "", fmt.Errorf("function binder must be fully applied")
-			}
-			var parts []string
+			expr, sort := v.expr, v.sort
 			for _, a := range args {
-				s, err := c.tr(a, env)
-				if err != nil {
-					return "", err
+				arrow, ok := c.arrows[sort]
+				if !ok {
+					return "", "", fmt.Errorf("application of a non-function value (sort %s)", sort)
 				}
-				parts = append(parts, s)
+				s, _, err := c.tr(a, env)
+				if err != nil {
+					return "", "", err
+				}
+				expr = fmt.Sprintf("(select %s %s)", expr, s)
+				sort = arrow[1]
 			}
-			return "(" + v.fn + " " + strings.Join(parts, " ") + ")", nil
+			return expr, sort, nil
+		case "field":
+			// ((. cap fetch) x): project then select.
+			fe, fs, err := c.tr(head, env)
+			if err != nil {
+				return "", "", err
+			}
+			expr, sort := fe, fs
+			for _, a := range args {
+				arrow, ok := c.arrows[sort]
+				if !ok {
+					return "", "", fmt.Errorf("application of a non-function field (sort %s)", sort)
+				}
+				s, _, err := c.tr(a, env)
+				if err != nil {
+					return "", "", err
+				}
+				expr = fmt.Sprintf("(select %s %s)", expr, s)
+				sort = arrow[1]
+			}
+			return expr, sort, nil
 		case "ref":
 			d, err := c.st.GetDef(head.Hash)
 			if err != nil {
-				return "", err
+				return "", "", err
 			}
-			return c.inlineDef(d, c.st.NameOf(head.Hash), args, env)
+			return c.call(head.Hash, d, head.TyArgs, args, env)
 		case "self":
-			// Inside a prop, "self" is the definition under proof, not
-			// recursion — inline it (its own body must be non-recursive).
-			if c.selfDef == nil {
-				return "", fmt.Errorf("self-reference outside a definition")
-			}
-			return c.inlineDef(c.selfDef, "self", args, env)
+			return c.call(c.selfHash, c.selfDef, head.TyArgs, args, env)
 		case "lam":
-			// Beta-redex: substitute arguments directly.
 			cur := head
 			env2 := append([]smtVal{}, env...)
 			consumed := 0
 			for cur.K == "lam" && consumed < len(args) {
-				s, err := c.tr(args[consumed], env)
+				s, srt, err := c.tr(args[consumed], env)
 				if err != nil {
-					return "", err
+					return "", "", err
 				}
-				env2 = append(env2, smtVal{expr: s})
+				env2 = append(env2, smtVal{expr: s, sort: srt})
 				cur = cur.A
 				consumed++
 			}
 			if consumed != len(args) || cur.K == "lam" {
-				return "", fmt.Errorf("partial application is outside the provable fragment")
+				return "", "", fmt.Errorf("partial application is outside the provable fragment")
 			}
 			return c.tr(cur, env2)
 		}
-		return "", fmt.Errorf("application head %q is outside the provable fragment", head.K)
+		return "", "", fmt.Errorf("application head %q is outside the provable fragment", head.K)
 	case "ref":
 		d, err := c.st.GetDef(t.Hash)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		return c.inlineDef(d, c.st.NameOf(t.Hash), nil, env)
+		return c.call(t.Hash, d, t.TyArgs, nil, env)
 	case "self":
-		if c.selfDef == nil {
-			return "", fmt.Errorf("self-reference outside a definition")
-		}
-		return c.inlineDef(c.selfDef, "self", nil, env)
+		return c.call(c.selfHash, c.selfDef, t.TyArgs, nil, env)
 	}
-	return "", fmt.Errorf("%q terms are outside the provable fragment", t.K)
+	return "", "", fmt.Errorf("%q terms are outside the provable fragment", t.K)
 }
 
-// inlineDef substitutes a non-recursive definition's body at the call site.
-func (c *smtCtx) inlineDef(d *Def, name string, args []*Term, env []smtVal) (string, error) {
+// call translates a fully-applied reference: recursive callees become
+// axiomatized uninterpreted functions, non-recursive callees are inlined.
+func (c *smtCtx) call(h string, d *Def, tyargs []Ty, args []*Term, env []smtVal) (string, string, error) {
 	if d.K != "func" {
-		return "", fmt.Errorf("data reference is outside the provable fragment")
+		return "", "", fmt.Errorf("data reference is outside the provable fragment")
 	}
 	if hasSelfRef(d.Body) {
-		return "", fmt.Errorf("%s is recursive (induction is future work)", name)
-	}
-	cur := d.Body
-	var callee []smtVal
-	for i := 0; cur.K == "lam"; i++ {
-		if i >= len(args) {
-			return "", fmt.Errorf("%s must be fully applied to inline", name)
-		}
-		s, err := c.tr(args[i], env)
+		v, err := c.ensureFn(h, d, tyargs)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		callee = append(callee, smtVal{expr: s})
-		cur = cur.A
+		if len(args) != len(v.argSorts) {
+			return "", "", fmt.Errorf("%s must be fully applied", c.st.NameOf(h))
+		}
+		if len(args) == 0 {
+			return v.fn, v.ret, nil
+		}
+		var parts []string
+		for _, a := range args {
+			s, _, err := c.tr(a, env)
+			if err != nil {
+				return "", "", err
+			}
+			parts = append(parts, s)
+		}
+		return fmt.Sprintf("(%s %s)", v.fn, strings.Join(parts, " ")), v.ret, nil
+	}
+	// Non-recursive: inline.
+	body := termSubstTy(d.Body, tyargs)
+	var callee []smtVal
+	for i := 0; body.K == "lam"; i++ {
+		if i >= len(args) {
+			return "", "", fmt.Errorf("%s must be fully applied to inline", c.st.NameOf(h))
+		}
+		s, srt, err := c.tr(args[i], env)
+		if err != nil {
+			return "", "", err
+		}
+		callee = append(callee, smtVal{expr: s, sort: srt})
+		body = body.A
 	}
 	if len(callee) != len(args) {
-		return "", fmt.Errorf("%s is over-applied; cannot inline", name)
+		return "", "", fmt.Errorf("%s is over-applied; cannot inline", c.st.NameOf(h))
 	}
-	return c.tr(cur, callee)
+	saveDef, saveHash := c.selfDef, c.selfHash
+	c.selfDef, c.selfHash = d, h
+	e, s, err := c.tr(body, callee)
+	c.selfDef, c.selfHash = saveDef, saveHash
+	return e, s, err
+}
+
+// termSubstTy instantiates every embedded type in a term.
+func termSubstTy(t *Term, args []Ty) *Term {
+	if t == nil || len(args) == 0 {
+		return t
+	}
+	out := *t
+	if t.Ty != nil {
+		out.Ty = substTy(t.Ty, args)
+	}
+	if len(t.TyArgs) > 0 {
+		tys := make([]Ty, len(t.TyArgs))
+		for i := range t.TyArgs {
+			tys[i] = *substTy(&t.TyArgs[i], args)
+		}
+		out.TyArgs = tys
+	}
+	out.A = termSubstTy(t.A, args)
+	out.B = termSubstTy(t.B, args)
+	out.C = termSubstTy(t.C, args)
+	if len(t.Args) > 0 {
+		as := make([]Term, len(t.Args))
+		for i := range t.Args {
+			as[i] = *termSubstTy(&t.Args[i], args)
+		}
+		out.Args = as
+	}
+	if len(t.Arms) > 0 {
+		as := make([]Term, len(t.Arms))
+		for i := range t.Arms {
+			as[i] = *termSubstTy(&t.Arms[i], args)
+		}
+		out.Arms = as
+	}
+	return &out
 }
 
 func hasSelfRef(t *Term) bool {
@@ -259,42 +639,181 @@ func hasSelfRef(t *Term) bool {
 	return false
 }
 
-// proveProp attempts one property. Returns status: proven | refuted |
-// unknown | outside, plus detail (bail reason, or Z3 model on refutation).
-func proveProp(st *Store, d *Def, p *Prop) (string, string) {
-	c := &smtCtx{st: st, selfDef: d}
+// formulaWith renders a property as a formula. assign maps binder index →
+// SMT expression; unassigned binders become universally quantified. Function
+// binders cannot be quantified in FOL, so they fail unless assigned.
+func (c *smtCtx) formulaWith(d *Def, h string, p *Prop, assign map[int]string) (string, error) {
 	var env []smtVal
+	var foralls []string
 	for i := range p.Binders {
-		v, err := c.declareBinder(i, &p.Binders[i])
-		if err != nil {
-			return "outside", err.Error()
+		b := &p.Binders[i]
+		if e, ok := assign[i]; ok {
+			s, err := c.sortOf(b)
+			if err != nil {
+				return "", err
+			}
+			env = append(env, smtVal{expr: e, sort: s})
+			continue
 		}
-		env = append(env, v)
+		s, err := c.sortOf(b)
+		if err != nil {
+			return "", fmt.Errorf("cannot quantify binder of type %s", debugTy(b))
+		}
+		q := c.gensym("q")
+		foralls = append(foralls, fmt.Sprintf("(%s %s)", q, s))
+		env = append(env, smtVal{expr: q, sort: s})
 	}
-	body, err := c.tr(&p.Body, env)
+	saveDef, saveHash := c.selfDef, c.selfHash
+	c.selfDef, c.selfHash = d, h
+	body, _, err := c.tr(&p.Body, env)
+	c.selfDef, c.selfHash = saveDef, saveHash
 	if err != nil {
-		return "outside", err.Error()
+		return "", err
 	}
-	var script strings.Builder
-	for _, d := range c.decls {
-		script.WriteString(d + "\n")
+	if len(foralls) > 0 {
+		c.quantified = true
+		return fmt.Sprintf("(forall (%s) %s)", strings.Join(foralls, " "), body), nil
 	}
-	fmt.Fprintf(&script, "(assert (not %s))\n(check-sat)\n(get-model)\n", body)
+	return body, nil
+}
 
+func runZ3(script string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), proveTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "z3", "-in")
-	cmd.Stdin = strings.NewReader(script.String())
+	cmd.Stdin = strings.NewReader(script)
 	out, _ := cmd.CombinedOutput()
-	text := string(out)
-	switch {
-	case strings.HasPrefix(text, "unsat"):
-		return "proven", ""
-	case strings.HasPrefix(text, "sat"):
-		model := strings.TrimSpace(strings.TrimPrefix(text, "sat"))
-		return "refuted", model
+	return string(out)
+}
+
+type propOutcome struct {
+	status string // proven | refuted | unknown
+	method string // direct | induction on <binder>
+	detail string // bail reason or countermodel
+}
+
+// proveOne attempts a single property: direct, then structural induction on
+// each datatype-typed binder with IHs generalized over the other binders.
+// pi is the property's own index — its own lemma (from a prior run) is
+// excluded so a property can never prove itself.
+func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcome {
+	// Declare the goal's binders as fresh constants. Function-typed binders
+	// are array-sorted constants like any other — uniformly quantifiable.
+	var binderDecls []string
+	consts := map[int]string{}
+	binderSorts := make([]string, len(p.Binders))
+	for i := range p.Binders {
+		s, err := c.sortOf(&p.Binders[i])
+		if err != nil {
+			return propOutcome{status: "unknown", detail: err.Error()}
+		}
+		name := fmt.Sprintf("b%d", i)
+		binderDecls = append(binderDecls, fmt.Sprintf("(declare-const %s %s)", name, s))
+		consts[i] = name
+		binderSorts[i] = s
 	}
-	return "unknown", strings.TrimSpace(text)
+
+	goal, err := c.formulaWith(d, h, p, consts)
+	if err != nil {
+		return propOutcome{status: "unknown", detail: err.Error()}
+	}
+
+	script := func(extraDecls, extraAsserts []string, negated string, model bool) string {
+		var b strings.Builder
+		for _, x := range c.decls {
+			b.WriteString(x + "\n")
+		}
+		for _, x := range c.axioms {
+			b.WriteString(x + "\n")
+		}
+		for _, l := range c.lemmas {
+			if l.ownIdx != pi {
+				b.WriteString(l.text + "\n")
+			}
+		}
+		for _, x := range binderDecls {
+			b.WriteString(x + "\n")
+		}
+		for _, x := range extraDecls {
+			b.WriteString(x + "\n")
+		}
+		for _, x := range extraAsserts {
+			b.WriteString(x + "\n")
+		}
+		fmt.Fprintf(&b, "(assert (not %s))\n(check-sat)\n", negated)
+		if model {
+			b.WriteString("(get-model)\n")
+		}
+		return b.String()
+	}
+
+	// Direct attempt.
+	out := runZ3(script(nil, nil, goal, !c.quantified))
+	switch {
+	case strings.HasPrefix(out, "unsat"):
+		return propOutcome{status: "proven", method: "direct"}
+	case strings.HasPrefix(out, "sat") && !c.quantified:
+		return propOutcome{status: "refuted", detail: strings.TrimSpace(strings.TrimPrefix(out, "sat"))}
+	}
+
+	// Induction on each datatype binder.
+	for i := range p.Binders {
+		dt, ok := c.dtBySort[binderSorts[i]]
+		if !ok {
+			continue
+		}
+		allUnsat := true
+		for ci := range dt.ctors {
+			var extraDecls, extraAsserts []string
+			var fieldConsts []string
+			for fi, fs := range dt.fields[ci] {
+				fc := c.gensym(fmt.Sprintf("f%d_", fi))
+				extraDecls = append(extraDecls, fmt.Sprintf("(declare-const %s %s)", fc, fs))
+				fieldConsts = append(fieldConsts, fc)
+				if fs == dt.name {
+					// Induction hypothesis: the induction binder becomes the
+					// recursive field; every other binder is generalized
+					// (∀-quantified — array-encoded functions included).
+					ih, err := c.formulaWith(d, h, p, map[int]string{i: fc})
+					if err != nil {
+						allUnsat = false
+						break
+					}
+					extraAsserts = append(extraAsserts, "(assert "+ih+")")
+				}
+			}
+			if !allUnsat {
+				break
+			}
+			ctorExpr := dt.ctors[ci]
+			if len(fieldConsts) > 0 {
+				ctorExpr = fmt.Sprintf("(%s %s)", dt.ctors[ci], strings.Join(fieldConsts, " "))
+			}
+			assign := map[int]string{}
+			for k, v := range consts {
+				assign[k] = v
+			}
+			assign[i] = ctorExpr
+			subgoal, err := c.formulaWith(d, h, p, assign)
+			if err != nil {
+				allUnsat = false
+				break
+			}
+			out := runZ3(script(extraDecls, extraAsserts, subgoal, false))
+			if !strings.HasPrefix(out, "unsat") {
+				allUnsat = false
+				break
+			}
+		}
+		if allUnsat {
+			bname := fmt.Sprintf("binder %d", i)
+			if i < len(m.ParamNames) { // best effort; prop binders are unnamed
+				bname = fmt.Sprintf("binder %d", i)
+			}
+			return propOutcome{status: "proven", method: "induction on " + bname}
+		}
+	}
+	return propOutcome{status: "unknown", detail: "no direct proof; induction did not discharge"}
 }
 
 func apiProve(st *Store, name string) (string, error) {
@@ -319,31 +838,99 @@ func apiProve(st *Store, name string) (string, error) {
 	if _, err := exec.LookPath("z3"); err != nil {
 		return "", fmt.Errorf("z3 not found on PATH (brew install z3)")
 	}
+
+	c := newSmtCtx(st, d, h)
+
+	// Lemma library: proven props of every transitively referenced def.
+	lemmaCount := 0
+	seen := map[string]bool{h: true}
+	queue := []string{}
+	for dep := range collectDeps(d) {
+		if !seen[dep] {
+			seen[dep] = true
+			queue = append(queue, dep)
+		}
+	}
+	for qi := 0; qi < len(queue); qi++ {
+		dh := queue[qi]
+		dd, err := st.GetDef(dh)
+		if err != nil {
+			continue
+		}
+		for dep := range collectDeps(dd) {
+			if !seen[dep] {
+				seen[dep] = true
+				queue = append(queue, dep)
+			}
+		}
+		if dd.K != "func" {
+			continue
+		}
+		dm, err := st.GetMeta(dh)
+		if err != nil {
+			continue
+		}
+		for _, pi := range dm.ProvenProps {
+			if pi < 0 || pi >= len(dd.Props) {
+				continue
+			}
+			f, err := c.formulaWith(dd, dh, &dd.Props[pi], nil)
+			if err != nil {
+				continue
+			}
+			c.lemmas = append(c.lemmas, lemma{ownIdx: -1, text: "(assert " + f + ") ; lemma " + dm.Name + "." + metaPropName(dm, pi)})
+			lemmaCount++
+		}
+	}
+
+	// The definition's own previously-proven properties are lemmas too —
+	// tagged with their index so a property is never its own justification.
+	ownProven := 0
+	for _, pi := range m.ProvenProps {
+		if pi < 0 || pi >= len(d.Props) {
+			continue
+		}
+		f, err := c.formulaWith(d, h, &d.Props[pi], nil)
+		if err != nil {
+			continue
+		}
+		c.lemmas = append(c.lemmas, lemma{ownIdx: pi, text: "(assert " + f + ") ; own lemma " + metaPropName(m, pi)})
+		ownProven++
+	}
+
 	var b strings.Builder
+	if lemmaCount+ownProven > 0 {
+		fmt.Fprintf(&b, "lemma library: %d from dependencies, %d from prior runs\n", lemmaCount, ownProven)
+	}
 	proven := 0
+	var provenIdx []int
 	anyRefuted := false
 	for pi := range d.Props {
 		pn := metaPropName(m, pi)
-		status, detail := proveProp(st, d, &d.Props[pi])
-		switch status {
+		o := c.proveOne(d, h, m, &d.Props[pi], pi)
+		switch o.status {
 		case "proven":
 			proven++
-			fmt.Fprintf(&b, "∎ PROVEN    %-28s holds for all inputs (Z3, unbounded ints)\n", pn)
+			provenIdx = append(provenIdx, pi)
+			fmt.Fprintf(&b, "∎ PROVEN    %-28s %s (Z3, unbounded ints)\n", pn, o.method)
+			// Earlier proven props become lemmas for the ones that follow.
+			if f, err := c.formulaWith(d, h, &d.Props[pi], nil); err == nil {
+				c.lemmas = append(c.lemmas, lemma{ownIdx: pi, text: "(assert " + f + ") ; lemma " + name + "." + pn})
+			}
 		case "refuted":
 			anyRefuted = true
 			fmt.Fprintf(&b, "✗ REFUTED   %-28s counterexample over unbounded ints:\n", pn)
-			for _, line := range strings.Split(detail, "\n") {
+			for _, line := range strings.Split(o.detail, "\n") {
 				fmt.Fprintf(&b, "      %s\n", line)
 			}
-		case "outside":
-			fmt.Fprintf(&b, "· unproven  %-28s outside fragment: %s\n", pn, detail)
 		default:
-			fmt.Fprintf(&b, "· unproven  %-28s solver returned unknown\n", pn)
+			fmt.Fprintf(&b, "· unproven  %-28s %s\n", pn, o.detail)
 		}
 	}
 	fmt.Fprintf(&b, "proven: %d/%d properties\n", proven, len(d.Props))
 
 	m.Guarantee.Proven = proven
+	m.ProvenProps = provenIdx
 	if proven == len(d.Props) && !anyRefuted && m.Guarantee.Level == "tested" {
 		m.Guarantee.Level = "proven"
 	}

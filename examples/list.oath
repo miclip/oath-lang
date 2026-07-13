@@ -29,7 +29,10 @@
     (== (length [Int] (append [Int] xs ys))
         (+ (length [Int] xs) (length [Int] ys))))
   (prop nil-right-identity [(xs (List Int))]
-    (== (append [Int] xs (Nil [Int])) xs)))
+    (== (append [Int] xs (Nil [Int])) xs))
+  (prop associative [(xs (List Int)) (ys (List Int)) (zs (List Int))]
+    (== (append [Int] (append [Int] xs ys) zs)
+        (append [Int] xs (append [Int] ys zs)))))
 
 (defn map [a b] [(f (-> a b)) (xs (List a))] (List b)
   (match xs
@@ -52,7 +55,9 @@
   (match xs
     ((Nil) 0)
     ((Cons h t) (+ h (sum t))))
-  (prop reverse-invariant [(xs (List Int))]
-    (== (sum (reverse [Int] xs)) (sum xs)))
+  ; distributes-over-append is stated first: once proven, it becomes a
+  ; lemma available to the reverse-invariant proof that follows.
   (prop distributes-over-append [(xs (List Int)) (ys (List Int))]
-    (== (sum (append [Int] xs ys)) (+ (sum xs) (sum ys)))))
+    (== (sum (append [Int] xs ys)) (+ (sum xs) (sum ys))))
+  (prop reverse-invariant [(xs (List Int))]
+    (== (sum (reverse [Int] xs)) (sum xs))))

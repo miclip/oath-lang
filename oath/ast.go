@@ -96,6 +96,7 @@ type Meta struct {
 	Author        string    `json:"author,omitempty"`         // principal that submitted this definition
 	ParamNames    []string  `json:"param_names,omitempty"`    // funcs: surface parameter names (projection aid)
 	Confinement   []string  `json:"confinement,omitempty"`    // funcs: per-param "confined" | "escapes" | "" (first-order)
+	ProvenProps   []int     `json:"proven_props,omitempty"`   // indices of SMT-proven properties (the lemma library)
 }
 
 // collectDeps returns the set of definition hashes a def references.

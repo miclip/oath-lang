@@ -40,7 +40,11 @@
   (prop keeps-sortedness [(x Int) (xs (List Int))]
     (if (is-sorted xs) (is-sorted (insert x xs)) true))
   (prop adds-one-occurrence [(x Int) (xs (List Int))]
-    (== (count x (insert x xs)) (+ 1 (count x xs)))))
+    (== (count x (insert x xs)) (+ 1 (count x xs))))
+  (prop preserves-other-counts [(x Int) (y Int) (xs (List Int))]
+    (if (== x y)
+        true
+        (== (count x (insert y xs)) (count x xs)))))
 
 (defn sort [] [(xs (List Int))] (List Int)
   (match xs
