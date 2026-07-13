@@ -139,6 +139,21 @@ append-only journal (`oath log`) with principal attribution (`--author` /
 `OATH_AUTHOR`), timestamp, and verifier version. Rejections store no object
 but leave a permanent record.
 
+## MCP server
+
+`oath serve` speaks MCP over stdio, so any agent session can mount the
+substrate as native tools — `context`, `put` (source text in, verdicts out),
+`get`, `ls`, `eval`, `verify`, `mutate`, `dependents`, `log`. The repo's
+`.mcp.json` registers it for Claude Code automatically; other clients point
+at `./oath/oath serve`.
+
+Hosting model (git's, in three layers): the stdio server is local-first, one
+store per project. A team store is the same protocol over HTTP with real
+principal auth — that's where policy (authorship separation, repoint gates)
+becomes enforceable rather than self-reported. A public registry of shared
+verified definitions is the eventual third layer; content addressing means
+no namespace wars — names are local, hashes are universal.
+
 ## Layout
 
 ```

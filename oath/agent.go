@@ -18,12 +18,20 @@ func estTokens(s string) int { return len(s)/4 + 1 }
 // definition that would exceed the token budget. Anything omitted is named
 // explicitly: a context slice must never silently pretend to be complete.
 func cmdContext(st *Store, names []string, budget int) {
+	out, err := apiContext(st, names, budget)
+	if err != nil {
+		fail(err)
+	}
+	fmt.Print(out)
+}
+
+func apiContext(st *Store, names []string, budget int) (string, error) {
 	var queue []string
 	seen := map[string]bool{}
 	for _, n := range names {
 		h, ok := st.Resolve(n)
 		if !ok {
-			fail(fmt.Errorf("no definition named %q", n))
+			return "", fmt.Errorf("no definition named %q", n)
 		}
 		if !seen[h] {
 			seen[h] = true
@@ -65,23 +73,33 @@ func cmdContext(st *Store, names []string, budget int) {
 		total += t
 		sections = append(sections, s)
 	}
-	fmt.Print(strings.Join(sections, "\n"))
-	fmt.Printf("\n-- context: %d definitions, ~%d tokens", len(sections), total)
+	var b strings.Builder
+	b.WriteString(strings.Join(sections, "\n"))
+	fmt.Fprintf(&b, "\n-- context: %d definitions, ~%d tokens", len(sections), total)
 	if len(dropped) > 0 {
-		fmt.Printf("; OMITTED (over budget): %s", strings.Join(dropped, ", "))
+		fmt.Fprintf(&b, "; OMITTED (over budget): %s", strings.Join(dropped, ", "))
 	}
-	fmt.Println()
+	b.WriteString("\n")
+	return b.String(), nil
 }
 
 // cmdDependents answers the reverse question: who builds on this definition?
 // Superseded objects show up as name@hash — immutability means history stays
 // visible.
 func cmdDependents(st *Store, name string) {
+	out, err := apiDependents(st, name)
+	if err != nil {
+		fail(err)
+	}
+	fmt.Print(out)
+}
+
+func apiDependents(st *Store, name string) (string, error) {
 	h, ok := st.Resolve(name)
 	if !ok {
-		fail(fmt.Errorf("no definition named %q", name))
+		return "", fmt.Errorf("no definition named %q", name)
 	}
-	found := false
+	var b strings.Builder
 	for _, ah := range st.AllHashes() {
 		if ah == h {
 			continue
@@ -91,11 +109,11 @@ func cmdDependents(st *Store, name string) {
 			continue
 		}
 		if collectDeps(d)[h] {
-			fmt.Println(st.NameOf(ah))
-			found = true
+			fmt.Fprintln(&b, st.NameOf(ah))
 		}
 	}
-	if !found {
-		fmt.Printf("nothing references %s\n", name)
+	if b.Len() == 0 {
+		return fmt.Sprintf("nothing references %s\n", name), nil
 	}
+	return b.String(), nil
 }

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "oath": {
+      "command": "./oath/oath",
+      "args": ["serve"]
+    }
+  }
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // Mutation testing: the kernel's answer to "who verifies the specs?"
@@ -129,30 +130,37 @@ func metaPropName(m *Meta, pi int) string {
 }
 
 func cmdMutate(st *Store, name string) {
+	out, err := apiMutate(st, name)
+	if err != nil {
+		fail(err)
+	}
+	fmt.Print(out)
+}
+
+func apiMutate(st *Store, name string) (string, error) {
 	h, ok := st.Resolve(name)
 	if !ok {
-		fail(fmt.Errorf("no definition named %q", name))
+		return "", fmt.Errorf("no definition named %q", name)
 	}
 	d, err := st.GetDef(h)
 	if err != nil {
-		fail(err)
+		return "", err
 	}
 	if d.K != "func" {
-		fail(fmt.Errorf("only function definitions can be mutation-tested"))
+		return "", fmt.Errorf("only function definitions can be mutation-tested")
 	}
 	m, err := st.GetMeta(h)
 	if err != nil {
-		fail(err)
+		return "", err
 	}
 	if len(d.Props) == 0 {
-		fmt.Printf("%s swears no properties — every mutant survives; spec strength is zero.\n", name)
-		return
+		return fmt.Sprintf("%s swears no properties — every mutant survives; spec strength is zero.\n", name), nil
 	}
 	muts := genMutants(st, d)
 	if len(muts) == 0 {
-		fmt.Printf("no mutation points in %s (body has no mutable operators, literals, or branches)\n", name)
-		return
+		return fmt.Sprintf("no mutation points in %s (body has no mutable operators, literals, or branches)\n", name), nil
 	}
+	var b strings.Builder
 	killed := 0
 	for _, mu := range muts {
 		// Mutants are evaluated from the in-memory cache only — they are
@@ -170,16 +178,17 @@ func cmdMutate(st *Store, name string) {
 		}
 		if killer != "" {
 			killed++
-			fmt.Printf("✓ killed    %-22s by %s\n", mu.desc, killer)
+			fmt.Fprintf(&b, "✓ killed    %-22s by %s\n", mu.desc, killer)
 		} else {
 			pr := &printer{st: st, tvs: m.TyVarNames}
-			fmt.Printf("✗ SURVIVED  %-22s — no property notices this change\n", mu.desc)
-			fmt.Printf("    mutant: %s\n", pr.term(mu.def.Body, m.Name))
+			fmt.Fprintf(&b, "✗ SURVIVED  %-22s — no property notices this change\n", mu.desc)
+			fmt.Fprintf(&b, "    mutant: %s\n", pr.term(mu.def.Body, m.Name))
 		}
 	}
-	fmt.Printf("spec strength: %d/%d mutants killed\n", killed, len(muts))
+	fmt.Fprintf(&b, "spec strength: %d/%d mutants killed\n", killed, len(muts))
 	m.MutantsKilled, m.MutantsTotal = killed, len(muts)
 	if err := st.SetMeta(h, m); err != nil {
-		fail(err)
+		return "", err
 	}
+	return b.String(), nil
 }

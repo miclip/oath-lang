@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"sort"
 	"strconv"
 )
 
@@ -21,6 +20,7 @@ usage:
   oath verify <name>                  re-run a definition's properties
   oath mutate <name>                  score spec strength: do the properties notice mutations?
   oath eval "<expr>"                  typecheck and evaluate an expression
+  oath serve                          MCP server over stdio (tools for agent sessions)
 
 the codebase lives in ./codebase (override with OATH_STORE)`
 
@@ -109,6 +109,8 @@ func main() {
 			fail(fmt.Errorf("usage: oath mutate <name>"))
 		}
 		cmdMutate(st, args[1])
+	case "serve":
+		cmdServe(st)
 	case "eval":
 		if len(args) != 2 {
 			fail(fmt.Errorf("usage: oath eval \"<expr>\""))
@@ -134,6 +136,9 @@ type putReport struct {
 	Status    string     `json:"status"` // accepted | falsified | rejected
 	Guarantee   string     `json:"guarantee,omitempty"`
 	Termination string     `json:"termination,omitempty"`
+	Confinement string     `json:"confinement,omitempty"`
+	Prev        string     `json:"prev,omitempty"`
+	Ctors       int        `json:"ctors,omitempty"`
 	Error       string     `json:"error,omitempty"`
 	Props       []propJSON `json:"props,omitempty"`
 }
@@ -151,189 +156,42 @@ func cmdPut(st *Store, path string, jsonMode bool, author string) {
 	if err != nil {
 		fail(err)
 	}
-	forms, err := parseForms(string(src))
-	if err != nil {
-		fail(err)
+	results, perr := apiPut(st, string(src), author)
+	if jsonMode {
+		b, _ := json.MarshalIndent(results, "", "  ")
+		fmt.Println(string(b))
+	} else {
+		fmt.Print(renderPutReports(results))
 	}
-	var results []putReport
-	finish := func(code int) {
-		if jsonMode {
-			b, _ := json.MarshalIndent(results, "", "  ")
-			fmt.Println(string(b))
-		}
-		if code != 0 {
-			os.Exit(code)
+	if perr != nil {
+		fail(perr)
+	}
+	code := 0
+	for _, rep := range results {
+		switch rep.Status {
+		case "rejected":
+			code = 1
+		case "falsified":
+			if code == 0 {
+				code = 2
+			}
 		}
 	}
-	anyFalsified := false
-	for _, f := range forms {
-		if f.K != "list" || len(f.Kids) == 0 || f.Kids[0].K != "sym" {
-			fail(fmt.Errorf("line %d: top-level forms must be (data ...) or (defn ...)", f.Line))
-		}
-		formName := "?"
-		if len(f.Kids) >= 2 && f.Kids[1].K == "sym" {
-			formName = f.Kids[1].Sym
-		}
-		var def *Def
-		var meta *Meta
-		switch f.Kids[0].Sym {
-		case "data":
-			def, meta, err = elabData(st, f)
-		case "defn":
-			def, meta, err = elabFunc(st, f)
-		default:
-			err = fmt.Errorf("line %d: unknown top-level form %q", f.Line, f.Kids[0].Sym)
-		}
-		if err != nil {
-			_ = st.AppendLog(&LogEntry{Author: author, Name: formName, Status: "rejected", Error: err.Error()})
-			fail(err)
-		}
-		meta.Author = author
-
-		// The kernel gate: nothing enters the codebase without typechecking.
-		// Rejections store no object, but the journal retains the attempt.
-		if err := checkDef(st, def); err != nil {
-			_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K, Status: "rejected", Error: err.Error()})
-			results = append(results, putReport{Name: meta.Name, Kind: def.K, Status: "rejected", Error: err.Error()})
-			if !jsonMode {
-				fmt.Printf("✗ %-16s REJECTED: %v\n", meta.Name, err)
-			}
-			finish(1)
-		}
-
-		h, prev, err := st.Put(def, meta)
-		if err != nil {
-			fail(err)
-		}
-
-		status := ""
-		if prev != "" {
-			status = fmt.Sprintf("  (name repointed; old version %s remains immutable)", shortHash(prev))
-		}
-
-		rep := putReport{Name: meta.Name, Hash: h, Kind: def.K, Status: "accepted"}
-		if def.K == "func" {
-			reports, err := verifyDef(st, h)
-			if err != nil {
-				fail(err)
-			}
-			m, _ := st.GetMeta(h)
-			m.Termination = terminationOf(st, def)
-			m.Confinement = confinementOf(st, def)
-			if err := st.SetMeta(h, m); err != nil {
-				fail(err)
-			}
-			rep.Guarantee = guaranteeString(m.Guarantee)
-			rep.Termination = m.Termination
-			if m.Guarantee.Level == "falsified" {
-				rep.Status = "falsified"
-				anyFalsified = true
-			}
-			for _, r := range reports {
-				rep.Props = append(rep.Props, propJSON{
-					Name: r.Name, Passed: r.Passed, Failed: r.Failed,
-					Counterexample: r.Counter, Error: r.Err,
-				})
-			}
-			if !jsonMode {
-				mark := "✓"
-				if rep.Status == "falsified" {
-					mark = "✗"
-				}
-				fmt.Printf("%s %-16s #%s  %s%s%s\n", mark, meta.Name, shortHash(h), rep.Guarantee, termSuffix(m), status)
-				for _, r := range reports {
-					if r.Failed {
-						fmt.Printf("    prop %-24s FALSIFIED after %d cases\n", r.Name, r.Passed)
-						fmt.Printf("      counterexample: %s\n", r.Counter)
-					} else if r.Err != "" {
-						fmt.Printf("    prop %-24s ERROR: %s\n", r.Name, r.Err)
-					} else {
-						fmt.Printf("    prop %-24s passed %d cases\n", r.Name, r.Passed)
-					}
-				}
-			}
-		} else if !jsonMode {
-			fmt.Printf("✓ %-16s #%s  data (%d constructors)%s\n", meta.Name, shortHash(h), len(def.Ctors), status)
-		}
-		_ = st.AppendLog(&LogEntry{
-			Author: author, Name: meta.Name, Kind: def.K, Status: rep.Status,
-			Hash: h, Prev: prev, Guarantee: rep.Guarantee, Termination: rep.Termination,
-		})
-		results = append(results, rep)
+	if code != 0 {
+		os.Exit(code)
 	}
-	if anyFalsified {
-		finish(2)
-	}
-	finish(0)
 }
 
 func cmdLog(st *Store, filter string) {
-	entries := st.ReadLog()
-	if len(entries) == 0 {
-		fmt.Println("journal is empty")
-		return
-	}
-	for _, e := range entries {
-		if filter != "" && e.Name != filter {
-			continue
-		}
-		mark := "✓"
-		detail := e.Guarantee
-		if e.Termination == "structural" || e.Termination == "nonrecursive" {
-			detail += " · total"
-		}
-		switch e.Status {
-		case "rejected":
-			mark = "✗"
-			detail = e.Error
-		case "falsified":
-			mark = "✗"
-		}
-		h := ""
-		if e.Hash != "" {
-			h = "#" + shortHash(e.Hash)
-		}
-		if e.Prev != "" {
-			h += " (was #" + shortHash(e.Prev) + ")"
-		}
-		fmt.Printf("%-4d %s  %-20s %-14s %s %-10s %-16s %s  %s\n",
-			e.Seq, e.Time, e.Author, e.Verifier[len(e.Verifier)-3:], mark, e.Status, e.Name, h, detail)
-	}
+	fmt.Print(apiLog(st, filter))
 }
 
 func cmdLs(st *Store) {
-	names := st.Names()
-	keys := make([]string, 0, len(names))
-	for k := range names {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		h := names[k]
-		d, err := st.GetDef(h)
-		if err != nil {
-			continue
-		}
-		m, err := st.GetMeta(h)
-		if err != nil {
-			continue
-		}
-		kind := "func"
-		g := guaranteeString(m.Guarantee) + termSuffix(m)
-		if d.K == "data" {
-			kind = "data"
-			g = fmt.Sprintf("%d constructors", len(d.Ctors))
-		}
-		fmt.Printf("%-16s #%s  %-5s %s\n", k, shortHash(h), kind, g)
-	}
+	fmt.Print(apiLs(st))
 }
 
 func cmdGet(st *Store, name string) {
-	h, ok := st.Resolve(name)
-	if !ok {
-		fail(fmt.Errorf("no definition named %q", name))
-	}
-	out, err := printDef(st, h)
+	out, err := apiGet(st, name)
 	if err != nil {
 		fail(err)
 	}
@@ -341,52 +199,17 @@ func cmdGet(st *Store, name string) {
 }
 
 func cmdVerify(st *Store, name string) {
-	h, ok := st.Resolve(name)
-	if !ok {
-		fail(fmt.Errorf("no definition named %q", name))
-	}
-	reports, err := verifyDef(st, h)
+	out, err := apiVerify(st, name)
 	if err != nil {
 		fail(err)
 	}
-	if len(reports) == 0 {
-		fmt.Printf("%s has no properties; guarantee remains: asserted\n", name)
-		return
-	}
-	for _, r := range reports {
-		if r.Failed {
-			fmt.Printf("✗ prop %-24s FALSIFIED after %d cases\n", r.Name, r.Passed)
-			fmt.Printf("    counterexample: %s\n", r.Counter)
-		} else if r.Err != "" {
-			fmt.Printf("✗ prop %-24s ERROR: %s\n", r.Name, r.Err)
-		} else {
-			fmt.Printf("✓ prop %-24s passed %d cases\n", r.Name, r.Passed)
-		}
-	}
+	fmt.Print(out)
 }
 
 func cmdEval(st *Store, src string) {
-	forms, err := parseForms(src)
+	out, err := apiEval(st, src)
 	if err != nil {
 		fail(err)
 	}
-	if len(forms) != 1 {
-		fail(fmt.Errorf("eval expects exactly one expression"))
-	}
-	e := &elab{st: st}
-	term, err := e.elabTerm(forms[0])
-	if err != nil {
-		fail(err)
-	}
-	c := &checker{st: st}
-	ty, err := c.synth(nil, term)
-	if err != nil {
-		fail(err)
-	}
-	ev := &evaluator{st: st, fuel: propFuel}
-	v, err := ev.eval(nil, "", term)
-	if err != nil {
-		fail(err)
-	}
-	fmt.Printf("%s : %s\n", printValue(st, v), printTy(st, ty, nil))
+	fmt.Println(out)
 }
