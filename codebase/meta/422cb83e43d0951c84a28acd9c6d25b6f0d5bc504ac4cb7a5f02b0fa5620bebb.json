@@ -1,0 +1,28 @@
+{
+  "name": "greet",
+  "prop_names": [
+    "exact-shape",
+    "never-shorter-than-frame",
+    "same-world-same-answer"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "termination": "nonrecursive",
+  "author": "claude-main",
+  "param_names": [
+    "net",
+    "id"
+  ],
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

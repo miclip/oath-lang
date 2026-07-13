@@ -1,0 +1,13 @@
+{
+  "name": "drop",
+  "prop_names": [
+    "drop-all"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "mutants_killed": 5,
+  "mutants_total": 9,
+  "termination": "structural"
+}

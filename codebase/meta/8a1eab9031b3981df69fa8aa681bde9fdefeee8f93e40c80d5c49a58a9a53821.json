@@ -1,0 +1,11 @@
+{
+  "name": "sum",
+  "prop_names": [
+    "reverse-invariant",
+    "distributes-over-append"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  }
+}

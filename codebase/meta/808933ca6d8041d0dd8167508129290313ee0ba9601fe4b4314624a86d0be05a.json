@@ -1,0 +1,12 @@
+{
+  "name": "insert",
+  "prop_names": [
+    "grows-length-by-one",
+    "keeps-sortedness",
+    "adds-one-occurrence"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  }
+}

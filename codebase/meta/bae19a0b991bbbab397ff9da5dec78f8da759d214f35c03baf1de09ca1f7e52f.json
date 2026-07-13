@@ -1,0 +1,11 @@
+{
+  "name": "count",
+  "prop_names": [
+    "non-negative",
+    "bounded-by-length"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  }
+}

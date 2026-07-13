@@ -1,0 +1,14 @@
+{
+  "name": "List",
+  "tyvar_names": [
+    "a"
+  ],
+  "ctor_names": [
+    "Nil",
+    "Cons"
+  ],
+  "guarantee": {
+    "level": "asserted"
+  },
+  "author": "claude-main"
+}

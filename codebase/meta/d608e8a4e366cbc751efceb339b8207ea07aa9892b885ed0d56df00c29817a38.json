@@ -1,0 +1,28 @@
+{
+  "name": "contains",
+  "prop_names": [
+    "found-at-head",
+    "absent-from-empty",
+    "agrees-with-count"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "termination": "structural",
+  "author": "claude-main",
+  "param_names": [
+    "x",
+    "xs"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

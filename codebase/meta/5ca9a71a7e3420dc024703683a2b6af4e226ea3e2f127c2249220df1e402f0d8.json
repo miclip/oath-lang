@@ -1,0 +1,24 @@
+{
+  "name": "is-sorted",
+  "prop_names": [
+    "empty-and-singletons-sorted",
+    "tail-of-sorted-is-sorted"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 2
+  },
+  "termination": "structural",
+  "author": "claude-main",
+  "param_names": [
+    "xs"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1
+  ]
+}

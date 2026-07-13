@@ -1,0 +1,14 @@
+{
+  "name": "contains",
+  "prop_names": [
+    "found-at-head",
+    "absent-from-empty"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "termination": "structural"
+}

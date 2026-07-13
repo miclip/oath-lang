@@ -1,0 +1,14 @@
+{
+  "name": "leak",
+  "guarantee": {
+    "level": "asserted"
+  },
+  "termination": "nonrecursive",
+  "author": "claude-main",
+  "param_names": [
+    "net"
+  ],
+  "confinement": [
+    "escapes"
+  ]
+}

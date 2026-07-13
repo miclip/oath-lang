@@ -1,0 +1,28 @@
+{
+  "name": "map",
+  "tyvar_names": [
+    "a",
+    "b"
+  ],
+  "prop_names": [
+    "preserves-length"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 1
+  },
+  "termination": "structural",
+  "author": "claude-main",
+  "param_names": [
+    "f",
+    "xs"
+  ],
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "proven_props": [
+    0
+  ]
+}

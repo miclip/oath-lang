@@ -1,0 +1,16 @@
+{
+  "name": "bad-reverse",
+  "tyvar_names": [
+    "a"
+  ],
+  "prop_names": [
+    "involution",
+    "antidistributes-over-append"
+  ],
+  "guarantee": {
+    "level": "falsified",
+    "falsified": [
+      "antidistributes-over-append"
+    ]
+  }
+}

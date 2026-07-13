@@ -1,0 +1,24 @@
+{
+  "name": "append",
+  "tyvar_names": [
+    "a"
+  ],
+  "prop_names": [
+    "length-adds",
+    "nil-right-identity"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "structural",
+  "author": "unattributed",
+  "param_names": [
+    "xs",
+    "ys"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "sort",
+  "prop_names": [
+    "output-is-sorted",
+    "preserves-length",
+    "preserves-counts",
+    "idempotent",
+    "reverse-invariant"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  }
+}

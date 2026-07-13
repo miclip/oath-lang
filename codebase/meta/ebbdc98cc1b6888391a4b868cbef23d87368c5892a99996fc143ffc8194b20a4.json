@@ -1,0 +1,31 @@
+{
+  "name": "append",
+  "tyvar_names": [
+    "a"
+  ],
+  "prop_names": [
+    "length-adds",
+    "nil-right-identity",
+    "associative"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "termination": "structural",
+  "author": "claude-main",
+  "param_names": [
+    "xs",
+    "ys"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

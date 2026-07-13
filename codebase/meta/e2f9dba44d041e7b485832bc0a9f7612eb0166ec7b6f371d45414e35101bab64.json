@@ -1,0 +1,27 @@
+{
+  "name": "sort",
+  "prop_names": [
+    "output-is-sorted",
+    "preserves-length",
+    "preserves-counts",
+    "idempotent",
+    "reverse-invariant"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200,
+    "proven": 2
+  },
+  "termination": "structural",
+  "author": "claude-main",
+  "param_names": [
+    "xs"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1
+  ]
+}

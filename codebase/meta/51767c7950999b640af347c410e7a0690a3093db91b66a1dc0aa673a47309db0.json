@@ -1,0 +1,14 @@
+{
+  "name": "max2",
+  "prop_names": [
+    "ge-left",
+    "ge-right"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "mutants_killed": 2,
+  "mutants_total": 3,
+  "termination": "nonrecursive"
+}

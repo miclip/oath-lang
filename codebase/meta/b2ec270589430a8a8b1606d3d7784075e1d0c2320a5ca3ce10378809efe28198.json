@@ -1,0 +1,30 @@
+{
+  "name": "max2",
+  "prop_names": [
+    "ge-left",
+    "ge-right",
+    "is-one-of",
+    "picks-larger"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 4
+  },
+  "termination": "nonrecursive",
+  "author": "claude-main",
+  "param_names": [
+    "a",
+    "b"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3
+  ]
+}

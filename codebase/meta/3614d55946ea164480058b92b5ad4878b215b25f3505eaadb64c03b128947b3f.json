@@ -1,0 +1,23 @@
+{
+  "name": "take",
+  "prop_names": [
+    "take-then-drop-rebuilds",
+    "take-zero",
+    "take-one",
+    "take-two"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "structural",
+  "author": "claude-main",
+  "param_names": [
+    "n",
+    "xs"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

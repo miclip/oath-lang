@@ -1,0 +1,21 @@
+{
+  "name": "initials-or",
+  "prop_names": [
+    "none-falls-back",
+    "some-formats"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "author": "claude-main",
+  "param_names": [
+    "o",
+    "fallback"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

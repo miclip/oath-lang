@@ -1,0 +1,19 @@
+{
+  "name": "sum",
+  "prop_names": [
+    "reverse-invariant",
+    "distributes-over-append"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "structural",
+  "author": "unattributed",
+  "param_names": [
+    "xs"
+  ],
+  "confinement": [
+    ""
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "reverse",
+  "tyvar_names": [
+    "a"
+  ],
+  "prop_names": [
+    "involution",
+    "antidistributes-over-append"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  }
+}
