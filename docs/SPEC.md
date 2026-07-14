@@ -533,6 +533,17 @@ reproducibility (given the same solver):
   by property index. A property's own lemma is excluded while proving that
   property. A property proven earlier in the same `prove` run becomes a lemma
   for later properties.
+- **Self-lemma availability is a fixpoint, not a single ordered pass.** The
+  recorded outcomes are those after `proven_props` stabilizes: a kernel MUST
+  iterate proving (each property's lemma set = every *other* proven property
+  of the definition, whether proven earlier in this pass or in a prior one)
+  until no new property proves. A single declaration-order pass is
+  insufficient — the canonical witness is `reverse`: `involution` (index 0)
+  is provable only with `antidistributes-over-append` (index 1) as a lemma,
+  so it proves on the second iteration. (Found by independent implementation:
+  a literal one-pass reading yields 188/189 conformance. The reference
+  reaches the fixpoint across successive `prove` runs via accumulated
+  `proven_props` metadata; a conforming kernel may iterate internally.)
 - Direct proof declares property binders as constants, translates the property,
   asserts its negation, and checks satisfiability. `unsat` proves it. `sat`
   refutes only when the formula is quantifier-free; otherwise `sat` is

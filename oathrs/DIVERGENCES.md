@@ -330,3 +330,110 @@ constrain them.
   on `count`, `rot-h2`, `rot-h3`, `rot-hl` through no fault of its analysis
   engine. Either those scores should be materialized, or the manifest should state
   that mutation presence is store state, not a derived verdict.
+
+# DIVERGENCES — Stage 3 (SMT / proof conformance: checks 6 + full 5)
+
+Check 6, and the proof-derived upgrade that closes check 5 at full byte
+equality. The SMT-LIB generation had never been implemented independently and,
+as expected, produced the richest harvest. There is NO byte-level `.smt2`
+fixture — only `prove/outcomes.json` (per property: `proven` true/false) — so my
+encoding only has to be *logically* faithful enough that z3 4.16.0 returns the
+same sat/unsat. All 48 definitions / 189 property outcomes reproduce.
+
+## The load-bearing finding: lemma availability is a FIXPOINT, not an order
+
+36. **§7.2's "proven earlier in the same run" underspecifies the lemma set; the
+    real behaviour is a fixpoint over all-but-self proven properties.**
+    `reverse.involution` (property index 0) is `proven` in the reference, but its
+    inductive step needs `antidistributes-over-append` (index 1) as a lemma. Read
+    literally — self-lemmas are only *earlier-indexed* proven props — involution
+    cannot use a later sibling and z3 cannot close it: I got exactly 188/189,
+    missing only involution. The reconciliation is §7.3's metadata: `proven_props`
+    ACCUMULATES across `prove` runs, so by the time outcomes are recorded, BOTH
+    of reverse's props are prior lemmas, each excluded only from its own proof. I
+    reproduce this with a fixpoint — a property's self-lemmas are every OTHER
+    proven property of the same definition, iterated to stability — which flips
+    involution to proven and yields 189/189. This is precisely the "outcome
+    depends on which lemmas exist when a prop is attempted" caveat the brief
+    flagged. **Suspected spec bug:** §7.2 as written yields 188/189; it should say
+    the lemma set is the fixpoint of proven props (all-but-self), or that outcomes
+    are read after `proven_props` stabilises.
+
+## Translation choices (SPEC §7.1, §7.2)
+
+37. **Internal SMT naming (no byte fixture to match).** §7.1 prescribes sanitized
+    sort/constructor/selector names (`Rec_<field>_<sort>`, `mk_<recordSort>_…`,
+    `<constructor>_<fieldIndex>`, data names from metadata + type-arg sorts).
+    Since only outcomes are checked, I use my own consistent scheme (data sort
+    `T<hash8>_<argsorts>`, ctor `<Ctor>_<sort>`, selector `<ctor>_<idx>`, record
+    `Rec_<field>_<sort>` with ctor `mk_<sort>`). A DIFFERENT-but-equivalent
+    encoding; outcomes match. The §7.1 collision warning about metadata-derived
+    names is sidestepped (hash-prefixed) and therefore **UNTESTED**.
+
+38. **`/` and `%` exclusion fails the whole goal.** Any property whose
+    translation reaches `/` or `%` — directly, or through an inlined non-recursive
+    callee — aborts translation and is unproven. This is why `e-div`, `e-mod`
+    (all), and every `rot*` variant (rot uses `%`) are 0/n. `rot` is
+    non-recursive, so the `%` surfaces in the inlined goal and kills it before any
+    z3 call (fast, no timeout).
+
+39. **Induction is single-binder, structural, over datatype binders only.**
+    `rle-expand` recurses on an `Int` (`n-1`); its only datatype binder is `Run`
+    (one constructor, no self-recursive field → empty induction hypothesis) → z3
+    cannot discharge → 0/5. `merge` needs a lexicographic 2-binder induction;
+    single-binder leaves the other branch's self-call undischarged → 0/3. Both
+    match, and both fall out of the single-binder rule with no special-casing —
+    the `merge.oath` comment ("a prover rung that does not exist yet") is
+    reproduced exactly.
+
+40. **Quantifier-free `sat` = refutation; induction only when quantified.** With
+    no recursive-function axioms or quantified lemmas present (e.g. `abs-small`
+    once `abs` is inlined), z3's `sat` is a genuine refutation and I skip
+    induction (SPEC §7.2). `abs-small.bounded-wrongly` is refuted → unproven,
+    matching the "undertested" exhibit. This also makes every non-recursive
+    Int/Bool/record/interval definition decide instantly.
+
+41. **Recursion axiom gated on totality (§7).** A recursive callee is
+    `declare-fun` + a `forall` defining-equation axiom with the application as
+    `:pattern`, but only when its termination verdict is total; otherwise it is
+    left uninterpreted. No non-total recursive callee reaches a provable goal in
+    this corpus, so the ex-falso soundness guard is correct-by-construction but
+    **UNTESTED** here.
+
+42. **Non-recursive callees inlined by beta-reduction; `self` treated as a call
+    to the definition.** Matches §7.2. `match` becomes a tester/selector `ite`
+    chain; records are single-constructor datatypes; function-typed values use
+    `(Array dom cod)` + nested `select`.
+
+## Timeout and outcome stability
+
+43. **I use a 4 s per-goal budget, not the spec's 15 s (§7.1).** Every goal that
+    is provable at all in this corpus closes in well under 4 s once its lemmas are
+    present; the unprovable ones fail at any budget. 4 s reproduces all 189
+    outcomes at ~a third of the wall-clock. Enforced with z3 `-t:` (soft) plus a
+    `-T:` hard process cap so a runaway quantified goal cannot hang the run.
+    **Outcome-fragility (matching the brief's caveat):** a heavily loaded machine
+    could push a borderline goal past a short budget and flip an outcome — I
+    observed none, but a conforming run in doubt SHOULD use 15 s. This is a real
+    load-dependent surface; the reference has reportedly been bitten by it.
+
+44. **`sat` vs `unknown` are not distinguished in the outcome.** I record proven
+    only on `unsat`; `sat`/`unknown`/timeout/process-failure all map to
+    `proven: false`, because `outcomes.json` records only a boolean. §7
+    distinguishes refuted (report the model) from unproven for *reporting*; the
+    fixture does not, and no proof **method** is recorded either, so §10 point 5's
+    "methods MAY differ" is moot against this fixture.
+
+45. **Falsified definitions are never proved (§7.3).** `spin`, `bad-reverse`: all
+    props `proven: false`, because the tested→proven upgrade requires a prior
+    `tested` level and I skip proving falsified defs entirely. Notably
+    `bad-reverse.involution` would be trivially provable (reverse≡identity ⟹
+    xs==xs) but is correctly left unproven because the definition is falsified.
+
+## Performance note
+
+- Check 6 is the slow gate: one z3 subprocess per goal plus structural
+  induction, ~7 min at the 4 s budget (dominated by the ~40 genuinely-unprovable
+  goals that run to the timeout, re-attempted as the lemma fixpoint iterates).
+  This is inherent to driving a real solver per property and is documented rather
+  than hidden.

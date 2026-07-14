@@ -25,7 +25,7 @@ pub enum Term5 {
 }
 
 impl Term5 {
-    fn total(self) -> bool {
+    pub fn total(self) -> bool {
         matches!(self, Term5::Structural | Term5::Nonrecursive)
     }
     fn as_str(self) -> &'static str {
@@ -706,9 +706,10 @@ pub struct Analysis {
     pub mutants: Option<(u32, u32)>,
     pub level: String,
     pub cases: Option<u64>,
+    pub proven: Option<usize>,
 }
 
-pub fn analyze(store: &Store, name: &str) -> Analysis {
+pub fn analyze(store: &Store, name: &str, proofs: Option<&[bool]>) -> Analysis {
     let hash = store
         .def_by_name
         .get(name)
@@ -725,6 +726,7 @@ pub fn analyze(store: &Store, name: &str) -> Analysis {
             mutants: None,
             level: "asserted".to_string(),
             cases: None,
+            proven: None,
         },
         Def::Func { props, .. } => {
             let mut visiting = HashSet::new();
@@ -761,6 +763,21 @@ pub fn analyze(store: &Store, name: &str) -> Analysis {
                     ("tested".to_string(), Some(200), m)
                 }
             };
+            // proof-derived upgrade (SPEC §7.3): if all properties are proven,
+            // none refuted, and the prior level is tested, become proven.
+            let (level, proven) = match proofs {
+                Some(flags) if !props.is_empty() => {
+                    let count = flags.iter().filter(|b| **b).count();
+                    let lvl = if level == "tested" && count == props.len() {
+                        "proven".to_string()
+                    } else {
+                        level
+                    };
+                    let pv = if count > 0 { Some(count) } else { None };
+                    (lvl, pv)
+                }
+                _ => (level, None),
+            };
             Analysis {
                 name: name.to_string(),
                 hash,
@@ -770,6 +787,7 @@ pub fn analyze(store: &Store, name: &str) -> Analysis {
                 mutants,
                 level,
                 cases,
+                proven,
             }
         }
     }
@@ -805,11 +823,15 @@ pub fn to_json(a: &Analysis) -> String {
             o.push_str(",\n");
             o.push_str(&format!("  \"cases\": {}", c));
         }
+        if let Some(p) = a.proven {
+            o.push_str(",\n");
+            o.push_str(&format!("  \"proven\": {}", p));
+        }
         o.push('\n');
     } else {
         o.push_str(",\n");
         o.push_str(&format!("  \"level\": \"{}\"\n", a.level));
     }
-    o.push_str("}\n");
+    o.push('}');
     o
 }

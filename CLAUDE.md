@@ -66,6 +66,18 @@ hosted store creates the need before the port happens.
 - The examples double as the conformance corpus (SPEC.md §10): treat
   hash changes in `codebase/names.json` as meaningful diffs.
 
+## The second kernel
+
+`oathrs/` is an independent Rust kernel, built BLIND from docs/SPEC.md +
+fixtures/ only (never the Go source), passing all six conformance checks —
+including byte-identical hashes, verify transcripts, analyses, and 189/189
+proof outcomes. `oathrs/conformance.sh` is the cross-kernel gate; run it
+after any change to the Go kernel that could touch semantics, and treat
+any divergence as a spec bug or kernel bug to be filed. Preserve its
+independence: never "fix" oathrs by copying from oath/ — fix the spec and
+let a blind agent fix the Rust. `oathrs/DIVERGENCES.md` is the record of
+every ambiguity found this way.
+
 ## Doc map
 
 - `README.md` — tour + quickstart. `DESIGN.md` — rationale, spec-strength

@@ -5,6 +5,7 @@ mod eval;
 mod gen;
 mod hash;
 mod ir;
+mod prove;
 mod sexpr;
 mod value;
 mod verify;
@@ -138,7 +139,21 @@ fn cmd_verify(paths: &[String], out_dir: Option<&str>) -> i32 {
     0
 }
 
-fn cmd_analyze(paths: &[String], out_dir: Option<&str>) -> i32 {
+fn parse_proofs(path: &str) -> std::collections::BTreeMap<String, Vec<bool>> {
+    let mut m = std::collections::BTreeMap::new();
+    if let Ok(s) = fs::read_to_string(path) {
+        for line in s.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() == 3 {
+                let flags = parts[2].chars().map(|c| c == '+').collect();
+                m.insert(parts[0].to_string(), flags);
+            }
+        }
+    }
+    m
+}
+
+fn cmd_analyze(paths: &[String], out_dir: Option<&str>, proofs_path: Option<&str>) -> i32 {
     let files = match read_files(paths) {
         Ok(f) => f,
         Err(e) => {
@@ -153,6 +168,7 @@ fn cmd_analyze(paths: &[String], out_dir: Option<&str>) -> i32 {
             return 1;
         }
     };
+    let proofs = proofs_path.map(parse_proofs);
     if let Some(dir) = out_dir {
         if let Err(e) = fs::create_dir_all(dir) {
             eprintln!("error: {}: {}", dir, e);
@@ -161,7 +177,8 @@ fn cmd_analyze(paths: &[String], out_dir: Option<&str>) -> i32 {
     }
     let names: Vec<String> = store.def_by_name.keys().cloned().collect();
     for name in &names {
-        let a = analyze::analyze(&store, name);
+        let pf = proofs.as_ref().and_then(|m| m.get(name)).map(|v| v.as_slice());
+        let a = analyze::analyze(&store, name, pf);
         let json = analyze::to_json(&a);
         match out_dir {
             Some(dir) => {
@@ -174,6 +191,66 @@ fn cmd_analyze(paths: &[String], out_dir: Option<&str>) -> i32 {
             None => {
                 print!("{}", json);
             }
+        }
+    }
+    0
+}
+
+fn cmd_prove(paths: &[String]) -> i32 {
+    let files = match read_files(paths) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("error: {}", e);
+            return 1;
+        }
+    };
+    let store = match elaborate_corpus(&files) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: {}", e);
+            return 1;
+        }
+    };
+    // falsified set: any prop falsified under testing
+    let mut falsified = std::collections::BTreeSet::new();
+    for (name, def) in &store.def_by_name {
+        if let ir::Def::Func { props, .. } = def {
+            if props.is_empty() {
+                continue;
+            }
+            let hash = &store.func_by_name.get(name).unwrap().hash;
+            for (pi, prop) in props.iter().enumerate() {
+                if let verify::PropResult::Falsified { .. } = verify::run_prop(
+                    &store,
+                    hash,
+                    pi as u64,
+                    prop,
+                    verify::VERIFY_CASES,
+                    verify::VERIFY_FUEL,
+                ) {
+                    falsified.insert(hash.clone());
+                    break;
+                }
+            }
+        }
+    }
+    let results = prove::prove_all(&store, &falsified);
+    // print keyed by name, sorted
+    let mut by_name: Vec<(&String, &String)> = store
+        .func_by_name
+        .iter()
+        .map(|(n, fi)| (n, &fi.hash))
+        .collect();
+    by_name.sort();
+    for (name, hash) in by_name {
+        if let Some(r) = results.get(hash) {
+            let count = r.proven.iter().filter(|b| **b).count();
+            let flags: String = r
+                .proven
+                .iter()
+                .map(|b| if *b { '+' } else { '-' })
+                .collect();
+            println!("{}\t{}/{}\t{}", name, count, r.proven.len(), flags);
         }
     }
     0
@@ -275,12 +352,29 @@ fn run() -> i32 {
             }
         }
         "analyze" => {
-            if args.len() >= 4 && args[2] == "--out" {
-                cmd_analyze(&args[4..], Some(&args[3]))
-            } else {
-                cmd_analyze(&args[2..], None)
+            let mut out_dir: Option<String> = None;
+            let mut proofs: Option<String> = None;
+            let mut files: Vec<String> = Vec::new();
+            let mut i = 2;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--out" => {
+                        out_dir = args.get(i + 1).cloned();
+                        i += 2;
+                    }
+                    "--proofs" => {
+                        proofs = args.get(i + 1).cloned();
+                        i += 2;
+                    }
+                    _ => {
+                        files.push(args[i].clone());
+                        i += 1;
+                    }
+                }
             }
+            cmd_analyze(&files, out_dir.as_deref(), proofs.as_deref())
         }
+        "prove" => cmd_prove(&args[2..]),
         "enctest" => {
             if args.len() < 3 {
                 eprintln!("usage: oathrs enctest <encoding-dir>");

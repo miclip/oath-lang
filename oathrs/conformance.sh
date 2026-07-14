@@ -75,55 +75,52 @@ done
 [ $vbad -eq 0 ] && echo "  PASS: $vn verify/*.txt byte-identical (verdicts + counterexamples)"
 
 # ---------------------------------------------------------------------------
-# Check 5: analyses (termination, confinement, mutation, guarantee).
-# Field-wise: proof-derived fields (`proven`, the tested->proven level
-# upgrade) are SMT / stage 3 and are compared modulo proof. Mutation scores
-# are store metadata recorded selectively; compared only where the fixture
-# records one (every such score must match).
+# Proof run (shared by checks 5 and 6). This drives z3 and is the slow step
+# (several minutes): one goal per property, plus structural induction.
 # ---------------------------------------------------------------------------
-echo "== Check 5: analyses (analyses/*.json) =="
-"$BIN" analyze --out "$TMP/analyze" "$EX"/*.oath 2>/dev/null
+echo "== Proving (z3) — shared by checks 5-6, this is the slow step =="
+"$BIN" prove "$EX"/*.oath > "$TMP/prove.txt" 2>/dev/null \
+  || { echo "  FAIL: prove command errored"; fail=1; }
 
-getstr(){ grep "\"$2\"" "$1" | head -1 | sed -E 's/.*: "([^"]*)".*/\1/'; }
-getnum(){ grep "\"$2\"" "$1" | head -1 | sed -E 's/[^0-9]//g'; }
-confarr(){ awk 'f&&/\]/{f=0} f{gsub(/[ ]/,"");print} /"confinement": \[/{f=1}' "$1"; }
+# ---------------------------------------------------------------------------
+# Check 6: proof outcomes reproduce fixtures/prove/outcomes.json exactly
+# (per definition, per property: proven true/false).
+# ---------------------------------------------------------------------------
+echo "== Check 6: proof outcomes (prove/outcomes.json) =="
+python3 - "$FIX/prove/outcomes.json" "$TMP/prove.txt" <<'PY'
+import json, sys
+want = {d['name']: [p['proven'] for p in d['props']]
+        for d in json.load(open(sys.argv[1]))['definitions']}
+mine = {}
+for line in open(sys.argv[2]):
+    p = line.rstrip('\n').split('\t')
+    if len(p) == 3:
+        mine[p[0]] = [c == '+' for c in p[2]]
+bad = [n for n in want if mine.get(n, []) != want[n]]
+props = sum(len(v) for v in want.values())
+if bad:
+    print("  FAIL: proof outcomes differ for:", ", ".join(bad)); sys.exit(1)
+print("  PASS: %d definitions / %d property outcomes reproduce outcomes.json"
+      % (len(want), props))
+PY
+[ $? -ne 0 ] && fail=1
 
+# ---------------------------------------------------------------------------
+# Check 5 (full): analyses byte-identical, including the proof-derived
+# guarantee upgrade (level "proven", proven counts) fed from the prove run.
+# ---------------------------------------------------------------------------
+echo "== Check 5: analyses (analyses/*.json) — full equality =="
+"$BIN" analyze --proofs "$TMP/prove.txt" --out "$TMP/analyze" "$EX"/*.oath 2>/dev/null
 abad=0; an=0
 for f in "$FIX"/analyses/*.json; do
-  an=$((an+1)); n="$(basename "$f" .json)"; mine="$TMP/analyze/$n.json"
-  if [ ! -f "$mine" ]; then echo "  FAIL: no analysis produced for $n"; abad=1; fail=1; continue; fi
-
-  [ "$(getstr "$f" kind)" = "$(getstr "$mine" kind)" ] \
-    || { echo "  FAIL $n: kind"; abad=1; fail=1; }
-
-  flvl="$(getstr "$f" level)"; [ "$flvl" = "proven" ] && flvl="tested"
-  [ "$flvl" = "$(getstr "$mine" level)" ] \
-    || { echo "  FAIL $n: level (fixture $(getstr "$f" level) -> $flvl vs $(getstr "$mine" level))"; abad=1; fail=1; }
-
-  if [ "$(getstr "$f" kind)" = "func" ]; then
-    [ "$(getstr "$f" termination)" = "$(getstr "$mine" termination)" ] \
-      || { echo "  FAIL $n: termination"; abad=1; fail=1; }
-    [ "$(confarr "$f")" = "$(confarr "$mine")" ] \
-      || { echo "  FAIL $n: confinement"; abad=1; fail=1; }
-    fc="$(grep -q '"cases"' "$f" && getnum "$f" cases || echo none)"
-    mc="$(grep -q '"cases"' "$mine" && getnum "$mine" cases || echo none)"
-    [ "$fc" = "$mc" ] || { echo "  FAIL $n: cases ($fc vs $mc)"; abad=1; fail=1; }
-    if grep -q '"mutants_total"' "$f"; then
-      if ! grep -q '"mutants_total"' "$mine"; then
-        echo "  FAIL $n: fixture has a mutation score, mine has none"; abad=1; fail=1
-      else
-        [ "$(getnum "$f" mutants_killed)" = "$(getnum "$mine" mutants_killed)" ] \
-          && [ "$(getnum "$f" mutants_total)" = "$(getnum "$mine" mutants_total)" ] \
-          || { echo "  FAIL $n: mutation $(getnum "$f" mutants_killed)/$(getnum "$f" mutants_total) vs $(getnum "$mine" mutants_killed)/$(getnum "$mine" mutants_total)"; abad=1; fail=1; }
-      fi
-    fi
-  fi
+  an=$((an+1)); n="$(basename "$f")"
+  cmp -s "$f" "$TMP/analyze/$n" || { echo "  FAIL: analysis differs for $n"; abad=1; fail=1; }
 done
-[ $abad -eq 0 ] && echo "  PASS: $an analyses match (termination, confinement, mutation, level modulo stage-3 proof)"
+[ $abad -eq 0 ] && echo "  PASS: $an analyses/*.json byte-identical (termination, confinement, mutation, guarantee incl. proof)"
 
 echo
 if [ $fail -eq 0 ]; then
-  echo "CONFORMANCE: PASS (checks 1-5)"
+  echo "CONFORMANCE: PASS (checks 1-6)"
 else
   echo "CONFORMANCE: FAIL"
 fi
