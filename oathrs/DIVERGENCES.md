@@ -525,3 +525,39 @@ lens yet on what the kernel silently assumes about its host.
     wasm deliverable is therefore a separate `wasm-demo.sh` (green cross-compile +
     import audit + documented invocation); native `conformance.sh` remains green
     and unchanged.
+
+# DIVERGENCES — Stage 5 addendum (fixpoint perf, issue #24)
+
+51. **Fixpoint re-attempt gating (§7.2 permission, issue #24) — and a
+    budget-sensitivity it exposes.** The proof fixpoint now (a) processes
+    definitions in topological order so a definition's transitive-dep proofs are
+    FINAL before it is proved, computing its dep-lemma set once; and (b) runs a
+    per-definition LOCAL fixpoint over that definition's own properties, gating
+    re-attempts on lemma-set growth — a goal is re-attempted only when a
+    same-definition sibling has been proven since its last failed attempt. This
+    is the §7.2 permission ("a goal whose available lemma set has not changed
+    since its last failed attempt need not be re-attempted"), and it makes each
+    genuinely-unprovable goal burn its full solver budget ONCE rather than once
+    per global cascade pass. It is outcome-identical to the naive global loop as
+    a *fixpoint* (the dep graph is a DAG, so the per-definition decomposition is
+    exact), and reproduces all 52 definitions / 198 property outcomes at the 15 s
+    default.
+
+    **UNTESTED / caveat — budget-sensitivity from front-loading the transitive
+    lemma queue.** "Outcome-identical" holds for the fixpoint's *proven set*, but
+    NOT necessarily for the outcome of a single goal *at a fixed wall-clock
+    budget*. The old global loop happened to prove some goals EARLY, in a pass
+    before all of their transitive-dep lemmas existed, i.e. with a *smaller*
+    axiom set — which is faster. The topological order instead hands each goal
+    the FULL §7.2 transitive lemma queue up front; a larger quantified-axiom set
+    can slow z3 enough to cross the budget. Concretely, `sum`'s inductive goals
+    proved at a 4 s budget under the old loop (small early axiom set) but now
+    need the normative 15 s (they carry, e.g., `reverse.involution` as an extra
+    lemma that is useless to them but still instantiated). At the spec-normative
+    15 s default all 198 outcomes reproduce; but the change ERODES `sum`'s
+    headroom — the same margin the CI `sum` failure (entry #43) was about — so it
+    is a latent robustness trade the operator should know: the more spec-faithful
+    "full lemma queue every time" is budget-heavier than an incremental
+    "prove-with-whatever-suffices-first" strategy. The `OATHRS_Z3_TIMEOUT_MS`
+    override remains the escape hatch, and a reduced local budget (e.g. 4 s) now
+    flips `sum`, which it did not before.

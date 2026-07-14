@@ -979,35 +979,52 @@ pub fn prove_all(store: &Store, falsified: &BTreeSet<String>) -> BTreeMap<String
     let deps_of: BTreeMap<String, Vec<String>> =
         order.iter().map(|h| (h.clone(), transitive_deps(store, h))).collect();
 
-    // Fixpoint: the lemma set for a property is every OTHER proven property of
-    // the same definition plus all proven properties of its transitive deps
-    // (SPEC §7.2). Because a definition's own metadata accumulates proven props,
-    // a later-indexed sibling can serve as a lemma for an earlier one — so we
-    // iterate until no new property becomes proven. A property is re-attempted
-    // only when its available-lemma count has grown, which keeps the hopeless
-    // goals from being re-run every pass.
-    let mut last_lemma_count: BTreeMap<(String, usize), usize> = BTreeMap::new();
-    loop {
-        let mut changed = false;
-        for hash in &order {
-            let props = match store.def_by_hash.get(hash) {
-                Some(Def::Func { props, .. }) => props.clone(),
-                _ => continue,
-            };
-            if falsified.contains(hash) {
-                continue; // never proved (§7.3: upgrade requires tested)
-            }
-            // deps' proven props
-            let mut dep_lemmas: Vec<(String, usize)> = Vec::new();
-            for d in &deps_of[hash] {
-                if let Some(Def::Func { props: dp, .. }) = store.def_by_hash.get(d) {
-                    for pi in 0..dp.len() {
-                        if prover.proven.contains(&(d.clone(), pi)) {
-                            dep_lemmas.push((d.clone(), pi));
-                        }
+    // Proof fixpoint (SPEC §7.2 + §7.2's fixpoint-gating permission, issue #24).
+    //
+    // The lemma set for a property is every OTHER proven property of the same
+    // definition plus all proven properties of its transitive dependencies.
+    // Because a definition's own proven props accumulate, a later-indexed
+    // sibling can serve as a lemma for an earlier one, so we iterate to a
+    // fixpoint. Two structural choices make that fixpoint cheap while staying
+    // outcome-identical:
+    //
+    //  * `order` is a topological sort of the (acyclic) dependency graph, so a
+    //    definition's transitive-dep proofs are FINAL by the time we reach it.
+    //    We therefore process each definition once, in order, and compute its
+    //    dep-lemma set a single time — dependency growth never re-triggers a
+    //    re-attempt.
+    //  * Within a definition we run a LOCAL fixpoint over its own properties,
+    //    and gate re-attempts on lemma-set growth (§7.2): a goal is re-attempted
+    //    only when a same-definition sibling has been proven since its last
+    //    failed attempt. So a genuinely-unprovable goal burns its full solver
+    //    budget ONCE, not once per global iteration.
+    //
+    // This computes the same greatest fixpoint as a naive global loop (the dep
+    // graph is a DAG with no mutual recursion, so the per-definition
+    // decomposition is exact), but attempts each hopeless goal a single time.
+    for hash in &order {
+        let props = match store.def_by_hash.get(hash) {
+            Some(Def::Func { props, .. }) => props.clone(),
+            _ => continue,
+        };
+        if falsified.contains(hash) {
+            continue; // never proved (§7.3: upgrade requires tested)
+        }
+        // Transitive-dep proven props — final, since deps precede us in `order`.
+        let mut dep_lemmas: Vec<(String, usize)> = Vec::new();
+        for d in &deps_of[hash] {
+            if let Some(Def::Func { props: dp, .. }) = store.def_by_hash.get(d) {
+                for pi in 0..dp.len() {
+                    if prover.proven.contains(&(d.clone(), pi)) {
+                        dep_lemmas.push((d.clone(), pi));
                     }
                 }
             }
+        }
+        // Local fixpoint over this definition's properties.
+        let mut last_lemma_count: BTreeMap<usize, usize> = BTreeMap::new();
+        loop {
+            let mut changed = false;
             for (pi, prop) in props.iter().enumerate() {
                 if prover.proven.contains(&(hash.clone(), pi)) {
                     continue;
@@ -1018,19 +1035,21 @@ pub fn prove_all(store: &Store, falsified: &BTreeSet<String>) -> BTreeMap<String
                         lemmas.push((hash.clone(), j));
                     }
                 }
-                let key = (hash.clone(), pi);
-                if last_lemma_count.get(&key) == Some(&lemmas.len()) {
-                    continue; // lemma set unchanged since last attempt
+                // Gate: skip unless the available lemma set has grown since the
+                // last failed attempt (dep-lemmas are fixed here, so growth can
+                // only come from a newly-proven sibling).
+                if last_lemma_count.get(&pi) == Some(&lemmas.len()) {
+                    continue;
                 }
-                last_lemma_count.insert(key.clone(), lemmas.len());
+                last_lemma_count.insert(pi, lemmas.len());
                 if prover.prove_prop(hash, prop, &lemmas) {
-                    prover.proven.insert(key);
+                    prover.proven.insert((hash.clone(), pi));
                     changed = true;
                 }
             }
-        }
-        if !changed {
-            break;
+            if !changed {
+                break;
+            }
         }
     }
 
