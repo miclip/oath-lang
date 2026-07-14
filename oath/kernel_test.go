@@ -27,7 +27,7 @@ func newStore(t *testing.T) *Store {
 
 func put(t *testing.T, st *Store, src string) []putReport {
 	t.Helper()
-	reports, err := apiPut(st, src, "test")
+	reports, err := apiPut(st, src, "test", "")
 	if err != nil {
 		t.Fatalf("apiPut(%q): %v", src, err)
 	}
@@ -276,6 +276,44 @@ func TestCorruptNamesIndexRejected(t *testing.T) {
 	os.WriteFile(names, b[:len(b)/2], 0o644)
 	if _, err := OpenStore(dir); err == nil {
 		t.Fatal("OpenStore accepted a corrupt names.json")
+	}
+}
+
+// A context slice carries a hash of the definition versions served, and put
+// stamps it into the journal (#4): implemented-against-stale-specs becomes
+// detectable after the fact.
+func TestContextHashJournaled(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(defn base [] [] Int 7)`)
+	out, err := apiContext(st, []string{"base"}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ctx string
+	for _, line := range strings.Split(out, "\n") {
+		if h, ok := strings.CutPrefix(line, "-- context-hash: "); ok {
+			ctx = h
+		}
+	}
+	if len(ctx) != 64 {
+		t.Fatalf("context output carries no context-hash line:\n%s", out)
+	}
+	// The hash is over the served identity set, so it must equal the hash of
+	// the single included definition's hash.
+	h, _ := st.Resolve("base")
+	if want := contextHash([]string{h}); ctx != want {
+		t.Fatalf("context-hash = %s, want %s (sha256 of served hash set)", ctx, want)
+	}
+	if _, err := apiPut(st, `(defn built [] [] Int (+ (base) 1))`, "test", ctx); err != nil {
+		t.Fatal(err)
+	}
+	entries := st.ReadLog()
+	last := entries[len(entries)-1]
+	if last.Name != "built" || last.Context != ctx {
+		t.Fatalf("journal entry for built has context %q, want %q", last.Context, ctx)
+	}
+	if err := st.VerifyLog(); err != nil {
+		t.Fatalf("journal with context entries failed chain verification: %v", err)
 	}
 }
 

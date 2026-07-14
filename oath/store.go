@@ -247,7 +247,8 @@ type LogEntry struct {
 	Error       string `json:"error,omitempty"`
 	Guarantee   string `json:"guarantee,omitempty"`
 	Termination string `json:"termination,omitempty"`
-	Chain       string `json:"chain,omitempty"` // tamper-evidence: SHA-256(prev chain + this entry sans chain)
+	Context     string `json:"context,omitempty"` // hash of the context slice the author built against (#4)
+	Chain       string `json:"chain,omitempty"`   // tamper-evidence: SHA-256(prev chain + this entry sans chain)
 }
 
 func (s *Store) logPath() string { return filepath.Join(s.Root, "log.jsonl") }

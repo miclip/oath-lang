@@ -521,8 +521,19 @@ Append-only, one JSON object per line: `seq`, `time` (RFC3339 UTC),
 `author` (principal string, self-reported in local mode), `verifier`
 (kernel version string), `name`, `kind`, `status`
 (`accepted`|`falsified`|`rejected`), `hash`, `prev` (on repoint), `error`,
-`guarantee`, `termination`, `chain`. Every submission attempt MUST be
-journaled, including gate rejections (which store no object). The journal is
+`guarantee`, `termination`, `context`, `chain`. Every submission attempt MUST
+be journaled, including gate rejections (which store no object).
+
+`context` is the author-supplied hash of the context slice the submission was
+built against: SHA-256 (lowercase hex) of the newline-joined, byte-sorted
+definition hashes actually served by a `context` query. The slice output ends
+with a `-- context-hash: <hex>` line; a submitter passes it back via
+`put --context` (CLI) or the `context` argument (MCP). It hashes the served
+identity set, not the rendered text, so presentation changes cannot alter what
+"built against these specs" means. Self-reported and optional in local mode —
+like `author`, it becomes trustworthy only under a hosted store that
+associates served slices with sessions — but once journaled it is sealed by
+the chain, making implemented-against-stale-specs detectable after the fact. The journal is
 metadata: never part of definition identity, wall-clock timestamps permitted
 (the kernel's no-clock rule protects verification semantics only).
 

@@ -12,8 +12,10 @@ import (
 
 // apiPut elaborates, gates, stores, verifies, and journals every form in
 // src. It stops at the first rejection or elaboration error; results
-// accumulated so far are returned alongside any error.
-func apiPut(st *Store, src string, author string) ([]putReport, error) {
+// accumulated so far are returned alongside any error. ctxHash, when the
+// author supplies one, is the context-slice hash it built against (#4) and
+// is stamped on every journal entry this submission produces.
+func apiPut(st *Store, src string, author string, ctxHash string) ([]putReport, error) {
 	if author == "" {
 		author = "unattributed"
 	}
@@ -41,7 +43,7 @@ func apiPut(st *Store, src string, author string) ([]putReport, error) {
 			err = fmt.Errorf("line %d: unknown top-level form %q", f.Line, f.Kids[0].Sym)
 		}
 		if err != nil {
-			_ = st.AppendLog(&LogEntry{Author: author, Name: formName, Status: "rejected", Error: err.Error()})
+			_ = st.AppendLog(&LogEntry{Author: author, Name: formName, Status: "rejected", Error: err.Error(), Context: ctxHash})
 			return results, err
 		}
 		meta.Author = author
@@ -49,7 +51,7 @@ func apiPut(st *Store, src string, author string) ([]putReport, error) {
 		// The kernel gate: nothing enters the codebase without typechecking.
 		// Rejections store no object, but the journal retains the attempt.
 		if err := checkDef(st, def); err != nil {
-			_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K, Status: "rejected", Error: err.Error()})
+			_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K, Status: "rejected", Error: err.Error(), Context: ctxHash})
 			results = append(results, putReport{Name: meta.Name, Kind: def.K, Status: "rejected", Error: err.Error()})
 			return results, nil
 		}
@@ -87,6 +89,7 @@ func apiPut(st *Store, src string, author string) ([]putReport, error) {
 		_ = st.AppendLog(&LogEntry{
 			Author: author, Name: meta.Name, Kind: def.K, Status: rep.Status,
 			Hash: h, Prev: prev, Guarantee: rep.Guarantee, Termination: rep.Termination,
+			Context: ctxHash,
 		})
 		results = append(results, rep)
 	}

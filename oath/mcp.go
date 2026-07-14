@@ -56,8 +56,9 @@ func mcpTools() []map[string]any {
 			"name":        "put",
 			"description": "Submit Oath source (one or more (data ...) / (defn ...) forms). Typechecks at the gate, stores content-addressed, runs every property with deterministic inputs, checks termination and capability confinement, and journals the attempt. Returns per-definition verdicts with counterexamples on falsification.",
 			"inputSchema": obj(map[string]any{
-				"source": str("Oath source text"),
-				"author": str("principal id for the journal (defaults to unattributed)"),
+				"source":  str("Oath source text"),
+				"author":  str("principal id for the journal (defaults to unattributed)"),
+				"context": str("the context-hash line from the `context` tool output this code was authored against; journaled for stale-spec audits"),
 			}, "source"),
 		},
 		{
@@ -105,12 +106,13 @@ func mcpTools() []map[string]any {
 
 func mcpCallTool(st *Store, name string, args json.RawMessage) (string, error) {
 	var a struct {
-		Names  []string `json:"names"`
-		Budget int      `json:"budget"`
-		Source string   `json:"source"`
-		Author string   `json:"author"`
-		Name   string   `json:"name"`
-		Expr   string   `json:"expr"`
+		Names   []string `json:"names"`
+		Budget  int      `json:"budget"`
+		Source  string   `json:"source"`
+		Author  string   `json:"author"`
+		Context string   `json:"context"`
+		Name    string   `json:"name"`
+		Expr    string   `json:"expr"`
 	}
 	if len(args) > 0 {
 		if err := json.Unmarshal(args, &a); err != nil {
@@ -124,7 +126,7 @@ func mcpCallTool(st *Store, name string, args json.RawMessage) (string, error) {
 		}
 		return apiContext(st, a.Names, a.Budget)
 	case "put":
-		results, err := apiPut(st, a.Source, a.Author)
+		results, err := apiPut(st, a.Source, a.Author, a.Context)
 		out := renderPutReports(results)
 		if err != nil {
 			return "", fmt.Errorf("%s%w", out, err)

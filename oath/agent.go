@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
@@ -60,6 +62,7 @@ func apiContext(st *Store, names []string, budget int) (string, error) {
 	total := 0
 	var sections []string
 	var dropped []string
+	var included []string
 	for _, h := range queue {
 		s, err := printSpec(st, h)
 		if err != nil {
@@ -72,6 +75,7 @@ func apiContext(st *Store, names []string, budget int) (string, error) {
 		}
 		total += t
 		sections = append(sections, s)
+		included = append(included, h)
 	}
 	var b strings.Builder
 	b.WriteString(strings.Join(sections, "\n"))
@@ -79,8 +83,22 @@ func apiContext(st *Store, names []string, budget int) (string, error) {
 	if len(dropped) > 0 {
 		fmt.Fprintf(&b, "; OMITTED (over budget): %s", strings.Join(dropped, ", "))
 	}
-	b.WriteString("\n")
+	fmt.Fprintf(&b, "\n-- context-hash: %s\n", contextHash(included))
 	return b.String(), nil
+}
+
+// contextHash identifies WHAT an agent built against: the SHA-256 of the
+// sorted definition hashes actually served in a context slice (issue #4).
+// It hashes the identity set, not the rendered text, so a pretty-printer
+// change cannot alter what "built against these specs" means. An agent
+// passes it back via `put --context`, and the journal records it — making
+// implemented-against-stale-specs detectable after the fact by comparing
+// against the dependency hashes current at submission time.
+func contextHash(included []string) string {
+	hs := append([]string{}, included...)
+	sort.Strings(hs)
+	sum := sha256.Sum256([]byte(strings.Join(hs, "\n")))
+	return hex.EncodeToString(sum[:])
 }
 
 // cmdDependents answers the reverse question: who builds on this definition?

@@ -219,7 +219,7 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		reps, putErr := apiPut(tst, r.src, "fixtures")
+		reps, putErr := apiPut(tst, r.src, "fixtures", "")
 		os.RemoveAll(tmp)
 		// Rejection surfaces two ways: an elaboration error (returned as err),
 		// or a gate rejection (a report with Status "rejected").

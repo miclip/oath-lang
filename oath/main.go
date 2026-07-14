@@ -10,8 +10,9 @@ import (
 const usage = `oath — a content-addressed, spec-carrying language kernel
 
 usage:
-  oath put [--json] [--author <id>] <file.oath>
+  oath put [--json] [--author <id>] [--context <hash>] <file.oath>
                                       elaborate, typecheck, store, verify; every attempt is journaled
+                                      (--context: the context-hash the code was authored against)
   oath log [name]                     append-only submission journal (all attempts, incl. rejections)
   oath ls                             list named definitions and their guarantees
   oath get <name>                     print the human projection of a definition
@@ -44,6 +45,7 @@ func main() {
 	case "put":
 		jsonMode := false
 		author := os.Getenv("OATH_AUTHOR")
+		ctxHash := ""
 		var files []string
 		rest := args[1:]
 		for i := 0; i < len(rest); i++ {
@@ -53,6 +55,9 @@ func main() {
 			case rest[i] == "--author" && i+1 < len(rest):
 				author = rest[i+1]
 				i++
+			case rest[i] == "--context" && i+1 < len(rest):
+				ctxHash = rest[i+1]
+				i++
 			default:
 				files = append(files, rest[i])
 			}
@@ -61,9 +66,9 @@ func main() {
 			author = "unattributed"
 		}
 		if len(files) != 1 {
-			fail(fmt.Errorf("usage: oath put [--json] [--author <id>] <file.oath>"))
+			fail(fmt.Errorf("usage: oath put [--json] [--author <id>] [--context <hash>] <file.oath>"))
 		}
-		cmdPut(st, files[0], jsonMode, author)
+		cmdPut(st, files[0], jsonMode, author, ctxHash)
 	case "log":
 		filter := ""
 		if len(args) > 1 {
@@ -163,12 +168,12 @@ type propJSON struct {
 	Error          string `json:"error,omitempty"`
 }
 
-func cmdPut(st *Store, path string, jsonMode bool, author string) {
+func cmdPut(st *Store, path string, jsonMode bool, author string, ctxHash string) {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		fail(err)
 	}
-	results, perr := apiPut(st, string(src), author)
+	results, perr := apiPut(st, string(src), author, ctxHash)
 	if jsonMode {
 		b, _ := json.MarshalIndent(results, "", "  ")
 		fmt.Println(string(b))
