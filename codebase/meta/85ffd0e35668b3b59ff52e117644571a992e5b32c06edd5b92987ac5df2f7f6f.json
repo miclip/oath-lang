@@ -13,6 +13,8 @@
     "level": "tested",
     "cases": 200
   },
+  "mutants_killed": 10,
+  "mutants_total": 12,
   "termination": "nonrecursive",
   "author": "claude-haiku-loop",
   "param_names": [

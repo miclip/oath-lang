@@ -22,15 +22,18 @@ pub struct FuncInfo {
     pub hash: String,
     pub tyvars: u32,
     pub ty: Ty,
+    pub prop_names: Vec<String>,
+    pub param_names: Vec<String>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Store {
     pub data_by_name: BTreeMap<String, DataInfo>,
     pub func_by_name: BTreeMap<String, FuncInfo>,
     pub data_by_hash: BTreeMap<String, DataInfo>,
     pub func_by_hash: BTreeMap<String, FuncInfo>,
     pub def_by_name: BTreeMap<String, Def>,
+    pub def_by_hash: BTreeMap<String, Def>,
     pub order: Vec<String>,
     all_data_names: HashSet<String>,
     all_func_names: HashSet<String>,
@@ -633,12 +636,20 @@ impl Store {
         }
         // props
         let mut props = Vec::new();
+        let mut prop_names = Vec::new();
         for pform in &items[6..] {
+            prop_names.push(prop_name(pform)?);
             props.push(self.elab_prop(pform, &tyvar_names, &name, tyvars_count)?);
         }
         let def = Def::Func { tyvars: tyvars_count, ty: ty.clone(), body: fun_body, props };
         let hash = sha256_hex(canonical_bytes(&def).as_bytes());
-        let info = FuncInfo { hash: hash.clone(), tyvars: tyvars_count, ty };
+        let info = FuncInfo {
+            hash: hash.clone(),
+            tyvars: tyvars_count,
+            ty,
+            prop_names,
+            param_names: pnames.clone(),
+        };
         Ok(Elaborated::Func { name, def, info })
     }
 
@@ -677,17 +688,29 @@ impl Store {
         match e {
             Elaborated::Data { name, def, info } => {
                 self.data_by_name.insert(name.clone(), info.clone());
-                self.data_by_hash.insert(info.hash.clone(), info);
+                self.data_by_hash.insert(info.hash.clone(), info.clone());
+                self.def_by_hash.insert(info.hash.clone(), def.clone());
                 self.def_by_name.insert(name.clone(), def);
                 self.order.push(name);
             }
             Elaborated::Func { name, def, info } => {
                 self.func_by_name.insert(name.clone(), info.clone());
-                self.func_by_hash.insert(info.hash.clone(), info);
+                self.func_by_hash.insert(info.hash.clone(), info.clone());
+                self.def_by_hash.insert(info.hash.clone(), def.clone());
                 self.def_by_name.insert(name.clone(), def);
                 self.order.push(name);
             }
         }
+    }
+}
+
+fn prop_name(form: &Sexpr) -> ER<String> {
+    match form {
+        Sexpr::List(i) if i.len() == 4 => match &i[1] {
+            Sexpr::Sym(n) => Ok(n.clone()),
+            _ => hard("prop name must be a symbol".into()),
+        },
+        _ => hard("prop must be (prop name [binders] body)".into()),
     }
 }
 

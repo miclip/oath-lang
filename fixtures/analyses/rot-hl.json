@@ -7,6 +7,8 @@
     "",
     ""
   ],
+  "mutants_killed": 10,
+  "mutants_total": 12,
   "level": "tested",
   "cases": 200
 }

@@ -13,6 +13,8 @@
     "level": "tested",
     "cases": 200
   },
+  "mutants_killed": 9,
+  "mutants_total": 9,
   "termination": "nonrecursive",
   "author": "claude-haiku-oneshot",
   "param_names": [

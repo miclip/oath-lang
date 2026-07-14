@@ -160,3 +160,173 @@ highest-risk spots for a hidden cross-kernel disagreement.
   wording hazard; both goldens (`empty_props_omitted`, `prop_body_always_present`)
   reproduce with my reading (omit the `props` array when empty; always emit a
   present `Prop`'s `binders` even when `[]`).
+
+# DIVERGENCES — Stage 2 (dynamic conformance: eval, generation, analyses)
+
+Checks 4-5. The evaluator, deterministic generation, the value printer, and the
+§6 analyses had never been implemented independently, so the harvest is richer
+than stage 1. **UNTESTED** marks a choice that no fixture actually exercises —
+these are the real cross-kernel risk, because a passing conformance run does not
+constrain them.
+
+## Value printer / report format (§3.2, §5)
+
+18. **The per-property line format is `{mark} prop {name:<24} {status}`** — mark
+    is `✓` (U+2713) or `✗` (U+2717), then a literal ` prop `, the property name
+    left-justified in a **24-column** field, a single separator space, then
+    `passed 200 cases` or `FALSIFIED after N cases`. The 24 was reverse-engineered
+    from a hexdump (status text begins at byte/col 32 = 1 mark + 6 `" prop "` +
+    24 + 1). Nothing in the spec states this layout. *Disambiguated:* all 48
+    `verify/*.txt` reproduce, including a name longer than 24
+    (`antidistributes-over-append`), which shows the field does not truncate and
+    the single separator space remains.
+
+19. **`FALSIFIED after N cases` counts cases that PASSED before the failure**
+    (0-indexed failing case): spin fails on case 0 → `after 0 cases`; bad-reverse
+    on case 4 → `after 4 cases`. *Disambiguated* by both falsified fixtures.
+
+20. **The counterexample line is `    counterexample: <inputs>` (4-space indent),
+    inputs joined by `", "` in binder-declaration order, with an optional
+    `  (runtime error: MSG)` (two leading spaces) appended** (§3.2). Inputs are
+    printed from the *generated* values, before evaluation. *Disambiguated:*
+    bad-reverse (two list inputs) and spin (the runtime-error suffix).
+
+21. **Only two runtime-error message strings are observable.** `recursion too
+    deep (likely non-termination)` (depth bound) is pinned by spin. The fuel
+    message, `division by zero`, and `modulo by zero` are **UNTESTED** — every
+    corpus function guards its divisors and nothing reaches the fuel bound, so my
+    wording for those is a guess and could diverge.
+
+22. **Value-printer branches beyond int/data are UNTESTED.** Only `Int` and data
+    values (`(Cons -1 Nil)`, nullary `Nil` bare) appear in a counterexample. `Str`
+    (Go `strconv.Quote`), `Record` (`{name value ...}`), `Closure` (`<fn>`), and
+    the four `Native` renderings (`<fn x. x>`, `<fn x. A*x + B>`, `<fn _. V>`,
+    `<fn {K→V ...} else D>`) are implemented from prose only — no fixture produces
+    them, so their exact bytes are unverified.
+
+## Evaluator (§3, §3.1)
+
+23. **The §3.1 depth bound (100,000) assumes a growable host stack.** A direct
+    recursive evaluator overflows Rust's 8 MiB main stack long before depth
+    100,000, so the whole program runs on a worker thread with a 2 GiB stack (Go,
+    the reference host, grows goroutine stacks automatically). Without this the
+    kernel aborts instead of reporting the depth error. *Disambiguated:* spin's
+    `recursion too deep` only reproduces once the host can actually reach the
+    bound.
+
+24. **Fuel accounting is barely constrained.** I charge 1 unit per term-node
+    evaluation and 1 per application (§3.1). The *only* resource-bound fixture is
+    spin, which hits the **depth** bound (~100k levels, well under the 2,000,000
+    fuel), so the exact fuel count is never observed. A definition sitting exactly
+    at the fuel boundary could reveal an off-by-some in my per-node vs
+    per-application charging. **UNTESTED.**
+
+25. **`ref`/`self` re-evaluate the definition body on every use** (§3), producing
+    a fresh closure each time; `self` resolves against the *enclosing* def hash
+    threaded through evaluation. Correct for the corpus, but the only stress case
+    (spin) is a single self-call; mutual or nested self/ref interplay is lightly
+    exercised.
+
+## Deterministic generation (§4)
+
+26. **Whether a single-candidate data choice consumes a draw is UNTESTED but
+    assumed YES.** At size ≤ 0 the generator picks "uniformly among constructors
+    with no recursive field"; when there is exactly one (e.g. `Nil` for a list at
+    size 0) I still call `below(1)` (always 0, but it advances splitmix). This
+    matters only when more values are generated *after* the size-0 sub-draw within
+    the same case. In bad-reverse's reproduced counterexample the forced `Nil`
+    happens to be the very last draw, so the fixtures do NOT distinguish
+    draw-vs-no-draw here. A def whose counterexample depends on a size-0 sub-draw
+    ordering could diverge.
+
+27. **Passing properties do not constrain generation at all.** A property that is
+    true for every input reports `passed 200 cases` under *any* generator, so of
+    the whole §4 machinery only two things are actually pinned: integer generation
+    (spin's `-1`) and `List Int` generation (bad-reverse's two lists). Everything
+    else — the `Str` alphabet/length, `Bool`, `Int -> Int` identity/affine/table,
+    general table functions (`n = 1 + below(3)`, key-then-value order, trailing
+    default), record generation, and the exact recursion/`below` draw order for
+    data — is implemented to spec but **UNTESTED** for draw-exactness. This is the
+    single largest unverified surface in stage 2.
+
+28. **Seed derivation and splitmix64 are exact and validated.** `base` = BE u64 of
+    the first 8 hash bytes; `s = base ^ (pi<<32) ^ (c * 0xD1B54A32D192ED03)`;
+    `size = c mod 8`; each case reseeds from its own `c` (draws do not carry across
+    cases). Reproducing both counterexamples byte-for-byte pins these.
+
+## Termination (§6.1)
+
+29. **The lexicographic multi-position descent is exercised only by `merge`.** My
+    implementation backtracks over head positions, discharges `lt` sites, and
+    recurses `eq` sites on the remaining positions; merge (descends xs on one
+    branch, ys on the other) verifies `structural`. Single-position descent
+    (length, map, sum, …) and the `unknown` cases (spin) also reproduce. The
+    "self without a full application spine is conservative" clause is **UNTESTED**
+    (every self-call in the corpus is fully applied).
+
+## Confinement (§6.2)
+
+30. **The blessed-closure rule and the whole `inLam` machinery are UNTESTED.** No
+    example body contains a `(fn ...)` literal or any inner lambda, so `inLam` is
+    always false throughout, and the "lambda passed to a confined callee position
+    is a blessed closure" path (the `(map (fn [u] ((. net fetch) u)) urls)` idiom
+    from the spec) never fires. Implemented from prose; unverified. The five
+    higher-order params that *are* tested (greet/greet-or-guest `net` → confined,
+    map `f` → confined, leak/stash `net` → escapes) all reproduce, including
+    "a type variable in result position counts as data" (map's `f : a -> b`).
+
+## Mutation (§6.3)
+
+31. **Mutation scores are STORE METADATA, recorded selectively — a conforming
+    kernel cannot predict WHICH definitions carry one.** My engine reproduces all
+    **41** fixture-recorded scores exactly (abs 3/5, length 7/7, merge 8/11, rot
+    20/22, e-mod 17/20, t-member 4/5, …). But four `tested`/`proven` definitions
+    with well-defined, non-empty mutation sets — `count`, `rot-h2`, `rot-h3`,
+    `rot-hl` — carry **no** score in the fixtures (I compute 3/9, 9/9, 10/12,
+    10/12). §8 makes mutation a per-hash verdict field populated by an explicit
+    `oath mutate`; it is not a pure function of the `Def`. Consequence: check 5
+    can only assert "every score the reference recorded, we reproduce" — my
+    harness compares mutation *only where the fixture has it*.
+
+32. **The self-chain "forgot to recurse" mutation fires only at the MAXIMAL
+    application**, not at inner sub-applications of the same chain. I gate it on
+    "this App is not the function-child of another App". Firing it at every
+    sub-app would inflate totals. *Disambiguated* by matching counts (e.g. abs 5,
+    count 9, merge 11).
+
+33. **Match-arm-body swaps cover ALL pairs `(i,j)` with `i<j`, not just
+    adjacent**, and cross-arity swaps are left in the candidate set to be rejected
+    by the typecheck gate (de Bruijn misalignment). Int-literal mutations are
+    `{old+1, old-1, 0}` minus the unchanged value, with exact duplicates collapsed
+    by the by-hash dedup (original hash pre-seeded, typecheck-failing mutants
+    dropped before counting). All *disambiguated* by matching the 41 totals.
+
+## Guarantee / analyses coupling
+
+34. **Check-5 files depend on check-6 (SMT) outputs, so stage 2 cannot fully
+    satisfy them.** The `analyses/*.json` guarantee block carries a proof-derived
+    `level: "proven"` and a `proven: N` count (§7.3) for 30 definitions. These
+    come from the SMT prover, which the brief defers to stage 3. I compute the
+    testing-derived base level (`asserted`/`tested`/`falsified`) and omit
+    `proven`; my harness compares `level` modulo the proof upgrade
+    (`proven` ≡ `tested`) and skips `proven`. The MANIFEST lists analyses (5) and
+    proof (6) as separate checks, but the analyses *level* is not reconstructible
+    without the proof outcomes — worth flagging as a spec/fixture coupling.
+
+35. **Field presence in the analyses record is conditional and had to be
+    inferred:** `termination`/`confinement` for every func; `cases: 200` iff
+    `level ∈ {tested, proven}`; `mutants_*` only when a score exists AND is
+    non-zero (`abs-small` has a body with no mutable node → 0 mutants → the fields
+    are omitted, like a zero-value omission); `proven` iff `> 0`. Data defs carry
+    only `name/hash/kind/level:"asserted"`.
+
+## Suspected bug / fixture issue (stage 2)
+
+- **The check-5 fixture set is internally inconsistent for mutation.** It presents
+  `analyses/*.json` as the ground truth for "mutation ... match", yet four
+  `tested`/`proven` definitions omit their (well-defined) mutation scores because
+  `oath mutate` was never run on them in the reference store. A second
+  implementation doing a naive byte/field comparison of the whole file will fail
+  on `count`, `rot-h2`, `rot-h3`, `rot-hl` through no fault of its analysis
+  engine. Either those scores should be materialized, or the manifest should state
+  that mutation presence is store state, not a derived verdict.
