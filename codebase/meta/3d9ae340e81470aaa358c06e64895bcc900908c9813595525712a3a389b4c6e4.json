@@ -1,0 +1,36 @@
+{
+  "name": "insert",
+  "prop_names": [
+    "grows-length-by-one",
+    "keeps-sortedness",
+    "adds-one-occurrence",
+    "preserves-other-counts",
+    "commutative",
+    "noop-when-sorted-at-head"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 6
+  },
+  "mutants_killed": 4,
+  "mutants_total": 5,
+  "termination": "structural",
+  "author": "claude-main",
+  "param_names": [
+    "x",
+    "xs"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ]
+}

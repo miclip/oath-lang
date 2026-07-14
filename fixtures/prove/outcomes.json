@@ -230,7 +230,7 @@
     },
     {
       "name": "insert",
-      "hash": "1567f88c79aa6d021fba3adc49745964bea3286e96f81bf326b85e55b5d708d5",
+      "hash": "3d9ae340e81470aaa358c06e64895bcc900908c9813595525712a3a389b4c6e4",
       "level": "proven",
       "proven_count": 6,
       "prop_count": 6,
@@ -263,10 +263,10 @@
     },
     {
       "name": "is-sorted",
-      "hash": "5ca9a71a7e3420dc024703683a2b6af4e226ea3e2f127c2249220df1e402f0d8",
+      "hash": "88d76e3d694f8a7c06e9b97203c12c78551529b565a0745ba82b53334a9a7b0f",
       "level": "proven",
-      "proven_count": 2,
-      "prop_count": 2,
+      "proven_count": 5,
+      "prop_count": 5,
       "props": [
         {
           "name": "empty-and-singletons-sorted",
@@ -274,6 +274,18 @@
         },
         {
           "name": "tail-of-sorted-is-sorted",
+          "proven": true
+        },
+        {
+          "name": "equal-neighbors-sorted",
+          "proven": true
+        },
+        {
+          "name": "detects-inversion",
+          "proven": true
+        },
+        {
+          "name": "head-law",
           "proven": true
         }
       ]
@@ -339,7 +351,7 @@
     },
     {
       "name": "merge",
-      "hash": "48bba3216924784d59489cc7e94822ee1b929170d6b488689dba1f1e922a8b17",
+      "hash": "68805a66510e38e4be819d6ac94ea2b7c6294007156075ba93db0609f89c8d58",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 3,
@@ -428,7 +440,7 @@
     },
     {
       "name": "sort",
-      "hash": "c21e20a7a7be9b5c4936e19e287dfaa665880fbc548deedfcdfeec20db2e7a9f",
+      "hash": "fcf2654f59d04e2be94e398186415f4967ad0a7a48d73a39ff6bd606bf1fe0d7",
       "level": "proven",
       "proven_count": 7,
       "prop_count": 7,

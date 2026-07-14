@@ -19,7 +19,7 @@ the substrate is the product.
   library). Plus per-definition verdicts: termination (Foetus-lite),
   capability confinement (no-escape), spec strength (mutation testing),
   provenance (append-only journal with principals).
-- ~22 functions / 64 properties proven, incl. reverse-involution and
+- ~22 functions / 67 properties proven, incl. reverse-involution and
   insertion-sort correctness in full (sorted + permutation + idempotent +
   reverse-invariant, via the sorted-fixpoint lemma chain). Deliberate honest
   exhibits: `bad-reverse` (falsified), `spin` (termination unproven),

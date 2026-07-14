@@ -1,13 +1,14 @@
 {
   "name": "is-sorted",
-  "hash": "5ca9a71a7e3420dc024703683a2b6af4e226ea3e2f127c2249220df1e402f0d8",
+  "hash": "88d76e3d694f8a7c06e9b97203c12c78551529b565a0745ba82b53334a9a7b0f",
   "kind": "func",
   "termination": "structural",
   "confinement": [
     ""
   ],
+  "mutants_killed": 5,
   "mutants_total": 5,
   "level": "proven",
   "cases": 200,
-  "proven": 2
+  "proven": 5
 }

@@ -26,7 +26,7 @@ single-constructor datatypes, and function values are array-encoded (so
 higher-order properties quantify over *all functions* and capability
 properties over *all worlds*). Proven properties become a **lemma library**:
 they are asserted as axioms in later proofs, composing bottom-up through
-the hash graph like every other verdict. 22 functions / 64 properties are
+the hash graph like every other verdict. 22 functions / 67 properties are
 fully proven, including `reverse (reverse xs) == xs` (via the append laws
 and its own antidistribution lemma), insertion sort's complete correctness —
 `output-is-sorted`, `preserves-counts` (the permutation oath), `idempotent`,

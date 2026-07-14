@@ -1,0 +1,32 @@
+{
+  "name": "is-sorted",
+  "prop_names": [
+    "empty-and-singletons-sorted",
+    "tail-of-sorted-is-sorted",
+    "equal-neighbors-sorted",
+    "detects-inversion",
+    "head-law"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 5
+  },
+  "mutants_killed": 5,
+  "mutants_total": 5,
+  "termination": "structural",
+  "author": "claude-main",
+  "param_names": [
+    "xs"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ]
+}

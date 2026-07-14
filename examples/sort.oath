@@ -26,7 +26,21 @@
         (match xs
           ((Nil) true)
           ((Cons h t) (is-sorted t)))
-        true)))
+        true))
+  ; Anchors added after mutation testing scored the spec 0/5 (#18): the two
+  ; props above hold for ANY predicate that is true on small lists and
+  ; downward-closed on tails, so no mutant of the body was noticed. A
+  ; positive fact about equal neighbors (kills <= -> <), a negative fact
+  ; about an inversion (kills the always-true and and->or mutants), and the
+  ; head decomposition law pin the definition down.
+  (prop equal-neighbors-sorted [(x Int)]
+    (is-sorted (Cons [Int] x (Cons [Int] x (Nil [Int])))))
+  (prop detects-inversion [(x Int) (y Int)]
+    (if (< y x)
+        (not (is-sorted (Cons [Int] x (Cons [Int] y (Nil [Int])))))
+        true))
+  (prop head-law [(x Int) (y Int) (t (List Int))]
+    (if (is-sorted (Cons [Int] x (Cons [Int] y t))) (<= x y) true)))
 
 (defn insert [] [(x Int) (xs (List Int))] (List Int)
   (match xs
