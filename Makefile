@@ -3,7 +3,7 @@
 # Dependency order matters: later files reference earlier definitions.
 # bad_reverse/nontotal/undertested exit nonzero BY DESIGN (falsified /
 # unproven exhibits) — the leading dash tolerates them.
-EXAMPLES = list sort records extras ints service leaky
+EXAMPLES = list sort merge records extras ints service leaky
 EXHIBITS = undertested nontotal bad_reverse
 PROVABLE = length append sum count reverse map contains is-sorted insert \
            sort take drop max2 abs sign clamp or-else shout full-name \

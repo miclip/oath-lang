@@ -1,0 +1,22 @@
+{
+  "name": "merge",
+  "prop_names": [
+    "length-adds",
+    "preserves-counts",
+    "keeps-sortedness"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "structural",
+  "author": "claude-main",
+  "param_names": [
+    "xs",
+    "ys"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

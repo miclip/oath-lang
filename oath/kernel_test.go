@@ -317,6 +317,42 @@ func TestContextHashJournaled(t *testing.T) {
 	}
 }
 
+// Lexicographic termination (#11): merge descends on either argument
+// depending on the branch — no single position always shrinks, but the lex
+// order (xs, ys) discharges both sites.
+func TestLexicographicTerminationMerge(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(data List [a] (Nil) (Cons a (List a)))`)
+	reps := put(t, st, `(defn merge [] [(xs (List Int)) (ys (List Int))] (List Int)
+		(match xs
+			((Nil) ys)
+			((Cons hx tx)
+				(match ys
+					((Nil) xs)
+					((Cons hy ty)
+						(if (<= hx hy)
+							(Cons [Int] hx (merge tx ys))
+							(Cons [Int] hy (merge xs ty))))))))`)
+	if got := reps[len(reps)-1].Termination; got != "structural" {
+		t.Fatalf("merge termination = %q, want structural (lexicographic descent)", got)
+	}
+}
+
+// The lex search must not bless non-descending recursion: swapping arguments
+// or passing them unchanged both loop forever and must stay unknown.
+func TestLexicographicRejectsNonDescent(t *testing.T) {
+	st := newStore(t)
+	for _, src := range []string{
+		`(defn swap2 [] [(x Int) (y Int)] Int (swap2 y x))`,
+		`(defn loop2 [] [(x Int) (y Int)] Int (loop2 x y))`,
+	} {
+		reps := put(t, st, src)
+		if got := reps[len(reps)-1].Termination; got != "unknown" {
+			t.Fatalf("%s: termination = %q, want unknown", src, got)
+		}
+	}
+}
+
 // d fetches a def by hash for a test assertion.
 func d(st *Store, h string) *Def {
 	def, err := st.GetDef(h)

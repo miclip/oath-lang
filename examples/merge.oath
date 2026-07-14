@@ -1,0 +1,30 @@
+; Merge of two lists — the classic function whose totality needs a
+; LEXICOGRAPHIC order: neither argument descends at every self-call (the
+; left branch shrinks xs and keeps ys, the right branch keeps xs and
+; shrinks ys), so no single-position argument exists. The order (xs, ys)
+; discharges both sites and the checker proves merge total.
+;
+; Its properties are honestly `tested`, not proven: the prover's structural
+; induction is single-binder, and merge's proofs need induction along the
+; same lexicographic descent — a prover rung that does not exist yet.
+
+(defn merge [] [(xs (List Int)) (ys (List Int))] (List Int)
+  (match xs
+    ((Nil) ys)
+    ((Cons hx tx)
+      (match ys
+        ((Nil) xs)
+        ((Cons hy ty)
+          (if (<= hx hy)
+              (Cons [Int] hx (merge tx ys))
+              (Cons [Int] hy (merge xs ty)))))))
+  (prop length-adds [(xs (List Int)) (ys (List Int))]
+    (== (length [Int] (merge xs ys))
+        (+ (length [Int] xs) (length [Int] ys))))
+  (prop preserves-counts [(x Int) (xs (List Int)) (ys (List Int))]
+    (== (count x (merge xs ys))
+        (+ (count x xs) (count x ys))))
+  (prop keeps-sortedness [(xs (List Int)) (ys (List Int))]
+    (if (and (is-sorted xs) (is-sorted ys))
+        (is-sorted (merge xs ys))
+        true)))

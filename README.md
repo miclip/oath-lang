@@ -44,7 +44,8 @@ the fragment on purpose (kernel truncates, SMT-LIB is Euclidean — a
 "proof" would certify the wrong theorem).
 
 Two more dimensions ride alongside: **termination** (a structural checker
-proves totality where recursion visibly descends — `total` in listings;
+proves totality where recursion visibly descends, including lexicographic
+descent — `merge` alternates which argument shrinks and is still `total`;
 everything else is honestly `termination unproven` and fuel-bounded) and
 **spec strength** (mutation-tested: do the properties notice when the body
 changes?).

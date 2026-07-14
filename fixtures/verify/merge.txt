@@ -1,0 +1,3 @@
+✓ prop length-adds              passed 200 cases
+✓ prop preserves-counts         passed 200 cases
+✓ prop keeps-sortedness         passed 200 cases

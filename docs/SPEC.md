@@ -351,10 +351,24 @@ The verdict is:
 - `unknown` if any body-referenced function has missing metadata or a
   non-total termination verdict;
 - `nonrecursive` if no self-call sites are recorded;
-- `structural` if there exists one parameter index `j` such that every
-  recorded self-call has an argument at position `j` whose relation contains
-  `j -> lt`;
+- `structural` if a LEXICOGRAPHIC order of parameter positions discharges
+  every recorded self-call site (below);
 - `unknown` otherwise.
+
+The lexicographic search considers, per site and position `j`, only the
+diagonal relation — how the argument passed at position `j` relates to
+parameter `j` itself: `lt` (strict subterm), `eq` (the parameter unchanged),
+or unknown. A position may head an order iff every remaining site is `lt` or
+`eq` there and at least one is `lt`; sites at `lt` are discharged, sites at
+`eq` must be discharged recursively by the remaining positions, and the
+search backtracks over head choices. A single always-descending position is
+the length-1 case, so this strictly extends the earlier rule: previously
+`structural` verdicts are unchanged, and merge-style functions that
+alternate descent between two arguments now verify. Soundness: each
+self-call strictly decreases the tuple of parameters in the chosen order
+under the well-founded subterm relation. Nested recursion whose outer
+argument is a constructor application (Ackermann-style) is still `unknown`:
+relations track variables only, and a non-variable argument has no relation.
 
 Only refs in the body count as callee obligations; properties are not
 production code and do not affect totality.

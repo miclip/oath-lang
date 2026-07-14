@@ -2,13 +2,19 @@ package main
 
 // Structural termination checking — Foetus-lite, after Agda's checker.
 //
-// A function is provably total if there is some fixed parameter position j
-// such that EVERY self-call passes, at position j, a variable that is a
-// strict subterm of parameter j (obtained by matching on it, transitively).
-// Each recursive call then strictly shrinks a finite value, so no infinite
-// call chain exists. Additionally every function the body references must
-// already be total — and since references are content hashes, dependency
-// cycles are impossible, so totality composes bottom-up for free.
+// A function is provably total if some LEXICOGRAPHIC order of parameter
+// positions (p1, p2, ...) exists such that every self-call strictly shrinks
+// the tuple (param p1, param p2, ...): at each call site there is a first
+// position in the order where the passed argument is a strict subterm of
+// that parameter (obtained by matching on it, transitively), and at every
+// earlier position in the order the argument IS the corresponding parameter
+// unchanged. The subterm relation is well-founded, so the tuple cannot
+// shrink forever and no infinite call chain exists. A single always-
+// descending position is the length-1 special case; merge-style functions
+// that alternate descent between arguments need length 2. Additionally
+// every function the body references must already be total — and since
+// references are content hashes, dependency cycles are impossible, so
+// totality composes bottom-up for free.
 //
 // The analysis is conservative: anything it cannot see (descent through
 // let-bindings, self passed as a value, non-variable scrutinees) yields
@@ -160,17 +166,65 @@ func terminationOf(st *Store, d *Def) string {
 	if len(w.sites) == 0 {
 		return "nonrecursive"
 	}
-	for j := 0; j < nparams; j++ {
-		descends := true
-		for _, cs := range w.sites {
-			if j >= len(cs.args) || cs.args[j] == nil || cs.args[j][j] != "lt" {
-				descends = false
+	positions := make([]int, nparams)
+	for j := range positions {
+		positions[j] = j
+	}
+	if lexDescends(w.sites, positions) {
+		return "structural"
+	}
+	return "unknown"
+}
+
+// relAt is the diagonal of a call site: how the argument passed at position j
+// relates to parameter j itself ("lt" strict subterm, "eq" the parameter
+// unchanged, "" unknown).
+func relAt(cs callSite, j int) string {
+	if j >= len(cs.args) || cs.args[j] == nil {
+		return ""
+	}
+	return cs.args[j][j]
+}
+
+// lexDescends searches (with backtracking) for a lexicographic order over the
+// given positions that discharges every call site. A position heads a valid
+// order iff every remaining site is "lt" or "eq" there — one "" would mean
+// the tuple could grow at that position — and at least one site is "lt"
+// (otherwise the position discharges nothing). Sites that are "lt" are
+// discharged; sites that are "eq" must be discharged by the rest of the
+// order, over the remaining positions. Positions are few, so the exponential
+// worst case is irrelevant in practice.
+func lexDescends(sites []callSite, positions []int) bool {
+	if len(sites) == 0 {
+		return true
+	}
+	for i, j := range positions {
+		usable, anyLt := true, false
+		for _, cs := range sites {
+			switch relAt(cs, j) {
+			case "lt":
+				anyLt = true
+			case "eq":
+			default:
+				usable = false
+			}
+			if !usable {
 				break
 			}
 		}
-		if descends {
-			return "structural"
+		if !usable || !anyLt {
+			continue
+		}
+		var remaining []callSite
+		for _, cs := range sites {
+			if relAt(cs, j) == "eq" {
+				remaining = append(remaining, cs)
+			}
+		}
+		rest := append(append([]int{}, positions[:i]...), positions[i+1:]...)
+		if lexDescends(remaining, rest) {
+			return true
 		}
 	}
-	return "unknown"
+	return false
 }

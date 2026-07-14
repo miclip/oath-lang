@@ -1,0 +1,12 @@
+{
+  "name": "merge",
+  "hash": "48bba3216924784d59489cc7e94822ee1b929170d6b488689dba1f1e922a8b17",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}
