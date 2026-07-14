@@ -1,0 +1,32 @@
+{
+  "name": "kv-put",
+  "prop_names": [
+    "read-your-write",
+    "frame-other-keys",
+    "overwrite-last-wins"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "w",
+    "k",
+    "v"
+  ],
+  "confinement": [
+    "",
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

@@ -76,10 +76,22 @@ demonstrates the pattern end to end.
    curried capability is a derived closure containing the capability, and
    escapes. Remaining conservatism: a closure passed to a confined position
    of the capability ITSELF (no metadata to consult) counts as an escape.
-3. **Stateful worlds:** today's tables are pure functions, so they model
-   read-only worlds. Sequenced effects (write-then-read) need explicit
-   state threading in the function's own signature; a `World`-state
-   convention plus generator support for scripted record/replay worlds.
+3. **Stateful worlds — SHIPPED, as a pattern rather than a feature.** The
+   design question ("a World-state convention the generator understands vs
+   per-capability state machines") resolved by rejecting both: generated
+   opaque transition functions produce *lawless worlds* — a random `get`
+   table owes nothing to `put`, so sequenced logic would be verified
+   against incoherent physics. Instead: **state is data, transitions are
+   code.** A world is an explicit ADT value threaded through pure
+   functions; the existing generator therefore quantifies over every
+   reachable world shape with zero new machinery, the laws of the world
+   (read-your-writes, frame, overwrite) are ordinary properties — and
+   PROVEN ones, by induction where needed — and failure injection is a sum
+   type over the world (`Flaky = Up KV | Down`). `examples/stateful.oath`
+   is the worked pattern: a key-value world, client code composing it, and
+   an unreliable wrapper, 9/9 properties proven for all worlds. What
+   remains genuinely open at this stage: modeling time and interleaving
+   (concurrency) — a world value serializes one history.
 4. **Entry-point wiring:** the eventual compiler backend supplies genuine
    capabilities exactly once, at the program boundary; everything below the
    boundary keeps the property that authority is visible in every signature

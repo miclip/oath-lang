@@ -1,0 +1,2 @@
+✓ prop down-is-none             passed 200 cases
+✓ prop up-is-some               passed 200 cases

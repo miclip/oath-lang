@@ -1,0 +1,15 @@
+{
+  "name": "safe-get",
+  "hash": "c41b6e5ddbdc70df83b6669f77179f568e796f1f3604e7be7e8de6701eefbdf8",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

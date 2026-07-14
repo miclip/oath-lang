@@ -1,0 +1,14 @@
+{
+  "name": "rename-key",
+  "hash": "0e769aad12a99c6e163c6fe8210674eac4e2fff90393e432e4d5fca591dc1170",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

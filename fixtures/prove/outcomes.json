@@ -461,6 +461,44 @@
       ]
     },
     {
+      "name": "kv-get",
+      "hash": "2683054b286eae77dfe0725a7c7b56744ce2711fc79ebc9863480b6f357b7a57",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-yields-default",
+          "proven": true
+        },
+        {
+          "name": "bound-head-wins",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "kv-put",
+      "hash": "ed75e564b63dad464fe86e1426ac1d699e92ab56edecef713843b22decfd0222",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "read-your-write",
+          "proven": true
+        },
+        {
+          "name": "frame-other-keys",
+          "proven": true
+        },
+        {
+          "name": "overwrite-last-wins",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "length",
       "hash": "9d1a114582fd7f10b82c148357c3a2a8a062058ebe71c41c1ce9a94fe9cc2b14",
       "level": "proven",
@@ -669,6 +707,23 @@
         },
         {
           "name": "to-list-order-anchor",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "rename-key",
+      "hash": "0e769aad12a99c6e163c6fe8210674eac4e2fff90393e432e4d5fca591dc1170",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "destination-holds-source",
+          "proven": true
+        },
+        {
+          "name": "source-untouched-when-distinct",
           "proven": true
         }
       ]
@@ -959,6 +1014,23 @@
         {
           "name": "decomposes-in-range",
           "proven": false
+        }
+      ]
+    },
+    {
+      "name": "safe-get",
+      "hash": "c41b6e5ddbdc70df83b6669f77179f568e796f1f3604e7be7e8de6701eefbdf8",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "down-is-none",
+          "proven": true
+        },
+        {
+          "name": "up-is-some",
+          "proven": true
         }
       ]
     },

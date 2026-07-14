@@ -1,0 +1,59 @@
+; Effects stage 3 (docs/effects.md): stateful worlds. The resolution is a
+; pattern, not a kernel feature — STATE IS DATA, TRANSITIONS ARE CODE.
+; A world is an explicit value threaded through pure functions, so the
+; generator quantifies over every reachable world shape, the laws of the
+; world are ordinary provable properties, and failure injection is a sum
+; type. Generated opaque transition functions were considered and rejected:
+; they produce lawless worlds (a random `get` owes nothing to `put`).
+
+; A key-value world: the canonical stateful capability.
+(data KV []
+  (Empty)
+  (Bind Int Str KV))
+
+(defn kv-get [] [(w KV) (k Int)] Str
+  (match w
+    ((Empty) "")
+    ((Bind k2 v rest) (if (== k k2) v (kv-get rest k))))
+  (prop empty-yields-default [(k Int)]
+    (== (kv-get (Empty) k) ""))
+  (prop bound-head-wins [(w KV) (k Int) (v Str)]
+    (== (kv-get (Bind k v w) k) v)))
+
+(defn kv-put [] [(w KV) (k Int) (v Str)] KV
+  (Bind k v w)
+  ; The store laws: sequenced behavior verified against ALL worlds, not a
+  ; scripted few. read-your-write is the law a lawless generated world
+  ; could never promise.
+  (prop read-your-write [(w KV) (k Int) (v Str)]
+    (== (kv-get (kv-put w k v) k) v))
+  (prop frame-other-keys [(w KV) (k Int) (k2 Int) (v Str)]
+    (if (== k k2)
+        true
+        (== (kv-get (kv-put w k v) k2) (kv-get w k2))))
+  (prop overwrite-last-wins [(w KV) (k Int) (v Str) (v2 Str)]
+    (== (kv-get (kv-put (kv-put w k v) k v2) k) v2)))
+
+; Client code threading the world: a rename built from get+put.
+(defn rename-key [] [(w KV) (from Int) (to Int)] KV
+  (kv-put w to (kv-get w from))
+  (prop destination-holds-source [(w KV) (a Int) (b Int)]
+    (== (kv-get (rename-key w a b) b) (kv-get w a)))
+  (prop source-untouched-when-distinct [(w KV) (a Int) (b Int)]
+    (if (== a b)
+        true
+        (== (kv-get (rename-key w a b) a) (kv-get w a)))))
+
+; Failure injection: an unreliable world is a sum type over the world.
+(data Flaky []
+  (Up KV)
+  (Down))
+
+(defn safe-get [] [(fw Flaky) (k Int)] (Option Str)
+  (match fw
+    ((Up w) (Some [Str] (kv-get w k)))
+    ((Down) (None [Str])))
+  (prop down-is-none [(k Int)]
+    (== (safe-get (Down) k) (None [Str])))
+  (prop up-is-some [(w KV) (k Int)]
+    (== (safe-get (Up w) k) (Some [Str] (kv-get w k)))))

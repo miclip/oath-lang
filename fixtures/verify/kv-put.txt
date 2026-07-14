@@ -1,0 +1,3 @@
+✓ prop read-your-write          passed 200 cases
+✓ prop frame-other-keys         passed 200 cases
+✓ prop overwrite-last-wins      passed 200 cases

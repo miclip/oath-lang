@@ -1,0 +1,14 @@
+{
+  "name": "kv-put",
+  "hash": "ed75e564b63dad464fe86e1426ac1d699e92ab56edecef713843b22decfd0222",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

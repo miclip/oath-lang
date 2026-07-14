@@ -1,0 +1,15 @@
+{
+  "name": "kv-get",
+  "hash": "2683054b286eae77dfe0725a7c7b56744ce2711fc79ebc9863480b6f357b7a57",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}
