@@ -212,6 +212,12 @@ func apiVerify(st *Store, name string) (string, error) {
 	if len(reports) == 0 {
 		return fmt.Sprintf("%s has no properties; guarantee remains: asserted", name), nil
 	}
+	return renderVerifyReports(reports), nil
+}
+
+// renderVerifyReports formats property verdicts identically for the CLI and for
+// conformance fixtures.
+func renderVerifyReports(reports []PropReport) string {
 	var b strings.Builder
 	for _, r := range reports {
 		if r.Failed {
@@ -222,7 +228,7 @@ func apiVerify(st *Store, name string) (string, error) {
 			fmt.Fprintf(&b, "✓ prop %-24s passed %d cases\n", r.Name, r.Passed)
 		}
 	}
-	return b.String(), nil
+	return b.String()
 }
 
 func apiLog(st *Store, filter string) string {

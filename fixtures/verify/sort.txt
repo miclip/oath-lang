@@ -1,0 +1,5 @@
+✓ prop output-is-sorted         passed 200 cases
+✓ prop preserves-length         passed 200 cases
+✓ prop preserves-counts         passed 200 cases
+✓ prop idempotent               passed 200 cases
+✓ prop reverse-invariant        passed 200 cases

@@ -1,0 +1,10 @@
+{
+  "name": "spin",
+  "hash": "508462c7ea0bba1137c74dbb622bf587904d44b4e770488a52f957cdc75dd6a7",
+  "kind": "func",
+  "termination": "unknown",
+  "confinement": [
+    ""
+  ],
+  "level": "falsified"
+}

@@ -1,0 +1,13 @@
+{
+  "name": "insert",
+  "hash": "1b95cdcea31601cbdb027ebc07fd1c9a77f09e82f7db0ce787d2f0a5ff08dcb4",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 4
+}

@@ -1,0 +1,10 @@
+{
+  "name": "leak",
+  "hash": "e4a8576b455551cdf60f50f44acf5f41cde73b6ff95fe098e7d593a740c8ee69",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "escapes"
+  ],
+  "level": "asserted"
+}

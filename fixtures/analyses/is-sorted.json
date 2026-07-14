@@ -1,0 +1,12 @@
+{
+  "name": "is-sorted",
+  "hash": "5ca9a71a7e3420dc024703683a2b6af4e226ea3e2f127c2249220df1e402f0d8",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

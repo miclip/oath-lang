@@ -1,0 +1,13 @@
+{
+  "name": "take",
+  "hash": "f4d115c9b316378528dc706a1b4891d64429f3ce7dff19045538603adc342bd7",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 4
+}

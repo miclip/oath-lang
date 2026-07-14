@@ -1,0 +1,3 @@
+✓ prop exact-shape              passed 200 cases
+✓ prop never-shorter-than-frame passed 200 cases
+✓ prop same-world-same-answer   passed 200 cases

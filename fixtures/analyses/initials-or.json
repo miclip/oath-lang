@@ -1,0 +1,13 @@
+{
+  "name": "initials-or",
+  "hash": "9c5df61017e4e3e03a65525e3e02311b3d671518bc0399e0b812e855be944661",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

@@ -1,0 +1,10 @@
+{
+  "name": "bad-reverse",
+  "hash": "1206b5cf6cbaadda66fabbb4563666e02873da9f0a2aea617cc6e65b94ce737a",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "falsified"
+}

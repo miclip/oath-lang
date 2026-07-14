@@ -1,0 +1,12 @@
+{
+  "name": "sum",
+  "hash": "e2517754c5472cb8aacbdec705dd6c7974ddebf9809ed4320a469220061ad11a",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

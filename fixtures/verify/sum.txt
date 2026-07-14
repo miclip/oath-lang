@@ -1,0 +1,2 @@
+✓ prop distributes-over-append  passed 200 cases
+✓ prop reverse-invariant        passed 200 cases

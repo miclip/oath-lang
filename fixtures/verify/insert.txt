@@ -1,0 +1,4 @@
+✓ prop grows-length-by-one      passed 200 cases
+✓ prop keeps-sortedness         passed 200 cases
+✓ prop adds-one-occurrence      passed 200 cases
+✓ prop preserves-other-counts   passed 200 cases

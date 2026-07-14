@@ -1,0 +1,12 @@
+{
+  "name": "full-name",
+  "hash": "7c6b92ee08b5d41bae3cff9b4e715f6e9920e7a47007e4b9905c0bceb09e9060",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

@@ -1,0 +1,12 @@
+{
+  "name": "shout",
+  "hash": "dfc78eabbc1bd1540889471f284ea903755f66a07afb924cc66d3c26e8eee0c6",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

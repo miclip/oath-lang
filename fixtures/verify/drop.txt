@@ -1,0 +1,4 @@
+✓ prop drop-all                 passed 200 cases
+✓ prop drop-zero                passed 200 cases
+✓ prop drop-one                 passed 200 cases
+✓ prop drop-length              passed 200 cases

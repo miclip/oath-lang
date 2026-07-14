@@ -1,0 +1,13 @@
+{
+  "name": "max2",
+  "hash": "b2ec270589430a8a8b1606d3d7784075e1d0c2320a5ca3ce10378809efe28198",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 4
+}

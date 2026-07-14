@@ -1,0 +1,13 @@
+{
+  "name": "greet-or-guest",
+  "hash": "031c3e413a2e553607c65a5b74b701d5405518026fde9211d766aac790236cac",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

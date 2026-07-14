@@ -1,0 +1,12 @@
+{
+  "name": "abs",
+  "hash": "a9539835b77693d72812ab2a5f986e1c787427303e823912b975d352b9dce470",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

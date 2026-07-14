@@ -22,6 +22,7 @@ usage:
   oath prove <name>                   SMT-prove properties for ALL inputs (non-recursive Int/Bool fragment)
   oath eval "<expr>"                  typecheck and evaluate an expression
   oath serve                          MCP server over stdio (tools for agent sessions)
+  oath fixtures <dir>                 materialize the SPEC §10 conformance suite as byte fixtures
 
 the codebase lives in ./codebase (override with OATH_STORE)`
 
@@ -117,6 +118,11 @@ func main() {
 		cmdProve(st, args[1])
 	case "serve":
 		cmdServe(st)
+	case "fixtures":
+		if len(args) != 2 {
+			fail(fmt.Errorf("usage: oath fixtures <dir>"))
+		}
+		cmdFixtures(st, args[1])
 	case "eval":
 		if len(args) != 2 {
 			fail(fmt.Errorf("usage: oath eval \"<expr>\""))

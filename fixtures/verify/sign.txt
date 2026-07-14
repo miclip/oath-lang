@@ -1,0 +1,2 @@
+✓ prop bounded                  passed 200 cases
+✓ prop reconstructs             passed 200 cases

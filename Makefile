@@ -12,7 +12,7 @@ PROVABLE = length append sum count reverse map contains is-sorted insert \
 OATH = ./oath/oath
 AUTHOR ?= claude-main
 
-.PHONY: build verify prove mutate check
+.PHONY: build verify prove mutate check fixtures
 
 build:
 	cd oath && go build -o oath .
@@ -42,3 +42,8 @@ mutate: build
 
 check: verify prove
 	@$(OATH) ls
+
+# Freeze the conformance suite (SPEC §10) from the current store. Run after
+# `make check` so proof outcomes reflect the latest verdicts.
+fixtures: build
+	@$(OATH) fixtures fixtures

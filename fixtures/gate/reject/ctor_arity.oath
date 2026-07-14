@@ -1,0 +1,2 @@
+(data Box [] (Mk Int))
+(defn bad [] [] Box (Mk))

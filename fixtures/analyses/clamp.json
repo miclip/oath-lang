@@ -1,0 +1,14 @@
+{
+  "name": "clamp",
+  "hash": "65355c03dd21a7dc256125dc1389389ef5635f61a99b7ad84db7f69e922aeaec",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

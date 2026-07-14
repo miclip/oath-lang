@@ -156,6 +156,51 @@ func TestStaleProvenDemoted(t *testing.T) {
 	}
 }
 
+// Fixture generation must be read-only (never mutate the store) and
+// deterministic (byte-identical across runs) — both regressed during
+// development.
+func TestFixturesReadOnlyAndDeterministic(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(defn abs [] [(x Int)] Int
+		(if (< x 0) (neg x) x)
+		(prop non-negative [(x Int)] (<= 0 (abs x))))`)
+	h, _ := st.Resolve("abs")
+	before, _ := os.ReadFile(filepath.Join(st.Root, "meta", h+".json"))
+
+	dirA, dirB := filepath.Join(t.TempDir(), "a"), filepath.Join(t.TempDir(), "b")
+	if _, err := apiFixtures(st, dirA); err != nil {
+		t.Fatalf("apiFixtures: %v", err)
+	}
+	after, _ := os.ReadFile(filepath.Join(st.Root, "meta", h+".json"))
+	if string(before) != string(after) {
+		t.Fatalf("fixtures mutated the store meta:\n before=%s\n after =%s", before, after)
+	}
+	if _, err := apiFixtures(st, dirB); err != nil {
+		t.Fatalf("apiFixtures (2nd): %v", err)
+	}
+	readTree := func(root string) map[string]string {
+		out := map[string]string{}
+		filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+			if err == nil && !info.IsDir() {
+				b, _ := os.ReadFile(p)
+				rel, _ := filepath.Rel(root, p)
+				out[rel] = string(b)
+			}
+			return nil
+		})
+		return out
+	}
+	a, b := readTree(dirA), readTree(dirB)
+	if len(a) != len(b) {
+		t.Fatalf("fixture file count differs: %d vs %d", len(a), len(b))
+	}
+	for k, va := range a {
+		if b[k] != va {
+			t.Fatalf("fixture %q differs between runs (non-deterministic)", k)
+		}
+	}
+}
+
 // d fetches a def by hash for a test assertion.
 func d(st *Store, h string) *Def {
 	def, err := st.GetDef(h)

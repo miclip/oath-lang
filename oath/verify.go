@@ -24,22 +24,23 @@ type PropReport struct {
 // construction: `tested` only ever means "these exact deterministic cases
 // passed", and a falsified property downgrades the definition loudly rather
 // than hiding it.
-func verifyDef(st *Store, h string) ([]PropReport, error) {
+// verifyReports runs every property deterministically and returns the reports
+// WITHOUT touching the store. Read-only consumers (e.g. fixture generation)
+// use this; verifyDef wraps it and persists the resulting guarantee.
+func verifyReports(st *Store, h string) ([]PropReport, *Def, *Meta, error) {
 	d, err := st.GetDef(h)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	if d.K != "func" {
-		return nil, fmt.Errorf("only function definitions have properties to verify")
+		return nil, nil, nil, fmt.Errorf("only function definitions have properties to verify")
 	}
 	m, err := st.GetMeta(h)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
-
 	seedBytes, _ := hex.DecodeString(h[:16])
 	base := binary.BigEndian.Uint64(seedBytes)
-
 	var reports []PropReport
 	for pi := range d.Props {
 		name := fmt.Sprintf("prop%d", pi)
@@ -48,6 +49,15 @@ func verifyDef(st *Store, h string) ([]PropReport, error) {
 		}
 		reports = append(reports, runProp(st, h, &d.Props[pi], name, base, pi, propCases, propFuel))
 	}
+	return reports, d, m, nil
+}
+
+func verifyDef(st *Store, h string) ([]PropReport, error) {
+	reports, d, mp, err := verifyReports(st, h)
+	if err != nil {
+		return nil, err
+	}
+	m := *mp
 
 	prevLevel := m.Guarantee.Level
 	g := Guarantee{Level: "asserted"}
@@ -74,9 +84,14 @@ func verifyDef(st *Store, h string) ([]PropReport, error) {
 		// Re-verification must not silently demote a real proof: the props are
 		// identical (same hash ⇒ same Def), so prior SMT proofs still stand.
 		m.Guarantee.Level = "proven"
+	}
+	// Keep the proven count consistent with the retained proof set, so a
+	// partially-proven `tested` def (e.g. 3 of 5) still reports "3 proven"
+	// instead of dropping to 0 on re-verify.
+	if m.Guarantee.Level != "falsified" {
 		m.Guarantee.Proven = len(m.ProvenProps)
 	}
-	if err := st.SetMeta(h, m); err != nil {
+	if err := st.SetMeta(h, &m); err != nil {
 		return nil, err
 	}
 	return reports, nil

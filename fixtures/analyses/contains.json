@@ -1,0 +1,13 @@
+{
+  "name": "contains",
+  "hash": "d608e8a4e366cbc751efceb339b8207ea07aa9892b885ed0d56df00c29817a38",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

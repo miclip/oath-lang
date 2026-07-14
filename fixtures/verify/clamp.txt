@@ -1,0 +1,3 @@
+✓ prop within-bounds            passed 200 cases
+✓ prop idempotent               passed 200 cases
+✓ prop identity-inside          passed 200 cases

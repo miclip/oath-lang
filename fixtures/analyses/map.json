@@ -1,0 +1,13 @@
+{
+  "name": "map",
+  "hash": "ec6a09ebb7dca623c56e1c4c7907bf6867e2e08fee409449fdef3d79eb1aa1ba",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

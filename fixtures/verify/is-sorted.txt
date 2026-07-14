@@ -1,0 +1,2 @@
+✓ prop empty-and-singletons-sorted passed 200 cases
+✓ prop tail-of-sorted-is-sorted passed 200 cases

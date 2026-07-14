@@ -1,0 +1,2 @@
+✓ prop none-means-guest         passed 200 cases
+✓ prop some-passes-through      passed 200 cases

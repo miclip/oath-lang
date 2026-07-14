@@ -1,0 +1,3 @@
+✓ prop found-at-head            passed 200 cases
+✓ prop absent-from-empty        passed 200 cases
+✓ prop agrees-with-count        passed 200 cases

@@ -1,0 +1,13 @@
+{
+  "name": "or-else",
+  "hash": "feb514d6771fbbf651941a8d3678640bdbd7af1946853f1de8ce5d029b43712d",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

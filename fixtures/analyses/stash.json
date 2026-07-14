@@ -1,0 +1,11 @@
+{
+  "name": "stash",
+  "hash": "1c4a8a5a10b3e48c418d4e29a5f6f3318e2a4e0697c2ae0a2a89bc03c6ca0d72",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "escapes",
+    ""
+  ],
+  "level": "asserted"
+}

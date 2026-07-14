@@ -1,0 +1,3 @@
+✓ prop involution               passed 200 cases
+✗ prop antidistributes-over-append FALSIFIED after 4 cases
+    counterexample: (Cons -1 Nil), (Cons 8 (Cons -11 (Cons -10 (Cons -12 Nil))))

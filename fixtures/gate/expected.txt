@@ -1,0 +1,10 @@
+# gate conformance manifest
+# accept corpus: examples/*.oath (every def currently in the store)
+# reject corpus: gate/reject/*.oath — each MUST be rejected at the gate
+#
+# file	expected	reason
+gate/reject/body_type_mismatch.oath	reject	body is Bool, declared Int
+gate/reject/ctor_arity.oath	reject	constructor applied to the wrong number of arguments
+gate/reject/eq_on_function.oath	reject	== is not defined on function types
+gate/reject/negative_datatype.oath	reject	strict positivity: rec left of an arrow
+gate/reject/nonexhaustive_match.oath	reject	match omits a constructor arm

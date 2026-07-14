@@ -1,0 +1,2 @@
+✓ prop involution               passed 200 cases
+✓ prop antidistributes-over-append passed 200 cases

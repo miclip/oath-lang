@@ -1,0 +1,2 @@
+✓ prop grows-by-one             passed 200 cases
+✓ prop preserves-emptiness-never passed 200 cases

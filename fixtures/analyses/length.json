@@ -1,0 +1,12 @@
+{
+  "name": "length",
+  "hash": "9d1a114582fd7f10b82c148357c3a2a8a062058ebe71c41c1ce9a94fe9cc2b14",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

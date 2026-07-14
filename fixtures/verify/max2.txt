@@ -1,0 +1,4 @@
+✓ prop ge-left                  passed 200 cases
+✓ prop ge-right                 passed 200 cases
+✓ prop is-one-of                passed 200 cases
+✓ prop picks-larger             passed 200 cases

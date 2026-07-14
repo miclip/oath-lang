@@ -1,0 +1,13 @@
+{
+  "name": "drop",
+  "hash": "b1ac09c82e41ef065fd04c0038193309584ff35d4a9b3df3029b6db6758d5042",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 4
+}

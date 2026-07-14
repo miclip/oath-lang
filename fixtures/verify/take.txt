@@ -1,0 +1,4 @@
+✓ prop take-then-drop-rebuilds  passed 200 cases
+✓ prop take-zero                passed 200 cases
+✓ prop take-one                 passed 200 cases
+✓ prop take-two                 passed 200 cases

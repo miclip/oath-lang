@@ -1,0 +1,13 @@
+{
+  "name": "append",
+  "hash": "ebbdc98cc1b6888391a4b868cbef23d87368c5892a99996fc143ffc8194b20a4",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

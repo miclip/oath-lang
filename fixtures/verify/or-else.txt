@@ -1,0 +1,2 @@
+✓ prop none-yields-default      passed 200 cases
+✓ prop some-wins                passed 200 cases

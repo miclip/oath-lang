@@ -1,0 +1,3 @@
+✓ prop length-adds              passed 200 cases
+✓ prop nil-right-identity       passed 200 cases
+✓ prop associative              passed 200 cases

@@ -1,0 +1,2 @@
+(data C2 [] (A) (B))
+(defn bad [] [(x C2)] Int (match x ((A) 0)))

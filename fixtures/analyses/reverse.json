@@ -1,0 +1,12 @@
+{
+  "name": "reverse",
+  "hash": "c9bd3195be1f584e7da265636f01ab3fddbe186a00c55eafd5a2f49312f75844",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

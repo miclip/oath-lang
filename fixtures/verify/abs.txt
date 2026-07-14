@@ -1,0 +1,3 @@
+✓ prop non-negative             passed 200 cases
+✓ prop idempotent               passed 200 cases
+✓ prop is-x-or-negx             passed 200 cases

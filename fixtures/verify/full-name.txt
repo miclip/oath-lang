@@ -1,0 +1,2 @@
+✓ prop length-adds-up           passed 200 cases
+✓ prop starts-from-parts        passed 200 cases
