@@ -90,6 +90,49 @@ adversarial spec review), human-owned specs at trust boundaries, and treating
 low spec-strength scores as publication blockers. Fully closing the loop is
 an open problem, and DESIGN.md will keep saying so until it isn't.
 
+## Two axes, not one ladder (2026-07-14)
+
+The experiments forced a correction to the guarantee ladder's framing. A
+definition can be fully PROVEN and still have surviving mutants — the
+corpus's own `is-sorted` was proven 2/2 while scoring 0/5, and the BST spec
+passed testing *and* proof while a duplicate-placement mutant sailed
+through. That is not a contradiction; it is two independent measurements:
+
+- **Depth** (the ladder): does each property hold — sampled (`tested`), or
+  for all inputs (`PROVEN`)?
+- **Completeness** (spec strength): do the properties *collectively pin the
+  function down* — does changing the body make some promise fail?
+
+`PROVEN` is the top of the depth axis only. A definition is trusted in the
+sense a reader assumes only when it scores on both. The two axes also have
+distinct failure modes with distinct defenses, established adversarially:
+
+- **Weakness** (tight code↔spec link, promises that say nothing) is killed
+  by mutation testing — mechanically, no judge required. The controlled
+  rematch measured the differential: model-authored specs re-derived from
+  briefs killed 41/50 mutants against the hand-written specs' 33/50 on
+  identical catalogs, never worse on any function. Spec weakness is not
+  where model authors fail.
+- **Misalignment** (a spec internally tight around the *wrong* function)
+  is invisible to mutation by construction: an adversary instructed to
+  cheat delivered sum-of-squares for a sum-of-absolute-values brief at the
+  top of both axes — 7/7 PROVEN, 5/5 mutants killed. The brief is not an
+  object in the system; no checker can read it. What mutation *did* force
+  is legibility: maxing the kill score required signing the wrong defining
+  equation into the spec, in the open. The audit surface this leaves for
+  humans is small and namable — check the defining equations against
+  intent — instead of "read everything."
+- The structural defense against misalignment is **independent redundancy**
+  (N-version specification): specs for the same brief authored by disjoint
+  processes collide mechanically when they disagree — no implementation
+  can satisfy both sum-abs's and sum-of-squares' defining equations, and
+  the kernel falsifies one within a case or two, naming which author the
+  body followed. Detection is free; only adjudication needs the trusted
+  party. This has its own honest regress: two authors misaligned to the
+  same wrong function still pass, and intent always enters the system from
+  outside, as an axiom, supplied by whoever is trusted. The entry point
+  can be moved; it cannot be deleted.
+
 ## The split-agent workflow experiment (2026-07-13)
 
 External review proposed treating separated spec/implementation authorship as
