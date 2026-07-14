@@ -521,10 +521,22 @@ Append-only, one JSON object per line: `seq`, `time` (RFC3339 UTC),
 `author` (principal string, self-reported in local mode), `verifier`
 (kernel version string), `name`, `kind`, `status`
 (`accepted`|`falsified`|`rejected`), `hash`, `prev` (on repoint), `error`,
-`guarantee`, `termination`. Every submission attempt MUST be journaled,
-including gate rejections (which store no object). The journal is metadata:
-never hashed, wall-clock timestamps permitted (the kernel's no-clock rule
-protects verification semantics only).
+`guarantee`, `termination`, `chain`. Every submission attempt MUST be
+journaled, including gate rejections (which store no object). The journal is
+metadata: never part of definition identity, wall-clock timestamps permitted
+(the kernel's no-clock rule protects verification semantics only).
+
+`chain` makes the journal tamper-evident. For each appended entry:
+`chain = SHA-256(anchor + "\n" + entry-bytes)` rendered as lowercase hex,
+where `entry-bytes` is the entry's compact JSON with `chain` empty (omitted),
+and `anchor` is the `chain` of the most recent chained entry — or, when no
+chained entry exists yet (a journal predating this field), the SHA-256 of the
+entire byte prefix before this entry, which retroactively seals legacy lines.
+A verifier MUST reject a journal containing an unparseable line, a `seq` gap
+or reorder, an unchained entry after a chained one, or a `chain` mismatch.
+One limitation is inherent and disclosed rather than papered over: deleting
+entries from the TAIL leaves a self-consistent file; an external anchor (the
+version-control history of the store) is required to detect it.
 
 ### 8.1 Store layout
 
@@ -554,6 +566,13 @@ old object.
 `names.json` is metadata and may be rendered with ordinary JSON object key
 ordering for the host implementation; hash identity never depends on it. For
 deterministic API output, commands that list names sort name keys ascending.
+
+Writes to `names.json`, `meta/`, and `objects/` MUST be atomic (write to a
+temporary file in the same directory, sync, rename): the name index and the
+journal are not reconstructible from `objects/`, so a crash-truncated write is
+unrecoverable outside version control. A store opener MUST refuse to open a
+store whose `names.json` exists but does not parse, rather than treating it as
+an empty index — silently losing every name is strictly worse than failing.
 
 `meta/<hash>.json` contains `Meta`: definition name, type-variable names,
 constructor names, property names, guarantee, mutation score, termination,

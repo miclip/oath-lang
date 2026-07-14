@@ -201,6 +201,84 @@ func TestFixturesReadOnlyAndDeterministic(t *testing.T) {
 	}
 }
 
+// The journal hash chain must verify after normal appends, and detect an
+// edited or deleted line.
+func TestJournalChainDetectsTampering(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(defn one [] [] Int 1)`)
+	put(t, st, `(defn two [] [] Int 2)`)
+	put(t, st, `(defn three [] [] Int 3)`)
+	if err := st.VerifyLog(); err != nil {
+		t.Fatalf("clean journal failed verification: %v", err)
+	}
+	logPath := filepath.Join(st.Root, "log.jsonl")
+	pristine, _ := os.ReadFile(logPath)
+
+	// Edit a middle line: change its author but keep it valid JSON.
+	lines := strings.Split(strings.TrimRight(string(pristine), "\n"), "\n")
+	var e LogEntry
+	if err := json.Unmarshal([]byte(lines[1]), &e); err != nil {
+		t.Fatal(err)
+	}
+	e.Author = "mallory"
+	edited, _ := json.Marshal(e)
+	lines[1] = string(edited)
+	os.WriteFile(logPath, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
+	if err := st.VerifyLog(); err == nil {
+		t.Fatal("edited journal line went undetected")
+	}
+
+	// Delete a middle line.
+	lines = strings.Split(strings.TrimRight(string(pristine), "\n"), "\n")
+	os.WriteFile(logPath, []byte(lines[0]+"\n"+lines[2]+"\n"), 0o644)
+	if err := st.VerifyLog(); err == nil {
+		t.Fatal("deleted journal line went undetected")
+	}
+}
+
+// A journal written before chaining existed is sealed retroactively: the first
+// chained entry anchors to the hash of the whole legacy prefix, so edits to
+// legacy lines are detected too.
+func TestJournalLegacyPrefixSealed(t *testing.T) {
+	st := newStore(t)
+	logPath := filepath.Join(st.Root, "log.jsonl")
+	legacy := `{"seq":1,"time":"2026-07-01T00:00:00Z","author":"alice","verifier":"oath-kernel/0.5","name":"old","status":"accepted"}` + "\n" +
+		`{"seq":2,"time":"2026-07-02T00:00:00Z","author":"bob","verifier":"oath-kernel/0.5","name":"older","status":"rejected"}` + "\n"
+	if err := os.WriteFile(logPath, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendLog(&LogEntry{Author: "carol", Name: "new", Status: "accepted"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.VerifyLog(); err != nil {
+		t.Fatalf("legacy journal with chained tail failed verification: %v", err)
+	}
+	tampered := strings.Replace(legacy, "alice", "eve  ", 1)
+	rest, _ := os.ReadFile(logPath)
+	os.WriteFile(logPath, append([]byte(tampered), rest[len(legacy):]...), 0o644)
+	if err := st.VerifyLog(); err == nil {
+		t.Fatal("edit to a legacy journal line went undetected")
+	}
+}
+
+// A corrupt names.json must refuse to open, not silently become an empty
+// index (the index is not derivable from objects/).
+func TestCorruptNamesIndexRejected(t *testing.T) {
+	dir := t.TempDir()
+	st, err := OpenStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	put(t, st, `(defn one [] [] Int 1)`)
+	// Simulate a crash-truncated index.
+	names := filepath.Join(dir, "names.json")
+	b, _ := os.ReadFile(names)
+	os.WriteFile(names, b[:len(b)/2], 0o644)
+	if _, err := OpenStore(dir); err == nil {
+		t.Fatal("OpenStore accepted a corrupt names.json")
+	}
+}
+
 // d fetches a def by hash for a test assertion.
 func d(st *Store, h string) *Def {
 	def, err := st.GetDef(h)

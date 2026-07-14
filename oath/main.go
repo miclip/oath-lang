@@ -196,6 +196,12 @@ func cmdPut(st *Store, path string, jsonMode bool, author string) {
 
 func cmdLog(st *Store, filter string) {
 	fmt.Print(apiLog(st, filter))
+	// The journal is the audit trail; reading it silently past tampering
+	// would defeat the point. Entries are still printed above so the damage
+	// can be inspected.
+	if err := st.VerifyLog(); err != nil {
+		fail(fmt.Errorf("journal integrity: %w", err))
+	}
 }
 
 func cmdLs(st *Store) {

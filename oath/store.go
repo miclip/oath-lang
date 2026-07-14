@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -28,10 +30,55 @@ func OpenStore(root string) (*Store, error) {
 			return nil, err
 		}
 	}
-	return &Store{Root: root, defs: map[string]*Def{}, metas: map[string]*Meta{}}, nil
+	s := &Store{Root: root, defs: map[string]*Def{}, metas: map[string]*Meta{}}
+	// Fail loudly on a corrupt name index at open time. names.json is not
+	// reconstructible from objects/ (objects carry no names by design), so
+	// treating unreadable bytes as an empty index would silently vanish every
+	// name — worse than refusing to start.
+	if b, err := os.ReadFile(s.namesPath()); err == nil {
+		var m map[string]string
+		if err := json.Unmarshal(b, &m); err != nil {
+			return nil, fmt.Errorf("corrupt name index %s: %w (restore it from version control; it is not derivable from objects/)", s.namesPath(), err)
+		}
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+	return s, nil
 }
 
 func (s *Store) namesPath() string { return filepath.Join(s.Root, "names.json") }
+
+// writeFileAtomic writes via a temp file in the same directory, fsyncs, and
+// renames into place, so a crash mid-write can never leave a truncated file.
+// Both names.json and the journal are non-regenerable; in-place truncation of
+// either is unrecoverable outside version control.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	if _, err := f.Write(data); err == nil {
+		err = f.Sync()
+	} else {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Chmod(tmp, perm); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
+}
 
 // Names returns the mutable name → hash index.
 func (s *Store) Names() map[string]string {
@@ -49,7 +96,7 @@ func (s *Store) Resolve(name string) (string, bool) {
 
 func (s *Store) writeNames(m map[string]string) error {
 	b, _ := json.MarshalIndent(m, "", "  ")
-	return os.WriteFile(s.namesPath(), b, 0o644)
+	return writeFileAtomic(s.namesPath(), b, 0o644)
 }
 
 // Put stores a definition and points its name at the new hash.
@@ -57,11 +104,11 @@ func (s *Store) writeNames(m map[string]string) error {
 func (s *Store) Put(d *Def, m *Meta) (string, string, error) {
 	h := hashDef(d)
 	db, _ := json.Marshal(d)
-	if err := os.WriteFile(filepath.Join(s.Root, "objects", h+".json"), db, 0o644); err != nil {
+	if err := writeFileAtomic(filepath.Join(s.Root, "objects", h+".json"), db, 0o644); err != nil {
 		return "", "", err
 	}
 	mb, _ := json.MarshalIndent(m, "", "  ")
-	if err := os.WriteFile(filepath.Join(s.Root, "meta", h+".json"), mb, 0o644); err != nil {
+	if err := writeFileAtomic(filepath.Join(s.Root, "meta", h+".json"), mb, 0o644); err != nil {
 		return "", "", err
 	}
 	names := s.Names()
@@ -135,7 +182,7 @@ func (s *Store) GetMeta(h string) (*Meta, error) {
 // mutable precisely because it is not part of the definition's identity.
 func (s *Store) SetMeta(h string, m *Meta) error {
 	mb, _ := json.MarshalIndent(m, "", "  ")
-	if err := os.WriteFile(filepath.Join(s.Root, "meta", h+".json"), mb, 0o644); err != nil {
+	if err := writeFileAtomic(filepath.Join(s.Root, "meta", h+".json"), mb, 0o644); err != nil {
 		return err
 	}
 	mm := *m
@@ -200,18 +247,43 @@ type LogEntry struct {
 	Error       string `json:"error,omitempty"`
 	Guarantee   string `json:"guarantee,omitempty"`
 	Termination string `json:"termination,omitempty"`
+	Chain       string `json:"chain,omitempty"` // tamper-evidence: SHA-256(prev chain + this entry sans chain)
 }
 
 func (s *Store) logPath() string { return filepath.Join(s.Root, "log.jsonl") }
 
+// chainHash links one journal entry to everything before it: SHA-256 of the
+// previous anchor followed by a newline and the entry's compact JSON with the
+// chain field empty.
+func chainHash(prev string, body []byte) string {
+	h := sha256.Sum256(append([]byte(prev+"\n"), body...))
+	return hex.EncodeToString(h[:])
+}
+
+// chainAnchor returns the anchor for the next entry: the chain of the most
+// recent chained entry, or — for a journal written before chaining existed —
+// the hash of the entire legacy prefix, which retroactively seals those lines
+// (any edit to them breaks the first chained entry's verification).
+func chainAnchor(prior []byte) string {
+	lines := strings.Split(strings.TrimRight(string(prior), "\n"), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		var e LogEntry
+		if json.Unmarshal([]byte(lines[i]), &e) == nil && e.Chain != "" {
+			return e.Chain
+		}
+	}
+	h := sha256.Sum256(prior)
+	return hex.EncodeToString(h[:])
+}
+
 func (s *Store) AppendLog(e *LogEntry) error {
 	e.Verifier = kernelVersion
 	e.Time = time.Now().UTC().Format(time.RFC3339)
-	n := 0
-	if b, err := os.ReadFile(s.logPath()); err == nil {
-		n = strings.Count(string(b), "\n")
-	}
-	e.Seq = n + 1
+	prior, _ := os.ReadFile(s.logPath()) // absent → empty prefix, anchor = sha256("")
+	e.Seq = strings.Count(string(prior), "\n") + 1
+	e.Chain = ""
+	body, _ := json.Marshal(e)
+	e.Chain = chainHash(chainAnchor(prior), body)
 	b, _ := json.Marshal(e)
 	f, err := os.OpenFile(s.logPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
@@ -220,6 +292,62 @@ func (s *Store) AppendLog(e *LogEntry) error {
 	defer f.Close()
 	_, err = f.Write(append(b, '\n'))
 	return err
+}
+
+// VerifyLog replays the journal's hash chain and sequence numbers, returning
+// the first inconsistency: an unparseable line, a seq gap, an unchained entry
+// after a chained one, or a chain mismatch (an edited, inserted, or deleted
+// line — including edits to the pre-chain legacy prefix, which the first
+// chained entry seals by hashing). One honest limitation is inherent to any
+// append-only log without an external anchor: deleting entries from the TAIL
+// leaves a self-consistent file. The committed git history is that anchor.
+func (s *Store) VerifyLog() error {
+	b, err := os.ReadFile(s.logPath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var prev string
+	chained := false
+	pos := 0 // byte offset of the current line, for the legacy-prefix anchor
+	line := 0
+	for pos < len(b) {
+		end := pos
+		for end < len(b) && b[end] != '\n' {
+			end++
+		}
+		raw := b[pos:end]
+		line++
+		var e LogEntry
+		if err := json.Unmarshal(raw, &e); err != nil {
+			return fmt.Errorf("journal line %d is not valid JSON: %v", line, err)
+		}
+		if e.Seq != line {
+			return fmt.Errorf("journal line %d has seq %d: entries are missing or reordered", line, e.Seq)
+		}
+		if e.Chain == "" {
+			if chained {
+				return fmt.Errorf("journal line %d is unchained after a chained entry", line)
+			}
+		} else {
+			if !chained {
+				h := sha256.Sum256(b[:pos])
+				prev = hex.EncodeToString(h[:])
+				chained = true
+			}
+			want := e.Chain
+			e.Chain = ""
+			body, _ := json.Marshal(e)
+			if chainHash(prev, body) != want {
+				return fmt.Errorf("journal line %d fails the hash chain: this or an earlier line was edited, inserted, or deleted", line)
+			}
+			prev = want
+		}
+		pos = end + 1
+	}
+	return nil
 }
 
 func (s *Store) ReadLog() []LogEntry {
