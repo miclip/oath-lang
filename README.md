@@ -26,10 +26,13 @@ single-constructor datatypes, and function values are array-encoded (so
 higher-order properties quantify over *all functions* and capability
 properties over *all worlds*). Proven properties become a **lemma library**:
 they are asserted as axioms in later proofs, composing bottom-up through
-the hash graph like every other verdict. 20 functions / 56 properties are
+the hash graph like every other verdict. 22 functions / 64 properties are
 fully proven, including `reverse (reverse xs) == xs` (via the append laws
-and its own antidistribution lemma), insertion sort's `output-is-sorted` and
-`preserves-counts` (the permutation oath), `map.preserves-length` with a
+and its own antidistribution lemma), insertion sort's complete correctness —
+`output-is-sorted`, `preserves-counts` (the permutation oath), `idempotent`,
+and `reverse-invariant`, the last two through a four-lemma plan (insert
+commutativity, the sorted-head no-op, snoc-is-insert, and the sorted-fixpoint
+theorem `is-sorted xs ⟹ sort xs == xs`) — `map.preserves-length` with a
 quantified higher-order induction hypothesis, and `greet`'s capability
 properties for every possible network.
 

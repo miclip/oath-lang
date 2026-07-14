@@ -44,7 +44,16 @@
   (prop preserves-other-counts [(x Int) (y Int) (xs (List Int))]
     (if (== x y)
         true
-        (== (count x (insert y xs)) (count x xs)))))
+        (== (count x (insert y xs)) (count x xs))))
+  ; The two lemmas below exist for sort's proof plan (#9): commutativity
+  ; lets sort absorb an appended element (snoc-is-insert), and the head
+  ; no-op is the step case of the sorted-fixpoint theorem.
+  (prop commutative [(x Int) (y Int) (xs (List Int))]
+    (== (insert x (insert y xs)) (insert y (insert x xs))))
+  (prop noop-when-sorted-at-head [(x Int) (xs (List Int))]
+    (if (is-sorted (Cons [Int] x xs))
+        (== (insert x xs) (Cons [Int] x xs))
+        true)))
 
 (defn sort [] [(xs (List Int))] (List Int)
   (match xs
@@ -56,6 +65,14 @@
     (== (length [Int] (sort xs)) (length [Int] xs)))
   (prop preserves-counts [(x Int) (xs (List Int))]
     (== (count x (sort xs)) (count x xs)))
+  ; Lemma order is proof order: within one prove run, earlier proven props
+  ; become axioms for later ones, so the two theorems (#9) sit after the
+  ; lemmas they need.
+  (prop snoc-is-insert [(x Int) (xs (List Int))]
+    (== (sort (append [Int] xs (Cons [Int] x (Nil [Int]))))
+        (insert x (sort xs))))
+  (prop sorted-is-fixpoint [(xs (List Int))]
+    (if (is-sorted xs) (== (sort xs) xs) true))
   (prop idempotent [(xs (List Int))]
     (== (sort (sort xs)) (sort xs)))
   (prop reverse-invariant [(xs (List Int))]

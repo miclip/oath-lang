@@ -1,6 +1,6 @@
 {
   "name": "insert",
-  "hash": "1b95cdcea31601cbdb027ebc07fd1c9a77f09e82f7db0ce787d2f0a5ff08dcb4",
+  "hash": "1567f88c79aa6d021fba3adc49745964bea3286e96f81bf326b85e55b5d708d5",
   "kind": "func",
   "termination": "structural",
   "confinement": [
@@ -9,5 +9,5 @@
   ],
   "level": "proven",
   "cases": 200,
-  "proven": 4
+  "proven": 6
 }

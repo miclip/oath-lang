@@ -230,10 +230,10 @@
     },
     {
       "name": "insert",
-      "hash": "1b95cdcea31601cbdb027ebc07fd1c9a77f09e82f7db0ce787d2f0a5ff08dcb4",
+      "hash": "1567f88c79aa6d021fba3adc49745964bea3286e96f81bf326b85e55b5d708d5",
       "level": "proven",
-      "proven_count": 4,
-      "prop_count": 4,
+      "proven_count": 6,
+      "prop_count": 6,
       "props": [
         {
           "name": "grows-length-by-one",
@@ -249,6 +249,14 @@
         },
         {
           "name": "preserves-other-counts",
+          "proven": true
+        },
+        {
+          "name": "commutative",
+          "proven": true
+        },
+        {
+          "name": "noop-when-sorted-at-head",
           "proven": true
         }
       ]
@@ -399,10 +407,10 @@
     },
     {
       "name": "sort",
-      "hash": "bc5a2cb5da97b2d9d88c733133de46c300c198b63fad5443542ba6af29c4b1cf",
-      "level": "tested",
-      "proven_count": 3,
-      "prop_count": 5,
+      "hash": "c21e20a7a7be9b5c4936e19e287dfaa665880fbc548deedfcdfeec20db2e7a9f",
+      "level": "proven",
+      "proven_count": 7,
+      "prop_count": 7,
       "props": [
         {
           "name": "output-is-sorted",
@@ -417,12 +425,20 @@
           "proven": true
         },
         {
+          "name": "snoc-is-insert",
+          "proven": true
+        },
+        {
+          "name": "sorted-is-fixpoint",
+          "proven": true
+        },
+        {
           "name": "idempotent",
-          "proven": false
+          "proven": true
         },
         {
           "name": "reverse-invariant",
-          "proven": false
+          "proven": true
         }
       ]
     },

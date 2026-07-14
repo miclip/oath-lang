@@ -2,3 +2,5 @@
 ✓ prop keeps-sortedness         passed 200 cases
 ✓ prop adds-one-occurrence      passed 200 cases
 ✓ prop preserves-other-counts   passed 200 cases
+✓ prop commutative              passed 200 cases
+✓ prop noop-when-sorted-at-head passed 200 cases

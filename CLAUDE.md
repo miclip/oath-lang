@@ -19,8 +19,9 @@ the substrate is the product.
   library). Plus per-definition verdicts: termination (Foetus-lite),
   capability confinement (no-escape), spec strength (mutation testing),
   provenance (append-only journal with principals).
-- ~20 functions / 56 properties proven, incl. reverse-involution and
-  insertion-sort correctness (sorted + permutation). Deliberate honest
+- ~22 functions / 64 properties proven, incl. reverse-involution and
+  insertion-sort correctness in full (sorted + permutation + idempotent +
+  reverse-invariant, via the sorted-fixpoint lemma chain). Deliberate honest
   exhibits: `bad-reverse` (falsified), `spin` (termination unproven),
   `abs-small` (tested-but-refuted at x=-401), `leak`/`stash` (ESCAPES).
 - Effects = capability passing (records of functions), no effect system:

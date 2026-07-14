@@ -1,12 +1,12 @@
 {
   "name": "sort",
-  "hash": "bc5a2cb5da97b2d9d88c733133de46c300c198b63fad5443542ba6af29c4b1cf",
+  "hash": "c21e20a7a7be9b5c4936e19e287dfaa665880fbc548deedfcdfeec20db2e7a9f",
   "kind": "func",
   "termination": "structural",
   "confinement": [
     ""
   ],
-  "level": "tested",
+  "level": "proven",
   "cases": 200,
-  "proven": 3
+  "proven": 7
 }
