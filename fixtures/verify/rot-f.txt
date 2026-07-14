@@ -1,0 +1,7 @@
+✓ prop zero-is-identity         passed 200 cases
+✓ prop empty-absorbs            passed 200 cases
+✓ prop preserves-length         passed 200 cases
+✓ prop shift-one-moves-head-to-back passed 200 cases
+✓ prop neg-one-pulls-last-to-front passed 200 cases
+✓ prop periodic-in-length       passed 200 cases
+✓ prop decomposes-in-range      passed 200 cases

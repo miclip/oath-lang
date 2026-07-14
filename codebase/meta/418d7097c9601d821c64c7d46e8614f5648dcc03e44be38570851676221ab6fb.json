@@ -1,0 +1,26 @@
+{
+  "name": "rot-h2",
+  "prop_names": [
+    "zero-is-identity",
+    "empty-absorbs",
+    "preserves-length",
+    "shift-one-moves-head-to-back",
+    "neg-one-pulls-last-to-front",
+    "periodic-in-length",
+    "decomposes-in-range"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "author": "claude-haiku-oneshot",
+  "param_names": [
+    "k",
+    "xs"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

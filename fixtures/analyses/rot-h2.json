@@ -1,0 +1,12 @@
+{
+  "name": "rot-h2",
+  "hash": "418d7097c9601d821c64c7d46e8614f5648dcc03e44be38570851676221ab6fb",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

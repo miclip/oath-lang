@@ -1,0 +1,12 @@
+{
+  "name": "rot-hl",
+  "hash": "85ffd0e35668b3b59ff52e117644571a992e5b32c06edd5b92987ac5df2f7f6f",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

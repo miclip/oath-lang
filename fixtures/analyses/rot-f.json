@@ -1,0 +1,14 @@
+{
+  "name": "rot-f",
+  "hash": "7b7d6927865f1bd6c617bdff70e37e65f503b63751d43ab9134d863ca29f84fa",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 20,
+  "mutants_total": 22,
+  "level": "tested",
+  "cases": 200
+}

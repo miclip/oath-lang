@@ -1,0 +1,15 @@
+(defn rot-f [] [(k Int) (xs (List Int))] (List Int)
+  (if (== (length [Int] xs) 0)
+      xs
+      (if (== (% (+ (% k (length [Int] xs)) (length [Int] xs)) (length [Int] xs)) 0)
+          xs
+          (append [Int]
+            (drop (% (+ (% k (length [Int] xs)) (length [Int] xs)) (length [Int] xs)) xs)
+            (take (% (+ (% k (length [Int] xs)) (length [Int] xs)) (length [Int] xs)) xs))))
+  (prop zero-is-identity [(xs (List Int))] (== (rot-f 0 xs) xs))
+  (prop empty-absorbs [(k Int)] (== (rot-f k (Nil [Int])) (Nil [Int])))
+  (prop preserves-length [(k Int) (xs (List Int))] (== (length [Int] (rot-f k xs)) (length [Int] xs)))
+  (prop shift-one-moves-head-to-back [(h Int) (t (List Int))] (== (rot-f 1 (Cons [Int] h t)) (append [Int] t (Cons [Int] h (Nil [Int])))))
+  (prop neg-one-pulls-last-to-front [(x Int) (xs (List Int))] (== (rot-f -1 (append [Int] xs (Cons [Int] x (Nil [Int])))) (Cons [Int] x xs)))
+  (prop periodic-in-length [(k Int) (xs (List Int))] (== (rot-f (+ k (length [Int] xs)) xs) (rot-f k xs)))
+  (prop decomposes-in-range [(k Int) (xs (List Int))] (if (and (<= 0 k) (< k (length [Int] xs))) (== (rot-f k xs) (append [Int] (drop k xs) (take k xs))) true)))
