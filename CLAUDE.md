@@ -46,8 +46,9 @@ hosted store creates the need before the port happens.
   trail and is not regenerable). Never edit it by hand; keep it in sync by
   committing after put/prove runs.
 - Known wart: re-putting a definition (even unchanged) rewrites its
-  metadata and wipes ProvenProps/termination until re-analyzed — hence
-  `make check` = verify + prove.
+  metadata and wipes ProvenProps and the mutation score until re-analyzed
+  (termination/confinement are recomputed by put itself) — hence
+  `make check` = verify + prove, and `make mutate` restores spec strength.
 - Known flake: proofs give Z3 15s per goal; under machine load a goal can
   time out and record fewer proven props. Re-running `oath prove <name>`
   converges (prior proven props persist as lemmas).

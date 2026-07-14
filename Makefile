@@ -35,8 +35,10 @@ prove: build
 		done; \
 	done
 
+# Everything with properties gets a spec-strength score, including merge,
+# whose props are tested-but-not-provable (single-binder induction, see #17).
 mutate: build
-	@for n in $(PROVABLE); do \
+	@for n in $(PROVABLE) merge; do \
 		$(OATH) mutate $$n | tail -1 | sed "s/^/  $$n: /"; \
 	done
 

@@ -353,6 +353,36 @@ func TestLexicographicRejectsNonDescent(t *testing.T) {
 	}
 }
 
+// Structural mutants (#12): a body made only of match+ctor+self-calls has no
+// operators, literals, or if-branches — before the structural catalog it had
+// ZERO mutation points and mutation testing produced no spec-strength signal.
+func TestStructuralMutants(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(data List [a] (Nil) (Cons a (List a)))`)
+	put(t, st, `(defn idlist [] [(xs (List Int))] (List Int)
+		(match xs
+			((Nil) (Nil [Int]))
+			((Cons h t) (Cons [Int] h (idlist t)))))`)
+	h, _ := st.Resolve("idlist")
+	d, err := st.GetDef(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	muts := genMutants(st, d)
+	if len(muts) == 0 {
+		t.Fatal("structurally pure body still has zero mutation points")
+	}
+	descs := map[string]bool{}
+	for _, mu := range muts {
+		descs[mu.desc] = true
+	}
+	for _, want := range []string{"recursive call → its argument 0", "match collapsed to arm 0"} {
+		if !descs[want] {
+			t.Fatalf("missing structural mutant %q; got %v", want, descs)
+		}
+	}
+}
+
 // d fetches a def by hash for a test assertion.
 func d(st *Store, h string) *Def {
 	def, err := st.GetDef(h)

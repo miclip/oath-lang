@@ -34,6 +34,13 @@ func deepCopyDef(d *Def) *Def {
 	return &out
 }
 
+func deepCopyTerm(t *Term) *Term {
+	b, _ := json.Marshal(t)
+	var out Term
+	_ = json.Unmarshal(b, &out)
+	return &out
+}
+
 func collectNodes(t *Term, out *[]*Term) {
 	if t == nil {
 		return
@@ -117,6 +124,63 @@ func genMutants(st *Store, d *Def) []mutantDef {
 			n.B, n.C = n.C, n.B
 			add("swapped if branches")
 			n.B, n.C = n.C, n.B
+		case "app":
+			// Swap adjacent call arguments: (f a b) → (f b a). Only mutants
+			// that still typecheck survive the add() gate, so same-type
+			// argument pairs are the ones that make it through.
+			if n.A != nil && n.A.K == "app" {
+				n.B, n.A.B = n.A.B, n.B
+				add("swapped call arguments")
+				n.B, n.A.B = n.A.B, n.B
+			}
+			// Replace a recursive call with one of its own arguments:
+			// (self ... x ...) → x. This is the "forgot to recurse" bug —
+			// structurally the smallest way to delete a recursion while
+			// keeping an expression of (possibly) the right type.
+			if head, args := unwindApp(n); head.K == "self" {
+				// Shallow-save: the restore must reinstate the ORIGINAL child
+				// pointers (nodes still aliases them), not copies — a deep-copy
+				// restore would orphan the children and silently drop every
+				// later mutation under this subtree.
+				saved := *n
+				for ai, a := range args {
+					*n = *deepCopyTerm(a)
+					add(fmt.Sprintf("recursive call → its argument %d", ai))
+					*n = saved
+				}
+			}
+		case "ctor":
+			// Swap adjacent constructor arguments (tree children, record-ish
+			// payloads); the typecheck gate keeps only same-type pairs.
+			for ai := 0; ai+1 < len(n.Args); ai++ {
+				n.Args[ai], n.Args[ai+1] = n.Args[ai+1], n.Args[ai]
+				add(fmt.Sprintf("swapped constructor arguments %d,%d", ai, ai+1))
+				n.Args[ai], n.Args[ai+1] = n.Args[ai+1], n.Args[ai]
+			}
+		case "match":
+			// Swap two arm bodies. De Bruijn does the type policing: a body
+			// referring to binders the other arm does not have fails the gate.
+			for i := 0; i < len(n.Arms); i++ {
+				for j := i + 1; j < len(n.Arms); j++ {
+					n.Arms[i], n.Arms[j] = n.Arms[j], n.Arms[i]
+					add(fmt.Sprintf("swapped match arms %d,%d", i, j))
+					n.Arms[i], n.Arms[j] = n.Arms[j], n.Arms[i]
+				}
+			}
+			// Collapse the match to a base arm: the whole match is replaced
+			// by the body of an arm that binds nothing. This is the "always
+			// take the base case" bug — the classic way recursion silently
+			// disappears (length → 0, reverse → Nil).
+			if md, err := st.GetDef(n.Hash); err == nil && md.K == "data" {
+				saved := *n // shallow, for the same aliasing reason as above
+				for ci := range saved.Arms {
+					if ci < len(md.Ctors) && len(md.Ctors[ci]) == 0 {
+						*n = *deepCopyTerm(&saved.Arms[ci])
+						add(fmt.Sprintf("match collapsed to arm %d", ci))
+						*n = saved
+					}
+				}
+			}
 		}
 	}
 	return out

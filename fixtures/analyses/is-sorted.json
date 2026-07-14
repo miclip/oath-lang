@@ -6,6 +6,7 @@
   "confinement": [
     ""
   ],
+  "mutants_total": 5,
   "level": "proven",
   "cases": 200,
   "proven": 2

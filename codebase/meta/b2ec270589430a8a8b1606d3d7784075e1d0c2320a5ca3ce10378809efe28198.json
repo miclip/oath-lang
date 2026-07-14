@@ -11,6 +11,8 @@
     "cases": 200,
     "proven": 4
   },
+  "mutants_killed": 2,
+  "mutants_total": 3,
   "termination": "nonrecursive",
   "author": "claude-main",
   "param_names": [

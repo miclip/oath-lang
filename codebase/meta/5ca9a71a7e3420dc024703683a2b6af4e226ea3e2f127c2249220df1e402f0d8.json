@@ -9,6 +9,7 @@
     "cases": 200,
     "proven": 2
   },
+  "mutants_total": 5,
   "termination": "structural",
   "author": "claude-main",
   "param_names": [

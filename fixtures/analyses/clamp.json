@@ -8,6 +8,8 @@
     "",
     ""
   ],
+  "mutants_killed": 2,
+  "mutants_total": 4,
   "level": "proven",
   "cases": 200,
   "proven": 3

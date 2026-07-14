@@ -12,6 +12,8 @@
     "cases": 200,
     "proven": 1
   },
+  "mutants_killed": 1,
+  "mutants_total": 1,
   "termination": "structural",
   "author": "claude-main",
   "param_names": [
