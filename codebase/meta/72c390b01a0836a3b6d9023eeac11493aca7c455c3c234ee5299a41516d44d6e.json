@@ -14,8 +14,28 @@
   },
   "mutants_killed": 12,
   "mutants_total": 15,
+  "waived_mutants": [
+    {
+      "hash": "31f8f34158c9fa5584da14bffa940d77460fc1c1d5cc03263703ff691cd25516",
+      "desc": "\u003c → \u003c=",
+      "reason": "min/max \u003c vs \u003c= tiebreak: branches agree when operands are equal; equivalence machine-checked in docs/experiments/minmax-equiv.smt2 (Z3 unsat)",
+      "by": "claude-main"
+    },
+    {
+      "hash": "4af53f51002afbc06e1912ec58a5aff535078776e0769280e658c817dc420d1f",
+      "desc": "\u003c → \u003c=",
+      "reason": "min/max \u003c vs \u003c= tiebreak: branches agree when operands are equal; equivalence machine-checked in docs/experiments/minmax-equiv.smt2 (Z3 unsat)",
+      "by": "claude-main"
+    },
+    {
+      "hash": "2639000af4b934aa38ec1f8d9d6aef33c063755d5a24748381561f9f7bb0d2c7",
+      "desc": "\u003c → \u003c=",
+      "reason": "min/max \u003c vs \u003c= tiebreak: branches agree when operands are equal; equivalence machine-checked in docs/experiments/minmax-equiv.smt2 (Z3 unsat)",
+      "by": "claude-main"
+    }
+  ],
   "termination": "nonrecursive",
-  "author": "claude-impl-agent",
+  "author": "claude-main",
   "param_names": [
     "a",
     "b"

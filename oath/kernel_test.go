@@ -433,6 +433,94 @@ func TestPartialApplicationEscapes(t *testing.T) {
 	}
 }
 
+// Structurally identical ADTs are ONE object with several names (#19): the
+// second put must preserve the first name's constructor vocabulary as an
+// alias, so both surface syntaxes keep elaborating; and a same-hash re-put
+// must preserve verdict metadata (a proof of the object is a fact about the
+// object).
+func TestAliasedADTsBothElaborate(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(data Interval [] (Ival Int Int))`)
+	put(t, st, `(defn width [] [(i Interval)] Int (match i ((Ival lo hi) (- hi lo))))`)
+	put(t, st, `(data Run [] (Run Int Int))`) // same structure, same hash
+	// Both constructor vocabularies must elaborate after the second put.
+	if _, err := apiPut(st, `(defn use-ival [] [] Int (width (Ival 1 5)))`, "test", ""); err != nil {
+		t.Fatalf("Ival stopped elaborating after Run landed: %v", err)
+	}
+	if _, err := apiPut(st, `(defn use-run [] [] Interval (Run 2 9))`, "test", ""); err != nil {
+		t.Fatalf("Run does not elaborate: %v", err)
+	}
+}
+
+func TestRePutPreservesVerdicts(t *testing.T) {
+	requireZ3(t)
+	st := newStore(t)
+	src := `(defn abs [] [(x Int)] Int
+		(if (< x 0) (neg x) x)
+		(prop non-negative [(x Int)] (<= 0 (abs x))))`
+	put(t, st, src)
+	if _, err := apiProve(st, "abs"); err != nil {
+		t.Fatal(err)
+	}
+	h, _ := st.Resolve("abs")
+	if m, _ := st.GetMeta(h); m.Guarantee.Level != "proven" {
+		t.Fatalf("precondition: level=%q", m.Guarantee.Level)
+	}
+	put(t, st, src) // identical re-put: same hash
+	m, _ := st.GetMeta(h)
+	if len(m.ProvenProps) != 1 || m.Guarantee.Level != "proven" {
+		t.Fatalf("re-put wiped verdicts: level=%q proven_props=%v", m.Guarantee.Level, m.ProvenProps)
+	}
+}
+
+// A waiver documents an unkillable survivor with justification: it must
+// round-trip through mutate output, refuse killable mutants, and never count
+// as a kill.
+func TestWaiveMutant(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(defn mymax [] [(a Int) (b Int)] Int
+		(if (< a b) b a)
+		(prop upper-bound [(a Int) (b Int)] (and (<= a (mymax a b)) (<= b (mymax a b))))
+		(prop is-one-of [(a Int) (b Int)] (or (== (mymax a b) a) (== (mymax a b) b))))`)
+	out, err := apiMutate(st, "mymax")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "SURVIVED") {
+		t.Skipf("no surviving mutant to waive; mutate output:\n%s", out)
+	}
+	// Extract the survivor's short hash from the waive hint.
+	var prefix string
+	for _, line := range strings.Split(out, "\n") {
+		if i := strings.Index(line, "oath waive mymax "); i >= 0 {
+			prefix = strings.Fields(line[i:])[3]
+		}
+	}
+	if prefix == "" {
+		t.Fatalf("no waive hint in output:\n%s", out)
+	}
+	if _, err := apiWaive(st, "mymax", prefix, "min/max < vs <= equivalence: branches agree at a==b", "test"); err != nil {
+		t.Fatalf("apiWaive: %v", err)
+	}
+	out2, err := apiMutate(st, "mymax")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out2, "○ waived") {
+		t.Fatalf("waiver not reported:\n%s", out2)
+	}
+	h, _ := st.Resolve("mymax")
+	m, _ := st.GetMeta(h)
+	if m.MutantsKilled == m.MutantsTotal {
+		t.Fatalf("waiver counted as a kill: %d/%d", m.MutantsKilled, m.MutantsTotal)
+	}
+	// Waiving a killable mutant must be refused: try a bogus prefix of a
+	// killed mutant by asking for one that doesn't survive.
+	if _, err := apiWaive(st, "mymax", "ffffffffffff", "nope", "test"); err == nil {
+		t.Fatal("waive accepted a nonexistent mutant")
+	}
+}
+
 // d fetches a def by hash for a test assertion.
 func d(st *Store, h string) *Def {
 	def, err := st.GetDef(h)

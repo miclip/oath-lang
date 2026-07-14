@@ -16,7 +16,7 @@
   "mutants_killed": 14,
   "mutants_total": 14,
   "termination": "structural",
-  "author": "claude-impl-agent",
+  "author": "claude-main",
   "param_names": [
     "xs"
   ],

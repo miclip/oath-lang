@@ -20,6 +20,7 @@ usage:
   oath dependents <name>              list definitions that reference a definition
   oath verify <name>                  re-run a definition's properties
   oath mutate <name>                  score spec strength: do the properties notice mutations?
+  oath waive <name> <mutant> "<why>"  record a surviving mutant as judged-equivalent, with justification
   oath prove <name>                   SMT-prove properties for ALL inputs (non-recursive Int/Bool fragment)
   oath eval "<expr>"                  typecheck and evaluate an expression
   oath serve                          MCP server over stdio (tools for agent sessions)
@@ -116,6 +117,19 @@ func main() {
 			fail(fmt.Errorf("usage: oath mutate <name>"))
 		}
 		cmdMutate(st, args[1])
+	case "waive":
+		if len(args) != 4 {
+			fail(fmt.Errorf("usage: oath waive <name> <mutant-hash-prefix> \"<reason>\""))
+		}
+		by := os.Getenv("OATH_AUTHOR")
+		if by == "" {
+			by = "unattributed"
+		}
+		out, err := apiWaive(st, args[1], args[2], args[3], by)
+		if err != nil {
+			fail(err)
+		}
+		fmt.Print(out)
 	case "prove":
 		if len(args) != 2 {
 			fail(fmt.Errorf("usage: oath prove <name>"))

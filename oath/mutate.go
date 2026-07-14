@@ -224,8 +224,12 @@ func apiMutate(st *Store, name string) (string, error) {
 	if len(muts) == 0 {
 		return fmt.Sprintf("no mutation points in %s (body has no mutable operators, literals, or branches)\n", name), nil
 	}
+	waived := map[string]*WaivedMutant{}
+	for i := range m.WaivedMutants {
+		waived[m.WaivedMutants[i].Hash] = &m.WaivedMutants[i]
+	}
 	var b strings.Builder
-	killed := 0
+	killed, waivedSeen := 0, 0
 	for _, mu := range muts {
 		// Mutants are evaluated from the in-memory cache only — they are
 		// candidates under interrogation, never admitted to the codebase.
@@ -240,19 +244,78 @@ func apiMutate(st *Store, name string) (string, error) {
 				break
 			}
 		}
-		if killer != "" {
+		switch {
+		case killer != "":
 			killed++
 			fmt.Fprintf(&b, "✓ killed    %-22s by %s\n", mu.desc, killer)
-		} else {
+		case waived[mu.hash] != nil:
+			// A waiver is an annotation with a justification on record —
+			// reported distinctly, never counted as a kill.
+			waivedSeen++
+			w := waived[mu.hash]
+			fmt.Fprintf(&b, "○ waived    %-22s — %s (by %s)\n", mu.desc, w.Reason, w.By)
+		default:
 			pr := &printer{st: st, tvs: m.TyVarNames}
 			fmt.Fprintf(&b, "✗ SURVIVED  %-22s — no property notices this change\n", mu.desc)
-			fmt.Fprintf(&b, "    mutant: %s\n", pr.term(mu.def.Body, m.Name))
+			fmt.Fprintf(&b, "    mutant: %s  (waive with: oath waive %s %s \"reason\")\n", pr.term(mu.def.Body, m.Name), name, shortHash(mu.hash))
 		}
 	}
-	fmt.Fprintf(&b, "spec strength: %d/%d mutants killed\n", killed, len(muts))
+	fmt.Fprintf(&b, "spec strength: %d/%d mutants killed", killed, len(muts))
+	if waivedSeen > 0 {
+		fmt.Fprintf(&b, " (+%d waived as equivalent, justification on record)", waivedSeen)
+	}
+	b.WriteString("\n")
 	m.MutantsKilled, m.MutantsTotal = killed, len(muts)
 	if err := st.SetMeta(h, m); err != nil {
 		return "", err
 	}
 	return b.String(), nil
+}
+
+// apiWaive records a surviving mutant as judged-equivalent. The mutant is
+// re-derived from the current definition so the waiver can only name a
+// mutant that actually exists, and the full mutant hash is resolved from a
+// short prefix. Waiving a mutant that a property kills is refused: waivers
+// document unkillable survivors, they do not overrule the referee.
+func apiWaive(st *Store, name, mutantPrefix, reason, by string) (string, error) {
+	h, ok := st.Resolve(name)
+	if !ok {
+		return "", fmt.Errorf("no definition named %q", name)
+	}
+	d, err := st.GetDef(h)
+	if err != nil {
+		return "", err
+	}
+	m, err := st.GetMeta(h)
+	if err != nil {
+		return "", err
+	}
+	if reason == "" {
+		return "", fmt.Errorf("a waiver requires a justification")
+	}
+	for _, mu := range genMutants(st, d) {
+		if !strings.HasPrefix(mu.hash, mutantPrefix) {
+			continue
+		}
+		st.CacheDef(mu.hash, mu.def)
+		seedB, _ := hex.DecodeString(mu.hash[:16])
+		base := binary.BigEndian.Uint64(seedB)
+		for pi := range mu.def.Props {
+			rep := runProp(st, mu.hash, &mu.def.Props[pi], metaPropName(m, pi), base, pi, mutantCases, mutantFuel)
+			if rep.Failed || rep.Err != "" {
+				return "", fmt.Errorf("mutant %s is killed by %s — nothing to waive", shortHash(mu.hash), rep.Name)
+			}
+		}
+		for _, w := range m.WaivedMutants {
+			if w.Hash == mu.hash {
+				return fmt.Sprintf("mutant %s already waived: %s\n", shortHash(mu.hash), w.Reason), nil
+			}
+		}
+		m.WaivedMutants = append(m.WaivedMutants, WaivedMutant{Hash: mu.hash, Desc: mu.desc, Reason: reason, By: by})
+		if err := st.SetMeta(h, m); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("○ waived %s (%s): %s\n", shortHash(mu.hash), mu.desc, reason), nil
+	}
+	return "", fmt.Errorf("no surviving mutant of %s matches %q (run oath mutate %s to list)", name, mutantPrefix, name)
 }

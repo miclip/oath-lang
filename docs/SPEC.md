@@ -630,9 +630,33 @@ store whose `names.json` exists but does not parse, rather than treating it as
 an empty index — silently losing every name is strictly worse than failing.
 
 `meta/<hash>.json` contains `Meta`: definition name, type-variable names,
-constructor names, property names, guarantee, mutation score, termination,
-author, parameter names, confinement verdicts, and proven property indices.
-Metadata may change without changing the object hash.
+constructor names, property names, guarantee, mutation score and waived
+mutants, termination, author, parameter names, confinement verdicts, and
+proven property indices. Metadata may change without changing the object
+hash.
+
+Metadata splits along a naming/verdict boundary. NAMING fields (definition,
+type-variable, constructor, property, and parameter names) belong to an
+ALIAS: structurally identical definitions content-address to the same
+object, so one object may be bound by several names, each with its own
+vocabulary. The top-level naming fields hold the most recent put's naming;
+prior aliases are preserved in an `aliases` map keyed by name. Constructor
+resolution (§1.4) resolves each name through its own naming block — the
+alias entry when the name is not the object's most recent one. VERDICT
+fields (guarantee, termination, confinement, proven property indices,
+mutation score, waived mutants) belong to the HASH: a proof of an object is
+a fact about the object regardless of which name submitted it. A put of an
+already-present object therefore MERGES metadata rather than clobbering:
+verdict fields carry over, and when the incoming name differs, the previous
+name's naming block moves into `aliases`.
+
+`waived_mutants` records surviving mutants judged semantically equivalent to
+the original, keyed by the mutant's content hash, each carrying a
+justification, the judging principal, and optionally a reference to a
+machine-checkable equivalence artifact. Waivers are annotations, never
+kills: mutation scoring reports them separately and the killed/total score
+is unaffected. A waiver may only be recorded for a mutant that currently
+survives every property.
 
 ### 8.2 Journal sequencing
 

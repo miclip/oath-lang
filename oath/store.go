@@ -101,8 +101,35 @@ func (s *Store) writeNames(m map[string]string) error {
 
 // Put stores a definition and points its name at the new hash.
 // Returns the hash and the previous hash the name pointed at ("" if new).
+//
+// When the object already exists, metadata MERGES instead of clobbering,
+// along the naming/verdict split (#19): verdict fields are facts about the
+// hash and survive (a proof of this object is still a proof of it —
+// whoever re-puts it), while the previous name's naming block is preserved
+// as an alias when the incoming name differs. Two structurally identical
+// definitions are ONE object with several names; losing either name's
+// constructor vocabulary breaks elaboration for its module's source.
 func (s *Store) Put(d *Def, m *Meta) (string, string, error) {
 	h := hashDef(d)
+	if prev, err := s.GetMeta(h); err == nil {
+		m.Guarantee = prev.Guarantee
+		m.ProvenProps = prev.ProvenProps
+		m.MutantsKilled, m.MutantsTotal = prev.MutantsKilled, prev.MutantsTotal
+		m.WaivedMutants = prev.WaivedMutants
+		m.Termination = prev.Termination
+		m.Confinement = prev.Confinement
+		m.Aliases = prev.Aliases
+		if prev.Name != m.Name {
+			if m.Aliases == nil {
+				m.Aliases = map[string]*AliasNaming{}
+			}
+			m.Aliases[prev.Name] = &AliasNaming{
+				TyVarNames: prev.TyVarNames, CtorNames: prev.CtorNames,
+				PropNames: prev.PropNames, ParamNames: prev.ParamNames,
+			}
+			delete(m.Aliases, m.Name)
+		}
+	}
 	db, _ := json.Marshal(d)
 	if err := writeFileAtomic(filepath.Join(s.Root, "objects", h+".json"), db, 0o644); err != nil {
 		return "", "", err
@@ -219,7 +246,15 @@ func (s *Store) FindCtor(name string) (string, int, bool) {
 		if err != nil {
 			continue
 		}
-		for i, cn := range m.CtorNames {
+		// The name k resolves through its OWN naming block: the alias entry
+		// when this name is not the object's most recent one (#19).
+		ctors := m.CtorNames
+		if m.Name != k {
+			if a, ok := m.Aliases[k]; ok {
+				ctors = a.CtorNames
+			}
+		}
+		for i, cn := range ctors {
 			if cn == name {
 				return h, i, true
 			}

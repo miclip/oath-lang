@@ -82,21 +82,54 @@ type Guarantee struct {
 	Falsified []string `json:"falsified,omitempty"` // falsified: names of failed properties
 }
 
+// AliasNaming is the naming metadata of one name bound to an object. Two
+// structurally identical definitions content-address to the SAME object
+// (names are metadata, structure is identity), so an object can carry one
+// naming block per alias; the top-level fields hold the most recent put's
+// naming, prior aliases are preserved here (#19).
+type AliasNaming struct {
+	TyVarNames []string `json:"tyvar_names,omitempty"`
+	CtorNames  []string `json:"ctor_names,omitempty"`
+	PropNames  []string `json:"prop_names,omitempty"`
+	ParamNames []string `json:"param_names,omitempty"`
+}
+
+// WaivedMutant records a surviving mutant judged semantically equivalent to
+// the original — "proof is not enough; spec strength is first-class", and a
+// waiver is a CLAIM that must carry its justification. Waivers are keyed by
+// the mutant's content hash so they survive re-scoring and cannot silently
+// drift to a different mutant. Evidence is free text (an unreachability
+// argument) or a pointer to a machine artifact (an SMT transcript). Waivers
+// are honest annotations, not score inflation: mutate reports them
+// separately, never as kills.
+type WaivedMutant struct {
+	Hash     string `json:"hash"`               // content hash of the waived mutant Def
+	Desc     string `json:"desc"`               // the mutation, e.g. "< → <="
+	Reason   string `json:"reason"`             // why it is equivalent
+	By       string `json:"by,omitempty"`       // principal that judged it
+	Artifact string `json:"artifact,omitempty"` // optional path/ref to a machine-checkable equivalence artifact
+}
+
 // Meta is everything humans need and machines don't: names. Pure metadata,
-// never hashed, freely editable.
+// never hashed, freely editable. Naming fields belong to the ALIAS (per
+// name); verdict fields (guarantee, termination, confinement, proven props,
+// mutation score) belong to the HASH — a proof of an object is a fact about
+// the object, whichever name submitted it.
 type Meta struct {
-	Name          string    `json:"name"`
-	TyVarNames    []string  `json:"tyvar_names,omitempty"`
-	CtorNames     []string  `json:"ctor_names,omitempty"`
-	PropNames     []string  `json:"prop_names,omitempty"`
-	Guarantee     Guarantee `json:"guarantee"`
-	MutantsKilled int       `json:"mutants_killed,omitempty"` // spec strength: mutants the props caught
-	MutantsTotal  int       `json:"mutants_total,omitempty"`  // spec strength: mutants generated
-	Termination   string    `json:"termination,omitempty"`    // structural | nonrecursive | unknown (funcs only)
-	Author        string    `json:"author,omitempty"`         // principal that submitted this definition
-	ParamNames    []string  `json:"param_names,omitempty"`    // funcs: surface parameter names (projection aid)
-	Confinement   []string  `json:"confinement,omitempty"`    // funcs: per-param "confined" | "escapes" | "" (first-order)
-	ProvenProps   []int     `json:"proven_props,omitempty"`   // indices of SMT-proven properties (the lemma library)
+	Name          string                  `json:"name"`
+	TyVarNames    []string                `json:"tyvar_names,omitempty"`
+	CtorNames     []string                `json:"ctor_names,omitempty"`
+	PropNames     []string                `json:"prop_names,omitempty"`
+	Aliases       map[string]*AliasNaming `json:"aliases,omitempty"` // other names bound to this object
+	Guarantee     Guarantee               `json:"guarantee"`
+	MutantsKilled int                     `json:"mutants_killed,omitempty"` // spec strength: mutants the props caught
+	MutantsTotal  int                     `json:"mutants_total,omitempty"`  // spec strength: mutants generated
+	WaivedMutants []WaivedMutant          `json:"waived_mutants,omitempty"` // surviving mutants judged equivalent, with justification
+	Termination   string                  `json:"termination,omitempty"`    // structural | nonrecursive | unknown (funcs only)
+	Author        string                  `json:"author,omitempty"`         // principal that submitted this definition
+	ParamNames    []string                `json:"param_names,omitempty"`    // funcs: surface parameter names (projection aid)
+	Confinement   []string                `json:"confinement,omitempty"`    // funcs: per-param "confined" | "escapes" | "" (first-order)
+	ProvenProps   []int                   `json:"proven_props,omitempty"`   // indices of SMT-proven properties (the lemma library)
 }
 
 // collectDeps returns the set of definition hashes a def references.

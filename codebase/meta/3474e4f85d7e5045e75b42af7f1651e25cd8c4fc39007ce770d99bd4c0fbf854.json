@@ -3,8 +3,15 @@
   "ctor_names": [
     "Run"
   ],
+  "aliases": {
+    "Interval": {
+      "ctor_names": [
+        "Ival"
+      ]
+    }
+  },
   "guarantee": {
     "level": "asserted"
   },
-  "author": "claude-impl-agent"
+  "author": "claude-main"
 }

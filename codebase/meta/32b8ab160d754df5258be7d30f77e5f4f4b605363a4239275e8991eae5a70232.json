@@ -13,6 +13,14 @@
   },
   "mutants_killed": 4,
   "mutants_total": 5,
+  "waived_mutants": [
+    {
+      "hash": "b7356254d0aa9d279a579b583d2b10e909f33fb524c5d59e4054f7e9c75c6c6f",
+      "desc": "\u003c → \u003c=",
+      "reason": "equality-first search: the \u003c vs \u003c= branch is only reached when x != v, where both compare identically (hand analysis; dead-branch argument)",
+      "by": "claude-main"
+    }
+  ],
   "termination": "structural",
   "author": "claude-spec-agent",
   "param_names": [

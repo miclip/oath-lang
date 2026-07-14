@@ -13,8 +13,22 @@
   },
   "mutants_killed": 5,
   "mutants_total": 7,
+  "waived_mutants": [
+    {
+      "hash": "001196e62170f30f512f654372af5ed51a4ae4d98e49fdbbb655b72a2dd558ce",
+      "desc": "\u003c → \u003c=",
+      "reason": "min/max \u003c vs \u003c= tiebreak: branches agree when operands are equal; equivalence machine-checked in docs/experiments/minmax-equiv.smt2 (Z3 unsat)",
+      "by": "claude-main"
+    },
+    {
+      "hash": "248316fd3099f74212c1eb18950d8b5ddbd96f2ee223572b5008d4fb5907ecfe",
+      "desc": "\u003c → \u003c=",
+      "reason": "min/max \u003c vs \u003c= tiebreak: branches agree when operands are equal; equivalence machine-checked in docs/experiments/minmax-equiv.smt2 (Z3 unsat)",
+      "by": "claude-main"
+    }
+  ],
   "termination": "nonrecursive",
-  "author": "claude-impl-agent",
+  "author": "claude-main",
   "param_names": [
     "a",
     "b"

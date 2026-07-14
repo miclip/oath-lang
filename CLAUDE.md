@@ -48,10 +48,12 @@ hosted store creates the need before the port happens.
 - The `codebase/` store IS COMMITTED (journal included — it's the audit
   trail and is not regenerable). Never edit it by hand; keep it in sync by
   committing after put/prove runs.
-- Known wart: re-putting a definition (even unchanged) rewrites its
-  metadata and wipes ProvenProps and the mutation score until re-analyzed
-  (termination/confinement are recomputed by put itself) — hence
-  `make check` = verify + prove, and `make mutate` restores spec strength.
+- Re-putting a definition MERGES metadata (the old wipe-wart is fixed):
+  verdict fields (proofs, mutation score, waivers) are hash-keyed facts and
+  survive; naming is per-alias — structurally identical defs are one object
+  with several names (`aliases` in meta), and each name keeps its own
+  constructor vocabulary. `oath waive` records judged-equivalent surviving
+  mutants with justification; waivers report separately, never as kills.
 - Known flake: proofs give Z3 15s per goal; under machine load a goal can
   time out and record fewer proven props. Re-running `oath prove <name>`
   converges (prior proven props persist as lemmas).
