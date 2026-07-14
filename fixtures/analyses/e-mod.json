@@ -1,0 +1,14 @@
+{
+  "name": "e-mod",
+  "hash": "d56f639c0bc5765d783da14e6e044bb2abf3c49911f2a83201c61035838c850f",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 17,
+  "mutants_total": 20,
+  "level": "tested",
+  "cases": 200
+}

@@ -1,0 +1,33 @@
+{
+  "name": "q-push",
+  "prop_names": [
+    "push-appends",
+    "push-on-empty",
+    "push-length",
+    "push-count-pushed",
+    "push-order-anchor"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200,
+    "proven": 4
+  },
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "termination": "nonrecursive",
+  "author": "claude-impl-agent",
+  "param_names": [
+    "q",
+    "x"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    4
+  ]
+}

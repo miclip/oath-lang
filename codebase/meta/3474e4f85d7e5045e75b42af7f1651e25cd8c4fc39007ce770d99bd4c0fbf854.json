@@ -1,0 +1,10 @@
+{
+  "name": "Run",
+  "ctor_names": [
+    "Run"
+  ],
+  "guarantee": {
+    "level": "asserted"
+  },
+  "author": "claude-impl-agent"
+}

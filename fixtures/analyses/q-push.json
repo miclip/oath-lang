@@ -1,0 +1,15 @@
+{
+  "name": "q-push",
+  "hash": "bed64941ed7e80ec55c24d7bfe0fcdbf8a385e567f073c5d31b6fa0382133519",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "level": "tested",
+  "cases": 200,
+  "proven": 4
+}

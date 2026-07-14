@@ -1,0 +1,5 @@
+✓ prop nonpositive-is-empty     passed 200 cases
+✓ prop peel-one                 passed 200 cases
+✓ prop length-is-count-arg      passed 200 cases
+✓ prop every-element-is-v       passed 200 cases
+✓ prop anchor-three-sevens      passed 200 cases

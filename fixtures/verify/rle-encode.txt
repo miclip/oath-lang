@@ -1,0 +1,6 @@
+✓ prop roundtrip                passed 200 cases
+✓ prop never-longer-than-input  passed 200 cases
+✓ prop uniform-list-is-one-run  passed 200 cases
+✓ prop two-runs-stay-two-runs   passed 200 cases
+✓ prop duplicate-head-merges    passed 200 cases
+✓ prop anchor-mixed             passed 200 cases

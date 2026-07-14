@@ -1,0 +1,15 @@
+{
+  "name": "i-intersect",
+  "hash": "3d5958e675d03b277d286997540dc49b7b73fba3bf02c06eaf41ec50e86d08c8",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 5,
+  "mutants_total": 7,
+  "level": "proven",
+  "cases": 200,
+  "proven": 4
+}

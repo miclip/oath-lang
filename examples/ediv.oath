@@ -1,0 +1,22 @@
+(defn e-mod [] [(a Int) (n Int)] Int
+  (if (== n 0)
+      a
+      (if (< (% a n) 0)
+          (+ (% a n) (if (< n 0) (neg n) n))
+          (% a n)))
+  (prop nonneg [(a Int) (n Int)] (if (== n 0) true (<= 0 (e-mod a n))))
+  (prop below-abs-divisor [(a Int) (n Int)] (if (< 0 n) (< (e-mod a n) n) (if (< n 0) (< (e-mod a n) (neg n)) true)))
+  (prop zero-divisor-is-a [(a Int)] (== (e-mod a 0) a))
+  (prop periodic [(a Int) (n Int)] (== (e-mod (+ a n) n) (e-mod a n)))
+  (prop divisor-sign-irrelevant [(a Int) (n Int)] (== (e-mod a (neg n)) (e-mod a n)))
+  (prop quadrant-anchors [] (and (== (e-mod -7 2) 1) (and (== (e-mod -7 -2) 1) (and (== (e-mod 7 -2) 1) (== (e-mod 7 2) 1))))))
+
+(defn e-div [] [(a Int) (n Int)] Int
+  (if (== n 0)
+      0
+      (/ (- a (e-mod a n)) n))
+  (prop division-identity [(a Int) (n Int)] (== a (+ (* (e-div a n) n) (e-mod a n))))
+  (prop zero-divisor-is-zero [(a Int)] (== (e-div a 0) 0))
+  (prop shift-by-divisor [(a Int) (n Int)] (if (== n 0) true (== (e-div (+ a n) n) (+ (e-div a n) 1))))
+  (prop negate-divisor-negates [(a Int) (n Int)] (== (e-div a (neg n)) (neg (e-div a n))))
+  (prop quadrant-anchors [] (and (== (e-div -7 2) -4) (and (== (e-div -7 -2) 4) (and (== (e-div 7 -2) -3) (== (e-div 7 2) 3))))))

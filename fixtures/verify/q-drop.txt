@@ -1,0 +1,5 @@
+✓ prop drop-front-nonempty      passed 200 cases
+✓ prop drop-back-only           passed 200 cases
+✓ prop drop-empty               passed 200 cases
+✓ prop drop-is-tail             passed 200 cases
+✓ prop peek-drop-rebuild        passed 200 cases

@@ -1,0 +1,6 @@
+✓ prop nonneg                   passed 200 cases
+✓ prop below-abs-divisor        passed 200 cases
+✓ prop zero-divisor-is-a        passed 200 cases
+✓ prop periodic                 passed 200 cases
+✓ prop divisor-sign-irrelevant  passed 200 cases
+✓ prop quadrant-anchors         passed 200 cases

@@ -157,6 +157,68 @@
       ]
     },
     {
+      "name": "e-div",
+      "hash": "a481a6fd21d63e8fb5060344ee2b831ce1047a78fb005f83695b32877877959c",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "division-identity",
+          "proven": false
+        },
+        {
+          "name": "zero-divisor-is-zero",
+          "proven": false
+        },
+        {
+          "name": "shift-by-divisor",
+          "proven": false
+        },
+        {
+          "name": "negate-divisor-negates",
+          "proven": false
+        },
+        {
+          "name": "quadrant-anchors",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "e-mod",
+      "hash": "d56f639c0bc5765d783da14e6e044bb2abf3c49911f2a83201c61035838c850f",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 6,
+      "props": [
+        {
+          "name": "nonneg",
+          "proven": false
+        },
+        {
+          "name": "below-abs-divisor",
+          "proven": false
+        },
+        {
+          "name": "zero-divisor-is-a",
+          "proven": false
+        },
+        {
+          "name": "periodic",
+          "proven": false
+        },
+        {
+          "name": "divisor-sign-irrelevant",
+          "proven": false
+        },
+        {
+          "name": "quadrant-anchors",
+          "proven": false
+        }
+      ]
+    },
+    {
       "name": "full-name",
       "hash": "7c6b92ee08b5d41bae3cff9b4e715f6e9920e7a47007e4b9905c0bceb09e9060",
       "level": "proven",
@@ -207,6 +269,114 @@
         },
         {
           "name": "some-passes-through",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "i-contains",
+      "hash": "1d95aca4d8d1b2f4c8b1eeb3c7bc2c81525c75ff0d5ebbb74c4716d9297d7027",
+      "level": "proven",
+      "proven_count": 4,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "contains-def",
+          "proven": true
+        },
+        {
+          "name": "contains-endpoints",
+          "proven": true
+        },
+        {
+          "name": "contains-empty-none",
+          "proven": true
+        },
+        {
+          "name": "contains-outside-false",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "i-hull",
+      "hash": "72c390b01a0836a3b6d9023eeac11493aca7c455c3c234ee5299a41516d44d6e",
+      "level": "proven",
+      "proven_count": 5,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "hull-contains-both",
+          "proven": true
+        },
+        {
+          "name": "hull-tight-endpoints",
+          "proven": true
+        },
+        {
+          "name": "hull-empty-left",
+          "proven": true
+        },
+        {
+          "name": "hull-empty-right",
+          "proven": true
+        },
+        {
+          "name": "hull-bounds-when-nonempty",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "i-intersect",
+      "hash": "3d5958e675d03b277d286997540dc49b7b73fba3bf02c06eaf41ec50e86d08c8",
+      "level": "proven",
+      "proven_count": 4,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "intersect-members",
+          "proven": true
+        },
+        {
+          "name": "intersect-empty-iff-disjoint",
+          "proven": true
+        },
+        {
+          "name": "intersect-sym-members",
+          "proven": true
+        },
+        {
+          "name": "intersect-bounds-when-overlapping",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "i-overlaps",
+      "hash": "0cea913aea8cd6450dbd41725718db5ae2e0823943e5b02e8911683ca5f2d677",
+      "level": "proven",
+      "proven_count": 5,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "overlaps-def",
+          "proven": true
+        },
+        {
+          "name": "overlaps-witness-sound",
+          "proven": true
+        },
+        {
+          "name": "overlaps-complete",
+          "proven": true
+        },
+        {
+          "name": "overlaps-touching",
+          "proven": true
+        },
+        {
+          "name": "overlaps-empty-left",
           "proven": true
         }
       ]
@@ -388,6 +558,122 @@
       ]
     },
     {
+      "name": "q-drop",
+      "hash": "4f1018d0bf3bc20e708d29eb1b48ea832b003d703b68374cb92dd9c2ee04042a",
+      "level": "tested",
+      "proven_count": 3,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "drop-front-nonempty",
+          "proven": true
+        },
+        {
+          "name": "drop-back-only",
+          "proven": true
+        },
+        {
+          "name": "drop-empty",
+          "proven": true
+        },
+        {
+          "name": "drop-is-tail",
+          "proven": false
+        },
+        {
+          "name": "peek-drop-rebuild",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "q-peek",
+      "hash": "7ec8213a7c98744fd31b125ec2486a7c8cdb49600f9dd6ea4d55f31f56ced9ca",
+      "level": "tested",
+      "proven_count": 4,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "peek-front-nonempty",
+          "proven": true
+        },
+        {
+          "name": "peek-back-only",
+          "proven": true
+        },
+        {
+          "name": "peek-empty",
+          "proven": true
+        },
+        {
+          "name": "peek-nonempty-back-not-none",
+          "proven": true
+        },
+        {
+          "name": "peek-is-head",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "q-push",
+      "hash": "bed64941ed7e80ec55c24d7bfe0fcdbf8a385e567f073c5d31b6fa0382133519",
+      "level": "tested",
+      "proven_count": 4,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "push-appends",
+          "proven": true
+        },
+        {
+          "name": "push-on-empty",
+          "proven": true
+        },
+        {
+          "name": "push-length",
+          "proven": true
+        },
+        {
+          "name": "push-count-pushed",
+          "proven": false
+        },
+        {
+          "name": "push-order-anchor",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "q-to-list",
+      "hash": "c12db3d3022cbb66a695b641fba115ecbeddc9f4c37771ac0ce867f73719b603",
+      "level": "proven",
+      "proven_count": 5,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "to-list-def",
+          "proven": true
+        },
+        {
+          "name": "to-list-front-only",
+          "proven": true
+        },
+        {
+          "name": "to-list-back-only",
+          "proven": true
+        },
+        {
+          "name": "to-list-length",
+          "proven": true
+        },
+        {
+          "name": "to-list-order-anchor",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "reverse",
       "hash": "c9bd3195be1f584e7da265636f01ab3fddbe186a00c55eafd5a2f49312f75844",
       "level": "proven",
@@ -401,6 +687,93 @@
         {
           "name": "antidistributes-over-append",
           "proven": true
+        }
+      ]
+    },
+    {
+      "name": "rle-decode",
+      "hash": "12c7c189c871e9873e9e729e88672cabb5b7a5064aa5f9d31826d6c601cae70f",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "nil-decodes-empty",
+          "proven": false
+        },
+        {
+          "name": "cons-law",
+          "proven": false
+        },
+        {
+          "name": "distributes-over-append",
+          "proven": false
+        },
+        {
+          "name": "anchor-with-zero-run",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "rle-encode",
+      "hash": "1148d881af755b7340c2c85a8694ead5726a5098ad5abda2a10272f4e5bee911",
+      "level": "tested",
+      "proven_count": 3,
+      "prop_count": 6,
+      "props": [
+        {
+          "name": "roundtrip",
+          "proven": false
+        },
+        {
+          "name": "never-longer-than-input",
+          "proven": true
+        },
+        {
+          "name": "uniform-list-is-one-run",
+          "proven": false
+        },
+        {
+          "name": "two-runs-stay-two-runs",
+          "proven": false
+        },
+        {
+          "name": "duplicate-head-merges",
+          "proven": true
+        },
+        {
+          "name": "anchor-mixed",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "rle-expand",
+      "hash": "7bab5273d603f45a250198ba9136b4a8d4cc3596972a826ca3edfe725e8d1d6c",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "nonpositive-is-empty",
+          "proven": false
+        },
+        {
+          "name": "peel-one",
+          "proven": false
+        },
+        {
+          "name": "length-is-count-arg",
+          "proven": false
+        },
+        {
+          "name": "every-element-is-v",
+          "proven": false
+        },
+        {
+          "name": "anchor-three-sevens",
+          "proven": false
         }
       ]
     },

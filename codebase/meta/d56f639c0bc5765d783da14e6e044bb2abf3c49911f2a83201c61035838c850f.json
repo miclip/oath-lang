@@ -1,0 +1,27 @@
+{
+  "name": "e-mod",
+  "prop_names": [
+    "nonneg",
+    "below-abs-divisor",
+    "zero-divisor-is-a",
+    "periodic",
+    "divisor-sign-irrelevant",
+    "quadrant-anchors"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "mutants_killed": 17,
+  "mutants_total": 20,
+  "termination": "nonrecursive",
+  "author": "claude-impl-agent",
+  "param_names": [
+    "a",
+    "n"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

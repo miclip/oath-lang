@@ -1,0 +1,5 @@
+✓ prop push-appends             passed 200 cases
+✓ prop push-on-empty            passed 200 cases
+✓ prop push-length              passed 200 cases
+✓ prop push-count-pushed        passed 200 cases
+✓ prop push-order-anchor        passed 200 cases

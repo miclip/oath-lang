@@ -1,0 +1,14 @@
+{
+  "name": "rle-encode",
+  "hash": "1148d881af755b7340c2c85a8694ead5726a5098ad5abda2a10272f4e5bee911",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 14,
+  "mutants_total": 14,
+  "level": "tested",
+  "cases": 200,
+  "proven": 3
+}

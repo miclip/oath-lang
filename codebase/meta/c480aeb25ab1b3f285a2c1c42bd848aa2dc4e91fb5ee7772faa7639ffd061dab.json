@@ -1,0 +1,10 @@
+{
+  "name": "Queue",
+  "ctor_names": [
+    "Q"
+  ],
+  "guarantee": {
+    "level": "asserted"
+  },
+  "author": "claude-impl-agent"
+}

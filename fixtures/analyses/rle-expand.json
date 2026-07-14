@@ -1,0 +1,13 @@
+{
+  "name": "rle-expand",
+  "hash": "7bab5273d603f45a250198ba9136b4a8d4cc3596972a826ca3edfe725e8d1d6c",
+  "kind": "func",
+  "termination": "unknown",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 10,
+  "mutants_total": 10,
+  "level": "tested",
+  "cases": 200
+}

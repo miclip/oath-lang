@@ -1,0 +1,79 @@
+; Closed integer intervals — split-agent experiment module 2 (journal records
+; the principals). Non-recursive and Int/Bool throughout, so the whole module
+; sits in the directly-provable fragment: the spec agent wrote extensional
+; characterizations through i-contains and pre-validated its own oath against
+; a private reference implementation before submitting; the implementer never
+; saw it. (Ival lo hi) is empty whenever lo > hi; empty intervals are never
+; pinned to a canonical representation — only nonempty results, where the set
+; forces the representation.
+
+(data Interval []
+  (Ival Int Int))
+
+(defn i-contains [] [(i Interval) (x Int)] Bool
+  (match i ((Ival lo hi) (and (<= lo x) (<= x hi))))
+  (prop contains-def [(lo Int) (hi Int) (x Int)]
+    (== (i-contains (Ival lo hi) x) (and (<= lo x) (<= x hi))))
+  (prop contains-endpoints [(lo Int) (hi Int)]
+    (if (<= lo hi) (and (i-contains (Ival lo hi) lo) (i-contains (Ival lo hi) hi)) true))
+  (prop contains-empty-none [(lo Int) (hi Int) (x Int)]
+    (if (< hi lo) (not (i-contains (Ival lo hi) x)) true))
+  (prop contains-outside-false [(lo Int) (hi Int) (x Int)]
+    (if (or (< x lo) (< hi x)) (not (i-contains (Ival lo hi) x)) true)))
+
+(defn i-overlaps [] [(a Interval) (b Interval)] Bool
+  (match a ((Ival al ah) (match b ((Ival bl bh)
+    (and (and (<= al ah) (<= bl bh)) (and (<= al bh) (<= bl ah)))))))
+  (prop overlaps-def [(al Int) (ah Int) (bl Int) (bh Int)]
+    (== (i-overlaps (Ival al ah) (Ival bl bh))
+        (and (and (<= al ah) (<= bl bh)) (and (<= al bh) (<= bl ah)))))
+  (prop overlaps-witness-sound [(a Interval) (b Interval) (x Int)]
+    (if (and (i-contains a x) (i-contains b x)) (i-overlaps a b) true))
+  (prop overlaps-complete [(a Interval) (b Interval)]
+    (match a ((Ival al ah) (match b ((Ival bl bh)
+      (if (i-overlaps a b)
+          (and (i-contains a (if (< al bl) bl al)) (i-contains b (if (< al bl) bl al)))
+          true))))))
+  (prop overlaps-touching [(l Int) (m Int) (h Int)]
+    (if (and (<= l m) (<= m h)) (i-overlaps (Ival l m) (Ival m h)) true))
+  (prop overlaps-empty-left [(a Interval) (b Interval)]
+    (match a ((Ival al ah) (if (< ah al) (not (i-overlaps a b)) true)))))
+
+(defn i-intersect [] [(a Interval) (b Interval)] Interval
+  (match a ((Ival al ah) (match b ((Ival bl bh)
+    (Ival (if (< al bl) bl al) (if (< ah bh) ah bh))))))
+  (prop intersect-members [(a Interval) (b Interval) (x Int)]
+    (== (i-contains (i-intersect a b) x) (and (i-contains a x) (i-contains b x))))
+  (prop intersect-empty-iff-disjoint [(a Interval) (b Interval)]
+    (match (i-intersect a b) ((Ival l h) (== (<= l h) (i-overlaps a b)))))
+  (prop intersect-sym-members [(a Interval) (b Interval) (x Int)]
+    (== (i-contains (i-intersect a b) x) (i-contains (i-intersect b a) x)))
+  (prop intersect-bounds-when-overlapping [(al Int) (ah Int) (bl Int) (bh Int)]
+    (if (i-overlaps (Ival al ah) (Ival bl bh))
+        (match (i-intersect (Ival al ah) (Ival bl bh)) ((Ival l h)
+          (and (== l (if (< al bl) bl al)) (== h (if (< ah bh) ah bh)))))
+        true)))
+
+(defn i-hull [] [(a Interval) (b Interval)] Interval
+  (match a ((Ival al ah) (match b ((Ival bl bh)
+    (if (< ah al)
+        (Ival bl bh)
+        (if (< bh bl)
+            (Ival al ah)
+            (Ival (if (< bl al) bl al) (if (< ah bh) bh ah))))))))
+  (prop hull-contains-both [(a Interval) (b Interval) (x Int)]
+    (if (or (i-contains a x) (i-contains b x)) (i-contains (i-hull a b) x) true))
+  (prop hull-tight-endpoints [(a Interval) (b Interval)]
+    (match (i-hull a b) ((Ival l h)
+      (if (<= l h)
+          (and (or (i-contains a l) (i-contains b l)) (or (i-contains a h) (i-contains b h)))
+          true))))
+  (prop hull-empty-left [(a Interval) (b Interval) (x Int)]
+    (match a ((Ival al ah) (if (< ah al) (== (i-contains (i-hull a b) x) (i-contains b x)) true))))
+  (prop hull-empty-right [(a Interval) (b Interval) (x Int)]
+    (match b ((Ival bl bh) (if (< bh bl) (== (i-contains (i-hull a b) x) (i-contains a x)) true))))
+  (prop hull-bounds-when-nonempty [(al Int) (ah Int) (bl Int) (bh Int)]
+    (if (and (<= al ah) (<= bl bh))
+        (match (i-hull (Ival al ah) (Ival bl bh)) ((Ival l h)
+          (and (== l (if (< al bl) al bl)) (== h (if (< ah bh) bh ah)))))
+        true)))

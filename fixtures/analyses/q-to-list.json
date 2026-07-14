@@ -1,0 +1,14 @@
+{
+  "name": "q-to-list",
+  "hash": "c12db3d3022cbb66a695b641fba115ecbeddc9f4c37771ac0ce867f73719b603",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "level": "proven",
+  "cases": 200,
+  "proven": 5
+}

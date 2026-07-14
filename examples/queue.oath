@@ -1,0 +1,54 @@
+; Banker's queue: (Q front back) represents front ++ reverse(back).
+; Push enqueues on back; peek/drop act on the logical front, reversing
+; back when the front list is empty. Bodies by claude-impl-agent;
+; props are the spec author's contract, verbatim.
+
+(data Queue [] (Q (List Int) (List Int)))
+
+(defn q-to-list [] [(q Queue)] (List Int)
+  (match q
+    ((Q f b) (append [Int] f (reverse [Int] b))))
+  (prop to-list-def [(f (List Int)) (b (List Int))] (== (q-to-list (Q f b)) (append [Int] f (reverse [Int] b))))
+  (prop to-list-front-only [(f (List Int))] (== (q-to-list (Q f (Nil [Int]))) f))
+  (prop to-list-back-only [(b (List Int))] (== (q-to-list (Q (Nil [Int]) b)) (reverse [Int] b)))
+  (prop to-list-length [(f (List Int)) (b (List Int))] (== (length [Int] (q-to-list (Q f b))) (+ (length [Int] f) (length [Int] b))))
+  (prop to-list-order-anchor [] (== (q-to-list (Q (Cons [Int] 1 (Nil [Int])) (Cons [Int] 3 (Cons [Int] 2 (Nil [Int]))))) (Cons [Int] 1 (Cons [Int] 2 (Cons [Int] 3 (Nil [Int])))))))
+
+(defn q-push [] [(q Queue) (x Int)] Queue
+  (match q
+    ((Q f b) (Q f (Cons [Int] x b))))
+  (prop push-appends [(q Queue) (x Int)] (== (q-to-list (q-push q x)) (append [Int] (q-to-list q) (Cons [Int] x (Nil [Int])))))
+  (prop push-on-empty [(x Int)] (== (q-to-list (q-push (Q (Nil [Int]) (Nil [Int])) x)) (Cons [Int] x (Nil [Int]))))
+  (prop push-length [(q Queue) (x Int)] (== (length [Int] (q-to-list (q-push q x))) (+ 1 (length [Int] (q-to-list q)))))
+  (prop push-count-pushed [(f (List Int)) (b (List Int)) (x Int)] (== (count x (q-to-list (q-push (Q f b) x))) (+ 1 (count x (q-to-list (Q f b))))))
+  (prop push-order-anchor [] (== (q-to-list (q-push (q-push (Q (Nil [Int]) (Nil [Int])) 1) 2)) (Cons [Int] 1 (Cons [Int] 2 (Nil [Int]))))))
+
+(defn q-peek [] [(q Queue)] (Option Int)
+  (match q
+    ((Q f b)
+      (match f
+        ((Nil)
+          (match (reverse [Int] b)
+            ((Nil) (None [Int]))
+            ((Cons h t) (Some [Int] h))))
+        ((Cons h t) (Some [Int] h)))))
+  (prop peek-front-nonempty [(h Int) (t (List Int)) (b (List Int))] (== (q-peek (Q (Cons [Int] h t) b)) (Some [Int] h)))
+  (prop peek-back-only [(b (List Int))] (== (q-peek (Q (Nil [Int]) b)) (match (reverse [Int] b) ((Nil) (None [Int])) ((Cons h t) (Some [Int] h)))))
+  (prop peek-empty [] (== (q-peek (Q (Nil [Int]) (Nil [Int]))) (None [Int])))
+  (prop peek-nonempty-back-not-none [(f (List Int)) (h Int) (t (List Int))] (not (== (q-peek (Q f (Cons [Int] h t))) (None [Int]))))
+  (prop peek-is-head [(f (List Int)) (b (List Int))] (== (q-peek (Q f b)) (match (q-to-list (Q f b)) ((Nil) (None [Int])) ((Cons h t) (Some [Int] h))))))
+
+(defn q-drop [] [(q Queue)] Queue
+  (match q
+    ((Q f b)
+      (match f
+        ((Nil)
+          (match (reverse [Int] b)
+            ((Nil) (Q (Nil [Int]) (Nil [Int])))
+            ((Cons h t) (Q t (Nil [Int])))))
+        ((Cons h t) (Q t b)))))
+  (prop drop-front-nonempty [(h Int) (t (List Int)) (b (List Int))] (== (q-to-list (q-drop (Q (Cons [Int] h t) b))) (append [Int] t (reverse [Int] b))))
+  (prop drop-back-only [(b (List Int))] (== (q-to-list (q-drop (Q (Nil [Int]) b))) (match (reverse [Int] b) ((Nil) (Nil [Int])) ((Cons h t) t))))
+  (prop drop-empty [] (== (q-to-list (q-drop (Q (Nil [Int]) (Nil [Int])))) (Nil [Int])))
+  (prop drop-is-tail [(f (List Int)) (b (List Int))] (== (q-to-list (q-drop (Q f b))) (match (q-to-list (Q f b)) ((Nil) (Nil [Int])) ((Cons h t) t))))
+  (prop peek-drop-rebuild [(f (List Int)) (b (List Int))] (== (q-to-list (Q f b)) (match (q-peek (Q f b)) ((None) (Nil [Int])) ((Some h) (Cons [Int] h (q-to-list (q-drop (Q f b)))))))))

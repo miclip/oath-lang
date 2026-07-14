@@ -1,0 +1,4 @@
+✓ prop intersect-members        passed 200 cases
+✓ prop intersect-empty-iff-disjoint passed 200 cases
+✓ prop intersect-sym-members    passed 200 cases
+✓ prop intersect-bounds-when-overlapping passed 200 cases

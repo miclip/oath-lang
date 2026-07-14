@@ -1,0 +1,5 @@
+✓ prop division-identity        passed 200 cases
+✓ prop zero-divisor-is-zero     passed 200 cases
+✓ prop shift-by-divisor         passed 200 cases
+✓ prop negate-divisor-negates   passed 200 cases
+✓ prop quadrant-anchors         passed 200 cases

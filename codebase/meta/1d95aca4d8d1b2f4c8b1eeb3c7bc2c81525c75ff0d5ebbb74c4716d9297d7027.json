@@ -1,0 +1,32 @@
+{
+  "name": "i-contains",
+  "prop_names": [
+    "contains-def",
+    "contains-endpoints",
+    "contains-empty-none",
+    "contains-outside-false"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 4
+  },
+  "mutants_killed": 5,
+  "mutants_total": 5,
+  "termination": "nonrecursive",
+  "author": "claude-impl-agent",
+  "param_names": [
+    "i",
+    "x"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3
+  ]
+}

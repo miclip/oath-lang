@@ -1,0 +1,26 @@
+{
+  "name": "e-div",
+  "prop_names": [
+    "division-identity",
+    "zero-divisor-is-zero",
+    "shift-by-divisor",
+    "negate-divisor-negates",
+    "quadrant-anchors"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "mutants_killed": 10,
+  "mutants_total": 10,
+  "termination": "nonrecursive",
+  "author": "claude-impl-agent",
+  "param_names": [
+    "a",
+    "n"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "name": "q-drop",
+  "prop_names": [
+    "drop-front-nonempty",
+    "drop-back-only",
+    "drop-empty",
+    "drop-is-tail",
+    "peek-drop-rebuild"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200,
+    "proven": 3
+  },
+  "mutants_killed": 5,
+  "mutants_total": 5,
+  "termination": "nonrecursive",
+  "author": "claude-impl-agent",
+  "param_names": [
+    "q"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

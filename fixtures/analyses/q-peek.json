@@ -1,0 +1,14 @@
+{
+  "name": "q-peek",
+  "hash": "7ec8213a7c98744fd31b125ec2486a7c8cdb49600f9dd6ea4d55f31f56ced9ca",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "level": "tested",
+  "cases": 200,
+  "proven": 4
+}

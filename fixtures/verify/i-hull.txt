@@ -1,0 +1,5 @@
+✓ prop hull-contains-both       passed 200 cases
+✓ prop hull-tight-endpoints     passed 200 cases
+✓ prop hull-empty-left          passed 200 cases
+✓ prop hull-empty-right         passed 200 cases
+✓ prop hull-bounds-when-nonempty passed 200 cases

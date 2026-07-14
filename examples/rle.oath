@@ -1,0 +1,41 @@
+(data Run [] (Run Int Int))
+
+(defn rle-expand [] [(r Run)] (List Int)
+  (match r
+    ((Run n v)
+      (if (<= n 0)
+          (Nil [Int])
+          (Cons [Int] v (rle-expand (Run (- n 1) v))))))
+  (prop nonpositive-is-empty [(n Int) (v Int)] (if (<= n 0) (== (rle-expand (Run n v)) (Nil [Int])) true))
+  (prop peel-one [(n Int) (v Int)] (if (<= 1 n) (== (rle-expand (Run n v)) (Cons [Int] v (rle-expand (Run (- n 1) v)))) true))
+  (prop length-is-count-arg [(n Int) (v Int)] (if (<= 0 n) (== (length [Int] (rle-expand (Run n v))) n) true))
+  (prop every-element-is-v [(n Int) (v Int)] (== (count v (rle-expand (Run n v))) (length [Int] (rle-expand (Run n v)))))
+  (prop anchor-three-sevens [] (== (rle-expand (Run 3 7)) (Cons [Int] 7 (Cons [Int] 7 (Cons [Int] 7 (Nil [Int])))))))
+
+(defn rle-decode [] [(rs (List Run))] (List Int)
+  (match rs
+    ((Nil) (Nil [Int]))
+    ((Cons r rest) (append [Int] (rle-expand r) (rle-decode rest))))
+  (prop nil-decodes-empty [] (== (rle-decode (Nil [Run])) (Nil [Int])))
+  (prop cons-law [(r Run) (rs (List Run))] (== (rle-decode (Cons [Run] r rs)) (append [Int] (rle-expand r) (rle-decode rs))))
+  (prop distributes-over-append [(rs (List Run)) (ss (List Run))] (== (rle-decode (append [Run] rs ss)) (append [Int] (rle-decode rs) (rle-decode ss))))
+  (prop anchor-with-zero-run [] (== (rle-decode (Cons [Run] (Run 2 5) (Cons [Run] (Run 1 9) (Cons [Run] (Run 0 3) (Cons [Run] (Run 2 9) (Nil [Run])))))) (Cons [Int] 5 (Cons [Int] 5 (Cons [Int] 9 (Cons [Int] 9 (Cons [Int] 9 (Nil [Int])))))))))
+
+(defn rle-encode [] [(xs (List Int))] (List Run)
+  (match xs
+    ((Nil) (Nil [Run]))
+    ((Cons h t)
+      (match (rle-encode t)
+        ((Nil) (Cons [Run] (Run 1 h) (Nil [Run])))
+        ((Cons r rs)
+          (match r
+            ((Run n v)
+              (if (== v h)
+                  (Cons [Run] (Run (+ n 1) v) rs)
+                  (Cons [Run] (Run 1 h) (Cons [Run] (Run n v) rs)))))))))
+  (prop roundtrip [(xs (List Int))] (== (rle-decode (rle-encode xs)) xs))
+  (prop never-longer-than-input [(xs (List Int))] (<= (length [Run] (rle-encode xs)) (length [Int] xs)))
+  (prop uniform-list-is-one-run [(n Int) (v Int)] (if (<= 1 n) (== (rle-encode (rle-expand (Run n v))) (Cons [Run] (Run n v) (Nil [Run]))) true))
+  (prop two-runs-stay-two-runs [(n Int) (v Int) (m Int) (w Int)] (if (and (and (<= 1 n) (<= 1 m)) (not (== v w))) (== (rle-encode (append [Int] (rle-expand (Run n v)) (rle-expand (Run m w)))) (Cons [Run] (Run n v) (Cons [Run] (Run m w) (Nil [Run])))) true))
+  (prop duplicate-head-merges [(x Int) (xs (List Int))] (== (length [Run] (rle-encode (Cons [Int] x (Cons [Int] x xs)))) (length [Run] (rle-encode (Cons [Int] x xs)))))
+  (prop anchor-mixed [] (== (rle-encode (Cons [Int] 4 (Cons [Int] 4 (Cons [Int] -2 (Cons [Int] -2 (Cons [Int] -2 (Cons [Int] 4 (Nil [Int])))))))) (Cons [Run] (Run 2 4) (Cons [Run] (Run 3 -2) (Cons [Run] (Run 1 4) (Nil [Run])))))))

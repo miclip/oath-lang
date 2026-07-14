@@ -1,0 +1,13 @@
+{
+  "name": "rle-decode",
+  "hash": "12c7c189c871e9873e9e729e88672cabb5b7a5064aa5f9d31826d6c601cae70f",
+  "kind": "func",
+  "termination": "unknown",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "level": "tested",
+  "cases": 200
+}

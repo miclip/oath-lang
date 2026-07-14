@@ -1,0 +1,24 @@
+{
+  "name": "rle-expand",
+  "prop_names": [
+    "nonpositive-is-empty",
+    "peel-one",
+    "length-is-count-arg",
+    "every-element-is-v",
+    "anchor-three-sevens"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "mutants_killed": 10,
+  "mutants_total": 10,
+  "termination": "unknown",
+  "author": "claude-impl-agent",
+  "param_names": [
+    "r"
+  ],
+  "confinement": [
+    ""
+  ]
+}

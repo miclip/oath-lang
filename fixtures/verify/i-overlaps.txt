@@ -1,0 +1,5 @@
+✓ prop overlaps-def             passed 200 cases
+✓ prop overlaps-witness-sound   passed 200 cases
+✓ prop overlaps-complete        passed 200 cases
+✓ prop overlaps-touching        passed 200 cases
+✓ prop overlaps-empty-left      passed 200 cases

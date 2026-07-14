@@ -1,0 +1,31 @@
+{
+  "name": "rle-encode",
+  "prop_names": [
+    "roundtrip",
+    "never-longer-than-input",
+    "uniform-list-is-one-run",
+    "two-runs-stay-two-runs",
+    "duplicate-head-merges",
+    "anchor-mixed"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200,
+    "proven": 3
+  },
+  "mutants_killed": 14,
+  "mutants_total": 14,
+  "termination": "structural",
+  "author": "claude-impl-agent",
+  "param_names": [
+    "xs"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    1,
+    4,
+    5
+  ]
+}

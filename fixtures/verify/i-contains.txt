@@ -1,0 +1,4 @@
+✓ prop contains-def             passed 200 cases
+✓ prop contains-endpoints       passed 200 cases
+✓ prop contains-empty-none      passed 200 cases
+✓ prop contains-outside-false   passed 200 cases

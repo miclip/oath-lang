@@ -1,0 +1,14 @@
+{
+  "name": "q-drop",
+  "hash": "4f1018d0bf3bc20e708d29eb1b48ea832b003d703b68374cb92dd9c2ee04042a",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 5,
+  "mutants_total": 5,
+  "level": "tested",
+  "cases": 200,
+  "proven": 3
+}

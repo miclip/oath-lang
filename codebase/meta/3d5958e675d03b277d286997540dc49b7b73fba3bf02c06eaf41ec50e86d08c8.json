@@ -1,0 +1,32 @@
+{
+  "name": "i-intersect",
+  "prop_names": [
+    "intersect-members",
+    "intersect-empty-iff-disjoint",
+    "intersect-sym-members",
+    "intersect-bounds-when-overlapping"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 4
+  },
+  "mutants_killed": 5,
+  "mutants_total": 7,
+  "termination": "nonrecursive",
+  "author": "claude-impl-agent",
+  "param_names": [
+    "a",
+    "b"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3
+  ]
+}

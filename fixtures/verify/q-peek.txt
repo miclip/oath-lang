@@ -1,0 +1,5 @@
+✓ prop peek-front-nonempty      passed 200 cases
+✓ prop peek-back-only           passed 200 cases
+✓ prop peek-empty               passed 200 cases
+✓ prop peek-nonempty-back-not-none passed 200 cases
+✓ prop peek-is-head             passed 200 cases

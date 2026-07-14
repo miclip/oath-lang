@@ -1,0 +1,34 @@
+{
+  "name": "i-hull",
+  "prop_names": [
+    "hull-contains-both",
+    "hull-tight-endpoints",
+    "hull-empty-left",
+    "hull-empty-right",
+    "hull-bounds-when-nonempty"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 5
+  },
+  "mutants_killed": 12,
+  "mutants_total": 15,
+  "termination": "nonrecursive",
+  "author": "claude-impl-agent",
+  "param_names": [
+    "a",
+    "b"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ]
+}

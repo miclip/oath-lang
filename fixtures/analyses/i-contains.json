@@ -1,0 +1,15 @@
+{
+  "name": "i-contains",
+  "hash": "1d95aca4d8d1b2f4c8b1eeb3c7bc2c81525c75ff0d5ebbb74c4716d9297d7027",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 5,
+  "mutants_total": 5,
+  "level": "proven",
+  "cases": 200,
+  "proven": 4
+}

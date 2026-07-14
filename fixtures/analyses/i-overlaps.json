@@ -1,0 +1,15 @@
+{
+  "name": "i-overlaps",
+  "hash": "0cea913aea8cd6450dbd41725718db5ae2e0823943e5b02e8911683ca5f2d677",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 11,
+  "mutants_total": 11,
+  "level": "proven",
+  "cases": 200,
+  "proven": 5
+}

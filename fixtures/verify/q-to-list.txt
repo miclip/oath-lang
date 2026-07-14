@@ -1,0 +1,5 @@
+✓ prop to-list-def              passed 200 cases
+✓ prop to-list-front-only       passed 200 cases
+✓ prop to-list-back-only        passed 200 cases
+✓ prop to-list-length           passed 200 cases
+✓ prop to-list-order-anchor     passed 200 cases

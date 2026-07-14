@@ -1,0 +1,23 @@
+{
+  "name": "rle-decode",
+  "prop_names": [
+    "nil-decodes-empty",
+    "cons-law",
+    "distributes-over-append",
+    "anchor-with-zero-run"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "termination": "unknown",
+  "author": "claude-impl-agent",
+  "param_names": [
+    "rs"
+  ],
+  "confinement": [
+    ""
+  ]
+}
