@@ -931,26 +931,66 @@ func apiProve(st *Store, name string) (string, error) {
 	for _, fn := range m.Guarantee.Falsified {
 		testFalsified[fn] = true
 	}
+	// SPEC §7.2: self-lemma availability is a FIXPOINT — iterate until no
+	// new property proves. The lemma-growth gate (#24) makes the fixpoint
+	// cheap: a goal is only re-attempted when the same-def lemma set has
+	// actually grown since its last attempt. Outcome-identical to naive
+	// iteration — an unchanged goal with unchanged axioms and budget fails
+	// identically — but the ~full-budget timeout burns on genuinely
+	// unprovable goals happen once instead of once per pass.
+	outcomes := make([]propOutcome, len(d.Props))
+	attempted := make([]bool, len(d.Props))
+	provenSet := make([]bool, len(d.Props))
+	lastEpoch := make([]int, len(d.Props))
+	withheld := make([]bool, len(d.Props))
+	epoch := 1 // bumps whenever a new own-lemma lands
+	for {
+		progress := false
+		for pi := range d.Props {
+			if provenSet[pi] || withheld[pi] {
+				continue
+			}
+			if attempted[pi] && lastEpoch[pi] == epoch {
+				continue // no relevant lemma has appeared since the last attempt
+			}
+			pn := metaPropName(m, pi)
+			o := c.proveOne(d, h, m, &d.Props[pi], pi)
+			attempted[pi] = true
+			lastEpoch[pi] = epoch
+			outcomes[pi] = o
+			if o.status == "proven" {
+				if testFalsified[pn] {
+					withheld[pi] = true
+					continue
+				}
+				provenSet[pi] = true
+				progress = true
+				// New theorem: available as a lemma to every other property.
+				if f, err := c.formulaWith(d, h, &d.Props[pi], nil); err == nil {
+					c.lemmas = append(c.lemmas, lemma{ownIdx: pi, text: "(assert " + f + ") ; lemma " + name + "." + pn})
+					epoch++
+				}
+			}
+		}
+		if !progress {
+			break
+		}
+	}
+
 	proven := 0
 	var provenIdx []int
 	anyRefuted := false
 	for pi := range d.Props {
 		pn := metaPropName(m, pi)
-		o := c.proveOne(d, h, m, &d.Props[pi], pi)
-		if o.status == "proven" && testFalsified[pn] {
+		o := outcomes[pi]
+		switch {
+		case withheld[pi]:
 			fmt.Fprintf(&b, "· unproven  %-28s SMT claim contradicts a test counterexample; withheld\n", pn)
-			continue
-		}
-		switch o.status {
-		case "proven":
+		case provenSet[pi]:
 			proven++
 			provenIdx = append(provenIdx, pi)
 			fmt.Fprintf(&b, "∎ PROVEN    %-28s %s (Z3, unbounded ints)\n", pn, o.method)
-			// Earlier proven props become lemmas for the ones that follow.
-			if f, err := c.formulaWith(d, h, &d.Props[pi], nil); err == nil {
-				c.lemmas = append(c.lemmas, lemma{ownIdx: pi, text: "(assert " + f + ") ; lemma " + name + "." + pn})
-			}
-		case "refuted":
+		case o.status == "refuted":
 			anyRefuted = true
 			fmt.Fprintf(&b, "✗ REFUTED   %-28s counterexample over unbounded ints:\n", pn)
 			for _, line := range strings.Split(o.detail, "\n") {

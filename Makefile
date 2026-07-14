@@ -37,12 +37,11 @@ verify: build
 
 # Two passes: pass 2 lets a definition's own pass-1 proofs serve as lemmas
 # (reverse-involution depends on its own antidistribution law).
+# Single pass: apiProve reaches the SPEC 7.2 self-lemma fixpoint internally
+# (with lemma-growth gating, #24), so the historical two-pass ritual is gone.
 prove: build
-	@for pass in 1 2; do \
-		echo "== prove pass $$pass"; \
-		for n in $(PROVABLE); do \
-			$(OATH) prove $$n | tail -1 | sed "s/^/  $$n: /"; \
-		done; \
+	@for n in $(PROVABLE); do \
+		$(OATH) prove $$n | tail -1 | sed "s/^/  $$n: /"; \
 	done
 
 # Everything with properties gets a spec-strength score. Known-equivalent

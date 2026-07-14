@@ -544,6 +544,11 @@ reproducibility (given the same solver):
   a literal one-pass reading yields 188/189 conformance. The reference
   reaches the fixpoint across successive `prove` runs via accumulated
   `proven_props` metadata; a conforming kernel may iterate internally.)
+- Kernels MAY gate fixpoint re-attempts on lemma-set growth: a goal whose
+  available lemma set has not changed since its last failed attempt need
+  not be re-attempted — with a deterministic solver and fixed budget the
+  outcome is identical, and the full-budget timeout burns on genuinely
+  unprovable goals happen once instead of once per iteration (#24).
 - Direct proof declares property binders as constants, translates the property,
   asserts its negation, and checks satisfiability. `unsat` proves it. `sat`
   refutes only when the formula is quantifier-free; otherwise `sat` is
