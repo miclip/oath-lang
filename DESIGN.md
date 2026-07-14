@@ -109,16 +109,24 @@ distinct failure modes with distinct defenses, established adversarially:
 
 - **Weakness** (tight code↔spec link, promises that say nothing) is killed
   by mutation testing — mechanically, no judge required. The controlled
-  rematch measured what the loop is worth: specs re-authored from briefs
-  WITH the mutation scorer available during authoring reached 41/50 on
-  catalogs where the hand-written baseline (authored without the scorer)
-  stood at 33/50 — never worse on any function. Read as a loop-closure
-  result, not a horse race: author and loop are confounded in that delta
-  (a blind-authoring control isolates them), and the survivors' equivalence
-  arguments are self-authored — waived legibly on the record, but asserted
-  rather than machine-proven except where an SMT artifact exists. What the
-  number supports: spec weakness is a closed-loop optimization problem, and
-  closing the loop works.
+  rematch ran as a 2×2: specs for eight corpus functions re-authored from
+  briefs by a model, with and without the mutation scorer available during
+  authoring, attached to the original bodies (identical mutant catalogs),
+  against the founding-corpus baseline. Founding specs: 33/50. Model with
+  the scorer in the loop: 41/50. Model blind — no scorer, no store, no
+  validation: 41/50, function-for-function identical. Two successive
+  framings of this result were refuted by measurement: "models beat
+  humans" fell to the loop confound, then "closing the loop raises spec
+  strength" fell to the blind control. What the loop actually bought was
+  epistemic, not optimizational: the loop-condition author predicted its
+  scores accurately, validated its survivor-equivalence claims against a
+  reference, and shipped waiver justifications; the blind author produced
+  equally strong specs with no verified claims about them at all.
+  Verification did not make the artifact better — it made claims about
+  the artifact trustworthy, which is the substrate's own thesis applied
+  to its own experiment. (Survivor equivalence arguments remain
+  self-authored: waived legibly, machine-proven only where an SMT
+  artifact exists.)
 - **Misalignment** (a spec internally tight around the *wrong* function)
   is invisible to mutation by construction: an adversary instructed to
   cheat delivered sum-of-squares for a sum-of-absolute-values brief at the
