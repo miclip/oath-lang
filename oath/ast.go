@@ -24,13 +24,13 @@ type Ty struct {
 	Names []string `json:"names,omitempty"` // k=record: field names, sorted, parallel to Args
 }
 
-func tInt() *Ty                     { return &Ty{K: "int"} }
-func tBool() *Ty                    { return &Ty{K: "bool"} }
-func tStr() *Ty                     { return &Ty{K: "str"} }
-func tVar(i int) *Ty                { return &Ty{K: "var", Var: i} }
-func tFun(a, b *Ty) *Ty             { return &Ty{K: "fun", A: a, B: b} }
+func tInt() *Ty                       { return &Ty{K: "int"} }
+func tBool() *Ty                      { return &Ty{K: "bool"} }
+func tStr() *Ty                       { return &Ty{K: "str"} }
+func tVar(i int) *Ty                  { return &Ty{K: "var", Var: i} }
+func tFun(a, b *Ty) *Ty               { return &Ty{K: "fun", A: a, B: b} }
 func tDataTy(h string, args []Ty) *Ty { return &Ty{K: "data", Hash: h, Args: args} }
-func tRec(args []Ty) *Ty            { return &Ty{K: "rec", Args: args} }
+func tRec(args []Ty) *Ty              { return &Ty{K: "rec", Args: args} }
 
 // Term is an expression. "rec" in types and "self" in terms refer to the
 // definition currently being defined — the standard escape hatch that makes
@@ -64,8 +64,8 @@ type Prop struct {
 
 // Def is the unit of code. Exactly one of the data/func field groups is used.
 type Def struct {
-	K      string `json:"k"`      // data | func
-	TyVars int    `json:"tyvars"` // number of type parameters
+	K      string `json:"k"`               // data | func
+	TyVars int    `json:"tyvars"`          // number of type parameters
 	Ctors  [][]Ty `json:"ctors,omitempty"` // k=data: field types per constructor ("rec" = this ADT)
 	Ty     *Ty    `json:"ty,omitempty"`    // k=func: declared type
 	Body   *Term  `json:"body,omitempty"`  // k=func

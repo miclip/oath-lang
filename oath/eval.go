@@ -9,16 +9,16 @@ type Value struct {
 	Bool   bool
 	Str    string   // str: value
 	Names  []string // record: field names, sorted, parallel to Fields
-	Env    []Value // closure: captured environment
-	Body   *Term   // closure: the lam term
-	Slf    string  // closure: hash of the def it belongs to (for self-references)
-	Hash   string  // data: ADT hash
-	Idx    int     // data: constructor index
-	Fields []Value // data: constructor arguments
-	Native string  // native (test-generated function): id | affine | const | table
-	NA, NB int64   // native affine: NA*x + NB
-	NVal   *Value  // native const: the returned value; table: the default
-	TVals  []Value // native table: outputs, parallel to Fields (the inputs)
+	Env    []Value  // closure: captured environment
+	Body   *Term    // closure: the lam term
+	Slf    string   // closure: hash of the def it belongs to (for self-references)
+	Hash   string   // data: ADT hash
+	Idx    int      // data: constructor index
+	Fields []Value  // data: constructor arguments
+	Native string   // native (test-generated function): id | affine | const | table
+	NA, NB int64    // native affine: NA*x + NB
+	NVal   *Value   // native const: the returned value; table: the default
+	TVals  []Value  // native table: outputs, parallel to Fields (the inputs)
 }
 
 // evaluator interprets kernel terms with a fuel budget. Termination is not

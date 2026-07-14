@@ -136,10 +136,10 @@ func fail(err error) {
 // putReport is the machine-readable verdict for one definition — the exact
 // feedback an AI author needs to regenerate: what failed, and on which inputs.
 type putReport struct {
-	Name      string     `json:"name"`
-	Hash      string     `json:"hash,omitempty"`
-	Kind      string     `json:"kind"`
-	Status    string     `json:"status"` // accepted | falsified | rejected
+	Name        string     `json:"name"`
+	Hash        string     `json:"hash,omitempty"`
+	Kind        string     `json:"kind"`
+	Status      string     `json:"status"` // accepted | falsified | rejected
 	Guarantee   string     `json:"guarantee,omitempty"`
 	Termination string     `json:"termination,omitempty"`
 	Confinement string     `json:"confinement,omitempty"`

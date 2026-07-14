@@ -13,7 +13,7 @@ const propFuel = 2_000_000
 // PropReport is the outcome of checking one property.
 type PropReport struct {
 	Name    string
-	Passed  int    // cases that passed
+	Passed  int // cases that passed
 	Failed  bool
 	Counter string // rendered counterexample inputs, if falsified
 	Err     string // generation/setup error, if any
@@ -49,6 +49,7 @@ func verifyDef(st *Store, h string) ([]PropReport, error) {
 		reports = append(reports, runProp(st, h, &d.Props[pi], name, base, pi, propCases, propFuel))
 	}
 
+	prevLevel := m.Guarantee.Level
 	g := Guarantee{Level: "asserted"}
 	if len(d.Props) > 0 {
 		var falsified []string
@@ -64,6 +65,17 @@ func verifyDef(st *Store, h string) ([]PropReport, error) {
 		}
 	}
 	m.Guarantee = g
+	switch {
+	case g.Level == "falsified":
+		// A refuted definition retains no proofs — leaving ProvenProps set
+		// would be a self-contradictory record (falsified AND proven).
+		m.ProvenProps = nil
+	case g.Level == "tested" && prevLevel == "proven" && len(m.ProvenProps) == len(d.Props):
+		// Re-verification must not silently demote a real proof: the props are
+		// identical (same hash ⇒ same Def), so prior SMT proofs still stand.
+		m.Guarantee.Level = "proven"
+		m.Guarantee.Proven = len(m.ProvenProps)
+	}
 	if err := st.SetMeta(h, m); err != nil {
 		return nil, err
 	}

@@ -163,6 +163,16 @@ Detailed synthesis obligations:
   data arity, record field ordering/uniqueness, and `rec` placement. `rec` is
   legal only while checking an ADT's constructor fields and must be applied to
   exactly the ADT's type parameters.
+- **Strict positivity.** A `data` definition MUST NOT place `rec` in a negative
+  position: to the left of a function arrow, or inside the type arguments of a
+  container that is not transitively arrow-free. Polarity flips on each function
+  domain and is preserved through the codomain; a `rec` argument to an
+  arrow-free (hence covariant) datatype keeps its polarity, otherwise it is
+  treated as negative. This is required for soundness, not ergonomics: a
+  negative datatype such as `data D = C (D -> D)` encodes nontermination with no
+  syntactic self-recursion, which the structural termination checker (§6.1)
+  cannot see and would wrongly certify `total`. The check conservatively
+  over-rejects the (unusual) covariant-through-an-arrow container.
 - Type substitution replaces `var i` with the `i`th type argument and recurses
   structurally through functions, data, records, and `rec`.
 - Constructor field types are instantiated by substituting ADT type arguments
@@ -257,6 +267,13 @@ intIn(lo,hi)= lo + next() mod (hi-lo+1)
 Seed for property *pi*, case *c* of a definition with hash *h*:
 `base = big-endian-uint64(first 8 bytes of hex-decoded h)`;
 `s = base XOR (pi << 32) XOR (c * 0xD1B54A32D192ED03)`. Size = `c mod 8`.
+
+Size is a recursion budget and is clamped to a minimum of 0 on entry to every
+generation call. Data fields recurse at `size - 1` (below), so without the
+clamp a `Str` nested inside a data value could be reached at size `-1` and draw
+`below(0)` — a division by zero. The clamp is normative: it fixes the draw count
+(and therefore the generated value) for the previously-undefined negative-size
+case.
 
 Generation by type — draw order is normative:
 
@@ -400,8 +417,18 @@ reproducibility (given the same solver):
   significant — only structure is); records as single-constructor
   datatypes; function types as `(Array dom cod)` applied via `select`.
 - Non-recursive callees are inlined (beta-reduction); recursive callees are
-  declared uninterpreted with their defining equation asserted as a
-  universally quantified axiom with the application as pattern.
+  declared uninterpreted. Their defining equation is asserted as a universally
+  quantified axiom with the application as pattern **only when the callee is
+  proven total** (termination `structural` or `nonrecursive`, §6.1). This gate
+  is a soundness requirement: the defining equation of a non-terminating
+  function can be inconsistent (e.g. `f x = f x + 1` ⟹ `∀x. f(x) = f(x)+1`,
+  which is UNSAT), and an inconsistent axiom lets the solver discharge every
+  goal by ex falso — certifying false properties and, through the lemma
+  library, poisoning every dependent. A non-total recursive callee is therefore
+  left uninterpreted with no defining equation: sound, merely weaker (goals that
+  needed its definition return `unknown`). Additionally, a property already
+  refuted by deterministic testing (§4) is never recorded as proven even if the
+  solver reports it valid — the concrete counterexample governs.
 - `match` translates to tester/selector ite-chains.
 - **Excluded, permanently or pending**: `/` and `%` (kernel truncates,
   SMT-LIB is Euclidean — translation would prove the wrong theorem);
@@ -513,6 +540,14 @@ codebase/
 
 Object filenames MUST match their hash, and a conforming reader MUST reject or
 at least report an object whose canonical bytes do not hash to the filename.
+A conforming reader MUST ALSO re-validate a loaded object against the static
+semantics (§2) before use, rejecting it on failure: content addressing proves
+the bytes are intact, not that they encode a well-formed definition, and the
+typechecker and evaluator are not total on malformed `Def`s (a nil type or body
+would fault them). Objects written directly into the store — the team/hosted
+threat model — never passed the gate, so the store is trusted because it is
+checked, not merely because it is content-addressed. Validation MAY be lazy
+(on first access) and cached, since objects are immutable.
 Names are mutable local aliases. Repointing a name never deletes or mutates the
 old object.
 

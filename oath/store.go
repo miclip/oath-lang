@@ -98,7 +98,20 @@ func (s *Store) GetDef(h string) (*Def, error) {
 	if got := hashDef(&d); got != h {
 		return nil, fmt.Errorf("object hash mismatch: file %s contains %s", shortHash(h), shortHash(got))
 	}
+	// Content addressing proves the bytes are intact, not that they encode a
+	// well-formed definition. An object written directly into the store (the
+	// team/hosted-store threat model) never passed the gate, and the
+	// typechecker and evaluator are not total on malformed Defs — a nil Ty or
+	// Body would panic them. Re-validate on load so the store is trusted
+	// because it is checked, not merely because it is content-addressed.
+	// Cache before checking: checkDef resolves dependency hashes through
+	// GetDef, and self-reference never goes through a hash, so this cannot
+	// recurse on h; a valid def stays cached, an invalid one is evicted.
 	s.defs[h] = &d
+	if err := checkDef(s, &d); err != nil {
+		delete(s.defs, h)
+		return nil, fmt.Errorf("stored object %s is not well-formed: %w", shortHash(h), err)
+	}
 	return &d, nil
 }
 

@@ -15,6 +15,9 @@ type checker struct {
 
 // substTy replaces type variables with the given arguments.
 func substTy(t *Ty, args []Ty) *Ty {
+	if t == nil {
+		return nil
+	}
 	switch t.K {
 	case "int", "bool", "str":
 		return t
@@ -117,6 +120,12 @@ func tyIsConcrete(t *Ty) bool {
 // checkTyWF validates a type: variable indices in range, data references
 // exist with matching arity, "rec" only where allowed.
 func checkTyWF(st *Store, t *Ty, ntyvars int, allowRec bool) error {
+	// Total on malformed input: a Def loaded from the store may have missing
+	// children (e.g. a `fun` type with no domain/codomain). The trusted checker
+	// path must return an error, never fault, so GetDef can reject the object.
+	if t == nil {
+		return fmt.Errorf("missing type")
+	}
 	switch t.K {
 	case "int", "bool", "str":
 		return nil
@@ -177,6 +186,109 @@ func checkTyWF(st *Store, t *Ty, ntyvars int, allowRec bool) error {
 	return fmt.Errorf("unknown type form %q", t.K)
 }
 
+// strictlyPositiveTy rejects a datatype whose self-reference ("rec") occurs in
+// a negative position — to the left of a function arrow, directly or through a
+// container that could use its parameter negatively. Negative datatypes such
+// as `data D = C (D -> D)` re-introduce nontermination with NO self-recursion,
+// which the structural termination checker cannot see, so it would wrongly
+// bless a diverging function as `total`. Strict positivity is what makes the
+// `total` verdict honest for datatype-mediated recursion.
+//
+// Polarity flips on each function domain; codomain preserves it. A self-ref
+// passed as an argument to another datatype keeps its polarity only if that
+// datatype is transitively arrow-free (hence covariant in every parameter);
+// otherwise it is conservatively treated as negative. This over-rejects the
+// unusual covariant-through-an-arrow container, which is acceptable: the common
+// shapes (List, Maybe, pairs, trees, records of data) are arrow-free.
+func strictlyPositiveTy(st *Store, t *Ty, negative bool) error {
+	if t == nil {
+		return nil
+	}
+	switch t.K {
+	case "rec":
+		if negative {
+			return fmt.Errorf("datatype is not strictly positive: self-reference in a negative position (left of ->)")
+		}
+		for i := range t.Args {
+			if err := strictlyPositiveTy(st, &t.Args[i], negative); err != nil {
+				return err
+			}
+		}
+		return nil
+	case "fun":
+		if err := strictlyPositiveTy(st, t.A, !negative); err != nil {
+			return err
+		}
+		return strictlyPositiveTy(st, t.B, negative)
+	case "record":
+		for i := range t.Args {
+			if err := strictlyPositiveTy(st, &t.Args[i], negative); err != nil {
+				return err
+			}
+		}
+		return nil
+	case "data":
+		neg := negative
+		if !dataArrowFree(st, t.Hash, map[string]bool{}) {
+			neg = true
+		}
+		for i := range t.Args {
+			if err := strictlyPositiveTy(st, &t.Args[i], neg); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
+// dataArrowFree reports whether a datatype's constructors contain no function
+// type anywhere (transitively through referenced datatypes). Such a datatype
+// is covariant in every parameter. Unknown/unreadable references are treated
+// as not-arrow-free (conservative). Content addressing makes the reference
+// graph acyclic, so the recursion terminates; `seen` guards defensively.
+func dataArrowFree(st *Store, h string, seen map[string]bool) bool {
+	if h == "" || seen[h] {
+		return true
+	}
+	seen[h] = true
+	d, err := st.GetDef(h)
+	if err != nil || d.K != "data" {
+		return false
+	}
+	arrow := false
+	var walk func(t *Ty)
+	walk = func(t *Ty) {
+		if t == nil || arrow {
+			return
+		}
+		switch t.K {
+		case "fun":
+			arrow = true
+		case "data":
+			if !dataArrowFree(st, t.Hash, seen) {
+				arrow = true
+			}
+			for i := range t.Args {
+				walk(&t.Args[i])
+			}
+		default:
+			walk(t.A)
+			walk(t.B)
+			for i := range t.Args {
+				walk(&t.Args[i])
+			}
+		}
+	}
+	for _, c := range d.Ctors {
+		for i := range c {
+			walk(&c[i])
+		}
+	}
+	return !arrow
+}
+
 // instCtorFields instantiates constructor idx of data def d (hash h) at the
 // given type arguments, resolving self-references.
 func instCtorFields(d *Def, h string, tyargs []Ty, idx int) []*Ty {
@@ -198,6 +310,13 @@ func pushCtx(ctx []*Ty, t *Ty) []*Ty {
 // synth computes the type of a term, or fails. ctx is the de Bruijn context:
 // ctx[len-1] is Var 0.
 func (c *checker) synth(ctx []*Ty, t *Term) (*Ty, error) {
+	// Total on malformed input: a Def loaded from the store may have missing
+	// required children (a `field` with no record, an `if` with no else, an
+	// `app` with no function or argument). Reject rather than fault so that
+	// GetDef's revalidation can turn a bad object into an error, not a panic.
+	if t == nil {
+		return nil, fmt.Errorf("missing term")
+	}
 	switch t.K {
 	case "var":
 		if t.Idx < 0 || t.Idx >= len(ctx) {
@@ -522,6 +641,9 @@ func checkDef(st *Store, d *Def) error {
 		for ci, fields := range d.Ctors {
 			for fi := range fields {
 				if err := checkTyWF(st, &fields[fi], d.TyVars, true); err != nil {
+					return fmt.Errorf("constructor %d field %d: %w", ci, fi, err)
+				}
+				if err := strictlyPositiveTy(st, &fields[fi], false); err != nil {
 					return fmt.Errorf("constructor %d field %d: %w", ci, fi, err)
 				}
 			}

@@ -31,6 +31,14 @@ func (r *rng) intIn(lo, hi int64) int64 {
 // functions (identity, affine, constant) — enough to falsify most wrong
 // higher-order code without needing arbitrary term synthesis.
 func genValue(st *Store, ty *Ty, size int, r *rng) (Value, error) {
+	// Size is a recursion budget, never a draw parameter that may go negative:
+	// data fields recurse at size-1, so a Str nested inside a data value can be
+	// reached at size 0 and then generated at size -1. below(size+1) would then
+	// divide by zero. The budget floors at 0 (empty/short leaves), which is
+	// also the base-case regime the data branch already selects for.
+	if size < 0 {
+		size = 0
+	}
 	switch ty.K {
 	case "int":
 		// Bias toward boundary values: off-by-one and base-case mutants live

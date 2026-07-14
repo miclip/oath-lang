@@ -274,18 +274,29 @@ func (c *smtCtx) ensureFn(h string, d *Def, args []Ty) (smtVal, error) {
 	if err != nil {
 		return smtVal{}, err
 	}
-	app := name
-	if len(env) > 0 {
-		var syms []string
-		for _, e := range env {
-			syms = append(syms, e.expr)
+	// Assert the defining equation ONLY for functions proven total. For a
+	// function whose termination is unproven, `f(x) = body` can be an
+	// inconsistent constraint (e.g. f x = f x + 1 ⟹ ∀x. f(x)=f(x)+1, UNSAT),
+	// and an inconsistent axiom lets Z3 discharge ANY goal by ex falso —
+	// "proving" false properties, and poisoning every dependent through the
+	// lemma library. The soundness of the top rung depends on this gate.
+	// A non-total callee is left uninterpreted (declared, no equation): sound,
+	// merely weaker (proofs that needed its definition come back `unknown`).
+	tm, _ := c.st.GetMeta(h)
+	if tm != nil && isTotal(tm.Termination) {
+		app := name
+		if len(env) > 0 {
+			var syms []string
+			for _, e := range env {
+				syms = append(syms, e.expr)
+			}
+			app = fmt.Sprintf("(%s %s)", name, strings.Join(syms, " "))
+			c.axioms = append(c.axioms, fmt.Sprintf("(assert (forall (%s) (! (= %s %s) :pattern (%s))))",
+				strings.Join(params, " "), app, bexpr, app))
+			c.quantified = true
+		} else {
+			c.axioms = append(c.axioms, fmt.Sprintf("(assert (= %s %s))", app, bexpr))
 		}
-		app = fmt.Sprintf("(%s %s)", name, strings.Join(syms, " "))
-		c.axioms = append(c.axioms, fmt.Sprintf("(assert (forall (%s) (! (= %s %s) :pattern (%s))))",
-			strings.Join(params, " "), app, bexpr, app))
-		c.quantified = true
-	} else {
-		c.axioms = append(c.axioms, fmt.Sprintf("(assert (= %s %s))", app, bexpr))
 	}
 	return v, nil
 }
@@ -913,12 +924,23 @@ func apiProve(st *Store, name string) (string, error) {
 	if lemmaCount+ownProven > 0 {
 		fmt.Fprintf(&b, "lemma library: %d from dependencies, %d from prior runs\n", lemmaCount, ownProven)
 	}
+	// A property the deterministic tester already refuted has a concrete
+	// counterexample; an SMT "proof" of it would be a contradiction we must
+	// not record (defense in depth behind the totality gate above).
+	testFalsified := map[string]bool{}
+	for _, fn := range m.Guarantee.Falsified {
+		testFalsified[fn] = true
+	}
 	proven := 0
 	var provenIdx []int
 	anyRefuted := false
 	for pi := range d.Props {
 		pn := metaPropName(m, pi)
 		o := c.proveOne(d, h, m, &d.Props[pi], pi)
+		if o.status == "proven" && testFalsified[pn] {
+			fmt.Fprintf(&b, "· unproven  %-28s SMT claim contradicts a test counterexample; withheld\n", pn)
+			continue
+		}
 		switch o.status {
 		case "proven":
 			proven++
@@ -942,8 +964,22 @@ func apiProve(st *Store, name string) (string, error) {
 
 	m.Guarantee.Proven = proven
 	m.ProvenProps = provenIdx
-	if proven == len(d.Props) && !anyRefuted && m.Guarantee.Level == "tested" {
+	// Set the level consistently from the CURRENT result — promote and demote.
+	// A `proven` level must never outlive the proofs that justified it: an
+	// existing `proven` from a prior kernel (e.g. before the non-total axiom
+	// gate) that now proves fewer than all properties must fall back to its
+	// underlying tested level, or the store would advertise `proven` with an
+	// incomplete ProvenProps set.
+	allProven := len(d.Props) > 0 && proven == len(d.Props) && !anyRefuted
+	switch {
+	case allProven && (m.Guarantee.Level == "tested" || m.Guarantee.Level == "proven"):
 		m.Guarantee.Level = "proven"
+	case !allProven && m.Guarantee.Level == "proven":
+		// `proven` is only ever reached from `tested`; demote back to it.
+		m.Guarantee.Level = "tested"
+		if m.Guarantee.Cases == 0 {
+			m.Guarantee.Cases = propCases
+		}
 	}
 	if err := st.SetMeta(h, m); err != nil {
 		return "", err
