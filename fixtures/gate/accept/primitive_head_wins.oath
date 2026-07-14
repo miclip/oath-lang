@@ -1,0 +1,1 @@
+(defn shadow [] [(not Bool)] Bool (not not))

@@ -63,8 +63,13 @@ highest-risk spots for a hidden cross-kernel disagreement.
    resolution order (local, self, constructor, stored fn) omits primitives
    entirely. Choice: if the application head is one of the literal primitive
    strings (`+ - * / % neg == < <= and or not ++ str-len`), elaborate a `prim`
-   before attempting variable/ctor/fn resolution. **UNTESTED** directly (no
-   fixture shadows a primitive name), but consistent with every hash.
+   before attempting variable/ctor/fn resolution. **NOW TESTED** (was untested
+   in stages 1-3): the `gate/accept` corpus added `def_named_like_primitive`
+   (a def literally named `+`, whose callers' `(+ x x)` heads still resolve to
+   the primitive) and `primitive_head_wins` (`(not not)` — head is the `not`
+   primitive, the argument is a local variable `not` shadowing the name). My
+   kernel accepts both, confirming the head-primitive-wins rule and that the
+   *argument* position still resolves the shadowing local variable.
 
 9. **§1.4 — constructor saturation vs. curried application.** "A constructor
    term is saturated by all remaining arguments; other applications elaborate to
@@ -116,21 +121,25 @@ highest-risk spots for a hidden cross-kernel disagreement.
 15. **§2 — `==` "must not contain a function type."** I read this as: the shared
     operand type must contain no `fun` *anywhere* (including nested inside a
     data/record), not merely at the top level. Choice: recursive `contains_fun`.
-    *Disambiguated (top level only):* `eq_on_function.oath`. **UNTESTED:** the
-    nested case (e.g. `==` on a record whose field is a function) is not in any
-    fixture.
+    *Disambiguated (top level):* `eq_on_function.oath`. **NOW ALSO TESTED nested**
+    (was untested): the `gate/reject` corpus added `eq_on_record_with_function`
+    (`==` on a record type whose field is a function); my kernel rejects it,
+    confirming the recursive `contains_fun` reading matches the reference.
 
 16. **§2 — strict positivity through containers.** The polarity rule ("a `rec`
     argument to an arrow-free datatype keeps polarity, otherwise negative; the
-    check conservatively over-rejects the covariant-through-an-arrow container")
-    is fully specified but the *only* corpus/fixture case is `rec` directly to
-    the left of an arrow (`negative_datatype.oath`). Choice: implemented polarity
-    flipping plus a transitive `arrow-free` test on referenced datatypes; a
-    `rec` inside the type-arguments of a non-arrow-free container is treated as
-    negative. **UNTESTED** beyond the one direct-arrow reject — no fixture nests
-    `rec` inside another datatype's arguments, so my arrow-free/over-rejection
-    logic could disagree with the reference on an exotic datatype and nothing
-    here would catch it.
+    check conservatively over-rejects the covariant-through-an-arrow container").
+    Choice: implemented polarity flipping plus a transitive `arrow-free` test on
+    referenced datatypes; a `rec` in the type-arguments of an arrow-free
+    container keeps polarity, otherwise it is treated as negative. **NOW TESTED**
+    (was untested beyond the one direct-arrow reject): the new fixtures put both
+    signs on trial — `gate/accept/positive_through_container` (`(data W [a]
+    (Wrap a))` then a rose-tree `(data Rose [] (Node Int (W Rose)))` — `rec`
+    nested in an arrow-free container in *positive* position) and
+    `gate/reject/negative_through_container` (`(data D [] (C (-> (W D) Int)))` —
+    the same nesting to the *left* of an arrow). My blind logic accepts the
+    first and rejects the second, agreeing with the reference on first contact —
+    the arrow-free-container polarity path that nothing had ever exercised.
 
 17. **§2 — prop binders are concrete; the function's type variables are not in
     scope for props.** "Prop binders must be concrete (no `var`/`rec`)." I

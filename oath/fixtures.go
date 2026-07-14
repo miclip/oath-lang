@@ -160,8 +160,8 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 			&Def{K: "func", Ty: tStr(), Body: &Term{K: "str", Str: "\"\\\n<>&  "}}},
 		{"zero_var_omitted", "var 0 encodes as {\"k\":\"var\"} — idx zero omitted",
 			&Def{K: "func", Ty: tInt(), Body: &Term{K: "var"}}},
-		{"zero_ctor_idx_omitted", "constructor index 0 omitted; bool false omitted",
-			&Def{K: "func", Ty: tBool(), Body: &Term{K: "bool"}}},
+		{"zero_ctor_idx_omitted", "constructor index 0 omitted (ctor node present); bool-false argument omitted",
+			&Def{K: "func", Ty: tBool(), Body: &Term{K: "ctor", Hash: "d0", Idx: 0, Args: []Term{{K: "bool"}}}}},
 		{"empty_props_omitted", "a func with no props omits the props field entirely",
 			&Def{K: "func", Ty: tInt(), Body: &Term{K: "int", Int: 0}}},
 		{"prop_body_always_present", "Prop.binders and Prop.body are always present even when empty/zero",
@@ -203,6 +203,12 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 			"(data C2 [] (A) (B))\n(defn bad [] [(x C2)] Int (match x ((A) 0)))"},
 		{"ctor_arity", "constructor applied to the wrong number of arguments",
 			"(data Box [] (Mk Int))\n(defn bad [] [] Box (Mk))"},
+		// Coverage gaps flagged by the blind implementation (#22): these are
+		// exactly the spots its DIVERGENCES marked UNTESTED.
+		{"negative_through_container", "strict positivity: rec nested inside another datatype's type argument, left of an arrow",
+			"(data W [a] (Wrap a))\n(data D [] (C (-> (W D) Int)))"},
+		{"eq_on_record_with_function", "== rejected when a function hides inside a record type",
+			"(defn bad [] [(r {f (-> Int Int)})] Bool (== r r))"},
 	}
 	sort.Slice(rejects, func(i, j int) bool { return rejects[i].name < rejects[j].name })
 	var expected strings.Builder
@@ -237,10 +243,53 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		}
 		fmt.Fprintf(&expected, "gate/reject/%s.oath\treject\t%s\n", r.name, r.why)
 	}
+
+	// gate accept corpus — edge cases that MUST elaborate and pass the gate,
+	// beyond what the examples corpus happens to exercise. Self-validating
+	// like the rejects, in reverse.
+	accepts := []struct {
+		name string
+		why  string
+		src  string
+	}{
+		{"positive_through_container", "strict positivity: rec nested in a container type argument in positive position (rose-tree shape) is legal",
+			"(data W [a] (Wrap a))\n(data Rose [] (Node Int (W Rose)))"},
+		{"primitive_head_wins", "a list head naming a primitive is the primitive, even when a local variable shadows the name",
+			"(defn shadow [] [(not Bool)] Bool (not not))"},
+		{"def_named_like_primitive", "defining a name that collides with a primitive is legal; call heads still resolve to the primitive",
+			"(defn + [] [(a Int)] Int a)\n(defn uses-prim [] [(x Int)] Int (+ x x))"},
+	}
+	sort.Slice(accepts, func(i, j int) bool { return accepts[i].name < accepts[j].name })
+	for _, a := range accepts {
+		tmp, err := os.MkdirTemp("", "oath-fixture-")
+		if err != nil {
+			return "", err
+		}
+		tst, err := OpenStore(tmp)
+		if err != nil {
+			return "", err
+		}
+		reps, putErr := apiPut(tst, a.src, "fixtures", "")
+		os.RemoveAll(tmp)
+		accepted := putErr == nil
+		for _, rep := range reps {
+			if rep.Status == "rejected" || rep.Status == "blocked" {
+				accepted = false
+			}
+		}
+		if !accepted {
+			return "", fmt.Errorf("accept fixture %q was NOT accepted by the current kernel — fixture is wrong (putErr=%v)", a.name, putErr)
+		}
+		if err := write(filepath.Join("gate", "accept", a.name+".oath"), []byte(a.src+"\n")); err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&expected, "gate/accept/%s.oath\taccept\t%s\n", a.name, a.why)
+	}
+
 	if err := write(filepath.Join("gate", "expected.txt"), []byte(expected.String())); err != nil {
 		return "", err
 	}
-	fmt.Fprintf(&log, "gate/reject/: %d self-validated reject cases\n", len(rejects))
+	fmt.Fprintf(&log, "gate/reject/: %d self-validated reject cases; gate/accept/: %d self-validated accept cases\n", len(rejects), len(accepts))
 
 	manifest := fmt.Sprintf(`# Oath conformance fixtures
 

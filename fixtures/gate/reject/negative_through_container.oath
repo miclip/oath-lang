@@ -1,0 +1,2 @@
+(data W [a] (Wrap a))
+(data D [] (C (-> (W D) Int)))

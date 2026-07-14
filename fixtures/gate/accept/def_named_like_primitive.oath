@@ -1,0 +1,2 @@
+(defn + [] [(a Int)] Int a)
+(defn uses-prim [] [(x Int)] Int (+ x x))

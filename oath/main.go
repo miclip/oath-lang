@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 const usage = `oath — a content-addressed, spec-carrying language kernel
@@ -159,7 +160,9 @@ func main() {
 			cmdServe(st)
 		}
 	case "fixtures":
-		if len(args) != 2 {
+		if len(args) != 2 || strings.HasPrefix(args[1], "-") {
+			// The guard exists because `oath fixtures --help` once generated a
+			// fixture tree into a directory literally named "--help" (#23).
 			fail(fmt.Errorf("usage: oath fixtures <dir>"))
 		}
 		cmdFixtures(st, args[1])

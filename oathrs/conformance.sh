@@ -61,6 +61,12 @@ for f in "$FIX"/gate/reject/*.oath; do
   "$BIN" hash "$f" > /dev/null 2>&1 && { echo "  FAIL: $(basename "$f") wrongly accepted"; rbad=1; fail=1; }
 done
 [ $rbad -eq 0 ] && echo "  PASS: all $rn reject fixtures rejected"
+abad=0; ac=0
+for f in "$FIX"/gate/accept/*.oath; do
+  ac=$((ac+1))
+  "$BIN" hash "$f" > /dev/null 2>&1 || { echo "  FAIL: $(basename "$f") wrongly rejected"; abad=1; fail=1; }
+done
+[ $abad -eq 0 ] && echo "  PASS: all $ac accept fixtures accepted"
 
 # ---------------------------------------------------------------------------
 # Check 4: verification output (verdicts + counterexamples) byte-for-byte

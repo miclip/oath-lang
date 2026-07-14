@@ -1,1 +1,1 @@
-{"k":"func","tyvars":0,"ty":{"k":"bool"},"body":{"k":"bool"}}
+{"k":"func","tyvars":0,"ty":{"k":"bool"},"body":{"k":"ctor","hash":"d0","args":[{"k":"bool"}]}}

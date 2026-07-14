@@ -3,5 +3,5 @@
 empty_props_omitted	ac92e51edd73433d95669e9d541ca79cdd9a5315b44adb444dd13f59bd02ca2d	a func with no props omits the props field entirely
 prop_body_always_present	fa4f57a145feaefa2c2e2dc50cab44b0493cee30fc82615a76db5e1f7ebc7e0b	Prop.binders and Prop.body are always present even when empty/zero
 string_escapes	71adc3d2d96c1ef03c98f87dfd6dc5f6e0530ce7e933ac092ad4b3c9b55fc52a	string with " \ newline < > & U+2028 U+2029 — HTML-safety escapes are normative
-zero_ctor_idx_omitted	4f261848da7b89616f1239f0d0370f40929a8b4063b42f4751d583817dfc07ba	constructor index 0 omitted; bool false omitted
+zero_ctor_idx_omitted	f880c03dfa29b4b2b274af95e112fc706513571f750b4fd9b0d7eaebe5551fd9	constructor index 0 omitted (ctor node present); bool-false argument omitted
 zero_var_omitted	ef217ed689399677e8fcb315c4dd5265bef3abbf2f3acf2b768553924ecd10f5	var 0 encodes as {"k":"var"} — idx zero omitted

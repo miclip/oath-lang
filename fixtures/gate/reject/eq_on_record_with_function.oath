@@ -1,0 +1,1 @@
+(defn bad [] [(r {f (-> Int Int)})] Bool (== r r))

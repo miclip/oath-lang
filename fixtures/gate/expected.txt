@@ -6,5 +6,10 @@
 gate/reject/body_type_mismatch.oath	reject	body is Bool, declared Int
 gate/reject/ctor_arity.oath	reject	constructor applied to the wrong number of arguments
 gate/reject/eq_on_function.oath	reject	== is not defined on function types
+gate/reject/eq_on_record_with_function.oath	reject	== rejected when a function hides inside a record type
 gate/reject/negative_datatype.oath	reject	strict positivity: rec left of an arrow
+gate/reject/negative_through_container.oath	reject	strict positivity: rec nested inside another datatype's type argument, left of an arrow
 gate/reject/nonexhaustive_match.oath	reject	match omits a constructor arm
+gate/accept/def_named_like_primitive.oath	accept	defining a name that collides with a primitive is legal; call heads still resolve to the primitive
+gate/accept/positive_through_container.oath	accept	strict positivity: rec nested in a container type argument in positive position (rose-tree shape) is legal
+gate/accept/primitive_head_wins.oath	accept	a list head naming a primitive is the primitive, even when a local variable shadows the name

@@ -272,8 +272,21 @@ fn cmd_enctest(dir: &str) -> i32 {
             Def::Func { tyvars: 0, ty: Ty::Str, body: Term::Str(esc), props: vec![] },
         ),
         (
+            // constructor index 0 omitted (ctor node present); bool-false
+            // argument omitted. The ADT hash is a placeholder ("d0") — only
+            // the encoding is under test here, not resolution.
             "zero_ctor_idx_omitted",
-            Def::Func { tyvars: 0, ty: Ty::Bool, body: Term::Bool(false), props: vec![] },
+            Def::Func {
+                tyvars: 0,
+                ty: Ty::Bool,
+                body: Term::Ctor {
+                    hash: "d0".to_string(),
+                    idx: 0,
+                    tyargs: vec![],
+                    args: vec![Term::Bool(false)],
+                },
+                props: vec![],
+            },
         ),
         (
             "zero_var_omitted",
