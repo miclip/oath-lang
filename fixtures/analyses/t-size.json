@@ -1,0 +1,14 @@
+{
+  "name": "t-size",
+  "hash": "09c10983f3bfc647317e6e6e720e174dcf2b6838d511699873bc67300eea8be4",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 7,
+  "mutants_total": 7,
+  "level": "proven",
+  "cases": 200,
+  "proven": 4
+}

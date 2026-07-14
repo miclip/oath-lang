@@ -1,0 +1,71 @@
+; Binary search tree — authored by the second split-agent experiment: one
+; agent wrote the props from a natural-language brief, a second agent wrote
+; the bodies from the props and the spec-only library slice (journal seq
+; 180-189 records both principals and their context-hashes), and the kernel
+; refereed. Neither agent saw the other's work or any dependency body. The
+; ordering invariant is expressed through t-flatten: trees built by t-insert
+; flatten sorted. insert-dup-goes-right was added by the spec agent after
+; the mutation exam exposed duplicate placement as unobservable through the
+; flatten lens; t-member's 4/5 mutation score is an equivalent mutant,
+; accepted with an unreachability argument rather than a tautological pin.
+
+(data Tree []
+  (Leaf)
+  (Node Tree Int Tree))
+
+(defn t-flatten [] [(t Tree)] (List Int)
+  (match t
+    ((Leaf) (Nil [Int]))
+    ((Node l v r) (append [Int] (t-flatten l) (Cons [Int] v (t-flatten r)))))
+  (prop flatten-leaf [(x Int)]
+    (== (t-flatten (Leaf)) (Nil [Int])))
+  (prop flatten-node [(l Tree) (v Int) (r Tree)]
+    (== (t-flatten (Node l v r)) (append [Int] (t-flatten l) (Cons [Int] v (t-flatten r)))))
+  (prop flatten-singleton [(v Int)]
+    (== (t-flatten (Node (Leaf) v (Leaf))) (Cons [Int] v (Nil [Int])))))
+
+(defn t-insert [] [(t Tree) (x Int)] Tree
+  (match t
+    ((Leaf) (Node (Leaf) x (Leaf)))
+    ((Node l v r) (if (< x v) (Node (t-insert l x) v r) (Node l v (t-insert r x)))))
+  (prop insert-count-inserted [(t Tree) (x Int)]
+    (== (count x (t-flatten (t-insert t x))) (+ (count x (t-flatten t)) 1)))
+  (prop insert-count-others [(t Tree) (x Int) (y Int)]
+    (if (== x y) true (== (count y (t-flatten (t-insert t x))) (count y (t-flatten t)))))
+  (prop insert-length [(t Tree) (x Int)]
+    (== (length [Int] (t-flatten (t-insert t x))) (+ (length [Int] (t-flatten t)) 1)))
+  (prop insert-keeps-sorted [(t Tree) (x Int)]
+    (if (is-sorted (t-flatten t)) (is-sorted (t-flatten (t-insert t x))) true))
+  ; Added by the spec agent after the mutation exam: its first four props all
+  ; observe through t-flatten, where equal Ints are indistinguishable — so a
+  ; mutant that flips which SIDE duplicates land on survived. This concrete
+  ; anchor pins duplicates to the right child (and only that; balancing and
+  ; non-equal placement stay free).
+  (prop insert-dup-goes-right [(v Int)]
+    (== (t-insert (Node (Leaf) v (Leaf)) v) (Node (Leaf) v (Node (Leaf) v (Leaf))))))
+
+(defn t-member [] [(t Tree) (x Int)] Bool
+  (match t
+    ((Leaf) false)
+    ((Node l v r) (if (== x v) true (if (< x v) (t-member l x) (t-member r x)))))
+  (prop member-leaf [(x Int)]
+    (not (t-member (Leaf) x)))
+  (prop member-root [(l Tree) (v Int) (r Tree)]
+    (t-member (Node l v r) v))
+  (prop member-insert-finds [(t Tree) (x Int)]
+    (t-member (t-insert t x) x))
+  (prop member-flatten-equiv [(t Tree) (x Int)]
+    (if (is-sorted (t-flatten t)) (== (t-member t x) (not (== (count x (t-flatten t)) 0))) true)))
+
+(defn t-size [] [(t Tree)] Int
+  (match t
+    ((Leaf) 0)
+    ((Node l v r) (+ (t-size l) (+ 1 (t-size r)))))
+  (prop size-leaf [(x Int)]
+    (== (t-size (Leaf)) 0))
+  (prop size-node [(l Tree) (v Int) (r Tree)]
+    (== (t-size (Node l v r)) (+ (+ (t-size l) 1) (t-size r))))
+  (prop size-flatten-length [(t Tree)]
+    (== (t-size t) (length [Int] (t-flatten t))))
+  (prop size-insert [(t Tree) (x Int)]
+    (== (t-size (t-insert t x)) (+ (t-size t) 1))))

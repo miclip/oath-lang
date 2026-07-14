@@ -1,0 +1,15 @@
+{
+  "name": "t-member",
+  "hash": "32b8ab160d754df5258be7d30f77e5f4f4b605363a4239275e8991eae5a70232",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 4,
+  "mutants_total": 5,
+  "level": "tested",
+  "cases": 200,
+  "proven": 3
+}

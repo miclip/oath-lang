@@ -1,0 +1,15 @@
+{
+  "name": "t-insert",
+  "hash": "e021d70f0ec165c446d58e1febd8b7ccfc95abb08c138b2abe3a7d888b80c502",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 6,
+  "mutants_total": 6,
+  "level": "tested",
+  "cases": 200,
+  "proven": 2
+}

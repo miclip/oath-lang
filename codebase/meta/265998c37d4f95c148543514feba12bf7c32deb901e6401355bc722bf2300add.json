@@ -1,0 +1,11 @@
+{
+  "name": "Tree",
+  "ctor_names": [
+    "Leaf",
+    "Node"
+  ],
+  "guarantee": {
+    "level": "asserted"
+  },
+  "author": "claude-spec-agent"
+}

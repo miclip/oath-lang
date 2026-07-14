@@ -1,0 +1,4 @@
+✓ prop size-leaf                passed 200 cases
+✓ prop size-node                passed 200 cases
+✓ prop size-flatten-length      passed 200 cases
+✓ prop size-insert              passed 200 cases

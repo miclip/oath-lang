@@ -1,0 +1,5 @@
+✓ prop insert-count-inserted    passed 200 cases
+✓ prop insert-count-others      passed 200 cases
+✓ prop insert-length            passed 200 cases
+✓ prop insert-keeps-sorted      passed 200 cases
+✓ prop insert-dup-goes-right    passed 200 cases

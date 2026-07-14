@@ -1,0 +1,28 @@
+{
+  "name": "t-flatten",
+  "prop_names": [
+    "flatten-leaf",
+    "flatten-node",
+    "flatten-singleton"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "termination": "structural",
+  "author": "claude-spec-agent",
+  "param_names": [
+    "t"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

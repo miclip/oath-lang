@@ -1,0 +1,3 @@
+✓ prop flatten-leaf             passed 200 cases
+✓ prop flatten-node             passed 200 cases
+✓ prop flatten-singleton        passed 200 cases

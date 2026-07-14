@@ -506,6 +506,106 @@
       ]
     },
     {
+      "name": "t-flatten",
+      "hash": "f56dca527c43d3c61a267243303dc4208a144074bfe1d6fb507c35db8a40803a",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "flatten-leaf",
+          "proven": true
+        },
+        {
+          "name": "flatten-node",
+          "proven": true
+        },
+        {
+          "name": "flatten-singleton",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "t-insert",
+      "hash": "e021d70f0ec165c446d58e1febd8b7ccfc95abb08c138b2abe3a7d888b80c502",
+      "level": "tested",
+      "proven_count": 2,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "insert-count-inserted",
+          "proven": false
+        },
+        {
+          "name": "insert-count-others",
+          "proven": false
+        },
+        {
+          "name": "insert-length",
+          "proven": true
+        },
+        {
+          "name": "insert-keeps-sorted",
+          "proven": false
+        },
+        {
+          "name": "insert-dup-goes-right",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "t-member",
+      "hash": "32b8ab160d754df5258be7d30f77e5f4f4b605363a4239275e8991eae5a70232",
+      "level": "tested",
+      "proven_count": 3,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "member-leaf",
+          "proven": true
+        },
+        {
+          "name": "member-root",
+          "proven": true
+        },
+        {
+          "name": "member-insert-finds",
+          "proven": true
+        },
+        {
+          "name": "member-flatten-equiv",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "t-size",
+      "hash": "09c10983f3bfc647317e6e6e720e174dcf2b6838d511699873bc67300eea8be4",
+      "level": "proven",
+      "proven_count": 4,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "size-leaf",
+          "proven": true
+        },
+        {
+          "name": "size-node",
+          "proven": true
+        },
+        {
+          "name": "size-flatten-length",
+          "proven": true
+        },
+        {
+          "name": "size-insert",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "take",
       "hash": "f4d115c9b316378528dc706a1b4891d64429f3ce7dff19045538603adc342bd7",
       "level": "proven",

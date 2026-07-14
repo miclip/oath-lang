@@ -1,0 +1,4 @@
+✓ prop member-leaf              passed 200 cases
+✓ prop member-root              passed 200 cases
+✓ prop member-insert-finds      passed 200 cases
+✓ prop member-flatten-equiv     passed 200 cases

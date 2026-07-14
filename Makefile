@@ -3,9 +3,10 @@
 # Dependency order matters: later files reference earlier definitions.
 # bad_reverse/nontotal/undertested exit nonzero BY DESIGN (falsified /
 # unproven exhibits) — the leading dash tolerates them.
-EXAMPLES = list sort merge records extras ints service leaky
+EXAMPLES = list sort merge tree records extras ints service leaky
 EXHIBITS = undertested nontotal bad_reverse
 PROVABLE = length append sum count reverse map contains is-sorted insert \
+           t-flatten t-insert t-member t-size \
            sort take drop max2 abs sign clamp or-else shout full-name \
            greet greet-or-guest initials-or
 
@@ -37,6 +38,8 @@ prove: build
 
 # Everything with properties gets a spec-strength score, including merge,
 # whose props are tested-but-not-provable (single-binder induction, see #17).
+# t-member's honest 4/5: the one surviving mutant is equivalent (relaxing <
+# to <= behind an equality-first check is unreachable where it differs).
 mutate: build
 	@for n in $(PROVABLE) merge; do \
 		$(OATH) mutate $$n | tail -1 | sed "s/^/  $$n: /"; \

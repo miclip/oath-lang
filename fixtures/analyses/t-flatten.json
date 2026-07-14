@@ -1,0 +1,14 @@
+{
+  "name": "t-flatten",
+  "hash": "f56dca527c43d3c61a267243303dc4208a144074bfe1d6fb507c35db8a40803a",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

@@ -1,0 +1,31 @@
+{
+  "name": "t-insert",
+  "prop_names": [
+    "insert-count-inserted",
+    "insert-count-others",
+    "insert-length",
+    "insert-keeps-sorted",
+    "insert-dup-goes-right"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200,
+    "proven": 2
+  },
+  "mutants_killed": 6,
+  "mutants_total": 6,
+  "termination": "structural",
+  "author": "claude-spec-agent",
+  "param_names": [
+    "t",
+    "x"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    2,
+    4
+  ]
+}

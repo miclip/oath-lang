@@ -1,0 +1,30 @@
+{
+  "name": "t-size",
+  "prop_names": [
+    "size-leaf",
+    "size-node",
+    "size-flatten-length",
+    "size-insert"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 4
+  },
+  "mutants_killed": 7,
+  "mutants_total": 7,
+  "termination": "structural",
+  "author": "claude-spec-agent",
+  "param_names": [
+    "t"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3
+  ]
+}
