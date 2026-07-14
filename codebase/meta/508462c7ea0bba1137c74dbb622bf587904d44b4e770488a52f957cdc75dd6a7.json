@@ -10,5 +10,11 @@
     ]
   },
   "termination": "unknown",
-  "author": "claude-main"
+  "author": "claude-main",
+  "param_names": [
+    "x"
+  ],
+  "confinement": [
+    ""
+  ]
 }

@@ -92,6 +92,61 @@ Producers (elaborators) MUST emit, and checkers MUST enforce:
 - Primitive operators are the literal strings: `+ - * / % neg == < <= and
   or not ++ str-len`.
 
+### 1.4 Surface syntax and elaboration
+
+The surface syntax is not identity, but the examples corpus is a conformance
+input. A conforming surface elaborator MUST therefore match these rules:
+
+- Whitespace is space, tab, carriage return, newline. `;` starts a comment
+  through the next newline. Delimiters are `()`, `[]`, and `{}`.
+- Atoms are decimal int64 literals, string literals, or symbols. A token that
+  parses as int64 is an integer; otherwise it is a symbol.
+- String literals are delimited by `"`. Supported escapes are `\n`, `\t`,
+  `\"`, and `\\`; any other backslash escape is rejected. Newlines inside
+  strings are accepted and count for later line numbers.
+- Lists produce `list`, square brackets `brack`, and braces `brace`.
+- Top-level forms are `(data Name [tyvars] ctor...)` and `(defn name [tyvars]
+  [(param ty) ...] ret body prop...)`.
+- Type syntax: `Int`, `Bool`, `Str`, type variables, data names, `(Data arg
+  ...)`, right-associated `(-> a b c)`, and record types `{field Ty ...}`.
+  Record fields are sorted ascending by raw symbol bytes during elaboration;
+  duplicate fields are rejected.
+- Term syntax: ints, strings, `true`, `false`, variables, `(fn [(x ty) ...]
+  body)`, `(let (x ty expr) body)`, `(if c t e)`, `(match scrut ((Ctor x ...)
+  body) ...)`, record literals `{field expr ...}`, field access `(. expr
+  field)`, primitives, and named application `(name [tyargs] arg ...)`.
+- Name resolution for a bare term name is, in order: local variable, the
+  function currently being defined (emits `self`), constructor, stored function.
+  Constructor lookup scans the current name index in ascending name order and
+  chooses the first ADT whose metadata contains the constructor name.
+- A constructor term is saturated by all remaining arguments in its surface
+  application. Other applications elaborate to left-associated `app` chains.
+- A `defn` body is wrapped in one `lam` per parameter, from last parameter to
+  first, so the first surface parameter is the outermost lambda. Properties are
+  elaborated in a separate term scope containing only their binders; they may
+  refer to the function under proof via `self` by using the function's name.
+- Match elaboration resolves constructor names, requires all arms belong to one
+  ADT, rejects duplicates, orders arms by constructor index, and rejects
+  non-exhaustive matches before hashing.
+
+Errors are reported with best-effort source line numbers, but exact diagnostic
+wording is not part of kernel identity.
+
+### 1.5 Golden encoding fixtures
+
+The conformance suite MUST include raw canonical-byte fixtures for at least:
+
+- zero values omitted: `false`, integer `0`, `var 0`, constructor index `0`,
+  empty `tyargs`, and empty function `props`;
+- always-present fields: `Def.tyvars`, `Prop.binders`, and `Prop.body`;
+- strings containing `"`, `\`, newline, `<`, `>`, `&`, U+2028, and U+2029;
+- records whose source field order differs from canonical order;
+- data constructors with and without fields, and matches whose first arm binds
+  zero fields.
+
+A second implementation should first pass these byte fixtures, then the full
+examples corpus.
+
 ## 2. Static semantics (the gate)
 
 Typechecking is structural synthesis; there is no inference or unification.
@@ -101,6 +156,39 @@ count. `==` requires both operands the same type, which must not contain a
 function type. `rec` types are legal only inside `data` definitions. Prop
 binders must be concrete (no `var`/`rec`) and prop bodies must be `Bool`.
 A definition failing any check MUST NOT be stored.
+
+Detailed synthesis obligations:
+
+- Type well-formedness checks type-variable bounds, data-reference existence,
+  data arity, record field ordering/uniqueness, and `rec` placement. `rec` is
+  legal only while checking an ADT's constructor fields and must be applied to
+  exactly the ADT's type parameters.
+- Type substitution replaces `var i` with the `i`th type argument and recurses
+  structurally through functions, data, records, and `rec`.
+- Constructor field types are instantiated by substituting ADT type arguments
+  and resolving `rec` to the ADT's concrete `data` type.
+- Contexts are de Bruijn stacks: `ctx[len-1]` is `var 0`.
+- `lam` checks its annotation is well formed, synthesizes the body under the
+  extended context, and returns `fun(annotation, bodyType)`.
+- `app` requires the function side synthesize to `fun(a,b)` and the argument
+  synthesize exactly to `a`.
+- `let` checks its annotation, requires the bound expression synthesize to that
+  annotation, then synthesizes the body under the extended context.
+- `if` requires a `Bool` condition and identical branch types.
+- `record` terms synthesize record types from fields in canonical order.
+  `field` requires a record type containing the requested field name.
+- `ref`, `self`, and `ctor` require exactly the target's `tyvars` count in
+  explicit type arguments; all type arguments must be well formed.
+- `ctor` requires a data target, valid constructor index, and argument types
+  exactly matching instantiated constructor fields.
+- `match` requires a data scrutinee, the recorded match hash to match the
+  scrutinee hash when present, exactly one arm per constructor, and all arm
+  result types equal. Constructor fields are pushed into the arm context in
+  declaration order; the first field is outermost and the last field is
+  `var 0`.
+- Primitive arities and types are fixed: arithmetic and comparisons are over
+  `Int`, `and`/`or`/`not` over `Bool`, `++`/`str-len` over `Str`, and `==`
+  over equal first-order types only.
 
 ## 3. Dynamic semantics
 
@@ -132,6 +220,26 @@ Two independent bounds, both normative for verdict reproducibility:
   consumes 1 unit. Exhaustion is a runtime error.
 - **Depth**: nested evaluation deeper than 100,000 is a runtime error
   (the fuel bound alone does not prevent host-stack exhaustion).
+
+### 3.2 Runtime values and printing
+
+Runtime values are erased: `int`, `bool`, `str`, `closure`, `data`, `record`,
+and generated `native` functions. Closures store an environment, lambda term,
+and enclosing self hash. Native functions are used only by deterministic
+generation: identity, affine, constant, and finite table.
+
+Value printing is normative for counterexamples and conformance:
+
+- Int and Bool print as decimal and `true`/`false`.
+- Str prints using Go `strconv.Quote` behavior, promoted to normative.
+- Records print `{name value ...}` in canonical field order.
+- Data values print `Ctor` for nullary constructors and `(Ctor field ...)`
+  otherwise, using current metadata names where available.
+- Closures print `<fn>`.
+- Native functions print `<fn x. x>`, `<fn x. A*x + B>`, `<fn _. V>`, or
+  `<fn {K→V ...} else D>` with table entries in generation order.
+- A property runtime error counterexample appends two spaces and `(runtime
+  error: MESSAGE)` after the comma-separated printed inputs.
 
 ## 4. Deterministic generation
 
@@ -199,6 +307,89 @@ rendered by the value printer.
   non-commutative binary prims (`- / % < <= ++`), integer literal ±1 and →0,
   string literal → `""`, if-branch swap. Score = killed/total.
 
+### 6.1 Termination algorithm
+
+The termination checker analyzes only the function body after stripping the
+top-level lambda spine. Let there be `n` parameters. The initial relation
+environment maps each parameter binder to `eq(i)` for its parameter position;
+new binders with unknown size relation receive `nil`.
+
+- A relation is a map `parameter-index -> eq|lt`; `ltOf(r)` turns every entry
+  of `r` into `lt`.
+- `argRel(term, env)` returns the relation of a variable term, accounting for
+  de Bruijn indexing, or `nil` for any non-variable.
+- The walker carries an application spine. In `app`, it walks the function
+  with `argRel(argument)` prepended to the spine, and separately walks the
+  argument with an empty spine.
+- Seeing `self` records one call site with the current spine. Seeing `self`
+  without a full application spine is therefore conservative and will fail the
+  descent test.
+- `lam` and `let` push `nil`. `match` first walks the scrutinee. If the
+  scrutinee is a variable, every constructor field binder in every arm gets
+  `ltOf(scrutineeRelation)`; otherwise fields get `nil`.
+- Other terms recursively walk subterms with an empty spine.
+
+The verdict is:
+
+- `unknown` if any body-referenced function has missing metadata or a
+  non-total termination verdict;
+- `nonrecursive` if no self-call sites are recorded;
+- `structural` if there exists one parameter index `j` such that every
+  recorded self-call has an argument at position `j` whose relation contains
+  `j -> lt`;
+- `unknown` otherwise.
+
+Only refs in the body count as callee obligations; properties are not
+production code and do not affect totality.
+
+### 6.2 Confinement algorithm
+
+Confinement is computed for each top-level parameter whose type contains a
+function. First-order parameters receive an empty verdict.
+
+For a parameter at surface position `i`, the variable has de Bruijn index
+`nparams-1-i` in the stripped body. The checker walks the body with that target
+index and an `inLam` flag initially false:
+
+- A bare occurrence of the target variable is an escape.
+- Direct application `(f ...)` of the target variable is allowed only when not
+  under an inner lambda.
+- Projection-and-application `((. f field) ...)` is allowed only when not under
+  an inner lambda.
+- Passing the whole parameter as an argument to `self` is allowed only at the
+  same parameter position currently being checked.
+- Passing the whole parameter as an argument to a referenced callee is allowed
+  only when the callee metadata says that argument position is `confined`.
+- Any occurrence under an inner lambda, stored in a constructor or record,
+  returned as a value, let-bound and later used bare, or projected without
+  application is an escape.
+- `let` and `match` adjust the target de Bruijn index by the number of binders
+  they introduce.
+
+If all occurrences are allowed the verdict is `confined`; otherwise `escapes`.
+
+### 6.3 Mutation algorithm
+
+Mutation scoring traverses the body pre-order over `A`, `B`, `C`, `Args`, then
+`Arms`. For each single-node mutation, the whole definition is deep-copied,
+typechecked, hashed, and skipped if its hash was already seen. The original
+hash is pre-marked as seen. Mutants are not stored in the object database, but
+are cached in memory under their candidate hash while properties run.
+
+Mutations are attempted in this order at each node:
+
+1. Primitive operator substitutions listed above, in the per-operator order
+   shown by this document's catalog.
+2. Operand swap for swappable binary primitives.
+3. String literal to `""`, only when non-empty.
+4. Integer literal to `old+1`, `old-1`, and `0`, skipping unchanged values.
+5. If-branch swap.
+
+Each mutant runs properties in property order with `mutantCases=60` and
+`mutantFuel=500000`, seeded by the mutant hash using §4. The first property
+that fails or errors kills the mutant. Survivors are rendered with the
+projection printer.
+
 ## 7. Proof obligations (SMT boundary)
 
 The provable fragment and its translation, normative for outcome
@@ -227,6 +418,76 @@ reproducibility (given the same solver):
 - Standing caveat attached to every proof: solver integers are unbounded;
   kernel integers are int64. A proof is valid modulo overflow.
 
+### 7.1 SMT-LIB generation details
+
+- Z3 is invoked as `z3 -in` with a 15 second timeout per solver call. Timeout,
+  process failure, stderr-only output, or output not beginning with `sat` or
+  `unsat` is `unknown`, never proof.
+- SMT identifiers are produced by replacing every character outside
+  `[A-Za-z0-9]` with `_`. This is not guaranteed collision-free; fixture coverage must
+  include collision-prone metadata names before relying on such names in a
+  public store.
+- Negative integer literals render as `(- N)`. Non-negative integers render in
+  decimal.
+- SMT string literals double `"` characters inside the SMT string. Other
+  string escaping must match SMT-LIB accepted literal syntax and the examples
+  corpus.
+- Function types translate to array sorts `(Array dom cod)` and application of
+  function values translates to nested `select`.
+- Record sorts are named `Rec_<field>_<sort>...` in canonical field order and
+  declared as single-constructor datatypes. Field selectors are
+  `mk_<recordSort>_<field>`.
+- Data sort names start with sanitized metadata definition name plus sanitized
+  type-argument sorts. Constructor names are sanitized constructor metadata
+  plus `_` plus the data sort name. Selector names are `<constructor>_<fieldIndex>`.
+
+### 7.2 Calls, lemmas, and induction
+
+- Calls must be fully applied. Partial application and over-application are
+  outside the provable fragment.
+- Non-recursive callees are inlined by beta-reducing through their top-level
+  lambda spine after type substitution.
+- Recursive callees are declared with `declare-fun`; their defining equation is
+  asserted as a quantified axiom over the top-level parameters. The pattern is
+  the full function application. This is part of the current proof fragment and
+  must be treated as trusted proof-kernel behavior by a conforming
+  implementation.
+- `self` inside a property means the definition under proof and is translated
+  the same way as a call to the definition's hash.
+- The lemma queue starts with all dependencies of the definition under proof,
+  then traverses transitive dependencies breadth-first in sorted hash order.
+  For every function dependency, metadata `proven_props` indices in stored
+  order become lemma axioms when their properties translate.
+- Previously proven properties of the definition itself are also lemmas, tagged
+  by property index. A property's own lemma is excluded while proving that
+  property. A property proven earlier in the same `prove` run becomes a lemma
+  for later properties.
+- Direct proof declares property binders as constants, translates the property,
+  asserts its negation, and checks satisfiability. `unsat` proves it. `sat`
+  refutes only when the formula is quantifier-free; otherwise `sat` is
+  reported as unproven.
+- Induction is attempted after direct proof, over datatype-typed property
+  binders in binder order. For each constructor, fresh constants are declared
+  for fields. For every field whose sort is the induction sort, an induction
+  hypothesis is asserted by substituting that field for the induction binder
+  and universally quantifying all other property binders. The constructor
+  subgoal substitutes the constructed value for the induction binder and keeps
+  other binders as the direct-attempt constants. All constructor subgoals must
+  be `unsat` under negation for the property to be proven.
+
+### 7.3 Proof metadata
+
+`prove` updates `Guarantee.proven` with the number of proven properties and
+`Meta.proven_props` with their indices. If all properties are proven, no
+property was refuted, and the prior guarantee level is `tested`, the guarantee
+level becomes `proven`.
+
+Conformance fixtures SHOULD record, for every proof attempt: kernel version,
+solver name/version, property index, method (`direct` or induction binder),
+outcome, and a hash of the emitted SMT-LIB obligation. The current metadata
+stores only the proven count and property indices, so these proof-provenance
+fixtures are external to the hashed definition.
+
 ## 8. The journal
 
 Append-only, one JSON object per line: `seq`, `time` (RFC3339 UTC),
@@ -237,6 +498,69 @@ Append-only, one JSON object per line: `seq`, `time` (RFC3339 UTC),
 including gate rejections (which store no object). The journal is metadata:
 never hashed, wall-clock timestamps permitted (the kernel's no-clock rule
 protects verification semantics only).
+
+### 8.1 Store layout
+
+The reference filesystem store layout is normative for local conformance:
+
+```
+codebase/
+  objects/<hash>.json   compact canonical Def JSON
+  meta/<hash>.json      indented metadata JSON, two-space indent
+  names.json            indented object mapping name -> current hash
+  log.jsonl             append-only compact JSON log entries
+```
+
+Object filenames MUST match their hash, and a conforming reader MUST reject or
+at least report an object whose canonical bytes do not hash to the filename.
+Names are mutable local aliases. Repointing a name never deletes or mutates the
+old object.
+
+`names.json` is metadata and may be rendered with ordinary JSON object key
+ordering for the host implementation; hash identity never depends on it. For
+deterministic API output, commands that list names sort name keys ascending.
+
+`meta/<hash>.json` contains `Meta`: definition name, type-variable names,
+constructor names, property names, guarantee, mutation score, termination,
+author, parameter names, confinement verdicts, and proven property indices.
+Metadata may change without changing the object hash.
+
+### 8.2 Journal sequencing
+
+`seq` is one plus the number of existing newline-terminated log records. Local
+time format is `time.Now().UTC().Format(time.RFC3339)` equivalent: UTC with
+`Z`, no subsecond field. Hosted stores may use stronger sequencing, but a
+conformance fixture must specify exact journal bytes if journal replay is under
+test.
+
+Gate rejection logs contain no object hash. Accepted and falsified logs contain
+the stored object hash; `prev` is the previous hash for the submitted name, or
+omitted when the name was new or already pointed at the same hash.
+
+### 8.3 API and MCP result shape
+
+The CLI and MCP server share one API layer. Tool results are text unless a
+command explicitly documents JSON mode.
+
+- `put` accepts source text plus an author, stops at the first elaboration error
+  or gate rejection, journals every attempted top-level form, and returns one
+  report per processed form. CLI exit code is `0` for all accepted, `1` for a
+  rejection or command error, and `2` when at least one processed definition is
+  falsified and no rejection occurred.
+- `put --json` returns an array of reports with fields `name`, `hash`, `kind`,
+  `status`, `guarantee`, `termination`, `confinement`, `prev`, `ctors`,
+  `error`, and `props`.
+- `context` prints spec projections in breadth-first dependency order from the
+  requested names. Dependencies are sorted by hash before enqueuing. Each
+  section's token estimate is `len(section)/4 + 1`; sections that would exceed
+  a positive budget are omitted and named in the footer.
+- `dependents` scans all object hashes in ascending order and prints current
+  names or `name@shortHash` for superseded objects.
+- MCP uses JSON-RPC 2.0 over newline-delimited stdio. Supported methods are
+  `initialize`, `ping`, `tools/list`, and `tools/call`; notifications get no
+  response; unknown methods return `-32601`. Tool call failures are encoded as
+  successful JSON-RPC responses with `isError: true` and a text body beginning
+  `error: `.
 
 ## 9. The hashed/metadata boundary
 
@@ -263,3 +587,20 @@ A candidate kernel conforms if, against a reference store:
 The `examples/` corpus plus the journal of a reference store constitutes
 the initial conformance suite. Cross-kernel agreement on all five points is
 the intended CI gate for any second implementation.
+
+The conformance suite SHOULD be materialized as fixtures, not only prose:
+
+```
+fixtures/
+  canonical/*.json          raw canonical Def bytes
+  hashes.txt                name/hash table from elaborating examples
+  gate/*.oath               accepted and rejected examples
+  verify/*.txt              property verdicts and counterexamples
+  analyses/*.json           termination, confinement, mutation scores
+  prove/*.smt2              emitted obligations or obligation hashes
+  prove/outcomes.json       solver version, outcome, method, detail
+  api/*.txt                 stable CLI/MCP text outputs
+```
+
+No second implementation is trusted until it passes the fixtures without
+consulting the Go source.

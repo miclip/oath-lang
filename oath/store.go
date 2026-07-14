@@ -95,6 +95,9 @@ func (s *Store) GetDef(h string) (*Def, error) {
 	if err := json.Unmarshal(b, &d); err != nil {
 		return nil, err
 	}
+	if got := hashDef(&d); got != h {
+		return nil, fmt.Errorf("object hash mismatch: file %s contains %s", shortHash(h), shortHash(got))
+	}
 	s.defs[h] = &d
 	return &d, nil
 }

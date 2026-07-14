@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -64,11 +65,11 @@ type smtCtx struct {
 	selfDef    *Def
 	selfHash   string
 	decls      []string
-	axioms     []string // defining equations of axiomatized recursive functions
-	lemmas     []lemma  // proven properties usable as axioms (filtered per goal)
+	axioms     []string           // defining equations of axiomatized recursive functions
+	lemmas     []lemma            // proven properties usable as axioms (filtered per goal)
 	dts        map[string]*dtInfo // by instance key
 	dtBySort   map[string]*dtInfo
-	fns        map[string]smtVal // by instance key
+	fns        map[string]smtVal    // by instance key
 	arrows     map[string][2]string // array sort → (domain, codomain)
 	quantified bool
 	depth      int
@@ -686,6 +687,16 @@ func runZ3(script string) string {
 	return string(out)
 }
 
+func sortedDepHashes(d *Def) []string {
+	deps := collectDeps(d)
+	out := make([]string, 0, len(deps))
+	for h := range deps {
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
+}
+
 type propOutcome struct {
 	status string // proven | refuted | unknown
 	method string // direct | induction on <binder>
@@ -845,7 +856,7 @@ func apiProve(st *Store, name string) (string, error) {
 	lemmaCount := 0
 	seen := map[string]bool{h: true}
 	queue := []string{}
-	for dep := range collectDeps(d) {
+	for _, dep := range sortedDepHashes(d) {
 		if !seen[dep] {
 			seen[dep] = true
 			queue = append(queue, dep)
@@ -857,7 +868,7 @@ func apiProve(st *Store, name string) (string, error) {
 		if err != nil {
 			continue
 		}
-		for dep := range collectDeps(dd) {
+		for _, dep := range sortedDepHashes(dd) {
 			if !seen[dep] {
 				seen[dep] = true
 				queue = append(queue, dep)
