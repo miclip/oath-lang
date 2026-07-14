@@ -437,3 +437,72 @@ same sat/unsat. All 48 definitions / 189 property outcomes reproduce.
   goals that run to the timeout, re-attempted as the lemma fixpoint iterates).
   This is inherent to driving a real solver per property and is documented rather
   than hidden.
+
+# DIVERGENCES — Stage 4 (the wasm32 port: host assumptions made explicit)
+
+Cross-compiling the kernel to `wasm32-wasip1` (target added via rustup; no wasm
+runtime is installed here, so the deliverable is the green cross-compile plus a
+documented `wasmtime` invocation — see `wasm-demo.sh`). The port is the sharpest
+lens yet on what the kernel silently assumes about its host.
+
+46. **Structure: pure library + native-only prover.** The kernel is now a library
+    crate (`src/lib.rs`: identity, gate, eval, gen, verify, analyses) plus a thin
+    CLI binary. The library is pure computation — it imports ZERO host functions —
+    so it cross-compiles to wasm unchanged and would embed in a browser
+    (`wasm32-unknown-unknown`) equally well. Only the CLI binary pulls host I/O.
+    Chosen target `wasm32-wasip1` over `unknown-unknown`: the library needs no
+    shim either way, and WASI covers the CLI's file/args/stdio with no
+    hand-written JS glue. The built `oathrs.wasm` imports ONLY
+    `wasi_snapshot_preview1` (16 functions: args, `path_open`/`fd_read`/`fd_write`
+    under a `--dir` preopen, `random_get`, `proc_exit`) — verified by parsing the
+    module's import section; no z3, no thread, no custom host.
+
+47. **z3-as-subprocess is impossible in wasm ⇒ `prove` is native-only, behind a
+    default cargo feature.** `--no-default-features` drops the `prove` module (the
+    sole `std::process` user) cleanly. **Conformance consequence:** a pure-wasm
+    deployment can run checks 1-5 *minus the proof-derived guarantee upgrade*
+    (identity, gate, verify, termination/confinement/mutation, testing level).
+    Check 6 and check 5's `level:"proven"`/`proven` fields require the native
+    build with the `prove` feature and a z3 on PATH. This is an inherent host
+    dependency of the SMT boundary (§7.1), not a portability defect.
+
+48. **The §3.1 depth bound is a host-stack assumption, and wasm makes it
+    unavoidable.** Stage 2 already found the evaluator recurses one host frame per
+    nested Oath evaluation, needing a 2 GiB worker thread natively to reach the
+    100,000 depth bound before overflowing. wasm32 has **no threads**, so that
+    escape hatch is gone: the module runs on its own linear-memory stack (~1 MiB
+    by default), which reaches far fewer than 100,000 frames. **Consequence for
+    conformance:** on a default wasm build, a deep evaluation — the non-terminating
+    `spin`, which walks to the depth bound — traps (wasm stack exhaustion) instead
+    of producing the normative `recursion too deep (likely non-termination)`
+    counterexample, so `spin`'s verify transcript is NOT reproducible on wasm
+    without extra configuration. Terminating examples (lists ≤ 7, trees ≤ 7) stay
+    well within the default stack, so the hash+gate+verify demo works. Reproducing
+    the depth-bound case on wasm requires a larger stack, configured at build time
+    (`RUSTFLAGS='-C link-arg=-zstack-size=<bytes>'`) and/or by the runtime
+    (`wasmtime --max-wasm-stack=<bytes>`). The clean fix — a heap-allocated
+    explicit evaluation stack so depth is independent of the host — is noted but
+    out of scope for this port; the compromise is documented rather than hidden.
+    The reference (Go, growable goroutine stacks) never had to confront this,
+    which is exactly why the assumption stayed invisible until an independent
+    port on a non-growable stack surfaced it — twice now.
+
+49. **Determinism survives the host RNG.** `random_get` appears among the wasm
+    imports because Rust's default `HashMap`/`HashSet` seed their hasher from the
+    OS RNG. No kernel output depends on hash-map iteration order — everything that
+    is serialized or compared uses `BTreeMap`/`Vec` (the object store, sort/order
+    outputs) while `HashSet`/`HashMap` are used only for membership (positivity
+    `visited`, mutation `seen`, elaboration name sets). So native and wasm produce
+    identical hashes/verdicts/counterexamples despite per-run hasher seeding. This
+    is a latent invariant, not an enforced one: any future code that iterates a
+    `HashMap` into hashed or printed output would diverge across hosts (and across
+    runs). **UNTESTED** here beyond the argument, since no wasm runtime was
+    available to diff outputs — but the import surface confirms the RNG is the
+    only nondeterminism source, and it is confined to hashing.
+
+50. **`conformance.sh` stays native-only, by design.** It exercises the `prove`
+    feature and (via `spin`) the full depth bound, neither of which a portable
+    wasm build supports, and no runtime is installed to execute wasm here. The
+    wasm deliverable is therefore a separate `wasm-demo.sh` (green cross-compile +
+    import audit + documented invocation); native `conformance.sh` remains green
+    and unchanged.

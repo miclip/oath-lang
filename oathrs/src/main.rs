@@ -1,18 +1,9 @@
-mod analyze;
-mod check;
-mod elaborate;
-mod eval;
-mod gen;
-mod hash;
-mod ir;
-mod prove;
-mod sexpr;
-mod value;
-mod verify;
-
-use elaborate::elaborate_corpus;
-use hash::sha256_hex;
-use ir::*;
+use oathrs::analyze;
+use oathrs::check;
+use oathrs::elaborate::elaborate_corpus;
+use oathrs::hash::sha256_hex;
+use oathrs::ir::*;
+use oathrs::verify;
 use std::fs;
 use std::process::exit;
 
@@ -196,7 +187,9 @@ fn cmd_analyze(paths: &[String], out_dir: Option<&str>, proofs_path: Option<&str
     0
 }
 
+#[cfg(feature = "prove")]
 fn cmd_prove(paths: &[String]) -> i32 {
+    use oathrs::prove;
     let files = match read_files(paths) {
         Ok(f) => f,
         Err(e) => {
@@ -214,7 +207,7 @@ fn cmd_prove(paths: &[String]) -> i32 {
     // falsified set: any prop falsified under testing
     let mut falsified = std::collections::BTreeSet::new();
     for (name, def) in &store.def_by_name {
-        if let ir::Def::Func { props, .. } = def {
+        if let Def::Func { props, .. } = def {
             if props.is_empty() {
                 continue;
             }
@@ -315,17 +308,29 @@ fn cmd_enctest(dir: &str) -> i32 {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn main() {
     // The evaluator recurses one host stack frame per nested Oath evaluation;
     // the §3.1 depth bound is 100,000, which overflows the default 8 MiB main
     // stack. Run on a worker thread with a large stack (the reference host, Go,
-    // grows stacks automatically).
+    // grows stacks automatically). wasm32 has no threads — see the wasm main
+    // below and DIVERGENCES.md for the depth-bound consequence.
     let child = std::thread::Builder::new()
         .stack_size(2 * 1024 * 1024 * 1024)
         .spawn(run)
         .expect("spawn worker thread");
     let code = child.join().unwrap_or(1);
     exit(code);
+}
+
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    // No threads on wasm32: run on the module's own stack. Deep evaluations
+    // (e.g. the non-terminating `spin`, which walks to the 100,000 depth bound)
+    // require a correspondingly large wasm stack — configure it at link time
+    // (`-C link-arg=-zstack-size=...`) or via the runtime. Terminating examples
+    // used by the demo stay well within the default stack.
+    exit(run());
 }
 
 fn run() -> i32 {
@@ -374,6 +379,7 @@ fn run() -> i32 {
             }
             cmd_analyze(&files, out_dir.as_deref(), proofs.as_deref())
         }
+        #[cfg(feature = "prove")]
         "prove" => cmd_prove(&args[2..]),
         "enctest" => {
             if args.len() < 3 {

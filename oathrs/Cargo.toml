@@ -3,9 +3,21 @@ name = "oathrs"
 version = "0.1.0"
 edition = "2021"
 
+# The kernel library: identity, gate, eval, gen, verify, analyses. Pure
+# computation — no threads, no process, no filesystem — so it cross-compiles to
+# wasm32 unchanged. The `prove` module (drives z3 as a subprocess) is behind a
+# default feature and excluded from wasm builds.
+[lib]
+name = "oathrs"
+path = "src/lib.rs"
+
 [[bin]]
 name = "oathrs"
 path = "src/main.rs"
+
+[features]
+default = ["prove"]
+prove = []
 
 [dependencies]
 sha2 = "0.10"
