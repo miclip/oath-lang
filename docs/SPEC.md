@@ -384,16 +384,31 @@ index and an `inLam` flag initially false:
 
 - A bare occurrence of the target variable is an escape.
 - Direct application `(f ...)` of the target variable is allowed only when not
-  under an inner lambda.
-- Projection-and-application `((. f field) ...)` is allowed only when not under
-  an inner lambda.
+  under an inner lambda AND the application result is data: walking the
+  parameter's declared type through one arrow per applied argument must leave
+  a type free of function types. A partial application of a curried
+  capability — or a capability whose result is function-valued — is a closure
+  DERIVED from the capability, and letting it flow as data would smuggle the
+  capability out. A type variable in result position counts as data: what a
+  caller instantiates it with is that caller's own closure to analyze.
+- Projection-and-application `((. f field) ...)` is allowed under the same
+  result rule, using the projected field's declared type.
 - Passing the whole parameter as an argument to `self` is allowed only at the
   same parameter position currently being checked.
 - Passing the whole parameter as an argument to a referenced callee is allowed
   only when the callee metadata says that argument position is `confined`.
-- Any occurrence under an inner lambda, stored in a constructor or record,
-  returned as a value, let-bound and later used bare, or projected without
-  application is an escape.
+- A LAMBDA literal passed (not under an inner lambda) to a callee position
+  whose metadata says `confined` is a blessed closure: the callee only ever
+  invokes it during the call and never keeps it, so the walk continues into
+  the closure body with the inner-lambda flag RESET (and the target index
+  shifted by the closure's binders). Every smuggling route out of the closure
+  is still caught by the ordinary rules — returning the capability bare,
+  capturing it in a further unblessed lambda, or escaping a partial
+  application. This admits the wrapper idiom
+  `(map (fn [u] ((. net fetch) u)) urls)`.
+- Any other occurrence under an inner lambda, stored in a constructor or
+  record, returned as a value, let-bound and later used bare, or projected
+  without application is an escape.
 - `let` and `match` adjust the target de Bruijn index by the number of binders
   they introduce.
 
@@ -415,6 +430,21 @@ Mutations are attempted in this order at each node:
 3. String literal to `""`, only when non-empty.
 4. Integer literal to `old+1`, `old-1`, and `0`, skipping unchanged values.
 5. If-branch swap.
+6. At an `app` node whose function side is an `app`: swap the two adjacent
+   call arguments.
+7. At an `app` chain whose head is `self`: replace the whole chain by each
+   spine argument in turn ("forgot to recurse").
+8. At a `ctor` node: swap each adjacent argument pair.
+9. At a `match` node: swap each arm-body pair `(i, j)`, `i < j`, in index
+   order (de Bruijn policing makes cross-arity swaps fail the gate); then
+   replace the whole match by the body of each arm whose constructor binds
+   zero fields ("always take the base case").
+
+Structural mutants rely on the typecheck gate as their filter — generators
+are liberal, and only candidates that still typecheck count toward the total.
+Surviving mutants can be semantically equivalent to the original (e.g. `<=`
+vs `<` where equal elements are indistinguishable); the score's denominator
+honestly includes such unkillable mutants rather than special-casing them.
 
 Each mutant runs properties in property order with `mutantCases=60` and
 `mutantFuel=500000`, seeded by the mutant hash using §4. The first property

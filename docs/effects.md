@@ -67,9 +67,15 @@ demonstrates the pattern end to end.
    captured in an inner lambda. `greet-or-guest` proves confined
    *compositionally* through `greet`'s verdict; `examples/leaky.oath` shows
    the brands (`net: ESCAPES`) for returning or stashing a capability.
-   Known conservatism: closure capture always counts as escape, so wrapping
-   a capability inside a callback passed to a confined `map`-style consumer
-   is flagged even though it is safe; refining this needs closure tracking.
+   Closure tracking (issue #10) is in: a lambda passed to a callee position
+   already verdicted confined is only ever invoked during the call, so
+   capability use inside it follows the normal rules — the wrapper idiom
+   `(map (fn [u] ((. net fetch) u)) urls)` is confined, while a closure that
+   returns the capability (the callee keeps its RESULTS) still escapes.
+   Applications must also yield data: a stored partial application of a
+   curried capability is a derived closure containing the capability, and
+   escapes. Remaining conservatism: a closure passed to a confined position
+   of the capability ITSELF (no metadata to consult) counts as an escape.
 3. **Stateful worlds:** today's tables are pure functions, so they model
    read-only worlds. Sequenced effects (write-then-read) need explicit
    state threading in the function's own signature; a `World`-state

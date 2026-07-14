@@ -6,14 +6,22 @@ package main
 // callback or a capability record) is CONFINED if the function only ever
 // exercises it, never keeps it. Allowed uses of the parameter variable:
 //
-//   - applied directly:               (f x)
-//   - projected and applied:          ((. net fetch) x)
+//   - applied directly:               (f x)      — but only to a DATA result:
+//     an application whose result type still contains a function is a
+//     capability-derived closure, and treating it as data would let
+//     `(f 1)` of a curried capability escape inside the partial application
+//   - projected and applied:          ((. net fetch) x)   — same result rule
 //   - passed to itself at the SAME parameter position (recursive plumbing)
 //   - passed, whole, to a callee parameter that is itself confined
+//   - used inside a closure that is passed to a confined callee position:
+//     a confined callee only invokes the closure during the call and never
+//     keeps it, so uses inside are as safe as uses outside (the wrapper
+//     idiom: (map (fn [u] ((. net fetch) u)) urls))
 //
 // Everything else escapes: returned bare, stored in a constructor, record,
 // or let-binding, projected without application, or captured inside an
-// inner lambda (conservative: the closure might outlive the call).
+// inner lambda that is NOT passed to a confined position (conservative:
+// the closure might outlive the call).
 //
 // Like totality, verdicts compose bottom-up with no extra machinery:
 // callees are content hashes, so cycles are impossible and their verdicts
@@ -39,7 +47,7 @@ func confinementOf(st *Store, d *Def) []string {
 		}
 		// The param bound by lam i sits at de Bruijn index nparams-1-i
 		// inside the innermost body.
-		w := &escapeWalker{st: st, selfPos: i}
+		w := &escapeWalker{st: st, selfPos: i, paramTy: pt}
 		if w.confined(cur, len(paramTys)-1-i, false) {
 			out[i] = "confined"
 		} else {
@@ -52,6 +60,50 @@ func confinementOf(st *Store, d *Def) []string {
 type escapeWalker struct {
 	st      *Store
 	selfPos int // the parameter position under analysis, for self-calls
+	paramTy *Ty // declared type of the parameter under analysis
+}
+
+// appliedToData reports whether applying a value of type t to n arguments
+// yields a result free of function types. If it does not — a partial
+// application of a curried capability, or a capability whose result is
+// itself function-valued — the result is a closure DERIVED from the
+// capability, and letting it flow as data would smuggle the capability out.
+// A type variable in result position counts as data: what a callee's caller
+// instantiates it with is that caller's closure to analyze.
+func appliedToData(t *Ty, n int) bool {
+	for i := 0; i < n; i++ {
+		if t == nil || t.K != "fun" {
+			return false // over-application of a non-function: malformed, be conservative
+		}
+		t = t.B
+	}
+	return t != nil && !tyHasFun(t)
+}
+
+// fieldTy resolves a record field's type on the parameter under analysis.
+func (w *escapeWalker) fieldTy(name string) *Ty {
+	if w.paramTy == nil || w.paramTy.K != "record" {
+		return nil
+	}
+	for i, n := range w.paramTy.Names {
+		if n == name {
+			return &w.paramTy.Args[i]
+		}
+	}
+	return nil
+}
+
+// confinedClosure checks a lambda that a confined callee position will
+// invoke but never keep: uses of the capability inside it are as safe as
+// uses outside, so the walk resumes with inLam reset. The body walk still
+// catches every smuggling route — returning the capability bare, wrapping
+// it in a further (unblessed) lambda, or escaping a partial application.
+func (w *escapeWalker) confinedClosure(t *Term, idx int) bool {
+	for t != nil && t.K == "lam" {
+		idx++
+		t = t.A
+	}
+	return w.confined(t, idx, false)
 }
 
 // confined reports whether the variable at de Bruijn index idx is confined
@@ -70,23 +122,33 @@ func (w *escapeWalker) confined(t *Term, idx int, inLam bool) bool {
 		headOK := false
 		switch {
 		case head.K == "var" && head.Idx == idx:
-			// (f x ...) — direct application of the parameter.
-			headOK = !inLam
+			// (f x ...) — direct application of the parameter, provided the
+			// result is data (no partial application escapes).
+			headOK = !inLam && appliedToData(w.paramTy, len(args))
 		case head.K == "field" && head.A != nil && head.A.K == "var" && head.A.Idx == idx:
-			// ((. net fetch) x ...) — project-and-apply.
-			headOK = !inLam
+			// ((. net fetch) x ...) — project-and-apply, same result rule.
+			headOK = !inLam && appliedToData(w.fieldTy(head.Op), len(args))
 		}
 		if !headOK {
 			if head.K == "ref" || head.K == "self" {
 				// Whole-parameter pass-through: allowed only into positions
-				// known to confine.
+				// known to confine. A LAMBDA passed into a confined position
+				// is invoked during the call and never kept, so capability
+				// use inside it resumes the normal (non-inLam) rules.
 				for j, a := range args {
-					if a.K == "var" && a.Idx == idx {
+					switch {
+					case a.K == "var" && a.Idx == idx:
 						if inLam || !w.calleeConfines(head, j) {
 							return false
 						}
-					} else if !w.confined(a, idx, inLam) {
-						return false
+					case a.K == "lam" && !inLam && w.calleeConfines(head, j):
+						if !w.confinedClosure(a, idx) {
+							return false
+						}
+					default:
+						if !w.confined(a, idx, inLam) {
+							return false
+						}
 					}
 				}
 				return true

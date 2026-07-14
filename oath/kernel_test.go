@@ -383,6 +383,56 @@ func TestStructuralMutants(t *testing.T) {
 	}
 }
 
+// Confinement closure tracking (#10): a capability used inside a closure
+// that is passed to a CONFINED callee position is safe — the callee only
+// invokes the closure during the call. The wrapper idiom must be confined;
+// smuggling routes through the same shape must still escape.
+func TestConfinementClosureTracking(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(data List [a] (Nil) (Cons a (List a)))`)
+	put(t, st, `(defn map [a b] [(f (-> a b)) (xs (List a))] (List b)
+		(match xs
+			((Nil) (Nil [b]))
+			((Cons h t) (Cons [b] (f h) (map [a b] f t)))))`)
+	mh, _ := st.Resolve("map")
+	mm, _ := st.GetMeta(mh)
+	if len(mm.Confinement) == 0 || mm.Confinement[0] != "confined" {
+		t.Fatalf("precondition: map's callback should be confined, got %v", mm.Confinement)
+	}
+
+	reps := put(t, st, `(defn fetch-all [] [(net {fetch (-> Str Str)}) (urls (List Str))] (List Str)
+		(map [Str Str] (fn [(u Str)] ((. net fetch) u)) urls))`)
+	if got := reps[0].Confinement; !strings.Contains(got, "net: confined") {
+		t.Fatalf("wrapper idiom: confinement = %q, want net confined", got)
+	}
+
+	// The closure returns the capability itself: the callee stores the
+	// closure's RESULTS, so this leaks a capability per element.
+	reps = put(t, st, `(defn leak-all [] [(net {fetch (-> Str Str)}) (urls (List Str))] (List {fetch (-> Str Str)})
+		(map [Str {fetch (-> Str Str)}] (fn [(u Str)] net) urls))`)
+	if got := reps[0].Confinement; !strings.Contains(got, "net: ESCAPES") {
+		t.Fatalf("closure returning capability: confinement = %q, want net ESCAPES", got)
+	}
+}
+
+// A stored partial application of a curried capability is a derived closure
+// that contains the capability — it must escape, not pass as "data". Before
+// the result-type rule this was wrongly labeled confined.
+func TestPartialApplicationEscapes(t *testing.T) {
+	st := newStore(t)
+	reps := put(t, st, `(defn keep [] [(f (-> Int (-> Int Int)))] (-> Int Int)
+		(f 1))`)
+	if got := reps[0].Confinement; !strings.Contains(got, "f: ESCAPES") {
+		t.Fatalf("partial application: confinement = %q, want f ESCAPES", got)
+	}
+	// Full application of the same curried capability is fine.
+	reps = put(t, st, `(defn use2 [] [(f (-> Int (-> Int Int)))] Int
+		((f 1) 2))`)
+	if got := reps[0].Confinement; !strings.Contains(got, "f: confined") {
+		t.Fatalf("full application: confinement = %q, want f confined", got)
+	}
+}
+
 // d fetches a def by hash for a test assertion.
 func d(st *Store, h string) *Def {
 	def, err := st.GetDef(h)
