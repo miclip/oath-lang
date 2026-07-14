@@ -1,0 +1,56 @@
+# Cross-kernel conformance (#6): every push must keep both kernels in
+# byte-level agreement with the frozen fixtures — and therefore with each
+# other. A divergence is a spec bug or a kernel bug; either way it fails CI
+# and deserves an issue, never a quiet fix.
+name: conformance
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  go-kernel:
+    name: reference kernel (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: oath/go.mod
+      - name: build
+        run: cd oath && go build ./...
+      - name: re-verify examples against committed store
+        # make verify re-puts every example; on a checkout this must
+        # reproduce the committed hashes (names.json diff = identity drift).
+        run: |
+          make verify
+          git diff --exit-code codebase/names.json \
+            || { echo "::error::reference kernel produced different hashes than the committed store"; exit 1; }
+
+  rust-conformance:
+    name: independent kernel (Rust) vs fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: pin z3 4.16.0 (proof outcomes are solver-version-sensitive, SPEC §10.5)
+        run: |
+          curl -sSL -o z3.zip https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip
+          unzip -q z3.zip
+          echo "$PWD/z3-4.16.0-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
+      - name: six-check conformance
+        run: |
+          z3 --version
+          ./oathrs/conformance.sh
+
+  wasm-build:
+    name: wasm32 cross-compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+      - name: build library + CLI for wasm (prove feature excluded)
+        run: cd oathrs && cargo build --target wasm32-wasip1 --release --no-default-features
