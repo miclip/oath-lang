@@ -407,15 +407,25 @@ same sat/unsat. All 48 definitions / 189 property outcomes reproduce.
 
 ## Timeout and outcome stability
 
-43. **I use a 4 s per-goal budget, not the spec's 15 s (§7.1).** Every goal that
-    is provable at all in this corpus closes in well under 4 s once its lemmas are
-    present; the unprovable ones fail at any budget. 4 s reproduces all 189
-    outcomes at ~a third of the wall-clock. Enforced with z3 `-t:` (soft) plus a
-    `-T:` hard process cap so a runaway quantified goal cannot hang the run.
-    **Outcome-fragility (matching the brief's caveat):** a heavily loaded machine
-    could push a borderline goal past a short budget and flip an outcome — I
-    observed none, but a conforming run in doubt SHOULD use 15 s. This is a real
-    load-dependent surface; the reference has reportedly been bitten by it.
+43. **Per-goal solver budget: the spec's 15 s is normative and now the default;
+    a shorter budget is outcome-affecting — CONFIRMED IN CI.** Every goal that is
+    provable at all in this corpus closes well under a second on fast hardware
+    once its lemmas are present, so an initial 4 s budget reproduced all 189
+    outcomes locally at ~a third of the wall-clock, and I flagged (matching the
+    stage-2 brief's caveat) that a loaded/slow machine could push a borderline
+    goal past a short budget and flip an outcome. **That prediction was validated
+    empirically:** the GitHub Actions conformance job (ubuntu runner, slower than
+    the dev Mac, z3 pinned 4.16.0) failed check 6 with "proof outcomes differ for:
+    sum" — one of `sum`'s inductive goals crossed the 4 s budget on slower
+    hardware, and check 5's `sum` analysis file diverged in consequence.
+    **Resolution:** the budget defaults to the spec's normative 15 s and is
+    configurable via the `OATHRS_Z3_TIMEOUT_MS` env var (milliseconds, must be
+    > 0) so fast local runs can still opt down explicitly. Enforced with z3 `-t:`
+    (soft) plus a `-T:` hard process cap (`ms/1000 + 2` s) so a runaway quantified
+    goal cannot hang the run. The lesson generalizes: any wall-clock budget below
+    the spec's is a latent conformance hazard on unknown hardware — the deviation
+    was documented, but "documented" is not "safe," and CI is where such
+    load-dependent divergences actually surface.
 
 44. **`sat` vs `unknown` are not distinguished in the outcome.** I record proven
     only on `unsat`; `sat`/`unknown`/timeout/process-failure all map to

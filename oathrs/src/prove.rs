@@ -11,11 +11,21 @@ use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-// SPEC §7.1 sets a 15 s per-goal timeout. Every goal in this corpus that is
-// provable at all resolves well under it once the right lemmas are present, so
-// a shorter budget reproduces the reference outcomes far faster (documented in
-// DIVERGENCES). The unprovable goals fail regardless of the budget.
-const Z3_TIMEOUT_MS: u64 = 4000;
+// SPEC §7.1 sets a 15 s per-goal timeout; that is the normative default and
+// what conformance uses. A shorter budget reproduces these outcomes far faster
+// on fast hardware, but it is outcome-affecting on slow hardware — the CI's
+// ubuntu runner crossed a 4 s budget on one of `sum`'s inductive goals. The
+// budget is therefore configurable via OATHRS_Z3_TIMEOUT_MS (milliseconds) so
+// fast local runs can opt down explicitly, while the default stays spec-normative.
+const DEFAULT_Z3_TIMEOUT_MS: u64 = 15000;
+
+fn z3_timeout_ms() -> u64 {
+    std::env::var("OATHRS_Z3_TIMEOUT_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(DEFAULT_Z3_TIMEOUT_MS)
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Outcome {
@@ -565,8 +575,9 @@ fn run_z3(script: &str) -> Outcome {
     // `-t:` is z3's per-query soft timeout (ms); `-T:` is a hard wall-clock
     // process timeout (s) that guarantees the subprocess exits even when a
     // quantified goal would otherwise run away.
-    let soft = format!("-t:{}", Z3_TIMEOUT_MS);
-    let hard = format!("-T:{}", Z3_TIMEOUT_MS / 1000 + 2);
+    let ms = z3_timeout_ms();
+    let soft = format!("-t:{}", ms);
+    let hard = format!("-T:{}", ms / 1000 + 2);
     let mut child = match Command::new("z3")
         .arg("-in")
         .arg(&soft)
@@ -608,7 +619,7 @@ struct Prover<'a> {
 
 impl<'a> Prover<'a> {
     fn header() -> String {
-        format!("(set-option :timeout {})\n(set-logic ALL)\n", Z3_TIMEOUT_MS)
+        format!("(set-option :timeout {})\n(set-logic ALL)\n", z3_timeout_ms())
     }
 
     /// Assemble a full self-contained script from a fresh context.
