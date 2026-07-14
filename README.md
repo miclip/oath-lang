@@ -179,11 +179,17 @@ substrate as native tools — `context`, `put` (source text in, verdicts out),
 at `./oath/oath serve`.
 
 Hosting model (git's, in three layers): the stdio server is local-first, one
-store per project. A team store is the same protocol over HTTP with real
-principal auth — that's where policy (authorship separation, repoint gates)
-becomes enforceable rather than self-reported. A public registry of shared
-verified definitions is the eventual third layer; content addressing means
-no namespace wars — names are local, hashes are universal.
+store per project. The **team store is real** (`oath serve --http <addr>
+--tokens <file>`, see [docs/teamstore.md](docs/teamstore.md)): the same MCP
+tools over HTTP with authenticated principals — journal authorship derives
+from the bearer token, spoofed author fields are ignored — and a repoint
+policy (`<store>/policy.json`) that can require spec/body authorship
+separation, proven termination, and spec-strength floors before a *name*
+moves. Objects always store (content addressing); policy governs only what
+names point at, so a blocked submission leaves the previous version live. A
+public registry of shared verified definitions is the eventual third layer;
+content addressing means no namespace wars — names are local, hashes are
+universal.
 
 ## Layout
 

@@ -575,7 +575,7 @@ fixtures are external to the hashed definition.
 Append-only, one JSON object per line: `seq`, `time` (RFC3339 UTC),
 `author` (principal string, self-reported in local mode), `verifier`
 (kernel version string), `name`, `kind`, `status`
-(`accepted`|`falsified`|`rejected`), `hash`, `prev` (on repoint), `error`,
+(`accepted`|`falsified`|`rejected`|`blocked` (repoint refused by store policy; object stored, name unchanged)), `hash`, `prev` (on repoint), `error`,
 `guarantee`, `termination`, `context`, `chain`. Every submission attempt MUST
 be journaled, including gate rejections (which store no object).
 

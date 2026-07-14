@@ -24,6 +24,9 @@ usage:
   oath prove <name>                   SMT-prove properties for ALL inputs (non-recursive Int/Bool fragment)
   oath eval "<expr>"                  typecheck and evaluate an expression
   oath serve                          MCP server over stdio (tools for agent sessions)
+  oath serve --http <addr> --tokens <file>
+                                      team store: MCP over HTTP with authenticated principals;
+                                      repoint policy in <store>/policy.json (docs/teamstore.md)
   oath fixtures <dir>                 materialize the SPEC §10 conformance suite as byte fixtures
 
 the codebase lives in ./codebase (override with OATH_STORE)`
@@ -136,7 +139,25 @@ func main() {
 		}
 		cmdProve(st, args[1])
 	case "serve":
-		cmdServe(st)
+		httpAddr, tokensPath := "", ""
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			switch {
+			case rest[i] == "--http" && i+1 < len(rest):
+				httpAddr = rest[i+1]
+				i++
+			case rest[i] == "--tokens" && i+1 < len(rest):
+				tokensPath = rest[i+1]
+				i++
+			default:
+				fail(fmt.Errorf("usage: oath serve [--http addr --tokens file]"))
+			}
+		}
+		if httpAddr != "" {
+			cmdServeHTTP(st, httpAddr, tokensPath)
+		} else {
+			cmdServe(st)
+		}
 	case "fixtures":
 		if len(args) != 2 {
 			fail(fmt.Errorf("usage: oath fixtures <dir>"))

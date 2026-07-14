@@ -14,6 +14,8 @@
   "mutants_killed": 2,
   "mutants_total": 3,
   "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
   "author": "claude-main",
   "param_names": [
     "a",

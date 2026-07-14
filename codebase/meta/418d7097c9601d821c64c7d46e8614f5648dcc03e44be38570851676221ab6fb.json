@@ -16,7 +16,9 @@
   "mutants_killed": 9,
   "mutants_total": 9,
   "termination": "nonrecursive",
-  "author": "claude-haiku-oneshot",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
   "param_names": [
     "k",
     "xs"

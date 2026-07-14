@@ -56,12 +56,14 @@ func apiPut(st *Store, src string, author string, ctxHash string) ([]putReport, 
 			return results, nil
 		}
 
-		h, prev, err := st.Put(def, meta)
+		// Storage is unconditional past the gate (content addressing); the
+		// NAME only moves if repoint policy passes, after verdicts exist.
+		h, err := st.StoreObject(def, meta)
 		if err != nil {
 			return results, err
 		}
 
-		rep := putReport{Name: meta.Name, Hash: h, Kind: def.K, Status: "accepted", Prev: prev, Ctors: len(def.Ctors)}
+		rep := putReport{Name: meta.Name, Hash: h, Kind: def.K, Status: "accepted", Ctors: len(def.Ctors)}
 		if def.K == "func" {
 			reports, err := verifyDef(st, h)
 			if err != nil {
@@ -86,6 +88,33 @@ func apiPut(st *Store, src string, author string, ctxHash string) ([]putReport, 
 				})
 			}
 		}
+
+		specAuthor, bodyAuthor := attributeAuthorship(st, meta.Name, def, author)
+		pol, err := LoadPolicy(st.Root)
+		if err != nil {
+			return results, err
+		}
+		if ok, reason := evalPolicy(st, pol, meta.Name, h, def, specAuthor, bodyAuthor); !ok {
+			rep.Status = "blocked"
+			rep.Error = reason
+			_ = st.AppendLog(&LogEntry{
+				Author: author, Name: meta.Name, Kind: def.K, Status: "blocked",
+				Hash: h, Error: reason, Guarantee: rep.Guarantee, Termination: rep.Termination,
+				Context: ctxHash,
+			})
+			results = append(results, rep)
+			continue
+		}
+
+		prev, err := st.Repoint(meta.Name, h)
+		if err != nil {
+			return results, err
+		}
+		rep.Prev = prev
+		if m, err := st.GetMeta(h); err == nil {
+			m.SpecAuthor, m.BodyAuthor = specAuthor, bodyAuthor
+			_ = st.SetMeta(h, m)
+		}
 		_ = st.AppendLog(&LogEntry{
 			Author: author, Name: meta.Name, Kind: def.K, Status: rep.Status,
 			Hash: h, Prev: prev, Guarantee: rep.Guarantee, Termination: rep.Termination,
@@ -107,6 +136,9 @@ func renderPutReports(results []putReport) string {
 		switch {
 		case rep.Status == "rejected":
 			fmt.Fprintf(&b, "✗ %-16s REJECTED: %s\n", rep.Name, rep.Error)
+		case rep.Status == "blocked":
+			fmt.Fprintf(&b, "⛔ %-16s BLOCKED: %s\n", rep.Name, rep.Error)
+			fmt.Fprintf(&b, "    object stored as #%s (%s); the name still points at its previous version\n", shortHash(rep.Hash), rep.Guarantee)
 		case rep.Kind == "data":
 			fmt.Fprintf(&b, "✓ %-16s #%s  data (%d constructors)%s\n", rep.Name, shortHash(rep.Hash), rep.Ctors, status)
 		default:
@@ -255,6 +287,8 @@ func apiLog(st *Store, filter string) string {
 			detail = e.Error
 		case "falsified":
 			mark = "✗"
+		case "blocked":
+			mark = "⛔"
 		}
 		h := ""
 		if e.Hash != "" {

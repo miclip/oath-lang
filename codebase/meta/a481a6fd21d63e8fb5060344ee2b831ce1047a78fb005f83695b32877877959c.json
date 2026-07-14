@@ -14,7 +14,9 @@
   "mutants_killed": 10,
   "mutants_total": 10,
   "termination": "nonrecursive",
-  "author": "claude-impl-agent",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
   "param_names": [
     "a",
     "n"

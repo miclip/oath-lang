@@ -206,6 +206,14 @@ func apiMutate(st *Store, name string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("no definition named %q", name)
 	}
+	return apiMutateHash(st, h)
+}
+
+// apiMutateHash mutation-scores an object directly by hash — used by the
+// repoint policy, which must be able to score a candidate BEFORE any name
+// points at it.
+func apiMutateHash(st *Store, h string) (string, error) {
+	name := st.NameOf(h)
 	d, err := st.GetDef(h)
 	if err != nil {
 		return "", err

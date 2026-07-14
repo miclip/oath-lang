@@ -16,7 +16,9 @@
   "mutants_killed": 10,
   "mutants_total": 12,
   "termination": "nonrecursive",
-  "author": "claude-haiku-loop",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
   "param_names": [
     "k",
     "xs"

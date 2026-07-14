@@ -66,6 +66,16 @@ hosted store creates the need before the port happens.
 - The examples double as the conformance corpus (SPEC.md §10): treat
   hash changes in `codebase/names.json` as meaningful diffs.
 
+## The team store
+
+`oath serve --http <addr> --tokens <file>` is the hosted layer: MCP over
+HTTP, principals authenticated by bearer token (client `author` fields are
+ignored), repoint policy in `<store>/policy.json` (authorship separation
+via props/body lineage diffing, require_total, forbid_falsified,
+min_mutation_score). Blocked submissions store the object and journal
+`blocked`; the name doesn't move. docs/teamstore.md has the full model.
+Never commit a tokens file.
+
 ## The second kernel
 
 `oathrs/` is an independent Rust kernel, built BLIND from docs/SPEC.md +

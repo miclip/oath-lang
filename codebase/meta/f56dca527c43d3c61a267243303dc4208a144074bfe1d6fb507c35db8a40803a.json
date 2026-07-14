@@ -13,7 +13,9 @@
   "mutants_killed": 2,
   "mutants_total": 2,
   "termination": "structural",
-  "author": "claude-spec-agent",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
   "param_names": [
     "t"
   ],

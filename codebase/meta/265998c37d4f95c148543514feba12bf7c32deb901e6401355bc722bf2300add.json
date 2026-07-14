@@ -7,5 +7,7 @@
   "guarantee": {
     "level": "asserted"
   },
-  "author": "claude-spec-agent"
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main"
 }

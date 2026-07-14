@@ -110,6 +110,22 @@ func (s *Store) writeNames(m map[string]string) error {
 // definitions are ONE object with several names; losing either name's
 // constructor vocabulary breaks elaboration for its module's source.
 func (s *Store) Put(d *Def, m *Meta) (string, string, error) {
+	h, err := s.StoreObject(d, m)
+	if err != nil {
+		return "", "", err
+	}
+	prev, err := s.Repoint(m.Name, h)
+	if err != nil {
+		return "", "", err
+	}
+	return h, prev, nil
+}
+
+// StoreObject writes the object and its (merged) metadata WITHOUT touching
+// the name index. Content addressing makes storage unconditional; whether a
+// NAME may point at the object is a separate, policy-governed decision
+// (Repoint). Returns the hash.
+func (s *Store) StoreObject(d *Def, m *Meta) (string, error) {
 	h := hashDef(d)
 	if prev, err := s.GetMeta(h); err == nil {
 		m.Guarantee = prev.Guarantee
@@ -118,6 +134,8 @@ func (s *Store) Put(d *Def, m *Meta) (string, string, error) {
 		m.WaivedMutants = prev.WaivedMutants
 		m.Termination = prev.Termination
 		m.Confinement = prev.Confinement
+		m.SpecAuthor = prev.SpecAuthor
+		m.BodyAuthor = prev.BodyAuthor
 		m.Aliases = prev.Aliases
 		if prev.Name != m.Name {
 			if m.Aliases == nil {
@@ -132,25 +150,31 @@ func (s *Store) Put(d *Def, m *Meta) (string, string, error) {
 	}
 	db, _ := json.Marshal(d)
 	if err := writeFileAtomic(filepath.Join(s.Root, "objects", h+".json"), db, 0o644); err != nil {
-		return "", "", err
+		return "", err
 	}
 	mb, _ := json.MarshalIndent(m, "", "  ")
 	if err := writeFileAtomic(filepath.Join(s.Root, "meta", h+".json"), mb, 0o644); err != nil {
-		return "", "", err
-	}
-	names := s.Names()
-	prev := names[m.Name]
-	names[m.Name] = h
-	if err := s.writeNames(names); err != nil {
-		return "", "", err
+		return "", err
 	}
 	s.defs[h] = d
 	mm := *m
 	s.metas[h] = &mm
+	return h, nil
+}
+
+// Repoint points name at h. Returns the previous hash ("" if the name is
+// new or already pointed at h).
+func (s *Store) Repoint(name, h string) (string, error) {
+	names := s.Names()
+	prev := names[name]
+	names[name] = h
+	if err := s.writeNames(names); err != nil {
+		return "", err
+	}
 	if prev == h {
 		prev = ""
 	}
-	return h, prev, nil
+	return prev, nil
 }
 
 // CacheDef registers a definition in memory only — used to evaluate

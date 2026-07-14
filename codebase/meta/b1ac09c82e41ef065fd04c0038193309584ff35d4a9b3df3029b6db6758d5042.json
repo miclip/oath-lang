@@ -14,6 +14,8 @@
   "mutants_killed": 11,
   "mutants_total": 11,
   "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
   "author": "claude-main",
   "param_names": [
     "n",

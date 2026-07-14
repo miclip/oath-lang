@@ -126,6 +126,8 @@ type Meta struct {
 	MutantsTotal  int                     `json:"mutants_total,omitempty"`  // spec strength: mutants generated
 	WaivedMutants []WaivedMutant          `json:"waived_mutants,omitempty"` // surviving mutants judged equivalent, with justification
 	Termination   string                  `json:"termination,omitempty"`    // structural | nonrecursive | unknown (funcs only)
+	SpecAuthor    string                  `json:"spec_author,omitempty"`    // principal owning the props lineage (inherited when props unchanged)
+	BodyAuthor    string                  `json:"body_author,omitempty"`    // principal owning the body lineage (inherited when body unchanged)
 	Author        string                  `json:"author,omitempty"`         // principal that submitted this definition
 	ParamNames    []string                `json:"param_names,omitempty"`    // funcs: surface parameter names (projection aid)
 	Confinement   []string                `json:"confinement,omitempty"`    // funcs: per-param "confined" | "escapes" | "" (first-order)

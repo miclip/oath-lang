@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // MCP server over stdio: newline-delimited JSON-RPC 2.0. This is the local
@@ -104,7 +105,10 @@ func mcpTools() []map[string]any {
 	}
 }
 
-func mcpCallTool(st *Store, name string, args json.RawMessage) (string, error) {
+// mcpCallTool dispatches one tool call. principal, when non-empty, is an
+// AUTHENTICATED identity (HTTP transport) and overrides any client-supplied
+// author; the stdio transport passes "" (local trust, self-reported author).
+func mcpCallTool(st *Store, name string, args json.RawMessage, principal string) (string, error) {
 	var a struct {
 		Names   []string `json:"names"`
 		Budget  int      `json:"budget"`
@@ -126,6 +130,9 @@ func mcpCallTool(st *Store, name string, args json.RawMessage) (string, error) {
 		}
 		return apiContext(st, a.Names, a.Budget)
 	case "put":
+		if principal != "" {
+			a.Author = principal
+		}
 		results, err := apiPut(st, a.Source, a.Author, a.Context)
 		out := renderPutReports(results)
 		if err != nil {
@@ -171,46 +178,13 @@ func cmdServe(st *Store) {
 		if err := json.Unmarshal(line, &req); err != nil {
 			continue
 		}
-		switch req.Method {
-		case "initialize":
-			var p struct {
-				ProtocolVersion string `json:"protocolVersion"`
-			}
-			_ = json.Unmarshal(req.Params, &p)
-			if p.ProtocolVersion == "" {
-				p.ProtocolVersion = "2025-06-18"
-			}
-			reply(req.ID, map[string]any{
-				"protocolVersion": p.ProtocolVersion,
-				"capabilities":    map[string]any{"tools": map[string]any{}},
-				"serverInfo":      map[string]any{"name": "oath", "version": kernelVersion},
-			}, nil)
-		case "ping":
-			reply(req.ID, map[string]any{}, nil)
-		case "tools/list":
-			reply(req.ID, map[string]any{"tools": mcpTools()}, nil)
-		case "tools/call":
-			var p struct {
-				Name      string          `json:"name"`
-				Arguments json.RawMessage `json:"arguments"`
-			}
-			if err := json.Unmarshal(req.Params, &p); err != nil {
-				reply(req.ID, nil, &rpcError{Code: -32602, Message: "invalid params"})
-				continue
-			}
-			text, err := mcpCallTool(st, p.Name, p.Arguments)
-			isErr := err != nil
-			if isErr {
-				text = "error: " + err.Error()
-			}
-			reply(req.ID, map[string]any{
-				"content": []map[string]any{{"type": "text", "text": text}},
-				"isError": isErr,
-			}, nil)
-		default:
-			if req.ID != nil {
-				reply(req.ID, nil, &rpcError{Code: -32601, Message: "method not found: " + req.Method})
-			}
+		if req.ID == nil {
+			continue // notification
 		}
+		if strings.HasPrefix(req.Method, "notifications/") {
+			continue
+		}
+		resp := handleRPC(st, &req, "")
+		reply(req.ID, resp.Result, resp.Error)
 	}
 }
