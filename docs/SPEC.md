@@ -424,9 +424,9 @@ reproducibility (given the same solver):
   process failure, stderr-only output, or output not beginning with `sat` or
   `unsat` is `unknown`, never proof.
 - SMT identifiers are produced by replacing every character outside
-  `[A-Za-z0-9]` with `_`. This is not guaranteed collision-free; fixture coverage must
-  include collision-prone metadata names before relying on such names in a
-  public store.
+  `[A-Za-z0-9]` with `_`. This is not guaranteed collision-free; fixture
+  coverage must include collision-prone metadata names before relying on such
+  names in a public store.
 - Negative integer literals render as `(- N)`. Non-negative integers render in
   decimal.
 - SMT string literals double `"` characters inside the SMT string. Other
