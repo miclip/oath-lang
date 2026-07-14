@@ -109,10 +109,16 @@ distinct failure modes with distinct defenses, established adversarially:
 
 - **Weakness** (tight code↔spec link, promises that say nothing) is killed
   by mutation testing — mechanically, no judge required. The controlled
-  rematch measured the differential: model-authored specs re-derived from
-  briefs killed 41/50 mutants against the hand-written specs' 33/50 on
-  identical catalogs, never worse on any function. Spec weakness is not
-  where model authors fail.
+  rematch measured what the loop is worth: specs re-authored from briefs
+  WITH the mutation scorer available during authoring reached 41/50 on
+  catalogs where the hand-written baseline (authored without the scorer)
+  stood at 33/50 — never worse on any function. Read as a loop-closure
+  result, not a horse race: author and loop are confounded in that delta
+  (a blind-authoring control isolates them), and the survivors' equivalence
+  arguments are self-authored — waived legibly on the record, but asserted
+  rather than machine-proven except where an SMT artifact exists. What the
+  number supports: spec weakness is a closed-loop optimization problem, and
+  closing the loop works.
 - **Misalignment** (a spec internally tight around the *wrong* function)
   is invisible to mutation by construction: an adversary instructed to
   cheat delivered sum-of-squares for a sum-of-absolute-values brief at the
