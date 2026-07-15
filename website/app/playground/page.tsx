@@ -8,7 +8,7 @@ import { stats } from "@/lib/corpus";
 export const metadata: Metadata = {
   title: "Playground",
   description:
-    "Explore Oath's real verified corpus: every definition with its actual content hash and Z3 verdict. Nothing mocked.",
+    "Explore Oath Language's real verified corpus: every definition with its actual content hash and Z3 verdict. Nothing mocked.",
 };
 
 export default function PlaygroundPage() {

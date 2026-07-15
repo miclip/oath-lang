@@ -4,7 +4,8 @@ import { stats } from "@/lib/corpus";
 
 export const metadata: Metadata = {
   title: "Docs — Overview",
-  description: "What Oath is and why it exists: an AI-native verified-codebase kernel.",
+  description:
+    "What Oath Language is and why it exists: an AI-native verified-codebase kernel.",
 };
 
 export default function DocsOverview() {
@@ -12,7 +13,7 @@ export default function DocsOverview() {
     <>
       <h1>Overview</h1>
       <p className="lead">
-        Oath is the v0 kernel of a single question: what would a programming
+        Oath Language is the v0 kernel of a single question: what would a programming
         language look like if it were designed <em>only for AI authors</em> — no
         human ergonomics, no files, no style, just verifiability and locality?
       </p>

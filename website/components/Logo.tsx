@@ -24,7 +24,7 @@ function hexPath(r: number): string {
 export function Logo({
   size = 44,
   className,
-  title = "Oath",
+  title = "Oath Language",
 }: {
   size?: number;
   className?: string;
@@ -92,6 +92,7 @@ export function Wordmark({
           <span className="wordmark-tag">Verified code. Immutable truth.</span>
         )}
       </span>
+      <span className="wordmark-lang">Lang</span>
     </span>
   );
 }

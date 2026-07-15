@@ -15,10 +15,11 @@ export function Footer() {
                 </span>
                 <span className="wordmark-tag">Verified code. Immutable truth.</span>
               </span>
+              <span className="wordmark-lang">Lang</span>
             </div>
             <p style={{ color: "var(--cream-faint)", fontSize: 14 }}>
-              An AI-native verified-codebase kernel. The syntax is disposable; the
-              substrate is the product.
+              Oath Language — an AI-native verified-codebase kernel. The syntax is
+              disposable; the substrate is the product.
             </p>
           </div>
           <div className="footer-col">
