@@ -1,0 +1,3 @@
+✓ prop no-args-usage            passed 200 cases
+✓ prop fetches-first-arg        passed 200 cases
+✓ prop world-deterministic      passed 200 cases

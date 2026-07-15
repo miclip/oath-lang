@@ -92,10 +92,17 @@ demonstrates the pattern end to end.
    an unreliable wrapper, 9/9 properties proven for all worlds. What
    remains genuinely open at this stage: modeling time and interleaving
    (concurrency) — a world value serializes one history.
-4. **Entry-point wiring:** the eventual compiler backend supplies genuine
-   capabilities exactly once, at the program boundary; everything below the
-   boundary keeps the property that authority is visible in every signature
-   on the path that carries it.
+4. **Entry-point wiring — SHIPPED.** `oath build` compiles capability-first
+   entry points ((-> {caps} (List Str) Str)) and wires GENUINE
+   implementations exactly once, at the program boundary: `fetch` becomes a
+   real HTTP GET, `env`/`readfile` real host access. Everything below the
+   boundary received authority as an ordinary argument and was verified
+   against all simulated worlds before the real one arrived. The compiler
+   refuses unwireable capability fields, refuses falsified or unverified
+   entries, and refuses a capability parameter the confinement checker
+   marks ESCAPES — a program that stores or returns its capability never
+   receives the real one. The corpus witness is `main-fetch`: PROVEN 3/3
+   over all worlds, then run against a live HTTP server.
 
 ## What this deliberately does not claim
 

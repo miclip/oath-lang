@@ -1,0 +1,16 @@
+; Effects stage 4, closed: this definition is verified against ALL
+; simulated worlds (its properties quantify over every possible fetch),
+; then `oath build` hands it the REAL one — authority enters exactly once,
+; at the program boundary. The compiler refuses to wire a capability that
+; the confinement checker says escapes.
+
+(defn main-fetch [] [(net {fetch (-> Str Str)}) (args (List Str))] Str
+  (match args
+    ((Nil) "usage: main-fetch <url>")
+    ((Cons url rest) ((. net fetch) url)))
+  (prop no-args-usage [(net {fetch (-> Str Str)})]
+    (== (main-fetch net (Nil [Str])) "usage: main-fetch <url>"))
+  (prop fetches-first-arg [(net {fetch (-> Str Str)}) (u Str) (rest (List Str))]
+    (== (main-fetch net (Cons [Str] u rest)) ((. net fetch) u)))
+  (prop world-deterministic [(net {fetch (-> Str Str)}) (args (List Str))]
+    (== (main-fetch net args) (main-fetch net args))))

@@ -1,0 +1,32 @@
+{
+  "name": "main-fetch",
+  "prop_names": [
+    "no-args-usage",
+    "fetches-first-arg",
+    "world-deterministic"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "net",
+    "args"
+  ],
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

@@ -571,6 +571,27 @@
       ]
     },
     {
+      "name": "main-fetch",
+      "hash": "398f8ebe2c1d6c865dc908429b8e1788540af72ae62992ce59a96ac6736e126d",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "no-args-usage",
+          "proven": true
+        },
+        {
+          "name": "fetches-first-arg",
+          "proven": true
+        },
+        {
+          "name": "world-deterministic",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "map",
       "hash": "ef1a1686ba71cde2db90f992f349a4ab867698b1578924b32ad775df43f8f233",
       "level": "proven",

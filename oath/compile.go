@@ -54,12 +54,26 @@ func cmdBuild(st *Store, name, out string) {
 	case "asserted":
 		fail(fmt.Errorf("%s has no verified properties — swear and verify an oath before building", name))
 	}
-	// Entry protocol check: (-> (List Str) Str).
-	if !isEntryType(st, d.Ty) {
-		fail(fmt.Errorf("%s : %s — stage-1 entry protocol requires (-> (List Str) Str)", name, debugTy(d.Ty)))
+	// Entry protocols: (-> (List Str) Str), or capability-first
+	// (-> {caps...} (-> (List Str) Str)) with every field wired (stage 2).
+	capTy, ok := entryShape(st, d.Ty)
+	if !ok {
+		fail(fmt.Errorf("%s : %s — entry protocol requires (-> (List Str) Str) or (-> {caps} (List Str) Str) with wireable capabilities", name, debugTy(d.Ty)))
+	}
+	if capTy != nil {
+		for i, n := range capTy.Names {
+			if _, ok := capWiring(n, &capTy.Args[i]); !ok {
+				fail(fmt.Errorf("no real-world wiring for capability field %s : %s (wireable: fetch (-> Str Str), env (-> Str Str), readfile (-> Str Str))", n, debugTy(&capTy.Args[i])))
+			}
+		}
+		// Confinement gate: an entry point that STORES or RETURNS its
+		// capability has no business receiving the real one.
+		if len(m.Confinement) > 0 && m.Confinement[0] == "escapes" {
+			fail(fmt.Errorf("%s's capability parameter ESCAPES (stored or returned) — refusing to hand it the real world", name))
+		}
 	}
 
-	src, err := emitProgram(st, h)
+	src, err := emitProgram(st, h, capTy)
 	if err != nil {
 		fail(err)
 	}
@@ -90,7 +104,20 @@ func cmdBuild(st *Store, name, out string) {
 		name, out, name, printTy(st, d.Ty, m.TyVarNames), guaranteeString(m.Guarantee))
 }
 
-func isEntryType(st *Store, t *Ty) bool {
+// entryShape classifies an entry type. Returns (nil, true) for the pure
+// protocol (-> (List Str) Str); (capRecord, true) for the capability-first
+// protocol (-> {caps} (-> (List Str) Str)); (nil, false) otherwise.
+func entryShape(st *Store, t *Ty) (*Ty, bool) {
+	if isPureEntry(st, t) {
+		return nil, true
+	}
+	if t != nil && t.K == "fun" && t.A != nil && t.A.K == "record" && isPureEntry(st, t.B) {
+		return t.A, true
+	}
+	return nil, false
+}
+
+func isPureEntry(st *Store, t *Ty) bool {
 	if t == nil || t.K != "fun" || t.B == nil || t.B.K != "str" {
 		return false
 	}
@@ -104,6 +131,37 @@ func isEntryType(st *Store, t *Ty) bool {
 	return false
 }
 
+// capWiring returns the Go expression for a capability field's REAL
+// implementation. This is effects stage 4: authority enters the program
+// exactly once, here, at the boundary — everything below received it as an
+// ordinary argument and was verified against all simulated worlds.
+func capWiring(name string, t *Ty) (string, bool) {
+	strToStr := t.K == "fun" && t.A != nil && t.A.K == "str" && t.B != nil && t.B.K == "str"
+	if !strToStr {
+		return "", false
+	}
+	switch name {
+	case "fetch":
+		return `capFn(func(s string) string {
+		resp, err := http.Get(s)
+		if err != nil { return "" }
+		defer resp.Body.Close()
+		b, err := io.ReadAll(resp.Body)
+		if err != nil { return "" }
+		return string(b)
+	})`, true
+	case "env":
+		return `capFn(os.Getenv)`, true
+	case "readfile":
+		return `capFn(func(s string) string {
+		b, err := os.ReadFile(s)
+		if err != nil { return "" }
+		return string(b)
+	})`, true
+	}
+	return "", false
+}
+
 // ---------- emitter ----------
 
 type emitter struct {
@@ -112,9 +170,13 @@ type emitter struct {
 	fname map[string]string // def hash → emitted Go function name
 	order []string          // emission order (deps first)
 	seen  map[string]bool
+	// Type tracking for record field resolution: the kernel's own checker,
+	// threaded alongside compilation. ctx mirrors the de Bruijn env.
+	chk *checker
+	ctx []*Ty
 }
 
-func emitProgram(st *Store, entry string) (string, error) {
+func emitProgram(st *Store, entry string, capTy *Ty) (string, error) {
 	e := &emitter{st: st, fname: map[string]string{}, seen: map[string]bool{}}
 	if err := e.closure(entry); err != nil {
 		return "", err
@@ -125,8 +187,18 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 )
+
+var _ = io.ReadAll
+var _ = http.Get
+
+// capFn lifts a real-world Go function into an Oath closure value.
+func capFn(f func(string) string) *closure {
+	return &closure{code: func(env []any, arg any) any { return f(arg.(string)) }}
+}
 
 type ctorV struct {
 	idx    int
@@ -174,18 +246,30 @@ func structEq(a, b any) bool {
 			return "", err
 		}
 	}
-	// main: argv → List Str → entry → stdout.
+	// main: argv → List Str; capability record (if any) wired with REAL
+	// implementations, applied first.
+	caps := ""
+	entryCall := fmt.Sprintf("%s(nil, args)", e.fname[entry])
+	if capTy != nil {
+		var fields []string
+		for i, n := range capTy.Names {
+			w, _ := capWiring(n, &capTy.Args[i])
+			fields = append(fields, w)
+		}
+		caps = fmt.Sprintf("\tvar realWorld any = &ctorV{idx: -1, fields: []any{%s}}\n", strings.Join(fields, ", "))
+		entryCall = fmt.Sprintf("apply(%s(nil, realWorld), args)", e.fname[entry])
+	}
 	fmt.Fprintf(&e.b, `
 func main() {
 	var args any = &ctorV{idx: 0} // Nil
 	for i := len(os.Args) - 1; i >= 1; i-- {
 		args = &ctorV{idx: 1, fields: []any{os.Args[i], args}} // Cons
 	}
-	out := %s(nil, args)
+%s	out := %s
 	fmt.Println(out.(string))
 	os.Exit(0)
 }
-`, e.fname[entry])
+`, caps, entryCall)
 	return e.b.String(), nil
 }
 
@@ -218,6 +302,8 @@ func (e *emitter) closure(h string) error {
 func (e *emitter) emitDef(h string) error {
 	d, _ := e.st.GetDef(h)
 	name := e.fname[h]
+	e.chk = &checker{st: e.st, selfTyVars: d.TyVars, selfTy: d.Ty}
+	e.ctx = nil
 	// A def value is its body evaluated in an empty env: for a lam chain we
 	// emit fn(env, arg) = body of the FIRST lam with arg bound; deeper lams
 	// become closures inside. To keep uniform apply semantics we emit the
@@ -225,6 +311,7 @@ func (e *emitter) emitDef(h string) error {
 	// for the common fully-applied case handled by the expression compiler.
 	fmt.Fprintf(&e.b, "// %s\nfunc %s(env []any, arg any) any {\n", e.st.NameOf(h), name)
 	if d.Body.K == "lam" {
+		e.ctx = []*Ty{d.Body.Ty}
 		body, err := e.expr(d.Body.A, 1, h)
 		if err != nil {
 			return err
@@ -253,7 +340,9 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 	case "str":
 		return strconv.Quote(t.Str), nil
 	case "lam":
+		e.ctx = append(e.ctx, t.Ty)
 		body, err := e.expr(t.A, depth+1, self)
+		e.ctx = e.ctx[:len(e.ctx)-1]
 		if err != nil {
 			return "", err
 		}
@@ -273,7 +362,9 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		e.ctx = append(e.ctx, t.Ty)
 		body, err := e.expr(t.B, depth+1, self)
+		e.ctx = e.ctx[:len(e.ctx)-1]
 		if err != nil {
 			return "", err
 		}
@@ -323,9 +414,20 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 		}
 		var b strings.Builder
 		b.WriteString("(func(scrut *ctorV, env []any) any {\n\t\tswitch scrut.idx {\n")
+		scrutTy, tyErr := e.chk.synth(e.ctx, t.A)
 		for i := range t.Arms {
 			n := len(md.Ctors[i])
+			if tyErr == nil && scrutTy.K == "data" {
+				for _, f := range instCtorFields(md, scrutTy.Hash, scrutTy.Args, i) {
+					e.ctx = append(e.ctx, f)
+				}
+			} else {
+				for j := 0; j < n; j++ {
+					e.ctx = append(e.ctx, tInt()) // placeholder; only records need truth
+				}
+			}
 			arm, err := e.expr(&t.Arms[i], depth+n, self)
+			e.ctx = e.ctx[:len(e.ctx)-n]
 			if err != nil {
 				return "", err
 			}
@@ -349,11 +451,19 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		// Field position from the record TYPE is unavailable here without
-		// typing; stage 1 supports records only via canonical order lookup
-		// at compile time — requires the checker. Bail honestly.
-		_ = r
-		return "", fmt.Errorf("record field access is not yet supported by the stage-1 compiler")
+		rt, err := e.chk.synth(e.ctx, t.A)
+		if err != nil {
+			return "", fmt.Errorf("cannot type record expression for field %q: %v", t.Op, err)
+		}
+		if rt.K != "record" {
+			return "", fmt.Errorf("field %q on non-record type %s", t.Op, debugTy(rt))
+		}
+		for i, n := range rt.Names {
+			if n == t.Op {
+				return fmt.Sprintf("(%s.(*ctorV).fields[%d])", r, i), nil
+			}
+		}
+		return "", fmt.Errorf("record %s has no field %q", debugTy(rt), t.Op)
 	}
 	return "", fmt.Errorf("cannot compile %q terms yet", t.K)
 }
