@@ -29,13 +29,16 @@ const mono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://oath-lang.vercel.app"),
   title: {
-    default: "Oath — Verified code. Immutable truth.",
-    template: "%s · Oath",
+    default: "Oath Language — Verified code. Immutable truth.",
+    template: "%s · Oath Language",
   },
   description:
-    "Oath is an AI-native verified-codebase kernel. Definitions are content-addressed, carry machine-checked properties in their identity, and live in an immutable object store. Every definition is a sealed promise.",
+    "Oath Language is an AI-native verified-codebase kernel. Definitions are content-addressed, carry machine-checked properties in their identity, and live in an immutable object store. Every definition is a sealed promise.",
+  applicationName: "Oath Language",
   keywords: [
-    "Oath",
+    "Oath Language",
+    "Oath Lang",
+    "oath-lang",
     "verified codebase",
     "content-addressed",
     "formal verification",
@@ -43,14 +46,15 @@ export const metadata: Metadata = {
     "AI-native language",
   ],
   openGraph: {
-    title: "Oath — Verified code. Immutable truth.",
+    title: "Oath Language — Verified code. Immutable truth.",
+    siteName: "Oath Language",
     description:
       "An AI-native verified-codebase kernel: content-addressed identity, machine-checked properties, proofs by Z3. Every definition is a sealed promise.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Oath — Verified code. Immutable truth.",
+    title: "Oath Language — Verified code. Immutable truth.",
     description:
       "An AI-native verified-codebase kernel. Every definition is a sealed promise.",
   },

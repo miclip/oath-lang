@@ -3,7 +3,7 @@ import { CodeBlock } from "@/components/CodeBlock";
 
 export const metadata: Metadata = {
   title: "Docs — Quickstart",
-  description: "Build the Oath kernel and put your first verified definition.",
+  description: "Build the Oath Language kernel and put your first verified definition.",
 };
 
 function Sh({ code }: { code: string }) {

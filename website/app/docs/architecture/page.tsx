@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Docs — Architecture",
   description:
-    "How Oath fits together: the object store, the trusted gate, the prover, the two kernels, and the hosted team store.",
+    "How Oath Language fits together: the object store, the trusted gate, the prover, the two kernels, and the hosted team store.",
 };
 
 export default function Architecture() {
@@ -11,7 +11,8 @@ export default function Architecture() {
     <>
       <h1>Architecture</h1>
       <p className="lead">
-        Oath is a small, auditable kernel around an immutable object store. Every
+        Oath Language is a small, auditable kernel around an immutable object store.
+        Every
         piece exists to make one guarantee: an accepted name points at a definition
         that has been checked, not merely stored.
       </p>

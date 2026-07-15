@@ -21,10 +21,11 @@ export default function Home() {
         <div className="wrap">
           <Logo size={104} className="hero-emblem" />
           <h1>OATH</h1>
+          <div className="hero-langmark">Language</div>
           <div className="hero-tag">Verified code. Immutable truth.</div>
           <p className="hero-lead">Every definition is a sealed promise.</p>
           <p className="hero-sub">
-            Oath is an AI-native verified-codebase kernel. Definitions are
+            Oath Language is an AI-native verified-codebase kernel. Definitions are
             content-addressed by the hash of their canonical form, carry
             machine-checked properties inside their identity, and live in an
             immutable object store. The syntax is disposable — the substrate is

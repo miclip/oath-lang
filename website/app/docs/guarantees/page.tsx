@@ -5,7 +5,7 @@ import { featured } from "@/lib/corpus";
 export const metadata: Metadata = {
   title: "Docs — The guarantee ladder",
   description:
-    "How much an Oath verdict actually means: asserted, tested, proven, falsified — and the four verdict dimensions.",
+    "How much an Oath Language verdict actually means: asserted, tested, proven, falsified — and the four verdict dimensions.",
 };
 
 export default function Guarantees() {

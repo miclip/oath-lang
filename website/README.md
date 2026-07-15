@@ -1,7 +1,11 @@
-# Oath website
+# Oath Language website
 
-Marketing + docs + live-corpus playground for [Oath](https://github.com/miclip/oath-lang),
-built with Next.js (App Router) and deployable to Vercel with zero config.
+Marketing + docs + live-corpus playground for
+[Oath Language](https://github.com/miclip/oath-lang), built with Next.js
+(App Router) and deployable to Vercel with zero config.
+
+The product is consistently branded **Oath Language** (or **Oath Lang**) rather
+than bare "Oath," which collides with several unrelated products in search.
 
 ## Design
 

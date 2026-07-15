@@ -138,6 +138,28 @@ pre,
   color: var(--sage);
   margin-top: 5px;
 }
+.wordmark-lang {
+  align-self: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--sage);
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
+/* hero "LANGUAGE" line under the giant wordmark */
+.hero-langmark {
+  font-family: var(--font-mono);
+  font-size: clamp(11px, 2vw, 14px);
+  letter-spacing: 0.62em;
+  padding-left: 0.62em;
+  text-transform: uppercase;
+  color: var(--cream-dim);
+  margin: -6px 0 18px;
+}
 
 /* ---------- nav ---------- */
 

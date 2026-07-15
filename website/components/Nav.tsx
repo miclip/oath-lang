@@ -5,13 +5,14 @@ export function Nav() {
   return (
     <nav className="nav">
       <div className="wrap nav-inner">
-        <Link href="/" className="wordmark" aria-label="Oath home">
+        <Link href="/" className="wordmark" aria-label="Oath Language home">
           <Logo size={30} />
           <span className="wordmark-text">
             <span className="wordmark-name" style={{ fontSize: 18 }}>
               OATH
             </span>
           </span>
+          <span className="wordmark-lang">Lang</span>
         </Link>
         <div className="nav-links">
           <Link href="/#substrate">Substrate</Link>
