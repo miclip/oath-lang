@@ -1,0 +1,1338 @@
+{
+  "definitions": [
+    {
+      "name": "abs",
+      "hash": "3995513e56b6ce7a229e241455b5abacaa332f351a54630f4d377ccb3bece5fc",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "non-negative",
+          "proven": true
+        },
+        {
+          "name": "idempotent",
+          "proven": true
+        },
+        {
+          "name": "is-x-or-negx",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "abs-small",
+      "hash": "5aa4cf7138621f5408a59302898916fbb5525e143920c30f99cd5b37052934ec",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "bounded-wrongly",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "append",
+      "hash": "e3a2800bf57cc2619c22a0ed68510565286dd3a1bed48e2011de354b7fbe2754",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "length-adds",
+          "proven": true
+        },
+        {
+          "name": "nil-right-identity",
+          "proven": true
+        },
+        {
+          "name": "associative",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "bad-reverse",
+      "hash": "98eca08336d76de5a31ae72795796aff882749848e76de9394c6a2a2b3a49d59",
+      "level": "falsified",
+      "proven_count": 0,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "involution",
+          "proven": false
+        },
+        {
+          "name": "antidistributes-over-append",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "clamp",
+      "hash": "9fa25283f279fb8302a5dfd5da227148bc5b0daac0ad6ef6d27b1b9acab76a00",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "within-bounds",
+          "proven": true
+        },
+        {
+          "name": "idempotent",
+          "proven": true
+        },
+        {
+          "name": "identity-inside",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "contains",
+      "hash": "b5b9b7812b60bbc284d4950db5f1ce212102d69292947010a56cd94ff1fa9f04",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "found-at-head",
+          "proven": true
+        },
+        {
+          "name": "absent-from-empty",
+          "proven": true
+        },
+        {
+          "name": "agrees-with-count",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "count",
+      "hash": "459655264756f31be29e5b9f2103e0e0714851513a927b7e09eb8b60103bc807",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "non-negative",
+          "proven": true
+        },
+        {
+          "name": "bounded-by-length",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "drop",
+      "hash": "8cee0cb4a9572f12d0f07f6eb073a000bae0f33b0b58b4760d1d311f4600608e",
+      "level": "proven",
+      "proven_count": 4,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "drop-all",
+          "proven": true
+        },
+        {
+          "name": "drop-zero",
+          "proven": true
+        },
+        {
+          "name": "drop-one",
+          "proven": true
+        },
+        {
+          "name": "drop-length",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "e-div",
+      "hash": "544e5a2700d563272a918bb943fa2517176431f2783217bfd5c2cfdec95330a8",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "division-identity",
+          "proven": false
+        },
+        {
+          "name": "zero-divisor-is-zero",
+          "proven": false
+        },
+        {
+          "name": "shift-by-divisor",
+          "proven": false
+        },
+        {
+          "name": "negate-divisor-negates",
+          "proven": false
+        },
+        {
+          "name": "quadrant-anchors",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "e-mod",
+      "hash": "77dfbe46ea559547bba459672ad18c06be47209011edf63845ec81599ddd5edc",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 6,
+      "props": [
+        {
+          "name": "nonneg",
+          "proven": false
+        },
+        {
+          "name": "below-abs-divisor",
+          "proven": false
+        },
+        {
+          "name": "zero-divisor-is-a",
+          "proven": false
+        },
+        {
+          "name": "periodic",
+          "proven": false
+        },
+        {
+          "name": "divisor-sign-irrelevant",
+          "proven": false
+        },
+        {
+          "name": "quadrant-anchors",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "full-name",
+      "hash": "e9b146c54fb4f346c6fdd52140f3fcfa0c509148f43be01bd7681a578eddcc92",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "length-adds-up",
+          "proven": true
+        },
+        {
+          "name": "starts-from-parts",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "greet",
+      "hash": "17a59f9b117f0e9b6ca4ecdfaa2f34e92ceb1643744c019d6d9fd4ee2a0d8474",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "exact-shape",
+          "proven": true
+        },
+        {
+          "name": "never-shorter-than-frame",
+          "proven": true
+        },
+        {
+          "name": "same-world-same-answer",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "greet-or-guest",
+      "hash": "52f67a200416fbc4dfb5d6f2390ecd03a89d268dc53a9babbdea5b4d54a9cf45",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "none-means-guest",
+          "proven": true
+        },
+        {
+          "name": "some-passes-through",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "i-contains",
+      "hash": "3fc1c9e4988411e515b346e48eb3612dfc2f4b4dc54077c5f8778e73f6743909",
+      "level": "proven",
+      "proven_count": 4,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "contains-def",
+          "proven": true
+        },
+        {
+          "name": "contains-endpoints",
+          "proven": true
+        },
+        {
+          "name": "contains-empty-none",
+          "proven": true
+        },
+        {
+          "name": "contains-outside-false",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "i-hull",
+      "hash": "7ad9cbd2d649b50039035317ef44da70d6e478c708faa601bf248c751a8d314d",
+      "level": "proven",
+      "proven_count": 5,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "hull-contains-both",
+          "proven": true
+        },
+        {
+          "name": "hull-tight-endpoints",
+          "proven": true
+        },
+        {
+          "name": "hull-empty-left",
+          "proven": true
+        },
+        {
+          "name": "hull-empty-right",
+          "proven": true
+        },
+        {
+          "name": "hull-bounds-when-nonempty",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "i-intersect",
+      "hash": "416798295f350bddd83cc55d47c9534b3bd3786361e2adfa87d595a059bcff30",
+      "level": "proven",
+      "proven_count": 4,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "intersect-members",
+          "proven": true
+        },
+        {
+          "name": "intersect-empty-iff-disjoint",
+          "proven": true
+        },
+        {
+          "name": "intersect-sym-members",
+          "proven": true
+        },
+        {
+          "name": "intersect-bounds-when-overlapping",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "i-overlaps",
+      "hash": "ba067f27d4256030f445fb03ecef490d79c4fbf2036cd956267a6e80c2db4a1f",
+      "level": "proven",
+      "proven_count": 5,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "overlaps-def",
+          "proven": true
+        },
+        {
+          "name": "overlaps-witness-sound",
+          "proven": true
+        },
+        {
+          "name": "overlaps-complete",
+          "proven": true
+        },
+        {
+          "name": "overlaps-touching",
+          "proven": true
+        },
+        {
+          "name": "overlaps-empty-left",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "initials-or",
+      "hash": "43f5aa38d3f440d4080f828ab155c912a4716c06e1a42ad6569875752c77b6a8",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "none-falls-back",
+          "proven": true
+        },
+        {
+          "name": "some-formats",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "insert",
+      "hash": "98fc037920d8645541c6f62617539f1ed899d9241f53f245562cf83f218fbd7b",
+      "level": "proven",
+      "proven_count": 6,
+      "prop_count": 6,
+      "props": [
+        {
+          "name": "grows-length-by-one",
+          "proven": true
+        },
+        {
+          "name": "keeps-sortedness",
+          "proven": true
+        },
+        {
+          "name": "adds-one-occurrence",
+          "proven": true
+        },
+        {
+          "name": "preserves-other-counts",
+          "proven": true
+        },
+        {
+          "name": "commutative",
+          "proven": true
+        },
+        {
+          "name": "noop-when-sorted-at-head",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "is-sorted",
+      "hash": "064d42c2395412835438f4a40910e4b26dd165cf85fc14d9ff7ada25431ba5d5",
+      "level": "proven",
+      "proven_count": 5,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "empty-and-singletons-sorted",
+          "proven": true
+        },
+        {
+          "name": "tail-of-sorted-is-sorted",
+          "proven": true
+        },
+        {
+          "name": "equal-neighbors-sorted",
+          "proven": true
+        },
+        {
+          "name": "detects-inversion",
+          "proven": true
+        },
+        {
+          "name": "head-law",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "join-with",
+      "hash": "c7ac0dbec4affb1f5438c514fe33d1f107c52636fa879980a82db89349be9b83",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-empty",
+          "proven": true
+        },
+        {
+          "name": "singleton-is-identity",
+          "proven": true
+        },
+        {
+          "name": "length-accounts",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "kv-get",
+      "hash": "ce1478bfc634cd71990dfef04ab8e5c6d47065375bef3cacc3e8ef6e83af02f4",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-yields-default",
+          "proven": true
+        },
+        {
+          "name": "bound-head-wins",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "kv-put",
+      "hash": "c22f3a59c1416a9eb978cf435fdacc5ff4c9aaf1b6a5b5b3abb7915cfc4d246f",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "read-your-write",
+          "proven": true
+        },
+        {
+          "name": "frame-other-keys",
+          "proven": true
+        },
+        {
+          "name": "overwrite-last-wins",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "length",
+      "hash": "bcce84a64b5783325530ff91edea2ceee704d7574d17b35ccd5bde717d97fdee",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "non-negative",
+          "proven": true
+        },
+        {
+          "name": "empty-is-zero",
+          "proven": true
+        },
+        {
+          "name": "cons-adds-one",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "lengths",
+      "hash": "8996eaad3fab7a23274b2aed09a27b6b9f9901145777f970c73c29f48a5df5b2",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "preserves-length",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "main-echo",
+      "hash": "09b330ada00c65dd1e2e2dcfd24781ce33f3ae20c5106d737925be4bd7ecec14",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "no-args-is-tagged",
+          "proven": true
+        },
+        {
+          "name": "single-arg-echoes",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "main-fetch",
+      "hash": "398f8ebe2c1d6c865dc908429b8e1788540af72ae62992ce59a96ac6736e126d",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "no-args-usage",
+          "proven": true
+        },
+        {
+          "name": "fetches-first-arg",
+          "proven": true
+        },
+        {
+          "name": "world-deterministic",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "map",
+      "hash": "ef1a1686ba71cde2db90f992f349a4ab867698b1578924b32ad775df43f8f233",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "preserves-length",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "max2",
+      "hash": "04416a62699b6875092c3ad0c232c69ece40a95bcc59d284e4d5639879a16b59",
+      "level": "proven",
+      "proven_count": 4,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "ge-left",
+          "proven": true
+        },
+        {
+          "name": "ge-right",
+          "proven": true
+        },
+        {
+          "name": "is-one-of",
+          "proven": true
+        },
+        {
+          "name": "picks-larger",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "merge",
+      "hash": "ff80c574911e7e201660b97a96fceda93aed021aecb1106e7d006775128f70d7",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "length-adds",
+          "proven": false
+        },
+        {
+          "name": "preserves-counts",
+          "proven": false
+        },
+        {
+          "name": "keeps-sortedness",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "or-else",
+      "hash": "134cff6b69d5f3bb2599af1f8eb82206c37cefcb5b4ba29b6447b5b9dd0b3fbe",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "none-yields-default",
+          "proven": true
+        },
+        {
+          "name": "some-wins",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "q-drop",
+      "hash": "66b1867fa0679f1b22be8b2706fd4d3f55b941f52756053eaaa077bde597b8c1",
+      "level": "tested",
+      "proven_count": 3,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "drop-front-nonempty",
+          "proven": true
+        },
+        {
+          "name": "drop-back-only",
+          "proven": true
+        },
+        {
+          "name": "drop-empty",
+          "proven": true
+        },
+        {
+          "name": "drop-is-tail",
+          "proven": false
+        },
+        {
+          "name": "peek-drop-rebuild",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "q-peek",
+      "hash": "a1e5fe17d4e140519ea78c37635c96d5e40e18cf4697b40d0a414a10bd298e65",
+      "level": "tested",
+      "proven_count": 4,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "peek-front-nonempty",
+          "proven": true
+        },
+        {
+          "name": "peek-back-only",
+          "proven": true
+        },
+        {
+          "name": "peek-empty",
+          "proven": true
+        },
+        {
+          "name": "peek-nonempty-back-not-none",
+          "proven": true
+        },
+        {
+          "name": "peek-is-head",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "q-push",
+      "hash": "beea004223db437a95e1fa8d99dad9d4023ce6837072426c8ce5cb588673bbd3",
+      "level": "tested",
+      "proven_count": 4,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "push-appends",
+          "proven": true
+        },
+        {
+          "name": "push-on-empty",
+          "proven": true
+        },
+        {
+          "name": "push-length",
+          "proven": true
+        },
+        {
+          "name": "push-count-pushed",
+          "proven": false
+        },
+        {
+          "name": "push-order-anchor",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "q-to-list",
+      "hash": "3d00c6800fb57c16f70a33cee4d3105ab9f233d9d9c7a0edfe87c62396d0e963",
+      "level": "proven",
+      "proven_count": 5,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "to-list-def",
+          "proven": true
+        },
+        {
+          "name": "to-list-front-only",
+          "proven": true
+        },
+        {
+          "name": "to-list-back-only",
+          "proven": true
+        },
+        {
+          "name": "to-list-length",
+          "proven": true
+        },
+        {
+          "name": "to-list-order-anchor",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "rename-key",
+      "hash": "dbee26614e4263de9f9830c329611d7056ac8cc192e0698cb2e77195cca1dc3d",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "destination-holds-source",
+          "proven": true
+        },
+        {
+          "name": "source-untouched-when-distinct",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "reverse",
+      "hash": "eb29685a36dbd33e0518ef2ea7245795ce6a1b9919d5059bd7cd5bb914842852",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "involution",
+          "proven": true
+        },
+        {
+          "name": "antidistributes-over-append",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "rle-decode",
+      "hash": "73f058b24af1eb15fa85b13dfa3308b32c3e61da629a9899bcaee7c8e3bea8aa",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "nil-decodes-empty",
+          "proven": false
+        },
+        {
+          "name": "cons-law",
+          "proven": false
+        },
+        {
+          "name": "distributes-over-append",
+          "proven": false
+        },
+        {
+          "name": "anchor-with-zero-run",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "rle-encode",
+      "hash": "f24df956a83863b97e9f27ff475aee17e67657f5dce1325f3caad320f502b454",
+      "level": "tested",
+      "proven_count": 3,
+      "prop_count": 6,
+      "props": [
+        {
+          "name": "roundtrip",
+          "proven": false
+        },
+        {
+          "name": "never-longer-than-input",
+          "proven": true
+        },
+        {
+          "name": "uniform-list-is-one-run",
+          "proven": false
+        },
+        {
+          "name": "two-runs-stay-two-runs",
+          "proven": false
+        },
+        {
+          "name": "duplicate-head-merges",
+          "proven": true
+        },
+        {
+          "name": "anchor-mixed",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "rle-expand",
+      "hash": "f1579b18e3072e35e22654b26ec5a147eb2ea3c3d649ec254fce20d87fcb6b58",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "nonpositive-is-empty",
+          "proven": false
+        },
+        {
+          "name": "peel-one",
+          "proven": false
+        },
+        {
+          "name": "length-is-count-arg",
+          "proven": false
+        },
+        {
+          "name": "every-element-is-v",
+          "proven": false
+        },
+        {
+          "name": "anchor-three-sevens",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "rot",
+      "hash": "042274e57aeb9a71f1b4f6fbf9e222f30cb68a951c7ce893e7ed49e805205e5b",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 7,
+      "props": [
+        {
+          "name": "zero-is-identity",
+          "proven": false
+        },
+        {
+          "name": "empty-absorbs",
+          "proven": false
+        },
+        {
+          "name": "preserves-length",
+          "proven": false
+        },
+        {
+          "name": "shift-one-moves-head-to-back",
+          "proven": false
+        },
+        {
+          "name": "neg-one-pulls-last-to-front",
+          "proven": false
+        },
+        {
+          "name": "periodic-in-length",
+          "proven": false
+        },
+        {
+          "name": "decomposes-in-range",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "rot-f",
+      "hash": "042274e57aeb9a71f1b4f6fbf9e222f30cb68a951c7ce893e7ed49e805205e5b",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 7,
+      "props": [
+        {
+          "name": "zero-is-identity",
+          "proven": false
+        },
+        {
+          "name": "empty-absorbs",
+          "proven": false
+        },
+        {
+          "name": "preserves-length",
+          "proven": false
+        },
+        {
+          "name": "shift-one-moves-head-to-back",
+          "proven": false
+        },
+        {
+          "name": "neg-one-pulls-last-to-front",
+          "proven": false
+        },
+        {
+          "name": "periodic-in-length",
+          "proven": false
+        },
+        {
+          "name": "decomposes-in-range",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "rot-h2",
+      "hash": "ddc49f7caeb4e5550e8b65fa29bdb8e1295e7409069ca9c730efb0993838a461",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 7,
+      "props": [
+        {
+          "name": "zero-is-identity",
+          "proven": false
+        },
+        {
+          "name": "empty-absorbs",
+          "proven": false
+        },
+        {
+          "name": "preserves-length",
+          "proven": false
+        },
+        {
+          "name": "shift-one-moves-head-to-back",
+          "proven": false
+        },
+        {
+          "name": "neg-one-pulls-last-to-front",
+          "proven": false
+        },
+        {
+          "name": "periodic-in-length",
+          "proven": false
+        },
+        {
+          "name": "decomposes-in-range",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "rot-h3",
+      "hash": "5b49c1e1999915a85a0199264ff581df5f66f7d8f713237ad1453cda64b0b36d",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 7,
+      "props": [
+        {
+          "name": "zero-is-identity",
+          "proven": false
+        },
+        {
+          "name": "empty-absorbs",
+          "proven": false
+        },
+        {
+          "name": "preserves-length",
+          "proven": false
+        },
+        {
+          "name": "shift-one-moves-head-to-back",
+          "proven": false
+        },
+        {
+          "name": "neg-one-pulls-last-to-front",
+          "proven": false
+        },
+        {
+          "name": "periodic-in-length",
+          "proven": false
+        },
+        {
+          "name": "decomposes-in-range",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "rot-hl",
+      "hash": "12db0571fb6c8d62820ab58eca5e3f531f5ca45bf5ba3ae6d1d12bb4cc1e2ad5",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 7,
+      "props": [
+        {
+          "name": "zero-is-identity",
+          "proven": false
+        },
+        {
+          "name": "empty-absorbs",
+          "proven": false
+        },
+        {
+          "name": "preserves-length",
+          "proven": false
+        },
+        {
+          "name": "shift-one-moves-head-to-back",
+          "proven": false
+        },
+        {
+          "name": "neg-one-pulls-last-to-front",
+          "proven": false
+        },
+        {
+          "name": "periodic-in-length",
+          "proven": false
+        },
+        {
+          "name": "decomposes-in-range",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "safe-get",
+      "hash": "59789365cf544e001ae27c2ca394de376fb322e573efd155732da90701adcca6",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "down-is-none",
+          "proven": true
+        },
+        {
+          "name": "up-is-some",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "shout",
+      "hash": "d1b9f789ec1ff143e254991d4b0646e4059fe32953e929dc54dfdfcf07de272e",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "grows-by-one",
+          "proven": true
+        },
+        {
+          "name": "preserves-emptiness-never",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "sign",
+      "hash": "b3be073e6d508999394277b13bc3bd6851313ab4b3ee9f09317372af911c3d52",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "bounded",
+          "proven": true
+        },
+        {
+          "name": "reconstructs",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "sort",
+      "hash": "4947f21a8edd89b5f28c4e9c8a3f4741b2008cc03e17cbdef5afbc6dd46073fd",
+      "level": "proven",
+      "proven_count": 7,
+      "prop_count": 7,
+      "props": [
+        {
+          "name": "output-is-sorted",
+          "proven": true
+        },
+        {
+          "name": "preserves-length",
+          "proven": true
+        },
+        {
+          "name": "preserves-counts",
+          "proven": true
+        },
+        {
+          "name": "snoc-is-insert",
+          "proven": true
+        },
+        {
+          "name": "sorted-is-fixpoint",
+          "proven": true
+        },
+        {
+          "name": "idempotent",
+          "proven": true
+        },
+        {
+          "name": "reverse-invariant",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "spin",
+      "hash": "111a7721ea54b9bf7ce9b6455e60cd8ca994d2f0cd79ad838f1cff926336093a",
+      "level": "falsified",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "claims-zero",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "sum",
+      "hash": "f71c16cff9cf6d1b56f59476bc8235f015b851c97c61d64f892d34962026f616",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "distributes-over-append",
+          "proven": true
+        },
+        {
+          "name": "reverse-invariant",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "t-flatten",
+      "hash": "b26c6b6a629e25fc34a9ab98ea702fefaa7a047f204ee08a012ed9ee2a58b61c",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "flatten-leaf",
+          "proven": true
+        },
+        {
+          "name": "flatten-node",
+          "proven": true
+        },
+        {
+          "name": "flatten-singleton",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "t-insert",
+      "hash": "83fe02b7161e6700f45d3a2556ccd5731700090e72d3952b19a0bec63904f47f",
+      "level": "tested",
+      "proven_count": 2,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "insert-count-inserted",
+          "proven": false
+        },
+        {
+          "name": "insert-count-others",
+          "proven": false
+        },
+        {
+          "name": "insert-length",
+          "proven": true
+        },
+        {
+          "name": "insert-keeps-sorted",
+          "proven": false
+        },
+        {
+          "name": "insert-dup-goes-right",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "t-member",
+      "hash": "56f3f167eb18d4d9abd068265d6e44bc7e2f63915490113c799282b2b08777e2",
+      "level": "tested",
+      "proven_count": 3,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "member-leaf",
+          "proven": true
+        },
+        {
+          "name": "member-root",
+          "proven": true
+        },
+        {
+          "name": "member-insert-finds",
+          "proven": true
+        },
+        {
+          "name": "member-flatten-equiv",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "t-size",
+      "hash": "6a8fba8949037313386d11c8c776cb7dde3bbf97e11c14f98f224c6e36610764",
+      "level": "proven",
+      "proven_count": 4,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "size-leaf",
+          "proven": true
+        },
+        {
+          "name": "size-node",
+          "proven": true
+        },
+        {
+          "name": "size-flatten-length",
+          "proven": true
+        },
+        {
+          "name": "size-insert",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "take",
+      "hash": "91db30f81c8e16df8a772451542f1808f64a98e0bc27ef5c77bb941706a552a1",
+      "level": "proven",
+      "proven_count": 4,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "take-then-drop-rebuilds",
+          "proven": true
+        },
+        {
+          "name": "take-zero",
+          "proven": true
+        },
+        {
+          "name": "take-one",
+          "proven": true
+        },
+        {
+          "name": "take-two",
+          "proven": true
+        }
+      ]
+    }
+  ],
+  "kernel": "oath-kernel/0.7",
+  "solver": "Z3 version 4.16.0 - 64 bit"
+}
