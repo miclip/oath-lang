@@ -1,0 +1,2 @@
+✓ prop no-args-is-tagged        passed 200 cases
+✓ prop single-arg-echoes        passed 200 cases

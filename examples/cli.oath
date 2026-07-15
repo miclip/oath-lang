@@ -1,0 +1,37 @@
+; The first Oath definitions meant to RUN, not just verify: entry points
+; for `oath build`. Entry protocol (stage 1): main : (-> (List Str) Str) —
+; argv (after the program name) in, stdout out. Still ordinary verified
+; definitions: the compiler refuses anything the gate rejected or
+; verification falsified, so an executable is a proof-carrying artifact.
+
+(defn join-with [] [(sep Str) (xs (List Str))] Str
+  (match xs
+    ((Nil) "")
+    ((Cons h t)
+      (match t
+        ((Nil) h)
+        ((Cons h2 t2) (++ h (++ sep (join-with sep t)))))))
+  (prop empty-is-empty [(sep Str)]
+    (== (join-with sep (Nil [Str])) ""))
+  (prop singleton-is-identity [(sep Str) (s Str)]
+    (== (join-with sep (Cons [Str] s (Nil [Str]))) s))
+  (prop length-accounts [(sep Str) (a Str) (b Str)]
+    (== (str-len (join-with sep (Cons [Str] a (Cons [Str] b (Nil [Str])))))
+        (+ (str-len a) (+ (str-len sep) (str-len b))))))
+
+(defn lengths [] [(xs (List Str))] (List Int)
+  (match xs
+    ((Nil) (Nil [Int]))
+    ((Cons h t) (Cons [Int] (str-len h) (lengths t))))
+  (prop preserves-length [(xs (List Str))]
+    (== (length [Int] (lengths xs)) (length [Str] xs))))
+
+; Echo the arguments, space-joined, and report whether they arrived in
+; non-decreasing length order.
+(defn main-echo [] [(args (List Str))] Str
+  (++ (join-with " " args)
+      (if (is-sorted (lengths args)) "  [sorted by length]" "  [unsorted]"))
+  (prop no-args-is-tagged [(x Int)]
+    (== (main-echo (Nil [Str])) "  [sorted by length]"))
+  (prop single-arg-echoes [(s Str)]
+    (== (main-echo (Cons [Str] s (Nil [Str]))) (++ s "  [sorted by length]"))))

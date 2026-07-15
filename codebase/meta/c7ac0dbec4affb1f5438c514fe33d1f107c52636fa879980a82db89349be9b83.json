@@ -1,0 +1,32 @@
+{
+  "name": "join-with",
+  "prop_names": [
+    "empty-is-empty",
+    "singleton-is-identity",
+    "length-accounts"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "mutants_killed": 3,
+  "mutants_total": 5,
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "sep",
+    "xs"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

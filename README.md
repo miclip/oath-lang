@@ -170,6 +170,27 @@ append-only journal (`oath log`) with principal attribution (`--author` /
 `OATH_AUTHOR`), timestamp, and verifier version. Rejections store no object
 but leave a permanent record.
 
+## Compiling to executables
+
+`oath build <name> [-o out]` compiles a definition's dependency closure to
+a standalone native binary (stage 1 of the backend: emit Go, `go build`
+does native codegen). Entry protocol: `main : (-> (List Str) Str)` — argv
+in, stdout out. The provenance gate is the point:
+
+```
+$ oath build main-echo -o echo && ./echo a bb ccc
+a bb ccc  [sorted by length]
+$ oath build bad-reverse
+error: bad-reverse is FALSIFIED (antidistributes-over-append) — refusing
+to build an executable from a broken oath
+```
+
+Compiled programs shed fuel/depth bounds (those are verification
+semantics); what they keep is provenance — an executable is a
+proof-carrying artifact, or it isn't built. Differentially tested against
+`oath eval`. Capability entry points (real IO wired once at the program
+boundary) are the next rung.
+
 ## MCP server
 
 `oath serve` speaks MCP over stdio, so any agent session can mount the

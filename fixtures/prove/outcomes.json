@@ -461,6 +461,27 @@
       ]
     },
     {
+      "name": "join-with",
+      "hash": "c7ac0dbec4affb1f5438c514fe33d1f107c52636fa879980a82db89349be9b83",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-empty",
+          "proven": true
+        },
+        {
+          "name": "singleton-is-identity",
+          "proven": true
+        },
+        {
+          "name": "length-accounts",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "kv-get",
       "hash": "ce1478bfc634cd71990dfef04ab8e5c6d47065375bef3cacc3e8ef6e83af02f4",
       "level": "proven",
@@ -515,6 +536,36 @@
         },
         {
           "name": "cons-adds-one",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "lengths",
+      "hash": "8996eaad3fab7a23274b2aed09a27b6b9f9901145777f970c73c29f48a5df5b2",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "preserves-length",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "main-echo",
+      "hash": "09b330ada00c65dd1e2e2dcfd24781ce33f3ae20c5106d737925be4bd7ecec14",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "no-args-is-tagged",
+          "proven": true
+        },
+        {
+          "name": "single-arg-echoes",
           "proven": true
         }
       ]

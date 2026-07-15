@@ -35,13 +35,13 @@
   "waived_mutants": [
     {
       "hash": "dadd0f832b9fb0b4a53f2175f0c3f09eedbfac494cc382fdfc008be09205fdbf",
-      "desc": "+ \u2192 -",
-      "reason": "mutation sits inside the m==0 guard TEST only: (x-n) and (x+n) are congruent mod n and |k%n| < n, so the zero test is unchanged; the rotation path still uses +",
+      "desc": "+ → -",
+      "reason": "mutation sits inside the m==0 guard TEST only: (x-n) and (x+n) are congruent mod n and |k%n| \u003c n, so the zero test is unchanged; the rotation path still uses +",
       "by": "claude-main"
     },
     {
       "hash": "992bd3c02229cbe71ff5b4bc1af10f04d718b2e652cae25b75c11e85644b1953",
-      "desc": "literal 0 \u2192 -1",
+      "desc": "literal 0 → -1",
       "reason": "the m==0 guard is a redundant fast path: at m=0 the general path is append (drop 0 xs) (take 0 xs) = xs, so disabling the guard (testing -1, never true for m in [0,n)) is behaviorally identical",
       "by": "claude-main"
     }

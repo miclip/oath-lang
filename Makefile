@@ -6,7 +6,7 @@
 # rot_hl/rot_f/rot_h2/rot_h3 are the flywheel-experiment arms (#15): four
 # independently-authored green bodies for one oath; `rot` aliases the winner.
 EXAMPLES = list sort merge tree interval queue rle ediv rot_hl rot_f rot_h2 \
-           rot_h3 rot records extras ints service leaky stateful
+           rot_h3 rot records extras ints service leaky stateful cli
 EXHIBITS = undertested nontotal bad_reverse
 PROVABLE = length append sum count reverse map contains is-sorted insert \
            t-flatten t-insert t-member t-size \
@@ -14,7 +14,8 @@ PROVABLE = length append sum count reverse map contains is-sorted insert \
            q-to-list q-push q-peek q-drop rle-encode \
            sort take drop max2 abs sign clamp or-else shout full-name \
            greet greet-or-guest initials-or \
-           kv-get kv-put rename-key safe-get
+           kv-get kv-put rename-key safe-get \
+           join-with lengths main-echo
 # Props exist but sit outside the provable fragment (Int-recursion fuel
 # bounds, or / and % in bodies): mutation-scored, never proven.
 TESTED_ONLY = merge rle-expand rle-decode e-mod e-div rot

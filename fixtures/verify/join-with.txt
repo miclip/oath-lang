@@ -1,0 +1,3 @@
+✓ prop empty-is-empty           passed 200 cases
+✓ prop singleton-is-identity    passed 200 cases
+✓ prop length-accounts          passed 200 cases

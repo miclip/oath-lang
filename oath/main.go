@@ -28,6 +28,8 @@ usage:
   oath serve --http <addr> --tokens <file>
                                       team store: MCP over HTTP with authenticated principals;
                                       repoint policy in <store>/policy.json (docs/teamstore.md)
+  oath build <name> [-o out]          compile a verified definition to a native executable
+                                      (entry protocol: (-> (List Str) Str); refuses falsified names)
   oath fixtures <dir>                 materialize the SPEC §10 conformance suite as byte fixtures
 
 the codebase lives in ./codebase (override with OATH_STORE)`
@@ -159,6 +161,22 @@ func main() {
 		} else {
 			cmdServe(st)
 		}
+	case "build":
+		outPath := ""
+		var names []string
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			if rest[i] == "-o" && i+1 < len(rest) {
+				outPath = rest[i+1]
+				i++
+			} else {
+				names = append(names, rest[i])
+			}
+		}
+		if len(names) != 1 {
+			fail(fmt.Errorf("usage: oath build <name> [-o out]"))
+		}
+		cmdBuild(st, names[0], outPath)
 	case "migrate-encoding":
 		cmdMigrateEncoding(st)
 	case "fixtures":
