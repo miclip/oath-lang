@@ -670,3 +670,39 @@ cases. Findings and settled ambiguities:
     `claims-zero` — so `1/1`; `bad-reverse` (falsified) has a bare-variable body
     (`xs`) with no mutable node, so total 0 and no score emitted. Removing the
     `falsified → skip` short-circuit makes both match.
+
+## Lemma relevance filtering (#25)
+
+61. **Footprint tracks BOTH function and data definitions as first-class
+    members (SPEC §7.2).** SPEC §7.2 defines a goal's footprint as the definition
+    under proof plus every definition its property's binders/body reference,
+    closed transitively through definition *bodies* (props never extend it), and
+    admits a dependency lemma iff its definition and its binders/body references
+    all lie inside the footprint. Sibling lemmas (properties of the definition
+    under proof) are admissible unconditionally — the load-bearing exemption that
+    lets, e.g., `sort.idempotent` route through its sibling `sorted-is-fixpoint`
+    even though that lemma mentions `is-sorted`, which `sort`'s footprint never
+    reaches.
+    *History (honest):* my first cut projected the footprint to the function
+    call graph only, leaving data references untracked — outcome-preserving on
+    this corpus (data reaches no functions, so the projection is a superset of
+    the full rule for the lemma-reference test) but a LATENT cross-kernel
+    divergence: a future corpus could have a lemma whose only out-of-footprint
+    mention is a datatype, which my projection would admit and the reference
+    would drop. Adjudicated: the tighter rule is correct — such a lemma drags an
+    unrelated datatype's SMT declarations into the problem, exactly the noise the
+    filter removes — so §7.2 now states data membership explicitly and I track it.
+    Implementation: the footprint is seeded by the property's binder *types*
+    (data hashes) and the full reference set of its body — functions (`ref`),
+    datatypes named by constructors/matches/type annotations, and datatypes
+    named by instantiation type arguments — then closed through member bodies:
+    a function through its body term, a datatype through its constructor field
+    types (a member datatype's referenced datatypes are members). The
+    dependency-lemma test checks the lemma's binder and body references, data
+    included, against the footprint. Confirmed: full corpus reproduces 198/198
+    outcomes at 15s. The per-property footprint (vs the previous per-definition
+    transitive-dep set) is what realises #25 — each proof's axiom set is bounded
+    by what the goal can reach, not by library size. Interacts cleanly with the
+    #24 fixpoint gate: the admissible dependency set is fixed per property (deps
+    are final in topological order) and only siblings grow, so lemma-set size
+    stays monotone and the growth gate is unchanged.

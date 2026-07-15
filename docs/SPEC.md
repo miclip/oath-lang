@@ -549,6 +549,23 @@ reproducibility (given the same solver):
   a literal one-pass reading yields 188/189 conformance. The reference
   reaches the fixpoint across successive `prove` runs via accumulated
   `proven_props` metadata; a conforming kernel may iterate internally.)
+- **Lemma relevance (normative).** A goal's *footprint* is the smallest set
+  of definition hashes containing the definition under proof and every
+  definition referenced by the property's binders and body, closed
+  transitively through definition BODIES (a member's body references are
+  members; props do not extend the footprint). Lemma admissibility: a lemma
+  belonging to the definition under proof is admissible unconditionally
+  (sibling lemmas are the self-lemma fixpoint's foundation — their proof
+  chains may route through symbols the goal never mentions); a DEPENDENCY
+  lemma is admissible iff its own definition and every definition its
+  binders/body reference lie inside the footprint. Footprint membership
+  and the admissibility test cover DATA definitions as first-class
+  members, not only functions: a lemma whose only out-of-footprint
+  reference is a data type is inadmissible (it would drag an unrelated
+  datatype's declarations into the problem — the noise the filter
+  exists to remove). This bounds each proof's
+  axiom set by what the goal can reach instead of by the library's size
+  (#25).
 - Kernels MAY gate fixpoint re-attempts on lemma-set growth: a goal whose
   available lemma set has not changed since its last failed attempt need
   not be re-attempted — with a deterministic solver and fixed budget the

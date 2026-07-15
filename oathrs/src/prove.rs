@@ -921,6 +921,161 @@ fn transitive_deps(store: &Store, hash: &str) -> Vec<String> {
     order
 }
 
+/// Every definition hash a type mentions — data instances and (recursively)
+/// their type arguments. `Rec` is the self-reference of the datatype being
+/// defined and carries no hash of its own.
+fn collect_ty_refs(ty: &Ty, out: &mut BTreeSet<String>) {
+    match ty {
+        Ty::Data { hash, args } => {
+            out.insert(hash.clone());
+            for a in args {
+                collect_ty_refs(a, out);
+            }
+        }
+        Ty::Fun(a, b) => {
+            collect_ty_refs(a, out);
+            collect_ty_refs(b, out);
+        }
+        Ty::Rec { args } | Ty::Record { args, .. } => {
+            for a in args {
+                collect_ty_refs(a, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Every definition hash a term references — functions (`ref`), datatypes named
+/// by constructors/matches/annotations, and datatypes named by instantiation
+/// type arguments (SPEC §7.2: data definitions are first-class references).
+fn collect_all_refs(t: &Term, out: &mut BTreeSet<String>) {
+    match t {
+        Term::Ref { hash, tyargs } => {
+            out.insert(hash.clone());
+            for ty in tyargs {
+                collect_ty_refs(ty, out);
+            }
+        }
+        Term::SelfRef { tyargs } => {
+            for ty in tyargs {
+                collect_ty_refs(ty, out);
+            }
+        }
+        Term::Ctor { hash, tyargs, args, .. } => {
+            out.insert(hash.clone());
+            for ty in tyargs {
+                collect_ty_refs(ty, out);
+            }
+            for a in args {
+                collect_all_refs(a, out);
+            }
+        }
+        Term::Match { hash, a, arms } => {
+            out.insert(hash.clone());
+            collect_all_refs(a, out);
+            for arm in arms {
+                collect_all_refs(arm, out);
+            }
+        }
+        Term::Lam { ty, a } => {
+            collect_ty_refs(ty, out);
+            collect_all_refs(a, out);
+        }
+        Term::Let { ty, a, b } => {
+            collect_ty_refs(ty, out);
+            collect_all_refs(a, out);
+            collect_all_refs(b, out);
+        }
+        Term::App { a, b } => {
+            collect_all_refs(a, out);
+            collect_all_refs(b, out);
+        }
+        Term::If { a, b, c } => {
+            collect_all_refs(a, out);
+            collect_all_refs(b, out);
+            collect_all_refs(c, out);
+        }
+        Term::Prim { args, .. } | Term::Record { args, .. } => {
+            for a in args {
+                collect_all_refs(a, out);
+            }
+        }
+        Term::Field { a, .. } => collect_all_refs(a, out),
+        _ => {}
+    }
+}
+
+/// The definition hashes a member contributes to the footprint closure — its
+/// BODY references (SPEC §7.2: props never extend the footprint). A function's
+/// body is its term; a datatype's "body" is its constructor field types, so a
+/// member datatype's referenced datatypes are members too.
+fn body_refs(def: &Def, out: &mut BTreeSet<String>) {
+    match def {
+        Def::Func { body, .. } => collect_all_refs(body, out),
+        Def::Data { ctors, .. } => {
+            for fields in ctors {
+                for f in fields {
+                    collect_ty_refs(f, out);
+                }
+            }
+        }
+    }
+}
+
+/// A goal's footprint (SPEC §7.2 "lemma relevance"): the definition under proof
+/// plus every definition referenced by the property's binders and body, closed
+/// transitively through definition bodies (functions through their term,
+/// datatypes through their constructor fields). Data and function definitions
+/// are both first-class members.
+fn footprint(store: &Store, def_hash: &str, prop: &Prop) -> BTreeSet<String> {
+    let mut fp = BTreeSet::new();
+    let mut queue: VecDeque<String> = VecDeque::new();
+    fp.insert(def_hash.to_string());
+    queue.push_back(def_hash.to_string());
+    let mut seed = BTreeSet::new();
+    for bty in &prop.binders {
+        collect_ty_refs(bty, &mut seed);
+    }
+    collect_all_refs(&prop.body, &mut seed);
+    for h in seed {
+        if fp.insert(h.clone()) {
+            queue.push_back(h);
+        }
+    }
+    while let Some(h) = queue.pop_front() {
+        if let Some(def) = store.def_by_hash.get(&h) {
+            let mut r = BTreeSet::new();
+            body_refs(def, &mut r);
+            for d in r {
+                if fp.insert(d.clone()) {
+                    queue.push_back(d);
+                }
+            }
+        }
+    }
+    fp
+}
+
+/// A dependency lemma (a proven property `pi` of `e_hash`) is admissible for a
+/// goal iff its definition and every definition its binders/body reference lie
+/// inside the goal's footprint (SPEC §7.2). Sibling lemmas bypass this entirely.
+fn lemma_admissible(store: &Store, fp: &BTreeSet<String>, e_hash: &str, pi: usize) -> bool {
+    if !fp.contains(e_hash) {
+        return false;
+    }
+    match store.def_by_hash.get(e_hash) {
+        Some(Def::Func { props, .. }) => {
+            let mut r = BTreeSet::new();
+            for bty in &props[pi].binders {
+                collect_ty_refs(bty, &mut r);
+            }
+            collect_all_refs(&props[pi].body, &mut r);
+            r.iter().all(|d| fp.contains(d))
+        }
+        _ => false,
+    }
+}
+
 pub struct ProofResult {
     pub proven: Vec<bool>, // per prop index
 }
@@ -1010,17 +1165,34 @@ pub fn prove_all(store: &Store, falsified: &BTreeSet<String>) -> BTreeMap<String
         if falsified.contains(hash) {
             continue; // never proved (§7.3: upgrade requires tested)
         }
+        // Per-property footprints (SPEC §7.2 lemma relevance, #25).
+        let footprints: Vec<BTreeSet<String>> =
+            props.iter().map(|p| footprint(store, hash, p)).collect();
         // Transitive-dep proven props — final, since deps precede us in `order`.
-        let mut dep_lemmas: Vec<(String, usize)> = Vec::new();
+        let mut all_dep_proven: Vec<(String, usize)> = Vec::new();
         for d in &deps_of[hash] {
             if let Some(Def::Func { props: dp, .. }) = store.def_by_hash.get(d) {
                 for pi in 0..dp.len() {
                     if prover.proven.contains(&(d.clone(), pi)) {
-                        dep_lemmas.push((d.clone(), pi));
+                        all_dep_proven.push((d.clone(), pi));
                     }
                 }
             }
         }
+        // Dependency lemmas admissible for each property: its definition and its
+        // body references must lie inside that property's footprint (§7.2).
+        // Sibling (same-definition) lemmas are admissible unconditionally and are
+        // added inside the fixpoint below.
+        let dep_lemmas: Vec<Vec<(String, usize)>> = footprints
+            .iter()
+            .map(|fp| {
+                all_dep_proven
+                    .iter()
+                    .filter(|(e, ei)| lemma_admissible(store, fp, e, *ei))
+                    .cloned()
+                    .collect()
+            })
+            .collect();
         // Local fixpoint over this definition's properties.
         let mut last_lemma_count: BTreeMap<usize, usize> = BTreeMap::new();
         loop {
@@ -1029,7 +1201,7 @@ pub fn prove_all(store: &Store, falsified: &BTreeSet<String>) -> BTreeMap<String
                 if prover.proven.contains(&(hash.clone(), pi)) {
                     continue;
                 }
-                let mut lemmas = dep_lemmas.clone();
+                let mut lemmas = dep_lemmas[pi].clone();
                 for j in 0..props.len() {
                     if j != pi && prover.proven.contains(&(hash.clone(), j)) {
                         lemmas.push((hash.clone(), j));

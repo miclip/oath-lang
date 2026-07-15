@@ -56,8 +56,10 @@ type smtVal struct {
 }
 
 type lemma struct {
-	ownIdx int // index of the prop this lemma came from in the def under proof; -1 for dependency lemmas
-	text   string
+	ownIdx   int    // index of the prop this lemma came from in the def under proof; -1 for dependency lemmas
+	text     string
+	defHash  string          // the definition the lemma belongs to
+	mentions map[string]bool // every definition hash the lemma's binders/body reference
 }
 
 type smtCtx struct {
@@ -74,6 +76,78 @@ type smtCtx struct {
 	quantified bool
 	depth      int
 	fresh      int
+}
+
+// propMentions collects every definition hash a property references
+// (its binders and body), plus the hash of the definition it belongs to.
+func propMentions(defHash string, p *Prop) map[string]bool {
+	out := map[string]bool{defHash: true}
+	shell := &Def{K: "func", TyVars: 0, Ty: tBool(), Body: &Term{K: "bool"},
+		Props: []Prop{*p}}
+	for h := range collectDeps(shell) {
+		out[h] = true
+	}
+	return out
+}
+
+// goalFootprint is SPEC §7.2's relevance set: the definition under proof,
+// every definition the property's body references, closed transitively
+// through function bodies (their defining equations enter the SMT problem,
+// so lemmas about them are usable; anything else is noise that slows the
+// solver — the lemma library's scaling wall, #25).
+func goalFootprint(st *Store, defHash string, d *Def, p *Prop) map[string]bool {
+	fp := map[string]bool{}
+	var add func(h string, def *Def)
+	add = func(h string, def *Def) {
+		if fp[h] {
+			return
+		}
+		fp[h] = true
+		for dh := range collectDepsBody(def) {
+			dd, err := st.GetDef(dh)
+			if err != nil {
+				continue
+			}
+			add(dh, dd)
+		}
+	}
+	add(defHash, d)
+	for h := range propMentions(defHash, p) {
+		if dd, err := st.GetDef(h); err == nil {
+			add(h, dd)
+		}
+	}
+	return fp
+}
+
+// collectDepsBody is collectDeps restricted to the definition's type, body
+// and constructors — excluding its props, which are not part of the SMT
+// problem for goals about OTHER definitions.
+func collectDepsBody(d *Def) map[string]bool {
+	shell := *d
+	shell.Props = nil
+	return collectDeps(&shell)
+}
+
+// lemmaAdmissible: same-definition sibling lemmas are admissible
+// unconditionally — they are the §7.2 self-lemma fixpoint's foundation, and
+// a sibling's proof chain may legitimately route through symbols the goal
+// itself never mentions (sort.idempotent proves via sorted-is-fixpoint,
+// which mentions is-sorted; the goal mentions only sort). The footprint
+// test applies to DEPENDENCY lemmas, where the library's growth lives.
+func lemmaAdmissible(l *lemma, goalDef string, fp map[string]bool) bool {
+	if l.defHash == goalDef {
+		return true
+	}
+	if l.mentions == nil {
+		return true // pre-filter lemmas (shouldn't occur); fail open
+	}
+	for h := range l.mentions {
+		if !fp[h] {
+			return false
+		}
+	}
+	return true
 }
 
 func newSmtCtx(st *Store, d *Def, h string) *smtCtx {
@@ -719,6 +793,9 @@ type propOutcome struct {
 // pi is the property's own index — its own lemma (from a prior run) is
 // excluded so a property can never prove itself.
 func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcome {
+	// SPEC §7.2 relevance (#25): only lemmas whose every mention lies inside
+	// this goal's footprint enter the problem.
+	footprint := goalFootprint(c.st, h, d, p)
 	// Declare the goal's binders as fresh constants. Function-typed binders
 	// are array-sorted constants like any other — uniformly quantifiable.
 	var binderDecls []string
@@ -748,9 +825,9 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 		for _, x := range c.axioms {
 			b.WriteString(x + "\n")
 		}
-		for _, l := range c.lemmas {
-			if l.ownIdx != pi {
-				b.WriteString(l.text + "\n")
+		for i := range c.lemmas {
+			if c.lemmas[i].ownIdx != pi && lemmaAdmissible(&c.lemmas[i], h, footprint) {
+				b.WriteString(c.lemmas[i].text + "\n")
 			}
 		}
 		for _, x := range binderDecls {
@@ -900,7 +977,8 @@ func apiProve(st *Store, name string) (string, error) {
 			if err != nil {
 				continue
 			}
-			c.lemmas = append(c.lemmas, lemma{ownIdx: -1, text: "(assert " + f + ") ; lemma " + dm.Name + "." + metaPropName(dm, pi)})
+			c.lemmas = append(c.lemmas, lemma{ownIdx: -1, defHash: dh, mentions: propMentions(dh, &dd.Props[pi]),
+				text: "(assert " + f + ") ; lemma " + dm.Name + "." + metaPropName(dm, pi)})
 			lemmaCount++
 		}
 	}
@@ -916,7 +994,8 @@ func apiProve(st *Store, name string) (string, error) {
 		if err != nil {
 			continue
 		}
-		c.lemmas = append(c.lemmas, lemma{ownIdx: pi, text: "(assert " + f + ") ; own lemma " + metaPropName(m, pi)})
+		c.lemmas = append(c.lemmas, lemma{ownIdx: pi, defHash: h, mentions: propMentions(h, &d.Props[pi]),
+			text: "(assert " + f + ") ; own lemma " + metaPropName(m, pi)})
 		ownProven++
 	}
 
@@ -967,7 +1046,8 @@ func apiProve(st *Store, name string) (string, error) {
 				progress = true
 				// New theorem: available as a lemma to every other property.
 				if f, err := c.formulaWith(d, h, &d.Props[pi], nil); err == nil {
-					c.lemmas = append(c.lemmas, lemma{ownIdx: pi, text: "(assert " + f + ") ; lemma " + name + "." + pn})
+					c.lemmas = append(c.lemmas, lemma{ownIdx: pi, defHash: h, mentions: propMentions(h, &d.Props[pi]),
+						text: "(assert " + f + ") ; lemma " + name + "." + pn})
 					epoch++
 				}
 			}

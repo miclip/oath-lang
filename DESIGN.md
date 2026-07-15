@@ -232,21 +232,41 @@ Oath is a synthesis, not an invention; the pieces have owners:
 - **e-graph canonicalization** (collapsing semantically-equivalent forms,
   not just alpha-equivalent ones) is future work.
 
-## Roadmap
+## Roadmap — status as of 2026-07-15
 
-- **Phase 1 (this)** — kernel calculus, content-addressed store, property
-  verification, projections. *Done in prototype form.*
-- **Phase 2** — richer guarantees: SMT-backed proof obligations, effect
-  types, termination checking; canonical binary encoding; port kernel to
-  Rust once the spec stabilizes.
-- **Phase 3** — the agent interface: replace the CLI with a transactional
-  API over the codebase graph ("fetch this def + dependency *specs*, sized
-  to N tokens"; submit accepted iff the kernel accepts). This is where the
-  context-window economics pay off.
-- **Phase 4** — the flywheel: verification is an unfakeable reward signal,
-  so spec→implementation self-play generates unlimited perfect training
-  data. The language that is easiest to verify is the language easiest to
-  learn to write.
+Phases 1–3 are COMPLETE, beyond the original ambitions:
+
+- **Phase 1 ✓** — kernel calculus, content-addressed store, property
+  verification, projections. Then far past it: structural termination,
+  capability confinement, mutation-scored spec strength with justified
+  waivers, and an O1 binary identity encoding that inherits nothing from
+  any host language (SPEC §1; store migrated wholesale, mappings journaled).
+- **Phase 2 ✓ (mostly)** — SMT proofs are real INCLUDING structural
+  induction with a relevance-filtered lemma library (§7.2): 33 definitions
+  fully PROVEN, insertion sort 7/7. The Rust kernel exists — built BLIND
+  from docs/SPEC.md + fixtures by an agent that never saw the Go source,
+  conforming byte-for-byte on all six checks, wasm32-ready. Effects
+  resolved by capability passing + state-as-data (docs/effects.md); floats
+  and mutual recursion remain out.
+- **Phase 3 ✓** — MCP over stdio and over HTTP with authenticated
+  principals (the team store), spec-only context slices by token budget,
+  and a repoint policy that makes authorship separation enforcement, not
+  procedure (docs/teamstore.md). Cross-kernel CI guards it all on every
+  push.
+- **Phase 4 (open)** — the flywheel: verification as an unfakeable reward
+  signal. Scoped experiments ran (docs/experiments): the split-agent
+  workflow validated spec-blind implementation; the 2×2 rematch showed the
+  verification loop buys trustworthy CLAIMS about artifacts rather than
+  better artifacts; the misalignment adversary marked the boundary (briefs
+  are not objects the system can check). The full self-play training loop
+  remains future work, as do the compiler backend (#13) and the public
+  registry (#14).
+
+The conformance saga is its own result: two kernels, zero shared code,
+kept in byte-level agreement by CI — and the blind implementation found
+two spec bugs, a fixture bug, a migration bug, and a latent analysis bug,
+including refusing to force a stale fixture green. N-version validation
+works, and the spec, not either implementation, now carries the semantics.
 
 ## Why the kernel is written in a human language
 

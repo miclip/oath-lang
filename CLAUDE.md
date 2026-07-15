@@ -10,41 +10,41 @@ the substrate is the product.
 
 ## State of the project
 
-- Kernel + CLI in `oath/` (Go, zero deps; ~5k lines). `docs/SPEC.md` is the
-  NORMATIVE spec — any kernel change that affects hashes, verdicts, or
-  semantics MUST update it (the hash is identity; encoding changes fork
-  reality).
-- Guarantee ladder is fully real: asserted → tested (deterministic,
-  hash-seeded) → PROVEN (Z3: direct + structural induction + lemma
-  library). Plus per-definition verdicts: termination (Foetus-lite),
-  capability confinement (no-escape), spec strength (mutation testing),
-  provenance (append-only journal with principals).
-- ~29 functions / 97 properties fully proven (116 proven overall), incl.
-  reverse-involution and insertion-sort correctness in full (sorted +
-  permutation + idempotent + reverse-invariant, via the sorted-fixpoint
-  lemma chain). Five modules (tree/interval/queue/rle/ediv) were authored
-  end-to-end by split-agent pairs — spec agent and implementer firewalled,
-  kernel refereeing; journal seq 180+ is the record. Deliberate honest
-  exhibits: `bad-reverse` (falsified), `spin` (termination unproven),
-  `abs-small` (tested-but-refuted at x=-401), `leak`/`stash` (ESCAPES).
-- Effects = capability passing (records of functions), no effect system:
-  see `docs/effects.md`. MCP server: `oath serve` (stdio), registered in
-  `.mcp.json` — build the binary first or the server won't start.
+- Two kernels: `oath/` (Go reference, ~7k lines, zero deps) and `oathrs/`
+  (independent Rust, built BLIND from the spec — see "The second kernel").
+  `docs/SPEC.md` is NORMATIVE — any change affecting hashes, verdicts, or
+  semantics MUST update it; identity is the O1 binary encoding (§1), and
+  encoding changes fork reality.
+- Guarantee system, all real and CI-guarded: asserted → tested
+  (deterministic, hash-seeded) → PROVEN (Z3, direct + structural induction,
+  relevance-filtered lemma library per §7.2). Per-def verdicts: termination
+  (lexicographic), confinement (closure-tracking), spec strength (mutation
+  + justified waivers), provenance (append-only tamper-evident journal,
+  authenticated principals on the HTTP store).
+- 33 definitions fully PROVEN (insertion sort 7/7, reverse-involution, the
+  KV world laws); honest exhibits remain deliberately: bad-reverse
+  (falsified), spin (termination unproven), abs-small (tested-but-refuted).
+- KEY OPERATIONAL FACT: mutation scores and waivers are structure×SEED
+  facts (seeds derive from hashes) — never carry them across identity
+  changes; `oath migrate-encoding` drops them by design. A fixture is only
+  evidence once you know it was regenerated under the current identity.
 
 ## Roadmap / backlog
 
-GitHub issues #2–#15 on miclip/oath-lang, four milestones:
-M1 team store & policy (next), M2 conformance (spec ✓ → Rust/WASM kernel →
-cross-kernel CI), M3 prover & effects depth, M4 research horizon.
-Agreed ordering (Michael + external Codex review): spec before Rust port;
-hosted store creates the need before the port happens.
+GitHub issues on miclip/oath-lang. ALL ENGINEERING ISSUES ARE CLOSED
+(as of 2026-07-15): team store & policy, six-check cross-kernel
+conformance + CI, O1 binary identity + migration, prover fixpoint +
+relevance filtering, fixture coverage, stateful worlds. Open: #13
+(compiler backend) and #14 (public registry) — research projects, each
+deserving a dedicated session. Read closed issues for the full history;
+commit messages carry the design reasoning.
 
 ## Working in this repo
 
 - Toolchain: Go ≥1.25, `z3` on PATH (`brew install z3`). `make build`.
 - `make verify` re-puts every example in dependency order; `make prove`
-  runs the prover over everything twice (a second pass lets a definition's
-  own earlier-proven props serve as lemmas — reverse-involution needs it).
+  is single-pass (apiProve reaches the §7.2 self-lemma fixpoint internally,
+  with lemma-growth gating and relevance filtering).
 - The `codebase/` store IS COMMITTED (journal included — it's the audit
   trail and is not regenerable). Never edit it by hand; keep it in sync by
   committing after put/prove runs.
@@ -93,6 +93,9 @@ every ambiguity found this way.
 - `README.md` — tour + quickstart. `DESIGN.md` — rationale, spec-strength
   problem, prior art, split-agent experiment writeup, roadmap phases.
 - `docs/SPEC.md` — normative kernel spec (conformance target).
-- `docs/effects.md` — capability model RFC + staged roadmap.
+- `docs/effects.md` — capability model RFC; all stages resolved except
+  time/interleaving. `docs/teamstore.md` — hosted store + policy model.
+- `docs/experiments/` — split-agent, rematch, and flywheel writeups.
+- `oathrs/DIVERGENCES.md` — 60+ entries; the N-version findings record.
 - History of decisions lives in commit messages (deliberately detailed) and
   DESIGN.md; external review responses are summarized in DESIGN.md.
