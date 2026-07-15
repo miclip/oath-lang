@@ -50,11 +50,11 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 	for _, name := range keys {
 		h := names[name]
 		fmt.Fprintf(&hashes, "%s\t%s\n", name, h)
-		b, err := os.ReadFile(filepath.Join(st.Root, "objects", h+".json"))
+		b, err := os.ReadFile(filepath.Join(st.Root, "objects", h+".bin"))
 		if err != nil {
 			return "", fmt.Errorf("read object for %s: %w", name, err)
 		}
-		if err := write(filepath.Join("canonical", name+".json"), b); err != nil {
+		if err := write(filepath.Join("canonical", name+".bin"), b); err != nil {
 			return "", err
 		}
 	}
@@ -156,27 +156,30 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		note string
 		def  *Def
 	}{
-		{"string_escapes", `string with " \ newline < > & U+2028 U+2029 — HTML-safety escapes are normative`,
-			&Def{K: "func", Ty: tStr(), Body: &Term{K: "str", Str: "\"\\\n<>&  "}}},
-		{"zero_var_omitted", "var 0 encodes as {\"k\":\"var\"} — idx zero omitted",
-			&Def{K: "func", Ty: tInt(), Body: &Term{K: "var"}}},
-		{"zero_ctor_idx_omitted", "constructor index 0 omitted (ctor node present); bool-false argument omitted",
-			&Def{K: "func", Ty: tBool(), Body: &Term{K: "ctor", Hash: "d0", Idx: 0, Args: []Term{{K: "bool"}}}}},
-		{"empty_props_omitted", "a func with no props omits the props field entirely",
-			&Def{K: "func", Ty: tInt(), Body: &Term{K: "int", Int: 0}}},
-		{"prop_body_always_present", "Prop.binders and Prop.body are always present even when empty/zero",
-			&Def{K: "func", Ty: tBool(), Body: &Term{K: "bool", Bool: true},
+		{"raw_strings", "strings are length-prefixed raw UTF-8: quotes, backslash, newline, <>&, U+2028/9 all UNESCAPED",
+			&Def{K: "func", Ty: tStr(), Body: &Term{K: "str", Str: "\"\\\n<>&\u2028\u2029"}}},
+		{"negative_int", "i64 is 8-byte big-endian two's complement",
+			&Def{K: "func", Ty: tInt(), Body: &Term{K: "int", Int: -401}}},
+		{"bool_bytes", "bool encodes as a single 0x00/0x01 byte",
+			&Def{K: "func", Ty: tBool(), Body: &Term{K: "bool", Bool: false}}},
+		{"hash_reference", "hash references are 32 raw bytes, not hex text",
+			&Def{K: "func", Ty: tBool(), Body: &Term{K: "ctor",
+				Hash: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+				Idx: 0, Args: []Term{{K: "bool"}}}}},
+		{"empty_lists", "counts are u32; empty lists are a bare zero count (props here)",
+			&Def{K: "func", Ty: tInt(), Body: &Term{K: "int", Int: 0},
 				Props: []Prop{{Binders: []Ty{}, Body: Term{K: "bool", Bool: true}}}}},
+		{"record_order", "record fields encode name-then-value pairs in strictly ascending name order",
+			&Def{K: "func", Ty: &Ty{K: "record", Names: []string{"a", "b"}, Args: []Ty{{K: "int"}, {K: "str"}}},
+				Body: &Term{K: "record", Names: []string{"a", "b"},
+					Args: []Term{{K: "int", Int: 1}, {K: "str", Str: "x"}}}}},
 	}
 	var gman strings.Builder
-	gman.WriteString("# §1.5 golden encoding fixtures\n# case\thash\tnote\n")
+	gman.WriteString("# §1.5 golden encoding fixtures (O1 binary)\n# case\thash\tnote\n")
 	sort.Slice(golden, func(i, j int) bool { return golden[i].name < golden[j].name })
 	for _, g := range golden {
-		b, err := json.Marshal(g.def)
-		if err != nil {
-			return "", err
-		}
-		if err := write(filepath.Join("encoding", g.name+".json"), b); err != nil {
+		b := encodeDef(g.def)
+		if err := write(filepath.Join("encoding", g.name+".bin"), b); err != nil {
 			return "", err
 		}
 		fmt.Fprintf(&gman, "%s\t%s\t%s\n", g.name, hashDef(g.def), g.note)

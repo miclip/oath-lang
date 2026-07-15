@@ -1,6 +1,6 @@
 {
   "name": "t-flatten",
-  "hash": "f56dca527c43d3c61a267243303dc4208a144074bfe1d6fb507c35db8a40803a",
+  "hash": "b26c6b6a629e25fc34a9ab98ea702fefaa7a047f204ee08a012ed9ee2a58b61c",
   "kind": "func",
   "termination": "structural",
   "confinement": [

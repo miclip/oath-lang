@@ -561,3 +561,112 @@ lens yet on what the kernel silently assumes about its host.
     "prove-with-whatever-suffices-first" strategy. The `OATHRS_Z3_TIMEOUT_MS`
     override remains the escape hatch, and a reduced local budget (e.g. 4 s) now
     flips `sum`, which it did not before.
+
+# DIVERGENCES — O1 binary encoding (identity re-spec, issue #7)
+
+SPEC §1 was rewritten: canonical bytes are now the "O1" tag-length-value binary
+tree, not canonical JSON. A fresh independent read of a fresh encoding spec.
+The six goldens reproduce byte-for-byte, all 62 corpus hashes + canonical/*.bin
+are byte-identical, and the strict decoder round-trips and rejects the malformed
+cases. Findings and settled ambiguities:
+
+52. **The 2-byte magic `4F 31` is part of the HASHED bytes, not just the stored
+    file.** §1 says "canonical-bytes is the O1 encoding … the exact bytes the
+    store persists" and "canonical bytes begin with the 2-byte magic", so
+    `SHA-256` covers `magic ++ Def`. An implementer could plausibly hash the Def
+    body alone and treat the magic as a file wrapper — that yields different
+    hashes. *Disambiguated:* `bool_bytes` hashes `4F 31 02 …`, i.e. including the
+    magic (verified against the manifest hash).
+
+53. **Tag namespaces overlap across node kinds and are position-dependent.** Def
+    `data`=0x01 / `func`=0x02 collide byte-for-byte with Ty `int`=0x01 /
+    `bool`=0x02; Ty tags (0x01-0x08) and Term tags (0x10-0x1E) are disjoint but
+    the Def tag shares Ty's range. The decoder must pick the tag table from
+    grammar position (the byte right after the magic is a Def tag), not from a
+    single global table. A decoder that unified tag tables would mis-decode. Not
+    ambiguous in the spec, but a real trap; flagged.
+
+54. **Fixed widths, and the u32/i64 split.** Counts and indices are 4-byte
+    big-endian `u32` (Ty `var`, Term `var`, `ctor` index, every list count,
+    tyvars/ctor/prop counts); only integer *literals* (Term `int`) are 8-byte
+    big-endian two's-complement `i64`. Easy to conflate the two widths, or to use
+    little-endian. *Disambiguated:* `negative_int` pins `-401` =
+    `FF FF FF FF FF FF FE 6F` (big-endian i64), and `empty_lists` pins the u32
+    zero counts.
+
+55. **No escaping and no field omission — two stage-1 rulebooks are now DEAD.**
+    O1 strings are `u32` length ++ raw UTF-8 (`raw_strings` shows `"` `\` newline
+    `<>&` U+2028 U+2029 all verbatim), so the entire stage-1 string-escape
+    apparatus (old entries #1's Go/HTML `<` escapes, operator names getting
+    escaped) is moot. And every field is always written — there is no zero-value
+    omission — so the old "omit var/idx/int/bool/empty-array when zero" logic and
+    the two-`var`-field-name trap (#1) and args-before-names ordering (#2) and
+    no-trailing-newline (#5) are all gone. The re-spec deleted an entire category
+    of divergence risk by construction: one encoding per definition, enforced by
+    a strict decoder.
+
+56. **Hash references are 32 raw digest bytes, held internally as hex.** On the
+    wire a reference is the referenced def's 32-byte SHA-256 (natural digest byte
+    order, i.e. what lowercase-hex reads left-to-right). I keep hashes as hex
+    strings internally (so elaboration/checking/eval are unchanged) and convert
+    at the codec boundary. *Disambiguated:* `hash_reference` = `00 11 … FF 00 11
+    … FF` equals hex `0011…ff0011…ff`.
+
+57. **"Strictly ascending" record names is enforced by the DECODER, redundantly
+    with the producer.** The producer sorts+dedups record fields (§1.3); the
+    strict decoder independently rejects names that are not strictly ascending
+    (which also rejects duplicates). Both are required — the decoder cannot trust
+    the producer, since objects can be written straight into the store (§8.1).
+    My strict decoder rejects a descending-name record.
+
+58. **Canonicality rests on "no trailing bytes"; there is no total-length
+    field.** The O1 tree is self-delimiting via counts, with no envelope length,
+    so a decoder MUST verify it consumed exactly `len(bytes)` and reject any
+    surplus — otherwise a second encoding (valid Def ++ junk) would exist. My
+    decoder checks the cursor lands exactly at end. **UNTESTED corner:** the spec
+    says strings are "raw UTF-8"; my decoder validates UTF-8 and rejects invalid
+    sequences, but no fixture exercises an invalid-UTF-8 body (the encoder only
+    ever emits valid UTF-8), so the reference's exact stance on malformed UTF-8
+    at decode time is unconfirmed.
+
+## O1 re-conformance: generation/mutation findings (#7)
+
+59. **Constructor selection ALWAYS draws one `below(k)`, including `k == 1`, in
+    both size branches (SPEC §4, now explicit; resolves the untested #26).**
+    History worth recording honestly. #26 flagged as untested whether a
+    single-constructor choice draws `below(1)`. During O1 re-conformance I first
+    concluded the two size branches were *asymmetric* — `size > 0` skips the draw
+    for a lone constructor, `size ≤ 0` draws it — because that was the only rule
+    that reproduced `i-hull` (then `12/15`), `merge` (`8/11`), and everything
+    else at once. **That was overfitting to a stale fixture.** Adjudication
+    against the reference established that `i-hull`'s `12/15` had itself been
+    carried across the O1 identity change without re-scoring (mutation scores are
+    facts about structure × *seed*, and seeds derive from hashes); the reference
+    re-scores `i-hull` at `11/15` under O1. The true generator semantics, now
+    stated explicitly in SPEC §4, is **no asymmetry**: selection consumes exactly
+    one `below(k)` draw in every case, `k == 1` included. `merge`'s `8/11`
+    reproduces under this rule too — its discriminating draws are on the
+    multi-constructor `List`, never on single-constructor `Interval`. `gen.rs`
+    draws `below(nctors)` (size > 0) and `below(#non-recursive)` (size ≤ 0)
+    unconditionally. Lesson: a fixture is only evidence once you know it was
+    regenerated under the current identity.
+
+60. **`i-overlaps` mutation `9/11` (VINDICATED) and mutation is scored for
+    falsified definitions too.** Two connected points:
+    (a) I reported `i-overlaps` as `9/11` against a fixture claiming `11/11` and
+    argued from first principles it was a stale fixture, not a kernel bug — the
+    mutant encoding differs from the hash-matching original by exactly one op
+    string, the seed/generation/catalog/60-case budget are all spec-exact, and
+    the two `<=`→`<` survivors are first falsified only at cases 95 and 78 (>60).
+    Adjudication **confirmed** this: the reference itself computes `9/11` under O1
+    seeds; the `11/11` was carried from the pre-O1 store. The migrator now drops
+    seed-dependent verdicts so migrations can't repeat this.
+    (b) Fixing the stale fixtures surfaced a real latent bug on *my* side:
+    `analyze` skipped mutation scoring entirely for `falsified` definitions. The
+    guarantee level and the mutation verdict are independent (§6): mutation runs
+    the catalog regardless of level, and is simply omitted when the total is 0.
+    `spin` (falsified, non-terminating) has one mutant — its `(spin x)` self-call
+    chain collapses to the spine argument `x`, which terminates and is killed by
+    `claims-zero` — so `1/1`; `bad-reverse` (falsified) has a bare-variable body
+    (`xs`) with no mutable node, so total 0 and no score emitted. Removing the
+    `falsified → skip` short-circuit makes both match.

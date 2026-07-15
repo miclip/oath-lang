@@ -1,0 +1,24 @@
+{
+  "name": "spin",
+  "prop_names": [
+    "claims-zero"
+  ],
+  "guarantee": {
+    "level": "falsified",
+    "falsified": [
+      "claims-zero"
+    ]
+  },
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "termination": "unknown",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "x"
+  ],
+  "confinement": [
+    ""
+  ]
+}

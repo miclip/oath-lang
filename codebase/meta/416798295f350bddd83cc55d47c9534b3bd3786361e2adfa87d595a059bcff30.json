@@ -1,0 +1,48 @@
+{
+  "name": "i-intersect",
+  "prop_names": [
+    "intersect-members",
+    "intersect-empty-iff-disjoint",
+    "intersect-sym-members",
+    "intersect-bounds-when-overlapping"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 4
+  },
+  "mutants_killed": 5,
+  "mutants_total": 7,
+  "waived_mutants": [
+    {
+      "hash": "b8c13485458fcd3a35c3b1f3cb85a93c42805be6f811557aee62f99cec84f988",
+      "desc": "< \u2192 <=",
+      "reason": "min/max < vs <= tiebreak: branches agree when operands are equal; equivalence machine-checked in docs/experiments/minmax-equiv.smt2 (Z3 unsat)",
+      "by": "claude-main"
+    },
+    {
+      "hash": "36f518ca4425bfe614d6d57ffe197b2a2ebc83f3f0141c6b52d9d3b870b7211a",
+      "desc": "< \u2192 <=",
+      "reason": "min/max < vs <= tiebreak: branches agree when operands are equal; equivalence machine-checked in docs/experiments/minmax-equiv.smt2 (Z3 unsat)",
+      "by": "claude-main"
+    }
+  ],
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "a",
+    "b"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3
+  ]
+}

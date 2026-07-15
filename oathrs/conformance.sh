@@ -32,18 +32,18 @@ else
 fi
 "$BIN" canon --out "$TMP/canon" "$EX"/*.oath 2>/dev/null
 cbad=0; cn=0
-for f in "$FIX"/canonical/*.json; do
+for f in "$FIX"/canonical/*.bin; do
   cn=$((cn+1)); n="$(basename "$f")"
   cmp -s "$f" "$TMP/canon/$n" || { echo "  FAIL: canonical bytes differ for $n"; cbad=1; fail=1; }
 done
-[ $cbad -eq 0 ] && echo "  PASS: $cn canonical/*.json byte-identical"
+[ $cbad -eq 0 ] && echo "  PASS: $cn canonical/*.bin byte-identical (O1)"
 
 # ---------------------------------------------------------------------------
 # Check 2: golden encoding fixtures
 # ---------------------------------------------------------------------------
 echo "== Check 2: golden encoding fixtures =="
 if "$BIN" enctest "$FIX/encoding" > "$TMP/enc.out" 2>&1; then
-  echo "  PASS: 5 golden encodings reproduced byte-for-byte"
+  echo "  PASS: 6 O1 golden encodings reproduced byte-for-byte + strict-decoder rejects"
 else
   echo "  FAIL:"; cat "$TMP/enc.out"; fail=1
 fi

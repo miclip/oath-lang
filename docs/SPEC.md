@@ -1,6 +1,6 @@
 # Oath Kernel Specification
 
-Version: `oath-kernel/0.6` · Status: normative, extracted from the Go
+Version: `oath-kernel/0.7` · Status: normative, extracted from the Go
 reference implementation (`oath/`).
 
 This document defines what an Oath kernel **is**, independent of any
@@ -14,70 +14,79 @@ innocent encoding difference.
 ## 1. Identity and canonical encoding
 
 A definition's identity is `SHA-256(canonical-bytes)`, rendered as lowercase
-hex. `canonical-bytes` is the compact JSON encoding of the `Def` structure
-defined below. Only `Def` is ever hashed: names, guarantees, verdicts, and
-all other metadata are outside identity (§9).
+hex. `canonical-bytes` is the "O1" binary encoding of the `Def` defined
+below — the exact bytes the store persists in `objects/<hash>.bin`. Only
+`Def` is ever hashed: names, guarantees, verdicts, and all other metadata
+are outside identity (§9).
 
-### 1.1 JSON encoding rules (normative)
+### 1.1 O1 primitives (normative)
 
-- UTF-8, no insignificant whitespace (single-line, no spaces after `:`/`,`).
-- Object keys appear in exactly the field order given in §1.2 — never
-  alphabetized, never reordered.
-- A field is **omitted entirely** when it holds its zero value: `0`, `false`,
-  `""`, or an empty/absent array or object pointer — *except* fields marked
-  "always present" below.
-- String escaping follows Go `encoding/json` defaults, promoted to
-  normative: `"` becomes `\"`, backslash doubles, control characters
-  become `\uXXXX` (with `\n`, `\r`, `\t` shortcuts), and — the trap for
-  conformance implementers — the HTML-safety escapes: `<` becomes
-  `\u003c`, `>` becomes `\u003e`, `&` becomes `\u0026`, U+2028 becomes
-  `\u2028`, U+2029 becomes `\u2029`. A conforming kernel MUST reproduce
-  these: a string literal containing `<` hashes differently if encoded
-  naively.
-- Integers are decimal, no exponent form, range int64.
+O1 is a tag-length-value tree with no optional fields and no escaping.
+Every field is always written; there is exactly one encoding per definition.
 
-### 1.2 Structures and field order
-
-`Ty` — a type. Fields in order: `k`, `var`, `a`, `b`, `hash`, `args`,
-`names`.
-
-| k | meaning | fields used |
-|---|---|---|
-| `int`, `bool`, `str` | base types | — |
-| `var` | type variable | `var` (index into the def's type params) |
-| `fun` | function | `a` (domain), `b` (codomain) |
-| `data` | ADT instance | `hash` (defining ADT), `args` (type arguments) |
-| `rec` | the ADT being defined | `args` (only inside `data` defs) |
-| `record` | structural record | `names` (field names, sorted ascending bytewise, unique), `args` (field types, parallel) |
-
-`Term` — an expression. Fields in order: `k`, `idx`, `int`, `bool`, `str`,
-`ty`, `a`, `b`, `c`, `op`, `hash`, `tyargs`, `args`, `names`, `arms`.
-
-| k | fields used |
+| primitive | encoding |
 |---|---|
-| `var` | `idx` (de Bruijn: 0 = innermost binder) |
-| `int`, `bool`, `str` | `int` / `bool` / `str` |
-| `lam` | `ty` (param type), `a` (body) |
-| `app` | `a` (function), `b` (argument) |
-| `let` | `ty` (bound type), `a` (bound), `b` (body; binds one) |
-| `if` | `a`, `b`, `c` |
-| `prim` | `op`, `args` |
-| `ref` | `hash`, `tyargs` |
-| `self` | `tyargs` (the def being defined) |
-| `ctor` | `hash` (ADT), `idx` (constructor), `tyargs`, `args` |
-| `match` | `hash` (ADT), `a` (scrutinee), `arms` (one per constructor, in constructor order; arm *i* binds constructor *i*'s fields as consecutive binders, first field outermost) |
-| `record` | `names` (sorted, unique), `args` (values, parallel) |
-| `field` | `a` (record), `op` (field name) |
+| `u8` | one byte |
+| `u32` | 4 bytes, big-endian unsigned (counts, indices) |
+| `i64` | 8 bytes, big-endian two's complement |
+| `str` | `u32` byte-length ++ raw UTF-8 bytes (NO escaping of any kind) |
+| `hash` | 32 raw bytes (the referenced definition's SHA-256) |
+| `list<X>` | `u32` count ++ that many `X` |
+| `bool byte` | `0x00` false / `0x01` true; any other value is malformed |
 
-`Prop`: `binders` (**always present**, array of `Ty`, possibly empty),
-`body` (`Term`, always present).
+Canonical bytes begin with the 2-byte magic `0x4F 0x31` ("O1").
 
-`Def`: `k` (`data`|`func`, always present), `tyvars` (int, **always
-present** even when 0), then `ctors` (data: array of arrays of `Ty`), `ty`,
-`body`, `props` (func).
+### 1.2 Tags and structure
 
-`Guarantee` (metadata, §9): `level` always present; `cases`, `proven`,
-`falsified` omitted when zero/empty.
+`Ty` — one tag byte, then fields:
+
+| tag | kind | fields |
+|---|---|---|
+| 0x01 | int | — |
+| 0x02 | bool | — |
+| 0x03 | str | — |
+| 0x04 | var | `u32` index |
+| 0x05 | fun | Ty domain, Ty codomain |
+| 0x06 | data | `hash`, `list<Ty>` args |
+| 0x07 | rec | `list<Ty>` args |
+| 0x08 | record | `u32` count, then per field: `str` name, Ty — names strictly ascending bytewise |
+
+`Term` — one tag byte, then fields:
+
+| tag | kind | fields |
+|---|---|---|
+| 0x10 | var | `u32` de Bruijn index (0 = innermost) |
+| 0x11 | int | `i64` |
+| 0x12 | bool | bool byte |
+| 0x13 | str | `str` |
+| 0x14 | lam | Ty param, Term body |
+| 0x15 | app | Term fn, Term arg |
+| 0x16 | let | Ty, Term bound, Term body |
+| 0x17 | if | Term, Term, Term |
+| 0x18 | prim | `str` op, `list<Term>` args |
+| 0x19 | ref | `hash`, `list<Ty>` tyargs |
+| 0x1A | self | `list<Ty>` tyargs |
+| 0x1B | ctor | `hash`, `u32` ctor index, `list<Ty>` tyargs, `list<Term>` args |
+| 0x1C | match | `hash`, Term scrutinee, `list<Term>` arms (constructor order; arm *i* binds ctor *i*'s fields, first field outermost) |
+| 0x1D | record | `u32` count, then per field: `str` name, Term — names strictly ascending |
+| 0x1E | field | Term record, `str` field name |
+
+`Def` — one tag byte after the magic:
+
+| tag | kind | fields |
+|---|---|---|
+| 0x01 | data | `u32` tyvars, `u32` ctor count, then per ctor: `list<Ty>` fields |
+| 0x02 | func | `u32` tyvars, Ty declared type, Term body, `u32` prop count, then per prop: `list<Ty>` binders, Term body |
+
+Decoders MUST be strict: unknown tags, malformed bool bytes, record names
+not strictly ascending, and trailing bytes are all rejected — so decode
+followed by encode is the identity on valid objects, and no second encoding
+of any definition exists.
+
+(Kernels ≤0.6 hashed a canonical-JSON encoding; stores were migrated
+wholesale by `oath migrate-encoding`, which rewrote embedded references
+topologically and journaled every object's old→new mapping. The journal's
+pre-migration entries retain v0 hashes.)
 
 ### 1.3 Canonicalization obligations
 
@@ -135,14 +144,10 @@ wording is not part of kernel identity.
 ### 1.5 Golden encoding fixtures
 
 The conformance suite MUST include raw canonical-byte fixtures for at least:
-
-- zero values omitted: `false`, integer `0`, `var 0`, constructor index `0`,
-  empty `tyargs`, and empty function `props`;
-- always-present fields: `Def.tyvars`, `Prop.binders`, and `Prop.body`;
-- strings containing `"`, `\`, newline, `<`, `>`, `&`, U+2028, and U+2029;
-- records whose source field order differs from canonical order;
-- data constructors with and without fields, and matches whose first arm binds
-  zero fields.
+raw (unescaped) strings containing quotes, backslashes, newlines, `<>&`, and
+U+2028/U+2029; a negative `i64`; the bool byte; a 32-raw-byte hash
+reference; empty lists (a bare zero count); and a record whose encoding
+witnesses the name-then-value pair layout in ascending name order.
 
 A second implementation should first pass these byte fixtures, then the full
 examples corpus.
@@ -290,7 +295,7 @@ Generation by type — draw order is normative:
   to the argument wins, else default.
 - Record: fields in canonical order, same size.
 - Data: if size ≤ 0, choose uniformly among constructors with no recursive
-  field (error if none); else uniformly among all constructors. Fields
+  field (error if none); else uniformly among all constructors — and the selection ALWAYS consumes exactly one below(k) draw, including when k = 1 (single-candidate selection is not skipped, in either size branch). Fields
   generated left-to-right at size−1.
 
 Verification runs **200 cases per property** with **2,000,000 fuel** per
@@ -615,7 +620,7 @@ The reference filesystem store layout is normative for local conformance:
 
 ```
 codebase/
-  objects/<hash>.json   compact canonical Def JSON
+  objects/<hash>.bin   compact canonical Def JSON
   meta/<hash>.json      indented metadata JSON, two-space indent
   names.json            indented object mapping name -> current hash
   log.jsonl             append-only compact JSON log entries
@@ -741,7 +746,7 @@ The conformance suite SHOULD be materialized as fixtures, not only prose:
 
 ```
 fixtures/
-  canonical/*.json          raw canonical Def bytes
+  canonical/*.bin           raw canonical O1 Def bytes
   hashes.txt                name/hash table from elaborating examples
   gate/*.oath               accepted and rejected examples
   verify/*.txt              property verdicts and counterexamples

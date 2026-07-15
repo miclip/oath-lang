@@ -1,6 +1,6 @@
 {
   "name": "shout",
-  "hash": "dfc78eabbc1bd1540889471f284ea903755f66a07afb924cc66d3c26e8eee0c6",
+  "hash": "d1b9f789ec1ff143e254991d4b0646e4059fe32953e929dc54dfdfcf07de272e",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

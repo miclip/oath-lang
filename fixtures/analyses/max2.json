@@ -1,6 +1,6 @@
 {
   "name": "max2",
-  "hash": "b2ec270589430a8a8b1606d3d7784075e1d0c2320a5ca3ce10378809efe28198",
+  "hash": "04416a62699b6875092c3ad0c232c69ece40a95bcc59d284e4d5639879a16b59",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

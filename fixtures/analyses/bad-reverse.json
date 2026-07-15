@@ -1,6 +1,6 @@
 {
   "name": "bad-reverse",
-  "hash": "1206b5cf6cbaadda66fabbb4563666e02873da9f0a2aea617cc6e65b94ce737a",
+  "hash": "98eca08336d76de5a31ae72795796aff882749848e76de9394c6a2a2b3a49d59",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

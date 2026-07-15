@@ -1,6 +1,6 @@
 {
   "name": "q-peek",
-  "hash": "7ec8213a7c98744fd31b125ec2486a7c8cdb49600f9dd6ea4d55f31f56ced9ca",
+  "hash": "a1e5fe17d4e140519ea78c37635c96d5e40e18cf4697b40d0a414a10bd298e65",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

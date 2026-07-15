@@ -1,6 +1,6 @@
 {
   "name": "count",
-  "hash": "ba7b9f18b5ea5efb9270e1ebf856403a4f290a8d69e07ff4812df1a3f5fb32d6",
+  "hash": "459655264756f31be29e5b9f2103e0e0714851513a927b7e09eb8b60103bc807",
   "kind": "func",
   "termination": "structural",
   "confinement": [

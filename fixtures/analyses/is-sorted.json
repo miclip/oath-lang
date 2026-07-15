@@ -1,6 +1,6 @@
 {
   "name": "is-sorted",
-  "hash": "88d76e3d694f8a7c06e9b97203c12c78551529b565a0745ba82b53334a9a7b0f",
+  "hash": "064d42c2395412835438f4a40910e4b26dd165cf85fc14d9ff7ada25431ba5d5",
   "kind": "func",
   "termination": "structural",
   "confinement": [

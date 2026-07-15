@@ -112,7 +112,9 @@ pub fn generate(store: &Store, ty: &Ty, size: i64, rng: &mut Rng) -> Result<Valu
                 .get(hash)
                 .ok_or_else(|| format!("generate: unknown data {}", hash))?;
             let nctors = di.ctors.len();
-            // choose the constructor
+            // choose the constructor. Selection ALWAYS consumes exactly one
+            // below(k) draw, including k == 1, in both size branches (SPEC §4).
+            // See DIVERGENCES #59.
             let idx = if size <= 0 {
                 let cands: Vec<usize> = (0..nctors)
                     .filter(|&i| !ctor_is_recursive(&di.ctors[i].1))

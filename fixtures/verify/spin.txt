@@ -1,2 +1,2 @@
 ✗ prop claims-zero              FALSIFIED after 0 cases
-    counterexample: -1  (runtime error: recursion too deep (likely non-termination))
+    counterexample: -6  (runtime error: recursion too deep (likely non-termination))

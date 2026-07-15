@@ -668,7 +668,7 @@ pub fn mutation_score(store: &Store, hash: &str) -> Option<(u32, u32)> {
         if check_def(store, &mdef).is_err() {
             continue;
         }
-        let mhash = sha256_hex(canonical_bytes(&mdef).as_bytes());
+        let mhash = sha256_hex(&canonical_bytes(&mdef));
         if seen.contains(&mhash) {
             continue;
         }
@@ -713,7 +713,7 @@ pub fn analyze(store: &Store, name: &str, proofs: Option<&[bool]>) -> Analysis {
     let hash = store
         .def_by_name
         .get(name)
-        .map(|d| sha256_hex(canonical_bytes(d).as_bytes()))
+        .map(|d| sha256_hex(&canonical_bytes(d)))
         .unwrap_or_default();
     let def = store.def_by_name.get(name).unwrap();
     match def {
@@ -752,14 +752,14 @@ pub fn analyze(store: &Store, name: &str, proofs: Option<&[bool]>) -> Analysis {
                         break;
                     }
                 }
+                let m = mutation_score(store, &hash);
+                let m = match m {
+                    Some((_, 0)) => None,
+                    other => other,
+                };
                 if falsified {
-                    ("falsified".to_string(), None, None)
+                    ("falsified".to_string(), None, m)
                 } else {
-                    let m = mutation_score(store, &hash);
-                    let m = match m {
-                        Some((_, 0)) => None,
-                        other => other,
-                    };
                     ("tested".to_string(), Some(200), m)
                 }
             };

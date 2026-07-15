@@ -44,7 +44,7 @@ fn cmd_hash(paths: &[String]) -> i32 {
     for name in names {
         let def = store.def_by_name.get(name).unwrap();
         let bytes = canonical_bytes(def);
-        println!("{}\t{}", name, sha256_hex(bytes.as_bytes()));
+        println!("{}\t{}", name, sha256_hex(&bytes));
     }
     0
 }
@@ -71,8 +71,8 @@ fn cmd_canon(paths: &[String], out_dir: Option<&str>) -> i32 {
         }
         for (name, def) in &store.def_by_name {
             let bytes = canonical_bytes(def);
-            let path = format!("{}/{}.json", dir, name);
-            if let Err(e) = fs::write(&path, bytes.as_bytes()) {
+            let path = format!("{}/{}.bin", dir, name);
+            if let Err(e) = fs::write(&path, &bytes) {
                 eprintln!("error: {}: {}", path, e);
                 return 1;
             }
@@ -82,7 +82,7 @@ fn cmd_canon(paths: &[String], out_dir: Option<&str>) -> i32 {
         names.sort();
         for name in names {
             let def = store.def_by_name.get(name).unwrap();
-            println!("{}\t{}", name, canonical_bytes(def));
+            println!("{}\t{}", name, sha256_hex(&canonical_bytes(def)));
         }
     }
     0
@@ -249,55 +249,54 @@ fn cmd_prove(paths: &[String]) -> i32 {
     0
 }
 
-/// Build the SPEC §1.5 golden encoding Defs by hand and compare against the
-/// fixture directory (byte-identity and manifest hash).
+/// Build the SPEC §1.5 golden O1 encoding Defs by hand and compare against the
+/// fixture .bin files (byte-identity + manifest hash), then round-trip each
+/// through the strict decoder.
 fn cmd_enctest(dir: &str) -> i32 {
-    let esc = "\"\\\n<>&\u{2028}\u{2029}".to_string();
+    // raw (unescaped) string: quote, backslash, newline, <>&, U+2028, U+2029
+    let raw = "\"\\\n<>&\u{2028}\u{2029}".to_string();
+    // a fixed 32-byte hash reference: 00 11 22 .. ff repeated twice
+    let href = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff".to_string();
     let cases: Vec<(&str, Def)> = vec![
+        ("bool_bytes", Def::Func { tyvars: 0, ty: Ty::Bool, body: Term::Bool(false), props: vec![] }),
         (
-            "empty_props_omitted",
-            Def::Func { tyvars: 0, ty: Ty::Int, body: Term::Int(0), props: vec![] },
-        ),
-        (
-            "prop_body_always_present",
+            "empty_lists",
             Def::Func {
                 tyvars: 0,
-                ty: Ty::Bool,
-                body: Term::Bool(true),
+                ty: Ty::Int,
+                body: Term::Int(0),
                 props: vec![Prop { binders: vec![], body: Term::Bool(true) }],
             },
         ),
         (
-            "string_escapes",
-            Def::Func { tyvars: 0, ty: Ty::Str, body: Term::Str(esc), props: vec![] },
-        ),
-        (
-            // constructor index 0 omitted (ctor node present); bool-false
-            // argument omitted. The ADT hash is a placeholder ("d0") — only
-            // the encoding is under test here, not resolution.
-            "zero_ctor_idx_omitted",
+            "hash_reference",
             Def::Func {
                 tyvars: 0,
                 ty: Ty::Bool,
-                body: Term::Ctor {
-                    hash: "d0".to_string(),
-                    idx: 0,
-                    tyargs: vec![],
-                    args: vec![Term::Bool(false)],
-                },
+                body: Term::Ctor { hash: href, idx: 0, tyargs: vec![], args: vec![Term::Bool(false)] },
                 props: vec![],
             },
         ),
+        ("negative_int", Def::Func { tyvars: 0, ty: Ty::Int, body: Term::Int(-401), props: vec![] }),
+        ("raw_strings", Def::Func { tyvars: 0, ty: Ty::Str, body: Term::Str(raw), props: vec![] }),
         (
-            "zero_var_omitted",
-            Def::Func { tyvars: 0, ty: Ty::Int, body: Term::Var(0), props: vec![] },
+            "record_order",
+            Def::Func {
+                tyvars: 0,
+                ty: Ty::Record { names: vec!["a".into(), "b".into()], args: vec![Ty::Int, Ty::Str] },
+                body: Term::Record {
+                    names: vec!["a".into(), "b".into()],
+                    args: vec![Term::Int(1), Term::Str("x".into())],
+                },
+                props: vec![],
+            },
         ),
     ];
     let mut ok = true;
     for (name, def) in &cases {
         let got = canonical_bytes(def);
-        let path = format!("{}/{}.json", dir, name);
-        let want = match fs::read_to_string(&path) {
+        let path = format!("{}/{}.bin", dir, name);
+        let want = match fs::read(&path) {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("enctest {}: cannot read {}: {}", name, path, e);
@@ -306,12 +305,50 @@ fn cmd_enctest(dir: &str) -> i32 {
             }
         };
         if got != want {
-            eprintln!("enctest {}: BYTES DIFFER", name);
-            eprintln!("  got:  {}", got);
-            eprintln!("  want: {}", want);
+            eprintln!("enctest {}: BYTES DIFFER (got {} bytes, want {})", name, got.len(), want.len());
             ok = false;
-        } else {
-            println!("enctest {}: ok ({})", name, sha256_hex(got.as_bytes()));
+            continue;
+        }
+        // strict decode + re-encode round-trip must be the identity
+        match oathrs::ir::decode(&got) {
+            Ok(back) if canonical_bytes(&back) == got && back == *def => {
+                println!("enctest {}: ok ({})", name, sha256_hex(&got));
+            }
+            Ok(_) => {
+                eprintln!("enctest {}: round-trip mismatch", name);
+                ok = false;
+            }
+            Err(e) => {
+                eprintln!("enctest {}: strict decode failed: {}", name, e);
+                ok = false;
+            }
+        }
+    }
+    // strict-decoder negative checks (SPEC §1.2): each must be rejected
+    let base = canonical_bytes(&Def::Func { tyvars: 0, ty: Ty::Bool, body: Term::Bool(false), props: vec![] });
+    let mut trailing = base.clone();
+    trailing.push(0x00);
+    let mut badbool = base.clone();
+    *badbool.last_mut().unwrap() = 0xFF; // the prop-count last byte is 0; flip a bool? use a targeted case below
+    let neg: Vec<(&str, Vec<u8>)> = vec![
+        ("bad-magic", { let mut v = base.clone(); v[0] = 0x00; v }),
+        ("unknown-tag", { let mut v = base.clone(); v[2] = 0x7F; v }),
+        ("trailing-bytes", trailing),
+        ("malformed-bool", vec![0x4F, 0x31, 0x02, 0, 0, 0, 0, 0x02, 0x12, 0x02, 0, 0, 0, 0]),
+        ("unsorted-record", vec![
+            0x4F, 0x31, 0x02, 0, 0, 0, 0, // func, tyvars 0
+            0x08, 0, 0, 0, 2, 0, 0, 0, 1, b'b', 0x01, 0, 0, 0, 1, b'a', 0x01, // record ty with b,a (descending)
+            0x12, 0x00, 0, 0, 0, 0, // body bool false, 0 props
+        ]),
+    ];
+    let _ = badbool;
+    for (name, bytes) in &neg {
+        match oathrs::ir::decode(bytes) {
+            Err(_) => println!("enctest reject {}: ok", name),
+            Ok(_) => {
+                eprintln!("enctest reject {}: WRONGLY ACCEPTED", name);
+                ok = false;
+            }
         }
     }
     if ok {

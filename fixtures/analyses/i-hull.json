@@ -1,13 +1,13 @@
 {
   "name": "i-hull",
-  "hash": "72c390b01a0836a3b6d9023eeac11493aca7c455c3c234ee5299a41516d44d6e",
+  "hash": "7ad9cbd2d649b50039035317ef44da70d6e478c708faa601bf248c751a8d314d",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
     "",
     ""
   ],
-  "mutants_killed": 12,
+  "mutants_killed": 11,
   "mutants_total": 15,
   "level": "proven",
   "cases": 200,

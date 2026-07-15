@@ -1,10 +1,12 @@
 {
   "name": "spin",
-  "hash": "508462c7ea0bba1137c74dbb622bf587904d44b4e770488a52f957cdc75dd6a7",
+  "hash": "111a7721ea54b9bf7ce9b6455e60cd8ca994d2f0cd79ad838f1cff926336093a",
   "kind": "func",
   "termination": "unknown",
   "confinement": [
     ""
   ],
+  "mutants_killed": 1,
+  "mutants_total": 1,
   "level": "falsified"
 }

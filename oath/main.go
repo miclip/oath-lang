@@ -159,6 +159,8 @@ func main() {
 		} else {
 			cmdServe(st)
 		}
+	case "migrate-encoding":
+		cmdMigrateEncoding(st)
 	case "fixtures":
 		if len(args) != 2 || strings.HasPrefix(args[1], "-") {
 			// The guard exists because `oath fixtures --help` once generated a

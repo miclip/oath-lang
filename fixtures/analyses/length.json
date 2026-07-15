@@ -1,6 +1,6 @@
 {
   "name": "length",
-  "hash": "9d1a114582fd7f10b82c148357c3a2a8a062058ebe71c41c1ce9a94fe9cc2b14",
+  "hash": "bcce84a64b5783325530ff91edea2ceee704d7574d17b35ccd5bde717d97fdee",
   "kind": "func",
   "termination": "structural",
   "confinement": [

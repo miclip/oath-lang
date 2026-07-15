@@ -1,6 +1,6 @@
 {
   "name": "safe-get",
-  "hash": "c41b6e5ddbdc70df83b6669f77179f568e796f1f3604e7be7e8de6701eefbdf8",
+  "hash": "59789365cf544e001ae27c2ca394de376fb322e573efd155732da90701adcca6",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

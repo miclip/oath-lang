@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const kernelVersion = "oath-kernel/0.6"
+const kernelVersion = "oath-kernel/0.7"
 
 // Store is the codebase: a content-addressed object database plus a mutable
 // name index. Objects are immutable — a "change" to a definition is a new
@@ -148,8 +148,7 @@ func (s *Store) StoreObject(d *Def, m *Meta) (string, error) {
 			delete(m.Aliases, m.Name)
 		}
 	}
-	db, _ := json.Marshal(d)
-	if err := writeFileAtomic(filepath.Join(s.Root, "objects", h+".json"), db, 0o644); err != nil {
+	if err := writeFileAtomic(filepath.Join(s.Root, "objects", h+".bin"), encodeDef(d), 0o644); err != nil {
 		return "", err
 	}
 	mb, _ := json.MarshalIndent(m, "", "  ")
@@ -185,17 +184,20 @@ func (s *Store) GetDef(h string) (*Def, error) {
 	if d, ok := s.defs[h]; ok {
 		return d, nil
 	}
-	b, err := os.ReadFile(filepath.Join(s.Root, "objects", h+".json"))
+	b, err := os.ReadFile(filepath.Join(s.Root, "objects", h+".bin"))
 	if err != nil {
 		return nil, fmt.Errorf("no definition with hash %s", shortHash(h))
 	}
-	var d Def
-	if err := json.Unmarshal(b, &d); err != nil {
-		return nil, err
-	}
-	if got := hashDef(&d); got != h {
+	// Identity check on the raw bytes first: the file's content IS the
+	// canonical encoding, so its SHA-256 must be its own name.
+	if got := hex.EncodeToString(func() []byte { s := sha256.Sum256(b); return s[:] }()); got != h {
 		return nil, fmt.Errorf("object hash mismatch: file %s contains %s", shortHash(h), shortHash(got))
 	}
+	dp, err := decodeDef(b)
+	if err != nil {
+		return nil, fmt.Errorf("stored object %s: %w", shortHash(h), err)
+	}
+	d := *dp
 	// Content addressing proves the bytes are intact, not that they encode a
 	// well-formed definition. An object written directly into the store (the
 	// team/hosted-store threat model) never passed the gate, and the
@@ -436,7 +438,7 @@ func (s *Store) AllHashes() []string {
 	}
 	var out []string
 	for _, e := range entries {
-		if n, ok := strings.CutSuffix(e.Name(), ".json"); ok {
+		if n, ok := strings.CutSuffix(e.Name(), ".bin"); ok {
 			out = append(out, n)
 		}
 	}

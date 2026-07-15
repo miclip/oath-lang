@@ -1,6 +1,6 @@
 {
   "name": "sum",
-  "hash": "e2517754c5472cb8aacbdec705dd6c7974ddebf9809ed4320a469220061ad11a",
+  "hash": "f71c16cff9cf6d1b56f59476bc8235f015b851c97c61d64f892d34962026f616",
   "kind": "func",
   "termination": "structural",
   "confinement": [

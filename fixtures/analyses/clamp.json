@@ -1,6 +1,6 @@
 {
   "name": "clamp",
-  "hash": "65355c03dd21a7dc256125dc1389389ef5635f61a99b7ad84db7f69e922aeaec",
+  "hash": "9fa25283f279fb8302a5dfd5da227148bc5b0daac0ad6ef6d27b1b9acab76a00",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

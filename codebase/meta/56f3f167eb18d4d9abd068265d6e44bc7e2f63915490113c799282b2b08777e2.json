@@ -1,0 +1,41 @@
+{
+  "name": "t-member",
+  "prop_names": [
+    "member-leaf",
+    "member-root",
+    "member-insert-finds",
+    "member-flatten-equiv"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200,
+    "proven": 3
+  },
+  "mutants_killed": 4,
+  "mutants_total": 5,
+  "waived_mutants": [
+    {
+      "hash": "db8e48fd499242ec1c8fa5bba3c51600d947996a483d1899c2268c7a94e2ab3e",
+      "desc": "< \u2192 <=",
+      "reason": "equality-first search: the < vs <= branch is only reached when x != v, where both compare identically (hand analysis; dead-branch argument)",
+      "by": "claude-main"
+    }
+  ],
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "t",
+    "x"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

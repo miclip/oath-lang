@@ -1,0 +1,36 @@
+{
+  "name": "i-overlaps",
+  "prop_names": [
+    "overlaps-def",
+    "overlaps-witness-sound",
+    "overlaps-complete",
+    "overlaps-touching",
+    "overlaps-empty-left"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 5
+  },
+  "mutants_killed": 9,
+  "mutants_total": 11,
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "a",
+    "b"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "name": "take",
-  "hash": "f4d115c9b316378528dc706a1b4891d64429f3ce7dff19045538603adc342bd7",
+  "hash": "91db30f81c8e16df8a772451542f1808f64a98e0bc27ef5c77bb941706a552a1",
   "kind": "func",
   "termination": "structural",
   "confinement": [

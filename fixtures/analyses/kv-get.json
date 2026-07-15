@@ -1,6 +1,6 @@
 {
   "name": "kv-get",
-  "hash": "2683054b286eae77dfe0725a7c7b56744ce2711fc79ebc9863480b6f357b7a57",
+  "hash": "ce1478bfc634cd71990dfef04ab8e5c6d47065375bef3cacc3e8ef6e83af02f4",
   "kind": "func",
   "termination": "structural",
   "confinement": [

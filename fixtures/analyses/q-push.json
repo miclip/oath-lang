@@ -1,6 +1,6 @@
 {
   "name": "q-push",
-  "hash": "bed64941ed7e80ec55c24d7bfe0fcdbf8a385e567f073c5d31b6fa0382133519",
+  "hash": "beea004223db437a95e1fa8d99dad9d4023ce6837072426c8ce5cb588673bbd3",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

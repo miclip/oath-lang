@@ -1,7 +1,8 @@
-# §1.5 golden encoding fixtures
+# §1.5 golden encoding fixtures (O1 binary)
 # case	hash	note
-empty_props_omitted	ac92e51edd73433d95669e9d541ca79cdd9a5315b44adb444dd13f59bd02ca2d	a func with no props omits the props field entirely
-prop_body_always_present	fa4f57a145feaefa2c2e2dc50cab44b0493cee30fc82615a76db5e1f7ebc7e0b	Prop.binders and Prop.body are always present even when empty/zero
-string_escapes	71adc3d2d96c1ef03c98f87dfd6dc5f6e0530ce7e933ac092ad4b3c9b55fc52a	string with " \ newline < > & U+2028 U+2029 — HTML-safety escapes are normative
-zero_ctor_idx_omitted	f880c03dfa29b4b2b274af95e112fc706513571f750b4fd9b0d7eaebe5551fd9	constructor index 0 omitted (ctor node present); bool-false argument omitted
-zero_var_omitted	ef217ed689399677e8fcb315c4dd5265bef3abbf2f3acf2b768553924ecd10f5	var 0 encodes as {"k":"var"} — idx zero omitted
+bool_bytes	113f31b86e68b694406b30eccd925e8a7d5a7b65cf18c9372424a6f45a20b6e6	bool encodes as a single 0x00/0x01 byte
+empty_lists	3eaa3f3f61c27f1a85810040e9d8460c3b44c4cf136c83e7457f3830b5aaad93	counts are u32; empty lists are a bare zero count (props here)
+hash_reference	731ed00d661683698d2e87e26616dd7de95301805bd24729c185992c2c91dbcf	hash references are 32 raw bytes, not hex text
+negative_int	e882da84fbbb7756bdf62901a53c86e84a545e7ff5473ba592d9020e5047cbca	i64 is 8-byte big-endian two's complement
+raw_strings	8eb8a129cd6a74bd51dcc4d305f61e642eee234536c3891c59b219462c33c5e5	strings are length-prefixed raw UTF-8: quotes, backslash, newline, <>&, U+2028/9 all UNESCAPED
+record_order	88f01124622a997df4c68ef1a1f24efc61fb6c983cfe047ff150d2ade03d5590	record fields encode name-then-value pairs in strictly ascending name order

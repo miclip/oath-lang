@@ -1,6 +1,6 @@
 {
   "name": "full-name",
-  "hash": "7c6b92ee08b5d41bae3cff9b4e715f6e9920e7a47007e4b9905c0bceb09e9060",
+  "hash": "e9b146c54fb4f346c6fdd52140f3fcfa0c509148f43be01bd7681a578eddcc92",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

@@ -591,7 +591,7 @@ impl Store {
             tyvars: tyvar_names.len() as u32,
             ctors: ctors.iter().map(|(_, f)| f.clone()).collect(),
         };
-        let hash = sha256_hex(canonical_bytes(&def).as_bytes());
+        let hash = sha256_hex(&canonical_bytes(&def));
         let info = DataInfo { hash: hash.clone(), tyvars: tyvar_names.len() as u32, ctors };
         Ok(Elaborated::Data { name, def, info })
     }
@@ -642,7 +642,7 @@ impl Store {
             props.push(self.elab_prop(pform, &tyvar_names, &name, tyvars_count)?);
         }
         let def = Def::Func { tyvars: tyvars_count, ty: ty.clone(), body: fun_body, props };
-        let hash = sha256_hex(canonical_bytes(&def).as_bytes());
+        let hash = sha256_hex(&canonical_bytes(&def));
         let info = FuncInfo {
             hash: hash.clone(),
             tyvars: tyvars_count,

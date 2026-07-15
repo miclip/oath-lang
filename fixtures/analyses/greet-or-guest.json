@@ -1,6 +1,6 @@
 {
   "name": "greet-or-guest",
-  "hash": "031c3e413a2e553607c65a5b74b701d5405518026fde9211d766aac790236cac",
+  "hash": "52f67a200416fbc4dfb5d6f2390ecd03a89d268dc53a9babbdea5b4d54a9cf45",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
