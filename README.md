@@ -170,6 +170,20 @@ append-only journal (`oath log`) with principal attribution (`--author` /
 `OATH_AUTHOR`), timestamp, and verifier version. Rejections store no object
 but leave a permanent record.
 
+## Publishing and importing: trust by reproduction
+
+The registry layer needs no trusted server, because verdicts are
+reproducible. `oath export sort` packs a definition's transitive closure —
+canonical object bytes, naming metadata, publisher guarantees as clearly
+UNVERIFIED hints — into a single file publishable on any dumb host.
+`oath import <path|url>` refuses any byte that doesn't hash to its name,
+strict-decodes, gate-checks in dependency order, **re-verifies every
+function locally**, journals each admission with the bundle source, and
+binds names through the ordinary repoint policy — foreign code obeys the
+same rules as local code. Proofs are re-earned with `oath prove`, never
+imported. A registry is just a directory of bundles; all trust lives in
+the importer.
+
 ## Compiling to executables
 
 `oath build <name> [-o out]` compiles a definition's dependency closure to

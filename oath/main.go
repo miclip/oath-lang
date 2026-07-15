@@ -30,6 +30,8 @@ usage:
                                       repoint policy in <store>/policy.json (docs/teamstore.md)
   oath build <name> [-o out]          compile a verified definition to a native executable
                                       (entry protocol: (-> (List Str) Str); refuses falsified names)
+  oath export <name> [-o pkg]         bundle a definition + transitive closure for publication
+  oath import <path|url> [--as name]  admit a bundle: hash-checked, gate-checked, RE-VERIFIED locally
   oath fixtures <dir>                 materialize the SPEC §10 conformance suite as byte fixtures
 
 the codebase lives in ./codebase (override with OATH_STORE)`
@@ -177,6 +179,42 @@ func main() {
 			fail(fmt.Errorf("usage: oath build <name> [-o out]"))
 		}
 		cmdBuild(st, names[0], outPath)
+	case "export":
+		outPath := ""
+		var names []string
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			if rest[i] == "-o" && i+1 < len(rest) {
+				outPath = rest[i+1]
+				i++
+			} else {
+				names = append(names, rest[i])
+			}
+		}
+		if len(names) != 1 {
+			fail(fmt.Errorf("usage: oath export <name> [-o bundle.oathpkg]"))
+		}
+		cmdExport(st, names[0], outPath)
+	case "import":
+		asName := ""
+		author := os.Getenv("OATH_AUTHOR")
+		if author == "" {
+			author = "unattributed"
+		}
+		var srcs []string
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			if rest[i] == "--as" && i+1 < len(rest) {
+				asName = rest[i+1]
+				i++
+			} else {
+				srcs = append(srcs, rest[i])
+			}
+		}
+		if len(srcs) != 1 {
+			fail(fmt.Errorf("usage: oath import <path|url> [--as name]"))
+		}
+		cmdImport(st, srcs[0], asName, author)
 	case "migrate-encoding":
 		cmdMigrateEncoding(st)
 	case "fixtures":
