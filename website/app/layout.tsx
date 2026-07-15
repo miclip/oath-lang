@@ -27,7 +27,8 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://oath-lang.vercel.app"),
+  // Base for absolute OG / canonical URLs. Point this at the production domain.
+  metadataBase: new URL("https://oath-lang.org"),
   title: {
     default: "Oath Language — Verified code. Immutable truth.",
     template: "%s · Oath Language",
