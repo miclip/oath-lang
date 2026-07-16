@@ -17,6 +17,7 @@ export function Nav() {
         <div className="nav-links">
           <Link href="/#substrate">Substrate</Link>
           <Link href="/#guarantees">Guarantees</Link>
+          <Link href="/essays">Essays</Link>
           <Link href="/playground">Playground</Link>
           <Link href="/docs">Docs</Link>
           <a
@@ -29,6 +30,7 @@ export function Nav() {
           </a>
         </div>
         <div className="nav-mobile">
+          <Link href="/essays">Essays</Link>
           <Link href="/playground">Playground</Link>
           <Link href="/docs">Docs</Link>
         </div>
