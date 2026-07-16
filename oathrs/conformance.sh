@@ -123,8 +123,20 @@ if [ "$MODE" = "oracle" ]; then
 fi
 
 echo "== Proving (z3) — shared by checks 5-6, this is the slow step =="
-"$BIN" prove "$EX"/*.oath > "$TMP/prove.txt" 2>/dev/null \
-  || { echo "  FAIL: prove command errored"; fail=1; }
+"$BIN" prove "$EX"/*.oath > "$TMP/prove.txt" 2> "$TMP/prove.err"
+pstat=$?
+if [ $pstat -eq 3 ]; then
+  # The wall cap is SAFETY-ONLY and not outcome-determining (SPEC §7.2):
+  # outcomes are fixed by (script bytes, solver, rlimit). Slow hardware
+  # that cannot exhaust the rlimit inside the default cap should raise
+  # the cap, not be mistaken for a divergence.
+  echo "  FAIL: run INVALIDATED — wall cap fired before rlimit exhausted."
+  echo "        This is slow hardware, not a kernel divergence: re-run with"
+  echo "        a raised OATHRS_Z3_WALL_CAP_MS (the cap never affects outcomes)."
+  sed -n '1,5p' "$TMP/prove.err"; fail=1
+elif [ $pstat -ne 0 ]; then
+  echo "  FAIL: prove command errored (exit $pstat)"; sed -n '1,5p' "$TMP/prove.err"; fail=1
+fi
 
 # ---------------------------------------------------------------------------
 # Check 6: proof outcomes reproduce fixtures/prove/outcomes.json exactly

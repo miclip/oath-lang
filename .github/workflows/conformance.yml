@@ -69,6 +69,12 @@ jobs:
           unzip -q z3.zip
           echo "$PWD/z3-4.16.0-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
       - name: six-check conformance (cold prove at the SPEC budget)
+        # The wall cap is safety-only and never affects outcomes (those are
+        # fixed by script bytes + solver + rlimit). GitHub runners burn the
+        # rlimit slower than dev hardware — first dispatch invalidated at
+        # the 600s default ~21 min in — so give each goal ample wall room.
+        env:
+          OATHRS_Z3_WALL_CAP_MS: "3600000"
         run: |
           z3 --version
           ./oathrs/conformance.sh
