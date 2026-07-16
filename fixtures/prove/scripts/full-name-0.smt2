@@ -1,0 +1,5 @@
+(declare-datatypes ((Rec_first_String_last_String 0)) (((mk_Rec_first_String_last_String (mk_Rec_first_String_last_String_first String) (mk_Rec_first_String_last_String_last String)))))
+(assert (forall ((q0 String) (q1 String)) (= (str.++ (str.++ (mk_Rec_first_String_last_String_first (mk_Rec_first_String_last_String q0 q1)) " ") (mk_Rec_first_String_last_String_last (mk_Rec_first_String_last_String q0 q1))) (str.++ (str.++ q0 " ") q1))))
+(declare-const b0 Rec_first_String_last_String)
+(assert (not (= (str.len (str.++ (str.++ (mk_Rec_first_String_last_String_first b0) " ") (mk_Rec_first_String_last_String_last b0))) (+ (+ (str.len (mk_Rec_first_String_last_String_first b0)) 1) (str.len (mk_Rec_first_String_last_String_last b0))))))
+(check-sat)

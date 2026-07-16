@@ -81,9 +81,47 @@ done
 [ $vbad -eq 0 ] && echo "  PASS: $vn verify/*.txt byte-identical (verdicts + counterexamples)"
 
 # ---------------------------------------------------------------------------
-# Proof run (shared by checks 5 and 6). This drives z3 and is the slow step
-# (several minutes): one goal per property, plus structural induction.
+# Checks 5-6 come in two modes. FULL (default): cold re-derivation of every
+# proof outcome — z3 at the SPEC §7.2 rlimit budget, run-stability fixpoint
+# included. This is HOURS of solver time and is the definitive empirical
+# check. ORACLE (OATHRS_CONFORMANCE_PROVE=oracle): no solver runs; instead
+# the kernel must reproduce every direct-attempt script byte-for-byte
+# (fixtures/prove/scripts.txt) under the pinned solver version. Since an
+# outcome is a pure function of (script bytes, solver version, rlimit) —
+# SPEC §7.2, deterministic budget — byte-identical scripts under identical
+# pins DETERMINE identical outcomes. Per-push CI uses oracle mode; the full
+# mode runs on a schedule and on demand.
 # ---------------------------------------------------------------------------
+MODE="${OATHRS_CONFORMANCE_PROVE:-full}"
+if [ "$MODE" = "oracle" ]; then
+  echo "== Checks 5-6 (byte-oracle mode): script identity + pinned solver =="
+  WANT_SOLVER="$(python3 -c "import json;print(json.load(open('$FIX/prove/outcomes.json'))['solver'])")"
+  GOT_SOLVER="$(z3 --version | head -1)"
+  if [ "$WANT_SOLVER" = "$GOT_SOLVER" ]; then
+    echo "  PASS: solver pinned ($GOT_SOLVER)"
+  else
+    echo "  FAIL: solver mismatch — fixtures were settled under \"$WANT_SOLVER\", this environment has \"$GOT_SOLVER\""
+    fail=1
+  fi
+  if "$BIN" scripts --outcomes "$FIX/prove/outcomes.json" "$EX"/*.oath > "$TMP/scripts.txt" 2>/dev/null \
+     && diff "$TMP/scripts.txt" "$FIX/prove/scripts.txt" > "$TMP/scripts.diff"; then
+    n=$(( $(wc -l < "$TMP/scripts.txt" | tr -d ' ') - 1 ))
+    echo "  PASS: $n direct-attempt scripts byte-identical to prove/scripts.txt"
+    echo "  outcomes are determined: f(script bytes, solver, rlimit), all three pinned."
+    echo "  (run without OATHRS_CONFORMANCE_PROVE=oracle for the empirical re-derivation)"
+  else
+    echo "  FAIL: script byte oracle diverged:"; head -20 "$TMP/scripts.diff" 2>/dev/null; fail=1
+  fi
+
+  echo
+  if [ $fail -eq 0 ]; then
+    echo "CONFORMANCE: PASS (checks 1-4 + byte oracle; outcomes determined, not re-derived)"
+  else
+    echo "CONFORMANCE: FAIL"
+  fi
+  exit $fail
+fi
+
 echo "== Proving (z3) — shared by checks 5-6, this is the slow step =="
 "$BIN" prove "$EX"/*.oath > "$TMP/prove.txt" 2>/dev/null \
   || { echo "  FAIL: prove command errored"; fail=1; }

@@ -1,0 +1,7 @@
+(declare-datatypes ((Rec_fetch__Array_String_String_ 0)) (((mk_Rec_fetch__Array_String_String_ (mk_Rec_fetch__Array_String_String__fetch (Array String String))))))
+(assert (forall ((q0 Rec_fetch__Array_String_String_) (q1 String)) (<= 8 (str.len (str.++ "Hello, " (str.++ (select (mk_Rec_fetch__Array_String_String__fetch q0) q1) "!"))))))
+(assert (forall ((q0 Rec_fetch__Array_String_String_) (q1 String)) (= (str.++ "Hello, " (str.++ (select (mk_Rec_fetch__Array_String_String__fetch q0) q1) "!")) (str.++ "Hello, " (str.++ (select (mk_Rec_fetch__Array_String_String__fetch q0) q1) "!")))))
+(declare-const b0 Rec_fetch__Array_String_String_)
+(declare-const b1 String)
+(assert (not (= (str.++ "Hello, " (str.++ (select (mk_Rec_fetch__Array_String_String__fetch b0) b1) "!")) (str.++ "Hello, " (str.++ (select (mk_Rec_fetch__Array_String_String__fetch b0) b1) "!")))))
+(check-sat)

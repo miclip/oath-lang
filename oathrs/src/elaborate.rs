@@ -13,6 +13,7 @@ const PRIMS: &[&str] = &[
 #[derive(Clone)]
 pub struct DataInfo {
     pub hash: String,
+    pub name: String,
     pub tyvars: u32,
     pub ctors: Vec<(String, Vec<Ty>)>,
 }
@@ -20,6 +21,7 @@ pub struct DataInfo {
 #[derive(Clone)]
 pub struct FuncInfo {
     pub hash: String,
+    pub name: String,
     pub tyvars: u32,
     pub ty: Ty,
     pub prop_names: Vec<String>,
@@ -592,7 +594,8 @@ impl Store {
             ctors: ctors.iter().map(|(_, f)| f.clone()).collect(),
         };
         let hash = sha256_hex(&canonical_bytes(&def));
-        let info = DataInfo { hash: hash.clone(), tyvars: tyvar_names.len() as u32, ctors };
+        let info =
+            DataInfo { hash: hash.clone(), name: name.clone(), tyvars: tyvar_names.len() as u32, ctors };
         Ok(Elaborated::Data { name, def, info })
     }
 
@@ -645,6 +648,7 @@ impl Store {
         let hash = sha256_hex(&canonical_bytes(&def));
         let info = FuncInfo {
             hash: hash.clone(),
+            name: name.clone(),
             tyvars: tyvars_count,
             ty,
             prop_names,

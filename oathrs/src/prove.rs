@@ -1,30 +1,42 @@
 //! Proof obligations / SMT boundary (SPEC §7, §7.1, §7.2, §7.3).
 //! Translates the provable fragment to SMT-LIB, drives z3 (`z3 -in`), and
-//! reproduces per-property proof outcomes. Because there is no byte-level
-//! SMT fixture, the encoding only needs to be logically faithful enough that
-//! z3 returns the same sat/unsat as the reference; naming is internal.
+//! reproduces per-property proof outcomes. Scripts are fully canonical (SPEC
+//! §7.2 script stability): a goal's byte content is a function of the goal and
+//! its admissible lemma set, pinned by the byte oracle in prove/scripts.txt.
 
 use crate::analyze::termination;
 use crate::elaborate::Store;
+use crate::hash::sha256_hex;
 use crate::ir::*;
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
-// SPEC §7.1 sets a 15 s per-goal timeout; that is the normative default and
-// what conformance uses. A shorter budget reproduces these outcomes far faster
-// on fast hardware, but it is outcome-affecting on slow hardware — the CI's
-// ubuntu runner crossed a 4 s budget on one of `sum`'s inductive goals. The
-// budget is therefore configurable via OATHRS_Z3_TIMEOUT_MS (milliseconds) so
-// fast local runs can opt down explicitly, while the default stays spec-normative.
-const DEFAULT_Z3_TIMEOUT_MS: u64 = 15000;
+// SPEC §7.1/§7.2: the per-goal budget is z3's machine-independent `rlimit`
+// resource counter, NOT wall-clock — the outcome is a function of (script bytes,
+// solver version, rlimit) and reproduces bit-for-bit across hardware. The
+// normative default is 400,000,000 (≈3.5x the heaviest successful proof). A
+// wall-clock cap (600s, far above any legitimate rlimit exhaust) survives only
+// as a SAFETY net: if it fires before the rlimit is reached, the run is
+// invalidated (no outcome is ever recorded), never treated as a timeout verdict.
+const DEFAULT_Z3_RLIMIT: u64 = 400_000_000;
+const DEFAULT_WALL_CAP_MS: u64 = 600_000;
 
-fn z3_timeout_ms() -> u64 {
-    std::env::var("OATHRS_Z3_TIMEOUT_MS")
+fn z3_rlimit() -> u64 {
+    std::env::var("OATHRS_Z3_RLIMIT")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .filter(|&v| v > 0)
-        .unwrap_or(DEFAULT_Z3_TIMEOUT_MS)
+        .unwrap_or(DEFAULT_Z3_RLIMIT)
+}
+
+fn z3_wall_cap_ms() -> u64 {
+    std::env::var("OATHRS_Z3_WALL_CAP_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|&v| v > 0)
+        .unwrap_or(DEFAULT_WALL_CAP_MS)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -149,6 +161,10 @@ struct Sorts {
     seen: BTreeSet<String>,
     // name -> constructor-list body for declare-datatypes
     decl: BTreeMap<String, String>,
+    // the unified declaration stream (SPEC §7.2): each datatype's own
+    // `(declare-datatypes ...)` line AND (appended by register_fun) each
+    // `(declare-fun ...)` line, interleaved in first-touch order. \n-terminated.
+    decls: Vec<String>,
 }
 
 fn sort_of(store: &Store, ty: &Ty, sc: &mut Sorts) -> String {
@@ -158,7 +174,10 @@ fn sort_of(store: &Store, ty: &Ty, sc: &mut Sorts) -> String {
         Ty::Str => "String".to_string(),
         Ty::Fun(a, b) => format!("(Array {} {})", sort_of(store, a, sc), sort_of(store, b, sc)),
         Ty::Data { hash, args } => {
-            let mut name = format!("T{}", &hash[..8]);
+            // SPEC §7.1: a data sort name is the sanitized metadata definition
+            // name followed by its sanitized type-argument sorts.
+            let di = store.data_by_hash.get(hash).expect("data present");
+            let mut name = sanitize(&di.name);
             for a in args {
                 name.push('_');
                 name.push_str(&sanitize(&sort_of(store, a, sc)));
@@ -170,16 +189,23 @@ fn sort_of(store: &Store, ty: &Ty, sc: &mut Sorts) -> String {
                 let mut body = String::new();
                 for (ci, (cname, fields)) in di.ctors.iter().enumerate() {
                     let csmt = format!("{}_{}", sanitize(cname), name);
+                    // `(<ctor> <selectors...>)`: a space always follows the ctor
+                    // name, so a nullary constructor renders as `(<ctor> )`.
                     body.push_str(" (");
                     body.push_str(&csmt);
+                    body.push(' ');
+                    let mut sels = Vec::new();
                     for (j, f) in fields.iter().enumerate() {
                         let fty = inst_field(f, args, hash);
                         let fsort = sort_of(store, &fty, sc);
-                        body.push_str(&format!(" ({}_{} {})", csmt, j, fsort));
+                        sels.push(format!("({}_{} {})", csmt, j, fsort));
                     }
+                    body.push_str(&sels.join(" "));
                     body.push(')');
                     let _ = ci;
                 }
+                sc.decls
+                    .push(format!("(declare-datatypes (({} 0)) (({})))\n", name, body.trim()));
                 sc.decl.insert(name.clone(), body);
             }
             name
@@ -198,9 +224,12 @@ fn sort_of(store: &Store, ty: &Ty, sc: &mut Sorts) -> String {
                 let mut body = format!(" (mk_{}", name);
                 for (n, a) in names.iter().zip(args.iter()) {
                     let fsort = sort_of(store, a, sc);
-                    body.push_str(&format!(" ({}_{} {})", name, sanitize(n), fsort));
+                    // Field selectors are mk_<recordSort>_<field> (SPEC §7.1).
+                    body.push_str(&format!(" (mk_{}_{} {})", name, sanitize(n), fsort));
                 }
                 body.push(')');
+                sc.decls
+                    .push(format!("(declare-datatypes (({} 0)) (({})))\n", name, body.trim()));
                 sc.decl.insert(name.clone(), body);
             }
             name
@@ -213,6 +242,20 @@ fn ctor_smt(cname: &str, sortname: &str) -> String {
     format!("{}_{}", sanitize(cname), sortname)
 }
 
+/// `(cname field0 field1 ...)`, or bare `cname` for a nullary constructor.
+fn build_ctor(csmt: &str, fields: &[(String, Ty)]) -> String {
+    if fields.is_empty() {
+        return csmt.to_string();
+    }
+    let mut e = format!("({}", csmt);
+    for (v, _) in fields {
+        e.push(' ');
+        e.push_str(v);
+    }
+    e.push(')');
+    e
+}
+
 // ---------------------------------------------------------------------------
 // translation context
 // ---------------------------------------------------------------------------
@@ -220,9 +263,9 @@ fn ctor_smt(cname: &str, sortname: &str) -> String {
 struct Cx<'a> {
     store: &'a Store,
     sc: Sorts,
-    fun_decls: BTreeMap<String, String>, // id -> "(declare-fun ...)"
+    fun_decls: BTreeMap<String, String>, // id -> "(declare-fun ...)" (dedup only)
     axioms: BTreeMap<String, String>,    // id -> "(assert ...)"
-    need_axiom: VecDeque<(String, Vec<Ty>)>,
+    axiom_order: Vec<String>,            // axiom ids in build (first-touch) order
     axiomatized: BTreeSet<String>,
     // true once the problem contains quantifiers (recursive fn decls or
     // quantified lemmas); a quantifier-free `sat` is a genuine refutation
@@ -237,14 +280,17 @@ impl<'a> Cx<'a> {
             sc: Sorts::default(),
             fun_decls: BTreeMap::new(),
             axioms: BTreeMap::new(),
-            need_axiom: VecDeque::new(),
+            axiom_order: Vec::new(),
             axiomatized: BTreeSet::new(),
             quantified: false,
         }
     }
 
     fn instance_id(hash: &str, cargs: &[Ty], sc: &mut Sorts, store: &Store) -> String {
-        let mut s = format!("f_{}", &hash[..8]);
+        // SPEC §7.1: a function symbol is its sanitized metadata name followed by
+        // its sanitized type-argument sorts (the instance's monomorphisation).
+        let fname = store.func_by_hash.get(hash).map(|fi| fi.name.as_str()).unwrap_or("");
+        let mut s = format!("fn_{}", sanitize(fname));
         for a in cargs {
             s.push('_');
             s.push_str(&sanitize(&sort_of(store, a, sc)));
@@ -266,62 +312,84 @@ impl<'a> Cx<'a> {
         let psorts: Vec<String> = ptys.iter().map(|t| sort_of(self.store, t, &mut self.sc)).collect();
         let retsort = sort_of(self.store, &ret, &mut self.sc);
         let decl = format!("(declare-fun {} ({}) {})", id, psorts.join(" "), retsort);
+        // Append to the unified first-touch declaration stream (signature sorts,
+        // touched just above, precede this line). A bare declaration introduces
+        // NO quantifier — `quantified` is set only when a ∀ defining axiom is
+        // actually emitted (build_axioms) or a binder-carrying lemma is
+        // translated (build_lemmas), so a non-total callee stays quantifier-free.
+        self.sc.decls.push(format!("{}\n", decl));
         self.fun_decls.insert(id.clone(), decl);
-        self.quantified = true;
-        if is_total(self.store, hash) {
-            self.need_axiom.push_back((hash.to_string(), cargs.to_vec()));
-        }
+        // A bare declaration introduces NO quantifier — `quantified` is set only
+        // when a ∀ defining axiom is emitted or a binder-carrying lemma is
+        // translated, so a non-total callee stays quantifier-free. Total callees
+        // get their defining axiom built EAGERLY here (first-touch order of the
+        // axiom's own callees follows immediately after this declaration).
+        // Eagerly translate the callee's body (SPEC §7.2 build sequence). This
+        // registers further callees — declarations/axioms interleave in
+        // call-graph first-touch order — and its side-effect declarations remain
+        // even for a NON-total callee whose axiom is ultimately not asserted
+        // (no rollback): only the ∀ equation is gated on totality, not the
+        // body translation that discovers referenced symbols.
+        self.build_axiom(hash, cargs, &id);
         id
     }
 
-    fn build_axioms(&mut self) {
-        while let Some((hash, cargs)) = self.need_axiom.pop_front() {
-            let id = Cx::instance_id(&hash, &cargs, &mut self.sc, self.store);
-            if self.axiomatized.contains(&id) {
-                continue;
+    /// Translate one function's defining equation eagerly and, only if the
+    /// function is proven total, assert it as an axiom. The body translation
+    /// runs regardless (registering further callees); the `axiomatized` guard
+    /// keeps self/mutual recursion finite.
+    fn build_axiom(&mut self, hash: &str, cargs: &[Ty], id: &str) {
+        if self.axiomatized.contains(id) {
+            return;
+        }
+        self.axiomatized.insert(id.to_string());
+        let n = self.store.func_by_hash.get(hash).unwrap().param_names.len();
+        let (body, fty) = match self.store.def_by_hash.get(hash) {
+            Some(Def::Func { body, ty, .. }) => (body.clone(), ty.clone()),
+            _ => return,
+        };
+        let (ptys, _ret) = param_types(&apply_tyenv(&fty, cargs), n);
+        let inner = strip_lams(&body, n);
+        let mut env: Vec<(String, Ty)> = Vec::new();
+        let mut decls = String::new();
+        for (j, pt) in ptys.iter().enumerate() {
+            let vname = format!("p{}", j);
+            let s = sort_of(self.store, pt, &mut self.sc);
+            decls.push_str(&format!("({} {}) ", vname, s));
+            env.push((vname, pt.clone()));
+        }
+        let call = {
+            let mut c = format!("({}", id);
+            for j in 0..n {
+                c.push_str(&format!(" p{}", j));
             }
-            self.axiomatized.insert(id.clone());
-            let n = self.store.func_by_hash.get(&hash).unwrap().param_names.len();
-            let (body, fty) = match self.store.def_by_hash.get(&hash) {
-                Some(Def::Func { body, ty, .. }) => (body.clone(), ty.clone()),
-                _ => continue,
-            };
-            let (ptys, _ret) = param_types(&apply_tyenv(&fty, &cargs), n);
-            let inner = strip_lams(&body, n);
-            let mut env: Vec<(String, Ty)> = Vec::new();
-            let mut decls = String::new();
-            for (j, pt) in ptys.iter().enumerate() {
-                let vname = format!("x{}", j);
-                let s = sort_of(self.store, pt, &mut self.sc);
-                decls.push_str(&format!("({} {}) ", vname, s));
-                env.push((vname, pt.clone()));
-            }
-            let call = {
-                let mut c = format!("({}", id);
-                for j in 0..n {
-                    c.push_str(&format!(" x{}", j));
-                }
-                c.push(')');
-                c
-            };
-            match self.tr(inner, &env, &cargs, &hash, &cargs) {
-                Ok((rhs, _)) => {
-                    let axiom = if n == 0 {
-                        format!("(assert (= {} {}))", call, rhs)
-                    } else {
-                        format!(
-                            "(assert (forall ({}) (! (= {} {}) :pattern ({}))))",
-                            decls.trim_end(),
-                            call,
-                            rhs,
-                            call
-                        )
-                    };
-                    self.axioms.insert(id, axiom);
-                }
-                Err(_) => { /* body outside fragment: leave uninterpreted */ }
+            c.push(')');
+            c
+        };
+        // Translate the body regardless of totality (registers callees, whose
+        // declarations remain even when this axiom is not asserted). The axiom
+        // itself is asserted ONLY for a proven-total function (§7): a non-total
+        // recursive definition can be inconsistent, so it stays uninterpreted.
+        if let Ok((rhs, _)) = self.tr(inner, &env, cargs, hash, cargs) {
+            if is_total(self.store, hash) {
+                let axiom = if n == 0 {
+                    format!("(assert (= {} {}))", call, rhs)
+                } else {
+                    // A ∀ defining axiom introduces a quantifier.
+                    self.quantified = true;
+                    format!(
+                        "(assert (forall ({}) (! (= {} {}) :pattern ({}))))",
+                        decls.trim_end(),
+                        call,
+                        rhs,
+                        call
+                    )
+                };
+                self.axiom_order.push(id.to_string());
+                self.axioms.insert(id.to_string(), axiom);
             }
         }
+        // else: body outside fragment — leave the callee uninterpreted.
     }
 
     /// Translate a term to (smt-expr, concrete-type). Err => outside fragment.
@@ -386,7 +454,8 @@ impl<'a> Cx<'a> {
                     Ty::Record { names, args } => {
                         let i = names.iter().position(|n| n == op).ok_or(())?;
                         let sortname = sort_of(self.store, &at, &mut self.sc);
-                        Ok((format!("({}_{} {})", sortname, sanitize(op), ae), args[i].clone()))
+                        // Field selector: mk_<recordSort>_<field> (SPEC §7.1).
+                        Ok((format!("(mk_{}_{} {})", sortname, sanitize(op), ae), args[i].clone()))
                     }
                     _ => Err(()),
                 }
@@ -539,30 +608,31 @@ impl<'a> Cx<'a> {
             _ => return Err(()),
         };
         let (ptys, ret0) = param_types(&apply_tyenv(&fty, &cargs), n);
-        // translate arguments
-        let mut aexprs = Vec::new();
-        for (i, a) in args.iter().enumerate() {
-            let (ae, _) = self.tr(a, env, tyenv, self_hash, self_tyargs)?;
-            aexprs.push((ae, ptys[i].clone()));
-        }
         if is_recursive(self.store, hash) {
+            // Register the callee (declare-fun) BEFORE translating its arguments,
+            // so first-touch declaration order follows the call structure head-first.
             let id = self.register_fun(hash, &cargs);
             let mut e = format!("({}", id);
-            for (ae, _) in &aexprs {
+            for a in args.iter() {
+                let (ae, _) = self.tr(a, env, tyenv, self_hash, self_tyargs)?;
                 e.push(' ');
-                e.push_str(ae);
+                e.push_str(&ae);
             }
             e.push(')');
             Ok((e, ret0))
         } else {
-            // inline: beta-reduce through the lambda spine
+            // inline: translate arguments, then beta-reduce through the lambda spine
+            let mut aexprs = Vec::new();
+            for (i, a) in args.iter().enumerate() {
+                let (ae, _) = self.tr(a, env, tyenv, self_hash, self_tyargs)?;
+                aexprs.push((ae, ptys[i].clone()));
+            }
             let body = match self.store.def_by_hash.get(hash) {
                 Some(Def::Func { body, .. }) => body.clone(),
                 _ => return Err(()),
             };
             let inner = strip_lams(&body, n);
-            let env2: Vec<(String, Ty)> = aexprs;
-            self.tr(inner, &env2, &cargs, hash, &cargs)
+            self.tr(inner, &aexprs, &cargs, hash, &cargs)
         }
     }
 }
@@ -572,16 +642,14 @@ impl<'a> Cx<'a> {
 // ---------------------------------------------------------------------------
 
 fn run_z3(script: &str) -> Outcome {
-    // `-t:` is z3's per-query soft timeout (ms); `-T:` is a hard wall-clock
-    // process timeout (s) that guarantees the subprocess exits even when a
-    // quantified goal would otherwise run away.
-    let ms = z3_timeout_ms();
-    let soft = format!("-t:{}", ms);
-    let hard = format!("-T:{}", ms / 1000 + 2);
+    // The budget is the `(set-option :rlimit ...)` inside `script` (deterministic,
+    // machine-independent). z3 returns `unknown` when the rlimit is reached — a
+    // legitimate "unproven" verdict. We add NO wall-clock timeout to z3 itself
+    // (that would make outcomes hardware-dependent); instead we enforce a wall
+    // cap ourselves purely as a safety net. If it fires, z3 was still running at
+    // the cap and the run is INVALIDATED — never recorded as a verdict (§7.2).
     let mut child = match Command::new("z3")
         .arg("-in")
-        .arg(&soft)
-        .arg(&hard)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -591,17 +659,40 @@ fn run_z3(script: &str) -> Outcome {
         Err(_) => return Outcome::Unknown,
     };
     if let Some(mut sin) = child.stdin.take() {
+        // Runner wrapping (outside the byte-oracle hash): the deterministic
+        // rlimit budget precedes the core script.
+        let _ = sin.write_all(format!("(set-option :rlimit {})\n", z3_rlimit()).as_bytes());
         let _ = sin.write_all(script.as_bytes());
+        // stdin dropped here -> EOF, so z3 processes and exits.
     }
-    let out = match child.wait_with_output() {
-        Ok(o) => o,
-        Err(_) => return Outcome::Unknown,
-    };
-    let s = String::from_utf8_lossy(&out.stdout);
-    // first non-empty result line
+    let mut sout = child.stdout.take();
+    let cap = Duration::from_millis(z3_wall_cap_ms());
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if start.elapsed() > cap {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    eprintln!(
+                        "FATAL: z3 exceeded the {}ms wall-clock safety cap before its \
+                         rlimit — run invalidated, no outcome recorded (SPEC §7.2)",
+                        z3_wall_cap_ms()
+                    );
+                    std::process::exit(3);
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(_) => return Outcome::Unknown,
+        }
+    }
+    let mut s = String::new();
+    if let Some(ref mut o) = sout {
+        let _ = o.read_to_string(&mut s);
+    }
     for line in s.lines() {
-        let l = line.trim();
-        match l {
+        match line.trim() {
             "unsat" => return Outcome::Unsat,
             "sat" => return Outcome::Sat,
             "unknown" => return Outcome::Unknown,
@@ -613,70 +704,105 @@ fn run_z3(script: &str) -> Outcome {
 
 struct Prover<'a> {
     store: &'a Store,
-    // proven props: (def hash, prop index) recorded when proven
-    proven: BTreeSet<(String, usize)>,
 }
 
 impl<'a> Prover<'a> {
-    fn header() -> String {
-        format!("(set-option :timeout {})\n(set-logic ALL)\n", z3_timeout_ms())
-    }
-
-    /// Assemble a full self-contained script from a fresh context.
-    fn assemble(cx: &Cx, body_asserts: &str, extra_decls: &str) -> String {
-        let mut s = Prover::header();
-        if !cx.sc.order.is_empty() {
-            s.push_str("(declare-datatypes (");
-            for name in &cx.sc.order {
-                s.push_str(&format!("({} 0)", name));
-            }
-            s.push_str(") (");
-            for name in &cx.sc.order {
-                s.push('(');
-                s.push_str(cx.sc.decl.get(name).unwrap().trim());
-                s.push(')');
-            }
-            s.push_str("))\n");
+    /// Assemble the CORE self-contained script (the bytes the byte oracle
+    /// hashes, SPEC §7.2): datatype declarations, then function declarations and
+    /// defining-equation axioms in FIRST-TOUCH order of the canonical build,
+    /// then `tail` (lemma asserts, binder decls, goal). There is no set-logic
+    /// line and no rlimit option — the `(set-option :rlimit …)` is runner
+    /// wrapping added in `run_z3`, outside the hashed bytes.
+    fn assemble(cx: &Cx, tail: &str) -> String {
+        let mut s = String::new();
+        // Interleaved first-touch declaration stream: each datatype's own
+        // declare-datatypes and each declare-fun, in the order first touched.
+        for line in &cx.sc.decls {
+            s.push_str(line);
         }
-        for d in cx.fun_decls.values() {
-            s.push_str(d);
+        // All defining-equation axioms, wholesale, in build (first-touch) order.
+        for id in &cx.axiom_order {
+            s.push_str(cx.axioms.get(id).unwrap());
             s.push('\n');
         }
-        for a in cx.axioms.values() {
-            s.push_str(a);
-            s.push('\n');
-        }
-        s.push_str(extra_decls);
-        s.push_str(body_asserts);
-        s.push_str("(check-sat)\n");
+        s.push_str(tail);
         s
     }
 
-    fn lemma_asserts(&self, cx: &mut Cx, lemmas: &[(String, usize)]) -> String {
+    /// Load the lemma library (SPEC §7.2 construction sequence): translate EVERY
+    /// candidate `(def-hash, prop-index, admissible)` in ascending (def-hash,
+    /// prop-index) order — even inadmissible ones, so their declarations/axioms
+    /// and the `quantified` flag reflect the full candidate set — but emit an
+    /// `(assert …)` only for admissible candidates. Returns the concatenated
+    /// admissible asserts (already in canonical order).
+    fn build_lemmas(&self, cx: &mut Cx, candidates: &[(String, usize, bool)]) -> String {
+        let mut ordered: Vec<(String, usize, bool)> = candidates.to_vec();
+        ordered.sort_by(|a, b| (a.0.as_str(), a.1).cmp(&(b.0.as_str(), b.1)));
         let mut out = String::new();
-        for (hash, pi) in lemmas {
+        for (hash, pi, adm) in &ordered {
             let prop = match self.store.def_by_hash.get(hash) {
                 Some(Def::Func { props, .. }) => props[*pi].clone(),
                 _ => continue,
             };
             let mut env = Vec::new();
-            let mut decls = String::new();
+            let mut qdecls = String::new();
             for (k, bt) in prop.binders.iter().enumerate() {
-                let vname = format!("l{}", k);
+                let vname = format!("q{}", k);
                 let s = sort_of(self.store, bt, &mut cx.sc);
-                decls.push_str(&format!("({} {}) ", vname, s));
+                qdecls.push_str(&format!("({} {}) ", vname, s));
                 env.push((vname, bt.clone()));
             }
-            if let Ok((be, _)) = cx.tr(&prop.body, &env, &[], hash, &[]) {
+            // Translate regardless of admissibility (touches decls/axioms).
+            let translated = cx.tr(&prop.body, &env, &[], hash, &[]);
+            // A binder-carrying candidate contributes a ∀ wrapper → quantified,
+            // even when filtered from emission.
+            if !prop.binders.is_empty() {
+                cx.quantified = true;
+            }
+            if !*adm {
+                continue;
+            }
+            if let Ok((be, _)) = translated {
                 if prop.binders.is_empty() {
                     out.push_str(&format!("(assert {})\n", be));
                 } else {
-                    cx.quantified = true;
-                    out.push_str(&format!("(assert (forall ({}) {}))\n", decls.trim_end(), be));
+                    out.push_str(&format!("(assert (forall ({}) {}))\n", qdecls.trim_end(), be));
                 }
             }
         }
         out
+    }
+
+    /// Build the CORE direct-attempt script for a property under `lemmas`
+    /// (the exact bytes the byte oracle hashes, SPEC §7.2). Returns (script,
+    /// quantified?), or None if the goal is outside the provable fragment.
+    fn direct_script(
+        &self,
+        def_hash: &str,
+        prop: &Prop,
+        candidates: &[(String, usize, bool)],
+    ) -> Option<(String, bool)> {
+        let mut cx = Cx::new(self.store);
+        // Canonical build order: lemmas first, then the goal (binders, then body).
+        let lem = self.build_lemmas(&mut cx, candidates);
+        let mut env = Vec::new();
+        let mut binder_decls = String::new();
+        for (k, bt) in prop.binders.iter().enumerate() {
+            let vname = format!("b{}", k);
+            let s = sort_of(self.store, bt, &mut cx.sc);
+            binder_decls.push_str(&format!("(declare-const {} {})\n", vname, s));
+            env.push((vname, bt.clone()));
+        }
+        let goal = cx.tr(&prop.body, &env, &[], def_hash, &[]).ok()?.0;
+        // Script layout: lemma asserts, binder declarations, then the goal.
+        let mut tail = String::new();
+        tail.push_str(&lem);
+        tail.push_str(&binder_decls);
+        tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
+        if !cx.quantified {
+            tail.push_str("(get-model)\n");
+        }
+        Some((Prover::assemble(&cx, &tail), cx.quantified))
     }
 
     /// Direct proof attempt. Returns (outcome, quantified?).
@@ -684,27 +810,12 @@ impl<'a> Prover<'a> {
         &self,
         def_hash: &str,
         prop: &Prop,
-        lemmas: &[(String, usize)],
+        candidates: &[(String, usize, bool)],
     ) -> (Outcome, bool) {
-        let mut cx = Cx::new(self.store);
-        let lem = self.lemma_asserts(&mut cx, lemmas);
-        // binders as constants
-        let mut env = Vec::new();
-        let mut decls = String::new();
-        for (k, bt) in prop.binders.iter().enumerate() {
-            let vname = format!("b{}", k);
-            let s = sort_of(self.store, bt, &mut cx.sc);
-            decls.push_str(&format!("(declare-const {} {})\n", vname, s));
-            env.push((vname, bt.clone()));
+        match self.direct_script(def_hash, prop, candidates) {
+            Some((script, quantified)) => (run_z3(&script), quantified),
+            None => (Outcome::Unknown, true),
         }
-        let goal = match cx.tr(&prop.body, &env, &[], def_hash, &[]) {
-            Ok((g, _)) => g,
-            Err(_) => return (Outcome::Unknown, true),
-        };
-        cx.build_axioms();
-        let body = format!("{}(assert (not {}))\n", lem, goal);
-        let o = run_z3(&Prover::assemble(&cx, &body, &decls));
-        (o, cx.quantified)
     }
 
     /// Structural induction on binder `k` (a datatype). Returns true if proven.
@@ -713,7 +824,7 @@ impl<'a> Prover<'a> {
         def_hash: &str,
         prop: &Prop,
         k: usize,
-        lemmas: &[(String, usize)],
+        candidates: &[(String, usize, bool)],
     ) -> bool {
         let (dhash, dargs) = match &prop.binders[k] {
             Ty::Data { hash, args } => (hash.clone(), args.clone()),
@@ -727,9 +838,9 @@ impl<'a> Prover<'a> {
             let mut sc = Sorts::default();
             sort_of(self.store, &prop.binders[k], &mut sc)
         };
-        for (ci, (cname, cfields)) in di.ctors.iter().enumerate() {
+        for (cname, cfields) in di.ctors.iter() {
             let mut cx = Cx::new(self.store);
-            let lem = self.lemma_asserts(&mut cx, lemmas);
+            let lem = self.build_lemmas(&mut cx, candidates);
             let sortname = {
                 let s = sort_of(self.store, &prop.binders[k], &mut cx.sc);
                 s
@@ -753,7 +864,7 @@ impl<'a> Prover<'a> {
             // constructor field constants
             let mut field_consts = Vec::new();
             for (j, ft) in fields.iter().enumerate() {
-                let vname = format!("f{}_{}", ci, j);
+                let vname = format!("f{}", j);
                 let s = sort_of(self.store, ft, &mut cx.sc);
                 decls.push_str(&format!("(declare-const {} {})\n", vname, s));
                 field_consts.push((vname, ft.clone()));
@@ -820,17 +931,244 @@ impl<'a> Prover<'a> {
                 Ok((g, _)) => g,
                 Err(_) => return false,
             };
-            cx.build_axioms();
-            let body = format!("{}{}(assert (not {}))\n", lem, ih, goal);
-            if run_z3(&Prover::assemble(&cx, &body, &decls)) != Outcome::Unsat {
+                let mut tail = String::new();
+            tail.push_str(&lem);
+            tail.push_str(&decls);
+            tail.push_str(&ih);
+            tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
+            if run_z3(&Prover::assemble(&cx, &tail)) != Outcome::Unsat {
                 return false;
             }
         }
         true
     }
 
-    fn prove_prop(&self, def_hash: &str, prop: &Prop, lemmas: &[(String, usize)]) -> bool {
-        let (o, quantified) = self.try_direct(def_hash, prop, lemmas);
+    /// Translate `prop` with the binders named in `fixed` bound to given SMT
+    /// expressions and every other binder universally quantified with a fresh
+    /// `q{index}` variable. Returns the (possibly quantified) formula, or None
+    /// if the body is outside the fragment.
+    fn forall_prop(
+        &self,
+        cx: &mut Cx,
+        prop: &Prop,
+        def_hash: &str,
+        fixed: &BTreeMap<usize, (String, Ty)>,
+    ) -> Option<String> {
+        let mut qdecls = String::new();
+        let mut env: Vec<(String, Ty)> = Vec::with_capacity(prop.binders.len());
+        for (m, bt) in prop.binders.iter().enumerate() {
+            if let Some((e, ty)) = fixed.get(&m) {
+                env.push((e.clone(), ty.clone()));
+            } else {
+                let vname = format!("q{}", m);
+                let s = sort_of(self.store, bt, &mut cx.sc);
+                qdecls.push_str(&format!("({} {}) ", vname, s));
+                env.push((vname, bt.clone()));
+            }
+        }
+        match cx.tr(&prop.body, &env, &[], def_hash, &[]) {
+            Ok((be, _)) => Some(if qdecls.is_empty() {
+                be
+            } else {
+                format!("(forall ({}) {})", qdecls.trim_end(), be)
+            }),
+            Err(_) => None,
+        }
+    }
+
+    /// Lexicographic induction on the ordered binder pair `(i, j)` (SPEC §7.2).
+    /// Returns true only if every subgoal discharges (`unsat` under negation).
+    fn try_induction_lex(
+        &self,
+        def_hash: &str,
+        prop: &Prop,
+        i: usize,
+        j: usize,
+        candidates: &[(String, usize, bool)],
+    ) -> bool {
+        let (dhash_i, dargs_i) = match &prop.binders[i] {
+            Ty::Data { hash, args } => (hash.clone(), args.clone()),
+            _ => return false,
+        };
+        let (dhash_j, dargs_j) = match &prop.binders[j] {
+            Ty::Data { hash, args } => (hash.clone(), args.clone()),
+            _ => return false,
+        };
+        let di = match self.store.data_by_hash.get(&dhash_i) {
+            Some(d) => d.clone(),
+            None => return false,
+        };
+        let dj = match self.store.data_by_hash.get(&dhash_j) {
+            Some(d) => d.clone(),
+            None => return false,
+        };
+        let ind_sort_i = {
+            let mut sc = Sorts::default();
+            sort_of(self.store, &prop.binders[i], &mut sc)
+        };
+        let ind_sort_j = {
+            let mut sc = Sorts::default();
+            sort_of(self.store, &prop.binders[j], &mut sc)
+        };
+        let is_rec = |ft: &Ty, sort: &str| {
+            let mut sc = Sorts::default();
+            sort_of(self.store, ft, &mut sc) == *sort
+        };
+
+        for (ci, (cname_i, cfields_i)) in di.ctors.iter().enumerate() {
+            let fields_i: Vec<Ty> =
+                cfields_i.iter().map(|f| inst_field(f, &dargs_i, &dhash_i)).collect();
+            let rec_i: Vec<usize> = (0..fields_i.len())
+                .filter(|&f| is_rec(&fields_i[f], &ind_sort_i))
+                .collect();
+            if rec_i.is_empty() {
+                // Base case: i := c(fresh), other binders at goal constants, no
+                // hypotheses. j is NOT split.
+                if !self.lex_subgoal(
+                    def_hash, prop, candidates, i, j, ci, cname_i, &fields_i, &rec_i, None,
+                    &ind_sort_j,
+                ) {
+                    return false;
+                }
+            } else {
+                for (cj, (cname_j, cfields_j)) in dj.ctors.iter().enumerate() {
+                    let fields_j: Vec<Ty> =
+                        cfields_j.iter().map(|f| inst_field(f, &dargs_j, &dhash_j)).collect();
+                    if !self.lex_subgoal(
+                        def_hash,
+                        prop,
+                        candidates,
+                        i,
+                        j,
+                        ci,
+                        cname_i,
+                        &fields_i,
+                        &rec_i,
+                        Some((cj, cname_j.as_str(), &fields_j)),
+                        &ind_sort_j,
+                    ) {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    /// One lexicographic subgoal. `jsplit` = Some((cj, cname_j, fields_j)) for a
+    /// doubly-split recursive case, None for an i-base case.
+    #[allow(clippy::too_many_arguments)]
+    fn lex_subgoal(
+        &self,
+        def_hash: &str,
+        prop: &Prop,
+        candidates: &[(String, usize, bool)],
+        i: usize,
+        j: usize,
+        _ci: usize,
+        cname_i: &str,
+        fields_i: &[Ty],
+        rec_i: &[usize],
+        jsplit: Option<(usize, &str, &[Ty])>,
+        ind_sort_j: &str,
+    ) -> bool {
+        let mut cx = Cx::new(self.store);
+        let lem = self.build_lemmas(&mut cx, candidates);
+        let mut decls = String::new();
+
+        let sort_i = sort_of(self.store, &prop.binders[i], &mut cx.sc);
+        let csmt_i = ctor_smt(cname_i, &sort_i);
+
+        // Other binders (not i, and not j when j is split) become goal constants.
+        let mut base_env: Vec<Option<(String, Ty)>> = vec![None; prop.binders.len()];
+        for (m, bt) in prop.binders.iter().enumerate() {
+            if m == i || (jsplit.is_some() && m == j) {
+                continue;
+            }
+            let vname = format!("b{}", m);
+            let s = sort_of(self.store, bt, &mut cx.sc);
+            decls.push_str(&format!("(declare-const {} {})\n", vname, s));
+            base_env[m] = Some((vname, bt.clone()));
+        }
+
+        // Constructor field constants for i.
+        let mut fi_consts: Vec<(String, Ty)> = Vec::new();
+        for (f, ft) in fields_i.iter().enumerate() {
+            let vname = format!("g{}", f);
+            let s = sort_of(self.store, ft, &mut cx.sc);
+            decls.push_str(&format!("(declare-const {} {})\n", vname, s));
+            fi_consts.push((vname, ft.clone()));
+        }
+        let constructed_i = build_ctor(&csmt_i, &fi_consts);
+
+        // Constructor field constants for j (split case only).
+        let mut constructed_j: Option<String> = None;
+        let mut rec_j: Vec<usize> = Vec::new();
+        let mut fj_consts: Vec<(String, Ty)> = Vec::new();
+        if let Some((_cj, cname_j, fields_j)) = jsplit {
+            let sort_j = sort_of(self.store, &prop.binders[j], &mut cx.sc);
+            let csmt_j = ctor_smt(cname_j, &sort_j);
+            for (f, ft) in fields_j.iter().enumerate() {
+                let vname = format!("h{}", f);
+                let s = sort_of(self.store, ft, &mut cx.sc);
+                decls.push_str(&format!("(declare-const {} {})\n", vname, s));
+                fj_consts.push((vname, ft.clone()));
+                let mut sc = Sorts::default();
+                if sort_of(self.store, ft, &mut sc) == *ind_sort_j {
+                    rec_j.push(f);
+                }
+            }
+            constructed_j = Some(build_ctor(&csmt_j, &fj_consts));
+        }
+
+        // Hypotheses.
+        let mut hyps = String::new();
+        // (a) i shrinks: for each recursive field of c_i, prop with i := that
+        //     field and every other binder universally generalized.
+        for &f in rec_i {
+            let mut fixed: BTreeMap<usize, (String, Ty)> = BTreeMap::new();
+            fixed.insert(i, fi_consts[f].clone());
+            if let Some(h) = self.forall_prop(&mut cx, prop, def_hash, &fixed) {
+                hyps.push_str(&format!("(assert {})\n", h));
+            }
+        }
+        // (b) j shrinks with i pinned: for each recursive field of c_j, prop with
+        //     i pinned to the constructed value, j := that field, rest generalized.
+        for &y in &rec_j {
+            let mut fixed: BTreeMap<usize, (String, Ty)> = BTreeMap::new();
+            fixed.insert(i, (constructed_i.clone(), prop.binders[i].clone()));
+            fixed.insert(j, fj_consts[y].clone());
+            if let Some(h) = self.forall_prop(&mut cx, prop, def_hash, &fixed) {
+                hyps.push_str(&format!("(assert {})\n", h));
+            }
+        }
+
+        // Subgoal: property with i (and j when split) at the constructed values,
+        // other binders at their goal constants.
+        let mut senv: Vec<(String, Ty)> = Vec::with_capacity(prop.binders.len());
+        for m in 0..prop.binders.len() {
+            if m == i {
+                senv.push((constructed_i.clone(), prop.binders[i].clone()));
+            } else if jsplit.is_some() && m == j {
+                senv.push((constructed_j.clone().unwrap(), prop.binders[j].clone()));
+            } else {
+                senv.push(base_env[m].clone().unwrap());
+            }
+        }
+        let goal = match cx.tr(&prop.body, &senv, &[], def_hash, &[]) {
+            Ok((g, _)) => g,
+            Err(_) => return false,
+        };
+        let mut tail = String::new();
+        tail.push_str(&lem);
+        tail.push_str(&decls);
+        tail.push_str(&hyps);
+        tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
+        run_z3(&Prover::assemble(&cx, &tail)) == Outcome::Unsat
+    }
+
+    fn prove_prop(&self, def_hash: &str, prop: &Prop, candidates: &[(String, usize, bool)]) -> bool {
+        let (o, quantified) = self.try_direct(def_hash, prop, candidates);
         if o == Outcome::Unsat {
             return true;
         }
@@ -841,9 +1179,24 @@ impl<'a> Prover<'a> {
         }
         for k in 0..prop.binders.len() {
             if matches!(prop.binders[k], Ty::Data { .. })
-                && self.try_induction_binder(def_hash, prop, k, lemmas)
+                && self.try_induction_binder(def_hash, prop, k, candidates)
             {
                 return true;
+            }
+        }
+        // Lexicographic induction on ordered pairs of distinct datatype binders,
+        // in ascending (i, j) order; accept the first pair that fully discharges.
+        for i in 0..prop.binders.len() {
+            if !matches!(prop.binders[i], Ty::Data { .. }) {
+                continue;
+            }
+            for j in 0..prop.binders.len() {
+                if i == j || !matches!(prop.binders[j], Ty::Data { .. }) {
+                    continue;
+                }
+                if self.try_induction_lex(def_hash, prop, i, j, candidates) {
+                    return true;
+                }
             }
         }
         false
@@ -895,31 +1248,6 @@ fn collect_refs(t: &Term, out: &mut BTreeSet<String>) {
     }
 }
 
-/// Transitive function dependencies of a definition, BFS in sorted hash order.
-fn transitive_deps(store: &Store, hash: &str) -> Vec<String> {
-    let mut seen = BTreeSet::new();
-    let mut order = Vec::new();
-    let mut queue: VecDeque<String> = VecDeque::new();
-    if let Some(def) = store.def_by_hash.get(hash) {
-        for d in body_and_prop_refs(def) {
-            queue.push_back(d);
-        }
-    }
-    while let Some(h) = queue.pop_front() {
-        if !seen.insert(h.clone()) {
-            continue;
-        }
-        order.push(h.clone());
-        if let Some(def) = store.def_by_hash.get(&h) {
-            for d in body_and_prop_refs(def) {
-                if !seen.contains(&d) {
-                    queue.push_back(d);
-                }
-            }
-        }
-    }
-    order
-}
 
 /// Every definition hash a type mentions — data instances and (recursively)
 /// their type arguments. `Rec` is the self-reference of the datatype being
@@ -1076,6 +1404,105 @@ fn lemma_admissible(store: &Store, fp: &BTreeSet<String>, e_hash: &str, pi: usiz
     }
 }
 
+/// The dependency closure for a definition's lemma candidates (SPEC §7.2):
+/// UNIFORM body+props at every level — the seed is the definition's body and
+/// property references, and each traversal step likewise adds a dependency's
+/// body AND property references (a dependency's own props DO extend the closure).
+/// BFS, deduplicated.
+fn dep_closure(store: &Store, hash: &str) -> Vec<String> {
+    let mut seen = BTreeSet::new();
+    let mut order = Vec::new();
+    let mut queue: VecDeque<String> = VecDeque::new();
+    if let Some(def) = store.def_by_hash.get(hash) {
+        for d in body_and_prop_refs(def) {
+            queue.push_back(d);
+        }
+    }
+    while let Some(h) = queue.pop_front() {
+        if !seen.insert(h.clone()) {
+            continue;
+        }
+        order.push(h.clone());
+        if let Some(def) = store.def_by_hash.get(&h) {
+            for d in body_and_prop_refs(def) {
+                if !seen.contains(&d) {
+                    queue.push_back(d);
+                }
+            }
+        }
+    }
+    order
+}
+
+/// The candidate lemma set for property `pi` of `def_hash` given a proven set
+/// (SPEC §7.2 construction): every proven property of the transitive dependency
+/// closure, plus every recorded-proven property of the definition itself
+/// (including `pi` if it is recorded proven). Each is tagged with whether it is
+/// ADMISSIBLE for emission — a dependency by the footprint test, an own property
+/// by `index != pi` (siblings admissible, the own lemma excluded). All are
+/// translated (touching declarations/axioms); only admissible ones are asserted.
+/// Sorted by (definition-hash, property-index).
+fn candidate_lemmas(
+    store: &Store,
+    def_hash: &str,
+    pi: usize,
+    prop: &Prop,
+    proven: &BTreeSet<(String, usize)>,
+) -> Vec<(String, usize, bool)> {
+    let fp = footprint(store, def_hash, prop);
+    let mut cands = Vec::new();
+    for d in dep_closure(store, def_hash) {
+        if let Some(Def::Func { props, .. }) = store.def_by_hash.get(&d) {
+            for j in 0..props.len() {
+                if proven.contains(&(d.clone(), j)) {
+                    cands.push((d.clone(), j, lemma_admissible(store, &fp, &d, j)));
+                }
+            }
+        }
+    }
+    if let Some(Def::Func { props, .. }) = store.def_by_hash.get(def_hash) {
+        for j in 0..props.len() {
+            if proven.contains(&(def_hash.to_string(), j)) {
+                cands.push((def_hash.to_string(), j, j != pi));
+            }
+        }
+    }
+    cands.sort_by(|a, b| (a.0.as_str(), a.1).cmp(&(b.0.as_str(), b.1)));
+    cands
+}
+
+/// Byte oracle (SPEC §7.2): for every function definition with properties, and
+/// every property whose direct goal translates, the sha256 of its DIRECT-attempt
+/// core script under the given proven (final lemma) state. Returned as
+/// (def name, zero-based prop index, sha256-hex), sorted by name, for comparison
+/// against fixtures/prove/scripts.txt. Outside-fragment properties are omitted.
+pub fn scripts_for(
+    store: &Store,
+    proven: &BTreeSet<(String, usize)>,
+) -> Vec<(String, usize, String)> {
+    let prover = Prover { store };
+    let mut by_name: Vec<(String, String)> = store
+        .func_by_name
+        .iter()
+        .map(|(n, fi)| (n.clone(), fi.hash.clone()))
+        .collect();
+    by_name.sort();
+    let mut out = Vec::new();
+    for (name, hash) in by_name {
+        let props = match store.def_by_hash.get(&hash) {
+            Some(Def::Func { props, .. }) => props.clone(),
+            _ => continue,
+        };
+        for (pi, prop) in props.iter().enumerate() {
+            let cands = candidate_lemmas(store, &hash, pi, prop, proven);
+            if let Some((script, _)) = prover.direct_script(&hash, prop, &cands) {
+                out.push((name.clone(), pi, sha256_hex(script.as_bytes())));
+            }
+        }
+    }
+    out
+}
+
 pub struct ProofResult {
     pub proven: Vec<bool>, // per prop index
 }
@@ -1128,108 +1555,84 @@ pub fn prove_all(store: &Store, falsified: &BTreeSet<String>) -> BTreeMap<String
         }
     }
 
-    let mut prover = Prover { store, proven: BTreeSet::new() };
+    let prover = Prover { store };
 
-    // Precompute transitive deps once.
-    let deps_of: BTreeMap<String, Vec<String>> =
-        order.iter().map(|h| (h.clone(), transitive_deps(store, h))).collect();
-
-    // Proof fixpoint (SPEC §7.2 + §7.2's fixpoint-gating permission, issue #24).
+    // TWO-LEVEL proof fixpoint (SPEC §7.2). A budget-limited solver is NON-
+    // MONOTONE in its axiom set — a goal that proves from a small lemma set can
+    // fail once more (irrelevant) lemmas are asserted and divert the search into
+    // rlimit exhaustion — so a proof earned against a partial in-run lemma state
+    // may not survive re-derivation from the FINAL recorded state. The recorded
+    // verdicts must therefore be RUN-STABLE: S = F(S), where F(S) attempts every
+    // non-falsified property once with candidate lemmas drawn from S (fixed for
+    // the pass). We iterate F from the empty state to a fixpoint (the conformance
+    // outcome is defined as this limit), bounded at 8 rounds; without it a cold
+    // run can record a proof its own recorded state cannot reproduce.
     //
-    // The lemma set for a property is every OTHER proven property of the same
-    // definition plus all proven properties of its transitive dependencies.
-    // Because a definition's own proven props accumulate, a later-indexed
-    // sibling can serve as a lemma for an earlier one, so we iterate to a
-    // fixpoint. Two structural choices make that fixpoint cheap while staying
-    // outcome-identical:
+    // F(S) itself is the INNER GROWTH FIXPOINT (Gauss-Seidel, NOT a single
+    // pass): within a round a property proven in-run immediately joins the
+    // candidate pool for later attempts, definitions are visited in dependency
+    // order, and within a definition properties are attempted in ascending index
+    // order, re-iterating until none newly proves. The candidate state for each
+    // attempt is `recorded ∪ in-run` (minus the property's own lemma). Pinning
+    // the scheme — not just the stability criterion — is what makes the limit
+    // deterministic when more than one self-consistent state exists.
     //
-    //  * `order` is a topological sort of the (acyclic) dependency graph, so a
-    //    definition's transitive-dep proofs are FINAL by the time we reach it.
-    //    We therefore process each definition once, in order, and compute its
-    //    dep-lemma set a single time — dependency growth never re-triggers a
-    //    re-attempt.
-    //  * Within a definition we run a LOCAL fixpoint over its own properties,
-    //    and gate re-attempts on lemma-set growth (§7.2): a goal is re-attempted
-    //    only when a same-definition sibling has been proven since its last
-    //    failed attempt. So a genuinely-unprovable goal burns its full solver
-    //    budget ONCE, not once per global iteration.
-    //
-    // This computes the same greatest fixpoint as a naive global loop (the dep
-    // graph is a DAG with no mutual recursion, so the per-definition
-    // decomposition is exact), but attempts each hopeless goal a single time.
-    for hash in &order {
-        let props = match store.def_by_hash.get(hash) {
-            Some(Def::Func { props, .. }) => props.clone(),
-            _ => continue,
-        };
-        if falsified.contains(hash) {
-            continue; // never proved (§7.3: upgrade requires tested)
-        }
-        // Per-property footprints (SPEC §7.2 lemma relevance, #25).
-        let footprints: Vec<BTreeSet<String>> =
-            props.iter().map(|p| footprint(store, hash, p)).collect();
-        // Transitive-dep proven props — final, since deps precede us in `order`.
-        let mut all_dep_proven: Vec<(String, usize)> = Vec::new();
-        for d in &deps_of[hash] {
-            if let Some(Def::Func { props: dp, .. }) = store.def_by_hash.get(d) {
-                for pi in 0..dp.len() {
-                    if prover.proven.contains(&(d.clone(), pi)) {
-                        all_dep_proven.push((d.clone(), pi));
+    // Per-property caching keys on the actual candidate lemma set, so an attempt
+    // whose candidate set is unchanged (within or across rounds) reuses its prior
+    // verdict instead of re-running the solver.
+    let mut recorded: BTreeSet<(String, usize)> = BTreeSet::new();
+    let mut cache: BTreeMap<(String, usize), (Vec<(String, usize, bool)>, bool)> = BTreeMap::new();
+    for _round in 0..8 {
+        let mut in_run: BTreeSet<(String, usize)> = BTreeSet::new();
+        // combined = recorded ∪ in_run, kept in sync as in_run grows this round.
+        let mut combined = recorded.clone();
+        for hash in &order {
+            let props = match store.def_by_hash.get(hash) {
+                Some(Def::Func { props, .. }) => props.clone(),
+                _ => continue,
+            };
+            if falsified.contains(hash) {
+                continue; // never proved (§7.3: upgrade requires tested)
+            }
+            // Local growth fixpoint over this definition's properties.
+            loop {
+                let mut changed = false;
+                for (pi, prop) in props.iter().enumerate() {
+                    let key = (hash.clone(), pi);
+                    if in_run.contains(&key) {
+                        continue;
+                    }
+                    let cands = candidate_lemmas(store, hash, pi, prop, &combined);
+                    let proved = match cache.get(&key) {
+                        Some((c, r)) if *c == cands => *r,
+                        _ => {
+                            let r = prover.prove_prop(hash, prop, &cands);
+                            cache.insert(key.clone(), (cands, r));
+                            r
+                        }
+                    };
+                    if proved {
+                        in_run.insert(key.clone());
+                        combined.insert(key);
+                        changed = true;
                     }
                 }
+                if !changed {
+                    break;
+                }
             }
         }
-        // Dependency lemmas admissible for each property: its definition and its
-        // body references must lie inside that property's footprint (§7.2).
-        // Sibling (same-definition) lemmas are admissible unconditionally and are
-        // added inside the fixpoint below.
-        let dep_lemmas: Vec<Vec<(String, usize)>> = footprints
-            .iter()
-            .map(|fp| {
-                all_dep_proven
-                    .iter()
-                    .filter(|(e, ei)| lemma_admissible(store, fp, e, *ei))
-                    .cloned()
-                    .collect()
-            })
-            .collect();
-        // Local fixpoint over this definition's properties.
-        let mut last_lemma_count: BTreeMap<usize, usize> = BTreeMap::new();
-        loop {
-            let mut changed = false;
-            for (pi, prop) in props.iter().enumerate() {
-                if prover.proven.contains(&(hash.clone(), pi)) {
-                    continue;
-                }
-                let mut lemmas = dep_lemmas[pi].clone();
-                for j in 0..props.len() {
-                    if j != pi && prover.proven.contains(&(hash.clone(), j)) {
-                        lemmas.push((hash.clone(), j));
-                    }
-                }
-                // Gate: skip unless the available lemma set has grown since the
-                // last failed attempt (dep-lemmas are fixed here, so growth can
-                // only come from a newly-proven sibling).
-                if last_lemma_count.get(&pi) == Some(&lemmas.len()) {
-                    continue;
-                }
-                last_lemma_count.insert(pi, lemmas.len());
-                if prover.prove_prop(hash, prop, &lemmas) {
-                    prover.proven.insert((hash.clone(), pi));
-                    changed = true;
-                }
-            }
-            if !changed {
-                break;
-            }
+        if in_run == recorded {
+            break;
         }
+        recorded = in_run;
     }
 
     let mut results: BTreeMap<String, ProofResult> = BTreeMap::new();
     for hash in &order {
         if let Some(Def::Func { props, .. }) = store.def_by_hash.get(hash) {
             let flags = (0..props.len())
-                .map(|pi| prover.proven.contains(&(hash.clone(), pi)))
+                .map(|pi| recorded.contains(&(hash.clone(), pi)))
                 .collect();
             results.insert(hash.clone(), ProofResult { proven: flags });
         }

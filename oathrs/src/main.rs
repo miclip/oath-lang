@@ -249,6 +249,63 @@ fn cmd_prove(paths: &[String]) -> i32 {
     0
 }
 
+/// Byte oracle (SPEC §7.2): emit `name\tprop\tsha256` for every property's
+/// DIRECT-attempt core script, under the recorded proven (final lemma) state
+/// read from an outcomes.json. No solver is run — this is a pure function of
+/// the corpus + recorded lemma state, for comparison against
+/// fixtures/prove/scripts.txt.
+#[cfg(feature = "prove")]
+fn cmd_scripts(paths: &[String], outcomes_path: &str) -> i32 {
+    use oathrs::prove;
+    let files = match read_files(paths) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("error: {}", e);
+            return 1;
+        }
+    };
+    let store = match elaborate_corpus(&files) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: {}", e);
+            return 1;
+        }
+    };
+    let text = match std::fs::read_to_string(outcomes_path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("error reading {}: {}", outcomes_path, e);
+            return 1;
+        }
+    };
+    // Recorded proven state: (def hash, zero-based prop index) that are proven.
+    // The pretty-printed outcomes.json puts one field per line; a def's "hash"
+    // opens it (resetting the prop counter), and each prop's "proven" advances it.
+    let mut proven = std::collections::BTreeSet::new();
+    let mut cur = String::new();
+    let mut pi = 0usize;
+    for line in text.lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("\"hash\":") {
+            let h: String = rest.chars().filter(|c| c.is_ascii_hexdigit()).collect();
+            if h.len() == 64 {
+                cur = h;
+                pi = 0;
+            }
+        } else if t.starts_with("\"proven\":") {
+            if t.contains("true") {
+                proven.insert((cur.clone(), pi));
+            }
+            pi += 1;
+        }
+    }
+    println!("# name\tprop\tsha256(direct-attempt script)");
+    for (name, idx, sha) in prove::scripts_for(&store, &proven) {
+        println!("{}\t{}\t{}", name, idx, sha);
+    }
+    0
+}
+
 /// Build the SPEC §1.5 golden O1 encoding Defs by hand and compare against the
 /// fixture .bin files (byte-identity + manifest hash), then round-trip each
 /// through the strict decoder.
@@ -431,6 +488,31 @@ fn run() -> i32 {
         }
         #[cfg(feature = "prove")]
         "prove" => cmd_prove(&args[2..]),
+        #[cfg(feature = "prove")]
+        "scripts" => {
+            let mut outcomes: Option<String> = None;
+            let mut files: Vec<String> = Vec::new();
+            let mut i = 2;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--outcomes" => {
+                        outcomes = args.get(i + 1).cloned();
+                        i += 2;
+                    }
+                    _ => {
+                        files.push(args[i].clone());
+                        i += 1;
+                    }
+                }
+            }
+            match outcomes {
+                Some(o) => cmd_scripts(&files, &o),
+                None => {
+                    eprintln!("usage: oathrs scripts --outcomes <outcomes.json> <files>");
+                    1
+                }
+            }
+        }
         "enctest" => {
             if args.len() < 3 {
                 eprintln!("usage: oathrs enctest <encoding-dir>");

@@ -16,8 +16,8 @@
   "waived_mutants": [
     {
       "hash": "db8e48fd499242ec1c8fa5bba3c51600d947996a483d1899c2268c7a94e2ab3e",
-      "desc": "< \u2192 <=",
-      "reason": "equality-first search: the < vs <= branch is only reached when x != v, where both compare identically (hand analysis; dead-branch argument)",
+      "desc": "\u003c → \u003c=",
+      "reason": "equality-first search: the \u003c vs \u003c= branch is only reached when x != v, where both compare identically (hand analysis; dead-branch argument)",
       "by": "claude-main"
     }
   ],

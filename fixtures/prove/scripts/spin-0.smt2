@@ -1,0 +1,5 @@
+(declare-fun fn_spin (Int) Int)
+(declare-const b0 Int)
+(assert (not (= (fn_spin b0) 0)))
+(check-sat)
+(get-model)

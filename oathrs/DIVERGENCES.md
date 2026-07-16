@@ -706,3 +706,181 @@ cases. Findings and settled ambiguities:
     #24 fixpoint gate: the admissible dependency set is fixed per property (deps
     are final in topological order) and only siblings grow, so lemma-set size
     stays monotone and the growth gate is unchanged.
+
+## Lexicographic induction + script stability (#17)
+
+62. **Lexicographic induction — subgoal construction choices (SPEC §7.2).**
+    Implemented after single-binder induction: for each ordered pair (i, j) of
+    distinct datatype binders in ascending order, accept the first pair whose
+    subgoals all discharge. Per constructor c of i's datatype: a no-recursive-
+    field c gives one base subgoal (i := c(fresh), other binders at goal
+    constants, no hypotheses, j NOT split); a recursive c splits on each
+    constructor c' of j's datatype, with hypothesis family (a) — for each
+    recursive field of c, the property with i := that field and all other
+    binders (j included) universally generalized — and family (b) — for each
+    recursive field of c', the property with i PINNED to the constructed
+    c(fresh) value, j := that field, remaining binders generalized. Two points
+    §7.2 leaves to the implementation, neither outcome-visible (induction scripts
+    are not byte-oracle-pinned, only direct attempts are): (i) SUBGOAL AND
+    HYPOTHESIS ORDER within a pair — I emit family (a) before (b) and iterate
+    constructors in stored order; z3 sees all hypotheses as an unordered
+    assertion set, so order cannot change `unsat`. (ii) FRESH NAMES for the
+    doubly-split fields — `g<fi>` for the first binder's fields, `h<fj>` for the
+    second's, `b<m>` for goal constants, `q<m>` for generalized binders; all
+    deterministic per subgoal. Corpus effect as specified: `merge` proves 3/3,
+    including `keeps-sortedness`.
+
+63. **`q-drop.drop-back-only` and the road to a byte-identical prover (SPEC §7.1,
+    §7.2 — the deepest N-version findings of the project).** I first observed
+    `drop-back-only` proving for my kernel (3/5) but recorded unproven in the
+    fixture (2/5), and traced it to SMT-script name-sensitivity: at a 15s
+    wall-clock budget the two kernels' byte-different scripts landed z3 on
+    opposite sides of a budget-edge goal. Rather than force it green I flagged it,
+    and adjudication replaced the whole non-determinism substrate with a
+    fully-specified, byte-identical prover. The complete regime, now normative and
+    verified by a byte oracle (`fixtures/prove/scripts.txt` + `scripts/*.smt2`):
+    - **Deterministic budget.** The per-goal budget is z3's machine-independent
+      `(set-option :rlimit 400000000)` (env `OATHRS_Z3_RLIMIT`), not wall-clock;
+      the outcome is a function of (script bytes, solver version, rlimit). A
+      wall-clock cap (env `OATHRS_Z3_WALL_CAP_MS`, default 180000) is a pure
+      safety net: if it fires the run is INVALIDATED (process exits, no verdict),
+      never recorded as a timeout. (My sandbox is slow enough that 400M rlimit
+      can exceed 180s wall, so I run conformance with a raised cap — outcome-
+      neutral, since the cap can only invalidate, never decide.)
+    - **Byte-identical scripts.** With the naming/ordering rules below, all 161
+      direct-attempt scripts hash-match `scripts.txt` and all 8 golden `.smt2`
+      texts match byte-for-byte. `drop-back-only` now converges to a stable
+      UNPROVEN at 400M — cold and warm agree — one theorem honestly lost to the
+      budget edge in exchange for a ledger that cannot flip. My earlier proof was
+      real but non-reproducible; the deterministic regime is worth more.
+    Two of the rules were SPEC GAPS §7.1 never stated — I could not have derived
+    them, and they are logged as entries 64-65 below alongside the two structural
+    rules that fell out of the byte-oracle diff (66-67).
+
+64. **SMT symbols are metadata-derived, and function symbols carry an `fn_`
+    prefix (SPEC §7.1; the prefix was a SPEC GAP).** SMT identifiers are the
+    sanitized metadata name, not the hash: a data sort is `<defName><typeArgs>`
+    joined by `_` (`List_Int`), a constructor `<ctor>_<sort>` (`Cons_List_Int`),
+    a selector `<constructor>_<fieldIndex>` (`Cons_List_Int_0`), a record sort
+    `Rec_<field>_<sort>…` with constructor `mk_<recordSort>` and field selectors
+    `mk_<recordSort>_<field>`. Functions were the gap: §7.1 gave the data/ctor
+    scheme but not the function scheme, and my initial `f_<hash8>` reproduced
+    nothing datatype-shaped. The reference form is `fn_` + sanitized def name +
+    sanitized type-arg sorts (`fn_length_Int`, monomorphic `fn_spin`); §7.1 now
+    states it. This one fix took the byte-oracle match from 15/161 to 33/161 —
+    every script with a datatype or function had been diverging on identifiers.
+
+65. **A nullary constructor renders with a trailing space before its close paren
+    (SPEC §7.1; a SPEC GAP).** Constructor declarations are `(<ctor> <sel>…)`
+    with selectors space-joined AFTER a leading space, so a zero-field
+    constructor is `(Nil_List_Int )` — a space precedes the `)`. §7.1 never
+    said so; the golden `length-0.smt2`/`spin-0.smt2` pinned it. Now byte-
+    normative and applied to data and record constructors alike.
+
+66. **The lemma-candidate dependency closure is UNIFORM body+props at every
+    level; per-property admissibility, not closure membership, does the
+    filtering (SPEC §7.2).** The closure seeds from the definition-under-proof's
+    body AND property references and traverses each dependency likewise — a
+    dependency's own PROPERTIES extend the closure. So `t-size`'s script declares
+    `fn_is_sorted`/`fn_count` because a transitive dependency's (`t-flatten`'s)
+    properties reach them, even though `t-size` never calls them. I first
+    mis-read this two ways — body-only traversal (dropped q-drop's prop-seeded
+    `append`/`reverse`) and body+prop with a narrower footprint — before the
+    q-drop and t-size goldens pinned the uniform rule. Relevance (#25) still
+    filters *emission* per property via the footprint; it does not prune the
+    *declaration/axiom* set, which follows the full candidate closure.
+
+67. **No rollback: declarations and axioms from a partial or non-total-callee
+    body translation REMAIN even when nothing asserts them (SPEC §7.2).** A goal's
+    script is built by translating every candidate lemma and every callee body
+    for its side effects (registering datatypes/functions in first-touch order),
+    and those registrations are never rolled back. Two consequences the goldens
+    require: (a) a candidate lemma whose formula falls outside the fragment is
+    skipped from emission but its already-registered symbols persist (q-drop-2
+    declares `Option_Int`, used by no assertion); (b) a recursive callee's body
+    is translated to discover its own callees regardless of totality, but the ∀
+    defining axiom is asserted ONLY when the callee is proven total — so a
+    non-total callee like `rle-expand`, reached through non-total `rle-decode`'s
+    body during goal translation, is DECLARED (orphan) though neither gets an
+    axiom (rle-encode-0). Implementation: `build_axiom` always translates the
+    body; the totality gate wraps only the `(assert …)`. This is the same
+    no-rollback principle the deterministic-script regime rests on.
+
+68. **Per-script determinism is NOT verdict determinism: the proof fixpoint is
+    itself path-dependent, and recorded verdicts must be RUN-STABLE (SPEC §7.2;
+    found only by cold re-derivation of the whole corpus).** After the byte
+    oracle went green — every script byte-identical, every outcome therefore
+    reproducible FROM A GIVEN recorded state — a cold-parity run (fresh store,
+    all proofs re-earned from ∅) still diverged on one definition: `q-drop`
+    cold-converged to proven {0,1,2} while the settled store records {0,2}.
+    Mechanism: `drop-back-only` (index 1) proves from a SMALL in-run lemma set
+    (early in a cold pass, before `drop-empty` is proven) but FAILS once
+    `drop-empty` is also asserted — a budget-limited (rlimit-bounded) solver is
+    NON-MONOTONE in its axiom set; an extra, irrelevant lemma diverts the search
+    into rlimit exhaustion. So a single cold pass RECORDS a proof that the very
+    state it records cannot reproduce (re-running prove on that store drops it,
+    {0,1,2} → {0,2}). The growth fixpoint alone is thus insufficient: its result
+    depends on the ORDER siblings happened to prove within the run.
+    Fix (now normative, and implemented as an outer loop around the growth
+    fixpoint): a two-level fixpoint. Inner = the lemma-growth iteration. Outer =
+    RUN STABILITY — the recorded set S must satisfy S = F(S), where F(S) attempts
+    every non-falsified property once with candidate lemmas drawn from the fixed
+    state S; iterate F from ∅ until stable (bounded 8 rounds; the corpus worst
+    case is ∅ → {0,1,2} → {0,2} → stable for q-drop). The conformance outcome is
+    defined as this limit, which converges to the warm verdicts (q-drop 2/5).
+    Script bytes are UNCHANGED — the outer loop is run-level control flow; every
+    attempt's script is still f(goal, recorded state), so scripts.txt and all 8
+    goldens remain byte-identical and outcomes.json is untouched (every warm
+    corpus state was already F-stable; only a cold pass could expose the hole).
+    This is the N-version process at its sharpest: two independently-built
+    kernels agreeing byte-for-byte on every emitted script still disagreed on a
+    verdict, because the disagreement lived in the control flow that CHOOSES
+    which scripts to emit and in what state — a layer no per-script oracle can
+    see. Only re-deriving the entire corpus from nothing surfaced it.
+
+69. **The run-stability round is a full inner GROWTH fixpoint (Gauss-Seidel),
+    not a single pass (Jacobi) — the scheme, not just the criterion, must be
+    pinned (SPEC §7.2).** My first cut of #68 ran each F-round as a single pass
+    that attempted every property against the FIXED recorded state, deferring
+    all in-round proofs to the next round (Jacobi iteration). The reference runs
+    each round as the inner growth fixpoint: a property proven in-run
+    IMMEDIATELY joins the candidate pool for later attempts in the SAME round
+    (Gauss-Seidel), definitions in dependency order, properties in ascending
+    index order, re-iterating until none newly proves. The two schemes have
+    PROVABLY IDENTICAL stability criteria — S is stable iff every pi∈S proves
+    against exactly S∖{pi} and every pj∉S fails against S∖{pj} — so on any
+    definition with a unique reachable stable state (the entire current corpus)
+    they agree. But when multiple self-consistent states exist, the PATH from ∅
+    selects which one is reached, and Jacobi and Gauss-Seidel take different
+    paths (and would record different last-states should the 8-round bound ever
+    fire on a cycle). Determinism across independent kernels therefore requires
+    pinning the ITERATION SCHEME, not merely the fixpoint equation. Implemented
+    as the inner growth loop (candidate state = `recorded ∪ in-run`, minus own)
+    wrapped by the outer S = F(S) iteration. Byte oracle unaffected: at the
+    stable round in-run equals recorded, so every attempt still sees exactly
+    S∖{own} — the state scripts.txt and the goldens encode.
+
+70. **The wall-clock SAFETY CAP is outcome-relevant the instant an implementation
+    RECORDS instead of INVALIDATES — and taking the spec literally exposed the
+    reference doing the former (SPEC §7.2).** SPEC §7.2 says the deterministic
+    budget is the rlimit and the wall-clock cap is a pure safety net: if it fires
+    before the rlimit is reached, the run is INVALIDATED and no outcome is
+    recorded. My kernel implemented that literally — `run_z3` exits(3) on cap
+    expiry, aborting the whole prove with nothing recorded. Run through
+    conformance on reference-class hardware, that exit(3) fired: burning 400M
+    rlimit on quantifier-heavy goals legitimately exceeds a 180s wall cap there.
+    The reference kernel, it turned out, was NOT invalidating — its `runZ3` used a
+    context timeout that silently killed z3 at the cap and returned truncated
+    output, which parsed as `unknown` and was RECORDED as unproven. So a goal that
+    would have proven at minute four was recorded unproven the moment wall-clock,
+    not rlimit, cut it off — a machine-dependent verdict, the precise disease the
+    whole rlimit regime exists to cure. Two independent kernels, byte-identical
+    scripts, and the disagreement was in what each did when the SAFETY net caught
+    a slow-but-legitimate attempt: one recorded a hardware-dependent guess, the
+    other refused. The reference now returns a cap-hit sentinel and aborts the run
+    on invalidation, and the cap is raised 180s → 600s (a safety cap must sit far
+    above legitimate rlimit exhausts; 180s demonstrably does not on real
+    hardware). My change was one line — `DEFAULT_WALL_CAP_MS` 180000 → 600000; the
+    exit-and-record-nothing semantics were already correct. Only a blind kernel
+    that implemented the spec's invalidation rule instead of inheriting the host
+    language's silent-timeout habit could have surfaced this.

@@ -462,9 +462,10 @@ The provable fragment and its translation, normative for outcome
 reproducibility (given the same solver):
 
 - Sorts: `Int`, `Bool`, `Str`→`String`; monomorphic data instances as
-  algebraic datatypes (names derived from metadata but NOT semantically
-  significant — only structure is); records as single-constructor
-  datatypes; function types as `(Array dom cod)` applied via `select`.
+  algebraic datatypes (names derived from metadata per §7.1 — semantically
+  inert for outcomes, but BYTE-significant: script identity is fixtured,
+  §7.2); records as single-constructor datatypes; function types as
+  `(Array dom cod)` applied via `select`.
 - Non-recursive callees are inlined (beta-reduction); recursive callees are
   declared uninterpreted. Their defining equation is asserted as a universally
   quantified axiom with the application as pattern **only when the callee is
@@ -475,7 +476,12 @@ reproducibility (given the same solver):
   goal by ex falso — certifying false properties and, through the lemma
   library, poisoning every dependent. A non-total recursive callee is therefore
   left uninterpreted with no defining equation: sound, merely weaker (goals that
-  needed its definition return `unknown`). Additionally, a property already
+  needed its definition return `unknown`). Registration is EAGER and the
+  totality gate governs only the ASSERT: every recursive callee is declared
+  and its body translated at first touch regardless of totality — so a
+  non-total callee's own callees get declared too. This is byte-visible in
+  the script fixtures as orphan `declare-fun`s (`fn_rle_expand` in the
+  rle-encode goldens arrives through non-total `rle-decode`'s body). Additionally, a property already
   refuted by deterministic testing (§4) is never recorded as proven even if the
   solver reports it valid — the concrete counterexample governs.
 - `match` translates to tester/selector ite-chains.
@@ -516,6 +522,14 @@ reproducibility (given the same solver):
 - Data sort names start with sanitized metadata definition name plus sanitized
   type-argument sorts. Constructor names are sanitized constructor metadata
   plus `_` plus the data sort name. Selector names are `<constructor>_<fieldIndex>`.
+- Declared function symbols are `fn_` plus the sanitized metadata definition
+  name plus sanitized type-argument sorts, `_`-joined (`fn_length_Int`;
+  monomorphic `fn_spin`). The prefix keeps function symbols from colliding
+  with sort or constructor names under sanitization.
+- Byte form of a constructor declaration: `(<ctor> <selectors...>)` with
+  selectors space-joined after a leading space — a NULLARY constructor
+  therefore renders with a trailing space, `(Nil_List_Int )`. Scripts are
+  byte-fixtured (§7.2), so this detail is normative.
 
 ### 7.2 Calls, lemmas, and induction
 
@@ -530,25 +544,55 @@ reproducibility (given the same solver):
   implementation.
 - `self` inside a property means the definition under proof and is translated
   the same way as a call to the definition's hash.
-- The lemma queue starts with all dependencies of the definition under proof,
-  then traverses transitive dependencies breadth-first in sorted hash order.
-  For every function dependency, metadata `proven_props` indices in stored
-  order become lemma axioms when their properties translate.
+- Candidate-lemma closure: the transitive dependency closure of the
+  definition under proof, where a definition's dependencies are EVERYTHING
+  its body AND its properties reference — uniformly, at the seed and at
+  every traversal step (a dependency's own properties extend the closure).
+  Traversal order is irrelevant: only MEMBERSHIP matters, because
+  candidates are collected first and then translated in ascending
+  (definition-hash, property-index) order. For every function member,
+  metadata `proven_props` indices contribute candidates.
+- A candidate lemma whose formula fails to translate is skipped, but
+  declarations and axioms already accumulated by the partial translation
+  REMAIN in the context — there is no rollback. This is deterministic
+  (canonical candidate order) and byte-visible in the script fixtures: a
+  script may declare sorts or functions that no surviving assertion
+  mentions (`Option_Int` in the q-drop goldens arrives this way).
 - Previously proven properties of the definition itself are also lemmas, tagged
   by property index. A property's own lemma is excluded while proving that
   property. A property proven earlier in the same `prove` run becomes a lemma
   for later properties.
-- **Self-lemma availability is a fixpoint, not a single ordered pass.** The
-  recorded outcomes are those after `proven_props` stabilizes: a kernel MUST
-  iterate proving (each property's lemma set = every *other* proven property
-  of the definition, whether proven earlier in this pass or in a prior one)
-  until no new property proves. A single declaration-order pass is
-  insufficient — the canonical witness is `reverse`: `involution` (index 0)
-  is provable only with `antidistributes-over-append` (index 1) as a lemma,
-  so it proves on the second iteration. (Found by independent implementation:
-  a literal one-pass reading yields 188/189 conformance. The reference
-  reaches the fixpoint across successive `prove` runs via accumulated
-  `proven_props` metadata; a conforming kernel may iterate internally.)
+- **Self-lemma availability is a TWO-LEVEL fixpoint, not a single ordered
+  pass.** Inner level (growth): within a run, iterate proving (each
+  property's lemma set = every *other* proven property of the definition,
+  whether proven earlier in this pass or in a prior one) until no new
+  property proves. Attempts proceed in ascending property-index order, and
+  an in-run proof joins the lemma set IMMEDIATELY (available to the next
+  attempt of the same pass, not deferred to the next pass) — this
+  Gauss-Seidel path is normative, not just the stability criterion: when
+  several self-consistent states exist, the path from the start state
+  selects which one is reached, so two kernels must walk the same path. A single declaration-order pass is insufficient — the
+  canonical witness is `reverse`: `involution` (index 0) is provable only
+  with `antidistributes-over-append` (index 1) as a lemma, so it proves on
+  the second iteration. (Found by independent implementation: a literal
+  one-pass reading yields 188/189 conformance.)
+  Outer level (RUN STABILITY, normative): the recorded `proven_props` MUST
+  be a fixpoint of the whole-run map F(S) = the proven set produced by
+  running the inner fixpoint with S as the recorded state. Growth alone is
+  not enough, because a budget-limited solver is NON-MONOTONE in its axiom
+  set: a property proven early in a cold run (small lemma set) is not
+  necessarily re-provable from the final state — extra lemmas can divert
+  the search into budget exhaustion. The corpus witness is `q-drop`:
+  `drop-back-only` proves from `{drop-front-nonempty}` alone but NOT once
+  `drop-empty` is also asserted, so a single cold pass records a proof the
+  recorded state cannot reproduce, and the next run silently drops it —
+  warm and cold runs land on different verdicts. A kernel MUST therefore
+  iterate F until S = F(S) before recording (the reference bounds this at
+  8 rounds and has never seen more than 3): every recorded proof is then
+  re-derivable from exactly the state the store records, and warm/cold
+  runs converge to the same self-consistent verdicts. Conformance
+  outcomes (`prove/outcomes.json`) are the limit of F from the empty
+  state.
 - **Lemma relevance (normative).** A goal's *footprint* is the smallest set
   of definition hashes containing the definition under proof and every
   definition referenced by the property's binders and body, closed
@@ -566,6 +610,96 @@ reproducibility (given the same solver):
   exists to remove). This bounds each proof's
   axiom set by what the goal can reach instead of by the library's size
   (#25).
+- **Lexicographic induction (normative).** When single-binder induction
+  fails, kernels MUST attempt lexicographic induction on each ordered pair
+  (i, j) of distinct datatype-sorted binders, in ascending (i, j) order,
+  accepting the first pair whose subgoals all discharge. For each
+  constructor c of binder i's datatype: if c has no recursive fields, one
+  subgoal with i := c(fresh fields) and every other binder at its goal
+  constant, no hypotheses; otherwise, for each constructor c' of binder
+  j's datatype, one subgoal with i := c(fresh), j := c'(fresh), under
+  hypotheses (a) for each recursive field x of c: the property with
+  i := x and every other binder universally generalized, and (b) for each
+  recursive field y of c': the property with i pinned to the SAME
+  c(fresh) value, j := y, and remaining binders generalized. Sound by the
+  lexicographic subterm order. (The corpus witness is merge, whose
+  recursion shrinks either argument.)
+- **Deterministic proof budget (normative).** The per-goal budget is z3's
+  resource limit — `(set-option :rlimit 400000000)` as the script's first
+  command — not wall-clock time: same script + same solver version + same
+  rlimit yields the same outcome on any machine. A wall-clock safety cap
+  (600s) exists only to contain pathological environments; a kernel whose
+  wall cap fires before rlimit exhausts MUST treat the run as
+  non-conformant rather than record an outcome — recording "unknown" on a
+  cap hit smuggles machine-dependence back in (a goal that proves at
+  minute four on one machine would be silently unproven on a slower one).
+  The cap must sit far above any legitimate budget exhaust: burning the
+  full rlimit on quantifier-heavy goals takes minutes of wall time, which
+  is why the cap is 600s and not lower. (History: the cap was first set at
+  180s, and the reference kernel recorded cap hits as unknown; the blind
+  Rust kernel implemented invalidation correctly from this text and its
+  exit-on-cap fired on hardware where the reference had been quietly
+  recording — cross-kernel conformance catching the reference violating
+  its own spec.) The budget value is part
+  of outcome identity. (Calibration: the heaviest successful proof in the
+  corpus consumes ~115M; the budget allows 3.5x that.)
+- **Script stability (normative).** A goal's emitted SMT script is a pure
+  function of (goal, recorded lemma state): byte-identical across attempt
+  histories, warm/cold runs, and independent kernels. Three rules deliver
+  this: (1) STRUCTURAL NAMING — no counters exist; symbols are named by
+  intrinsic position: property binders `b<i>`, universally generalized
+  binders in lemma/hypothesis formulas `q<i>` (binder index),
+  single-binder induction field constants `f<fi>` (field index),
+  lexicographic field constants `g<fi>` (first binder) and `h<fj>`
+  (second), axiomatized-function parameters `p<i>` (parameter index).
+  (2) FRESH CONTEXT PER ATTEMPT — declarations and axioms are accumulated
+  from scratch for each property attempt (library lemmas first, then goal
+  translation), never shared across attempts. (3) CANONICAL EMISSION —
+  lemma assertions carry no comments and are emitted in ascending
+  (definition-hash, property-index) order; script layout is: datatype and
+  function declarations in first-touch order of the canonical build,
+  defining-equation axioms, admissible lemmas, binder declarations,
+  negated goal, `(check-sat)`, and `(get-model)` iff NO quantifier was
+  introduced anywhere during context construction — by a defining-equation
+  axiom or by translating ANY candidate lemma with binders, including
+  candidates later excluded from emission (footprint-inadmissible or the
+  property's own lemma). The flag is a property of the build, not of the
+  emitted bytes: a script can contain no quantifier and still omit
+  `(get-model)`. An uninterpreted (non-total, axiom-less) callee introduces
+  no quantifier. The conformance suite fixtures `prove/scripts.txt`:
+  sha256 of every property's direct-attempt script under the recorded
+  lemma state — a conforming kernel MUST reproduce these hashes, which
+  pins the scheme without prose ambiguity. `prove/scripts/` holds full
+  golden script texts for a curated structural sample (recursive axioms,
+  uninterpreted callee, lemma-heavy interleaving, lexicographic-fragment
+  recursion) so a hash divergence is debuggable byte-by-byte.
+- **Lexicographic induction (normative).** When single-binder induction
+  fails, kernels MUST attempt lexicographic induction on each ordered pair
+  (i, j) of distinct datatype-sorted binders, in ascending (i, j) order,
+  accepting the first pair whose subgoals all discharge. For each
+  constructor c of binder i's datatype: if c has no recursive fields, one
+  subgoal with i := c(fresh fields) and every other binder at its goal
+  constant, no hypotheses; otherwise, for each constructor c' of binder
+  j's datatype, one subgoal with i := c(fresh), j := c'(fresh), under
+  hypotheses (a) for each recursive field x of c: the property with
+  i := x and every other binder universally generalized, and (b) for each
+  recursive field y of c': the property with i pinned to the SAME
+  c(fresh) value, j := y, and remaining binders generalized. Sound by the
+  lexicographic subterm order. (The corpus witness is merge, whose
+  recursion shrinks either argument.)
+- **Script stability (normative).** A goal's emitted SMT script must be a
+  function of the goal and its admissible lemma SET only — independent of
+  attempt history and lemma acquisition history. Two rules deliver this:
+  fresh-variable numbering resets at each property attempt, and lemma
+  assertions are emitted in ascending (definition-hash, property-index)
+  order regardless of whether a lemma was loaded from prior-run metadata
+  or proven earlier in the same run. Solver heuristics are sensitive to
+  both names and assertion order: without these rules, unrelated prover
+  changes or warm-vs-cold differences flip borderline goals —
+  nondeterminism masquerading as regression. (The corpus witness is
+  q-drop.drop-back-only, which sat exactly at the budget edge and flipped
+  between warm and cold runs until the order was canonicalized; it is now
+  stably unproven at the normative budget.)
 - Kernels MAY gate fixpoint re-attempts on lemma-set growth: a goal whose
   available lemma set has not changed since its last failed attempt need
   not be re-attempted — with a deterministic solver and fixed budget the

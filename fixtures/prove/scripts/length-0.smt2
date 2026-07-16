@@ -1,0 +1,8 @@
+(declare-datatypes ((List_Int 0)) (((Nil_List_Int ) (Cons_List_Int (Cons_List_Int_0 Int) (Cons_List_Int_1 List_Int)))))
+(declare-fun fn_length_Int (List_Int) Int)
+(assert (forall ((p0 List_Int)) (! (= (fn_length_Int p0) (ite ((_ is Nil_List_Int) p0) 0 (+ 1 (fn_length_Int (Cons_List_Int_1 p0))))) :pattern ((fn_length_Int p0)))))
+(assert (forall ((q0 Int)) (= (fn_length_Int Nil_List_Int) 0)))
+(assert (forall ((q0 Int) (q1 List_Int)) (= (fn_length_Int (Cons_List_Int q0 q1)) (+ 1 (fn_length_Int q1)))))
+(declare-const b0 List_Int)
+(assert (not (<= 0 (fn_length_Int b0))))
+(check-sat)

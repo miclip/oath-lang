@@ -17,20 +17,20 @@
   "waived_mutants": [
     {
       "hash": "f29770336060fbdd67348aecab0b6046ccba3d470ac2547396077addca124985",
-      "desc": "< \u2192 <=",
-      "reason": "min/max < vs <= tiebreak: branches agree when operands are equal; equivalence machine-checked in docs/experiments/minmax-equiv.smt2 (Z3 unsat)",
+      "desc": "\u003c → \u003c=",
+      "reason": "min/max \u003c vs \u003c= tiebreak: branches agree when operands are equal; equivalence machine-checked in docs/experiments/minmax-equiv.smt2 (Z3 unsat)",
       "by": "claude-main"
     },
     {
       "hash": "c4b547bbb8b631b67bc0817d585c92818cf2f6fba7330be8e9021110ba426eaa",
-      "desc": "< \u2192 <=",
-      "reason": "min/max < vs <= tiebreak: branches agree when operands are equal; equivalence machine-checked in docs/experiments/minmax-equiv.smt2 (Z3 unsat)",
+      "desc": "\u003c → \u003c=",
+      "reason": "min/max \u003c vs \u003c= tiebreak: branches agree when operands are equal; equivalence machine-checked in docs/experiments/minmax-equiv.smt2 (Z3 unsat)",
       "by": "claude-main"
     },
     {
       "hash": "1b281e5c05379e046efb253bb78f3823ed9828ed8e9b17d3153b803339cfb48e",
-      "desc": "< \u2192 <=",
-      "reason": "min/max < vs <= tiebreak: branches agree when operands are equal; equivalence machine-checked in docs/experiments/minmax-equiv.smt2 (Z3 unsat)",
+      "desc": "\u003c → \u003c=",
+      "reason": "min/max \u003c vs \u003c= tiebreak: branches agree when operands are equal; equivalence machine-checked in docs/experiments/minmax-equiv.smt2 (Z3 unsat)",
       "by": "claude-main"
     }
   ],

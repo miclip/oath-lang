@@ -6,8 +6,9 @@
     "keeps-sortedness"
   ],
   "guarantee": {
-    "level": "tested",
-    "cases": 200
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
   },
   "mutants_killed": 8,
   "mutants_total": 11,
@@ -22,5 +23,10 @@
   "confinement": [
     "",
     ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
   ]
 }

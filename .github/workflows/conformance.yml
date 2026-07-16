@@ -2,11 +2,22 @@
 # byte-level agreement with the frozen fixtures — and therefore with each
 # other. A divergence is a spec bug or a kernel bug; either way it fails CI
 # and deserves an issue, never a quiet fix.
+#
+# Proof outcomes (checks 5-6) run in two modes since the deterministic
+# rlimit budget (#17): per-push CI uses the BYTE ORACLE — the Rust kernel
+# must reproduce every direct-attempt script byte-for-byte under the pinned
+# solver, which determines the outcomes (outcome = f(script bytes, solver
+# version, rlimit), SPEC §7.2) without hours of z3. The FULL empirical
+# re-derivation (cold prove of the whole corpus, run-stability fixpoint
+# included) runs weekly and on demand.
 name: conformance
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
 
 jobs:
   go-kernel:
@@ -29,7 +40,7 @@ jobs:
             || { echo "::error::reference kernel produced different hashes than the committed store"; exit 1; }
 
   rust-conformance:
-    name: independent kernel (Rust) vs fixtures
+    name: independent kernel (Rust) vs fixtures (byte-oracle mode)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,7 +50,25 @@ jobs:
           curl -sSL -o z3.zip https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip
           unzip -q z3.zip
           echo "$PWD/z3-4.16.0-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
-      - name: six-check conformance
+      - name: conformance (checks 1-4 + byte oracle for 5-6)
+        run: |
+          z3 --version
+          OATHRS_CONFORMANCE_PROVE=oracle ./oathrs/conformance.sh
+
+  rust-conformance-full:
+    name: independent kernel (Rust) — full empirical re-derivation
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: pin z3 4.16.0
+        run: |
+          curl -sSL -o z3.zip https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip
+          unzip -q z3.zip
+          echo "$PWD/z3-4.16.0-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
+      - name: six-check conformance (cold prove at the SPEC budget)
         run: |
           z3 --version
           ./oathrs/conformance.sh

@@ -19,6 +19,8 @@ package main
 //   MANIFEST.md           what this tree is and how to regenerate it
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -147,6 +149,69 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		return "", err
 	}
 	fmt.Fprintf(&log, "prove/outcomes.json: %d definitions (solver: %s)\n", len(outcomes), solver)
+	// prove/scripts.txt — sha256 of every property's direct-attempt script
+	// under the recorded lemma state (SPEC §7.2 script stability). This is
+	// the byte oracle that pins the naming scheme, lemma order, and
+	// translation across independent kernels without prose ambiguity.
+	var scripts strings.Builder
+	scripts.WriteString("# name\tprop\tsha256(direct-attempt script)\n")
+	scriptCount := 0
+	for _, name := range keys {
+		hh := names[name]
+		dd, err := st.GetDef(hh)
+		if err != nil || dd.K != "func" || len(dd.Props) == 0 {
+			continue
+		}
+		for pi := range dd.Props {
+			sc, err := directAttemptScript(st, hh, pi)
+			if err != nil {
+				continue // outside the provable fragment: no script exists
+			}
+			sum := sha256.Sum256([]byte(sc))
+			fmt.Fprintf(&scripts, "%s\t%d\t%s\n", name, pi, hex.EncodeToString(sum[:]))
+			scriptCount++
+		}
+	}
+	if err := write(filepath.Join("prove", "scripts.txt"), []byte(scripts.String())); err != nil {
+		return "", err
+	}
+	fmt.Fprintf(&log, "prove/scripts.txt: %d direct-attempt script hashes\n", scriptCount)
+
+	// prove/scripts/ — full golden script TEXTS for a curated set, one per
+	// structural feature of the translation. scripts.txt pins all 161 by
+	// hash; these make a divergence debuggable (a hash tells you THAT you
+	// differ, a golden tells you WHERE). Chosen: a recursive function with
+	// defining axiom and own-lemma library (length:0), a non-total callee
+	// left uninterpreted (spin:0), the lemma-heavy interleaved-declaration
+	// stress case (q-drop:2), and lexicographic-fragment recursion over two
+	// arguments (merge:0).
+	goldenScripts := []struct {
+		name string
+		pi   int
+	}{{"length", 0}, {"spin", 0}, {"q-drop", 2}, {"merge", 0},
+		// Second wave, driven by cross-kernel divergence debugging: a
+		// multi-recursive-field datatype (t-size), records + strings
+		// (full-name), a capability record with an array-encoded function
+		// field (greet), and a record-carrying datatype (rle-encode).
+		{"t-size", 0}, {"full-name", 0}, {"greet", 0}, {"rle-encode", 0}}
+	goldenCount := 0
+	for _, g := range goldenScripts {
+		hh, ok := names[g.name]
+		if !ok {
+			continue
+		}
+		sc, err := directAttemptScript(st, hh, g.pi)
+		if err != nil {
+			continue
+		}
+		p := filepath.Join("prove", "scripts", fmt.Sprintf("%s-%d.smt2", g.name, g.pi))
+		if err := write(p, []byte(sc)); err != nil {
+			return "", err
+		}
+		goldenCount++
+	}
+	fmt.Fprintf(&log, "prove/scripts/: %d golden script texts\n", goldenCount)
+
 
 	// §1.5 golden encoding fixtures: hand-built Defs demonstrating the encoding
 	// rules a second kernel must reproduce byte-for-byte. These are ENCODING

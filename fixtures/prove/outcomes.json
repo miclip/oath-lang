@@ -632,21 +632,21 @@
     {
       "name": "merge",
       "hash": "ff80c574911e7e201660b97a96fceda93aed021aecb1106e7d006775128f70d7",
-      "level": "tested",
-      "proven_count": 0,
+      "level": "proven",
+      "proven_count": 3,
       "prop_count": 3,
       "props": [
         {
           "name": "length-adds",
-          "proven": false
+          "proven": true
         },
         {
           "name": "preserves-counts",
-          "proven": false
+          "proven": true
         },
         {
           "name": "keeps-sortedness",
-          "proven": false
+          "proven": true
         }
       ]
     },
@@ -671,7 +671,7 @@
       "name": "q-drop",
       "hash": "66b1867fa0679f1b22be8b2706fd4d3f55b941f52756053eaaa077bde597b8c1",
       "level": "tested",
-      "proven_count": 3,
+      "proven_count": 2,
       "prop_count": 5,
       "props": [
         {
@@ -680,7 +680,7 @@
         },
         {
           "name": "drop-back-only",
-          "proven": true
+          "proven": false
         },
         {
           "name": "drop-empty",

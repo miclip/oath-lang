@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -32,7 +34,16 @@ import (
 // application. And the standing caveat on every proof: Z3 reasons over
 // unbounded integers; the evaluator uses int64.
 
-const proveTimeout = 15 * time.Second
+// Deterministic proof budget (#17 adjudication): outcomes must be a pure
+// function of (script bytes, solver version, budget). Wall-clock budgets
+// are machine-dependent — the sum/CI episode and the q-drop borderline
+// flip both trace to them — so the budget is z3's rlimit, a deterministic
+// work counter: same script + same rlimit ⇒ same outcome on any machine.
+// The wall clock survives only as a non-outcome-determining safety cap; a
+// kernel whose wall cap fires before rlimit exhausts is running on
+// pathological hardware and MUST report the run as non-conformant.
+const proveRlimit = 400_000_000 // 3.5x the heaviest successful proof (calibrated)
+const proveWallCap = 600 * time.Second
 
 var smtNameRe = regexp.MustCompile(`[^A-Za-z0-9]`)
 
@@ -75,7 +86,6 @@ type smtCtx struct {
 	arrows     map[string][2]string // array sort → (domain, codomain)
 	quantified bool
 	depth      int
-	fresh      int
 }
 
 // propMentions collects every definition hash a property references
@@ -153,11 +163,6 @@ func lemmaAdmissible(l *lemma, goalDef string, fp map[string]bool) bool {
 func newSmtCtx(st *Store, d *Def, h string) *smtCtx {
 	return &smtCtx{st: st, selfDef: d, selfHash: h,
 		dts: map[string]*dtInfo{}, dtBySort: map[string]*dtInfo{}, fns: map[string]smtVal{}}
-}
-
-func (c *smtCtx) gensym(prefix string) string {
-	c.fresh++
-	return fmt.Sprintf("%s%d", prefix, c.fresh)
 }
 
 func tyKey(h string, args []Ty) string {
@@ -331,7 +336,7 @@ func (c *smtCtx) ensureFn(h string, d *Def, args []Ty) (smtVal, error) {
 	var env []smtVal
 	var params []string
 	for i := 0; body.K == "lam"; i++ {
-		p := c.gensym("p")
+		p := fmt.Sprintf("p%d", i)
 		s, err := c.sortOf(body.Ty)
 		if err != nil {
 			return smtVal{}, err
@@ -745,7 +750,7 @@ func (c *smtCtx) formulaWith(d *Def, h string, p *Prop, assign map[int]string) (
 		if err != nil {
 			return "", fmt.Errorf("cannot quantify binder of type %s", debugTy(b))
 		}
-		q := c.gensym("q")
+		q := fmt.Sprintf("q%d", i)
 		foralls = append(foralls, fmt.Sprintf("(%s %s)", q, s))
 		env = append(env, smtVal{expr: q, sort: s})
 	}
@@ -763,13 +768,47 @@ func (c *smtCtx) formulaWith(d *Def, h string, p *Prop, assign map[int]string) (
 	return body, nil
 }
 
-func runZ3(script string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), proveTimeout)
+func runZ3(script string) (string, bool) {
+	rl := int64(proveRlimit)
+	if v := os.Getenv("OATH_PROVE_RLIMIT"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			rl = n
+		}
+	}
+	full := fmt.Sprintf("(set-option :rlimit %d)\n", rl) + script + "\n(get-info :rlimit)\n"
+	ctx, cancel := context.WithTimeout(context.Background(), proveWallCap)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "z3", "-in")
-	cmd.Stdin = strings.NewReader(script)
+	cmd.Stdin = strings.NewReader(full)
 	out, _ := cmd.CombinedOutput()
-	return string(out)
+	if ctx.Err() == context.DeadlineExceeded {
+		// SPEC §7.2: the wall cap is SAFETY-ONLY. Hitting it means this
+		// environment could not exhaust the rlimit budget — the attempt is
+		// INVALID, never an outcome. Recording "unknown" here would smuggle
+		// machine-dependence back in: a goal that proves at minute four on
+		// one machine would be silently unproven on a slower one. (The
+		// blind Rust kernel implemented this correctly from the spec text;
+		// the reference originally did not — caught by cross-kernel
+		// conformance when its exit(3) fired where Go had been quietly
+		// recording. The cap was then raised 180s→600s to sit far above
+		// any legitimate budget exhaust.)
+		return "", true
+	}
+	res := string(out)
+	if os.Getenv("OATH_PROVE_CALIBRATE") != "" {
+		verdict := "unknown"
+		if strings.HasPrefix(res, "unsat") {
+			verdict = "unsat"
+		} else if strings.HasPrefix(res, "sat") {
+			verdict = "sat"
+		}
+		consumed := "?"
+		if i := strings.Index(res, "(:rlimit "); i >= 0 {
+			consumed = strings.TrimRight(strings.TrimSpace(res[i+9:]), ")\n ")
+		}
+		fmt.Fprintf(os.Stderr, "CALIB %s rlimit=%s\n", verdict, consumed)
+	}
+	return res, false
 }
 
 func sortedDepHashes(d *Def) []string {
@@ -793,6 +832,13 @@ type propOutcome struct {
 // pi is the property's own index — its own lemma (from a prior run) is
 // excluded so a property can never prove itself.
 func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcome {
+	// Script stability: all emitted symbols are STRUCTURALLY named (binder
+	// index, constructor-field index, function-parameter index) — no
+	// counters exist, so a goal's script is canonical by construction:
+	// byte-identical across attempt histories, warm/cold runs, and
+	// independent kernel implementations. Names + assertion order steer
+	// solver search; canonicality makes outcomes a pure function of
+	// (goal, lemma set, solver version, rlimit).
 	// SPEC §7.2 relevance (#25): only lemmas whose every mention lies inside
 	// this goal's footprint enter the problem.
 	footprint := goalFootprint(c.st, h, d, p)
@@ -825,10 +871,25 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 		for _, x := range c.axioms {
 			b.WriteString(x + "\n")
 		}
+		// Canonical lemma order (script stability, part 2): emission sorted
+		// by (definition hash, property index), so the script depends only
+		// on the admissible lemma SET — never on whether a lemma arrived
+		// from prior-run metadata or was proven moments ago. Assert order
+		// steers solver search; acquisition history must not.
+		var adm []*lemma
 		for i := range c.lemmas {
 			if c.lemmas[i].ownIdx != pi && lemmaAdmissible(&c.lemmas[i], h, footprint) {
-				b.WriteString(c.lemmas[i].text + "\n")
+				adm = append(adm, &c.lemmas[i])
 			}
+		}
+		sort.Slice(adm, func(a, b2 int) bool {
+			if adm[a].defHash != adm[b2].defHash {
+				return adm[a].defHash < adm[b2].defHash
+			}
+			return adm[a].ownIdx < adm[b2].ownIdx
+		})
+		for _, l := range adm {
+			b.WriteString(l.text + "\n")
 		}
 		for _, x := range binderDecls {
 			b.WriteString(x + "\n")
@@ -847,7 +908,10 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 	}
 
 	// Direct attempt.
-	out := runZ3(script(nil, nil, goal, !c.quantified))
+	out, capHit := runZ3(script(nil, nil, goal, !c.quantified))
+	if capHit {
+		return propOutcome{status: "invalidated", detail: "wall cap hit before rlimit exhausted — environment non-conformant (SPEC §7.2)"}
+	}
 	switch {
 	case strings.HasPrefix(out, "unsat"):
 		return propOutcome{status: "proven", method: "direct"}
@@ -866,7 +930,7 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 			var extraDecls, extraAsserts []string
 			var fieldConsts []string
 			for fi, fs := range dt.fields[ci] {
-				fc := c.gensym(fmt.Sprintf("f%d_", fi))
+				fc := fmt.Sprintf("f%d", fi)
 				extraDecls = append(extraDecls, fmt.Sprintf("(declare-const %s %s)", fc, fs))
 				fieldConsts = append(fieldConsts, fc)
 				if fs == dt.name {
@@ -898,7 +962,10 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 				allUnsat = false
 				break
 			}
-			out := runZ3(script(extraDecls, extraAsserts, subgoal, false))
+			out, capHit := runZ3(script(extraDecls, extraAsserts, subgoal, false))
+			if capHit {
+				return propOutcome{status: "invalidated", detail: "wall cap hit before rlimit exhausted — environment non-conformant (SPEC §7.2)"}
+			}
 			if !strings.HasPrefix(out, "unsat") {
 				allUnsat = false
 				break
@@ -910,6 +977,129 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 				bname = fmt.Sprintf("binder %d", i)
 			}
 			return propOutcome{status: "proven", method: "induction on " + bname}
+		}
+	}
+	// Lexicographic induction on ordered pairs of datatype binders (#17,
+	// SPEC §7.2): for functions like merge that shrink EITHER argument.
+	// Sound by the lexicographic subterm order: IH1 shrinks binder i with
+	// every other binder generalized; IH2 pins binder i to the SAME
+	// constructed value and shrinks binder j.
+	for i := range p.Binders {
+		dti, ok := c.dtBySort[binderSorts[i]]
+		if !ok {
+			continue
+		}
+		for j := range p.Binders {
+			if j == i {
+				continue
+			}
+			dtj, ok := c.dtBySort[binderSorts[j]]
+			if !ok {
+				continue
+			}
+			allUnsat := true
+		lexCtorI:
+			for ci := range dti.ctors {
+				var declsI []string
+				var fieldsI []string
+				recI := []string{}
+				for fi, fs := range dti.fields[ci] {
+					fc := fmt.Sprintf("g%d", fi)
+					declsI = append(declsI, fmt.Sprintf("(declare-const %s %s)", fc, fs))
+					fieldsI = append(fieldsI, fc)
+					if fs == dti.name {
+						recI = append(recI, fc)
+					}
+				}
+				ctorI := dti.ctors[ci]
+				if len(fieldsI) > 0 {
+					ctorI = fmt.Sprintf("(%s %s)", dti.ctors[ci], strings.Join(fieldsI, " "))
+				}
+				if len(recI) == 0 {
+					// Base case in the first component: j and the rest stay
+					// as their declared constants; no hypotheses.
+					assign := map[int]string{}
+					for k, v := range consts {
+						assign[k] = v
+					}
+					assign[i] = ctorI
+					subgoal, err := c.formulaWith(d, h, p, assign)
+					if err != nil {
+						allUnsat = false
+						break
+					}
+					out, capHit := runZ3(script(declsI, nil, subgoal, false))
+					if capHit {
+						return propOutcome{status: "invalidated", detail: "wall cap hit before rlimit exhausted — environment non-conformant (SPEC §7.2)"}
+					}
+					if !strings.HasPrefix(out, "unsat") {
+						allUnsat = false
+						break
+					}
+					continue
+				}
+				// Recursive first component: case-split the second.
+				for cj := range dtj.ctors {
+					extraDecls := append([]string{}, declsI...)
+					var extraAsserts []string
+					var fieldsJ []string
+					recJ := []string{}
+					for fj, fs := range dtj.fields[cj] {
+						fc := fmt.Sprintf("h%d", fj)
+						extraDecls = append(extraDecls, fmt.Sprintf("(declare-const %s %s)", fc, fs))
+						fieldsJ = append(fieldsJ, fc)
+						if fs == dtj.name {
+							recJ = append(recJ, fc)
+						}
+					}
+					ctorJ := dtj.ctors[cj]
+					if len(fieldsJ) > 0 {
+						ctorJ = fmt.Sprintf("(%s %s)", dtj.ctors[cj], strings.Join(fieldsJ, " "))
+					}
+					// IH1: first component shrank; everything else (j
+					// included) universally generalized.
+					for _, fc := range recI {
+						ih, err := c.formulaWith(d, h, p, map[int]string{i: fc})
+						if err != nil {
+							allUnsat = false
+							break lexCtorI
+						}
+						extraAsserts = append(extraAsserts, "(assert "+ih+")")
+					}
+					// IH2: first component pinned to the SAME constructed
+					// value; second shrank; the rest generalized.
+					for _, fc := range recJ {
+						ih, err := c.formulaWith(d, h, p, map[int]string{i: ctorI, j: fc})
+						if err != nil {
+							allUnsat = false
+							break lexCtorI
+						}
+						extraAsserts = append(extraAsserts, "(assert "+ih+")")
+					}
+					assign := map[int]string{}
+					for k, v := range consts {
+						assign[k] = v
+					}
+					assign[i] = ctorI
+					assign[j] = ctorJ
+					subgoal, err := c.formulaWith(d, h, p, assign)
+					if err != nil {
+						allUnsat = false
+						break lexCtorI
+					}
+					out, capHit := runZ3(script(extraDecls, extraAsserts, subgoal, false))
+					if capHit {
+						return propOutcome{status: "invalidated", detail: "wall cap hit before rlimit exhausted — environment non-conformant (SPEC §7.2)"}
+					}
+					if !strings.HasPrefix(out, "unsat") {
+						allUnsat = false
+						break lexCtorI
+					}
+				}
+			}
+			if allUnsat {
+				return propOutcome{status: "proven", method: fmt.Sprintf("lexicographic induction on binders %d,%d", i, j)}
+			}
 		}
 	}
 	return propOutcome{status: "unknown", detail: "no direct proof; induction did not discharge"}
@@ -938,71 +1128,7 @@ func apiProve(st *Store, name string) (string, error) {
 		return "", fmt.Errorf("z3 not found on PATH (brew install z3)")
 	}
 
-	c := newSmtCtx(st, d, h)
-
-	// Lemma library: proven props of every transitively referenced def.
-	lemmaCount := 0
-	seen := map[string]bool{h: true}
-	queue := []string{}
-	for _, dep := range sortedDepHashes(d) {
-		if !seen[dep] {
-			seen[dep] = true
-			queue = append(queue, dep)
-		}
-	}
-	for qi := 0; qi < len(queue); qi++ {
-		dh := queue[qi]
-		dd, err := st.GetDef(dh)
-		if err != nil {
-			continue
-		}
-		for _, dep := range sortedDepHashes(dd) {
-			if !seen[dep] {
-				seen[dep] = true
-				queue = append(queue, dep)
-			}
-		}
-		if dd.K != "func" {
-			continue
-		}
-		dm, err := st.GetMeta(dh)
-		if err != nil {
-			continue
-		}
-		for _, pi := range dm.ProvenProps {
-			if pi < 0 || pi >= len(dd.Props) {
-				continue
-			}
-			f, err := c.formulaWith(dd, dh, &dd.Props[pi], nil)
-			if err != nil {
-				continue
-			}
-			c.lemmas = append(c.lemmas, lemma{ownIdx: -1, defHash: dh, mentions: propMentions(dh, &dd.Props[pi]),
-				text: "(assert " + f + ") ; lemma " + dm.Name + "." + metaPropName(dm, pi)})
-			lemmaCount++
-		}
-	}
-
-	// The definition's own previously-proven properties are lemmas too —
-	// tagged with their index so a property is never its own justification.
-	ownProven := 0
-	for _, pi := range m.ProvenProps {
-		if pi < 0 || pi >= len(d.Props) {
-			continue
-		}
-		f, err := c.formulaWith(d, h, &d.Props[pi], nil)
-		if err != nil {
-			continue
-		}
-		c.lemmas = append(c.lemmas, lemma{ownIdx: pi, defHash: h, mentions: propMentions(h, &d.Props[pi]),
-			text: "(assert " + f + ") ; own lemma " + metaPropName(m, pi)})
-		ownProven++
-	}
-
 	var b strings.Builder
-	if lemmaCount+ownProven > 0 {
-		fmt.Fprintf(&b, "lemma library: %d from dependencies, %d from prior runs\n", lemmaCount, ownProven)
-	}
 	// A property the deterministic tester already refuted has a concrete
 	// counterexample; an SMT "proof" of it would be a contradiction we must
 	// not record (defense in depth behind the totality gate above).
@@ -1010,51 +1136,119 @@ func apiProve(st *Store, name string) (string, error) {
 	for _, fn := range m.Guarantee.Falsified {
 		testFalsified[fn] = true
 	}
-	// SPEC §7.2: self-lemma availability is a FIXPOINT — iterate until no
-	// new property proves. The lemma-growth gate (#24) makes the fixpoint
-	// cheap: a goal is only re-attempted when the same-def lemma set has
-	// actually grown since its last attempt. Outcome-identical to naive
-	// iteration — an unchanged goal with unchanged axioms and budget fails
-	// identically — but the ~full-budget timeout burns on genuinely
+	// SPEC §7.2: a TWO-LEVEL fixpoint.
+	//
+	// Inner (self-lemma availability): iterate until no new property proves.
+	// The lemma-growth gate (#24) makes it cheap: a goal is only re-attempted
+	// when the same-def lemma set has actually grown since its last attempt —
+	// outcome-identical to naive iteration, but full-budget burns on genuinely
 	// unprovable goals happen once instead of once per pass.
-	outcomes := make([]propOutcome, len(d.Props))
-	attempted := make([]bool, len(d.Props))
-	provenSet := make([]bool, len(d.Props))
-	lastEpoch := make([]int, len(d.Props))
-	withheld := make([]bool, len(d.Props))
-	epoch := 1 // bumps whenever a new own-lemma lands
-	for {
-		progress := false
-		for pi := range d.Props {
-			if provenSet[pi] || withheld[pi] {
-				continue
-			}
-			if attempted[pi] && lastEpoch[pi] == epoch {
-				continue // no relevant lemma has appeared since the last attempt
-			}
-			pn := metaPropName(m, pi)
-			o := c.proveOne(d, h, m, &d.Props[pi], pi)
-			attempted[pi] = true
-			lastEpoch[pi] = epoch
-			outcomes[pi] = o
-			if o.status == "proven" {
-				if testFalsified[pn] {
-					withheld[pi] = true
+	//
+	// Outer (run stability): the recorded state must be a fixpoint of the
+	// whole-RUN map F(S) = proven set produced by proving with S recorded.
+	// A property proven EARLY in a cold run (small lemma set) is not
+	// necessarily re-provable from the FINAL state: a budget-limited search
+	// is non-monotone in its axiom set — extra lemmas can divert it. The
+	// corpus witness is q-drop cold: drop-back-only proves from
+	// {drop-front-nonempty} alone but NOT once drop-empty is also asserted,
+	// so a single cold pass records a proof the store's own state cannot
+	// reproduce, and the next warm run silently drops it. Iterating F until
+	// S == F(S) makes every recorded proof re-derivable from exactly the
+	// state the store records — warm and cold runs converge to the same
+	// self-consistent verdicts.
+	var outcomes []propOutcome
+	var provenSet, withheld []bool
+	var lemmaCount, ownProven int
+	for round := 0; ; round++ {
+		c := newSmtCtx(st, d, h)
+		lemmaCount, ownProven = loadLemmaLibrary(c, st, d, h, m)
+		outcomes = make([]propOutcome, len(d.Props))
+		attempted := make([]bool, len(d.Props))
+		provenSet = make([]bool, len(d.Props))
+		lastEpoch := make([]int, len(d.Props))
+		withheld = make([]bool, len(d.Props))
+		epoch := 1 // bumps whenever a new own-lemma lands
+		for {
+			progress := false
+			for pi := range d.Props {
+				if provenSet[pi] || withheld[pi] {
 					continue
 				}
-				provenSet[pi] = true
-				progress = true
-				// New theorem: available as a lemma to every other property.
-				if f, err := c.formulaWith(d, h, &d.Props[pi], nil); err == nil {
-					c.lemmas = append(c.lemmas, lemma{ownIdx: pi, defHash: h, mentions: propMentions(h, &d.Props[pi]),
-						text: "(assert " + f + ") ; lemma " + name + "." + pn})
+				if attempted[pi] && lastEpoch[pi] == epoch {
+					continue // no relevant lemma has appeared since the last attempt
+				}
+				pn := metaPropName(m, pi)
+				// Fresh translation context per attempt: the script must be a
+				// function of (goal, lemma set) alone — a shared context would
+				// leak axioms accrued by earlier attempts into later scripts,
+				// the acquisition-history dependence this design eliminates.
+				ac := newSmtCtx(st, d, h)
+				loadLemmaLibrary(ac, st, d, h, m)
+				already := map[int]bool{}
+				for _, mp := range m.ProvenProps {
+					already[mp] = true
+				}
+				for pj := range d.Props {
+					if provenSet[pj] && !already[pj] {
+						if f, err := ac.formulaWith(d, h, &d.Props[pj], nil); err == nil {
+							ac.lemmas = append(ac.lemmas, lemma{ownIdx: pj, defHash: h, mentions: propMentions(h, &d.Props[pj]),
+								text: "(assert " + f + ")"})
+						}
+					}
+				}
+				o := ac.proveOne(d, h, m, &d.Props[pi], pi)
+				if o.status == "invalidated" {
+					// SPEC §7.2: never record from a run whose wall cap fired
+					// before the rlimit budget exhausted.
+					return "", fmt.Errorf("prove run INVALIDATED at %s: %s", pn, o.detail)
+				}
+				attempted[pi] = true
+				lastEpoch[pi] = epoch
+				outcomes[pi] = o
+				if o.status == "proven" {
+					if testFalsified[pn] {
+						withheld[pi] = true
+						continue
+					}
+					provenSet[pi] = true
+					progress = true
 					epoch++
 				}
 			}
+			if !progress {
+				break
+			}
 		}
-		if !progress {
+		var newIdx []int
+		for pi := range d.Props {
+			if provenSet[pi] {
+				newIdx = append(newIdx, pi)
+			}
+		}
+		prev := append([]int{}, m.ProvenProps...)
+		sort.Ints(prev)
+		if len(prev) == len(newIdx) {
+			stable := true
+			for i := range prev {
+				if prev[i] != newIdx[i] {
+					stable = false
+					break
+				}
+			}
+			if stable {
+				break
+			}
+		}
+		if round >= 7 {
+			// Never observed; a cycle here would itself be deterministic,
+			// but be honest about recording a state we couldn't stabilize.
+			fmt.Fprintf(&b, "⚠ run-level fixpoint did not stabilize in %d rounds; recording the last result\n", round+1)
 			break
 		}
+		m.ProvenProps = newIdx
+	}
+	if lemmaCount+ownProven > 0 {
+		fmt.Fprintf(&b, "lemma library: %d from dependencies, %d from prior runs\n", lemmaCount, ownProven)
 	}
 
 	proven := 0
@@ -1113,4 +1307,156 @@ func cmdProve(st *Store, name string) {
 		fail(err)
 	}
 	fmt.Print(out)
+}
+
+
+// loadLemmaLibrary populates c.lemmas exactly as apiProve does: proven
+// properties of transitive dependencies, then the definition's own
+// previously-proven properties (tagged by index). Shared by apiProve and
+// the script-hash fixture generator so both see identical libraries.
+func loadLemmaLibrary(c *smtCtx, st *Store, d *Def, h string, m *Meta) (int, int) {
+	// Collect every candidate lemma (transitive-dependency proven props plus
+	// the definition's own recorded proven props), then TRANSLATE in
+	// canonical ascending (definition-hash, property-index) order — the same
+	// order they are emitted in. Translation order determines first-touch
+	// declaration/axiom accumulation, so it is part of script identity and
+	// must be canonical, not traversal-dependent.
+	type cand struct {
+		dh string
+		pi int
+	}
+	var cands []cand
+	seen := map[string]bool{h: true}
+	queue := []string{}
+	for _, dep := range sortedDepHashes(d) {
+		if !seen[dep] {
+			seen[dep] = true
+			queue = append(queue, dep)
+		}
+	}
+	for qi := 0; qi < len(queue); qi++ {
+		dh := queue[qi]
+		dd, err := st.GetDef(dh)
+		if err != nil {
+			continue
+		}
+		for _, dep := range sortedDepHashes(dd) {
+			if !seen[dep] {
+				seen[dep] = true
+				queue = append(queue, dep)
+			}
+		}
+		if dd.K != "func" {
+			continue
+		}
+		dm, err := st.GetMeta(dh)
+		if err != nil {
+			continue
+		}
+		for _, pi := range dm.ProvenProps {
+			if pi >= 0 && pi < len(dd.Props) {
+				cands = append(cands, cand{dh, pi})
+			}
+		}
+	}
+	ownStart := len(cands)
+	for _, pi := range m.ProvenProps {
+		if pi >= 0 && pi < len(d.Props) {
+			cands = append(cands, cand{h, pi})
+		}
+	}
+	ownCount := len(cands) - ownStart
+	sort.Slice(cands, func(a, b int) bool {
+		if cands[a].dh != cands[b].dh {
+			return cands[a].dh < cands[b].dh
+		}
+		return cands[a].pi < cands[b].pi
+	})
+	added := 0
+	for _, cd := range cands {
+		dd, err := st.GetDef(cd.dh)
+		if err != nil {
+			continue
+		}
+		own := -1
+		if cd.dh == h {
+			own = cd.pi
+		}
+		f, err := c.formulaWith(dd, cd.dh, &dd.Props[cd.pi], nil)
+		if err != nil {
+			continue
+		}
+		c.lemmas = append(c.lemmas, lemma{ownIdx: own, defHash: cd.dh, mentions: propMentions(cd.dh, &dd.Props[cd.pi]),
+			text: "(assert " + f + ")"})
+		added++
+	}
+	return added - ownCount, ownCount
+}
+
+// directAttemptScript reproduces, byte-for-byte, the direct-attempt script
+// proveOne emits for property pi given the store's recorded lemma state.
+// Fixtured as sha256 per property (SPEC §7.2 script stability): a conforming
+// kernel must emit these exact bytes, which pins the naming scheme, lemma
+// order, and translation without prose ambiguity.
+func directAttemptScript(st *Store, h string, pi int) (string, error) {
+	d, err := st.GetDef(h)
+	if err != nil {
+		return "", err
+	}
+	m, err := st.GetMeta(h)
+	if err != nil {
+		return "", err
+	}
+	if pi < 0 || pi >= len(d.Props) {
+		return "", fmt.Errorf("no property %d", pi)
+	}
+	c := newSmtCtx(st, d, h)
+	loadLemmaLibrary(c, st, d, h, m)
+	p := &d.Props[pi]
+	footprint := goalFootprint(c.st, h, d, p)
+	var binderDecls []string
+	consts := map[int]string{}
+	for i := range p.Binders {
+		srt, err := c.sortOf(&p.Binders[i])
+		if err != nil {
+			return "", err
+		}
+		name := fmt.Sprintf("b%d", i)
+		binderDecls = append(binderDecls, fmt.Sprintf("(declare-const %s %s)", name, srt))
+		consts[i] = name
+	}
+	goal, err := c.formulaWith(d, h, p, consts)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	for _, x := range c.decls {
+		b.WriteString(x + "\n")
+	}
+	for _, x := range c.axioms {
+		b.WriteString(x + "\n")
+	}
+	var adm []*lemma
+	for i := range c.lemmas {
+		if c.lemmas[i].ownIdx != pi && lemmaAdmissible(&c.lemmas[i], h, footprint) {
+			adm = append(adm, &c.lemmas[i])
+		}
+	}
+	sort.Slice(adm, func(a, b2 int) bool {
+		if adm[a].defHash != adm[b2].defHash {
+			return adm[a].defHash < adm[b2].defHash
+		}
+		return adm[a].ownIdx < adm[b2].ownIdx
+	})
+	for _, l := range adm {
+		b.WriteString(l.text + "\n")
+	}
+	for _, x := range binderDecls {
+		b.WriteString(x + "\n")
+	}
+	fmt.Fprintf(&b, "(assert (not %s))\n(check-sat)\n", goal)
+	if !c.quantified {
+		b.WriteString("(get-model)\n")
+	}
+	return b.String(), nil
 }
