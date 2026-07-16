@@ -27,6 +27,7 @@ export function Footer() {
             <Link href="/#substrate">The substrate</Link>
             <Link href="/#guarantees">Guarantee ladder</Link>
             <Link href="/#kernels">Two kernels</Link>
+            <Link href="/essays">Essays</Link>
             <Link href="/playground">Playground</Link>
           </div>
           <div className="footer-col">

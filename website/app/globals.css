@@ -987,3 +987,141 @@ pre,
     padding: 80px 0 60px;
   }
 }
+
+/* ============================================================ *
+ *  Essays
+ * ============================================================ */
+
+.essay-byline {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 0 0 30px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--cream);
+}
+.essay-byline-role {
+  color: var(--cream-faint);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+/* The essay standfirst: brighter, larger, and set off with a sage rule so it
+   reads clearly as a lead rather than a paragraph in the wrong font. */
+.essay .lead {
+  font-size: 24px !important;
+  line-height: 1.5;
+  color: var(--cream) !important;
+  margin: 4px 0 40px;
+  padding-left: 22px;
+  border-left: 2px solid var(--sage);
+}
+
+/* Raw <pre> blocks in essay prose (ASCII diagrams, inline snippets). */
+.essay pre {
+  background: var(--ink-1);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 20px 22px;
+  margin: 24px 0;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--cream-dim);
+}
+
+.essay-next {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 56px;
+  padding-top: 26px;
+  border-top: 1px solid var(--line);
+}
+.essay-next > span {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cream-faint);
+}
+.essay-next a {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  color: var(--sage-bright);
+  border-bottom: none;
+}
+.essay-next a:hover {
+  color: var(--cream);
+}
+
+/* Essays index cards */
+.essay-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-top: 36px;
+}
+.essay-card {
+  display: flex;
+  gap: 22px;
+  padding: 26px 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ink-1);
+  border-bottom: 1px solid var(--line);
+  transition: border-color 0.16s, background 0.16s;
+}
+.essay-card:hover {
+  border-color: var(--sage-dim);
+  background: var(--ink-2);
+}
+.essay-card-n {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--sage);
+  padding-top: 4px;
+}
+.essay-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.essay-card-title {
+  font-family: var(--font-serif);
+  font-size: 25px;
+  line-height: 1.2;
+  color: var(--cream);
+}
+.essay-card-byline {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--cream-faint);
+}
+.essay-card-blurb {
+  font-size: 15px;
+  color: var(--cream-dim);
+  line-height: 1.6;
+}
+.essay-card-more {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--sage-bright);
+  margin-top: 4px;
+}
+
+@media (max-width: 560px) {
+  .essay-card {
+    flex-direction: column;
+    gap: 12px;
+    padding: 22px;
+  }
+  .essay-card-title {
+    font-size: 22px;
+  }
+}
