@@ -742,7 +742,8 @@ cases. Findings and settled ambiguities:
     - **Deterministic budget.** The per-goal budget is z3's machine-independent
       `(set-option :rlimit 400000000)` (env `OATHRS_Z3_RLIMIT`), not wall-clock;
       the outcome is a function of (script bytes, solver version, rlimit). A
-      wall-clock cap (env `OATHRS_Z3_WALL_CAP_MS`, default 180000) is a pure
+      wall-clock cap (env `OATHRS_Z3_WALL_CAP_MS`, default 600000 — see entry 70
+      for the 180000 → 600000 raise) is a pure
       safety net: if it fires the run is INVALIDATED (process exits, no verdict),
       never recorded as a timeout. (My sandbox is slow enough that 400M rlimit
       can exceed 180s wall, so I run conformance with a raised cap — outcome-
