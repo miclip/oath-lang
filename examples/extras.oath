@@ -38,3 +38,58 @@
   (prop absent-from-empty [(x Int)] (not (contains x (Nil [Int]))))
   (prop agrees-with-count [(x Int) (xs (List Int))]
     (if (contains x xs) (< 0 (count x xs)) (== 0 (count x xs)))))
+
+(defn snoc [a] [(xs (List a)) (x a)] (List a)
+  (match xs
+    ((Nil) (Cons [a] x (Nil [a])))
+    ((Cons h t) (Cons [a] h (snoc [a] t x))))
+  (prop single [(x Int)]
+    (== (snoc [Int] (Nil [Int]) x) (Cons [Int] x (Nil [Int]))))
+  (prop cons-step [(h Int) (t (List Int)) (x Int)]
+    (== (snoc [Int] (Cons [Int] h t) x) (Cons [Int] h (snoc [Int] t x))))
+  ; snoc is append-of-a-singleton — first-order induction on xs, so like
+  ; reverse-onto/flatten it proves reproducibly.
+  (prop as-append [(xs (List Int)) (x Int)]
+    (== (snoc [Int] xs x) (append [Int] xs (Cons [Int] x (Nil [Int]))))))
+
+(defn find [a] [(p (-> a Bool)) (xs (List a))] (Option a)
+  (match xs
+    ((Nil) (None [a]))
+    ((Cons h t) (if (p h) (Some [a] h) (find [a] p t))))
+  (prop empty-is-none [(p (-> Int Bool))]
+    (== (find [Int] p (Nil [Int])) (None [Int])))
+  ; cons-step pins the search: return the head if it matches, else recurse.
+  ; Direct proof (abstract predicate), like all/any.
+  (prop cons-step [(p (-> Int Bool)) (h Int) (t (List Int))]
+    (== (find [Int] p (Cons [Int] h t))
+        (if (p h) (Some [Int] h) (find [Int] p t)))))
+
+(defn last [a] [(xs (List a))] (Option a)
+  (match xs
+    ((Nil) (None [a]))
+    ((Cons h t) (match t
+                  ((Nil) (Some [a] h))
+                  ((Cons h2 t2) (last [a] t)))))
+  (prop empty-is-none []
+    (== (last [Int] (Nil [Int])) (None [Int])))
+  (prop singleton [(x Int)]
+    (== (last [Int] (Cons [Int] x (Nil [Int]))) (Some [Int] x)))
+  ; recursive unfold: with >= 2 elements, last ignores the head. Direct.
+  (prop step [(h Int) (h2 Int) (t (List Int))]
+    (== (last [Int] (Cons [Int] h (Cons [Int] h2 t)))
+        (last [Int] (Cons [Int] h2 t)))))
+
+(defn init [a] [(xs (List a))] (List a)
+  (match xs
+    ((Nil) (Nil [a]))
+    ((Cons h t) (match t
+                  ((Nil) (Nil [a]))
+                  ((Cons h2 t2) (Cons [a] h (init [a] t))))))
+  (prop empty-is-empty []
+    (== (init [Int] (Nil [Int])) (Nil [Int])))
+  (prop singleton [(x Int)]
+    (== (init [Int] (Cons [Int] x (Nil [Int]))) (Nil [Int])))
+  ; recursive unfold: with >= 2 elements, init keeps the head and recurses.
+  (prop step [(h Int) (h2 Int) (t (List Int))]
+    (== (init [Int] (Cons [Int] h (Cons [Int] h2 t)))
+        (Cons [Int] h (init [Int] (Cons [Int] h2 t))))))
