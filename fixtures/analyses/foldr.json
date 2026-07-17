@@ -1,0 +1,16 @@
+{
+  "name": "foldr",
+  "hash": "5b345e9d645f4488680668303ad5dfb0b938e9699473825767b4ba12fd5f032d",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "confined",
+    "",
+    ""
+  ],
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

@@ -61,3 +61,68 @@
     (== (sum (append [Int] xs ys)) (+ (sum xs) (sum ys))))
   (prop reverse-invariant [(xs (List Int))]
     (== (sum (reverse [Int] xs)) (sum xs))))
+
+(defn filter [a] [(p (-> a Bool)) (xs (List a))] (List a)
+  (match xs
+    ((Nil) (Nil [a]))
+    ((Cons h t) (if (p h)
+                    (Cons [a] h (filter [a] p t))
+                    (filter [a] p t))))
+  ; two anchors pin filter's shape: the empty case, and the recursive step.
+  ; (An earlier draft carried length-le and filter/append distribution here;
+  ; both were dropped — see the note under cons-step for why.)
+  (prop empty-is-empty [(p (-> Int Bool))]
+    (== (filter [Int] p (Nil [Int])) (Nil [Int])))
+  ; cons-step anchor: without it, `filter` collapsed to a constant `Nil` and
+  ; the swapped-if-branch mutant both survive — every law here is true of the
+  ; empty list. Pinning the recursive shape kills them. Direct proof.
+  (prop cons-step [(p (-> Int Bool)) (h Int) (t (List Int))]
+    (== (filter [Int] p (Cons [Int] h t))
+        (if (p h) (Cons [Int] h (filter [Int] p t)) (filter [Int] p t))))
+  ; cons-step alone also kills the two "recursive call → its argument" mutants:
+  ; on any test list with a tail element failing p, the mutated recursive shape
+  ; diverges from the spec. So no further law is needed for full spec strength.
+  ;
+  ; NB: two elegant abstract laws are omitted deliberately. filter/append
+  ; distribution
+  ;   (filter p (append xs ys)) == (append (filter p xs) (filter p ys))
+  ; is TRUE but drives z3 into a quantifier-instantiation divergence past the
+  ; 600s wall cap with an uninterpreted predicate (SPEC §7.2 then invalidates
+  ; rather than record a machine-dependent verdict). A concrete worked case
+  ; like (filter (fn [x] (== x 2)) [1 2 3]) == [2] sidesteps that, but a `lam`
+  ; inside a property is outside the provable fragment. cons-step covers the
+  ; spec-strength need without either hazard. See #32.
+  )
+
+(defn foldr [a b] [(f (-> a b b)) (z b) (xs (List a))] b
+  (match xs
+    ((Nil) z)
+    ((Cons h t) (f h (foldr [a b] f z t))))
+  (prop empty-is-seed [(f (-> Int Int Int)) (z Int)]
+    (== (foldr [Int Int] f z (Nil [Int])) z))
+  ; cons-step anchor: without it, the constant-seed collapse (always return z)
+  ; survives. Direct proof.
+  (prop cons-step [(f (-> Int Int Int)) (z Int) (h Int) (t (List Int))]
+    (== (foldr [Int Int] f z (Cons [Int] h t)) (f h (foldr [Int Int] f z t))))
+  ; two-step unfold pins nesting/associativity and kills the recursive-argument
+  ; mutant. Direct (no induction). NB: the classic abstract-f append law
+  ;   (foldr f z (append xs ys)) == (foldr f (foldr f z ys) xs)
+  ; is TRUE but omitted — an uninterpreted f drives z3 past the wall cap
+  ; (foldl's symmetric law happens to converge; foldr's does not — a
+  ; reproducibility hazard). See #32.
+  (prop two-step [(f (-> Int Int Int)) (z Int) (a Int) (b Int)]
+    (== (foldr [Int Int] f z (Cons [Int] a (Cons [Int] b (Nil [Int])))) (f a (f b z)))))
+
+(defn foldl [a b] [(f (-> b a b)) (z b) (xs (List a))] b
+  (match xs
+    ((Nil) z)
+    ((Cons h t) (foldl [a b] f (f z h) t)))
+  (prop empty-is-seed [(f (-> Int Int Int)) (z Int)]
+    (== (foldl [Int Int] f z (Nil [Int])) z))
+  ; cons-step anchor: kills the constant-seed collapse, as for foldr.
+  (prop cons-step [(f (-> Int Int Int)) (z Int) (h Int) (t (List Int))]
+    (== (foldl [Int Int] f z (Cons [Int] h t)) (foldl [Int Int] f (f z h) t)))
+  ; two-step unfold — direct, robust; kills the recursive-argument mutant. See
+  ; foldr's note on the omitted abstract-f append law.
+  (prop two-step [(f (-> Int Int Int)) (z Int) (a Int) (b Int)]
+    (== (foldl [Int Int] f z (Cons [Int] a (Cons [Int] b (Nil [Int])))) (f (f z a) b))))

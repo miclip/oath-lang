@@ -219,6 +219,65 @@
       ]
     },
     {
+      "name": "filter",
+      "hash": "cc825b87e8885789ef9ebabd5c8f3591c0022aa1248ef0554ab5f0bfcb12b04b",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-is-empty",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "foldl",
+      "hash": "987c33ad57706f7770afe3da1e4a54e038e4b813e8db4dee4c9827a0d2ec6952",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-seed",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        },
+        {
+          "name": "two-step",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "foldr",
+      "hash": "5b345e9d645f4488680668303ad5dfb0b938e9699473825767b4ba12fd5f032d",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-seed",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        },
+        {
+          "name": "two-step",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "full-name",
       "hash": "e9b146c54fb4f346c6fdd52140f3fcfa0c509148f43be01bd7681a578eddcc92",
       "level": "proven",
