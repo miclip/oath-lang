@@ -19,7 +19,6 @@ export default function Home() {
       <header className="hero">
         <div className="hero-glow" />
         <div className="wrap">
-          <Logo size={104} className="hero-emblem" />
           <h1>OATH</h1>
           <div className="hero-langmark">Language</div>
           <div className="hero-tag">Verified code. Immutable truth.</div>
