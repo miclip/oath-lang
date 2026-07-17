@@ -1664,6 +1664,48 @@
           "proven": true
         }
       ]
+    },
+    {
+      "name": "zip",
+      "hash": "8994f7a68c09274971e798d47ccfe1bbe287b1b8c66a6fc0f4221f49f93cb6f5",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "nil-left",
+          "proven": true
+        },
+        {
+          "name": "nil-right",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "zip-with",
+      "hash": "d55d85255312c199535c3ac5023f77b2b10f6aabdea2bd11cd4c530cf3c644ac",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "nil-left",
+          "proven": true
+        },
+        {
+          "name": "nil-right",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        }
+      ]
     }
   ],
   "kernel": "oath-kernel/0.7",

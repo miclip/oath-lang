@@ -1,0 +1,15 @@
+{
+  "name": "zip",
+  "hash": "8994f7a68c09274971e798d47ccfe1bbe287b1b8c66a6fc0f4221f49f93cb6f5",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}
