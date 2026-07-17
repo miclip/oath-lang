@@ -1,0 +1,15 @@
+{
+  "name": "maximum",
+  "hash": "6cce19284ea04f372310301feab95ac6c4bc771ec521413b93d40091ad5a026c",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 4,
+  "mutants_total": 5,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

@@ -1,0 +1,14 @@
+{
+  "name": "product",
+  "hash": "54a2e5c0171dafb82de37512cbfbc082eac29bc882e80f106494531cb3d1f9ff",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 4,
+  "mutants_total": 4,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

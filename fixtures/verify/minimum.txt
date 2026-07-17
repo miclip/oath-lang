@@ -1,0 +1,3 @@
+✓ prop empty-is-seed            passed 200 cases
+✓ prop cons-step                passed 200 cases
+✓ prop le-seed                  passed 200 cases

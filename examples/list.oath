@@ -62,6 +62,46 @@
   (prop reverse-invariant [(xs (List Int))]
     (== (sum (reverse [Int] xs)) (sum xs))))
 
+(defn product [] [(xs (List Int))] Int
+  (match xs
+    ((Nil) 1)
+    ((Cons h t) (* h (product t))))
+  (prop empty-is-one []
+    (== (product (Nil [Int])) 1))
+  (prop cons-step [(h Int) (t (List Int))]
+    (== (product (Cons [Int] h t)) (* h (product t))))
+  ; two-step pins the operation and kills the recursive-argument mutant. Direct.
+  ; NB: sum's distributes-over-append law has no product analogue here — the
+  ; product version is nonlinear (a symbolic product times a symbolic product),
+  ; which z3's integer arithmetic can't discharge reliably. Direct anchors only.
+  (prop two-step [(a Int) (b Int)]
+    (== (product (Cons [Int] a (Cons [Int] b (Nil [Int])))) (* a b))))
+
+(defn maximum [] [(seed Int) (xs (List Int))] Int
+  (match xs
+    ((Nil) seed)
+    ((Cons h t) (maximum (if (< seed h) h seed) t)))
+  (prop empty-is-seed [(seed Int)]
+    (== (maximum seed (Nil [Int])) seed))
+  (prop cons-step [(seed Int) (h Int) (t (List Int))]
+    (== (maximum seed (Cons [Int] h t)) (maximum (if (< seed h) h seed) t)))
+  ; the result dominates the seed: first-order induction on xs (seed
+  ; generalized), linear arithmetic — proves reproducibly.
+  (prop ge-seed [(seed Int) (xs (List Int))]
+    (<= seed (maximum seed xs))))
+
+(defn minimum [] [(seed Int) (xs (List Int))] Int
+  (match xs
+    ((Nil) seed)
+    ((Cons h t) (minimum (if (< h seed) h seed) t)))
+  (prop empty-is-seed [(seed Int)]
+    (== (minimum seed (Nil [Int])) seed))
+  (prop cons-step [(seed Int) (h Int) (t (List Int))]
+    (== (minimum seed (Cons [Int] h t)) (minimum (if (< h seed) h seed) t)))
+  ; dual of maximum's ge-seed: the result never exceeds the seed.
+  (prop le-seed [(seed Int) (xs (List Int))]
+    (<= (minimum seed xs) seed)))
+
 (defn filter [a] [(p (-> a Bool)) (xs (List a))] (List a)
   (match xs
     ((Nil) (Nil [a]))
