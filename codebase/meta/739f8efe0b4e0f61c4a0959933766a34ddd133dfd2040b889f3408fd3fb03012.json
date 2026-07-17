@@ -1,0 +1,35 @@
+{
+  "name": "min-by",
+  "tyvar_names": [
+    "a"
+  ],
+  "prop_names": [
+    "returns-an-argument",
+    "obeys-the-test"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 2
+  },
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "ord",
+    "x",
+    "y"
+  ],
+  "confinement": [
+    "confined",
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1
+  ]
+}

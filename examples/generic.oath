@@ -1,0 +1,146 @@
+; Generics via dictionary passing (#33, B1). A type class IS a capability:
+; an Ord instance is an ordinary record of functions handed in as a
+; parameter — the same move that gave effects without an effect system
+; (docs/effects.md) gives ad-hoc polymorphism without a class system.
+; Zero new kernel rules; everything here is convention over records and
+; higher-order functions, and the properties quantify over ALL dictionaries
+; exactly as capability properties quantify over all worlds.
+;
+; Dict shape (the issue's lt-vs-cmp question): {lt (-> a a Bool)}. One
+; field, no new Ordering ADT, and a dictionary field quantifies in proofs
+; like any other array-encoded function. "x ≤ y" is spelled (not (lt y x)).
+; Three-way cmp waits for B2, where verified laws make it worth carrying.
+;
+; What is deliberately NOT sworn here: is-sorted-by(sort-by ord xs) for
+; arbitrary ord. It is FALSE for lawless dictionaries — a dict with
+; (lt x y) and (lt y x) both true breaks it, and the generator's table
+; functions find such dicts. Sortedness relative to a dictionary needs the
+; dictionary to carry proven laws (totality, transitivity): that is B2,
+; verified type classes, and this gap is the argument for it. What CAN be
+; sworn for every dictionary, lawful or not, is structure: length is
+; preserved, occurrence counts are preserved (the permutation oath, itself
+; stated through an Eq dictionary), min/max return an argument and obey
+; their defining test.
+
+(defn count-by [a] [(eqd {eq (-> a a Bool)}) (x a) (xs (List a))] Int
+  (match xs
+    ((Nil) 0)
+    ((Cons h t)
+      (if ((. eqd eq) x h)
+          (+ 1 (count-by [a] eqd x t))
+          (count-by [a] eqd x t))))
+  (prop non-negative [(eqd {eq (-> Int Int Bool)}) (x Int) (xs (List Int))]
+    (<= 0 (count-by [Int] eqd x xs)))
+  (prop bounded-by-length [(eqd {eq (-> Int Int Bool)}) (x Int) (xs (List Int))]
+    (<= (count-by [Int] eqd x xs) (length [Int] xs)))
+  ; Decomposition anchor (the #18 lesson, generic edition): the two props
+  ; above hold for many wrong bodies. This one pins the arithmetic AND the
+  ; argument orientation — for an asymmetric dictionary, (eq x h) and
+  ; (eq h x) are different questions, and the needle asks first.
+  (prop cons-ledger [(eqd {eq (-> Int Int Bool)}) (x Int) (y Int) (t (List Int))]
+    (== (count-by [Int] eqd x (Cons [Int] y t))
+        (+ (count-by [Int] eqd x t) (if ((. eqd eq) x y) 1 0)))))
+
+(defn list-eq-by [a] [(eqd {eq (-> a a Bool)}) (xs (List a)) (ys (List a))] Bool
+  (match xs
+    ((Nil)
+      (match ys
+        ((Nil) true)
+        ((Cons h2 t2) false)))
+    ((Cons h t)
+      (match ys
+        ((Nil) false)
+        ((Cons h2 t2) (and ((. eqd eq) h h2) (list-eq-by [a] eqd t t2))))))
+  ; Container equality relative to an element dictionary — the kernel's ==
+  ; cannot cross function types, so this is how capability-bearing or
+  ; generic structures compare. Reflexivity is deliberately absent: it
+  ; holds only for LAWFUL eq (B2); a lawless dict need not equate x with x.
+  (prop nils-equal [(eqd {eq (-> Int Int Bool)})]
+    (list-eq-by [Int] eqd (Nil [Int]) (Nil [Int])))
+  (prop length-mismatch-differs [(eqd {eq (-> Int Int Bool)}) (xs (List Int)) (ys (List Int))]
+    (if (== (length [Int] xs) (length [Int] ys))
+        true
+        (not (list-eq-by [Int] eqd xs ys))))
+  ; Decomposition anchor: head comparison is (eq left right) and the tail
+  ; must agree — pins the and-structure and the orientation.
+  (prop cons-law [(eqd {eq (-> Int Int Bool)}) (x Int) (y Int) (xs (List Int)) (ys (List Int))]
+    (== (list-eq-by [Int] eqd (Cons [Int] x xs) (Cons [Int] y ys))
+        (and ((. eqd eq) x y) (list-eq-by [Int] eqd xs ys))))
+  ; Depth-2 unfold on concrete two-element lists: a mutant that swaps the
+  ; list arguments in the recursive call flips the orientation of every
+  ; comparison below the head — visible only past depth 1, so this anchor
+  ; hands the generator the discriminating shape instead of hoping the
+  ; length draw provides it.
+  (prop two-deep-orientation [(eqd {eq (-> Int Int Bool)}) (x Int) (y Int) (x2 Int) (y2 Int)]
+    (== (list-eq-by [Int] eqd
+          (Cons [Int] x (Cons [Int] x2 (Nil [Int])))
+          (Cons [Int] y (Cons [Int] y2 (Nil [Int]))))
+        (and ((. eqd eq) x y) ((. eqd eq) x2 y2)))))
+
+(defn min-by [a] [(ord {lt (-> a a Bool)}) (x a) (y a)] a
+  (if ((. ord lt) y x) y x)
+  (prop returns-an-argument [(ord {lt (-> Int Int Bool)}) (x Int) (y Int)]
+    (or (== (min-by [Int] ord x y) x) (== (min-by [Int] ord x y) y)))
+  (prop obeys-the-test [(ord {lt (-> Int Int Bool)}) (x Int) (y Int)]
+    (if ((. ord lt) y x)
+        (== (min-by [Int] ord x y) y)
+        (== (min-by [Int] ord x y) x))))
+
+(defn max-by [a] [(ord {lt (-> a a Bool)}) (x a) (y a)] a
+  (if ((. ord lt) y x) x y)
+  (prop returns-an-argument [(ord {lt (-> Int Int Bool)}) (x Int) (y Int)]
+    (or (== (max-by [Int] ord x y) x) (== (max-by [Int] ord x y) y)))
+  (prop complements-min [(ord {lt (-> Int Int Bool)}) (x Int) (y Int)]
+    (or (and (== (min-by [Int] ord x y) x) (== (max-by [Int] ord x y) y))
+        (and (== (min-by [Int] ord x y) y) (== (max-by [Int] ord x y) x)))))
+
+(defn insert-by [a] [(ord {lt (-> a a Bool)}) (x a) (xs (List a))] (List a)
+  (match xs
+    ((Nil) (Cons [a] x (Nil [a])))
+    ((Cons h t)
+      (if ((. ord lt) h x)
+          (Cons [a] h (insert-by [a] ord x t))
+          (Cons [a] x (Cons [a] h t)))))
+  (prop grows-length-by-one [(ord {lt (-> Int Int Bool)}) (x Int) (xs (List Int))]
+    (== (length [Int] (insert-by [Int] ord x xs)) (+ 1 (length [Int] xs))))
+  ; The permutation ledger, one insertion at a time: the inserted element
+  ; contributes to a count exactly when the Eq dictionary matches it, no
+  ; matter what the Ord dictionary decided about position.
+  (prop counts-ledger [(ord {lt (-> Int Int Bool)}) (eqd {eq (-> Int Int Bool)}) (x Int) (y Int) (xs (List Int))]
+    (== (count-by [Int] eqd x (insert-by [Int] ord y xs))
+        (+ (count-by [Int] eqd x xs) (if ((. eqd eq) x y) 1 0))))
+  ; Decomposition anchor: the walk continues past h exactly when (lt h x) —
+  ; that orientation is the difference between insert-before and
+  ; insert-after for an asymmetric dictionary, and mutation testing proved
+  ; the structural props above cannot see it.
+  (prop head-law [(ord {lt (-> Int Int Bool)}) (x Int) (h Int) (t (List Int))]
+    (if ((. ord lt) h x)
+        (== (insert-by [Int] ord x (Cons [Int] h t))
+            (Cons [Int] h (insert-by [Int] ord x t)))
+        (== (insert-by [Int] ord x (Cons [Int] h t))
+            (Cons [Int] x (Cons [Int] h t))))))
+
+(defn sort-by [a] [(ord {lt (-> a a Bool)}) (xs (List a))] (List a)
+  (match xs
+    ((Nil) (Nil [a]))
+    ((Cons h t) (insert-by [a] ord h (sort-by [a] ord t))))
+  (prop preserves-length [(ord {lt (-> Int Int Bool)}) (xs (List Int))]
+    (== (length [Int] (sort-by [Int] ord xs)) (length [Int] xs)))
+  ; THE generic permutation oath: for every ordering dictionary and every
+  ; equality dictionary — 2^lawless of them — sorting moves nothing in or
+  ; out. Stated through count-by because the kernel's == cannot see through
+  ; a dictionary; this is the property the monomorphic sort proves, held
+  ; "relative to the dictionary" exactly as #33 asks.
+  (prop preserves-counts [(ord {lt (-> Int Int Bool)}) (eqd {eq (-> Int Int Bool)}) (x Int) (xs (List Int))]
+    (== (count-by [Int] eqd x (sort-by [Int] ord xs))
+        (count-by [Int] eqd x xs)))
+  ; Decomposition anchor: both permutation props survive a mutant that
+  ; skips sorting the tail (it is itself a permutation). Only the
+  ; insertion unfolding pins the recursion.
+  (prop unfolds-by-insertion [(ord {lt (-> Int Int Bool)}) (x Int) (xs (List Int))]
+    (== (sort-by [Int] ord (Cons [Int] x xs))
+        (insert-by [Int] ord x (sort-by [Int] ord xs)))))
+  ; Also absent, and FALSIFIED when tried: snoc-is-insert, the monomorphic
+  ; sort's own lemma. It secretly rides on insert commutativity, which
+  ; needs the ordering laws — the generator found a lawless table-dict
+  ; counterexample in 2 cases. Filed with is-sorted-by under "why B2".

@@ -1,0 +1,16 @@
+{
+  "name": "insert-by",
+  "hash": "d4bf03ae4fc72f34edd350c419f93c2626d7d9d2d1fd264a8df8bf4ba3353fa3",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "confined",
+    "",
+    ""
+  ],
+  "mutants_killed": 4,
+  "mutants_total": 4,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

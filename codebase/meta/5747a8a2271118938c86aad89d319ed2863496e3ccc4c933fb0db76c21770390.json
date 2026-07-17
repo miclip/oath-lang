@@ -1,0 +1,37 @@
+{
+  "name": "count-by",
+  "tyvar_names": [
+    "a"
+  ],
+  "prop_names": [
+    "non-negative",
+    "bounded-by-length",
+    "cons-ledger"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "mutants_killed": 8,
+  "mutants_total": 8,
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "eqd",
+    "x",
+    "xs"
+  ],
+  "confinement": [
+    "confined",
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

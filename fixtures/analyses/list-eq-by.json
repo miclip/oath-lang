@@ -1,0 +1,16 @@
+{
+  "name": "list-eq-by",
+  "hash": "7dc11708415b01d9561327cbf61a886201610287345bc8ee3f32c72a548f6d2e",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "confined",
+    "",
+    ""
+  ],
+  "mutants_killed": 7,
+  "mutants_total": 7,
+  "level": "proven",
+  "cases": 200,
+  "proven": 4
+}

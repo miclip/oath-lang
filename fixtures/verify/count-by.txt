@@ -1,0 +1,3 @@
+✓ prop non-negative             passed 200 cases
+✓ prop bounded-by-length        passed 200 cases
+✓ prop cons-ledger              passed 200 cases

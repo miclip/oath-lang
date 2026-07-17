@@ -1,0 +1,2 @@
+✓ prop returns-an-argument      passed 200 cases
+✓ prop obeys-the-test           passed 200 cases

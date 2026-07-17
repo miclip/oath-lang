@@ -1,0 +1,33 @@
+{
+  "name": "sort-by",
+  "tyvar_names": [
+    "a"
+  ],
+  "prop_names": [
+    "preserves-length",
+    "preserves-counts"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 2
+  },
+  "mutants_killed": 1,
+  "mutants_total": 2,
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "ord",
+    "xs"
+  ],
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1
+  ]
+}

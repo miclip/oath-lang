@@ -166,6 +166,27 @@
       ]
     },
     {
+      "name": "count-by",
+      "hash": "5747a8a2271118938c86aad89d319ed2863496e3ccc4c933fb0db76c21770390",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "non-negative",
+          "proven": true
+        },
+        {
+          "name": "bounded-by-length",
+          "proven": true
+        },
+        {
+          "name": "cons-ledger",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "count-matching",
       "hash": "44d639c487c3ebbfa0b56b0ba629f36478783c0a51d8c2177b28fce2cb6b8afc",
       "level": "proven",
@@ -639,6 +660,27 @@
       ]
     },
     {
+      "name": "insert-by",
+      "hash": "d4bf03ae4fc72f34edd350c419f93c2626d7d9d2d1fd264a8df8bf4ba3353fa3",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "grows-length-by-one",
+          "proven": true
+        },
+        {
+          "name": "counts-ledger",
+          "proven": true
+        },
+        {
+          "name": "head-law",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "is-none",
       "hash": "2ba7f9f256616ab855b5ebde66b5544feb26922287b3ac209e42516fd74cb9eb",
       "level": "proven",
@@ -816,6 +858,31 @@
       ]
     },
     {
+      "name": "list-eq-by",
+      "hash": "7dc11708415b01d9561327cbf61a886201610287345bc8ee3f32c72a548f6d2e",
+      "level": "proven",
+      "proven_count": 4,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "nils-equal",
+          "proven": true
+        },
+        {
+          "name": "length-mismatch-differs",
+          "proven": true
+        },
+        {
+          "name": "cons-law",
+          "proven": true
+        },
+        {
+          "name": "two-deep-orientation",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "main-echo",
       "hash": "09b330ada00c65dd1e2e2dcfd24781ce33f3ae20c5106d737925be4bd7ecec14",
       "level": "proven",
@@ -918,6 +985,23 @@
       ]
     },
     {
+      "name": "max-by",
+      "hash": "4c8f05ccdd56be98ce3414dccb6470de6d6fa0e573937ef87bfc9efa889caa2f",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "returns-an-argument",
+          "proven": true
+        },
+        {
+          "name": "complements-min",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "max2",
       "hash": "04416a62699b6875092c3ad0c232c69ece40a95bcc59d284e4d5639879a16b59",
       "level": "proven",
@@ -980,6 +1064,23 @@
         },
         {
           "name": "keeps-sortedness",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "min-by",
+      "hash": "739f8efe0b4e0f61c4a0959933766a34ddd133dfd2040b889f3408fd3fb03012",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "returns-an-argument",
+          "proven": true
+        },
+        {
+          "name": "obeys-the-test",
           "proven": true
         }
       ]
@@ -1591,6 +1692,27 @@
         },
         {
           "name": "reverse-invariant",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "sort-by",
+      "hash": "d6bdb3f6787725140bf15f98d4e5a5bdfb616a9f838a21a71591df129856a805",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "preserves-length",
+          "proven": true
+        },
+        {
+          "name": "preserves-counts",
+          "proven": true
+        },
+        {
+          "name": "unfolds-by-insertion",
           "proven": true
         }
       ]

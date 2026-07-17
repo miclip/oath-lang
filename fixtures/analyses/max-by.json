@@ -1,0 +1,16 @@
+{
+  "name": "max-by",
+  "hash": "4c8f05ccdd56be98ce3414dccb6470de6d6fa0e573937ef87bfc9efa889caa2f",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "confined",
+    "",
+    ""
+  ],
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

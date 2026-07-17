@@ -1,0 +1,16 @@
+{
+  "name": "count-by",
+  "hash": "5747a8a2271118938c86aad89d319ed2863496e3ccc4c933fb0db76c21770390",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "confined",
+    "",
+    ""
+  ],
+  "mutants_killed": 8,
+  "mutants_total": 8,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}
