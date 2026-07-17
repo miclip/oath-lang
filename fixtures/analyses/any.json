@@ -1,0 +1,15 @@
+{
+  "name": "any",
+  "hash": "dd0648da746668f84c85f64bd6969f4f0d5ed5d6fdb7cfaf6ae964a224ad6cfb",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

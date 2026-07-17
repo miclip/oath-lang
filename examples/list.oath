@@ -126,3 +126,62 @@
   ; foldr's note on the omitted abstract-f append law.
   (prop two-step [(f (-> Int Int Int)) (z Int) (a Int) (b Int)]
     (== (foldl [Int Int] f z (Cons [Int] a (Cons [Int] b (Nil [Int])))) (f (f z a) b))))
+
+(defn reverse-onto [a] [(xs (List a)) (acc (List a))] (List a)
+  (match xs
+    ((Nil) acc)
+    ((Cons h t) (reverse-onto [a] t (Cons [a] h acc))))
+  (prop empty-returns-acc [(acc (List Int))]
+    (== (reverse-onto [Int] (Nil [Int]) acc) acc))
+  (prop cons-step [(h Int) (t (List Int)) (acc (List Int))]
+    (== (reverse-onto [Int] (Cons [Int] h t) acc)
+        (reverse-onto [Int] t (Cons [Int] h acc))))
+  ; correctness: the accumulator reverse equals the naive reverse prepended.
+  ; First-order induction on xs (append associativity is the key lemma) — no
+  ; higher-order argument, so unlike the fold append laws it proves reproducibly.
+  (prop matches-reverse-append [(xs (List Int)) (acc (List Int))]
+    (== (reverse-onto [Int] xs acc)
+        (append [Int] (reverse [Int] xs) acc))))
+
+(defn flatten [a] [(xss (List (List a)))] (List a)
+  (match xss
+    ((Nil) (Nil [a]))
+    ((Cons xs rest) (append [a] xs (flatten [a] rest))))
+  (prop empty-is-empty []
+    (== (flatten [Int] (Nil [(List Int)])) (Nil [Int])))
+  (prop cons-step [(xs (List Int)) (rest (List (List Int)))]
+    (== (flatten [Int] (Cons [(List Int)] xs rest))
+        (append [Int] xs (flatten [Int] rest))))
+  ; first-order distribution over the OUTER append: proves by induction on `as`,
+  ; leaning on append associativity. flatten's concatenation is a kernel prim,
+  ; not an uninterpreted function, so this converges where the fold law does not.
+  (prop distributes-over-append [(as (List (List Int))) (bs (List (List Int)))]
+    (== (flatten [Int] (append [(List Int)] as bs))
+        (append [Int] (flatten [Int] as) (flatten [Int] bs)))))
+
+(defn all [a] [(p (-> a Bool)) (xs (List a))] Bool
+  (match xs
+    ((Nil) true)
+    ; short-circuit with `if`: `and` is a strict, non-short-circuiting prim
+    ; (SPEC §3), so `(and (p h) (all p t))` would always recurse. `if` stops
+    ; at the first failing element, matching the `contains` idiom.
+    ((Cons h t) (if (p h) (all [a] p t) false)))
+  (prop empty-is-true [(p (-> Int Bool))]
+    (all [Int] p (Nil [Int])))
+  ; cons-step is the whole spec: it pins the recursive shape and kills the
+  ; collapse-to-constant and swapped mutants. Stated via `and` (the value law
+  ; the short-circuit body computes). Direct proof (abstract predicate).
+  (prop cons-step [(p (-> Int Bool)) (h Int) (t (List Int))]
+    (== (all [Int] p (Cons [Int] h t)) (and (p h) (all [Int] p t)))))
+
+(defn any [a] [(p (-> a Bool)) (xs (List a))] Bool
+  (match xs
+    ((Nil) false)
+    ; short-circuit with `if`: `or` is strict (SPEC §3), so it would recurse
+    ; even after a match. `if` returns at the first satisfying element.
+    ((Cons h t) (if (p h) true (any [a] p t))))
+  (prop empty-is-false [(p (-> Int Bool))]
+    (not (any [Int] p (Nil [Int]))))
+  ; stated via `or` (the value law the short-circuit body computes).
+  (prop cons-step [(p (-> Int Bool)) (h Int) (t (List Int))]
+    (== (any [Int] p (Cons [Int] h t)) (or (p h) (any [Int] p t)))))

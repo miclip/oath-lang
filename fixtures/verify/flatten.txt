@@ -1,0 +1,3 @@
+✓ prop empty-is-empty           passed 200 cases
+✓ prop cons-step                passed 200 cases
+✓ prop distributes-over-append  passed 200 cases
