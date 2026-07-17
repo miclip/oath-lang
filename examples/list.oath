@@ -225,3 +225,39 @@
   ; stated via `or` (the value law the short-circuit body computes).
   (prop cons-step [(p (-> Int Bool)) (h Int) (t (List Int))]
     (== (any [Int] p (Cons [Int] h t)) (or (p h) (any [Int] p t)))))
+
+(defn take-while [a] [(p (-> a Bool)) (xs (List a))] (List a)
+  (match xs
+    ((Nil) (Nil [a]))
+    ((Cons h t) (if (p h) (Cons [a] h (take-while [a] p t)) (Nil [a]))))
+  (prop empty-is-empty [(p (-> Int Bool))]
+    (== (take-while [Int] p (Nil [Int])) (Nil [Int])))
+  ; cons-step is the whole spec: keep the head while p holds, else stop. Direct.
+  (prop cons-step [(p (-> Int Bool)) (h Int) (t (List Int))]
+    (== (take-while [Int] p (Cons [Int] h t))
+        (if (p h) (Cons [Int] h (take-while [Int] p t)) (Nil [Int])))))
+
+(defn drop-while [a] [(p (-> a Bool)) (xs (List a))] (List a)
+  (match xs
+    ((Nil) (Nil [a]))
+    ((Cons h t) (if (p h) (drop-while [a] p t) (Cons [a] h t))))
+  (prop empty-is-empty [(p (-> Int Bool))]
+    (== (drop-while [Int] p (Nil [Int])) (Nil [Int])))
+  ; cons-step: skip the head while p holds, else return the rest intact. Direct.
+  (prop cons-step [(p (-> Int Bool)) (h Int) (t (List Int))]
+    (== (drop-while [Int] p (Cons [Int] h t))
+        (if (p h) (drop-while [Int] p t) (Cons [Int] h t)))))
+
+(defn count-matching [a] [(p (-> a Bool)) (xs (List a))] Int
+  (match xs
+    ((Nil) 0)
+    ((Cons h t) (if (p h) (+ 1 (count-matching [a] p t)) (count-matching [a] p t))))
+  (prop empty-is-zero [(p (-> Int Bool))]
+    (== (count-matching [Int] p (Nil [Int])) 0))
+  ; non-negative is first-order inductive over LINEAR arithmetic — robust
+  ; (mirrors length's non-negative).
+  (prop non-negative [(p (-> Int Bool)) (xs (List Int))]
+    (<= 0 (count-matching [Int] p xs)))
+  (prop cons-step [(p (-> Int Bool)) (h Int) (t (List Int))]
+    (== (count-matching [Int] p (Cons [Int] h t))
+        (if (p h) (+ 1 (count-matching [Int] p t)) (count-matching [Int] p t)))))

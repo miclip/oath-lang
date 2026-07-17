@@ -1,0 +1,15 @@
+{
+  "name": "take-while",
+  "hash": "0160610e8287758f43ba2ab3e28000023fe591dd8d8114fac248843c55592764",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "mutants_killed": 3,
+  "mutants_total": 3,
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

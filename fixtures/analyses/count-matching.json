@@ -1,0 +1,15 @@
+{
+  "name": "count-matching",
+  "hash": "44d639c487c3ebbfa0b56b0ba629f36478783c0a51d8c2177b28fce2cb6b8afc",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "mutants_killed": 7,
+  "mutants_total": 7,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}
