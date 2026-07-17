@@ -1,0 +1,33 @@
+{
+  "name": "map-result",
+  "tyvar_names": [
+    "a",
+    "b",
+    "e"
+  ],
+  "prop_names": [
+    "ok-maps",
+    "err-passes-through"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 2
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "f",
+    "r"
+  ],
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "map-err",
+  "hash": "895fa0dbd9fbb14aa5af561a96771d500543f5f8ec88e47a5a00d12224d3ffe3",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

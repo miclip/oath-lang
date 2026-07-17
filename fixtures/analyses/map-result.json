@@ -1,0 +1,13 @@
+{
+  "name": "map-result",
+  "hash": "e2805294c80994435e36372d509d8eeab5191860de88887aec46a2cc6f8cd465",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

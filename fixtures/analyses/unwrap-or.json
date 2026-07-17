@@ -1,0 +1,13 @@
+{
+  "name": "unwrap-or",
+  "hash": "19d25f94f919f5fa214487f020fbf665989f7a75d0556222aad8c6c94b3f4e44",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

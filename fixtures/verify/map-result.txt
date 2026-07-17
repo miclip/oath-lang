@@ -1,0 +1,2 @@
+✓ prop ok-maps                  passed 200 cases
+✓ prop err-passes-through       passed 200 cases
