@@ -867,6 +867,23 @@
       ]
     },
     {
+      "name": "map-err",
+      "hash": "895fa0dbd9fbb14aa5af561a96771d500543f5f8ec88e47a5a00d12224d3ffe3",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "ok-passes-through",
+          "proven": true
+        },
+        {
+          "name": "err-maps",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "map-option",
       "hash": "c68fdd467a0a39dc9623a3a4426fcca2ae5a5c0732d131a501196fb6e5a39d4d",
       "level": "proven",
@@ -879,6 +896,23 @@
         },
         {
           "name": "some-maps",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "map-result",
+      "hash": "e2805294c80994435e36372d509d8eeab5191860de88887aec46a2cc6f8cd465",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "ok-maps",
+          "proven": true
+        },
+        {
+          "name": "err-passes-through",
           "proven": true
         }
       ]
@@ -1729,6 +1763,23 @@
         },
         {
           "name": "cons-step",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "unwrap-or",
+      "hash": "19d25f94f919f5fa214487f020fbf665989f7a75d0556222aad8c6c94b3f4e44",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "ok-unwraps",
+          "proven": true
+        },
+        {
+          "name": "err-defaults",
           "proven": true
         }
       ]

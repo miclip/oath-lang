@@ -57,6 +57,39 @@
   (prop some-is-not-none [(x Int)]
     (not (is-none [Int] (Some [Int] x)))))
 
+; Result: the two-armed error type. Also non-recursive, so its combinators
+; prove by direct Ok/Err case analysis.
+(data Result [a e]
+  (Ok a)
+  (Err e))
+
+(defn map-result [a b e] [(f (-> a b)) (r (Result a e))] (Result b e)
+  (match r
+    ((Ok x) (Ok [b e] (f x)))
+    ((Err ee) (Err [b e] ee)))
+  (prop ok-maps [(f (-> Int Int)) (x Int)]
+    (== (map-result [Int Int Int] f (Ok [Int Int] x)) (Ok [Int Int] (f x))))
+  (prop err-passes-through [(f (-> Int Int)) (e Int)]
+    (== (map-result [Int Int Int] f (Err [Int Int] e)) (Err [Int Int] e))))
+
+(defn map-err [a e f] [(g (-> e f)) (r (Result a e))] (Result a f)
+  (match r
+    ((Ok x) (Ok [a f] x))
+    ((Err ee) (Err [a f] (g ee))))
+  (prop ok-passes-through [(g (-> Int Int)) (x Int)]
+    (== (map-err [Int Int Int] g (Ok [Int Int] x)) (Ok [Int Int] x)))
+  (prop err-maps [(g (-> Int Int)) (e Int)]
+    (== (map-err [Int Int Int] g (Err [Int Int] e)) (Err [Int Int] (g e)))))
+
+(defn unwrap-or [a e] [(r (Result a e)) (d a)] a
+  (match r
+    ((Ok x) x)
+    ((Err ee) d))
+  (prop ok-unwraps [(x Int) (d Int)]
+    (== (unwrap-or [Int Int] (Ok [Int Int] x) d) x))
+  (prop err-defaults [(e Int) (d Int)]
+    (== (unwrap-or [Int Int] (Err [Int Int] e) d) d)))
+
 (defn shout [] [(s Str)] Str
   (++ s "!")
   (prop grows-by-one [(s Str)]
