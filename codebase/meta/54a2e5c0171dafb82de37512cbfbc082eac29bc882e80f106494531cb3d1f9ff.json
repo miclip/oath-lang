@@ -1,0 +1,30 @@
+{
+  "name": "product",
+  "prop_names": [
+    "empty-is-one",
+    "cons-step",
+    "two-step"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "mutants_killed": 4,
+  "mutants_total": 4,
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "xs"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "name": "maximum",
+  "prop_names": [
+    "empty-is-seed",
+    "cons-step",
+    "ge-seed"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "mutants_killed": 4,
+  "mutants_total": 5,
+  "waived_mutants": [
+    {
+      "hash": "41d0279feca56573d5d92229e5cf5a829262c084a53b1832ed2c18764e261045",
+      "desc": "\u003c → \u003c=",
+      "reason": "\u003c vs \u003c= inside max: the two forms differ only when seed==h, where both branches return the same value — behaviorally equivalent, not a spec gap",
+      "by": "claude-main"
+    }
+  ],
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "seed",
+    "xs"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "minimum",
+  "hash": "9ab35d2eaad189a0cb301a30616edd6040f2adcd608c658d4a53afea6b9a3e99",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 4,
+  "mutants_total": 5,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}
