@@ -1,0 +1,16 @@
+{
+  "name": "foldl",
+  "hash": "987c33ad57706f7770afe3da1e4a54e038e4b813e8db4dee4c9827a0d2ec6952",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "confined",
+    "",
+    ""
+  ],
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}
