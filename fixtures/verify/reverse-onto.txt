@@ -1,0 +1,3 @@
+✓ prop empty-returns-acc        passed 200 cases
+✓ prop cons-step                passed 200 cases
+✓ prop matches-reverse-append   passed 200 cases
