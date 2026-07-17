@@ -1,0 +1,3 @@
+✓ prop empty-is-empty           passed 200 cases
+✓ prop singleton                passed 200 cases
+✓ prop step                     passed 200 cases

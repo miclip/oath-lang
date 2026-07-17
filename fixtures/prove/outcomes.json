@@ -270,6 +270,23 @@
       ]
     },
     {
+      "name": "find",
+      "hash": "bce060be0e7feb0906edda51cb55ee2c8215c915dd8b414226279e7ac8e1c9bc",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-is-none",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "flatten",
       "hash": "16104aaf13230e4a323ba494bf77980797baa43d1e758a2706af25a62b096d2c",
       "level": "proven",
@@ -496,6 +513,27 @@
       ]
     },
     {
+      "name": "init",
+      "hash": "6ed53caa0ad21b7d739eaac8817b2fd1e0f983da3dc188d07f89ef1640d988bb",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-empty",
+          "proven": true
+        },
+        {
+          "name": "singleton",
+          "proven": true
+        },
+        {
+          "name": "step",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "initials-or",
       "hash": "43f5aa38d3f440d4080f828ab155c912a4716c06e1a42ad6569875752c77b6a8",
       "level": "proven",
@@ -629,6 +667,27 @@
         },
         {
           "name": "overwrite-last-wins",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "last",
+      "hash": "fb2a994de5224165a35ae418724c2f7bd971957959ee31a17f2f76c186311cd6",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-none",
+          "proven": true
+        },
+        {
+          "name": "singleton",
+          "proven": true
+        },
+        {
+          "name": "step",
           "proven": true
         }
       ]
@@ -1271,6 +1330,27 @@
         },
         {
           "name": "reconstructs",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "snoc",
+      "hash": "81a93fb3095e2d573263ae25611c4bf7d815b764e7efc2c5f926a1a194418455",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "single",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        },
+        {
+          "name": "as-append",
           "proven": true
         }
       ]

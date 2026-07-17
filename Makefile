@@ -9,7 +9,7 @@ EXAMPLES = list sort merge tree interval queue rle ediv rot_hl rot_f rot_h2 \
            rot_h3 rot records extras ints service leaky stateful cli netcli
 EXHIBITS = undertested nontotal bad_reverse
 PROVABLE = length append sum count reverse map filter foldr foldl \
-           reverse-onto flatten all any contains is-sorted insert \
+           reverse-onto flatten all any snoc find last init contains is-sorted insert \
            merge t-flatten t-insert t-member t-size \
            i-contains i-overlaps i-intersect i-hull \
            q-to-list q-push q-peek q-drop rle-encode \

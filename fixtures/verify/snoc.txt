@@ -1,0 +1,3 @@
+✓ prop single                   passed 200 cases
+✓ prop cons-step                passed 200 cases
+✓ prop as-append                passed 200 cases

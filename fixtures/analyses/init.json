@@ -1,0 +1,14 @@
+{
+  "name": "init",
+  "hash": "6ed53caa0ad21b7d739eaac8817b2fd1e0f983da3dc188d07f89ef1640d988bb",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 3,
+  "mutants_total": 3,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}
