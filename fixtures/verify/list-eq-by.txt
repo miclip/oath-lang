@@ -1,0 +1,4 @@
+✓ prop nils-equal               passed 200 cases
+✓ prop length-mismatch-differs  passed 200 cases
+✓ prop cons-law                 passed 200 cases
+✓ prop two-deep-orientation     passed 200 cases

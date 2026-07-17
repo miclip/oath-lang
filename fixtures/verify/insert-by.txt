@@ -1,0 +1,3 @@
+✓ prop grows-length-by-one      passed 200 cases
+✓ prop counts-ledger            passed 200 cases
+✓ prop head-law                 passed 200 cases

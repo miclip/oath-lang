@@ -1,0 +1,16 @@
+{
+  "name": "min-by",
+  "hash": "739f8efe0b4e0f61c4a0959933766a34ddd133dfd2040b889f3408fd3fb03012",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "confined",
+    "",
+    ""
+  ],
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

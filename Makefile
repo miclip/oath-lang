@@ -5,7 +5,7 @@
 # unproven exhibits) — the leading dash tolerates them.
 # rot_hl/rot_f/rot_h2/rot_h3 are the flywheel-experiment arms (#15): four
 # independently-authored green bodies for one oath; `rot` aliases the winner.
-EXAMPLES = list sort merge tree interval queue rle ediv rot_hl rot_f rot_h2 \
+EXAMPLES = list sort generic merge tree interval queue rle ediv rot_hl rot_f rot_h2 \
            rot_h3 rot records extras ints service leaky stateful cli netcli
 EXHIBITS = undertested nontotal bad_reverse
 PROVABLE = length append sum count reverse map filter foldr foldl \
@@ -15,7 +15,8 @@ PROVABLE = length append sum count reverse map filter foldr foldl \
            merge t-flatten t-insert t-member t-size \
            i-contains i-overlaps i-intersect i-hull \
            q-to-list q-push q-peek q-drop rle-encode \
-           sort take drop max2 abs sign clamp or-else shout full-name \
+           sort count-by list-eq-by min-by max-by insert-by sort-by \
+           take drop max2 abs sign clamp or-else shout full-name \
            greet greet-or-guest initials-or \
            map-option flat-map-option is-some is-none \
            map-result map-err unwrap-or \

@@ -1,0 +1,39 @@
+{
+  "name": "list-eq-by",
+  "tyvar_names": [
+    "a"
+  ],
+  "prop_names": [
+    "nils-equal",
+    "length-mismatch-differs",
+    "cons-law",
+    "two-deep-orientation"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 4
+  },
+  "mutants_killed": 7,
+  "mutants_total": 7,
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "eqd",
+    "xs",
+    "ys"
+  ],
+  "confinement": [
+    "confined",
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3
+  ]
+}
