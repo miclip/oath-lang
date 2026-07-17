@@ -1,0 +1,2 @@
+✓ prop none-stays-none          passed 200 cases
+✓ prop some-applies             passed 200 cases

@@ -325,6 +325,23 @@
       ]
     },
     {
+      "name": "flat-map-option",
+      "hash": "08cce2f0575fe5a00b064e418aceeb352b8b3257190018d6990f6d7d7654393e",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "none-stays-none",
+          "proven": true
+        },
+        {
+          "name": "some-applies",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "flatten",
       "hash": "16104aaf13230e4a323ba494bf77980797baa43d1e758a2706af25a62b096d2c",
       "level": "proven",
@@ -622,6 +639,40 @@
       ]
     },
     {
+      "name": "is-none",
+      "hash": "2ba7f9f256616ab855b5ebde66b5544feb26922287b3ac209e42516fd74cb9eb",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "none-is-none",
+          "proven": true
+        },
+        {
+          "name": "some-is-not-none",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "is-some",
+      "hash": "f3ac0cfaff55b6fa7d87a06b3555754280643773447445d7c7385d71b7d3e517",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "none-is-not-some",
+          "proven": true
+        },
+        {
+          "name": "some-is-some",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "is-sorted",
       "hash": "064d42c2395412835438f4a40910e4b26dd165cf85fc14d9ff7ada25431ba5d5",
       "level": "proven",
@@ -811,6 +862,23 @@
       "props": [
         {
           "name": "preserves-length",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "map-option",
+      "hash": "c68fdd467a0a39dc9623a3a4426fcca2ae5a5c0732d131a501196fb6e5a39d4d",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "none-stays-none",
+          "proven": true
+        },
+        {
+          "name": "some-maps",
           "proven": true
         }
       ]

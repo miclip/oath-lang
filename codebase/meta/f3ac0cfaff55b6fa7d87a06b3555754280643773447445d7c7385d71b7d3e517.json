@@ -1,0 +1,31 @@
+{
+  "name": "is-some",
+  "tyvar_names": [
+    "a"
+  ],
+  "prop_names": [
+    "none-is-not-some",
+    "some-is-some"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 2
+  },
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "o"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1
+  ]
+}

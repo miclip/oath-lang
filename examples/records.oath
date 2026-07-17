@@ -19,6 +19,44 @@
   (prop some-wins [(x Int) (d Int)]
     (== (or-else [Int] (Some [Int] x) d) x)))
 
+; Option combinators. Option is non-recursive, so every law is a direct
+; case analysis (None / Some) — no induction, proofs are trivial and robust.
+(defn map-option [a b] [(f (-> a b)) (o (Option a))] (Option b)
+  (match o
+    ((None) (None [b]))
+    ((Some x) (Some [b] (f x))))
+  (prop none-stays-none [(f (-> Int Int))]
+    (== (map-option [Int Int] f (None [Int])) (None [Int])))
+  (prop some-maps [(f (-> Int Int)) (x Int)]
+    (== (map-option [Int Int] f (Some [Int] x)) (Some [Int] (f x)))))
+
+(defn flat-map-option [a b] [(f (-> a (Option b))) (o (Option a))] (Option b)
+  (match o
+    ((None) (None [b]))
+    ((Some x) (f x)))
+  (prop none-stays-none [(f (-> Int (Option Int)))]
+    (== (flat-map-option [Int Int] f (None [Int])) (None [Int])))
+  (prop some-applies [(f (-> Int (Option Int))) (x Int)]
+    (== (flat-map-option [Int Int] f (Some [Int] x)) (f x))))
+
+(defn is-some [a] [(o (Option a))] Bool
+  (match o
+    ((None) false)
+    ((Some x) true))
+  (prop none-is-not-some []
+    (not (is-some [Int] (None [Int]))))
+  (prop some-is-some [(x Int)]
+    (is-some [Int] (Some [Int] x))))
+
+(defn is-none [a] [(o (Option a))] Bool
+  (match o
+    ((None) true)
+    ((Some x) false))
+  (prop none-is-none []
+    (is-none [Int] (None [Int])))
+  (prop some-is-not-none [(x Int)]
+    (not (is-none [Int] (Some [Int] x)))))
+
 (defn shout [] [(s Str)] Str
   (++ s "!")
   (prop grows-by-one [(s Str)]
