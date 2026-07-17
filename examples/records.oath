@@ -7,6 +7,9 @@
   (None)
   (Some a))
 
+(data Pair [a b]
+  (Pair a b))
+
 (defn or-else [a] [(o (Option a)) (d a)] a
   (match o
     ((None) d)

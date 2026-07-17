@@ -1,0 +1,3 @@
+✓ prop nil-left                 passed 200 cases
+✓ prop nil-right                passed 200 cases
+✓ prop cons-step                passed 200 cases

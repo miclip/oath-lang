@@ -93,3 +93,36 @@
   (prop step [(h Int) (h2 Int) (t (List Int))]
     (== (init [Int] (Cons [Int] h (Cons [Int] h2 t)))
         (Cons [Int] h (init [Int] (Cons [Int] h2 t))))))
+
+(defn zip [a b] [(xs (List a)) (ys (List b))] (List (Pair a b))
+  (match xs
+    ((Nil) (Nil [(Pair a b)]))
+    ((Cons xh xt)
+      (match ys
+        ((Nil) (Nil [(Pair a b)]))
+        ((Cons yh yt) (Cons [(Pair a b)] (Pair [a b] xh yh) (zip [a b] xt yt))))))
+  (prop nil-left [(ys (List Int))]
+    (== (zip [Int Int] (Nil [Int]) ys) (Nil [(Pair Int Int)])))
+  ; nil-right needs a case on xs (both cases yield Nil) — a one-level case
+  ; analysis, no recursion. Direct/inductive over xs.
+  (prop nil-right [(xs (List Int))]
+    (== (zip [Int Int] xs (Nil [Int])) (Nil [(Pair Int Int)])))
+  (prop cons-step [(xh Int) (xt (List Int)) (yh Int) (yt (List Int))]
+    (== (zip [Int Int] (Cons [Int] xh xt) (Cons [Int] yh yt))
+        (Cons [(Pair Int Int)] (Pair [Int Int] xh yh) (zip [Int Int] xt yt)))))
+
+(defn zip-with [a b c] [(f (-> a b c)) (xs (List a)) (ys (List b))] (List c)
+  (match xs
+    ((Nil) (Nil [c]))
+    ((Cons xh xt)
+      (match ys
+        ((Nil) (Nil [c]))
+        ((Cons yh yt) (Cons [c] (f xh yh) (zip-with [a b c] f xt yt))))))
+  (prop nil-left [(f (-> Int Int Int)) (ys (List Int))]
+    (== (zip-with [Int Int Int] f (Nil [Int]) ys) (Nil [Int])))
+  (prop nil-right [(f (-> Int Int Int)) (xs (List Int))]
+    (== (zip-with [Int Int Int] f xs (Nil [Int])) (Nil [Int])))
+  ; cons-step pins the combine step; abstract f, direct proof (no append law).
+  (prop cons-step [(f (-> Int Int Int)) (xh Int) (xt (List Int)) (yh Int) (yt (List Int))]
+    (== (zip-with [Int Int Int] f (Cons [Int] xh xt) (Cons [Int] yh yt))
+        (Cons [Int] (f xh yh) (zip-with [Int Int Int] f xt yt)))))

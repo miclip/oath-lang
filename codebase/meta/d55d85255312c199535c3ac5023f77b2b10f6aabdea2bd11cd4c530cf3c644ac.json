@@ -1,0 +1,39 @@
+{
+  "name": "zip-with",
+  "tyvar_names": [
+    "a",
+    "b",
+    "c"
+  ],
+  "prop_names": [
+    "nil-left",
+    "nil-right",
+    "cons-step"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "f",
+    "xs",
+    "ys"
+  ],
+  "confinement": [
+    "confined",
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}
