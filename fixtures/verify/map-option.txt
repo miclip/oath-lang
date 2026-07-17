@@ -1,0 +1,2 @@
+✓ prop none-stays-none          passed 200 cases
+✓ prop some-maps                passed 200 cases

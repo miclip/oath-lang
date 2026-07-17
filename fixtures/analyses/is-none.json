@@ -1,0 +1,14 @@
+{
+  "name": "is-none",
+  "hash": "2ba7f9f256616ab855b5ebde66b5544feb26922287b3ac209e42516fd74cb9eb",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

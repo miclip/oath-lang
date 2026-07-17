@@ -17,6 +17,7 @@ PROVABLE = length append sum count reverse map filter foldr foldl \
            q-to-list q-push q-peek q-drop rle-encode \
            sort take drop max2 abs sign clamp or-else shout full-name \
            greet greet-or-guest initials-or \
+           map-option flat-map-option is-some is-none \
            kv-get kv-put rename-key safe-get \
            join-with lengths main-echo main-fetch
 # Props exist but sit outside the provable fragment (Int-recursion fuel

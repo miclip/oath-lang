@@ -1,0 +1,2 @@
+✓ prop none-is-not-some         passed 200 cases
+✓ prop some-is-some             passed 200 cases
