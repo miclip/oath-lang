@@ -1,0 +1,15 @@
+{
+  "name": "drop-while",
+  "hash": "cedba00b3ab797cde5f4b0d2dd591f24f8ccefd97c97b19a43ccdf9ca64a7020",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "mutants_killed": 3,
+  "mutants_total": 3,
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

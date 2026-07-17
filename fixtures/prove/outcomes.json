@@ -166,6 +166,27 @@
       ]
     },
     {
+      "name": "count-matching",
+      "hash": "44d639c487c3ebbfa0b56b0ba629f36478783c0a51d8c2177b28fce2cb6b8afc",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-zero",
+          "proven": true
+        },
+        {
+          "name": "non-negative",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "drop",
       "hash": "8cee0cb4a9572f12d0f07f6eb073a000bae0f33b0b58b4760d1d311f4600608e",
       "level": "proven",
@@ -186,6 +207,23 @@
         },
         {
           "name": "drop-length",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "drop-while",
+      "hash": "cedba00b3ab797cde5f4b0d2dd591f24f8ccefd97c97b19a43ccdf9ca64a7020",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-is-empty",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
           "proven": true
         }
       ]
@@ -1606,6 +1644,23 @@
         },
         {
           "name": "take-two",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "take-while",
+      "hash": "0160610e8287758f43ba2ab3e28000023fe591dd8d8114fac248843c55592764",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-is-empty",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
           "proven": true
         }
       ]

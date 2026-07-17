@@ -1,0 +1,3 @@
+✓ prop empty-is-zero            passed 200 cases
+✓ prop non-negative             passed 200 cases
+✓ prop cons-step                passed 200 cases

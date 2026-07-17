@@ -1,0 +1,35 @@
+{
+  "name": "count-matching",
+  "tyvar_names": [
+    "a"
+  ],
+  "prop_names": [
+    "empty-is-zero",
+    "non-negative",
+    "cons-step"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "mutants_killed": 7,
+  "mutants_total": 7,
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "p",
+    "xs"
+  ],
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}
