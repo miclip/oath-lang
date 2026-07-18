@@ -35,6 +35,40 @@
       ]
     },
     {
+      "name": "all",
+      "hash": "966495ef1b6fcf872f35e01913400fbc4ca82c96339d83acc90ac7a4c274088a",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-is-true",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "any",
+      "hash": "dd0648da746668f84c85f64bd6969f4f0d5ed5d6fdb7cfaf6ae964a224ad6cfb",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-is-false",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "append",
       "hash": "e3a2800bf57cc2619c22a0ed68510565286dd3a1bed48e2011de354b7fbe2754",
       "level": "proven",
@@ -132,6 +166,48 @@
       ]
     },
     {
+      "name": "count-by",
+      "hash": "5747a8a2271118938c86aad89d319ed2863496e3ccc4c933fb0db76c21770390",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "non-negative",
+          "proven": true
+        },
+        {
+          "name": "bounded-by-length",
+          "proven": true
+        },
+        {
+          "name": "cons-ledger",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "count-matching",
+      "hash": "44d639c487c3ebbfa0b56b0ba629f36478783c0a51d8c2177b28fce2cb6b8afc",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-zero",
+          "proven": true
+        },
+        {
+          "name": "non-negative",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "drop",
       "hash": "8cee0cb4a9572f12d0f07f6eb073a000bae0f33b0b58b4760d1d311f4600608e",
       "level": "proven",
@@ -152,6 +228,23 @@
         },
         {
           "name": "drop-length",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "drop-while",
+      "hash": "cedba00b3ab797cde5f4b0d2dd591f24f8ccefd97c97b19a43ccdf9ca64a7020",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-is-empty",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
           "proven": true
         }
       ]
@@ -215,6 +308,120 @@
         {
           "name": "quadrant-anchors",
           "proven": false
+        }
+      ]
+    },
+    {
+      "name": "filter",
+      "hash": "cc825b87e8885789ef9ebabd5c8f3591c0022aa1248ef0554ab5f0bfcb12b04b",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-is-empty",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "find",
+      "hash": "bce060be0e7feb0906edda51cb55ee2c8215c915dd8b414226279e7ac8e1c9bc",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-is-none",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "flat-map-option",
+      "hash": "08cce2f0575fe5a00b064e418aceeb352b8b3257190018d6990f6d7d7654393e",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "none-stays-none",
+          "proven": true
+        },
+        {
+          "name": "some-applies",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "flatten",
+      "hash": "16104aaf13230e4a323ba494bf77980797baa43d1e758a2706af25a62b096d2c",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-empty",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        },
+        {
+          "name": "distributes-over-append",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "foldl",
+      "hash": "987c33ad57706f7770afe3da1e4a54e038e4b813e8db4dee4c9827a0d2ec6952",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-seed",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        },
+        {
+          "name": "two-step",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "foldr",
+      "hash": "5b345e9d645f4488680668303ad5dfb0b938e9699473825767b4ba12fd5f032d",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-seed",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        },
+        {
+          "name": "two-step",
+          "proven": true
         }
       ]
     },
@@ -382,6 +589,27 @@
       ]
     },
     {
+      "name": "init",
+      "hash": "6ed53caa0ad21b7d739eaac8817b2fd1e0f983da3dc188d07f89ef1640d988bb",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-empty",
+          "proven": true
+        },
+        {
+          "name": "singleton",
+          "proven": true
+        },
+        {
+          "name": "step",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "initials-or",
       "hash": "43f5aa38d3f440d4080f828ab155c912a4716c06e1a42ad6569875752c77b6a8",
       "level": "proven",
@@ -427,6 +655,61 @@
         },
         {
           "name": "noop-when-sorted-at-head",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "insert-by",
+      "hash": "d4bf03ae4fc72f34edd350c419f93c2626d7d9d2d1fd264a8df8bf4ba3353fa3",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "grows-length-by-one",
+          "proven": true
+        },
+        {
+          "name": "counts-ledger",
+          "proven": true
+        },
+        {
+          "name": "head-law",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "is-none",
+      "hash": "2ba7f9f256616ab855b5ebde66b5544feb26922287b3ac209e42516fd74cb9eb",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "none-is-none",
+          "proven": true
+        },
+        {
+          "name": "some-is-not-none",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "is-some",
+      "hash": "f3ac0cfaff55b6fa7d87a06b3555754280643773447445d7c7385d71b7d3e517",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "none-is-not-some",
+          "proven": true
+        },
+        {
+          "name": "some-is-some",
           "proven": true
         }
       ]
@@ -520,6 +803,27 @@
       ]
     },
     {
+      "name": "last",
+      "hash": "fb2a994de5224165a35ae418724c2f7bd971957959ee31a17f2f76c186311cd6",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-none",
+          "proven": true
+        },
+        {
+          "name": "singleton",
+          "proven": true
+        },
+        {
+          "name": "step",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "length",
       "hash": "bcce84a64b5783325530ff91edea2ceee704d7574d17b35ccd5bde717d97fdee",
       "level": "proven",
@@ -549,6 +853,31 @@
       "props": [
         {
           "name": "preserves-length",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "list-eq-by",
+      "hash": "7dc11708415b01d9561327cbf61a886201610287345bc8ee3f32c72a548f6d2e",
+      "level": "proven",
+      "proven_count": 4,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "nils-equal",
+          "proven": true
+        },
+        {
+          "name": "length-mismatch-differs",
+          "proven": true
+        },
+        {
+          "name": "cons-law",
+          "proven": true
+        },
+        {
+          "name": "two-deep-orientation",
           "proven": true
         }
       ]
@@ -605,6 +934,74 @@
       ]
     },
     {
+      "name": "map-err",
+      "hash": "895fa0dbd9fbb14aa5af561a96771d500543f5f8ec88e47a5a00d12224d3ffe3",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "ok-passes-through",
+          "proven": true
+        },
+        {
+          "name": "err-maps",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "map-option",
+      "hash": "c68fdd467a0a39dc9623a3a4426fcca2ae5a5c0732d131a501196fb6e5a39d4d",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "none-stays-none",
+          "proven": true
+        },
+        {
+          "name": "some-maps",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "map-result",
+      "hash": "e2805294c80994435e36372d509d8eeab5191860de88887aec46a2cc6f8cd465",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "ok-maps",
+          "proven": true
+        },
+        {
+          "name": "err-passes-through",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "max-by",
+      "hash": "4c8f05ccdd56be98ce3414dccb6470de6d6fa0e573937ef87bfc9efa889caa2f",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "returns-an-argument",
+          "proven": true
+        },
+        {
+          "name": "complements-min",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "max2",
       "hash": "04416a62699b6875092c3ad0c232c69ece40a95bcc59d284e4d5639879a16b59",
       "level": "proven",
@@ -630,23 +1027,82 @@
       ]
     },
     {
+      "name": "maximum",
+      "hash": "6cce19284ea04f372310301feab95ac6c4bc771ec521413b93d40091ad5a026c",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-seed",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        },
+        {
+          "name": "ge-seed",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "merge",
       "hash": "ff80c574911e7e201660b97a96fceda93aed021aecb1106e7d006775128f70d7",
-      "level": "tested",
-      "proven_count": 0,
+      "level": "proven",
+      "proven_count": 3,
       "prop_count": 3,
       "props": [
         {
           "name": "length-adds",
-          "proven": false
+          "proven": true
         },
         {
           "name": "preserves-counts",
-          "proven": false
+          "proven": true
         },
         {
           "name": "keeps-sortedness",
-          "proven": false
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "min-by",
+      "hash": "739f8efe0b4e0f61c4a0959933766a34ddd133dfd2040b889f3408fd3fb03012",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "returns-an-argument",
+          "proven": true
+        },
+        {
+          "name": "obeys-the-test",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "minimum",
+      "hash": "9ab35d2eaad189a0cb301a30616edd6040f2adcd608c658d4a53afea6b9a3e99",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-seed",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        },
+        {
+          "name": "le-seed",
+          "proven": true
         }
       ]
     },
@@ -668,10 +1124,31 @@
       ]
     },
     {
+      "name": "product",
+      "hash": "54a2e5c0171dafb82de37512cbfbc082eac29bc882e80f106494531cb3d1f9ff",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-one",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        },
+        {
+          "name": "two-step",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "q-drop",
       "hash": "66b1867fa0679f1b22be8b2706fd4d3f55b941f52756053eaaa077bde597b8c1",
       "level": "tested",
-      "proven_count": 3,
+      "proven_count": 2,
       "prop_count": 5,
       "props": [
         {
@@ -680,7 +1157,7 @@
         },
         {
           "name": "drop-back-only",
-          "proven": true
+          "proven": false
         },
         {
           "name": "drop-empty",
@@ -813,6 +1290,27 @@
         },
         {
           "name": "antidistributes-over-append",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "reverse-onto",
+      "hash": "433906a8a592d288b8f8b12d725589fb0911eecae38dc4f5a694f6387160b755",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-returns-acc",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        },
+        {
+          "name": "matches-reverse-append",
           "proven": true
         }
       ]
@@ -1141,6 +1639,27 @@
       ]
     },
     {
+      "name": "snoc",
+      "hash": "81a93fb3095e2d573263ae25611c4bf7d815b764e7efc2c5f926a1a194418455",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "single",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        },
+        {
+          "name": "as-append",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "sort",
       "hash": "4947f21a8edd89b5f28c4e9c8a3f4741b2008cc03e17cbdef5afbc6dd46073fd",
       "level": "proven",
@@ -1173,6 +1692,27 @@
         },
         {
           "name": "reverse-invariant",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "sort-by",
+      "hash": "d6bdb3f6787725140bf15f98d4e5a5bdfb616a9f838a21a71591df129856a805",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "preserves-length",
+          "proven": true
+        },
+        {
+          "name": "preserves-counts",
+          "proven": true
+        },
+        {
+          "name": "unfolds-by-insertion",
           "proven": true
         }
       ]
@@ -1328,6 +1868,82 @@
         },
         {
           "name": "take-two",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "take-while",
+      "hash": "0160610e8287758f43ba2ab3e28000023fe591dd8d8114fac248843c55592764",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-is-empty",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "unwrap-or",
+      "hash": "19d25f94f919f5fa214487f020fbf665989f7a75d0556222aad8c6c94b3f4e44",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "ok-unwraps",
+          "proven": true
+        },
+        {
+          "name": "err-defaults",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "zip",
+      "hash": "8994f7a68c09274971e798d47ccfe1bbe287b1b8c66a6fc0f4221f49f93cb6f5",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "nil-left",
+          "proven": true
+        },
+        {
+          "name": "nil-right",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "zip-with",
+      "hash": "d55d85255312c199535c3ac5023f77b2b10f6aabdea2bd11cd4c530cf3c644ac",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "nil-left",
+          "proven": true
+        },
+        {
+          "name": "nil-right",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
           "proven": true
         }
       ]

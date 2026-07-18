@@ -41,6 +41,17 @@ export default function OutsideAudit() {
         rhetorical cleanliness of “the page is the ledger.”
       </p>
 
+      <p className="callout">
+        <em>
+          Editor’s note (2026-07-18): the drift this audit caught has been
+          corrected — <code>website/lib/outcomes.json</code> is now regenerated
+          verbatim from <code>fixtures/prove/outcomes.json</code>, and a CI guard
+          fails the build if the two ever diverge again (issue #30). The numbers
+          above are preserved as the auditor recorded them; the canonical ledger
+          has since grown well past them as the standard library landed.
+        </em>
+      </p>
+
       <p>
         The project earns its strongest claim when it refuses self-report. The journal
         confirms rejected and repaired submissions that some agents summarized too

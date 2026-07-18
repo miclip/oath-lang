@@ -65,6 +65,17 @@ check: verify prove
 	@$(OATH) ls
 
 # Freeze the conformance suite (SPEC §10) from the current store. Run after
-# `make check` so proof outcomes reflect the latest verdicts.
+# `make check` so proof outcomes reflect the latest verdicts. Also refresh the
+# website's rendered copy of the proof ledger so it cannot drift from canon
+# (contract: website/lib/outcomes.json is a verbatim copy — see #30).
 fixtures: build
 	@$(OATH) fixtures fixtures
+	@cp fixtures/prove/outcomes.json website/lib/outcomes.json
+
+# Guard: the website's proof ledger must match the canonical fixtures ledger
+# byte-for-byte. The site claims its numbers are "read live from the machine's
+# own ledger"; this fails CI if that claim ever goes stale (#30).
+check-web-ledger:
+	@diff -q fixtures/prove/outcomes.json website/lib/outcomes.json >/dev/null \
+		&& echo "web ledger in sync ✓" \
+		|| { echo "ERROR: website/lib/outcomes.json drifted from fixtures/prove/outcomes.json — run 'make fixtures'"; exit 1; }

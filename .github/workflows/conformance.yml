@@ -38,6 +38,10 @@ jobs:
           make verify
           git diff --exit-code codebase/names.json \
             || { echo "::error::reference kernel produced different hashes than the committed store"; exit 1; }
+      - name: website proof ledger matches canonical fixtures (#30)
+        # The site claims its numbers are read live from the machine's ledger.
+        # Fail if website/lib/outcomes.json has drifted from fixtures/.
+        run: make check-web-ledger
 
   rust-conformance:
     name: independent kernel (Rust) vs fixtures (byte-oracle mode)
