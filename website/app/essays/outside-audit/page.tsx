@@ -50,9 +50,14 @@ export default function OutsideAudit() {
         fixture freshness, and the formal claims supplied by an author. Attempt validity
         is now much better disciplined — crashes, memouts, blank solver reasons, and
         external cancellation no longer quietly become “unproven” evidence — but that
-        improves the evidence pipeline rather than making the whole system unfakeable.
-        Local journal authorship and context hashes are self-reported until a hosted store
-        enforces them. The spec itself admits tail deletion needs an external anchor.
+        improves the evidence pipeline rather than making the whole system unfakeable.{" "}
+        <code>oath cross</code> now gives misalignment a first-class test: two
+        independently authored specs can run their properties against each other’s
+        bodies, and disagreement comes back with a counterexample. That is the right
+        shape of answer. It still depends on genuine independence, and two authors can
+        still converge on the same wrong brief. Local journal authorship and context
+        hashes are self-reported until a hosted store enforces them. The spec itself
+        admits tail deletion needs an external anchor.
       </p>
 
       <p>
@@ -92,20 +97,21 @@ export default function OutsideAudit() {
       <p>
         The N-version claim is strongest at the implementation layer. Go and Rust, no
         shared code, byte-level fixtures, and many divergences resolved into the spec:
-        that is good engineering. The independence is much thinner at the intent layer.
-        The spec, experiments, Rust implementation, Claude essay, and this skeptical
-        essay still come from one human/model ecosystem and one vendor family of models.
-        That can reduce shared syntax bugs. It does not eliminate shared priors, shared
-        blind spots, or shared interpretations of the English brief.
+        that is good engineering. It is now real at the specification layer too, but in a
+        narrower probabilistic way: <code>oath cross</code> can make independently
+        authored specs collide mechanically when they disagree. That can reduce shared
+        syntax bugs and some shared intent bugs. It does not eliminate shared priors,
+        shared blind spots, or shared interpretations of the English brief.
       </p>
 
       <p>
-        So my verdict is uneasy. Oath has not eliminated trust. It has relocated trust
-        into formal specs, kernel conformance, solver semantics, fixture discipline, and
-        the independence of the parties writing claims. That relocation is useful. It
-        gives auditors smaller surfaces and better artifacts. But the hardest remaining
-        question is the same one Oath exposes: who writes the oath, and how independent
-        are they really?
+        So my verdict is less uneasy, but still uneasy. Oath has not eliminated trust. It
+        has relocated trust into formal specs, kernel conformance, solver semantics,
+        fixture discipline, and the independence of the parties writing claims. That
+        relocation is useful. It gives auditors smaller surfaces and better artifacts.
+        Cross-checking gives the hardest remaining question a machine-visible pressure
+        test, but not an escape hatch: who writes the oath, and how independent are they
+        really?
       </p>
 
       <details className="essay-change-log">
@@ -131,6 +137,14 @@ export default function OutsideAudit() {
             proven definitions, including dictionary-passing generics. This softens
             the resource-dependence and “tiny fragment” objections, but does not
             change the essay’s final objection about relocated trust.
+          </p>
+          <p>
+            <strong>2026-07-18 — N-version spec cross-checking shipped.</strong>{" "}
+            <code>oath cross</code> runs each definition’s properties against the
+            other’s body for identically signed definitions, returning agreement or a
+            falsifying counterexample. This materially improves the answer to spec
+            misalignment, while preserving the honest limit: independently authored
+            specs can still agree on the same wrong intent.
           </p>
         </div>
       </details>
