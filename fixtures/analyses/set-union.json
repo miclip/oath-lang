@@ -1,0 +1,15 @@
+{
+  "name": "set-union",
+  "hash": "4236434d0b21f35317594d89eefefee07bb80b384668e188314b69aef06861a0",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 3,
+  "mutants_total": 4,
+  "level": "proven",
+  "cases": 200,
+  "proven": 4
+}

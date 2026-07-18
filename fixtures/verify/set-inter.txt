@@ -1,0 +1,7 @@
+✓ prop empty-left               passed 200 cases
+✓ prop member-iff-both          passed 200 cases
+✓ prop keeps-shared             passed 200 cases
+✓ prop drops-absent             passed 200 cases
+✓ prop empty-right              passed 200 cases
+✓ prop filters-tail             passed 200 cases
+✓ prop right-not-leaked         passed 200 cases

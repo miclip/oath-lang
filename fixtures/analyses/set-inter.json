@@ -1,0 +1,15 @@
+{
+  "name": "set-inter",
+  "hash": "e8699626e9a05a99bf604af633cb139b4c68f3736b94ad3ea1fda3e2c1647a67",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 6,
+  "mutants_total": 8,
+  "level": "proven",
+  "cases": 200,
+  "proven": 7
+}

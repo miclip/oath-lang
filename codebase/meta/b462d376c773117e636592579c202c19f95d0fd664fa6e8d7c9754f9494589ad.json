@@ -1,0 +1,32 @@
+{
+  "name": "set-add",
+  "prop_names": [
+    "adds-member",
+    "preserves-others",
+    "idempotent"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "x",
+    "xs"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

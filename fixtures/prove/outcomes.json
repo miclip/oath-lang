@@ -1605,6 +1605,89 @@
       ]
     },
     {
+      "name": "set-add",
+      "hash": "b462d376c773117e636592579c202c19f95d0fd664fa6e8d7c9754f9494589ad",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "adds-member",
+          "proven": true
+        },
+        {
+          "name": "preserves-others",
+          "proven": true
+        },
+        {
+          "name": "idempotent",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "set-inter",
+      "hash": "e8699626e9a05a99bf604af633cb139b4c68f3736b94ad3ea1fda3e2c1647a67",
+      "level": "proven",
+      "proven_count": 7,
+      "prop_count": 7,
+      "props": [
+        {
+          "name": "empty-left",
+          "proven": true
+        },
+        {
+          "name": "member-iff-both",
+          "proven": true
+        },
+        {
+          "name": "keeps-shared",
+          "proven": true
+        },
+        {
+          "name": "drops-absent",
+          "proven": true
+        },
+        {
+          "name": "empty-right",
+          "proven": true
+        },
+        {
+          "name": "filters-tail",
+          "proven": true
+        },
+        {
+          "name": "right-not-leaked",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "set-union",
+      "hash": "4236434d0b21f35317594d89eefefee07bb80b384668e188314b69aef06861a0",
+      "level": "proven",
+      "proven_count": 4,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "empty-left",
+          "proven": true
+        },
+        {
+          "name": "member-iff-either",
+          "proven": true
+        },
+        {
+          "name": "retains-second",
+          "proven": true
+        },
+        {
+          "name": "retains-right",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "shout",
       "hash": "d1b9f789ec1ff143e254991d4b0646e4059fe32953e929dc54dfdfcf07de272e",
       "level": "proven",

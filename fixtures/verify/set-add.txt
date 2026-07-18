@@ -1,0 +1,3 @@
+✓ prop adds-member              passed 200 cases
+✓ prop preserves-others         passed 200 cases
+✓ prop idempotent               passed 200 cases

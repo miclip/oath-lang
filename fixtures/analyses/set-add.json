@@ -1,0 +1,15 @@
+{
+  "name": "set-add",
+  "hash": "b462d376c773117e636592579c202c19f95d0fd664fa6e8d7c9754f9494589ad",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}
