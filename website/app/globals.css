@@ -1085,6 +1085,37 @@ pre,
   color: var(--cream-dim);
 }
 
+.essay-change-log {
+  margin-top: 42px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+  color: var(--cream-dim);
+}
+.essay-change-log summary {
+  cursor: pointer;
+  width: fit-content;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sage-bright);
+}
+.essay-change-log summary:hover {
+  color: var(--cream);
+}
+.essay-change-log div {
+  margin-top: 18px;
+  padding-left: 18px;
+  border-left: 1px solid var(--line-2);
+}
+.essay-change-log p {
+  margin: 0 0 16px;
+  font-size: 15px;
+}
+.essay-change-log p:last-child {
+  margin-bottom: 0;
+}
+
 .essay-next {
   display: flex;
   flex-direction: column;

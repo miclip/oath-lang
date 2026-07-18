@@ -26,30 +26,10 @@ export default function OutsideAudit() {
 
       <p>
         The strongest evidence is real. The current <code>fixtures/prove/outcomes.json</code>{" "}
-        ledger says kernel <code>oath-kernel/0.7</code>, Z3 4.16.0, 56 definitions with
-        properties, 207 properties, 136 proven properties, and 38 fully proven
+        ledger says kernel <code>oath-kernel/0.7</code>, Z3 4.16.0, 88 definitions with
+        properties, 289 properties, 218 proven properties, and 70 fully proven
         definitions. It also keeps 16 tested definitions and 2 falsified definitions in
         view. That is a serious artifact.
-      </p>
-
-      <p>
-        There is one immediate wrinkle. The website copy says its counts are read live
-        from the ledger, but <code>website/lib/outcomes.json</code> is stale relative to{" "}
-        <code>fixtures/prove/outcomes.json</code>: same 56 definitions and 207
-        properties, but 134 proven and 37 fully proven. The difference is <code>merge</code>{" "}
-        and <code>q-drop</code>. That does not invalidate Oath. It does undercut the
-        rhetorical cleanliness of “the page is the ledger.”
-      </p>
-
-      <p className="callout">
-        <em>
-          Editor’s note (2026-07-18): the drift this audit caught has been
-          corrected — <code>website/lib/outcomes.json</code> is now regenerated
-          verbatim from <code>fixtures/prove/outcomes.json</code>, and a CI guard
-          fails the build if the two ever diverge again (issue #30). The numbers
-          above are preserved as the auditor recorded them; the canonical ledger
-          has since grown well past them as the standard library landed.
-        </em>
       </p>
 
       <p>
@@ -67,10 +47,12 @@ export default function OutsideAudit() {
         simply announce that it passed the gate. A prover result has to be reproduced. A
         mutation score has to be earned against a concrete catalog. But “unfakeable”
         leaks. It depends on a mutation catalog, generated cases, solver version,
-        resource limits, fixture freshness, and the formal claims supplied by an author.
-        Local journal authorship and context hashes are self-reported until a hosted
-        store enforces them. The spec itself admits tail deletion needs an external
-        anchor.
+        fixture freshness, and the formal claims supplied by an author. Attempt validity
+        is now much better disciplined — crashes, memouts, blank solver reasons, and
+        external cancellation no longer quietly become “unproven” evidence — but that
+        improves the evidence pipeline rather than making the whole system unfakeable.
+        Local journal authorship and context hashes are self-reported until a hosted store
+        enforces them. The spec itself admits tail deletion needs an external anchor.
       </p>
 
       <p>
@@ -85,14 +67,15 @@ export default function OutsideAudit() {
       </p>
 
       <p>
-        The first-try greens are also real and narrow. Five split-agent modules landed
-        green on first implementation attempt, including cases designed to trip models.
-        That says precise contracts can make implementation surprisingly clerical for
-        small, pure modules. It says much less about real systems. Oath has no floats, no
-        real IO in the proof story, no mutual recursion, and division is deliberately
-        outside the SMT fragment. Effects are capability-shaped and simulated at the
-        boundary. Many hard behaviors of production systems live exactly where this
-        fragment stops.
+        The first-try greens are also real and still bounded. Five split-agent modules
+        landed green on first implementation attempt, including cases designed to trip
+        models, and the later standard-library work extends the corpus through proven
+        list combinators, results, options, pairs, and dictionary-passing generics. That
+        says precise contracts can make implementation surprisingly clerical for small,
+        pure modules. It says less about real systems. Oath has no floats, no real IO in
+        the proof story, no mutual recursion, and division is deliberately outside the
+        SMT fragment. Effects are capability-shaped and simulated at the boundary. Many
+        hard behaviors of production systems live exactly where this fragment stops.
       </p>
 
       <p>
@@ -124,6 +107,33 @@ export default function OutsideAudit() {
         question is the same one Oath exposes: who writes the oath, and how independent
         are they really?
       </p>
+
+      <details className="essay-change-log">
+        <summary>Post-audit changes</summary>
+        <div>
+          <p>
+            <strong>2026-07-18 — Website ledger drift fixed.</strong>{" "}
+            The original review caught a stale website copy: same 56 definitions and 207
+            properties as the canonical ledger, but 134 proven and 37 fully proven instead
+            of 136 and 38. <code>website/lib/outcomes.json</code> is now regenerated
+            verbatim from <code>fixtures/prove/outcomes.json</code>, and CI fails if the
+            two diverge again.
+          </p>
+          <p>
+            <strong>2026-07-18 — Solver attempt validity tightened.</strong> Oath now
+            requires positive solver telemetry before recording a deterministic
+            non-verdict; crashes, memouts, blank reasons, and external cancellation
+            invalidate instead of quietly becoming “unproven” evidence.
+          </p>
+          <p>
+            <strong>2026-07-18 — Corpus and generics expanded.</strong> The ledger grew
+            to 88 definitions, 289 properties, 218 proven properties, and 70 fully
+            proven definitions, including dictionary-passing generics. This softens
+            the resource-dependence and “tiny fragment” objections, but does not
+            change the essay’s final objection about relocated trust.
+          </p>
+        </div>
+      </details>
 
       <div className="essay-next">
         <span>The series</span>
