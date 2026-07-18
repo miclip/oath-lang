@@ -39,6 +39,130 @@ fn z3_wall_cap_ms() -> u64 {
         .unwrap_or(DEFAULT_WALL_CAP_MS)
 }
 
+// SPEC §7.2 attempt validity: z3's `memory_max_size` (megabytes) is OPT-IN
+// environment policy — never a default, never outcome-determining. It only
+// converts an OS-level death under memory pressure into a clean `memout`
+// invalidation; the missing-telemetry clause already covers the OS-death case.
+// The spec WARNS that z3 counts its multi-GB upfront arena RESERVATIONS against
+// this bound, so any value below the reservation instantly memouts attempts that
+// would otherwise run fine — hence no default. Reference env: OATH_PROVE_MEMORY_MB;
+// oathrs mirrors the OATHRS_Z3_* convention.
+fn z3_memory_mb() -> Option<u64> {
+    std::env::var("OATHRS_Z3_MEMORY_MB")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|&v| v > 0)
+}
+
+/// SPEC §7.2 attempt-validity invalidation: the run is non-conformant, so we
+/// record NOTHING and abort the whole prove with exit code 3. Called only from
+/// `prove_prop`, once a property is decided UNPROVEN while a strategy attempt was
+/// invalid (per-attempt GRANULARITY) — never from an individual z3 attempt,
+/// which merely reports invalidity and lets a valid strategy win. `msg` names
+/// the failing condition.
+fn invalidate(msg: &str) -> ! {
+    eprintln!("FATAL: {}", msg);
+    std::process::exit(3);
+}
+
+/// Extract the unsigned integer following `key` in a z3 get-info response
+/// (`(:rlimit 400000042)` → the number after `:rlimit`). None if the key is
+/// absent or the following token is not an integer.
+fn info_int(out: &str, key: &str) -> Option<u64> {
+    let after = &out[out.find(key)? + key.len()..];
+    let tok: String = after
+        .chars()
+        .skip_while(|c| c.is_whitespace())
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    tok.parse::<u64>().ok()
+}
+
+/// Extract the value token following `key` in a get-info response, handling the
+/// three forms z3 emits for `:reason-unknown`: a quoted string (`"canceled"`,
+/// `"memout"`), a balanced s-expr (`(incomplete (theory arithmetic))`), or a
+/// bare word. Quotes are stripped; the s-expr/bare forms are returned verbatim.
+fn info_value(out: &str, key: &str) -> Option<String> {
+    let rest = out[out.find(key)? + key.len()..].trim_start();
+    match rest.chars().next()? {
+        '"' => Some(rest[1..].chars().take_while(|&c| c != '"').collect()),
+        '(' => {
+            let mut depth = 0i32;
+            let mut v = String::new();
+            for c in rest.chars() {
+                v.push(c);
+                match c {
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Some(v)
+        }
+        _ => {
+            let v: String = rest.chars().take_while(|&c| !c.is_whitespace() && c != ')').collect();
+            (!v.is_empty()).then_some(v)
+        }
+    }
+}
+
+/// SPEC §7.2 attempt validity: classify a non-verdict (z3 returned neither
+/// `unsat` nor `sat`) from the appended telemetry. `Ok(Unknown)` is a VALID,
+/// reproducible non-proof (recordable as unproven) — a genuine budget exhaust
+/// (`canceled` with consumed rlimit ≥ the budget; z3 overshoots by a few units)
+/// or a solver incompleteness give-up (any NON-EMPTY, non-`canceled`,
+/// non-`memout` reason, a pure function of the script). `Err(reason)` is an
+/// INVALID attempt yielding NO EVIDENCE — the caller decides whether it taints:
+/// missing telemetry (process died mid-attempt), a BLANK reason (absence of
+/// positive evidence — #29 adjudication), `memout` (memory bound fired), and
+/// `canceled`-below-budget (external cancel) are all the ENVIRONMENT talking.
+fn classify_nonverdict(out: &str) -> Result<Outcome, String> {
+    let (rlimit, reason) = match (info_int(out, ":rlimit"), info_value(out, ":reason-unknown")) {
+        (Some(r), Some(reason)) => (r, reason),
+        _ => {
+            return Err("z3 produced a non-verdict but its (get-info) telemetry did not parse — \
+                        the process likely died mid-attempt (crash/kill) (SPEC §7.2 attempt \
+                        validity: missing telemetry)"
+                .to_string())
+        }
+    };
+    let reason = reason.trim();
+    if reason.is_empty() {
+        // Positive-telemetry rule (§7.2, #29): a blank reason is the ABSENCE of
+        // evidence that the attempt was deterministic, not evidence of it.
+        return Err("z3 produced a non-verdict with a blank :reason-unknown — no positive \
+                    evidence the attempt was deterministic (SPEC §7.2 attempt validity: \
+                    blank reason)"
+            .to_string());
+    }
+    if reason == "memout" {
+        return Err("z3 hit its memory bound (:reason-unknown = memout) — an environment fact, \
+                    not a deterministic outcome (SPEC §7.2 attempt validity: memout)"
+            .to_string());
+    }
+    if reason == "canceled" {
+        let budget = z3_rlimit();
+        if rlimit >= budget {
+            // Genuine deterministic budget exhaust: a valid recordable non-proof.
+            return Ok(Outcome::Unknown);
+        }
+        return Err(format!(
+            "z3 was canceled below budget (consumed rlimit {} < {}) — something external \
+             canceled the attempt, not the deterministic budget (SPEC §7.2 attempt \
+             validity: canceled-below-budget)",
+            rlimit, budget
+        ));
+    }
+    // Any non-empty, non-canceled, non-memout reason is a solver incompleteness
+    // give-up — a pure function of the script, so a valid recordable non-proof.
+    Ok(Outcome::Unknown)
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Outcome {
     Unsat,
@@ -641,13 +765,19 @@ impl<'a> Cx<'a> {
 // proof driver
 // ---------------------------------------------------------------------------
 
-fn run_z3(script: &str) -> Outcome {
+/// One z3 attempt. `Ok(outcome)` is a VALID, reproducible result (`Unsat`/`Sat`
+/// verdicts, or a telemetry-backed `Unknown` non-proof). `Err(reason)` is an
+/// INVALID attempt yielding NO EVIDENCE (SPEC §7.2 GRANULARITY) — the caller
+/// decides whether it taints the run; run_z3 itself NEVER ends the run.
+fn run_z3(script: &str) -> Result<Outcome, String> {
     // The budget is the `(set-option :rlimit ...)` inside `script` (deterministic,
     // machine-independent). z3 returns `unknown` when the rlimit is reached — a
     // legitimate "unproven" verdict. We add NO wall-clock timeout to z3 itself
     // (that would make outcomes hardware-dependent); instead we enforce a wall
-    // cap ourselves purely as a safety net. If it fires, z3 was still running at
-    // the cap and the run is INVALIDATED — never recorded as a verdict (§7.2).
+    // cap ourselves purely as a safety net. The cap is one instance of the
+    // general attempt-validity rule (§7.2): if it fires, the attempt yielded no
+    // evidence (`Err`), which taints the run only if the property is otherwise
+    // unproven — it is not itself a recorded verdict.
     let mut child = match Command::new("z3")
         .arg("-in")
         .stdin(Stdio::piped())
@@ -656,13 +786,27 @@ fn run_z3(script: &str) -> Outcome {
         .spawn()
     {
         Ok(c) => c,
-        Err(_) => return Outcome::Unknown,
+        Err(e) => {
+            return Err(format!(
+                "z3 failed to spawn ({}) — no attempt telemetry exists (SPEC §7.2 attempt \
+                 validity: missing telemetry)",
+                e
+            ))
+        }
     };
     if let Some(mut sin) = child.stdin.take() {
-        // Runner wrapping (outside the byte-oracle hash): the deterministic
-        // rlimit budget precedes the core script.
+        // Runner wrapping (outside the byte-oracle hash): deterministic options
+        // are PREPENDED — an OPT-IN memory bound first (only when set; never a
+        // default, per §7.2), then the deterministic rlimit budget, then the core
+        // script. The attempt-validity telemetry (§7.2) is APPENDED after the
+        // script: the consumed rlimit and z3's own reason for any non-verdict.
+        // All of this lies outside the bytes the byte oracle hashes.
+        if let Some(mb) = z3_memory_mb() {
+            let _ = sin.write_all(format!("(set-option :memory_max_size {})\n", mb).as_bytes());
+        }
         let _ = sin.write_all(format!("(set-option :rlimit {})\n", z3_rlimit()).as_bytes());
         let _ = sin.write_all(script.as_bytes());
+        let _ = sin.write_all(b"(get-info :rlimit)\n(get-info :reason-unknown)\n");
         // stdin dropped here -> EOF, so z3 processes and exits.
     }
     let mut sout = child.stdout.take();
@@ -675,31 +819,41 @@ fn run_z3(script: &str) -> Outcome {
                 if start.elapsed() > cap {
                     let _ = child.kill();
                     let _ = child.wait();
-                    eprintln!(
-                        "FATAL: z3 exceeded the {}ms wall-clock safety cap before its \
-                         rlimit — run invalidated, no outcome recorded (SPEC §7.2)",
+                    return Err(format!(
+                        "z3 exceeded the {}ms wall-clock safety cap before its rlimit (SPEC §7.2 \
+                         attempt validity: the wall cap is one instance of the general \
+                         no-evidence rule)",
                         z3_wall_cap_ms()
-                    );
-                    std::process::exit(3);
+                    ));
                 }
                 std::thread::sleep(Duration::from_millis(20));
             }
-            Err(_) => return Outcome::Unknown,
+            Err(e) => {
+                return Err(format!(
+                    "z3 could not be waited on ({}) — the attempt produced no reliable telemetry \
+                     (SPEC §7.2 attempt validity: missing telemetry)",
+                    e
+                ))
+            }
         }
     }
     let mut s = String::new();
     if let Some(ref mut o) = sout {
         let _ = o.read_to_string(&mut s);
     }
+    // A verdict (`unsat`/`sat`) is an outcome unconditionally. The check-sat
+    // result precedes the appended telemetry in z3's output, so the first such
+    // line is the verdict.
     for line in s.lines() {
         match line.trim() {
-            "unsat" => return Outcome::Unsat,
-            "sat" => return Outcome::Sat,
-            "unknown" => return Outcome::Unknown,
+            "unsat" => return Ok(Outcome::Unsat),
+            "sat" => return Ok(Outcome::Sat),
             _ => {}
         }
     }
-    Outcome::Unknown
+    // No verdict: `Ok(Unknown)` if the appended telemetry proves the attempt was
+    // deterministic, else `Err` (an invalid, no-evidence attempt) (§7.2).
+    classify_nonverdict(&s)
 }
 
 struct Prover<'a> {
@@ -805,34 +959,39 @@ impl<'a> Prover<'a> {
         Some((Prover::assemble(&cx, &tail), cx.quantified))
     }
 
-    /// Direct proof attempt. Returns (outcome, quantified?).
+    /// Direct proof attempt. Returns (attempt, quantified?), where the attempt is
+    /// `Ok(outcome)` for a valid result or `Err(reason)` for an invalid attempt
+    /// (SPEC §7.2). An outside-fragment goal (no script) is a valid, deterministic
+    /// non-proof: `Ok(Unknown)`.
     fn try_direct(
         &self,
         def_hash: &str,
         prop: &Prop,
         candidates: &[(String, usize, bool)],
-    ) -> (Outcome, bool) {
+    ) -> (Result<Outcome, String>, bool) {
         match self.direct_script(def_hash, prop, candidates) {
             Some((script, quantified)) => (run_z3(&script), quantified),
-            None => (Outcome::Unknown, true),
+            None => (Ok(Outcome::Unknown), true),
         }
     }
 
-    /// Structural induction on binder `k` (a datatype). Returns true if proven.
+    /// Structural induction on binder `k` (a datatype). `Ok(true)` = proven,
+    /// `Ok(false)` = validly failed (no proof), `Err(reason)` = an attempt was
+    /// invalid and this strategy is tainted (SPEC §7.2 GRANULARITY).
     fn try_induction_binder(
         &self,
         def_hash: &str,
         prop: &Prop,
         k: usize,
         candidates: &[(String, usize, bool)],
-    ) -> bool {
+    ) -> Result<bool, String> {
         let (dhash, dargs) = match &prop.binders[k] {
             Ty::Data { hash, args } => (hash.clone(), args.clone()),
-            _ => return false,
+            _ => return Ok(false),
         };
         let di = match self.store.data_by_hash.get(&dhash) {
             Some(d) => d.clone(),
-            None => return false,
+            None => return Ok(false),
         };
         let ind_sort = {
             let mut sc = Sorts::default();
@@ -929,18 +1088,22 @@ impl<'a> Prover<'a> {
             }
             let goal = match cx.tr(&prop.body, &senv, &[], def_hash, &[]) {
                 Ok((g, _)) => g,
-                Err(_) => return false,
+                Err(_) => return Ok(false),
             };
                 let mut tail = String::new();
             tail.push_str(&lem);
             tail.push_str(&decls);
             tail.push_str(&ih);
             tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
-            if run_z3(&Prover::assemble(&cx, &tail)) != Outcome::Unsat {
-                return false;
+            // A subgoal must discharge (`unsat`). A valid non-unsat validly fails
+            // the strategy; an invalid attempt taints it (SPEC §7.2 GRANULARITY).
+            match run_z3(&Prover::assemble(&cx, &tail)) {
+                Ok(Outcome::Unsat) => {}
+                Ok(_) => return Ok(false),
+                Err(reason) => return Err(reason),
             }
         }
-        true
+        Ok(true)
     }
 
     /// Translate `prop` with the binders named in `fixed` bound to given SMT
@@ -977,7 +1140,8 @@ impl<'a> Prover<'a> {
     }
 
     /// Lexicographic induction on the ordered binder pair `(i, j)` (SPEC §7.2).
-    /// Returns true only if every subgoal discharges (`unsat` under negation).
+    /// `Ok(true)` iff every subgoal discharges (`unsat`); `Ok(false)` = validly
+    /// failed; `Err(reason)` = a subgoal attempt was invalid (taint, §7.2).
     fn try_induction_lex(
         &self,
         def_hash: &str,
@@ -985,22 +1149,22 @@ impl<'a> Prover<'a> {
         i: usize,
         j: usize,
         candidates: &[(String, usize, bool)],
-    ) -> bool {
+    ) -> Result<bool, String> {
         let (dhash_i, dargs_i) = match &prop.binders[i] {
             Ty::Data { hash, args } => (hash.clone(), args.clone()),
-            _ => return false,
+            _ => return Ok(false),
         };
         let (dhash_j, dargs_j) = match &prop.binders[j] {
             Ty::Data { hash, args } => (hash.clone(), args.clone()),
-            _ => return false,
+            _ => return Ok(false),
         };
         let di = match self.store.data_by_hash.get(&dhash_i) {
             Some(d) => d.clone(),
-            None => return false,
+            None => return Ok(false),
         };
         let dj = match self.store.data_by_hash.get(&dhash_j) {
             Some(d) => d.clone(),
-            None => return false,
+            None => return Ok(false),
         };
         let ind_sort_i = {
             let mut sc = Sorts::default();
@@ -1024,17 +1188,19 @@ impl<'a> Prover<'a> {
             if rec_i.is_empty() {
                 // Base case: i := c(fresh), other binders at goal constants, no
                 // hypotheses. j is NOT split.
-                if !self.lex_subgoal(
+                match self.lex_subgoal(
                     def_hash, prop, candidates, i, j, ci, cname_i, &fields_i, &rec_i, None,
                     &ind_sort_j,
                 ) {
-                    return false;
+                    Ok(true) => {}
+                    Ok(false) => return Ok(false),
+                    Err(reason) => return Err(reason),
                 }
             } else {
                 for (cj, (cname_j, cfields_j)) in dj.ctors.iter().enumerate() {
                     let fields_j: Vec<Ty> =
                         cfields_j.iter().map(|f| inst_field(f, &dargs_j, &dhash_j)).collect();
-                    if !self.lex_subgoal(
+                    match self.lex_subgoal(
                         def_hash,
                         prop,
                         candidates,
@@ -1047,16 +1213,20 @@ impl<'a> Prover<'a> {
                         Some((cj, cname_j.as_str(), &fields_j)),
                         &ind_sort_j,
                     ) {
-                        return false;
+                        Ok(true) => {}
+                        Ok(false) => return Ok(false),
+                        Err(reason) => return Err(reason),
                     }
                 }
             }
         }
-        true
+        Ok(true)
     }
 
     /// One lexicographic subgoal. `jsplit` = Some((cj, cname_j, fields_j)) for a
-    /// doubly-split recursive case, None for an i-base case.
+    /// doubly-split recursive case, None for an i-base case. `Ok(true)` = this
+    /// subgoal discharged (`unsat`); `Ok(false)` = valid non-unsat; `Err(reason)`
+    /// = the attempt was invalid (SPEC §7.2 GRANULARITY).
     #[allow(clippy::too_many_arguments)]
     fn lex_subgoal(
         &self,
@@ -1071,7 +1241,7 @@ impl<'a> Prover<'a> {
         rec_i: &[usize],
         jsplit: Option<(usize, &str, &[Ty])>,
         ind_sort_j: &str,
-    ) -> bool {
+    ) -> Result<bool, String> {
         let mut cx = Cx::new(self.store);
         let lem = self.build_lemmas(&mut cx, candidates);
         let mut decls = String::new();
@@ -1157,47 +1327,91 @@ impl<'a> Prover<'a> {
         }
         let goal = match cx.tr(&prop.body, &senv, &[], def_hash, &[]) {
             Ok((g, _)) => g,
-            Err(_) => return false,
+            Err(_) => return Ok(false),
         };
         let mut tail = String::new();
         tail.push_str(&lem);
         tail.push_str(&decls);
         tail.push_str(&hyps);
         tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
-        run_z3(&Prover::assemble(&cx, &tail)) == Outcome::Unsat
+        match run_z3(&Prover::assemble(&cx, &tail)) {
+            Ok(Outcome::Unsat) => Ok(true),
+            Ok(_) => Ok(false),
+            Err(reason) => Err(reason),
+        }
     }
 
+    /// Prove one property. SPEC §7.2 GRANULARITY: attempt validity is per-attempt.
+    /// A valid `unsat` (or quantifier-free `sat` refutation) from ANY strategy is
+    /// positive evidence no environment can fake, so it decides the property
+    /// regardless of other attempts' invalidity. An invalid attempt yields NO
+    /// evidence — it does not end the run; it only TAINTS the negative case. If no
+    /// strategy proves the property and any attempt along the way was invalid, the
+    /// property has no valid negative verdict and the whole run is INVALIDATED
+    /// here (exit 3); if no attempt was invalid, the property records unproven.
     fn prove_prop(&self, def_hash: &str, prop: &Prop, candidates: &[(String, usize, bool)]) -> bool {
-        let (o, quantified) = self.try_direct(def_hash, prop, candidates);
-        if o == Outcome::Unsat {
-            return true;
-        }
-        // A quantifier-free problem is decidable: the direct result is final,
-        // and induction cannot add power (SPEC §7.2).
-        if !quantified {
-            return false;
-        }
-        for k in 0..prop.binders.len() {
-            if matches!(prop.binders[k], Ty::Data { .. })
-                && self.try_induction_binder(def_hash, prop, k, candidates)
-            {
-                return true;
+        // First invalid-attempt reason seen while trying to prove this property.
+        let mut taint: Option<String> = None;
+
+        let (direct, quantified) = self.try_direct(def_hash, prop, candidates);
+        match direct {
+            Ok(Outcome::Unsat) => return true, // proven; a valid attempt wins
+            Err(reason) => {
+                // Invalid direct attempt: no evidence. Fall through to induction —
+                // a valid strategy may still prove it (the t-insert case).
+                taint.get_or_insert(reason);
             }
+            // A valid non-unsat (Unknown, or a quantified Sat): not proven here.
+            // For a quantifier-free problem the direct result is final and
+            // induction cannot add power — a QF `sat` is a valid refutation.
+            Ok(_) => {}
         }
-        // Lexicographic induction on ordered pairs of distinct datatype binders,
-        // in ascending (i, j) order; accept the first pair that fully discharges.
-        for i in 0..prop.binders.len() {
-            if !matches!(prop.binders[i], Ty::Data { .. }) {
-                continue;
-            }
-            for j in 0..prop.binders.len() {
-                if i == j || !matches!(prop.binders[j], Ty::Data { .. }) {
+
+        if quantified {
+            for k in 0..prop.binders.len() {
+                if !matches!(prop.binders[k], Ty::Data { .. }) {
                     continue;
                 }
-                if self.try_induction_lex(def_hash, prop, i, j, candidates) {
-                    return true;
+                match self.try_induction_binder(def_hash, prop, k, candidates) {
+                    Ok(true) => return true,
+                    Ok(false) => {}
+                    Err(reason) => {
+                        taint.get_or_insert(reason);
+                    }
                 }
             }
+            // Lexicographic induction on ordered pairs of distinct datatype
+            // binders, ascending (i, j); accept the first pair that discharges.
+            for i in 0..prop.binders.len() {
+                if !matches!(prop.binders[i], Ty::Data { .. }) {
+                    continue;
+                }
+                for j in 0..prop.binders.len() {
+                    if i == j || !matches!(prop.binders[j], Ty::Data { .. }) {
+                        continue;
+                    }
+                    match self.try_induction_lex(def_hash, prop, i, j, candidates) {
+                        Ok(true) => return true,
+                        Ok(false) => {}
+                        Err(reason) => {
+                            taint.get_or_insert(reason);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Not proven by any strategy. A tainted negative has no valid verdict:
+        // invalidate the run here (SPEC §7.2 GRANULARITY). Otherwise it is an
+        // honest, reproducible unproven.
+        if let Some(reason) = taint {
+            invalidate(&format!(
+                "attempt-validity: no strategy proved a property of def {} and an attempt was \
+                 invalid, so it has no valid negative verdict — {} — run invalidated, no outcome \
+                 recorded (SPEC §7.2 attempt validity: GRANULARITY)",
+                &def_hash[..def_hash.len().min(12)],
+                reason
+            ));
         }
         false
     }
@@ -1580,19 +1794,37 @@ pub fn prove_all(store: &Store, falsified: &BTreeSet<String>) -> BTreeMap<String
     // Per-property caching keys on the actual candidate lemma set, so an attempt
     // whose candidate set is unchanged (within or across rounds) reuses its prior
     // verdict instead of re-running the solver.
+    // Opt-in progress to STDERR (env OATHRS_PROVE_PROGRESS): a "proving <name>"
+    // line before each definition (so a reap/crash leaves the in-flight def named
+    // in the log — "where it died") and a "done <name> c/m flags" line after its
+    // inner-growth loop settles each round (so provisional verdicts land mid-log
+    // even if the tail is eaten). Pure output timing on stderr — NOT the stdout
+    // conformance surface, never in any fixture, zero effect on verdicts/bytes.
+    let progress = std::env::var("OATHRS_PROVE_PROGRESS").is_ok();
+    let total_defs = order.len();
+    let name_of = |hash: &str| -> String {
+        store.func_by_hash.get(hash).map(|fi| fi.name.clone()).unwrap_or_else(|| hash[..8.min(hash.len())].to_string())
+    };
+
     let mut recorded: BTreeSet<(String, usize)> = BTreeSet::new();
     let mut cache: BTreeMap<(String, usize), (Vec<(String, usize, bool)>, bool)> = BTreeMap::new();
-    for _round in 0..8 {
+    for round in 0..8 {
+        if progress {
+            eprintln!("[prove] === round {} start ({} defs) ===", round, total_defs);
+        }
         let mut in_run: BTreeSet<(String, usize)> = BTreeSet::new();
         // combined = recorded ∪ in_run, kept in sync as in_run grows this round.
         let mut combined = recorded.clone();
-        for hash in &order {
+        for (di, hash) in order.iter().enumerate() {
             let props = match store.def_by_hash.get(hash) {
                 Some(Def::Func { props, .. }) => props.clone(),
                 _ => continue,
             };
             if falsified.contains(hash) {
                 continue; // never proved (§7.3: upgrade requires tested)
+            }
+            if progress && !props.is_empty() {
+                eprintln!("[prove] r{} proving {} ({}/{})", round, name_of(hash), di + 1, total_defs);
             }
             // Local growth fixpoint over this definition's properties.
             loop {
@@ -1621,8 +1853,20 @@ pub fn prove_all(store: &Store, falsified: &BTreeSet<String>) -> BTreeMap<String
                     break;
                 }
             }
+            if progress && !props.is_empty() {
+                // Provisional verdict = this round's in_run for the def (what will
+                // become `recorded` at round end).
+                let flags: String = (0..props.len())
+                    .map(|pi| if in_run.contains(&(hash.clone(), pi)) { '+' } else { '-' })
+                    .collect();
+                let cnt = flags.chars().filter(|&c| c == '+').count();
+                eprintln!("[prove] r{} done {} {}/{} {}", round, name_of(hash), cnt, props.len(), flags);
+            }
         }
         if in_run == recorded {
+            if progress {
+                eprintln!("[prove] converged after round {}", round);
+            }
             break;
         }
         recorded = in_run;

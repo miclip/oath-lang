@@ -885,3 +885,143 @@ cases. Findings and settled ambiguities:
     exit-and-record-nothing semantics were already correct. Only a blind kernel
     that implemented the spec's invalidation rule instead of inheriting the host
     language's silent-timeout habit could have surfaced this.
+
+## Attempt validity: non-verdict telemetry gating (#29)
+
+71. **A non-verdict is an outcome ONLY when the solver's own telemetry proves the
+    attempt was deterministic — the wall cap (entry 70) generalized (SPEC §7.2,
+    #29).** §7.2 now makes the wall cap one instance of a general rule: anything
+    other than `unsat`/`sat` is recordable ONLY when z3's appended
+    `(get-info :rlimit)` and `(get-info :reason-unknown)` BOTH parse and the
+    reason is deterministic — a genuine budget exhaust (`"canceled"` with
+    consumed rlimit ≥ the budget) or a solver incompleteness give-up (any
+    non-`canceled`, non-`memout` reason, a pure function of the script).
+    Missing telemetry (process died mid-attempt), `memout` (memory bound fired),
+    and `"canceled"` below budget (external cancel) are the ENVIRONMENT talking
+    and INVALIDATE the run: record nothing, `eprintln!` a FATAL naming the failing
+    condition, `exit(3)` — identical semantics to the wall cap. Implemented in
+    `run_z3`: the two get-info lines are appended AFTER the core script (outside
+    the byte-oracle hash, like the prepended `:rlimit` option), the first
+    `sat`/`unsat` line in stdout is still taken as the verdict unconditionally
+    (check-sat output precedes the get-info responses), and any other result is
+    routed through `classify_nonverdict`, which parses the two infos with
+    `info_int`/`info_value` (the value parser handles z3's quoted-string,
+    balanced-s-expr, and bare-word reason forms). Byte oracle UNAFFECTED — all
+    243 direct-attempt script hashes still match `scripts.txt` byte-for-byte,
+    since the telemetry and options are runner wrapping, not core script bytes.
+    Opt-in memory policy: `OATHRS_Z3_MEMORY_MB` (mirrors the `OATHRS_Z3_*`
+    convention; reference env is `OATH_PROVE_MEMORY_MB`) prepends
+    `(set-option :memory_max_size <MB>)` before the other options — NO default,
+    per the §7.2 warning that z3 counts its multi-GB upfront arena RESERVATIONS
+    against the bound (a value below the reservation instantly memouts otherwise-
+    fine attempts).
+
+    Verified end-to-end: `interval.oath` proves 18/18 with no spurious
+    invalidation (z3 returns `unsat`; telemetry parsed but unused for verdicts);
+    `OATHRS_Z3_RLIMIT=1000` flips most props to a RECORDED unproven at exit 0
+    (exercising `classify_nonverdict`'s `"canceled"`-≥-budget branch end-to-end,
+    which requires both info parsers to succeed); `OATHRS_Z3_MEMORY_MB=1` exits 3.
+
+    Spec ambiguities found (flagged for tightening, not blockers):
+    - **`memory_max_size` UNIT is not stated.** §7.2 names the z3 option
+      (`memory_max_size`) and the reference env's MB suffix (`OATH_PROVE_MEMORY_MB`)
+      but never says the runner passes the MB integer to the option verbatim vs.
+      converting. I pass it verbatim (z3's `memory_max_size` is megabytes); the
+      spec should state the unit rather than leave it inferable only from the env
+      name.
+    - **The `memout` reason is not cheaply reproducible, and a tiny bound trips
+      MISSING-TELEMETRY, not `memout`.** With `OATHRS_Z3_MEMORY_MB=1`, z3 dies
+      before emitting any get-info response (OS-level abort under the reservation),
+      so the run invalidates via the missing-telemetry clause, not the memout
+      clause. This actually CONFIRMS the spec's claim that "the missing-telemetry
+      clause catches the OS-death case regardless," but it means the `memout`
+      branch is hard to exercise deterministically without a heavy goal whose
+      search overshoots a mid-size bound — my `memout` string-equality branch is
+      therefore covered by construction/reasoning, not by an end-to-end run.
+      Worth a spec note that clean `memout` requires z3 to trip the bound DURING
+      search (heavy goal, mid-size bound), not merely a bound below the arena
+      reservation, which OS-kills instead.
+    - **Empty reason string is unclassified. ADJUDICATED (#29): a blank reason
+      INVALIDATES.** z3 emits `(:reason-unknown "")` (observed on trivial `sat`
+      results, i.e. verdicts, so never reaching `classify_nonverdict`). Were an
+      empty reason ever attached to a genuine non-verdict, the literal reading
+      "any non-canceled, non-memout reason ⇒ recordable incompleteness" would
+      record it as unproven. Adjudication: the rule's philosophy is POSITIVE
+      telemetry, and an empty string is the absence of evidence, not evidence of
+      determinism — so a blank reason on a non-verdict INVALIDATES. §7.2 now reads
+      "any NON-EMPTY, non-canceled, non-memout reason" and spells out the
+      blank-reason rule. Implemented: `classify_nonverdict` invalidates on a
+      trimmed-empty reason with its own FATAL wording, before the memout/canceled
+      branches.
+    - **Runner-wrapper option ORDER is unpinned.** §7.2 pins byte-exact core
+      scripts but says nothing about the order of the prepended `set-option`s.
+      I prepend `:memory_max_size` before `:rlimit`; since both lie outside the
+      hashed bytes and z3 set-options are order-independent, nothing observable
+      depends on it — noted only for completeness.
+
+    (NB: the "record nothing, exit(3) immediately on any invalid attempt" model
+    described above is REFINED to per-attempt granularity by entry 72 — an
+    invalid attempt no longer ends the run by itself. Ambiguities 1/4 and the
+    blank-reason adjudication stand unchanged.)
+
+72. **Attempt validity is PER-ATTEMPT, not per-run: an invalid attempt yields NO
+    EVIDENCE and taints only the negative case (SPEC §7.2 GRANULARITY; found by
+    corpus re-validation, #29).** Entry 71's model — any invalid attempt exits(3)
+    immediately — was TOO BLUNT, and cold corpus re-validation surfaced it on
+    `t-insert`. On z3 4.16.0, z3 crashes with COMPLETELY EMPTY OUTPUT —
+    deterministically — on `t-insert.insert-length`'s DIRECT-attempt script (no
+    telemetry ⇒ missing-telemetry ⇒ invalid). But `insert-length` PROVES by
+    structural induction; pre-#29 the empty-output crash was silently absorbed as
+    `unknown` and induction proved past it. Run-level invalidation (entry 71) made
+    `t-insert` PERMANENTLY unprovable on affected z3 builds — a strictly worse
+    outcome than the silent-absorption bug it replaced. Refinement (now normative):
+    `unsat` (and a quantifier-free `sat` refutation) is positive evidence no
+    environment can fake, so a property proven or refuted by ANY valid attempt
+    keeps its verdict regardless of other attempts' invalidity; invalidity taints
+    only the NEGATIVE case — a property that would record UNPROVEN while any of its
+    strategy attempts was invalid has no valid negative verdict, and only THERE
+    does the kernel invalidate. Implementation: `run_z3`/`classify_nonverdict` now
+    return `Result<Outcome, String>` (`Ok` = valid outcome incl. telemetry-backed
+    `Unknown`; `Err` = invalid attempt, reason carried) and NEVER exit — even the
+    wall cap and z3 spawn/wait failures return `Err` (the cap is "one instance of
+    the general no-evidence rule", per §7.2). The strategy helpers
+    (`try_direct`/`try_induction_binder`/`try_induction_lex`/`lex_subgoal`) return
+    `Result<bool, String>` (`Ok(true)` proven, `Ok(false)` validly failed, `Err`
+    tainted); `prove_prop` tracks the first taint reason, falls through every
+    strategy (a later valid strategy can still win), and calls the sole surviving
+    `invalidate()` ONLY when the property is unproven AND tainted. Because
+    invalidation is a hard stop, this is safe inside the two-level fixpoint: a
+    tainted-unproven attempt at any lemma state means the environment is
+    non-deterministic for that goal, so the whole run is legitimately void; the
+    corpus is designed so tainted attempts are always rescued by a valid proof
+    (t-insert's `insert-length`).
+
+    Verified end-to-end on z3 4.16.0: `prove list.oath sort.oath tree.oath`
+    completes and `t-insert` lands EXACTLY its fixtured `[F,F,T,F,T]` (2/5) — the
+    empty-output crash on `insert-length`'s direct attempt taints, structural
+    induction proves it (taint moot), and the three honest unproven props
+    (`insert-count-inserted`, `insert-count-others`, `insert-keeps-sorted`) record
+    because all their attempts were valid. Byte oracle UNAFFECTED (243/243) — the
+    change is run-level control flow, not emitted bytes. `interval.oath` still
+    proves 18/18 (exit 0); `OATHRS_Z3_RLIMIT=1000` still records honest unproven
+    (exit 0); `OATHRS_Z3_MEMORY_MB=1` now invalidates via GRANULARITY (every
+    attempt dies, so every property is tainted-unproven) rather than on the first
+    attempt — same exit(3), later trigger point.
+
+    Empirical note (bonus find, recordable under the existing rule, no action):
+    z3 also emits `(:reason-unknown "Overflow encountered when expanding vector")`
+    on one `t-insert` attempt at ~43M consumed rlimit — an internal z3 exception
+    surfacing as a non-empty, non-canceled, non-memout reason, i.e. a deterministic
+    incompleteness give-up. It is a pure function of the script, so it correctly
+    records as a valid `Unknown` (unproven), not an invalidation.
+
+    Possible ambiguity (flagged): within a single strategy the helpers
+    SHORT-CIRCUIT on the first subgoal that is not a valid `unsat` — so a strategy
+    with both a valid-fail subgoal and an invalid subgoal is tainted or not
+    depending on their (deterministic, constructor-order) order. This only affects
+    the final unproven-vs-invalidate decision for a property that fails ALL
+    strategies with a mixed strategy, which the current corpus never hits
+    (t-insert's tainted `insert-length` is proven, not failed). If the reference
+    evaluates all subgoals and ORs the taint instead of short-circuiting, the two
+    could disagree on such a goal; worth pinning the taint-collection order in
+    §7.2 if any corpus goal ever reaches it.

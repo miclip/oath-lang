@@ -775,7 +775,23 @@ func runZ3(script string) (string, bool) {
 			rl = n
 		}
 	}
-	full := fmt.Sprintf("(set-option :rlimit %d)\n", rl) + script + "\n(get-info :rlimit)\n"
+	// Runner options are prepended outside the hashed core script (SPEC
+	// §7.2) and the trailing get-info lines are the attempt-validity
+	// telemetry, likewise outside the hashed bytes. An OPT-IN memory bound
+	// (OATH_PROVE_MEMORY_MB) converts an OS-level death into a clean
+	// memout abort — but it cannot be a default: z3 counts its upfront
+	// arena RESERVATIONS (~21GB virtual on quantified goals) against
+	// memory_max_size, so any bound below the reservation instantly kills
+	// attempts that would have run fine, and any bound above it bounds
+	// nothing. Environments that prefer memout-invalidation over OS death
+	// set it explicitly; the validity rule below catches both.
+	header := fmt.Sprintf("(set-option :rlimit %d)\n", rl)
+	if v := os.Getenv("OATH_PROVE_MEMORY_MB"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			header = fmt.Sprintf("(set-option :memory_max_size %d)\n", n) + header
+		}
+	}
+	full := header + script + "\n(get-info :rlimit)\n(get-info :reason-unknown)\n"
 	ctx, cancel := context.WithTimeout(context.Background(), proveWallCap)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "z3", "-in")
@@ -784,17 +800,30 @@ func runZ3(script string) (string, bool) {
 	if ctx.Err() == context.DeadlineExceeded {
 		// SPEC §7.2: the wall cap is SAFETY-ONLY. Hitting it means this
 		// environment could not exhaust the rlimit budget — the attempt is
-		// INVALID, never an outcome. Recording "unknown" here would smuggle
-		// machine-dependence back in: a goal that proves at minute four on
-		// one machine would be silently unproven on a slower one. (The
-		// blind Rust kernel implemented this correctly from the spec text;
-		// the reference originally did not — caught by cross-kernel
-		// conformance when its exit(3) fired where Go had been quietly
-		// recording. The cap was then raised 180s→600s to sit far above
-		// any legitimate budget exhaust.)
+		// INVALID, never an outcome. (The blind Rust kernel implemented
+		// invalidation correctly from the spec text; the reference
+		// originally recorded cap hits as unknown — caught by cross-kernel
+		// conformance, #17 epilogue.)
 		return "", true
 	}
 	res := string(out)
+	consumed, haveConsumed := int64(-1), false
+	if i := strings.Index(res, "(:rlimit "); i >= 0 {
+		s := strings.TrimRight(strings.TrimSpace(res[i+9:]), ")\n `")
+		if j := strings.IndexAny(s, ")\n"); j >= 0 {
+			s = s[:j]
+		}
+		if n, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64); err == nil {
+			consumed, haveConsumed = n, true
+		}
+	}
+	reason, haveReason := "", false
+	if i := strings.Index(res, `(:reason-unknown "`); i >= 0 {
+		rest := res[i+len(`(:reason-unknown "`):]
+		if j := strings.LastIndex(rest, `"`); j >= 0 {
+			reason, haveReason = rest[:j], true
+		}
+	}
 	if os.Getenv("OATH_PROVE_CALIBRATE") != "" {
 		verdict := "unknown"
 		if strings.HasPrefix(res, "unsat") {
@@ -802,11 +831,41 @@ func runZ3(script string) (string, bool) {
 		} else if strings.HasPrefix(res, "sat") {
 			verdict = "sat"
 		}
-		consumed := "?"
-		if i := strings.Index(res, "(:rlimit "); i >= 0 {
-			consumed = strings.TrimRight(strings.TrimSpace(res[i+9:]), ")\n ")
+		fmt.Fprintf(os.Stderr, "CALIB %s rlimit=%d reason=%q\n", verdict, consumed, reason)
+		if !haveConsumed {
+			raw := res
+			if len(raw) > 400 {
+				raw = raw[:400]
+			}
+			fmt.Fprintf(os.Stderr, "CALIB-RAW %q\n", raw)
 		}
-		fmt.Fprintf(os.Stderr, "CALIB %s rlimit=%s\n", verdict, consumed)
+	}
+	if strings.HasPrefix(res, "unsat") || strings.HasPrefix(res, "sat") {
+		return res, false
+	}
+	// ATTEMPT VALIDITY (SPEC §7.2, #29): a non-verdict is an OUTCOME only
+	// when z3's own telemetry proves the attempt was deterministic —
+	// either the budget was genuinely spent (reason "canceled" with
+	// consumed >= rlimit; z3 overshoots by a few units), or the solver
+	// gave up for a reason that is a pure function of the script
+	// (incompleteness). Everything else is the ENVIRONMENT talking:
+	// memout (the memory bound fired — bound size is machine policy),
+	// "canceled" below budget (an external cancel), or missing telemetry
+	// (the process died mid-attempt). Recording any of those as unproven
+	// would make verdicts depend on RAM and signals, which is the
+	// machine-dependence this design exists to abolish.
+	switch {
+	case !haveConsumed || !haveReason:
+		return "", true
+	case reason == "":
+		// A blank reason on a non-verdict is absence of evidence, not
+		// evidence of determinism — the rule demands POSITIVE telemetry
+		// (found by the blind kernel, DIVERGENCES 71 ambiguity 3).
+		return "", true
+	case strings.Contains(reason, "memout") || strings.Contains(reason, "memory"):
+		return "", true
+	case reason == "canceled" && consumed < rl:
+		return "", true
 	}
 	return res, false
 }
@@ -907,10 +966,20 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 		return b.String()
 	}
 
-	// Direct attempt.
+	// Direct attempt. An INVALID attempt (environmental abort) yields NO
+	// EVIDENCE (SPEC §7.2): it must not end the run — a later strategy can
+	// still prove the goal, and unsat is positive evidence no environment
+	// can fake. Invalidity taints only the NEGATIVE case: recording
+	// "unproven" with an invalid attempt among the strategies would
+	// launder an environmental abort into a verdict, so that combination
+	// invalidates at the end of proveOne instead. (Found in the wild:
+	// z3 crashes with empty output on t-insert.insert-length's direct
+	// script — deterministically — while induction proves the goal fine.)
+	sawInvalid := false
 	out, capHit := runZ3(script(nil, nil, goal, !c.quantified))
 	if capHit {
-		return propOutcome{status: "invalidated", detail: "wall cap hit before rlimit exhausted — environment non-conformant (SPEC §7.2)"}
+		sawInvalid = true
+		out = ""
 	}
 	switch {
 	case strings.HasPrefix(out, "unsat"):
@@ -964,7 +1033,9 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 			}
 			out, capHit := runZ3(script(extraDecls, extraAsserts, subgoal, false))
 			if capHit {
-				return propOutcome{status: "invalidated", detail: "wall cap hit before rlimit exhausted — environment non-conformant (SPEC §7.2)"}
+				sawInvalid = true
+				allUnsat = false
+				break
 			}
 			if !strings.HasPrefix(out, "unsat") {
 				allUnsat = false
@@ -1030,7 +1101,9 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 					}
 					out, capHit := runZ3(script(declsI, nil, subgoal, false))
 					if capHit {
-						return propOutcome{status: "invalidated", detail: "wall cap hit before rlimit exhausted — environment non-conformant (SPEC §7.2)"}
+						sawInvalid = true
+						allUnsat = false
+						break
 					}
 					if !strings.HasPrefix(out, "unsat") {
 						allUnsat = false
@@ -1089,7 +1162,9 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 					}
 					out, capHit := runZ3(script(extraDecls, extraAsserts, subgoal, false))
 					if capHit {
-						return propOutcome{status: "invalidated", detail: "wall cap hit before rlimit exhausted — environment non-conformant (SPEC §7.2)"}
+						sawInvalid = true
+						allUnsat = false
+						break lexCtorI
 					}
 					if !strings.HasPrefix(out, "unsat") {
 						allUnsat = false
@@ -1101,6 +1176,9 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 				return propOutcome{status: "proven", method: fmt.Sprintf("lexicographic induction on binders %d,%d", i, j)}
 			}
 		}
+	}
+	if sawInvalid {
+		return propOutcome{status: "invalidated", detail: "a strategy attempt was environmentally aborted and no remaining strategy proved the goal — no valid negative verdict exists (SPEC §7.2)"}
 	}
 	return propOutcome{status: "unknown", detail: "no direct proof; induction did not discharge"}
 }
