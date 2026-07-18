@@ -22,6 +22,7 @@ usage:
   oath verify <name>                  re-run a definition's properties
   oath mutate <name>                  score spec strength: do the properties notice mutations?
   oath waive <name> <mutant> "<why>"  record a surviving mutant as judged-equivalent, with justification
+  oath cross <nameA> <nameB> [--record]  N-version misalignment check: run each spec against the other's body
   oath prove <name>                   SMT-prove properties for ALL inputs (non-recursive Int/Bool fragment)
   oath eval "<expr>"                  typecheck and evaluate an expression
   oath serve                          MCP server over stdio (tools for agent sessions)
@@ -125,6 +126,29 @@ func main() {
 			fail(fmt.Errorf("usage: oath mutate <name>"))
 		}
 		cmdMutate(st, args[1])
+	case "cross":
+		record := false
+		rest := args[1:]
+		var names []string
+		for _, a := range rest {
+			if a == "--record" {
+				record = true
+			} else {
+				names = append(names, a)
+			}
+		}
+		if len(names) != 2 {
+			fail(fmt.Errorf("usage: oath cross <nameA> <nameB> [--record]"))
+		}
+		author := os.Getenv("OATH_AUTHOR")
+		if author == "" {
+			author = "unattributed"
+		}
+		out, err := apiCross(st, names[0], names[1], record, author)
+		if err != nil {
+			fail(err)
+		}
+		fmt.Print(out)
 	case "waive":
 		if len(args) != 4 {
 			fail(fmt.Errorf("usage: oath waive <name> <mutant-hash-prefix> \"<reason>\""))

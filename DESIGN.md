@@ -145,7 +145,13 @@ distinct failure modes with distinct defenses, established adversarially:
   party. This has its own honest regress: two authors misaligned to the
   same wrong function still pass, and intent always enters the system from
   outside, as an axiom, supplied by whoever is trusted. The entry point
-  can be moved; it cannot be deleted.
+  can be moved; it cannot be deleted. This is now a first-class analysis
+  (`oath cross`, SPEC §6.4, #20): given two identically-signed definitions
+  it evaluates each one's properties against the other's body and returns
+  `AGREE`/`DISAGREE` with the falsifying counterexample, optionally sealing
+  the verdict into the journal as `kind=cross` provenance. The manual
+  demonstration became a verb; the honest regress above is unchanged and is
+  recorded normatively alongside it.
 
 ## The split-agent workflow experiment (2026-07-13)
 

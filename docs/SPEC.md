@@ -328,6 +328,11 @@ rendered by the value printer.
   (`+↔-`, `*→+`, `/→*`, `%→/`, `<↔<=`, `and↔or`), operand swaps of
   non-commutative binary prims (`- / % < <= ++`), integer literal ±1 and →0,
   string literal → `""`, if-branch swap. Score = killed/total.
+- **Cross-check (N-version)**: for two definitions with identical signatures,
+  each one's properties are evaluated against the other's body. Mutation scores
+  a spec's tightness around ITS OWN body and is blind to misalignment (a spec
+  tight around the wrong function); the cross-check is the disagreement between
+  two independently-authored specs of one brief. Verdict `AGREE`/`DISAGREE`.
 
 ### 6.1 Termination algorithm
 
@@ -455,6 +460,52 @@ Each mutant runs properties in property order with `mutantCases=60` and
 `mutantFuel=500000`, seeded by the mutant hash using §4. The first property
 that fails or errors kills the mutant. Survivors are rendered with the
 projection printer.
+
+### 6.4 Cross-check algorithm (N-version specification)
+
+Mutation (§6.3) measures a spec's tightness around its own body; it cannot see
+a spec that is internally tight around the WRONG function (a sum-of-squares
+body whose every property is a true statement about sum-of-squares proves and
+resists mutation exactly as a correct one would). The brief is not an object in
+the system, so no single-spec analysis can read intent. The cross-check is the
+defense with the right shape: independent redundancy. Two definitions authored
+by disjoint processes for the same brief are made to collide.
+
+Given two names resolving to hashes `hA` and `hB` with definitions `dA`, `dB`:
+
+- **Preconditions (the analysis is REFUSED, not scored, if any fail).** Both
+  MUST be `func`. `hA` and `hB` MUST differ (a definition cross-checked against
+  itself is vacuous — identical structure content-addresses to one object).
+  `dA` and `dB` MUST have identical signatures: equal `TyVars` and type-equal
+  `Ty`. Cross-binding relies on the property-input generators of one side
+  producing values admissible to the other body, which identical signatures
+  guarantee.
+- **Procedure.** For each property `i` of `dA`, run §4 generation seeded from
+  `hA` exactly as `verify` would (base = first 8 bytes of `hA`; per-property
+  and per-case seeding per §4), but evaluate the property body with the
+  `self` reference bound to `hB` (i.e. `dB`'s body). Symmetrically, each
+  property of `dB` is seeded from `hB` and evaluated with `self` bound to `hA`.
+  Each property runs `propCases` (200) cases with `propFuel`. Seeding from the
+  property OWNER's hash — not the body's — means the cross-run and an ordinary
+  `verify` of that owner draw the identical input stream, so a falsifying
+  counterexample is directly comparable across the two bodies.
+- **Verdict.** `AGREE` iff no property of either side is falsified against the
+  other's body; `DISAGREE` otherwise. Because `self` is name-free (§1), the
+  rebinding is purely mechanical. The verdict is a pure function of
+  `(hA, hB, store)` and is therefore reproducible and cross-kernel comparable.
+  On `DISAGREE`, the falsifying `(side, property, counterexample)` localizes the
+  divergence; WHICH property falsifies names which author's function the other
+  body implements. Detection is mechanical; a human adjudicates which body
+  matches the brief.
+- **Effect.** Read-only: the cross-check never rejects or mutates a stored
+  definition. It MAY append a journal entry (§8) of kind `cross` with status
+  `accepted` (AGREE) or `falsified` (DISAGREE) naming both hashes, as durable
+  provenance that the two specs were reconciled.
+
+Honest limits, normative to record: two authors misaligned to the SAME wrong
+function still agree; intent enters as an axiom from a trusted party regardless.
+Redundancy lowers the probability of undetected misalignment the way mutation
+lowers the probability of undetected weakness; neither reaches zero.
 
 ## 7. Proof obligations (SMT boundary)
 
@@ -784,7 +835,10 @@ Append-only, one JSON object per line: `seq`, `time` (RFC3339 UTC),
 (kernel version string), `name`, `kind`, `status`
 (`accepted`|`falsified`|`rejected`|`blocked` (repoint refused by store policy; object stored, name unchanged)), `hash`, `prev` (on repoint), `error`,
 `guarantee`, `termination`, `context`, `chain`. Every submission attempt MUST
-be journaled, including gate rejections (which store no object).
+be journaled, including gate rejections (which store no object). A cross-check
+(§6.4) recorded to the journal uses `kind` = `cross`, status `accepted` (AGREE)
+or `falsified` (DISAGREE), with the two cross-checked object hashes carried in
+`hash` and `prev` — here `prev` names the OTHER operand, not a repoint origin.
 
 `context` is the author-supplied hash of the context slice the submission was
 built against: SHA-256 (lowercase hex) of the newline-joined, byte-sorted

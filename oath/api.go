@@ -295,7 +295,13 @@ func apiLog(st *Store, filter string) string {
 			h = "#" + shortHash(e.Hash)
 		}
 		if e.Prev != "" {
-			h += " (was #" + shortHash(e.Prev) + ")"
+			// A cross-check references two independent objects, not a repoint;
+			// "vs" is the honest relation, "was" would imply a rename.
+			rel := " (was #"
+			if e.Kind == "cross" {
+				rel = " (vs #"
+			}
+			h += rel + shortHash(e.Prev) + ")"
 		}
 		fmt.Fprintf(&b, "%-4d %s  %-20s %s %-10s %-16s %s  %s\n",
 			e.Seq, e.Time, e.Author, mark, e.Status, e.Name, h, detail)

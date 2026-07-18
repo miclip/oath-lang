@@ -133,11 +133,20 @@ queries and transactions instead of files:
 ./oath/oath dependents append                  # reverse dependency query
 ./oath/oath mutate length                      # spec strength: do the properties
                                                # notice mutations of the body?
+./oath/oath cross sabs sumsq                   # N-version: run each spec against
+                                               # the other's body — AGREE / DISAGREE
 ```
 
 `mutate` is the answer to "who verifies the specs?" — survivors are printed
 with their bodies, and the killed/total score sits next to the guarantee.
 `length`'s original spec scored 1/5; two added anchor properties took it to 5/5.
+
+`cross` is the answer to "who verifies the spec is of the *right* function?"
+Mutation kills a weak spec; it is blind to a spec tightly written around the
+wrong function (sum-of-squares graded as sum-of-absolute-values passes every
+axis). Cross-checking two independently-authored specs of one brief makes them
+collide: their defining equations cannot both hold on one body, and the kernel
+names the counterexample. Detection is mechanical; only adjudication is human.
 
 `examples/sort.oath` was authored this way: written against the `context`
 output for `List`/`length`/`append` — their specs, never their bodies — and

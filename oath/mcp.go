@@ -93,6 +93,11 @@ func mcpTools() []map[string]any {
 			"inputSchema": obj(map[string]any{"name": str("definition name")}, "name"),
 		},
 		{
+			"name":        "cross",
+			"description": "N-version cross-check (misalignment detection): given two INDEPENDENTLY-authored definitions with identical signatures, run each one's properties against the other's body. AGREE means they compute the same function on the deterministic domain; DISAGREE returns the falsifying property and counterexample. Mutation kills spec weakness; this kills spec misalignment (a spec tight around the wrong function). Set record=true to journal the verdict.",
+			"inputSchema": obj(map[string]any{"name": str("first definition name"), "name_b": str("second definition name"), "record": map[string]any{"type": "boolean", "description": "journal the verdict as provenance"}}, "name", "name_b"),
+		},
+		{
 			"name":        "dependents",
 			"description": "Reverse dependency query: which definitions reference this one.",
 			"inputSchema": obj(map[string]any{"name": str("definition name")}, "name"),
@@ -116,6 +121,8 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string)
 		Author  string   `json:"author"`
 		Context string   `json:"context"`
 		Name    string   `json:"name"`
+		NameB   string   `json:"name_b"`
+		Record  bool     `json:"record"`
 		Expr    string   `json:"expr"`
 	}
 	if len(args) > 0 {
@@ -149,6 +156,15 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string)
 		return apiVerify(st, a.Name)
 	case "mutate":
 		return apiMutate(st, a.Name)
+	case "cross":
+		author := a.Author
+		if principal != "" {
+			author = principal
+		}
+		if author == "" {
+			author = "unattributed"
+		}
+		return apiCross(st, a.Name, a.NameB, a.Record, author)
 	case "prove":
 		return apiProve(st, a.Name)
 	case "dependents":
