@@ -640,9 +640,55 @@ reproducibility (given the same solver):
   Rust kernel implemented invalidation correctly from this text and its
   exit-on-cap fired on hardware where the reference had been quietly
   recording — cross-kernel conformance catching the reference violating
-  its own spec.) The budget value is part
-  of outcome identity. (Calibration: the heaviest successful proof in the
-  corpus consumes ~115M; the budget allows 3.5x that.)
+  its own spec.)
+- **Attempt validity (normative, #29).** The wall cap is one instance of a
+  general rule: a non-verdict (anything other than `unsat`/`sat`) is an
+  OUTCOME only when the solver's own telemetry proves the attempt was
+  deterministic. The runner appends `(get-info :rlimit)` and
+  `(get-info :reason-unknown)` after the core script (outside the hashed
+  bytes, like the prepended options), and an attempt is VALID only when
+  BOTH infos parse and the reason is
+  deterministic: either a genuine budget exhaust (`"canceled"` with
+  consumed rlimit ≥ the budget; z3 overshoots by a few units) or a solver
+  incompleteness give-up (any NON-EMPTY, non-canceled, non-memout
+  reason — a pure function of the script). A BLANK reason on a
+  non-verdict invalidates: the rule demands positive telemetry, and an
+  empty string is absence of evidence. The opt-in memory bound is passed
+  to `memory_max_size` verbatim in MEGABYTES (z3's unit). Note the two
+  distinct memory failure modes: a bound below z3's arena reservation
+  kills the process before any telemetry (caught by missing-telemetry),
+  while a bound tripped mid-search yields a clean `memout` reason —
+  both invalidate. Missing telemetry means the process died
+  mid-attempt (crash, kill); `memout` means the memory bound fired; and
+  `"canceled"` below budget means something external canceled — all three
+  are the ENVIRONMENT talking, and recording them as unproven would make
+  verdicts depend on RAM and signals. (Empirical origin: during the #17
+  settles, z3 segfaulted under memory pressure at ~21GB per attempt and
+  the reference recorded the deaths as unproven — found via macOS crash
+  reports, not via any in-band signal, which is exactly why the rule
+  demands positive telemetry.) A solver memory bound
+  (`memory_max_size`) is OPT-IN environment policy, never a default and
+  never outcome-determining: z3 counts its upfront arena RESERVATIONS
+  (tens of GB on quantifier-heavy goals) against the bound, so any value
+  below the reservation instantly memouts attempts that would have run
+  fine. Environments that prefer a clean memout invalidation over an
+  OS-level death may set it (reference: `OATH_PROVE_MEMORY_MB`); the
+  missing-telemetry clause catches the OS-death case regardless.
+  GRANULARITY: an invalid attempt yields NO EVIDENCE — it does not by
+  itself end the run. `unsat` (and a quantifier-free `sat`) is positive
+  evidence no environment can fake, so a property proven or refuted by
+  any valid attempt keeps its verdict regardless of other attempts'
+  invalidity. Invalidity taints only the NEGATIVE case: a property that
+  would be recorded UNPROVEN while any of its strategy attempts was
+  invalid has no valid negative verdict, and the kernel MUST invalidate
+  the run there instead of recording. (Empirical origin of the
+  granularity: z3 crashes with empty output — deterministically — on
+  t-insert.insert-length's direct-attempt script, while structural
+  induction proves the goal; run-level invalidation would have made the
+  definition permanently unprovable on affected z3 builds.) The budget
+  value is part of outcome identity. (Calibration: the heaviest
+  successful proof in the corpus consumes ~115M; the budget allows 3.5x
+  that.)
 - **Script stability (normative).** A goal's emitted SMT script is a pure
   function of (goal, recorded lemma state): byte-identical across attempt
   histories, warm/cold runs, and independent kernels. Three rules deliver
