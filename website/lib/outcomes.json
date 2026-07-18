@@ -589,6 +589,27 @@
       ]
     },
     {
+      "name": "index-of",
+      "hash": "ecc23c421a69127bb6e73e1b104381bf7720ffad478c765d2eb381ead0bfe94e",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-none",
+          "proven": true
+        },
+        {
+          "name": "found-at-head",
+          "proven": true
+        },
+        {
+          "name": "miss-step",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "init",
       "hash": "6ed53caa0ad21b7d739eaac8817b2fd1e0f983da3dc188d07f89ef1640d988bb",
       "level": "proven",

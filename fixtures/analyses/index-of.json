@@ -1,0 +1,15 @@
+{
+  "name": "index-of",
+  "hash": "ecc23c421a69127bb6e73e1b104381bf7720ffad478c765d2eb381ead0bfe94e",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 8,
+  "mutants_total": 8,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

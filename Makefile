@@ -11,7 +11,7 @@ EXHIBITS = undertested nontotal bad_reverse
 PROVABLE = length append sum count reverse map filter foldr foldl \
            reverse-onto flatten all any snoc find last init \
            product maximum minimum take-while drop-while count-matching zip zip-with \
-           contains is-sorted insert \
+           contains index-of is-sorted insert \
            merge t-flatten t-insert t-member t-size \
            i-contains i-overlaps i-intersect i-hull \
            q-to-list q-push q-peek q-drop rle-encode \

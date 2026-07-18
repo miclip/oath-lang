@@ -126,3 +126,28 @@
   (prop cons-step [(f (-> Int Int Int)) (xh Int) (xt (List Int)) (yh Int) (yt (List Int))]
     (== (zip-with [Int Int Int] f (Cons [Int] xh xt) (Cons [Int] yh yt))
         (Cons [Int] (f xh yh) (zip-with [Int Int Int] f xt yt)))))
+
+; index-of: the position of the first occurrence of x, or None (#32). The
+; `elem`/`index-of` checklist item — `elem` is `contains` above. Characterized
+; by three DIRECT laws (base, head-hit, miss-step); the inductive
+; contains-relationship law is left out because it needs induction through the
+; nested Option match (the #50 prover gap).
+(defn index-of [] [(x Int) (xs (List Int))] (Option Int)
+  (match xs
+    ((Nil) (None [Int]))
+    ((Cons h t)
+      (if (== h x)
+          (Some [Int] 0)
+          (match (index-of x t)
+            ((None) (None [Int]))
+            ((Some i) (Some [Int] (+ i 1)))))))
+  (prop empty-none [(x Int)]
+    (== (index-of x (Nil [Int])) (None [Int])))
+  (prop found-at-head [(x Int) (xs (List Int))]
+    (== (index-of x (Cons [Int] x xs)) (Some [Int] 0)))
+  (prop miss-step [(x Int) (h Int) (t (List Int))]
+    (if (== h x) true
+        (== (index-of x (Cons [Int] h t))
+            (match (index-of x t)
+              ((None) (None [Int]))
+              ((Some i) (Some [Int] (+ i 1))))))))
