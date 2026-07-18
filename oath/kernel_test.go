@@ -8,7 +8,10 @@ package main
 // Tests that need the solver skip cleanly when z3 is absent.
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -81,44 +84,50 @@ func TestPositiveDatatypeAccepted(t *testing.T) {
 	}
 }
 
-// An object written straight into the store (never gate-checked) that is
-// structurally incomplete must be rejected on load, not fault the checker or
-// evaluator.
-func TestMalformedStoredObjectRejected(t *testing.T) {
-	st := newStore(t)
-	bad := &Def{K: "func", TyVars: 0} // no Ty, no Body
-	b, _ := json.Marshal(bad)
-	h := hashDef(bad)
-	if err := os.WriteFile(filepath.Join(st.Root, "objects", h+".json"), b, 0o644); err != nil {
+// writeRawObject writes bytes straight into the store's object directory,
+// named by their own content hash (the O1 identity). This is the team/hosted-
+// store threat model: an object that never passed the gate. GetDef must reject
+// anything that is not a well-formed, gate-passing definition — without ever
+// faulting the checker or evaluator.
+func writeRawObject(t *testing.T, st *Store, b []byte) string {
+	t.Helper()
+	s := sha256.Sum256(b)
+	h := hex.EncodeToString(s[:])
+	if err := os.WriteFile(filepath.Join(st.Root, "objects", h+".bin"), b, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	return h
+}
+
+// An object that DECODES cleanly but is not well-formed (here: a body that
+// references an out-of-scope variable) must be rejected on load by the
+// checker, not accepted merely because its bytes are content-addressed. Under
+// the O1 binary encoding a structurally incomplete Def (nil Ty/Body) is
+// unrepresentable on disk — the decoder cannot produce one — so the residual
+// threat is a decodable-but-ill-typed object, which is what this pins.
+func TestMalformedStoredObjectRejected(t *testing.T) {
+	st := newStore(t)
+	illTyped := &Def{K: "func", TyVars: 0, Ty: tInt(), Body: &Term{K: "var", Idx: 0}}
+	h := writeRawObject(t, st, encodeDef(illTyped))
 	if _, err := st.GetDef(h); err == nil {
-		t.Fatalf("GetDef on malformed object returned no error; want rejection")
+		t.Fatalf("GetDef accepted a decodable-but-ill-typed object; want rejection")
 	}
 }
 
-// Nested malformed shapes in a directly-written object must be rejected on
-// load, not fault the checker. Each payload hashes to its own filename and
-// omits a required child.
+// A truncated object — the O1 manifestation of a "missing child" — must be
+// rejected by the decoder on load, not fault it. Truncating a valid encoding
+// at several points exercises the decode-error path without any panic.
 func TestMalformedNestedObjectsRejected(t *testing.T) {
-	cases := map[string]*Def{
-		"fun type missing domain/codomain": {K: "func", TyVars: 0, Ty: &Ty{K: "fun"}, Body: &Term{K: "int"}},
-		"lam missing param type":           {K: "func", TyVars: 0, Ty: tFun(tInt(), tInt()), Body: &Term{K: "lam", A: &Term{K: "int"}}},
-		"app missing function":             {K: "func", TyVars: 0, Ty: tInt(), Body: &Term{K: "app", B: &Term{K: "int"}}},
-		"if missing else":                  {K: "func", TyVars: 0, Ty: tInt(), Body: &Term{K: "if", A: &Term{K: "bool", Bool: true}, B: &Term{K: "int"}}},
-		"field on missing record":          {K: "func", TyVars: 0, Ty: tInt(), Body: &Term{K: "field", Op: "x"}},
-	}
-	for name, bad := range cases {
-		t.Run(name, func(t *testing.T) {
+	valid := &Def{K: "func", TyVars: 0, Ty: tFun(tInt(), tInt()),
+		Body: &Term{K: "lam", Ty: tInt(), A: &Term{K: "var", Idx: 0}}}
+	vb := encodeDef(valid)
+	for _, n := range []int{1, 3, len(vb) / 2, len(vb) - 1} {
+		t.Run(fmt.Sprintf("truncated@%d", n), func(t *testing.T) {
 			st := newStore(t)
-			b, _ := json.Marshal(bad)
-			h := hashDef(bad)
-			if err := os.WriteFile(filepath.Join(st.Root, "objects", h+".json"), b, 0o644); err != nil {
-				t.Fatal(err)
-			}
+			h := writeRawObject(t, st, vb[:n])
 			// Must return an error, and must not panic.
 			if _, err := st.GetDef(h); err == nil {
-				t.Fatalf("GetDef accepted a malformed object (%s)", name)
+				t.Fatalf("GetDef accepted a truncated object (len %d)", n)
 			}
 		})
 	}
