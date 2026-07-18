@@ -1,0 +1,66 @@
+; Map (association list) over Int keys and Int values (#32), reusing the
+; Pair and Option types from records. A map is a `List (Pair Int Int)`;
+; lookup returns the FIRST matching entry, so map-insert is prepend-as-update.
+; Depends on: list (List), records (Pair, Option, is-some).
+
+(defn map-size [] [(m (List (Pair Int Int)))] Int
+  (match m
+    ((Nil) 0)
+    ((Cons p t) (+ 1 (map-size t))))
+  (prop empty-zero []
+    (== (map-size (Nil [(Pair Int Int)])) 0))
+  (prop non-negative [(m (List (Pair Int Int)))]
+    (<= 0 (map-size m)))
+  (prop cons-step [(p (Pair Int Int)) (t (List (Pair Int Int)))]
+    (== (map-size (Cons [(Pair Int Int)] p t)) (+ 1 (map-size t)))))
+
+(defn map-keys [] [(m (List (Pair Int Int)))] (List Int)
+  (match m
+    ((Nil) (Nil [Int]))
+    ((Cons p t)
+      (match p ((Pair pk pv) (Cons [Int] pk (map-keys t))))))
+  ; base case and cons-step together characterize map-keys completely, and
+  ; both prove directly. (The length-preservation law
+  ; `length (map-keys m) == length m` is TRUE and tested elsewhere but its
+  ; induction does not converge in the prover's budget — the nested
+  ; single-constructor Pair match defeats the current induction tactic. Filed
+  ; as a prover-reach gap rather than forced.)
+  (prop empty-nil []
+    (== (map-keys (Nil [(Pair Int Int)])) (Nil [Int])))
+  (prop cons-step [(k Int) (v Int) (t (List (Pair Int Int)))]
+    (== (map-keys (Cons [(Pair Int Int)] (Pair [Int Int] k v) t))
+        (Cons [Int] k (map-keys t)))))
+
+(defn map-insert [] [(k Int) (v Int) (m (List (Pair Int Int)))] (List (Pair Int Int))
+  (Cons [(Pair Int Int)] (Pair [Int Int] k v) m)
+  (prop is-prepend [(k Int) (v Int) (m (List (Pair Int Int)))]
+    (== (map-insert k v m) (Cons [(Pair Int Int)] (Pair [Int Int] k v) m)))
+  (prop grows-size [(k Int) (v Int) (m (List (Pair Int Int)))]
+    (== (map-size (map-insert k v m)) (+ 1 (map-size m)))))
+
+(defn map-lookup [] [(k Int) (m (List (Pair Int Int)))] (Option Int)
+  (match m
+    ((Nil) (None [Int]))
+    ((Cons p t)
+      (match p ((Pair pk pv) (if (== pk k) (Some [Int] pv) (map-lookup k t))))))
+  (prop empty-none [(k Int)]
+    (== (map-lookup k (Nil [(Pair Int Int)])) (None [Int])))
+  ; the defining law: a freshly inserted key looks up to its value. Direct —
+  ; insert prepends, and lookup matches the head.
+  (prop finds-inserted [(k Int) (v Int) (m (List (Pair Int Int)))]
+    (== (map-lookup k (map-insert k v m)) (Some [Int] v)))
+  ; inserting key k leaves the lookup of any OTHER key untouched — the pinning
+  ; law. Direct: the head match falls through for j /= k.
+  (prop skips-other-key [(k Int) (v Int) (j Int) (m (List (Pair Int Int)))]
+    (if (== k j) true
+        (== (map-lookup j (map-insert k v m)) (map-lookup j m)))))
+
+(defn map-has [] [(k Int) (m (List (Pair Int Int)))] Bool
+  (is-some [Int] (map-lookup k m))
+  (prop absent-in-empty [(k Int)]
+    (not (map-has k (Nil [(Pair Int Int)]))))
+  (prop present-after-insert [(k Int) (v Int) (m (List (Pair Int Int)))]
+    (map-has k (map-insert k v m)))
+  ; membership tracks lookup exactly.
+  (prop has-iff-some [(k Int) (m (List (Pair Int Int)))]
+    (== (map-has k m) (is-some [Int] (map-lookup k m)))))

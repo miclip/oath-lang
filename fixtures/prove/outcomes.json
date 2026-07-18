@@ -951,6 +951,82 @@
       ]
     },
     {
+      "name": "map-has",
+      "hash": "c3a9abe8a6d592fe2d6b793a330a60dc8a02bdb2b3d27b911aa847f478a8efde",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "absent-in-empty",
+          "proven": true
+        },
+        {
+          "name": "present-after-insert",
+          "proven": true
+        },
+        {
+          "name": "has-iff-some",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "map-insert",
+      "hash": "d4cabce758dbf43de7c53355d436701616a1cd2bc896c1f68ad501743626a45b",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "is-prepend",
+          "proven": true
+        },
+        {
+          "name": "grows-size",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "map-keys",
+      "hash": "52dc8b5b0122b602e3e31e12f800d6228391ccf9adc6d5cd5451bd1a6c910dce",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-nil",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "map-lookup",
+      "hash": "1f628677ae7a1429b5408a82aa0eeccdd34d81a17e747a1ab6d1c586f7a38bf4",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-none",
+          "proven": true
+        },
+        {
+          "name": "finds-inserted",
+          "proven": true
+        },
+        {
+          "name": "skips-other-key",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "map-option",
       "hash": "c68fdd467a0a39dc9623a3a4426fcca2ae5a5c0732d131a501196fb6e5a39d4d",
       "level": "proven",
@@ -980,6 +1056,27 @@
         },
         {
           "name": "err-passes-through",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "map-size",
+      "hash": "8451ca18d1642f39efc6a79b5dbeb23dfb23df1f1a316fbe5d78d3d1773552be",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-zero",
+          "proven": true
+        },
+        {
+          "name": "non-negative",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
           "proven": true
         }
       ]

@@ -1,0 +1,14 @@
+{
+  "name": "map-size",
+  "hash": "8451ca18d1642f39efc6a79b5dbeb23dfb23df1f1a316fbe5d78d3d1773552be",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 7,
+  "mutants_total": 7,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}
