@@ -1,0 +1,4 @@
+✓ prop is-append                passed 200 cases
+✓ prop empty-left               passed 200 cases
+✓ prop prefers-left             passed 200 cases
+✓ prop empty-left-defers        passed 200 cases

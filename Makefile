@@ -23,7 +23,7 @@ PROVABLE = length append sum count reverse map filter foldr foldl \
            kv-get kv-put rename-key safe-get \
            join-with lengths main-echo main-fetch \
            set-add set-union set-inter \
-           map-size map-keys map-insert map-lookup map-has
+           map-size map-keys map-values map-insert map-lookup map-has map-merge
 # Props exist but sit outside the provable fragment (Int-recursion fuel
 # bounds, or / and % in bodies): mutation-scored, never proven. merge
 # graduated to PROVABLE when lexicographic induction landed (#17).

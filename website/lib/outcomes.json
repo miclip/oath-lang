@@ -1027,6 +1027,31 @@
       ]
     },
     {
+      "name": "map-merge",
+      "hash": "56214b892f1853d3d59542ce5923e911b0184c992440f167bf0113b883c0e6b7",
+      "level": "proven",
+      "proven_count": 4,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "is-append",
+          "proven": true
+        },
+        {
+          "name": "empty-left",
+          "proven": true
+        },
+        {
+          "name": "prefers-left",
+          "proven": true
+        },
+        {
+          "name": "empty-left-defers",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "map-option",
       "hash": "c68fdd467a0a39dc9623a3a4426fcca2ae5a5c0732d131a501196fb6e5a39d4d",
       "level": "proven",
@@ -1073,6 +1098,23 @@
         },
         {
           "name": "non-negative",
+          "proven": true
+        },
+        {
+          "name": "cons-step",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "map-values",
+      "hash": "4ddb4cd680a1fd72b7c61d596a613094b9d180e584390fdb3299583633f8afee",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-nil",
           "proven": true
         },
         {

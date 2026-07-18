@@ -1,0 +1,34 @@
+{
+  "name": "map-merge",
+  "prop_names": [
+    "is-append",
+    "empty-left",
+    "prefers-left",
+    "empty-left-defers"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 4
+  },
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "a",
+    "b"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3
+  ]
+}
