@@ -43,6 +43,17 @@ import (
 // kernel whose wall cap fires before rlimit exhausts is running on
 // pathological hardware and MUST report the run as non-conformant.
 const proveRlimit = 400_000_000 // 3.5x the heaviest successful proof (calibrated)
+// proveDirectRlimit is the reduced budget for the DIRECT attempt on a goal
+// that has a datatype-typed binder — i.e. one where structural induction is a
+// possible strategy (SPEC §7.2, #50). Such a direct attempt is almost always
+// futile (the goal needs induction) yet, at the full budget, burns minutes
+// before failing. Every direct proof that SUCCEEDS in the corpus consumes
+// under ~3K rlimit (measured); this budget clears that by >1000x while making
+// a futile direct attempt fail at 1/100th of the full budget. A goal that
+// proves ONLY by full-budget direct is caught by the fallback direct attempt
+// at proveRlimit after induction, so the outcome is unchanged — this is a
+// pure performance refinement, budget-part-of-identity notwithstanding.
+const proveDirectRlimit = 4_000_000
 const proveWallCap = 600 * time.Second
 
 var smtNameRe = regexp.MustCompile(`[^A-Za-z0-9]`)
@@ -67,7 +78,7 @@ type smtVal struct {
 }
 
 type lemma struct {
-	ownIdx   int    // index of the prop this lemma came from in the def under proof; -1 for dependency lemmas
+	ownIdx   int // index of the prop this lemma came from in the def under proof; -1 for dependency lemmas
 	text     string
 	defHash  string          // the definition the lemma belongs to
 	mentions map[string]bool // every definition hash the lemma's binders/body reference
@@ -768,13 +779,48 @@ func (c *smtCtx) formulaWith(d *Def, h string, p *Prop, assign map[int]string) (
 	return body, nil
 }
 
+// calibLastConsumed records the rlimit the last runZ3 call spent. It backs the
+// OATH_PROVE_SPLIT per-phase diagnostic (a durable debugging hook alongside
+// OATH_PROVE_CALIBRATE); nothing in the proof outcome depends on it.
+var calibLastConsumed int64
+
+// runZ3 runs a goal at the full deterministic budget (SPEC §7.2). The
+// OATH_PROVE_RLIMIT override exists for testing only.
 func runZ3(script string) (string, bool) {
+	return runZ3Budget(script, effectiveRlimit())
+}
+
+// effectiveRlimit is the full per-goal budget: the normative proveRlimit, or the
+// OATH_PROVE_RLIMIT testing override when set.
+func effectiveRlimit() int64 {
 	rl := int64(proveRlimit)
 	if v := os.Getenv("OATH_PROVE_RLIMIT"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
 			rl = n
 		}
 	}
+	return rl
+}
+
+// directRlimit is the budget for the direct attempt on an inductive-eligible
+// goal. It is clamped to the full budget so the reduced attempt can never be
+// STRONGER than the full-budget fallback — otherwise lowering the full budget
+// (the testing override) would leave the direct attempt running longer than the
+// fallback that is supposed to subsume it, and the two kernels would diverge.
+func directRlimit() int64 {
+	full := effectiveRlimit()
+	if proveDirectRlimit < full {
+		return proveDirectRlimit
+	}
+	return full
+}
+
+// runZ3Budget runs a goal at an explicit rlimit. The budget is a runner option
+// prepended OUTSIDE the hashed core script (SPEC §7.2), so the same goal at any
+// budget emits byte-identical script bytes — only the outcome may differ. The
+// direct attempt on a datatype-binder goal uses the reduced proveDirectRlimit
+// here (see proveOne); everything else uses proveRlimit.
+func runZ3Budget(script string, rl int64) (string, bool) {
 	// Runner options are prepended outside the hashed core script (SPEC
 	// §7.2) and the trailing get-info lines are the attempt-validity
 	// telemetry, likewise outside the hashed bytes. An OPT-IN memory bound
@@ -840,6 +886,7 @@ func runZ3(script string) (string, bool) {
 			fmt.Fprintf(os.Stderr, "CALIB-RAW %q\n", raw)
 		}
 	}
+	calibLastConsumed = consumed
 	if strings.HasPrefix(res, "unsat") || strings.HasPrefix(res, "sat") {
 		return res, false
 	}
@@ -975,8 +1022,48 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 	// invalidates at the end of proveOne instead. (Found in the wild:
 	// z3 crashes with empty output on t-insert.insert-length's direct
 	// script — deterministically — while induction proves the goal fine.)
+	// A goal with a datatype-typed binder can be discharged by induction, so
+	// its direct attempt is almost always futile — yet at the full budget it
+	// burns minutes before failing (#50). Run it at the reduced
+	// proveDirectRlimit; if that under-runs, induction is tried next, and a
+	// full-budget direct FALLBACK below catches the rare goal that proves only
+	// by heavy direct. The emitted script is byte-identical either way (the
+	// budget is a runner option outside the hashed bytes, SPEC §7.2), so this
+	// changes speed, not outcomes or script hashes.
+	hasDTBinder := false
+	for i := range binderSorts {
+		if _, ok := c.dtBySort[binderSorts[i]]; ok {
+			hasDTBinder = true
+			break
+		}
+	}
+	directScript := script(nil, nil, goal, !c.quantified)
 	sawInvalid := false
-	out, capHit := runZ3(script(nil, nil, goal, !c.quantified))
+	directStart := time.Now()
+	var out string
+	var capHit bool
+	if hasDTBinder {
+		out, capHit = runZ3Budget(directScript, directRlimit())
+	} else {
+		out, capHit = runZ3(directScript)
+	}
+	if os.Getenv("OATH_PROVE_SPLIT") != "" {
+		pname := fmt.Sprintf("prop%d", pi)
+		if pi < len(m.PropNames) {
+			pname = m.PropNames[pi]
+		}
+		v := "unknown"
+		switch {
+		case capHit:
+			v = "capHit"
+		case strings.HasPrefix(out, "unsat"):
+			v = "unsat"
+		case strings.HasPrefix(out, "sat"):
+			v = "sat"
+		}
+		fmt.Fprintf(os.Stderr, "SPLIT\t%s.%s\tphase=direct\thasDT=%v\twall=%s\tconsumed=%d\tverdict=%s\n",
+			m.Name, pname, hasDTBinder, time.Since(directStart), calibLastConsumed, v)
+	}
 	if capHit {
 		sawInvalid = true
 		out = ""
@@ -1174,6 +1261,30 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 			}
 			if allUnsat {
 				return propOutcome{status: "proven", method: fmt.Sprintf("lexicographic induction on binders %d,%d", i, j)}
+			}
+		}
+	}
+	// Full-budget direct FALLBACK (#50). The datatype-binder direct attempt
+	// above ran at the reduced budget; induction and lexicographic induction
+	// have now failed. Retry the SAME direct script at the full budget so a
+	// goal provable only by heavy direct search is not lost — this keeps the
+	// outcome a pure function of (script, solver, full budget), identical to
+	// the pre-#50 kernel, while the common inductive case already returned
+	// fast above. The script is byte-identical to the reduced attempt, so no
+	// new direct-attempt script hash is introduced (SPEC §7.2).
+	if hasDTBinder {
+		fb, fbCap := runZ3(directScript)
+		if os.Getenv("OATH_PROVE_SPLIT") != "" {
+			fmt.Fprintf(os.Stderr, "SPLIT\t%s\tphase=direct-fallback\tconsumed=%d\n", m.Name, calibLastConsumed)
+		}
+		if fbCap {
+			sawInvalid = true
+		} else {
+			switch {
+			case strings.HasPrefix(fb, "unsat"):
+				return propOutcome{status: "proven", method: "direct"}
+			case strings.HasPrefix(fb, "sat") && !c.quantified:
+				return propOutcome{status: "refuted", detail: strings.TrimSpace(strings.TrimPrefix(fb, "sat"))}
 			}
 		}
 	}
@@ -1386,7 +1497,6 @@ func cmdProve(st *Store, name string) {
 	}
 	fmt.Print(out)
 }
-
 
 // loadLemmaLibrary populates c.lemmas exactly as apiProve does: proven
 // properties of transitive dependencies, then the definition's own
