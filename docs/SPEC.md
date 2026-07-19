@@ -692,6 +692,24 @@ reproducibility (given the same solver):
   exit-on-cap fired on hardware where the reference had been quietly
   recording — cross-kernel conformance catching the reference violating
   its own spec.)
+- **Direct-attempt budget on inductive-eligible goals (normative, #50).** A
+  goal with at least one datatype-typed binder — a candidate for structural
+  induction — runs its DIRECT attempt at the reduced budget
+  `(set-option :rlimit 4000000)`; its structural induction, lexicographic
+  induction, and the fallback below use the full `400000000`. A goal with no
+  datatype-typed binder runs its single direct attempt at the full budget.
+  The direct attempt on an inductive-eligible goal is almost always futile
+  (the goal needs induction) yet at the full budget burns minutes of wall
+  time before failing; every direct proof that SUCCEEDS in the corpus consumes
+  under ~3K rlimit, so the reduced budget cannot change a direct success, only
+  fail a futile attempt ~100x faster. To preserve the budget-part-of-identity
+  invariant, after structural and lexicographic induction both fail the kernel
+  MUST retry the direct attempt at the FULL budget (the fallback); a goal
+  provable only by heavy direct search thereby keeps its verdict, and the
+  recorded outcome is identical to a kernel running a single full-budget
+  direct attempt. The direct-attempt SCRIPT is byte-identical at either budget
+  (the rlimit is a runner option outside the hashed core, above), so
+  `prove/scripts.txt` and the emitted script texts are unaffected.
 - **Attempt validity (normative, #29).** The wall cap is one instance of a
   general rule: a non-verdict (anything other than `unsat`/`sat`) is an
   OUTCOME only when the solver's own telemetry proves the attempt was

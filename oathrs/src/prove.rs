@@ -21,6 +21,16 @@ use std::time::{Duration, Instant};
 // as a SAFETY net: if it fires before the rlimit is reached, the run is
 // invalidated (no outcome is ever recorded), never treated as a timeout verdict.
 const DEFAULT_Z3_RLIMIT: u64 = 400_000_000;
+// SPEC §7.2 (#50): a goal with at least one datatype-typed binder — a candidate
+// for structural induction — runs its DIRECT attempt at this REDUCED budget. The
+// direct attempt on such a goal is almost always futile, yet at the full budget
+// burns minutes before failing; every direct proof that SUCCEEDS in the corpus
+// consumes under ~3K rlimit, so the reduced budget cannot change a direct success
+// (unsat is sound at any rlimit and is reached far below it), only fail a futile
+// attempt ~100x faster. Structural/lexicographic induction and the full-budget
+// FALLBACK (prove_prop) still use DEFAULT_Z3_RLIMIT, so the recorded outcome is
+// identical to a kernel running a single full-budget direct attempt.
+const DIRECT_Z3_RLIMIT: u64 = 4_000_000;
 const DEFAULT_WALL_CAP_MS: u64 = 600_000;
 
 fn z3_rlimit() -> u64 {
@@ -121,7 +131,7 @@ fn info_value(out: &str, key: &str) -> Option<String> {
 /// missing telemetry (process died mid-attempt), a BLANK reason (absence of
 /// positive evidence — #29 adjudication), `memout` (memory bound fired), and
 /// `canceled`-below-budget (external cancel) are all the ENVIRONMENT talking.
-fn classify_nonverdict(out: &str) -> Result<Outcome, String> {
+fn classify_nonverdict(out: &str, budget: u64) -> Result<Outcome, String> {
     let (rlimit, reason) = match (info_int(out, ":rlimit"), info_value(out, ":reason-unknown")) {
         (Some(r), Some(reason)) => (r, reason),
         _ => {
@@ -146,7 +156,11 @@ fn classify_nonverdict(out: &str) -> Result<Outcome, String> {
             .to_string());
     }
     if reason == "canceled" {
-        let budget = z3_rlimit();
+        // The budget-exhaust test uses the ACTUAL rlimit this attempt ran at
+        // (the direct attempt on an inductive-eligible goal runs at the reduced
+        // DIRECT_Z3_RLIMIT), NOT the full default — a reduced attempt that
+        // exhausts at ~4M is a genuine deterministic non-proof, not an external
+        // cancel below the (full) budget.
         if rlimit >= budget {
             // Genuine deterministic budget exhaust: a valid recordable non-proof.
             return Ok(Outcome::Unknown);
@@ -769,7 +783,14 @@ impl<'a> Cx<'a> {
 /// verdicts, or a telemetry-backed `Unknown` non-proof). `Err(reason)` is an
 /// INVALID attempt yielding NO EVIDENCE (SPEC §7.2 GRANULARITY) — the caller
 /// decides whether it taints the run; run_z3 itself NEVER ends the run.
-fn run_z3(script: &str) -> Result<Outcome, String> {
+///
+/// `budget` is the deterministic z3 rlimit for THIS attempt (SPEC §7.2): the full
+/// `DEFAULT_Z3_RLIMIT` (via `z3_rlimit()`) for induction/lex and the full-budget
+/// direct fallback, the reduced `DIRECT_Z3_RLIMIT` for the direct attempt on an
+/// inductive-eligible goal. It is a RUNNER option (`(set-option :rlimit …)`)
+/// prepended OUTSIDE the byte-oracle-hashed core script — the script bytes are
+/// byte-identical at either budget.
+fn run_z3(script: &str, budget: u64) -> Result<Outcome, String> {
     // The budget is the `(set-option :rlimit ...)` inside `script` (deterministic,
     // machine-independent). z3 returns `unknown` when the rlimit is reached — a
     // legitimate "unproven" verdict. We add NO wall-clock timeout to z3 itself
@@ -804,7 +825,7 @@ fn run_z3(script: &str) -> Result<Outcome, String> {
         if let Some(mb) = z3_memory_mb() {
             let _ = sin.write_all(format!("(set-option :memory_max_size {})\n", mb).as_bytes());
         }
-        let _ = sin.write_all(format!("(set-option :rlimit {})\n", z3_rlimit()).as_bytes());
+        let _ = sin.write_all(format!("(set-option :rlimit {})\n", budget).as_bytes());
         let _ = sin.write_all(script.as_bytes());
         let _ = sin.write_all(b"(get-info :rlimit)\n(get-info :reason-unknown)\n");
         // stdin dropped here -> EOF, so z3 processes and exits.
@@ -853,7 +874,7 @@ fn run_z3(script: &str) -> Result<Outcome, String> {
     }
     // No verdict: `Ok(Unknown)` if the appended telemetry proves the attempt was
     // deterministic, else `Err` (an invalid, no-evidence attempt) (§7.2).
-    classify_nonverdict(&s)
+    classify_nonverdict(&s, budget)
 }
 
 struct Prover<'a> {
@@ -959,18 +980,21 @@ impl<'a> Prover<'a> {
         Some((Prover::assemble(&cx, &tail), cx.quantified))
     }
 
-    /// Direct proof attempt. Returns (attempt, quantified?), where the attempt is
-    /// `Ok(outcome)` for a valid result or `Err(reason)` for an invalid attempt
-    /// (SPEC §7.2). An outside-fragment goal (no script) is a valid, deterministic
-    /// non-proof: `Ok(Unknown)`.
+    /// Direct proof attempt at the given rlimit `budget`. Returns (attempt,
+    /// quantified?), where the attempt is `Ok(outcome)` for a valid result or
+    /// `Err(reason)` for an invalid attempt (SPEC §7.2). An outside-fragment goal
+    /// (no script) is a valid, deterministic non-proof: `Ok(Unknown)`. The script
+    /// bytes are identical at either budget (the rlimit is a runner option); only
+    /// the deterministic resource ceiling differs.
     fn try_direct(
         &self,
         def_hash: &str,
         prop: &Prop,
         candidates: &[(String, usize, bool)],
+        budget: u64,
     ) -> (Result<Outcome, String>, bool) {
         match self.direct_script(def_hash, prop, candidates) {
-            Some((script, quantified)) => (run_z3(&script), quantified),
+            Some((script, quantified)) => (run_z3(&script, budget), quantified),
             None => (Ok(Outcome::Unknown), true),
         }
     }
@@ -1097,7 +1121,8 @@ impl<'a> Prover<'a> {
             tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
             // A subgoal must discharge (`unsat`). A valid non-unsat validly fails
             // the strategy; an invalid attempt taints it (SPEC §7.2 GRANULARITY).
-            match run_z3(&Prover::assemble(&cx, &tail)) {
+            // Structural induction runs at the FULL budget (SPEC §7.2 #50).
+            match run_z3(&Prover::assemble(&cx, &tail), z3_rlimit()) {
                 Ok(Outcome::Unsat) => {}
                 Ok(_) => return Ok(false),
                 Err(reason) => return Err(reason),
@@ -1334,7 +1359,8 @@ impl<'a> Prover<'a> {
         tail.push_str(&decls);
         tail.push_str(&hyps);
         tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
-        match run_z3(&Prover::assemble(&cx, &tail)) {
+        // Lexicographic induction runs at the FULL budget (SPEC §7.2 #50).
+        match run_z3(&Prover::assemble(&cx, &tail), z3_rlimit()) {
             Ok(Outcome::Unsat) => Ok(true),
             Ok(_) => Ok(false),
             Err(reason) => Err(reason),
@@ -1353,7 +1379,24 @@ impl<'a> Prover<'a> {
         // First invalid-attempt reason seen while trying to prove this property.
         let mut taint: Option<String> = None;
 
-        let (direct, quantified) = self.try_direct(def_hash, prop, candidates);
+        // SPEC §7.2 (#50): a goal with at least one datatype-typed binder is a
+        // candidate for structural induction, so its DIRECT attempt runs at the
+        // reduced budget (the futile-but-slow full-budget direct is skipped in
+        // favour of the fallback below). A goal with no datatype binder runs its
+        // single direct attempt at the full budget, unchanged. Datatype binders
+        // are exactly the `Ty::Data` binders the induction loops iterate over.
+        let inductive_eligible =
+            prop.binders.iter().any(|b| matches!(b, Ty::Data { .. }));
+        // Never exceed the full budget (defensive against an OATHRS_Z3_RLIMIT
+        // override that lowers it below the reduced constant): the reduced
+        // attempt must be no stronger than the full-budget fallback.
+        let direct_budget = if inductive_eligible {
+            DIRECT_Z3_RLIMIT.min(z3_rlimit())
+        } else {
+            z3_rlimit()
+        };
+
+        let (direct, quantified) = self.try_direct(def_hash, prop, candidates, direct_budget);
         match direct {
             Ok(Outcome::Unsat) => return true, // proven; a valid attempt wins
             Err(reason) => {
@@ -1361,9 +1404,11 @@ impl<'a> Prover<'a> {
                 // a valid strategy may still prove it (the t-insert case).
                 taint.get_or_insert(reason);
             }
-            // A valid non-unsat (Unknown, or a quantified Sat): not proven here.
-            // For a quantifier-free problem the direct result is final and
-            // induction cannot add power — a QF `sat` is a valid refutation.
+            // A valid non-unsat (Unknown, or a Sat). For a full-budget direct
+            // attempt on a NON-inductive goal this is final: a quantifier-free
+            // `sat` is a valid refutation and induction cannot add power. For an
+            // inductive-eligible goal the reduced-budget result is NOT
+            // authoritative — the full-budget fallback below re-decides it.
             Ok(_) => {}
         }
 
@@ -1398,6 +1443,27 @@ impl<'a> Prover<'a> {
                         }
                     }
                 }
+            }
+        }
+
+        // FALLBACK (SPEC §7.2 #50). An inductive-eligible goal ran its DIRECT
+        // attempt at the REDUCED budget above; if structural and lexicographic
+        // induction have now both failed to discharge it, retry the SAME direct
+        // script at the FULL budget. This preserves the budget-part-of-identity
+        // invariant: a goal provable only by heavy direct search keeps its
+        // verdict, and the recorded outcome is identical to a kernel running a
+        // single full-budget direct attempt. `unsat` proves it; a quantifier-free
+        // `sat` refutes it (not proven); an invalid attempt taints the negative.
+        // For a non-inductive goal the direct attempt already ran at the full
+        // budget, so no fallback is needed.
+        if inductive_eligible {
+            let (fb, _) = self.try_direct(def_hash, prop, candidates, z3_rlimit());
+            match fb {
+                Ok(Outcome::Unsat) => return true,
+                Err(reason) => {
+                    taint.get_or_insert(reason);
+                }
+                Ok(_) => {}
             }
         }
 
