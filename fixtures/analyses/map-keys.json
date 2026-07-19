@@ -1,6 +1,6 @@
 {
   "name": "map-keys",
-  "hash": "52dc8b5b0122b602e3e31e12f800d6228391ccf9adc6d5cd5451bd1a6c910dce",
+  "hash": "c85303ebfaeeb50d90b71ca16ec930e22baa28a09229be5157335c97c9032ac7",
   "kind": "func",
   "termination": "structural",
   "confinement": [
@@ -10,5 +10,5 @@
   "mutants_total": 1,
   "level": "proven",
   "cases": 200,
-  "proven": 2
+  "proven": 3
 }

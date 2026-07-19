@@ -1,0 +1,30 @@
+{
+  "name": "map-keys",
+  "prop_names": [
+    "empty-nil",
+    "cons-step",
+    "preserves-length"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "m"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

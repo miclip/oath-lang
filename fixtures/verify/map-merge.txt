@@ -1,4 +1,6 @@
 ✓ prop is-append                passed 200 cases
 ✓ prop empty-left               passed 200 cases
+✓ prop size-adds                passed 200 cases
 ✓ prop prefers-left             passed 200 cases
 ✓ prop empty-left-defers        passed 200 cases
+✓ prop lookup-left-biased       passed 200 cases

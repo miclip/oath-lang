@@ -19,17 +19,17 @@
     ((Nil) (Nil [Int]))
     ((Cons p t)
       (match p ((Pair pk pv) (Cons [Int] pk (map-keys t))))))
-  ; base case and cons-step together characterize map-keys completely, and
-  ; both prove directly. (The length-preservation law
-  ; `length (map-keys m) == length m` is TRUE and tested elsewhere but its
-  ; induction does not converge in the prover's budget — the nested
-  ; single-constructor Pair match defeats the current induction tactic. Filed
-  ; as a prover-reach gap rather than forced.)
   (prop empty-nil []
     (== (map-keys (Nil [(Pair Int Int)])) (Nil [Int])))
   (prop cons-step [(k Int) (v Int) (t (List (Pair Int Int)))]
     (== (map-keys (Cons [(Pair Int Int)] (Pair [Int Int] k v) t))
-        (Cons [Int] k (map-keys t)))))
+        (Cons [Int] k (map-keys t))))
+  ; one key per entry: projecting keys preserves length. Proven by induction
+  ; over the association list. (This law was withheld until #50 — the futile
+  ; direct attempt burned the full budget for ~8 minutes before induction was
+  ; tried; it now fails in seconds and the induction discharges the goal.)
+  (prop preserves-length [(m (List (Pair Int Int)))]
+    (== (length [Int] (map-keys m)) (length [(Pair Int Int)] m))))
 
 (defn map-insert [] [(k Int) (v Int) (m (List (Pair Int Int)))] (List (Pair Int Int))
   (Cons [(Pair Int Int)] (Pair [Int Int] k v) m)
@@ -70,12 +70,13 @@
     ((Nil) (Nil [Int]))
     ((Cons p t)
       (match p ((Pair pk pv) (Cons [Int] pv (map-values t))))))
-  ; base and cons-step characterize it; both direct (as with map-keys).
   (prop empty-nil []
     (== (map-values (Nil [(Pair Int Int)])) (Nil [Int])))
   (prop cons-step [(k Int) (v Int) (t (List (Pair Int Int)))]
     (== (map-values (Cons [(Pair Int Int)] (Pair [Int Int] k v) t))
-        (Cons [Int] v (map-values t)))))
+        (Cons [Int] v (map-values t))))
+  (prop preserves-length [(m (List (Pair Int Int)))]
+    (== (length [Int] (map-values m)) (length [(Pair Int Int)] m))))
 
 (defn map-merge [] [(a (List (Pair Int Int))) (b (List (Pair Int Int)))] (List (Pair Int Int))
   ; left-biased: a's entries come first, so lookup prefers a. Reuses append,
@@ -85,16 +86,18 @@
     (== (map-merge a b) (append [(Pair Int Int)] a b)))
   (prop empty-left [(b (List (Pair Int Int)))]
     (== (map-merge (Nil [(Pair Int Int)]) b) b))
-  ; is-append above delegates append's already-proven laws (nil-right-identity,
-  ; length-adds) to merge definitionally, so we do not restate them as separate
-  ; inductive props — their induction over List (Pair Int Int) composed with
-  ; map-size is slow in the current prover, and is-append makes it unnecessary.
-  ; Left-bias, captured by DIRECT anchors instead of the full inductive law
-  ; `lookup k (merge a b) == if (has k a) (lookup k a) (lookup k b)` — that law
-  ; is true but its proof needs induction through map-lookup's nested Pair
-  ; match (#50), so we pin the semantics without the thrash: a key present on
-  ; the left wins, and an empty left defers wholly to the right.
+  (prop size-adds [(a (List (Pair Int Int))) (b (List (Pair Int Int)))]
+    (== (map-size (map-merge a b)) (+ (map-size a) (map-size b))))
+  ; Direct left-bias anchors: a key present on the left wins, and an empty left
+  ; defers wholly to the right.
   (prop prefers-left [(k Int) (v Int) (a (List (Pair Int Int))) (b (List (Pair Int Int)))]
     (== (map-lookup k (map-merge (map-insert k v a) b)) (Some [Int] v)))
   (prop empty-left-defers [(k Int) (b (List (Pair Int Int)))]
-    (== (map-lookup k (map-merge (Nil [(Pair Int Int)]) b)) (map-lookup k b))))
+    (== (map-lookup k (map-merge (Nil [(Pair Int Int)]) b)) (map-lookup k b)))
+  ; …and the general law they anchor: lookup on a merge prefers the left map,
+  ; falling through to the right only when the key is absent on the left.
+  ; Proven by induction through map-lookup — withheld until #50 for the same
+  ; wasted-direct-attempt reason as map-keys' length law.
+  (prop lookup-left-biased [(k Int) (a (List (Pair Int Int))) (b (List (Pair Int Int)))]
+    (== (map-lookup k (map-merge a b))
+        (if (map-has k a) (map-lookup k a) (map-lookup k b)))))

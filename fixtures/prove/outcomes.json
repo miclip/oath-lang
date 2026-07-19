@@ -1011,10 +1011,10 @@
     },
     {
       "name": "map-keys",
-      "hash": "52dc8b5b0122b602e3e31e12f800d6228391ccf9adc6d5cd5451bd1a6c910dce",
+      "hash": "c85303ebfaeeb50d90b71ca16ec930e22baa28a09229be5157335c97c9032ac7",
       "level": "proven",
-      "proven_count": 2,
-      "prop_count": 2,
+      "proven_count": 3,
+      "prop_count": 3,
       "props": [
         {
           "name": "empty-nil",
@@ -1022,6 +1022,10 @@
         },
         {
           "name": "cons-step",
+          "proven": true
+        },
+        {
+          "name": "preserves-length",
           "proven": true
         }
       ]
@@ -1049,10 +1053,10 @@
     },
     {
       "name": "map-merge",
-      "hash": "56214b892f1853d3d59542ce5923e911b0184c992440f167bf0113b883c0e6b7",
+      "hash": "929cbb5373c6a3eeb63f820e8f28d776e2eaa05b7842a1769ee785d9265ef0d7",
       "level": "proven",
-      "proven_count": 4,
-      "prop_count": 4,
+      "proven_count": 6,
+      "prop_count": 6,
       "props": [
         {
           "name": "is-append",
@@ -1063,11 +1067,19 @@
           "proven": true
         },
         {
+          "name": "size-adds",
+          "proven": true
+        },
+        {
           "name": "prefers-left",
           "proven": true
         },
         {
           "name": "empty-left-defers",
+          "proven": true
+        },
+        {
+          "name": "lookup-left-biased",
           "proven": true
         }
       ]
@@ -1129,10 +1141,10 @@
     },
     {
       "name": "map-values",
-      "hash": "4ddb4cd680a1fd72b7c61d596a613094b9d180e584390fdb3299583633f8afee",
+      "hash": "9605f12dec5a5c12ba41aeac67bd2e56c42041a0574dfac63cc5c232fc04302d",
       "level": "proven",
-      "proven_count": 2,
-      "prop_count": 2,
+      "proven_count": 3,
+      "prop_count": 3,
       "props": [
         {
           "name": "empty-nil",
@@ -1140,6 +1152,10 @@
         },
         {
           "name": "cons-step",
+          "proven": true
+        },
+        {
+          "name": "preserves-length",
           "proven": true
         }
       ]

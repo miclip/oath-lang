@@ -1,2 +1,3 @@
 ✓ prop empty-nil                passed 200 cases
 ✓ prop cons-step                passed 200 cases
+✓ prop preserves-length         passed 200 cases

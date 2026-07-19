@@ -1,6 +1,6 @@
 {
   "name": "map-merge",
-  "hash": "56214b892f1853d3d59542ce5923e911b0184c992440f167bf0113b883c0e6b7",
+  "hash": "929cbb5373c6a3eeb63f820e8f28d776e2eaa05b7842a1769ee785d9265ef0d7",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
@@ -11,5 +11,5 @@
   "mutants_total": 1,
   "level": "proven",
   "cases": 200,
-  "proven": 4
+  "proven": 6
 }
