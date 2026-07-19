@@ -20,11 +20,13 @@
     ((Cons p t)
       (match p ((Pair pk pv) (Cons [Int] pk (map-keys t))))))
   ; base case and cons-step together characterize map-keys completely, and
-  ; both prove directly. (The length-preservation law
-  ; `length (map-keys m) == length m` is TRUE and tested elsewhere but its
-  ; induction does not converge in the prover's budget — the nested
-  ; single-constructor Pair match defeats the current induction tactic. Filed
-  ; as a prover-reach gap rather than forced.)
+  ; both prove directly. The length-preservation law
+  ; `length (map-keys m) == length m` is TRUE and its induction DOES close
+  ; (the Pair match translates to selectors fine — verified), but it is
+  ; omitted here on performance grounds: the prover's futile direct attempt
+  ; on the quantified goal burns the full rlimit budget before induction is
+  ; tried, and the corpus's lemma load compounds it (minutes in the full
+  ; store). Tracked as a prover-PERFORMANCE issue in #50, not a reach gap.
   (prop empty-nil []
     (== (map-keys (Nil [(Pair Int Int)])) (Nil [Int])))
   (prop cons-step [(k Int) (v Int) (t (List (Pair Int Int)))]
@@ -85,15 +87,14 @@
     (== (map-merge a b) (append [(Pair Int Int)] a b)))
   (prop empty-left [(b (List (Pair Int Int)))]
     (== (map-merge (Nil [(Pair Int Int)]) b) b))
-  ; is-append above delegates append's already-proven laws (nil-right-identity,
-  ; length-adds) to merge definitionally, so we do not restate them as separate
-  ; inductive props — their induction over List (Pair Int Int) composed with
-  ; map-size is slow in the current prover, and is-append makes it unnecessary.
-  ; Left-bias, captured by DIRECT anchors instead of the full inductive law
-  ; `lookup k (merge a b) == if (has k a) (lookup k a) (lookup k b)` — that law
-  ; is true but its proof needs induction through map-lookup's nested Pair
-  ; match (#50), so we pin the semantics without the thrash: a key present on
-  ; the left wins, and an empty left defers wholly to the right.
+  ; is-append delegates append's already-proven laws to merge definitionally,
+  ; so we do not restate the structural laws separately. Left-bias is captured
+  ; by DIRECT anchors rather than the full inductive law
+  ; `lookup k (merge a b) == if (has k a) (lookup k a) (lookup k b)`. That law
+  ; is true AND provable by induction, but slow in the full store (the futile
+  ; direct attempt on the quantified goal burns the rlimit budget; lemma load
+  ; compounds it — #50, a performance issue). The anchors — a key present on
+  ; the left wins, an empty left defers to the right — pin the semantics fast.
   (prop prefers-left [(k Int) (v Int) (a (List (Pair Int Int))) (b (List (Pair Int Int)))]
     (== (map-lookup k (map-merge (map-insert k v a) b)) (Some [Int] v)))
   (prop empty-left-defers [(k Int) (b (List (Pair Int Int)))]
