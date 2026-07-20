@@ -1025,3 +1025,45 @@ cases. Findings and settled ambiguities:
     evaluates all subgoals and ORs the taint instead of short-circuiting, the two
     could disagree on such a goal; worth pinning the taint-collection order in
     §7.2 if any corpus goal ever reaches it.
+
+---
+
+## 64. Lemma-free first attempt: WHAT the "no lemma library" script omits (#53)
+
+**Found by:** blind Rust implementation of the #53 lemma-free-first rule, working
+from SPEC §7.2 text alone. **Outcome: no divergence — both kernels resolved it the
+same way — but the spec text genuinely underdetermined it, so §7.2 was tightened.**
+
+SPEC §7.2 said the lemma-free attempt uses the goal's "declarations and
+defining-equation axioms but no lemma library". That is ambiguous about the
+DECLARATION stream: lemma translation has side effects (it can declare sorts and
+functions that only a lemma mentions — the `Option_Int` case already recorded in
+this log). Two readings:
+
+- **(a) Drop only the lemma `(assert …)` lines**, keep translating lemmas for their
+  declaration side effects. The script may then carry ORPHAN declarations for
+  symbols no remaining assertion mentions.
+- **(b) Shrink the declaration stream too**, to the goal's own footprint.
+
+Both kernels independently chose (a): the Rust kernel keeps `build_lemmas` running
+and blanks only its assert block; the Go kernel emits the accumulated `decls`/
+`axioms` unconditionally and gates only the lemma emission. So they agree today.
+
+But (b) is a plausible reading a third kernel could take, and it is NOT outcome-safe:
+changing which symbols exist changes the problem the solver sees, and under a
+budget that can change a verdict — not merely speed. §7.2 now states (a)
+normatively and declares (b) non-conformant.
+
+Secondary (resolved by analogy, no divergence): the reduced lemma-free budget is
+clamped to the full budget in both kernels — `LEMMA_FREE_Z3_RLIMIT.min(z3_rlimit())`
+in Rust, `lemmaFreeRlimit()` in Go — so an rlimit override below the reduced
+constant cannot make the optional extra attempt STRONGER than the main search that
+follows it. The spec was silent; both kernels reached the same defensive rule the
+#50 direct budget already uses. (The Go kernel initially lacked this clamp on the
+lemma-free path and gained it from the Rust reading — the second time in two
+changes that the blind implementation improved the reference.)
+
+Note: oathrs records no proof METHOD string at all (`prove_prop` returns `bool`;
+proven properties are indices), so §7.2's "records the method as direct" is vacuous
+on the Rust side. Methods are not part of any fixture, so this is presentational
+only and cannot diverge.

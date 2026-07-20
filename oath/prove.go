@@ -54,6 +54,20 @@ const proveRlimit = 400_000_000 // 3.5x the heaviest successful proof (calibrate
 // at proveRlimit after induction, so the outcome is unchanged — this is a
 // pure performance refinement, budget-part-of-identity notwithstanding.
 const proveDirectRlimit = 4_000_000
+
+// proveLemmaFreeRlimit is the budget for the LEMMA-FREE first attempt (SPEC
+// §7.2, #53): the goal with its declarations and defining-equation axioms but
+// NO lemma library. A budget-limited solver is non-monotone in its axiom set,
+// so admitting a goal's legitimately-relevant lemmas can strangle a goal that
+// discharges trivially without them (measured: q-peek.peek-is-head takes 2,294
+// rlimit lemma-free and does not terminate within 400M with its 12 lemmas).
+// Lemma-free successes are milliseconds, so a small budget catches them while
+// failing fast for goals that genuinely need their lemma chain — those fall
+// through to the unchanged strategies below, which is why the recorded outcome
+// is the UNION and nothing can regress. Only `unsat` is accepted: proving from
+// FEWER premises is strictly sound, while a lemma-free `sat` is left to the
+// canonical attempt rather than reasoned about here.
+const proveLemmaFreeRlimit = 4_000_000
 const proveWallCap = 600 * time.Second
 
 var smtNameRe = regexp.MustCompile(`[^A-Za-z0-9]`)
@@ -802,6 +816,17 @@ func effectiveRlimit() int64 {
 	return rl
 }
 
+// lemmaFreeRlimit is the budget for the lemma-free first attempt, clamped to
+// the full budget for the same reason as directRlimit: an optional extra
+// attempt must never be STRONGER than the main search it precedes.
+func lemmaFreeRlimit() int64 {
+	full := effectiveRlimit()
+	if proveLemmaFreeRlimit < full {
+		return proveLemmaFreeRlimit
+	}
+	return full
+}
+
 // directRlimit is the budget for the direct attempt on an inductive-eligible
 // goal. It is clamped to the full budget so the reduced attempt can never be
 // STRONGER than the full-budget fallback — otherwise lowering the full budget
@@ -969,7 +994,12 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 		return propOutcome{status: "unknown", detail: err.Error()}
 	}
 
-	script := func(extraDecls, extraAsserts []string, negated string, model bool) string {
+	// buildScript emits the goal script. withLemmas=false omits the admissible
+	// lemma library entirely — the LEMMA-FREE attempt (SPEC §7.2, #53). Every
+	// other component (declarations, defining-equation axioms, binder
+	// declarations, the negated goal) is byte-identical either way, so the
+	// canonical with-lemmas script that prove/scripts.txt pins is unchanged.
+	buildScript := func(extraDecls, extraAsserts []string, negated string, model bool, withLemmas bool) string {
 		var b strings.Builder
 		for _, x := range c.decls {
 			b.WriteString(x + "\n")
@@ -983,9 +1013,11 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 		// from prior-run metadata or was proven moments ago. Assert order
 		// steers solver search; acquisition history must not.
 		var adm []*lemma
-		for i := range c.lemmas {
-			if c.lemmas[i].ownIdx != pi && lemmaAdmissible(&c.lemmas[i], h, footprint) {
-				adm = append(adm, &c.lemmas[i])
+		if withLemmas {
+			for i := range c.lemmas {
+				if c.lemmas[i].ownIdx != pi && lemmaAdmissible(&c.lemmas[i], h, footprint) {
+					adm = append(adm, &c.lemmas[i])
+				}
 			}
 		}
 		sort.Slice(adm, func(a, b2 int) bool {
@@ -1011,6 +1043,41 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 			b.WriteString("(get-model)\n")
 		}
 		return b.String()
+	}
+	// script is the canonical (with-lemmas) emission every existing strategy
+	// uses; prove/scripts.txt pins its direct-attempt form.
+	script := func(extraDecls, extraAsserts []string, negated string, model bool) string {
+		return buildScript(extraDecls, extraAsserts, negated, model, true)
+	}
+
+	// LEMMA-FREE FIRST ATTEMPT (SPEC §7.2, #53). A budget-limited solver is
+	// non-monotone in its axiom set: admitting the goal's (legitimately
+	// relevant) lemmas can convert a goal that discharges in ~2K rlimit into
+	// one that does not terminate within the full budget. Measured on
+	// q-peek.peek-is-head: 2,294 rlimit lemma-free versus unprovable at 400M
+	// with its 12 admissible lemmas. So try the goal with NO lemmas first, at
+	// the reduced budget — the successes are milliseconds, and a failure costs
+	// a fraction of one full attempt. Everything below is unchanged, so the
+	// recorded outcome is the UNION: anything provable before is still proven
+	// by a later strategy, plus the goals the library was strangling.
+	if lf, lfCap := runZ3Budget(buildScript(nil, nil, goal, !c.quantified, false), lemmaFreeRlimit()); !lfCap {
+		if os.Getenv("OATH_PROVE_SPLIT") != "" {
+			pname := fmt.Sprintf("prop%d", pi)
+			if pi < len(m.PropNames) {
+				pname = m.PropNames[pi]
+			}
+			v := "unknown"
+			if strings.HasPrefix(lf, "unsat") {
+				v = "unsat"
+			} else if strings.HasPrefix(lf, "sat") {
+				v = "sat"
+			}
+			fmt.Fprintf(os.Stderr, "SPLIT\t%s.%s\tphase=lemma-free\tconsumed=%d\tverdict=%s\n",
+				m.Name, pname, calibLastConsumed, v)
+		}
+		if strings.HasPrefix(lf, "unsat") {
+			return propOutcome{status: "proven", method: "direct (lemma-free)"}
+		}
 	}
 
 	// Direct attempt. An INVALID attempt (environmental abort) yields NO

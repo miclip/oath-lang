@@ -31,6 +31,18 @@ const DEFAULT_Z3_RLIMIT: u64 = 400_000_000;
 // FALLBACK (prove_prop) still use DEFAULT_Z3_RLIMIT, so the recorded outcome is
 // identical to a kernel running a single full-budget direct attempt.
 const DIRECT_Z3_RLIMIT: u64 = 4_000_000;
+// SPEC §7.2 (#53): budget for the LEMMA-FREE first attempt, which runs BEFORE any
+// other strategy with the declarations and defining-equation axioms but NO lemma
+// library. Rationale: a budget-limited solver is NON-MONOTONE in its axiom set —
+// admitting legitimately-relevant lemmas can divert the search into budget
+// exhaustion on a goal that discharges instantly from strictly fewer premises.
+// The corpus witness is `q-peek.peek-is-head`: it discharges at 2,294 rlimit with
+// no lemmas, and does NOT terminate within the full 400,000,000 once its twelve
+// relevant lemmas are admitted. Only `unsat` is accepted from this attempt (a
+// proof from strictly fewer premises is sound); every other result is DISCARDED
+// and the goal proceeds through the unchanged strategies, so the recorded outcome
+// is the UNION of lemma-free and the existing search — no regression is possible.
+const LEMMA_FREE_Z3_RLIMIT: u64 = 4_000_000;
 const DEFAULT_WALL_CAP_MS: u64 = 600_000;
 
 fn z3_rlimit() -> u64 {
@@ -957,9 +969,30 @@ impl<'a> Prover<'a> {
         prop: &Prop,
         candidates: &[(String, usize, bool)],
     ) -> Option<(String, bool)> {
+        self.direct_script_opts(def_hash, prop, candidates, true)
+    }
+
+    /// As `direct_script`, but with the lemma ASSERT block optionally omitted
+    /// (SPEC §7.2 #53, the lemma-free first attempt). Everything else is
+    /// byte-identical: `build_lemmas` is still run for its context side effects,
+    /// so the declaration/axiom stream, the `quantified` flag (hence the
+    /// `(get-model)` line), the binder declarations and the negated goal are the
+    /// same bytes as the canonical with-lemmas script — only the `(assert …)`
+    /// lines the lemma library would contribute are dropped. `include_lemmas =
+    /// true` reproduces the canonical script pinned by `prove/scripts.txt`
+    /// exactly; the lemma-free variant is deliberately NOT that script and is
+    /// never hashed by the byte oracle.
+    fn direct_script_opts(
+        &self,
+        def_hash: &str,
+        prop: &Prop,
+        candidates: &[(String, usize, bool)],
+        include_lemmas: bool,
+    ) -> Option<(String, bool)> {
         let mut cx = Cx::new(self.store);
         // Canonical build order: lemmas first, then the goal (binders, then body).
         let lem = self.build_lemmas(&mut cx, candidates);
+        let lem = if include_lemmas { lem } else { String::new() };
         let mut env = Vec::new();
         let mut binder_decls = String::new();
         for (k, bt) in prop.binders.iter().enumerate() {
@@ -996,6 +1029,26 @@ impl<'a> Prover<'a> {
         match self.direct_script(def_hash, prop, candidates) {
             Some((script, quantified)) => (run_z3(&script, budget), quantified),
             None => (Ok(Outcome::Unknown), true),
+        }
+    }
+
+    /// SPEC §7.2 (#53) LEMMA-FREE FIRST ATTEMPT. Runs the direct script with the
+    /// lemma block omitted at `LEMMA_FREE_Z3_RLIMIT`. Returns `true` ONLY on
+    /// `unsat` — a proof from strictly fewer premises, which is sound and records
+    /// as a direct proof. Every other outcome (`sat`, unknown, an outside-fragment
+    /// goal, or an INVALID/aborted attempt) is discarded and returns `false`: this
+    /// is an optional extra attempt whose failure costs nothing, so it must never
+    /// refute the property and must never taint the run.
+    fn try_direct_lemma_free(
+        &self,
+        def_hash: &str,
+        prop: &Prop,
+        candidates: &[(String, usize, bool)],
+    ) -> bool {
+        let budget = LEMMA_FREE_Z3_RLIMIT.min(z3_rlimit());
+        match self.direct_script_opts(def_hash, prop, candidates, false) {
+            Some((script, _)) => matches!(run_z3(&script, budget), Ok(Outcome::Unsat)),
+            None => false,
         }
     }
 
@@ -1378,6 +1431,16 @@ impl<'a> Prover<'a> {
     fn prove_prop(&self, def_hash: &str, prop: &Prop, candidates: &[(String, usize, bool)]) -> bool {
         // First invalid-attempt reason seen while trying to prove this property.
         let mut taint: Option<String> = None;
+
+        // SPEC §7.2 (#53): LEMMA-FREE FIRST ATTEMPT, before any other strategy.
+        // Only `unsat` is accepted (sound: strictly fewer premises); it records as
+        // a direct proof — oathrs records no method string, a proven property is
+        // just `true`. Anything else is discarded WITHOUT taint and the goal
+        // proceeds through the unchanged strategies below, so the outcome is the
+        // union of this attempt and the existing search.
+        if self.try_direct_lemma_free(def_hash, prop, candidates) {
+            return true;
+        }
 
         // SPEC §7.2 (#50): a goal with at least one datatype-typed binder is a
         // candidate for structural induction, so its DIRECT attempt runs at the

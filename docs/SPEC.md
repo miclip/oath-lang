@@ -692,6 +692,33 @@ reproducibility (given the same solver):
   exit-on-cap fired on hardware where the reference had been quietly
   recording — cross-kernel conformance catching the reference violating
   its own spec.)
+- **Lemma-free first attempt (normative, #53).** Before any other strategy, a
+  kernel MUST attempt the goal with its declarations and defining-equation
+  axioms but **no lemma library**, at the reduced budget
+  `(set-option :rlimit 4000000)`. Only `unsat` is accepted from this attempt —
+  it proves the goal from strictly fewer premises, which is sound — and it
+  records the method as direct. Any other result (including `sat`) is
+  DISCARDED and the goal proceeds through the unchanged strategies below, so
+  the recorded outcome is the UNION of lemma-free and the existing search: no
+  property provable before can regress. Rationale: a budget-limited solver is
+  non-monotone in its axiom set, and the effect is severe enough to decide
+  verdicts, not merely speed. The corpus witness is `q-peek.peek-is-head`,
+  which discharges at 2,294 rlimit with no lemmas and does NOT terminate
+  within the full 400000000 once its twelve *legitimately relevant* lemmas are
+  admitted — the relevance filter is not at fault; the axiom COUNT is.
+  Lemma-free successes cost milliseconds, so the reduced budget catches them
+  while failing fast for goals that genuinely need their chain (`sort` does
+  not prove lemma-free and reaches its verdict through the strategies below).
+  Because the lemma-free script omits the lemma block, it is NOT the script
+  pinned by `prove/scripts.txt`; the canonical with-lemmas direct-attempt
+  script is unchanged and is still what the byte oracle hashes. To be precise
+  about WHAT is omitted: only the lemma `(assert …)` lines are dropped. The
+  declaration and defining-equation-axiom streams are emitted UNCHANGED — a
+  kernel MUST still perform lemma translation for its declaration side effects,
+  so a lemma-free script may legitimately carry orphan declarations for sorts
+  or functions that only a now-omitted lemma mentioned. Shrinking the
+  declaration stream to the goal's own footprint is NOT conformant: it changes
+  which symbols exist and, under a budget, can change outcomes.
 - **Direct-attempt budget on inductive-eligible goals (normative, #50).** A
   goal with at least one datatype-typed binder — a candidate for structural
   induction — runs its DIRECT attempt at the reduced budget
