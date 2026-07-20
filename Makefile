@@ -81,3 +81,12 @@ check-web-ledger:
 	@diff -q fixtures/prove/outcomes.json website/lib/outcomes.json >/dev/null \
 		&& echo "web ledger in sync ✓" \
 		|| { echo "ERROR: website/lib/outcomes.json drifted from fixtures/prove/outcomes.json — run 'make fixtures'"; exit 1; }
+
+# Playground compute engine (#34): compile the kernel to browser wasm, ship
+# Go's loader, and snapshot the committed store — the three derived assets the
+# web playground serves. Regenerate after any kernel or corpus change.
+playground-assets: build
+	@GOOS=js GOARCH=wasm go -C oath build -o ../website/public/oath.wasm .
+	@cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" website/public/wasm_exec.js
+	@node website/lib/playground/gen-snapshot.mjs .
+	@echo "playground assets written to website/public/"
