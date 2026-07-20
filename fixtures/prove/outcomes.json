@@ -1352,8 +1352,8 @@
     {
       "name": "q-peek",
       "hash": "a1e5fe17d4e140519ea78c37635c96d5e40e18cf4697b40d0a414a10bd298e65",
-      "level": "tested",
-      "proven_count": 4,
+      "level": "proven",
+      "proven_count": 5,
       "prop_count": 5,
       "props": [
         {
@@ -1374,7 +1374,7 @@
         },
         {
           "name": "peek-is-head",
-          "proven": false
+          "proven": true
         }
       ]
     },

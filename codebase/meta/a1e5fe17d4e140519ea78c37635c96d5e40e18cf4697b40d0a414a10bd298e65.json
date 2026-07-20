@@ -8,9 +8,9 @@
     "peek-is-head"
   ],
   "guarantee": {
-    "level": "tested",
+    "level": "proven",
     "cases": 200,
-    "proven": 4
+    "proven": 5
   },
   "mutants_killed": 2,
   "mutants_total": 2,
@@ -28,6 +28,7 @@
     0,
     1,
     2,
-    3
+    3,
+    4
   ]
 }
