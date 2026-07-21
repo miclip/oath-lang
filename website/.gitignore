@@ -11,3 +11,11 @@ next-env.d.ts
 # but COMMITTED: the Vercel Node build has no Go toolchain to regenerate the wasm,
 # so /try ships the built assets directly. Regenerate and recommit after any
 # kernel or corpus change (a stale wasm/snapshot would serve outdated verdicts).
+
+# EXCEPTION: the Z3 browser assets ARE regenerable in a Node build — they come
+# from the z3-solver dependency, which Vercel installs. scripts/gen-z3-assets.mjs
+# reproduces them at predev/prebuild time, so they are gitignored rather than
+# committing 32MB of derivable wasm. (z3-worker.js is authored, not generated.)
+/public/pgrt/z3/z3-built.js
+/public/pgrt/z3/z3-built.wasm
+/public/pgrt/z3/z3-solver.js

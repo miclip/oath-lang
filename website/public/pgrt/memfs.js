@@ -51,6 +51,15 @@ class MemFS {
   chmod(p,m,cb){ cb(null); } fchmod(fd,m,cb){ cb(null); } chown(p,u,g,cb){ cb(null); } fchown(fd,u,g,cb){ cb(null); }
   lchown(p,u,g,cb){ cb(null); } utimes(p,a,m,cb){ cb(null); } link(a,b,cb){ cb(null); } symlink(a,b,cb){ cb(null); }
   readlink(p,cb){ cb(enoent()); } truncate(p,l,cb){ cb(null); }
-  writeSync(fd,buf){ process.stderr.write(Buffer.from(buf)); return buf.length; }
+  // Go's runtime writes stdout(1)/stderr(2) through writeSync. Route to the
+  // console, buffered by line, so this works in a browser worker (no `process`)
+  // as well as in Node. The prover prints progress here; check() does not.
+  writeSync(fd,buf){
+    this._dec = this._dec || new TextDecoder();
+    this._buf = (this._buf || '') + this._dec.decode(buf, {stream:true});
+    let i; while((i=this._buf.indexOf('\n'))>=0){ const line=this._buf.slice(0,i); this._buf=this._buf.slice(i+1);
+      if(fd===2) console.error(line); else console.log(line); }
+    return buf.length;
+  }
 }
 export { MemFS };

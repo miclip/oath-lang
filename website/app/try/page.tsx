@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Nav } from "@/components/Nav";
 import { Footer } from "@/components/Footer";
-// The real kernel, compiled to wasm. Nothing here is mocked.
+// The real kernel, compiled to wasm, running in a worker. Nothing here is mocked.
 import { init } from "@/lib/playground/kernel";
 
 const EXAMPLES: { label: string; note: string; src: string }[] = [
@@ -44,12 +44,23 @@ const EXAMPLES: { label: string; note: string; src: string }[] = [
         (append [Int] (bad-reverse [Int] ys) (bad-reverse [Int] xs)))))`,
   },
   {
-    label: "your own (a novel def)",
-    note: "novel input is typechecked + tested live (200 cases); proof needs the Z3 upgrade",
+    label: "your own (novel → PROVE it)",
+    note: "a novel def: typecheck + test live, then run Z3 in your browser to PROVE it",
     src: `(defn double [] [(x Int)] Int
   (+ x x)
   (prop is-double [(x Int)] (== (double x) (* 2 x)))
   (prop adds-to-itself [(x Int)] (== (double x) (+ x x))))`,
+  },
+  {
+    label: "novel recursive (induction)",
+    note: "a novel recursive def whose property Z3 proves by structural induction, live",
+    src: `(defn cnt [] [(xs (List Int))] Int
+  (match xs
+    ((Nil) 0)
+    ((Cons h t) (+ 1 (cnt t))))
+  (prop nonneg [(xs (List Int))] (<= 0 (cnt xs)))
+  (prop counts-cons [(x Int) (xs (List Int))]
+    (== (cnt (Cons [Int] x xs)) (+ 1 (cnt xs)))))`,
   },
 ];
 
@@ -64,11 +75,24 @@ type Report = {
   props?: Prop[];
 };
 type Result = { ok: boolean; error?: string; reports?: Report[]; notes?: string[] };
+type ProofResult = { ok: boolean; proofReport?: string; error?: string };
+
+type KernelAPI = {
+  check: (s: string) => Promise<Result>;
+  prove: (s: string, name: string) => Promise<ProofResult>;
+  proveReady: boolean;
+  whenProveReady: () => Promise<boolean>;
+};
 
 function badgeColor(status: string): string {
   if (status === "accepted") return "var(--sage-bright)";
   if (status === "falsified") return "var(--clay)";
   return "var(--cream-faint)";
+}
+
+// The defn names in a source, in order — what `prove` needs to name each goal.
+function defnNames(src: string): string[] {
+  return [...src.matchAll(/\(defn\s+([^\s()[\]]+)/g)].map((m) => m[1]);
 }
 
 export default function TryPage() {
@@ -77,15 +101,23 @@ export default function TryPage() {
   const [src, setSrc] = useState(EXAMPLES[0].src);
   const [result, setResult] = useState<Result | null>(null);
   const [running, setRunning] = useState(false);
-  const check = useRef<((s: string) => Result) | null>(null);
+  const [proveReady, setProveReady] = useState(false);
+  const [proving, setProving] = useState(false);
+  const [proof, setProof] = useState<string | null>(null);
+  const [proofErr, setProofErr] = useState<string | null>(null);
+  // The exact source the current result was produced from. Editing past it
+  // disables Prove so we never prove code that hasn't been re-verified.
+  const [verifiedSrc, setVerifiedSrc] = useState<string | null>(null);
+  const api = useRef<KernelAPI | null>(null);
 
   useEffect(() => {
     let live = true;
     init()
-      .then((api: { check: (s: string) => Result }) => {
+      .then((a: KernelAPI) => {
         if (!live) return;
-        check.current = api.check;
+        api.current = a;
         setStatus("ready");
+        a.whenProveReady().then((ok) => live && setProveReady(ok));
       })
       .catch((e: unknown) => {
         if (!live) return;
@@ -97,19 +129,56 @@ export default function TryPage() {
     };
   }, []);
 
-  function run() {
-    if (!check.current) return;
+  async function run() {
+    if (!api.current) return;
     setRunning(true);
-    // Yield so the "verifying…" state paints before the (synchronous) wasm run.
-    setTimeout(() => {
-      try {
-        setResult(check.current!(src));
-      } catch (e) {
-        setResult({ ok: false, error: String(e) });
-      }
-      setRunning(false);
-    }, 0);
+    setProof(null);
+    setProofErr(null);
+    try {
+      setResult(await api.current.check(src));
+      setVerifiedSrc(src);
+    } catch (e) {
+      setResult({ ok: false, error: String(e) });
+      setVerifiedSrc(null);
+    }
+    setRunning(false);
   }
+
+  async function prove() {
+    if (!api.current) return;
+    const names = defnNames(src);
+    if (names.length === 0) {
+      setProofErr("no (defn …) found to prove");
+      return;
+    }
+    setProving(true);
+    setProof(null);
+    setProofErr(null);
+    try {
+      const parts: string[] = [];
+      for (const name of names) {
+        const r = await api.current.prove(src, name);
+        if (r.error) {
+          setProofErr(r.error);
+          setProving(false);
+          return;
+        }
+        parts.push((r.proofReport || "").trimEnd());
+      }
+      setProof(parts.join("\n\n"));
+    } catch (e) {
+      setProofErr(String(e));
+    }
+    setProving(false);
+  }
+
+  // Prove is offered once the def has been checked and wasn't refuted, and the
+  // Z3 bridge came up. A falsified def has nothing to prove.
+  const canProve =
+    proveReady &&
+    src === verifiedSrc &&
+    !!result?.reports?.length &&
+    !result.reports.some((r) => r.status === "falsified" || r.status === "rejected");
 
   return (
     <>
@@ -120,8 +189,9 @@ export default function TryPage() {
         <p className="section-lead" style={{ maxWidth: 680 }}>
           This is the actual Oath kernel compiled to WebAssembly — the same gate that runs on the
           command line. It typechecks your definition, runs every property on 200 deterministic
-          cases, and reports an honest verdict. A definition whose content hash matches the committed
-          corpus shows that corpus definition&apos;s recorded Z3 proof.{" "}
+          cases, and reports an honest verdict. Then <strong>Prove</strong> runs the real Z3 solver,
+          also in your browser, to prove a novel definition for <em>all</em> inputs — direct and by
+          induction. Nothing here is mocked.{" "}
           {status === "loading" && <span style={{ color: "var(--cream-faint)" }}>Loading kernel…</span>}
           {status === "error" && <span style={{ color: "var(--clay)" }}>Kernel failed to load: {errMsg}</span>}
         </p>
@@ -133,6 +203,8 @@ export default function TryPage() {
               onClick={() => {
                 setSrc(ex.src);
                 setResult(null);
+                setProof(null);
+                setProofErr(null);
               }}
               style={{
                 fontFamily: "var(--font-mono)",
@@ -153,7 +225,13 @@ export default function TryPage() {
 
         <textarea
           value={src}
-          onChange={(e) => setSrc(e.target.value)}
+          onChange={(e) => {
+            setSrc(e.target.value);
+            // A proof belongs to the source it was produced from; drop it once
+            // that source changes.
+            if (proof) setProof(null);
+            if (proofErr) setProofErr(null);
+          }}
           spellCheck={false}
           style={{
             width: "100%",
@@ -170,10 +248,10 @@ export default function TryPage() {
           }}
         />
 
-        <div style={{ marginTop: 14 }}>
+        <div style={{ marginTop: 14, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
           <button
             onClick={run}
-            disabled={status !== "ready" || running}
+            disabled={status !== "ready" || running || proving}
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: 14,
@@ -188,17 +266,84 @@ export default function TryPage() {
           >
             {running ? "verifying…" : "Verify"}
           </button>
+
+          <button
+            onClick={prove}
+            disabled={!canProve || proving || running}
+            title={
+              proveReady
+                ? "Run Z3 in your browser to prove this for all inputs"
+                : "Verify a definition first; the Z3 bridge proves it for all inputs"
+            }
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 14,
+              fontWeight: 600,
+              padding: "10px 22px",
+              border: "1px solid var(--sage)",
+              borderRadius: 8,
+              background: canProve && !proving ? "transparent" : "var(--line)",
+              color: canProve && !proving ? "var(--sage-bright)" : "var(--cream-faint)",
+              cursor: canProve && !proving ? "pointer" : "default",
+            }}
+          >
+            {proving ? "proving with Z3…" : "Prove (Z3)"}
+          </button>
+
+          {status === "ready" && !proveReady && (
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11.5, color: "var(--cream-faint)" }}>
+              Z3 bridge starting…
+            </span>
+          )}
         </div>
 
         <p style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--cream-faint)", lineHeight: 1.65, marginTop: 14, maxWidth: 680 }}>
-          This is the gate — typecheck, 200 deterministic hash-seeded cases per
-          property, and the termination/confinement analyses — reported as an
-          honest <code>tested</code>. Paste a corpus definition verbatim (like
-          the sort example) and its content hash matches, surfacing that
-          definition&apos;s recorded Z3 <code>PROVEN</code>. Proving a{" "}
-          <em>novel</em> definition needs Z3; running the solver in the browser
-          is a wired-and-tested upgrade not yet on this page.
+          <strong style={{ color: "var(--cream-dim)" }}>Verify</strong> is the gate — typecheck, 200
+          deterministic hash-seeded cases per property, and the termination/confinement analyses —
+          reported as an honest <code>tested</code>. Paste a corpus definition verbatim (like the
+          sort example) and its content hash matches, surfacing that definition&apos;s recorded{" "}
+          <code>PROVEN</code>. <strong style={{ color: "var(--cream-dim)" }}>Prove</strong> runs the
+          real prover — direct, structural induction, the lemma fixpoint — discharging every
+          obligation to Z3 (the same <code>4.16.0</code> the corpus used) compiled to WebAssembly and
+          running in a worker beside the kernel. A proof is valid modulo int64 overflow, and the
+          report says so.
         </p>
+
+        {proof && (
+          <pre
+            style={{
+              marginTop: 22,
+              fontFamily: "var(--font-mono)",
+              fontSize: 13,
+              color: "var(--sage-bright)",
+              background: "var(--ink)",
+              border: "1px solid var(--sage)",
+              borderRadius: 10,
+              padding: 18,
+              whiteSpace: "pre-wrap",
+              overflowX: "auto",
+            }}
+          >
+            {proof}
+          </pre>
+        )}
+        {proofErr && (
+          <pre
+            style={{
+              marginTop: 22,
+              fontFamily: "var(--font-mono)",
+              fontSize: 13,
+              color: "var(--clay)",
+              background: "var(--ink)",
+              border: "1px solid var(--line)",
+              borderRadius: 10,
+              padding: 18,
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {proofErr}
+          </pre>
+        )}
 
         {result && (
           <div style={{ marginTop: 28 }}>
