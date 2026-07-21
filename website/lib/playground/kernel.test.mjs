@@ -8,7 +8,7 @@ import fs from "fs"; import path from "path";
 import { readFileSync } from "fs";
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
-const PUB = path.join(HERE, "../../public");
+const PUB = path.join(HERE, "../../public/pgrt");
 for (const a of ["oath.wasm", "wasm_exec.js", "corpus-snapshot.json"]) {
   if (!fs.existsSync(path.join(PUB, a))) {
     console.log(`SKIP: ${a} not built — run \`make playground-assets\` first`);

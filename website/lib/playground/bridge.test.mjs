@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 for (const a of ["oath.wasm", "wasm_exec.js", "corpus-snapshot.json"]) {
-  if (!fs.existsSync(path.join(HERE, "../../public", a))) {
+  if (!fs.existsSync(path.join(HERE, "../../public/pgrt", a))) {
     console.log(`SKIP: ${a} not built — run \`make playground-assets\` first`);
     process.exit(0);
   }

@@ -7,5 +7,7 @@ next-env.d.ts
 .vercel
 .DS_Store
 
-# Playground compute engine — derived, built by `make playground-assets`
-public/pgrt/
+# Playground runtime assets (public/pgrt/) are DERIVED by `make playground-assets`
+# but COMMITTED: the Vercel Node build has no Go toolchain to regenerate the wasm,
+# so /try ships the built assets directly. Regenerate and recommit after any
+# kernel or corpus change (a stale wasm/snapshot would serve outdated verdicts).

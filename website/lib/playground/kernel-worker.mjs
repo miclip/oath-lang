@@ -13,7 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const PUB = path.join(HERE, "../../public");
+const PUB = path.join(HERE, "../../public/pgrt");
 
 const snap = JSON.parse(fs.readFileSync(path.join(PUB, "corpus-snapshot.json"), "utf8"));
 const files = { [snap.root]: "DIR", [snap.root + "/objects"]: "DIR", [snap.root + "/meta"]: "DIR" };
