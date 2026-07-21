@@ -66,6 +66,15 @@ func oathCheck(this js.Value, args []js.Value) any {
 	if err != nil {
 		res.Error = err.Error()
 	}
+	// A falsified or rejected definition is NOT a Go error — apiPut reports it
+	// through putReport.Status (the CLI scans those for its exit code). Reflect
+	// that in `ok` so a UI keying off it cannot present an invalid or refuted
+	// definition as a success. (Found by an independent Codex review, #34.)
+	for _, r := range reports {
+		if r.Status == "rejected" || r.Status == "falsified" {
+			res.OK = false
+		}
+	}
 	res.Notes = append(res.Notes,
 		"Proof requires z3 and is not available in the browser: novel definitions report `tested` (200 deterministic, hash-seeded cases per property), never `proven`.")
 	return mustJSON(res)

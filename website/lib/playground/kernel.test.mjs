@@ -39,18 +39,21 @@ const form = (file, kw) => {
   for (let k = i; k < s.length; k++) { if (s[k] === "(") d++; else if (s[k] === ")") { if (--d === 0) return s.slice(i, k + 1); } }
 };
 
-const sort = check(form("sort.oath", "(defn sort")).reports[0];
-expect("sort verbatim → recorded PROVEN 7/7", sort.status === "accepted" && /PROVEN \(all 7/.test(sort.guarantee || ""), sort.guarantee);
+const sortRes = check(form("sort.oath", "(defn sort")); const sort = sortRes.reports[0];
+expect("sort verbatim → recorded PROVEN 7/7, ok", sortRes.ok === true && sort.status === "accepted" && /PROVEN \(all 7/.test(sort.guarantee || ""), JSON.stringify([sortRes.ok, sort.guarantee]));
 
-const br = check(form("bad_reverse.oath", "(defn")).reports[0];
+const brRes = check(form("bad_reverse.oath", "(defn")); const br = brRes.reports[0];
 const brCounter = (br.props || []).find(p => p.failed)?.counterexample;
-expect("bad-reverse → FALSIFIED with counterexample", br.status === "falsified" && !!brCounter, JSON.stringify(br.status));
+expect("bad-reverse → FALSIFIED, ok=false, counterexample", brRes.ok === false && br.status === "falsified" && !!brCounter, JSON.stringify([brRes.ok, br.status]));
 
-const novel = check("(defn dbl [] [(x Int)] Int (+ x x) (prop is-double [(x Int)] (== (dbl x) (* 2 x))))").reports[0];
-expect("novel valid def → tested, total", novel.status === "accepted" && /tested/.test(novel.guarantee || "") && novel.termination === "structural" || novel.termination === "nonrecursive", novel.guarantee);
+const novelRes = check("(defn dbl [] [(x Int)] Int (+ x x) (prop is-double [(x Int)] (== (dbl x) (* 2 x))))");
+const novel = novelRes.reports[0];
+expect("novel valid def → tested, total, ok",
+  novelRes.ok === true && novel.status === "accepted" && /tested/.test(novel.guarantee || "") &&
+  (novel.termination === "structural" || novel.termination === "nonrecursive"), JSON.stringify([novelRes.ok, novel.guarantee, novel.termination]));
 
-const wrong = check("(defn d [] [(x Int)] Int (+ x x) (prop bad [(x Int)] (== (d x) x)))").reports[0];
-expect("false prop → falsified with counterexample", wrong.status === "falsified" && !!(wrong.props || []).find(p => p.failed)?.counterexample, wrong.status);
+const wrongRes = check("(defn d [] [(x Int)] Int (+ x x) (prop bad [(x Int)] (== (d x) x)))"); const wrong = wrongRes.reports[0];
+expect("false prop → falsified, ok=false, counterexample", wrongRes.ok === false && wrong.status === "falsified" && !!(wrong.props || []).find(p => p.failed)?.counterexample, JSON.stringify([wrongRes.ok, wrong.status]));
 
 console.log(fail ? `\n${fail} FAILED` : "\nall playground engine checks passed");
 process.exit(fail ? 1 : 0);
