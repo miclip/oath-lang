@@ -9,10 +9,13 @@
     "length-is-n"
   ],
   "guarantee": {
-    "level": "tested",
-    "cases": 200
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
   },
-  "termination": "unknown",
+  "mutants_killed": 9,
+  "mutants_total": 9,
+  "termination": "measure",
   "spec_author": "claude-main",
   "body_author": "claude-main",
   "author": "claude-main",
@@ -23,5 +26,10 @@
   "confinement": [
     "",
     ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
   ]
 }

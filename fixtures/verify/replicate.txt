@@ -1,2 +1,3 @@
 ✓ prop zero-is-empty            passed 200 cases
 ✓ prop unfold-step              passed 200 cases
+✓ prop length-is-n              passed 200 cases

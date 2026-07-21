@@ -393,8 +393,20 @@ func (c *smtCtx) ensureFn(h string, d *Def, args []Ty) (smtVal, error) {
 				syms = append(syms, e.expr)
 			}
 			app = fmt.Sprintf("(%s %s)", name, strings.Join(syms, " "))
-			c.axioms = append(c.axioms, fmt.Sprintf("(assert (forall (%s) (! (= %s %s) :pattern (%s))))",
-				strings.Join(params, " "), app, bexpr, app))
+			if tm.Termination == "measure" {
+				// Integer-counter recursion (#56): a `:pattern` would E-match
+				// without bound — rep(n) instantiates rep(n-1) instantiates
+				// rep(n-2)…, with no datatype acyclicity to stop the descent, so
+				// any goal mentioning the function diverges. Emit the axiom with NO
+				// pattern; Z3 falls back to model-based instantiation, which
+				// terminates and still discharges both the direct laws and the
+				// integer-induction obligations below.
+				c.axioms = append(c.axioms, fmt.Sprintf("(assert (forall (%s) (= %s %s)))",
+					strings.Join(params, " "), app, bexpr))
+			} else {
+				c.axioms = append(c.axioms, fmt.Sprintf("(assert (forall (%s) (! (= %s %s) :pattern (%s))))",
+					strings.Join(params, " "), app, bexpr, app))
+			}
 			c.quantified = true
 		} else {
 			c.axioms = append(c.axioms, fmt.Sprintf("(assert (= %s %s))", app, bexpr))
@@ -1089,11 +1101,20 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 	// by heavy direct. The emitted script is byte-identical either way (the
 	// budget is a runner option outside the hashed bytes, SPEC §7.2), so this
 	// changes speed, not outcomes or script hashes.
+	// A goal is INDUCTION-ELIGIBLE if it has a datatype binder (structural /
+	// lexicographic induction) or an Int binder (Peano integer induction, #56).
+	// For such goals the direct attempt is usually futile yet burns the full
+	// budget (#50), so run it reduced and let the full-budget fallback below catch
+	// the rare goal that proves only by heavy direct — outcomes unchanged.
 	hasDTBinder := false
+	inductionEligible := false
 	for i := range binderSorts {
 		if _, ok := c.dtBySort[binderSorts[i]]; ok {
 			hasDTBinder = true
-			break
+			inductionEligible = true
+		}
+		if binderSorts[i] == "Int" {
+			inductionEligible = true
 		}
 	}
 	directScript := script(nil, nil, goal, !c.quantified)
@@ -1101,7 +1122,7 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 	directStart := time.Now()
 	var out string
 	var capHit bool
-	if hasDTBinder {
+	if inductionEligible {
 		out, capHit = runZ3Budget(directScript, directRlimit())
 	} else {
 		out, capHit = runZ3(directScript)
@@ -1323,6 +1344,80 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 			}
 		}
 	}
+	// Peano integer induction on each Int binder (#56). A measure-carrying law
+	// like `length (replicate n x) = n` needs induction over the INTEGER counter,
+	// which no datatype-binder scheme reaches. Because the integer-recursive
+	// function's axiom is emitted without a pattern (ensureFn, above), Z3's
+	// model-based instantiation discharges the cases without diverging. A binder
+	// n:Int is proven by three obligations that partition ℤ:
+	//   negative  n < 0
+	//   base      n = 0
+	//   step      n = k+1, k ≥ 0, assuming the goal at k (other binders generalized)
+	// Sound: base + step give the goal for all n ≥ 0, the negative case covers
+	// n < 0, and the ranges are exhaustive. The induction variable is the single
+	// structural symbol k_ind, so scripts stay canonical.
+	// Each obligation runs at the reduced induction budget, NOT the full budget:
+	// a legitimate case discharges quickly (model-based instantiation on the
+	// pattern-free measure axiom), while a goal that ISN'T integer-inductive
+	// (e.g. one needing induction on a difference measure) would otherwise burn
+	// the full budget three times per Int binder across the whole corpus. The
+	// budget is a runner option outside the hashed bytes (SPEC §7.2), so this is
+	// speed, not outcome.
+	for i := range p.Binders {
+		if binderSorts[i] != "Int" {
+			continue
+		}
+		negOut, negCap := runZ3Budget(script(nil, []string{fmt.Sprintf("(assert (< %s 0))", consts[i])}, goal, false), directRlimit())
+		if negCap {
+			sawInvalid = true
+			continue
+		}
+		if !strings.HasPrefix(negOut, "unsat") {
+			continue
+		}
+		baseAssign := map[int]string{}
+		for k, v := range consts {
+			baseAssign[k] = v
+		}
+		baseAssign[i] = "0"
+		baseGoal, err := c.formulaWith(d, h, p, baseAssign)
+		if err != nil {
+			continue
+		}
+		baseOut, baseCap := runZ3Budget(script(nil, nil, baseGoal, false), directRlimit())
+		if baseCap {
+			sawInvalid = true
+			continue
+		}
+		if !strings.HasPrefix(baseOut, "unsat") {
+			continue
+		}
+		ih, err := c.formulaWith(d, h, p, map[int]string{i: "k_ind"})
+		if err != nil {
+			continue
+		}
+		stepAssign := map[int]string{}
+		for k, v := range consts {
+			stepAssign[k] = v
+		}
+		stepAssign[i] = "(+ k_ind 1)"
+		stepGoal, err := c.formulaWith(d, h, p, stepAssign)
+		if err != nil {
+			continue
+		}
+		stepDecls := []string{"(declare-const k_ind Int)"}
+		stepAsserts := []string{"(assert (>= k_ind 0))", "(assert " + ih + ")"}
+		stepOut, stepCap := runZ3Budget(script(stepDecls, stepAsserts, stepGoal, false), directRlimit())
+		if stepCap {
+			sawInvalid = true
+			continue
+		}
+		if !strings.HasPrefix(stepOut, "unsat") {
+			continue
+		}
+		return propOutcome{status: "proven", method: fmt.Sprintf("integer induction on binder %d", i)}
+	}
+
 	// Full-budget direct FALLBACK (#50). The datatype-binder direct attempt
 	// above ran at the reduced budget; induction and lexicographic induction
 	// have now failed. Retry the SAME direct script at the full budget so a
@@ -1331,7 +1426,7 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 	// the pre-#50 kernel, while the common inductive case already returned
 	// fast above. The script is byte-identical to the reduced attempt, so no
 	// new direct-attempt script hash is introduced (SPEC §7.2).
-	if hasDTBinder {
+	if inductionEligible {
 		fb, fbCap := runZ3(directScript)
 		if os.Getenv("OATH_PROVE_SPLIT") != "" {
 			fmt.Fprintf(os.Stderr, "SPLIT\t%s\tphase=direct-fallback\tconsumed=%d\n", m.Name, calibLastConsumed)
