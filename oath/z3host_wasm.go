@@ -12,14 +12,20 @@ import (
 // SYNCHRONOUSLY. globalThis.oathZ3 posts the script to that worker and blocks
 // on Atomics.wait over a SharedArrayBuffer until it answers, so this call
 // returns z3's output inline — the prover stays synchronous and unchanged.
-// There is no subprocess and no wall cap: the rlimit bounds the work
-// deterministically, so capHit is only ever set when the bridge is absent.
+// The rlimit bounds the work deterministically, so capHit is normally never
+// set; the bridge also enforces a wall cap and signals a wedged/absent solver by
+// returning an empty string, which we treat as an invalid attempt (never a false
+// verdict) — the goal is recorded unproven and the prover moves on.
 func execZ3(full string) (string, bool) {
 	fn := js.Global().Get("oathZ3")
 	if fn.Type() != js.TypeFunction {
 		return "", true // no bridge wired → invalid attempt, never a false verdict
 	}
-	return fn.Invoke(full).String(), false
+	out := fn.Invoke(full).String()
+	if out == "" {
+		return "", true // bridge poisoned or timed out → invalid attempt
+	}
+	return out, false
 }
 
 func z3Available() error {
