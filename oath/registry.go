@@ -248,7 +248,7 @@ func cmdImport(st *Store, src, asName, author string) {
 				fail(err)
 			}
 			m, _ := st.GetMeta(h)
-			m.Termination = terminationOf(st, d)
+			m.Termination = terminationOf(st, d, h)
 			m.Confinement = confinementOf(st, d)
 			_ = st.SetMeta(h, m)
 			if m.Guarantee.Level == "falsified" {

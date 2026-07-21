@@ -70,7 +70,7 @@ func apiPut(st *Store, src string, author string, ctxHash string) ([]putReport, 
 				return results, err
 			}
 			m, _ := st.GetMeta(h)
-			m.Termination = terminationOf(st, def)
+			m.Termination = terminationOf(st, def, h)
 			m.Confinement = confinementOf(st, def)
 			if err := st.SetMeta(h, m); err != nil {
 				return results, err
@@ -147,10 +147,10 @@ func renderPutReports(results []putReport) string {
 				mark = "✗"
 			}
 			suffix := ""
-			switch rep.Termination {
-			case "structural", "nonrecursive":
+			switch {
+			case isTotal(rep.Termination):
 				suffix = " · total"
-			case "unknown":
+			case rep.Termination == "unknown":
 				suffix = " · termination unproven"
 			}
 			fmt.Fprintf(&b, "%s %-16s #%s  %s%s%s\n", mark, rep.Name, shortHash(rep.Hash), rep.Guarantee, suffix, status)
@@ -278,7 +278,7 @@ func apiLog(st *Store, filter string) string {
 		}
 		mark := "✓"
 		detail := e.Guarantee
-		if e.Termination == "structural" || e.Termination == "nonrecursive" {
+		if isTotal(e.Termination) {
 			detail += " · total"
 		}
 		switch e.Status {

@@ -1,0 +1,15 @@
+{
+  "name": "range",
+  "hash": "f930839150487786f68130fd3cc4e8f5be35ea15eb2578e24b8d8ce8d30c0e70",
+  "kind": "func",
+  "termination": "measure",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 7,
+  "mutants_total": 7,
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

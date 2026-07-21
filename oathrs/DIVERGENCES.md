@@ -1067,3 +1067,102 @@ Note: oathrs records no proof METHOD string at all (`prove_prop` returns `bool`;
 proven properties are indices), so §7.2's "records the method as direct" is vacuous
 on the Rust side. Methods are not part of any fixture, so this is presentational
 only and cannot diverge.
+
+## 65. Integer ranking functions (§6.1.1): parameter sorts vs. type variables
+
+**Found by:** blind Rust implementation of the new `measure` termination verdict
+(SPEC §6.1.1), working from the spec text and the `range`/`replicate` fixtures.
+**Outcome: no fixture divergence** — `range`/`replicate` reproduce `"termination":
+"measure"` and their laws prove — **but §6.1.1 leaves one detail to the
+implementer.**
+
+§6.1.1 step 1 says: declare each `Int` parameter as an SMT `Int`, and "every
+other parameter over a fresh uninterpreted sort so translations mentioning it
+stay well-formed." That pins the PARAMETER declarations. It does not say how the
+per-site guard/argument translation (which reuses the §7 term→SMT translation)
+should resolve a POLYMORPHIC type variable that appears *inside* a translated
+term — e.g. a constructor type-argument, or a `let`/`match`/`lam` binder sort —
+when the ranking check runs on the uninstantiated (generic) definition, with no
+call-site type arguments to substitute.
+
+Two readings:
+- **(a)** Give the ranking translation a placeholder type environment (each type
+  variable → some concrete sort) so translation stays total, relying on the fact
+  that a type variable can never enter an *integer* measure: whatever sort it
+  resolves to, the candidate measures are built only from `Int` parameters, and a
+  translated term that structurally uses a type-var-typed value can only make a
+  site's obligation *harder* to discharge (fail → conservative `unknown`), never
+  pass it spuriously.
+- **(b)** Refuse to translate anything mentioning a type variable, poisoning such
+  sites outright.
+
+Chose **(a)**: the parameters themselves follow the spec literally (Int → `Int`,
+non-Int → a fresh `(declare-sort MSort_i 0)` constant), and `tr`'s internal
+`apply_tyenv` is fed a placeholder environment mapping every type variable to
+`Int` purely to keep translation total. This is sound (it can never yield a false
+`measure`: the decrease obligation is pure linear arithmetic over the `Int`
+parameter constants, and any type-var-typed subterm is either irrelevant to the
+chosen measure or renders the site's obligation `sat`/ill-formed → not `unsat` →
+candidate rejected). It is also the *reachable* reading for the fixtures:
+`replicate`'s second parameter `x : a` is exactly such a non-Int, type-variable
+parameter, and (a) declares it as an unused fresh-sort constant while the measure
+`μ = n` is proven over the `Int` counter alone.
+
+Secondary (internal, cannot diverge): the §6.1.1 step-4 obligation scripts are
+NOT part of the byte oracle (`prove/scripts.txt` pins only the direct *proof*
+scripts), so their exact SMT-LIB formatting — how the guard conjunction is
+rendered, a zero-guard site asserting just `(not …)` — is free; only the
+`unsat`/`sat` outcome of the decidable LIA query is observable, and that is
+solver-deterministic. Callee *defining axioms* are deliberately omitted from the
+obligation (only guards + negated decrease are asserted, per step 4); omitting
+premises can only make `unsat` harder, so this is conservative and sound.
+
+## 66. Spec strength vs. the `measure` verdict — the spec was silent (§6 / §6.3). RESOLVED.
+
+**Found by:** blind Rust implementation of the `measure` verdict, reconciling the
+first cut of the `range`/`replicate` analyses fixtures. **Status: RESOLVED — it was
+a reference-side fixture-generation omission, not a semantic rule, and the spec has
+since been made explicit.**
+
+### What was observed (first fixture set)
+
+§6.3 (mutation) describes a purely structural catalog gated only by the typecheck
+gate; nothing in §6, §6.1, §6.1.1, or §6.3 tied it to the termination verdict. Yet
+the FIRST regenerated `fixtures/analyses/range.json` and `replicate.json` carried
+**no** `mutants_killed`/`mutants_total` fields, while both functions plainly have
+type-preserving mutable operators (`<=`→`<`, `-`→`+`, operand swaps, integer
+`±1`/`→0`) that pass the typecheck gate — a faithful §6.3 run yields **9** distinct
+killed mutants for `replicate` and **7** for `range` (this kernel computed exactly
+those). Every other category kept its mutants — including `unknown`-recursive
+functions (`rle-expand` 10, `spin` 1, both reproduced here exactly) — so the ONLY
+category missing a mutants field was `measure`. From the fixtures alone the only
+consistent reading was "a `measure` verdict suppresses spec strength," and I
+implemented that suppression to reach byte-identity.
+
+### The actual cause (confirmed by the coordinator)
+
+Not a rule. The reference's fixture-GENERATION step had simply not run the mutate
+pass for the two brand-new `measure` definitions — an incomplete fixture set, not a
+semantic decision. The suppression I inferred was therefore a false pattern fit to
+a gap in the data.
+
+### Resolution
+
+- The fixtures were regenerated WITH spec strength: `range.json` now carries
+  `7`/`7` and `replicate.json` `9`/`9` — exactly the counts this kernel computes.
+- SPEC §6 (Spec strength bullet) now states normatively: *"Spec strength is
+  computed for every function definition independent of its termination verdict: a
+  `measure`-total function is mutated exactly like a `structural` one."*
+- The `analyze()` special-case that skipped `mutation_score` when
+  `termination == measure` has been REMOVED. Measure-verdict functions are now
+  mutated like any other function.
+
+### The finding worth keeping
+
+The spec had been genuinely SILENT on the interaction between the new `measure`
+verdict and §6.3, and an incomplete fixture is indistinguishable from an
+intentional suppression to a blind implementer — the fixtures were, for a moment,
+the only "spec" on this point and they pointed the wrong way. The lesson (now
+acted on): a normative statement in §6 beats an inference from present-or-absent
+fixture fields. With §6 explicit and the fixtures complete, both kernels agree that
+`measure` functions carry the same spec-strength score as any other definition.

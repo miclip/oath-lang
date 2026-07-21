@@ -1,0 +1,30 @@
+{
+  "name": "range",
+  "prop_names": [
+    "empty-when-done",
+    "unfold-step"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 2
+  },
+  "mutants_killed": 7,
+  "mutants_total": 7,
+  "termination": "measure",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "lo",
+    "hi"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1
+  ]
+}

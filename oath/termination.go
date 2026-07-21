@@ -21,6 +21,8 @@ package main
 // "unknown", never a false "total". Verdicts:
 //
 //   "structural"    total: recursion descends structurally, deps total
+//   "measure"       total: a Z3-verified integer ranking function bounds the
+//                   recursion (an integer counter guarded below); see ranking.go
 //   "nonrecursive"  total: no self-calls, deps total
 //   "unknown"       not proven total; fuel remains the only bound
 
@@ -109,7 +111,9 @@ func (w *termWalker) walk(t *Term, env []rel, spine []rel) {
 	}
 }
 
-func isTotal(term string) bool { return term == "structural" || term == "nonrecursive" }
+func isTotal(term string) bool {
+	return term == "structural" || term == "nonrecursive" || term == "measure"
+}
 
 func bodyFuncRefs(t *Term) map[string]bool {
 	out := map[string]bool{}
@@ -136,7 +140,9 @@ func bodyFuncRefs(t *Term) map[string]bool {
 }
 
 // terminationOf classifies a function definition. Empty string for data defs.
-func terminationOf(st *Store, d *Def) string {
+// h is d's content hash — needed to resolve self-calls when the ranking-function
+// fallback (ranking.go) translates recursive arguments to SMT.
+func terminationOf(st *Store, d *Def, h string) string {
 	if d.K != "func" {
 		return ""
 	}
@@ -172,6 +178,11 @@ func terminationOf(st *Store, d *Def) string {
 	}
 	if lexDescends(w.sites, positions) {
 		return "structural"
+	}
+	// Structural descent failed: try a Z3-verified integer ranking function
+	// (an integer counter bounded below by its guards, e.g. range/replicate).
+	if ranksTotal(st, d, h) {
+		return "measure"
 	}
 	return "unknown"
 }
