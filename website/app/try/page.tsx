@@ -190,6 +190,16 @@ export default function TryPage() {
           </button>
         </div>
 
+        <p style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--cream-faint)", lineHeight: 1.65, marginTop: 14, maxWidth: 680 }}>
+          This is the gate — typecheck, 200 deterministic hash-seeded cases per
+          property, and the termination/confinement analyses — reported as an
+          honest <code>tested</code>. Paste a corpus definition verbatim (like
+          the sort example) and its content hash matches, surfacing that
+          definition&apos;s recorded Z3 <code>PROVEN</code>. Proving a{" "}
+          <em>novel</em> definition needs Z3; running the solver in the browser
+          is a wired-and-tested upgrade not yet on this page.
+        </p>
+
         {result && (
           <div style={{ marginTop: 28 }}>
             {result.error && !result.reports?.length && (
@@ -259,11 +269,6 @@ export default function TryPage() {
                   </ul>
                 )}
               </div>
-            ))}
-            {result.notes?.map((n, i) => (
-              <p key={i} style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--cream-faint)", lineHeight: 1.6, marginTop: 8 }}>
-                {n}
-              </p>
             ))}
           </div>
         )}
