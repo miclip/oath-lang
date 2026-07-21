@@ -11,17 +11,17 @@
     "prebuild": "FORCE_Z3_ASSETS=1 node scripts/gen-z3-assets.mjs"
   },
   "dependencies": {
+    "esbuild": "^0.28.1",
     "next": "^15.5.20",
     "react": "19.0.0",
-    "react-dom": "19.0.0"
+    "react-dom": "19.0.0",
+    "z3-solver": "^4.16.0"
   },
   "devDependencies": {
     "@types/node": "22.10.7",
     "@types/react": "19.0.7",
     "@types/react-dom": "19.0.3",
-    "esbuild": "^0.28.1",
     "playwright": "^1.61.1",
-    "typescript": "5.7.3",
-    "z3-solver": "^4.16.0"
+    "typescript": "5.7.3"
   }
 }
