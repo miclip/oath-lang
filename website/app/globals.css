@@ -195,8 +195,46 @@ pre,
 .nav-cta {
   color: var(--sage) !important;
 }
-.nav-mobile {
+/* Hamburger toggle: hidden on desktop, revealed at ≤900px in place of the
+   inline links (which don't fit a phone once there are six of them). */
+.nav-toggle {
   display: none;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--cream);
+  font-family: var(--font-mono);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.nav-toggle:hover {
+  border-color: var(--cream-faint);
+}
+.nav-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 4px var(--pad) 14px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink) 96%, transparent);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: 0.03em;
+}
+.nav-panel a {
+  color: var(--cream-dim);
+  padding: 13px 2px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+.nav-panel a:last-child {
+  border-bottom: none;
+}
+.nav-panel a:active {
+  color: var(--cream);
 }
 
 /* ---------- buttons ---------- */
@@ -1022,14 +1060,8 @@ pre,
   .nav-links {
     display: none;
   }
-  .nav-mobile {
+  .nav-toggle {
     display: flex;
-    gap: 18px;
-    font-family: var(--font-mono);
-    font-size: 13px;
-  }
-  .nav-mobile a {
-    color: var(--cream-dim);
   }
 }
 
