@@ -8,6 +8,4 @@ next-env.d.ts
 .DS_Store
 
 # Playground compute engine — derived, built by `make playground-assets`
-public/oath.wasm
-public/wasm_exec.js
-public/corpus-snapshot.json
+public/pgrt/

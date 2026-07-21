@@ -12,6 +12,6 @@ out.files[`${ROOT}/log.jsonl`] = b64(path.join(SRC, 'log.jsonl'));
 for (const d of ['objects', 'meta'])
   for (const f of fs.readdirSync(path.join(SRC, d)))
     out.files[`${ROOT}/${d}/${f}`] = b64(path.join(SRC, d, f));
-const dest = path.join(REPO, 'website/public/corpus-snapshot.json');
+const dest = path.join(REPO, 'website/public/pgrt/corpus-snapshot.json');
 fs.writeFileSync(dest, JSON.stringify(out));
 console.error(`wrote ${dest}: ${Object.keys(out.files).length} files, ${(fs.statSync(dest).size/1024).toFixed(0)} KB`);

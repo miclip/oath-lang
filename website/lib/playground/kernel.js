@@ -29,7 +29,7 @@ function pathShim() {
 let ready = null;
 
 // init() loads once and resolves to a { check } API. Idempotent.
-export function init({ wasmURL = "/oath.wasm", snapshotURL = "/corpus-snapshot.json", execURL = "/wasm_exec.js" } = {}) {
+export function init({ wasmURL = "/pgrt/oath.wasm", snapshotURL = "/pgrt/corpus-snapshot.json", execURL = "/pgrt/wasm_exec.js" } = {}) {
   if (ready) return ready;
   ready = (async () => {
     const snap = await (await fetch(snapshotURL)).json();
@@ -52,7 +52,15 @@ export function init({ wasmURL = "/oath.wasm", snapshotURL = "/corpus-snapshot.j
       });
     }
     const go = new globalThis.Go();
-    const { instance } = await WebAssembly.instantiateStreaming(fetch(wasmURL), go.importObject);
+    // instantiateStreaming needs application/wasm; fall back to arrayBuffer if
+    // the host serves the wrong MIME type.
+    let instance;
+    try {
+      ({ instance } = await WebAssembly.instantiateStreaming(fetch(wasmURL), go.importObject));
+    } catch {
+      const bytes = await (await fetch(wasmURL)).arrayBuffer();
+      ({ instance } = await WebAssembly.instantiate(bytes, go.importObject));
+    }
     go.run(instance); // init() registers oathCheck; main() parks
     return {
       root: snap.root,

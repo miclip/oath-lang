@@ -86,7 +86,9 @@ check-web-ledger:
 # Go's loader, and snapshot the committed store — the three derived assets the
 # web playground serves. Regenerate after any kernel or corpus change.
 playground-assets: build
-	@GOOS=js GOARCH=wasm go -C oath build -o ../website/public/oath.wasm .
-	@cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" website/public/wasm_exec.js
+	@mkdir -p website/public/pgrt
+	@GOOS=js GOARCH=wasm go -C oath build -o ../website/public/pgrt/oath.wasm .
+	@cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" website/public/pgrt/wasm_exec.js
+	@cp website/lib/playground/memfs.js website/public/pgrt/memfs.js
 	@node website/lib/playground/gen-snapshot.mjs .
-	@echo "playground assets written to website/public/"
+	@echo "playground assets assembled in website/public/pgrt/"
