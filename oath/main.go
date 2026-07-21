@@ -38,6 +38,12 @@ usage:
 the codebase lives in ./codebase (override with OATH_STORE)`
 
 func main() {
+	// The wasm build has already published its entry point from an init(); the
+	// runtime must stay alive for JavaScript to call it, and there are no
+	// command-line arguments to parse (#34).
+	if isWasm {
+		select {}
+	}
 	args := os.Args[1:]
 	if len(args) == 0 {
 		fmt.Println(usage)
