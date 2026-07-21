@@ -1472,10 +1472,10 @@
     },
     {
       "name": "replicate",
-      "hash": "aea0fc941d804f2e4a637e2a1cf761409f3548494e30a2b18269c661098ae30a",
+      "hash": "899b92eec6e06ed4cd6c3b5da1168fb40103aa697c5f553a071fd127c7007220",
       "level": "proven",
-      "proven_count": 2,
-      "prop_count": 2,
+      "proven_count": 3,
+      "prop_count": 3,
       "props": [
         {
           "name": "zero-is-empty",
@@ -1483,6 +1483,10 @@
         },
         {
           "name": "unfold-step",
+          "proven": true
+        },
+        {
+          "name": "length-is-n",
           "proven": true
         }
       ]

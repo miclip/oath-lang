@@ -663,9 +663,16 @@ reproducibility (given the same solver):
   lambda spine after type substitution.
 - Recursive callees are declared with `declare-fun`; their defining equation is
   asserted as a quantified axiom over the top-level parameters. The pattern is
-  the full function application. This is part of the current proof fragment and
-  must be treated as trusted proof-kernel behavior by a conforming
-  implementation.
+  the full function application, EXCEPT for a callee whose termination verdict is
+  `measure` (integer-counter recursion, §6.1.1): its axiom is asserted with NO
+  pattern. An integer-recursive pattern would E-match without bound — `f(n)`
+  instantiates `f(n-1)` instantiates `f(n-2)`…, with none of the datatype
+  acyclicity that halts the descent for structural recursion — so any goal
+  mentioning the function would diverge. Pattern-free, the solver falls back to
+  model-based instantiation, which terminates and discharges both the function's
+  direct laws and the integer-induction obligations (§7.2). This is part of the
+  current proof fragment and must be treated as trusted proof-kernel behavior by
+  a conforming implementation.
 - `self` inside a property means the definition under proof and is translated
   the same way as a call to the definition's hash.
 - Candidate-lemma closure: the transitive dependency closure of the
@@ -748,6 +755,26 @@ reproducibility (given the same solver):
   c(fresh) value, j := y, and remaining binders generalized. Sound by the
   lexicographic subterm order. (The corpus witness is merge, whose
   recursion shrinks either argument.)
+- **Peano integer induction (normative, #56).** When structural and
+  lexicographic induction fail, kernels MUST attempt Peano induction on each
+  `Int`-sorted binder in ascending index order, accepting the first binder whose
+  three obligations all discharge as `unsat`. For binder `i`:
+  (a) NEGATIVE — the goal with `i`'s constant asserted `< 0`;
+  (b) BASE — the goal with `i := 0`;
+  (c) STEP — the goal with `i := (+ k_ind 1)` under hypotheses `k_ind ≥ 0` and
+  the property with `i := k_ind` and every other binder universally generalized
+  (the induction hypothesis), where `k_ind` is a fresh `Int` constant.
+  Base plus step give the goal for all `i ≥ 0`, the negative case covers `i < 0`,
+  and the three ranges are exhaustive — sound because a strictly decreasing
+  sequence of non-negative integers is finite. Each obligation runs at the
+  reduced budget `(set-option :rlimit 4000000)` (not the full budget): a
+  legitimate case discharges quickly under model-based instantiation on the
+  pattern-free `measure` axiom, so capping only fails a non-inductive goal ~100x
+  faster and never changes a success. The corpus witness is
+  `replicate.length-is-n` (`length (replicate n x) = n`), which proves by
+  induction on the counter `n`; a function whose counter INCREASES toward a bound
+  (`range`, measure `hi − lo`) is not reached by single-binder Peano and returns
+  `unknown` here.
 - **Deterministic proof budget (normative).** The per-goal budget is z3's
   resource limit — `(set-option :rlimit 400000000)` as the script's first
   command — not wall-clock time: same script + same solver version + same
@@ -792,12 +819,15 @@ reproducibility (given the same solver):
   or functions that only a now-omitted lemma mentioned. Shrinking the
   declaration stream to the goal's own footprint is NOT conformant: it changes
   which symbols exist and, under a budget, can change outcomes.
-- **Direct-attempt budget on inductive-eligible goals (normative, #50).** A
-  goal with at least one datatype-typed binder — a candidate for structural
-  induction — runs its DIRECT attempt at the reduced budget
-  `(set-option :rlimit 4000000)`; its structural induction, lexicographic
-  induction, and the fallback below use the full `400000000`. A goal with no
-  datatype-typed binder runs its single direct attempt at the full budget.
+- **Direct-attempt budget on inductive-eligible goals (normative, #50, #56).** A
+  goal is INDUCTIVE-ELIGIBLE if it has at least one datatype-typed binder (a
+  candidate for structural/lexicographic induction) OR at least one `Int`-typed
+  binder (a candidate for Peano integer induction, #56). Such a goal runs its
+  DIRECT attempt at the reduced budget `(set-option :rlimit 4000000)`; its
+  structural, lexicographic, and integer induction, and the fallback below, use
+  the full `400000000` — except the integer-induction obligations themselves,
+  which are reduced-budget (above). A goal with no datatype-typed and no
+  `Int`-typed binder runs its single direct attempt at the full budget.
   The direct attempt on an inductive-eligible goal is almost always futile
   (the goal needs induction) yet at the full budget burns minutes of wall
   time before failing; every direct proof that SUCCEEDS in the corpus consumes

@@ -1,6 +1,6 @@
 {
   "name": "replicate",
-  "hash": "aea0fc941d804f2e4a637e2a1cf761409f3548494e30a2b18269c661098ae30a",
+  "hash": "899b92eec6e06ed4cd6c3b5da1168fb40103aa697c5f553a071fd127c7007220",
   "kind": "func",
   "termination": "measure",
   "confinement": [
@@ -11,5 +11,5 @@
   "mutants_total": 9,
   "level": "proven",
   "cases": 200,
-  "proven": 2
+  "proven": 3
 }

@@ -157,12 +157,11 @@
 ; that, but a Z3-verified integer ranking function does (µ = n for replicate,
 ; µ = hi−lo for range, each bounded below by the guard) — so both are `total`
 ; (#56, ranking.go). Their DEFINING laws (base case + one-step unfold) then prove
-; directly. The measure-carrying theorems (`length (replicate n x) = n`,
-; `length (range lo hi) = hi − lo`) still need INTEGER induction, which the
-; structural-induction prover doesn't reach: the recursive integer axiom
-; E-matches without bound (integers lack the ADT acyclicity that stops datatype
-; induction). That remaining half of #56 stays open; the laws below are the ones
-; that prove today.
+; directly, and `replicate`'s measure law `length (replicate n x) = n` proves by
+; Peano integer induction on the counter (#56, prove.go). `range`'s counter
+; INCREASES toward a bound, so its `length = hi − lo` needs induction on the
+; difference measure hi−lo, which single-binder Peano doesn't reach — that law is
+; the remaining piece of #56 and is left off here rather than shipped unproven.
 (defn replicate [a] [(n Int) (x a)] (List a)
   (if (<= n 0)
       (Nil [a])
@@ -172,7 +171,9 @@
   (prop unfold-step [(n Int) (x Int)]
     (if (< 0 n)
         (== (replicate [Int] n x) (Cons [Int] x (replicate [Int] (- n 1) x)))
-        true)))
+        true))
+  (prop length-is-n [(n Int) (x Int)]
+    (if (<= 0 n) (== (length [Int] (replicate [Int] n x)) n) true)))
 
 (defn range [] [(lo Int) (hi Int)] (List Int)
   (if (< lo hi)
