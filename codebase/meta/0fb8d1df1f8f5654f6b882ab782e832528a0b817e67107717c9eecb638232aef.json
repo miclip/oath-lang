@@ -1,0 +1,24 @@
+{
+  "name": "range",
+  "prop_names": [
+    "empty-when-done",
+    "unfold-step",
+    "length-is-span"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "unknown",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "lo",
+    "hi"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

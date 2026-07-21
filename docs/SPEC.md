@@ -318,7 +318,10 @@ rendered by the value printer.
 - **Termination**: `structural` if some fixed argument position receives a
   strict subterm (obtained via match binders, transitively) at every
   self-call and every body-referenced function is itself total;
-  `nonrecursive` if no self-calls and all callees total; else `unknown`.
+  `nonrecursive` if no self-calls and all callees total; `measure` if a
+  Z3-verified integer ranking function bounds the recursion (§6.1) when
+  structural descent fails; else `unknown`. `structural`, `nonrecursive`, and
+  `measure` are the total verdicts.
 - **Confinement**: a higher-order parameter is `confined` if every
   occurrence is applied, projected-and-applied, passed at the same position
   in a self-call, or passed whole to a callee position already `confined`;
@@ -363,6 +366,7 @@ The verdict is:
 - `nonrecursive` if no self-call sites are recorded;
 - `structural` if a LEXICOGRAPHIC order of parameter positions discharges
   every recorded self-call site (below);
+- `measure` if the integer-ranking-function check (§6.1.1) succeeds;
 - `unknown` otherwise.
 
 The lexicographic search considers, per site and position `j`, only the
@@ -382,6 +386,58 @@ relations track variables only, and a non-variable argument has no relation.
 
 Only refs in the body count as callee obligations; properties are not
 production code and do not affect totality.
+
+#### 6.1.1 Integer ranking functions
+
+When structural descent fails, the checker attempts a well-founded integer
+MEASURE: an integer expression over the parameters that strictly decreases and
+stays non-negative at every self-call, given the path guards. This reaches
+functions that recurse on an integer COUNTER rather than a shrinking datatype
+(`replicate n x` on `n → n-1` guarded by `n>0`; `range lo hi` on `lo → lo+1`
+guarded by `lo<hi`). Because the counter is unbounded, the guard is essential
+and the check is discharged by the same solver host as §7.2. A kernel with no
+solver host available takes the conservative branch (no `measure` verdict).
+
+1. Strip the parameter lambdas. Declare each parameter as an SMT constant:
+   `Int` parameters (the measure candidates) as `Int`; every other parameter
+   over a fresh uninterpreted sort so translations mentioning it stay
+   well-formed. If there are no `Int` parameters, the check fails.
+2. Walk the body collecting self-call SITES. Each site records the path guards
+   reaching it and the SMT expression passed at each parameter position:
+   - `if c t e`: translate `c`; walk `t` with guard `c` added and `e` with
+     `(not c)` added. If `c` is untranslatable, both branches are POISONED.
+   - `let`: bind the variable to its translated value (or, on failure, a fresh
+     constant of the bound type) and walk the body.
+   - `match`: walk the scrutinee; for each arm, bind the constructor's fields
+     to fresh constants of their sorts (determined from the scrutinee's sort)
+     and walk the arm. The constructor test is OMITTED from the guard — a
+     weaker guard only makes the decrease harder to prove, never easier, so
+     this is sound. If the field sorts cannot be determined, the arm is
+     poisoned.
+   - `lam` inside the body: bind its parameter to a fresh constant and walk.
+   - an application spine bottoming at `self`: record a site with the spine's
+     argument terms. A `self` reached with fewer arguments than parameters, on
+     a poisoned path, or with an untranslatable argument sets a hard-fail flag.
+   - all other terms: walk every subterm.
+   If the hard-fail flag is set or no site is recorded, the check fails. (This
+   COMPLETENESS is the soundness condition: every self-call must be discharged,
+   so any call the walk cannot fully analyze forfeits the whole attempt.)
+3. Candidate measures, in order: each `Int` parameter `p_i` by itself, then
+   each ordered difference `p_i - p_j` of two distinct `Int` parameters.
+4. A candidate μ succeeds iff, for EVERY site, the solver returns `unsat` for
+   `(assert (and <site guards> (not (and (< μ(args) μ(params)) (>= μ(params) 0)))))`
+   — i.e. `guards ⟹ (μ(args) < μ(params) ∧ μ(params) ≥ 0)` is valid. μ(params)
+   substitutes each `p_i`; μ(args) substitutes the site's argument expressions.
+   The first candidate that clears every site yields `measure`.
+
+The verdict is a pure function of the definition and the solver's linear-integer
+decision procedure (which is complete, so it never reports the solver's
+`unknown`): no wall clock or rlimit participates, so `measure` is deterministic
+and reproducible across kernels. Soundness: a strictly decreasing sequence of
+non-negative integers is finite, so a μ clearing every site witnesses that no
+infinite self-call chain exists. The measure ranges over parameters only; a
+counter carried as a FIELD of a datatype parameter (extracted by `match`) is
+not yet reached and stays `unknown`.
 
 ### 6.2 Confinement algorithm
 

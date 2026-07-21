@@ -330,10 +330,10 @@ func printSpec(st *Store, h string) (string, error) {
 }
 
 func termSuffix(m *Meta) string {
-	switch m.Termination {
-	case "structural", "nonrecursive":
+	if isTotal(m.Termination) {
 		return " · total"
-	case "unknown":
+	}
+	if m.Termination == "unknown" {
 		return " · termination unproven"
 	}
 	return ""
@@ -343,6 +343,8 @@ func terminationString(term string) string {
 	switch term {
 	case "structural":
 		return "total (structural recursion)"
+	case "measure":
+		return "total (integer ranking function, Z3-verified)"
 	case "nonrecursive":
 		return "total (non-recursive, all callees total)"
 	case "unknown":

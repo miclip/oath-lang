@@ -1437,6 +1437,23 @@
       ]
     },
     {
+      "name": "range",
+      "hash": "f930839150487786f68130fd3cc4e8f5be35ea15eb2578e24b8d8ce8d30c0e70",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-when-done",
+          "proven": true
+        },
+        {
+          "name": "unfold-step",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "rename-key",
       "hash": "dbee26614e4263de9f9830c329611d7056ac8cc192e0698cb2e77195cca1dc3d",
       "level": "proven",
@@ -1449,6 +1466,23 @@
         },
         {
           "name": "source-untouched-when-distinct",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "replicate",
+      "hash": "aea0fc941d804f2e4a637e2a1cf761409f3548494e30a2b18269c661098ae30a",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "zero-is-empty",
+          "proven": true
+        },
+        {
+          "name": "unfold-step",
           "proven": true
         }
       ]
