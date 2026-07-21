@@ -278,7 +278,14 @@ func ranksTotal(st *Store, d *Def, h string) bool {
 	for i := range env {
 		paramSyms[i] = env[i].expr
 	}
-	preamble := strings.Join(c.decls, "\n") + "\n" + strings.Join(c.axioms, "\n") + "\n"
+	// Only the declarations enter the obligation — NOT c.axioms (callee defining
+	// equations). A quantified defining axiom would make the query undecidable,
+	// so Z3 could answer `unknown` and the verdict would stop being a pure
+	// function of the definition (a cross-kernel non-determinism the blind kernel
+	// flagged, oathrs DIVERGENCES 65). Omitting the axioms only weakens the
+	// premises — it can never yield a false `measure` — and keeps the obligation
+	// decidable linear-integer arithmetic over the parameter constants.
+	preamble := strings.Join(c.decls, "\n") + "\n"
 
 	for _, m := range cands {
 		if w.measureClearsAllSites(m, paramSyms, preamble) {

@@ -2012,3 +2012,343 @@ pub fn prove_all(store: &Store, falsified: &BTreeSet<String>) -> BTreeMap<String
     }
     results
 }
+
+// ===========================================================================
+// SPEC §6.1.1: integer ranking functions (the `measure` termination verdict)
+// ===========================================================================
+
+use std::cell::RefCell;
+
+thread_local! {
+    // Re-entrancy guard: translating a NESTED self-call inside the ranking walk
+    // recurses back into termination()->measure_terminates for the SAME hash
+    // (via register_fun -> build_axiom -> is_total). Break that cycle
+    // conservatively — a definition we cannot finish analyzing is not `measure`.
+    static MEASURE_ACTIVE: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    // Result memo (content-addressed hash -> verdict). Pure per definition, so
+    // safe to cache for the lifetime of a process that operates over one store.
+    static MEASURE_CACHE: RefCell<BTreeMap<String, bool>> = RefCell::new(BTreeMap::new());
+}
+
+/// A candidate integer measure (SPEC §6.1.1 step 3): a single Int parameter, or
+/// an ordered difference of two distinct Int parameters.
+enum Cand {
+    Single(usize),
+    Diff(usize, usize),
+}
+
+impl Cand {
+    /// μ(params): substitutes each `p_i` by the parameter constant.
+    fn params(&self) -> String {
+        match self {
+            Cand::Single(i) => format!("p{}", i),
+            Cand::Diff(i, j) => format!("(- p{} p{})", i, j),
+        }
+    }
+    /// μ(args): substitutes each `p_i` by the SMT term passed at position i.
+    fn args(&self, args: &[String]) -> String {
+        match self {
+            Cand::Single(i) => args[*i].clone(),
+            Cand::Diff(i, j) => format!("(- {} {})", args[*i], args[*j]),
+        }
+    }
+}
+
+/// One recorded self-call site: the path guards reaching it and the translated
+/// SMT term passed at each parameter position.
+struct MSite {
+    guards: Vec<String>,
+    args: Vec<String>,
+}
+
+struct MeasureWalk<'a, 'c> {
+    cx: &'c mut Cx<'a>,
+    self_hash: String,
+    tyenv: Vec<Ty>,
+    n: usize,
+    sites: Vec<MSite>,
+    hard_fail: bool,
+    fresh: usize,
+    // declarations for fresh constants introduced by let/match/lam binders.
+    fresh_decls: String,
+}
+
+impl<'a, 'c> MeasureWalk<'a, 'c> {
+    fn tr_term(&mut self, t: &Term, env: &[(String, Ty)]) -> Result<(String, Ty), ()> {
+        let tyenv = self.tyenv.clone();
+        let sh = self.self_hash.clone();
+        self.cx.tr(t, env, &tyenv, &sh, &tyenv)
+    }
+
+    fn fresh_const(&mut self, ty: &Ty) -> String {
+        let sort = {
+            let tyenv = self.tyenv.clone();
+            let applied = apply_tyenv(ty, &tyenv);
+            sort_of(self.cx.store, &applied, &mut self.cx.sc)
+        };
+        let name = format!("mfresh{}", self.fresh);
+        self.fresh += 1;
+        self.fresh_decls.push_str(&format!("(declare-const {} {})\n", name, sort));
+        name
+    }
+
+    fn walk(&mut self, t: &Term, env: &mut Vec<(String, Ty)>, guards: &[String], poisoned: bool) {
+        match t {
+            Term::If { a, b, c } => {
+                // Translate the condition; on failure both branches are poisoned.
+                match self.tr_term(a, env) {
+                    Ok((cstr, _)) => {
+                        let mut gt = guards.to_vec();
+                        gt.push(cstr.clone());
+                        self.walk(b, env, &gt, poisoned);
+                        let mut ge = guards.to_vec();
+                        ge.push(format!("(not {})", cstr));
+                        self.walk(c, env, &ge, poisoned);
+                    }
+                    Err(()) => {
+                        self.walk(b, env, guards, true);
+                        self.walk(c, env, guards, true);
+                    }
+                }
+            }
+            Term::Let { ty, a, b } => {
+                // Bind the variable to its translated value, or a fresh constant
+                // of the bound type on failure; then walk the body.
+                let binding = match self.tr_term(a, env) {
+                    Ok((astr, aty)) => (astr, aty),
+                    Err(()) => {
+                        let lty = apply_tyenv(ty, &self.tyenv.clone());
+                        (self.fresh_const(ty), lty)
+                    }
+                };
+                env.push(binding);
+                self.walk(b, env, guards, poisoned);
+                env.pop();
+            }
+            Term::Match { hash, a, arms } => {
+                // Walk the scrutinee for self-calls.
+                self.walk(a, env, guards, poisoned);
+                // Determine field sorts from the scrutinee's translated type.
+                let sty = self.tr_term(a, env).ok().map(|(_, t)| t);
+                let sargs = match &sty {
+                    Some(Ty::Data { hash: h, args }) if h == hash => Some(args.clone()),
+                    _ => None,
+                };
+                let di = self.cx.store.data_by_hash.get(hash).cloned();
+                for (i, arm) in arms.iter().enumerate() {
+                    // The constructor test is OMITTED from the guard (a weaker
+                    // guard only makes the decrease harder to prove, never easier).
+                    let (field_tys, arm_poison) = match (&sargs, &di) {
+                        (Some(sa), Some(d)) if i < d.ctors.len() => {
+                            let ftys: Vec<Ty> =
+                                d.ctors[i].1.iter().map(|f| inst_field(f, sa, hash)).collect();
+                            (ftys, poisoned)
+                        }
+                        // field sorts cannot be determined: the arm is poisoned.
+                        _ => (Vec::new(), true),
+                    };
+                    let k = field_tys.len();
+                    for ft in &field_tys {
+                        let c = self.fresh_const(ft);
+                        env.push((c, ft.clone()));
+                    }
+                    self.walk(arm, env, guards, arm_poison);
+                    for _ in 0..k {
+                        env.pop();
+                    }
+                }
+            }
+            Term::Lam { ty, a } => {
+                let c = self.fresh_const(ty);
+                env.push((c, apply_tyenv(ty, &self.tyenv.clone())));
+                self.walk(a, env, guards, poisoned);
+                env.pop();
+            }
+            Term::App { .. } => {
+                // Unwind the application spine.
+                let mut args: Vec<&Term> = Vec::new();
+                let mut cur = t;
+                while let Term::App { a, b } = cur {
+                    args.push(b);
+                    cur = a;
+                }
+                args.reverse();
+                if let Term::SelfRef { .. } = cur {
+                    self.record_self(&args, env, guards, poisoned);
+                } else {
+                    // all other terms: walk every subterm.
+                    self.walk(cur, env, guards, poisoned);
+                    for a in args {
+                        self.walk(a, env, guards, poisoned);
+                    }
+                }
+            }
+            Term::SelfRef { .. } => {
+                // self with no application spine: fewer args than parameters.
+                self.hard_fail = true;
+            }
+            Term::Prim { args, .. } | Term::Ctor { args, .. } | Term::Record { args, .. } => {
+                for a in args {
+                    self.walk(a, env, guards, poisoned);
+                }
+            }
+            Term::Field { a, .. } => self.walk(a, env, guards, poisoned),
+            Term::Ref { .. } | Term::Var(_) | Term::Int(_) | Term::Bool(_) | Term::Str(_) => {}
+        }
+    }
+
+    fn record_self(
+        &mut self,
+        args: &[&Term],
+        env: &[(String, Ty)],
+        guards: &[String],
+        poisoned: bool,
+    ) {
+        // A self reached with fewer arguments than parameters, on a poisoned
+        // path, or with an untranslatable argument forfeits the whole attempt.
+        if poisoned || args.len() != self.n {
+            self.hard_fail = true;
+            return;
+        }
+        let mut arg_strs = Vec::with_capacity(self.n);
+        for a in args {
+            match self.tr_term(a, env) {
+                Ok((s, _)) => arg_strs.push(s),
+                Err(()) => {
+                    self.hard_fail = true;
+                    return;
+                }
+            }
+        }
+        self.sites.push(MSite { guards: guards.to_vec(), args: arg_strs });
+    }
+}
+
+/// SPEC §6.1.1: attempt a Z3-verified integer ranking function. Returns true iff
+/// some candidate integer measure strictly decreases and stays >= 0 at every
+/// self-call given the path guards. A missing solver, the absence of any Int
+/// parameter, an incompletely-analyzable self-call, or no self-call at all all
+/// yield false — never a spurious `measure`.
+pub fn measure_terminates(store: &Store, hash: &str) -> bool {
+    if let Some(v) = MEASURE_CACHE.with(|c| c.borrow().get(hash).copied()) {
+        return v;
+    }
+    let reenter = MEASURE_ACTIVE.with(|s| !s.borrow_mut().insert(hash.to_string()));
+    if reenter {
+        return false; // do not cache: a re-entrant probe, not the real verdict.
+    }
+    let r = measure_terminates_inner(store, hash);
+    MEASURE_ACTIVE.with(|s| {
+        s.borrow_mut().remove(hash);
+    });
+    MEASURE_CACHE.with(|c| {
+        c.borrow_mut().insert(hash.to_string(), r);
+    });
+    r
+}
+
+fn measure_terminates_inner(store: &Store, hash: &str) -> bool {
+    let (body, fty, tyvars, n) = match store.def_by_hash.get(hash) {
+        Some(Def::Func { body, ty, tyvars, .. }) => {
+            let n = store.func_by_hash.get(hash).map(|fi| fi.param_names.len()).unwrap_or(0);
+            (body.clone(), ty.clone(), *tyvars, n)
+        }
+        _ => return false,
+    };
+    let (ptys, _ret) = param_types(&fty, n);
+    if ptys.len() != n {
+        return false;
+    }
+    // SPEC §6.1.1 step 1: the Int parameters are the measure candidates. With no
+    // Int parameter the check fails.
+    let int_params: Vec<usize> = (0..n).filter(|&i| matches!(ptys[i], Ty::Int)).collect();
+    if int_params.is_empty() {
+        return false;
+    }
+
+    let mut cx = Cx::new(store);
+    // Parameter declarations: Int parameters as `Int`; every other parameter over
+    // a fresh uninterpreted sort so translations mentioning it stay well-formed.
+    let mut sort_decls = String::new();
+    let mut param_decls = String::new();
+    let mut env: Vec<(String, Ty)> = Vec::with_capacity(n);
+    for i in 0..n {
+        let name = format!("p{}", i);
+        if matches!(ptys[i], Ty::Int) {
+            param_decls.push_str(&format!("(declare-const {} Int)\n", name));
+        } else {
+            let sort = format!("MSort{}", i);
+            sort_decls.push_str(&format!("(declare-sort {} 0)\n", sort));
+            param_decls.push_str(&format!("(declare-const {} {})\n", name, sort));
+        }
+        env.push((name, ptys[i].clone()));
+    }
+    // A placeholder type environment keeps `tr`'s `apply_tyenv` total; type
+    // variables never enter an integer measure (a translation that structurally
+    // uses one only fails the site's obligation, never passes it spuriously).
+    let tyenv: Vec<Ty> = vec![Ty::Int; tyvars as usize];
+
+    let inner = strip_lams(&body, n);
+    let mut w = MeasureWalk {
+        cx: &mut cx,
+        self_hash: hash.to_string(),
+        tyenv,
+        n,
+        sites: Vec::new(),
+        hard_fail: false,
+        fresh: 0,
+        fresh_decls: String::new(),
+    };
+    let mut walk_env = env.clone();
+    w.walk(inner, &mut walk_env, &[], false);
+
+    // SPEC §6.1.1 step 2 completeness: any self-call the walk cannot fully
+    // analyze, or the absence of any self-call, forfeits the attempt.
+    if w.hard_fail || w.sites.is_empty() {
+        return false;
+    }
+    let sites = w.sites;
+    let fresh_decls = w.fresh_decls;
+    // All declarations discovered while translating guards/arguments (datatypes,
+    // callee function symbols) must precede the obligation. NOTE: only the guard
+    // predicate and decrease are asserted — callee DEFINING axioms are NOT added
+    // (SPEC §6.1.1 step 4 asserts guards + negated decrease only).
+    let aux_decls: String = cx.sc.decls.join("");
+    let preamble = format!("{}{}{}{}", sort_decls, aux_decls, fresh_decls, param_decls);
+
+    // SPEC §6.1.1 step 3: candidates in order — each Int parameter, then each
+    // ordered difference of two distinct Int parameters.
+    let mut cands: Vec<Cand> = int_params.iter().map(|&i| Cand::Single(i)).collect();
+    for &i in &int_params {
+        for &j in &int_params {
+            if i != j {
+                cands.push(Cand::Diff(i, j));
+            }
+        }
+    }
+
+    // SPEC §6.1.1 step 4: the first candidate that clears EVERY site wins.
+    for cand in &cands {
+        if sites.iter().all(|site| measure_site_unsat(&preamble, cand, site)) {
+            return true;
+        }
+    }
+    false
+}
+
+/// The per-site obligation (SPEC §6.1.1 step 4): `guards => (μ(args) < μ(params)
+/// && μ(params) >= 0)` is valid iff its negation is UNSAT. Linear integer
+/// arithmetic is decidable, so the solver never reports `unknown`; any non-`unsat`
+/// (including a missing solver) means the candidate fails this site.
+fn measure_site_unsat(preamble: &str, cand: &Cand, site: &MSite) -> bool {
+    let mu_params = cand.params();
+    let mu_args = cand.args(&site.args);
+    let neg = format!("(not (and (< {} {}) (>= {} 0)))", mu_args, mu_params, mu_params);
+    let body = if site.guards.is_empty() {
+        neg
+    } else {
+        format!("(and {} {})", site.guards.join(" "), neg)
+    };
+    let script = format!("{}(assert {})\n(check-sat)\n", preamble, body);
+    matches!(run_z3(&script, z3_rlimit()), Ok(Outcome::Unsat))
+}

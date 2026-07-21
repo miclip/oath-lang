@@ -330,7 +330,9 @@ rendered by the value printer.
 - **Spec strength**: mutation catalog = type-preserving operator swaps
   (`+↔-`, `*→+`, `/→*`, `%→/`, `<↔<=`, `and↔or`), operand swaps of
   non-commutative binary prims (`- / % < <= ++`), integer literal ±1 and →0,
-  string literal → `""`, if-branch swap. Score = killed/total.
+  string literal → `""`, if-branch swap. Score = killed/total. Spec strength is
+  computed for every function definition independent of its termination verdict:
+  a `measure`-total function is mutated exactly like a `structural` one.
 - **Cross-check (N-version)**: for two definitions with identical signatures,
   each one's properties are evaluated against the other's body. Mutation scores
   a spec's tightness around ITS OWN body and is blind to misalignment (a spec
@@ -428,7 +430,22 @@ solver host available takes the conservative branch (no `measure` verdict).
    `(assert (and <site guards> (not (and (< μ(args) μ(params)) (>= μ(params) 0)))))`
    — i.e. `guards ⟹ (μ(args) < μ(params) ∧ μ(params) ≥ 0)` is valid. μ(params)
    substitutes each `p_i`; μ(args) substitutes the site's argument expressions.
-   The first candidate that clears every site yields `measure`.
+   The obligation carries ONLY the parameter/binder declarations, the site
+   guards, and the negated decrease — NO callee defining-equation axioms.
+   Including a quantified defining axiom would make the query undecidable and let
+   the solver answer `unknown`, so the verdict would stop being a pure function
+   of the definition; omitting them only weakens the premises (it can never yield
+   a false `measure`) and keeps the obligation decidable linear-integer
+   arithmetic. The first candidate that clears every site yields `measure`.
+
+   Translation of guards and arguments (per §7's term→SMT rules) runs on the
+   UNINSTANTIATED definition, so it may meet a polymorphic type variable (a
+   constructor type-argument, or a `let`/`match`/`lam` binder sort). Resolve
+   every type variable to a fixed placeholder sort so translation stays total;
+   this is sound because measures are built only from `Int` parameters, so a
+   subterm of type-variable type is either irrelevant to the chosen μ or makes
+   the site's obligation non-`unsat` — the candidate is then rejected, never
+   spuriously accepted.
 
 The verdict is a pure function of the definition and the solver's linear-integer
 decision procedure (which is complete, so it never reports the solver's

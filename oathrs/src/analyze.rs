@@ -21,17 +21,21 @@ const MUT_FUEL: i64 = 500_000;
 pub enum Term5 {
     Structural,
     Nonrecursive,
+    // SPEC §6.1.1: a Z3-verified integer ranking function bounds the recursion.
+    // A TOTAL verdict alongside structural/nonrecursive.
+    Measure,
     Unknown,
 }
 
 impl Term5 {
     pub fn total(self) -> bool {
-        matches!(self, Term5::Structural | Term5::Nonrecursive)
+        matches!(self, Term5::Structural | Term5::Nonrecursive | Term5::Measure)
     }
     fn as_str(self) -> &'static str {
         match self {
             Term5::Structural => "structural",
             Term5::Nonrecursive => "nonrecursive",
+            Term5::Measure => "measure",
             Term5::Unknown => "unknown",
         }
     }
@@ -235,7 +239,14 @@ pub fn termination(store: &Store, hash: &str, visiting: &mut HashSet<String>) ->
     let site_refs: Vec<&Site> = w.sites.iter().collect();
     let positions: Vec<usize> = (0..n).collect();
     if discharges(&site_refs, &positions) {
-        Term5::Structural
+        return Term5::Structural;
+    }
+    // SPEC §6.1.1: structural descent failed — attempt a Z3-verified integer
+    // ranking function. Succeeds only when a candidate integer measure strictly
+    // decreases and stays >= 0 at every self-call under the path guards. With no
+    // solver host available this conservatively yields `unknown`.
+    if crate::prove::measure_terminates(store, hash) {
+        Term5::Measure
     } else {
         Term5::Unknown
     }
@@ -752,8 +763,11 @@ pub fn analyze(store: &Store, name: &str, proofs: Option<&[bool]>) -> Analysis {
                         break;
                     }
                 }
-                let m = mutation_score(store, &hash);
-                let m = match m {
+                // SPEC §6 (Spec strength): spec strength is computed for every
+                // function definition independent of its termination verdict — a
+                // `measure`-total function is mutated exactly like a `structural`
+                // one.
+                let m = match mutation_score(store, &hash) {
                     Some((_, 0)) => None,
                     other => other,
                 };
