@@ -70,6 +70,22 @@ await page.waitForFunction(() =>
 const proof = await page.evaluate(() => [...document.querySelectorAll("pre")].find((e) => /proven:/.test(e.textContent || ""))?.textContent || "");
 ok("novel def → PROVEN live (2/2) via Z3 in the browser", /proven: 2\/2/.test(proof) && /∎ PROVEN/.test(proof), proof.slice(0, 200));
 
+// Regression (codex #34): after proving `double`, editing to a BROKEN def that
+// keeps the name `double` and re-verifying must NOT leave Prove enabled — else
+// it would prove the stale stored def. The prior proof is cleared on edit, and
+// Prove stays disabled because the paste was rejected / differs from verified.
+await page.locator("textarea").fill("(defn double [] [(x Int)] Int (nope x)\n  (prop is-double [(x Int)] (== (double x) (* 2 x))))");
+const proofClearedOnEdit = await page.evaluate(() => ![...document.querySelectorAll("pre")].some((e) => /proven:/.test(e.textContent || "")));
+ok("editing clears the stale proof", proofClearedOnEdit);
+await verify();
+await page.waitForTimeout(200);
+const proveState = await page.evaluate(() => {
+  const p = [...document.querySelectorAll("button")].find((x) => /Prove/.test(x.textContent));
+  const stale = [...document.querySelectorAll("pre")].some((e) => /∎ PROVEN/.test(e.textContent || ""));
+  return { disabled: p?.disabled, stale };
+});
+ok("rejected re-paste keeps Prove disabled, no stale proof", proveState.disabled === true && proveState.stale === false, JSON.stringify(proveState));
+
 ok("no console/page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
 console.log(fail ? `\n${fail} FAILED` : "\nbrowser integration (verify + prove) works ✓");
 await b.close();

@@ -105,6 +105,9 @@ export default function TryPage() {
   const [proving, setProving] = useState(false);
   const [proof, setProof] = useState<string | null>(null);
   const [proofErr, setProofErr] = useState<string | null>(null);
+  // The exact source the current result was produced from. Editing past it
+  // disables Prove so we never prove code that hasn't been re-verified.
+  const [verifiedSrc, setVerifiedSrc] = useState<string | null>(null);
   const api = useRef<KernelAPI | null>(null);
 
   useEffect(() => {
@@ -133,8 +136,10 @@ export default function TryPage() {
     setProofErr(null);
     try {
       setResult(await api.current.check(src));
+      setVerifiedSrc(src);
     } catch (e) {
       setResult({ ok: false, error: String(e) });
+      setVerifiedSrc(null);
     }
     setRunning(false);
   }
@@ -171,6 +176,7 @@ export default function TryPage() {
   // Z3 bridge came up. A falsified def has nothing to prove.
   const canProve =
     proveReady &&
+    src === verifiedSrc &&
     !!result?.reports?.length &&
     !result.reports.some((r) => r.status === "falsified" || r.status === "rejected");
 
@@ -219,7 +225,13 @@ export default function TryPage() {
 
         <textarea
           value={src}
-          onChange={(e) => setSrc(e.target.value)}
+          onChange={(e) => {
+            setSrc(e.target.value);
+            // A proof belongs to the source it was produced from; drop it once
+            // that source changes.
+            if (proof) setProof(null);
+            if (proofErr) setProofErr(null);
+          }}
           spellCheck={false}
           style={{
             width: "100%",

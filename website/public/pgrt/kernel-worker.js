@@ -93,35 +93,45 @@ async function bootBridge() {
   proveReady = true;
 }
 
-const booted = (async () => {
-  await bootKernel();
-  self.postMessage({ type: "kernel-ready" });
+// Two separate boot promises: checking needs only the kernel, so a `check`
+// never waits behind the 32MB Z3 download. Proving waits for the bridge too.
+const kernelBooted = bootKernel().then(() => self.postMessage({ type: "kernel-ready" }));
+const bridgeBooted = kernelBooted.then(async () => {
   try {
     await bootBridge();
     self.postMessage({ type: "bridge-ready" });
   } catch (e) {
     self.postMessage({ type: "bridge-failed", error: String(e?.message || e) });
   }
-})();
+});
 
 self.onmessage = async (e) => {
   const { id, op, source, name } = e.data || {};
-  await booted;
   try {
     if (op === "check") {
+      await kernelBooted;
       const checked = JSON.parse(globalThis.oathCheck(root, String(source)));
       self.postMessage({ id, checked });
     } else if (op === "prove") {
+      await bridgeBooted;
       if (!proveReady) {
         self.postMessage({ id, error: "z3 bridge unavailable (cross-origin isolation required)" });
         return;
       }
-      // Prove needs the definition in the store first; oathCheck put it there.
-      JSON.parse(globalThis.oathCheck(root, String(source)));
+      // Re-put the CURRENT source and confirm the named def actually passed the
+      // gate this time — otherwise a rejected paste whose name collides with a
+      // previously stored def would prove the stale stored def, not the code in
+      // the editor. Only prove what the current source accepted.
+      const checked = JSON.parse(globalThis.oathCheck(root, String(source)));
+      const rep = (checked.reports || []).find((r) => r.name === name);
+      if (!rep || rep.status !== "accepted") {
+        self.postMessage({ id, error: "definition did not pass the gate — nothing to prove" });
+        return;
+      }
       const proof = JSON.parse(globalThis.oathProve(root, String(name)));
       self.postMessage({ id, proof });
     }
   } catch (err) {
-    self.postMessage({ id, error: String(err?.message || err), stack: String(err?.stack || "").slice(0, 500) });
+    self.postMessage({ id, error: String(err?.message || err) });
   }
 };
