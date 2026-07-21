@@ -4,7 +4,7 @@
 //! §7.2 script stability): a goal's byte content is a function of the goal and
 //! its admissible lemma set, pinned by the byte oracle in prove/scripts.txt.
 
-use crate::analyze::termination;
+use crate::analyze::{termination, Term5};
 use crate::elaborate::Store;
 use crate::hash::sha256_hex;
 use crate::ir::*;
@@ -282,6 +282,13 @@ fn is_total(store: &Store, hash: &str) -> bool {
     termination(store, hash, &mut v).total()
 }
 
+/// SPEC §7.2/§6.1.1: is this callee total specifically via an integer ranking
+/// function (`measure`)? Such a callee's defining axiom is asserted pattern-free.
+fn is_measure(store: &Store, hash: &str) -> bool {
+    let mut v = HashSet::new();
+    termination(store, hash, &mut v) == Term5::Measure
+}
+
 fn strip_lams(body: &Term, n: usize) -> &Term {
     let mut t = body;
     for _ in 0..n {
@@ -527,13 +534,25 @@ impl<'a> Cx<'a> {
                 } else {
                     // A ∀ defining axiom introduces a quantifier.
                     self.quantified = true;
-                    format!(
-                        "(assert (forall ({}) (! (= {} {}) :pattern ({}))))",
-                        decls.trim_end(),
-                        call,
-                        rhs,
-                        call
-                    )
+                    // SPEC §7.2 (#56): a callee whose termination verdict is
+                    // `measure` (integer-counter recursion, §6.1.1) is asserted
+                    // with NO pattern — an integer-recursive pattern E-matches
+                    // without bound (f(n) → f(n-1) → f(n-2) …), diverging any goal
+                    // that mentions it. Pattern-free, z3 falls back to model-based
+                    // instantiation, which terminates and discharges the function's
+                    // direct laws and the integer-induction obligations. All other
+                    // total callees keep the full-application pattern.
+                    if is_measure(self.store, hash) {
+                        format!("(assert (forall ({}) (= {} {})))", decls.trim_end(), call, rhs)
+                    } else {
+                        format!(
+                            "(assert (forall ({}) (! (= {} {}) :pattern ({}))))",
+                            decls.trim_end(),
+                            call,
+                            rhs,
+                            call
+                        )
+                    }
                 };
                 self.axiom_order.push(id.to_string());
                 self.axioms.insert(id.to_string(), axiom);
@@ -1420,6 +1439,131 @@ impl<'a> Prover<'a> {
         }
     }
 
+    /// SPEC §7.2 (#56): Peano integer induction on the Int-sorted binder `k`.
+    /// Three obligations must ALL discharge as `unsat`:
+    ///   (a) NEGATIVE — the goal with `k`'s constant asserted `< 0`;
+    ///   (b) BASE     — the goal with `k := 0`;
+    ///   (c) STEP     — the goal with `k := (+ k_ind 1)` under `k_ind >= 0` and the
+    ///                  induction hypothesis (the property with `k := k_ind`, every
+    ///                  other binder universally generalized), `k_ind` a fresh Int.
+    /// `Ok(true)` iff all three are `unsat`; `Ok(false)` = validly failed;
+    /// `Err(reason)` = an obligation attempt was invalid (taint, §7.2). Each
+    /// obligation runs at the reduced budget `(set-option :rlimit 4000000)`.
+    fn try_induction_int(
+        &self,
+        def_hash: &str,
+        prop: &Prop,
+        k: usize,
+        candidates: &[(String, usize, bool)],
+    ) -> Result<bool, String> {
+        if !matches!(prop.binders[k], Ty::Int) {
+            return Ok(false);
+        }
+        let budget = DIRECT_Z3_RLIMIT.min(z3_rlimit());
+
+        // (a) NEGATIVE: k stays constant b{k}; assert (< b{k} 0).
+        {
+            let mut cx = Cx::new(self.store);
+            let lem = self.build_lemmas(&mut cx, candidates);
+            let mut decls = String::new();
+            let mut senv: Vec<(String, Ty)> = Vec::with_capacity(prop.binders.len());
+            for (m, bt) in prop.binders.iter().enumerate() {
+                let vname = format!("b{}", m);
+                let s = sort_of(self.store, bt, &mut cx.sc);
+                decls.push_str(&format!("(declare-const {} {})\n", vname, s));
+                senv.push((vname, bt.clone()));
+            }
+            let goal = match cx.tr(&prop.body, &senv, &[], def_hash, &[]) {
+                Ok((g, _)) => g,
+                Err(_) => return Ok(false),
+            };
+            let mut tail = String::new();
+            tail.push_str(&lem);
+            tail.push_str(&decls);
+            tail.push_str(&format!("(assert (< b{} 0))\n", k));
+            tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
+            match run_z3(&Prover::assemble(&cx, &tail), budget) {
+                Ok(Outcome::Unsat) => {}
+                Ok(_) => return Ok(false),
+                Err(reason) => return Err(reason),
+            }
+        }
+
+        // (b) BASE: k := 0.
+        {
+            let mut cx = Cx::new(self.store);
+            let lem = self.build_lemmas(&mut cx, candidates);
+            let mut decls = String::new();
+            let mut senv: Vec<(String, Ty)> = Vec::with_capacity(prop.binders.len());
+            for (m, bt) in prop.binders.iter().enumerate() {
+                if m == k {
+                    senv.push(("0".to_string(), Ty::Int));
+                } else {
+                    let vname = format!("b{}", m);
+                    let s = sort_of(self.store, bt, &mut cx.sc);
+                    decls.push_str(&format!("(declare-const {} {})\n", vname, s));
+                    senv.push((vname, bt.clone()));
+                }
+            }
+            let goal = match cx.tr(&prop.body, &senv, &[], def_hash, &[]) {
+                Ok((g, _)) => g,
+                Err(_) => return Ok(false),
+            };
+            let mut tail = String::new();
+            tail.push_str(&lem);
+            tail.push_str(&decls);
+            tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
+            match run_z3(&Prover::assemble(&cx, &tail), budget) {
+                Ok(Outcome::Unsat) => {}
+                Ok(_) => return Ok(false),
+                Err(reason) => return Err(reason),
+            }
+        }
+
+        // (c) STEP: k := (+ k_ind 1) under k_ind >= 0 and the induction hypothesis.
+        {
+            let mut cx = Cx::new(self.store);
+            let lem = self.build_lemmas(&mut cx, candidates);
+            let mut decls = String::from("(declare-const k_ind Int)\n");
+            // IH: the property with k := k_ind, every other binder generalized.
+            let mut fixed: BTreeMap<usize, (String, Ty)> = BTreeMap::new();
+            fixed.insert(k, ("k_ind".to_string(), Ty::Int));
+            let ih = match self.forall_prop(&mut cx, prop, def_hash, &fixed) {
+                Some(h) => h,
+                None => return Ok(false),
+            };
+            // goal: property with k := (+ k_ind 1), other binders at b{m} constants.
+            let mut senv: Vec<(String, Ty)> = Vec::with_capacity(prop.binders.len());
+            for (m, bt) in prop.binders.iter().enumerate() {
+                if m == k {
+                    senv.push(("(+ k_ind 1)".to_string(), Ty::Int));
+                } else {
+                    let vname = format!("b{}", m);
+                    let s = sort_of(self.store, bt, &mut cx.sc);
+                    decls.push_str(&format!("(declare-const {} {})\n", vname, s));
+                    senv.push((vname, bt.clone()));
+                }
+            }
+            let goal = match cx.tr(&prop.body, &senv, &[], def_hash, &[]) {
+                Ok((g, _)) => g,
+                Err(_) => return Ok(false),
+            };
+            let mut tail = String::new();
+            tail.push_str(&lem);
+            tail.push_str(&decls);
+            tail.push_str("(assert (>= k_ind 0))\n");
+            tail.push_str(&format!("(assert {})\n", ih));
+            tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
+            match run_z3(&Prover::assemble(&cx, &tail), budget) {
+                Ok(Outcome::Unsat) => {}
+                Ok(_) => return Ok(false),
+                Err(reason) => return Err(reason),
+            }
+        }
+
+        Ok(true)
+    }
+
     /// Prove one property. SPEC §7.2 GRANULARITY: attempt validity is per-attempt.
     /// A valid `unsat` (or quantifier-free `sat` refutation) from ANY strategy is
     /// positive evidence no environment can fake, so it decides the property
@@ -1442,14 +1586,14 @@ impl<'a> Prover<'a> {
             return true;
         }
 
-        // SPEC §7.2 (#50): a goal with at least one datatype-typed binder is a
-        // candidate for structural induction, so its DIRECT attempt runs at the
-        // reduced budget (the futile-but-slow full-budget direct is skipped in
-        // favour of the fallback below). A goal with no datatype binder runs its
-        // single direct attempt at the full budget, unchanged. Datatype binders
-        // are exactly the `Ty::Data` binders the induction loops iterate over.
+        // SPEC §7.2 (#50, #56): a goal is INDUCTIVE-ELIGIBLE if it has at least
+        // one datatype-typed binder (structural/lexicographic induction) OR at
+        // least one Int-typed binder (Peano integer induction, #56). Its DIRECT
+        // attempt runs at the reduced budget (the futile-but-slow full-budget
+        // direct is skipped in favour of the full-budget fallback below). A goal
+        // with neither runs its single direct attempt at the full budget.
         let inductive_eligible =
-            prop.binders.iter().any(|b| matches!(b, Ty::Data { .. }));
+            prop.binders.iter().any(|b| matches!(b, Ty::Data { .. } | Ty::Int));
         // Never exceed the full budget (defensive against an OATHRS_Z3_RLIMIT
         // override that lowers it below the reduced constant): the reduced
         // attempt must be no stronger than the full-budget fallback.
@@ -1504,6 +1648,22 @@ impl<'a> Prover<'a> {
                         Err(reason) => {
                             taint.get_or_insert(reason);
                         }
+                    }
+                }
+            }
+            // SPEC §7.2 (#56): Peano integer induction on each Int-sorted binder
+            // in ascending index order, after structural and lexicographic
+            // induction have failed. Accept the first binder whose three
+            // obligations (negative, base, step) all discharge as `unsat`.
+            for k in 0..prop.binders.len() {
+                if !matches!(prop.binders[k], Ty::Int) {
+                    continue;
+                }
+                match self.try_induction_int(def_hash, prop, k, candidates) {
+                    Ok(true) => return true,
+                    Ok(false) => {}
+                    Err(reason) => {
+                        taint.get_or_insert(reason);
                     }
                 }
             }
