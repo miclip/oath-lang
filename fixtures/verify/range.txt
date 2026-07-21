@@ -1,2 +1,3 @@
 ✓ prop empty-when-done          passed 200 cases
 ✓ prop unfold-step              passed 200 cases
+✓ prop length-is-span           passed 200 cases

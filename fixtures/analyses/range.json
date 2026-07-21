@@ -1,6 +1,6 @@
 {
   "name": "range",
-  "hash": "f930839150487786f68130fd3cc4e8f5be35ea15eb2578e24b8d8ce8d30c0e70",
+  "hash": "0fb8d1df1f8f5654f6b882ab782e832528a0b817e67107717c9eecb638232aef",
   "kind": "func",
   "termination": "measure",
   "confinement": [
@@ -11,5 +11,5 @@
   "mutants_total": 7,
   "level": "proven",
   "cases": 200,
-  "proven": 2
+  "proven": 3
 }

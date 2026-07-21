@@ -156,12 +156,13 @@
 ; structurally-decreasing list. The structural termination checker can't see
 ; that, but a Z3-verified integer ranking function does (µ = n for replicate,
 ; µ = hi−lo for range, each bounded below by the guard) — so both are `total`
-; (#56, ranking.go). Their DEFINING laws (base case + one-step unfold) then prove
-; directly, and `replicate`'s measure law `length (replicate n x) = n` proves by
-; Peano integer induction on the counter (#56, prove.go). `range`'s counter
-; INCREASES toward a bound, so its `length = hi − lo` needs induction on the
-; difference measure hi−lo, which single-binder Peano doesn't reach — that law is
-; the remaining piece of #56 and is left off here rather than shipped unproven.
+; (#56, ranking.go). Their DEFINING laws (base case + one-step unfold) prove
+; directly, and their MEASURE laws — `length (replicate n x) = n`,
+; `length (range lo hi) = hi − lo` — prove by RECURSION INDUCTION (#56,
+; prove.go): induction along each function's own well-founded recursion (base off
+; the recursive region, step assuming the property at the recursive call), which
+; reaches both the decreasing counter (replicate) and the increasing counter
+; bounded above (range) that single-binder induction cannot.
 (defn replicate [a] [(n Int) (x a)] (List a)
   (if (<= n 0)
       (Nil [a])
@@ -182,4 +183,6 @@
   (prop empty-when-done [(lo Int) (hi Int)]
     (if (<= hi lo) (== (range lo hi) (Nil [Int])) true))
   (prop unfold-step [(lo Int) (hi Int)]
-    (if (< lo hi) (== (range lo hi) (Cons [Int] lo (range (+ lo 1) hi))) true)))
+    (if (< lo hi) (== (range lo hi) (Cons [Int] lo (range (+ lo 1) hi))) true))
+  (prop length-is-span [(lo Int) (hi Int)]
+    (== (length [Int] (range lo hi)) (if (< lo hi) (- hi lo) 0))))
