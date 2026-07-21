@@ -1166,3 +1166,45 @@ the only "spec" on this point and they pointed the wrong way. The lesson (now
 acted on): a normative statement in §6 beats an inference from present-or-absent
 fixture fields. With §6 explicit and the fixtures complete, both kernels agree that
 `measure` functions carry the same spec-strength score as any other definition.
+
+## 67. Recursion induction (§7.2): IH treatment of property binders beyond the arity
+
+**Found by:** blind Rust implementation of "Recursion induction" (SPEC §7.2, #56),
+which replaced Peano integer induction. **Outcome: no fixture divergence — the two
+`measure` corpus witnesses (`replicate.length-is-n`, `range.length-is-span`) each
+have exactly `dParams` property binders — but the spec is silent on one case.**
+
+§7.2 says the STEP induction hypothesis `IH_s` is "the property with binder `j`
+substituted by `A_s[j]` for every `j < dParams`". When the property has MORE
+binders than the function's arity (`prop.binders.len() > dParams`), the text does
+not say what happens to the trailing binders `j >= dParams` (which are extra
+universally-quantified variables of the property, not function parameters). Two
+sound readings:
+- **(a)** Universally generalize them in `IH_s` (the hypothesis holds for ALL their
+  values at the smaller-measure point) — the standard well-founded-induction shape.
+- **(b)** Hold them at the goal's `b{m}` constants (the same values the conclusion
+  fixes them to).
+
+Chose **(a)**: `IH_s` is built with `forall_prop`, fixing `j < dParams` to `A_s[j]`
+and universally quantifying every remaining binder with a fresh `q{m}`. This is the
+sound and conventional reading (a stronger, fully-general hypothesis), and it is
+consistent with how this kernel builds every other induction hypothesis
+(structural, lexicographic). It is also UNOBSERVABLE for the current corpus: both
+`measure` definitions are proved over properties whose binder count equals the
+arity, so no trailing binder exists and (a) and (b) coincide. The BASE/STEP
+obligation scripts are not part of the byte oracle (only direct-attempt scripts are
+pinned in `prove/scripts.txt`), so the choice cannot perturb any fixture; it only
+governs which future many-binder `measure` property a third kernel could prove.
+
+**Spec action recommended:** §7.2 should state whether trailing binders
+(`j >= dParams`) are universally generalized or pinned in `IH_s`. Until then a third
+kernel could reasonably pick (b) and, on a hypothetical many-binder measure law,
+diverge.
+
+Secondary (no divergence, recorded for completeness): the recursion-induction walk
+reuses the §6.1.1 site collector verbatim, which binds `match`/`let`/`lam` binders
+to FRESH constants. For a `measure` function that extracts its counter through a
+`match` (none in the corpus), those fresh constants appear free in `G_s`/`A_s`,
+which can only make an obligation HARDER to discharge — so such a function is
+conservatively left unproven, never wrongly proved. This follows the spec's
+explicit instruction to walk "exactly as §6.1.1 collects self-call sites".

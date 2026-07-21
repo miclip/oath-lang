@@ -1344,78 +1344,97 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 			}
 		}
 	}
-	// Peano integer induction on each Int binder (#56). A measure-carrying law
-	// like `length (replicate n x) = n` needs induction over the INTEGER counter,
-	// which no datatype-binder scheme reaches. Because the integer-recursive
-	// function's axiom is emitted without a pattern (ensureFn, above), Z3's
-	// model-based instantiation discharges the cases without diverging. A binder
-	// n:Int is proven by three obligations that partition ℤ:
-	//   negative  n < 0
-	//   base      n = 0
-	//   step      n = k+1, k ≥ 0, assuming the goal at k (other binders generalized)
-	// Sound: base + step give the goal for all n ≥ 0, the negative case covers
-	// n < 0, and the ranges are exhaustive. The induction variable is the single
-	// structural symbol k_ind, so scripts stay canonical.
-	// Each obligation runs at the reduced induction budget, NOT the full budget:
-	// a legitimate case discharges quickly (model-based instantiation on the
-	// pattern-free measure axiom), while a goal that ISN'T integer-inductive
-	// (e.g. one needing induction on a difference measure) would otherwise burn
-	// the full budget three times per Int binder across the whole corpus. The
-	// budget is a runner option outside the hashed bytes (SPEC §7.2), so this is
-	// speed, not outcome.
-	for i := range p.Binders {
-		if binderSorts[i] != "Int" {
-			continue
+	// Recursion induction on a measure-total self function (#56). A
+	// measure-carrying law like `length (replicate n x) = n` or
+	// `length (range lo hi) = hi − lo` needs induction over the well-founded
+	// order the FUNCTION'S OWN recursion follows — which no datatype-binder
+	// scheme reaches, and which single-binder Peano cannot express when the
+	// counter increases toward a bound (range's measure is hi − lo). Because the
+	// measure function's axiom is emitted without a pattern (ensureFn, above),
+	// Z3's model-based instantiation discharges the cases without diverging.
+	//
+	// The scheme: map the goal's leading binders to the self function's
+	// parameters and walk its body (reusing the ranking walker, ranking.go) to
+	// recover every self-call SITE — its path guard and its recursive arguments.
+	// Then, over those binders:
+	//   BASE — prove the goal where NO recursive path fires: the conjunction of
+	//          the negations of all site guards (the complement of the recursive
+	//          region).
+	//   STEP — for each site, prove the goal under that site's guard, assuming
+	//          the goal at the site's recursive arguments (the induction
+	//          hypothesis at a point of strictly smaller measure).
+	// Sound by well-founded induction on the measure the function is total by:
+	// the recursive arguments strictly decrease it, so a false property would
+	// fail either the base (it is false off the recursion) or some step (false
+	// at a point whose smaller-measure hypothesis holds). Obligations run at the
+	// reduced induction budget — a legitimate case discharges quickly, and a
+	// non-inductive goal fails fast instead of burning the full budget.
+	if dm, _ := c.st.GetMeta(h); dm != nil && dm.Termination == "measure" {
+		dParams := 0
+		bodyCur := d.Body
+		for bodyCur.K == "lam" {
+			dParams++
+			bodyCur = bodyCur.A
 		}
-		negOut, negCap := runZ3Budget(script(nil, []string{fmt.Sprintf("(assert (< %s 0))", consts[i])}, goal, false), directRlimit())
-		if negCap {
-			sawInvalid = true
-			continue
+		if dParams > 0 && len(p.Binders) >= dParams {
+			env := make([]smtVal, dParams)
+			for i := 0; i < dParams; i++ {
+				env[i] = smtVal{expr: consts[i], sort: binderSorts[i]}
+			}
+			w := &rankWalker{c: c, nparams: dParams}
+			w.walk(bodyCur, env, nil, false)
+			if !w.bad && len(w.sites) > 0 {
+				guardConj := func(gs []string) string {
+					if len(gs) == 0 {
+						return "true"
+					}
+					return "(and " + strings.Join(gs, " ") + ")"
+				}
+				discharge := func(extraAsserts []string, negated string) (bool, bool) {
+					out, cap := runZ3Budget(script(nil, extraAsserts, negated, false), directRlimit())
+					return strings.HasPrefix(out, "unsat"), cap
+				}
+				// BASE: the goal off the recursive region.
+				var baseAsserts []string
+				for _, site := range w.sites {
+					baseAsserts = append(baseAsserts, "(assert (not "+guardConj(site.guards)+"))")
+				}
+				proved, capHit := discharge(baseAsserts, goal)
+				allOK := !capHit && proved
+				if capHit {
+					sawInvalid = true
+				}
+				// STEP: each site under its guard, assuming the goal at its
+				// recursive arguments.
+				for _, site := range w.sites {
+					if !allOK {
+						break
+					}
+					ihAssign := map[int]string{}
+					for j := 0; j < dParams; j++ {
+						ihAssign[j] = site.args[j]
+					}
+					ih, err := c.formulaWith(d, h, p, ihAssign)
+					if err != nil {
+						allOK = false
+						break
+					}
+					sp, spCap := discharge([]string{"(assert " + guardConj(site.guards) + ")", "(assert " + ih + ")"}, goal)
+					if spCap {
+						sawInvalid = true
+						allOK = false
+						break
+					}
+					if !sp {
+						allOK = false
+						break
+					}
+				}
+				if allOK {
+					return propOutcome{status: "proven", method: "recursion induction on " + smtName(c.st.NameOf(h))}
+				}
+			}
 		}
-		if !strings.HasPrefix(negOut, "unsat") {
-			continue
-		}
-		baseAssign := map[int]string{}
-		for k, v := range consts {
-			baseAssign[k] = v
-		}
-		baseAssign[i] = "0"
-		baseGoal, err := c.formulaWith(d, h, p, baseAssign)
-		if err != nil {
-			continue
-		}
-		baseOut, baseCap := runZ3Budget(script(nil, nil, baseGoal, false), directRlimit())
-		if baseCap {
-			sawInvalid = true
-			continue
-		}
-		if !strings.HasPrefix(baseOut, "unsat") {
-			continue
-		}
-		ih, err := c.formulaWith(d, h, p, map[int]string{i: "k_ind"})
-		if err != nil {
-			continue
-		}
-		stepAssign := map[int]string{}
-		for k, v := range consts {
-			stepAssign[k] = v
-		}
-		stepAssign[i] = "(+ k_ind 1)"
-		stepGoal, err := c.formulaWith(d, h, p, stepAssign)
-		if err != nil {
-			continue
-		}
-		stepDecls := []string{"(declare-const k_ind Int)"}
-		stepAsserts := []string{"(assert (>= k_ind 0))", "(assert " + ih + ")"}
-		stepOut, stepCap := runZ3Budget(script(stepDecls, stepAsserts, stepGoal, false), directRlimit())
-		if stepCap {
-			sawInvalid = true
-			continue
-		}
-		if !strings.HasPrefix(stepOut, "unsat") {
-			continue
-		}
-		return propOutcome{status: "proven", method: fmt.Sprintf("integer induction on binder %d", i)}
 	}
 
 	// Full-budget direct FALLBACK (#50). The datatype-binder direct attempt

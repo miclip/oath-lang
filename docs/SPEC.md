@@ -670,7 +670,7 @@ reproducibility (given the same solver):
   acyclicity that halts the descent for structural recursion — so any goal
   mentioning the function would diverge. Pattern-free, the solver falls back to
   model-based instantiation, which terminates and discharges both the function's
-  direct laws and the integer-induction obligations (§7.2). This is part of the
+  direct laws and the recursion-induction obligations (§7.2). This is part of the
   current proof fragment and must be treated as trusted proof-kernel behavior by
   a conforming implementation.
 - `self` inside a property means the definition under proof and is translated
@@ -755,26 +755,32 @@ reproducibility (given the same solver):
   c(fresh) value, j := y, and remaining binders generalized. Sound by the
   lexicographic subterm order. (The corpus witness is merge, whose
   recursion shrinks either argument.)
-- **Peano integer induction (normative, #56).** When structural and
-  lexicographic induction fail, kernels MUST attempt Peano induction on each
-  `Int`-sorted binder in ascending index order, accepting the first binder whose
-  three obligations all discharge as `unsat`. For binder `i`:
-  (a) NEGATIVE — the goal with `i`'s constant asserted `< 0`;
-  (b) BASE — the goal with `i := 0`;
-  (c) STEP — the goal with `i := (+ k_ind 1)` under hypotheses `k_ind ≥ 0` and
-  the property with `i := k_ind` and every other binder universally generalized
-  (the induction hypothesis), where `k_ind` is a fresh `Int` constant.
-  Base plus step give the goal for all `i ≥ 0`, the negative case covers `i < 0`,
-  and the three ranges are exhaustive — sound because a strictly decreasing
-  sequence of non-negative integers is finite. Each obligation runs at the
-  reduced budget `(set-option :rlimit 4000000)` (not the full budget): a
-  legitimate case discharges quickly under model-based instantiation on the
-  pattern-free `measure` axiom, so capping only fails a non-inductive goal ~100x
-  faster and never changes a success. The corpus witness is
-  `replicate.length-is-n` (`length (replicate n x) = n`), which proves by
-  induction on the counter `n`; a function whose counter INCREASES toward a bound
-  (`range`, measure `hi − lo`) is not reached by single-binder Peano and returns
-  `unknown` here.
+- **Recursion induction (normative, #56).** When structural and lexicographic
+  induction fail and the definition UNDER PROOF is `measure`-total (§6.1.1), a
+  kernel MUST attempt induction along that function's OWN recursion. Map the
+  property's leading binders positionally to the function's parameters (`dParams`
+  = the function's arity; skip if the property has fewer binders). Walk the
+  function body — exactly as §6.1.1 collects self-call sites — to recover, over
+  those binder constants, every self-call SITE: its path guard `G_s` (the
+  conjunction of `if`-conditions reaching it, `true` if none) and the SMT
+  expression `A_s[j]` passed at each parameter position `j`. Skip if the walk
+  cannot fully analyze the body or finds no site. Then discharge, all `unsat`:
+  (a) BASE — the goal under `(assert (not G_s))` for EVERY site (the complement
+  of the recursive region — where no self-call fires);
+  (b) STEP — for each site, the goal under `(assert G_s)` and the induction
+  hypothesis `(assert IH_s)`, where `IH_s` is the property with binder `j`
+  substituted by `A_s[j]` for every `j < dParams` (the property at the recursive
+  call's arguments — a point of strictly smaller measure); any binder at index
+  `≥ dParams` is left unassigned and thus universally generalized in `IH_s`.
+  Sound by well-founded induction on the measure the function is total by: the
+  recursive arguments strictly decrease it, so a false property fails either the
+  base (false off the recursion) or some step (false where its smaller-measure
+  hypothesis holds). This subsumes single-counter induction and also reaches a
+  counter that INCREASES toward a bound. Each obligation runs at the reduced
+  budget `(set-option :rlimit 4000000)` under model-based instantiation on the
+  pattern-free `measure` axiom. Corpus witnesses: `replicate.length-is-n`
+  (`length (replicate n x) = n`, decreasing counter) and `range.length-is-span`
+  (`length (range lo hi) = hi − lo`, increasing counter, measure `hi − lo`).
 - **Deterministic proof budget (normative).** The per-goal budget is z3's
   resource limit — `(set-option :rlimit 400000000)` as the script's first
   command — not wall-clock time: same script + same solver version + same
@@ -822,12 +828,12 @@ reproducibility (given the same solver):
 - **Direct-attempt budget on inductive-eligible goals (normative, #50, #56).** A
   goal is INDUCTIVE-ELIGIBLE if it has at least one datatype-typed binder (a
   candidate for structural/lexicographic induction) OR at least one `Int`-typed
-  binder (a candidate for Peano integer induction, #56). Such a goal runs its
+  binder (a candidate for recursion induction, #56). Such a goal runs its
   DIRECT attempt at the reduced budget `(set-option :rlimit 4000000)`; its
-  structural, lexicographic, and integer induction, and the fallback below, use
-  the full `400000000` — except the integer-induction obligations themselves,
-  which are reduced-budget (above). A goal with no datatype-typed and no
-  `Int`-typed binder runs its single direct attempt at the full budget.
+  structural and lexicographic induction and the fallback below use the full
+  `400000000` — except the recursion-induction obligations themselves, which are
+  reduced-budget (above). A goal with no datatype-typed and no `Int`-typed binder
+  runs its single direct attempt at the full budget.
   The direct attempt on an inductive-eligible goal is almost always futile
   (the goal needs induction) yet at the full budget burns minutes of wall
   time before failing; every direct proof that SUCCEEDS in the corpus consumes
