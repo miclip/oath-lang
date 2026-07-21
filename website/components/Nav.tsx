@@ -19,6 +19,7 @@ export function Nav() {
           <Link href="/#guarantees">Guarantees</Link>
           <Link href="/essays">Essays</Link>
           <Link href="/playground">Playground</Link>
+          <Link href="/try">Try it</Link>
           <Link href="/docs">Docs</Link>
           <a
             href="https://github.com/miclip/oath-lang"
@@ -32,6 +33,7 @@ export function Nav() {
         <div className="nav-mobile">
           <Link href="/essays">Essays</Link>
           <Link href="/playground">Playground</Link>
+          <Link href="/try">Try it</Link>
           <Link href="/docs">Docs</Link>
         </div>
       </div>

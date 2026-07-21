@@ -29,6 +29,14 @@ export default function PlaygroundPage() {
             over the corpus. {stats.definitions} definitions, {stats.properties}{" "}
             properties, {stats.proven} proven for all inputs by Z3.
           </p>
+          <p style={{ marginTop: 14, fontFamily: "var(--font-mono)", fontSize: 13.5 }}>
+            This is the ledger of what&apos;s already proven. To run your{" "}
+            <em>own</em> definition through the real kernel — live, in your
+            browser —{" "}
+            <a href="/try" style={{ color: "var(--sage-bright)", textDecoration: "underline" }}>
+              try it →
+            </a>
+          </p>
           <PipelineDemo />
         </div>
 
