@@ -761,10 +761,18 @@ pre,
   display: flex;
   gap: 8px;
   align-items: baseline;
+  flex-wrap: wrap;
 }
 .pg-hash .k {
   color: var(--sage);
   flex-shrink: 0;
+}
+/* The 64-char hash is one unbreakable token; a flex child defaults to
+   min-width:auto and would force the card wider than a phone screen. Let it
+   shrink and wrap. */
+.pg-hash span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .pg-blurb {
   color: var(--cream-dim);
@@ -995,6 +1003,14 @@ pre,
   }
   .pg-list {
     max-height: 340px;
+  }
+  /* Reclaim horizontal room on phones: the desktop detail padding (30/32) eats
+     ~64px of a ~360px viewport. */
+  .pg-detail {
+    padding: 20px 16px;
+  }
+  .pg-detail h2 {
+    font-size: 24px;
   }
   .docs-layout {
     grid-template-columns: 1fr;
