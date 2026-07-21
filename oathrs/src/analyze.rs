@@ -244,10 +244,20 @@ pub fn termination(store: &Store, hash: &str, visiting: &mut HashSet<String>) ->
     // SPEC §6.1.1: structural descent failed — attempt a Z3-verified integer
     // ranking function. Succeeds only when a candidate integer measure strictly
     // decreases and stays >= 0 at every self-call under the path guards. With no
-    // solver host available this conservatively yields `unknown`.
-    if crate::prove::measure_terminates(store, hash) {
-        Term5::Measure
-    } else {
+    // solver host available this conservatively yields `unknown` — the `prove`
+    // feature (the Z3 host) is excluded from the wasm build, so the check is
+    // cfg-gated and falls back to `unknown` there.
+    #[cfg(feature = "prove")]
+    {
+        if crate::prove::measure_terminates(store, hash) {
+            Term5::Measure
+        } else {
+            Term5::Unknown
+        }
+    }
+    #[cfg(not(feature = "prove"))]
+    {
+        let _ = (store, hash);
         Term5::Unknown
     }
 }
