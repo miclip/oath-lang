@@ -1439,48 +1439,75 @@ impl<'a> Prover<'a> {
         }
     }
 
-    /// SPEC §7.2 (#56): Peano integer induction on the Int-sorted binder `k`.
-    /// Three obligations must ALL discharge as `unsat`:
-    ///   (a) NEGATIVE — the goal with `k`'s constant asserted `< 0`;
-    ///   (b) BASE     — the goal with `k := 0`;
-    ///   (c) STEP     — the goal with `k := (+ k_ind 1)` under `k_ind >= 0` and the
-    ///                  induction hypothesis (the property with `k := k_ind`, every
-    ///                  other binder universally generalized), `k_ind` a fresh Int.
-    /// `Ok(true)` iff all three are `unsat`; `Ok(false)` = validly failed;
-    /// `Err(reason)` = an obligation attempt was invalid (taint, §7.2). Each
-    /// obligation runs at the reduced budget `(set-option :rlimit 4000000)`.
-    fn try_induction_int(
+    /// SPEC §7.2 (#56): RECURSION INDUCTION. Applies only when the definition
+    /// under proof is `measure`-total (§6.1.1): induct along that function's OWN
+    /// recursion. Map the property's leading binders positionally to the function
+    /// parameters (`dparams` = arity; skip if the property has fewer binders).
+    /// Walk the body exactly as §6.1.1 collects self-call sites, over those binder
+    /// constants, to recover each site's path guard `G_s` and the argument
+    /// expressions `A_s[j]`. Then discharge, all `unsat` at the reduced budget:
+    ///   BASE — the goal under `(assert (not G_s))` for EVERY site;
+    ///   STEP — per site, the goal under `(assert G_s)` and `(assert IH_s)`, where
+    ///          `IH_s` is the property with binder `j` substituted by `A_s[j]` for
+    ///          every `j < dparams` (the property at the recursive arguments).
+    /// Sound by well-founded induction on the measure the function is total by.
+    fn try_recursion_induction(
         &self,
         def_hash: &str,
         prop: &Prop,
-        k: usize,
         candidates: &[(String, usize, bool)],
     ) -> Result<bool, String> {
-        if !matches!(prop.binders[k], Ty::Int) {
+        if !is_measure(self.store, def_hash) {
+            return Ok(false);
+        }
+        let dparams =
+            self.store.func_by_hash.get(def_hash).map(|fi| fi.param_names.len()).unwrap_or(0);
+        if dparams == 0 || prop.binders.len() < dparams {
             return Ok(false);
         }
         let budget = DIRECT_Z3_RLIMIT.min(z3_rlimit());
+        // The function parameters map positionally onto the property's leading
+        // binders, rendered as the goal's `b{j}` constants.
+        let param_env: Vec<(String, Ty)> = (0..dparams)
+            .map(|j| (format!("b{}", j), prop.binders[j].clone()))
+            .collect();
 
-        // (a) NEGATIVE: k stays constant b{k}; assert (< b{k} 0).
-        {
-            let mut cx = Cx::new(self.store);
-            let lem = self.build_lemmas(&mut cx, candidates);
+        // Declare every property binder as a `b{m}` constant and translate the
+        // goal in that environment. Shared by every obligation.
+        let build_goal = |cx: &mut Cx| -> Option<(String, String)> {
             let mut decls = String::new();
-            let mut senv: Vec<(String, Ty)> = Vec::with_capacity(prop.binders.len());
+            let mut env: Vec<(String, Ty)> = Vec::with_capacity(prop.binders.len());
             for (m, bt) in prop.binders.iter().enumerate() {
                 let vname = format!("b{}", m);
                 let s = sort_of(self.store, bt, &mut cx.sc);
                 decls.push_str(&format!("(declare-const {} {})\n", vname, s));
-                senv.push((vname, bt.clone()));
+                env.push((vname, bt.clone()));
             }
-            let goal = match cx.tr(&prop.body, &senv, &[], def_hash, &[]) {
-                Ok((g, _)) => g,
-                Err(_) => return Ok(false),
+            let goal = cx.tr(&prop.body, &env, &[], def_hash, &[]).ok()?.0;
+            Some((decls, goal))
+        };
+
+        // ---- BASE: (not G_s) for every site, then (not goal). ----
+        let nsites;
+        {
+            let mut cx = Cx::new(self.store);
+            let lem = self.build_lemmas(&mut cx, candidates);
+            let (sites, fresh_decls) = match collect_self_sites(&mut cx, def_hash, &param_env) {
+                Some(x) => x,
+                None => return Ok(false),
+            };
+            nsites = sites.len();
+            let (decls, goal) = match build_goal(&mut cx) {
+                Some(x) => x,
+                None => return Ok(false),
             };
             let mut tail = String::new();
             tail.push_str(&lem);
+            tail.push_str(&fresh_decls);
             tail.push_str(&decls);
-            tail.push_str(&format!("(assert (< b{} 0))\n", k));
+            for s in &sites {
+                tail.push_str(&format!("(assert (not {}))\n", guard_conj(&s.guards)));
+            }
             tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
             match run_z3(&Prover::assemble(&cx, &tail), budget) {
                 Ok(Outcome::Unsat) => {}
@@ -1489,69 +1516,36 @@ impl<'a> Prover<'a> {
             }
         }
 
-        // (b) BASE: k := 0.
-        {
+        // ---- STEP: per site, (G_s) and (IH_s), then (not goal). ----
+        for si in 0..nsites {
             let mut cx = Cx::new(self.store);
             let lem = self.build_lemmas(&mut cx, candidates);
-            let mut decls = String::new();
-            let mut senv: Vec<(String, Ty)> = Vec::with_capacity(prop.binders.len());
-            for (m, bt) in prop.binders.iter().enumerate() {
-                if m == k {
-                    senv.push(("0".to_string(), Ty::Int));
-                } else {
-                    let vname = format!("b{}", m);
-                    let s = sort_of(self.store, bt, &mut cx.sc);
-                    decls.push_str(&format!("(declare-const {} {})\n", vname, s));
-                    senv.push((vname, bt.clone()));
-                }
-            }
-            let goal = match cx.tr(&prop.body, &senv, &[], def_hash, &[]) {
-                Ok((g, _)) => g,
-                Err(_) => return Ok(false),
+            let (sites, fresh_decls) = match collect_self_sites(&mut cx, def_hash, &param_env) {
+                Some(x) => x,
+                None => return Ok(false),
             };
-            let mut tail = String::new();
-            tail.push_str(&lem);
-            tail.push_str(&decls);
-            tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
-            match run_z3(&Prover::assemble(&cx, &tail), budget) {
-                Ok(Outcome::Unsat) => {}
-                Ok(_) => return Ok(false),
-                Err(reason) => return Err(reason),
-            }
-        }
-
-        // (c) STEP: k := (+ k_ind 1) under k_ind >= 0 and the induction hypothesis.
-        {
-            let mut cx = Cx::new(self.store);
-            let lem = self.build_lemmas(&mut cx, candidates);
-            let mut decls = String::from("(declare-const k_ind Int)\n");
-            // IH: the property with k := k_ind, every other binder generalized.
+            let (guards, args) = {
+                let s = &sites[si];
+                (s.guards.clone(), s.args.clone())
+            };
+            // IH: property with binder j := A_s[j] for j < dparams, others generalized.
             let mut fixed: BTreeMap<usize, (String, Ty)> = BTreeMap::new();
-            fixed.insert(k, ("k_ind".to_string(), Ty::Int));
+            for j in 0..dparams {
+                fixed.insert(j, (args[j].clone(), prop.binders[j].clone()));
+            }
             let ih = match self.forall_prop(&mut cx, prop, def_hash, &fixed) {
                 Some(h) => h,
                 None => return Ok(false),
             };
-            // goal: property with k := (+ k_ind 1), other binders at b{m} constants.
-            let mut senv: Vec<(String, Ty)> = Vec::with_capacity(prop.binders.len());
-            for (m, bt) in prop.binders.iter().enumerate() {
-                if m == k {
-                    senv.push(("(+ k_ind 1)".to_string(), Ty::Int));
-                } else {
-                    let vname = format!("b{}", m);
-                    let s = sort_of(self.store, bt, &mut cx.sc);
-                    decls.push_str(&format!("(declare-const {} {})\n", vname, s));
-                    senv.push((vname, bt.clone()));
-                }
-            }
-            let goal = match cx.tr(&prop.body, &senv, &[], def_hash, &[]) {
-                Ok((g, _)) => g,
-                Err(_) => return Ok(false),
+            let (decls, goal) = match build_goal(&mut cx) {
+                Some(x) => x,
+                None => return Ok(false),
             };
             let mut tail = String::new();
             tail.push_str(&lem);
+            tail.push_str(&fresh_decls);
             tail.push_str(&decls);
-            tail.push_str("(assert (>= k_ind 0))\n");
+            tail.push_str(&format!("(assert {})\n", guard_conj(&guards)));
             tail.push_str(&format!("(assert {})\n", ih));
             tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
             match run_z3(&Prover::assemble(&cx, &tail), budget) {
@@ -1651,20 +1645,14 @@ impl<'a> Prover<'a> {
                     }
                 }
             }
-            // SPEC §7.2 (#56): Peano integer induction on each Int-sorted binder
-            // in ascending index order, after structural and lexicographic
-            // induction have failed. Accept the first binder whose three
-            // obligations (negative, base, step) all discharge as `unsat`.
-            for k in 0..prop.binders.len() {
-                if !matches!(prop.binders[k], Ty::Int) {
-                    continue;
-                }
-                match self.try_induction_int(def_hash, prop, k, candidates) {
-                    Ok(true) => return true,
-                    Ok(false) => {}
-                    Err(reason) => {
-                        taint.get_or_insert(reason);
-                    }
+            // SPEC §7.2 (#56): recursion induction, after structural and
+            // lexicographic induction have failed. Fires only when the definition
+            // under proof is `measure`-total, inducting along its OWN recursion.
+            match self.try_recursion_induction(def_hash, prop, candidates) {
+                Ok(true) => return true,
+                Ok(false) => {}
+                Err(reason) => {
+                    taint.get_or_insert(reason);
                 }
             }
         }
@@ -2219,6 +2207,61 @@ impl Cand {
 struct MSite {
     guards: Vec<String>,
     args: Vec<String>,
+}
+
+/// Conjunction of a site's reaching guards as one SMT boolean: `true` if none,
+/// the sole guard if one, `(and …)` otherwise.
+fn guard_conj(guards: &[String]) -> String {
+    if guards.is_empty() {
+        "true".to_string()
+    } else if guards.len() == 1 {
+        guards[0].clone()
+    } else {
+        format!("(and {})", guards.join(" "))
+    }
+}
+
+/// Walk `def_hash`'s body with the §6.1.1 self-call site collector, rendering
+/// guards and recursive-argument expressions over `param_env` (the SMT constants
+/// standing for the function's parameters). Side effects on `cx`: any function or
+/// sort a guard/argument references is declared into `cx`. Returns
+/// `(sites, fresh_decls)` — `fresh_decls` being declarations for any fresh
+/// constants the walk introduced for let/match/lam binders — or `None` if the
+/// walk cannot fully analyze the body (hard-fail) or records no self-call.
+fn collect_self_sites(
+    cx: &mut Cx,
+    def_hash: &str,
+    param_env: &[(String, Ty)],
+) -> Option<(Vec<MSite>, String)> {
+    let store: &Store = cx.store;
+    let (body, tyvars, n) = match store.def_by_hash.get(def_hash) {
+        Some(Def::Func { body, tyvars, .. }) => {
+            let n = store.func_by_hash.get(def_hash).map(|fi| fi.param_names.len()).unwrap_or(0);
+            (body.clone(), *tyvars, n)
+        }
+        _ => return None,
+    };
+    if param_env.len() != n {
+        return None;
+    }
+    let tyenv: Vec<Ty> = vec![Ty::Int; tyvars as usize];
+    let inner = strip_lams(&body, n);
+    let mut w = MeasureWalk {
+        cx,
+        self_hash: def_hash.to_string(),
+        tyenv,
+        n,
+        sites: Vec::new(),
+        hard_fail: false,
+        fresh: 0,
+        fresh_decls: String::new(),
+    };
+    let mut env = param_env.to_vec();
+    w.walk(inner, &mut env, &[], false);
+    if w.hard_fail || w.sites.is_empty() {
+        return None;
+    }
+    Some((w.sites, w.fresh_decls))
 }
 
 struct MeasureWalk<'a, 'c> {

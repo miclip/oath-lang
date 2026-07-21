@@ -770,7 +770,8 @@ reproducibility (given the same solver):
   (b) STEP — for each site, the goal under `(assert G_s)` and the induction
   hypothesis `(assert IH_s)`, where `IH_s` is the property with binder `j`
   substituted by `A_s[j]` for every `j < dParams` (the property at the recursive
-  call's arguments — a point of strictly smaller measure).
+  call's arguments — a point of strictly smaller measure); any binder at index
+  `≥ dParams` is left unassigned and thus universally generalized in `IH_s`.
   Sound by well-founded induction on the measure the function is total by: the
   recursive arguments strictly decrease it, so a false property fails either the
   base (false off the recursion) or some step (false where its smaller-measure
