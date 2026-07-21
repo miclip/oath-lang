@@ -33,15 +33,40 @@ var isWasm = true
 // putReport rather than inventing a second vocabulary, so what a visitor sees
 // is what `oath put` prints.
 type playgroundResult struct {
-	OK      bool        `json:"ok"`
-	Error   string      `json:"error,omitempty"`
-	Reports []putReport `json:"reports,omitempty"`
-	Notes   []string    `json:"notes,omitempty"`
+	OK          bool        `json:"ok"`
+	Error       string      `json:"error,omitempty"`
+	Reports     []putReport `json:"reports,omitempty"`
+	ProofReport string      `json:"proofReport,omitempty"`
+	Notes       []string    `json:"notes,omitempty"`
 }
 
 func init() {
 	js.Global().Set("oathCheck", js.FuncOf(oathCheck))
+	js.Global().Set("oathProve", js.FuncOf(oathProve))
 	js.Global().Set("oathKernelVersion", js.ValueOf(kernelVersion))
+}
+
+// oathProve(storeRoot, name) runs the REAL prover on a definition already put
+// into the store by oathCheck — direct + structural/lexicographic induction,
+// the lemma fixpoint, everything. Each z3 obligation is discharged through the
+// browser bridge (execZ3 → globalThis.oathZ3 → z3-solver worker). It returns
+// the prover's own report. Unlike the CLI this is available in the browser
+// precisely because the bridge stands in for the z3 subprocess.
+func oathProve(this js.Value, args []js.Value) any {
+	if len(args) < 2 {
+		return mustJSON(playgroundResult{Error: "oathProve(storeRoot, name) requires two arguments"})
+	}
+	st, err := OpenStore(args[0].String())
+	if err != nil {
+		return mustJSON(playgroundResult{Error: "could not open corpus: " + err.Error()})
+	}
+	out, err := apiProve(st, args[1].String())
+	res := playgroundResult{OK: err == nil, ProofReport: out}
+	if err != nil {
+		res.OK = false
+		res.Error = err.Error()
+	}
+	return mustJSON(res)
 }
 
 // oathCheck(storeRoot, source) runs the gate over `source` against the corpus
@@ -76,7 +101,7 @@ func oathCheck(this js.Value, args []js.Value) any {
 		}
 	}
 	res.Notes = append(res.Notes,
-		"Proof requires z3 and is not available in the browser: novel definitions report `tested` (200 deterministic, hash-seeded cases per property), never `proven`.")
+		"This is the gate: typecheck, 200 deterministic hash-seeded cases per property, and the termination/confinement analyses. A definition whose content hash matches the corpus shows its recorded proof. To PROVE a novel definition, call oathProve — z3 runs in the browser through the worker bridge.")
 	return mustJSON(res)
 }
 

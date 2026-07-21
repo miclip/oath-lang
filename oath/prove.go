@@ -1,10 +1,8 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"sort"
 	"strconv"
@@ -863,21 +861,15 @@ func runZ3Budget(script string, rl int64) (string, bool) {
 		}
 	}
 	full := header + script + "\n(get-info :rlimit)\n(get-info :reason-unknown)\n"
-	ctx, cancel := context.WithTimeout(context.Background(), proveWallCap)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "z3", "-in")
-	cmd.Stdin = strings.NewReader(full)
-	out, _ := cmd.CombinedOutput()
-	if ctx.Err() == context.DeadlineExceeded {
-		// SPEC §7.2: the wall cap is SAFETY-ONLY. Hitting it means this
-		// environment could not exhaust the rlimit budget — the attempt is
-		// INVALID, never an outcome. (The blind Rust kernel implemented
-		// invalidation correctly from the spec text; the reference
-		// originally recorded cap hits as unknown — caught by cross-kernel
-		// conformance, #17 epilogue.)
+	// execZ3 is the host-specific run step (SPEC §7.2 is agnostic to it): a z3
+	// subprocess natively, the browser z3-solver bridge under js/wasm. capHit
+	// means the wall-clock safety cap fired — an INVALID attempt, never an
+	// outcome (the reference once recorded cap hits as unknown; the blind Rust
+	// kernel caught it, #17 epilogue).
+	res, capHit := execZ3(full)
+	if capHit {
 		return "", true
 	}
-	res := string(out)
 	consumed, haveConsumed := int64(-1), false
 	if i := strings.Index(res, "(:rlimit "); i >= 0 {
 		s := strings.TrimRight(strings.TrimSpace(res[i+9:]), ")\n `")
@@ -1380,8 +1372,8 @@ func apiProve(st *Store, name string) (string, error) {
 	if len(d.Props) == 0 {
 		return fmt.Sprintf("%s swears no properties — nothing to prove.\n", name), nil
 	}
-	if _, err := exec.LookPath("z3"); err != nil {
-		return "", fmt.Errorf("z3 not found on PATH (brew install z3)")
+	if err := z3Available(); err != nil {
+		return "", err
 	}
 
 	var b strings.Builder
