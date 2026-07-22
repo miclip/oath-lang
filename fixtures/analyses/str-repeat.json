@@ -1,0 +1,15 @@
+{
+  "name": "str-repeat",
+  "hash": "26e89df43eb6070877604c117857efcbd7760fd65374d9d9b24493dc5d47d05c",
+  "kind": "func",
+  "termination": "measure",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 10,
+  "mutants_total": 11,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}
