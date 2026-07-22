@@ -1,0 +1,2 @@
+✓ prop bounded                  passed 200 cases
+✓ prop all-is-identity          passed 200 cases

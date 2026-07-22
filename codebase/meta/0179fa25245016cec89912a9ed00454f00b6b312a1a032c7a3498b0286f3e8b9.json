@@ -1,0 +1,30 @@
+{
+  "name": "str-take",
+  "prop_names": [
+    "bounded",
+    "all-is-identity"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 2
+  },
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "n",
+    "s"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1
+  ]
+}

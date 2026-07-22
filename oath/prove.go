@@ -420,7 +420,8 @@ var smtPrimOps = map[string]string{
 	"<": "<", "<=": "<=", "and": "and", "or": "or", "not": "not",
 	"==": "=", "++": "str.++", "str-len": "str.len",
 	"starts-with": "str.prefixof", "ends-with": "str.suffixof",
-	"str-contains": "str.contains",
+	"str-contains": "str.contains", "substring": "str.substr",
+	"str-index-of": "str.indexof", // emitted with a literal 0 offset, see tr
 }
 
 var smtPrimSorts = map[string]string{
@@ -428,6 +429,7 @@ var smtPrimSorts = map[string]string{
 	"<": "Bool", "<=": "Bool", "and": "Bool", "or": "Bool", "not": "Bool",
 	"==": "Bool", "++": "String", "str-len": "Int",
 	"starts-with": "Bool", "ends-with": "Bool", "str-contains": "Bool",
+	"substring": "String", "str-index-of": "Int",
 }
 
 // SMT str.prefixof/str.suffixof are written (needle haystack), but the surface
@@ -491,6 +493,11 @@ func (c *smtCtx) tr(t *Term, env []smtVal) (string, string, error) {
 				return "", "", err
 			}
 			parts = append(parts, a)
+		}
+		if t.Op == "str-index-of" {
+			// SMT str.indexof is (str.indexof s sub offset); the surface
+			// predicate searches from the start, so the offset is a literal 0.
+			return "(str.indexof " + parts[0] + " " + parts[1] + " 0)", "Int", nil
 		}
 		if smtPrimSwap[t.Op] && len(parts) == 2 {
 			parts[0], parts[1] = parts[1], parts[0]

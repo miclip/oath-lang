@@ -1,0 +1,15 @@
+{
+  "name": "str-drop",
+  "hash": "681df08523fa1bba30af80723bbe693f226422988df960343a9143e7c85b4412",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 1,
+  "mutants_total": 2,
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

@@ -1,0 +1,15 @@
+{
+  "name": "split",
+  "hash": "0ad931a07f9aaacee705a38a89474b6176020dc8edc94c690fc086c1f33c245b",
+  "kind": "func",
+  "termination": "measure",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 6,
+  "mutants_total": 15,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

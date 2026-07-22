@@ -1,0 +1,15 @@
+{
+  "name": "str-take",
+  "hash": "0179fa25245016cec89912a9ed00454f00b6b312a1a032c7a3498b0286f3e8b9",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

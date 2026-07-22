@@ -13,9 +13,11 @@ import (
 //
 // This closes that: a function is total if some well-founded integer MEASURE
 // μ over its parameters strictly decreases and stays ≥ 0 at every self-call,
-// given the path guards. We enumerate a small candidate set (each Int
-// parameter, and each ordered difference of two Int parameters) and let Z3
-// discharge, for every call site,
+// given the path guards. We enumerate a small candidate set — each Int
+// parameter, each ordered difference of two Int parameters, each Int-typed
+// field of a single-constructor datatype parameter (#57), and the string
+// length (str.len) of each Str parameter (#32 split) — and let Z3 discharge,
+// for every call site,
 //
 //     guards  ⟹  ( μ(args) < μ(params)  ∧  μ(params) ≥ 0 )
 //
@@ -215,11 +217,15 @@ func cloneEnv(env []smtVal) []smtVal {
 // selector (#57 — e.g. the count inside rle-expand's `Run`). μ(params) and
 // μ(args) are formed by substitution.
 type measure struct {
-	i, j int    // i alone (j<0), or (param_i - param_j) when sel==""
-	sel  string // if non-empty, μ = (sel param_i): a datatype-field measure
+	i, j   int    // i alone (j<0), or (param_i - param_j) when sel=="" && !strlen
+	sel    string // if non-empty, μ = (sel param_i): a datatype-field measure
+	strlen bool   // if set, μ = (str.len param_i): a string-length measure (#32)
 }
 
 func (m measure) at(vals []string) string {
+	if m.strlen {
+		return fmt.Sprintf("(str.len %s)", vals[m.i])
+	}
 	if m.sel != "" {
 		return fmt.Sprintf("(%s %s)", m.sel, vals[m.i])
 	}
@@ -245,6 +251,7 @@ func ranksTotal(st *Store, d *Def, h string) bool {
 	body := d.Body
 	var env []smtVal
 	var intParams []int
+	var strParams []int
 	for i := 0; body.K == "lam"; i++ {
 		sort := ""
 		if body.Ty != nil {
@@ -258,6 +265,9 @@ func ranksTotal(st *Store, d *Def, h string) bool {
 		}
 		if sort == "Int" {
 			intParams = append(intParams, i)
+		}
+		if sort == "String" {
+			strParams = append(strParams, i)
 		}
 		name := fmt.Sprintf("p%d", i)
 		c.decls = append(c.decls, fmt.Sprintf("(declare-const %s %s)", name, sort))
@@ -293,6 +303,13 @@ func ranksTotal(st *Store, d *Def, h string) bool {
 				}
 			}
 		}
+	}
+	// String-length measures (#32 split): μ = (str.len param_i) for a Str
+	// parameter. str.len is always ≥ 0, and Z3's sequence theory decides the
+	// strict-decrease obligation for a recursive call whose string argument is
+	// built from substring/index-of over the parameter.
+	for _, i := range strParams {
+		cands = append(cands, measure{i: i, strlen: true})
 	}
 	if len(cands) == 0 {
 		return false // no measure candidate

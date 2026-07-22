@@ -67,6 +67,7 @@ var opMutations = map[string][]string{
 var swappablePrims = map[string]bool{
 	"-": true, "/": true, "%": true, "<": true, "<=": true, "++": true,
 	"starts-with": true, "ends-with": true, "str-contains": true,
+	"str-index-of": true,
 }
 
 // genMutants produces every single-node mutation of the definition's body

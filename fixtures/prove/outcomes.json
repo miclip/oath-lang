@@ -2187,6 +2187,61 @@
       ]
     },
     {
+      "name": "split",
+      "hash": "0ad931a07f9aaacee705a38a89474b6176020dc8edc94c690fc086c1f33c245b",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "absent-is-single",
+          "proven": true
+        },
+        {
+          "name": "empty-sep-is-single",
+          "proven": true
+        },
+        {
+          "name": "never-empty",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "str-drop",
+      "hash": "681df08523fa1bba30af80723bbe693f226422988df960343a9143e7c85b4412",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "take-drop-concat",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "str-find",
+      "hash": "10c1c80cbb9ea518ded243750b76b904680cbcb3a567c32283cc527ab213426d",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-zero",
+          "proven": true
+        },
+        {
+          "name": "contains-iff-found",
+          "proven": true
+        },
+        {
+          "name": "absent-is-neg1",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "str-repeat",
       "hash": "26e89df43eb6070877604c117857efcbd7760fd65374d9d9b24493dc5d47d05c",
       "level": "proven",
@@ -2203,6 +2258,23 @@
         },
         {
           "name": "length-is-n-times",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "str-take",
+      "hash": "0179fa25245016cec89912a9ed00454f00b6b312a1a032c7a3498b0286f3e8b9",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "bounded",
+          "proven": true
+        },
+        {
+          "name": "all-is-identity",
           "proven": true
         }
       ]

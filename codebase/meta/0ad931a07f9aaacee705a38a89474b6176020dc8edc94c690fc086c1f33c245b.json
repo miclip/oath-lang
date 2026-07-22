@@ -1,0 +1,32 @@
+{
+  "name": "split",
+  "prop_names": [
+    "absent-is-single",
+    "empty-sep-is-single",
+    "never-empty"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "mutants_killed": 6,
+  "mutants_total": 15,
+  "termination": "measure",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "s",
+    "sep"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

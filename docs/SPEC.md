@@ -99,7 +99,8 @@ Producers (elaborators) MUST emit, and checkers MUST enforce:
 - Match arms in constructor-declaration order, exhaustive, with the ADT
   hash recorded in the term.
 - Primitive operators are the literal strings: `+ - * / % neg == < <= and
-  or not ++ str-len starts-with ends-with str-contains`.
+  or not ++ str-len starts-with ends-with str-contains substring
+  str-index-of`.
 
 ### 1.4 Surface syntax and elaboration
 
@@ -202,8 +203,8 @@ vector `S` of length `tyvars` (all initially unsolved):
   synthesizes. Reject if any `S` entry is unsolved. Backfill and CHECK each
   argument against its now-concrete field type.
 - PRIMITIVES with fixed operand types (`+ - * / % neg < <= and or not ++
-  str-len starts-with ends-with str-contains`) CHECK each operand against that
-  fixed type. `==` is polymorphic in
+  str-len starts-with ends-with str-contains substring str-index-of`) CHECK
+  each operand against that fixed type. `==` is polymorphic in
   its operand type: SYNTHESIZE whichever operand can be, then CHECK the other
   against it (so `(== xs (Nil))` infers the `(Nil)`); both must be the same
   non-function type, and — since the operands end at the same type — the
@@ -259,7 +260,9 @@ Detailed synthesis obligations:
 - Primitive arities and types are fixed: arithmetic and comparisons are over
   `Int`, `and`/`or`/`not` over `Bool`, `++`/`str-len` over `Str`, the string
   predicates `starts-with`/`ends-with`/`str-contains` take two `Str` and return
-  `Bool`, and `==` over equal first-order types only.
+  `Bool`, `substring` takes `(Str, Int, Int)` and returns `Str`,
+  `str-index-of` takes two `Str` and returns `Int`, and `==` over equal
+  first-order types only.
 
 ## 3. Dynamic semantics
 
@@ -284,6 +287,12 @@ Detailed synthesis obligations:
   a substring of `s` — decided on bytes (equivalently code points, since Str
   values are valid UTF-8); the empty string is a prefix, a suffix, and a
   substring of every string, and every string is all three of itself.
+  `(substring s i n)` and `(str-index-of s sub)` are **code-point indexed**
+  (like `str-len`, to match SMT-LIB): `substring` is the longest run of at most
+  `n` code points of `s` starting at code-point index `i`, empty when `i` is
+  outside `[0, str-len s)` or `n < 0`; `str-index-of` is the code-point index of
+  the first occurrence of `sub` in `s`, or `-1` when absent (`0` when `sub` is
+  empty).
 - **Structural equality** (`==`) on data and records compares constructor
   index and fields recursively; applying it to function values is a runtime
   error (statically prevented).
@@ -391,7 +400,8 @@ rendered by the value printer.
 - **Spec strength**: mutation catalog = type-preserving operator swaps
   (`+↔-`, `*→+`, `/→*`, `%→/`, `<↔<=`, `and↔or`), operand swaps of
   non-commutative binary prims (`- / % < <= ++ starts-with ends-with
-  str-contains`), integer literal ±1 and →0,
+  str-contains str-index-of`; the ternary `substring` is not swapped),
+  integer literal ±1 and →0,
   string literal → `""`, if-branch swap. Score = killed/total. Spec strength is
   computed for every function definition independent of its termination verdict:
   a `measure`-total function is mutated exactly like a `structural` one.
@@ -467,8 +477,8 @@ solver host available takes the conservative branch (no `measure` verdict).
    field selectors are well-formed for a field measure, #57) — except a
    type-variable parameter, which has no ground sort and is declared over a fresh
    uninterpreted sort so translations mentioning it stay well-formed. The check
-   fails only if step 3 yields NO candidate measure (a function with neither an
-   `Int` parameter nor an `Int` datatype field cannot be ranked here).
+   fails only if step 3 yields NO candidate measure (a function with no `Int`
+   parameter, `Int` datatype field, or `Str` parameter cannot be ranked here).
 2. Walk the body collecting self-call SITES. Each site records the path guards
    reaching it and the SMT expression passed at each parameter position:
    - `if c t e`: translate `c`; walk `t` with guard `c` added and `e` with
@@ -494,7 +504,12 @@ solver host available takes the conservative branch (no `measure` verdict).
    ordered difference `p_i - p_j` of two distinct `Int` parameters, then each
    `Int`-typed FIELD of a single-constructor datatype parameter `p_i` as its
    selector applied to the parameter, `(selector p_i)` (#57 — the counter inside
-   rle-expand's `Run`).
+   rle-expand's `Run`), then the string length `(str.len p_i)` of each `Str`
+   parameter (#32 — the shrinking string in `split`). `str.len` is always
+   non-negative, so the `μ(params) ≥ 0` conjunct is discharged trivially and the
+   obligation reduces to strict decrease; the argument expression is a
+   `str.substr`/`str.indexof` term, which Z3's sequence theory relates to the
+   parameter's length.
 4. A candidate μ succeeds iff, for EVERY site, the solver returns `unsat` for
    `(assert (and <site guards> (not (and (< μ(args) μ(params)) (>= μ(params) 0)))))`
    — i.e. `guards ⟹ (μ(args) < μ(params) ∧ μ(params) ≥ 0)` is valid. μ(params)
@@ -667,7 +682,10 @@ reproducibility (given the same solver):
   SMT `str.prefixof`/`str.suffixof` are written `(needle haystack)` while the
   surface predicates are subject-first, so `(starts-with s p)` emits
   `(str.prefixof p s)`. This swap is byte-visible in the script fixtures (§7.2)
-  and therefore normative.
+  and therefore normative. `substring`→`str.substr` with operands in surface
+  order; `str-index-of`→`str.indexof` with a literal `0` offset appended, so
+  `(str-index-of s sub)` emits `(str.indexof s sub 0)` (the surface predicate
+  searches from the start). Both are also byte-visible and normative.
 - Non-recursive callees are inlined (beta-reduction); recursive callees are
   declared uninterpreted. Their defining equation is asserted as a universally
   quantified axiom with the application as pattern **only when the callee is

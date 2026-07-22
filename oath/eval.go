@@ -244,6 +244,10 @@ func (e *evaluator) evalPrim(env []Value, slf string, t *Term) (Value, error) {
 		return vBool(strings.HasSuffix(args[0].Str, args[1].Str)), nil
 	case "str-contains":
 		return vBool(strings.Contains(args[0].Str, args[1].Str)), nil
+	case "str-index-of":
+		return vInt(runeIndexOf(args[0].Str, args[1].Str)), nil
+	case "substring":
+		return Value{K: "str", Str: runeSubstr(args[0].Str, args[1].Int, args[2].Int)}, nil
 	case "==":
 		eq, err := structEq(args[0], args[1])
 		if err != nil {
@@ -252,6 +256,33 @@ func (e *evaluator) evalPrim(env []Value, slf string, t *Term) (Value, error) {
 		return vBool(eq), nil
 	}
 	return Value{}, fmt.Errorf("unknown primitive %q at runtime", t.Op)
+}
+
+// runeIndexOf returns the code-point index of the first occurrence of sub in s,
+// or -1, matching SMT-LIB str.indexof (which counts code points, as str-len
+// does — not bytes).
+func runeIndexOf(s, sub string) int64 {
+	bi := strings.Index(s, sub)
+	if bi < 0 {
+		return -1
+	}
+	return int64(len([]rune(s[:bi])))
+}
+
+// runeSubstr matches SMT-LIB str.substr over code points: the longest substring
+// of s of length at most length starting at code-point index start; empty when
+// start is out of [0, len(s)) or length < 0.
+func runeSubstr(s string, start, length int64) string {
+	rs := []rune(s)
+	n := int64(len(rs))
+	if start < 0 || start >= n || length < 0 {
+		return ""
+	}
+	end := start + length
+	if end > n {
+		end = n
+	}
+	return string(rs[start:end])
 }
 
 // structEq is structural equality on first-order values. Functions are not

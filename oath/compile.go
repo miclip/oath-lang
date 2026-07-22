@@ -228,6 +228,28 @@ func strContains(s, sub string) bool {
 	return false
 }
 
+func strIndexOf(s, sub string) int64 {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return int64(len([]rune(s[:i])))
+		}
+	}
+	return -1
+}
+
+func strSubstr(s string, start, length int64) string {
+	rs := []rune(s)
+	n := int64(len(rs))
+	if start < 0 || start >= n || length < 0 {
+		return ""
+	}
+	end := start + length
+	if end > n {
+		end = n
+	}
+	return string(rs[start:end])
+}
+
 func structEq(a, b any) bool {
 	switch x := a.(type) {
 	case int64:
@@ -541,6 +563,10 @@ func (e *emitter) prim(t *Term, depth int, self string) (string, error) {
 		return fmt.Sprintf("any(strEndsWith(%s.(string), %s.(string)))", args[0], args[1]), nil
 	case "str-contains":
 		return fmt.Sprintf("any(strContains(%s.(string), %s.(string)))", args[0], args[1]), nil
+	case "str-index-of":
+		return fmt.Sprintf("any(strIndexOf(%s.(string), %s.(string)))", args[0], args[1]), nil
+	case "substring":
+		return fmt.Sprintf("any(strSubstr(%s.(string), %s.(int64), %s.(int64)))", args[0], args[1], args[2]), nil
 	}
 	return "", fmt.Errorf("cannot compile primitive %q", t.Op)
 }

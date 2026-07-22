@@ -1,5 +1,5 @@
 {
-  "name": "rot-f",
+  "name": "rot",
   "prop_names": [
     "zero-is-identity",
     "empty-absorbs",
@@ -10,7 +10,7 @@
     "decomposes-in-range"
   ],
   "aliases": {
-    "rot": {
+    "rot-f": {
       "prop_names": [
         "zero-is-identity",
         "empty-absorbs",
