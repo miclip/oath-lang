@@ -676,7 +676,26 @@ impl<'a> Cx<'a> {
                 Ok((expr, result_ty.unwrap()))
             }
             Term::App { .. } => self.tr_app(t, env, tyenv, self_hash, self_tyargs),
-            Term::Ref { .. } | Term::SelfRef { .. } => Err(()), // bare function value
+            // A bare reference to a NULLARY function is a complete 0-argument call
+            // (e.g. `one-two-three`); anything else is a bare function value,
+            // outside the fragment.
+            Term::Ref { hash, tyargs } => {
+                let n = self.store.func_by_hash.get(hash).map(|fi| fi.param_names.len());
+                if n == Some(0) {
+                    self.tr_call(hash, tyargs, &[], env, tyenv, self_hash, self_tyargs)
+                } else {
+                    Err(())
+                }
+            }
+            Term::SelfRef { tyargs } => {
+                let n = self.store.func_by_hash.get(self_hash).map(|fi| fi.param_names.len());
+                if n == Some(0) {
+                    let sh = self_hash.to_string();
+                    self.tr_call(&sh, tyargs, &[], env, tyenv, self_hash, self_tyargs)
+                } else {
+                    Err(())
+                }
+            }
         }
     }
 

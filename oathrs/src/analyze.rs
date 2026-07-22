@@ -826,16 +826,21 @@ pub fn to_json(a: &Analysis) -> String {
     o.push_str(&format!("  \"kind\": \"{}\"", kind));
     if !a.is_data {
         o.push_str(",\n");
-        o.push_str(&format!("  \"termination\": \"{}\",\n", a.termination.as_str()));
-        o.push_str("  \"confinement\": [\n");
-        for (i, c) in a.confinement.iter().enumerate() {
-            o.push_str(&format!("    \"{}\"", c));
-            if i + 1 < a.confinement.len() {
-                o.push(',');
+        o.push_str(&format!("  \"termination\": \"{}\"", a.termination.as_str()));
+        // A parameterless function has an empty confinement verdict; the field is
+        // omitted entirely (matching the fixtures) rather than emitted as `[]`.
+        if !a.confinement.is_empty() {
+            o.push_str(",\n");
+            o.push_str("  \"confinement\": [\n");
+            for (i, c) in a.confinement.iter().enumerate() {
+                o.push_str(&format!("    \"{}\"", c));
+                if i + 1 < a.confinement.len() {
+                    o.push(',');
+                }
+                o.push('\n');
             }
-            o.push('\n');
+            o.push_str("  ]");
         }
-        o.push_str("  ]");
         if let Some((killed, total)) = a.mutants {
             o.push_str(",\n");
             o.push_str(&format!("  \"mutants_killed\": {},\n", killed));

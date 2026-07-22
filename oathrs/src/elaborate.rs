@@ -190,11 +190,26 @@ impl Store {
                 "true" => Ok(Term::Bool(true)),
                 "false" => Ok(Term::Bool(false)),
                 _ => {
+                    // Bare name resolution (SPEC §1.4), in order: local variable,
+                    // the function being defined (emits `self`), constructor,
+                    // stored function. A generic reference used bare carries no
+                    // type arguments (omitted); the checker infers or rejects.
                     if let Some(i) = Self::lookup_var(ctx, name) {
-                        Ok(Term::Var(i))
-                    } else {
-                        hard(format!("unbound variable: {}", name))
+                        return Ok(Term::Var(i));
                     }
+                    if name == self_name {
+                        return Ok(Term::SelfRef { tyargs: vec![] });
+                    }
+                    if let Some((hash, idx, _)) = self.lookup_ctor(name)? {
+                        return Ok(Term::Ctor { hash, idx, tyargs: vec![], args: vec![] });
+                    }
+                    if let Some(fi) = self.func_by_name.get(name) {
+                        return Ok(Term::Ref { hash: fi.hash.clone(), tyargs: vec![] });
+                    }
+                    if self.all_func_names.contains(name) {
+                        return Err(EErr::Defer(name.to_string()));
+                    }
+                    hard(format!("unbound variable: {}", name))
                 }
             },
             Sexpr::Brace(items) => {
@@ -254,6 +269,18 @@ impl Store {
                         }
                         "match" => {
                             return self.elab_match(items, tyvars, self_name, self_tyvars, ctx)
+                        }
+                        "list" => {
+                            // LIST-LITERAL SUGAR (SPEC §1.4): `(list e0 … en)`
+                            // desugars to `(Cons e0 (Cons e1 … (Cons en (Nil))))`
+                            // with omitted (inferred) type arguments.
+                            return self.elab_list(
+                                &items[1..],
+                                tyvars,
+                                self_name,
+                                self_tyvars,
+                                ctx,
+                            );
                         }
                         "." => {
                             if items.len() != 3 {
@@ -347,6 +374,43 @@ impl Store {
             }
             _ => hard("invalid term syntax".into()),
         }
+    }
+
+    /// LIST-LITERAL SUGAR (SPEC §1.4). `(list e0 … en)` becomes the `Cons`/`Nil`
+    /// chain with every constructor's type arguments OMITTED (inferred, §2.1);
+    /// `(list)` is `(Nil)`. `Nil` and `Cons` must be in scope.
+    fn elab_list(
+        &self,
+        elems: &[Sexpr],
+        tyvars: &[String],
+        self_name: &str,
+        self_tyvars: u32,
+        ctx: &mut Vec<String>,
+    ) -> ER<Term> {
+        let (nil_hash, nil_idx, _) = match self.lookup_ctor("Nil")? {
+            Some(x) => x,
+            None => return hard("list literal requires the `Nil` constructor in scope".into()),
+        };
+        let (cons_hash, cons_idx, _) = match self.lookup_ctor("Cons")? {
+            Some(x) => x,
+            None => return hard("list literal requires the `Cons` constructor in scope".into()),
+        };
+        // Elaborate elements in source order, then fold into the chain from the
+        // tail so `e0` is the outermost `Cons`.
+        let mut terms = Vec::with_capacity(elems.len());
+        for e in elems {
+            terms.push(self.elab_term(e, tyvars, self_name, self_tyvars, ctx)?);
+        }
+        let mut acc = Term::Ctor { hash: nil_hash, idx: nil_idx, tyargs: vec![], args: vec![] };
+        for et in terms.into_iter().rev() {
+            acc = Term::Ctor {
+                hash: cons_hash.clone(),
+                idx: cons_idx,
+                tyargs: vec![],
+                args: vec![et, acc],
+            };
+        }
+        Ok(acc)
     }
 
     /// Detect a leading `[...]` type-argument bracket in an application. Returns

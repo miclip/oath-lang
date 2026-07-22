@@ -1336,3 +1336,41 @@ spec threads the expected type through `if` only in CHECK mode). A third kernel
 that left primitives synthesize-only would reject an inferred primitive operand the
 author could reasonably expect to work; §2.1 should state that CHECK threads
 through primitive operands as well.
+
+## 73. List-literal sugar (#/§1.4) + first PARAMETERLESS function: two latent gaps surfaced
+
+**Found by:** blind Rust implementation of the `(list …)` sugar (§1.4) and its
+witness `one-two-three = (list 1 2 3)` — the corpus's first 0-parameter proven
+function. **Outcome: no fixture divergence after the fixes** (all 119 hashes,
+canonical bytes, verify, analyses, and 305 direct scripts reproduce), **but the
+sugar's witness exercised two things the earlier corpus never had, each under-
+specified.**
+
+The sugar itself is unambiguous: `(list e0 … en)` → `(Cons e0 (Cons e1 … (Cons en
+(Nil))))` with omitted (inferred) type arguments, `(list)` → `(Nil)`, `list` a
+reserved head requiring `Nil`/`Cons` in scope. Implemented directly. Because it
+desugars to the exact constructor chain, `singleton`'s hash is unchanged and
+`one-two-three` matches. Two consequences needed judgment:
+
+- **Bare nullary references.** `one-two-three` is referenced as a BARE name inside
+  its own props (`(length [Int] one-two-three)`, `(== one-two-three …)`). §1.4's
+  name-resolution bullet ("local variable, the function being defined → `self`,
+  constructor, stored function") already covers this, but no prior corpus term used
+  a bare self/constructor/function name — elaboration had only ever resolved a bare
+  symbol to a local variable. Extended bare-name resolution to the full §1.4 order
+  (emitting `self` for the definition under proof, else a constructor/function
+  `ref` with omitted type args). SOUND and spec-mandated; simply newly exercised.
+  The SMT prover likewise had to learn that a bare reference to a NULLARY function
+  is a complete 0-argument call (§7.2: `self` is "translated the same way as a call
+  to the definition's hash") — previously every `ref`/`self` reaching the
+  translator was in application position, so a bare one was treated as an
+  out-of-fragment function value and the goal silently went unproven.
+
+- **Empty confinement in the analyses JSON.** §6.2 gives a 0-parameter function an
+  EMPTY confinement verdict. The fixtures (the only contract for the analyses JSON
+  layout) OMIT the `"confinement"` field entirely in that case rather than emitting
+  `"confinement": []`. The spec text describes the verdict, not the JSON shape, so
+  this is a format detail only the fixtures pin. Chose to omit the field when the
+  vector is empty, matching `one-two-three.json` byte-for-byte. A third kernel that
+  emitted `[]` would diverge on the analyses check; the analyses-output format
+  should be documented, or the field always emitted, to remove the ambiguity.
