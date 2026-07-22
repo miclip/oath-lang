@@ -1,0 +1,2 @@
+✓ prop has-three                passed 200 cases
+✓ prop is-the-chain             passed 200 cases

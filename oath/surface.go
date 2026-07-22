@@ -426,6 +426,30 @@ func (e *elab) elabTerm(x sx) (*Term, error) {
 				return &Term{K: "if", A: c, B: th, C: el}, nil
 			case "match":
 				return e.elabMatch(x)
+			case "list":
+				// List-literal sugar (#35): (list e0 e1 …) elaborates to
+				// (Cons e0 (Cons e1 … (Nil))) with the element type inferred, so
+				// it is byte-identical to the explicit chain. `Nil`/`Cons` must be
+				// defined; this is a reserved head, so a name `list` cannot be
+				// applied (there is none in the corpus).
+				consH, consIdx, ok1 := e.st.FindCtor("Cons")
+				nilH, nilIdx, ok2 := e.st.FindCtor("Nil")
+				if !ok1 || !ok2 {
+					return nil, e.errAt(x, "(list …) requires the List type (Nil and Cons) to be in scope")
+				}
+				var elems []*Term
+				for _, k := range x.Kids[1:] {
+					el, err := e.elabTerm(k)
+					if err != nil {
+						return nil, err
+					}
+					elems = append(elems, el)
+				}
+				acc := &Term{K: "ctor", Hash: nilH, Idx: nilIdx}
+				for i := len(elems) - 1; i >= 0; i-- {
+					acc = &Term{K: "ctor", Hash: consH, Idx: consIdx, Args: []Term{*elems[i], *acc}}
+				}
+				return acc, nil
 			case ".":
 				if len(x.Kids) != 3 || x.Kids[2].K != "sym" {
 					return nil, e.errAt(x, ". needs a record expression and a field name")

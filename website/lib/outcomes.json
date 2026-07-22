@@ -1308,6 +1308,23 @@
       ]
     },
     {
+      "name": "one-two-three",
+      "hash": "4e6e274edf28cab6aef4fc992ebb39da34e6abf2a312aecf4a7e4be0b51a7e51",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "has-three",
+          "proven": true
+        },
+        {
+          "name": "is-the-chain",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "or-else",
       "hash": "134cff6b69d5f3bb2599af1f8eb82206c37cefcb5b4ba29b6447b5b9dd0b3fbe",
       "level": "proven",

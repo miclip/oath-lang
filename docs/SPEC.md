@@ -123,7 +123,14 @@ input. A conforming surface elaborator MUST therefore match these rules:
 - Term syntax: ints, strings, `true`, `false`, variables, `(fn [(x ty) ...]
   body)`, `(let (x ty expr) body)`, `(if c t e)`, `(match scrut ((Ctor x ...)
   body) ...)`, record literals `{field expr ...}`, field access `(. expr
-  field)`, primitives, and named application `(name [tyargs] arg ...)`.
+  field)`, list literals `(list e0 e1 ...)`, primitives, and named application
+  `(name [tyargs] arg ...)`. The `[tyargs]` group MAY be omitted and inferred
+  (§2.1).
+- LIST-LITERAL SUGAR: `(list e0 e1 … eₙ)` elaborates to
+  `(Cons e0 (Cons e1 … (Cons eₙ (Nil))))` with the constructors' type arguments
+  omitted (inferred, §2.1); `(list)` is `(Nil)`. `list` is a reserved head — the
+  `Nil` and `Cons` constructors must be in scope. Because it desugars to the same
+  constructor chain the author would write, identity is unchanged.
 - Name resolution for a bare term name is, in order: local variable, the
   function currently being defined (emits `self`), constructor, stored function.
   Constructor lookup scans the current name index in ascending name order and
