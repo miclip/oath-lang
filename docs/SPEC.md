@@ -400,10 +400,13 @@ guarded by `lo<hi`). Because the counter is unbounded, the guard is essential
 and the check is discharged by the same solver host as §7.2. A kernel with no
 solver host available takes the conservative branch (no `measure` verdict).
 
-1. Strip the parameter lambdas. Declare each parameter as an SMT constant:
-   `Int` parameters (the measure candidates) as `Int`; every other parameter
-   over a fresh uninterpreted sort so translations mentioning it stay
-   well-formed. If there are no `Int` parameters, the check fails.
+1. Strip the parameter lambdas. Declare each parameter as an SMT constant at its
+   REAL sort — `Int` as `Int`, a datatype/record over its declared sort (so its
+   field selectors are well-formed for a field measure, #57) — except a
+   type-variable parameter, which has no ground sort and is declared over a fresh
+   uninterpreted sort so translations mentioning it stay well-formed. The check
+   fails only if step 3 yields NO candidate measure (a function with neither an
+   `Int` parameter nor an `Int` datatype field cannot be ranked here).
 2. Walk the body collecting self-call SITES. Each site records the path guards
    reaching it and the SMT expression passed at each parameter position:
    - `if c t e`: translate `c`; walk `t` with guard `c` added and `e` with

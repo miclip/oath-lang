@@ -1208,3 +1208,64 @@ to FRESH constants. For a `measure` function that extracts its counter through a
 which can only make an obligation HARDER to discharge — so such a function is
 conservatively left unproven, never wrongly proved. This follows the spec's
 explicit instruction to walk "exactly as §6.1.1 collects self-call sites".
+
+## 68. Datatype-field ranking measures (#57): §6.1.1 step 1 was not updated in step
+
+**Found by:** blind Rust implementation of #57 (a counter carried as a FIELD of a
+datatype parameter — `rle-expand` recurses on `(Run (- n 1) v)`). **Outcome: no
+fixture divergence** (`rle-expand` reproduces `termination: "measure"` and proves
+5/5, and exactly three definitions are `measure` corpus-wide) **— but §6.1.1 step 1
+still contains two clauses that #57 only patched in steps 2–3, forcing a judgment.**
+
+#57 updated §6.1.1 step 2 (match binds fields to the scrutinee's SELECTORS, adds
+the constructor tester as a guard) and step 3 (candidate measures gain each
+Int-typed field of a single-constructor datatype parameter, `(selector p_i)`). But
+step 1 was left reading:
+- "**If there are no Int parameters, the check fails.**" — yet `rle-expand`'s ONLY
+  parameter is `r : Run`, a non-Int datatype; a literal reading fails it before the
+  new field candidate is ever tried.
+- "**every other parameter over a fresh uninterpreted sort**" — yet a field measure
+  `(Run_Run_0 r)` and the step-2 selector bindings require `r` to carry its REAL
+  datatype sort; over a fresh uninterpreted sort the selectors are ill-formed.
+
+Both are internal contradictions between the (unchanged) step 1 and the (changed)
+steps 2–3, not genuine design questions — the feature cannot work under the literal
+step-1 text. Choices:
+- **Early-out:** build the FULL candidate set first (Int params, differences, then
+  single-constructor-datatype Int fields) and fail only when it is EMPTY — i.e.
+  "no Int parameter" becomes "no candidate measure". This is exactly what step 3's
+  new clause implies.
+- **Parameter sorts:** declare Int parameters as `Int`, a TYPE VARIABLE over a
+  fresh uninterpreted sort (divergence #65 stands — a type var never enters a
+  measure), and every OTHER parameter (datatype, record, …) over its REAL sort via
+  `sort_of` (registering the datatype), so selectors and matches stay well-formed.
+  This is the minimal deviation from step 1's "fresh uninterpreted sort" needed for
+  #57, restricted to the parameters whose structure the measure/selector actually
+  reads.
+
+Both choices are sound (a real datatype sort only adds TRUE datatype axioms —
+selector-of-constructor reduces `(Run_Run_0 (Run_Run a b))` to `a`, the intended
+semantics — so no measure is spuriously accepted) and are confirmed correct: all
+113 `analyses/*.json` reproduce byte-for-byte, with exactly `range`/`replicate`
+(positional) and `rle-expand` (field) as `measure`, and no other definition flipped.
+The §6.1.1 obligation scripts are internal to the termination verdict (not part of
+the `prove/scripts.txt` byte oracle), so the sort choice is unobservable beyond the
+verdict it produces.
+
+**Spec action recommended:** §6.1.1 step 1 should be updated in lockstep with #57 —
+"if there are no candidate measures, the check fails" (not "no Int parameters"), and
+"a single-constructor datatype parameter is declared over its real sort so its field
+selectors are available; a type variable over a fresh uninterpreted sort".
+
+## 69. Recursion induction CONSTRUCTOR case (#57, §7.2): trailing binders — moot here
+
+Continuation of divergence #67 (positional case). The #57 CONSTRUCTOR case maps ALL
+of the property's binders onto the single datatype parameter's fields (the field
+sorts must EQUAL the binder sorts, so the counts match exactly). There are therefore
+never "trailing" binders in the constructor case, and the ambiguity #67 raised for
+the positional case (binders beyond `dParams`) simply does not arise here. IH binder
+`j` is substituted by `(selector_j A_s)` of the single recursive argument `A_s`, per
+the spec. Recorded only to note the interaction was considered; no new choice. The
+STEP/BASE obligation scripts remain outside the byte oracle, so the constructor-case
+formatting is unobservable beyond the proof outcome, which reproduces `rle-expand`
+5/5 (`length-is-count-arg`, `every-element-is-v` by this case).
