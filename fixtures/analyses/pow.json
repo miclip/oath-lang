@@ -1,0 +1,15 @@
+{
+  "name": "pow",
+  "hash": "c2ef027e2d61fa9d181fc5b19d792d36300889104f91add0c318a87e334c3aa6",
+  "kind": "func",
+  "termination": "measure",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 15,
+  "mutants_total": 15,
+  "level": "proven",
+  "cases": 200,
+  "proven": 4
+}

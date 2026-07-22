@@ -1,0 +1,4 @@
+✓ prop zero-is-one              passed 200 cases
+✓ prop unfold-step              passed 200 cases
+✓ prop succ-exponent            passed 200 cases
+✓ prop one-base-is-one          passed 200 cases

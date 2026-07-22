@@ -1,0 +1,20 @@
+; Arithmetic standard library (#32). Proofs are over unbounded ints; laws that
+; hold only modulo int64 overflow (e.g. `0 <= pow b n` for a non-negative base)
+; are deliberately NOT asserted — the evaluator overflows and the kernel would
+; withhold the proof, so the corpus states only the laws that are true as written.
+
+; pow b n = b raised to the n-th power. Recurses on the integer exponent, so it is
+; `total` by the ranking function (µ = n) and its exponent laws prove by recursion
+; induction on the counter (#56).
+(defn pow [] [(b Int) (n Int)] Int
+  (if (<= n 0)
+      1
+      (* b (pow b (- n 1))))
+  (prop zero-is-one [(b Int)]
+    (== (pow b 0) 1))
+  (prop unfold-step [(b Int) (n Int)]
+    (if (< 0 n) (== (pow b n) (* b (pow b (- n 1)))) true))
+  (prop succ-exponent [(b Int) (n Int)]
+    (if (<= 0 n) (== (pow b (+ n 1)) (* b (pow b n))) true))
+  (prop one-base-is-one [(b Int) (n Int)]
+    (if (and (== b 1) (<= 0 n)) (== (pow b n) 1) true)))
