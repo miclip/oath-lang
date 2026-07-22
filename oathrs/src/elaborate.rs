@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, HashSet};
 
 const PRIMS: &[&str] = &[
     "+", "-", "*", "/", "%", "neg", "==", "<", "<=", "and", "or", "not", "++", "str-len",
+    "starts-with", "ends-with", "str-contains",
 ];
 
 #[derive(Clone)]

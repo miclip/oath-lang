@@ -487,7 +487,10 @@ fn op_subs(op: &str) -> Vec<&'static str> {
 }
 
 fn swappable(op: &str) -> bool {
-    matches!(op, "-" | "/" | "%" | "<" | "<=" | "++")
+    matches!(
+        op,
+        "-" | "/" | "%" | "<" | "<=" | "++" | "starts-with" | "ends-with" | "str-contains"
+    )
 }
 
 fn head_is_self(t: &Term) -> bool {

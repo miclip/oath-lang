@@ -237,6 +237,21 @@ fn eval_prim(op: &str, vs: &[Value]) -> Result<Value, String> {
         }
         // str-len counts Unicode code points, not bytes (normative asymmetry).
         "str-len" => Ok(Value::Int(string(&vs[0])?.chars().count() as i64)),
+        // Subject-first string predicates (SPEC §3), decided on bytes (= code
+        // points for valid UTF-8). The empty string is a prefix/suffix/substring
+        // of every string; every string is all three of itself.
+        "starts-with" => {
+            Ok(Value::Bool(string(&vs[0])?.as_bytes().starts_with(string(&vs[1])?.as_bytes())))
+        }
+        "ends-with" => {
+            Ok(Value::Bool(string(&vs[0])?.as_bytes().ends_with(string(&vs[1])?.as_bytes())))
+        }
+        "str-contains" => {
+            let s = string(&vs[0])?.as_bytes();
+            let sub = string(&vs[1])?.as_bytes();
+            let found = sub.is_empty() || s.windows(sub.len()).any(|w| w == sub);
+            Ok(Value::Bool(found))
+        }
         _ => Err(format!("unknown primitive {}", op)),
     }
 }

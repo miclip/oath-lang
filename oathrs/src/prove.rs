@@ -728,6 +728,13 @@ impl<'a> Cx<'a> {
             "not" => (format!("(not {})", e[0]), Ty::Bool),
             "++" => (format!("(str.++ {} {})", e[0], e[1]), Ty::Str),
             "str-len" => (format!("(str.len {})", e[0]), Ty::Int),
+            // SPEC §7.2 primitive translation: `str-contains` maps to `str.contains`
+            // in surface order, but `starts-with`/`ends-with` map to
+            // `str.prefixof`/`str.suffixof`, which are `(needle haystack)` while the
+            // surface predicates are subject-first — so the two operands SWAP.
+            "starts-with" => (format!("(str.prefixof {} {})", e[1], e[0]), Ty::Bool),
+            "ends-with" => (format!("(str.suffixof {} {})", e[1], e[0]), Ty::Bool),
+            "str-contains" => (format!("(str.contains {} {})", e[0], e[1]), Ty::Bool),
             _ => return Err(()),
         };
         Ok((sexpr, ty))

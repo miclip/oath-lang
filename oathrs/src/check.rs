@@ -567,6 +567,15 @@ impl<'a> Checker<'a> {
                 self.check(&mut args[0], &Ty::Str, ctx)?;
                 Ok(Ty::Int)
             }
+            "starts-with" | "ends-with" | "str-contains" => {
+                if args.len() != 2 {
+                    return Err(arity_err(2));
+                }
+                for a in args.iter_mut() {
+                    self.check(a, &Ty::Str, ctx)?;
+                }
+                Ok(Ty::Bool)
+            }
             _ => Err(format!("unknown primitive {}", op)),
         }
     }
