@@ -1,6 +1,6 @@
 {
   "name": "rot-hl",
-  "hash": "12db0571fb6c8d62820ab58eca5e3f531f5ca45bf5ba3ae6d1d12bb4cc1e2ad5",
+  "hash": "dc81f41c7ce1ec8f74d9c75a6c0212a65a4f49c62772453d5b6057e32f3c6b07",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

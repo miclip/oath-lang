@@ -1,0 +1,37 @@
+{
+  "name": "drop",
+  "tyvar_names": [
+    "a"
+  ],
+  "prop_names": [
+    "drop-all",
+    "drop-zero",
+    "drop-one",
+    "drop-length"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 4
+  },
+  "mutants_killed": 11,
+  "mutants_total": 11,
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "n",
+    "xs"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3
+  ]
+}
