@@ -78,8 +78,8 @@
 ;
 ; The round-trip `join-with sep (split s sep) == s` holds under testing but is
 ; left unproven: it needs induction over the str-len recursion (a prover
-; frontier — see the tracked follow-up), which the integer/datatype recursion
-; induction does not yet cover. The laws below are what proves today.
+; frontier, #58), which the integer/datatype recursion induction does not yet
+; cover. The laws below are what proves today.
 (defn split [] [(s Str) (sep Str)] (List Str)
   (if (if (< 0 (str-len sep)) (str-contains s sep) false)
       (let (i Int (str-index-of s sep))
