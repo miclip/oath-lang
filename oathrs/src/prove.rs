@@ -1578,8 +1578,10 @@ impl<'a> Prover<'a> {
             Some((decls, goal))
         };
 
-        // ---- BASE: (not G_s) for every site, then (not goal). ----
-        let nsites;
+        // ---- BASE: (not G_s) for every site, then (not goal). Also derive the
+        // guard GROUPS (site indices sharing a guard, in first-seen order) that
+        // STEP discharges together. ----
+        let groups: Vec<Vec<usize>>;
         {
             let mut cx = Cx::new(self.store);
             let lem = self.build_lemmas(&mut cx, candidates);
@@ -1587,7 +1589,17 @@ impl<'a> Prover<'a> {
                 Some(x) => x,
                 None => return Ok(false),
             };
-            nsites = sites.len();
+            // Group site indices by guard string, preserving first-seen order.
+            let mut gs: Vec<(String, Vec<usize>)> = Vec::new();
+            for (idx, s) in sites.iter().enumerate() {
+                let g = guard_conj(&s.guards);
+                if let Some(e) = gs.iter_mut().find(|(gg, _)| *gg == g) {
+                    e.1.push(idx);
+                } else {
+                    gs.push((g, vec![idx]));
+                }
+            }
+            groups = gs.into_iter().map(|(_, v)| v).collect();
             let (decls, goal) = match build_goal(&mut cx) {
                 Some(x) => x,
                 None => return Ok(false),
@@ -1607,24 +1619,29 @@ impl<'a> Prover<'a> {
             }
         }
 
-        // ---- STEP: per site, (G_s) and (IH_s), then (not goal). ----
-        for si in 0..nsites {
+        // ---- STEP (SPEC §7.2, grouped): per guard-group, assert `G_s` ONCE plus
+        // the induction hypothesis of EVERY site in the group, then `(not goal)`.
+        // A function with several recursive calls on one path (fib) thereby gets
+        // all their hypotheses at once; single-call functions have one site per
+        // guard, so their obligation is unchanged. ----
+        for group in &groups {
             let mut cx = Cx::new(self.store);
             let lem = self.build_lemmas(&mut cx, candidates);
             let (sites, fresh_decls) = match collect_self_sites(&mut cx, def_hash, &param_env) {
                 Some(x) => x,
                 None => return Ok(false),
             };
-            let (guards, args) = {
-                let s = &sites[si];
-                (s.guards.clone(), s.args.clone())
-            };
-            // IH: property at the recursive call's arguments (per the mapping).
-            let fixed = ih_fixed(&args);
-            let ih = match self.forall_prop(&mut cx, prop, def_hash, &fixed) {
-                Some(h) => h,
-                None => return Ok(false),
-            };
+            // All sites in a group share the guard; assert it once.
+            let guard = guard_conj(&sites[group[0]].guards);
+            let mut ihs = String::new();
+            for &si in group {
+                let fixed = ih_fixed(&sites[si].args);
+                let ih = match self.forall_prop(&mut cx, prop, def_hash, &fixed) {
+                    Some(h) => h,
+                    None => return Ok(false),
+                };
+                ihs.push_str(&format!("(assert {})\n", ih));
+            }
             let (decls, goal) = match build_goal(&mut cx) {
                 Some(x) => x,
                 None => return Ok(false),
@@ -1633,8 +1650,8 @@ impl<'a> Prover<'a> {
             tail.push_str(&lem);
             tail.push_str(&fresh_decls);
             tail.push_str(&decls);
-            tail.push_str(&format!("(assert {})\n", guard_conj(&guards)));
-            tail.push_str(&format!("(assert {})\n", ih));
+            tail.push_str(&format!("(assert {})\n", guard));
+            tail.push_str(&ihs);
             tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
             match run_z3(&Prover::assemble(&cx, &tail), budget) {
                 Ok(Outcome::Unsat) => {}
