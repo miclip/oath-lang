@@ -1,3 +1,4 @@
 ✓ prop base-zero                passed 200 cases
 ✓ prop base-one                 passed 200 cases
 ✓ prop unfold-step              passed 200 cases
+✓ prop nonneg                   passed 200 cases

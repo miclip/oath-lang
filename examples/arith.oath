@@ -21,10 +21,10 @@
 
 ; fib: the Fibonacci sequence. Recurses TWICE (fib(n-1), fib(n-2)) — the ranking
 ; function handles multiple recursive calls, each a decreasing counter under the
-; guard, so fib is `total` (µ = n). The definitional laws prove directly and pin
-; it exactly (17/17 mutants). (A value law like `0 <= fib n` would need the
-; induction step to assume BOTH recursive hypotheses at once — a completeness gap
-; for multi-call functions, noted for later; the definitional spec needs it not.)
+; guard, so fib is `total` (µ = n). Definitional laws prove directly; the value
+; law `0 <= fib n` proves by recursion induction, whose STEP assumes BOTH
+; recursive hypotheses (fib(n-1) >= 0 and fib(n-2) >= 0) at once — the multi-call
+; induction the two-site recursion needs.
 (defn fib [] [(n Int)] Int
   (if (<= n 1)
       n
@@ -32,4 +32,6 @@
   (prop base-zero [] (== (fib 0) 0))
   (prop base-one [] (== (fib 1) 1))
   (prop unfold-step [(n Int)]
-    (if (< 1 n) (== (fib n) (+ (fib (- n 1)) (fib (- n 2)))) true)))
+    (if (< 1 n) (== (fib n) (+ (fib (- n 1)) (fib (- n 2)))) true))
+  (prop nonneg [(n Int)]
+    (if (<= 0 n) (<= 0 (fib n)) true)))
