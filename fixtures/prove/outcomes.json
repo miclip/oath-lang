@@ -2032,6 +2032,27 @@
       ]
     },
     {
+      "name": "str-repeat",
+      "hash": "26e89df43eb6070877604c117857efcbd7760fd65374d9d9b24493dc5d47d05c",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "zero-is-empty",
+          "proven": true
+        },
+        {
+          "name": "unfold-step",
+          "proven": true
+        },
+        {
+          "name": "length-is-n-times",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "sum",
       "hash": "f71c16cff9cf6d1b56f59476bc8235f015b851c97c61d64f892d34962026f616",
       "level": "proven",

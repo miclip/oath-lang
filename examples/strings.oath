@@ -1,0 +1,17 @@
+; String standard library (#32). Str is a primitive byte sequence with `++`
+; (concat) and `str-len`; both are in the provable fragment (str.++ / str.len),
+; so String laws prove for all inputs.
+
+; str-repeat: s concatenated n times. Recurses on the integer counter n, so it is
+; `total` by the ranking function (µ = n) and its length law proves by recursion
+; induction on the counter (#56/#57) — including the nonlinear `n * str-len s`.
+(defn str-repeat [] [(s Str) (n Int)] Str
+  (if (<= n 0)
+      ""
+      (++ s (str-repeat s (- n 1))))
+  (prop zero-is-empty [(s Str)]
+    (== (str-repeat s 0) ""))
+  (prop unfold-step [(s Str) (n Int)]
+    (if (< 0 n) (== (str-repeat s n) (++ s (str-repeat s (- n 1)))) true))
+  (prop length-is-n-times [(s Str) (n Int)]
+    (if (<= 0 n) (== (str-len (str-repeat s n)) (* n (str-len s))) true)))
