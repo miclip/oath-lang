@@ -1372,15 +1372,65 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 	if dm, _ := c.st.GetMeta(h); dm != nil && dm.Termination == "measure" {
 		dParams := 0
 		bodyCur := d.Body
+		var param0Ty *Ty
 		for bodyCur.K == "lam" {
+			if dParams == 0 {
+				param0Ty = bodyCur.Ty
+			}
 			dParams++
 			bodyCur = bodyCur.A
 		}
-		if dParams > 0 && len(p.Binders) >= dParams {
-			env := make([]smtVal, dParams)
+
+		// Map the property's binders to the function's inputs. `env` is what the
+		// walker treats as the parameters; `ihArg` gives, per site, the recursive-
+		// call expression for property binder j (ok=false leaves it generalized).
+		var env []smtVal
+		var ihArg func(site rankSite, j int) (string, bool)
+
+		// Constructor case (#57): a single datatype parameter built from the
+		// property's binders — the law applies f to `(ctor b0 b1 …)` (rle-expand's
+		// `(Run n v)`). Bind the parameter to that construction; a site's recursive
+		// argument is then a datatype value, deconstructed by the selectors.
+		if dParams == 1 && param0Ty != nil {
+			if s, err := c.sortOf(param0Ty); err == nil {
+				if dt := c.dtBySort[s]; dt != nil && len(dt.ctors) == 1 &&
+					len(dt.fields[0]) == len(p.Binders) && len(dt.sels[0]) == len(p.Binders) {
+					match := true
+					for j := range p.Binders {
+						if dt.fields[0][j] != binderSorts[j] {
+							match = false
+							break
+						}
+					}
+					if match {
+						parts := []string{dt.ctors[0]}
+						for j := range p.Binders {
+							parts = append(parts, consts[j])
+						}
+						env = []smtVal{{expr: "(" + strings.Join(parts, " ") + ")", sort: s}}
+						sels := dt.sels[0]
+						ihArg = func(site rankSite, j int) (string, bool) {
+							return fmt.Sprintf("(%s %s)", sels[j], site.args[0]), true
+						}
+					}
+				}
+			}
+		}
+		// Positional case: the property's leading binders ARE the parameters.
+		if env == nil && dParams > 0 && len(p.Binders) >= dParams {
+			env = make([]smtVal, dParams)
 			for i := 0; i < dParams; i++ {
 				env[i] = smtVal{expr: consts[i], sort: binderSorts[i]}
 			}
+			ihArg = func(site rankSite, j int) (string, bool) {
+				if j < dParams {
+					return site.args[j], true
+				}
+				return "", false
+			}
+		}
+
+		if env != nil {
 			w := &rankWalker{c: c, nparams: dParams}
 			w.walk(bodyCur, env, nil, false)
 			if !w.bad && len(w.sites) > 0 {
@@ -1404,15 +1454,17 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 				if capHit {
 					sawInvalid = true
 				}
-				// STEP: each site under its guard, assuming the goal at its
-				// recursive arguments.
+				// STEP: each site under its guard, assuming the property at its
+				// recursive arguments (binders substituted via ihArg).
 				for _, site := range w.sites {
 					if !allOK {
 						break
 					}
 					ihAssign := map[int]string{}
-					for j := 0; j < dParams; j++ {
-						ihAssign[j] = site.args[j]
+					for j := range p.Binders {
+						if expr, ok := ihArg(site, j); ok {
+							ihAssign[j] = expr
+						}
 					}
 					ih, err := c.formulaWith(d, h, p, ihAssign)
 					if err != nil {

@@ -7,12 +7,13 @@
     "anchor-with-zero-run"
   ],
   "guarantee": {
-    "level": "tested",
-    "cases": 200
+    "level": "proven",
+    "cases": 200,
+    "proven": 4
   },
   "mutants_killed": 2,
   "mutants_total": 2,
-  "termination": "unknown",
+  "termination": "structural",
   "spec_author": "claude-main",
   "body_author": "claude-main",
   "author": "claude-main",
@@ -21,5 +22,11 @@
   ],
   "confinement": [
     ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3
   ]
 }

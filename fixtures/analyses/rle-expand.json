@@ -2,12 +2,13 @@
   "name": "rle-expand",
   "hash": "f1579b18e3072e35e22654b26ec5a147eb2ea3c3d649ec254fce20d87fcb6b58",
   "kind": "func",
-  "termination": "unknown",
+  "termination": "measure",
   "confinement": [
     ""
   ],
   "mutants_killed": 10,
   "mutants_total": 10,
-  "level": "tested",
-  "cases": 200
+  "level": "proven",
+  "cases": 200,
+  "proven": 5
 }

@@ -1536,25 +1536,25 @@
     {
       "name": "rle-decode",
       "hash": "73f058b24af1eb15fa85b13dfa3308b32c3e61da629a9899bcaee7c8e3bea8aa",
-      "level": "tested",
-      "proven_count": 0,
+      "level": "proven",
+      "proven_count": 4,
       "prop_count": 4,
       "props": [
         {
           "name": "nil-decodes-empty",
-          "proven": false
+          "proven": true
         },
         {
           "name": "cons-law",
-          "proven": false
+          "proven": true
         },
         {
           "name": "distributes-over-append",
-          "proven": false
+          "proven": true
         },
         {
           "name": "anchor-with-zero-run",
-          "proven": false
+          "proven": true
         }
       ]
     },
@@ -1594,29 +1594,29 @@
     {
       "name": "rle-expand",
       "hash": "f1579b18e3072e35e22654b26ec5a147eb2ea3c3d649ec254fce20d87fcb6b58",
-      "level": "tested",
-      "proven_count": 0,
+      "level": "proven",
+      "proven_count": 5,
       "prop_count": 5,
       "props": [
         {
           "name": "nonpositive-is-empty",
-          "proven": false
+          "proven": true
         },
         {
           "name": "peel-one",
-          "proven": false
+          "proven": true
         },
         {
           "name": "length-is-count-arg",
-          "proven": false
+          "proven": true
         },
         {
           "name": "every-element-is-v",
-          "proven": false
+          "proven": true
         },
         {
           "name": "anchor-three-sevens",
-          "proven": false
+          "proven": true
         }
       ]
     },

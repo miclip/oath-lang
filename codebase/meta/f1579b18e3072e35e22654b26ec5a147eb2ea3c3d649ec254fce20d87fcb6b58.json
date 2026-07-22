@@ -8,12 +8,13 @@
     "anchor-three-sevens"
   ],
   "guarantee": {
-    "level": "tested",
-    "cases": 200
+    "level": "proven",
+    "cases": 200,
+    "proven": 5
   },
   "mutants_killed": 10,
   "mutants_total": 10,
-  "termination": "unknown",
+  "termination": "measure",
   "spec_author": "claude-main",
   "body_author": "claude-main",
   "author": "claude-main",
@@ -22,5 +23,12 @@
   ],
   "confinement": [
     ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3,
+    4
   ]
 }

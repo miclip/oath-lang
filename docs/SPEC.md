@@ -400,22 +400,26 @@ guarded by `lo<hi`). Because the counter is unbounded, the guard is essential
 and the check is discharged by the same solver host as §7.2. A kernel with no
 solver host available takes the conservative branch (no `measure` verdict).
 
-1. Strip the parameter lambdas. Declare each parameter as an SMT constant:
-   `Int` parameters (the measure candidates) as `Int`; every other parameter
-   over a fresh uninterpreted sort so translations mentioning it stay
-   well-formed. If there are no `Int` parameters, the check fails.
+1. Strip the parameter lambdas. Declare each parameter as an SMT constant at its
+   REAL sort — `Int` as `Int`, a datatype/record over its declared sort (so its
+   field selectors are well-formed for a field measure, #57) — except a
+   type-variable parameter, which has no ground sort and is declared over a fresh
+   uninterpreted sort so translations mentioning it stay well-formed. The check
+   fails only if step 3 yields NO candidate measure (a function with neither an
+   `Int` parameter nor an `Int` datatype field cannot be ranked here).
 2. Walk the body collecting self-call SITES. Each site records the path guards
    reaching it and the SMT expression passed at each parameter position:
    - `if c t e`: translate `c`; walk `t` with guard `c` added and `e` with
      `(not c)` added. If `c` is untranslatable, both branches are POISONED.
    - `let`: bind the variable to its translated value (or, on failure, a fresh
      constant of the bound type) and walk the body.
-   - `match`: walk the scrutinee; for each arm, bind the constructor's fields
-     to fresh constants of their sorts (determined from the scrutinee's sort)
-     and walk the arm. The constructor test is OMITTED from the guard — a
-     weaker guard only makes the decrease harder to prove, never easier, so
-     this is sound. If the field sorts cannot be determined, the arm is
-     poisoned.
+   - `match`: walk the scrutinee; for each arm, bind the constructor's fields to
+     the scrutinee's SELECTORS applied to the scrutinee's translated expression —
+     so a measure over a datatype field (#57) stays connected to the counter the
+     body reads (`(match r ((Run n v) …))` binds `n` to `(cnt r)`) — and add the
+     constructor tester `((_ is Ctor) scrut)` as a path guard, omitted for a
+     single-constructor datatype where the tester is always true. Walk the arm.
+     If the field sorts or selectors cannot be determined, the arm is poisoned.
    - `lam` inside the body: bind its parameter to a fresh constant and walk.
    - an application spine bottoming at `self`: record a site with the spine's
      argument terms. A `self` reached with fewer arguments than parameters, on
@@ -424,8 +428,11 @@ solver host available takes the conservative branch (no `measure` verdict).
    If the hard-fail flag is set or no site is recorded, the check fails. (This
    COMPLETENESS is the soundness condition: every self-call must be discharged,
    so any call the walk cannot fully analyze forfeits the whole attempt.)
-3. Candidate measures, in order: each `Int` parameter `p_i` by itself, then
-   each ordered difference `p_i - p_j` of two distinct `Int` parameters.
+3. Candidate measures, in order: each `Int` parameter `p_i` by itself, then each
+   ordered difference `p_i - p_j` of two distinct `Int` parameters, then each
+   `Int`-typed FIELD of a single-constructor datatype parameter `p_i` as its
+   selector applied to the parameter, `(selector p_i)` (#57 — the counter inside
+   rle-expand's `Run`).
 4. A candidate μ succeeds iff, for EVERY site, the solver returns `unsat` for
    `(assert (and <site guards> (not (and (< μ(args) μ(params)) (>= μ(params) 0)))))`
    — i.e. `guards ⟹ (μ(args) < μ(params) ∧ μ(params) ≥ 0)` is valid. μ(params)
@@ -452,9 +459,9 @@ decision procedure (which is complete, so it never reports the solver's
 `unknown`): no wall clock or rlimit participates, so `measure` is deterministic
 and reproducible across kernels. Soundness: a strictly decreasing sequence of
 non-negative integers is finite, so a μ clearing every site witnesses that no
-infinite self-call chain exists. The measure ranges over parameters only; a
-counter carried as a FIELD of a datatype parameter (extracted by `match`) is
-not yet reached and stays `unknown`.
+infinite self-call chain exists. The measure ranges over parameters and, for a
+single-constructor datatype parameter, its `Int`-typed fields (#57) — reaching a
+counter extracted by `match`, as in rle-expand's `Run`.
 
 ### 6.2 Confinement algorithm
 
@@ -757,21 +764,29 @@ reproducibility (given the same solver):
   recursion shrinks either argument.)
 - **Recursion induction (normative, #56).** When structural and lexicographic
   induction fail and the definition UNDER PROOF is `measure`-total (§6.1.1), a
-  kernel MUST attempt induction along that function's OWN recursion. Map the
-  property's leading binders positionally to the function's parameters (`dParams`
-  = the function's arity; skip if the property has fewer binders). Walk the
-  function body — exactly as §6.1.1 collects self-call sites — to recover, over
-  those binder constants, every self-call SITE: its path guard `G_s` (the
-  conjunction of `if`-conditions reaching it, `true` if none) and the SMT
-  expression `A_s[j]` passed at each parameter position `j`. Skip if the walk
-  cannot fully analyze the body or finds no site. Then discharge, all `unsat`:
+  kernel MUST attempt induction along that function's OWN recursion. First map
+  the property's binders to the function's inputs, choosing the FIRST applicable:
+  - CONSTRUCTOR case (#57): the function has ONE parameter of a single-constructor
+    datatype whose field sorts equal the property's binder sorts (the law applies
+    the function to `(ctor b0 b1 …)`, as `length (rle-expand (Run n v)) = n`).
+    Bind that parameter to `(ctor b0 b1 …)`; a site's recursive argument is then a
+    datatype value, and IH binder `j` is substituted by `(selector_j A_s)` where
+    `A_s` is that single argument.
+  - POSITIONAL case: otherwise, if the property has at least `dParams` binders
+    (`dParams` = the function's arity), the leading binders ARE the parameters;
+    IH binder `j` (`j < dParams`) is substituted by the argument `A_s[j]` passed
+    at position `j`, and binders at index `≥ dParams` are left generalized.
+  If neither applies, skip. Walk the function body — exactly as §6.1.1 collects
+  self-call sites, over the mapped binder constants — to recover every self-call
+  SITE: its path guard `G_s` (the conjunction of `if`-conditions reaching it,
+  `true` if none) and its recursive argument(s). Skip if the walk cannot fully
+  analyze the body or finds no site. Then discharge, all `unsat`:
   (a) BASE — the goal under `(assert (not G_s))` for EVERY site (the complement
   of the recursive region — where no self-call fires);
   (b) STEP — for each site, the goal under `(assert G_s)` and the induction
-  hypothesis `(assert IH_s)`, where `IH_s` is the property with binder `j`
-  substituted by `A_s[j]` for every `j < dParams` (the property at the recursive
-  call's arguments — a point of strictly smaller measure); any binder at index
-  `≥ dParams` is left unassigned and thus universally generalized in `IH_s`.
+  hypothesis `(assert IH_s)`, where `IH_s` is the property with each binder
+  substituted per the mapping above (the property at the recursive call's
+  arguments — a point of strictly smaller measure).
   Sound by well-founded induction on the measure the function is total by: the
   recursive arguments strictly decrease it, so a false property fails either the
   base (false off the recursion) or some step (false where its smaller-measure

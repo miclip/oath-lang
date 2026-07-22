@@ -912,6 +912,16 @@ struct Prover<'a> {
     store: &'a Store,
 }
 
+/// How recursion induction (§7.2, #56/#57) maps a property's binders to the
+/// measure-total function's inputs.
+enum RecCase {
+    /// The leading `dparams` binders ARE the parameters.
+    Positional { dparams: usize },
+    /// A single parameter of a single-constructor datatype `csmt` with `nfields`
+    /// fields; the property binders map onto the fields.
+    Constructor { csmt: String, nfields: usize },
+}
+
 impl<'a> Prover<'a> {
     /// Assemble the CORE self-contained script (the bytes the byte oracle
     /// hashes, SPEC §7.2): datatype declarations, then function declarations and
@@ -1439,17 +1449,22 @@ impl<'a> Prover<'a> {
         }
     }
 
-    /// SPEC §7.2 (#56): RECURSION INDUCTION. Applies only when the definition
+    /// SPEC §7.2 (#56, #57): RECURSION INDUCTION. Applies only when the definition
     /// under proof is `measure`-total (§6.1.1): induct along that function's OWN
-    /// recursion. Map the property's leading binders positionally to the function
-    /// parameters (`dparams` = arity; skip if the property has fewer binders).
-    /// Walk the body exactly as §6.1.1 collects self-call sites, over those binder
-    /// constants, to recover each site's path guard `G_s` and the argument
-    /// expressions `A_s[j]`. Then discharge, all `unsat` at the reduced budget:
+    /// recursion. Map the property's binders to the function's inputs, first
+    /// applicable of:
+    ///   CONSTRUCTOR (#57) — one parameter of a single-constructor datatype whose
+    ///     field sorts equal the property's binder sorts; bind it to
+    ///     `(ctor b0 b1 …)`, and IH binder `j` := `(selector_j A_s)` of the single
+    ///     recursive argument `A_s`.
+    ///   POSITIONAL — otherwise, if the property has at least `dparams` binders, the
+    ///     leading binders ARE the parameters; IH binder `j` (`j < dparams`) :=
+    ///     `A_s[j]`, binders at index `>= dparams` left generalized.
+    /// Walk the body exactly as §6.1.1 collects self-call sites (over the mapped
+    /// binder constants) to recover each site's guard `G_s` and recursive
+    /// argument(s). Then discharge, all `unsat` at the reduced budget:
     ///   BASE — the goal under `(assert (not G_s))` for EVERY site;
-    ///   STEP — per site, the goal under `(assert G_s)` and `(assert IH_s)`, where
-    ///          `IH_s` is the property with binder `j` substituted by `A_s[j]` for
-    ///          every `j < dparams` (the property at the recursive arguments).
+    ///   STEP — per site, the goal under `(assert G_s)` and `(assert IH_s)`.
     /// Sound by well-founded induction on the measure the function is total by.
     fn try_recursion_induction(
         &self,
@@ -1460,17 +1475,93 @@ impl<'a> Prover<'a> {
         if !is_measure(self.store, def_hash) {
             return Ok(false);
         }
-        let dparams =
-            self.store.func_by_hash.get(def_hash).map(|fi| fi.param_names.len()).unwrap_or(0);
-        if dparams == 0 || prop.binders.len() < dparams {
-            return Ok(false);
-        }
+        let n = self.store.func_by_hash.get(def_hash).map(|fi| fi.param_names.len()).unwrap_or(0);
+        let fty = match self.store.def_by_hash.get(def_hash) {
+            Some(Def::Func { ty, .. }) => ty.clone(),
+            _ => return Ok(false),
+        };
+        let ptys = param_types(&fty, n).0;
         let budget = DIRECT_Z3_RLIMIT.min(z3_rlimit());
-        // The function parameters map positionally onto the property's leading
-        // binders, rendered as the goal's `b{j}` constants.
-        let param_env: Vec<(String, Ty)> = (0..dparams)
-            .map(|j| (format!("b{}", j), prop.binders[j].clone()))
-            .collect();
+        let sort_str = |ty: &Ty| -> String {
+            let mut sc = Sorts::default();
+            sort_of(self.store, ty, &mut sc)
+        };
+
+        // Map the property's binders to the function's inputs (constructor case
+        // first, positional as fallback).
+        let rec_case: RecCase = {
+            let mut chosen: Option<RecCase> = None;
+            // CONSTRUCTOR case (#57).
+            if n == 1 {
+                if let Ty::Data { hash: dh, args } = &ptys[0] {
+                    if let Some(di) = self.store.data_by_hash.get(dh) {
+                        if di.ctors.len() == 1 {
+                            let ftys: Vec<Ty> =
+                                di.ctors[0].1.iter().map(|f| inst_field(f, args, dh)).collect();
+                            if ftys.len() == prop.binders.len()
+                                && ftys
+                                    .iter()
+                                    .zip(prop.binders.iter())
+                                    .all(|(ft, bt)| sort_str(ft) == sort_str(bt))
+                            {
+                                let csmt = ctor_smt(&di.ctors[0].0, &sort_str(&ptys[0]));
+                                chosen = Some(RecCase::Constructor { csmt, nfields: ftys.len() });
+                            }
+                        }
+                    }
+                }
+            }
+            // POSITIONAL case.
+            if chosen.is_none() && n > 0 && prop.binders.len() >= n {
+                chosen = Some(RecCase::Positional { dparams: n });
+            }
+            match chosen {
+                Some(c) => c,
+                None => return Ok(false),
+            }
+        };
+
+        // Parameter environment for the site walk, per the chosen mapping.
+        let param_env: Vec<(String, Ty)> = match &rec_case {
+            RecCase::Positional { dparams } => (0..*dparams)
+                .map(|j| (format!("b{}", j), prop.binders[j].clone()))
+                .collect(),
+            RecCase::Constructor { csmt, nfields } => {
+                let expr = if *nfields == 0 {
+                    csmt.clone()
+                } else {
+                    let mut e = format!("({}", csmt);
+                    for j in 0..*nfields {
+                        e.push_str(&format!(" b{}", j));
+                    }
+                    e.push(')');
+                    e
+                };
+                vec![(expr, ptys[0].clone())]
+            }
+        };
+
+        // Per-site induction-hypothesis substitution, per the chosen mapping.
+        let ih_fixed = |args: &[String]| -> BTreeMap<usize, (String, Ty)> {
+            let mut fixed = BTreeMap::new();
+            match &rec_case {
+                RecCase::Positional { dparams } => {
+                    for j in 0..*dparams {
+                        fixed.insert(j, (args[j].clone(), prop.binders[j].clone()));
+                    }
+                }
+                RecCase::Constructor { csmt, nfields } => {
+                    // The single recursive argument A_s is deconstructed by selectors.
+                    for j in 0..*nfields {
+                        fixed.insert(
+                            j,
+                            (format!("({}_{} {})", csmt, j, args[0]), prop.binders[j].clone()),
+                        );
+                    }
+                }
+            }
+            fixed
+        };
 
         // Declare every property binder as a `b{m}` constant and translate the
         // goal in that environment. Shared by every obligation.
@@ -1528,11 +1619,8 @@ impl<'a> Prover<'a> {
                 let s = &sites[si];
                 (s.guards.clone(), s.args.clone())
             };
-            // IH: property with binder j := A_s[j] for j < dparams, others generalized.
-            let mut fixed: BTreeMap<usize, (String, Ty)> = BTreeMap::new();
-            for j in 0..dparams {
-                fixed.insert(j, (args[j].clone(), prop.binders[j].clone()));
-            }
+            // IH: property at the recursive call's arguments (per the mapping).
+            let fixed = ih_fixed(&args);
             let ih = match self.forall_prop(&mut cx, prop, def_hash, &fixed) {
                 Some(h) => h,
                 None => return Ok(false),
@@ -2178,11 +2266,15 @@ thread_local! {
     static MEASURE_CACHE: RefCell<BTreeMap<String, bool>> = RefCell::new(BTreeMap::new());
 }
 
-/// A candidate integer measure (SPEC §6.1.1 step 3): a single Int parameter, or
-/// an ordered difference of two distinct Int parameters.
+/// A candidate integer measure (SPEC §6.1.1 step 3): a single Int parameter, an
+/// ordered difference of two distinct Int parameters, or (#57) an Int-typed field
+/// of a single-constructor datatype parameter, addressed by its selector.
 enum Cand {
     Single(usize),
     Diff(usize, usize),
+    /// `(selector p_i)` — the Int field `sel` of single-constructor datatype
+    /// parameter `pi`.
+    Field { pi: usize, sel: String },
 }
 
 impl Cand {
@@ -2191,6 +2283,7 @@ impl Cand {
         match self {
             Cand::Single(i) => format!("p{}", i),
             Cand::Diff(i, j) => format!("(- p{} p{})", i, j),
+            Cand::Field { pi, sel } => format!("({} p{})", sel, pi),
         }
     }
     /// μ(args): substitutes each `p_i` by the SMT term passed at position i.
@@ -2198,6 +2291,7 @@ impl Cand {
         match self {
             Cand::Single(i) => args[*i].clone(),
             Cand::Diff(i, j) => format!("(- {} {})", args[*i], args[*j]),
+            Cand::Field { pi, sel } => format!("({} {})", sel, args[*pi]),
         }
     }
 }
@@ -2331,32 +2425,57 @@ impl<'a, 'c> MeasureWalk<'a, 'c> {
             Term::Match { hash, a, arms } => {
                 // Walk the scrutinee for self-calls.
                 self.walk(a, env, guards, poisoned);
-                // Determine field sorts from the scrutinee's translated type.
-                let sty = self.tr_term(a, env).ok().map(|(_, t)| t);
-                let sargs = match &sty {
-                    Some(Ty::Data { hash: h, args }) if h == hash => Some(args.clone()),
-                    _ => None,
-                };
+                // SPEC §6.1.1 (#57): translate the scrutinee to its SMT expression
+                // and bind each arm's constructor fields to the scrutinee's
+                // SELECTORS applied to it (NOT fresh constants), so a measure over
+                // a datatype field stays connected to the counter the body reads.
+                let scrut = self.tr_term(a, env).ok();
                 let di = self.cx.store.data_by_hash.get(hash).cloned();
+                let single_ctor = di.as_ref().map(|d| d.ctors.len() == 1).unwrap_or(false);
                 for (i, arm) in arms.iter().enumerate() {
-                    // The constructor test is OMITTED from the guard (a weaker
-                    // guard only makes the decrease harder to prove, never easier).
-                    let (field_tys, arm_poison) = match (&sargs, &di) {
-                        (Some(sa), Some(d)) if i < d.ctors.len() => {
-                            let ftys: Vec<Ty> =
-                                d.ctors[i].1.iter().map(|f| inst_field(f, sa, hash)).collect();
-                            (ftys, poisoned)
+                    let arity =
+                        di.as_ref().and_then(|d| d.ctors.get(i)).map(|c| c.1.len()).unwrap_or(0);
+                    let mut binds: Vec<(String, Ty)> = Vec::new();
+                    let mut extra_guard: Option<String> = None;
+                    let mut arm_poison = poisoned;
+                    if let (Some((se, Ty::Data { hash: h, args })), Some(d)) = (&scrut, &di) {
+                        if h == hash && i < d.ctors.len() {
+                            let dty = Ty::Data { hash: h.clone(), args: args.clone() };
+                            let sortname = {
+                                let mut sc = Sorts::default();
+                                sort_of(self.cx.store, &dty, &mut sc)
+                            };
+                            let csmt = ctor_smt(&d.ctors[i].0, &sortname);
+                            for (j, f) in d.ctors[i].1.iter().enumerate() {
+                                binds.push((
+                                    format!("({}_{} {})", csmt, j, se),
+                                    inst_field(f, args, hash),
+                                ));
+                            }
+                            // Add the constructor tester as a path guard, OMITTED
+                            // for a single-constructor datatype (always true).
+                            if !single_ctor {
+                                extra_guard = Some(format!("((_ is {}) {})", csmt, se));
+                            }
                         }
-                        // field sorts cannot be determined: the arm is poisoned.
-                        _ => (Vec::new(), true),
-                    };
-                    let k = field_tys.len();
-                    for ft in &field_tys {
-                        let c = self.fresh_const(ft);
-                        env.push((c, ft.clone()));
                     }
-                    self.walk(arm, env, guards, arm_poison);
-                    for _ in 0..k {
+                    if binds.len() != arity {
+                        // Selectors/field sorts undeterminable: poison, bind fresh.
+                        arm_poison = true;
+                        binds.clear();
+                        for _ in 0..arity {
+                            binds.push((self.fresh_const(&Ty::Int), Ty::Int));
+                        }
+                    }
+                    for (name, ty) in &binds {
+                        env.push((name.clone(), ty.clone()));
+                    }
+                    let mut arm_guards = guards.to_vec();
+                    if let Some(g) = extra_guard {
+                        arm_guards.push(g);
+                    }
+                    self.walk(arm, env, &arm_guards, arm_poison);
+                    for _ in 0..binds.len() {
                         env.pop();
                     }
                 }
@@ -2462,34 +2581,75 @@ fn measure_terminates_inner(store: &Store, hash: &str) -> bool {
     if ptys.len() != n {
         return false;
     }
-    // SPEC §6.1.1 step 1: the Int parameters are the measure candidates. With no
-    // Int parameter the check fails.
-    let int_params: Vec<usize> = (0..n).filter(|&i| matches!(ptys[i], Ty::Int)).collect();
-    if int_params.is_empty() {
-        return false;
-    }
+    // A placeholder type environment keeps `tr`'s `apply_tyenv` total; type
+    // variables never enter an integer measure (a translation that structurally
+    // uses one only fails the site's obligation, never passes it spuriously).
+    let tyenv: Vec<Ty> = vec![Ty::Int; tyvars as usize];
 
     let mut cx = Cx::new(store);
-    // Parameter declarations: Int parameters as `Int`; every other parameter over
-    // a fresh uninterpreted sort so translations mentioning it stay well-formed.
+    // Parameter declarations (SPEC §6.1.1 step 1): Int parameters as `Int`; a type
+    // variable over a fresh uninterpreted sort (it never enters a measure); every
+    // other parameter (datatype/record/…) over its REAL sort, so a
+    // single-constructor datatype parameter's field selectors (#57) and any match
+    // on it stay well-formed.
     let mut sort_decls = String::new();
     let mut param_decls = String::new();
     let mut env: Vec<(String, Ty)> = Vec::with_capacity(n);
     for i in 0..n {
         let name = format!("p{}", i);
-        if matches!(ptys[i], Ty::Int) {
-            param_decls.push_str(&format!("(declare-const {} Int)\n", name));
-        } else {
-            let sort = format!("MSort{}", i);
-            sort_decls.push_str(&format!("(declare-sort {} 0)\n", sort));
-            param_decls.push_str(&format!("(declare-const {} {})\n", name, sort));
+        match &ptys[i] {
+            Ty::Int => {
+                param_decls.push_str(&format!("(declare-const {} Int)\n", name));
+            }
+            Ty::Var(_) => {
+                let sort = format!("MSort{}", i);
+                sort_decls.push_str(&format!("(declare-sort {} 0)\n", sort));
+                param_decls.push_str(&format!("(declare-const {} {})\n", name, sort));
+            }
+            other => {
+                let applied = apply_tyenv(other, &tyenv);
+                let sort = sort_of(store, &applied, &mut cx.sc);
+                param_decls.push_str(&format!("(declare-const {} {})\n", name, sort));
+            }
         }
         env.push((name, ptys[i].clone()));
     }
-    // A placeholder type environment keeps `tr`'s `apply_tyenv` total; type
-    // variables never enter an integer measure (a translation that structurally
-    // uses one only fails the site's obligation, never passes it spuriously).
-    let tyenv: Vec<Ty> = vec![Ty::Int; tyvars as usize];
+
+    // SPEC §6.1.1 step 3: candidates in order — each Int parameter, then each
+    // ordered difference of two distinct Int parameters, then (#57) each Int-typed
+    // field of a single-constructor datatype parameter, addressed by its selector.
+    let int_params: Vec<usize> = (0..n).filter(|&i| matches!(ptys[i], Ty::Int)).collect();
+    let mut cands: Vec<Cand> = int_params.iter().map(|&i| Cand::Single(i)).collect();
+    for &i in &int_params {
+        for &j in &int_params {
+            if i != j {
+                cands.push(Cand::Diff(i, j));
+            }
+        }
+    }
+    for i in 0..n {
+        if let Ty::Data { hash: dh, args } = &ptys[i] {
+            if let Some(di) = store.data_by_hash.get(dh) {
+                if di.ctors.len() == 1 {
+                    let sortname = {
+                        let mut sc = Sorts::default();
+                        sort_of(store, &ptys[i], &mut sc)
+                    };
+                    let csmt = ctor_smt(&di.ctors[0].0, &sortname);
+                    for (j, f) in di.ctors[0].1.iter().enumerate() {
+                        if matches!(inst_field(f, args, dh), Ty::Int) {
+                            cands.push(Cand::Field { pi: i, sel: format!("{}_{}", csmt, j) });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // With no candidate measure at all (no Int parameter and no single-constructor
+    // datatype Int field), the check fails.
+    if cands.is_empty() {
+        return false;
+    }
 
     let inner = strip_lams(&body, n);
     let mut w = MeasureWalk {
@@ -2512,23 +2672,12 @@ fn measure_terminates_inner(store: &Store, hash: &str) -> bool {
     }
     let sites = w.sites;
     let fresh_decls = w.fresh_decls;
-    // All declarations discovered while translating guards/arguments (datatypes,
-    // callee function symbols) must precede the obligation. NOTE: only the guard
-    // predicate and decrease are asserted — callee DEFINING axioms are NOT added
-    // (SPEC §6.1.1 step 4 asserts guards + negated decrease only).
+    // All declarations discovered while declaring parameters and translating
+    // guards/arguments (datatypes, callee function symbols) must precede the
+    // obligation. NOTE: only the guard predicate and decrease are asserted —
+    // callee DEFINING axioms are NOT added (SPEC §6.1.1 step 4).
     let aux_decls: String = cx.sc.decls.join("");
     let preamble = format!("{}{}{}{}", sort_decls, aux_decls, fresh_decls, param_decls);
-
-    // SPEC §6.1.1 step 3: candidates in order — each Int parameter, then each
-    // ordered difference of two distinct Int parameters.
-    let mut cands: Vec<Cand> = int_params.iter().map(|&i| Cand::Single(i)).collect();
-    for &i in &int_params {
-        for &j in &int_params {
-            if i != j {
-                cands.push(Cand::Diff(i, j));
-            }
-        }
-    }
 
     // SPEC §6.1.1 step 4: the first candidate that clears EVERY site wins.
     for cand in &cands {

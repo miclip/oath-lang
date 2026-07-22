@@ -146,27 +146,34 @@ func (w *rankWalker) walkApp(t *Term, env []smtVal, guards []string, broken bool
 
 func (w *rankWalker) walkMatch(t *Term, env []smtVal, guards []string, broken bool) {
 	w.walk(t.A, env, guards, broken)
-	// Determine the scrutinee's datatype to get each arm's field sorts. Omitting
-	// the constructor test from the guard is sound (a weaker guard only makes the
-	// decrease harder to prove, never easier).
-	_, scrutSort, err := w.c.tr(t.A, env)
+	scrutExpr, scrutSort, err := w.c.tr(t.A, env)
 	var dt *dtInfo
 	if err == nil {
 		dt = w.c.dtBySort[scrutSort]
 	}
 	for i := range t.Arms {
 		env2 := cloneEnv(env)
+		armGuards := guards
 		armBroken := broken
-		if dt != nil && i < len(dt.fields) {
-			for _, fs := range dt.fields[i] {
-				env2 = append(env2, w.freshConst(fs))
+		if dt != nil && i < len(dt.fields) && i < len(dt.sels) {
+			// Bind the arm's field binders to the scrutinee's SELECTORS rather
+			// than fresh constants (#57), so a measure over a datatype field
+			// stays connected to the counter the body reads (rle-expand's
+			// `(Run n v)` binds n to `(cnt r)`). Add the constructor tester as a
+			// path guard so the arm is sound — skipped for a single-constructor
+			// datatype, where the tester is always true.
+			for fi, fs := range dt.fields[i] {
+				env2 = append(env2, smtVal{expr: fmt.Sprintf("(%s %s)", dt.sels[i][fi], scrutExpr), sort: fs})
+			}
+			if len(dt.ctors) > 1 {
+				armGuards = appendStr(guards, fmt.Sprintf("((_ is %s) %s)", dt.ctors[i], scrutExpr))
 			}
 		} else {
-			// Unknown field sorts: cannot bind this arm's variables soundly, so a
-			// self-call inside it (using them) must not be trusted.
+			// Unknown field sorts / selectors: cannot bind this arm's variables
+			// soundly, so a self-call inside it must not be trusted.
 			armBroken = true
 		}
-		w.walk(&t.Arms[i], env2, guards, armBroken)
+		w.walk(&t.Arms[i], env2, armGuards, armBroken)
 	}
 }
 
@@ -203,13 +210,19 @@ func cloneEnv(env []smtVal) []smtVal {
 	return out
 }
 
-// measure is a ranking-function candidate: the value of one parameter, or the
-// difference of two. μ(params) and μ(args) are formed by substitution.
+// measure is a ranking-function candidate: the value of one parameter, the
+// difference of two, or an Int-typed FIELD of a datatype parameter reached by a
+// selector (#57 — e.g. the count inside rle-expand's `Run`). μ(params) and
+// μ(args) are formed by substitution.
 type measure struct {
-	i, j int // i alone (j<0), or (param_i - param_j)
+	i, j int    // i alone (j<0), or (param_i - param_j) when sel==""
+	sel  string // if non-empty, μ = (sel param_i): a datatype-field measure
 }
 
 func (m measure) at(vals []string) string {
+	if m.sel != "" {
+		return fmt.Sprintf("(%s %s)", m.sel, vals[m.i])
+	}
 	if m.j < 0 {
 		return vals[m.i]
 	}
@@ -251,17 +264,16 @@ func ranksTotal(st *Store, d *Def, h string) bool {
 		env = append(env, smtVal{expr: name, sort: sort})
 		body = body.A
 	}
-	if len(intParams) == 0 {
-		return false // no integer measure possible
-	}
-
 	w := &rankWalker{c: c, nparams: len(env)}
 	w.walk(body, env, nil, false)
 	if w.bad || len(w.sites) == 0 {
 		return false
 	}
 
-	// Candidate measures: each Int parameter, then each ordered difference.
+	// Candidate measures: each Int parameter, each ordered difference of two, and
+	// each Int-typed FIELD of a single-constructor datatype parameter reached by
+	// its selector (#57 — rle-expand's counter lives inside its `Run` parameter,
+	// bound by the body's match to `(cnt r)`).
 	var cands []measure
 	for _, i := range intParams {
 		cands = append(cands, measure{i: i, j: -1})
@@ -272,6 +284,18 @@ func ranksTotal(st *Store, d *Def, h string) bool {
 				cands = append(cands, measure{i: i, j: j})
 			}
 		}
+	}
+	for i := range env {
+		if dt := c.dtBySort[env[i].sort]; dt != nil && len(dt.ctors) == 1 && len(dt.sels) == 1 {
+			for fi, fs := range dt.fields[0] {
+				if fs == "Int" {
+					cands = append(cands, measure{i: i, sel: dt.sels[0][fi]})
+				}
+			}
+		}
+	}
+	if len(cands) == 0 {
+		return false // no measure candidate
 	}
 
 	paramSyms := make([]string, len(env))
