@@ -506,6 +506,77 @@
       ]
     },
     {
+      "name": "has-prefix",
+      "hash": "c10d669fff8140c6876cbc6ba9a1d48c9a1100f9e9e30ebe48c8f6b009564f20",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "self-prefix",
+          "proven": true
+        },
+        {
+          "name": "empty-prefix",
+          "proven": true
+        },
+        {
+          "name": "concat-is-prefixed",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "has-substring",
+      "hash": "548065c78efeb898dbd3dbd85b92f00c8829b75577e57f41691f77113ae1a31f",
+      "level": "proven",
+      "proven_count": 5,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "self-contains",
+          "proven": true
+        },
+        {
+          "name": "empty-substring",
+          "proven": true
+        },
+        {
+          "name": "middle-is-contained",
+          "proven": true
+        },
+        {
+          "name": "prefix-implies-contains",
+          "proven": true
+        },
+        {
+          "name": "suffix-implies-contains",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "has-suffix",
+      "hash": "a1f68effcd23c45d48ac6b042ad209cd0b34dfaa161fe25ba98e61cc90311b66",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "self-suffix",
+          "proven": true
+        },
+        {
+          "name": "empty-suffix",
+          "proven": true
+        },
+        {
+          "name": "concat-is-suffixed",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "i-contains",
       "hash": "3fc1c9e4988411e515b346e48eb3612dfc2f4b4dc54077c5f8778e73f6743909",
       "level": "proven",

@@ -1,6 +1,8 @@
 ; String standard library (#32). Str is a primitive byte sequence with `++`
-; (concat) and `str-len`; both are in the provable fragment (str.++ / str.len),
-; so String laws prove for all inputs.
+; (concat), `str-len`, and the predicates `starts-with` / `ends-with` /
+; `str-contains`; all are in the provable fragment (str.++ / str.len /
+; str.prefixof / str.suffixof / str.contains), so String laws prove for all
+; inputs.
 
 ; str-repeat: s concatenated n times. Recurses on the integer counter n, so it is
 ; `total` by the ranking function (µ = n) and its length law proves by recursion
@@ -15,3 +17,31 @@
     (if (< 0 n) (== (str-repeat s n) (++ s (str-repeat s (- n 1)))) true))
   (prop length-is-n-times [(s Str) (n Int)]
     (if (<= 0 n) (== (str-len (str-repeat s n)) (* n (str-len s))) true)))
+
+; has-prefix: does s begin with p? Wraps the `starts-with` primitive
+; (Z3 str.prefixof), so its laws prove for all strings.
+(defn has-prefix [] [(s Str) (p Str)] Bool
+  (starts-with s p)
+  (prop self-prefix [(s Str)] (has-prefix s s))
+  (prop empty-prefix [(s Str)] (has-prefix s ""))
+  (prop concat-is-prefixed [(p Str) (s Str)] (has-prefix (++ p s) p)))
+
+; has-suffix: does s end with q? Wraps `ends-with` (Z3 str.suffixof).
+(defn has-suffix [] [(s Str) (q Str)] Bool
+  (ends-with s q)
+  (prop self-suffix [(s Str)] (has-suffix s s))
+  (prop empty-suffix [(s Str)] (has-suffix s ""))
+  (prop concat-is-suffixed [(s Str) (q Str)] (has-suffix (++ s q) q)))
+
+; has-substring: does s contain sub anywhere? Wraps `str-contains`
+; (Z3 str.contains). The prefix/suffix laws pin its relation to the other two.
+(defn has-substring [] [(s Str) (sub Str)] Bool
+  (str-contains s sub)
+  (prop self-contains [(s Str)] (has-substring s s))
+  (prop empty-substring [(s Str)] (has-substring s ""))
+  (prop middle-is-contained [(a Str) (b Str) (c Str)]
+    (has-substring (++ (++ a b) c) b))
+  (prop prefix-implies-contains [(s Str) (p Str)]
+    (if (starts-with s p) (has-substring s p) true))
+  (prop suffix-implies-contains [(s Str) (q Str)]
+    (if (ends-with s q) (has-substring s q) true)))

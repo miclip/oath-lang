@@ -1,0 +1,5 @@
+✓ prop self-contains            passed 200 cases
+✓ prop empty-substring          passed 200 cases
+✓ prop middle-is-contained      passed 200 cases
+✓ prop prefix-implies-contains  passed 200 cases
+✓ prop suffix-implies-contains  passed 200 cases

@@ -217,6 +217,17 @@ func apply(f, a any) any {
 
 func runeLen(s string) int64 { return int64(len([]rune(s))) }
 
+func strStartsWith(s, p string) bool { return len(s) >= len(p) && s[:len(p)] == p }
+func strEndsWith(s, p string) bool   { return len(s) >= len(p) && s[len(s)-len(p):] == p }
+func strContains(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
 func structEq(a, b any) bool {
 	switch x := a.(type) {
 	case int64:
@@ -521,6 +532,12 @@ func (e *emitter) prim(t *Term, depth int, self string) (string, error) {
 		return fmt.Sprintf("any(%s.(string) + %s.(string))", args[0], args[1]), nil
 	case "str-len":
 		return fmt.Sprintf("any(runeLen(%s.(string)))", args[0]), nil
+	case "starts-with":
+		return fmt.Sprintf("any(strStartsWith(%s.(string), %s.(string)))", args[0], args[1]), nil
+	case "ends-with":
+		return fmt.Sprintf("any(strEndsWith(%s.(string), %s.(string)))", args[0], args[1]), nil
+	case "str-contains":
+		return fmt.Sprintf("any(strContains(%s.(string), %s.(string)))", args[0], args[1]), nil
 	}
 	return "", fmt.Errorf("cannot compile primitive %q", t.Op)
 }

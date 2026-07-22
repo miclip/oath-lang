@@ -1,0 +1,15 @@
+{
+  "name": "has-substring",
+  "hash": "548065c78efeb898dbd3dbd85b92f00c8829b75577e57f41691f77113ae1a31f",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "level": "proven",
+  "cases": 200,
+  "proven": 5
+}

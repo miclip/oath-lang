@@ -1,0 +1,15 @@
+{
+  "name": "has-suffix",
+  "hash": "a1f68effcd23c45d48ac6b042ad209cd0b34dfaa161fe25ba98e61cc90311b66",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

@@ -99,7 +99,7 @@ Producers (elaborators) MUST emit, and checkers MUST enforce:
 - Match arms in constructor-declaration order, exhaustive, with the ADT
   hash recorded in the term.
 - Primitive operators are the literal strings: `+ - * / % neg == < <= and
-  or not ++ str-len`.
+  or not ++ str-len starts-with ends-with str-contains`.
 
 ### 1.4 Surface syntax and elaboration
 
@@ -202,7 +202,8 @@ vector `S` of length `tyvars` (all initially unsolved):
   synthesizes. Reject if any `S` entry is unsolved. Backfill and CHECK each
   argument against its now-concrete field type.
 - PRIMITIVES with fixed operand types (`+ - * / % neg < <= and or not ++
-  str-len`) CHECK each operand against that fixed type. `==` is polymorphic in
+  str-len starts-with ends-with str-contains`) CHECK each operand against that
+  fixed type. `==` is polymorphic in
   its operand type: SYNTHESIZE whichever operand can be, then CHECK the other
   against it (so `(== xs (Nil))` infers the `(Nil)`); both must be the same
   non-function type, and — since the operands end at the same type — the
@@ -256,8 +257,9 @@ Detailed synthesis obligations:
   declaration order; the first field is outermost and the last field is
   `var 0`.
 - Primitive arities and types are fixed: arithmetic and comparisons are over
-  `Int`, `and`/`or`/`not` over `Bool`, `++`/`str-len` over `Str`, and `==`
-  over equal first-order types only.
+  `Int`, `and`/`or`/`not` over `Bool`, `++`/`str-len` over `Str`, the string
+  predicates `starts-with`/`ends-with`/`str-contains` take two `Str` and return
+  `Bool`, and `==` over equal first-order types only.
 
 ## 3. Dynamic semantics
 
@@ -276,7 +278,12 @@ Detailed synthesis obligations:
   by zero is a runtime error.
 - **Strings** are byte sequences (UTF-8 by convention): `++` is byte
   concatenation, `==` is byte equality, `str-len` counts *Unicode code
-  points* (not bytes). This asymmetry is normative.
+  points* (not bytes). This asymmetry is normative. `(starts-with s p)`,
+  `(ends-with s q)`, and `(str-contains s sub)` are the subject-first
+  predicates — true iff `p` is a prefix of `s`, `q` a suffix of `s`, or `sub`
+  a substring of `s` — decided on bytes (equivalently code points, since Str
+  values are valid UTF-8); the empty string is a prefix, a suffix, and a
+  substring of every string, and every string is all three of itself.
 - **Structural equality** (`==`) on data and records compares constructor
   index and fields recursively; applying it to function values is a runtime
   error (statically prevented).
@@ -383,7 +390,8 @@ rendered by the value printer.
   without application) makes it `escapes`.
 - **Spec strength**: mutation catalog = type-preserving operator swaps
   (`+↔-`, `*→+`, `/→*`, `%→/`, `<↔<=`, `and↔or`), operand swaps of
-  non-commutative binary prims (`- / % < <= ++`), integer literal ±1 and →0,
+  non-commutative binary prims (`- / % < <= ++ starts-with ends-with
+  str-contains`), integer literal ±1 and →0,
   string literal → `""`, if-branch swap. Score = killed/total. Spec strength is
   computed for every function definition independent of its termination verdict:
   a `measure`-total function is mutated exactly like a `structural` one.
@@ -651,6 +659,15 @@ reproducibility (given the same solver):
   inert for outcomes, but BYTE-significant: script identity is fixtured,
   §7.2); records as single-constructor datatypes; function types as
   `(Array dom cod)` applied via `select`.
+- Primitive translation: arithmetic and comparison operators map to their
+  SMT-LIB counterparts; `++`→`str.++`, `str-len`→`str.len`. The string
+  predicates map to Z3's sequence theory: `str-contains`→`str.contains` with
+  operands in surface order, but `starts-with`→`str.prefixof` and
+  `ends-with`→`str.suffixof` translate with the **two operands swapped** —
+  SMT `str.prefixof`/`str.suffixof` are written `(needle haystack)` while the
+  surface predicates are subject-first, so `(starts-with s p)` emits
+  `(str.prefixof p s)`. This swap is byte-visible in the script fixtures (§7.2)
+  and therefore normative.
 - Non-recursive callees are inlined (beta-reduction); recursive callees are
   declared uninterpreted. Their defining equation is asserted as a universally
   quantified axiom with the application as pattern **only when the callee is

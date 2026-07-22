@@ -1,0 +1,3 @@
+✓ prop self-suffix              passed 200 cases
+✓ prop empty-suffix             passed 200 cases
+✓ prop concat-is-suffixed       passed 200 cases

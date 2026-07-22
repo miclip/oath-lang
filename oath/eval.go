@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Value is a runtime value. Types are fully erased at runtime.
 type Value struct {
@@ -235,6 +238,12 @@ func (e *evaluator) evalPrim(env []Value, slf string, t *Term) (Value, error) {
 		return Value{K: "str", Str: args[0].Str + args[1].Str}, nil
 	case "str-len":
 		return vInt(int64(len([]rune(args[0].Str)))), nil
+	case "starts-with":
+		return vBool(strings.HasPrefix(args[0].Str, args[1].Str)), nil
+	case "ends-with":
+		return vBool(strings.HasSuffix(args[0].Str, args[1].Str)), nil
+	case "str-contains":
+		return vBool(strings.Contains(args[0].Str, args[1].Str)), nil
 	case "==":
 		eq, err := structEq(args[0], args[1])
 		if err != nil {

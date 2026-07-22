@@ -903,6 +903,14 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 			return nil, err
 		}
 		return tInt(), nil
+	case "starts-with", "ends-with", "str-contains":
+		if err := need(2); err != nil {
+			return nil, err
+		}
+		if err := allStr(); err != nil {
+			return nil, err
+		}
+		return tBool(), nil
 	case "+", "-", "*", "/", "%":
 		if err := need(2); err != nil {
 			return nil, err

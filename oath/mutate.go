@@ -66,6 +66,7 @@ var opMutations = map[string][]string{
 // Non-commutative binary primitives where swapping operands changes meaning.
 var swappablePrims = map[string]bool{
 	"-": true, "/": true, "%": true, "<": true, "<=": true, "++": true,
+	"starts-with": true, "ends-with": true, "str-contains": true,
 }
 
 // genMutants produces every single-node mutation of the definition's body
