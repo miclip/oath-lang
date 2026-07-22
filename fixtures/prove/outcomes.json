@@ -209,7 +209,7 @@
     },
     {
       "name": "drop",
-      "hash": "8cee0cb4a9572f12d0f07f6eb073a000bae0f33b0b58b4760d1d311f4600608e",
+      "hash": "fe6c3320c48b77014dc4d1733b4ab698d03bc14500ea67a821e115bc5e300cd8",
       "level": "proven",
       "proven_count": 4,
       "prop_count": 4,
@@ -1622,7 +1622,7 @@
     },
     {
       "name": "rot",
-      "hash": "042274e57aeb9a71f1b4f6fbf9e222f30cb68a951c7ce893e7ed49e805205e5b",
+      "hash": "f223a8607d23b2ac47a1904fddfaa72094da89a223ed99bcb8dd1aefe67a5727",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 7,
@@ -1659,7 +1659,7 @@
     },
     {
       "name": "rot-f",
-      "hash": "042274e57aeb9a71f1b4f6fbf9e222f30cb68a951c7ce893e7ed49e805205e5b",
+      "hash": "f223a8607d23b2ac47a1904fddfaa72094da89a223ed99bcb8dd1aefe67a5727",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 7,
@@ -1696,7 +1696,7 @@
     },
     {
       "name": "rot-h2",
-      "hash": "ddc49f7caeb4e5550e8b65fa29bdb8e1295e7409069ca9c730efb0993838a461",
+      "hash": "6411ad11aa824ac6a4ac27cdae2e685761d5f4c4f4b0d64a463793a9ded617ab",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 7,
@@ -1733,7 +1733,7 @@
     },
     {
       "name": "rot-h3",
-      "hash": "5b49c1e1999915a85a0199264ff581df5f66f7d8f713237ad1453cda64b0b36d",
+      "hash": "bfcfe31fda65050a6934162f1403a011c02b53c6c1ceffd30f6e54c162aad975",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 7,
@@ -1770,7 +1770,7 @@
     },
     {
       "name": "rot-hl",
-      "hash": "12db0571fb6c8d62820ab58eca5e3f531f5ca45bf5ba3ae6d1d12bb4cc1e2ad5",
+      "hash": "dc81f41c7ce1ec8f74d9c75a6c0212a65a4f49c62772453d5b6057e32f3c6b07",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 7,
@@ -2171,7 +2171,7 @@
     },
     {
       "name": "take",
-      "hash": "91db30f81c8e16df8a772451542f1808f64a98e0bc27ef5c77bb941706a552a1",
+      "hash": "cb7c737dba984e1bce666fd68406ebd481d1026eb9efa8815eb641c4e0135020",
       "level": "proven",
       "proven_count": 4,
       "prop_count": 4,

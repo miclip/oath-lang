@@ -5,30 +5,34 @@
   (prop is-one-of [(a Int) (b Int)] (or (== (max2 a b) a) (== (max2 a b) b)))
   (prop picks-larger [(a Int) (b Int)] (if (<= b a) (== (max2 a b) a) (== (max2 a b) b))))
 
-(defn drop [] [(n Int) (xs (List Int))] (List Int)
+; take / drop are parametric over the element type (#32): the body is
+; element-agnostic — structural recursion on the list plus an Int counter — so
+; they are `total` and their laws prove for `List a`. Properties are stated at
+; `Int`; callers pass the element type explicitly, e.g. `(drop [Int] k xs)`.
+(defn drop [a] [(n Int) (xs (List a))] (List a)
   (if (<= n 0)
       xs
       (match xs
-        ((Nil) (Nil [Int]))
-        ((Cons h t) (drop (- n 1) t))))
-  (prop drop-all [(xs (List Int))] (== (drop (length [Int] xs) xs) (Nil [Int])))
-  (prop drop-zero [] (== (drop 0 (Cons [Int] 5 (Cons [Int] 6 (Nil [Int])))) (Cons [Int] 5 (Cons [Int] 6 (Nil [Int])))))
-  (prop drop-one [] (== (drop 1 (Cons [Int] 5 (Cons [Int] 6 (Nil [Int])))) (Cons [Int] 6 (Nil [Int]))))
+        ((Nil) (Nil [a]))
+        ((Cons h t) (drop [a] (- n 1) t))))
+  (prop drop-all [(xs (List Int))] (== (drop [Int] (length [Int] xs) xs) (Nil [Int])))
+  (prop drop-zero [] (== (drop [Int] 0 (Cons [Int] 5 (Cons [Int] 6 (Nil [Int])))) (Cons [Int] 5 (Cons [Int] 6 (Nil [Int])))))
+  (prop drop-one [] (== (drop [Int] 1 (Cons [Int] 5 (Cons [Int] 6 (Nil [Int])))) (Cons [Int] 6 (Nil [Int]))))
   (prop drop-length [(n Int) (xs (List Int))]
     (if (and (<= 0 n) (<= n (length [Int] xs)))
-        (== (length [Int] (drop n xs)) (- (length [Int] xs) n))
+        (== (length [Int] (drop [Int] n xs)) (- (length [Int] xs) n))
         true)))
 
-(defn take [] [(n Int) (xs (List Int))] (List Int)
+(defn take [a] [(n Int) (xs (List a))] (List a)
   (if (<= n 0)
-      (Nil [Int])
+      (Nil [a])
       (match xs
-        ((Nil) (Nil [Int]))
-        ((Cons h t) (Cons [Int] h (take (- n 1) t)))))
-  (prop take-then-drop-rebuilds [(n Int) (xs (List Int))] (== (append [Int] (take n xs) (drop n xs)) xs))
-  (prop take-zero [] (== (take 0 (Cons [Int] 5 (Nil [Int]))) (Nil [Int])))
-  (prop take-one [] (== (take 1 (Cons [Int] 5 (Cons [Int] 6 (Nil [Int])))) (Cons [Int] 5 (Nil [Int]))))
-  (prop take-two [] (== (take 2 (Cons [Int] 5 (Cons [Int] 6 (Cons [Int] 7 (Nil [Int]))))) (Cons [Int] 5 (Cons [Int] 6 (Nil [Int]))))))
+        ((Nil) (Nil [a]))
+        ((Cons h t) (Cons [a] h (take [a] (- n 1) t)))))
+  (prop take-then-drop-rebuilds [(n Int) (xs (List Int))] (== (append [Int] (take [Int] n xs) (drop [Int] n xs)) xs))
+  (prop take-zero [] (== (take [Int] 0 (Cons [Int] 5 (Nil [Int]))) (Nil [Int])))
+  (prop take-one [] (== (take [Int] 1 (Cons [Int] 5 (Cons [Int] 6 (Nil [Int])))) (Cons [Int] 5 (Nil [Int]))))
+  (prop take-two [] (== (take [Int] 2 (Cons [Int] 5 (Cons [Int] 6 (Cons [Int] 7 (Nil [Int]))))) (Cons [Int] 5 (Cons [Int] 6 (Nil [Int]))))))
 
 (defn contains [] [(x Int) (xs (List Int))] Bool
   (match xs

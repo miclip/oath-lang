@@ -3,7 +3,7 @@
     (if (== len 0)
       (Nil [Int])
       (let (k-norm Int (% (+ (% k len) len) len))
-        (append [Int] (drop k-norm xs) (take k-norm xs)))))
+        (append [Int] (drop [Int] k-norm xs) (take [Int] k-norm xs)))))
 
   (prop zero-is-identity [(xs (List Int))] (== (rot-h2 0 xs) xs))
   (prop empty-absorbs [(k Int)] (== (rot-h2 k (Nil [Int])) (Nil [Int])))
@@ -11,5 +11,5 @@
   (prop shift-one-moves-head-to-back [(h Int) (t (List Int))] (== (rot-h2 1 (Cons [Int] h t)) (append [Int] t (Cons [Int] h (Nil [Int])))))
   (prop neg-one-pulls-last-to-front [(x Int) (xs (List Int))] (== (rot-h2 -1 (append [Int] xs (Cons [Int] x (Nil [Int])))) (Cons [Int] x xs)))
   (prop periodic-in-length [(k Int) (xs (List Int))] (== (rot-h2 (+ k (length [Int] xs)) xs) (rot-h2 k xs)))
-  (prop decomposes-in-range [(k Int) (xs (List Int))] (if (and (<= 0 k) (< k (length [Int] xs))) (== (rot-h2 k xs) (append [Int] (drop k xs) (take k xs))) true))
+  (prop decomposes-in-range [(k Int) (xs (List Int))] (if (and (<= 0 k) (< k (length [Int] xs))) (== (rot-h2 k xs) (append [Int] (drop [Int] k xs) (take [Int] k xs))) true))
 )
