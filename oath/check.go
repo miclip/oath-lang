@@ -822,6 +822,32 @@ func (c *checker) check(ctx []*Ty, t *Term, exp *Ty) error {
 }
 
 func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
+	// `==` is polymorphic in its operand type, so an operand may be a bare
+	// constructor — `(== xs (Nil))` — whose type arguments only the OTHER operand
+	// determines (#35). Synthesize whichever operand can be, then CHECK the other
+	// against it; the result is the same non-function type either way, so the
+	// backfilled arguments do not depend on operand order.
+	if t.Op == "==" {
+		if len(t.Args) != 2 {
+			return nil, fmt.Errorf("primitive == takes 2 arguments, got %d", len(t.Args))
+		}
+		known, err := c.synth(ctx, &t.Args[0])
+		other := &t.Args[1]
+		if err != nil {
+			known, err = c.synth(ctx, &t.Args[1])
+			other = &t.Args[0]
+			if err != nil {
+				return nil, fmt.Errorf("cannot infer the type of == operands — annotate one side")
+			}
+		}
+		if tyHasFun(known) {
+			return nil, fmt.Errorf("== is not defined on function types")
+		}
+		if err := c.check(ctx, other, known); err != nil {
+			return nil, err
+		}
+		return tBool(), nil
+	}
 	argTys := make([]*Ty, len(t.Args))
 	for i := range t.Args {
 		at, err := c.synth(ctx, &t.Args[i])
@@ -915,17 +941,6 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 		}
 		if err := allBool(); err != nil {
 			return nil, err
-		}
-		return tBool(), nil
-	case "==":
-		if err := need(2); err != nil {
-			return nil, err
-		}
-		if !tyEq(argTys[0], argTys[1]) {
-			return nil, fmt.Errorf("== requires both sides the same type: %s vs %s", debugTy(argTys[0]), debugTy(argTys[1]))
-		}
-		if tyHasFun(argTys[0]) {
-			return nil, fmt.Errorf("== is not defined on function types")
 		}
 		return tBool(), nil
 	}

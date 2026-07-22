@@ -1,11 +1,28 @@
-//! The gate: structural type synthesis (SPEC §2). No inference, no
-//! unification. A definition failing any check MUST NOT be stored.
+//! The gate: bidirectional type checking with type-argument inference
+//! (SPEC §2, §2.1). Checking runs in two modes — SYNTHESIZE a term's type, or
+//! CHECK a term against an expected type. A generic reference or constructor MAY
+//! omit its `[types]` bracket, in which case the checker INFERS the arguments by
+//! one-sided matching and BACKFILLS them into the AST (so an inferred call is
+//! byte-identical to the explicit one). A definition failing any check MUST NOT
+//! be stored.
 
 use crate::elaborate::Store;
 use crate::ir::*;
 use std::collections::HashSet;
 
+/// Validate a (possibly already-complete) definition. Runs the bidirectional
+/// checker on a CLONE — inference/backfill is a no-op on a fully-annotated
+/// definition — and discards the backfill. This is the gate used after
+/// elaboration and for mutation candidates.
 pub fn check_def(store: &Store, def: &Def) -> Result<(), String> {
+    let mut d = def.clone();
+    check_and_backfill(store, &mut d)
+}
+
+/// Bidirectional check of `def`, BACKFILLING every omitted type argument into the
+/// AST in place (SPEC §2.1). Called during elaboration BEFORE the definition is
+/// hashed, so identity is that of the fully-annotated form.
+pub fn check_and_backfill(store: &Store, def: &mut Def) -> Result<(), String> {
     match def {
         Def::Data { tyvars, ctors } => {
             for (ci, fields) in ctors.iter().enumerate() {
@@ -20,14 +37,14 @@ pub fn check_def(store: &Store, def: &Def) -> Result<(), String> {
             Ok(())
         }
         Def::Func { tyvars, ty, body, props } => {
-            wf(store, ty, *tyvars, false, 0)?;
-            let c = Checker { store, self_ty: ty, self_tyvars: *tyvars, nvars: *tyvars };
+            let tyvars = *tyvars;
+            wf(store, ty, tyvars, false, 0)?;
+            let self_ty = ty.clone();
+            let c = Checker { store, self_ty: self_ty.clone(), self_tyvars: tyvars, nvars: tyvars };
             let mut ctx: Vec<Ty> = Vec::new();
-            let bt = c.synth(body, &mut ctx)?;
-            if bt != *ty {
-                return Err("function body type does not match declared type".into());
-            }
-            for (pi, p) in props.iter().enumerate() {
+            // The body is CHECKED against its declared type.
+            c.check(body, &self_ty, &mut ctx)?;
+            for (pi, p) in props.iter_mut().enumerate() {
                 for b in &p.binders {
                     if !concrete(b) {
                         return Err(format!(
@@ -38,12 +55,10 @@ pub fn check_def(store: &Store, def: &Def) -> Result<(), String> {
                     wf(store, b, 0, false, 0)
                         .map_err(|e| format!("property {} binder: {}", pi, e))?;
                 }
-                let cp = Checker { store, self_ty: ty, self_tyvars: *tyvars, nvars: 0 };
+                let cp = Checker { store, self_ty: self_ty.clone(), self_tyvars: tyvars, nvars: 0 };
                 let mut pctx: Vec<Ty> = p.binders.clone();
-                let bt = cp.synth(&p.body, &mut pctx)?;
-                if bt != Ty::Bool {
-                    return Err(format!("property {}: body must be Bool", pi));
-                }
+                // Each prop body is CHECKED against Bool.
+                cp.check(&mut p.body, &Ty::Bool, &mut pctx)?;
             }
             Ok(())
         }
@@ -52,13 +67,16 @@ pub fn check_def(store: &Store, def: &Def) -> Result<(), String> {
 
 struct Checker<'a> {
     store: &'a Store,
-    self_ty: &'a Ty,
+    self_ty: Ty,
     self_tyvars: u32,
     nvars: u32,
 }
 
 impl<'a> Checker<'a> {
-    fn synth(&self, t: &Term, ctx: &mut Vec<Ty>) -> Result<Ty, String> {
+    // -----------------------------------------------------------------------
+    // SYNTHESIZE
+    // -----------------------------------------------------------------------
+    fn synth(&self, t: &mut Term, ctx: &mut Vec<Ty>) -> Result<Ty, String> {
         match t {
             Term::Var(i) => {
                 let n = ctx.len();
@@ -72,44 +90,26 @@ impl<'a> Checker<'a> {
             Term::Str(_) => Ok(Ty::Str),
             Term::Lam { ty, a } => {
                 wf(self.store, ty, self.nvars, false, 0)?;
-                ctx.push(ty.clone());
+                let pty = ty.clone();
+                ctx.push(pty.clone());
                 let bt = self.synth(a, ctx);
                 ctx.pop();
-                Ok(Ty::Fun(Box::new(ty.clone()), Box::new(bt?)))
+                Ok(Ty::Fun(Box::new(pty), Box::new(bt?)))
             }
-            Term::App { a, b } => {
-                let ft = self.synth(a, ctx)?;
-                match ft {
-                    Ty::Fun(d, c) => {
-                        let at = self.synth(b, ctx)?;
-                        if at != *d {
-                            return Err("application argument type mismatch".into());
-                        }
-                        Ok(*c)
-                    }
-                    _ => Err("applying a non-function".into()),
-                }
-            }
+            Term::App { .. } => self.app(t, None, ctx),
             Term::Let { ty, a, b } => {
                 wf(self.store, ty, self.nvars, false, 0)?;
-                let at = self.synth(a, ctx)?;
-                if at != *ty {
-                    return Err("let bound expression type mismatch".into());
-                }
-                ctx.push(ty.clone());
+                let lty = ty.clone();
+                self.check(a, &lty, ctx)?;
+                ctx.push(lty);
                 let bt = self.synth(b, ctx);
                 ctx.pop();
                 bt
             }
             Term::If { a, b, c } => {
-                if self.synth(a, ctx)? != Ty::Bool {
-                    return Err("if condition must be Bool".into());
-                }
+                self.check(a, &Ty::Bool, ctx)?;
                 let bt = self.synth(b, ctx)?;
-                let ct = self.synth(c, ctx)?;
-                if bt != ct {
-                    return Err("if branches have different types".into());
-                }
+                self.check(c, &bt, ctx)?;
                 Ok(bt)
             }
             Term::Prim { op, args } => self.synth_prim(op, args, ctx),
@@ -119,200 +119,577 @@ impl<'a> Checker<'a> {
                     .func_by_hash
                     .get(hash)
                     .ok_or_else(|| format!("ref to unknown function {}", hash))?;
+                if tyargs.is_empty() && fi.tyvars > 0 {
+                    return Err(
+                        "cannot infer type arguments for a bare polymorphic reference".into(),
+                    );
+                }
                 if tyargs.len() as u32 != fi.tyvars {
                     return Err("ref type-argument count mismatch".into());
                 }
-                for ta in tyargs {
+                for ta in tyargs.iter() {
                     wf(self.store, ta, self.nvars, false, 0)?;
                 }
                 Ok(subst(&fi.ty, tyargs))
             }
             Term::SelfRef { tyargs } => {
+                if tyargs.is_empty() && self.self_tyvars > 0 {
+                    return Err("cannot infer type arguments for a bare self reference".into());
+                }
                 if tyargs.len() as u32 != self.self_tyvars {
                     return Err("self type-argument count mismatch".into());
                 }
-                for ta in tyargs {
+                for ta in tyargs.iter() {
                     wf(self.store, ta, self.nvars, false, 0)?;
                 }
-                Ok(subst(self.self_ty, tyargs))
+                Ok(subst(&self.self_ty, tyargs))
             }
-            Term::Ctor { hash, idx, tyargs, args } => {
-                let di = self
-                    .store
-                    .data_by_hash
-                    .get(hash)
-                    .ok_or_else(|| format!("ctor of unknown data {}", hash))?;
-                if tyargs.len() as u32 != di.tyvars {
-                    return Err("ctor type-argument count mismatch".into());
-                }
-                for ta in tyargs {
-                    wf(self.store, ta, self.nvars, false, 0)?;
-                }
-                if *idx as usize >= di.ctors.len() {
-                    return Err("ctor index out of range".into());
-                }
-                let fields = instantiate_ctor(self.store, hash, *idx as usize, tyargs);
-                if args.len() != fields.len() {
-                    return Err(format!(
-                        "constructor applied to {} arguments, expected {}",
-                        args.len(),
-                        fields.len()
-                    ));
-                }
-                for (a, f) in args.iter().zip(fields.iter()) {
-                    let at = self.synth(a, ctx)?;
-                    if at != *f {
-                        return Err("constructor argument type mismatch".into());
-                    }
-                }
-                Ok(Ty::Data { hash: hash.clone(), args: tyargs.clone() })
-            }
-            Term::Match { hash, a, arms } => {
-                let st = self.synth(a, ctx)?;
-                let scrut_args = match &st {
-                    Ty::Data { hash: h, args } => {
-                        if h != hash {
-                            return Err("match hash does not match scrutinee".into());
-                        }
-                        args.clone()
-                    }
-                    _ => return Err("match scrutinee is not a data type".into()),
-                };
-                let di = self
-                    .store
-                    .data_by_hash
-                    .get(hash)
-                    .ok_or_else(|| format!("match on unknown data {}", hash))?;
-                if arms.len() != di.ctors.len() {
-                    return Err("match is not exhaustive".into());
-                }
-                let mut result: Option<Ty> = None;
-                for (i, arm) in arms.iter().enumerate() {
-                    let fields = instantiate_ctor(self.store, hash, i, &scrut_args);
-                    let pushed = fields.len();
-                    for f in &fields {
-                        ctx.push(f.clone());
-                    }
-                    let at = self.synth(arm, ctx);
-                    for _ in 0..pushed {
-                        ctx.pop();
-                    }
-                    let at = at?;
-                    match &result {
-                        None => result = Some(at),
-                        Some(r) => {
-                            if *r != at {
-                                return Err("match arms have different result types".into());
-                            }
-                        }
-                    }
-                }
-                Ok(result.unwrap())
-            }
+            Term::Ctor { .. } => self.ctor(t, None, ctx),
+            Term::Match { .. } => self.tc_match(t, None, ctx),
             Term::Record { names, args } => {
                 check_record_names(names)?;
-                if names.len() != args.len() {
+                let names2 = names.clone();
+                if names2.len() != args.len() {
                     return Err("record names/values length mismatch".into());
                 }
                 let mut tys = Vec::new();
-                for a in args {
+                for a in args.iter_mut() {
                     tys.push(self.synth(a, ctx)?);
                 }
-                Ok(Ty::Record { names: names.clone(), args: tys })
+                Ok(Ty::Record { names: names2, args: tys })
             }
             Term::Field { a, op } => {
                 let rt = self.synth(a, ctx)?;
                 match rt {
-                    Ty::Record { names, args } => {
-                        match names.iter().position(|n| n == op) {
-                            Some(idx) => Ok(args[idx].clone()),
-                            None => Err(format!("record has no field {}", op)),
-                        }
-                    }
+                    Ty::Record { names, args } => match names.iter().position(|n| n == op) {
+                        Some(idx) => Ok(args[idx].clone()),
+                        None => Err(format!("record has no field {}", op)),
+                    },
                     _ => Err("field access on a non-record".into()),
                 }
             }
         }
     }
 
-    fn synth_prim(&self, op: &str, args: &[Term], ctx: &mut Vec<Ty>) -> Result<Ty, String> {
-        let mut at = Vec::new();
-        for a in args {
-            at.push(self.synth(a, ctx)?);
+    // -----------------------------------------------------------------------
+    // CHECK against an expected type (threads `e` through if/let/match/lam)
+    // -----------------------------------------------------------------------
+    fn check(&self, t: &mut Term, e: &Ty, ctx: &mut Vec<Ty>) -> Result<(), String> {
+        match t {
+            Term::If { a, b, c } => {
+                self.check(a, &Ty::Bool, ctx)?;
+                self.check(b, e, ctx)?;
+                self.check(c, e, ctx)?;
+                Ok(())
+            }
+            Term::Let { ty, a, b } => {
+                wf(self.store, ty, self.nvars, false, 0)?;
+                let lty = ty.clone();
+                self.check(a, &lty, ctx)?;
+                ctx.push(lty);
+                let r = self.check(b, e, ctx);
+                ctx.pop();
+                r
+            }
+            Term::Match { .. } => {
+                self.tc_match(t, Some(e), ctx)?;
+                Ok(())
+            }
+            Term::Lam { ty, a } => match e {
+                Ty::Fun(d, cod) => {
+                    wf(self.store, ty, self.nvars, false, 0)?;
+                    if *ty != **d {
+                        return Err("lambda parameter type does not match expected".into());
+                    }
+                    let pty = ty.clone();
+                    ctx.push(pty);
+                    let r = self.check(a, cod, ctx);
+                    ctx.pop();
+                    r
+                }
+                _ => {
+                    let got = self.synth(t, ctx)?;
+                    if got != *e {
+                        return Err("lambda where a non-function type was expected".into());
+                    }
+                    Ok(())
+                }
+            },
+            Term::App { .. } => {
+                let got = self.app(t, Some(e), ctx)?;
+                if got != *e {
+                    return Err("application result type does not match expected".into());
+                }
+                Ok(())
+            }
+            Term::Ctor { .. } => {
+                let got = self.ctor(t, Some(e), ctx)?;
+                if got != *e {
+                    return Err("constructor result type does not match expected".into());
+                }
+                Ok(())
+            }
+            // Any other form: synthesize then compare (SPEC §2.1 default).
+            _ => {
+                let got = self.synth(t, ctx)?;
+                if got != *e {
+                    return Err("type mismatch (expected and actual differ)".into());
+                }
+                Ok(())
+            }
         }
-        let expect = |ts: &[Ty], want: &Ty| -> Result<(), String> {
-            for t in ts {
-                if t != want {
-                    return Err(format!("primitive {} operand type mismatch", op));
+    }
+
+    // -----------------------------------------------------------------------
+    // APPLICATION `(f a1 … ak)` — solves an omitted generic head, then CHECKS
+    // each argument against its (now concrete) parameter type.
+    // -----------------------------------------------------------------------
+    fn app(&self, t: &mut Term, expected: Option<&Ty>, ctx: &mut Vec<Ty>) -> Result<Ty, String> {
+        let owned = std::mem::replace(t, Term::Bool(false));
+        let (mut head, mut args) = unwind_app(owned);
+        let r = self.process_call(&mut head, &mut args, expected, ctx);
+        *t = rebuild_app(head, args);
+        r
+    }
+
+    fn process_call(
+        &self,
+        head: &mut Term,
+        args: &mut [Term],
+        expected: Option<&Ty>,
+        ctx: &mut Vec<Ty>,
+    ) -> Result<Ty, String> {
+        // A generic ref/self head with an OMITTED bracket (empty tyargs) is the
+        // only thing to solve; anything else synthesizes normally.
+        let generic: Option<(u32, Ty)> = match &*head {
+            Term::Ref { hash, tyargs } if tyargs.is_empty() => {
+                let fi = self
+                    .store
+                    .func_by_hash
+                    .get(hash)
+                    .ok_or_else(|| format!("ref to unknown function {}", hash))?;
+                if fi.tyvars > 0 {
+                    Some((fi.tyvars, fi.ty.clone()))
+                } else {
+                    None
                 }
             }
-            Ok(())
+            Term::SelfRef { tyargs } if tyargs.is_empty() => {
+                if self.self_tyvars > 0 {
+                    Some((self.self_tyvars, self.self_ty.clone()))
+                } else {
+                    None
+                }
+            }
+            _ => None,
         };
+
+        let head_ty = if let Some((tyvars, gen_ty)) = generic {
+            let (param_pats, result_pat) = peel(&gen_ty, args.len())
+                .ok_or_else(|| "call applied to too many arguments".to_string())?;
+            let mut s: Vec<Option<Ty>> = vec![None; tyvars as usize];
+            // In CHECK mode, match the peeled result against the expected type.
+            if let Some(e) = expected {
+                match_ty(&result_pat, e, &mut s)?;
+            }
+            // Match each SYNTHESIZABLE argument's parameter type against it.
+            for (pat, arg) in param_pats.iter().zip(args.iter()) {
+                let mut probe = arg.clone();
+                let mut pctx = ctx.clone();
+                if let Ok(ti) = self.synth(&mut probe, &mut pctx) {
+                    match_ty(pat, &ti, &mut s)?;
+                }
+            }
+            let mut solved = Vec::with_capacity(tyvars as usize);
+            for (i, opt) in s.into_iter().enumerate() {
+                match opt {
+                    Some(ty) => solved.push(ty),
+                    None => return Err(format!("cannot infer type argument {} of call", i)),
+                }
+            }
+            for ta in &solved {
+                wf(self.store, ta, self.nvars, false, 0)?;
+            }
+            match head {
+                Term::Ref { tyargs, .. } | Term::SelfRef { tyargs } => *tyargs = solved.clone(),
+                _ => unreachable!(),
+            }
+            subst(&gen_ty, &solved)
+        } else {
+            self.synth(head, ctx)?
+        };
+
+        // Peel one parameter per argument and CHECK the argument against it (so a
+        // bare `(Nil)` argument is inferred from its parameter type).
+        let mut cur = head_ty;
+        for arg in args.iter_mut() {
+            match cur {
+                Ty::Fun(d, c) => {
+                    self.check(arg, &d, ctx)?;
+                    cur = *c;
+                }
+                _ => return Err("applying a non-function to an argument".into()),
+            }
+        }
+        Ok(cur)
+    }
+
+    // -----------------------------------------------------------------------
+    // CONSTRUCTOR `(C a1 … ak)` — solves omitted type args from the expected
+    // data type and synthesizable fields, then CHECKS each field argument.
+    // -----------------------------------------------------------------------
+    fn ctor(&self, t: &mut Term, expected: Option<&Ty>, ctx: &mut Vec<Ty>) -> Result<Ty, String> {
+        let (hash, idx) = match &*t {
+            Term::Ctor { hash, idx, .. } => (hash.clone(), *idx),
+            _ => unreachable!(),
+        };
+        let di = self
+            .store
+            .data_by_hash
+            .get(&hash)
+            .ok_or_else(|| format!("ctor of unknown data {}", hash))?
+            .clone();
+        if idx as usize >= di.ctors.len() {
+            return Err("ctor index out of range".into());
+        }
+        let dtyvars = di.tyvars;
+
+        let (tyargs, args) = match t {
+            Term::Ctor { tyargs, args, .. } => (tyargs, args),
+            _ => unreachable!(),
+        };
+
+        if tyargs.is_empty() && dtyvars > 0 {
+            // Solve the omitted arguments.
+            let mut s: Vec<Option<Ty>> = vec![None; dtyvars as usize];
+            if let Some(e) = expected {
+                let pat = Ty::Data {
+                    hash: hash.clone(),
+                    args: (0..dtyvars).map(Ty::Var).collect(),
+                };
+                match_ty(&pat, e, &mut s)?;
+            }
+            let field_pats: Vec<Ty> =
+                di.ctors[idx as usize].1.iter().map(|f| field_pattern(f, &hash)).collect();
+            if args.len() != field_pats.len() {
+                return Err(format!(
+                    "constructor applied to {} arguments, expected {}",
+                    args.len(),
+                    field_pats.len()
+                ));
+            }
+            for (pat, arg) in field_pats.iter().zip(args.iter()) {
+                let mut probe = arg.clone();
+                let mut pctx = ctx.clone();
+                if let Ok(ti) = self.synth(&mut probe, &mut pctx) {
+                    match_ty(pat, &ti, &mut s)?;
+                }
+            }
+            let mut solved = Vec::with_capacity(dtyvars as usize);
+            for (i, opt) in s.into_iter().enumerate() {
+                match opt {
+                    Some(ty) => solved.push(ty),
+                    None => return Err(format!("cannot infer constructor type argument {}", i)),
+                }
+            }
+            for ta in &solved {
+                wf(self.store, ta, self.nvars, false, 0)?;
+            }
+            *tyargs = solved;
+        } else {
+            if tyargs.len() as u32 != dtyvars {
+                return Err("ctor type-argument count mismatch".into());
+            }
+            for ta in tyargs.iter() {
+                wf(self.store, ta, self.nvars, false, 0)?;
+            }
+        }
+
+        // CHECK each argument against its now-concrete field type.
+        let ret_args = tyargs.clone();
+        let fields = instantiate_ctor(self.store, &hash, idx as usize, &ret_args);
+        if args.len() != fields.len() {
+            return Err(format!(
+                "constructor applied to {} arguments, expected {}",
+                args.len(),
+                fields.len()
+            ));
+        }
+        for (a, f) in args.iter_mut().zip(fields.iter()) {
+            self.check(a, f, ctx)?;
+        }
+        Ok(Ty::Data { hash, args: ret_args })
+    }
+
+    // -----------------------------------------------------------------------
+    // MATCH — scrutinee synthesizes; each arm is checked/synthesized.
+    // -----------------------------------------------------------------------
+    fn tc_match(
+        &self,
+        t: &mut Term,
+        expected: Option<&Ty>,
+        ctx: &mut Vec<Ty>,
+    ) -> Result<Ty, String> {
+        let (hash, a, arms) = match t {
+            Term::Match { hash, a, arms } => (hash.clone(), a, arms),
+            _ => unreachable!(),
+        };
+        let st = self.synth(a, ctx)?;
+        let scrut_args = match &st {
+            Ty::Data { hash: h, args } => {
+                if *h != hash {
+                    return Err("match hash does not match scrutinee".into());
+                }
+                args.clone()
+            }
+            _ => return Err("match scrutinee is not a data type".into()),
+        };
+        let di = self
+            .store
+            .data_by_hash
+            .get(&hash)
+            .ok_or_else(|| format!("match on unknown data {}", hash))?
+            .clone();
+        if arms.len() != di.ctors.len() {
+            return Err("match is not exhaustive".into());
+        }
+        let mut result: Option<Ty> = None;
+        for (i, arm) in arms.iter_mut().enumerate() {
+            let fields = instantiate_ctor(self.store, &hash, i, &scrut_args);
+            let nf = fields.len();
+            for f in fields {
+                ctx.push(f);
+            }
+            let at: Result<Ty, String> = match expected {
+                Some(e) => self.check(arm, e, ctx).map(|_| e.clone()),
+                None => self.synth(arm, ctx),
+            };
+            for _ in 0..nf {
+                ctx.pop();
+            }
+            let at = at?;
+            match &result {
+                None => result = Some(at),
+                Some(r) => {
+                    if *r != at {
+                        return Err("match arms have different result types".into());
+                    }
+                }
+            }
+        }
+        Ok(result.unwrap())
+    }
+
+    // -----------------------------------------------------------------------
+    // Primitives — operands are CHECKED against their known operand type; `==`
+    // synthesizes one operand and checks the other against it.
+    // -----------------------------------------------------------------------
+    fn synth_prim(&self, op: &str, args: &mut [Term], ctx: &mut Vec<Ty>) -> Result<Ty, String> {
+        let arity_err = |n: usize| format!("primitive {} takes {} operand(s)", op, n);
         match op {
             "+" | "-" | "*" | "/" | "%" => {
-                if at.len() != 2 {
-                    return Err(format!("{} takes 2 operands", op));
+                if args.len() != 2 {
+                    return Err(arity_err(2));
                 }
-                expect(&at, &Ty::Int)?;
+                for a in args.iter_mut() {
+                    self.check(a, &Ty::Int, ctx)?;
+                }
                 Ok(Ty::Int)
             }
             "neg" => {
-                if at.len() != 1 {
-                    return Err("neg takes 1 operand".into());
+                if args.len() != 1 {
+                    return Err(arity_err(1));
                 }
-                expect(&at, &Ty::Int)?;
+                self.check(&mut args[0], &Ty::Int, ctx)?;
                 Ok(Ty::Int)
             }
             "<" | "<=" => {
-                if at.len() != 2 {
-                    return Err(format!("{} takes 2 operands", op));
+                if args.len() != 2 {
+                    return Err(arity_err(2));
                 }
-                expect(&at, &Ty::Int)?;
+                for a in args.iter_mut() {
+                    self.check(a, &Ty::Int, ctx)?;
+                }
                 Ok(Ty::Bool)
             }
             "==" => {
-                if at.len() != 2 {
-                    return Err("== takes 2 operands".into());
+                if args.len() != 2 {
+                    return Err(arity_err(2));
                 }
-                if at[0] != at[1] {
-                    return Err("== operands have different types".into());
-                }
-                if contains_fun(&at[0]) {
+                // Synthesize whichever operand can be typed, check the other.
+                let mut probe0 = args[0].clone();
+                let mut pctx0 = ctx.clone();
+                let t = match self.synth(&mut probe0, &mut pctx0) {
+                    Ok(t0) => t0,
+                    Err(_) => {
+                        let mut probe1 = args[1].clone();
+                        let mut pctx1 = ctx.clone();
+                        self.synth(&mut probe1, &mut pctx1)
+                            .map_err(|_| "== operands cannot be typed".to_string())?
+                    }
+                };
+                self.check(&mut args[0], &t, ctx)?;
+                self.check(&mut args[1], &t, ctx)?;
+                if contains_fun(&t) {
                     return Err("== is not defined on function types".into());
                 }
                 Ok(Ty::Bool)
             }
             "and" | "or" => {
-                if at.len() != 2 {
-                    return Err(format!("{} takes 2 operands", op));
+                if args.len() != 2 {
+                    return Err(arity_err(2));
                 }
-                expect(&at, &Ty::Bool)?;
+                for a in args.iter_mut() {
+                    self.check(a, &Ty::Bool, ctx)?;
+                }
                 Ok(Ty::Bool)
             }
             "not" => {
-                if at.len() != 1 {
-                    return Err("not takes 1 operand".into());
+                if args.len() != 1 {
+                    return Err(arity_err(1));
                 }
-                expect(&at, &Ty::Bool)?;
+                self.check(&mut args[0], &Ty::Bool, ctx)?;
                 Ok(Ty::Bool)
             }
             "++" => {
-                if at.len() != 2 {
-                    return Err("++ takes 2 operands".into());
+                if args.len() != 2 {
+                    return Err(arity_err(2));
                 }
-                expect(&at, &Ty::Str)?;
+                for a in args.iter_mut() {
+                    self.check(a, &Ty::Str, ctx)?;
+                }
                 Ok(Ty::Str)
             }
             "str-len" => {
-                if at.len() != 1 {
-                    return Err("str-len takes 1 operand".into());
+                if args.len() != 1 {
+                    return Err(arity_err(1));
                 }
-                expect(&at, &Ty::Str)?;
+                self.check(&mut args[0], &Ty::Str, ctx)?;
                 Ok(Ty::Int)
             }
             _ => Err(format!("unknown primitive {}", op)),
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// One-sided matching (SPEC §2.1)
+// ---------------------------------------------------------------------------
+
+/// One-sided match of pattern `pat` (variable indices `< s.len()` are unknowns)
+/// against concrete `g`. Binds an unknown to `g` (failing on a conflicting bind);
+/// otherwise `pat` and `g` must have the same shape and match componentwise. A
+/// variable in `g` is an opaque constant a pattern variable may bind to. Two
+/// unknowns are never unified.
+fn match_ty(pat: &Ty, g: &Ty, s: &mut [Option<Ty>]) -> Result<(), String> {
+    if let Ty::Var(i) = pat {
+        if (*i as usize) < s.len() {
+            match &s[*i as usize] {
+                None => {
+                    s[*i as usize] = Some(g.clone());
+                    return Ok(());
+                }
+                Some(bound) => {
+                    return if bound == g {
+                        Ok(())
+                    } else {
+                        Err("conflicting type-argument inference".into())
+                    };
+                }
+            }
+        }
+    }
+    match (pat, g) {
+        (Ty::Int, Ty::Int) | (Ty::Bool, Ty::Bool) | (Ty::Str, Ty::Str) => Ok(()),
+        (Ty::Var(i), Ty::Var(j)) if i == j => Ok(()),
+        (Ty::Fun(pa, pb), Ty::Fun(ga, gb)) => {
+            match_ty(pa, ga, s)?;
+            match_ty(pb, gb, s)
+        }
+        (Ty::Data { hash: ph, args: pa }, Ty::Data { hash: gh, args: ga })
+            if ph == gh && pa.len() == ga.len() =>
+        {
+            for (p, q) in pa.iter().zip(ga.iter()) {
+                match_ty(p, q, s)?;
+            }
+            Ok(())
+        }
+        (Ty::Record { names: pn, args: pa }, Ty::Record { names: gn, args: ga })
+            if pn == gn && pa.len() == ga.len() =>
+        {
+            for (p, q) in pa.iter().zip(ga.iter()) {
+                match_ty(p, q, s)?;
+            }
+            Ok(())
+        }
+        (Ty::Rec { args: pa }, Ty::Rec { args: ga }) if pa.len() == ga.len() => {
+            for (p, q) in pa.iter().zip(ga.iter()) {
+                match_ty(p, q, s)?;
+            }
+            Ok(())
+        }
+        _ => Err("type mismatch during inference".into()),
+    }
+}
+
+/// Peel `k` parameter types off a function type, returning them and the result.
+fn peel(ty: &Ty, k: usize) -> Option<(Vec<Ty>, Ty)> {
+    let mut params = Vec::with_capacity(k);
+    let mut cur = ty.clone();
+    for _ in 0..k {
+        match cur {
+            Ty::Fun(d, c) => {
+                params.push(*d);
+                cur = *c;
+            }
+            _ => return None,
+        }
+    }
+    Some((params, cur))
+}
+
+/// A constructor field type as an inference pattern: `rec` becomes the data type
+/// being constructed (`Data{hash, args}`); type variables (the data's parameters)
+/// are the unknowns and stay put.
+fn field_pattern(f: &Ty, selfhash: &str) -> Ty {
+    match f {
+        Ty::Rec { args } => Ty::Data {
+            hash: selfhash.to_string(),
+            args: args.iter().map(|a| field_pattern(a, selfhash)).collect(),
+        },
+        Ty::Fun(a, b) => Ty::Fun(
+            Box::new(field_pattern(a, selfhash)),
+            Box::new(field_pattern(b, selfhash)),
+        ),
+        Ty::Data { hash, args } => Ty::Data {
+            hash: hash.clone(),
+            args: args.iter().map(|a| field_pattern(a, selfhash)).collect(),
+        },
+        Ty::Record { names, args } => Ty::Record {
+            names: names.clone(),
+            args: args.iter().map(|a| field_pattern(a, selfhash)).collect(),
+        },
+        other => other.clone(),
+    }
+}
+
+fn unwind_app(t: Term) -> (Term, Vec<Term>) {
+    let mut args = Vec::new();
+    let mut cur = t;
+    while let Term::App { a, b } = cur {
+        args.push(*b);
+        cur = *a;
+    }
+    args.reverse();
+    (cur, args)
+}
+
+fn rebuild_app(head: Term, args: Vec<Term>) -> Term {
+    let mut acc = head;
+    for a in args {
+        acc = Term::App { a: Box::new(acc), b: Box::new(a) };
+    }
+    acc
 }
 
 // ---------------------------------------------------------------------------
@@ -328,13 +705,7 @@ fn check_record_names(names: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn wf(
-    store: &Store,
-    ty: &Ty,
-    nvars: u32,
-    allow_rec: bool,
-    rec_arity: u32,
-) -> Result<(), String> {
+fn wf(store: &Store, ty: &Ty, nvars: u32, allow_rec: bool, rec_arity: u32) -> Result<(), String> {
     match ty {
         Ty::Int | Ty::Bool | Ty::Str => Ok(()),
         Ty::Var(i) => {
@@ -429,11 +800,7 @@ fn subst(ty: &Ty, args: &[Ty]) -> Ty {
 
 fn instantiate_ctor(store: &Store, hash: &str, idx: usize, tyargs: &[Ty]) -> Vec<Ty> {
     let di = store.data_by_hash.get(hash).expect("data present");
-    di.ctors[idx]
-        .1
-        .iter()
-        .map(|f| inst_field(f, tyargs, hash))
-        .collect()
+    di.ctors[idx].1.iter().map(|f| inst_field(f, tyargs, hash)).collect()
 }
 
 fn inst_field(ty: &Ty, tyargs: &[Ty], selfhash: &str) -> Ty {

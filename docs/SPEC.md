@@ -194,6 +194,13 @@ vector `S` of length `tyvars` (all initially unsolved):
   against `E`; then match each field type against every argument that
   synthesizes. Reject if any `S` entry is unsolved. Backfill and CHECK each
   argument against its now-concrete field type.
+- PRIMITIVES with fixed operand types (`+ - * / % neg < <= and or not ++
+  str-len`) CHECK each operand against that fixed type. `==` is polymorphic in
+  its operand type: SYNTHESIZE whichever operand can be, then CHECK the other
+  against it (so `(== xs (Nil))` infers the `(Nil)`); both must be the same
+  non-function type, and — since the operands end at the same type — the
+  backfilled arguments do not depend on which operand is synthesized first. An
+  `==` where neither operand synthesizes (`(== (Nil) (Nil))`) is rejected.
 
 Because matching is one-sided and every solution is checked structurally
 afterward, inference never accepts an ill-typed term; and because the solved

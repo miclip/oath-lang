@@ -1269,3 +1269,70 @@ the spec. Recorded only to note the interaction was considered; no new choice. T
 STEP/BASE obligation scripts remain outside the byte oracle, so the constructor-case
 formatting is unobservable beyond the proof outcome, which reproduces `rle-expand`
 5/5 (`length-is-count-arg`, `every-element-is-v` by this case).
+
+## 70. Type-argument inference (#35, §2.1): representation of an OMITTED bracket
+
+**Found by:** blind Rust implementation of bidirectional type-argument inference.
+**Outcome: no fixture divergence** — the whole corpus hashes identically and
+`inferred.oath` (singleton `7eef2b2b…`, swap `b00e9f7d…`) reproduces its hashes and
+proofs — **but the spec does not say HOW a kernel should mark "type arguments
+omitted" internally, and the choice interacts with identity.**
+
+The IR's `Ref`/`Ctor`/`SelfRef` carry `tyargs: Vec<Ty>`; the O1 encoding (§1)
+hashes that vector, and a backfilled call MUST be byte-identical to the explicit
+one. So the "omitted" marker cannot be a new IR field (it would change the
+encoding). Choice: represent an omitted bracket as an EMPTY `tyargs` vector, and
+have the checker treat "empty `tyargs` on a target whose `tyvars > 0`" as "infer".
+This is unambiguous because elaboration rejects a PRESENT bracket of the wrong
+count (including an empty `[]` on a `tyvars > 0` target), so an empty vector on a
+generic target can only mean the bracket was absent. Elaboration's `parse_tyargs`
+therefore returns `Option<Vec<Ty>>` — `None` = absent (defer to the checker),
+`Some(v)` = present (count validated) — collapsing to the empty-vector sentinel
+only after the count check has run. After inference the vector is non-empty
+(== `tyvars`), so re-running the gate on a stored definition is a validating no-op.
+
+Recorded because a third kernel could reasonably reach for an explicit
+`Option<Vec<Ty>>` in its IR and, if it were not careful to erase it before
+encoding, fork identity. The spec should note that the omitted/explicit
+distinction is a SURFACE property that must not survive into the hashed AST.
+
+## 71. Type-argument inference (#35): inference runs during ELABORATION, before hashing
+
+**Found by:** the same work. **Outcome: no divergence, but a pipeline-ordering
+decision the spec leaves open.**
+
+§2.1 says inferred arguments are backfilled "into the AST before it is hashed".
+In this kernel the hash is computed at the END of elaborating each definition, so
+the bidirectional checker (`check_and_backfill`) runs THERE — after the body/props
+are built, before the hash — mutating the AST in place. The separate post-
+elaboration gate (`check_def`) becomes a validator that runs the same bidirectional
+pass on a CLONE and discards the backfill (a no-op on the now-complete AST), so its
+`&Def` signature and every caller (the `hash`/`verify` gate, mutation candidates)
+are unchanged. Consequence: a type error is now reported during elaboration rather
+than by a later gate — observably the same (the definition is rejected and not
+stored), and the reject/accept fixtures still pass. A kernel that hashes only after
+a global gate pass could backfill there instead; the spec does not mandate where,
+only that it happens before hashing.
+
+## 72. Type-argument inference (#35): primitives are bidirectional too (§2.1 silent)
+
+**Found by:** the same work. **Outcome: no divergence** (the corpus's primitive
+operands are all explicit) **but §2.1's inference rules enumerate only APPLICATION
+and CONSTRUCTOR, not primitives.**
+
+A primitive's operand types are fixed (`Int`/`Bool`/`Str`), or, for `==`, "both
+operands the same type" (§2). To let an omitted-argument operand be inferred from
+context — e.g. `(== xs (Nil))` or `(< n (foo))` — this kernel CHECKS each primitive
+operand against its known operand type rather than synthesizing it, and for `==`
+synthesizes whichever operand can be typed and CHECKS the other against it (then
+enforces the no-function-type rule). This is sound (every operand is still checked
+structurally, and the fixed operand types are exactly §2's rule) and is a strict
+superset of synthesize-then-compare, so it accepts every explicit program the old
+checker did — verified by the byte-identical hashes of the whole corpus. Related
+minor threading choices, also unobservable on the (explicit) corpus: a `let`'s
+bound expression is CHECKED against its own annotation, and in SYNTHESIZE mode an
+`if`'s second branch is CHECKED against the first branch's synthesized type (the
+spec threads the expected type through `if` only in CHECK mode). A third kernel
+that left primitives synthesize-only would reject an inferred primitive operand the
+author could reasonably expect to work; §2.1 should state that CHECK threads
+through primitive operands as well.

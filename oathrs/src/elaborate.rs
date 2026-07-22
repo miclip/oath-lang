@@ -268,12 +268,30 @@ impl Store {
                         }
                         _ => {}
                     }
-                    // named application
-                    let (tyargs, arg_start) = self.parse_tyargs(items, tyvars)?;
+                    // named application. `tyarg_opt` is None when the `[types]`
+                    // bracket was OMITTED (deferred to the checker's inference);
+                    // Some(v) when present (its count is validated here).
+                    let (tyarg_opt, arg_start) = self.parse_tyargs(items, tyvars)?;
                     let arg_exprs = &items[arg_start..];
+                    // A present bracket with a WRONG count is an error; an absent
+                    // bracket yields empty type arguments the checker will infer.
+                    let checked = |present: Option<Vec<Ty>>, want: u32, what: &str, nm: &str| -> ER<Vec<Ty>> {
+                        match present {
+                            Some(v) => {
+                                if v.len() as u32 != want {
+                                    return hard(format!(
+                                        "{} {} expects {} type arguments, got {}",
+                                        what, nm, want, v.len()
+                                    ));
+                                }
+                                Ok(v)
+                            }
+                            None => Ok(Vec::new()),
+                        }
+                    };
                     // resolution order: local var, self, constructor, stored fn
                     if let Some(i) = Self::lookup_var(ctx, head) {
-                        if !tyargs.is_empty() {
+                        if tyarg_opt.is_some() {
                             return hard("type arguments applied to a variable".into());
                         }
                         let mut acc = Term::Var(i);
@@ -285,13 +303,7 @@ impl Store {
                         return Ok(acc);
                     }
                     if head == self_name {
-                        if tyargs.len() as u32 != self_tyvars {
-                            return hard(format!(
-                                "self reference expects {} type arguments, got {}",
-                                self_tyvars,
-                                tyargs.len()
-                            ));
-                        }
+                        let tyargs = checked(tyarg_opt, self_tyvars, "self reference", head)?;
                         let mut acc = Term::SelfRef { tyargs };
                         for a in arg_exprs {
                             let at =
@@ -301,14 +313,7 @@ impl Store {
                         return Ok(acc);
                     }
                     if let Some((hash, idx, dtyvars)) = self.lookup_ctor(head)? {
-                        if tyargs.len() as u32 != dtyvars {
-                            return hard(format!(
-                                "constructor {} expects {} type arguments, got {}",
-                                head,
-                                dtyvars,
-                                tyargs.len()
-                            ));
-                        }
+                        let tyargs = checked(tyarg_opt, dtyvars, "constructor", head)?;
                         let mut args = Vec::new();
                         for a in arg_exprs {
                             args.push(self.elab_term(a, tyvars, self_name, self_tyvars, ctx)?);
@@ -316,14 +321,7 @@ impl Store {
                         return Ok(Term::Ctor { hash, idx, tyargs, args });
                     }
                     if let Some(fi) = self.func_by_name.get(head) {
-                        if tyargs.len() as u32 != fi.tyvars {
-                            return hard(format!(
-                                "function {} expects {} type arguments, got {}",
-                                head,
-                                fi.tyvars,
-                                tyargs.len()
-                            ));
-                        }
+                        let tyargs = checked(tyarg_opt, fi.tyvars, "function", head)?;
                         let mut acc = Term::Ref { hash: fi.hash.clone(), tyargs };
                         for a in arg_exprs {
                             let at =
@@ -351,18 +349,23 @@ impl Store {
         }
     }
 
-    /// Detect a leading `[...]` type-argument bracket in an application.
-    fn parse_tyargs(&self, items: &[Sexpr], tyvars: &[String]) -> ER<(Vec<Ty>, usize)> {
+    /// Detect a leading `[...]` type-argument bracket in an application. Returns
+    /// `(Some(types), 2)` when the bracket is PRESENT (its count is validated by
+    /// the caller against the target's `tyvars`), or `(None, 1)` when it is
+    /// ABSENT — in which case the type arguments are OMITTED and left for the
+    /// checker to INFER and BACKFILL (SPEC §2.1). An empty bracket `[]` is still a
+    /// present bracket of count 0.
+    fn parse_tyargs(&self, items: &[Sexpr], tyvars: &[String]) -> ER<(Option<Vec<Ty>>, usize)> {
         if items.len() >= 2 {
             if let Sexpr::Brack(ts) = &items[1] {
                 let mut out = Vec::new();
                 for t in ts {
                     out.push(self.elab_type(t, tyvars, None)?);
                 }
-                return Ok((out, 2));
+                return Ok((Some(out), 2));
             }
         }
-        Ok((vec![], 1))
+        Ok((None, 1))
     }
 
     fn elab_fn(
@@ -644,7 +647,11 @@ impl Store {
             prop_names.push(prop_name(pform)?);
             props.push(self.elab_prop(pform, &tyvar_names, &name, tyvars_count)?);
         }
-        let def = Def::Func { tyvars: tyvars_count, ty: ty.clone(), body: fun_body, props };
+        let mut def = Def::Func { tyvars: tyvars_count, ty: ty.clone(), body: fun_body, props };
+        // Type-check and BACKFILL inferred type arguments (SPEC §2.1) BEFORE
+        // hashing, so an inferred call has the identity of its explicit form. A
+        // type error rejects the definition (it must not be stored).
+        crate::check::check_and_backfill(self, &mut def).map_err(EErr::Hard)?;
         let hash = sha256_hex(&canonical_bytes(&def));
         let info = FuncInfo {
             hash: hash.clone(),
