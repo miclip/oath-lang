@@ -312,6 +312,27 @@
       ]
     },
     {
+      "name": "fib",
+      "hash": "53f72cde6a8e04b9900ebeb6a291cd077f5732aec99006ac800f04cadf6b8aba",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "base-zero",
+          "proven": true
+        },
+        {
+          "name": "base-one",
+          "proven": true
+        },
+        {
+          "name": "unfold-step",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "filter",
       "hash": "cc825b87e8885789ef9ebabd5c8f3591c0022aa1248ef0554ab5f0bfcb12b04b",
       "level": "proven",

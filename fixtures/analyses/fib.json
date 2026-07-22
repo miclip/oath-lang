@@ -1,0 +1,14 @@
+{
+  "name": "fib",
+  "hash": "53f72cde6a8e04b9900ebeb6a291cd077f5732aec99006ac800f04cadf6b8aba",
+  "kind": "func",
+  "termination": "measure",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 17,
+  "mutants_total": 17,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

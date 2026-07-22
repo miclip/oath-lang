@@ -18,3 +18,18 @@
     (if (<= 0 n) (== (pow b (+ n 1)) (* b (pow b n))) true))
   (prop one-base-is-one [(b Int) (n Int)]
     (if (and (== b 1) (<= 0 n)) (== (pow b n) 1) true)))
+
+; fib: the Fibonacci sequence. Recurses TWICE (fib(n-1), fib(n-2)) — the ranking
+; function handles multiple recursive calls, each a decreasing counter under the
+; guard, so fib is `total` (µ = n). The definitional laws prove directly and pin
+; it exactly (17/17 mutants). (A value law like `0 <= fib n` would need the
+; induction step to assume BOTH recursive hypotheses at once — a completeness gap
+; for multi-call functions, noted for later; the definitional spec needs it not.)
+(defn fib [] [(n Int)] Int
+  (if (<= n 1)
+      n
+      (+ (fib (- n 1)) (fib (- n 2))))
+  (prop base-zero [] (== (fib 0) 0))
+  (prop base-one [] (== (fib 1) 1))
+  (prop unfold-step [(n Int)]
+    (if (< 1 n) (== (fib n) (+ (fib (- n 1)) (fib (- n 2)))) true)))
