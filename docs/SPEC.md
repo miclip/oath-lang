@@ -783,10 +783,14 @@ reproducibility (given the same solver):
   analyze the body or finds no site. Then discharge, all `unsat`:
   (a) BASE — the goal under `(assert (not G_s))` for EVERY site (the complement
   of the recursive region — where no self-call fires);
-  (b) STEP — for each site, the goal under `(assert G_s)` and the induction
-  hypothesis `(assert IH_s)`, where `IH_s` is the property with each binder
-  substituted per the mapping above (the property at the recursive call's
-  arguments — a point of strictly smaller measure).
+  (b) STEP — GROUP the sites by their guard `G_s` (in first-seen order), and for
+  each group prove the goal under `(assert G_s)` together with the induction
+  hypothesis `(assert IH_s)` of EVERY site in the group, where `IH_s` is the
+  property with each binder substituted per the mapping above (the property at
+  that recursive call's arguments — a point of strictly smaller measure). A
+  function with several recursive calls on one path (`fib`'s `fib(n-1)` and
+  `fib(n-2)`) thereby gets all their hypotheses at once; a single-recursive-call
+  function has one site per guard, so its obligation is unchanged.
   Sound by well-founded induction on the measure the function is total by: the
   recursive arguments strictly decrease it, so a false property fails either the
   base (false off the recursion) or some step (false where its smaller-measure

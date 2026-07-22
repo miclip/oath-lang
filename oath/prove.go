@@ -1454,24 +1454,48 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 				if capHit {
 					sawInvalid = true
 				}
-				// STEP: each site under its guard, assuming the property at its
-				// recursive arguments (binders substituted via ihArg).
+				// STEP: group the self-call sites by their path guard, and for each
+				// path prove the goal under that guard assuming the property at
+				// EVERY recursive call reachable on it. A function with several
+				// recursive calls on one path (fib's fib(n-1) and fib(n-2)) needs
+				// all their hypotheses together; discharging one site at a time
+				// would be sound but too weak to combine them. Single-recursive-call
+				// functions have one site per guard, so their obligation — and its
+				// script bytes — are unchanged.
+				groups := map[string][]rankSite{}
+				var order []string
 				for _, site := range w.sites {
+					g := guardConj(site.guards)
+					if _, seen := groups[g]; !seen {
+						order = append(order, g)
+					}
+					groups[g] = append(groups[g], site)
+				}
+				for _, g := range order {
 					if !allOK {
 						break
 					}
-					ihAssign := map[int]string{}
-					for j := range p.Binders {
-						if expr, ok := ihArg(site, j); ok {
-							ihAssign[j] = expr
+					asserts := []string{"(assert " + g + ")"}
+					built := true
+					for _, site := range groups[g] {
+						ihAssign := map[int]string{}
+						for j := range p.Binders {
+							if expr, ok := ihArg(site, j); ok {
+								ihAssign[j] = expr
+							}
 						}
+						ih, err := c.formulaWith(d, h, p, ihAssign)
+						if err != nil {
+							built = false
+							break
+						}
+						asserts = append(asserts, "(assert "+ih+")")
 					}
-					ih, err := c.formulaWith(d, h, p, ihAssign)
-					if err != nil {
+					if !built {
 						allOK = false
 						break
 					}
-					sp, spCap := discharge([]string{"(assert " + guardConj(site.guards) + ")", "(assert " + ih + ")"}, goal)
+					sp, spCap := discharge(asserts, goal)
 					if spCap {
 						sawInvalid = true
 						allOK = false
