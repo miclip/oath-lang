@@ -1300,6 +1300,31 @@
       ]
     },
     {
+      "name": "pow",
+      "hash": "c2ef027e2d61fa9d181fc5b19d792d36300889104f91add0c318a87e334c3aa6",
+      "level": "proven",
+      "proven_count": 4,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "zero-is-one",
+          "proven": true
+        },
+        {
+          "name": "unfold-step",
+          "proven": true
+        },
+        {
+          "name": "succ-exponent",
+          "proven": true
+        },
+        {
+          "name": "one-base-is-one",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "product",
       "hash": "54a2e5c0171dafb82de37512cbfbc082eac29bc882e80f106494531cb3d1f9ff",
       "level": "proven",
