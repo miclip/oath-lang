@@ -19,15 +19,18 @@ asserted  →  tested (N cases)  →  PROVEN (all inputs, Z3)
 
 `proven` is real: `oath prove <name>` translates properties to SMT-LIB and
 asks Z3 (`brew install z3`) to hold them for *all* inputs — including
-**recursive functions, by structural induction**: datatypes become SMT
-algebraic datatypes, recursive functions become quantified defining
-equations, matches become tester/selector chains, records become
-single-constructor datatypes, and function values are array-encoded (so
-higher-order properties quantify over *all functions* and capability
-properties over *all worlds*). Proven properties become a **lemma library**:
-they are asserted as axioms in later proofs, composing bottom-up through
-the hash graph like every other verdict. 29 functions / 97 properties are
-fully proven (116 proven overall), including `reverse (reverse xs) == xs` (via the append laws
+**recursive functions, by induction**: datatypes become SMT algebraic
+datatypes, recursive functions become quantified defining equations, matches
+become tester/selector chains, records become single-constructor datatypes,
+and function values are array-encoded (so higher-order properties quantify
+over *all functions* and capability properties over *all worlds*). Structural
+and lexicographic induction reach recursion that shrinks a datatype;
+**recursion induction** reaches functions that recurse on an integer COUNTER
+(`replicate`, `range`, `fib`, even a counter inside a datatype field), proving
+their measure laws like `length (replicate n x) == n`. Proven properties become
+a **lemma library**: they are asserted as axioms in later proofs, composing
+bottom-up through the hash graph like every other verdict. 89 definitions are
+fully proven (285 properties proven overall), including `reverse (reverse xs) == xs` (via the append laws
 and its own antidistribution lemma), insertion sort's complete correctness —
 `output-is-sorted`, `preserves-counts` (the permutation oath), `idempotent`,
 and `reverse-invariant`, the last two through a four-lemma plan (insert
@@ -45,10 +48,13 @@ the fragment on purpose (kernel truncates, SMT-LIB is Euclidean — a
 
 Two more dimensions ride alongside: **termination** (a structural checker
 proves totality where recursion visibly descends, including lexicographic
-descent — `merge` alternates which argument shrinks and is still `total`;
-everything else is honestly `termination unproven` and fuel-bounded) and
-**spec strength** (mutation-tested: do the properties notice when the body
-changes?).
+descent — `merge` alternates which argument shrinks and is still `total` — and
+a Z3-verified **ranking function** proves it for integer-counter recursion,
+where the counter is not a shrinking datatype: `replicate` on `n → n-1`, `range`
+on `lo → lo+1` bounded by `hi`, the count inside `rle-expand`'s `Run`; genuinely
+non-terminating or unanalyzable recursion stays honestly `termination unproven`
+and fuel-bounded) and **spec strength** (mutation-tested: do the properties
+notice when the body changes?).
 
 See [DESIGN.md](DESIGN.md) for the full rationale and roadmap,
 [docs/SPEC.md](docs/SPEC.md) for the normative kernel specification

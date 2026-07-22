@@ -46,10 +46,12 @@ export default function Architecture() {
       <h2>The prover</h2>
       <p>
         The prover translates properties to SMT-LIB and discharges them to Z3.
-        Recursion is handled by structural induction; the defining equation of a
-        recursive function is asserted as an axiom only when the function is known
-        total, so a non-terminating callee is left uninterpreted rather than admitting
-        a false proof. Proven properties become a lemma library — asserted as axioms in
+        Recursion is handled by induction — structural and lexicographic for
+        shrinking datatypes, and recursion induction for functions that recurse on
+        an integer counter (whose totality a Z3-verified ranking function
+        establishes). The defining equation of a recursive function is asserted as
+        an axiom only when the function is known total, so a non-terminating callee
+        is left uninterpreted rather than admitting a false proof. Proven properties become a lemma library — asserted as axioms in
         later proofs, composing bottom-up through the hash graph, with relevance
         filtering so axiom sets are bounded by reachability rather than library size.
         Z3 &quot;unknown&quot; and timeouts are treated as failure, never as proof.

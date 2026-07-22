@@ -82,7 +82,7 @@ const PILLARS: Pillar[] = [
     icon: IconProofs,
     name: "Proofs",
     sub: "tested or proven",
-    body: "Properties climb an honest ladder: asserted → tested with deterministic cases → PROVEN for all inputs by Z3, including recursive functions by structural induction.",
+    body: "Properties climb an honest ladder: asserted → tested with deterministic cases → PROVEN for all inputs by Z3, including recursive functions by induction — structural, lexicographic, and recursion induction for integer counters.",
   },
   {
     icon: IconCapabilities,

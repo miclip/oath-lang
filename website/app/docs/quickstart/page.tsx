@@ -56,7 +56,8 @@ cd oath && go build -o oath . && cd ..`} />
       <h2>Prove it for all inputs</h2>
       <p>
         <code>prove</code> translates properties to SMT-LIB and asks Z3 to hold them
-        for every input — including recursive functions, by structural induction.
+        for every input — including recursive functions, by induction (structural,
+        lexicographic, and recursion induction for integer-counter recursion).
         Proven properties become a lemma library for later proofs.
       </p>
       <Sh code={`./oath/oath put examples/sort.oath

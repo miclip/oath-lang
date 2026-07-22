@@ -196,7 +196,7 @@ export default function Home() {
                   <span className="rung-mark v-proven">proven</span>
                   <div className="rung-body">
                     <h4>All inputs, via Z3</h4>
-                    <p>SMT-LIB translation, structural induction for recursion.</p>
+                    <p>SMT-LIB translation, structural and recursion induction.</p>
                   </div>
                 </div>
                 <div className="rung">

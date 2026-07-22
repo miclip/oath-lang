@@ -38,7 +38,10 @@ export default function Guarantees() {
         quantified defining equations, matches become tester/selector chains, records
         become single-constructor datatypes, and function values are array-encoded —
         so higher-order properties quantify over all functions and capability
-        properties over all worlds. Recursion is handled by structural induction.
+        properties over all worlds. Recursion is handled by induction —
+        structural and lexicographic for shrinking datatypes, and recursion
+        induction for functions that recurse on an integer counter (proving
+        measure laws like <code>length (replicate n x) == n</code>).
       </p>
       <h3>falsified</h3>
       <p>
@@ -76,7 +79,11 @@ export default function Guarantees() {
           <strong>Termination.</strong> A structural checker proves totality where
           recursion visibly descends — including lexicographic descent, so{" "}
           <code>merge</code> (which alternates which argument shrinks) is still{" "}
-          <code>total</code>. Everything else is honestly{" "}
+          <code>total</code> — and a Z3-verified ranking function proves it for
+          integer-counter recursion, where the counter is not a shrinking
+          datatype (<code>replicate</code>, <code>range</code>, the count inside{" "}
+          <code>rle-expand</code>&apos;s <code>Run</code>). Genuinely
+          non-terminating or unanalyzable recursion is honestly{" "}
           <code>termination unproven</code> and fuel-bounded.
         </li>
         <li>
