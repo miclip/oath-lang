@@ -345,11 +345,14 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 	case "var":
 		return fmt.Sprintf("env[%d]", depth-1-t.Idx), nil
 	case "int":
-		return fmt.Sprintf("int64(%d)", t.Int), nil
+		// Wrap literals as any(...) so the concrete-type assertions that
+		// primitive operands carry (e.g. `.(int64)`, `.(string)`) apply — a
+		// bare typed constant like int64(1) can't be type-asserted.
+		return fmt.Sprintf("any(int64(%d))", t.Int), nil
 	case "bool":
-		return strconv.FormatBool(t.Bool), nil
+		return fmt.Sprintf("any(%s)", strconv.FormatBool(t.Bool)), nil
 	case "str":
-		return strconv.Quote(t.Str), nil
+		return fmt.Sprintf("any(%s)", strconv.Quote(t.Str)), nil
 	case "lam":
 		e.ctx = append(e.ctx, t.Ty)
 		body, err := e.expr(t.A, depth+1, self)
