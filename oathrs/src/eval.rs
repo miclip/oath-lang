@@ -252,6 +252,36 @@ fn eval_prim(op: &str, vs: &[Value]) -> Result<Value, String> {
             let found = sub.is_empty() || s.windows(sub.len()).any(|w| w == sub);
             Ok(Value::Bool(found))
         }
+        // substring is CODE-POINT indexed (SPEC §3): the longest run of at most
+        // `n` code points of `s` starting at code-point index `i`; empty when `i`
+        // is outside `[0, str-len s)` or `n < 0`.
+        "substring" => {
+            let chars: Vec<char> = string(&vs[0])?.chars().collect();
+            let i = int(&vs[1])?;
+            let n = int(&vs[2])?;
+            let len = chars.len() as i64;
+            if i < 0 || i >= len || n < 0 {
+                Ok(Value::Str(String::new()))
+            } else {
+                let start = i as usize;
+                let take = (n as usize).min(chars.len() - start);
+                Ok(Value::Str(chars[start..start + take].iter().collect()))
+            }
+        }
+        // str-index-of is CODE-POINT indexed (SPEC §3): the code-point index of
+        // the first occurrence of `sub` in `s`, or -1 when absent (0 when empty).
+        "str-index-of" => {
+            let s = string(&vs[0])?;
+            let sub = string(&vs[1])?;
+            if sub.is_empty() {
+                Ok(Value::Int(0))
+            } else {
+                match s.find(sub) {
+                    Some(byte_off) => Ok(Value::Int(s[..byte_off].chars().count() as i64)),
+                    None => Ok(Value::Int(-1)),
+                }
+            }
+        }
         _ => Err(format!("unknown primitive {}", op)),
     }
 }

@@ -576,6 +576,26 @@ impl<'a> Checker<'a> {
                 }
                 Ok(Ty::Bool)
             }
+            "substring" => {
+                // (Str, Int, Int) -> Str
+                if args.len() != 3 {
+                    return Err(arity_err(3));
+                }
+                self.check(&mut args[0], &Ty::Str, ctx)?;
+                self.check(&mut args[1], &Ty::Int, ctx)?;
+                self.check(&mut args[2], &Ty::Int, ctx)?;
+                Ok(Ty::Str)
+            }
+            "str-index-of" => {
+                // (Str, Str) -> Int
+                if args.len() != 2 {
+                    return Err(arity_err(2));
+                }
+                for a in args.iter_mut() {
+                    self.check(a, &Ty::Str, ctx)?;
+                }
+                Ok(Ty::Int)
+            }
             _ => Err(format!("unknown primitive {}", op)),
         }
     }

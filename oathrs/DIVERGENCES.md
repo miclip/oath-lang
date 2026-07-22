@@ -1374,3 +1374,35 @@ desugars to the exact constructor chain, `singleton`'s hash is unchanged and
   vector is empty, matching `one-two-three.json` byte-for-byte. A third kernel that
   emitted `[]` would diverge on the analyses check; the analyses-output format
   should be documented, or the field always emitted, to remove the ambiguity.
+
+## 74. String-length ranking measure (#32, §6.1.1): obligation bytes are internal
+
+**Found by:** blind Rust implementation of the `(str.len p_i)` termination measure
+(the shrinking string in `split`). **Outcome: no fixture divergence** — `split`
+reproduces `termination: "measure"`, proves 3/3, and its analyses/mutation
+(6/15) and the 325 direct-attempt proof scripts are byte-identical — **but the
+coordinator flagged the ranking-obligation SMT bytes as a new-measure-kind risk,
+so the choice is recorded.**
+
+§6.1.1 step 3 adds, after the Int/difference/datatype-field candidates, one
+candidate per `Str` parameter: `(str.len p_i)`. Step 4's obligation template is
+UNIFORM across candidate kinds:
+`(assert (and <guards> (not (and (< μ(args) μ(params)) (>= μ(params) 0)))))`.
+For the string-length candidate this instantiates to `μ(params) = (str.len p_i)`
+and `μ(args) = (str.len <arg_i>)` (the argument being a `str.substr`/`str.indexof`
+term). The `(>= (str.len p_i) 0)` conjunct is retained verbatim even though
+`str.len` is always non-negative — the spec says it "is discharged trivially",
+not that it is omitted, so this kernel emits the uniform template and lets Z3's
+sequence theory discharge both conjuncts. The `Str` parameters are declared over
+their real `String` sort (as any non-Int, non-type-variable parameter is, since
+#57), so `str.len`/`str.substr` are well-formed.
+
+These §6.1.1 obligation scripts are INTERNAL to the termination verdict — they are
+NOT part of the `prove/scripts.txt` byte oracle (which pins only direct-attempt
+PROOF scripts). So their exact SMT formatting is unobservable across kernels; only
+the resulting verdict is (`split` → `measure`, reproduced). The str.substr /
+literal-`0` str.indexof bytes that ARE byte-visible live in `split`'s pattern-free
+`measure` defining axiom inside the direct proof scripts, and those reproduce
+exactly. A third kernel is free to format the ranking obligation differently as
+long as it reaches the same verdict; the spec pins the semantics (candidate order,
+the decrease-and-non-negativity obligation), not the obligation's byte layout.

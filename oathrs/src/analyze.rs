@@ -489,7 +489,15 @@ fn op_subs(op: &str) -> Vec<&'static str> {
 fn swappable(op: &str) -> bool {
     matches!(
         op,
-        "-" | "/" | "%" | "<" | "<=" | "++" | "starts-with" | "ends-with" | "str-contains"
+        "-" | "/"
+            | "%"
+            | "<"
+            | "<="
+            | "++"
+            | "starts-with"
+            | "ends-with"
+            | "str-contains"
+            | "str-index-of"
     )
 }
 

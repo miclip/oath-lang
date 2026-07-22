@@ -735,6 +735,10 @@ impl<'a> Cx<'a> {
             "starts-with" => (format!("(str.prefixof {} {})", e[1], e[0]), Ty::Bool),
             "ends-with" => (format!("(str.suffixof {} {})", e[1], e[0]), Ty::Bool),
             "str-contains" => (format!("(str.contains {} {})", e[0], e[1]), Ty::Bool),
+            // `substring`→`str.substr` in surface order; `str-index-of`→
+            // `str.indexof` with a literal `0` offset appended (SPEC §7.2).
+            "substring" => (format!("(str.substr {} {} {})", e[0], e[1], e[2]), Ty::Str),
+            "str-index-of" => (format!("(str.indexof {} {} 0)", e[0], e[1]), Ty::Int),
             _ => return Err(()),
         };
         Ok((sexpr, ty))
@@ -2318,6 +2322,8 @@ enum Cand {
     /// `(selector p_i)` — the Int field `sel` of single-constructor datatype
     /// parameter `pi`.
     Field { pi: usize, sel: String },
+    /// `(str.len p_i)` — the string length of a `Str` parameter (#32, split).
+    StrLen(usize),
 }
 
 impl Cand {
@@ -2327,6 +2333,7 @@ impl Cand {
             Cand::Single(i) => format!("p{}", i),
             Cand::Diff(i, j) => format!("(- p{} p{})", i, j),
             Cand::Field { pi, sel } => format!("({} p{})", sel, pi),
+            Cand::StrLen(i) => format!("(str.len p{})", i),
         }
     }
     /// μ(args): substitutes each `p_i` by the SMT term passed at position i.
@@ -2335,6 +2342,7 @@ impl Cand {
             Cand::Single(i) => args[*i].clone(),
             Cand::Diff(i, j) => format!("(- {} {})", args[*i], args[*j]),
             Cand::Field { pi, sel } => format!("({} {})", sel, args[*pi]),
+            Cand::StrLen(i) => format!("(str.len {})", args[*i]),
         }
     }
 }
@@ -2688,8 +2696,16 @@ fn measure_terminates_inner(store: &Store, hash: &str) -> bool {
             }
         }
     }
-    // With no candidate measure at all (no Int parameter and no single-constructor
-    // datatype Int field), the check fails.
+    // (#32) the string length `(str.len p_i)` of each `Str` parameter, appended
+    // AFTER the Int/difference/field candidates. `str.len` is always >= 0, so the
+    // decrease obligation reduces to strict shrinking of the string argument.
+    for i in 0..n {
+        if matches!(ptys[i], Ty::Str) {
+            cands.push(Cand::StrLen(i));
+        }
+    }
+    // With no candidate measure at all (no Int parameter, single-constructor
+    // datatype Int field, or Str parameter), the check fails.
     if cands.is_empty() {
         return false;
     }
