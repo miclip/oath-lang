@@ -1990,6 +1990,23 @@
       ]
     },
     {
+      "name": "singleton",
+      "hash": "7eef2b2b21828f030f79786104409b30822fe50701bc9c2c264d00a233da6799",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "is-one-element",
+          "proven": true
+        },
+        {
+          "name": "unfolds",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "snoc",
       "hash": "81a93fb3095e2d573263ae25611c4bf7d815b764e7efc2c5f926a1a194418455",
       "level": "proven",
@@ -2115,6 +2132,19 @@
         },
         {
           "name": "reverse-invariant",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "swap",
+      "hash": "b00e9f7d7c2d30c50f40005d5ec58a8c19fc7c667f1c3b598752285b16387fe3",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "swap-involutive",
           "proven": true
         }
       ]

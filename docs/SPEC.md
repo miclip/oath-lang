@@ -154,13 +154,53 @@ examples corpus.
 
 ## 2. Static semantics (the gate)
 
-Typechecking is structural synthesis; there is no inference or unification.
-Every binder is annotated; every reference to a generic definition or
-constructor carries explicit type arguments matching the target's `tyvars`
-count. `==` requires both operands the same type, which must not contain a
-function type. `rec` types are legal only inside `data` definitions. Prop
-binders must be concrete (no `var`/`rec`) and prop bodies must be `Bool`.
-A definition failing any check MUST NOT be stored.
+Typechecking is bidirectional local synthesis. Every binder is annotated. A
+reference to a generic definition or constructor MAY carry explicit type
+arguments matching the target's `tyvars` count, OR omit them entirely, in which
+case the typechecker INFERS them (§2.1) and BACKFILLS the solved arguments into
+the AST before it is hashed — so an inferred call is byte-identical to the
+explicit one and identity is unchanged. The only unknowns ever solved are these
+omitted type arguments, by ONE-SIDED matching against argument and expected
+types (never unification of two unknowns). `==` requires both operands the same
+type, which must not contain a function type. `rec` types are legal only inside
+`data` definitions. Prop binders must be concrete (no `var`/`rec`) and prop
+bodies must be `Bool`. A definition failing any check MUST NOT be stored.
+
+### 2.1 Type-argument inference (normative)
+
+Checking runs in two modes: SYNTHESIZE a term's type, or CHECK a term against an
+expected type `E`. The definition body is CHECKED against its declared type, and
+every prop body against `Bool`; CHECK threads `E` through `if`/`let`/`match`/`lam`
+(each branch/arm/body/codomain checked against the corresponding expected type)
+and defaults, on any other form, to synthesize-then-compare. A generic reference
+or constructor with OMITTED type arguments is solved as follows, over a solution
+vector `S` of length `tyvars` (all initially unsolved):
+
+- ONE-SIDED MATCH of a pattern type `P` (whose variable indices `< len(S)` are
+  the unknowns) against a concrete type `G`: if `P` is one of those variables,
+  bind it to `G` (or fail if already bound to a different type); otherwise `P`
+  and `G` must have the same shape and their components match componentwise. A
+  variable in `G` (an enclosing definition's type parameter) is an opaque
+  constant a pattern variable may bind to.
+- APPLICATION `(f a₁…aₖ)` with `f` a generic `ref`/`self`: peel one parameter
+  type per applied argument from `f`'s type. In CHECK mode, match the result
+  type (after peeling) against `E`. Then, for each argument that SYNTHESIZES a
+  type, match its parameter type against it. If any `S` entry is still unsolved,
+  the definition is rejected ("cannot infer type argument"). Backfill `f`'s type
+  arguments from `S`; then CHECK each argument against its now-concrete parameter
+  type (so an argument that could not synthesize — e.g. a bare `(Nil)` — is
+  inferred from context).
+- CONSTRUCTOR `(C a₁…aₖ)`: in CHECK mode, match the constructor's data type
+  against `E`; then match each field type against every argument that
+  synthesizes. Reject if any `S` entry is unsolved. Backfill and CHECK each
+  argument against its now-concrete field type.
+
+Because matching is one-sided and every solution is checked structurally
+afterward, inference never accepts an ill-typed term; and because the solved
+arguments are the same the author would have written, the hash is unchanged. A
+term whose type arguments cannot be determined this way (a bare `(Nil)` in
+synthesize mode, a polymorphic reference passed as a value with no expected type)
+is rejected, and the author writes them explicitly.
 
 Detailed synthesis obligations:
 

@@ -516,8 +516,11 @@ func (e *elab) elabName(x sx, tyargs []Ty, hasTyArgs bool) (*Term, error) {
 	if i, ok := e.lookupVar(name); ok {
 		return &Term{K: "var", Idx: i}, nil
 	}
+	// Type arguments may be OMITTED and inferred (#35): a bracket group with the
+	// wrong count is still an error, but no brackets at all defers to the
+	// typechecker, which solves and backfills the type arguments before hashing.
 	if name == e.funcSelf {
-		if len(tyargs) != e.selfTyVars {
+		if hasTyArgs && len(tyargs) != e.selfTyVars {
 			return nil, e.errAt(x, "%s takes %d type arguments, got %d", name, e.selfTyVars, len(tyargs))
 		}
 		return &Term{K: "self", TyArgs: tyargs}, nil
@@ -527,7 +530,7 @@ func (e *elab) elabName(x sx, tyargs []Ty, hasTyArgs bool) (*Term, error) {
 		if err != nil {
 			return nil, err
 		}
-		if len(tyargs) != d.TyVars {
+		if hasTyArgs && len(tyargs) != d.TyVars {
 			return nil, e.errAt(x, "constructor %s takes %d type arguments, got %d", name, d.TyVars, len(tyargs))
 		}
 		return &Term{K: "ctor", Hash: h, Idx: idx, TyArgs: tyargs}, nil
@@ -540,7 +543,7 @@ func (e *elab) elabName(x sx, tyargs []Ty, hasTyArgs bool) (*Term, error) {
 		if d.K != "func" {
 			return nil, e.errAt(x, "%s is a data type, not a value", name)
 		}
-		if len(tyargs) != d.TyVars {
+		if hasTyArgs && len(tyargs) != d.TyVars {
 			return nil, e.errAt(x, "%s takes %d type arguments, got %d", name, d.TyVars, len(tyargs))
 		}
 		return &Term{K: "ref", Hash: h, TyArgs: tyargs}, nil

@@ -1,0 +1,1 @@
+✓ prop swap-involutive          passed 200 cases

@@ -1,0 +1,2 @@
+✓ prop is-one-element           passed 200 cases
+✓ prop unfolds                  passed 200 cases

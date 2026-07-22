@@ -1,0 +1,12 @@
+{
+  "name": "singleton",
+  "hash": "7eef2b2b21828f030f79786104409b30822fe50701bc9c2c264d00a233da6799",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}
