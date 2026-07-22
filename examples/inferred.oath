@@ -1,0 +1,18 @@
+; Type-argument inference (#35). These definitions OMIT the [type] annotations a
+; generic call would otherwise carry — `(Cons x (Nil))`, `(Pair y x)`,
+; `(singleton x)` — and the typechecker infers and backfills them. Each elaborates
+; to exactly the same object as its fully annotated form, so identity is
+; unchanged; this file is the corpus witness that both kernels infer identically.
+
+; singleton x = the one-element list [x], written without any type annotations.
+(defn singleton [a] [(x a)] (List a)
+  (Cons x (Nil))
+  (prop is-one-element [(x Int)] (== (length [Int] (singleton [Int] x)) 1))
+  (prop unfolds [(x Int)] (== (singleton [Int] x) (Cons [Int] x (Nil [Int])))))
+
+; swap the two components of a pair — the result Pair's type arguments are
+; inferred from the bound match fields.
+(defn swap [a b] [(p (Pair a b))] (Pair b a)
+  (match p ((Pair x y) (Pair y x)))
+  (prop swap-involutive [(x Int) (y Int)]
+    (== (swap [Int Int] (swap [Int Int] (Pair [Int Int] x y))) (Pair [Int Int] x y))))

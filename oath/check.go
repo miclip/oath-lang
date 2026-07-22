@@ -87,6 +87,77 @@ func tyEq(a, b *Ty) bool {
 	return true
 }
 
+// matchTy solves the type variables of a polymorphic pattern `pat` (whose var
+// indices 0..len(subst)-1 are the variables being inferred) against a concrete
+// type `got`, recording each solution in subst (nil = unsolved). It is ONE-SIDED:
+// only pat's variables are solved; a variable appearing in `got` — an enclosing
+// definition's type parameter — is an opaque constant that a pat variable may be
+// solved to. Fails on a structural mismatch or a variable forced to two
+// different types. This is the whole of the "inference/unification" that
+// type-argument inference (#35) adds — it never unifies two unknowns.
+func matchTy(pat, got *Ty, subst []*Ty) error {
+	if pat == nil || got == nil {
+		return fmt.Errorf("nil type in match")
+	}
+	if pat.K == "var" && pat.Var >= 0 && pat.Var < len(subst) {
+		if subst[pat.Var] == nil {
+			subst[pat.Var] = got
+			return nil
+		}
+		if !tyEq(subst[pat.Var], got) {
+			return fmt.Errorf("type argument %d cannot be both %s and %s", pat.Var, debugTy(subst[pat.Var]), debugTy(got))
+		}
+		return nil
+	}
+	if pat.K != got.K {
+		return fmt.Errorf("expected %s, got %s", debugTy(pat), debugTy(got))
+	}
+	switch pat.K {
+	case "int", "bool", "str":
+		return nil
+	case "var":
+		if pat.Var != got.Var {
+			return fmt.Errorf("expected %s, got %s", debugTy(pat), debugTy(got))
+		}
+		return nil
+	case "fun":
+		if err := matchTy(pat.A, got.A, subst); err != nil {
+			return err
+		}
+		return matchTy(pat.B, got.B, subst)
+	case "data", "rec":
+		if pat.Hash != got.Hash || len(pat.Args) != len(got.Args) {
+			return fmt.Errorf("expected %s, got %s", debugTy(pat), debugTy(got))
+		}
+		for i := range pat.Args {
+			if err := matchTy(&pat.Args[i], &got.Args[i], subst); err != nil {
+				return err
+			}
+		}
+		return nil
+	case "record":
+		if len(pat.Args) != len(got.Args) || len(pat.Names) != len(got.Names) {
+			return fmt.Errorf("expected %s, got %s", debugTy(pat), debugTy(got))
+		}
+		for i := range pat.Names {
+			if pat.Names[i] != got.Names[i] {
+				return fmt.Errorf("record field name mismatch: %s vs %s", pat.Names[i], got.Names[i])
+			}
+		}
+		for i := range pat.Args {
+			if err := matchTy(&pat.Args[i], &got.Args[i], subst); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return fmt.Errorf("cannot match type %s", debugTy(pat))
+}
+
+// inferReady reports whether a polymorphic reference node carries no explicit
+// type arguments and therefore needs them inferred.
+func inferReady(tyvars int, tyargs []Ty) bool { return tyvars > 0 && len(tyargs) == 0 }
+
 func tyHasFun(t *Ty) bool {
 	if t == nil {
 		return false
@@ -369,6 +440,13 @@ func (c *checker) synth(ctx []*Ty, t *Term) (*Ty, error) {
 		}
 		return tFun(t.Ty, bt), nil
 	case "app":
+		// A polymorphic ref/self head with omitted type arguments (#35) is
+		// inferred from the whole application spine before the ordinary rule.
+		if head, args := spine(t); head.K == "ref" || head.K == "self" {
+			if got, ok, err := c.tryInferApp(ctx, head, args, nil); ok {
+				return got, err
+			}
+		}
 		ft, err := c.synth(ctx, t.A)
 		if err != nil {
 			return nil, err
@@ -449,38 +527,7 @@ func (c *checker) synth(ctx []*Ty, t *Term) (*Ty, error) {
 		}
 		return substTy(c.selfTy, t.TyArgs), nil
 	case "ctor":
-		d, err := c.st.GetDef(t.Hash)
-		if err != nil {
-			return nil, err
-		}
-		if d.K != "data" {
-			return nil, fmt.Errorf("%s is not a data definition", shortHash(t.Hash))
-		}
-		if t.Idx < 0 || t.Idx >= len(d.Ctors) {
-			return nil, fmt.Errorf("constructor index %d out of range", t.Idx)
-		}
-		if len(t.TyArgs) != d.TyVars {
-			return nil, fmt.Errorf("constructor given %d type arguments, expected %d", len(t.TyArgs), d.TyVars)
-		}
-		for i := range t.TyArgs {
-			if err := checkTyWF(c.st, &t.TyArgs[i], c.selfTyVars, false); err != nil {
-				return nil, err
-			}
-		}
-		fields := instCtorFields(d, t.Hash, t.TyArgs, t.Idx)
-		if len(t.Args) != len(fields) {
-			return nil, fmt.Errorf("constructor takes %d arguments, got %d", len(fields), len(t.Args))
-		}
-		for i := range t.Args {
-			at, err := c.synth(ctx, &t.Args[i])
-			if err != nil {
-				return nil, err
-			}
-			if !tyEq(at, fields[i]) {
-				return nil, fmt.Errorf("constructor field %d: expected %s, got %s", i, debugTy(fields[i]), debugTy(at))
-			}
-		}
-		return tDataTy(t.Hash, t.TyArgs), nil
+		return c.synthCtor(ctx, t, nil)
 	case "match":
 		st, err := c.synth(ctx, t.A)
 		if err != nil {
@@ -520,7 +567,287 @@ func (c *checker) synth(ctx []*Ty, t *Term) (*Ty, error) {
 	return nil, fmt.Errorf("unknown term form %q", t.K)
 }
 
+// identityTyArgs is [var 0, …, var n-1] — the type variables as themselves, for
+// instantiating a polymorphic type without substituting anything.
+func identityTyArgs(n int) []Ty {
+	out := make([]Ty, n)
+	for i := range out {
+		out[i] = Ty{K: "var", Var: i}
+	}
+	return out
+}
+
+// spine flattens an application chain into its head and argument terms in
+// application order: (((f a) b) c) → (f, [a, b, c]).
+func spine(t *Term) (*Term, []*Term) {
+	var args []*Term
+	for t.K == "app" {
+		args = append([]*Term{t.B}, args...)
+		t = t.A
+	}
+	return t, args
+}
+
+func headName(head *Term) string {
+	if head.K == "self" {
+		return "the recursive call"
+	}
+	return shortHash(head.Hash)
+}
+
+// synthCtor synthesizes a constructor application, inferring omitted type
+// arguments (#35): the constructor's data type is matched against the expected
+// type `exp` (if any) and its field types against the synthesizable arguments;
+// the solved arguments are backfilled into the node, then every argument is
+// checked against its now-concrete field type (so a nested `(Nil)` infers).
+func (c *checker) synthCtor(ctx []*Ty, t *Term, exp *Ty) (*Ty, error) {
+	d, err := c.st.GetDef(t.Hash)
+	if err != nil {
+		return nil, err
+	}
+	if d.K != "data" {
+		return nil, fmt.Errorf("%s is not a data definition", shortHash(t.Hash))
+	}
+	if t.Idx < 0 || t.Idx >= len(d.Ctors) {
+		return nil, fmt.Errorf("constructor index %d out of range", t.Idx)
+	}
+	rawFields := instCtorFields(d, t.Hash, identityTyArgs(d.TyVars), t.Idx)
+	if len(t.Args) != len(rawFields) {
+		return nil, fmt.Errorf("constructor takes %d arguments, got %d", len(rawFields), len(t.Args))
+	}
+	if inferReady(d.TyVars, t.TyArgs) {
+		subst := make([]*Ty, d.TyVars)
+		if exp != nil {
+			_ = matchTy(tDataTy(t.Hash, identityTyArgs(d.TyVars)), exp, subst)
+		}
+		argTys := make([]*Ty, len(t.Args))
+		for i := range t.Args {
+			if at, e := c.synth(ctx, &t.Args[i]); e == nil {
+				argTys[i] = at
+				_ = matchTy(rawFields[i], at, subst)
+			}
+		}
+		for i, s := range subst {
+			if s == nil {
+				return nil, fmt.Errorf("cannot infer type argument %d for constructor %s — add [types] or determining arguments", i, shortHash(t.Hash))
+			}
+		}
+		t.TyArgs = make([]Ty, d.TyVars)
+		for i := range subst {
+			t.TyArgs[i] = *subst[i]
+		}
+	} else if len(t.TyArgs) != d.TyVars {
+		return nil, fmt.Errorf("constructor given %d type arguments, expected %d", len(t.TyArgs), d.TyVars)
+	} else {
+		for i := range t.TyArgs {
+			if err := checkTyWF(c.st, &t.TyArgs[i], c.selfTyVars, false); err != nil {
+				return nil, err
+			}
+		}
+	}
+	fields := instCtorFields(d, t.Hash, t.TyArgs, t.Idx)
+	for i := range t.Args {
+		if err := c.check(ctx, &t.Args[i], fields[i]); err != nil {
+			return nil, err
+		}
+	}
+	return tDataTy(t.Hash, t.TyArgs), nil
+}
+
+// tryInferApp infers omitted type arguments for an application whose head is a
+// polymorphic `ref`/`self` (#35): it peels one parameter per applied argument,
+// solves the type variables by matching parameter types against synthesizable
+// argument types and (in check mode) the result type against `exp`, backfills
+// the head, and checks each argument against its now-concrete parameter type.
+// handled=false means the head needs no inference; the caller falls back.
+func (c *checker) tryInferApp(ctx []*Ty, head *Term, args []*Term, exp *Ty) (res *Ty, handled bool, err error) {
+	var raw *Ty
+	var nvars int
+	switch head.K {
+	case "ref":
+		d, e := c.st.GetDef(head.Hash)
+		if e != nil {
+			return nil, false, e
+		}
+		if d.K != "func" || !inferReady(d.TyVars, head.TyArgs) {
+			return nil, false, nil
+		}
+		raw, nvars = d.Ty, d.TyVars
+	case "self":
+		if c.selfTy == nil || !inferReady(c.selfTyVars, head.TyArgs) {
+			return nil, false, nil
+		}
+		raw, nvars = c.selfTy, c.selfTyVars
+	default:
+		return nil, false, nil
+	}
+	paramTys := make([]*Ty, len(args))
+	cur := raw
+	for i := range args {
+		if cur.K != "fun" {
+			return nil, true, fmt.Errorf("%s applied to too many arguments", headName(head))
+		}
+		paramTys[i] = cur.A
+		cur = cur.B
+	}
+	resultTy := cur
+	subst := make([]*Ty, nvars)
+	if exp != nil {
+		_ = matchTy(resultTy, exp, subst)
+	}
+	argTys := make([]*Ty, len(args))
+	for i := range args {
+		if at, e := c.synth(ctx, args[i]); e == nil {
+			argTys[i] = at
+			_ = matchTy(paramTys[i], at, subst)
+		}
+	}
+	for i, s := range subst {
+		if s == nil {
+			return nil, true, fmt.Errorf("cannot infer type argument %d for %s — add [types] or determining arguments", i, headName(head))
+		}
+	}
+	tyargs := make([]Ty, nvars)
+	for i := range subst {
+		tyargs[i] = *subst[i]
+	}
+	head.TyArgs = tyargs
+	for i := range args {
+		solvedParam := substTy(paramTys[i], tyargs)
+		if argTys[i] != nil {
+			if !tyEq(argTys[i], solvedParam) {
+				return nil, true, fmt.Errorf("argument %d: expected %s, got %s", i, debugTy(solvedParam), debugTy(argTys[i]))
+			}
+		} else if e := c.check(ctx, args[i], solvedParam); e != nil {
+			return nil, true, e
+		}
+	}
+	return substTy(resultTy, tyargs), true, nil
+}
+
+// check verifies t against the expected type exp, threading exp into the term so
+// omitted type arguments (#35) can be inferred from context. It defaults to
+// synthesize-then-compare; only the forms that can consume an expected type use
+// it directly.
+func (c *checker) check(ctx []*Ty, t *Term, exp *Ty) error {
+	switch t.K {
+	case "ctor":
+		got, err := c.synthCtor(ctx, t, exp)
+		if err != nil {
+			return err
+		}
+		if !tyEq(got, exp) {
+			return fmt.Errorf("expected %s, got %s", debugTy(exp), debugTy(got))
+		}
+		return nil
+	case "lam":
+		if exp != nil && exp.K == "fun" {
+			if err := checkTyWF(c.st, t.Ty, c.selfTyVars, false); err != nil {
+				return err
+			}
+			if !tyEq(t.Ty, exp.A) {
+				return fmt.Errorf("lambda parameter %s does not match expected %s", debugTy(t.Ty), debugTy(exp.A))
+			}
+			return c.check(pushCtx(ctx, t.Ty), t.A, exp.B)
+		}
+	case "if":
+		ct, err := c.synth(ctx, t.A)
+		if err != nil {
+			return err
+		}
+		if ct.K != "bool" {
+			return fmt.Errorf("if condition must be Bool, got %s", debugTy(ct))
+		}
+		if err := c.check(ctx, t.B, exp); err != nil {
+			return err
+		}
+		return c.check(ctx, t.C, exp)
+	case "let":
+		if err := checkTyWF(c.st, t.Ty, c.selfTyVars, false); err != nil {
+			return err
+		}
+		if err := c.check(ctx, t.A, t.Ty); err != nil {
+			return err
+		}
+		return c.check(pushCtx(ctx, t.Ty), t.B, exp)
+	case "match":
+		st, err := c.synth(ctx, t.A)
+		if err != nil {
+			return err
+		}
+		if st.K != "data" {
+			return fmt.Errorf("match scrutinee must be a data value, got %s", debugTy(st))
+		}
+		if t.Hash != "" && t.Hash != st.Hash {
+			return fmt.Errorf("match arms are for a different data type than the scrutinee")
+		}
+		d, err := c.st.GetDef(st.Hash)
+		if err != nil {
+			return err
+		}
+		if len(t.Arms) != len(d.Ctors) {
+			return fmt.Errorf("match has %d arms, data type has %d constructors", len(t.Arms), len(d.Ctors))
+		}
+		for i := range t.Arms {
+			armCtx := ctx
+			for _, f := range instCtorFields(d, st.Hash, st.Args, i) {
+				armCtx = pushCtx(armCtx, f)
+			}
+			if err := c.check(armCtx, &t.Arms[i], exp); err != nil {
+				return err
+			}
+		}
+		return nil
+	case "app":
+		if head, args := spine(t); head.K == "ref" || head.K == "self" {
+			if got, ok, err := c.tryInferApp(ctx, head, args, exp); ok {
+				if err != nil {
+					return err
+				}
+				if !tyEq(got, exp) {
+					return fmt.Errorf("expected %s, got %s", debugTy(exp), debugTy(got))
+				}
+				return nil
+			}
+		}
+	}
+	got, err := c.synth(ctx, t)
+	if err != nil {
+		return err
+	}
+	if !tyEq(got, exp) {
+		return fmt.Errorf("expected %s, got %s", debugTy(exp), debugTy(got))
+	}
+	return nil
+}
+
 func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
+	// `==` is polymorphic in its operand type, so an operand may be a bare
+	// constructor — `(== xs (Nil))` — whose type arguments only the OTHER operand
+	// determines (#35). Synthesize whichever operand can be, then CHECK the other
+	// against it; the result is the same non-function type either way, so the
+	// backfilled arguments do not depend on operand order.
+	if t.Op == "==" {
+		if len(t.Args) != 2 {
+			return nil, fmt.Errorf("primitive == takes 2 arguments, got %d", len(t.Args))
+		}
+		known, err := c.synth(ctx, &t.Args[0])
+		other := &t.Args[1]
+		if err != nil {
+			known, err = c.synth(ctx, &t.Args[1])
+			other = &t.Args[0]
+			if err != nil {
+				return nil, fmt.Errorf("cannot infer the type of == operands — annotate one side")
+			}
+		}
+		if tyHasFun(known) {
+			return nil, fmt.Errorf("== is not defined on function types")
+		}
+		if err := c.check(ctx, other, known); err != nil {
+			return nil, err
+		}
+		return tBool(), nil
+	}
 	argTys := make([]*Ty, len(t.Args))
 	for i := range t.Args {
 		at, err := c.synth(ctx, &t.Args[i])
@@ -616,17 +943,6 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 			return nil, err
 		}
 		return tBool(), nil
-	case "==":
-		if err := need(2); err != nil {
-			return nil, err
-		}
-		if !tyEq(argTys[0], argTys[1]) {
-			return nil, fmt.Errorf("== requires both sides the same type: %s vs %s", debugTy(argTys[0]), debugTy(argTys[1]))
-		}
-		if tyHasFun(argTys[0]) {
-			return nil, fmt.Errorf("== is not defined on function types")
-		}
-		return tBool(), nil
 	}
 	return nil, fmt.Errorf("unknown primitive %q", t.Op)
 }
@@ -657,12 +973,12 @@ func checkDef(st *Store, d *Def) error {
 			return err
 		}
 		c := &checker{st: st, selfTyVars: d.TyVars, selfTy: d.Ty}
-		got, err := c.synth(nil, d.Body)
-		if err != nil {
+		// Check the body against the declared type (bidirectional, #35): the
+		// expected type flows down so omitted type arguments can be inferred, and
+		// the checker backfills every solved argument into the AST before it is
+		// hashed — so an inferred call is byte-identical to the explicit one.
+		if err := c.check(nil, d.Body, d.Ty); err != nil {
 			return err
-		}
-		if !tyEq(got, d.Ty) {
-			return fmt.Errorf("body has type %s, declared %s", debugTy(got), debugTy(d.Ty))
 		}
 		for pi, p := range d.Props {
 			var ctx []*Ty
@@ -676,12 +992,8 @@ func checkDef(st *Store, d *Def) error {
 				}
 				ctx = pushCtx(ctx, b)
 			}
-			pt, err := c.synth(ctx, &p.Body)
-			if err != nil {
+			if err := c.check(ctx, &p.Body, tBool()); err != nil {
 				return fmt.Errorf("property %d: %w", pi, err)
-			}
-			if pt.K != "bool" {
-				return fmt.Errorf("property %d must be Bool, got %s", pi, debugTy(pt))
 			}
 		}
 		return nil
