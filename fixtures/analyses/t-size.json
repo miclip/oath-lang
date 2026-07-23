@@ -1,6 +1,6 @@
 {
   "name": "t-size",
-  "hash": "6a8fba8949037313386d11c8c776cb7dde3bbf97e11c14f98f224c6e36610764",
+  "hash": "1fc6a47774e2bd036f080ebba273dc29cc592b7af762b2a8cc0df810fe249ddf",
   "kind": "func",
   "termination": "structural",
   "confinement": [

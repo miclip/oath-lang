@@ -1,6 +1,6 @@
 {
   "name": "fib",
-  "hash": "2da580f5303fa0bd6ba3e00411688a437e21c599b063f0084cf09f89ac727ec1",
+  "hash": "7ce4d64ce4a07b44940524ed1308df25801387ce4df6934943bc10562ed4c772",
   "kind": "func",
   "termination": "measure",
   "confinement": [

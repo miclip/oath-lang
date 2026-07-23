@@ -2,7 +2,7 @@
   "definitions": [
     {
       "name": "abs",
-      "hash": "3995513e56b6ce7a229e241455b5abacaa332f351a54630f4d377ccb3bece5fc",
+      "hash": "f8552a9f06ee472b3b4d499b0b5eba688def8463e9e4703248fc1d158eb7ae4d",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -23,7 +23,7 @@
     },
     {
       "name": "abs-small",
-      "hash": "5aa4cf7138621f5408a59302898916fbb5525e143920c30f99cd5b37052934ec",
+      "hash": "ca9250f107c37d78d5b3127f42fceb5b36764061883f80dbbe4c144140ed1b54",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 1,
@@ -70,7 +70,7 @@
     },
     {
       "name": "append",
-      "hash": "e3a2800bf57cc2619c22a0ed68510565286dd3a1bed48e2011de354b7fbe2754",
+      "hash": "78d23e273a4858e3ad9b68ed5795a75a163e1b124a1a6b75229e9842a2ba64f3",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -91,7 +91,7 @@
     },
     {
       "name": "bad-reverse",
-      "hash": "98eca08336d76de5a31ae72795796aff882749848e76de9394c6a2a2b3a49d59",
+      "hash": "af6b61e2180ad5ccdeb541b00c7f53d285aa3f3af997a5e00653954492cb25f1",
       "level": "falsified",
       "proven_count": 0,
       "prop_count": 2,
@@ -129,7 +129,7 @@
     },
     {
       "name": "contains",
-      "hash": "b5b9b7812b60bbc284d4950db5f1ce212102d69292947010a56cd94ff1fa9f04",
+      "hash": "6221bec8324b02bf0e2e8f1706000ac24464d474689ddc61e1e4cbba6fc0df9b",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -150,7 +150,7 @@
     },
     {
       "name": "count",
-      "hash": "459655264756f31be29e5b9f2103e0e0714851513a927b7e09eb8b60103bc807",
+      "hash": "040c290d0c35556a58a58c7476ee27ff5c826c533ff4886f6f6ba5a2b9bd6c5b",
       "level": "proven",
       "proven_count": 2,
       "prop_count": 2,
@@ -167,7 +167,7 @@
     },
     {
       "name": "count-by",
-      "hash": "5747a8a2271118938c86aad89d319ed2863496e3ccc4c933fb0db76c21770390",
+      "hash": "851d636b947699a11d6748a2c5fcaa1d8fed3f2c725317197813c07b9373c494",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -188,7 +188,7 @@
     },
     {
       "name": "count-matching",
-      "hash": "44d639c487c3ebbfa0b56b0ba629f36478783c0a51d8c2177b28fce2cb6b8afc",
+      "hash": "c2f6fe6558cad0045cb6e4a3daabe4e2532f5c2e956a2b4edabf435ca563ed4f",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -209,7 +209,7 @@
     },
     {
       "name": "drop",
-      "hash": "fe6c3320c48b77014dc4d1733b4ab698d03bc14500ea67a821e115bc5e300cd8",
+      "hash": "f1e861a8d7ed52ea1175126a2c0442dd82bac857254b00c72cc72deb02685672",
       "level": "proven",
       "proven_count": 4,
       "prop_count": 4,
@@ -251,7 +251,7 @@
     },
     {
       "name": "e-div",
-      "hash": "544e5a2700d563272a918bb943fa2517176431f2783217bfd5c2cfdec95330a8",
+      "hash": "100733cab4b27d438fede96e30f46f6b2b4a186327946a8bbcdd11ef51984061",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 5,
@@ -280,7 +280,7 @@
     },
     {
       "name": "e-mod",
-      "hash": "77dfbe46ea559547bba459672ad18c06be47209011edf63845ec81599ddd5edc",
+      "hash": "362696e75c132c35360999d78d28fc0bcb327d6eb2119e2a60c6b9dbba4862f2",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 6,
@@ -313,7 +313,7 @@
     },
     {
       "name": "fib",
-      "hash": "2da580f5303fa0bd6ba3e00411688a437e21c599b063f0084cf09f89ac727ec1",
+      "hash": "7ce4d64ce4a07b44940524ed1308df25801387ce4df6934943bc10562ed4c772",
       "level": "proven",
       "proven_count": 4,
       "prop_count": 4,
@@ -389,7 +389,7 @@
     },
     {
       "name": "flatten",
-      "hash": "16104aaf13230e4a323ba494bf77980797baa43d1e758a2706af25a62b096d2c",
+      "hash": "0497351b656c8a1a0718d1b998c5a32fb0f7f7888e8c91eb23af72f3331543db",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -452,7 +452,7 @@
     },
     {
       "name": "full-name",
-      "hash": "72ef09a3977cfdcd89f9ae2909ebb7dccbfcd20036316ea6e3eb32ce691d42bb",
+      "hash": "c77f088bed0454ff3ff7ed98762287c74f80f2d3578e1e1d617a591f964b8538",
       "level": "proven",
       "proven_count": 2,
       "prop_count": 2,
@@ -469,7 +469,7 @@
     },
     {
       "name": "greet",
-      "hash": "7071609eadd58bd05514104eac909013586ff3ac5308c51851879e4c63d35f71",
+      "hash": "1b4fc08a4e93ad03945596accdaffa83d0b121c1defb2bc40f6ad717dd7b3436",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -490,7 +490,7 @@
     },
     {
       "name": "greet-or-guest",
-      "hash": "ec03800adfd25044d6ed1e3c94e808a27e1997bbc0c611bf1df84765daca46eb",
+      "hash": "1da62c4f6353644b8ea21b149768796a5fcf972c7fb80f5c9487426187e1ce8e",
       "level": "proven",
       "proven_count": 2,
       "prop_count": 2,
@@ -615,7 +615,7 @@
     },
     {
       "name": "index-of",
-      "hash": "ecc23c421a69127bb6e73e1b104381bf7720ffad478c765d2eb381ead0bfe94e",
+      "hash": "d679d2e21f62e21e5a276478d81c57f37047fb1dbb38f6fa28629d31d340a042",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -657,7 +657,7 @@
     },
     {
       "name": "initials-or",
-      "hash": "cc75196235425b1b297d481e45409d0c6b8d135a835051dfe28ba22727d99e18",
+      "hash": "ae876364d0f2d737a0dcb44043c13de8cbee06a294b66ca023626fd9c89a7550",
       "level": "proven",
       "proven_count": 2,
       "prop_count": 2,
@@ -674,7 +674,7 @@
     },
     {
       "name": "insert",
-      "hash": "98fc037920d8645541c6f62617539f1ed899d9241f53f245562cf83f218fbd7b",
+      "hash": "07e9fddfeed3fe7d21e92fbdf80a16959a45faf540fc305fec89bc86bcab7e1b",
       "level": "proven",
       "proven_count": 6,
       "prop_count": 6,
@@ -707,7 +707,7 @@
     },
     {
       "name": "insert-by",
-      "hash": "d4bf03ae4fc72f34edd350c419f93c2626d7d9d2d1fd264a8df8bf4ba3353fa3",
+      "hash": "87dec595a754bfa39d395a5ca4aee022b7cb5f68b23c54a1824c9fd798146484",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -791,7 +791,7 @@
     },
     {
       "name": "join-with",
-      "hash": "d3785e1a3f45ab86011e1e2fc99d968807a4413ee7256eaba156980c8bdb4b09",
+      "hash": "dbfc0545b1483369a8cd0e2e3731fa96da3c367b96a66305763e0ea57ad7a2bb",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -871,7 +871,7 @@
     },
     {
       "name": "length",
-      "hash": "bcce84a64b5783325530ff91edea2ceee704d7574d17b35ccd5bde717d97fdee",
+      "hash": "a8497c2fac2bb02484146299be78cecd5d6e296f4bc87f8d2e5eca76745a092e",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -892,7 +892,7 @@
     },
     {
       "name": "lengths",
-      "hash": "211b9753fdb8aca61a3b363bb3845e65d03e87c89141001047be85ac7b437fa9",
+      "hash": "bbd85a6e3d20148809ad5e5666c053a1c2e4a5cb643fe0e0f6970fa84fea6d31",
       "level": "proven",
       "proven_count": 1,
       "prop_count": 1,
@@ -905,7 +905,7 @@
     },
     {
       "name": "list-eq-by",
-      "hash": "7dc11708415b01d9561327cbf61a886201610287345bc8ee3f32c72a548f6d2e",
+      "hash": "af979cf69be024ccf19f5001925dfd895ae59006a5133d388aa28d6f23ed01bd",
       "level": "proven",
       "proven_count": 4,
       "prop_count": 4,
@@ -930,7 +930,7 @@
     },
     {
       "name": "main-echo",
-      "hash": "9190fee3018a708d51ae1d06af5ba0b27155a2ddc098713070cb5a92deb6ddd8",
+      "hash": "9b19e91f08203d730fbc5fd8230c088e2e4b6870eae5799b048bab09f4879742",
       "level": "proven",
       "proven_count": 2,
       "prop_count": 2,
@@ -947,7 +947,7 @@
     },
     {
       "name": "main-fetch",
-      "hash": "3229a0827858a23de179ec7112f32888370e14baf99878ca47d04a0eb13fc201",
+      "hash": "8b9c09a60d03388c9b21371e51d935f3e58d9e5c710a520070450d1cfae7ee7c",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -968,7 +968,7 @@
     },
     {
       "name": "map",
-      "hash": "ef1a1686ba71cde2db90f992f349a4ab867698b1578924b32ad775df43f8f233",
+      "hash": "d82c082fdb53d245915215031f94d0c3c9b3c56c2db09a7911d9bd4abb22dddf",
       "level": "proven",
       "proven_count": 1,
       "prop_count": 1,
@@ -1028,7 +1028,7 @@
     },
     {
       "name": "map-keys",
-      "hash": "84d118decd841b798ad2a4e442689cf0456ae8e6bcda4c37185e4693fc8bac76",
+      "hash": "57cdd57a0160584a0365de36908b6100c1197dc6a21447085bde012ff1e2c711",
       "level": "proven",
       "proven_count": 1,
       "prop_count": 1,
@@ -1109,7 +1109,7 @@
     },
     {
       "name": "map-size",
-      "hash": "1f5a1f4ab3d428f9c7d7f61d267aebf11cb34303c2ed485ac75d02e4079df2d1",
+      "hash": "a0836550ca64ebe283b7b1d4055812828e61be3cd5980818eb096cf4f596ccd2",
       "level": "proven",
       "proven_count": 2,
       "prop_count": 2,
@@ -1126,7 +1126,7 @@
     },
     {
       "name": "map-values",
-      "hash": "0493780b5f691a85242fcc445facdf34f7d4d7abc11f1c3f33a8e509c2530f7e",
+      "hash": "41bedb35fab25af79188234c7a8e663a9c82adc41ac0e65f1774188dd690723c",
       "level": "proven",
       "proven_count": 1,
       "prop_count": 1,
@@ -1202,7 +1202,7 @@
     },
     {
       "name": "merge",
-      "hash": "ff80c574911e7e201660b97a96fceda93aed021aecb1106e7d006775128f70d7",
+      "hash": "be2f6d41596a747870fa0f1ff03ad164941e4bf1a42bcefa6861aea298e052dc",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -1261,7 +1261,7 @@
     },
     {
       "name": "one-two-three",
-      "hash": "4e6e274edf28cab6aef4fc992ebb39da34e6abf2a312aecf4a7e4be0b51a7e51",
+      "hash": "256d63e2e1c1a435d3715ef59b5181554b54e62ec37cb31717f07c8d1957c5ff",
       "level": "proven",
       "proven_count": 2,
       "prop_count": 2,
@@ -1295,7 +1295,7 @@
     },
     {
       "name": "pow",
-      "hash": "c2ef027e2d61fa9d181fc5b19d792d36300889104f91add0c318a87e334c3aa6",
+      "hash": "090cc5373e20d9b4f5f459b69ac63263b5d2f4d7d5c798591f8add8ac579076e",
       "level": "proven",
       "proven_count": 4,
       "prop_count": 4,
@@ -1320,7 +1320,7 @@
     },
     {
       "name": "product",
-      "hash": "54a2e5c0171dafb82de37512cbfbc082eac29bc882e80f106494531cb3d1f9ff",
+      "hash": "c074a26278a9bbf3e6b70214a21fc19be92efdb464d4fc3f84c19b85705ce897",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -1341,7 +1341,7 @@
     },
     {
       "name": "q-drop",
-      "hash": "66b1867fa0679f1b22be8b2706fd4d3f55b941f52756053eaaa077bde597b8c1",
+      "hash": "091c2b59dc4f63a5ee4b928bb50b95dec5d89f1c17092b16d764d92a3bc06074",
       "level": "tested",
       "proven_count": 2,
       "prop_count": 5,
@@ -1370,7 +1370,7 @@
     },
     {
       "name": "q-peek",
-      "hash": "a1e5fe17d4e140519ea78c37635c96d5e40e18cf4697b40d0a414a10bd298e65",
+      "hash": "642d54aa1f8ddfac3dfd63a07b0e1407c78d9cdde76bdeaa463f22c411295a06",
       "level": "proven",
       "proven_count": 5,
       "prop_count": 5,
@@ -1399,7 +1399,7 @@
     },
     {
       "name": "q-push",
-      "hash": "beea004223db437a95e1fa8d99dad9d4023ce6837072426c8ce5cb588673bbd3",
+      "hash": "743484c1807d7893bb22f35f255c7830b5b707e6d9ac633f48e1854f0af92293",
       "level": "tested",
       "proven_count": 4,
       "prop_count": 5,
@@ -1428,7 +1428,7 @@
     },
     {
       "name": "q-to-list",
-      "hash": "3d00c6800fb57c16f70a33cee4d3105ab9f233d9d9c7a0edfe87c62396d0e963",
+      "hash": "ee89059c3cce2c994b4ac25e0af8cdd9f2619d7b0ebacca5b42b1bd0abfcdb06",
       "level": "proven",
       "proven_count": 5,
       "prop_count": 5,
@@ -1457,7 +1457,7 @@
     },
     {
       "name": "range",
-      "hash": "0fb8d1df1f8f5654f6b882ab782e832528a0b817e67107717c9eecb638232aef",
+      "hash": "d49edfaf7c34cb69b45f03d9604f602805624d2a4cbf58032f3e52daff186ca0",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -1495,7 +1495,7 @@
     },
     {
       "name": "replicate",
-      "hash": "899b92eec6e06ed4cd6c3b5da1168fb40103aa697c5f553a071fd127c7007220",
+      "hash": "3fb40b27e9dc71b801b90b25a8dca147bc2e7e35ac9f7c6340972720c45377c4",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -1516,7 +1516,7 @@
     },
     {
       "name": "reverse",
-      "hash": "eb29685a36dbd33e0518ef2ea7245795ce6a1b9919d5059bd7cd5bb914842852",
+      "hash": "7bb6285884d068b0a885094b4b4090b80e85054cdb36ce805ad1918ab1a94365",
       "level": "proven",
       "proven_count": 2,
       "prop_count": 2,
@@ -1533,7 +1533,7 @@
     },
     {
       "name": "reverse-onto",
-      "hash": "433906a8a592d288b8f8b12d725589fb0911eecae38dc4f5a694f6387160b755",
+      "hash": "cb57f3242430a32ad315d93ff649d100b94b322156d21d95f7c098c1fe314ac8",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -1554,7 +1554,7 @@
     },
     {
       "name": "rle-decode",
-      "hash": "73f058b24af1eb15fa85b13dfa3308b32c3e61da629a9899bcaee7c8e3bea8aa",
+      "hash": "27a8605b1e122a7fd485d0044e4465033452ae30d0e4227a326b6948196e66e2",
       "level": "proven",
       "proven_count": 4,
       "prop_count": 4,
@@ -1579,7 +1579,7 @@
     },
     {
       "name": "rle-encode",
-      "hash": "f24df956a83863b97e9f27ff475aee17e67657f5dce1325f3caad320f502b454",
+      "hash": "253440f0e8996f21230b6ca3dfd820925263e771e7bc0b42c6d0eb1123f852e2",
       "level": "tested",
       "proven_count": 3,
       "prop_count": 6,
@@ -1612,7 +1612,7 @@
     },
     {
       "name": "rle-expand",
-      "hash": "f1579b18e3072e35e22654b26ec5a147eb2ea3c3d649ec254fce20d87fcb6b58",
+      "hash": "36fb384d7458f4d0d17f40e02e61c319d0fc3836f9a6531b535b4551f381ea46",
       "level": "proven",
       "proven_count": 5,
       "prop_count": 5,
@@ -1641,7 +1641,7 @@
     },
     {
       "name": "rot",
-      "hash": "f223a8607d23b2ac47a1904fddfaa72094da89a223ed99bcb8dd1aefe67a5727",
+      "hash": "e715328a6ffacab7161a437148296e0e0b3e16b542fa039d736e39825e256d36",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 7,
@@ -1678,7 +1678,7 @@
     },
     {
       "name": "rot-f",
-      "hash": "f223a8607d23b2ac47a1904fddfaa72094da89a223ed99bcb8dd1aefe67a5727",
+      "hash": "e715328a6ffacab7161a437148296e0e0b3e16b542fa039d736e39825e256d36",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 7,
@@ -1715,7 +1715,7 @@
     },
     {
       "name": "rot-h2",
-      "hash": "6411ad11aa824ac6a4ac27cdae2e685761d5f4c4f4b0d64a463793a9ded617ab",
+      "hash": "48a856f52aced98b6415537382a05a36bb9b579099b95746e9554c521d61572e",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 7,
@@ -1752,7 +1752,7 @@
     },
     {
       "name": "rot-h3",
-      "hash": "bfcfe31fda65050a6934162f1403a011c02b53c6c1ceffd30f6e54c162aad975",
+      "hash": "18228c2a22fac55420bad57e9c93c4dc4e9672e40fc3766e287f56b42bca378f",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 7,
@@ -1789,7 +1789,7 @@
     },
     {
       "name": "rot-hl",
-      "hash": "dc81f41c7ce1ec8f74d9c75a6c0212a65a4f49c62772453d5b6057e32f3c6b07",
+      "hash": "e9b80a4dbecfd6de63a3aa9545330384ef1a4af54cd250000dd29b58be388c64",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 7,
@@ -1907,7 +1907,7 @@
     },
     {
       "name": "shout",
-      "hash": "c35a5695e4ae129feb048923884468b80c8a90841b8888ab2c1021d74af7ab7a",
+      "hash": "1788554af98ab90ff6c471078cb9dc933fc04aff3e0583abd7ff829fb77240d2",
       "level": "proven",
       "proven_count": 2,
       "prop_count": 2,
@@ -1924,7 +1924,7 @@
     },
     {
       "name": "sign",
-      "hash": "b3be073e6d508999394277b13bc3bd6851313ab4b3ee9f09317372af911c3d52",
+      "hash": "7c0ff56ae894d5f8c7d8b3b92a2ba31a080e1feec71521aaec4e8e2b66fa5fcc",
       "level": "proven",
       "proven_count": 2,
       "prop_count": 2,
@@ -1941,7 +1941,7 @@
     },
     {
       "name": "singleton",
-      "hash": "7eef2b2b21828f030f79786104409b30822fe50701bc9c2c264d00a233da6799",
+      "hash": "14b8a3dd9719a29e458cb3ba2c884be6523f950216e7cb68373546a4fe60ea1a",
       "level": "proven",
       "proven_count": 2,
       "prop_count": 2,
@@ -1958,7 +1958,7 @@
     },
     {
       "name": "snoc",
-      "hash": "81a93fb3095e2d573263ae25611c4bf7d815b764e7efc2c5f926a1a194418455",
+      "hash": "2248e151c30adcaa8c23ce5a9ba21fc8cd53f36454b1b5afe4762c96dfc8e9a6",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -1979,7 +1979,7 @@
     },
     {
       "name": "sort",
-      "hash": "4947f21a8edd89b5f28c4e9c8a3f4741b2008cc03e17cbdef5afbc6dd46073fd",
+      "hash": "8ed4b7e956f376fb0f06f5a72f90e76be50ddb02da09045ea9bb8f8dafeb2760",
       "level": "proven",
       "proven_count": 7,
       "prop_count": 7,
@@ -2016,7 +2016,7 @@
     },
     {
       "name": "sort-by",
-      "hash": "d6bdb3f6787725140bf15f98d4e5a5bdfb616a9f838a21a71591df129856a805",
+      "hash": "5179ba32bb8df3c1b966c9f3b6c0c7c14a1de369b8fccc87e33fd4361eb168f3",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -2037,7 +2037,7 @@
     },
     {
       "name": "spin",
-      "hash": "111a7721ea54b9bf7ce9b6455e60cd8ca994d2f0cd79ad838f1cff926336093a",
+      "hash": "086cb1f933536eadf637402bd14bed014b55818b9994a8bda60683d80036c571",
       "level": "falsified",
       "proven_count": 0,
       "prop_count": 1,
@@ -2050,7 +2050,7 @@
     },
     {
       "name": "str-append",
-      "hash": "2153ea614b488e872029ce5d4cc9475bfc5f1824f6e4e7ddaadbe11937a8a784",
+      "hash": "7d158d0455d341a46cfcc678cfd41d35db89b574dc45158746ad922b8874e3a4",
       "level": "proven",
       "proven_count": 2,
       "prop_count": 2,
@@ -2067,7 +2067,7 @@
     },
     {
       "name": "str-drop",
-      "hash": "7c79f9ad705a2ce9cb41001e505b830444416e04d4d4435c7aaeebc312c89509",
+      "hash": "caaaa5b2134ad2be30ca74ec4d480e6d7a8e5889c63800643ae1c89618684a3d",
       "level": "proven",
       "proven_count": 2,
       "prop_count": 2,
@@ -2084,7 +2084,7 @@
     },
     {
       "name": "str-join",
-      "hash": "0914216af48d9b843e461f3fff2c9bb9c9f6ea9530cbad217923fd719b4b5c86",
+      "hash": "b41104b62aae86b49c4644688f01ac9e2d56c36f475b8b304b834f3804467f8b",
       "level": "proven",
       "proven_count": 1,
       "prop_count": 1,
@@ -2097,7 +2097,7 @@
     },
     {
       "name": "str-len",
-      "hash": "90d513659609e38bdb7fcebede14edd74186d5e7ba0ac8c497200fb9c0ae26a9",
+      "hash": "30df3863fbb189976a0d624ec7697a62cfaf940554ae436027eea19c4cdfbc5e",
       "level": "proven",
       "proven_count": 1,
       "prop_count": 1,
@@ -2110,7 +2110,7 @@
     },
     {
       "name": "str-prefix",
-      "hash": "3a6d553834f1c3c2f8af8f482c5b12d3ffa70faee25e791d8bce031161ddbada",
+      "hash": "48d690bda44bf44999028860eeaef6e85f237170f52bbf5cd39881b2eabd6080",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -2144,7 +2144,7 @@
     },
     {
       "name": "str-split-join",
-      "hash": "1e4d5a495cf118ac5ba90a4b3e404b16b6dc911aaa39dc4ad15cf347aacd46eb",
+      "hash": "f3a62459d59a9a242fd1bc3aecb60455ea9deddf7d652419889d9be7d961f36e",
       "level": "proven",
       "proven_count": 1,
       "prop_count": 1,
@@ -2157,7 +2157,7 @@
     },
     {
       "name": "str-take",
-      "hash": "7609fb3b4bb5c7bf141872e81060cc54b111997176770e0bbf9a1404a2ad2ad5",
+      "hash": "77452b35b089d93e5c76c4fbf423527316a03c6716c731ec1bfa998c36eef091",
       "level": "proven",
       "proven_count": 1,
       "prop_count": 1,
@@ -2170,7 +2170,7 @@
     },
     {
       "name": "sum",
-      "hash": "f71c16cff9cf6d1b56f59476bc8235f015b851c97c61d64f892d34962026f616",
+      "hash": "25f8a4de0cc7ea04a1b0b5dcc02690e8ea8eef0d44af6604f9ce2923d6f7085a",
       "level": "proven",
       "proven_count": 2,
       "prop_count": 2,
@@ -2200,7 +2200,7 @@
     },
     {
       "name": "t-flatten",
-      "hash": "b26c6b6a629e25fc34a9ab98ea702fefaa7a047f204ee08a012ed9ee2a58b61c",
+      "hash": "a431dd53a6b3abf6af360722bd9afc37f6bdb670a513f88c218a15ea5cc6a597",
       "level": "proven",
       "proven_count": 3,
       "prop_count": 3,
@@ -2221,7 +2221,7 @@
     },
     {
       "name": "t-insert",
-      "hash": "83fe02b7161e6700f45d3a2556ccd5731700090e72d3952b19a0bec63904f47f",
+      "hash": "312101f6dfd4a4aecf341d92d861d1c08755e72701c5f9b1a929b8d974a6adbd",
       "level": "tested",
       "proven_count": 2,
       "prop_count": 5,
@@ -2250,7 +2250,7 @@
     },
     {
       "name": "t-member",
-      "hash": "56f3f167eb18d4d9abd068265d6e44bc7e2f63915490113c799282b2b08777e2",
+      "hash": "2b71f64d6f4d161d5eb82f6f275f43791148026378cd1fba0e7436d22ac78925",
       "level": "tested",
       "proven_count": 3,
       "prop_count": 4,
@@ -2275,7 +2275,7 @@
     },
     {
       "name": "t-size",
-      "hash": "6a8fba8949037313386d11c8c776cb7dde3bbf97e11c14f98f224c6e36610764",
+      "hash": "1fc6a47774e2bd036f080ebba273dc29cc592b7af762b2a8cc0df810fe249ddf",
       "level": "proven",
       "proven_count": 4,
       "prop_count": 4,
@@ -2300,7 +2300,7 @@
     },
     {
       "name": "take",
-      "hash": "cb7c737dba984e1bce666fd68406ebd481d1026eb9efa8815eb641c4e0135020",
+      "hash": "1cca17c6d090a186ea837405687e938f7669f53b2be874e4aaded470a015577e",
       "level": "proven",
       "proven_count": 4,
       "prop_count": 4,

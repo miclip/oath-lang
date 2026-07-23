@@ -1,6 +1,6 @@
 {
   "name": "str-take",
-  "hash": "7609fb3b4bb5c7bf141872e81060cc54b111997176770e0bbf9a1404a2ad2ad5",
+  "hash": "77452b35b089d93e5c76c4fbf423527316a03c6716c731ec1bfa998c36eef091",
   "kind": "func",
   "termination": "structural",
   "confinement": [

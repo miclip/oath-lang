@@ -1,6 +1,6 @@
 {
   "name": "snoc",
-  "hash": "81a93fb3095e2d573263ae25611c4bf7d815b764e7efc2c5f926a1a194418455",
+  "hash": "2248e151c30adcaa8c23ce5a9ba21fc8cd53f36454b1b5afe4762c96dfc8e9a6",
   "kind": "func",
   "termination": "structural",
   "confinement": [

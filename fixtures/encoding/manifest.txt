@@ -1,7 +1,7 @@
 # §1.5 golden encoding fixtures (O1 binary)
 # case	hash	note
 bool_bytes	113f31b86e68b694406b30eccd925e8a7d5a7b65cf18c9372424a6f45a20b6e6	bool encodes as a single 0x00/0x01 byte
-empty_lists	3eaa3f3f61c27f1a85810040e9d8460c3b44c4cf136c83e7457f3830b5aaad93	counts are u32; empty lists are a bare zero count (props here)
+empty_lists	b0b55f7d5d328509f49ff50f0f52b80a5926137cadac94db59fc1b12101aa7ab	counts are u32; empty lists are a bare zero count (props here)
 hash_reference	731ed00d661683698d2e87e26616dd7de95301805bd24729c185992c2c91dbcf	hash references are 32 raw bytes, not hex text
-negative_int	e882da84fbbb7756bdf62901a53c86e84a545e7ff5473ba592d9020e5047cbca	i64 is 8-byte big-endian two's complement
-record_order	7bef5f5578d383982e6057ddff5d1de7fa19278bf2462e29a64d182a565ab4bc	record fields encode name-then-value pairs in strictly ascending name order
+negative_int	f69877e36f22eba82999754b72d13a7bdffc9a3c66f40ac7cd202d22d9e7894e	i64 is 8-byte big-endian two's complement
+record_order	8b7ced60e3e9d5445634922bcb18b396703965e03a5f6d824e0cade9c0483207	record fields encode name-then-value pairs in strictly ascending name order

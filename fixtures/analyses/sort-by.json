@@ -1,6 +1,6 @@
 {
   "name": "sort-by",
-  "hash": "d6bdb3f6787725140bf15f98d4e5a5bdfb616a9f838a21a71591df129856a805",
+  "hash": "5179ba32bb8df3c1b966c9f3b6c0c7c14a1de369b8fccc87e33fd4361eb168f3",
   "kind": "func",
   "termination": "structural",
   "confinement": [

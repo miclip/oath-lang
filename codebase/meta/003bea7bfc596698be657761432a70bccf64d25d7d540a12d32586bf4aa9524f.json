@@ -1,13 +1,1 @@
-{
-  "name": "Tree",
-  "ctor_names": [
-    "Leaf",
-    "Node"
-  ],
-  "guarantee": {
-    "level": "asserted"
-  },
-  "spec_author": "claude-main",
-  "body_author": "claude-main",
-  "author": "claude-main"
-}
+{"name":"Tree","ctor_names":["Leaf","Node"],"guarantee":{"level":"asserted"},"spec_author":"claude-main","body_author":"claude-main","author":"claude-main"}

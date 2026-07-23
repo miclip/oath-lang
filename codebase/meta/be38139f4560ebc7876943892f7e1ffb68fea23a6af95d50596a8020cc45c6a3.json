@@ -1,18 +1,1 @@
-{
-  "name": "stash",
-  "guarantee": {
-    "level": "asserted"
-  },
-  "termination": "nonrecursive",
-  "spec_author": "claude-main",
-  "body_author": "claude-main",
-  "author": "claude-main",
-  "param_names": [
-    "net",
-    "keep"
-  ],
-  "confinement": [
-    "escapes",
-    ""
-  ]
-}
+{"name":"stash","guarantee":{"level":"asserted"},"termination":"nonrecursive","spec_author":"claude-main","body_author":"claude-main","author":"claude-main","param_names":["net","keep"],"confinement":["escapes",""]}

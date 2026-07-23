@@ -1,6 +1,6 @@
 {
   "name": "flatten",
-  "hash": "16104aaf13230e4a323ba494bf77980797baa43d1e758a2706af25a62b096d2c",
+  "hash": "0497351b656c8a1a0718d1b998c5a32fb0f7f7888e8c91eb23af72f3331543db",
   "kind": "func",
   "termination": "structural",
   "confinement": [

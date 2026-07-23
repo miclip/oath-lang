@@ -1,6 +1,6 @@
 {
   "name": "q-drop",
-  "hash": "66b1867fa0679f1b22be8b2706fd4d3f55b941f52756053eaaa077bde597b8c1",
+  "hash": "091c2b59dc4f63a5ee4b928bb50b95dec5d89f1c17092b16d764d92a3bc06074",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

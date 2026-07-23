@@ -1,6 +1,6 @@
 {
   "name": "index-of",
-  "hash": "ecc23c421a69127bb6e73e1b104381bf7720ffad478c765d2eb381ead0bfe94e",
+  "hash": "d679d2e21f62e21e5a276478d81c57f37047fb1dbb38f6fa28629d31d340a042",
   "kind": "func",
   "termination": "structural",
   "confinement": [

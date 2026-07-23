@@ -1,6 +1,6 @@
 {
   "name": "sign",
-  "hash": "b3be073e6d508999394277b13bc3bd6851313ab4b3ee9f09317372af911c3d52",
+  "hash": "7c0ff56ae894d5f8c7d8b3b92a2ba31a080e1feec71521aaec4e8e2b66fa5fcc",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

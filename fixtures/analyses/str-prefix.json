@@ -1,6 +1,6 @@
 {
   "name": "str-prefix",
-  "hash": "3a6d553834f1c3c2f8af8f482c5b12d3ffa70faee25e791d8bce031161ddbada",
+  "hash": "48d690bda44bf44999028860eeaef6e85f237170f52bbf5cd39881b2eabd6080",
   "kind": "func",
   "termination": "structural",
   "confinement": [

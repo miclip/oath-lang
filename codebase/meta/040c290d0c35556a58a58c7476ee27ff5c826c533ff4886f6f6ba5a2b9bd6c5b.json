@@ -1,0 +1,30 @@
+{
+  "name": "count",
+  "prop_names": [
+    "non-negative",
+    "bounded-by-length"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 2
+  },
+  "mutants_killed": 5,
+  "mutants_total": 9,
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "x",
+    "xs"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1
+  ]
+}

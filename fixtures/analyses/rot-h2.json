@@ -1,6 +1,6 @@
 {
   "name": "rot-h2",
-  "hash": "6411ad11aa824ac6a4ac27cdae2e685761d5f4c4f4b0d64a463793a9ded617ab",
+  "hash": "48a856f52aced98b6415537382a05a36bb9b579099b95746e9554c521d61572e",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

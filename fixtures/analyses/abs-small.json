@@ -1,6 +1,6 @@
 {
   "name": "abs-small",
-  "hash": "5aa4cf7138621f5408a59302898916fbb5525e143920c30f99cd5b37052934ec",
+  "hash": "ca9250f107c37d78d5b3127f42fceb5b36764061883f80dbbe4c144140ed1b54",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

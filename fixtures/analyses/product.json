@@ -1,6 +1,6 @@
 {
   "name": "product",
-  "hash": "54a2e5c0171dafb82de37512cbfbc082eac29bc882e80f106494531cb3d1f9ff",
+  "hash": "c074a26278a9bbf3e6b70214a21fc19be92efdb464d4fc3f84c19b85705ce897",
   "kind": "func",
   "termination": "structural",
   "confinement": [

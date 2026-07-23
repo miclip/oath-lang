@@ -1,13 +1,1 @@
-{
-  "name": "Flaky",
-  "ctor_names": [
-    "Up",
-    "Down"
-  ],
-  "guarantee": {
-    "level": "asserted"
-  },
-  "spec_author": "claude-main",
-  "body_author": "claude-main",
-  "author": "claude-main"
-}
+{"name":"Flaky","ctor_names":["Up","Down"],"guarantee":{"level":"asserted"},"spec_author":"claude-main","body_author":"claude-main","author":"claude-main"}

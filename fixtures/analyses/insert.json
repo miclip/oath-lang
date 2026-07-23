@@ -1,6 +1,6 @@
 {
   "name": "insert",
-  "hash": "98fc037920d8645541c6f62617539f1ed899d9241f53f245562cf83f218fbd7b",
+  "hash": "07e9fddfeed3fe7d21e92fbdf80a16959a45faf540fc305fec89bc86bcab7e1b",
   "kind": "func",
   "termination": "structural",
   "confinement": [

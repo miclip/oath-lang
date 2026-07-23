@@ -13,20 +13,6 @@
   },
   "mutants_killed": 5,
   "mutants_total": 7,
-  "waived_mutants": [
-    {
-      "hash": "b8c13485458fcd3a35c3b1f3cb85a93c42805be6f811557aee62f99cec84f988",
-      "desc": "\u003c → \u003c=",
-      "reason": "min/max \u003c vs \u003c= tiebreak: branches agree when operands are equal; equivalence machine-checked in docs/experiments/minmax-equiv.smt2 (Z3 unsat)",
-      "by": "claude-main"
-    },
-    {
-      "hash": "36f518ca4425bfe614d6d57ffe197b2a2ebc83f3f0141c6b52d9d3b870b7211a",
-      "desc": "\u003c → \u003c=",
-      "reason": "min/max \u003c vs \u003c= tiebreak: branches agree when operands are equal; equivalence machine-checked in docs/experiments/minmax-equiv.smt2 (Z3 unsat)",
-      "by": "claude-main"
-    }
-  ],
   "termination": "nonrecursive",
   "spec_author": "claude-main",
   "body_author": "claude-main",

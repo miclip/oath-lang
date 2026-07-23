@@ -1,6 +1,6 @@
 {
   "name": "rot-f",
-  "hash": "f223a8607d23b2ac47a1904fddfaa72094da89a223ed99bcb8dd1aefe67a5727",
+  "hash": "e715328a6ffacab7161a437148296e0e0b3e16b542fa039d736e39825e256d36",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

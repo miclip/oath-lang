@@ -1,6 +1,6 @@
 {
   "name": "t-insert",
-  "hash": "83fe02b7161e6700f45d3a2556ccd5731700090e72d3952b19a0bec63904f47f",
+  "hash": "312101f6dfd4a4aecf341d92d861d1c08755e72701c5f9b1a929b8d974a6adbd",
   "kind": "func",
   "termination": "structural",
   "confinement": [

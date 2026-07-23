@@ -1,13 +1,13 @@
 {
   "name": "count",
-  "hash": "459655264756f31be29e5b9f2103e0e0714851513a927b7e09eb8b60103bc807",
+  "hash": "040c290d0c35556a58a58c7476ee27ff5c826c533ff4886f6f6ba5a2b9bd6c5b",
   "kind": "func",
   "termination": "structural",
   "confinement": [
     "",
     ""
   ],
-  "mutants_killed": 3,
+  "mutants_killed": 5,
   "mutants_total": 9,
   "level": "proven",
   "cases": 200,

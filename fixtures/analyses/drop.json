@@ -1,6 +1,6 @@
 {
   "name": "drop",
-  "hash": "fe6c3320c48b77014dc4d1733b4ab698d03bc14500ea67a821e115bc5e300cd8",
+  "hash": "f1e861a8d7ed52ea1175126a2c0442dd82bac857254b00c72cc72deb02685672",
   "kind": "func",
   "termination": "structural",
   "confinement": [

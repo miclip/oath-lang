@@ -1,6 +1,6 @@
 {
   "name": "count-matching",
-  "hash": "44d639c487c3ebbfa0b56b0ba629f36478783c0a51d8c2177b28fce2cb6b8afc",
+  "hash": "c2f6fe6558cad0045cb6e4a3daabe4e2532f5c2e956a2b4edabf435ca563ed4f",
   "kind": "func",
   "termination": "structural",
   "confinement": [
