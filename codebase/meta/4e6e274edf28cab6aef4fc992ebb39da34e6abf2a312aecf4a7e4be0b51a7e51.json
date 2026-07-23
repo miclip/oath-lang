@@ -1,0 +1,22 @@
+{
+  "name": "one-two-three",
+  "prop_names": [
+    "has-three",
+    "is-the-chain"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 2
+  },
+  "mutants_killed": 8,
+  "mutants_total": 8,
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "proven_props": [
+    0,
+    1
+  ]
+}

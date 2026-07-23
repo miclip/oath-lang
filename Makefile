@@ -8,7 +8,7 @@
 # Topological order: list → str (needs List) → records (defines Option/Pair/
 # Result, needs str) → everything else. The committed store always has every
 # dependency, so this order matters only for a from-scratch rebuild.
-EXAMPLES = list str records sort generic merge tree interval queue rle ediv rot_hl rot_f rot_h2 \
+EXAMPLES = list str records arith inferred sort generic merge tree interval queue rle ediv rot_hl rot_f rot_h2 \
            rot_h3 rot extras ints service leaky stateful cli netcli set map
 EXHIBITS = undertested nontotal bad_reverse
 PROVABLE = length append sum count reverse map filter foldr foldl \

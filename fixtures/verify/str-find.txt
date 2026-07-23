@@ -1,3 +1,0 @@
-✓ prop empty-is-zero            passed 200 cases
-✓ prop contains-iff-found       passed 200 cases
-✓ prop absent-is-neg1           passed 200 cases
