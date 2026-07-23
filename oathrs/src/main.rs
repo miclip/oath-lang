@@ -319,7 +319,7 @@ fn cmd_enctest(dir: &str) -> i32 {
             Def::Func {
                 tyvars: 0,
                 ty: Ty::Int,
-                body: Term::Int(0),
+                body: Term::Int(num_bigint::BigInt::from(0)),
                 props: vec![Prop { binders: vec![], body: Term::Bool(true) }],
             },
         ),
@@ -332,7 +332,7 @@ fn cmd_enctest(dir: &str) -> i32 {
                 props: vec![],
             },
         ),
-        ("negative_int", Def::Func { tyvars: 0, ty: Ty::Int, body: Term::Int(-401), props: vec![] }),
+        ("negative_int", Def::Func { tyvars: 0, ty: Ty::Int, body: Term::Int(num_bigint::BigInt::from(-401)), props: vec![] }),
         (
             "record_order",
             Def::Func {
@@ -340,7 +340,7 @@ fn cmd_enctest(dir: &str) -> i32 {
                 ty: Ty::Record { names: vec!["a".into(), "b".into()], args: vec![Ty::Int, Ty::Bool] },
                 body: Term::Record {
                     names: vec!["a".into(), "b".into()],
-                    args: vec![Term::Int(1), Term::Bool(true)],
+                    args: vec![Term::Int(num_bigint::BigInt::from(1)), Term::Bool(true)],
                 },
                 props: vec![],
             },

@@ -5,6 +5,7 @@
 use crate::elaborate::Store;
 use crate::ir::{Def, Term};
 use crate::value::{struct_eq, Native, Value};
+use num_bigint::BigInt;
 
 pub const DEPTH_MSG: &str = "recursion too deep (likely non-termination)";
 pub const FUEL_MSG: &str = "out of fuel";
@@ -71,7 +72,8 @@ impl<'a> Machine<'a> {
         match n {
             Native::Identity => Ok(x.clone()),
             Native::Affine(a, b) => match x {
-                Value::Int(v) => Ok(Value::Int(a.wrapping_mul(*v).wrapping_add(*b))),
+                // `Int` is ℤ: a*x + b in arbitrary precision (no wrapping).
+                Value::Int(v) => Ok(Value::Int(BigInt::from(*a) * v + BigInt::from(*b))),
                 _ => Err("affine applied to non-int".into()),
             },
             Native::Const(v) => Ok((**v).clone()),
@@ -100,7 +102,7 @@ impl<'a> Machine<'a> {
                     .ok_or("variable out of range at runtime")?;
                 Ok(env[idx].clone())
             }
-            Term::Int(v) => Ok(Value::Int(*v)),
+            Term::Int(v) => Ok(Value::Int(v.clone())),
             Term::Bool(b) => Ok(Value::Bool(*b)),
             Term::Lam { a, .. } => Ok(Value::Closure {
                 env: env.clone(),
@@ -184,9 +186,10 @@ impl<'a> Machine<'a> {
 }
 
 fn eval_prim(op: &str, vs: &[Value]) -> Result<Value, String> {
-    let int = |v: &Value| -> Result<i64, String> {
+    // Integers are ℤ (SPEC §3): arbitrary precision, `+ - *` never overflow.
+    let int = |v: &Value| -> Result<BigInt, String> {
         match v {
-            Value::Int(n) => Ok(*n),
+            Value::Int(n) => Ok(n.clone()),
             _ => Err("expected int operand".into()),
         }
     };
@@ -196,27 +199,28 @@ fn eval_prim(op: &str, vs: &[Value]) -> Result<Value, String> {
             _ => Err("expected bool operand".into()),
         }
     };
+    let zero = BigInt::from(0);
     match op {
-        "+" => Ok(Value::Int(int(&vs[0])?.wrapping_add(int(&vs[1])?))),
-        "-" => Ok(Value::Int(int(&vs[0])?.wrapping_sub(int(&vs[1])?))),
-        "*" => Ok(Value::Int(int(&vs[0])?.wrapping_mul(int(&vs[1])?))),
+        "+" => Ok(Value::Int(int(&vs[0])? + int(&vs[1])?)),
+        "-" => Ok(Value::Int(int(&vs[0])? - int(&vs[1])?)),
+        "*" => Ok(Value::Int(int(&vs[0])? * int(&vs[1])?)),
         "/" => {
             let d = int(&vs[1])?;
-            if d == 0 {
+            if d == zero {
                 return Err("division by zero".into());
             }
-            // Rust / truncates toward zero, matching the spec.
-            Ok(Value::Int(int(&vs[0])?.wrapping_div(d)))
+            // num-bigint `/` truncates toward zero (Quo), matching the spec.
+            Ok(Value::Int(int(&vs[0])? / d))
         }
         "%" => {
             let d = int(&vs[1])?;
-            if d == 0 {
+            if d == zero {
                 return Err("modulo by zero".into());
             }
-            // Rust % takes the dividend's sign, matching the spec.
-            Ok(Value::Int(int(&vs[0])?.wrapping_rem(d)))
+            // num-bigint `%` takes the dividend's sign (Rem), matching the spec.
+            Ok(Value::Int(int(&vs[0])? % d))
         }
-        "neg" => Ok(Value::Int(int(&vs[0])?.wrapping_neg())),
+        "neg" => Ok(Value::Int(-int(&vs[0])?)),
         "==" => Ok(Value::Bool(struct_eq(&vs[0], &vs[1])?)),
         "<" => Ok(Value::Bool(int(&vs[0])? < int(&vs[1])?)),
         "<=" => Ok(Value::Bool(int(&vs[0])? <= int(&vs[1])?)),

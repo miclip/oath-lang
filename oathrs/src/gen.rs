@@ -66,11 +66,13 @@ pub fn generate(store: &Store, ty: &Ty, size: i64, rng: &mut Rng) -> Result<Valu
     let size = size.max(0);
     match ty {
         Ty::Int => {
+            // `Int` is ℤ, but the §4 generator's distribution is unchanged: small
+            // boundary/uniform values, wrapped in arbitrary-precision integers.
             if rng.below(4) == 0 {
                 let k = rng.below(5) as usize;
-                Ok(Value::Int(INT_BOUNDARY[k]))
+                Ok(Value::Int(num_bigint::BigInt::from(INT_BOUNDARY[k])))
             } else {
-                Ok(Value::Int(rng.int_in(-20, 20)))
+                Ok(Value::Int(num_bigint::BigInt::from(rng.int_in(-20, 20))))
             }
         }
         Ty::Bool => Ok(Value::Bool(rng.below(2) == 0)),

@@ -1,9 +1,12 @@
 //! Surface reader (SPEC §1.4). Produces s-expressions distinguishing the
 //! three bracket kinds. Line numbers are best-effort for diagnostics only.
 
+use num_bigint::BigInt;
+
 #[derive(Clone, Debug)]
 pub enum Sexpr {
-    Int(i64),
+    // `Int` is ℤ — arbitrary precision (SPEC §3).
+    Int(BigInt),
     Str(String),
     Sym(String),
     List(Vec<Sexpr>),
@@ -192,10 +195,9 @@ impl<'a> Reader<'a> {
         }
         let tok = String::from_utf8(buf)
             .map_err(|_| format!("line {}: invalid UTF-8 in token", self.line))?;
-        // A token that parses as int64 is an integer; otherwise a symbol.
-        if let Ok(n) = tok.parse::<i64>() {
-            // reject "+5"/leading-zero-ambiguity? Go strconv accepts a leading
-            // sign; keep parity with i64 parse which accepts '-'/'+'.
+        // A token that parses as an arbitrary-precision integer is an integer;
+        // otherwise a symbol. (`Int` is ℤ, so no i64 range limit.)
+        if let Ok(n) = tok.parse::<BigInt>() {
             Ok(Sexpr::Int(n))
         } else {
             Ok(Sexpr::Sym(tok))

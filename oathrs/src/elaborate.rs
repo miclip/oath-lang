@@ -183,7 +183,7 @@ impl Store {
         ctx: &mut Vec<String>,
     ) -> ER<Term> {
         match s {
-            Sexpr::Int(n) => Ok(Term::Int(*n)),
+            Sexpr::Int(n) => Ok(Term::Int(n.clone())),
             // STRING-LITERAL SUGAR (SPEC §1.4): `"…"` desugars to the codepoint
             // chain `(SCons c0 (SCons c1 … (SNil)))`, byte-identical to the ctor
             // form. There is no string-literal term anymore.
@@ -399,7 +399,7 @@ impl Store {
                 hash: scons_hash.clone(),
                 idx: scons_idx,
                 tyargs: vec![],
-                args: vec![Term::Int(c as i64), acc],
+                args: vec![Term::Int(num_bigint::BigInt::from(c as u32)), acc],
             };
         }
         Ok(acc)

@@ -18,10 +18,13 @@ pub enum Ty {
     Record { names: Vec<String>, args: Vec<Ty> },
 }
 
+use num_bigint::{BigInt, Sign};
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Term {
     Var(u32),
-    Int(i64),
+    // `Int` is ℤ — arbitrary precision (SPEC §3). Encoded as `bigint` (§1.1).
+    Int(BigInt),
     Bool(bool),
     // (tag 0x13 reserved — string literals now elaborate to `Str` ctor chains)
     Lam { ty: Ty, a: Box<Term> },
@@ -59,8 +62,15 @@ fn put_u32(out: &mut Vec<u8>, v: u32) {
     out.extend_from_slice(&v.to_be_bytes());
 }
 
-fn put_i64(out: &mut Vec<u8>, v: i64) {
-    out.extend_from_slice(&v.to_be_bytes());
+/// `bigint` (SPEC §1.1): `u8` sign (`0x00` for ≥0, `0x01` for <0) ++ `u32`
+/// magnitude byte-length ++ minimal big-endian magnitude bytes (no leading
+/// zeros). Zero is sign `0x00`, length 0.
+fn put_bigint(out: &mut Vec<u8>, v: &BigInt) {
+    let sign = if v.sign() == Sign::Minus { 0x01 } else { 0x00 };
+    let mag: Vec<u8> = if v.sign() == Sign::NoSign { Vec::new() } else { v.to_bytes_be().1 };
+    out.push(sign);
+    put_u32(out, mag.len() as u32);
+    out.extend_from_slice(&mag);
 }
 
 fn put_str(out: &mut Vec<u8>, s: &str) {
@@ -150,7 +160,7 @@ fn enc_term(t: &Term, out: &mut Vec<u8>) {
         }
         Term::Int(n) => {
             out.push(0x11);
-            put_i64(out, *n);
+            put_bigint(out, n);
         }
         Term::Bool(b) => {
             out.push(0x12);
@@ -302,14 +312,28 @@ impl<'a> Cur<'a> {
         self.p += 4;
         Ok(v)
     }
-    fn i64(&mut self) -> Result<i64, String> {
-        if self.p + 8 > self.b.len() {
-            return Err("O1: truncated (i64)".into());
+    /// Strict `bigint` decode (SPEC §1.1): sign byte (only `0x00`/`0x01`), u32
+    /// magnitude length, then that many minimal big-endian magnitude bytes. A
+    /// non-canonical form is rejected: a leading zero byte, or a `0x01` (negative)
+    /// sign with an empty magnitude (there is no negative zero).
+    fn bigint(&mut self) -> Result<BigInt, String> {
+        let sign_byte = self.u8()?;
+        if sign_byte != 0x00 && sign_byte != 0x01 {
+            return Err("O1: bigint sign byte must be 0x00 or 0x01".into());
         }
-        let mut a = [0u8; 8];
-        a.copy_from_slice(&self.b[self.p..self.p + 8]);
-        self.p += 8;
-        Ok(i64::from_be_bytes(a))
+        let n = self.u32()? as usize;
+        let mag = self.take(n)?;
+        if n == 0 {
+            if sign_byte != 0x00 {
+                return Err("O1: bigint zero must have sign 0x00 (no negative zero)".into());
+            }
+            return Ok(BigInt::from(0));
+        }
+        if mag[0] == 0x00 {
+            return Err("O1: bigint magnitude has a non-canonical leading zero".into());
+        }
+        let sign = if sign_byte == 0x01 { Sign::Minus } else { Sign::Plus };
+        Ok(BigInt::from_bytes_be(sign, mag))
     }
     fn take(&mut self, n: usize) -> Result<&'a [u8], String> {
         if self.p + n > self.b.len() {
@@ -383,7 +407,7 @@ fn dec_ty(c: &mut Cur) -> Result<Ty, String> {
 fn dec_term(c: &mut Cur) -> Result<Term, String> {
     match c.u8()? {
         0x10 => Ok(Term::Var(c.u32()?)),
-        0x11 => Ok(Term::Int(c.i64()?)),
+        0x11 => Ok(Term::Int(c.bigint()?)),
         0x12 => Ok(Term::Bool(c.boolean()?)),
         // 0x13 is RESERVED (was the string-literal term) — strict decoders reject.
         0x14 => {

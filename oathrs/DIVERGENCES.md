@@ -1454,3 +1454,41 @@ After that, byte-oracle conformance PASSES all checks. The deletions are reversi
 (git-tracked) and are flagged here for the coordinator to confirm; the alternative
 reading — that `hashes.txt`/`scripts.txt`/`outcomes.json` should instead GAIN the 5
 straggler defs — contradicts the stated 122-def corpus, so it was not taken.
+
+## 76. `Int` becomes ℤ — arbitrary precision (int/bignum): two findings
+
+**Found by:** blind implementation of the "Int is ℤ" cutover on branch `int/bignum`.
+**Outcome: conformance passes on the full 128-def corpus; one spec-precise choice
+confirmed, one fixture-format detail surfaced.**
+
+### The bigint canonical form (spec-precise, confirmed by test)
+§1.1 pins the `bigint` wire form and §1.2 makes the `int` term (tag 0x11) use it:
+`u8` sign (`0x00` for ≥0, `0x01` for <0) ++ `u32` magnitude byte-length ++ minimal
+big-endian magnitude bytes; **zero is sign `0x00`, length 0**. The encoder derives
+sign + minimal magnitude from the value (num-bigint's `to_bytes_be`, forcing an
+empty magnitude for zero), and the STRICT decoder rejects every non-canonical
+form. Directly tested: canonical `+5`/`0`/negative decode; a leading-zero magnitude,
+a `0x01` sign with empty magnitude (negative zero), and any sign byte other than
+`0x00`/`0x01` are all REJECTED. This is unambiguous in the spec — recorded per the
+coordinator's request, not because a judgment call was needed. Implementation note:
+this kernel adds a `num-bigint` dependency for ℤ (the Go kernel uses `math/big`);
+it uses default features only (no rand/serde) and cross-compiles to wasm unchanged.
+num-bigint's `Div`/`Rem` are truncated-toward-zero / dividend-sign — exactly §3's
+Quo/Rem — verified against `±7 / ±3`. No SMT change: int literals still render in
+decimal (`fmt_int` now over `BigInt`), so scripts are byte-identical in content and
+re-fork only through the hash-dependent declaration order the corpus already fixes.
+
+### `mutants_killed` omitted when zero (fixture-format, newly exercised)
+The re-forked hashes changed the mutation SEEDS (seeds derive from the definition
+hash, §4/§6.3), so five definitions (`greet-or-guest`, `set-inter`, `set-member`,
+`shout`, `str-split`) now have a **zero-kill** mutation score (their surviving
+mutants are semantically equivalent). The analyses JSON renders such a score as
+`mutants_total` ALONE — the `mutants_killed` field is omitted when it is 0 (whereas
+`mutants_total: 0` omits BOTH, divergence-#66 style). This kernel had emitted
+`"mutants_killed": 0` unconditionally — a latent rendering bug no prior fixture
+exercised, because before this branch every mutated definition happened to kill at
+least one mutant. The spec describes the score, not the JSON shape; only the
+fixtures pin it. Fixed to emit `mutants_killed` only when nonzero, which makes all
+128 analyses byte-identical. A third kernel would hit the same surprise the first
+time a re-seed produces a zero-kill score; the analyses-output format should be
+documented (which mutation fields are omitted at which zero).
