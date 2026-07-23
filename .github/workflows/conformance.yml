@@ -31,6 +31,8 @@ jobs:
           cache-dependency-path: oath/go.mod
       - name: build
         run: cd oath && go build ./...
+      - name: unit tests
+        run: cd oath && go test ./...
       - name: re-verify examples against committed store
         # make verify re-puts every example; on a checkout this must
         # reproduce the committed hashes (names.json diff = identity drift).
