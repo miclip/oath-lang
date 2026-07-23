@@ -1,3 +1,0 @@
-✓ prop absent-is-single         passed 200 cases
-✓ prop empty-sep-is-single      passed 200 cases
-✓ prop never-empty              passed 200 cases

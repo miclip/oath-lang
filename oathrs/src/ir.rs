@@ -9,7 +9,7 @@
 pub enum Ty {
     Int,
     Bool,
-    Str,
+    // (tag 0x03 reserved — `Str` is now the `Str` datatype, not a primitive type)
     Var(u32),
     Fun(Box<Ty>, Box<Ty>),
     Data { hash: String, args: Vec<Ty> },
@@ -23,7 +23,7 @@ pub enum Term {
     Var(u32),
     Int(i64),
     Bool(bool),
-    Str(String),
+    // (tag 0x13 reserved — string literals now elaborate to `Str` ctor chains)
     Lam { ty: Ty, a: Box<Term> },
     App { a: Box<Term>, b: Box<Term> },
     Let { ty: Ty, a: Box<Term>, b: Box<Term> },
@@ -107,7 +107,6 @@ fn enc_ty(t: &Ty, out: &mut Vec<u8>) {
     match t {
         Ty::Int => out.push(0x01),
         Ty::Bool => out.push(0x02),
-        Ty::Str => out.push(0x03),
         Ty::Var(i) => {
             out.push(0x04);
             put_u32(out, *i);
@@ -156,10 +155,6 @@ fn enc_term(t: &Term, out: &mut Vec<u8>) {
         Term::Bool(b) => {
             out.push(0x12);
             out.push(if *b { 0x01 } else { 0x00 });
-        }
-        Term::Str(s) => {
-            out.push(0x13);
-            put_str(out, s);
         }
         Term::Lam { ty, a } => {
             out.push(0x14);
@@ -346,7 +341,7 @@ fn dec_ty(c: &mut Cur) -> Result<Ty, String> {
     match c.u8()? {
         0x01 => Ok(Ty::Int),
         0x02 => Ok(Ty::Bool),
-        0x03 => Ok(Ty::Str),
+        // 0x03 is RESERVED (was the `str` primitive type) — strict decoders reject.
         0x04 => Ok(Ty::Var(c.u32()?)),
         0x05 => {
             let a = dec_ty(c)?;
@@ -390,7 +385,7 @@ fn dec_term(c: &mut Cur) -> Result<Term, String> {
         0x10 => Ok(Term::Var(c.u32()?)),
         0x11 => Ok(Term::Int(c.i64()?)),
         0x12 => Ok(Term::Bool(c.boolean()?)),
-        0x13 => Ok(Term::Str(c.string()?)),
+        // 0x13 is RESERVED (was the string-literal term) — strict decoders reject.
         0x14 => {
             let ty = dec_ty(c)?;
             let a = dec_term(c)?;

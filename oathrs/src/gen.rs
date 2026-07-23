@@ -59,7 +59,6 @@ fn hex_decode(h: &str) -> Vec<u8> {
     out
 }
 
-const ALPHABET: &[u8] = b"ab xyz!";
 const INT_BOUNDARY: [i64; 5] = [-2, -1, 0, 1, 2];
 
 pub fn generate(store: &Store, ty: &Ty, size: i64, rng: &mut Rng) -> Result<Value, String> {
@@ -75,15 +74,6 @@ pub fn generate(store: &Store, ty: &Ty, size: i64, rng: &mut Rng) -> Result<Valu
             }
         }
         Ty::Bool => Ok(Value::Bool(rng.below(2) == 0)),
-        Ty::Str => {
-            let len = rng.below((size + 1) as u64);
-            let mut bytes = Vec::new();
-            for _ in 0..len {
-                let k = rng.below(7) as usize;
-                bytes.push(ALPHABET[k]);
-            }
-            Ok(Value::Str(String::from_utf8(bytes).unwrap()))
-        }
         Ty::Fun(a, b) => {
             if matches!(**a, Ty::Int) && matches!(**b, Ty::Int) {
                 match rng.below(4) {

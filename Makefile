@@ -5,8 +5,11 @@
 # unproven exhibits) — the leading dash tolerates them.
 # rot_hl/rot_f/rot_h2/rot_h3 are the flywheel-experiment arms (#15): four
 # independently-authored green bodies for one oath; `rot` aliases the winner.
-EXAMPLES = list sort generic merge tree interval queue rle ediv rot_hl rot_f rot_h2 \
-           rot_h3 rot records extras ints service leaky stateful cli netcli set map
+# Topological order: list → str (needs List) → records (defines Option/Pair/
+# Result, needs str) → everything else. The committed store always has every
+# dependency, so this order matters only for a from-scratch rebuild.
+EXAMPLES = list str records arith inferred sort generic merge tree interval queue rle ediv rot_hl rot_f rot_h2 \
+           rot_h3 rot extras ints service leaky stateful cli netcli set map
 EXHIBITS = undertested nontotal bad_reverse
 PROVABLE = length append sum count reverse map filter foldr foldl \
            reverse-onto flatten all any snoc find last init \
@@ -23,7 +26,8 @@ PROVABLE = length append sum count reverse map filter foldr foldl \
            kv-get kv-put rename-key safe-get \
            join-with lengths main-echo main-fetch \
            set-add set-union set-inter \
-           map-size map-keys map-values map-insert map-lookup map-has map-merge
+           map-size map-keys map-values map-insert map-lookup map-has map-merge \
+           str-len str-append str-prefix str-take str-drop str-split str-join str-split-join
 # Props exist but sit outside the provable fragment (Int-recursion fuel
 # bounds, or / and % in bodies): mutation-scored, never proven. merge
 # graduated to PROVABLE when lexicographic induction landed (#17).

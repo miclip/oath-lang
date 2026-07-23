@@ -331,7 +331,7 @@ impl<'a> ConfWalk<'a> {
     fn walk(&self, t: &Term, target: u32, in_lam: bool) -> bool {
         match t {
             Term::Var(k) => *k != target,
-            Term::Int(_) | Term::Bool(_) | Term::Str(_) => true,
+            Term::Int(_) | Term::Bool(_) => true,
             Term::Ref { .. } | Term::SelfRef { .. } => true,
             Term::Lam { a, .. } => self.walk(a, target + 1, true),
             Term::Let { a, b, .. } => {
@@ -487,18 +487,7 @@ fn op_subs(op: &str) -> Vec<&'static str> {
 }
 
 fn swappable(op: &str) -> bool {
-    matches!(
-        op,
-        "-" | "/"
-            | "%"
-            | "<"
-            | "<="
-            | "++"
-            | "starts-with"
-            | "ends-with"
-            | "str-contains"
-            | "str-index-of"
-    )
+    matches!(op, "-" | "/" | "%" | "<" | "<=")
 }
 
 fn head_is_self(t: &Term) -> bool {
@@ -519,11 +508,6 @@ fn mutate_here(store: &Store, t: &Term, is_func_child: bool) -> Vec<Term> {
                     op: op.clone(),
                     args: vec![args[1].clone(), args[0].clone()],
                 });
-            }
-        }
-        Term::Str(s) => {
-            if !s.is_empty() {
-                out.push(Term::Str(String::new()));
             }
         }
         Term::Int(n) => {

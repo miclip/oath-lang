@@ -1,0 +1,28 @@
+{
+  "name": "str-take",
+  "prop_names": [
+    "take-zero"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 1
+  },
+  "mutants_killed": 3,
+  "mutants_total": 11,
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "n",
+    "s"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0
+  ]
+}

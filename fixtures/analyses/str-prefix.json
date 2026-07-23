@@ -1,0 +1,15 @@
+{
+  "name": "str-prefix",
+  "hash": "3a6d553834f1c3c2f8af8f482c5b12d3ffa70faee25e791d8bce031161ddbada",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 3,
+  "mutants_total": 4,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

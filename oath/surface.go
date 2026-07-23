@@ -228,8 +228,6 @@ func (e *elab) parseTy(x sx) (*Ty, error) {
 			return tInt(), nil
 		case "Bool":
 			return tBool(), nil
-		case "Str":
-			return tStr(), nil
 		}
 		if i, ok := e.lookupTyVar(x.Sym); ok {
 			return tVar(i), nil
@@ -316,9 +314,6 @@ func (e *elab) parseTy(x sx) (*Ty, error) {
 var primArity = map[string]int{
 	"+": 2, "-": 2, "*": 2, "/": 2, "%": 2, "neg": 1,
 	"==": 2, "<": 2, "<=": 2, "and": 2, "or": 2, "not": 1,
-	"++": 2, "str-len": 1,
-	"starts-with": 2, "ends-with": 2, "str-contains": 2,
-	"substring": 3, "str-index-of": 2,
 }
 
 // parseRecord elaborates {name X name X ...} into sorted (names, items),
@@ -359,7 +354,21 @@ func (e *elab) elabTerm(x sx) (*Term, error) {
 	case "int":
 		return &Term{K: "int", Int: x.Int}, nil
 	case "str":
-		return &Term{K: "str", Str: x.Str}, nil
+		// String-literal sugar: "abc" elaborates to the codepoint chain
+		// (SCons 97 (SCons 98 (SCons 99 (SNil)))). Str is an ordinary inductive
+		// datatype of Unicode scalar values; there is no string primitive.
+		sconsH, sconsIdx, ok1 := e.st.FindCtor("SCons")
+		snilH, snilIdx, ok2 := e.st.FindCtor("SNil")
+		if !ok1 || !ok2 {
+			return nil, e.errAt(x, "string literals require the Str type (SNil and SCons) to be in scope")
+		}
+		runes := []rune(x.Str)
+		acc := &Term{K: "ctor", Hash: snilH, Idx: snilIdx}
+		for i := len(runes) - 1; i >= 0; i-- {
+			acc = &Term{K: "ctor", Hash: sconsH, Idx: sconsIdx,
+				Args: []Term{{K: "int", Int: int64(runes[i])}, *acc}}
+		}
+		return acc, nil
 	case "brace":
 		// Record literal: {name expr name expr ...}, sorted like the type.
 		if len(x.Kids)%2 != 0 {

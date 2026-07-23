@@ -87,7 +87,6 @@ impl<'a> Checker<'a> {
             }
             Term::Int(_) => Ok(Ty::Int),
             Term::Bool(_) => Ok(Ty::Bool),
-            Term::Str(_) => Ok(Ty::Str),
             Term::Lam { ty, a } => {
                 wf(self.store, ty, self.nvars, false, 0)?;
                 let pty = ty.clone();
@@ -551,51 +550,6 @@ impl<'a> Checker<'a> {
                 self.check(&mut args[0], &Ty::Bool, ctx)?;
                 Ok(Ty::Bool)
             }
-            "++" => {
-                if args.len() != 2 {
-                    return Err(arity_err(2));
-                }
-                for a in args.iter_mut() {
-                    self.check(a, &Ty::Str, ctx)?;
-                }
-                Ok(Ty::Str)
-            }
-            "str-len" => {
-                if args.len() != 1 {
-                    return Err(arity_err(1));
-                }
-                self.check(&mut args[0], &Ty::Str, ctx)?;
-                Ok(Ty::Int)
-            }
-            "starts-with" | "ends-with" | "str-contains" => {
-                if args.len() != 2 {
-                    return Err(arity_err(2));
-                }
-                for a in args.iter_mut() {
-                    self.check(a, &Ty::Str, ctx)?;
-                }
-                Ok(Ty::Bool)
-            }
-            "substring" => {
-                // (Str, Int, Int) -> Str
-                if args.len() != 3 {
-                    return Err(arity_err(3));
-                }
-                self.check(&mut args[0], &Ty::Str, ctx)?;
-                self.check(&mut args[1], &Ty::Int, ctx)?;
-                self.check(&mut args[2], &Ty::Int, ctx)?;
-                Ok(Ty::Str)
-            }
-            "str-index-of" => {
-                // (Str, Str) -> Int
-                if args.len() != 2 {
-                    return Err(arity_err(2));
-                }
-                for a in args.iter_mut() {
-                    self.check(a, &Ty::Str, ctx)?;
-                }
-                Ok(Ty::Int)
-            }
             _ => Err(format!("unknown primitive {}", op)),
         }
     }
@@ -629,7 +583,7 @@ fn match_ty(pat: &Ty, g: &Ty, s: &mut [Option<Ty>]) -> Result<(), String> {
         }
     }
     match (pat, g) {
-        (Ty::Int, Ty::Int) | (Ty::Bool, Ty::Bool) | (Ty::Str, Ty::Str) => Ok(()),
+        (Ty::Int, Ty::Int) | (Ty::Bool, Ty::Bool) => Ok(()),
         (Ty::Var(i), Ty::Var(j)) if i == j => Ok(()),
         (Ty::Fun(pa, pb), Ty::Fun(ga, gb)) => {
             match_ty(pa, ga, s)?;
@@ -736,7 +690,7 @@ fn check_record_names(names: &[String]) -> Result<(), String> {
 
 fn wf(store: &Store, ty: &Ty, nvars: u32, allow_rec: bool, rec_arity: u32) -> Result<(), String> {
     match ty {
-        Ty::Int | Ty::Bool | Ty::Str => Ok(()),
+        Ty::Int | Ty::Bool => Ok(()),
         Ty::Var(i) => {
             if *i < nvars {
                 Ok(())
@@ -792,7 +746,7 @@ fn wf(store: &Store, ty: &Ty, nvars: u32, allow_rec: bool, rec_arity: u32) -> Re
 
 fn concrete(ty: &Ty) -> bool {
     match ty {
-        Ty::Int | Ty::Bool | Ty::Str => true,
+        Ty::Int | Ty::Bool => true,
         Ty::Var(_) | Ty::Rec { .. } => false,
         Ty::Fun(a, b) => concrete(a) && concrete(b),
         Ty::Data { args, .. } => args.iter().all(concrete),

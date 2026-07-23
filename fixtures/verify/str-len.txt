@@ -1,0 +1,1 @@
+✓ prop nonneg                   passed 200 cases

@@ -310,8 +310,6 @@ fn cmd_scripts(paths: &[String], outcomes_path: &str) -> i32 {
 /// fixture .bin files (byte-identity + manifest hash), then round-trip each
 /// through the strict decoder.
 fn cmd_enctest(dir: &str) -> i32 {
-    // raw (unescaped) string: quote, backslash, newline, <>&, U+2028, U+2029
-    let raw = "\"\\\n<>&\u{2028}\u{2029}".to_string();
     // a fixed 32-byte hash reference: 00 11 22 .. ff repeated twice
     let href = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff".to_string();
     let cases: Vec<(&str, Def)> = vec![
@@ -335,15 +333,14 @@ fn cmd_enctest(dir: &str) -> i32 {
             },
         ),
         ("negative_int", Def::Func { tyvars: 0, ty: Ty::Int, body: Term::Int(-401), props: vec![] }),
-        ("raw_strings", Def::Func { tyvars: 0, ty: Ty::Str, body: Term::Str(raw), props: vec![] }),
         (
             "record_order",
             Def::Func {
                 tyvars: 0,
-                ty: Ty::Record { names: vec!["a".into(), "b".into()], args: vec![Ty::Int, Ty::Str] },
+                ty: Ty::Record { names: vec!["a".into(), "b".into()], args: vec![Ty::Int, Ty::Bool] },
                 body: Term::Record {
                     names: vec!["a".into(), "b".into()],
-                    args: vec![Term::Int(1), Term::Str("x".into())],
+                    args: vec![Term::Int(1), Term::Bool(true)],
                 },
                 props: vec![],
             },

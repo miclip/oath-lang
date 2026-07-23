@@ -1,14 +1,13 @@
 {
   "name": "greet-or-guest",
-  "hash": "52f67a200416fbc4dfb5d6f2390ecd03a89d268dc53a9babbdea5b4d54a9cf45",
+  "hash": "ec03800adfd25044d6ed1e3c94e808a27e1997bbc0c611bf1df84765daca46eb",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
     "confined",
     ""
   ],
-  "mutants_killed": 1,
-  "mutants_total": 1,
+  "mutants_total": 15,
   "level": "proven",
   "cases": 200,
   "proven": 2

@@ -1,14 +1,14 @@
 {
   "name": "main-fetch",
-  "hash": "398f8ebe2c1d6c865dc908429b8e1788540af72ae62992ce59a96ac6736e126d",
+  "hash": "3229a0827858a23de179ec7112f32888370e14baf99878ca47d04a0eb13fc201",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
     "confined",
     ""
   ],
-  "mutants_killed": 2,
-  "mutants_total": 2,
+  "mutants_killed": 70,
+  "mutants_total": 70,
   "level": "proven",
   "cases": 200,
   "proven": 3

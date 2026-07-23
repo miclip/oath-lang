@@ -44,7 +44,7 @@ Canonical bytes begin with the 2-byte magic `0x4F 0x31` ("O1").
 |---|---|---|
 | 0x01 | int | — |
 | 0x02 | bool | — |
-| 0x03 | str | — |
+| 0x03 | *(reserved — was the `str` primitive type; strings are now the `Str` datatype)* |
 | 0x04 | var | `u32` index |
 | 0x05 | fun | Ty domain, Ty codomain |
 | 0x06 | data | `hash`, `list<Ty>` args |
@@ -58,7 +58,7 @@ Canonical bytes begin with the 2-byte magic `0x4F 0x31` ("O1").
 | 0x10 | var | `u32` de Bruijn index (0 = innermost) |
 | 0x11 | int | `i64` |
 | 0x12 | bool | bool byte |
-| 0x13 | str | `str` |
+| 0x13 | *(reserved — was the string-literal term; `"…"` now elaborates to an `Str` constructor chain)* |
 | 0x14 | lam | Ty param, Term body |
 | 0x15 | app | Term fn, Term arg |
 | 0x16 | let | Ty, Term bound, Term body |
@@ -99,8 +99,8 @@ Producers (elaborators) MUST emit, and checkers MUST enforce:
 - Match arms in constructor-declaration order, exhaustive, with the ADT
   hash recorded in the term.
 - Primitive operators are the literal strings: `+ - * / % neg == < <= and
-  or not ++ str-len starts-with ends-with str-contains substring
-  str-index-of`.
+  or not`. There are NO string primitives: strings are the ordinary `Str`
+  datatype (§3), and every string operation is a definition.
 
 ### 1.4 Surface syntax and elaboration
 
@@ -132,6 +132,13 @@ input. A conforming surface elaborator MUST therefore match these rules:
   omitted (inferred, §2.1); `(list)` is `(Nil)`. `list` is a reserved head — the
   `Nil` and `Cons` constructors must be in scope. Because it desugars to the same
   constructor chain the author would write, identity is unchanged.
+- STRING-LITERAL SUGAR: a `"…"` literal elaborates to the codepoint chain
+  `(SCons c0 (SCons c1 … (SCons cₙ (SNil))))`, where each `cᵢ` is the Unicode
+  scalar value (a decimal int64) of the literal's `i`-th codepoint in order;
+  `""` is `(SNil)`. `Str` is an ordinary datatype (§3) and the `SNil`/`SCons`
+  constructors must be in scope. There is no string-literal term and no string
+  primitive — a literal is byte-identical to the constructor chain an author
+  would write by hand.
 - Name resolution for a bare term name is, in order: local variable, the
   function currently being defined (emits `self`), constructor, stored function.
   Constructor lookup scans the current name index in ascending name order and
@@ -202,8 +209,7 @@ vector `S` of length `tyvars` (all initially unsolved):
   against `E`; then match each field type against every argument that
   synthesizes. Reject if any `S` entry is unsolved. Backfill and CHECK each
   argument against its now-concrete field type.
-- PRIMITIVES with fixed operand types (`+ - * / % neg < <= and or not ++
-  str-len starts-with ends-with str-contains substring str-index-of`) CHECK
+- PRIMITIVES with fixed operand types (`+ - * / % neg < <= and or not`) CHECK
   each operand against that fixed type. `==` is polymorphic in
   its operand type: SYNTHESIZE whichever operand can be, then CHECK the other
   against it (so `(== xs (Nil))` infers the `(Nil)`); both must be the same
@@ -258,11 +264,8 @@ Detailed synthesis obligations:
   declaration order; the first field is outermost and the last field is
   `var 0`.
 - Primitive arities and types are fixed: arithmetic and comparisons are over
-  `Int`, `and`/`or`/`not` over `Bool`, `++`/`str-len` over `Str`, the string
-  predicates `starts-with`/`ends-with`/`str-contains` take two `Str` and return
-  `Bool`, `substring` takes `(Str, Int, Int)` and returns `Str`,
-  `str-index-of` takes two `Str` and returns `Int`, and `==` over equal
-  first-order types only.
+  `Int`, `and`/`or`/`not` over `Bool`, and `==` over equal first-order types
+  only. There are no string primitives.
 
 ## 3. Dynamic semantics
 
@@ -279,20 +282,16 @@ Detailed synthesis obligations:
 - **Integers** are two's-complement int64; `+ - *` wrap on overflow; `/`
   truncates toward zero; `%` takes the dividend's sign; division or modulo
   by zero is a runtime error.
-- **Strings** are byte sequences (UTF-8 by convention): `++` is byte
-  concatenation, `==` is byte equality, `str-len` counts *Unicode code
-  points* (not bytes). This asymmetry is normative. `(starts-with s p)`,
-  `(ends-with s q)`, and `(str-contains s sub)` are the subject-first
-  predicates — true iff `p` is a prefix of `s`, `q` a suffix of `s`, or `sub`
-  a substring of `s` — decided on bytes (equivalently code points, since Str
-  values are valid UTF-8); the empty string is a prefix, a suffix, and a
-  substring of every string, and every string is all three of itself.
-  `(substring s i n)` and `(str-index-of s sub)` are **code-point indexed**
-  (like `str-len`, to match SMT-LIB): `substring` is the longest run of at most
-  `n` code points of `s` starting at code-point index `i`, empty when `i` is
-  outside `[0, str-len s)` or `n < 0`; `str-index-of` is the code-point index of
-  the first occurrence of `sub` in `s`, or `-1` when absent (`0` when `sub` is
-  empty).
+- **Strings** are NOT primitive. A string is a value of the ordinary datatype
+  `(data Str [] (SNil) (SCons Int Str))` — a sequence of Unicode scalar values
+  (each an `Int` codepoint), built with the `SNil`/`SCons` constructors. It
+  evaluates, matches, and compares (`==` structural on constructor index and
+  fields) exactly like any other datatype; there are no string operators.
+  Every string operation (length, concatenation, prefix test, substring,
+  split, …) is a definition over `Str`, proven like any other. A `"…"` literal
+  is surface sugar for the corresponding `SCons` codepoint chain (§1.4). The
+  codepoint convention is: `SCons` carries a Unicode scalar value; enforcing
+  its range is a future refinement, not part of this datatype.
 - **Structural equality** (`==`) on data and records compares constructor
   index and fields recursively; applying it to function values is a runtime
   error (statically prevented).
@@ -308,7 +307,7 @@ Two independent bounds, both normative for verdict reproducibility:
 
 ### 3.2 Runtime values and printing
 
-Runtime values are erased: `int`, `bool`, `str`, `closure`, `data`, `record`,
+Runtime values are erased: `int`, `bool`, `closure`, `data`, `record`,
 and generated `native` functions. Closures store an environment, lambda term,
 and enclosing self hash. Native functions are used only by deterministic
 generation: identity, affine, constant, and finite table.
@@ -316,7 +315,8 @@ generation: identity, affine, constant, and finite table.
 Value printing is normative for counterexamples and conformance:
 
 - Int and Bool print as decimal and `true`/`false`.
-- Str prints using Go `strconv.Quote` behavior, promoted to normative.
+- Strings, being `Str` datatype values, print as data (see below) — a chain of
+  `(SCons <codepoint> …)` ending in `SNil`.
 - Records print `{name value ...}` in canonical field order.
 - Data values print `Ctor` for nullary constructors and `(Ctor field ...)`
   otherwise, using current metadata names where available.
@@ -399,10 +399,8 @@ rendered by the value printer.
   without application) makes it `escapes`.
 - **Spec strength**: mutation catalog = type-preserving operator swaps
   (`+↔-`, `*→+`, `/→*`, `%→/`, `<↔<=`, `and↔or`), operand swaps of
-  non-commutative binary prims (`- / % < <= ++ starts-with ends-with
-  str-contains str-index-of`; the ternary `substring` is not swapped),
-  integer literal ±1 and →0,
-  string literal → `""`, if-branch swap. Score = killed/total. Spec strength is
+  non-commutative binary prims (`- / % < <=`), integer literal ±1 and →0,
+  if-branch swap. Score = killed/total. Spec strength is
   computed for every function definition independent of its termination verdict:
   a `measure`-total function is mutated exactly like a `structural` one.
 - **Cross-check (N-version)**: for two definitions with identical signatures,
@@ -504,12 +502,9 @@ solver host available takes the conservative branch (no `measure` verdict).
    ordered difference `p_i - p_j` of two distinct `Int` parameters, then each
    `Int`-typed FIELD of a single-constructor datatype parameter `p_i` as its
    selector applied to the parameter, `(selector p_i)` (#57 — the counter inside
-   rle-expand's `Run`), then the string length `(str.len p_i)` of each `Str`
-   parameter (#32 — the shrinking string in `split`). `str.len` is always
-   non-negative, so the `μ(params) ≥ 0` conjunct is discharged trivially and the
-   obligation reduces to strict decrease; the argument expression is a
-   `str.substr`/`str.indexof` term, which Z3's sequence theory relates to the
-   parameter's length.
+   rle-expand's `Run`). (Recursion over a string needs no special measure:
+   `Str` is a datatype, so a string-shrinking recursion is ordinary structural
+   descent.)
 4. A candidate μ succeeds iff, for EVERY site, the solver returns `unsat` for
    `(assert (and <site guards> (not (and (< μ(args) μ(params)) (>= μ(params) 0)))))`
    — i.e. `guards ⟹ (μ(args) < μ(params) ∧ μ(params) ≥ 0)` is valid. μ(params)
@@ -594,15 +589,14 @@ Mutations are attempted in this order at each node:
 1. Primitive operator substitutions listed above, in the per-operator order
    shown by this document's catalog.
 2. Operand swap for swappable binary primitives.
-3. String literal to `""`, only when non-empty.
-4. Integer literal to `old+1`, `old-1`, and `0`, skipping unchanged values.
-5. If-branch swap.
-6. At an `app` node whose function side is an `app`: swap the two adjacent
+3. Integer literal to `old+1`, `old-1`, and `0`, skipping unchanged values.
+4. If-branch swap.
+5. At an `app` node whose function side is an `app`: swap the two adjacent
    call arguments.
-7. At an `app` chain whose head is `self`: replace the whole chain by each
+6. At an `app` chain whose head is `self`: replace the whole chain by each
    spine argument in turn ("forgot to recurse").
-8. At a `ctor` node: swap each adjacent argument pair.
-9. At a `match` node: swap each arm-body pair `(i, j)`, `i < j`, in index
+7. At a `ctor` node: swap each adjacent argument pair.
+8. At a `match` node: swap each arm-body pair `(i, j)`, `i < j`, in index
    order (de Bruijn policing makes cross-arity swaps fail the gate); then
    replace the whole match by the body of each arm whose constructor binds
    zero fields ("always take the base case").
@@ -669,23 +663,18 @@ lowers the probability of undetected weakness; neither reaches zero.
 The provable fragment and its translation, normative for outcome
 reproducibility (given the same solver):
 
-- Sorts: `Int`, `Bool`, `Str`→`String`; monomorphic data instances as
-  algebraic datatypes (names derived from metadata per §7.1 — semantically
-  inert for outcomes, but BYTE-significant: script identity is fixtured,
-  §7.2); records as single-constructor datatypes; function types as
-  `(Array dom cod)` applied via `select`.
+- Sorts: `Int`, `Bool`; monomorphic data instances as algebraic datatypes
+  (names derived from metadata per §7.1 — semantically inert for outcomes, but
+  BYTE-significant: script identity is fixtured, §7.2); records as
+  single-constructor datatypes; function types as `(Array dom cod)` applied via
+  `select`. `Str` is not special — it is a monomorphic datatype instance
+  (`SNil`/`SCons`) and translates as an ADT like any other, so Z3's sequence
+  theory is not used at all.
 - Primitive translation: arithmetic and comparison operators map to their
-  SMT-LIB counterparts; `++`→`str.++`, `str-len`→`str.len`. The string
-  predicates map to Z3's sequence theory: `str-contains`→`str.contains` with
-  operands in surface order, but `starts-with`→`str.prefixof` and
-  `ends-with`→`str.suffixof` translate with the **two operands swapped** —
-  SMT `str.prefixof`/`str.suffixof` are written `(needle haystack)` while the
-  surface predicates are subject-first, so `(starts-with s p)` emits
-  `(str.prefixof p s)`. This swap is byte-visible in the script fixtures (§7.2)
-  and therefore normative. `substring`→`str.substr` with operands in surface
-  order; `str-index-of`→`str.indexof` with a literal `0` offset appended, so
-  `(str-index-of s sub)` emits `(str.indexof s sub 0)` (the surface predicate
-  searches from the start). Both are also byte-visible and normative.
+  SMT-LIB counterparts. There are no string primitives to translate — string
+  operations are ordinary recursive definitions over the `Str` datatype, so
+  their properties discharge by the structural / measure induction below, never
+  by a string decision procedure.
 - Non-recursive callees are inlined (beta-reduction); recursive callees are
   declared uninterpreted. Their defining equation is asserted as a universally
   quantified axiom with the application as pattern **only when the callee is

@@ -1,0 +1,1 @@
+✓ prop single                   passed 200 cases

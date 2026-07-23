@@ -1,0 +1,3 @@
+✓ prop self                     passed 200 cases
+✓ prop empty                    passed 200 cases
+✓ prop append-is-prefixed       passed 200 cases

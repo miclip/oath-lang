@@ -1,13 +1,12 @@
 {
   "name": "shout",
-  "hash": "d1b9f789ec1ff143e254991d4b0646e4059fe32953e929dc54dfdfcf07de272e",
+  "hash": "c35a5695e4ae129feb048923884468b80c8a90841b8888ab2c1021d74af7ab7a",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
     ""
   ],
-  "mutants_killed": 1,
-  "mutants_total": 2,
+  "mutants_total": 4,
   "level": "proven",
   "cases": 200,
   "proven": 2

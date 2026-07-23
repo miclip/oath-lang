@@ -1,0 +1,14 @@
+{
+  "name": "str-split",
+  "hash": "0292b5f64eddbe8fd710966d45408e22164a5ab419e8f3055c36c149033569cf",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_total": 3,
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

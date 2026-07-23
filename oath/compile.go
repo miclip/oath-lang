@@ -215,40 +215,6 @@ func apply(f, a any) any {
 	return c.code(append(append([]any{}, c.env...), a), a)
 }
 
-func runeLen(s string) int64 { return int64(len([]rune(s))) }
-
-func strStartsWith(s, p string) bool { return len(s) >= len(p) && s[:len(p)] == p }
-func strEndsWith(s, p string) bool   { return len(s) >= len(p) && s[len(s)-len(p):] == p }
-func strContains(s, sub string) bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
-}
-
-func strIndexOf(s, sub string) int64 {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return int64(len([]rune(s[:i])))
-		}
-	}
-	return -1
-}
-
-func strSubstr(s string, start, length int64) string {
-	rs := []rune(s)
-	n := int64(len(rs))
-	if start < 0 || start >= n || length < 0 {
-		return ""
-	}
-	end := start + length
-	if end > n {
-		end = n
-	}
-	return string(rs[start:end])
-}
 
 func structEq(a, b any) bool {
 	switch x := a.(type) {
@@ -373,8 +339,6 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 		return fmt.Sprintf("any(int64(%d))", t.Int), nil
 	case "bool":
 		return fmt.Sprintf("any(%s)", strconv.FormatBool(t.Bool)), nil
-	case "str":
-		return fmt.Sprintf("any(%s)", strconv.Quote(t.Str)), nil
 	case "lam":
 		e.ctx = append(e.ctx, t.Ty)
 		body, err := e.expr(t.A, depth+1, self)
@@ -553,20 +517,6 @@ func (e *emitter) prim(t *Term, depth int, self string) (string, error) {
 		return fmt.Sprintf("any(!%s.(bool))", args[0]), nil
 	case "==":
 		return fmt.Sprintf("any(structEq(%s, %s))", args[0], args[1]), nil
-	case "++":
-		return fmt.Sprintf("any(%s.(string) + %s.(string))", args[0], args[1]), nil
-	case "str-len":
-		return fmt.Sprintf("any(runeLen(%s.(string)))", args[0]), nil
-	case "starts-with":
-		return fmt.Sprintf("any(strStartsWith(%s.(string), %s.(string)))", args[0], args[1]), nil
-	case "ends-with":
-		return fmt.Sprintf("any(strEndsWith(%s.(string), %s.(string)))", args[0], args[1]), nil
-	case "str-contains":
-		return fmt.Sprintf("any(strContains(%s.(string), %s.(string)))", args[0], args[1]), nil
-	case "str-index-of":
-		return fmt.Sprintf("any(strIndexOf(%s.(string), %s.(string)))", args[0], args[1]), nil
-	case "substring":
-		return fmt.Sprintf("any(strSubstr(%s.(string), %s.(int64), %s.(int64)))", args[0], args[1], args[2]), nil
 	}
 	return "", fmt.Errorf("cannot compile primitive %q", t.Op)
 }

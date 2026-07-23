@@ -1,1 +1,2 @@
-✓ prop take-drop-concat         passed 200 cases
+✓ prop drop-zero                passed 200 cases
+✓ prop take-drop-rebuilds       passed 200 cases

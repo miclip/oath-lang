@@ -26,7 +26,6 @@ type Ty struct {
 
 func tInt() *Ty                       { return &Ty{K: "int"} }
 func tBool() *Ty                      { return &Ty{K: "bool"} }
-func tStr() *Ty                       { return &Ty{K: "str"} }
 func tVar(i int) *Ty                  { return &Ty{K: "var", Var: i} }
 func tFun(a, b *Ty) *Ty               { return &Ty{K: "fun", A: a, B: b} }
 func tDataTy(h string, args []Ty) *Ty { return &Ty{K: "data", Hash: h, Args: args} }

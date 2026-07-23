@@ -1,14 +1,14 @@
 {
   "name": "greet",
-  "hash": "17a59f9b117f0e9b6ca4ecdfaa2f34e92ceb1643744c019d6d9fd4ee2a0d8474",
+  "hash": "7071609eadd58bd05514104eac909013586ff3ac5308c51851879e4c63d35f71",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
     "confined",
     ""
   ],
-  "mutants_killed": 4,
-  "mutants_total": 4,
+  "mutants_killed": 26,
+  "mutants_total": 26,
   "level": "proven",
   "cases": 200,
   "proven": 3

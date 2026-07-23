@@ -1,6 +1,6 @@
 {
   "name": "rename-key",
-  "hash": "dbee26614e4263de9f9830c329611d7056ac8cc192e0698cb2e77195cca1dc3d",
+  "hash": "be82b31a32c1e1ba3e9236525b1139d61068e3013101f6dea0ade0e07bb3bf9b",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
