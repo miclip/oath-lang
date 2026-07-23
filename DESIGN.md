@@ -268,8 +268,13 @@ Phases 1–3 are COMPLETE, beyond the original ambitions:
   verification loop buys trustworthy CLAIMS about artifacts rather than
   better artifacts; the misalignment adversary marked the boundary (briefs
   are not objects the system can check). The full self-play training loop
-  remains future work, as do the compiler backend (#13) and the public
-  registry (#14).
+  remains future work, as does the public registry (#14). The compiler backend
+  (#13) has a working first stage: `oath build` lowers a definition's closure to
+  a standalone native binary, refusing anything not proof-carrying, and shows the
+  "prove over the structural model, run over a native representation" pattern —
+  `Str` datatype values compile to native Go strings, verified by a differential
+  gate (compiled output == interpreter output). The fast execution path
+  (MLIR/LLVM) and native `Set`/`Map` representations remain.
 
 The conformance saga is its own result: two kernels, zero shared code,
 kept in byte-level agreement by CI — and the blind implementation found
