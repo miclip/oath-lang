@@ -48,6 +48,7 @@ func requireZ3(t *testing.T) {
 // size -1; before the size clamp this divided by zero and crashed `put`.
 func TestStrInADTDoesNotPanic(t *testing.T) {
 	st := newStore(t)
+	put(t, st, `(data Str [] (SNil) (SCons Int Str))`)
 	put(t, st, `(data Box [] (Mk Str))`)
 	reps := put(t, st, `(defn unbox [] [(b Box)] Str
 		(match b ((Mk s) s))
@@ -409,16 +410,18 @@ func TestConfinementClosureTracking(t *testing.T) {
 		t.Fatalf("precondition: map's callback should be confined, got %v", mm.Confinement)
 	}
 
-	reps := put(t, st, `(defn fetch-all [] [(net {fetch (-> Str Str)}) (urls (List Str))] (List Str)
-		(map [Str Str] (fn [(u Str)] ((. net fetch) u)) urls))`)
+	// Type-agnostic confinement check — Int stands in for any value type
+	// (Str is a datatype now; the capability-escape logic doesn't care).
+	reps := put(t, st, `(defn fetch-all [] [(net {fetch (-> Int Int)}) (urls (List Int))] (List Int)
+		(map [Int Int] (fn [(u Int)] ((. net fetch) u)) urls))`)
 	if got := reps[0].Confinement; !strings.Contains(got, "net: confined") {
 		t.Fatalf("wrapper idiom: confinement = %q, want net confined", got)
 	}
 
 	// The closure returns the capability itself: the callee stores the
 	// closure's RESULTS, so this leaks a capability per element.
-	reps = put(t, st, `(defn leak-all [] [(net {fetch (-> Str Str)}) (urls (List Str))] (List {fetch (-> Str Str)})
-		(map [Str {fetch (-> Str Str)}] (fn [(u Str)] net) urls))`)
+	reps = put(t, st, `(defn leak-all [] [(net {fetch (-> Int Int)}) (urls (List Int))] (List {fetch (-> Int Int)})
+		(map [Int {fetch (-> Int Int)}] (fn [(u Int)] net) urls))`)
 	if got := reps[0].Confinement; !strings.Contains(got, "net: ESCAPES") {
 		t.Fatalf("closure returning capability: confinement = %q, want net ESCAPES", got)
 	}

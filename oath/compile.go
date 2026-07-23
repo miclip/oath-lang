@@ -62,7 +62,7 @@ func cmdBuild(st *Store, name, out string) {
 	}
 	if capTy != nil {
 		for i, n := range capTy.Names {
-			if _, ok := capWiring(n, &capTy.Args[i]); !ok {
+			if _, ok := capWiring(st, n, &capTy.Args[i]); !ok {
 				fail(fmt.Errorf("no real-world wiring for capability field %s : %s (wireable: fetch (-> Str Str), env (-> Str Str), readfile (-> Str Str))", n, debugTy(&capTy.Args[i])))
 			}
 		}
@@ -117,12 +117,22 @@ func entryShape(st *Store, t *Ty) (*Ty, bool) {
 	return nil, false
 }
 
+// strTypeHash is the hash of the `Str` datatype in this store (the string type
+// by convention), or "" if none is defined. isStrTy recognizes a type as that
+// datatype — the compiler represents such values as native Go strings.
+func strTypeHash(st *Store) string { h, _ := st.Resolve("Str"); return h }
+
+func isStrTy(strHash string, t *Ty) bool {
+	return strHash != "" && t != nil && t.K == "data" && t.Hash == strHash
+}
+
 func isPureEntry(st *Store, t *Ty) bool {
-	if t == nil || t.K != "fun" || t.B == nil || t.B.K != "str" {
+	sh := strTypeHash(st)
+	if t == nil || t.K != "fun" || !isStrTy(sh, t.B) {
 		return false
 	}
 	a := t.A
-	if a == nil || a.K != "data" || len(a.Args) != 1 || a.Args[0].K != "str" {
+	if a == nil || a.K != "data" || len(a.Args) != 1 || !isStrTy(sh, &a.Args[0]) {
 		return false
 	}
 	if m, err := st.GetMeta(a.Hash); err == nil {
@@ -135,8 +145,9 @@ func isPureEntry(st *Store, t *Ty) bool {
 // implementation. This is effects stage 4: authority enters the program
 // exactly once, here, at the boundary — everything below received it as an
 // ordinary argument and was verified against all simulated worlds.
-func capWiring(name string, t *Ty) (string, bool) {
-	strToStr := t.K == "fun" && t.A != nil && t.A.K == "str" && t.B != nil && t.B.K == "str"
+func capWiring(st *Store, name string, t *Ty) (string, bool) {
+	sh := strTypeHash(st)
+	strToStr := t.K == "fun" && isStrTy(sh, t.A) && isStrTy(sh, t.B)
 	if !strToStr {
 		return "", false
 	}
@@ -165,11 +176,12 @@ func capWiring(name string, t *Ty) (string, bool) {
 // ---------- emitter ----------
 
 type emitter struct {
-	st    *Store
-	b     strings.Builder
-	fname map[string]string // def hash → emitted Go function name
-	order []string          // emission order (deps first)
-	seen  map[string]bool
+	st      *Store
+	b       strings.Builder
+	fname   map[string]string // def hash → emitted Go function name
+	order   []string          // emission order (deps first)
+	seen    map[string]bool
+	strHash string // hash of the Str datatype; its values compile to Go strings
 	// Type tracking for record field resolution: the kernel's own checker,
 	// threaded alongside compilation. ctx mirrors the de Bruijn env.
 	chk *checker
@@ -177,7 +189,7 @@ type emitter struct {
 }
 
 func emitProgram(st *Store, entry string, capTy *Ty) (string, error) {
-	e := &emitter{st: st, fname: map[string]string{}, seen: map[string]bool{}}
+	e := &emitter{st: st, fname: map[string]string{}, seen: map[string]bool{}, strHash: strTypeHash(st)}
 	if err := e.closure(entry); err != nil {
 		return "", err
 	}
@@ -190,10 +202,12 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"unicode/utf8"
 )
 
 var _ = io.ReadAll
 var _ = http.Get
+var _ = utf8.DecodeRuneInString
 
 // capFn lifts a real-world Go function into an Oath closure value.
 func capFn(f func(string) string) *closure {
@@ -252,7 +266,7 @@ func structEq(a, b any) bool {
 	if capTy != nil {
 		var fields []string
 		for i, n := range capTy.Names {
-			w, _ := capWiring(n, &capTy.Args[i])
+			w, _ := capWiring(st, n, &capTy.Args[i])
 			fields = append(fields, w)
 		}
 		caps = fmt.Sprintf("\tvar realWorld any = &ctorV{idx: -1, fields: []any{%s}}\n", strings.Join(fields, ", "))
@@ -402,11 +416,25 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 			}
 			parts = append(parts, a)
 		}
+		// Str values are represented as native Go strings (data refinement):
+		// SNil → "", SCons codepoint rest → the rune prepended to rest.
+		if t.Hash == e.strHash && e.strHash != "" {
+			if t.Idx == 0 { // SNil
+				return `any("")`, nil
+			}
+			// SCons Int Str: fields[0] = codepoint, fields[1] = rest (a Go string)
+			return fmt.Sprintf("any(string(rune(%s.(int64))) + %s.(string))", parts[0], parts[1]), nil
+		}
 		return fmt.Sprintf("(&ctorV{idx: %d, fields: []any{%s}})", t.Idx, strings.Join(parts, ", ")), nil
 	case "match":
 		s, err := e.expr(t.A, depth, self)
 		if err != nil {
 			return "", err
+		}
+		// Match on a Str: the scrutinee is a native Go string, not a ctorV.
+		// arm 0 = SNil (empty), arm 1 = SCons (head codepoint, rest string).
+		if t.Hash == e.strHash && e.strHash != "" {
+			return e.matchStr(t, s, depth, self)
 		}
 		md, err := e.st.GetDef(t.Hash)
 		if err != nil {
@@ -466,6 +494,36 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 		return "", fmt.Errorf("record %s has no field %q", debugTy(rt), t.Op)
 	}
 	return "", fmt.Errorf("cannot compile %q terms yet", t.K)
+}
+
+// matchStr compiles a `match` on a Str value, whose runtime representation is a
+// native Go string. arm 0 is SNil (the empty string); arm 1 is SCons, binding
+// the head codepoint (as int64) and the rest (a Go string) — the same field
+// order (codepoint, rest) the structural ctorV would carry, so de Bruijn
+// resolution is unchanged.
+func (e *emitter) matchStr(t *Term, s string, depth int, self string) (string, error) {
+	md, err := e.st.GetDef(t.Hash)
+	if err != nil {
+		return "", err
+	}
+	snil, err := e.expr(&t.Arms[0], depth, self)
+	if err != nil {
+		return "", err
+	}
+	fields := instCtorFields(md, t.Hash, nil, 1) // SCons fields: [Int, Str]
+	e.ctx = append(e.ctx, fields...)
+	scons, err := e.expr(&t.Arms[1], depth+len(fields), self)
+	e.ctx = e.ctx[:len(e.ctx)-len(fields)]
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(`(func(scrut string, env []any) any {
+		if scrut == "" { return %s }
+		r, sz := utf8.DecodeRuneInString(scrut)
+		env = append(append([]any{}, env...), any(int64(r)), any(scrut[sz:]))
+		_ = env
+		return %s
+	})(%s.(string), env)`, snil, scons, s), nil
 }
 
 // defValue emits a reference to a def as a value: lam-chains become their
