@@ -1,0 +1,89 @@
+; String standard library. Str is a structural datatype of Unicode codepoints —
+; not a primitive. Every operation below is an ordinary definition whose laws
+; prove by structural / measure induction, including the split/join round-trip
+; that Z3's sequence theory cannot reach. Lineage: Coq's inductive `string`,
+; Lean's `List Char` (with a native runtime representation).
+;
+; "…" surface literals elaborate to SCons codepoint chains, so a literal is
+; byte-identical to the constructor form it stands for.
+(data Str []
+  (SNil)
+  (SCons Int Str))
+
+; length, by structural recursion.
+(defn str-len [] [(s Str)] Int
+  (match s
+    ((SNil) 0)
+    ((SCons c rest) (+ 1 (str-len rest))))
+  (prop nonneg [(s Str)] (<= 0 (str-len s))))
+
+; concatenation.
+(defn str-append [] [(a Str) (b Str)] Str
+  (match a
+    ((SNil) b)
+    ((SCons c rest) (SCons c (str-append rest b))))
+  (prop left-unit [(b Str)] (== (str-append (SNil) b) b))
+  (prop length-adds [(a Str) (b Str)]
+    (== (str-len (str-append a b)) (+ (str-len a) (str-len b)))))
+
+; is p a prefix of s? (the structural starts-with)
+(defn str-prefix [] [(p Str) (s Str)] Bool
+  (match p
+    ((SNil) true)
+    ((SCons pc pt)
+      (match s
+        ((SNil) false)
+        ((SCons sc st) (if (== pc sc) (str-prefix pt st) false)))))
+  (prop self [(p Str)] (str-prefix p p))
+  (prop empty [(s Str)] (str-prefix (SNil) s))
+  (prop append-is-prefixed [(p Str) (s Str)] (str-prefix p (str-append p s))))
+
+; first n codepoints, and the rest.
+(defn str-take [] [(n Int) (s Str)] Str
+  (if (<= n 0)
+      (SNil)
+      (match s
+        ((SNil) (SNil))
+        ((SCons c t) (SCons c (str-take (- n 1) t)))))
+  (prop take-zero [(s Str)] (== (str-take 0 s) (SNil))))
+
+(defn str-drop [] [(n Int) (s Str)] Str
+  (if (<= n 0)
+      s
+      (match s
+        ((SNil) (SNil))
+        ((SCons c t) (str-drop (- n 1) t))))
+  (prop drop-zero [(s Str)] (== (str-drop 0 s) s))
+  ; the reconstruction law Z3 could not prove for SMT strings — here it is
+  ; ordinary structural induction.
+  (prop take-drop-rebuilds [(n Int) (s Str)]
+    (== (str-append (str-take n s) (str-drop n s)) s)))
+
+; split s on a single codepoint delimiter d (delimiters removed); join reinserts.
+(defn str-split [] [(d Int) (s Str)] (List Str)
+  (match s
+    ((SNil) (Cons [Str] (SNil) (Nil [Str])))
+    ((SCons c t)
+      (if (== c d)
+          (Cons [Str] (SNil) (str-split d t))
+          (match (str-split d t)
+            ((Nil) (Cons [Str] (SCons c (SNil)) (Nil [Str])))
+            ((Cons first rest) (Cons [Str] (SCons c first) rest))))))
+  (prop never-empty [(d Int) (s Str)] (not (== (str-split d s) (Nil [Str])))))
+
+(defn str-join [] [(d Int) (pieces (List Str))] Str
+  (match pieces
+    ((Nil) (SNil))
+    ((Cons p rest)
+      (match rest
+        ((Nil) p)
+        ((Cons a b) (str-append p (SCons d (str-join d rest)))))))
+  (prop single [(d Int) (p Str)]
+    (== (str-join d (Cons [Str] p (Nil [Str]))) p)))
+
+; THE PAYOFF: the split/join round-trip, unprovable over SMT strings, proves
+; here by structural induction on the string.
+(defn str-split-join [] [(d Int) (s Str)] Str
+  (str-join d (str-split d s))
+  (prop roundtrip [(d Int) (s Str)]
+    (== (str-join d (str-split d s)) s)))
