@@ -63,6 +63,17 @@ cd oath && go build -o oath . && cd ..`} />
       <Sh code={`./oath/oath put examples/sort.oath
 ./oath/oath prove sort               # discharge insertion sort's correctness to Z3`} />
 
+      <h2>Compile it to a native binary</h2>
+      <p>
+        <code>build</code> lowers a definition&apos;s dependency closure to a standalone
+        native executable — but only if it&apos;s proof-carrying; it refuses a falsified
+        or unverified entry point. Proven over the structural model, run over a native
+        representation (a <code>Str</code> is a codepoint datatype for proofs, a Go
+        string at runtime), kept honest by a differential gate against the interpreter.
+      </p>
+      <Sh code={`./oath/oath build main-echo -o echo   # entry: (List Str) -> Str, proof-carrying
+./echo one two three                  # runs native — no fuel or depth bounds`} />
+
       <h2>The agent interface</h2>
       <p>
         Three verbs turn the store into what an AI author actually consumes —
