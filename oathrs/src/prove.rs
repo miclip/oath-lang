@@ -328,7 +328,6 @@ fn sort_of(store: &Store, ty: &Ty, sc: &mut Sorts) -> String {
     match ty {
         Ty::Int => "Int".to_string(),
         Ty::Bool => "Bool".to_string(),
-        Ty::Str => "String".to_string(),
         Ty::Fun(a, b) => format!("(Array {} {})", sort_of(store, a, sc), sort_of(store, b, sc)),
         Ty::Data { hash, args } => {
             // SPEC §7.1: a data sort name is the sanitized metadata definition
@@ -577,7 +576,6 @@ impl<'a> Cx<'a> {
             }
             Term::Int(n) => Ok((fmt_int(*n), Ty::Int)),
             Term::Bool(b) => Ok(((if *b { "true" } else { "false" }).to_string(), Ty::Bool)),
-            Term::Str(s) => Ok((format!("\"{}\"", s.replace('"', "\"\"")), Ty::Str)),
             Term::Lam { .. } => Err(()),
             Term::Prim { op, args } => self.tr_prim(op, args, env, tyenv, self_hash, self_tyargs),
             Term::Ctor { hash, idx, tyargs, args } => {
@@ -726,19 +724,6 @@ impl<'a> Cx<'a> {
             "and" => (format!("(and {} {})", e[0], e[1]), Ty::Bool),
             "or" => (format!("(or {} {})", e[0], e[1]), Ty::Bool),
             "not" => (format!("(not {})", e[0]), Ty::Bool),
-            "++" => (format!("(str.++ {} {})", e[0], e[1]), Ty::Str),
-            "str-len" => (format!("(str.len {})", e[0]), Ty::Int),
-            // SPEC §7.2 primitive translation: `str-contains` maps to `str.contains`
-            // in surface order, but `starts-with`/`ends-with` map to
-            // `str.prefixof`/`str.suffixof`, which are `(needle haystack)` while the
-            // surface predicates are subject-first — so the two operands SWAP.
-            "starts-with" => (format!("(str.prefixof {} {})", e[1], e[0]), Ty::Bool),
-            "ends-with" => (format!("(str.suffixof {} {})", e[1], e[0]), Ty::Bool),
-            "str-contains" => (format!("(str.contains {} {})", e[0], e[1]), Ty::Bool),
-            // `substring`→`str.substr` in surface order; `str-index-of`→
-            // `str.indexof` with a literal `0` offset appended (SPEC §7.2).
-            "substring" => (format!("(str.substr {} {} {})", e[0], e[1], e[2]), Ty::Str),
-            "str-index-of" => (format!("(str.indexof {} {} 0)", e[0], e[1]), Ty::Int),
             _ => return Err(()),
         };
         Ok((sexpr, ty))
@@ -2322,8 +2307,6 @@ enum Cand {
     /// `(selector p_i)` — the Int field `sel` of single-constructor datatype
     /// parameter `pi`.
     Field { pi: usize, sel: String },
-    /// `(str.len p_i)` — the string length of a `Str` parameter (#32, split).
-    StrLen(usize),
 }
 
 impl Cand {
@@ -2333,7 +2316,6 @@ impl Cand {
             Cand::Single(i) => format!("p{}", i),
             Cand::Diff(i, j) => format!("(- p{} p{})", i, j),
             Cand::Field { pi, sel } => format!("({} p{})", sel, pi),
-            Cand::StrLen(i) => format!("(str.len p{})", i),
         }
     }
     /// μ(args): substitutes each `p_i` by the SMT term passed at position i.
@@ -2342,7 +2324,6 @@ impl Cand {
             Cand::Single(i) => args[*i].clone(),
             Cand::Diff(i, j) => format!("(- {} {})", args[*i], args[*j]),
             Cand::Field { pi, sel } => format!("({} {})", sel, args[*pi]),
-            Cand::StrLen(i) => format!("(str.len {})", args[*i]),
         }
     }
 }
@@ -2566,7 +2547,7 @@ impl<'a, 'c> MeasureWalk<'a, 'c> {
                 }
             }
             Term::Field { a, .. } => self.walk(a, env, guards, poisoned),
-            Term::Ref { .. } | Term::Var(_) | Term::Int(_) | Term::Bool(_) | Term::Str(_) => {}
+            Term::Ref { .. } | Term::Var(_) | Term::Int(_) | Term::Bool(_) => {}
         }
     }
 
@@ -2696,16 +2677,8 @@ fn measure_terminates_inner(store: &Store, hash: &str) -> bool {
             }
         }
     }
-    // (#32) the string length `(str.len p_i)` of each `Str` parameter, appended
-    // AFTER the Int/difference/field candidates. `str.len` is always >= 0, so the
-    // decrease obligation reduces to strict shrinking of the string argument.
-    for i in 0..n {
-        if matches!(ptys[i], Ty::Str) {
-            cands.push(Cand::StrLen(i));
-        }
-    }
-    // With no candidate measure at all (no Int parameter, single-constructor
-    // datatype Int field, or Str parameter), the check fails.
+    // With no candidate measure at all (no Int parameter and no single-constructor
+    // datatype Int field), the check fails.
     if cands.is_empty() {
         return false;
     }

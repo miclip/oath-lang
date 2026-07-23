@@ -6,10 +6,7 @@ use crate::ir::*;
 use crate::sexpr::{Reader, Sexpr};
 use std::collections::{BTreeMap, HashSet};
 
-const PRIMS: &[&str] = &[
-    "+", "-", "*", "/", "%", "neg", "==", "<", "<=", "and", "or", "not", "++", "str-len",
-    "starts-with", "ends-with", "str-contains", "substring", "str-index-of",
-];
+const PRIMS: &[&str] = &["+", "-", "*", "/", "%", "neg", "==", "<", "<=", "and", "or", "not"];
 
 #[derive(Clone)]
 pub struct DataInfo {
@@ -89,7 +86,8 @@ impl Store {
             Sexpr::Sym(name) => match name.as_str() {
                 "Int" => Ok(Ty::Int),
                 "Bool" => Ok(Ty::Bool),
-                "Str" => Ok(Ty::Str),
+                // `Str` is no longer a primitive type — it resolves to the `Str`
+                // datatype like any other ADT (via the data lookup below).
                 _ => {
                     if let Some(i) = tyvars.iter().position(|v| v == name) {
                         return Ok(Ty::Var(i as u32));
@@ -186,7 +184,10 @@ impl Store {
     ) -> ER<Term> {
         match s {
             Sexpr::Int(n) => Ok(Term::Int(*n)),
-            Sexpr::Str(v) => Ok(Term::Str(v.clone())),
+            // STRING-LITERAL SUGAR (SPEC §1.4): `"…"` desugars to the codepoint
+            // chain `(SCons c0 (SCons c1 … (SNil)))`, byte-identical to the ctor
+            // form. There is no string-literal term anymore.
+            Sexpr::Str(v) => self.elab_string_literal(v),
             Sexpr::Sym(name) => match name.as_str() {
                 "true" => Ok(Term::Bool(true)),
                 "false" => Ok(Term::Bool(false)),
@@ -375,6 +376,33 @@ impl Store {
             }
             _ => hard("invalid term syntax".into()),
         }
+    }
+
+    /// STRING-LITERAL SUGAR (SPEC §1.4). `"…"` becomes the `Str` codepoint chain
+    /// `(SCons c0 (SCons c1 … (SNil)))`, where each `cᵢ` is the Unicode scalar
+    /// value of the i-th codepoint; `""` is `(SNil)`. `SNil`/`SCons` must be in
+    /// scope. `Str` has no type parameters, so the constructors carry no tyargs.
+    fn elab_string_literal(&self, v: &str) -> ER<Term> {
+        let (snil_hash, snil_idx, _) = match self.lookup_ctor("SNil")? {
+            Some(x) => x,
+            None => return hard("string literal requires the `SNil` constructor in scope".into()),
+        };
+        let (scons_hash, scons_idx, _) = match self.lookup_ctor("SCons")? {
+            Some(x) => x,
+            None => {
+                return hard("string literal requires the `SCons` constructor in scope".into())
+            }
+        };
+        let mut acc = Term::Ctor { hash: snil_hash, idx: snil_idx, tyargs: vec![], args: vec![] };
+        for c in v.chars().rev() {
+            acc = Term::Ctor {
+                hash: scons_hash.clone(),
+                idx: scons_idx,
+                tyargs: vec![],
+                args: vec![Term::Int(c as i64), acc],
+            };
+        }
+        Ok(acc)
     }
 
     /// LIST-LITERAL SUGAR (SPEC §1.4). `(list e0 … en)` becomes the `Cons`/`Nil`

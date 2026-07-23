@@ -102,7 +102,6 @@ impl<'a> Machine<'a> {
             }
             Term::Int(v) => Ok(Value::Int(*v)),
             Term::Bool(b) => Ok(Value::Bool(*b)),
-            Term::Str(s) => Ok(Value::Str(s.clone())),
             Term::Lam { a, .. } => Ok(Value::Closure {
                 env: env.clone(),
                 body: (**a).clone(),
@@ -197,12 +196,6 @@ fn eval_prim(op: &str, vs: &[Value]) -> Result<Value, String> {
             _ => Err("expected bool operand".into()),
         }
     };
-    fn string(v: &Value) -> Result<&str, String> {
-        match v {
-            Value::Str(s) => Ok(s),
-            _ => Err("expected str operand".into()),
-        }
-    }
     match op {
         "+" => Ok(Value::Int(int(&vs[0])?.wrapping_add(int(&vs[1])?))),
         "-" => Ok(Value::Int(int(&vs[0])?.wrapping_sub(int(&vs[1])?))),
@@ -230,58 +223,6 @@ fn eval_prim(op: &str, vs: &[Value]) -> Result<Value, String> {
         "and" => Ok(Value::Bool(boolean(&vs[0])? && boolean(&vs[1])?)),
         "or" => Ok(Value::Bool(boolean(&vs[0])? || boolean(&vs[1])?)),
         "not" => Ok(Value::Bool(!boolean(&vs[0])?)),
-        "++" => {
-            let mut s = String::from(string(&vs[0])?);
-            s.push_str(string(&vs[1])?);
-            Ok(Value::Str(s))
-        }
-        // str-len counts Unicode code points, not bytes (normative asymmetry).
-        "str-len" => Ok(Value::Int(string(&vs[0])?.chars().count() as i64)),
-        // Subject-first string predicates (SPEC §3), decided on bytes (= code
-        // points for valid UTF-8). The empty string is a prefix/suffix/substring
-        // of every string; every string is all three of itself.
-        "starts-with" => {
-            Ok(Value::Bool(string(&vs[0])?.as_bytes().starts_with(string(&vs[1])?.as_bytes())))
-        }
-        "ends-with" => {
-            Ok(Value::Bool(string(&vs[0])?.as_bytes().ends_with(string(&vs[1])?.as_bytes())))
-        }
-        "str-contains" => {
-            let s = string(&vs[0])?.as_bytes();
-            let sub = string(&vs[1])?.as_bytes();
-            let found = sub.is_empty() || s.windows(sub.len()).any(|w| w == sub);
-            Ok(Value::Bool(found))
-        }
-        // substring is CODE-POINT indexed (SPEC §3): the longest run of at most
-        // `n` code points of `s` starting at code-point index `i`; empty when `i`
-        // is outside `[0, str-len s)` or `n < 0`.
-        "substring" => {
-            let chars: Vec<char> = string(&vs[0])?.chars().collect();
-            let i = int(&vs[1])?;
-            let n = int(&vs[2])?;
-            let len = chars.len() as i64;
-            if i < 0 || i >= len || n < 0 {
-                Ok(Value::Str(String::new()))
-            } else {
-                let start = i as usize;
-                let take = (n as usize).min(chars.len() - start);
-                Ok(Value::Str(chars[start..start + take].iter().collect()))
-            }
-        }
-        // str-index-of is CODE-POINT indexed (SPEC §3): the code-point index of
-        // the first occurrence of `sub` in `s`, or -1 when absent (0 when empty).
-        "str-index-of" => {
-            let s = string(&vs[0])?;
-            let sub = string(&vs[1])?;
-            if sub.is_empty() {
-                Ok(Value::Int(0))
-            } else {
-                match s.find(sub) {
-                    Some(byte_off) => Ok(Value::Int(s[..byte_off].chars().count() as i64)),
-                    None => Ok(Value::Int(-1)),
-                }
-            }
-        }
         _ => Err(format!("unknown primitive {}", op)),
     }
 }

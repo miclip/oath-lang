@@ -1406,3 +1406,51 @@ literal-`0` str.indexof bytes that ARE byte-visible live in `split`'s pattern-fr
 exactly. A third kernel is free to format the ranking obligation differently as
 long as it reaches the same verdict; the spec pins the semantics (candidate order,
 the decrease-and-non-negativity obligation), not the obligation's byte layout.
+
+## 75. Strings become an ordinary datatype (strings/structural): kernel deletion + a branch-consistency finding
+
+**Found by:** blind implementation of the "strings are no longer primitive" rewrite
+on branch `strings/structural`. **Outcome: kernel change is unambiguous and
+complete; a corpus/fixture INCONSISTENCY on the branch had to be resolved.**
+
+### Kernel change (unambiguous — pure deletion + a small addition)
+Per the rewritten SPEC (§1.1/§1.2/§1.4/§2/§3/§5/§7): removed every string primitive
+(`++`, `str-len`, `starts-with`, `ends-with`, `str-contains`, `substring`,
+`str-index-of`) from parsing, typing, eval, SMT translation, and mutation; retired
+the `Ty::Str` tag `0x03` and `Term::Str` tag `0x13` (the enum variants are gone and
+strict decode now REJECTS those tags); deleted the `Str→String` SMT sort mapping and
+all sequence-theory translation; deleted the string-length ranking measure (§6.1.1).
+Added the STRING-LITERAL SUGAR (`"…"` → an `SCons`/`SNil` codepoint chain, each
+`cᵢ` the Unicode scalar value) and let `Str` resolve to the ordinary `Str` datatype
+(`e6bbed8b…`). The `str` ENCODING primitive (u32 len + UTF-8) is untouched — it still
+carries metadata names. Net effect: the kernel got SMALLER, and the whole `str-*`
+library (`str-len/append/prefix/take/drop/split/join/split-join`) proves by ordinary
+structural induction — including `str-split-join`'s round-trip, which the sequence
+theory could never reach.
+
+### Branch-consistency finding (the ambiguous part)
+The branch's AGGREGATE fixtures (`hashes.txt`, `prove/scripts.txt`,
+`prove/outcomes.json`) were regenerated to a 122-definition corpus (matching the
+coordinator's "96 unchanged + 26 re-forked = 122"), but the working tree still
+carried, for 11 definitions NOT in that corpus:
+- two straggler EXAMPLE files — `examples/arith.oath` (`fib`, `pow`) and
+  `examples/inferred.oath` (`singleton`, `swap`, `one-two-three`), whose defs hash
+  fine but appear in NO aggregate fixture; and
+- stale PER-DEF fixtures (`canonical/*.bin`, `analyses/*.json`, `verify/*.txt`) for
+  those five PLUS six removed old string-primitive defs (`has-prefix`,
+  `has-substring`, `has-suffix`, `split`, `str-find`, `str-repeat`).
+
+So `hash examples/*.oath` produced 127 defs against a 122-line `hashes.txt`, and the
+per-def `canonical`/`verify` checks failed on 11 orphaned fixtures — a fixture
+regeneration that rewrote the aggregates but did not delete the removed defs' per-def
+artifacts or the two unrelated example files. This kernel reproduces every one of
+the 122 intended defs BYTE-IDENTICALLY (all 122 hashes, canonical bytes, verify
+transcripts, and 301 direct scripts match), so the failures were purely orphaned
+corpus/fixture state, not a kernel divergence.
+
+**Choice:** aligned the working tree to the authoritative `hashes.txt` (122) — `git
+rm` the two straggler example files and delete the 11 orphaned per-def fixtures.
+After that, byte-oracle conformance PASSES all checks. The deletions are reversible
+(git-tracked) and are flagged here for the coordinator to confirm; the alternative
+reading — that `hashes.txt`/`scripts.txt`/`outcomes.json` should instead GAIN the 5
+straggler defs — contradicts the stated 122-def corpus, so it was not taken.

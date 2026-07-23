@@ -8,7 +8,6 @@ use crate::elaborate::Store;
 pub enum Value {
     Int(i64),
     Bool(bool),
-    Str(String),
     Data { hash: String, idx: u32, fields: Vec<Value> },
     Record { names: Vec<String>, vals: Vec<Value> },
     Closure { env: Vec<Value>, body: crate::ir::Term, self_hash: String },
@@ -32,7 +31,6 @@ pub fn struct_eq(a: &Value, b: &Value) -> Result<bool, String> {
     match (a, b) {
         (Value::Int(x), Value::Int(y)) => Ok(x == y),
         (Value::Bool(x), Value::Bool(y)) => Ok(x == y),
-        (Value::Str(x), Value::Str(y)) => Ok(x.as_bytes() == y.as_bytes()),
         (Value::Data { idx: i, fields: fa, .. }, Value::Data { idx: j, fields: fb, .. }) => {
             if i != j || fa.len() != fb.len() {
                 return Ok(false);
@@ -73,7 +71,6 @@ fn print_into(store: &Store, v: &Value, out: &mut String) {
     match v {
         Value::Int(n) => out.push_str(&n.to_string()),
         Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
-        Value::Str(s) => out.push_str(&go_quote(s)),
         Value::Record { names, vals } => {
             out.push('{');
             for (i, (n, val)) in names.iter().zip(vals.iter()).enumerate() {
@@ -136,32 +133,4 @@ fn ctor_name(store: &Store, hash: &str, idx: u32) -> String {
         }
     }
     format!("Ctor{}", idx)
-}
-
-/// Go strconv.Quote behavior (SPEC §3.2), promoted to normative. UNTESTED by
-/// stage-2 fixtures (no string counterexample), implemented best-effort.
-fn go_quote(s: &str) -> String {
-    let mut out = String::new();
-    out.push('"');
-    for ch in s.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\u{07}' => out.push_str("\\a"),
-            '\u{08}' => out.push_str("\\b"),
-            '\u{0c}' => out.push_str("\\f"),
-            '\u{0b}' => out.push_str("\\v"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\x{:02x}", c as u32)),
-            c if c.is_ascii() => out.push(c),
-            c => {
-                // printable non-ASCII prints literally in Go strconv.Quote
-                out.push(c);
-            }
-        }
-    }
-    out.push('"');
-    out
 }
