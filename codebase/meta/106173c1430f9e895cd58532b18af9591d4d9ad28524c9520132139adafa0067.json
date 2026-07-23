@@ -1,0 +1,28 @@
+{
+  "name": "map-has",
+  "prop_names": [
+    "present-after-insert"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 1
+  },
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "k",
+    "m"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0
+  ]
+}

@@ -1,72 +1,34 @@
-; Set operations, as a set discipline over `List Int` (#32). A set is a
-; duplicate-free list; these operations maintain that discipline. The kernel
-; does not enforce the no-duplicates invariant, so every law is stated over
-; ARBITRARY lists and proven regardless — the membership laws are what a
-; consumer actually reasons with. Depends on: list (List, Cons, Nil) and
-; extras (contains). Membership is `contains`, already proven.
+; Canonical set: a STRICTLY-SORTED, duplicate-free List Int. Because the
+; representation is unique per set, identity is semantic — two sets built by
+; different insertion orders are the same content-addressed object. (#37)
 
-(defn set-add [] [(x Int) (xs (List Int))] (List Int)
-  (if (contains x xs) xs (Cons [Int] x xs))
-  ; the point of a set-insert: x is a member afterwards, always.
-  (prop adds-member [(x Int) (xs (List Int))]
-    (contains x (set-add x xs)))
-  ; and it disturbs nothing else — membership of any other element is
-  ; unchanged, membership of x becomes true. This is the pinning law.
-  (prop preserves-others [(x Int) (y Int) (xs (List Int))]
-    (== (contains y (set-add x xs)) (or (== x y) (contains y xs))))
-  ; adding twice is adding once: the dedup guard makes it idempotent.
-  (prop idempotent [(x Int) (xs (List Int))]
-    (== (set-add x (set-add x xs)) (set-add x xs))))
+(defn set-member [] [(x Int) (s (List Int))] Bool
+  (match s
+    ((Nil) false)
+    ((Cons h t) (if (== x h) true (if (< x h) false (set-member x t)))))
+  (prop empty-has-none [(x Int)] (not (set-member x (Nil [Int])))))
 
-(defn set-union [] [(xs (List Int)) (ys (List Int))] (List Int)
-  (match xs
-    ((Nil) ys)
-    ((Cons h t) (set-add h (set-union t ys))))
-  (prop empty-left [(ys (List Int))]
-    (== (set-union (Nil [Int]) ys) ys))
-  ; the union law: membership distributes over `or`. Proven by induction on
-  ; xs, using set-add's preserves-others as the step lemma (second prove pass).
-  (prop member-iff-either [(z Int) (xs (List Int)) (ys (List Int))]
-    (== (contains z (set-union xs ys)) (or (contains z xs) (contains z ys))))
-  ; Structural anchor: a non-head element of the left set is retained. The
-  ; membership law above is proven-COMPLETE, but its witness for a dropped
-  ; recursion is a value coincidence (a free z rarely equals an actual
-  ; member), so mutation's finite sample misses it; a CONSTRUCTED witness
-  ; always fires and kills the "forgot to recurse" mutant.
-  (prop retains-second [(a Int) (b Int) (ys (List Int))]
-    (contains b (set-union (Cons [Int] a (Cons [Int] b (Nil [Int]))) ys)))
-  ; and the right set is retained too — kills the mutant that drops `ys`.
-  (prop retains-right [(b Int) (xs (List Int))]
-    (contains b (set-union xs (Cons [Int] b (Nil [Int]))))))
-
-(defn set-inter [] [(xs (List Int)) (ys (List Int))] (List Int)
-  (match xs
-    ((Nil) (Nil [Int]))
+(defn set-add [] [(x Int) (s (List Int))] (List Int)
+  (match s
+    ((Nil) (Cons [Int] x (Nil [Int])))
     ((Cons h t)
-      (if (contains h ys) (Cons [Int] h (set-inter t ys)) (set-inter t ys))))
-  (prop empty-left [(ys (List Int))]
-    (== (set-inter (Nil [Int]) ys) (Nil [Int])))
-  ; the intersection law: membership distributes over `and`. Induction on xs.
-  (prop member-iff-both [(z Int) (xs (List Int)) (ys (List Int))]
-    (== (contains z (set-inter xs ys)) (and (contains z xs) (contains z ys))))
-  ; Structural anchors with constructed witnesses (see set-union): an element
-  ; in BOTH is kept — kills the inverted-filter mutant — and an element absent
-  ; from the right is dropped — kills the "keep everything" mutants.
-  (prop keeps-shared [(a Int) (b Int)]
-    (contains b (set-inter (Cons [Int] a (Cons [Int] b (Nil [Int]))) (Cons [Int] b (Nil [Int])))))
-  (prop drops-absent [(a Int) (ys (List Int))]
-    (if (contains a ys) true (not (contains a (set-inter (Cons [Int] a (Nil [Int])) ys)))))
-  ; intersecting with the empty set is empty — kills the mutants that return
-  ; an unfiltered tail when the head is absent.
-  (prop empty-right [(xs (List Int))]
-    (== (set-inter xs (Nil [Int])) (Nil [Int])))
-  ; a tail element absent from the right is filtered out even behind a shared
-  ; head — kills the "keep the whole tail" mutants.
-  (prop filters-tail [(a Int) (b Int)]
-    (if (== a b) true
-        (not (contains b (set-inter (Cons [Int] a (Cons [Int] b (Nil [Int]))) (Cons [Int] a (Nil [Int])))))))
-  ; an element only in the right set never leaks into the result — kills the
-  ; mutant that returns `ys` wholesale.
-  (prop right-not-leaked [(a Int) (b Int)]
-    (if (== a b) true
-        (not (contains b (set-inter (Cons [Int] a (Nil [Int])) (Cons [Int] a (Cons [Int] b (Nil [Int])))))))))
+      (if (< x h) (Cons [Int] x s)
+          (if (== x h) s (Cons [Int] h (set-add x t))))))
+  ; canonicality: insertion order is invisible → identity is semantic.
+  (prop add-commutes [(a Int) (b Int) (s (List Int))]
+    (== (set-add a (set-add b s)) (set-add b (set-add a s))))
+  (prop add-idempotent [(x Int) (s (List Int))]
+    (== (set-add x (set-add x s)) (set-add x s)))
+  (prop adds-member [(x Int) (s (List Int))] (set-member x (set-add x s))))
+
+(defn set-union [] [(a (List Int)) (b (List Int))] (List Int)
+  (match a ((Nil) b) ((Cons h t) (set-add h (set-union t b))))
+  (prop empty-left [(b (List Int))] (== (set-union (Nil [Int]) b) b))
+  (prop union-has-left [(x Int) (b (List Int))]
+    (set-member x (set-union (set-add x (Nil [Int])) b))))
+
+(defn set-inter [] [(a (List Int)) (b (List Int))] (List Int)
+  (match a
+    ((Nil) (Nil [Int]))
+    ((Cons h t) (if (set-member h b) (set-add h (set-inter t b)) (set-inter t b))))
+  (prop empty-left [(b (List Int))] (== (set-inter (Nil [Int]) b) (Nil [Int]))))

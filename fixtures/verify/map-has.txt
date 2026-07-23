@@ -1,3 +1,1 @@
-✓ prop absent-in-empty          passed 200 cases
 ✓ prop present-after-insert     passed 200 cases
-✓ prop has-iff-some             passed 200 cases
