@@ -77,9 +77,14 @@
 ; empty or absent separator yields the whole string as a single piece.
 ;
 ; The round-trip `join-with sep (split s sep) == s` holds under testing but is
-; left unproven: it needs induction over the str-len recursion (a prover
-; frontier, #58), which the integer/datatype recursion induction does not yet
-; cover. The laws below are what proves today.
+; left unproven — and the blocker is the SOLVER, not the kernel. Measure
+; recursion induction already fires here (its base case proves); the step is
+; discharged the instant Z3 is handed two facts — `substr(s, index-of s sep,
+; str-len sep) == sep` and `substr(s,0,i) ++ sep ++ substr(s,i+len,·) == s` —
+; but Z3's sequence solver cannot derive those str.indexof/str.substr theorems
+; itself, at any budget. We will not assert them as unproven axioms (that would
+; trade the machine-checked guarantee for a trusted assumption), so the law
+; stays honestly tested. See #58. The laws below are what proves today.
 (defn split [] [(s Str) (sep Str)] (List Str)
   (if (if (< 0 (str-len sep)) (str-contains s sep) false)
       (let (i Int (str-index-of s sep))
