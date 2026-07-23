@@ -5,9 +5,9 @@
 ; finite-table functions standing in for the real network.
 
 (defn greet [] [(net {fetch (-> Str Str)}) (id Str)] Str
-  (++ "Hello, " (++ ((. net fetch) id) "!"))
+  (str-append "Hello, " (str-append ((. net fetch) id) "!"))
   (prop exact-shape [(net {fetch (-> Str Str)}) (id Str)]
-    (== (greet net id) (++ "Hello, " (++ ((. net fetch) id) "!"))))
+    (== (greet net id) (str-append "Hello, " (str-append ((. net fetch) id) "!"))))
   (prop never-shorter-than-frame [(net {fetch (-> Str Str)}) (id Str)]
     (<= 8 (str-len (greet net id))))
   (prop same-world-same-answer [(net {fetch (-> Str Str)}) (id Str)]

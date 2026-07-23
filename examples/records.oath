@@ -91,19 +91,19 @@
     (== (unwrap-or [Int Int] (Err [Int Int] e) d) d)))
 
 (defn shout [] [(s Str)] Str
-  (++ s "!")
+  (str-append s "!")
   (prop grows-by-one [(s Str)]
     (== (str-len (shout s)) (+ (str-len s) 1)))
   (prop preserves-emptiness-never [(s Str)]
     (< 0 (str-len (shout s)))))
 
 (defn full-name [] [(p {first Str last Str})] Str
-  (++ (++ (. p first) " ") (. p last))
+  (str-append (str-append (. p first) " ") (. p last))
   (prop length-adds-up [(p {first Str last Str})]
     (== (str-len (full-name p))
         (+ (+ (str-len (. p first)) 1) (str-len (. p last)))))
   (prop starts-from-parts [(a Str) (b Str)]
-    (== (full-name {first a last b}) (++ (++ a " ") b))))
+    (== (full-name {first a last b}) (str-append (str-append a " ") b))))
 
 (defn initials-or [] [(o (Option {first Str last Str})) (fallback Str)] Str
   (match o

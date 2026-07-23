@@ -10,7 +10,7 @@
     ((Cons h t)
       (match t
         ((Nil) h)
-        ((Cons h2 t2) (++ h (++ sep (join-with sep t)))))))
+        ((Cons h2 t2) (str-append h (str-append sep (join-with sep t)))))))
   (prop empty-is-empty [(sep Str)]
     (== (join-with sep (Nil [Str])) ""))
   (prop singleton-is-identity [(sep Str) (s Str)]
@@ -29,9 +29,9 @@
 ; Echo the arguments, space-joined, and report whether they arrived in
 ; non-decreasing length order.
 (defn main-echo [] [(args (List Str))] Str
-  (++ (join-with " " args)
+  (str-append (join-with " " args)
       (if (is-sorted (lengths args)) "  [sorted by length]" "  [unsorted]"))
   (prop no-args-is-tagged [(x Int)]
     (== (main-echo (Nil [Str])) "  [sorted by length]"))
   (prop single-arg-echoes [(s Str)]
-    (== (main-echo (Cons [Str] s (Nil [Str]))) (++ s "  [sorted by length]"))))
+    (== (main-echo (Cons [Str] s (Nil [Str]))) (str-append s "  [sorted by length]"))))
