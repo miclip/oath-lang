@@ -1,0 +1,1 @@
+✓ prop empty-has-none           passed 200 cases

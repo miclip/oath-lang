@@ -1,2 +1,2 @@
-✓ prop is-prepend               passed 200 cases
-✓ prop grows-size               passed 200 cases
+✓ prop insert-commutes          passed 200 cases
+✓ prop insert-overwrites        passed 200 cases

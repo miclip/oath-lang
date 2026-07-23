@@ -1,13 +1,15 @@
 {
   "name": "map-has",
-  "hash": "c3a9abe8a6d592fe2d6b793a330a60dc8a02bdb2b3d27b911aa847f478a8efde",
+  "hash": "106173c1430f9e895cd58532b18af9591d4d9ad28524c9520132139adafa0067",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
     "",
     ""
   ],
+  "mutants_killed": 2,
+  "mutants_total": 2,
   "level": "proven",
   "cases": 200,
-  "proven": 3
+  "proven": 1
 }

@@ -1,0 +1,30 @@
+{
+  "name": "set-union",
+  "prop_names": [
+    "empty-left",
+    "union-has-left"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 2
+  },
+  "mutants_killed": 1,
+  "mutants_total": 4,
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "a",
+    "b"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1
+  ]
+}

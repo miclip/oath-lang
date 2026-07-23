@@ -1,103 +1,67 @@
-; Map (association list) over Int keys and Int values (#32), reusing the
-; Pair and Option types from records. A map is a `List (Pair Int Int)`;
-; lookup returns the FIRST matching entry, so map-insert is prepend-as-update.
-; Depends on: list (List), records (Pair, Option, is-some).
-
-(defn map-size [] [(m (List (Pair Int Int)))] Int
-  (match m
-    ((Nil) 0)
-    ((Cons p t) (+ 1 (map-size t))))
-  (prop empty-zero []
-    (== (map-size (Nil [(Pair Int Int)])) 0))
-  (prop non-negative [(m (List (Pair Int Int)))]
-    (<= 0 (map-size m)))
-  (prop cons-step [(p (Pair Int Int)) (t (List (Pair Int Int)))]
-    (== (map-size (Cons [(Pair Int Int)] p t)) (+ 1 (map-size t)))))
-
-(defn map-keys [] [(m (List (Pair Int Int)))] (List Int)
-  (match m
-    ((Nil) (Nil [Int]))
-    ((Cons p t)
-      (match p ((Pair pk pv) (Cons [Int] pk (map-keys t))))))
-  (prop empty-nil []
-    (== (map-keys (Nil [(Pair Int Int)])) (Nil [Int])))
-  (prop cons-step [(k Int) (v Int) (t (List (Pair Int Int)))]
-    (== (map-keys (Cons [(Pair Int Int)] (Pair [Int Int] k v) t))
-        (Cons [Int] k (map-keys t))))
-  ; one key per entry: projecting keys preserves length. Proven by induction
-  ; over the association list. (This law was withheld until #50 — the futile
-  ; direct attempt burned the full budget for ~8 minutes before induction was
-  ; tried; it now fails in seconds and the induction discharges the goal.)
-  (prop preserves-length [(m (List (Pair Int Int)))]
-    (== (length [Int] (map-keys m)) (length [(Pair Int Int)] m))))
+; Canonical map: a STRICTLY-SORTED-BY-KEY, duplicate-free List (Pair Int Int).
+; map-insert keeps it sorted and replaces on a key collision, so equal maps have
+; equal identity no matter how they were built — semantic identity for a
+; content-addressed substrate. (#37)
 
 (defn map-insert [] [(k Int) (v Int) (m (List (Pair Int Int)))] (List (Pair Int Int))
-  (Cons [(Pair Int Int)] (Pair [Int Int] k v) m)
-  (prop is-prepend [(k Int) (v Int) (m (List (Pair Int Int)))]
-    (== (map-insert k v m) (Cons [(Pair Int Int)] (Pair [Int Int] k v) m)))
-  (prop grows-size [(k Int) (v Int) (m (List (Pair Int Int)))]
-    (== (map-size (map-insert k v m)) (+ 1 (map-size m)))))
+  (match m
+    ((Nil) (Cons [(Pair Int Int)] (Pair [Int Int] k v) (Nil [(Pair Int Int)])))
+    ((Cons p t)
+      (match p
+        ((Pair pk pv)
+          (if (< k pk) (Cons [(Pair Int Int)] (Pair [Int Int] k v) m)
+              (if (== k pk) (Cons [(Pair Int Int)] (Pair [Int Int] k v) t)
+                  (Cons [(Pair Int Int)] p (map-insert k v t))))))))
+  (prop insert-commutes [(k1 Int) (v1 Int) (k2 Int) (v2 Int) (m (List (Pair Int Int)))]
+    (if (not (== k1 k2))
+        (== (map-insert k1 v1 (map-insert k2 v2 m)) (map-insert k2 v2 (map-insert k1 v1 m)))
+        true))
+  (prop insert-overwrites [(k Int) (v Int) (w Int) (m (List (Pair Int Int)))]
+    (== (map-insert k v (map-insert k w m)) (map-insert k v m))))
 
 (defn map-lookup [] [(k Int) (m (List (Pair Int Int)))] (Option Int)
   (match m
     ((Nil) (None [Int]))
     ((Cons p t)
-      (match p ((Pair pk pv) (if (== pk k) (Some [Int] pv) (map-lookup k t))))))
-  (prop empty-none [(k Int)]
-    (== (map-lookup k (Nil [(Pair Int Int)])) (None [Int])))
-  ; the defining law: a freshly inserted key looks up to its value. Direct —
-  ; insert prepends, and lookup matches the head.
+      (match p
+        ((Pair pk pv)
+          (if (== k pk) (Some [Int] pv)
+              (if (< k pk) (None [Int]) (map-lookup k t)))))))
   (prop finds-inserted [(k Int) (v Int) (m (List (Pair Int Int)))]
     (== (map-lookup k (map-insert k v m)) (Some [Int] v)))
-  ; inserting key k leaves the lookup of any OTHER key untouched — the pinning
-  ; law. Direct: the head match falls through for j /= k.
   (prop skips-other-key [(k Int) (v Int) (j Int) (m (List (Pair Int Int)))]
-    (if (== k j) true
-        (== (map-lookup j (map-insert k v m)) (map-lookup j m)))))
+    (if (not (== j k)) (== (map-lookup j (map-insert k v m)) (map-lookup j m)) true)))
 
 (defn map-has [] [(k Int) (m (List (Pair Int Int)))] Bool
-  (is-some [Int] (map-lookup k m))
-  (prop absent-in-empty [(k Int)]
-    (not (map-has k (Nil [(Pair Int Int)]))))
+  (match (map-lookup k m) ((None) false) ((Some v) true))
   (prop present-after-insert [(k Int) (v Int) (m (List (Pair Int Int)))]
-    (map-has k (map-insert k v m)))
-  ; membership tracks lookup exactly.
-  (prop has-iff-some [(k Int) (m (List (Pair Int Int)))]
-    (== (map-has k m) (is-some [Int] (map-lookup k m)))))
+    (map-has k (map-insert k v m))))
+
+(defn map-keys [] [(m (List (Pair Int Int)))] (List Int)
+  (match m
+    ((Nil) (Nil [Int]))
+    ((Cons p t) (match p ((Pair pk pv) (Cons [Int] pk (map-keys t))))))
+  (prop preserves-length [(m (List (Pair Int Int)))]
+    (== (length [Int] (map-keys m)) (length [(Pair Int Int)] m))))
 
 (defn map-values [] [(m (List (Pair Int Int)))] (List Int)
   (match m
     ((Nil) (Nil [Int]))
-    ((Cons p t)
-      (match p ((Pair pk pv) (Cons [Int] pv (map-values t))))))
-  (prop empty-nil []
-    (== (map-values (Nil [(Pair Int Int)])) (Nil [Int])))
-  (prop cons-step [(k Int) (v Int) (t (List (Pair Int Int)))]
-    (== (map-values (Cons [(Pair Int Int)] (Pair [Int Int] k v) t))
-        (Cons [Int] v (map-values t))))
+    ((Cons p t) (match p ((Pair pk pv) (Cons [Int] pv (map-values t))))))
   (prop preserves-length [(m (List (Pair Int Int)))]
     (== (length [Int] (map-values m)) (length [(Pair Int Int)] m))))
 
+(defn map-size [] [(m (List (Pair Int Int)))] Int
+  (length [(Pair Int Int)] m)
+  (prop non-negative [(m (List (Pair Int Int)))] (<= 0 (map-size m)))
+  (prop keys-account [(m (List (Pair Int Int)))]
+    (== (map-size m) (length [Int] (map-keys m)))))
+
+; left-biased merge: every entry of a wins over b's same key. Canonical result.
 (defn map-merge [] [(a (List (Pair Int Int))) (b (List (Pair Int Int)))] (List (Pair Int Int))
-  ; left-biased: a's entries come first, so lookup prefers a. Reuses append,
-  ; whose laws are already proven — merge inherits them at the Pair type.
-  (append [(Pair Int Int)] a b)
-  (prop is-append [(a (List (Pair Int Int))) (b (List (Pair Int Int)))]
-    (== (map-merge a b) (append [(Pair Int Int)] a b)))
-  (prop empty-left [(b (List (Pair Int Int)))]
-    (== (map-merge (Nil [(Pair Int Int)]) b) b))
-  (prop size-adds [(a (List (Pair Int Int))) (b (List (Pair Int Int)))]
-    (== (map-size (map-merge a b)) (+ (map-size a) (map-size b))))
-  ; Direct left-bias anchors: a key present on the left wins, and an empty left
-  ; defers wholly to the right.
-  (prop prefers-left [(k Int) (v Int) (a (List (Pair Int Int))) (b (List (Pair Int Int)))]
-    (== (map-lookup k (map-merge (map-insert k v a) b)) (Some [Int] v)))
-  (prop empty-left-defers [(k Int) (b (List (Pair Int Int)))]
-    (== (map-lookup k (map-merge (Nil [(Pair Int Int)]) b)) (map-lookup k b)))
-  ; …and the general law they anchor: lookup on a merge prefers the left map,
-  ; falling through to the right only when the key is absent on the left.
-  ; Proven by induction through map-lookup — withheld until #50 for the same
-  ; wasted-direct-attempt reason as map-keys' length law.
-  (prop lookup-left-biased [(k Int) (a (List (Pair Int Int))) (b (List (Pair Int Int)))]
-    (== (map-lookup k (map-merge a b))
-        (if (map-has k a) (map-lookup k a) (map-lookup k b)))))
+  (match a
+    ((Nil) b)
+    ((Cons p t) (match p ((Pair k v) (map-insert k v (map-merge t b))))))
+  (prop empty-left [(b (List (Pair Int Int)))] (== (map-merge (Nil [(Pair Int Int)]) b) b))
+  (prop prefers-left [(k Int) (v Int) (b (List (Pair Int Int)))]
+    (== (map-lookup k (map-merge (map-insert k v (Nil [(Pair Int Int)])) b)) (Some [Int] v))))

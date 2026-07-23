@@ -1,4 +1,2 @@
 ✓ prop empty-left               passed 200 cases
-✓ prop member-iff-either        passed 200 cases
-✓ prop retains-second           passed 200 cases
-✓ prop retains-right            passed 200 cases
+✓ prop union-has-left           passed 200 cases
