@@ -3,10 +3,12 @@
 //! encoder: implemented by hand from the spec.
 
 use crate::elaborate::Store;
+use num_bigint::BigInt;
 
 #[derive(Clone, Debug)]
 pub enum Value {
-    Int(i64),
+    // `Int` is ℤ — arbitrary precision (SPEC §3).
+    Int(BigInt),
     Bool(bool),
     Data { hash: String, idx: u32, fields: Vec<Value> },
     Record { names: Vec<String>, vals: Vec<Value> },

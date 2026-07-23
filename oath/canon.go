@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/big"
 )
 
 // Canonical binary encoding (format "O1", SPEC §1): a definition's identity
@@ -88,6 +89,20 @@ func (e *enc) u32(v uint32)  { e.b = binary.BigEndian.AppendUint32(e.b, v) }
 func (e *enc) i64(v int64)   { e.b = binary.BigEndian.AppendUint64(e.b, uint64(v)) }
 func (e *enc) str(s string)  { e.u32(uint32(len(s))); e.b = append(e.b, s...) }
 
+// bigint encodes an arbitrary-precision integer canonically: a sign byte
+// (0x00 for ≥0, 0x01 for <0), then a u32 magnitude length, then the minimal
+// big-endian magnitude bytes (no leading zeros; zero is sign 0x00, length 0).
+func (e *enc) bigint(v *big.Int) {
+	if v.Sign() < 0 {
+		e.u8(1)
+	} else {
+		e.u8(0)
+	}
+	mag := v.Bytes()
+	e.u32(uint32(len(mag)))
+	e.b = append(e.b, mag...)
+}
+
 func (e *enc) hash(h string) {
 	raw, err := hex.DecodeString(h)
 	if err != nil || len(raw) != 32 {
@@ -142,7 +157,7 @@ func (e *enc) term(t *Term) {
 		e.u32(uint32(t.Idx))
 	case "int":
 		e.u8(tagTmInt)
-		e.i64(t.Int)
+		e.bigint(t.Int)
 	case "bool":
 		e.u8(tagTmBool)
 		if t.Bool {
@@ -295,6 +310,34 @@ func (d *dec) str() (string, error) {
 	return s, nil
 }
 
+func (d *dec) bigint() (*big.Int, error) {
+	sign, err := d.u8()
+	if err != nil {
+		return nil, err
+	}
+	if sign > 1 {
+		return nil, d.fail("bad integer sign byte %d", sign)
+	}
+	n, err := d.u32()
+	if err != nil {
+		return nil, err
+	}
+	if d.pos+n > len(d.b) {
+		return nil, d.fail("unexpected end in integer")
+	}
+	mag := d.b[d.pos : d.pos+n]
+	// Reject non-canonical leading zero (magnitude bytes are minimal).
+	if n > 0 && mag[0] == 0 {
+		return nil, d.fail("non-canonical integer (leading zero)")
+	}
+	d.pos += n
+	v := new(big.Int).SetBytes(mag)
+	if sign == 1 {
+		v.Neg(v)
+	}
+	return v, nil
+}
+
 func (d *dec) hash() (string, error) {
 	if d.pos+32 > len(d.b) {
 		return "", d.fail("unexpected end in hash")
@@ -401,7 +444,7 @@ func (d *dec) term() (*Term, error) {
 		}
 		return &Term{K: "var", Idx: v}, nil
 	case tagTmInt:
-		v, err := d.i64()
+		v, err := d.bigint()
 		if err != nil {
 			return nil, err
 		}

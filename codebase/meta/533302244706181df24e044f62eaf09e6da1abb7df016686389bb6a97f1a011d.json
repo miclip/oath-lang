@@ -1,17 +1,1 @@
-{
-  "name": "Result",
-  "tyvar_names": [
-    "a",
-    "e"
-  ],
-  "ctor_names": [
-    "Ok",
-    "Err"
-  ],
-  "guarantee": {
-    "level": "asserted"
-  },
-  "spec_author": "claude-main",
-  "body_author": "claude-main",
-  "author": "claude-main"
-}
+{"name":"Result","tyvar_names":["a","e"],"ctor_names":["Ok","Err"],"guarantee":{"level":"asserted"},"spec_author":"claude-main","body_author":"claude-main","author":"claude-main"}

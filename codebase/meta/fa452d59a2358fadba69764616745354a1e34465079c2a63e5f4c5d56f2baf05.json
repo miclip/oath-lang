@@ -1,16 +1,1 @@
-{
-  "name": "List",
-  "tyvar_names": [
-    "a"
-  ],
-  "ctor_names": [
-    "Nil",
-    "Cons"
-  ],
-  "guarantee": {
-    "level": "asserted"
-  },
-  "spec_author": "claude-main",
-  "body_author": "claude-main",
-  "author": "claude-main"
-}
+{"name":"List","tyvar_names":["a"],"ctor_names":["Nil","Cons"],"guarantee":{"level":"asserted"},"spec_author":"claude-main","body_author":"claude-main","author":"claude-main"}

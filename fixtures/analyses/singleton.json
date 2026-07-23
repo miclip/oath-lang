@@ -1,6 +1,6 @@
 {
   "name": "singleton",
-  "hash": "7eef2b2b21828f030f79786104409b30822fe50701bc9c2c264d00a233da6799",
+  "hash": "14b8a3dd9719a29e458cb3ba2c884be6523f950216e7cb68373546a4fe60ea1a",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

@@ -19,6 +19,7 @@ package main
 //   MANIFEST.md           what this tree is and how to regenerate it
 
 import (
+	"math/big"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -222,7 +223,7 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		def  *Def
 	}{
 		{"negative_int", "i64 is 8-byte big-endian two's complement",
-			&Def{K: "func", Ty: tInt(), Body: &Term{K: "int", Int: -401}}},
+			&Def{K: "func", Ty: tInt(), Body: &Term{K: "int", Int: big.NewInt(-401)}}},
 		{"bool_bytes", "bool encodes as a single 0x00/0x01 byte",
 			&Def{K: "func", Ty: tBool(), Body: &Term{K: "bool", Bool: false}}},
 		{"hash_reference", "hash references are 32 raw bytes, not hex text",
@@ -230,12 +231,12 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 				Hash: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
 				Idx: 0, Args: []Term{{K: "bool"}}}}},
 		{"empty_lists", "counts are u32; empty lists are a bare zero count (props here)",
-			&Def{K: "func", Ty: tInt(), Body: &Term{K: "int", Int: 0},
+			&Def{K: "func", Ty: tInt(), Body: &Term{K: "int", Int: big.NewInt(0)},
 				Props: []Prop{{Binders: []Ty{}, Body: Term{K: "bool", Bool: true}}}}},
 		{"record_order", "record fields encode name-then-value pairs in strictly ascending name order",
 			&Def{K: "func", Ty: &Ty{K: "record", Names: []string{"a", "b"}, Args: []Ty{{K: "int"}, {K: "bool"}}},
 				Body: &Term{K: "record", Names: []string{"a", "b"},
-					Args: []Term{{K: "int", Int: 1}, {K: "bool", Bool: true}}}}},
+					Args: []Term{{K: "int", Int: big.NewInt(1)}, {K: "bool", Bool: true}}}}},
 	}
 	var gman strings.Builder
 	gman.WriteString("# §1.5 golden encoding fixtures (O1 binary)\n# case\thash\tnote\n")

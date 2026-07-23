@@ -1,6 +1,6 @@
 {
   "name": "rot-h3",
-  "hash": "bfcfe31fda65050a6934162f1403a011c02b53c6c1ceffd30f6e54c162aad975",
+  "hash": "18228c2a22fac55420bad57e9c93c4dc4e9672e40fc3766e287f56b42bca378f",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

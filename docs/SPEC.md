@@ -28,7 +28,8 @@ Every field is always written; there is exactly one encoding per definition.
 |---|---|
 | `u8` | one byte |
 | `u32` | 4 bytes, big-endian unsigned (counts, indices) |
-| `i64` | 8 bytes, big-endian two's complement |
+| `i64` | 8 bytes, big-endian two's complement (used only for magnitudes, if ever) |
+| `bigint` | `u8` sign (`0x00` ≥0, `0x01` <0) ++ `u32` magnitude byte-length ++ minimal big-endian magnitude bytes (no leading zeros; zero is sign `0x00`, length 0) |
 | `str` | `u32` byte-length ++ raw UTF-8 bytes (NO escaping of any kind) |
 | `hash` | 32 raw bytes (the referenced definition's SHA-256) |
 | `list<X>` | `u32` count ++ that many `X` |
@@ -56,7 +57,7 @@ Canonical bytes begin with the 2-byte magic `0x4F 0x31` ("O1").
 | tag | kind | fields |
 |---|---|---|
 | 0x10 | var | `u32` de Bruijn index (0 = innermost) |
-| 0x11 | int | `i64` |
+| 0x11 | int | `bigint` (arbitrary precision — `Int` is ℤ) |
 | 0x12 | bool | bool byte |
 | 0x13 | *(reserved — was the string-literal term; `"…"` now elaborates to an `Str` constructor chain)* |
 | 0x14 | lam | Ty param, Term body |
@@ -279,9 +280,10 @@ Detailed synthesis obligations:
 - Closures capture their environment by value at `lam` evaluation.
 - `ref`/`self` re-evaluate the referenced definition's body at each use
   (bodies are almost always `lam`, so this constructs a closure).
-- **Integers** are two's-complement int64; `+ - *` wrap on overflow; `/`
+- **Integers** are ℤ — arbitrary precision. `+ - *` never overflow; `/`
   truncates toward zero; `%` takes the dividend's sign; division or modulo
-  by zero is a runtime error.
+  by zero is a runtime error. This matches the proof model exactly (the solver
+  already reasons over unbounded integers), so there is no overflow caveat.
 - **Strings** are NOT primitive. A string is a value of the ordinary datatype
   `(data Str [] (SNil) (SCons Int Str))` — a sequence of Unicode scalar values
   (each an `Int` codepoint), built with the `SNil`/`SCons` constructors. It
@@ -706,8 +708,9 @@ reproducibility (given the same solver):
   as axioms — a property is never an axiom in its own proof.
 - `sat` on a quantifier-free direct attempt is a refutation (report the
   model); `sat`/`unknown` otherwise is merely "unproven".
-- Standing caveat attached to every proof: solver integers are unbounded;
-  kernel integers are int64. A proof is valid modulo overflow.
+- Integers are unbounded on both sides — the solver reasons over ℤ and the
+  kernel's `Int` is arbitrary precision — so proofs hold without an overflow
+  caveat.
 
 ### 7.1 SMT-LIB generation details
 

@@ -1,6 +1,6 @@
 {
   "name": "main-echo",
-  "hash": "9190fee3018a708d51ae1d06af5ba0b27155a2ddc098713070cb5a92deb6ddd8",
+  "hash": "9b19e91f08203d730fbc5fd8230c088e2e4b6870eae5799b048bab09f4879742",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

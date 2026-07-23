@@ -511,7 +511,9 @@ fn mutate_here(store: &Store, t: &Term, is_func_child: bool) -> Vec<Term> {
             }
         }
         Term::Int(n) => {
-            let cands = [n.wrapping_add(1), n.wrapping_sub(1), 0];
+            // Integer literal mutations (SPEC §6.3): n+1, n-1, 0 (skip unchanged).
+            let one = num_bigint::BigInt::from(1);
+            let cands = [n + &one, n - &one, num_bigint::BigInt::from(0)];
             for c in cands {
                 if c != *n {
                     out.push(Term::Int(c));
@@ -838,7 +840,11 @@ pub fn to_json(a: &Analysis) -> String {
         }
         if let Some((killed, total)) = a.mutants {
             o.push_str(",\n");
-            o.push_str(&format!("  \"mutants_killed\": {},\n", killed));
+            // `mutants_killed` is emitted only when nonzero (a zero-kill score
+            // renders as just `mutants_total`, matching the fixtures).
+            if killed > 0 {
+                o.push_str(&format!("  \"mutants_killed\": {},\n", killed));
+            }
             o.push_str(&format!("  \"mutants_total\": {}", total));
         }
         o.push_str(",\n");

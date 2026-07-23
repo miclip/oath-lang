@@ -1,5 +1,7 @@
 package main
 
+import "math/big"
+
 // The AST is the language. There is no textual source of truth: the canonical
 // JSON encoding of these structs is hashed to produce a definition's identity,
 // so field order and omitempty behavior are part of the language spec.
@@ -37,7 +39,7 @@ func tRec(args []Ty) *Ty              { return &Ty{K: "rec", Args: args} }
 type Term struct {
 	K      string   `json:"k"`                // var | int | bool | str | lam | app | let | if | prim | ref | self | ctor | match | record | field
 	Idx    int      `json:"idx,omitempty"`    // k=var: de Bruijn index; k=ctor: constructor index
-	Int    int64    `json:"int,omitempty"`    // k=int
+	Int    *big.Int `json:"int,omitempty"`    // k=int (arbitrary precision — Int is ℤ)
 	Bool   bool     `json:"bool,omitempty"`   // k=bool
 	Str    string   `json:"str,omitempty"`    // k=str: literal value
 	Ty     *Ty      `json:"ty,omitempty"`     // k=lam: param type; k=let: bound type

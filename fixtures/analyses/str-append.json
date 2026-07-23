@@ -1,6 +1,6 @@
 {
   "name": "str-append",
-  "hash": "2153ea614b488e872029ce5d4cc9475bfc5f1824f6e4e7ddaadbe11937a8a784",
+  "hash": "7d158d0455d341a46cfcc678cfd41d35db89b574dc45158746ad922b8874e3a4",
   "kind": "func",
   "termination": "structural",
   "confinement": [

@@ -1,6 +1,6 @@
 {
   "name": "one-two-three",
-  "hash": "4e6e274edf28cab6aef4fc992ebb39da34e6abf2a312aecf4a7e4be0b51a7e51",
+  "hash": "256d63e2e1c1a435d3715ef59b5181554b54e62ec37cb31717f07c8d1957c5ff",
   "kind": "func",
   "termination": "nonrecursive",
   "mutants_killed": 8,

@@ -1,6 +1,6 @@
 {
   "name": "rle-decode",
-  "hash": "73f058b24af1eb15fa85b13dfa3308b32c3e61da629a9899bcaee7c8e3bea8aa",
+  "hash": "27a8605b1e122a7fd485d0044e4465033452ae30d0e4227a326b6948196e66e2",
   "kind": "func",
   "termination": "structural",
   "confinement": [

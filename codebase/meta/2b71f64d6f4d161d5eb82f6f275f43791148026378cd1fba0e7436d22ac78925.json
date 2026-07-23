@@ -1,0 +1,33 @@
+{
+  "name": "t-member",
+  "prop_names": [
+    "member-leaf",
+    "member-root",
+    "member-insert-finds",
+    "member-flatten-equiv"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200,
+    "proven": 3
+  },
+  "mutants_killed": 4,
+  "mutants_total": 5,
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "t",
+    "x"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

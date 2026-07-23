@@ -300,11 +300,13 @@ fn strip_lams(body: &Term, n: usize) -> &Term {
     t
 }
 
-fn fmt_int(n: i64) -> String {
-    if n >= 0 {
-        n.to_string()
+fn fmt_int(n: &num_bigint::BigInt) -> String {
+    // SMT-LIB has no negative literals: render a negative as `(- <magnitude>)`.
+    // The decimal magnitude is unchanged whatever the precision.
+    if n.sign() == num_bigint::Sign::Minus {
+        format!("(- {})", n.magnitude())
     } else {
-        format!("(- {})", (n as i128).unsigned_abs())
+        n.to_string()
     }
 }
 
@@ -574,7 +576,7 @@ impl<'a> Cx<'a> {
                 let idx = env.len().checked_sub(1 + *i as usize).ok_or(())?;
                 Ok(env[idx].clone())
             }
-            Term::Int(n) => Ok((fmt_int(*n), Ty::Int)),
+            Term::Int(n) => Ok((fmt_int(n), Ty::Int)),
             Term::Bool(b) => Ok(((if *b { "true" } else { "false" }).to_string(), Ty::Bool)),
             Term::Lam { .. } => Err(()),
             Term::Prim { op, args } => self.tr_prim(op, args, env, tyenv, self_hash, self_tyargs),

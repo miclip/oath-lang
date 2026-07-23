@@ -1,6 +1,6 @@
 {
   "name": "greet",
-  "hash": "7071609eadd58bd05514104eac909013586ff3ac5308c51851879e4c63d35f71",
+  "hash": "1b4fc08a4e93ad03945596accdaffa83d0b121c1defb2bc40f6ad717dd7b3436",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

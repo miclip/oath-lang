@@ -219,8 +219,9 @@ Oath is a synthesis, not an invention; the pieces have owners:
 ## What v0 deliberately is not
 
 - **Proven only for a fragment.** `oath prove` discharges properties in the
-  non-recursive Int/Bool fragment via Z3 (unbounded-int semantics, stated on
-  every proof). Recursion needs induction — the road there is a Lean-style
+  non-recursive Int/Bool fragment via Z3 (unbounded-int semantics — now the
+  kernel's actual `Int`, which is arbitrary precision, so proofs hold with no
+  overflow caveat). Recursion needs induction — the road there is a Lean-style
   kernel. Everything outside the fragment bails with a reason and stays
   `tested`; `examples/undertested.oath` shows why the distinction matters
   (200 cases passed, refuted at x = -401).

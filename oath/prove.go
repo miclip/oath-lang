@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/big"
 	"os"
 	"regexp"
 	"sort"
@@ -436,10 +437,10 @@ func (c *smtCtx) tr(t *Term, env []smtVal) (string, string, error) {
 		v := env[len(env)-1-t.Idx]
 		return v.expr, v.sort, nil
 	case "int":
-		if t.Int < 0 {
-			return fmt.Sprintf("(- %d)", -t.Int), "Int", nil
+		if t.Int.Sign() < 0 {
+			return fmt.Sprintf("(- %s)", new(big.Int).Neg(t.Int).String()), "Int", nil
 		}
-		return fmt.Sprintf("%d", t.Int), "Int", nil
+		return t.Int.String(), "Int", nil
 	case "bool":
 		return fmt.Sprintf("%v", t.Bool), "Bool", nil
 	case "if":

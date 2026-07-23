@@ -1,13 +1,1 @@
-{
-  "name": "KV",
-  "ctor_names": [
-    "Empty",
-    "Bind"
-  ],
-  "guarantee": {
-    "level": "asserted"
-  },
-  "spec_author": "claude-main",
-  "body_author": "claude-main",
-  "author": "claude-main"
-}
+{"name":"KV","ctor_names":["Empty","Bind"],"guarantee":{"level":"asserted"},"spec_author":"claude-main","body_author":"claude-main","author":"claude-main"}

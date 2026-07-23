@@ -1,6 +1,6 @@
 {
   "name": "rle-encode",
-  "hash": "f24df956a83863b97e9f27ff475aee17e67657f5dce1325f3caad320f502b454",
+  "hash": "253440f0e8996f21230b6ca3dfd820925263e771e7bc0b42c6d0eb1123f852e2",
   "kind": "func",
   "termination": "structural",
   "confinement": [

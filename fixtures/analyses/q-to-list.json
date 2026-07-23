@@ -1,6 +1,6 @@
 {
   "name": "q-to-list",
-  "hash": "3d00c6800fb57c16f70a33cee4d3105ab9f233d9d9c7a0edfe87c62396d0e963",
+  "hash": "ee89059c3cce2c994b4ac25e0af8cdd9f2619d7b0ebacca5b42b1bd0abfcdb06",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

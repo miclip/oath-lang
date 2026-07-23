@@ -12,14 +12,6 @@
   },
   "mutants_killed": 4,
   "mutants_total": 5,
-  "waived_mutants": [
-    {
-      "hash": "d561f20e347bbdd47ad6d19c24f1a1ee448a6106a5d4f03d07bf75e612781b4e",
-      "desc": "\u003c → \u003c=",
-      "reason": "\u003c vs \u003c= inside min: differ only when h==seed, where both branches return the same value — behaviorally equivalent",
-      "by": "claude-main"
-    }
-  ],
   "termination": "structural",
   "spec_author": "claude-main",
   "body_author": "claude-main",

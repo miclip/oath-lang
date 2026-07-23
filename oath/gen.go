@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"math/big"
+)
 
 // Deterministic input generation for property testing. Seeds are derived from
 // the definition's hash, so verification is reproducible: the same definition
@@ -48,9 +51,9 @@ func genValue(st *Store, ty *Ty, size int, r *rng) (Value, error) {
 		// [-20,20] seldom produce the distinguishing n ∈ {0,1,2}.)
 		if r.below(4) == 0 {
 			boundary := []int64{-2, -1, 0, 1, 2}
-			return Value{K: "int", Int: boundary[r.below(len(boundary))]}, nil
+			return Value{K: "int", Int: big.NewInt(boundary[r.below(len(boundary))])}, nil
 		}
-		return Value{K: "int", Int: r.intIn(-20, 20)}, nil
+		return Value{K: "int", Int: big.NewInt(r.intIn(-20, 20))}, nil
 	case "bool":
 		return Value{K: "bool", Bool: r.below(2) == 0}, nil
 	case "record":

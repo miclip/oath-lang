@@ -57,6 +57,13 @@ export default function Architecture() {
         filtering so axiom sets are bounded by reachability rather than library size.
         Z3 &quot;unknown&quot; and timeouts are treated as failure, never as proof.
       </p>
+      <p>
+        Integers are unbounded on both sides of the proof: the solver reasons over
+        ℤ, and the kernel&apos;s <code>Int</code> is arbitrary precision at runtime too
+        — so a proof carries no &quot;valid modulo overflow&quot; asterisk. Overflow is
+        not a defined answer int64 can&apos;t hold; it&apos;s an answer we compute. (A
+        compiled program computing 10²⁴ prints the right number, not a wrapped one.)
+      </p>
 
       <h2>Two kernels, one spec</h2>
       <p>

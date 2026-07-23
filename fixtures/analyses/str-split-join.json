@@ -1,6 +1,6 @@
 {
   "name": "str-split-join",
-  "hash": "1e4d5a495cf118ac5ba90a4b3e404b16b6dc911aaa39dc4ad15cf347aacd46eb",
+  "hash": "f3a62459d59a9a242fd1bc3aecb60455ea9deddf7d652419889d9be7d961f36e",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

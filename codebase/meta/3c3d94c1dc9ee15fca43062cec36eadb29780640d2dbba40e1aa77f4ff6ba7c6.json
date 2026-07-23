@@ -1,16 +1,1 @@
-{
-  "name": "Pair",
-  "tyvar_names": [
-    "a",
-    "b"
-  ],
-  "ctor_names": [
-    "Pair"
-  ],
-  "guarantee": {
-    "level": "asserted"
-  },
-  "spec_author": "claude-main",
-  "body_author": "claude-main",
-  "author": "claude-main"
-}
+{"name":"Pair","tyvar_names":["a","b"],"ctor_names":["Pair"],"guarantee":{"level":"asserted"},"spec_author":"claude-main","body_author":"claude-main","author":"claude-main"}

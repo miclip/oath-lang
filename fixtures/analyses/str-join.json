@@ -1,6 +1,6 @@
 {
   "name": "str-join",
-  "hash": "0914216af48d9b843e461f3fff2c9bb9c9f6ea9530cbad217923fd719b4b5c86",
+  "hash": "b41104b62aae86b49c4644688f01ac9e2d56c36f475b8b304b834f3804467f8b",
   "kind": "func",
   "termination": "structural",
   "confinement": [
