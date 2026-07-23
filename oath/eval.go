@@ -1,9 +1,6 @@
 package main
 
-import (
-	"fmt"
-	"strings"
-)
+import "fmt"
 
 // Value is a runtime value. Types are fully erased at runtime.
 type Value struct {
@@ -64,8 +61,6 @@ func (e *evaluator) evalInner(env []Value, slf string, t *Term) (Value, error) {
 		return Value{K: "int", Int: t.Int}, nil
 	case "bool":
 		return Value{K: "bool", Bool: t.Bool}, nil
-	case "str":
-		return Value{K: "str", Str: t.Str}, nil
 	case "record":
 		fields := make([]Value, len(t.Args))
 		for i := range t.Args {
@@ -234,20 +229,6 @@ func (e *evaluator) evalPrim(env []Value, slf string, t *Term) (Value, error) {
 		return vBool(args[0].Bool || args[1].Bool), nil
 	case "not":
 		return vBool(!args[0].Bool), nil
-	case "++":
-		return Value{K: "str", Str: args[0].Str + args[1].Str}, nil
-	case "str-len":
-		return vInt(int64(len([]rune(args[0].Str)))), nil
-	case "starts-with":
-		return vBool(strings.HasPrefix(args[0].Str, args[1].Str)), nil
-	case "ends-with":
-		return vBool(strings.HasSuffix(args[0].Str, args[1].Str)), nil
-	case "str-contains":
-		return vBool(strings.Contains(args[0].Str, args[1].Str)), nil
-	case "str-index-of":
-		return vInt(runeIndexOf(args[0].Str, args[1].Str)), nil
-	case "substring":
-		return Value{K: "str", Str: runeSubstr(args[0].Str, args[1].Int, args[2].Int)}, nil
 	case "==":
 		eq, err := structEq(args[0], args[1])
 		if err != nil {
@@ -256,33 +237,6 @@ func (e *evaluator) evalPrim(env []Value, slf string, t *Term) (Value, error) {
 		return vBool(eq), nil
 	}
 	return Value{}, fmt.Errorf("unknown primitive %q at runtime", t.Op)
-}
-
-// runeIndexOf returns the code-point index of the first occurrence of sub in s,
-// or -1, matching SMT-LIB str.indexof (which counts code points, as str-len
-// does — not bytes).
-func runeIndexOf(s, sub string) int64 {
-	bi := strings.Index(s, sub)
-	if bi < 0 {
-		return -1
-	}
-	return int64(len([]rune(s[:bi])))
-}
-
-// runeSubstr matches SMT-LIB str.substr over code points: the longest substring
-// of s of length at most length starting at code-point index start; empty when
-// start is out of [0, len(s)) or length < 0.
-func runeSubstr(s string, start, length int64) string {
-	rs := []rune(s)
-	n := int64(len(rs))
-	if start < 0 || start >= n || length < 0 {
-		return ""
-	}
-	end := start + length
-	if end > n {
-		end = n
-	}
-	return string(rs[start:end])
 }
 
 // structEq is structural equality on first-order values. Functions are not
@@ -297,8 +251,6 @@ func structEq(a, b Value) (bool, error) {
 		return a.Int == b.Int, nil
 	case "bool":
 		return a.Bool == b.Bool, nil
-	case "str":
-		return a.Str == b.Str, nil
 	case "record":
 		if len(a.Fields) != len(b.Fields) {
 			return false, nil

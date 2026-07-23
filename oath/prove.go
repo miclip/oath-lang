@@ -202,8 +202,6 @@ func (c *smtCtx) sortOf(t *Ty) (string, error) {
 		return "Int", nil
 	case "bool":
 		return "Bool", nil
-	case "str":
-		return "String", nil
 	case "fun":
 		// Function values are SMT arrays, applied via select. This makes
 		// them first-class: quantifiable in induction hypotheses and legal
@@ -418,25 +416,13 @@ func (c *smtCtx) ensureFn(h string, d *Def, args []Ty) (smtVal, error) {
 var smtPrimOps = map[string]string{
 	"+": "+", "-": "-", "*": "*", "neg": "-",
 	"<": "<", "<=": "<=", "and": "and", "or": "or", "not": "not",
-	"==": "=", "++": "str.++", "str-len": "str.len",
-	"starts-with": "str.prefixof", "ends-with": "str.suffixof",
-	"str-contains": "str.contains", "substring": "str.substr",
-	"str-index-of": "str.indexof", // emitted with a literal 0 offset, see tr
+	"==": "=",
 }
 
 var smtPrimSorts = map[string]string{
 	"+": "Int", "-": "Int", "*": "Int", "neg": "Int",
 	"<": "Bool", "<=": "Bool", "and": "Bool", "or": "Bool", "not": "Bool",
-	"==": "Bool", "++": "String", "str-len": "Int",
-	"starts-with": "Bool", "ends-with": "Bool", "str-contains": "Bool",
-	"substring": "String", "str-index-of": "Int",
-}
-
-// SMT str.prefixof/str.suffixof are written (needle haystack), but the surface
-// predicates are subject-first (`(starts-with s pre)`); these translate with
-// the two operands swapped so the SMT reads `(str.prefixof pre s)`.
-var smtPrimSwap = map[string]bool{
-	"starts-with": true, "ends-with": true,
+	"==": "Bool",
 }
 
 func (c *smtCtx) tr(t *Term, env []smtVal) (string, string, error) {
@@ -456,8 +442,6 @@ func (c *smtCtx) tr(t *Term, env []smtVal) (string, string, error) {
 		return fmt.Sprintf("%d", t.Int), "Int", nil
 	case "bool":
 		return fmt.Sprintf("%v", t.Bool), "Bool", nil
-	case "str":
-		return `"` + strings.ReplaceAll(t.Str, `"`, `""`) + `"`, "String", nil
 	case "if":
 		cnd, _, err := c.tr(t.A, env)
 		if err != nil {
@@ -493,14 +477,6 @@ func (c *smtCtx) tr(t *Term, env []smtVal) (string, string, error) {
 				return "", "", err
 			}
 			parts = append(parts, a)
-		}
-		if t.Op == "str-index-of" {
-			// SMT str.indexof is (str.indexof s sub offset); the surface
-			// predicate searches from the start, so the offset is a literal 0.
-			return "(str.indexof " + parts[0] + " " + parts[1] + " 0)", "Int", nil
-		}
-		if smtPrimSwap[t.Op] && len(parts) == 2 {
-			parts[0], parts[1] = parts[1], parts[0]
 		}
 		return "(" + op + " " + strings.Join(parts, " ") + ")", smtPrimSorts[t.Op], nil
 	case "ctor":

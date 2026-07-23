@@ -102,8 +102,6 @@ func (e *enc) ty(t *Ty) {
 		e.u8(tagTyInt)
 	case "bool":
 		e.u8(tagTyBool)
-	case "str":
-		e.u8(tagTyStr)
 	case "var":
 		e.u8(tagTyVar)
 		e.u32(uint32(t.Var))
@@ -152,9 +150,6 @@ func (e *enc) term(t *Term) {
 		} else {
 			e.u8(0)
 		}
-	case "str":
-		e.u8(tagTmStr)
-		e.str(t.Str)
 	case "lam":
 		e.u8(tagTmLam)
 		e.ty(t.Ty)
@@ -319,8 +314,6 @@ func (d *dec) ty() (*Ty, error) {
 		return tInt(), nil
 	case tagTyBool:
 		return tBool(), nil
-	case tagTyStr:
-		return tStr(), nil
 	case tagTyVar:
 		v, err := d.u32()
 		if err != nil {
@@ -422,12 +415,6 @@ func (d *dec) term() (*Term, error) {
 			return nil, d.fail("bool byte 0x%02x", v)
 		}
 		return &Term{K: "bool", Bool: v == 1}, nil
-	case tagTmStr:
-		s, err := d.str()
-		if err != nil {
-			return nil, err
-		}
-		return &Term{K: "str", Str: s}, nil
 	case tagTmLam:
 		ty, err := d.ty()
 		if err != nil {

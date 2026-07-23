@@ -221,8 +221,6 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		note string
 		def  *Def
 	}{
-		{"raw_strings", "strings are length-prefixed raw UTF-8: quotes, backslash, newline, <>&, U+2028/9 all UNESCAPED",
-			&Def{K: "func", Ty: tStr(), Body: &Term{K: "str", Str: "\"\\\n<>&\u2028\u2029"}}},
 		{"negative_int", "i64 is 8-byte big-endian two's complement",
 			&Def{K: "func", Ty: tInt(), Body: &Term{K: "int", Int: -401}}},
 		{"bool_bytes", "bool encodes as a single 0x00/0x01 byte",
@@ -235,9 +233,9 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 			&Def{K: "func", Ty: tInt(), Body: &Term{K: "int", Int: 0},
 				Props: []Prop{{Binders: []Ty{}, Body: Term{K: "bool", Bool: true}}}}},
 		{"record_order", "record fields encode name-then-value pairs in strictly ascending name order",
-			&Def{K: "func", Ty: &Ty{K: "record", Names: []string{"a", "b"}, Args: []Ty{{K: "int"}, {K: "str"}}},
+			&Def{K: "func", Ty: &Ty{K: "record", Names: []string{"a", "b"}, Args: []Ty{{K: "int"}, {K: "bool"}}},
 				Body: &Term{K: "record", Names: []string{"a", "b"},
-					Args: []Term{{K: "int", Int: 1}, {K: "str", Str: "x"}}}}},
+					Args: []Term{{K: "int", Int: 1}, {K: "bool", Bool: true}}}}},
 	}
 	var gman strings.Builder
 	gman.WriteString("# §1.5 golden encoding fixtures (O1 binary)\n# case\thash\tnote\n")

@@ -19,7 +19,7 @@ func substTy(t *Ty, args []Ty) *Ty {
 		return nil
 	}
 	switch t.K {
-	case "int", "bool", "str":
+	case "int", "bool":
 		return t
 	case "var":
 		if t.Var < len(args) {
@@ -45,7 +45,7 @@ func substTy(t *Ty, args []Ty) *Ty {
 // reference once the ADT's hash is known.
 func resolveRec(t *Ty, h string) *Ty {
 	switch t.K {
-	case "int", "bool", "str", "var":
+	case "int", "bool", "var":
 		return t
 	case "fun":
 		return tFun(resolveRec(t.A, h), resolveRec(t.B, h))
@@ -113,7 +113,7 @@ func matchTy(pat, got *Ty, subst []*Ty) error {
 		return fmt.Errorf("expected %s, got %s", debugTy(pat), debugTy(got))
 	}
 	switch pat.K {
-	case "int", "bool", "str":
+	case "int", "bool":
 		return nil
 	case "var":
 		if pat.Var != got.Var {
@@ -198,7 +198,7 @@ func checkTyWF(st *Store, t *Ty, ntyvars int, allowRec bool) error {
 		return fmt.Errorf("missing type")
 	}
 	switch t.K {
-	case "int", "bool", "str":
+	case "int", "bool":
 		return nil
 	case "record":
 		if len(t.Names) != len(t.Args) {
@@ -398,8 +398,6 @@ func (c *checker) synth(ctx []*Ty, t *Term) (*Ty, error) {
 		return tInt(), nil
 	case "bool":
 		return tBool(), nil
-	case "str":
-		return tStr(), nil
 	case "record":
 		if len(t.Names) != len(t.Args) {
 			return nil, fmt.Errorf("record field names and values out of sync")
@@ -878,56 +876,7 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 		}
 		return nil
 	}
-	allStr := func() error {
-		for _, a := range argTys {
-			if a.K != "str" {
-				return fmt.Errorf("primitive %s requires Str arguments, got %s", t.Op, debugTy(a))
-			}
-		}
-		return nil
-	}
 	switch t.Op {
-	case "++":
-		if err := need(2); err != nil {
-			return nil, err
-		}
-		if err := allStr(); err != nil {
-			return nil, err
-		}
-		return tStr(), nil
-	case "str-len":
-		if err := need(1); err != nil {
-			return nil, err
-		}
-		if err := allStr(); err != nil {
-			return nil, err
-		}
-		return tInt(), nil
-	case "starts-with", "ends-with", "str-contains":
-		if err := need(2); err != nil {
-			return nil, err
-		}
-		if err := allStr(); err != nil {
-			return nil, err
-		}
-		return tBool(), nil
-	case "str-index-of":
-		if err := need(2); err != nil {
-			return nil, err
-		}
-		if err := allStr(); err != nil {
-			return nil, err
-		}
-		return tInt(), nil
-	case "substring":
-		if err := need(3); err != nil {
-			return nil, err
-		}
-		if argTys[0].K != "str" || argTys[1].K != "int" || argTys[2].K != "int" {
-			return nil, fmt.Errorf("substring requires (Str, Int, Int), got (%s, %s, %s)",
-				debugTy(argTys[0]), debugTy(argTys[1]), debugTy(argTys[2]))
-		}
-		return tStr(), nil
 	case "+", "-", "*", "/", "%":
 		if err := need(2); err != nil {
 			return nil, err
@@ -1036,8 +985,6 @@ func debugTy(t *Ty) string {
 		return "Int"
 	case "bool":
 		return "Bool"
-	case "str":
-		return "Str"
 	case "record":
 		s := "{"
 		for i, n := range t.Names {
