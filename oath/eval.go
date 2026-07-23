@@ -1,11 +1,14 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"math/big"
+)
 
 // Value is a runtime value. Types are fully erased at runtime.
 type Value struct {
 	K      string // int | bool | str | closure | data | record | native
-	Int    int64
+	Int    *big.Int
 	Bool   bool
 	Str    string   // str: value
 	Names  []string // record: field names, sorted, parallel to Fields
@@ -176,7 +179,8 @@ func (e *evaluator) apply(f, a Value) (Value, error) {
 			if a.K != "int" {
 				return Value{}, fmt.Errorf("native affine function applied to non-Int")
 			}
-			return Value{K: "int", Int: f.NA*a.Int + f.NB}, nil
+			r := new(big.Int).Mul(big.NewInt(f.NA), a.Int)
+			return Value{K: "int", Int: r.Add(r, big.NewInt(f.NB))}, nil
 		case "table":
 			for i := range f.Fields {
 				if eq, err := structEq(f.Fields[i], a); err == nil && eq {
@@ -198,31 +202,33 @@ func (e *evaluator) evalPrim(env []Value, slf string, t *Term) (Value, error) {
 		}
 		args[i] = v
 	}
-	vInt := func(x int64) Value { return Value{K: "int", Int: x} }
+	vInt := func(x *big.Int) Value { return Value{K: "int", Int: x} }
 	vBool := func(x bool) Value { return Value{K: "bool", Bool: x} }
 	switch t.Op {
 	case "+":
-		return vInt(args[0].Int + args[1].Int), nil
+		return vInt(new(big.Int).Add(args[0].Int, args[1].Int)), nil
 	case "-":
-		return vInt(args[0].Int - args[1].Int), nil
+		return vInt(new(big.Int).Sub(args[0].Int, args[1].Int)), nil
 	case "*":
-		return vInt(args[0].Int * args[1].Int), nil
+		return vInt(new(big.Int).Mul(args[0].Int, args[1].Int)), nil
 	case "/":
-		if args[1].Int == 0 {
+		if args[1].Int.Sign() == 0 {
 			return Value{}, fmt.Errorf("division by zero")
 		}
-		return vInt(args[0].Int / args[1].Int), nil
+		// Quo truncates toward zero, matching the SPEC (not Euclidean Div).
+		return vInt(new(big.Int).Quo(args[0].Int, args[1].Int)), nil
 	case "%":
-		if args[1].Int == 0 {
+		if args[1].Int.Sign() == 0 {
 			return Value{}, fmt.Errorf("modulo by zero")
 		}
-		return vInt(args[0].Int % args[1].Int), nil
+		// Rem takes the dividend's sign, matching the SPEC.
+		return vInt(new(big.Int).Rem(args[0].Int, args[1].Int)), nil
 	case "neg":
-		return vInt(-args[0].Int), nil
+		return vInt(new(big.Int).Neg(args[0].Int)), nil
 	case "<":
-		return vBool(args[0].Int < args[1].Int), nil
+		return vBool(args[0].Int.Cmp(args[1].Int) < 0), nil
 	case "<=":
-		return vBool(args[0].Int <= args[1].Int), nil
+		return vBool(args[0].Int.Cmp(args[1].Int) <= 0), nil
 	case "and":
 		return vBool(args[0].Bool && args[1].Bool), nil
 	case "or":
@@ -248,7 +254,7 @@ func structEq(a, b Value) (bool, error) {
 	}
 	switch a.K {
 	case "int":
-		return a.Int == b.Int, nil
+		return a.Int.Cmp(b.Int) == 0, nil
 	case "bool":
 		return a.Bool == b.Bool, nil
 	case "record":

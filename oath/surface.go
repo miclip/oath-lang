@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"sort"
-	"strconv"
+	"math/big"
 	"strings"
 )
 
@@ -31,7 +31,7 @@ import (
 type sx struct {
 	K    string // list | brack | brace | sym | int | str
 	Sym  string
-	Int  int64
+	Int  *big.Int
 	Str  string
 	Kids []sx
 	Line int
@@ -44,7 +44,7 @@ func (x sx) isSym(s string) bool { return x.K == "sym" && x.Sym == s }
 type token struct {
 	kind string // ( ) [ ] { } sym int str
 	sym  string
-	i    int64
+	i    *big.Int
 	s    string
 	line int
 }
@@ -105,7 +105,7 @@ func lex(src string) ([]token, error) {
 				j++
 			}
 			word := src[i:j]
-			if n, err := strconv.ParseInt(word, 10, 64); err == nil {
+			if n, ok := new(big.Int).SetString(word, 10); ok {
 				toks = append(toks, token{kind: "int", i: n, line: line})
 			} else {
 				toks = append(toks, token{kind: "sym", sym: word, line: line})
@@ -366,7 +366,7 @@ func (e *elab) elabTerm(x sx) (*Term, error) {
 		acc := &Term{K: "ctor", Hash: snilH, Idx: snilIdx}
 		for i := len(runes) - 1; i >= 0; i-- {
 			acc = &Term{K: "ctor", Hash: sconsH, Idx: sconsIdx,
-				Args: []Term{{K: "int", Int: int64(runes[i])}, *acc}}
+				Args: []Term{{K: "int", Int: big.NewInt(int64(runes[i]))}, *acc}}
 		}
 		return acc, nil
 	case "brace":

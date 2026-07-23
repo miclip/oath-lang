@@ -200,6 +200,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"os"
 	"unicode/utf8"
@@ -208,6 +209,9 @@ import (
 var _ = io.ReadAll
 var _ = http.Get
 var _ = utf8.DecodeRuneInString
+
+// bi parses a decimal integer literal into an arbitrary-precision value.
+func bi(s string) *big.Int { v, _ := new(big.Int).SetString(s, 10); return v }
 
 // capFn lifts a real-world Go function into an Oath closure value.
 func capFn(f func(string) string) *closure {
@@ -232,8 +236,8 @@ func apply(f, a any) any {
 
 func structEq(a, b any) bool {
 	switch x := a.(type) {
-	case int64:
-		return x == b.(int64)
+	case *big.Int:
+		return x.Cmp(b.(*big.Int)) == 0
 	case bool:
 		return x == b.(bool)
 	case string:
@@ -350,7 +354,7 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 		// Wrap literals as any(...) so the concrete-type assertions that
 		// primitive operands carry (e.g. `.(int64)`, `.(string)`) apply — a
 		// bare typed constant like int64(1) can't be type-asserted.
-		return fmt.Sprintf("any(int64(%d))", t.Int), nil
+		return fmt.Sprintf("any(bi(%q))", t.Int.String()), nil
 	case "bool":
 		return fmt.Sprintf("any(%s)", strconv.FormatBool(t.Bool)), nil
 	case "lam":
@@ -423,7 +427,7 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 				return `any("")`, nil
 			}
 			// SCons Int Str: fields[0] = codepoint, fields[1] = rest (a Go string)
-			return fmt.Sprintf("any(string(rune(%s.(int64))) + %s.(string))", parts[0], parts[1]), nil
+			return fmt.Sprintf("any(string(rune(%s.(*big.Int).Int64())) + %s.(string))", parts[0], parts[1]), nil
 		}
 		return fmt.Sprintf("(&ctorV{idx: %d, fields: []any{%s}})", t.Idx, strings.Join(parts, ", ")), nil
 	case "match":
@@ -520,7 +524,7 @@ func (e *emitter) matchStr(t *Term, s string, depth int, self string) (string, e
 	return fmt.Sprintf(`(func(scrut string, env []any) any {
 		if scrut == "" { return %s }
 		r, sz := utf8.DecodeRuneInString(scrut)
-		env = append(append([]any{}, env...), any(int64(r)), any(scrut[sz:]))
+		env = append(append([]any{}, env...), any(big.NewInt(int64(r))), any(scrut[sz:]))
 		_ = env
 		return %s
 	})(%s.(string), env)`, snil, scons, s), nil
@@ -548,22 +552,22 @@ func (e *emitter) prim(t *Term, depth int, self string) (string, error) {
 		}
 		args = append(args, a)
 	}
-	bin := func(op string) string {
-		return fmt.Sprintf("(%s.(int64) %s %s.(int64))", args[0], op, args[1])
+	// Integers are arbitrary-precision (*big.Int); + - * / % never overflow.
+	bigOp := map[string]string{"+": "Add", "-": "Sub", "*": "Mul", "/": "Quo", "%": "Rem"}
+	cmp := func(op string) string {
+		return fmt.Sprintf("any(%s.(*big.Int).Cmp(%s.(*big.Int)) %s 0)", args[0], args[1], op)
 	}
 	switch t.Op {
-	case "+", "-", "*":
-		return "any" + bin(t.Op), nil
-	case "/":
-		return fmt.Sprintf("any(%s.(int64) / %s.(int64))", args[0], args[1]), nil
-	case "%":
-		return fmt.Sprintf("any(%s.(int64) %% %s.(int64))", args[0], args[1]), nil
+	case "+", "-", "*", "/", "%":
+		// Quo/Rem truncate toward zero / take the dividend's sign (SPEC); both
+		// panic on a zero divisor, matching eval's div/mod-by-zero error.
+		return fmt.Sprintf("any(new(big.Int).%s(%s.(*big.Int), %s.(*big.Int)))", bigOp[t.Op], args[0], args[1]), nil
 	case "neg":
-		return fmt.Sprintf("any(-%s.(int64))", args[0]), nil
+		return fmt.Sprintf("any(new(big.Int).Neg(%s.(*big.Int)))", args[0]), nil
 	case "<":
-		return "any" + bin("<"), nil
+		return cmp("<"), nil
 	case "<=":
-		return "any" + bin("<="), nil
+		return cmp("<="), nil
 	case "and", "or":
 		// Oath's and/or are NOT short-circuiting: both operands evaluate.
 		op := "&&"

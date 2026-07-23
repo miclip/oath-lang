@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"strings"
 )
 
@@ -105,12 +106,16 @@ func genMutants(st *Store, d *Def) []mutantDef {
 			}
 		case "int":
 			old := n.Int
-			for _, nv := range []int64{old + 1, old - 1, 0} {
-				if nv == old {
+			for _, nv := range []*big.Int{
+				new(big.Int).Add(old, big.NewInt(1)),
+				new(big.Int).Sub(old, big.NewInt(1)),
+				big.NewInt(0),
+			} {
+				if nv.Cmp(old) == 0 {
 					continue
 				}
 				n.Int = nv
-				add(fmt.Sprintf("literal %d → %d", old, nv))
+				add(fmt.Sprintf("literal %s → %s", old, nv))
 				n.Int = old
 			}
 		case "if":
