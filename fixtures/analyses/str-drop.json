@@ -1,15 +1,15 @@
 {
   "name": "str-drop",
-  "hash": "681df08523fa1bba30af80723bbe693f226422988df960343a9143e7c85b4412",
+  "hash": "7c79f9ad705a2ce9cb41001e505b830444416e04d4d4435c7aaeebc312c89509",
   "kind": "func",
-  "termination": "nonrecursive",
+  "termination": "structural",
   "confinement": [
     "",
     ""
   ],
-  "mutants_killed": 1,
-  "mutants_total": 2,
+  "mutants_killed": 9,
+  "mutants_total": 11,
   "level": "proven",
   "cases": 200,
-  "proven": 1
+  "proven": 2
 }

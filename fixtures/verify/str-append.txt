@@ -1,0 +1,2 @@
+✓ prop left-unit                passed 200 cases
+✓ prop length-adds              passed 200 cases

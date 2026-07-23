@@ -1,6 +1,6 @@
 {
   "name": "stash",
-  "hash": "e0ba96f28238e0475e6a651fa1f9de79d6b41409beb87874d105478971886498",
+  "hash": "be38139f4560ebc7876943892f7e1ffb68fea23a6af95d50596a8020cc45c6a3",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

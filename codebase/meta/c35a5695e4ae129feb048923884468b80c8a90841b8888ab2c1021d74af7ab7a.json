@@ -1,0 +1,27 @@
+{
+  "name": "shout",
+  "prop_names": [
+    "grows-by-one",
+    "preserves-emptiness-never"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 2
+  },
+  "mutants_total": 4,
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "s"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1
+  ]
+}

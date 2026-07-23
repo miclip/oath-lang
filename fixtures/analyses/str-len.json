@@ -1,0 +1,14 @@
+{
+  "name": "str-len",
+  "hash": "90d513659609e38bdb7fcebede14edd74186d5e7ba0ac8c497200fb9c0ae26a9",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 2,
+  "mutants_total": 7,
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

@@ -1,0 +1,28 @@
+{
+  "name": "full-name",
+  "prop_names": [
+    "length-adds-up",
+    "starts-from-parts"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 2
+  },
+  "mutants_killed": 5,
+  "mutants_total": 5,
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "p"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1
+  ]
+}

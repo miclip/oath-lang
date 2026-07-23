@@ -1,0 +1,29 @@
+{
+  "name": "greet-or-guest",
+  "prop_names": [
+    "none-means-guest",
+    "some-passes-through"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 2
+  },
+  "mutants_total": 15,
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "net",
+    "o"
+  ],
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1
+  ]
+}

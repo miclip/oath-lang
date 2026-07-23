@@ -1,6 +1,6 @@
 {
   "name": "kv-put",
-  "hash": "c22f3a59c1416a9eb978cf435fdacc5ff4c9aaf1b6a5b5b3abb7915cfc4d246f",
+  "hash": "8e45f81f8bf1bf5407717b3db81de400d4686ba70da1b5219eaf67a874951446",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

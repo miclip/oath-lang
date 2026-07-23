@@ -1,0 +1,28 @@
+{
+  "name": "str-join",
+  "prop_names": [
+    "single"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 1
+  },
+  "mutants_killed": 1,
+  "mutants_total": 3,
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "d",
+    "pieces"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0
+  ]
+}

@@ -1,13 +1,13 @@
 {
   "name": "main-echo",
-  "hash": "09b330ada00c65dd1e2e2dcfd24781ce33f3ae20c5106d737925be4bd7ecec14",
+  "hash": "9190fee3018a708d51ae1d06af5ba0b27155a2ddc098713070cb5a92deb6ddd8",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
     ""
   ],
-  "mutants_killed": 3,
-  "mutants_total": 5,
+  "mutants_killed": 62,
+  "mutants_total": 101,
   "level": "proven",
   "cases": 200,
   "proven": 2
