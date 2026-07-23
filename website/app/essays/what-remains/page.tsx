@@ -42,7 +42,8 @@ export default function WhatRemains() {
         becomes a fingerprint of its own structure. Formatting, whitespace, house
         style? There’s no one to format for — delete it. Type inference? A
         labor-saving gift to a typist who resents annotations; a machine doesn’t
-        resent them, so delete the inference and write everything down. Files,
+        resent them, so delete the global inference and write the binders down (only
+        type arguments are recovered, by one-sided matching). Files,
         folders, modules? Scaffolding for human navigation — delete them, and code
         lives in a database addressed by content.
       </p>
@@ -159,8 +160,9 @@ export default function WhatRemains() {
       </p>
       <p>
         <strong>The gate.</strong> The function is canonicalized, fingerprinted, and
-        type-checked. The type-checker is deliberately dumb: no inference, every type
-        written out, because annotations are free for a machine author and a checker
+        type-checked. The type-checker is deliberately dumb: no global inference, every
+        binder written out (type arguments it infers by one-sided matching), because
+        annotations are free for a machine author and a checker
         with no cleverness in it is one you can audit in an afternoon. Ill-typed code
         is refused here and never gets a name.
       </p>
@@ -297,7 +299,8 @@ export default function WhatRemains() {
       <h2>What this doesn’t show</h2>
       <p>
         The usual, and I mean it. The language is deliberately tiny — integers,
-        booleans, strings, algebraic data; no floats, no real IO yet, and division sits
+        booleans, algebraic data (strings among them now); no floats, no real IO yet,
+        and division sits
         outside the provable fragment on purpose, because the honest and the machine
         answers to negative-operand modulo disagree. First-try successes on small
         modules say nothing yet about systems with messy real-world effects. The

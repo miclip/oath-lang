@@ -49,6 +49,7 @@ put(["q-push", "q-peek", "q-drop", "q-to-list"], "Queue");
 put(["kv-get", "kv-put", "rename-key", "safe-get", "stash", "leak"], "Worlds & state");
 put(["i-contains", "i-overlaps", "i-intersect", "i-hull"], "Intervals");
 put(["full-name", "greet", "greet-or-guest", "shout", "join-with", "initials-or", "or-else"], "Strings & records");
+put(["Str", "str-len", "str-append", "str-prefix", "str-take", "str-drop", "str-split", "str-join", "str-split-join"], "Strings & records");
 put(["abs", "sign", "clamp", "max2", "e-div", "e-mod"], "Numbers");
 put(["main-echo", "main-fetch", "rot", "rot-f", "rot-h2", "rot-h3", "rot-hl"], "Programs & capabilities");
 put(["rle-encode", "rle-decode", "rle-expand"], "Run-length coding");
@@ -118,7 +119,7 @@ export const featured: Record<string, Featured> = {
     blurb:
       "A capability is a record of functions passed as an ordinary parameter — the signature is the authority audit. Properties quantify over generated simulated worlds; the kernel also proves the net capability is confined (never returned, stored, or captured).",
     source: `(defn greet [] [(net {fetch (-> Str Str)}) (id Str)] Str
-  (++ "Hello, " (++ ((. net fetch) id) "!"))
+  (str-append "Hello, " (str-append ((. net fetch) id) "!"))
   (prop same-world-same-answer [(net {fetch (-> Str Str)}) (id Str)]
     (== (greet net id) (greet net id)))
   (prop never-shorter-than-frame [(net {fetch (-> Str Str)}) (id Str)]

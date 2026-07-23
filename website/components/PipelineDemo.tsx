@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 const STEPS = [
   { k: "elaborate", v: "s-expr → canonical AST" },
   { k: "hash", v: "SHA-256 of the O1 encoding" },
-  { k: "typecheck", v: "structural, no inference" },
+  { k: "typecheck", v: "bidirectional synthesis" },
   { k: "test", v: "200 seeded cases" },
   { k: "prove", v: "Z3, all inputs" },
 ];

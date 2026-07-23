@@ -64,10 +64,12 @@ export default function BuildingOath() {
       <p>
         The typechecker was the first place I had to fight my own instincts. Every
         instinct from human-facing languages says: add inference, unify, let the author
-        omit what the compiler can recover. I deleted all of it. Types are written out in
-        full, always, because annotations cost a machine author nothing, and giving them
-        up buys something worth far more — the checker becomes pure structural synthesis,
-        small enough to read in one sitting. A referee you can’t read is a referee you’re
+        omit what the compiler can recover. I deleted almost all of it — every binder is
+        annotated in full; only the type arguments the checker can recover by one-sided
+        matching may be omitted. Annotations cost a machine author nothing, and giving up
+        the rest buys something worth far more — the checker stays bidirectional local
+        synthesis, no unification of two unknowns, small enough to read in one sitting. A
+        referee you can’t read is a referee you’re
         taking on faith, which defeats the point.
       </p>
       <p>
@@ -174,7 +176,7 @@ export default function BuildingOath() {
       </p>
       <CodeBlock
         code={`(defn greet [] [(net {fetch (-> Str Str)}) (id Str)] Str
-  (++ "Hello, " (++ ((. net fetch) id) "!"))
+  (str-append "Hello, " (str-append ((. net fetch) id) "!"))
   (prop same-world-same-answer [(net {fetch (-> Str Str)}) (id Str)]
     (== (greet net id) (greet net id))))`}
         label="greet.oath"
@@ -324,7 +326,8 @@ export default function BuildingOath() {
       <h2>What I’m least sure of</h2>
       <p>
         Honestly: the generalization. The language is tiny on purpose — integers,
-        booleans, strings, algebraic data, no floats, no real IO yet, and division held
+        booleans, algebraic data (strings among them, as an ordinary datatype), no
+        floats, no real IO yet, and division held
         outside the provable fragment because the truncating and the Euclidean answers to
         negative-operand modulo disagree and I would rather prove nothing than prove the
         wrong theorem. First-try greens on small modules say little about systems with

@@ -20,8 +20,9 @@ them:
 
 Corollaries that fall out of these:
 
-- **Annotations everywhere, inference nowhere.** Tedium costs a machine
-  nothing; a checker without unification is tiny, fast, and auditable.
+- **Annotations on every binder, no *full* inference.** Type arguments may be
+  omitted and are inferred by one-sided matching (never unification of two
+  unknowns), so the checker stays tiny, fast, and auditable.
 - **Content addressing.** A definition's identity is the hash of its
   canonical AST. Names are metadata. Merge conflicts, rename breakage, and
   formatting diffs stop existing. De Bruijn binders make code
@@ -232,8 +233,10 @@ Oath is a synthesis, not an invention; the pieces have owners:
 - **No canonical binary encoding** — v0 hashes Go's deterministic JSON; a
   real spec must define encoding independent of any host language.
 - **No mutual recursion, floats, or effects.** The effect/capability system
-  is the next major design piece. (Strings and structural records landed
-  after v0: record field names are semantic — part of the type and hash —
+  is the next major design piece. (Structural records landed after v0; strings
+  are now the ordinary `Str` datatype, not a primitive — see
+  docs/structural-strings.md. Record field names are semantic — part of the type
+  and hash —
   but field order is canonicalized away, like variable names before it.)
 - **e-graph canonicalization** (collapsing semantically-equivalent forms,
   not just alpha-equivalent ones) is future work.
@@ -248,7 +251,7 @@ Phases 1–3 are COMPLETE, beyond the original ambitions:
   waivers, and an O1 binary identity encoding that inherits nothing from
   any host language (SPEC §1; store migrated wholesale, mappings journaled).
 - **Phase 2 ✓ (mostly)** — SMT proofs are real INCLUDING structural
-  induction with a relevance-filtered lemma library (§7.2): 33 definitions
+  induction with a relevance-filtered lemma library (§7.2): 99 definitions
   fully PROVEN, insertion sort 7/7. The Rust kernel exists — built BLIND
   from docs/SPEC.md + fixtures by an agent that never saw the Go source,
   conforming byte-for-byte on all six checks, wasm32-ready. Effects

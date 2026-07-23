@@ -5,7 +5,7 @@ B2 (verified laws) and B3 (resolution sugar) deliberately deferred.
 
 ## The move
 
-Oath's typing is structural synthesis: no inference, no unification, and a
+Oath's typing is bidirectional local synthesis: no full inference, no unification of two unknowns, and a
 monomorphic `==`. You cannot say "for any T with an ordering" — until you
 notice the language already says it about the *world*. A capability is a
 record of functions passed as an ordinary parameter; a type-class instance

@@ -29,8 +29,8 @@ and lexicographic induction reach recursion that shrinks a datatype;
 (`replicate`, `range`, `fib`, even a counter inside a datatype field), proving
 their measure laws like `length (replicate n x) == n`. Proven properties become
 a **lemma library**: they are asserted as axioms in later proofs, composing
-bottom-up through the hash graph like every other verdict. 89 definitions are
-fully proven (285 properties proven overall), including `reverse (reverse xs) == xs` (via the append laws
+bottom-up through the hash graph like every other verdict. 99 definitions are
+fully proven (299 properties proven overall), including `reverse (reverse xs) == xs` (via the append laws
 and its own antidistribution lemma), insertion sort's complete correctness —
 `output-is-sorted`, `preserves-counts` (the permutation oath), `idempotent`,
 and `reverse-invariant`, the last two through a four-lemma plan (insert
@@ -108,17 +108,18 @@ out for human auditors.
     (<= 0 (length [Int] xs))))
 ```
 
-Everything is explicitly annotated — type arguments included (`length [a] t`).
-Annotations are cheap for a machine author, and they keep the kernel free of
-inference: checking is pure structural synthesis, small enough to audit.
+Binders are explicitly annotated; type arguments may be omitted and are inferred
+(`length t`). Checking is bidirectional local synthesis — no full inference and
+no unification of two unknowns — small enough to audit.
 
-Strings and structural records are in (`examples/records.oath`):
+Strings are the ordinary `Str` datatype (a codepoint sequence, not a primitive —
+see `docs/structural-strings.md`); with structural records (`examples/records.oath`):
 
 ```lisp
 (defn full-name [] [(p {first Str last Str})] Str
-  (++ (++ (. p first) " ") (. p last))
+  (str-append (str-append (. p first) " ") (. p last))
   (prop starts-from-parts [(a Str) (b Str)]
-    (== (full-name {first a last b}) (++ (++ a " ") b))))
+    (== (full-name {first a last b}) (str-append (str-append a " ") b))))
 ```
 
 Record field names are part of the type (and the hash); field *order* is
@@ -169,7 +170,7 @@ quantify over generated simulated worlds — see `examples/service.oath`:
 
 ```lisp
 (defn greet [] [(net {fetch (-> Str Str)}) (id Str)] Str
-  (++ "Hello, " (++ ((. net fetch) id) "!"))
+  (str-append "Hello, " (str-append ((. net fetch) id) "!"))
   (prop same-world-same-answer [(net {fetch (-> Str Str)}) (id Str)]
     (== (greet net id) (greet net id))))
 ```
@@ -248,7 +249,7 @@ oath/          the kernel + CLI (Go, no dependencies)
   ast.go       the language: canonical AST, de Bruijn binders, defs & props
   canon.go     hashing (identity = SHA-256 of canonical encoding)
   store.go     content-addressed object DB + mutable name index
-  check.go     the trusted typechecker (no inference, no unification)
+  check.go     the trusted typechecker (bidirectional synthesis; no unification of two unknowns)
   eval.go      fuel-bounded interpreter
   gen.go       deterministic test-input generation (seeded by def hash)
   verify.go    property runner + guarantee tracking

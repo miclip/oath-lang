@@ -85,9 +85,9 @@ cd oath && go build -o oath . && cd ..`} />
 
       <h2>The surface syntax</h2>
       <p>
-        Everything is explicitly annotated — type arguments included. Annotations are
-        cheap for a machine author, and they keep the kernel free of inference:
-        checking is pure structural synthesis.
+        Every binder is annotated; type arguments may be omitted and are inferred.
+        Annotations are cheap for a machine author, and checking stays bidirectional
+        local synthesis — no full inference, no unification of two unknowns.
       </p>
       <CodeBlock
         label="a full definition"

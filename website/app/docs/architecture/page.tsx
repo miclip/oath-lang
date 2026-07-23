@@ -36,8 +36,9 @@ export default function Architecture() {
       <h2>The trusted gate</h2>
       <p>
         Elaboration turns surface syntax into the canonical AST, resolving names to de
-        Bruijn indices and hashes. The typechecker is pure structural synthesis — no
-        inference, no unification — small enough to audit. It also enforces strict
+        Bruijn indices and hashes. The typechecker is bidirectional local synthesis —
+        type arguments may be omitted and are inferred by one-sided matching, never
+        unification of two unknowns — small enough to audit. It also enforces strict
         positivity on datatypes, so a type that would encode non-termination is
         rejected at the gate. Only then does the evaluator run each property under a
         fuel and depth bound.
