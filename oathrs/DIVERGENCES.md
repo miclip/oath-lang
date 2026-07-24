@@ -1666,3 +1666,40 @@ exactly the portable decimal + inf/infinity/nan set, so the explicit gate and th
 value parser agree, and both agree with §1.4. Verified classification on
 `0x1p4f 1_000.0f 1.2.3f 1ef ff` → symbol; `0.1f 1f 3.14f 1e9f .5f 1.f -2.5f +.5f
 1E9f inff nanf` → float.
+
+## 79. Numeric conversions `to-rat`/`to-float`/`floor` (§1.3, §2, §3, §7) — RESOLVED, two under-corpus'd directions read from prose
+
+Three overloaded unary primitives were added (`to-rat` : Int|Float → Rat;
+`to-float` : Int|Rat → Float; `floor` : Rat|Float → Int). They are NOT new O1
+type tags — they are prim operators like `fp-eq`, so identity/encoding is
+unchanged (the prim string goes into the existing 0x18 `prim` node). Typing
+(§2), dynamics (§3), and SMT (§7) are all spec-pinned, and the whole corpus is
+byte-identical (139 hashes, 126 verify, 308 scripts) with `int-embed`/
+`rat-floor`/`embed-add`/`tenth-f` PROVEN 1/1. No genuine ambiguity was found —
+the prose fully determines every direction — but two directions are exercised by
+the corpus only thinly (or not at all), so I record the reading I implemented in
+case a future fixture pins them differently.
+
+### Reading 1 — Rat→Float rounding (§3 "round to nearest binary64, ties to even")
+Only `to-float 1/10` is corpus-exercised (`tenth-f` ⇒ `0.1f`). A double-rounding
+shortcut (`n.to_f64() / d.to_f64()`) happens to give the right bits for `1/10`
+because both operands are small exact integers and a single IEEE divide is
+correctly rounded — but it is NOT correctly rounded for general rationals (three
+roundings). I implemented a genuine correctly-rounded bignum algorithm instead:
+scale `n/d` by a power of two so the floored quotient carries ≥ 54 bits
+(significand + guard) with a sticky bit from the remainder, normalize down to
+`[2^53, 2^54)`, then round-nearest-ties-even off the guard bit, with carry,
+overflow→±inf, and a subnormal re-rounding branch. This is my best reading of the
+prose ("nearest binary64, ties to even") applied to ALL rationals, not just the
+one the corpus tests. If a future fixture exercises a rational whose two readings
+disagree by an ULP, this is the intended behavior.
+
+### Reading 2 — Float→Rat / Float→Int exact value (§3 "exact for a finite float")
+No Float-source conversion appears in the corpus (they are partial — a runtime
+error on NaN/±inf — and outside the proof fragment, like `/` over `Int`). §3 says
+every finite binary64 is a dyadic rational; I decompose the IEEE fields exactly
+(implicit leading bit + bias 1075 for normals, `2^−1074` for subnormals, `±0 ↦
+0/1`) into `mant · 2^e`, then reduce. `floor` of a Float reuses the same exact
+decomposition and floors toward −∞. NaN/±inf (`exp == 0x7FF`) yield the
+division-by-zero-style runtime error. Spec-determined, but recorded because it is
+entirely un-exercised by fixtures.

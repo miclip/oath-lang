@@ -1,0 +1,9 @@
+{
+  "name": "third-f",
+  "hash": "8364dad02bbc6fcb767defa0c468c4c9f363bc99ae13bb48357db0c736486c3a",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

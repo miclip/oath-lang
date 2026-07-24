@@ -580,6 +580,34 @@ impl<'a> Checker<'a> {
                 }
                 Ok(Ty::Bool)
             }
+            // Numeric conversions (SPEC §2/§3): unary, overloaded by SOURCE type
+            // with a fixed result type. SYNTHESIZE the operand, admit only the
+            // two source kinds, then CHECK the operand against that kind; any
+            // other operand type is a type error.
+            "to-rat" | "to-float" | "floor" => {
+                if args.len() != 1 {
+                    return Err(arity_err(1));
+                }
+                let src = {
+                    let mut probe = args[0].clone();
+                    let mut pctx = ctx.clone();
+                    self.synth(&mut probe, &mut pctx)?
+                };
+                // (allowed source kinds, fixed result type) per conversion
+                let (ok, result) = match op {
+                    // Int|Float -> Rat
+                    "to-rat" => (matches!(src, Ty::Int | Ty::Float), Ty::Rat),
+                    // Int|Rat -> Float
+                    "to-float" => (matches!(src, Ty::Int | Ty::Rat), Ty::Float),
+                    // Rat|Float -> Int
+                    _ => (matches!(src, Ty::Rat | Ty::Float), Ty::Int),
+                };
+                if !ok {
+                    return Err(format!("{} applied to an unsupported operand type", op));
+                }
+                self.check(&mut args[0], &src, ctx)?;
+                Ok(result)
+            }
             "and" | "or" => {
                 if args.len() != 2 {
                     return Err(arity_err(2));

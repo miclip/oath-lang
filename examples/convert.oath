@@ -28,3 +28,10 @@
 (defn tenth-f [] [] Float
   (to-float 1/10)
   (prop is-point-one [] (== tenth-f 0.1f)))
+
+; PROVEN: 1/3 (non-dyadic — genuinely rounds) lands on the nearest binary64.
+; This pins Rat→Float round-nearest-even across both kernels: a wrong rounding
+; would falsify here and break the byte-identical verify transcript.
+(defn third-f [] [] Float
+  (to-float 1/3)
+  (prop rounds-nearest [] (== third-f 0.3333333333333333f)))
