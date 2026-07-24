@@ -1560,17 +1560,20 @@ precisely the class of divergence N-version testing exists to catch: identical
 observable outputs masking non-identical semantics. Pinning the rule in §4 makes
 the two kernels' `Rat` generators bit-for-bit identical.
 
-## 78. `Float` primitive (IEEE-754 binary64): three under-pinned byte surfaces
+## 78. `Float` primitive (IEEE-754 binary64): three byte surfaces — all now RESOLVED
 
 **Found by:** blind implementation of the new `Float` (IEEE-754 binary64)
 primitive from SPEC §1.1–1.5, §2, §3.2, §4, §7.1, plus `docs/floats.md`.
-**Outcome: conformance passes fully (oracle mode: checks 1–4 + the 303-script
-byte oracle; empirically z3 4.16.0 proves `f-mul-id` 1/1 and `f-double` 1/1 and
-falsifies `f-tenths` 0/1; the three `analyses/f-*.json` re-derive byte-identically
-from the float prove run).** Everything byte-observable is pinned and reproduced;
-three surfaces are under-pinned but not corpus-exercised, so the inferred reading
-could silently diverge from a differently-inferred kernel. All three are recorded
-here as the N-version findings.
+**Outcome: conformance passes fully (oracle mode: checks 1–4 + the 304-script
+byte oracle, 135 defs; empirically z3 4.16.0 proves `f-mul-id` 1/1 and
+`f-double` 1/1 and falsifies `f-tenths` 0/1 and `f-scale-inv` 0/1; the four
+`analyses/f-*.json` re-derive byte-identically from the float prove run).**
+
+Originally three surfaces were under-pinned (byte-observable but not exercised by
+any fixture), so an inferred reading could silently diverge from a differently
+inferred kernel — exactly the class N-version testing exists to surface. **All
+three were reported, then closed in the spec/corpus, and are now byte-verified or
+grammar-pinned. Findings below are updated with their resolutions.**
 
 Reproduced exactly (byte-pinned by fixtures):
 - Encoding: `Ty` tag `0x0A`, `Term` tag `0x20` = 8 raw big-endian binary64 bytes,
@@ -1604,43 +1607,62 @@ Reproduced exactly (byte-pinned by fixtures):
   `f-mul-id`/`f-double`, whose `(declare-const b0 Float64)` line the hash covers).
   `Float64` reproduces the hashes; `(_ FloatingPoint 11 53)` does not.
 
-### Finding 1 — float PRINTING (§3.2) is asserted but not byte-verified
+### Finding 1 (#78a) — float PRINTING (§3.2) — RESOLVED (now corpus-verified)
 §3.2 pins the finite-float print form to Go's `strconv.FormatFloat(f, 'g', -1,
 64)` (shortest round-tripping decimal, fixed-point within a bounded exponent range
 else lowercase-`e` scientific), with `f` suffix and specials `inff`/`-inff`/`nanf`.
-But the corpus **never prints a `Float` value**: the only float counterexample,
-`f-tenths`, is a NULLARY prop, so its `verify/f-tenths.txt` counterexample line is
-an empty inputs list (`counterexample: ` + trailing space) — confirmed
-byte-identical. Rust's native shortest-float formatter is not Go's `'g'`
-(different fixed-vs-scientific thresholds, different special spellings), so I
-implemented Go's `'g'` algorithm by hand (shortest digits + decimal-point position
-from Rust's `{:e}`, then the `exp<-4 || exp>=21` selection). This is asserted from
-the spec but **not pinned by any fixture** — a value like `1e21f` or `1e-5f` would
-be the first byte to distinguish a Go-`'g'` printer from a naive one, and the
-corpus contains none. If a future fixture prints a float, this is the most likely
-divergence point.
+Rust's native shortest-float formatter is not Go's `'g'` (different
+fixed-vs-scientific thresholds, different special spellings), so I implemented
+Go's `'g'` algorithm by hand (shortest digits + decimal-point position from Rust's
+`{:e}`, then the `exp<-4 || exp>=21` selection).
 
-### Finding 2 — SMT special-value literal rendering: §7.1 vs floats.md disagree
+*Originally* the corpus never printed a `Float` value (the only float
+counterexample then, `f-tenths`, is a NULLARY prop with an empty printed-inputs
+list), so this hand-rolled `'g'` printer was asserted from the spec but **not
+pinned by any fixture**.
+
+**RESOLVED.** The corpus gained `examples/float.oath : f-scale-inv` —
+`(== (* (/ x 10.0f) 10.0f) x)` — whose falsified counterexample is a messy
+non-round float. `fixtures/verify/f-scale-inv.txt` now pins the printed form, and
+this kernel reproduces it **byte-identically**:
+`    counterexample: -1.6666666666666667f`. That is a 17-significant-digit
+shortest-round-tripping decimal in fixed-point form — precisely the value that
+distinguishes a correct Go-`'g'` printer from a naive one — so float printing is
+now empirically cross-kernel verified, not merely asserted.
+
+### Finding 2 (#78b) — SMT special-value literal rendering — RESOLVED (doc fixed)
 §7.1 (normative) says a float literal renders **uniformly** as `(fp (_ bvS 1)
-(_ bvE 11) (_ bvM 52))` from its bits — which I implemented for all values,
-including NaN/±inf/±0. `docs/floats.md` (design note) instead says "literal →
-`(fp …)` / the appropriate FP constant (canonical NaN → `(_ NaN 11 53)`)",
-implying NaN → `(_ NaN 11 53)` and presumably `±inf → (_ ±oo 11 53)`. The two
-disagree on special values. No corpus float SMT script contains a special literal
-(the three scripts use only `0.1f 0.2f 0.3f 1.0f 2.0f`, all finite normals), so
-the choice is **unobservable** in the fixtures. I followed §7.1 (the normative
-document) — uniform `(fp …)`. A kernel that followed floats.md would produce
-identical bytes on the whole corpus and diverge only on a special-value literal
-that no fixture exercises.
+(_ bvE 11) (_ bvM 52))` from its bits — which I implemented for ALL values,
+including NaN/±inf/±0. `docs/floats.md` (a non-normative design note) had said
+"literal → `(fp …)` / the appropriate FP constant (canonical NaN →
+`(_ NaN 11 53)`)", implying special-value forms that §7.1 does not use. The two
+docs disagreed on special values; no corpus float SMT script contains a special
+literal (the scripts use only finite normals `0.1f 0.2f 0.3f 1.0f 2.0f 10.0f`), so
+the choice was **unobservable** in the fixtures. I followed §7.1 (the authoritative
+document) — uniform `(fp …)`.
 
-### Finding 3 — float lexing: Go `ParseFloat` vs Rust `f64` accept different tails
-The lexer rule is "a token ending in `f` whose prefix parses as a binary64"; §1.4
-and floats.md pin the acceptor to Go's `strconv.ParseFloat`. I used Rust's `f64`
-parser as the analog — for finite decimals (the entire corpus) both are correctly
-rounded and produce the identical binary64, verified via the SMT literal hashes.
-But the two acceptors are not identical on exotic prefixes: Go's `ParseFloat`
-accepts hex floats (`0x1p-2`) and digit separators (`1_000.0`); Rust's `f64`
-parser rejects both. So a token like `0x1p-2f` would lex as a `Float` under a Go
-kernel and as a `symbol` under this one — a classification (hence hash) divergence.
-No such token appears in the corpus or gate fixtures, so it is unobservable here;
-it is recorded as the boundary where the two lexers part.
+**RESOLVED.** §7.1 is confirmed authoritative and `docs/floats.md` was corrected to
+match — uniform `(fp (_ bvS 1) (_ bvE 11) (_ bvM 52))` for every value, no
+`(_ NaN …)`/`(_ ±oo …)` forms. My implementation already matched §7.1; no code
+change. Recorded here as the doc-inconsistency-now-fixed.
+
+### Finding 3 (#78c) — float lexing acceptor — RESOLVED (portable grammar pinned)
+The original lexer rule was "a token ending in `f` whose prefix parses as a
+binary64", pinned to Go's `strconv.ParseFloat`. Go's `ParseFloat` accepts hex
+floats (`0x1p-2`) and digit separators (`1_000.0`); a naive host-parser analog
+might accept a different exotic set, so a token like `0x1p-2f` could lex as a
+`Float` under one kernel and a `symbol` under another — a classification (hence
+hash) divergence, unobservable in the then-current corpus.
+
+**RESOLVED.** §1.4 was tightened to a PORTABLE, host-independent grammar:
+`[+-]?( D+ (. D*)? | . D+ )([eE][+-]?D+)?` or case-insensitive
+`[+-]?(inf|infinity|nan)`; hex floats and underscore separators are explicitly NOT
+float literals (they fall through to symbols). I now check this grammar
+**explicitly** in `parse_float`/`is_portable_float_syntax` (ASCII digits only, at
+most one `.`, `[+-]?D+` exponent), rather than delegating classification to the
+host float parser — so the kernel encodes §1.4 directly. Confirmed: Rust's own
+`f64` parser already rejects `0x1p4`/`0x1.8p3`/`1_000.0`/`1_0`/`0b101` and accepts
+exactly the portable decimal + inf/infinity/nan set, so the explicit gate and the
+value parser agree, and both agree with §1.4. Verified classification on
+`0x1p4f 1_000.0f 1.2.3f 1ef ff` → symbol; `0.1f 1f 3.14f 1e9f .5f 1.f -2.5f +.5f
+1E9f inff nanf` → float.
