@@ -1674,25 +1674,32 @@ Three overloaded unary primitives were added (`to-rat` : Int|Float → Rat;
 type tags — they are prim operators like `fp-eq`, so identity/encoding is
 unchanged (the prim string goes into the existing 0x18 `prim` node). Typing
 (§2), dynamics (§3), and SMT (§7) are all spec-pinned, and the whole corpus is
-byte-identical (139 hashes, 126 verify, 308 scripts) with `int-embed`/
-`rat-floor`/`embed-add`/`tenth-f` PROVEN 1/1. No genuine ambiguity was found —
-the prose fully determines every direction — but two directions are exercised by
-the corpus only thinly (or not at all), so I record the reading I implemented in
-case a future fixture pins them differently.
+byte-identical (140 hashes, 127 verify, 309 scripts) with `int-embed`/
+`rat-floor`/`embed-add`/`tenth-f`/`third-f` PROVEN 1/1. No genuine ambiguity was
+found — the prose fully determines every direction — but one direction was
+initially exercised by the corpus only thinly and another not at all, so I record
+the reading I implemented in case a future fixture pins them differently.
 
-### Reading 1 — Rat→Float rounding (§3 "round to nearest binary64, ties to even")
-Only `to-float 1/10` is corpus-exercised (`tenth-f` ⇒ `0.1f`). A double-rounding
-shortcut (`n.to_f64() / d.to_f64()`) happens to give the right bits for `1/10`
-because both operands are small exact integers and a single IEEE divide is
-correctly rounded — but it is NOT correctly rounded for general rationals (three
-roundings). I implemented a genuine correctly-rounded bignum algorithm instead:
-scale `n/d` by a power of two so the floored quotient carries ≥ 54 bits
-(significand + guard) with a sticky bit from the remainder, normalize down to
-`[2^53, 2^54)`, then round-nearest-ties-even off the guard bit, with carry,
-overflow→±inf, and a subnormal re-rounding branch. This is my best reading of the
-prose ("nearest binary64, ties to even") applied to ALL rationals, not just the
-one the corpus tests. If a future fixture exercises a rational whose two readings
-disagree by an ULP, this is the intended behavior.
+### Reading 1 — Rat→Float rounding (§3 "round to nearest binary64, ties to even") — RESOLVED (now corpus-verified at 1/10 AND 1/3)
+Originally only `to-float 1/10` was corpus-exercised (`tenth-f` ⇒ `0.1f`). A
+double-rounding shortcut (`n.to_f64() / d.to_f64()`) happens to give the right
+bits for `1/10` because both operands are small exact integers and a single IEEE
+divide is correctly rounded — but it is NOT correctly rounded for general
+rationals (three roundings). I implemented a genuine correctly-rounded bignum
+algorithm instead: scale `n/d` by a power of two so the floored quotient carries
+≥ 54 bits (significand + guard) with a sticky bit from the remainder, normalize
+down to `[2^53, 2^54)`, then round-nearest-ties-even off the guard bit, with
+carry, overflow→±inf, and a subnormal re-rounding branch. This is my best reading
+of the prose ("nearest binary64, ties to even") applied to ALL rationals.
+
+**RESOLVED.** The corpus added `third-f` ⇒ `(to-float 1/3) == 0.3333333333333333f`.
+`1/3` is non-dyadic, so it genuinely rounds (unlike `1/10` via the shortcut), and
+a wrong rounding would falsify the property and break the transcript. My kernel
+reproduces `third-f` byte-identically — hash `8364dad0…`, verify 200/200, SMT
+script byte-identical, PROVEN 1/1 (z3 confirms `((_ to_fp 11 53) RNE (/ 1 3))`
+equals the `0.3333333333333333f` bit pattern). So the Rat→Float direction is now
+corpus-pinned at two witnesses (dyadic `1/10` and non-dyadic `1/3`), agreeing at
+both. The correctly-rounded algorithm is the confirmed reading.
 
 ### Reading 2 — Float→Rat / Float→Int exact value (§3 "exact for a finite float")
 No Float-source conversion appears in the corpus (they are partial — a runtime
