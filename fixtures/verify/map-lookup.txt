@@ -1,2 +1,1 @@
-✓ prop finds-inserted           passed 200 cases
-✓ prop skips-other-key          passed 200 cases
+✓ prop empty-has-none           passed 200 cases

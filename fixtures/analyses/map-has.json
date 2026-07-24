@@ -1,6 +1,6 @@
 {
   "name": "map-has",
-  "hash": "106173c1430f9e895cd58532b18af9591d4d9ad28524c9520132139adafa0067",
+  "hash": "958230af579ca2992e43a438310cd58c483a46844e2dc41df85cad2b03b35644",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
@@ -9,7 +9,6 @@
   ],
   "mutants_killed": 2,
   "mutants_total": 2,
-  "level": "proven",
-  "cases": 200,
-  "proven": 1
+  "level": "tested",
+  "cases": 200
 }

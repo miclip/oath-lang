@@ -1,15 +1,14 @@
 {
   "name": "map-merge",
-  "hash": "4f405d1e9c316247f1833d9d0e1ad422c6511a53688c5b733c8eea03cf12ace6",
+  "hash": "a4bcf8b7fee8ab0f1e1401689f29fcd276cbbfa70208bd1a495586aeb1f1c784",
   "kind": "func",
-  "termination": "structural",
+  "termination": "nonrecursive",
   "confinement": [
     "",
     ""
   ],
-  "mutants_killed": 2,
-  "mutants_total": 5,
-  "level": "proven",
-  "cases": 200,
-  "proven": 2
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "level": "tested",
+  "cases": 200
 }

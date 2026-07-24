@@ -1,2 +1,1 @@
-✓ prop insert-commutes          passed 200 cases
-✓ prop insert-overwrites        passed 200 cases
+✓ prop finds-inserted           passed 200 cases

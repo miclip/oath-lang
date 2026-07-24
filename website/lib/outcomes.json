@@ -1058,6 +1058,19 @@
       ]
     },
     {
+      "name": "map-empty",
+      "hash": "09cf1ccec66bab85fe124518fbcea28358eada982c325161fed70f29f17bbed2",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "is-empty",
+          "proven": false
+        }
+      ]
+    },
+    {
       "name": "map-err",
       "hash": "895fa0dbd9fbb14aa5af561a96771d500543f5f8ec88e47a5a00d12224d3ffe3",
       "level": "proven",
@@ -1076,78 +1089,70 @@
     },
     {
       "name": "map-has",
-      "hash": "106173c1430f9e895cd58532b18af9591d4d9ad28524c9520132139adafa0067",
-      "level": "proven",
-      "proven_count": 1,
+      "hash": "958230af579ca2992e43a438310cd58c483a46844e2dc41df85cad2b03b35644",
+      "level": "tested",
+      "proven_count": 0,
       "prop_count": 1,
       "props": [
         {
           "name": "present-after-insert",
-          "proven": true
+          "proven": false
         }
       ]
     },
     {
       "name": "map-insert",
-      "hash": "4e12bec29b1e4546ceedf318bbfa092701ae5e3aaacb8ea9c9db443c76e1e71c",
-      "level": "proven",
-      "proven_count": 2,
-      "prop_count": 2,
+      "hash": "d572389add28126f29aedb444c1dc473e1c05f226d6ef280e042d22ca0e94fe5",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
       "props": [
         {
-          "name": "insert-commutes",
-          "proven": true
-        },
-        {
-          "name": "insert-overwrites",
-          "proven": true
+          "name": "finds-inserted",
+          "proven": false
         }
       ]
     },
     {
       "name": "map-keys",
-      "hash": "57cdd57a0160584a0365de36908b6100c1197dc6a21447085bde012ff1e2c711",
-      "level": "proven",
-      "proven_count": 1,
+      "hash": "89b0724159ec1315b9bdd44160642192f24f7ddaaf7afe2005631b9d6e755601",
+      "level": "tested",
+      "proven_count": 0,
       "prop_count": 1,
       "props": [
         {
-          "name": "preserves-length",
-          "proven": true
+          "name": "counts-entries",
+          "proven": false
         }
       ]
     },
     {
       "name": "map-lookup",
-      "hash": "3c94693c578480eab668d38c8ed60cc08bf17fbcc61d617bbde2555c0a767172",
-      "level": "proven",
-      "proven_count": 2,
-      "prop_count": 2,
+      "hash": "937d56cee9ade4340887340f34b73fc27b3c8b933fa3d8749e5fd4766adbc0de",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
       "props": [
         {
-          "name": "finds-inserted",
-          "proven": true
-        },
-        {
-          "name": "skips-other-key",
-          "proven": true
+          "name": "empty-has-none",
+          "proven": false
         }
       ]
     },
     {
       "name": "map-merge",
-      "hash": "4f405d1e9c316247f1833d9d0e1ad422c6511a53688c5b733c8eea03cf12ace6",
-      "level": "proven",
-      "proven_count": 2,
+      "hash": "a4bcf8b7fee8ab0f1e1401689f29fcd276cbbfa70208bd1a495586aeb1f1c784",
+      "level": "tested",
+      "proven_count": 0,
       "prop_count": 2,
       "props": [
         {
           "name": "empty-left",
-          "proven": true
+          "proven": false
         },
         {
           "name": "prefers-left",
-          "proven": true
+          "proven": false
         }
       ]
     },
@@ -1187,31 +1192,27 @@
     },
     {
       "name": "map-size",
-      "hash": "a0836550ca64ebe283b7b1d4055812828e61be3cd5980818eb096cf4f596ccd2",
-      "level": "proven",
-      "proven_count": 2,
-      "prop_count": 2,
+      "hash": "1d96b6899013c33428ff30c5e6e825db9fd7af4949e48570a1f55d1f3fd5d4cc",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
       "props": [
         {
           "name": "non-negative",
-          "proven": true
-        },
-        {
-          "name": "keys-account",
-          "proven": true
+          "proven": false
         }
       ]
     },
     {
       "name": "map-values",
-      "hash": "41bedb35fab25af79188234c7a8e663a9c82adc41ac0e65f1774188dd690723c",
-      "level": "proven",
-      "proven_count": 1,
+      "hash": "ac0ad30f71d3b3ec9f9b38579b54e8427fc31f95d4beedd373a4e554c807528c",
+      "level": "tested",
+      "proven_count": 0,
       "prop_count": 1,
       "props": [
         {
-          "name": "preserves-length",
-          "proven": true
+          "name": "counts-entries",
+          "proven": false
         }
       ]
     },
@@ -1295,6 +1296,71 @@
         },
         {
           "name": "keeps-sortedness",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "mi-insert",
+      "hash": "14fec16a5691ac2f65cb527016d20702649aad719106143cc262fdad3f62ed6e",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "finds",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "mi-keys",
+      "hash": "57cdd57a0160584a0365de36908b6100c1197dc6a21447085bde012ff1e2c711",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "preserves-length",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "mi-lookup",
+      "hash": "a626e5d5b52741ca0b4d9cdc6c2af17d7f06b7b88cc741d34343c32b73c086b3",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "empty",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "mi-merge",
+      "hash": "f669a4ca27c825a4289ff11d81779500ae0e12f137e45d33003ec31a97d812a8",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "empty-left",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "mi-values",
+      "hash": "41bedb35fab25af79188234c7a8e663a9c82adc41ac0e65f1774188dd690723c",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "preserves-length",
           "proven": true
         }
       ]

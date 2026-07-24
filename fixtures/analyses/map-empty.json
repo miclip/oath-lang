@@ -1,0 +1,8 @@
+{
+  "name": "map-empty",
+  "hash": "09cf1ccec66bab85fe124518fbcea28358eada982c325161fed70f29f17bbed2",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "level": "tested",
+  "cases": 200
+}

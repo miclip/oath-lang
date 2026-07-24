@@ -1,67 +1,86 @@
-; Canonical map: a STRICTLY-SORTED-BY-KEY, duplicate-free List (Pair Int Int).
-; map-insert keeps it sorted and replaces on a key collision, so equal maps have
-; equal identity no matter how they were built — semantic identity for a
-; content-addressed substrate. (#37)
+; Map: a DISTINCT type (Int keys → Int values) backed by a strictly-sorted-by-
+; key, duplicate-free List (Pair Int Int). As with Set, making it a type is what
+; lets the compiler back it with a native Go map — proven correct against this
+; structural model by the differential gate (docs/native-containers.md). The
+; sorted representation is unique per map, so identity stays semantic. (#37)
+;
+; Recursion and the deep proofs live in the raw sorted-assoc-list helpers mi-*;
+; the map-* operations are thin, non-recursive wrappers over the MkMap newtype —
+; the vocabulary the compiler recognizes and lowers to native Go-map code.
 
-(defn map-insert [] [(k Int) (v Int) (m (List (Pair Int Int)))] (List (Pair Int Int))
-  (match m
-    ((Nil) (Cons [(Pair Int Int)] (Pair [Int Int] k v) (Nil [(Pair Int Int)])))
-    ((Cons p t)
-      (match p
-        ((Pair pk pv)
-          (if (< k pk) (Cons [(Pair Int Int)] (Pair [Int Int] k v) m)
-              (if (== k pk) (Cons [(Pair Int Int)] (Pair [Int Int] k v) t)
-                  (Cons [(Pair Int Int)] p (map-insert k v t))))))))
-  (prop insert-commutes [(k1 Int) (v1 Int) (k2 Int) (v2 Int) (m (List (Pair Int Int)))]
-    (if (not (== k1 k2))
-        (== (map-insert k1 v1 (map-insert k2 v2 m)) (map-insert k2 v2 (map-insert k1 v1 m)))
-        true))
-  (prop insert-overwrites [(k Int) (v Int) (w Int) (m (List (Pair Int Int)))]
-    (== (map-insert k v (map-insert k w m)) (map-insert k v m))))
+(data Map [] (MkMap (List (Pair Int Int))))
 
-(defn map-lookup [] [(k Int) (m (List (Pair Int Int)))] (Option Int)
+(defn mi-lookup [] [(k Int) (m (List (Pair Int Int)))] (Option Int)
   (match m
     ((Nil) (None [Int]))
-    ((Cons p t)
-      (match p
-        ((Pair pk pv)
-          (if (== k pk) (Some [Int] pv)
-              (if (< k pk) (None [Int]) (map-lookup k t)))))))
-  (prop finds-inserted [(k Int) (v Int) (m (List (Pair Int Int)))]
-    (== (map-lookup k (map-insert k v m)) (Some [Int] v)))
-  (prop skips-other-key [(k Int) (v Int) (j Int) (m (List (Pair Int Int)))]
-    (if (not (== j k)) (== (map-lookup j (map-insert k v m)) (map-lookup j m)) true)))
+    ((Cons p t) (match p ((Pair pk pv)
+      (if (== k pk) (Some [Int] pv) (if (< k pk) (None [Int]) (mi-lookup k t)))))))
+  (prop empty [(k Int)] (== (mi-lookup k (Nil [(Pair Int Int)])) (None [Int]))))
 
-(defn map-has [] [(k Int) (m (List (Pair Int Int)))] Bool
+(defn mi-insert [] [(k Int) (v Int) (m (List (Pair Int Int)))] (List (Pair Int Int))
+  (match m
+    ((Nil) (Cons [(Pair Int Int)] (Pair [Int Int] k v) (Nil [(Pair Int Int)])))
+    ((Cons p t) (match p ((Pair pk pv)
+      (if (< k pk) (Cons [(Pair Int Int)] (Pair [Int Int] k v) m)
+          (if (== k pk) (Cons [(Pair Int Int)] (Pair [Int Int] k v) t)
+              (Cons [(Pair Int Int)] p (mi-insert k v t))))))))
+  (prop finds [(k Int) (v Int) (m (List (Pair Int Int)))]
+    (== (mi-lookup k (mi-insert k v m)) (Some [Int] v))))
+
+(defn mi-keys [] [(m (List (Pair Int Int)))] (List Int)
+  (match m
+    ((Nil) (Nil [Int]))
+    ((Cons p t) (match p ((Pair pk pv) (Cons [Int] pk (mi-keys t))))))
+  (prop preserves-length [(m (List (Pair Int Int)))]
+    (== (length [Int] (mi-keys m)) (length [(Pair Int Int)] m))))
+
+(defn mi-values [] [(m (List (Pair Int Int)))] (List Int)
+  (match m
+    ((Nil) (Nil [Int]))
+    ((Cons p t) (match p ((Pair pk pv) (Cons [Int] pv (mi-values t))))))
+  (prop preserves-length [(m (List (Pair Int Int)))]
+    (== (length [Int] (mi-values m)) (length [(Pair Int Int)] m))))
+
+; left-biased merge: entries of the first argument win on a key collision.
+(defn mi-merge [] [(xs (List (Pair Int Int))) (ys (List (Pair Int Int)))] (List (Pair Int Int))
+  (match xs
+    ((Nil) ys)
+    ((Cons p t) (match p ((Pair k v) (mi-insert k v (mi-merge t ys))))))
+  (prop empty-left [(ys (List (Pair Int Int)))] (== (mi-merge (Nil [(Pair Int Int)]) ys) ys)))
+
+(defn map-lookup [] [(k Int) (m Map)] (Option Int)
+  (match m ((MkMap ps) (mi-lookup k ps)))
+  (prop empty-has-none [(k Int)]
+    (== (map-lookup k (MkMap (Nil [(Pair Int Int)]))) (None [Int]))))
+
+(defn map-empty [] [] Map
+  (MkMap (Nil [(Pair Int Int)]))
+  (prop is-empty [(k Int)] (== (map-lookup k map-empty) (None [Int]))))
+
+(defn map-insert [] [(k Int) (v Int) (m Map)] Map
+  (match m ((MkMap ps) (MkMap (mi-insert k v ps))))
+  (prop finds-inserted [(k Int) (v Int) (m Map)]
+    (== (map-lookup k (map-insert k v m)) (Some [Int] v))))
+
+(defn map-has [] [(k Int) (m Map)] Bool
   (match (map-lookup k m) ((None) false) ((Some v) true))
-  (prop present-after-insert [(k Int) (v Int) (m (List (Pair Int Int)))]
+  (prop present-after-insert [(k Int) (v Int) (m Map)]
     (map-has k (map-insert k v m))))
 
-(defn map-keys [] [(m (List (Pair Int Int)))] (List Int)
-  (match m
-    ((Nil) (Nil [Int]))
-    ((Cons p t) (match p ((Pair pk pv) (Cons [Int] pk (map-keys t))))))
-  (prop preserves-length [(m (List (Pair Int Int)))]
-    (== (length [Int] (map-keys m)) (length [(Pair Int Int)] m))))
+(defn map-size [] [(m Map)] Int
+  (match m ((MkMap ps) (length [(Pair Int Int)] ps)))
+  (prop non-negative [(m Map)] (<= 0 (map-size m))))
 
-(defn map-values [] [(m (List (Pair Int Int)))] (List Int)
-  (match m
-    ((Nil) (Nil [Int]))
-    ((Cons p t) (match p ((Pair pk pv) (Cons [Int] pv (map-values t))))))
-  (prop preserves-length [(m (List (Pair Int Int)))]
-    (== (length [Int] (map-values m)) (length [(Pair Int Int)] m))))
+(defn map-keys [] [(m Map)] (List Int)
+  (match m ((MkMap ps) (mi-keys ps)))
+  (prop counts-entries [(m Map)] (== (length [Int] (map-keys m)) (map-size m))))
 
-(defn map-size [] [(m (List (Pair Int Int)))] Int
-  (length [(Pair Int Int)] m)
-  (prop non-negative [(m (List (Pair Int Int)))] (<= 0 (map-size m)))
-  (prop keys-account [(m (List (Pair Int Int)))]
-    (== (map-size m) (length [Int] (map-keys m)))))
+(defn map-values [] [(m Map)] (List Int)
+  (match m ((MkMap ps) (mi-values ps)))
+  (prop counts-entries [(m Map)] (== (length [Int] (map-values m)) (map-size m))))
 
-; left-biased merge: every entry of a wins over b's same key. Canonical result.
-(defn map-merge [] [(a (List (Pair Int Int))) (b (List (Pair Int Int)))] (List (Pair Int Int))
-  (match a
-    ((Nil) b)
-    ((Cons p t) (match p ((Pair k v) (map-insert k v (map-merge t b))))))
-  (prop empty-left [(b (List (Pair Int Int)))] (== (map-merge (Nil [(Pair Int Int)]) b) b))
-  (prop prefers-left [(k Int) (v Int) (b (List (Pair Int Int)))]
-    (== (map-lookup k (map-merge (map-insert k v (Nil [(Pair Int Int)])) b)) (Some [Int] v))))
+(defn map-merge [] [(a Map) (b Map)] Map
+  (match a ((MkMap xs) (match b ((MkMap ys) (MkMap (mi-merge xs ys))))))
+  (prop empty-left [(b Map)] (== (map-merge map-empty b) b))
+  (prop prefers-left [(k Int) (v Int) (b Map)]
+    (== (map-lookup k (map-merge (map-insert k v map-empty) b)) (Some [Int] v))))

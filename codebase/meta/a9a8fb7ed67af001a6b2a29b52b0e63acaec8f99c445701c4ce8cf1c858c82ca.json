@@ -1,0 +1,12 @@
+{
+  "name": "Map",
+  "ctor_names": [
+    "MkMap"
+  ],
+  "guarantee": {
+    "level": "asserted"
+  },
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main"
+}

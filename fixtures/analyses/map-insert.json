@@ -1,16 +1,15 @@
 {
   "name": "map-insert",
-  "hash": "4e12bec29b1e4546ceedf318bbfa092701ae5e3aaacb8ea9c9db443c76e1e71c",
+  "hash": "d572389add28126f29aedb444c1dc473e1c05f226d6ef280e042d22ca0e94fe5",
   "kind": "func",
-  "termination": "structural",
+  "termination": "nonrecursive",
   "confinement": [
     "",
     "",
     ""
   ],
-  "mutants_killed": 9,
-  "mutants_total": 10,
-  "level": "proven",
-  "cases": 200,
-  "proven": 2
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "level": "tested",
+  "cases": 200
 }

@@ -184,7 +184,8 @@ type emitter struct {
 	seen    map[string]bool
 	strHash string // hash of the Str datatype; its values compile to Go strings
 	setHash string // hash of the Set datatype; its values compile to native osets
-	setOps  map[string]setOp // recognized Set-op hashes → native helper + arity
+	mapHash string // hash of the Map datatype; its values compile to native omaps
+	setOps  map[string]setOp // recognized Set/Map-op hashes → native helper + arity
 	// Type tracking for record field resolution: the kernel's own checker,
 	// threaded alongside compilation. ctx mirrors the de Bruijn env.
 	chk *checker
@@ -198,8 +199,9 @@ type setOp struct {
 	arity  int
 }
 
-// setOpTable maps the recognized Set-operation names to their native lowering.
-// A Set flows at runtime as an oset; these helpers keep it in that form.
+// setOpTable maps the recognized Set/Map-operation names to their native
+// lowering. A Set flows at runtime as an oset and a Map as an omap; these
+// helpers keep values in that form. Arity is the SATURATED argument count.
 var setOpTable = map[string]setOp{
 	"set-empty":  {"osetEmpty", 0},
 	"set-member": {"osetMember", 2},
@@ -208,12 +210,21 @@ var setOpTable = map[string]setOp{
 	"set-inter":  {"osetInter", 2},
 	"set-size":   {"osetSize", 1},
 	"set-elems":  {"osetElems", 1},
+	"map-empty":  {"omapEmpty", 0},
+	"map-insert": {"omapInsert", 3},
+	"map-lookup": {"omapLookup", 2},
+	"map-has":    {"omapHas", 2},
+	"map-keys":   {"omapKeys", 1},
+	"map-values": {"omapValues", 1},
+	"map-size":   {"omapSize", 1},
+	"map-merge":  {"omapMerge", 2},
 }
 
-// resolveNativeContainers records the Set datatype hash and the recognized
-// Set-operation hashes, so the compiler can lower them to native oset code.
+// resolveNativeContainers records the Set/Map datatype hashes and the recognized
+// operation hashes, so the compiler can lower them to native oset/omap code.
 func (e *emitter) resolveNativeContainers() {
 	e.setHash, _ = e.st.Resolve("Set")
+	e.mapHash, _ = e.st.Resolve("Map")
 	e.setOps = map[string]setOp{}
 	for name, op := range setOpTable {
 		if h, ok := e.st.Resolve(name); ok {
@@ -395,6 +406,90 @@ func osetFromList(l any) any {
 	for c := l.(*ctorV); c.idx == 1; c = c.fields[1].(*ctorV) {
 		xi := c.fields[0].(*big.Int)
 		n[xi.String()] = xi
+	}
+	return any(n)
+}
+
+// omap is the native representation of a Map: a hash map keyed by the key's
+// canonical decimal, mapping to the (key, value) entry. Lookup/has/size are
+// O(1); pure updates copy-on-write; boundaries (keys/values/match) materialize
+// the key-sorted entries so the compiled Map agrees with the structural model.
+type omapEnt struct {
+	k *big.Int
+	v any
+}
+type omap = map[string]omapEnt
+
+func omapEmpty() any { return omap{} }
+func omapInsert(k, v, m any) any {
+	old := m.(omap)
+	n := make(omap, len(old)+1)
+	for kk, vv := range old {
+		n[kk] = vv
+	}
+	ki := k.(*big.Int)
+	n[ki.String()] = omapEnt{ki, v}
+	return any(n)
+}
+func omapLookup(k, m any) any {
+	if e, ok := m.(omap)[k.(*big.Int).String()]; ok {
+		return &ctorV{idx: 1, fields: []any{e.v}} // Some v
+	}
+	return &ctorV{idx: 0} // None
+}
+func omapHas(k, m any) any { _, ok := m.(omap)[k.(*big.Int).String()]; return any(ok) }
+func omapSize(m any) any   { return any(big.NewInt(int64(len(m.(omap))))) }
+func omapSorted(m any) []omapEnt {
+	mm := m.(omap)
+	es := make([]omapEnt, 0, len(mm))
+	for _, e := range mm {
+		es = append(es, e)
+	}
+	sort.Slice(es, func(i, j int) bool { return es[i].k.Cmp(es[j].k) < 0 })
+	return es
+}
+func omapKeys(m any) any {
+	var lst any = &ctorV{idx: 0}
+	es := omapSorted(m)
+	for i := len(es) - 1; i >= 0; i-- {
+		lst = &ctorV{idx: 1, fields: []any{es[i].k, lst}}
+	}
+	return lst
+}
+func omapValues(m any) any {
+	var lst any = &ctorV{idx: 0}
+	es := omapSorted(m)
+	for i := len(es) - 1; i >= 0; i-- {
+		lst = &ctorV{idx: 1, fields: []any{es[i].v, lst}}
+	}
+	return lst
+}
+func omapPairs(m any) any {
+	var lst any = &ctorV{idx: 0}
+	es := omapSorted(m)
+	for i := len(es) - 1; i >= 0; i-- {
+		pair := &ctorV{idx: 0, fields: []any{es[i].k, es[i].v}}
+		lst = &ctorV{idx: 1, fields: []any{pair, lst}}
+	}
+	return lst
+}
+func omapMerge(a, b any) any {
+	// left-biased: entries of a win on a key collision.
+	n := make(omap)
+	for k, e := range b.(omap) {
+		n[k] = e
+	}
+	for k, e := range a.(omap) {
+		n[k] = e
+	}
+	return any(n)
+}
+func omapFromList(l any) any {
+	n := omap{}
+	for c := l.(*ctorV); c.idx == 1; c = c.fields[1].(*ctorV) {
+		p := c.fields[0].(*ctorV) // Pair k v
+		ki := p.fields[0].(*big.Int)
+		n[ki.String()] = omapEnt{ki, p.fields[1]}
 	}
 	return any(n)
 }
@@ -612,11 +707,14 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 			// SCons Int Str: fields[0] = codepoint, fields[1] = rest (a Go string)
 			return fmt.Sprintf("any(string(rune(%s.(*big.Int).Int64())) + %s.(string))", parts[0], parts[1]), nil
 		}
-		// Set values are native osets: the MkSet constructor wraps a (List Int),
-		// so build the oset from that list (keeping the representation uniform
-		// even when a Set is constructed directly rather than via a Set op).
+		// Set/Map values are native osets/omaps: the MkSet/MkMap constructor wraps
+		// a list, so build the native map from it (keeping the representation
+		// uniform even when constructed directly rather than via an operation).
 		if t.Hash == e.setHash && e.setHash != "" {
 			return fmt.Sprintf("osetFromList(%s)", parts[0]), nil
+		}
+		if t.Hash == e.mapHash && e.mapHash != "" {
+			return fmt.Sprintf("omapFromList(%s)", parts[0]), nil
 		}
 		return fmt.Sprintf("(&ctorV{idx: %d, fields: []any{%s}})", t.Idx, strings.Join(parts, ", ")), nil
 	case "match":
@@ -640,6 +738,17 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 				return "", err
 			}
 			return fmt.Sprintf("(func(env []any) any { return %s }(append(append([]any{}, env...), osetElems(%s))))", arm, s), nil
+		}
+		// Match on a Map: one constructor (MkMap), irrefutable; its bound var is
+		// the key-sorted (List (Pair Int Int)) materialized from the omap.
+		if t.Hash == e.mapHash && e.mapHash != "" {
+			e.ctx = append(e.ctx, &Ty{K: "data"})
+			arm, err := e.expr(&t.Arms[0], depth+1, self)
+			e.ctx = e.ctx[:len(e.ctx)-1]
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("(func(env []any) any { return %s }(append(append([]any{}, env...), omapPairs(%s))))", arm, s), nil
 		}
 		md, err := e.st.GetDef(t.Hash)
 		if err != nil {

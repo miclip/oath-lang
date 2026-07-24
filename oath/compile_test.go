@@ -264,6 +264,75 @@ func TestCompileNativeSetDifferential(t *testing.T) {
 	}
 }
 
+// Native Map (containers): a Map compiles to a native Go map (omap) keyed by
+// the key's canonical form; recognized map-* ops lower to O(1) helpers, and
+// lookup returns a real Option ctorV (None/Some). The differential gate checks
+// the compiled omap agrees with the interpreter's sorted-assoc-list model:
+// insert overwrites on a repeated key, lookup finds the latest value and misses
+// an absent key, and the boundary (match/keys) stays key-sorted.
+func TestCompileNativeMapDifferential(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go toolchain not available")
+	}
+	st := newStore(t)
+	put(t, st, `(data Str [] (SNil) (SCons Int Str))`)
+	put(t, st, `(data List [a] (Nil) (Cons a (List a)))`)
+	put(t, st, `(data Option [a] (None) (Some a))`)
+	put(t, st, `(data Pair [a b] (Pair a b))`)
+	put(t, st, `(data Map [] (MkMap (List (Pair Int Int))))`)
+	put(t, st, `(defn length [a] [(xs (List a))] Int
+		(match xs ((Nil) 0) ((Cons h t) (+ 1 (length [a] t)))))`)
+	put(t, st, `(defn mi-lookup [] [(k Int) (m (List (Pair Int Int)))] (Option Int)
+		(match m ((Nil) (None [Int]))
+			((Cons p t) (match p ((Pair pk pv)
+				(if (== k pk) (Some [Int] pv) (if (< k pk) (None [Int]) (mi-lookup k t))))))))`)
+	put(t, st, `(defn mi-insert [] [(k Int) (v Int) (m (List (Pair Int Int)))] (List (Pair Int Int))
+		(match m ((Nil) (Cons [(Pair Int Int)] (Pair [Int Int] k v) (Nil [(Pair Int Int)])))
+			((Cons p t) (match p ((Pair pk pv)
+				(if (< k pk) (Cons [(Pair Int Int)] (Pair [Int Int] k v) m)
+					(if (== k pk) (Cons [(Pair Int Int)] (Pair [Int Int] k v) t)
+						(Cons [(Pair Int Int)] p (mi-insert k v t)))))))))`)
+	put(t, st, `(defn map-empty [] [] Map (MkMap (Nil [(Pair Int Int)])))`)
+	put(t, st, `(defn map-insert [] [(k Int) (v Int) (m Map)] Map (match m ((MkMap ps) (MkMap (mi-insert k v ps)))))`)
+	put(t, st, `(defn map-lookup [] [(k Int) (m Map)] (Option Int) (match m ((MkMap ps) (mi-lookup k ps))))`)
+	put(t, st, `(defn map-has [] [(k Int) (m Map)] Bool (match (map-lookup k m) ((None) false) ((Some v) true)))`)
+	// m = {2:20, 1:10, 2:99} inserted in that order → key 2 overwritten to 99.
+	// lookup 2 = Some 99, lookup 3 = None, has 1 = true. Report as a word.
+	put(t, st, `(defn mapq [] [(args (List Str))] Str
+		(match (map-lookup 2 (map-insert 2 99 (map-insert 1 10 (map-insert 2 20 map-empty))))
+			((None) "none")
+			((Some v) (if (== v 99)
+				(if (map-has 3 (map-insert 1 10 map-empty)) "wrong" "overwrote")
+				"stale"))))`)
+
+	h, ok := st.Resolve("mapq")
+	if !ok {
+		t.Fatal("mapq not in store")
+	}
+	src, err := emitProgram(st, h, nil)
+	if err != nil {
+		t.Fatalf("emitProgram: %v", err)
+	}
+	if !strings.Contains(src, "omapInsert(") || !strings.Contains(src, "omapLookup(") {
+		t.Fatalf("expected native omap ops in generated source")
+	}
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte(src), 0o644)
+	os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module oathprog\n\ngo 1.25\n"), 0o644)
+	bin := filepath.Join(dir, "prog")
+	if out, err := runIn(dir, "go", "build", "-o", bin, "."); err != nil {
+		t.Fatalf("go build failed:\n%s", out)
+	}
+	out, err := exec.Command(bin).Output()
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	// Interpreter: latest value for key 2 is 99, key 3 absent → "overwrote".
+	if got := strings.TrimRight(string(out), "\n"); got != "overwrote" {
+		t.Fatalf("compiled mapq = %q, want %q (native Map diverged from the structural model)", got, "overwrote")
+	}
+}
+
 func runIn(dir, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir

@@ -1,0 +1,14 @@
+{
+  "name": "mi-values",
+  "hash": "41bedb35fab25af79188234c7a8e663a9c82adc41ac0e65f1774188dd690723c",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}
