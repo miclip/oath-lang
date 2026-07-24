@@ -441,6 +441,65 @@ func apiFindImplies(st *Store, src string) (string, error) {
 	return b.String(), nil
 }
 
+// apiFindEquiv is spec-query by BODY-EQUIVALENCE (the e-graph rung): find every
+// definition that is the SAME FUNCTION as this one up to the rewrite rules
+// (currently commutativity) — a different implementation that normalizes to the
+// same canonical form. Matched by eHash (signature + e-normalized body), which
+// is a discovery key ONLY: the matched definitions keep their distinct
+// identities; the e-graph draws an equivalence edge, it never merges objects.
+func apiFindEquiv(st *Store, name string) (string, error) {
+	qh, ok := st.Resolve(name)
+	if !ok {
+		return "", fmt.Errorf("no definition named %q", name)
+	}
+	qd, err := st.GetDef(qh)
+	if err != nil {
+		return "", err
+	}
+	if qd.K != "func" {
+		return "", fmt.Errorf("%q is not a function definition", name)
+	}
+	target := eHash(qd)
+
+	names := st.Names()
+	keys := make([]string, 0, len(names))
+	for k := range names {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var matches []string
+	seen := map[string]bool{}
+	for _, k := range keys {
+		h := names[k]
+		if h == qh {
+			continue
+		}
+		d, err := st.GetDef(h)
+		if err != nil || d.K != "func" || seen[h] {
+			continue
+		}
+		if eHash(d) == target {
+			seen[h] = true
+			m, _ := st.GetMeta(h)
+			g := "asserted"
+			if m != nil {
+				g = guaranteeString(m.Guarantee)
+			}
+			matches = append(matches, fmt.Sprintf("      %-18s #%s  (%s)", k, shortHash(h), g))
+		}
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "definitions equivalent to %s (#%s) — same function up to the rewrite rules, distinct identities:\n  eHash %s\n", name, shortHash(qh), shortHash(target))
+	if len(matches) == 0 {
+		b.WriteString("  (no other definition normalizes to the same form)\n")
+	} else {
+		b.WriteString("\n" + strings.Join(matches, "\n") + "\n")
+	}
+	return b.String(), nil
+}
+
 func apiEval(st *Store, src string) (string, error) {
 	forms, err := parseForms(src)
 	if err != nil {

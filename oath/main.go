@@ -20,6 +20,7 @@ usage:
   oath find <name>                    find definitions that satisfy the same PROPERTY (by content hash, not name)
   oath find --spec <file>             find definitions that satisfy a FRESH spec (a defn whose props are the query)
   oath find --implies <file>          find definitions that PROVABLY satisfy a spec (Z3 proof, catches semantic matches)
+  oath find --equiv <name>            find definitions that are the SAME FUNCTION up to rewrite rules (the e-graph)
   oath context <name...> [--budget N] spec-only slice of the named defs + transitive deps (no bodies)
   oath dependents <name>              list definitions that reference a definition
   oath verify <name>                  re-run a definition's properties
@@ -130,10 +131,12 @@ func main() {
 			cmdFindSpec(st, args[2])
 		} else if len(args) == 3 && args[1] == "--implies" {
 			cmdFindImplies(st, args[2])
+		} else if len(args) == 3 && args[1] == "--equiv" {
+			cmdFindEquiv(st, args[2])
 		} else if len(args) == 2 {
 			cmdFind(st, args[1])
 		} else {
-			fail(fmt.Errorf("usage: oath find <name>  |  oath find --spec <file>  |  oath find --implies <file>"))
+			fail(fmt.Errorf("usage: oath find <name> | --spec <file> | --implies <file> | --equiv <name>"))
 		}
 	case "verify":
 		if len(args) != 2 {
@@ -386,6 +389,14 @@ func cmdFindImplies(st *Store, path string) {
 		fail(err)
 	}
 	out, err := apiFindImplies(st, string(src))
+	if err != nil {
+		fail(err)
+	}
+	fmt.Print(out)
+}
+
+func cmdFindEquiv(st *Store, name string) {
+	out, err := apiFindEquiv(st, name)
 	if err != nil {
 		fail(err)
 	}

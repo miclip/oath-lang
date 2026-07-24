@@ -141,6 +141,43 @@ func TestFindImplies(t *testing.T) {
 	}
 }
 
+// The e-graph rung: two implementations equal up to the rewrite rules
+// (commutativity) share an eHash and are found equivalent — but keep DISTINCT
+// identities (the layer draws an edge, it never merges objects). A
+// non-commutative op (subtraction) is correctly NOT collapsed.
+func TestFindEquiv(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(defn sab [] [(a Int) (b Int)] Int (+ a b))`)
+	put(t, st, `(defn sba [] [(a Int) (b Int)] Int (+ b a))`) // commutative variant
+	put(t, st, `(defn dab [] [(a Int) (b Int)] Int (- a b))`) // genuinely different (- doesn't commute)
+
+	sab, sba, dab := mustDef(t, st, "sab"), mustDef(t, st, "sba"), mustDef(t, st, "dab")
+
+	// Distinct IDENTITIES (different ASTs)...
+	if hashDef(sab) == hashDef(sba) {
+		t.Fatal("commutative variants must keep distinct identities")
+	}
+	// ...but the same EQUIVALENCE key.
+	if eHash(sab) != eHash(sba) {
+		t.Fatal("commutative variants should share an eHash")
+	}
+	// A non-commutative body is not collapsed.
+	if eHash(sab) == eHash(dab) {
+		t.Fatal("subtraction is not commutative — must not share an eHash with +")
+	}
+
+	out, err := apiFindEquiv(st, "sab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "sba") {
+		t.Fatalf("find --equiv sab should surface sba:\n%s", out)
+	}
+	if strings.Contains(out, "dab") {
+		t.Fatalf("find --equiv sab must NOT surface dab:\n%s", out)
+	}
+}
+
 func mustDef(t *testing.T, st *Store, name string) *Def {
 	t.Helper()
 	h, ok := st.Resolve(name)
