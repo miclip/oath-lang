@@ -312,6 +312,45 @@
       ]
     },
     {
+      "name": "f-double",
+      "hash": "135e96990463e472206f7ff1c0be3d83ecbc3d347641094db0cd92465b3b310c",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "is-scale",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "f-mul-id",
+      "hash": "4b136716aca7f736780b99c8f7972377937b65fd592b71b6c7d5d8d953a503d4",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "identity",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "f-tenths",
+      "hash": "18889b76c77e197cb680975e1038e70adb3c475b93d767e93c508fda3394a58b",
+      "level": "falsified",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "is-three-tenths",
+          "proven": false
+        }
+      ]
+    },
+    {
       "name": "fib",
       "hash": "7ce4d64ce4a07b44940524ed1308df25801387ce4df6934943bc10562ed4c772",
       "level": "proven",

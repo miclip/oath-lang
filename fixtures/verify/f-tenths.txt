@@ -1,0 +1,2 @@
+✗ prop is-three-tenths          FALSIFIED after 0 cases
+    counterexample: 

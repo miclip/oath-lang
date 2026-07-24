@@ -52,6 +52,7 @@ Canonical bytes begin with the 2-byte magic `0x4F 0x31` ("O1").
 | 0x07 | rec | `list<Ty>` args |
 | 0x08 | record | `u32` count, then per field: `str` name, Ty — names strictly ascending bytewise |
 | 0x09 | rat | — |
+| 0x0A | float | — |
 
 `Term` — one tag byte, then fields:
 
@@ -73,6 +74,7 @@ Canonical bytes begin with the 2-byte magic `0x4F 0x31` ("O1").
 | 0x1D | record | `u32` count, then per field: `str` name, Term — names strictly ascending |
 | 0x1E | field | Term record, `str` field name |
 | 0x1F | rat | `bigint` numerator ++ `bigint` denominator (reduced form: `gcd(|num|, den) = 1`, `den ≥ 1`) |
+| 0x20 | float | 8 raw bytes: IEEE-754 binary64, big-endian, NaN canonicalized to `0x7FF8000000000000` |
 
 `Def` — one tag byte after the magic:
 
@@ -102,13 +104,20 @@ Producers (elaborators) MUST emit, and checkers MUST enforce:
 - Match arms in constructor-declaration order, exhaustive, with the ADT
   hash recorded in the term.
 - Primitive operators are the literal strings: `+ - * / % neg == < <= and
-  or not`. There are NO string primitives: strings are the ordinary `Str`
-  datatype (§3), and every string operation is a definition.
+  or not fp-eq`. There are NO string primitives: strings are the ordinary
+  `Str` datatype (§3), and every string operation is a definition. `fp-eq` is
+  the IEEE-754 equality on `Float`, distinct from structural `==` (§3).
 - Rational (`rat`) terms are stored in reduced form: the denominator is
   positive (`≥ 1`) and coprime to the numerator (`gcd(|num|, den) = 1`); the
   sign lives on the numerator. `0` is `0/1`. Decoders MUST reject a `rat`
   whose denominator is `0` or `< 0`, or whose numerator and denominator share
   a common factor — so equal rationals have one identity.
+- Float (`float`) terms are stored as the 8 IEEE-754 binary64 bytes with NaN
+  canonicalized: every NaN (any payload, signaling or quiet) is the one
+  pattern `0x7FF8000000000000`. Decoders MUST reject any other NaN bit pattern.
+  `-0.0` and `+0.0` are distinct values (distinct bits, distinct identity), as
+  are `±inf`. Producers canonicalize NaN at construction and after every
+  operation — so a float value has exactly one encoding.
 
 ### 1.4 Surface syntax and elaboration
 
@@ -117,24 +126,28 @@ input. A conforming surface elaborator MUST therefore match these rules:
 
 - Whitespace is space, tab, carriage return, newline. `;` starts a comment
   through the next newline. Delimiters are `()`, `[]`, and `{}`.
-- Atoms are integer literals, rational literals, string literals, or symbols.
-  A token that parses as a decimal integer (arbitrary precision, `big.Int`
-  syntax — optional leading `-`, then digits) is an `int`. Otherwise, a token
-  that parses as a rational (`big.Rat` syntax: a decimal like `3.14` or `0.1`,
-  or a fraction `num/den`, either optionally signed) is a `rat`, elaborated to
-  reduced form. Otherwise it is a symbol. (Integer syntax is tried first, so
-  `3` is an `int`, not `3/1`.)
+- Atoms are integer literals, float literals, rational literals, string
+  literals, or symbols. Lexing tries, in order: (1) a decimal integer
+  (arbitrary precision, `big.Int` syntax — optional leading `-`, then digits)
+  → `int`; (2) a **float** — a token ending in `f` whose prefix parses as a
+  binary64 (`0.1f`, `1f`, `3.14f`, `1e9f`, optionally signed) → `float`; (3) a
+  **rational** (`big.Rat` syntax: a decimal like `3.14`/`0.1`, or a fraction
+  `num/den`, optionally signed) → `rat`, reduced; (4) otherwise a symbol.
+  Integer is tried first (so `3` is `int`, not `3/1`); the `f` suffix is tried
+  before rational (so `0.1f` is `float`, `0.1` is `rat`); a bare symbol like
+  `f` or `fold` has no numeric prefix and is unaffected.
 - String literals are delimited by `"`. Supported escapes are `\n`, `\t`,
   `\"`, and `\\`; any other backslash escape is rejected. Newlines inside
   strings are accepted and count for later line numbers.
 - Lists produce `list`, square brackets `brack`, and braces `brace`.
 - Top-level forms are `(data Name [tyvars] ctor...)` and `(defn name [tyvars]
   [(param ty) ...] ret body prop...)`.
-- Type syntax: `Int`, `Rat`, `Bool`, `Str`, type variables, data names, `(Data
-  arg ...)`, right-associated `(-> a b c)`, and record types `{field Ty ...}`.
+- Type syntax: `Int`, `Rat`, `Float`, `Bool`, `Str`, type variables, data
+  names, `(Data arg ...)`, right-associated `(-> a b c)`, and record types
+  `{field Ty ...}`.
   Record fields are sorted ascending by raw symbol bytes during elaboration;
   duplicate fields are rejected.
-- Term syntax: ints, rationals, strings, `true`, `false`, variables, `(fn [(x ty) ...]
+- Term syntax: ints, rationals, floats, strings, `true`, `false`, variables, `(fn [(x ty) ...]
   body)`, `(let (x ty expr) body)`, `(if c t e)`, `(match scrut ((Ctor x ...)
   body) ...)`, record literals `{field expr ...}`, field access `(. expr
   field)`, list literals `(list e0 e1 ...)`, primitives, and named application
@@ -175,9 +188,11 @@ The conformance suite MUST include raw canonical-byte fixtures for at least:
 raw (unescaped) strings containing quotes, backslashes, newlines, `<>&`, and
 U+2028/U+2029; a negative `i64`; the bool byte; a 32-raw-byte hash
 reference; empty lists (a bare zero count); a record whose encoding
-witnesses the name-then-value pair layout in ascending name order; and a
+witnesses the name-then-value pair layout in ascending name order; a
 `rat` term whose encoding witnesses the reduced numerator/denominator
-`bigint` pair (e.g. a negative, non-integer rational).
+`bigint` pair (e.g. a negative, non-integer rational); and a `float` term
+whose encoding witnesses the 8 canonical IEEE-754 bytes (e.g. a negative
+non-integer value, or `-0.0` to witness that it is distinct from `+0.0`).
 
 A second implementation should first pass these byte fixtures, then the full
 examples corpus.
@@ -224,15 +239,16 @@ vector `S` of length `tyvars` (all initially unsolved):
   against `E`; then match each field type against every argument that
   synthesizes. Reject if any `S` entry is unsolved. Backfill and CHECK each
   argument against its now-concrete field type.
-- PRIMITIVES split into three groups. `and`/`or`/`not` have fixed `Bool`
-  operands and CHECK against them. `%` is `Int`-only (it truncates). The
-  arithmetic and ordering primitives `+ - * / neg < <=` are NUMERIC-OVERLOADED
-  over `Int` or `Rat`: SYNTHESIZE the first operand to fix the numeric kind,
-  reject if it is neither `Int` nor `Rat`, then CHECK every operand against
-  that same kind (operands may not mix `Int` and `Rat`). `+ - * neg` return
-  the operand kind; `< <=` return `Bool`. `/` is admitted for both kinds but
-  means different things: truncating integer division over `Int`, exact real
-  division over `Rat` (§3). `==` is polymorphic in
+- PRIMITIVES split into groups. `and`/`or`/`not` have fixed `Bool` operands and
+  CHECK against them. `%` is `Int`-only (it truncates). `fp-eq` is `Float`-only
+  and returns `Bool` (IEEE equality, §3). The arithmetic and ordering
+  primitives `+ - * / neg < <=` are NUMERIC-OVERLOADED over `Int`, `Rat`, or
+  `Float`: SYNTHESIZE the first operand to fix the numeric kind, reject if it is
+  none of the three, then CHECK every operand against that same kind (operands
+  may not mix kinds). `+ - * neg` return the operand kind; `< <=` return `Bool`.
+  `/` is admitted for all three but means different things: truncating integer
+  division over `Int`, exact real division over `Rat`, IEEE division over
+  `Float` (§3). `==` is polymorphic in
   its operand type: SYNTHESIZE whichever operand can be, then CHECK the other
   against it (so `(== xs (Nil))` infers the `(Nil)`); both must be the same
   non-function type, and — since the operands end at the same type — the
@@ -286,9 +302,10 @@ Detailed synthesis obligations:
   declaration order; the first field is outermost and the last field is
   `var 0`.
 - Primitive arities are fixed. Arithmetic and comparisons (`+ - * / neg < <=`)
-  are numeric-overloaded over `Int` or `Rat` (operands share one kind); `%` is
-  `Int`-only; `and`/`or`/`not` are over `Bool`; and `==` is over equal
-  first-order types only. There are no string primitives.
+  are numeric-overloaded over `Int`, `Rat`, or `Float` (operands share one
+  kind); `%` is `Int`-only; `fp-eq` is `Float`-only → `Bool`; `and`/`or`/`not`
+  are over `Bool`; and `==` is over equal first-order types only. There are no
+  string primitives.
 
 ## 3. Dynamic semantics
 
@@ -315,7 +332,20 @@ Detailed synthesis obligations:
   algebraic laws IEEE floating point violates — associativity, distributivity,
   exact division-inverse — are provable (§7), and a decimal literal like `0.1`
   denotes exactly `1/10`, never a binary approximation. `Rat` and `Int` do not
-  implicitly convert; there is no `Float`.
+  implicitly convert.
+- **Floats** (`Float`) are IEEE-754 binary64. A value IS its 64-bit pattern;
+  identity is bit-identity with every NaN canonicalized to one quiet pattern,
+  so a value has one encoding. `+ - * / neg` are the IEEE operations rounding
+  nearest-ties-even, and are TOTAL — division by zero yields `±inf` (`0.0/0.0`
+  yields NaN), never a runtime error — with NaN canonicalized on every result.
+  `< <=` are the IEEE ordered comparisons (a NaN operand ⇒ `false`). Structural
+  `==` is **Leibniz** (bitwise on canonicalized values): `NaN == NaN` is
+  **true** and `+0.0 == -0.0` is **false** — deliberately NOT IEEE equality.
+  IEEE equality (`fp.eq`: `NaN ≠ NaN`, `+0.0 == -0.0`) is the separate opt-in
+  primitive `fp-eq`. Because Z3's float theory is complete (§7), true float
+  properties are provable; the algebraic laws IEEE floats break (associativity,
+  `0.1f + 0.2f == 0.3f`) are falsified, correctly. `Float` does not implicitly
+  convert to/from `Int` or `Rat`; a decimal without the `f` suffix is a `Rat`.
 - **Strings** are NOT primitive. A string is a value of the ordinary datatype
   `(data Str [] (SNil) (SCons Int Str))` — a sequence of Unicode scalar values
   (each an `Int` codepoint), built with the `SNil`/`SCons` constructors. It
@@ -341,8 +371,8 @@ Two independent bounds, both normative for verdict reproducibility:
 
 ### 3.2 Runtime values and printing
 
-Runtime values are erased: `int`, `rat`, `bool`, `closure`, `data`, `record`,
-and generated `native` functions. Closures store an environment, lambda term,
+Runtime values are erased: `int`, `rat`, `float`, `bool`, `closure`, `data`,
+`record`, and generated `native` functions. Closures store an environment, lambda term,
 and enclosing self hash. Native functions are used only by deterministic
 generation: identity, affine, constant, and finite table.
 
@@ -350,7 +380,14 @@ Value printing is normative for counterexamples and conformance:
 
 - Int and Bool print as decimal and `true`/`false`. Rat prints in lowest
   terms: an integer-valued rational as a bare integer (`3`, `-2`), otherwise
-  `num/den` with the sign on the numerator (`1/2`, `-7/4`).
+  `num/den` with the sign on the numerator (`1/2`, `-7/4`). Float prints with
+  an `f` suffix so it round-trips and is distinct from a Rat: a finite value as
+  its shortest round-tripping decimal + `f` (`0.5f`, `1f`, `-0f`,
+  `0.30000000000000004f`), and the specials as `inff`, `-inff`, `nanf`. The
+  finite form is the shortest decimal that parses back to the same binary64,
+  formatted as Go's `strconv.FormatFloat(f, 'g', -1, 64)` (fixed-point within a
+  bounded decimal-exponent range, else scientific with a lowercase `e`); this
+  is a conformance-sensitive detail, like SMT string escaping.
 - Strings, being `Str` datatype values, print as data (see below) — a chain of
   `(SCons <codepoint> …)` ending in `SNil`.
 - Records print `{name value ...}` in canonical field order.
@@ -394,6 +431,11 @@ Generation by type — draw order is normative:
   (numerator first), and reduce to lowest terms. The denominator range starts
   at 1 so integer-valued rationals occur, and a zero numerator yields `0/1`;
   the reduction makes the resulting value canonical.
+- `Float`: draw `below(4)`; on 0, draw `below(9)` into the boundary/special
+  table `[+0.0, -0.0, 1.0, -1.0, 0.5, 2.0, +inf, -inf, NaN]` (so ±0.0, the
+  infinities, and NaN are all exercised); otherwise draw the numerator
+  `intIn(-8,8)`, then the denominator `intIn(1,4)` (numerator first), and take
+  `numerator / denominator` as a binary64. Every generated NaN is canonical.
 - `Bool`: `below(2) == 0`.
 - `Str`: length `below(size+1)`, then that many draws of `below(7)` into
   alphabet `"ab xyz!"` (bytes, in that order).
@@ -737,9 +779,9 @@ reproducibility (given the same solver):
 - **Excluded, permanently or pending**: `/` and `%` over `Int` (the kernel
   truncates toward zero, SMT-LIB integer division is Euclidean — translation
   would prove the wrong theorem); partial application; lambda values in
-  argument position. Note `/` over `Rat` is NOT excluded — it is exact real
-  division and translates faithfully (§7.1), so rational division-inverse laws
-  are provable.
+  argument position. Note `/` over `Rat` (exact real division) and `/` over
+  `Float` (IEEE `fp.div`) are NOT excluded — both translate faithfully
+  (§7.1), so rational division-inverse and float division laws are provable.
 - Proof search: direct (assert negation, check-sat), then structural
   induction on each datatype-typed binder in order — one subgoal per
   constructor, induction hypotheses for datatype-recursive fields with all
@@ -771,6 +813,17 @@ reproducibility (given the same solver):
   numeric-overloaded prims propagate the operand sort: `+ - * neg` over `Real`
   stay `Real`, `< <=` yield `Bool`, and `/` over `Real` is admitted (exact
   real division) — in contrast to `/` over `Int`, which is excluded below.
+- `Float` translates to the SMT sort `Float64` = `(_ FloatingPoint 11 53)`
+  (Z3's float theory, FPA, is decidable — the reason `Float` is a primitive).
+  A float literal renders as `(fp (_ bvS 1) (_ bvE 11) (_ bvM 52))` from its
+  exact canonicalized bits (sign, 11-bit exponent, 52-bit mantissa) — no
+  rounding, one literal per value. Over `Float` operands the prims translate to
+  FPA: `+ - * /` to `(fp.add RNE …)`/`(fp.sub RNE …)`/`(fp.mul RNE …)`/
+  `(fp.div RNE …)` (round-nearest-even), `neg` to `(fp.neg …)`, `< <=` to
+  `(fp.lt …)`/`(fp.leq …)`. Structural `==` over `Float` is SMT `=` (Leibniz —
+  `NaN = NaN`, `+0.0 ≠ -0.0`), matching kernel identity; the `fp-eq` primitive
+  is IEEE `(fp.eq …)`. `/` over `Float` is admitted (total IEEE division), in
+  contrast to `/` over `Int`.
 - SMT string literals double `"` characters inside the SMT string. Other
   string escaping must match SMT-LIB accepted literal syntax and the examples
   corpus.

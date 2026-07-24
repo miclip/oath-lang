@@ -1,0 +1,1 @@
+✓ prop is-scale                 passed 200 cases
