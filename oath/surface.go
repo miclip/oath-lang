@@ -2,10 +2,25 @@ package main
 
 import (
 	"fmt"
-	"sort"
 	"math/big"
+	"sort"
+	"strconv"
 	"strings"
 )
+
+// parseFloatLit recognizes an IEEE Float literal: a token ending in `f` whose
+// prefix parses as a float64 (0.1f, 1f, 3.14f, 1e9f, -2.5f). Returns ok=false
+// for anything else, so bare symbols and Rat/Int literals fall through.
+func parseFloatLit(word string) (float64, bool) {
+	if len(word) < 2 || word[len(word)-1] != 'f' {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(word[:len(word)-1], 64)
+	if err != nil {
+		return 0, false
+	}
+	return f, true
+}
 
 // The surface syntax is NOT the language — it is an input format, one of many
 // possible projections of the canonical AST. S-expressions were chosen because
@@ -29,13 +44,14 @@ import (
 //   Int, Bool, tyvar, (-> a b c), (Name tyargs...), Name
 
 type sx struct {
-	K    string // list | brack | brace | sym | int | str
-	Sym  string
-	Int  *big.Int
-	Rat  *big.Rat
-	Str  string
-	Kids []sx
-	Line int
+	K     string // list | brack | brace | sym | int | str | rat | float
+	Sym   string
+	Int   *big.Int
+	Rat   *big.Rat
+	Float float64
+	Str   string
+	Kids  []sx
+	Line  int
 }
 
 func (x sx) isSym(s string) bool { return x.K == "sym" && x.Sym == s }
@@ -43,10 +59,11 @@ func (x sx) isSym(s string) bool { return x.K == "sym" && x.Sym == s }
 // --- lexer + reader ---
 
 type token struct {
-	kind string // ( ) [ ] { } sym int str
+	kind string // ( ) [ ] { } sym int str rat float
 	sym  string
 	i    *big.Int
 	r    *big.Rat
+	f    float64
 	s    string
 	line int
 }
@@ -109,6 +126,11 @@ func lex(src string) ([]token, error) {
 			word := src[i:j]
 			if n, ok := new(big.Int).SetString(word, 10); ok {
 				toks = append(toks, token{kind: "int", i: n, line: line})
+			} else if f, ok := parseFloatLit(word); ok {
+				// An IEEE Float literal opts in with an `f` suffix (0.1f, 1f,
+				// 3.14f). Checked before Rat so the suffix wins; a bare symbol
+				// like `f` or `fold` (empty/non-numeric prefix) is unaffected.
+				toks = append(toks, token{kind: "float", f: f, line: line})
 			} else if rr, ok := new(big.Rat).SetString(word); ok {
 				// A decimal (3.14) or fraction (1/2) literal — Int is tried first,
 				// so a bare integer never reaches here.
@@ -138,6 +160,8 @@ func (r *reader) read() (sx, error) {
 		return sx{K: "int", Int: t.i, Line: t.line}, nil
 	case "rat":
 		return sx{K: "rat", Rat: t.r, Line: t.line}, nil
+	case "float":
+		return sx{K: "float", Float: t.f, Line: t.line}, nil
 	case "str":
 		return sx{K: "str", Str: t.s, Line: t.line}, nil
 	case "sym":
@@ -236,6 +260,8 @@ func (e *elab) parseTy(x sx) (*Ty, error) {
 			return tInt(), nil
 		case "Rat":
 			return tRat(), nil
+		case "Float":
+			return tFloat(), nil
 		case "Bool":
 			return tBool(), nil
 		}
@@ -324,6 +350,7 @@ func (e *elab) parseTy(x sx) (*Ty, error) {
 var primArity = map[string]int{
 	"+": 2, "-": 2, "*": 2, "/": 2, "%": 2, "neg": 1,
 	"==": 2, "<": 2, "<=": 2, "and": 2, "or": 2, "not": 1,
+	"fp-eq": 2,
 }
 
 // parseRecord elaborates {name X name X ...} into sorted (names, items),
@@ -365,6 +392,8 @@ func (e *elab) elabTerm(x sx) (*Term, error) {
 		return &Term{K: "int", Int: x.Int}, nil
 	case "rat":
 		return &Term{K: "rat", Rat: x.Rat}, nil
+	case "float":
+		return &Term{K: "float", Float: x.Float}, nil
 	case "str":
 		// String-literal sugar: "abc" elaborates to the codepoint chain
 		// (SCons 97 (SCons 98 (SCons 99 (SNil)))). Str is an ordinary inductive

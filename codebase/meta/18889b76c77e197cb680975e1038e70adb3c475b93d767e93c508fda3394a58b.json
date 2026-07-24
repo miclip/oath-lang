@@ -1,0 +1,18 @@
+{
+  "name": "f-tenths",
+  "prop_names": [
+    "is-three-tenths"
+  ],
+  "guarantee": {
+    "level": "falsified",
+    "falsified": [
+      "is-three-tenths"
+    ]
+  },
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main"
+}

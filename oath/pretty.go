@@ -2,10 +2,28 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
 )
+
+// fmtFloat renders an IEEE Float in the surface `f`-suffixed form so it is
+// distinguishable from a Rat and re-lexes to the same value. Finite values use
+// the shortest round-tripping decimal (strconv 'g'/-1); specials print as
+// inff / -inff / nanf. Every NaN is the one canonical NaN.
+func fmtFloat(f float64) string {
+	switch {
+	case math.IsNaN(f):
+		return "nanf"
+	case math.IsInf(f, 1):
+		return "inff"
+	case math.IsInf(f, -1):
+		return "-inff"
+	default:
+		return strconv.FormatFloat(f, 'g', -1, 64) + "f"
+	}
+}
 
 // The projection printer renders canonical definitions back into readable
 // text for human auditors. This direction is lossy-in-reverse: generated
@@ -36,6 +54,8 @@ func printTy(st *Store, t *Ty, tvs []string) string {
 		return "Int"
 	case "rat":
 		return "Rat"
+	case "float":
+		return "Float"
 	case "bool":
 		return "Bool"
 	case "str":
@@ -118,6 +138,8 @@ func (p *printer) term(t *Term, selfName string) string {
 		return fmt.Sprintf("%d", t.Int)
 	case "rat":
 		return t.Rat.RatString()
+	case "float":
+		return fmtFloat(t.Float)
 	case "bool":
 		return fmt.Sprintf("%v", t.Bool)
 	case "str":
@@ -214,6 +236,8 @@ func printValue(st *Store, v Value) string {
 		return fmt.Sprintf("%d", v.Int)
 	case "rat":
 		return v.Rat.RatString()
+	case "float":
+		return fmtFloat(v.Float)
 	case "bool":
 		return fmt.Sprintf("%v", v.Bool)
 	case "str":

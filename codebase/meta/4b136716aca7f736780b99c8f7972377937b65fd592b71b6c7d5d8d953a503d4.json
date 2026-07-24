@@ -1,0 +1,26 @@
+{
+  "name": "f-mul-id",
+  "prop_names": [
+    "identity"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 1
+  },
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "x"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0
+  ]
+}

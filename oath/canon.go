@@ -6,8 +6,23 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
 )
+
+// canonNaN is the single quiet-NaN bit pattern every NaN collapses to, so that
+// (like SMT-LIB's one FP NaN) a NaN has exactly one identity and one encoding.
+const canonNaN = 0x7FF8000000000000
+
+// canonFloat normalizes a float64 for the kernel's value/identity model: every
+// NaN (any payload, signaling or quiet) becomes the one canonical NaN. Finite
+// values, ±0.0, and ±inf are left exactly as-is (−0.0 is a distinct value).
+func canonFloat(f float64) float64 {
+	if math.IsNaN(f) {
+		return math.Float64frombits(canonNaN)
+	}
+	return f
+}
 
 // Canonical binary encoding (format "O1", SPEC §1): a definition's identity
 // is SHA-256 over a tag-length-value tree with no optional fields, no
@@ -36,6 +51,7 @@ const (
 	tagTyRec    = 0x07
 	tagTyRecord = 0x08
 	tagTyRat    = 0x09
+	tagTyFloat  = 0x0A
 )
 
 // Term tags.
@@ -56,6 +72,7 @@ const (
 	tagTmRecord = 0x1D
 	tagTmField  = 0x1E
 	tagTmRat    = 0x1F
+	tagTmFloat  = 0x20
 )
 
 // Def tags.
@@ -121,6 +138,8 @@ func (e *enc) ty(t *Ty) {
 		e.u8(tagTyBool)
 	case "rat":
 		e.u8(tagTyRat)
+	case "float":
+		e.u8(tagTyFloat)
 	case "var":
 		e.u8(tagTyVar)
 		e.u32(uint32(t.Var))
@@ -168,6 +187,13 @@ func (e *enc) term(t *Term) {
 		e.u8(tagTmRat)
 		e.bigint(t.Rat.Num())
 		e.bigint(t.Rat.Denom())
+	case "float":
+		// IEEE-754 binary64, 8 big-endian bytes, with NaN canonicalized to a
+		// single quiet pattern (canonFloat) so one value has one encoding.
+		e.u8(tagTmFloat)
+		var buf [8]byte
+		binary.BigEndian.PutUint64(buf[:], math.Float64bits(canonFloat(t.Float)))
+		e.b = append(e.b, buf[:]...)
 	case "bool":
 		e.u8(tagTmBool)
 		if t.Bool {
@@ -367,6 +393,8 @@ func (d *dec) ty() (*Ty, error) {
 		return tInt(), nil
 	case tagTyRat:
 		return tRat(), nil
+	case tagTyFloat:
+		return tFloat(), nil
 	case tagTyBool:
 		return tBool(), nil
 	case tagTyVar:
@@ -478,6 +506,19 @@ func (d *dec) term() (*Term, error) {
 			return nil, d.fail("non-canonical rational (numerator/denominator not coprime)")
 		}
 		return &Term{K: "rat", Rat: new(big.Rat).SetFrac(num, den)}, nil
+	case tagTmFloat:
+		if d.pos+8 > len(d.b) {
+			return nil, d.fail("unexpected end in float")
+		}
+		bits := binary.BigEndian.Uint64(d.b[d.pos : d.pos+8])
+		d.pos += 8
+		// Strict canonical form: any NaN must be THE canonical NaN. Other NaN
+		// payloads (or signaling NaNs) are rejected, exactly as a non-reduced
+		// rational is — one value, one encoding.
+		if math.IsNaN(math.Float64frombits(bits)) && bits != canonNaN {
+			return nil, d.fail("non-canonical NaN bit pattern 0x%016x", bits)
+		}
+		return &Term{K: "float", Float: math.Float64frombits(bits)}, nil
 	case tagTmBool:
 		v, err := d.u8()
 		if err != nil {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -200,6 +201,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"net/http"
 	"os"
@@ -209,12 +211,22 @@ import (
 var _ = io.ReadAll
 var _ = http.Get
 var _ = utf8.DecodeRuneInString
+var _ = math.Float64bits
 
 // bi parses a decimal integer literal into an arbitrary-precision value.
 func bi(s string) *big.Int { v, _ := new(big.Int).SetString(s, 10); return v }
 
 // ra parses a rational literal ("num/den") into an exact big.Rat.
 func ra(s string) *big.Rat { v, _ := new(big.Rat).SetString(s); return v }
+
+// canonF canonicalizes a float64: every NaN becomes the one canonical NaN, so
+// runtime identity matches the kernel (and prover). -0.0 and ±inf are kept.
+func canonF(f float64) float64 {
+	if math.IsNaN(f) {
+		return math.Float64frombits(0x7FF8000000000000)
+	}
+	return f
+}
 
 // capFn lifts a real-world Go function into an Oath closure value.
 func capFn(f func(string) string) *closure {
@@ -243,6 +255,9 @@ func structEq(a, b any) bool {
 		return x.Cmp(b.(*big.Int)) == 0
 	case *big.Rat:
 		return x.Cmp(b.(*big.Rat)) == 0
+	case float64:
+		// Bitwise (Leibniz / SMT =) on canonicalized values: NaN == NaN, +0 != -0.
+		return math.Float64bits(canonF(x)) == math.Float64bits(canonF(b.(float64)))
 	case bool:
 		return x == b.(bool)
 	case string:
@@ -362,6 +377,10 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 		return fmt.Sprintf("any(bi(%q))", t.Int.String()), nil
 	case "rat":
 		return fmt.Sprintf("any(ra(%q))", t.Rat.RatString()), nil
+	case "float":
+		// Emit exact IEEE bits (canonicalized) so the compiled constant is the
+		// same value the interpreter and prover see — no decimal round-trip.
+		return fmt.Sprintf("any(math.Float64frombits(0x%016x))", math.Float64bits(canonFloat(t.Float))), nil
 	case "bool":
 		return fmt.Sprintf("any(%s)", strconv.FormatBool(t.Bool)), nil
 	case "lam":
@@ -583,6 +602,31 @@ func (e *emitter) prim(t *Term, depth int, self string) (string, error) {
 			return fmt.Sprintf("any(%s.(*big.Rat).Cmp(%s.(*big.Rat)) <= 0)", args[0], args[1]), nil
 		case "==":
 			return fmt.Sprintf("any(structEq(%s, %s))", args[0], args[1]), nil
+		}
+	}
+	// Float: native float64, IEEE arithmetic (total; div-by-zero = ±inf), NaN
+	// canonicalized. `==` is structural (bitwise), `fp-eq` is IEEE equality.
+	isFloat := false
+	if len(t.Args) > 0 {
+		if ty, err := e.chk.synth(e.ctx, &t.Args[0]); err == nil && ty.K == "float" {
+			isFloat = true
+		}
+	}
+	if isFloat {
+		fop := map[string]string{"+": "+", "-": "-", "*": "*", "/": "/"}
+		switch t.Op {
+		case "+", "-", "*", "/":
+			return fmt.Sprintf("any(canonF(%s.(float64) %s %s.(float64)))", args[0], fop[t.Op], args[1]), nil
+		case "neg":
+			return fmt.Sprintf("any(canonF(-%s.(float64)))", args[0]), nil
+		case "<":
+			return fmt.Sprintf("any(%s.(float64) < %s.(float64))", args[0], args[1]), nil
+		case "<=":
+			return fmt.Sprintf("any(%s.(float64) <= %s.(float64))", args[0], args[1]), nil
+		case "==":
+			return fmt.Sprintf("any(structEq(%s, %s))", args[0], args[1]), nil
+		case "fp-eq":
+			return fmt.Sprintf("any(%s.(float64) == %s.(float64))", args[0], args[1]), nil
 		}
 	}
 	// Integers are arbitrary-precision (*big.Int); + - * / % never overflow.

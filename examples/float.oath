@@ -1,0 +1,27 @@
+; Float is IEEE-754 binary64. Literals opt in with an `f` suffix (0.1f, 1.0f);
+; a bare decimal like 0.1 stays an exact Rat. See docs/floats.md for the
+; identity model (structural == is Leibniz — NaN == NaN, +0.0 != -0.0 — with
+; IEEE `fp.eq` kept as a separate opt-in primitive).
+;
+; The headline: floats REACH proven (Z3's float theory is decidable), so their
+; TRUE properties are proven — while the algebraic laws IEEE floats break are
+; FALSIFIED, correctly, not for any weakness of the prover.
+
+; PROVEN: multiplying by one is the identity for EVERY float — including NaN,
+; ±inf, and ±0.0 — precisely because == is structural (NaN == NaN).
+(defn f-mul-id [] [(x Float)] Float
+  (* x 1.0f)
+  (prop identity [(x Float)] (== (f-mul-id x) x)))
+
+; PROVEN: doubling by addition equals scaling by two, for every float — x + x
+; is exactly x * 2.0 (both are exact, even at ±inf/NaN/±0.0).
+(defn f-double [] [(x Float)] Float
+  (+ x x)
+  (prop is-scale [(x Float)] (== (f-double x) (* x 2.0f))))
+
+; HONEST EXHIBIT — FALSIFIED. The classic. Over ℚ, 0.1 + 0.2 == 0.3 is PROVEN
+; (examples/rat.oath). Over IEEE Float it is FALSE: 0.1f + 0.2f is exactly
+; 0.30000000000000004. The kernel refuses to certify it — that is the point.
+(defn f-tenths [] [] Float
+  (+ 0.1f 0.2f)
+  (prop is-three-tenths [] (== f-tenths 0.3f)))

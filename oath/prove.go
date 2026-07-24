@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"os"
 	"regexp"
@@ -203,6 +204,9 @@ func (c *smtCtx) sortOf(t *Ty) (string, error) {
 		return "Int", nil
 	case "rat":
 		return "Real", nil
+	case "float":
+		// IEEE-754 binary64 → Z3's FloatingPoint theory (FPA is decidable).
+		return "Float64", nil
 	case "bool":
 		return "Bool", nil
 	case "fun":
@@ -431,6 +435,47 @@ var smtPrimSorts = map[string]string{
 // arithPrims preserve their operand's numeric sort (Int or Real) as the result.
 var arithPrims = map[string]bool{"+": true, "-": true, "*": true, "/": true, "neg": true}
 
+// floatLit renders a float64 as an SMT-LIB (fp sign exp mantissa) literal from
+// its exact IEEE-754 bits (NaN canonicalized). One value → one literal, no
+// rounding — Float64 is (_ FloatingPoint 11 53).
+func floatLit(f float64) string {
+	bits := math.Float64bits(canonFloat(f))
+	sign := bits >> 63
+	exp := (bits >> 52) & 0x7FF
+	mant := bits & 0xFFFFFFFFFFFFF
+	return fmt.Sprintf("(fp (_ bv%d 1) (_ bv%d 11) (_ bv%d 52))", sign, exp, mant)
+}
+
+// floatPrim translates a primitive over Float operands into Z3 FPA. Arithmetic
+// rounds nearest-ties-even (RNE); `<`/`<=` are IEEE-ordered (fp.lt/fp.leq);
+// `==` is SMT `=` (structural/Leibniz, the kernel's identity); `fp-eq` is the
+// IEEE equality fp.eq.
+func floatPrim(op string, parts []string) (string, string, error) {
+	bin := func(f string) string { return fmt.Sprintf("(%s %s %s)", f, parts[0], parts[1]) }
+	rnd := func(f string) string { return fmt.Sprintf("(%s RNE %s %s)", f, parts[0], parts[1]) }
+	switch op {
+	case "+":
+		return rnd("fp.add"), "Float64", nil
+	case "-":
+		return rnd("fp.sub"), "Float64", nil
+	case "*":
+		return rnd("fp.mul"), "Float64", nil
+	case "/":
+		return rnd("fp.div"), "Float64", nil
+	case "neg":
+		return fmt.Sprintf("(fp.neg %s)", parts[0]), "Float64", nil
+	case "<":
+		return bin("fp.lt"), "Bool", nil
+	case "<=":
+		return bin("fp.leq"), "Bool", nil
+	case "==":
+		return bin("="), "Bool", nil
+	case "fp-eq":
+		return bin("fp.eq"), "Bool", nil
+	}
+	return "", "", fmt.Errorf("primitive %s is outside the provable fragment for Float", op)
+}
+
 func (c *smtCtx) tr(t *Term, env []smtVal) (string, string, error) {
 	c.depth++
 	defer func() { c.depth-- }()
@@ -456,6 +501,10 @@ func (c *smtCtx) tr(t *Term, env []smtVal) (string, string, error) {
 			numStr = fmt.Sprintf("(- %s)", new(big.Int).Neg(num).String())
 		}
 		return fmt.Sprintf("(/ %s %s)", numStr, den.String()), "Real", nil
+	case "float":
+		// An IEEE Float renders as an (fp sign exp mantissa) literal from its
+		// exact (canonicalized) bits — no rounding, one representation per value.
+		return floatLit(t.Float), "Float64", nil
 	case "bool":
 		return fmt.Sprintf("%v", t.Bool), "Bool", nil
 	case "if":
@@ -490,6 +539,13 @@ func (c *smtCtx) tr(t *Term, env []smtVal) (string, string, error) {
 				argSort = s
 			}
 			parts = append(parts, a)
+		}
+		// Float operands translate to Z3's FloatingPoint theory (FPA): arithmetic
+		// carries the round-nearest-even mode, comparisons are IEEE-ordered, and
+		// structural == is SMT `=` (Leibniz — NaN=NaN, +0≠−0), matching the
+		// kernel's identity model. `fp-eq` is the separate IEEE fp.eq.
+		if argSort == "Float64" {
+			return floatPrim(t.Op, parts)
 		}
 		// `%` is never translatable; `/` truncates over Int (SMT-LIB is
 		// Euclidean) but is EXACT over Real, so it translates for rationals.

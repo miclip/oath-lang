@@ -2,8 +2,15 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 )
+
+// floatBoundary is the normative boundary/special table for Float generation:
+// zeros (both signs), ±1, ½, 2, and the special values ±inf and NaN.
+var floatBoundary = []float64{
+	0.0, math.Copysign(0, -1), 1.0, -1.0, 0.5, 2.0, math.Inf(1), math.Inf(-1), math.NaN(),
+}
 
 // Deterministic input generation for property testing. Seeds are derived from
 // the definition's hash, so verification is reproducible: the same definition
@@ -60,6 +67,17 @@ func genValue(st *Store, ty *Ty, size int, r *rng) (Value, error) {
 		num := big.NewInt(r.intIn(-8, 8))
 		den := big.NewInt(r.intIn(1, 5))
 		return Value{K: "rat", Rat: new(big.Rat).SetFrac(num, den)}, nil
+	case "float":
+		// One draw in four is a boundary/special (including -0.0, ±inf, and NaN,
+		// so identity-sensitive and special-value behavior is exercised);
+		// otherwise a small fraction num/den as a float64. floatBoundary order
+		// is normative.
+		if r.below(4) == 0 {
+			return Value{K: "float", Float: canonFloat(floatBoundary[r.below(len(floatBoundary))])}, nil
+		}
+		num := float64(r.intIn(-8, 8))
+		den := float64(r.intIn(1, 4))
+		return Value{K: "float", Float: num / den}, nil
 	case "bool":
 		return Value{K: "bool", Bool: r.below(2) == 0}, nil
 	case "record":

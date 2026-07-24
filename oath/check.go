@@ -19,7 +19,7 @@ func substTy(t *Ty, args []Ty) *Ty {
 		return nil
 	}
 	switch t.K {
-	case "int", "rat", "bool":
+	case "int", "rat", "float", "bool":
 		return t
 	case "var":
 		if t.Var < len(args) {
@@ -45,7 +45,7 @@ func substTy(t *Ty, args []Ty) *Ty {
 // reference once the ADT's hash is known.
 func resolveRec(t *Ty, h string) *Ty {
 	switch t.K {
-	case "int", "rat", "bool", "var":
+	case "int", "rat", "float", "bool", "var":
 		return t
 	case "fun":
 		return tFun(resolveRec(t.A, h), resolveRec(t.B, h))
@@ -113,7 +113,7 @@ func matchTy(pat, got *Ty, subst []*Ty) error {
 		return fmt.Errorf("expected %s, got %s", debugTy(pat), debugTy(got))
 	}
 	switch pat.K {
-	case "int", "rat", "bool":
+	case "int", "rat", "float", "bool":
 		return nil
 	case "var":
 		if pat.Var != got.Var {
@@ -198,7 +198,7 @@ func checkTyWF(st *Store, t *Ty, ntyvars int, allowRec bool) error {
 		return fmt.Errorf("missing type")
 	}
 	switch t.K {
-	case "int", "rat", "bool":
+	case "int", "rat", "float", "bool":
 		return nil
 	case "record":
 		if len(t.Names) != len(t.Args) {
@@ -398,6 +398,8 @@ func (c *checker) synth(ctx []*Ty, t *Term) (*Ty, error) {
 		return tInt(), nil
 	case "rat":
 		return tRat(), nil
+	case "float":
+		return tFloat(), nil
 	case "bool":
 		return tBool(), nil
 	case "record":
@@ -879,11 +881,11 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 		return nil
 	}
 	// Arithmetic and comparison are numeric-overloaded: every operand must be
-	// the SAME numeric type, Int or Rat. Result is that type (arithmetic) or
-	// Bool (comparison).
+	// the SAME numeric type — Int, Rat, or Float. Result is that type
+	// (arithmetic) or Bool (comparison).
 	numericTy := func() (*Ty, error) {
-		if len(argTys) == 0 || (argTys[0].K != "int" && argTys[0].K != "rat") {
-			return nil, fmt.Errorf("primitive %s requires Int or Rat arguments", t.Op)
+		if len(argTys) == 0 || (argTys[0].K != "int" && argTys[0].K != "rat" && argTys[0].K != "float") {
+			return nil, fmt.Errorf("primitive %s requires Int, Rat, or Float arguments", t.Op)
 		}
 		k := argTys[0].K
 		for _, a := range argTys {
@@ -892,6 +894,14 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 			}
 		}
 		return &Ty{K: k}, nil
+	}
+	allFloat := func() error {
+		for _, a := range argTys {
+			if a.K != "float" {
+				return fmt.Errorf("primitive %s requires Float arguments, got %s", t.Op, debugTy(a))
+			}
+		}
+		return nil
 	}
 	switch t.Op {
 	case "+", "-", "*", "/":
@@ -933,6 +943,16 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 			return nil, err
 		}
 		if err := allBool(); err != nil {
+			return nil, err
+		}
+		return tBool(), nil
+	case "fp-eq":
+		// IEEE 754 equality (fp.eq) — Float only, the opt-in escape hatch
+		// distinct from structural ==. Returns Bool.
+		if err := need(2); err != nil {
+			return nil, err
+		}
+		if err := allFloat(); err != nil {
 			return nil, err
 		}
 		return tBool(), nil
@@ -1004,6 +1024,8 @@ func debugTy(t *Ty) string {
 		return "Int"
 	case "rat":
 		return "Rat"
+	case "float":
+		return "Float"
 	case "bool":
 		return "Bool"
 	case "record":
