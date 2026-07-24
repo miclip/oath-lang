@@ -1,0 +1,15 @@
+{
+  "name": "rat-add",
+  "hash": "e04d7c974bd936affe6c045507dd4923d4bcbafd951314f01a4483cc74798061",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

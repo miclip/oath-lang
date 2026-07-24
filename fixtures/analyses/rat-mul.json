@@ -1,0 +1,15 @@
+{
+  "name": "rat-mul",
+  "hash": "d09a0eb33a7bb8a49e87b6473b72159b0aa4042b9fd1468a178b48023a7cabd0",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}
