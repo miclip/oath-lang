@@ -1,0 +1,9 @@
+{
+  "name": "f-tenths",
+  "hash": "18889b76c77e197cb680975e1038e70adb3c475b93d767e93c508fda3394a58b",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "level": "falsified"
+}

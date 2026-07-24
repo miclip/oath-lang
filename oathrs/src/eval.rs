@@ -104,6 +104,7 @@ impl<'a> Machine<'a> {
             }
             Term::Int(v) => Ok(Value::Int(v.clone())),
             Term::Rat { num, den } => Ok(Value::Rat(num.clone(), den.clone())),
+            Term::Float(bits) => Ok(Value::Float(*bits)),
             Term::Bool(b) => Ok(Value::Bool(*b)),
             Term::Lam { a, .. } => Ok(Value::Closure {
                 env: env.clone(),
@@ -201,13 +202,29 @@ fn eval_prim(op: &str, vs: &[Value]) -> Result<Value, String> {
         }
     };
     let zero = BigInt::from(0);
+    // `fp-eq` is the Float-only IEEE-754 equality (SPEC §3): `NaN != NaN`,
+    // `+0.0 == -0.0` — distinct from structural `==` (which is bitwise Leibniz).
+    if op == "fp-eq" {
+        return match (&vs[0], &vs[1]) {
+            (Value::Float(a), Value::Float(b)) => {
+                Ok(Value::Bool(f64::from_bits(*a) == f64::from_bits(*b)))
+            }
+            _ => Err("fp-eq expects float operands".into()),
+        };
+    }
     // Numeric-overloaded primitives (SPEC §3): `+ - * / neg < <=` dispatch on the
     // runtime kind of the (first) operand. The gate guarantees both operands
-    // share one kind, so a `Rat` first operand means a rational operation.
+    // share one kind, so a `Rat` first operand means a rational operation and a
+    // `Float` first operand means an IEEE-754 operation.
     if matches!(vs.first(), Some(Value::Rat(_, _)))
         && matches!(op, "+" | "-" | "*" | "/" | "neg" | "<" | "<=")
     {
         return eval_rat_prim(op, vs);
+    }
+    if matches!(vs.first(), Some(Value::Float(_)))
+        && matches!(op, "+" | "-" | "*" | "/" | "neg" | "<" | "<=")
+    {
+        return eval_float_prim(op, vs);
     }
     match op {
         "+" => Ok(Value::Int(int(&vs[0])? + int(&vs[1])?)),
@@ -237,6 +254,32 @@ fn eval_prim(op: &str, vs: &[Value]) -> Result<Value, String> {
         "or" => Ok(Value::Bool(boolean(&vs[0])? || boolean(&vs[1])?)),
         "not" => Ok(Value::Bool(!boolean(&vs[0])?)),
         _ => Err(format!("unknown primitive {}", op)),
+    }
+}
+
+/// IEEE-754 binary64 arithmetic (SPEC §3). Operands are canonicalized bit
+/// patterns. `+ - * / neg` round nearest-ties-even (Rust's default f64 rounding)
+/// and are TOTAL — `/` by zero yields `±inf` (`0.0/0.0` yields NaN), never an
+/// error — with NaN canonicalized on every result. `< <=` are IEEE ordered (a
+/// NaN operand yields `false`, which Rust's `<`/`<=` on `f64` already give).
+fn eval_float_prim(op: &str, vs: &[Value]) -> Result<Value, String> {
+    let fl = |v: &Value| -> Result<f64, String> {
+        match v {
+            Value::Float(b) => Ok(f64::from_bits(*b)),
+            _ => Err("expected float operand".into()),
+        }
+    };
+    // Canonicalize NaN on every produced value (SPEC §1.3/§3).
+    let mk = |r: f64| Value::Float(crate::ir::canon_f64_bits(r.to_bits()));
+    match op {
+        "neg" => Ok(mk(-fl(&vs[0])?)),
+        "+" => Ok(mk(fl(&vs[0])? + fl(&vs[1])?)),
+        "-" => Ok(mk(fl(&vs[0])? - fl(&vs[1])?)),
+        "*" => Ok(mk(fl(&vs[0])? * fl(&vs[1])?)),
+        "/" => Ok(mk(fl(&vs[0])? / fl(&vs[1])?)),
+        "<" => Ok(Value::Bool(fl(&vs[0])? < fl(&vs[1])?)),
+        "<=" => Ok(Value::Bool(fl(&vs[0])? <= fl(&vs[1])?)),
+        _ => Err(format!("unknown float primitive {}", op)),
     }
 }
 

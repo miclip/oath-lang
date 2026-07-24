@@ -347,6 +347,17 @@ fn cmd_enctest(dir: &str) -> i32 {
                 props: vec![],
             },
         ),
+        // §1.5: a `float` term whose encoding witnesses the 8 big-endian
+        // IEEE-754 binary64 bytes (here -2.5 = 0xC004000000000000).
+        (
+            "negative_float",
+            Def::Func {
+                tyvars: 0,
+                ty: Ty::Float,
+                body: Term::Float((-2.5f64).to_bits()),
+                props: vec![],
+            },
+        ),
         (
             "record_order",
             Def::Func {
@@ -407,6 +418,14 @@ fn cmd_enctest(dir: &str) -> i32 {
             0x4F, 0x31, 0x02, 0, 0, 0, 0, // func, tyvars 0
             0x08, 0, 0, 0, 2, 0, 0, 0, 1, b'b', 0x01, 0, 0, 0, 1, b'a', 0x01, // record ty with b,a (descending)
             0x12, 0x00, 0, 0, 0, 0, // body bool false, 0 props
+        ]),
+        // A non-canonical NaN float term must be rejected (SPEC §1.3): every NaN
+        // encodes as the one quiet pattern 0x7FF8000000000000.
+        ("non-canonical-nan", vec![
+            0x4F, 0x31, 0x02, 0, 0, 0, 0, // func, tyvars 0
+            0x0A, // ty Float
+            0x20, 0x7F, 0xF8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // float body: NaN with payload 1
+            0, 0, 0, 0, // 0 props
         ]),
     ];
     let _ = badbool;

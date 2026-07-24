@@ -114,6 +114,51 @@ func TestCompileRatExactDifferential(t *testing.T) {
 	}
 }
 
+// Float (#36) compiles to native float64 with IEEE semantics — the mirror of
+// the Rat test, and the point of the whole exhibit: the SAME expression that is
+// "exact" for Rat is "inexact" for Float, because 0.1f + 0.2f is
+// 0.30000000000000004, not 0.3f. If float codegen were wrong (e.g. asserting
+// *big.Rat on a float64, or losing the canonical-NaN/bit-== semantics) this
+// would panic or print "exact"; either differs from what `oath eval` gives.
+func TestCompileFloatInexactDifferential(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go toolchain not available")
+	}
+	st := newStore(t)
+	put(t, st, `(data Str [] (SNil) (SCons Int Str))`)
+	put(t, st, `(data List [a] (Nil) (Cons a (List a)))`)
+	// Same shape as exactp, but over Float: structural == on the float result.
+	put(t, st, `(defn finexactp [] [(args (List Str))] Str
+		(if (== (+ 0.1f 0.2f) 0.3f) "exact" "inexact"))`)
+
+	h, ok := st.Resolve("finexactp")
+	if !ok {
+		t.Fatal("finexactp not in store")
+	}
+	src, err := emitProgram(st, h, nil)
+	if err != nil {
+		t.Fatalf("emitProgram: %v", err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module oathprog\n\ngo 1.25\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "prog")
+	if out, err := runIn(dir, "go", "build", "-o", bin, "."); err != nil {
+		t.Fatalf("go build failed:\n%s", out)
+	}
+	out, err := exec.Command(bin).Output()
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got := strings.TrimRight(string(out), "\n"); got != "inexact" {
+		t.Fatalf("compiled finexactp = %q, want %q (float 0.1+0.2 must not equal 0.3)", got, "inexact")
+	}
+}
+
 func runIn(dir, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir

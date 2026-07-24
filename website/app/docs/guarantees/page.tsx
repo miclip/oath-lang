@@ -70,10 +70,17 @@ export default function Guarantees() {
         <em>modulo overflow</em> asterisk. Integer division and modulo still stay
         outside the proof fragment on purpose — the kernel truncates toward zero
         while SMT-LIB integer division is Euclidean, so a &quot;proof&quot; over{" "}
-        <code>Int</code> division would certify the wrong theorem. Rational
-        division is different: <code>Rat</code> is exact ℚ, its <code>/</code> is
-        real division, and it translates faithfully to the <code>Real</code> sort —
-        so <code>(a/b)*b == a</code> is genuinely proven, not merely tested.
+        <code>Int</code> division would certify the wrong theorem. Rational and
+        float division are different: <code>Rat</code> is exact ℚ over the{" "}
+        <code>Real</code> sort (so <code>(a/b)*b == a</code> is genuinely proven),
+        and <code>Float</code> is IEEE-754 over the <code>Float64</code> sort — both
+        theories are complete, so both reach <code>proven</code>. The nuance for
+        floats is that fewer laws are <em>true</em>: <code>x*1.0 == x</code> proves,
+        but <code>0.1f + 0.2f == 0.3f</code> is <code>falsified</code> — not for any
+        weakness of the prover, but because it is false. That is the prover being
+        right, and it is categorically different from the recursion fragment, where
+        a <em>true</em> property bails to <code>tested</code> because the solver
+        can&apos;t reason about it.
       </p>
 
       <h2>Four dimensions, not one</h2>

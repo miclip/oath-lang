@@ -2,14 +2,16 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 )
 
 // Value is a runtime value. Types are fully erased at runtime.
 type Value struct {
-	K      string // int | rat | bool | str | closure | data | record | native
+	K      string // int | rat | float | bool | str | closure | data | record | native
 	Int    *big.Int
 	Rat    *big.Rat
+	Float  float64
 	Bool   bool
 	Str    string   // str: value
 	Names  []string // record: field names, sorted, parallel to Fields
@@ -65,6 +67,8 @@ func (e *evaluator) evalInner(env []Value, slf string, t *Term) (Value, error) {
 		return Value{K: "int", Int: t.Int}, nil
 	case "rat":
 		return Value{K: "rat", Rat: t.Rat}, nil
+	case "float":
+		return Value{K: "float", Float: canonFloat(t.Float)}, nil
 	case "bool":
 		return Value{K: "bool", Bool: t.Bool}, nil
 	case "record":
@@ -233,6 +237,35 @@ func (e *evaluator) evalPrim(env []Value, slf string, t *Term) (Value, error) {
 			return vBool(args[0].Rat.Cmp(args[1].Rat) == 0), nil
 		}
 	}
+	// IEEE-754 float arithmetic — dispatched on operand kind. Totally defined:
+	// division by zero yields ±inf (0/0 yields NaN), never an error. Every result
+	// is canonicalized (NaN → the one canonical NaN). `<`/`<=` are IEEE ordered
+	// comparisons (NaN is unordered ⇒ false), matching fp.lt/fp.leq. `==` is NOT
+	// handled here: it falls through to structEq, which is bitwise (SMT `=`), so
+	// NaN == NaN is true and +0.0 == -0.0 is false — the kernel's identity model.
+	if len(args) > 0 && args[0].K == "float" {
+		vF := func(x float64) Value { return Value{K: "float", Float: canonFloat(x)} }
+		switch t.Op {
+		case "+":
+			return vF(args[0].Float + args[1].Float), nil
+		case "-":
+			return vF(args[0].Float - args[1].Float), nil
+		case "*":
+			return vF(args[0].Float * args[1].Float), nil
+		case "/":
+			return vF(args[0].Float / args[1].Float), nil
+		case "neg":
+			return vF(-args[0].Float), nil
+		case "<":
+			return vBool(args[0].Float < args[1].Float), nil
+		case "<=":
+			return vBool(args[0].Float <= args[1].Float), nil
+		case "fp-eq":
+			// IEEE equality (fp.eq): NaN ≠ NaN, +0.0 == -0.0. The opt-in escape
+			// hatch, distinct from structural ==.
+			return vBool(args[0].Float == args[1].Float), nil
+		}
+	}
 	switch t.Op {
 	case "+":
 		return vInt(new(big.Int).Add(args[0].Int, args[1].Int)), nil
@@ -286,6 +319,11 @@ func structEq(a, b Value) (bool, error) {
 		return a.Int.Cmp(b.Int) == 0, nil
 	case "rat":
 		return a.Rat.Cmp(b.Rat) == 0, nil
+	case "float":
+		// Bitwise (Leibniz / SMT `=`), on canonicalized values: NaN == NaN
+		// (one canonical pattern) and +0.0 != -0.0. This is the identity model,
+		// deliberately NOT IEEE fp.eq (that is the `fp-eq` primitive).
+		return math.Float64bits(canonFloat(a.Float)) == math.Float64bits(canonFloat(b.Float)), nil
 	case "bool":
 		return a.Bool == b.Bool, nil
 	case "record":

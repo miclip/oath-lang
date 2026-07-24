@@ -1,0 +1,14 @@
+{
+  "name": "f-double",
+  "hash": "135e96990463e472206f7ff1c0be3d83ecbc3d347641094db0cd92465b3b310c",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

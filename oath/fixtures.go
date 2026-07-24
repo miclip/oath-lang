@@ -235,6 +235,8 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 				Props: []Prop{{Binders: []Ty{}, Body: Term{K: "bool", Bool: true}}}}},
 		{"negative_rat", "rat encodes as a reduced bigint pair (numerator, denominator); sign on the numerator",
 			&Def{K: "func", Ty: tRat(), Body: &Term{K: "rat", Rat: big.NewRat(-7, 4)}}},
+		{"negative_float", "float encodes as 8 big-endian IEEE-754 bytes (here -2.5); NaN would be canonical",
+			&Def{K: "func", Ty: tFloat(), Body: &Term{K: "float", Float: -2.5}}},
 		{"record_order", "record fields encode name-then-value pairs in strictly ascending name order",
 			&Def{K: "func", Ty: &Ty{K: "record", Names: []string{"a", "b"}, Args: []Ty{{K: "int"}, {K: "bool"}}},
 				Body: &Term{K: "record", Names: []string{"a", "b"},

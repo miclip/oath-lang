@@ -10,6 +10,9 @@ pub enum Sexpr {
     // `Rat` is ℚ — held as an already-reduced numerator/denominator pair
     // (SPEC §1.4: rational literals elaborate to reduced form).
     Rat(BigInt, BigInt),
+    // `Float` is IEEE-754 binary64 — held as the canonicalized 64-bit pattern
+    // (SPEC §1.4: an `f`-suffixed token whose prefix parses as a binary64).
+    Float(u64),
     Str(String),
     Sym(String),
     List(Vec<Sexpr>),
@@ -198,19 +201,103 @@ impl<'a> Reader<'a> {
         }
         let tok = String::from_utf8(buf)
             .map_err(|_| format!("line {}: invalid UTF-8 in token", self.line))?;
-        // Atom classification (SPEC §1.4), integer FIRST so `3` is an `int` not
-        // `3/1`: a decimal `big.Int` token is an `int`; otherwise a token that
-        // parses as a rational (`big.Rat` syntax — a decimal like `3.14`/`0.1`,
-        // or a fraction `num/den`, either optionally signed) is a `rat`,
-        // elaborated to reduced form; otherwise it is a symbol.
+        // Atom classification (SPEC §1.4). The order is normative: (1) integer
+        // FIRST so `3` is an `int`, not `3/1`; (2) a `float` — a token ending in
+        // `f` whose prefix parses as a binary64 — BEFORE rational, so `0.1f` is a
+        // `float` while `0.1` is a `rat`; (3) a `rat` (`big.Rat` syntax); (4)
+        // otherwise a symbol (a bare `f`/`fold` has no numeric prefix).
         if let Ok(n) = tok.parse::<BigInt>() {
             Ok(Sexpr::Int(n))
+        } else if let Some(bits) = parse_float(&tok) {
+            Ok(Sexpr::Float(bits))
         } else if let Some((num, den)) = parse_rational(&tok) {
             Ok(Sexpr::Rat(num, den))
         } else {
             Ok(Sexpr::Sym(tok))
         }
     }
+}
+
+/// Parse a `Float` literal (SPEC §1.4): a token ending in `f` whose prefix
+/// matches the PORTABLE decimal float grammar
+/// `[+-]?( D+ (. D*)? | . D+ )([eE][+-]?D+)?` or the case-insensitive
+/// `[+-]?(inf|infinity|nan)`. Returns the canonicalized 64-bit pattern, or `None`
+/// (the token is not a float and falls through to rational/symbol).
+///
+/// The grammar is checked EXPLICITLY (not delegated to the host float parser) so
+/// two kernels agree byte-for-byte on classification: hex floats (`0x1p4`) and
+/// digit separators (`1_000.0`) are NOT float literals — they fall through to
+/// symbols — even though some host parsers would accept them. The numeric VALUE
+/// of an accepted decimal comes from Rust's `f64` parser, the analog of Go's
+/// `strconv.ParseFloat`; both are correctly rounded (round-nearest-even), so
+/// `0.1` yields the identical binary64. A bare `f` (empty prefix) is a symbol.
+fn parse_float(tok: &str) -> Option<u64> {
+    let prefix = tok.strip_suffix('f')?;
+    if prefix.is_empty() || !is_portable_float_syntax(prefix) {
+        return None;
+    }
+    // The grammar has already vetted the syntax; the host parser now supplies the
+    // correctly-rounded value (it accepts a superset — hex/underscores — which the
+    // gate above has excluded, so only portable-grammar strings reach here).
+    let f: f64 = prefix.parse::<f64>().ok()?;
+    Some(crate::ir::canon_f64_bits(f.to_bits()))
+}
+
+/// True iff `s` matches the portable float-literal grammar (SPEC §1.4):
+/// `[+-]?( D+ (. D*)? | . D+ )([eE][+-]?D+)?` or case-insensitive
+/// `[+-]?(inf|infinity|nan)`. Digits are ASCII `0-9` only (no `_`, no hex, no
+/// unicode digits).
+fn is_portable_float_syntax(s: &str) -> bool {
+    // optional leading sign
+    let body = s.strip_prefix(['+', '-']).unwrap_or(s);
+    if body.is_empty() {
+        return false;
+    }
+    // inf / infinity / nan (case-insensitive)
+    let lower = body.to_ascii_lowercase();
+    if lower == "inf" || lower == "infinity" || lower == "nan" {
+        return true;
+    }
+    // decimal: split off an optional exponent at the first 'e'/'E'
+    let (mantissa, exp) = match body.find(['e', 'E']) {
+        Some(i) => (&body[..i], Some(&body[i + 1..])),
+        None => (body, None),
+    };
+    if !valid_float_mantissa(mantissa) {
+        return false;
+    }
+    match exp {
+        None => true,
+        Some(e) => valid_float_exponent(e),
+    }
+}
+
+/// Mantissa grammar `D+ (. D*)? | . D+` — ASCII digits, at most one `.`, and at
+/// least one digit somewhere.
+fn valid_float_mantissa(m: &str) -> bool {
+    let digits = |x: &str| x.bytes().all(|b| b.is_ascii_digit());
+    match m.split_once('.') {
+        None => !m.is_empty() && digits(m), // D+
+        Some((int, frac)) => {
+            if frac.contains('.') {
+                return false; // more than one '.'
+            }
+            if !digits(int) || !digits(frac) {
+                return false;
+            }
+            if int.is_empty() {
+                !frac.is_empty() // .D+
+            } else {
+                true // D+ (. D*)? — frac may be empty
+            }
+        }
+    }
+}
+
+/// Exponent grammar `[+-]? D+`.
+fn valid_float_exponent(e: &str) -> bool {
+    let d = e.strip_prefix(['+', '-']).unwrap_or(e);
+    !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit())
 }
 
 /// Parse a `big.Rat`-style rational literal to reduced (numerator, denominator)

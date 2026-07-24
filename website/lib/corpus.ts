@@ -52,6 +52,7 @@ put(["full-name", "greet", "greet-or-guest", "shout", "join-with", "initials-or"
 put(["Str", "str-len", "str-append", "str-prefix", "str-take", "str-drop", "str-split", "str-join", "str-split-join"], "Strings & records");
 put(["abs", "sign", "clamp", "max2", "e-div", "e-mod"], "Numbers");
 put(["rat-add", "rat-mul", "rat-recover"], "Rationals");
+put(["f-mul-id", "f-double", "f-tenths"], "Floats");
 put(["main-echo", "main-fetch", "rot", "rot-f", "rot-h2", "rot-h3", "rot-hl"], "Programs & capabilities");
 put(["rle-encode", "rle-decode", "rle-expand"], "Run-length coding");
 put(["i-contains", "i-overlaps"], "Intervals");

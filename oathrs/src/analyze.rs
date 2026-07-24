@@ -331,7 +331,7 @@ impl<'a> ConfWalk<'a> {
     fn walk(&self, t: &Term, target: u32, in_lam: bool) -> bool {
         match t {
             Term::Var(k) => *k != target,
-            Term::Int(_) | Term::Rat { .. } | Term::Bool(_) => true,
+            Term::Int(_) | Term::Rat { .. } | Term::Float(_) | Term::Bool(_) => true,
             Term::Ref { .. } | Term::SelfRef { .. } => true,
             Term::Lam { a, .. } => self.walk(a, target + 1, true),
             Term::Let { a, b, .. } => {

@@ -1,0 +1,2 @@
+✗ prop recovers                 FALSIFIED after 54 cases
+    counterexample: -1.6666666666666667f

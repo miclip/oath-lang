@@ -78,6 +78,23 @@ export default function Architecture() {
         division-inverse <code>(a/b)*b == a</code> — are <em>proven</em>, not merely
         tested. Structure where the solver is weak; primitive where it is strong.
       </p>
+      <p>
+        <code>Float</code> is the third numeric primitive — IEEE-754 binary64, for
+        bit-level interop with the outside world (opt in with an <code>f</code>{" "}
+        suffix, <code>0.1f</code>). Z3&apos;s float theory is complete too, so floats
+        REACH <code>proven</code>: <code>examples/float.oath</code> proves{" "}
+        <code>x * 1.0 == x</code> and <code>x + x == x*2</code> for <em>every</em>{" "}
+        float — NaN, ±inf, ±0 included — while <code>0.1f + 0.2f == 0.3f</code> is{" "}
+        <code>falsified</code>, because that sum really is{" "}
+        <code>0.30000000000000004</code>. The kernel refuses to certify a false
+        thing; that is the prover being right, and it is the same property that is{" "}
+        <code>proven</code> exact as a <code>Rat</code>. The one subtlety is
+        identity: a content-addressed store needs one canonical form per value, so a{" "}
+        <code>Float</code> IS its bit pattern (every NaN canonicalized to one), and
+        structural <code>==</code> is Leibniz equality — <code>NaN == NaN</code>,{" "}
+        <code>+0.0 &ne; -0.0</code> (SMT <code>=</code>), with IEEE&apos;s{" "}
+        <code>fp.eq</code> kept as a separate opt-in primitive.
+      </p>
 
       <h2>Two kernels, one spec</h2>
       <p>
