@@ -42,6 +42,33 @@ func TestFindMatchesByPropContentHash(t *testing.T) {
 	}
 }
 
+// Cross-type matching: a law that is polymorphic in its operand type (e.g.
+// commutativity) matches across the types it ranges over. Commutativity over
+// Int and over Rat share a generalized property hash and are surfaced together.
+func TestFindCrossTypeMatch(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(defn plus-i [] [(a Int) (b Int)] Int (+ a b)
+		(prop comm [(a Int) (b Int)] (== (plus-i a b) (plus-i b a))))`)
+	put(t, st, `(defn plus-r [] [(a Rat) (b Rat)] Rat (+ a b)
+		(prop comm [(a Rat) (b Rat)] (== (plus-r a b) (plus-r b a))))`)
+
+	// EXACT hashes differ (Int vs Rat binders)...
+	if propHash(&mustDef(t, st, "plus-i").Props[0]) == propHash(&mustDef(t, st, "plus-r").Props[0]) {
+		t.Fatal("exact propHash should differ across Int and Rat binders")
+	}
+	// ...but the GENERALIZED hashes match (both [t0,t0]).
+	if propHashGeneral(&mustDef(t, st, "plus-i").Props[0]) != propHashGeneral(&mustDef(t, st, "plus-r").Props[0]) {
+		t.Fatal("generalized propHash should match commutativity across Int and Rat")
+	}
+	out, err := apiFind(st, "plus-i")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "plus-r") {
+		t.Fatalf("find plus-i should cross-type match plus-r:\n%s", out)
+	}
+}
+
 func mustDef(t *testing.T, st *Store, name string) *Def {
 	t.Helper()
 	h, ok := st.Resolve(name)

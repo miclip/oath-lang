@@ -258,7 +258,7 @@ func apiFind(st *Store, name string) (string, error) {
 	var queries []qprop
 	qidx := map[string]int{} // propHash -> index into queries
 	for i := range qd.Props {
-		ph := propHash(&qd.Props[i])
+		ph := propHashGeneral(&qd.Props[i])
 		if _, seen := qidx[ph]; seen {
 			continue
 		}
@@ -290,7 +290,7 @@ func apiFind(st *Store, name string) (string, error) {
 		}
 		m, _ := st.GetMeta(h)
 		for i := range d.Props {
-			if j, ok := qidx[propHash(&d.Props[i])]; ok {
+			if j, ok := qidx[propHashGeneral(&d.Props[i])]; ok {
 				matches[j] = append(matches[j], match{k, propName(m, i), provenContains(m, i)})
 			}
 		}
@@ -303,7 +303,7 @@ func apiFind(st *Store, name string) (string, error) {
 		return "tested"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "properties of %s, and which other definitions satisfy each (matched by content hash, not name):\n", name)
+	fmt.Fprintf(&b, "properties of %s, and which other definitions satisfy each (matched by content hash up to operand types, not name):\n", name)
 	for _, q := range queries {
 		j := qidx[q.hash]
 		fmt.Fprintf(&b, "\n  · %s [%s here]  #%s\n", q.name, mark(q.proven), shortHash(q.hash))
