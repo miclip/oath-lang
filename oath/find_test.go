@@ -100,6 +100,47 @@ func TestFindSpecFreshQuery(t *testing.T) {
 	}
 }
 
+// Proof-implication finds definitions that PROVABLY satisfy a spec, even when
+// the spec is written differently from any law they state. Commutativity written
+// `(== (self b a) (self a b))` has a different AST from the usual form (so the
+// content-hash surface misses it), but `+` still provably satisfies it.
+func TestFindImplies(t *testing.T) {
+	if z3Available() != nil {
+		t.Skip("z3 not available")
+	}
+	st := newStore(t)
+	put(t, st, `(defn plus-r [] [(a Rat) (b Rat)] Rat (+ a b))`)
+
+	// The exact-hash surface misses this flipped form...
+	exact, err := apiFindSpec(st, `(defn q [] [(a Rat) (b Rat)] Rat (+ a b)
+		(prop fc [(a Rat) (b Rat)] (== (q b a) (q a b))))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(exact, "plus-r") {
+		t.Fatalf("exact-hash find should MISS the flipped form (that's the point):\n%s", exact)
+	}
+	// ...but proof-implication proves it.
+	impl, err := apiFindImplies(st, `(defn q [] [(a Rat) (b Rat)] Rat (+ a b)
+		(prop fc [(a Rat) (b Rat)] (== (q b a) (q a b))))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(impl, "plus-r") {
+		t.Fatalf("proof-implication should find plus-r (+ provably satisfies flipped comm):\n%s", impl)
+	}
+
+	// A false spec finds nothing (left-projection is not true for +).
+	no, err := apiFindImplies(st, `(defn q [] [(a Rat) (b Rat)] Rat (+ a b)
+		(prop proj [(a Rat) (b Rat)] (== (q a b) a)))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(no, "plus-r") {
+		t.Fatalf("a false spec must not match plus-r:\n%s", no)
+	}
+}
+
 func mustDef(t *testing.T, st *Store, name string) *Def {
 	t.Helper()
 	h, ok := st.Resolve(name)

@@ -167,6 +167,15 @@ func propHashGeneral(p *Prop) string {
 	return hex.EncodeToString(s[:])
 }
 
+// tyBytes is the canonical encoding of a single type — used to compare
+// signatures (a self-referential property is portable to any definition of the
+// same signature, since the function is `self`, not a name).
+func tyBytes(t *Ty) []byte {
+	e := &enc{}
+	e.ty(t)
+	return e.b
+}
+
 // hashDefV0 is the legacy JSON-based identity (kernel ≤0.6), retained ONLY
 // for the one-shot store migration's old→new mapping.
 func hashDefV0(d *Def) string {

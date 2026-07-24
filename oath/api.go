@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"strings"
@@ -359,6 +360,83 @@ func apiFindSpec(st *Store, src string) (string, error) {
 		}
 		header := fmt.Sprintf("spec query %q — which proven definitions satisfy it (by content hash, no name, no example):\n", meta.Name)
 		b.WriteString(findFromDef(st, def, meta, "", header))
+	}
+	return b.String(), nil
+}
+
+// apiFindImplies is spec-query by PROOF-IMPLICATION: find every definition that
+// PROVABLY satisfies a fresh spec — not just the ones whose stated law matches
+// by shape. Because a property is `self`-referential and de Bruijn, it is
+// portable: for each definition of the same signature, we append the query
+// property and try to prove it (reusing the full prover, including that
+// definition's own proven properties as lemmas and its body). If it proves, the
+// definition satisfies the spec — even when the spec is written differently from
+// any law that definition happens to have stated. This catches semantic matches
+// that the content-hash surface misses (e.g. commutativity written `(== (self b
+// a) (self a b))` still proves against `+`).
+func apiFindImplies(st *Store, src string) (string, error) {
+	if err := z3Available(); err != nil {
+		return "", err
+	}
+	forms, err := parseForms(src)
+	if err != nil {
+		return "", err
+	}
+	if len(forms) != 1 || forms[0].K != "list" || len(forms[0].Kids) == 0 || !forms[0].Kids[0].isSym("defn") {
+		return "", fmt.Errorf("a proof-implication query must be a single (defn ...) whose properties are the query")
+	}
+	qd, qm, err := elabFunc(st, forms[0])
+	if err != nil {
+		return "", err
+	}
+	if err := checkDef(st, qd); err != nil {
+		return "", fmt.Errorf("spec query does not typecheck: %w", err)
+	}
+	if len(qd.Props) == 0 {
+		return "", fmt.Errorf("spec query %q has no properties", qm.Name)
+	}
+	qsig := tyBytes(qd.Ty)
+
+	names := st.Names()
+	keys := make([]string, 0, len(names))
+	for k := range names {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "spec query %q — which definitions PROVABLY satisfy it (proof-implication, not shape match):\n", qm.Name)
+	for pqi := range qd.Props {
+		fmt.Fprintf(&b, "\n  · %s\n", propNameOf(qm, pqi))
+		found := false
+		for _, k := range keys {
+			h := names[k]
+			d, err := st.GetDef(h)
+			if err != nil || d.K != "func" || !bytes.Equal(tyBytes(d.Ty), qsig) {
+				continue
+			}
+			m, err := st.GetMeta(h)
+			if err != nil {
+				continue
+			}
+			// The query property is portable (self + de Bruijn): append it to
+			// this same-signature definition and prove it about that def.
+			aug := *d
+			aug.Props = append(append([]Prop{}, d.Props...), qd.Props[pqi])
+			if err := checkDef(st, &aug); err != nil {
+				continue
+			}
+			pi := len(d.Props)
+			c := newSmtCtx(st, &aug, h)
+			loadLemmaLibrary(c, st, &aug, h, m)
+			if o := c.proveOne(&aug, h, m, &aug.Props[pi], pi); o.status == "proven" {
+				fmt.Fprintf(&b, "      %-18s ← provably satisfies it (%s)\n", k, o.method)
+				found = true
+			}
+		}
+		if !found {
+			b.WriteString("      (no definition provably satisfies this — in the same-signature, provable set)\n")
+		}
 	}
 	return b.String(), nil
 }

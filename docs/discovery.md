@@ -107,12 +107,23 @@ and match). What remains:
   needed. The dummy body is the one wart (you must write a well-typed
   placeholder to give `self` a signature); auto-synthesizing an inhabitant of
   the return type would remove it.
-- **It's exact-shape, not implication.** It finds defs with the *same* law, not
-  defs whose (possibly stronger) law *implies* yours. *Next:* proof-based
-  implication — "does this def's spec entail mine?" — which needs the prover.
-- **It's spec-equivalence, not body-equivalence.** Two different proven `sort`s
-  with differently-shaped specs won't link. *That* is rung 3, the e-graph.
+- **Proof-implication** is now available alongside the content-hash surface:
+  `oath find --implies <file>` (and the `find_implies` MCP tool) finds every
+  definition that PROVABLY satisfies the spec — via Z3, not by shape. Because a
+  property is `self`-referential and de Bruijn it is *portable*: for each
+  same-signature definition, the query property is appended and proved (reusing
+  the whole prover — the definition's body and its own proven properties as
+  lemmas). This catches semantic matches the hash surface misses — commutativity
+  written `(== (self b a) (self a b))` has a different AST from the usual form,
+  so `find --spec` misses it, but `find --implies` proves `+` satisfies it. The
+  first version restricts candidates to an EXACT signature match (no cross-type
+  re-typing yet) and pays a proof per candidate; the win is finding defs that
+  satisfy your spec *however they wrote their own*.
+- **It's still spec-equivalence, not body-equivalence.** Two different proven
+  `sort`s with unrelated specs won't link. *That* is the e-graph — canonicalizing
+  bodies that are provably equal — the last rung.
 
-Each limit is a rung, and they compose: normalize types, add a fresh-spec front
-door, then proof-implication, then the e-graph — every step loosening
-name-dependence further, none of them touching identity.
+The rungs compose: content-hash match (up to type) for the fast common case,
+proof-implication for the semantic cases it misses, and eventually the e-graph
+for body-equivalence — every step loosening name-dependence further, none of
+them touching identity.

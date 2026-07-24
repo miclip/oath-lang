@@ -83,6 +83,11 @@ func mcpTools() []map[string]any {
 			"inputSchema": obj(map[string]any{"source": str("an Oath (defn ...) whose properties are the spec to search for")}, "source"),
 		},
 		{
+			"name":        "find_implies",
+			"description": "Spec-query by PROOF-IMPLICATION: like find_spec, but finds every definition that PROVABLY satisfies the spec (via Z3), not just the ones whose stated law matches by shape. Catches semantic matches the content-hash surface misses — e.g. commutativity written `(== (self b a) (self a b))` still proves against `+`. Slower (a proof per same-signature candidate) but the real reuse question: 'who can I prove satisfies this, however they wrote their own specs?'.",
+			"inputSchema": obj(map[string]any{"source": str("an Oath (defn ...) whose properties are the spec to prove against candidates")}, "source"),
+		},
+		{
 			"name":        "eval",
 			"description": "Typecheck and evaluate a single Oath expression, e.g. (sort (Cons [Int] 2 (Cons [Int] 1 (Nil [Int])))).",
 			"inputSchema": obj(map[string]any{"expr": str("Oath expression")}, "expr"),
@@ -162,6 +167,8 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string)
 		return apiFind(st, a.Name)
 	case "find_spec":
 		return apiFindSpec(st, a.Source)
+	case "find_implies":
+		return apiFindImplies(st, a.Source)
 	case "ls":
 		return apiLs(st), nil
 	case "eval":
