@@ -51,6 +51,7 @@ Canonical bytes begin with the 2-byte magic `0x4F 0x31` ("O1").
 | 0x06 | data | `hash`, `list<Ty>` args |
 | 0x07 | rec | `list<Ty>` args |
 | 0x08 | record | `u32` count, then per field: `str` name, Ty — names strictly ascending bytewise |
+| 0x09 | rat | — |
 
 `Term` — one tag byte, then fields:
 
@@ -71,6 +72,7 @@ Canonical bytes begin with the 2-byte magic `0x4F 0x31` ("O1").
 | 0x1C | match | `hash`, Term scrutinee, `list<Term>` arms (constructor order; arm *i* binds ctor *i*'s fields, first field outermost) |
 | 0x1D | record | `u32` count, then per field: `str` name, Term — names strictly ascending |
 | 0x1E | field | Term record, `str` field name |
+| 0x1F | rat | `bigint` numerator ++ `bigint` denominator (reduced form: `gcd(|num|, den) = 1`, `den ≥ 1`) |
 
 `Def` — one tag byte after the magic:
 
@@ -102,6 +104,11 @@ Producers (elaborators) MUST emit, and checkers MUST enforce:
 - Primitive operators are the literal strings: `+ - * / % neg == < <= and
   or not`. There are NO string primitives: strings are the ordinary `Str`
   datatype (§3), and every string operation is a definition.
+- Rational (`rat`) terms are stored in reduced form: the denominator is
+  positive (`≥ 1`) and coprime to the numerator (`gcd(|num|, den) = 1`); the
+  sign lives on the numerator. `0` is `0/1`. Decoders MUST reject a `rat`
+  whose denominator is `0` or `< 0`, or whose numerator and denominator share
+  a common factor — so equal rationals have one identity.
 
 ### 1.4 Surface syntax and elaboration
 
@@ -110,19 +117,24 @@ input. A conforming surface elaborator MUST therefore match these rules:
 
 - Whitespace is space, tab, carriage return, newline. `;` starts a comment
   through the next newline. Delimiters are `()`, `[]`, and `{}`.
-- Atoms are decimal int64 literals, string literals, or symbols. A token that
-  parses as int64 is an integer; otherwise it is a symbol.
+- Atoms are integer literals, rational literals, string literals, or symbols.
+  A token that parses as a decimal integer (arbitrary precision, `big.Int`
+  syntax — optional leading `-`, then digits) is an `int`. Otherwise, a token
+  that parses as a rational (`big.Rat` syntax: a decimal like `3.14` or `0.1`,
+  or a fraction `num/den`, either optionally signed) is a `rat`, elaborated to
+  reduced form. Otherwise it is a symbol. (Integer syntax is tried first, so
+  `3` is an `int`, not `3/1`.)
 - String literals are delimited by `"`. Supported escapes are `\n`, `\t`,
   `\"`, and `\\`; any other backslash escape is rejected. Newlines inside
   strings are accepted and count for later line numbers.
 - Lists produce `list`, square brackets `brack`, and braces `brace`.
 - Top-level forms are `(data Name [tyvars] ctor...)` and `(defn name [tyvars]
   [(param ty) ...] ret body prop...)`.
-- Type syntax: `Int`, `Bool`, `Str`, type variables, data names, `(Data arg
-  ...)`, right-associated `(-> a b c)`, and record types `{field Ty ...}`.
+- Type syntax: `Int`, `Rat`, `Bool`, `Str`, type variables, data names, `(Data
+  arg ...)`, right-associated `(-> a b c)`, and record types `{field Ty ...}`.
   Record fields are sorted ascending by raw symbol bytes during elaboration;
   duplicate fields are rejected.
-- Term syntax: ints, strings, `true`, `false`, variables, `(fn [(x ty) ...]
+- Term syntax: ints, rationals, strings, `true`, `false`, variables, `(fn [(x ty) ...]
   body)`, `(let (x ty expr) body)`, `(if c t e)`, `(match scrut ((Ctor x ...)
   body) ...)`, record literals `{field expr ...}`, field access `(. expr
   field)`, list literals `(list e0 e1 ...)`, primitives, and named application
@@ -135,7 +147,7 @@ input. A conforming surface elaborator MUST therefore match these rules:
   constructor chain the author would write, identity is unchanged.
 - STRING-LITERAL SUGAR: a `"…"` literal elaborates to the codepoint chain
   `(SCons c0 (SCons c1 … (SCons cₙ (SNil))))`, where each `cᵢ` is the Unicode
-  scalar value (a decimal int64) of the literal's `i`-th codepoint in order;
+  scalar value (a decimal `Int`) of the literal's `i`-th codepoint in order;
   `""` is `(SNil)`. `Str` is an ordinary datatype (§3) and the `SNil`/`SCons`
   constructors must be in scope. There is no string-literal term and no string
   primitive — a literal is byte-identical to the constructor chain an author
@@ -162,8 +174,10 @@ wording is not part of kernel identity.
 The conformance suite MUST include raw canonical-byte fixtures for at least:
 raw (unescaped) strings containing quotes, backslashes, newlines, `<>&`, and
 U+2028/U+2029; a negative `i64`; the bool byte; a 32-raw-byte hash
-reference; empty lists (a bare zero count); and a record whose encoding
-witnesses the name-then-value pair layout in ascending name order.
+reference; empty lists (a bare zero count); a record whose encoding
+witnesses the name-then-value pair layout in ascending name order; and a
+`rat` term whose encoding witnesses the reduced numerator/denominator
+`bigint` pair (e.g. a negative, non-integer rational).
 
 A second implementation should first pass these byte fixtures, then the full
 examples corpus.
@@ -210,8 +224,15 @@ vector `S` of length `tyvars` (all initially unsolved):
   against `E`; then match each field type against every argument that
   synthesizes. Reject if any `S` entry is unsolved. Backfill and CHECK each
   argument against its now-concrete field type.
-- PRIMITIVES with fixed operand types (`+ - * / % neg < <= and or not`) CHECK
-  each operand against that fixed type. `==` is polymorphic in
+- PRIMITIVES split into three groups. `and`/`or`/`not` have fixed `Bool`
+  operands and CHECK against them. `%` is `Int`-only (it truncates). The
+  arithmetic and ordering primitives `+ - * / neg < <=` are NUMERIC-OVERLOADED
+  over `Int` or `Rat`: SYNTHESIZE the first operand to fix the numeric kind,
+  reject if it is neither `Int` nor `Rat`, then CHECK every operand against
+  that same kind (operands may not mix `Int` and `Rat`). `+ - * neg` return
+  the operand kind; `< <=` return `Bool`. `/` is admitted for both kinds but
+  means different things: truncating integer division over `Int`, exact real
+  division over `Rat` (§3). `==` is polymorphic in
   its operand type: SYNTHESIZE whichever operand can be, then CHECK the other
   against it (so `(== xs (Nil))` infers the `(Nil)`); both must be the same
   non-function type, and — since the operands end at the same type — the
@@ -264,9 +285,10 @@ Detailed synthesis obligations:
   result types equal. Constructor fields are pushed into the arm context in
   declaration order; the first field is outermost and the last field is
   `var 0`.
-- Primitive arities and types are fixed: arithmetic and comparisons are over
-  `Int`, `and`/`or`/`not` over `Bool`, and `==` over equal first-order types
-  only. There are no string primitives.
+- Primitive arities are fixed. Arithmetic and comparisons (`+ - * / neg < <=`)
+  are numeric-overloaded over `Int` or `Rat` (operands share one kind); `%` is
+  `Int`-only; `and`/`or`/`not` are over `Bool`; and `==` is over equal
+  first-order types only. There are no string primitives.
 
 ## 3. Dynamic semantics
 
@@ -284,6 +306,16 @@ Detailed synthesis obligations:
   truncates toward zero; `%` takes the dividend's sign; division or modulo
   by zero is a runtime error. This matches the proof model exactly (the solver
   already reasons over unbounded integers), so there is no overflow caveat.
+- **Rationals** (`Rat`) are ℚ — exact, arbitrary precision (numerator and
+  denominator are unbounded integers, always kept in reduced form). `+ - *`
+  are exact; `/` is exact real division (no truncation), so `(/ a b)` for a
+  nonzero `b` is the true rational `a/b` and `(* (/ a b) b) = a`; division by
+  zero is a runtime error. `neg`, `<`, `<=`, and `==` are the exact rational
+  operations. Because ℚ is a field and Z3's real theory is complete, the
+  algebraic laws IEEE floating point violates — associativity, distributivity,
+  exact division-inverse — are provable (§7), and a decimal literal like `0.1`
+  denotes exactly `1/10`, never a binary approximation. `Rat` and `Int` do not
+  implicitly convert; there is no `Float`.
 - **Strings** are NOT primitive. A string is a value of the ordinary datatype
   `(data Str [] (SNil) (SCons Int Str))` — a sequence of Unicode scalar values
   (each an `Int` codepoint), built with the `SNil`/`SCons` constructors. It
@@ -309,14 +341,16 @@ Two independent bounds, both normative for verdict reproducibility:
 
 ### 3.2 Runtime values and printing
 
-Runtime values are erased: `int`, `bool`, `closure`, `data`, `record`,
+Runtime values are erased: `int`, `rat`, `bool`, `closure`, `data`, `record`,
 and generated `native` functions. Closures store an environment, lambda term,
 and enclosing self hash. Native functions are used only by deterministic
 generation: identity, affine, constant, and finite table.
 
 Value printing is normative for counterexamples and conformance:
 
-- Int and Bool print as decimal and `true`/`false`.
+- Int and Bool print as decimal and `true`/`false`. Rat prints in lowest
+  terms: an integer-valued rational as a bare integer (`3`, `-2`), otherwise
+  `num/den` with the sign on the numerator (`1/2`, `-7/4`).
 - Strings, being `Str` datatype values, print as data (see below) — a chain of
   `(SCons <codepoint> …)` ending in `SNil`.
 - Records print `{name value ...}` in canonical field order.
@@ -696,9 +730,12 @@ reproducibility (given the same solver):
   refuted by deterministic testing (§4) is never recorded as proven even if the
   solver reports it valid — the concrete counterexample governs.
 - `match` translates to tester/selector ite-chains.
-- **Excluded, permanently or pending**: `/` and `%` (kernel truncates,
-  SMT-LIB is Euclidean — translation would prove the wrong theorem);
-  partial application; lambda values in argument position.
+- **Excluded, permanently or pending**: `/` and `%` over `Int` (the kernel
+  truncates toward zero, SMT-LIB integer division is Euclidean — translation
+  would prove the wrong theorem); partial application; lambda values in
+  argument position. Note `/` over `Rat` is NOT excluded — it is exact real
+  division and translates faithfully (§7.1), so rational division-inverse laws
+  are provable.
 - Proof search: direct (assert negation, check-sat), then structural
   induction on each datatype-typed binder in order — one subgoal per
   constructor, induction hypotheses for datatype-recursive fields with all
@@ -723,6 +760,13 @@ reproducibility (given the same solver):
   names in a public store.
 - Negative integer literals render as `(- N)`. Non-negative integers render in
   decimal.
+- `Rat` translates to the SMT sort `Real` (Z3's linear real arithmetic is a
+  complete, decidable theory — the reason `Rat` is a primitive rather than a
+  structural datatype). A rat literal `num/den` renders as `(/ NUM DEN)` with
+  a negative numerator rendered `(- N)` as above; `0/1` is `(/ 0 1)`. The
+  numeric-overloaded prims propagate the operand sort: `+ - * neg` over `Real`
+  stay `Real`, `< <=` yield `Bool`, and `/` over `Real` is admitted (exact
+  real division) — in contrast to `/` over `Int`, which is excluded below.
 - SMT string literals double `"` characters inside the SMT string. Other
   string escaping must match SMT-LIB accepted literal syntax and the examples
   corpus.
