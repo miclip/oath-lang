@@ -65,7 +65,8 @@ The first, soundest rules are the algebraic ones for the built-in operators:
   each rule is allowed to fire.
 - Unit/identity laws (`x + 0 = x`, `x * 1 = x`), and eventually a real
   saturating e-graph with a growable rule set and equality-saturation extraction,
-  are the deeper versions still to come.
+  are the deeper versions still to come — tracked, with the other discovery
+  rungs, in issue #65.
 
 `eNormalize` walks a term applying the confluent rules directly to a normal form
 (a full e-graph data structure isn't needed while the rules are confluent);
