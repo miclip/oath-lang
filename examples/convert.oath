@@ -1,0 +1,37 @@
+; Numeric conversions bridge the three primitives — Int (ℤ), Rat (ℚ), Float
+; (IEEE-754) — that would otherwise be islands. Three overloaded primitives:
+;   to-rat   : Int|Float -> Rat    (exact; errors on NaN/inf from Float)
+;   to-float : Int|Rat   -> Float  (round to nearest, ties to even)
+;   floor    : Rat|Float -> Int    (round toward -inf; errors on NaN/inf)
+; The widening/total directions are provable (Z3 to_real / to_fp / to_int); the
+; partial Float->{Rat,Int} narrowings stay outside the proof fragment, exactly
+; like Int division.
+
+; PROVEN: embedding an Int into ℚ and flooring back is the identity.
+(defn int-embed [] [(n Int)] Rat
+  (to-rat n)
+  (prop round-trips [(n Int)] (== (floor (int-embed n)) n)))
+
+; PROVEN: floor rounds toward -inf, so floor(x) never exceeds x.
+(defn rat-floor [] [(x Rat)] Int
+  (floor x)
+  (prop is-lower-bound [(x Rat)] (<= (to-rat (rat-floor x)) x)))
+
+; PROVEN: to-rat is an additive homomorphism ℤ -> ℚ.
+(defn embed-add [] [(a Int) (b Int)] Rat
+  (to-rat (+ a b))
+  (prop additive [(a Int) (b Int)]
+    (== (embed-add a b) (+ (to-rat a) (to-rat b)))))
+
+; PROVEN: the exact rational 1/10 rounds to precisely the 0.1f Float literal —
+; the ℚ and IEEE worlds meet where you'd want them to.
+(defn tenth-f [] [] Float
+  (to-float 1/10)
+  (prop is-point-one [] (== tenth-f 0.1f)))
+
+; PROVEN: 1/3 (non-dyadic — genuinely rounds) lands on the nearest binary64.
+; This pins Rat→Float round-nearest-even across both kernels: a wrong rounding
+; would falsify here and break the byte-identical verify transcript.
+(defn third-f [] [] Float
+  (to-float 1/3)
+  (prop rounds-nearest [] (== third-f 0.3333333333333333f)))

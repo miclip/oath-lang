@@ -359,6 +359,7 @@ var primArity = map[string]int{
 	"+": 2, "-": 2, "*": 2, "/": 2, "%": 2, "neg": 1,
 	"==": 2, "<": 2, "<=": 2, "and": 2, "or": 2, "not": 1,
 	"fp-eq": 2,
+	"to-rat": 1, "to-float": 1, "floor": 1,
 }
 
 // parseRecord elaborates {name X name X ...} into sorted (names, items),

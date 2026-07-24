@@ -6,8 +6,11 @@ use crate::ir::*;
 use crate::sexpr::{Reader, Sexpr};
 use std::collections::{BTreeMap, HashSet};
 
-const PRIMS: &[&str] =
-    &["+", "-", "*", "/", "%", "neg", "==", "<", "<=", "and", "or", "not", "fp-eq"];
+const PRIMS: &[&str] = &[
+    "+", "-", "*", "/", "%", "neg", "==", "<", "<=", "and", "or", "not", "fp-eq",
+    // Numeric conversions (SPEC §1.3, §2, §3): unary, overloaded by SOURCE type.
+    "to-rat", "to-float", "floor",
+];
 
 #[derive(Clone)]
 pub struct DataInfo {

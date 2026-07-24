@@ -545,7 +545,25 @@ func (c *smtCtx) tr(t *Term, env []smtVal) (string, string, error) {
 		// structural == is SMT `=` (Leibniz — NaN=NaN, +0≠−0), matching the
 		// kernel's identity model. `fp-eq` is the separate IEEE fp.eq.
 		if argSort == "Float64" {
+			// Includes the PARTIAL narrowings to-rat/floor from Float, which
+			// floatPrim rejects — non-finite floats have no rational/integer, so
+			// they stay outside the provable fragment (like Int division).
 			return floatPrim(t.Op, parts)
+		}
+		// Numeric conversions with a total, exact SMT image: Int→Rat (to_real),
+		// Int/Rat→Float (to_fp at RNE), Rat→Int (to_int = floor). The Float-source
+		// conversions are partial and handled by floatPrim above.
+		switch t.Op {
+		case "to-rat":
+			return fmt.Sprintf("(to_real %s)", parts[0]), "Real", nil
+		case "to-float":
+			src := parts[0]
+			if argSort == "Int" {
+				src = fmt.Sprintf("(to_real %s)", src)
+			}
+			return fmt.Sprintf("((_ to_fp 11 53) RNE %s)", src), "Float64", nil
+		case "floor":
+			return fmt.Sprintf("(to_int %s)", parts[0]), "Int", nil
 		}
 		// `%` is never translatable; `/` truncates over Int (SMT-LIB is
 		// Euclidean) but is EXACT over Real, so it translates for rationals.

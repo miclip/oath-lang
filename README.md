@@ -126,6 +126,13 @@ x*2` for *every* float (including NaN/±inf/±0), while `0.1f + 0.2f == 0.3f` is
 correctly *falsified*. (`Float` identity is bitwise — `NaN == NaN`, `+0.0 ≠
 -0.0`; IEEE `fp.eq` is a separate primitive. See `docs/floats.md`.)
 
+The three interconvert explicitly — `to-rat`, `to-float`, `floor` (overloaded by
+source; `Float → Rat`/`Int` errors on NaN/inf, like division by zero). The exact
+directions prove: `examples/convert.oath` proves that embedding an `Int` in ℚ and
+flooring back is the identity, that `floor x ≤ x`, and that the exact rational
+`1/10` rounds to precisely the `0.1f` float literal — the tower meets where it
+should.
+
 Strings are the ordinary `Str` datatype (a codepoint sequence, not a primitive —
 see `docs/structural-strings.md`); with structural records (`examples/records.oath`):
 

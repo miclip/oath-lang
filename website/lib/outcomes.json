@@ -312,6 +312,19 @@
       ]
     },
     {
+      "name": "embed-add",
+      "hash": "817f85803f2a419044ae8fa0ceaf5bf78870095de28b19fc50a7c55509fd5bd9",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "additive",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "f-double",
       "hash": "135e96990463e472206f7ff1c0be3d83ecbc3d347641094db0cd92465b3b310c",
       "level": "proven",
@@ -774,6 +787,19 @@
         },
         {
           "name": "head-law",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "int-embed",
+      "hash": "37c83ea0981d6eb7bb01a5fd814a86a777d57b4773fcf13db4b95cdee470ad83",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "round-trips",
           "proven": true
         }
       ]
@@ -1541,6 +1567,19 @@
         },
         {
           "name": "assoc",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "rat-floor",
+      "hash": "d60f775729e4dc1b8a948e7bc7dee1394ea978fa2e5788f2d1db87b2d74df75d",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "is-lower-bound",
           "proven": true
         }
       ]
@@ -2435,6 +2474,32 @@
         },
         {
           "name": "cons-step",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "tenth-f",
+      "hash": "8fd0dda446661476e93adbcb0fd6ae4f326624746df628bed7bc6370b089f4f6",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "is-point-one",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "third-f",
+      "hash": "8364dad02bbc6fcb767defa0c468c4c9f363bc99ae13bb48357db0c736486c3a",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "rounds-nearest",
           "proven": true
         }
       ]

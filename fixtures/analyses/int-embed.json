@@ -1,0 +1,12 @@
+{
+  "name": "int-embed",
+  "hash": "37c83ea0981d6eb7bb01a5fd814a86a777d57b4773fcf13db4b95cdee470ad83",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

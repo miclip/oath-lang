@@ -266,6 +266,38 @@ func (e *evaluator) evalPrim(env []Value, slf string, t *Term) (Value, error) {
 			return vBool(args[0].Float == args[1].Float), nil
 		}
 	}
+	// Numeric conversions (unary). Widening (Int→Rat/Float, Rat→Float) and the
+	// exact narrowing Float→Rat / floor toward −∞. Float→{Rat,Int} error on
+	// NaN/inf, like division by zero.
+	switch t.Op {
+	case "to-rat":
+		if args[0].K == "int" {
+			return Value{K: "rat", Rat: new(big.Rat).SetInt(args[0].Int)}, nil
+		}
+		f := args[0].Float
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return Value{}, fmt.Errorf("to-rat of non-finite float")
+		}
+		return Value{K: "rat", Rat: new(big.Rat).SetFloat64(f)}, nil // exact for finite binary64
+	case "to-float":
+		if args[0].K == "int" {
+			f, _ := new(big.Float).SetInt(args[0].Int).Float64()
+			return Value{K: "float", Float: canonFloat(f)}, nil
+		}
+		f, _ := args[0].Rat.Float64() // nearest binary64, round-nearest-even
+		return Value{K: "float", Float: canonFloat(f)}, nil
+	case "floor":
+		if args[0].K == "rat" {
+			// floor(num/den) with den > 0 is big.Int Div (rounds toward −∞).
+			return vInt(new(big.Int).Div(args[0].Rat.Num(), args[0].Rat.Denom())), nil
+		}
+		f := args[0].Float
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return Value{}, fmt.Errorf("floor of non-finite float")
+		}
+		i, _ := big.NewFloat(math.Floor(f)).Int(nil)
+		return vInt(i), nil
+	}
 	switch t.Op {
 	case "+":
 		return vInt(new(big.Int).Add(args[0].Int, args[1].Int)), nil

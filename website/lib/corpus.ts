@@ -53,6 +53,7 @@ put(["Str", "str-len", "str-append", "str-prefix", "str-take", "str-drop", "str-
 put(["abs", "sign", "clamp", "max2", "e-div", "e-mod"], "Numbers");
 put(["rat-add", "rat-mul", "rat-recover"], "Rationals");
 put(["f-mul-id", "f-double", "f-tenths"], "Floats");
+put(["int-embed", "rat-floor", "embed-add", "tenth-f"], "Numeric conversions");
 put(["main-echo", "main-fetch", "rot", "rot-f", "rot-h2", "rot-h3", "rot-hl"], "Programs & capabilities");
 put(["rle-encode", "rle-decode", "rle-expand"], "Run-length coding");
 put(["i-contains", "i-overlaps"], "Intervals");

@@ -1,0 +1,9 @@
+{
+  "name": "tenth-f",
+  "hash": "8fd0dda446661476e93adbcb0fd6ae4f326624746df628bed7bc6370b089f4f6",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

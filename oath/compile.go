@@ -228,6 +228,26 @@ func canonF(f float64) float64 {
 	return f
 }
 
+// Numeric conversions (mirror the interpreter). Widening is total; the
+// Float→{Rat,Int} narrowings panic on non-finite input, matching eval's error.
+func i2r(x *big.Int) *big.Rat { return new(big.Rat).SetInt(x) }
+func i2f(x *big.Int) float64  { f, _ := new(big.Float).SetInt(x).Float64(); return canonF(f) }
+func r2f(x *big.Rat) float64  { f, _ := x.Float64(); return canonF(f) }
+func f2r(x float64) *big.Rat {
+	if math.IsNaN(x) || math.IsInf(x, 0) {
+		panic("to-rat of non-finite float")
+	}
+	return new(big.Rat).SetFloat64(x)
+}
+func rfloor(x *big.Rat) *big.Int { return new(big.Int).Div(x.Num(), x.Denom()) }
+func ffloor(x float64) *big.Int {
+	if math.IsNaN(x) || math.IsInf(x, 0) {
+		panic("floor of non-finite float")
+	}
+	i, _ := big.NewFloat(math.Floor(x)).Int(nil)
+	return i
+}
+
 // capFn lifts a real-world Go function into an Oath closure value.
 func capFn(f func(string) string) *closure {
 	return &closure{code: func(env []any, arg any) any { return f(arg.(string)) }}
@@ -569,6 +589,13 @@ func (e *emitter) defValue(h, fn string) (string, error) {
 	return fmt.Sprintf("%s(nil, nil)", fn), nil
 }
 
+// isKind reports whether term t synthesizes to a type of kind k (used to
+// type-direct numeric-overloaded and conversion primitive codegen).
+func (e *emitter) isKind(t *Term, k string) bool {
+	ty, err := e.chk.synth(e.ctx, t)
+	return err == nil && ty != nil && ty.K == k
+}
+
 func (e *emitter) prim(t *Term, depth int, self string) (string, error) {
 	var args []string
 	for i := range t.Args {
@@ -628,6 +655,24 @@ func (e *emitter) prim(t *Term, depth int, self string) (string, error) {
 		case "fp-eq":
 			return fmt.Sprintf("any(%s.(float64) == %s.(float64))", args[0], args[1]), nil
 		}
+	}
+	// Numeric conversions — unary, dispatched on the source kind.
+	switch t.Op {
+	case "to-rat":
+		if e.isKind(&t.Args[0], "int") {
+			return fmt.Sprintf("any(i2r(%s.(*big.Int)))", args[0]), nil
+		}
+		return fmt.Sprintf("any(f2r(%s.(float64)))", args[0]), nil
+	case "to-float":
+		if e.isKind(&t.Args[0], "int") {
+			return fmt.Sprintf("any(i2f(%s.(*big.Int)))", args[0]), nil
+		}
+		return fmt.Sprintf("any(r2f(%s.(*big.Rat)))", args[0]), nil
+	case "floor":
+		if e.isKind(&t.Args[0], "rat") {
+			return fmt.Sprintf("any(rfloor(%s.(*big.Rat)))", args[0]), nil
+		}
+		return fmt.Sprintf("any(ffloor(%s.(float64)))", args[0]), nil
 	}
 	// Integers are arbitrary-precision (*big.Int); + - * / % never overflow.
 	bigOp := map[string]string{"+": "Add", "-": "Sub", "*": "Mul", "/": "Quo", "%": "Rem"}

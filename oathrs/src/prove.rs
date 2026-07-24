@@ -753,6 +753,41 @@ impl<'a> Cx<'a> {
         }
         let is_rat = matches!(opnd_ty, Ty::Rat);
         let is_float = matches!(opnd_ty, Ty::Float);
+        // Numeric conversions (SPEC §7): translated only on their total, exact
+        // directions. `to_int` is SMT floor. The partial `Float`-source
+        // conversions (`to-rat`/`floor` on a Float) have no rational/integer for
+        // NaN/inf and are outside the fragment, like `/` over `Int`.
+        match op {
+            // to-rat: Int -> Real is `(to_real N)`; Float -> Rat is partial.
+            "to-rat" => {
+                return match &opnd_ty {
+                    Ty::Int => Ok((format!("(to_real {})", e[0]), Ty::Rat)),
+                    _ => Err(()),
+                };
+            }
+            // to-float: Int -> `((_ to_fp 11 53) RNE (to_real N))`;
+            // Rat -> `((_ to_fp 11 53) RNE R)` — both round nearest-ties-even.
+            "to-float" => {
+                return match &opnd_ty {
+                    Ty::Int => Ok((
+                        format!("((_ to_fp 11 53) RNE (to_real {}))", e[0]),
+                        Ty::Float,
+                    )),
+                    Ty::Rat => {
+                        Ok((format!("((_ to_fp 11 53) RNE {})", e[0]), Ty::Float))
+                    }
+                    _ => Err(()),
+                };
+            }
+            // floor: Rat -> `(to_int R)` (SMT to_int is floor); Float is partial.
+            "floor" => {
+                return match &opnd_ty {
+                    Ty::Rat => Ok((format!("(to_int {})", e[0]), Ty::Int)),
+                    _ => Err(()),
+                };
+            }
+            _ => {}
+        }
         // Over `Float` operands the arithmetic/ordering prims translate to FPA
         // (SPEC §7.1): `+ - * /` at `RNE`, `neg` to `fp.neg`, `< <=` to
         // `fp.lt`/`fp.leq` (IEEE ordered). `/` over `Float` is admitted (total
