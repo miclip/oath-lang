@@ -1,0 +1,27 @@
+{
+  "name": "si-union",
+  "prop_names": [
+    "empty-left"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 1
+  },
+  "mutants_total": 4,
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "xs",
+    "ys"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0
+  ]
+}

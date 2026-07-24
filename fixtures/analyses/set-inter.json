@@ -1,14 +1,13 @@
 {
   "name": "set-inter",
-  "hash": "32765987195d3d2bf13db7f11a24f10203201a533ccad13b612e75b31ae269a5",
+  "hash": "8a059a2f7b565ec35c0791b90ee564d8d955c811af4ec9dc119a4c83c04f1dd5",
   "kind": "func",
-  "termination": "structural",
+  "termination": "nonrecursive",
   "confinement": [
     "",
     ""
   ],
-  "mutants_total": 8,
-  "level": "proven",
-  "cases": 200,
-  "proven": 1
+  "mutants_total": 1,
+  "level": "tested",
+  "cases": 200
 }

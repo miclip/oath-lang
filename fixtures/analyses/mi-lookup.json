@@ -1,0 +1,13 @@
+{
+  "name": "mi-lookup",
+  "hash": "a626e5d5b52741ca0b4d9cdc6c2af17d7f06b7b88cc741d34343c32b73c086b3",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_total": 5,
+  "level": "tested",
+  "cases": 200
+}

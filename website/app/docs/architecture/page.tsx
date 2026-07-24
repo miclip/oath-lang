@@ -155,10 +155,13 @@ export default function Architecture() {
         it provable — a string is an inductive datatype of codepoints, so its laws
         discharge by ordinary induction — but at runtime that same value compiles to a
         native representation: a <code>Str</code> becomes a Go string, not a linked list
-        of boxed characters. The two are kept honest by a differential gate — the
-        compiled program must produce exactly what the interpreter does — so the native
-        representation can never quietly disagree with what was proven. The fast
-        execution path and native representations for the other containers are the
+        of boxed characters. <code>Set</code> and <code>Map</code> — distinct types over
+        the sorted-list model they are proven against — likewise compile to native Go
+        hash maps, turning membership and lookup into O(1) operations while the proofs
+        keep reasoning about the sorted list. The two are kept honest by a differential
+        gate — the compiled program must produce exactly what the interpreter does — so
+        the native representation can never quietly disagree with what was proven. The
+        fast execution path and persistent maps for efficient functional updates are the
         remaining work.
       </p>
     </>

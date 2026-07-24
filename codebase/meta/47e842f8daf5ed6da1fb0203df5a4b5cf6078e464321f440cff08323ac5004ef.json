@@ -1,8 +1,19 @@
 {
-  "name": "set-member",
+  "name": "si-member",
   "prop_names": [
     "empty-has-none"
   ],
+  "aliases": {
+    "set-member": {
+      "prop_names": [
+        "empty-has-none"
+      ],
+      "param_names": [
+        "x",
+        "s"
+      ]
+    }
+  },
   "guarantee": {
     "level": "proven",
     "cases": 200,
@@ -15,7 +26,7 @@
   "author": "claude-main",
   "param_names": [
     "x",
-    "s"
+    "xs"
   ],
   "confinement": [
     "",

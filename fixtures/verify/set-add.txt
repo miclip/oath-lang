@@ -1,3 +1,2 @@
-✓ prop add-commutes             passed 200 cases
-✓ prop add-idempotent           passed 200 cases
 ✓ prop adds-member              passed 200 cases
+✓ prop add-idempotent           passed 200 cases

@@ -1,0 +1,3 @@
+✓ prop commutes                 passed 200 cases
+✓ prop idempotent               passed 200 cases
+✓ prop adds                     passed 200 cases

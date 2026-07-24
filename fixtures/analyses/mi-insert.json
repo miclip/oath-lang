@@ -1,0 +1,15 @@
+{
+  "name": "mi-insert",
+  "hash": "14fec16a5691ac2f65cb527016d20702649aad719106143cc262fdad3f62ed6e",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    "",
+    ""
+  ],
+  "mutants_killed": 6,
+  "mutants_total": 10,
+  "level": "tested",
+  "cases": 200
+}

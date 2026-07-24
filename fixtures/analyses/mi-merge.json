@@ -1,0 +1,13 @@
+{
+  "name": "mi-merge",
+  "hash": "f669a4ca27c825a4289ff11d81779500ae0e12f137e45d33003ec31a97d812a8",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_total": 5,
+  "level": "tested",
+  "cases": 200
+}

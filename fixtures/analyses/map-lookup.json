@@ -1,15 +1,12 @@
 {
   "name": "map-lookup",
-  "hash": "3c94693c578480eab668d38c8ed60cc08bf17fbcc61d617bbde2555c0a767172",
+  "hash": "937d56cee9ade4340887340f34b73fc27b3c8b933fa3d8749e5fd4766adbc0de",
   "kind": "func",
-  "termination": "structural",
+  "termination": "nonrecursive",
   "confinement": [
     "",
     ""
   ],
-  "mutants_killed": 4,
-  "mutants_total": 5,
-  "level": "proven",
-  "cases": 200,
-  "proven": 2
+  "level": "tested",
+  "cases": 200
 }

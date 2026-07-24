@@ -1,0 +1,25 @@
+{
+  "name": "map-merge",
+  "prop_names": [
+    "empty-left",
+    "prefers-left"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "a",
+    "b"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

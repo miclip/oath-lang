@@ -1,0 +1,1 @@
+✓ prop size-is-length           passed 200 cases

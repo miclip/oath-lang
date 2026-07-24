@@ -1,0 +1,14 @@
+{
+  "name": "si-member",
+  "hash": "47e842f8daf5ed6da1fb0203df5a4b5cf6078e464321f440cff08323ac5004ef",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_total": 5,
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

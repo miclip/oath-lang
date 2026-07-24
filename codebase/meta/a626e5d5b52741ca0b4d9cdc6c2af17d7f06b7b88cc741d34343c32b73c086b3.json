@@ -1,0 +1,23 @@
+{
+  "name": "mi-lookup",
+  "prop_names": [
+    "empty"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "mutants_total": 5,
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "k",
+    "m"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

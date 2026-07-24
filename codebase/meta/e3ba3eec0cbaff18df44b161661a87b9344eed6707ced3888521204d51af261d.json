@@ -1,10 +1,23 @@
 {
-  "name": "set-add",
+  "name": "si-insert",
   "prop_names": [
-    "add-commutes",
-    "add-idempotent",
-    "adds-member"
+    "commutes",
+    "idempotent",
+    "adds"
   ],
+  "aliases": {
+    "set-add": {
+      "prop_names": [
+        "add-commutes",
+        "add-idempotent",
+        "adds-member"
+      ],
+      "param_names": [
+        "x",
+        "s"
+      ]
+    }
+  },
   "guarantee": {
     "level": "proven",
     "cases": 200,
@@ -18,7 +31,7 @@
   "author": "claude-main",
   "param_names": [
     "x",
-    "s"
+    "xs"
   ],
   "confinement": [
     "",

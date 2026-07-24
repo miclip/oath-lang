@@ -1,0 +1,14 @@
+{
+  "name": "map-empty",
+  "prop_names": [
+    "is-empty"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main"
+}

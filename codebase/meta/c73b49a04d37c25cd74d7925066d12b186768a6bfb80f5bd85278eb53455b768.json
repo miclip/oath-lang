@@ -1,0 +1,20 @@
+{
+  "name": "set-size",
+  "prop_names": [
+    "non-negative"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "s"
+  ],
+  "confinement": [
+    ""
+  ]
+}

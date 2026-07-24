@@ -1,15 +1,14 @@
 {
   "name": "set-union",
-  "hash": "ca87088be698faa456e6a24201af07df93bb409f5f8828cdd16a1211b96314b9",
+  "hash": "c2b36fe5954378a1a2a625891c8109f6ce07f1d669534c22da2f7dbc9f53d56d",
   "kind": "func",
-  "termination": "structural",
+  "termination": "nonrecursive",
   "confinement": [
     "",
     ""
   ],
   "mutants_killed": 1,
-  "mutants_total": 4,
-  "level": "proven",
-  "cases": 200,
-  "proven": 2
+  "mutants_total": 1,
+  "level": "tested",
+  "cases": 200
 }

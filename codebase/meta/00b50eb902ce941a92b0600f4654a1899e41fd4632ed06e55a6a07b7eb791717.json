@@ -1,0 +1,22 @@
+{
+  "name": "set-member",
+  "prop_names": [
+    "empty-has-none"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "x",
+    "s"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

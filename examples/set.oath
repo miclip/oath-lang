@@ -1,34 +1,72 @@
-; Canonical set: a STRICTLY-SORTED, duplicate-free List Int. Because the
-; representation is unique per set, identity is semantic — two sets built by
-; different insertion orders are the same content-addressed object. (#37)
+; Set: a DISTINCT type backed by a strictly-sorted, duplicate-free List Int.
+; Making it a type (not just a List-kept-sorted convention) is what lets the
+; compiler back it with a native Go map — proven correct against this
+; structural model by the differential gate (docs/native-containers.md). Two
+; sets built in different orders are the same content-addressed object. (#37)
+;
+; Structure: the recursion (and the deep proofs) live in the raw sorted-List
+; helpers `si-*` — which descend on List subterms, so they are total. The `set-*`
+; operations are thin, non-recursive wrappers over the `Set` newtype; those are
+; the vocabulary the compiler recognizes and lowers to native Go-map code.
 
-(defn set-member [] [(x Int) (s (List Int))] Bool
-  (match s
+(data Set [] (MkSet (List Int)))
+
+(defn si-member [] [(x Int) (xs (List Int))] Bool
+  (match xs
     ((Nil) false)
-    ((Cons h t) (if (== x h) true (if (< x h) false (set-member x t)))))
-  (prop empty-has-none [(x Int)] (not (set-member x (Nil [Int])))))
+    ((Cons h t) (if (== x h) true (if (< x h) false (si-member x t)))))
+  (prop empty-has-none [(x Int)] (not (si-member x (Nil [Int])))))
 
-(defn set-add [] [(x Int) (s (List Int))] (List Int)
-  (match s
+(defn si-insert [] [(x Int) (xs (List Int))] (List Int)
+  (match xs
     ((Nil) (Cons [Int] x (Nil [Int])))
     ((Cons h t)
-      (if (< x h) (Cons [Int] x s)
-          (if (== x h) s (Cons [Int] h (set-add x t))))))
-  ; canonicality: insertion order is invisible → identity is semantic.
-  (prop add-commutes [(a Int) (b Int) (s (List Int))]
-    (== (set-add a (set-add b s)) (set-add b (set-add a s))))
-  (prop add-idempotent [(x Int) (s (List Int))]
-    (== (set-add x (set-add x s)) (set-add x s)))
-  (prop adds-member [(x Int) (s (List Int))] (set-member x (set-add x s))))
+      (if (< x h) (Cons [Int] x xs) (if (== x h) xs (Cons [Int] h (si-insert x t))))))
+  (prop commutes [(a Int) (b Int) (xs (List Int))]
+    (== (si-insert a (si-insert b xs)) (si-insert b (si-insert a xs))))
+  (prop idempotent [(x Int) (xs (List Int))]
+    (== (si-insert x (si-insert x xs)) (si-insert x xs)))
+  (prop adds [(x Int) (xs (List Int))] (si-member x (si-insert x xs))))
 
-(defn set-union [] [(a (List Int)) (b (List Int))] (List Int)
-  (match a ((Nil) b) ((Cons h t) (set-add h (set-union t b))))
-  (prop empty-left [(b (List Int))] (== (set-union (Nil [Int]) b) b))
-  (prop union-has-left [(x Int) (b (List Int))]
-    (set-member x (set-union (set-add x (Nil [Int])) b))))
+(defn si-union [] [(xs (List Int)) (ys (List Int))] (List Int)
+  (match xs ((Nil) ys) ((Cons h t) (si-insert h (si-union t ys))))
+  (prop empty-left [(ys (List Int))] (== (si-union (Nil [Int]) ys) ys)))
 
-(defn set-inter [] [(a (List Int)) (b (List Int))] (List Int)
-  (match a
+(defn si-inter [] [(xs (List Int)) (ys (List Int))] (List Int)
+  (match xs
     ((Nil) (Nil [Int]))
-    ((Cons h t) (if (set-member h b) (set-add h (set-inter t b)) (set-inter t b))))
-  (prop empty-left [(b (List Int))] (== (set-inter (Nil [Int]) b) (Nil [Int]))))
+    ((Cons h t) (if (si-member h ys) (si-insert h (si-inter t ys)) (si-inter t ys))))
+  (prop empty-left [(ys (List Int))] (== (si-inter (Nil [Int]) ys) (Nil [Int]))))
+
+(defn set-member [] [(x Int) (s Set)] Bool
+  (match s ((MkSet xs) (si-member x xs)))
+  (prop empty-has-none [(x Int)] (not (set-member x (MkSet (Nil [Int]))))))
+
+(defn set-empty [] [] Set
+  (MkSet (Nil [Int]))
+  (prop has-nothing [(x Int)] (not (set-member x set-empty))))
+
+(defn set-add [] [(x Int) (s Set)] Set
+  (match s ((MkSet xs) (MkSet (si-insert x xs))))
+  (prop adds-member [(x Int) (s Set)] (set-member x (set-add x s)))
+  (prop add-idempotent [(x Int) (s Set)] (== (set-add x (set-add x s)) (set-add x s))))
+
+(defn set-union [] [(a Set) (b Set)] Set
+  (match a ((MkSet xs) (match b ((MkSet ys) (MkSet (si-union xs ys))))))
+  (prop empty-left [(b Set)] (== (set-union set-empty b) b))
+  (prop union-has-left [(x Int) (b Set)]
+    (set-member x (set-union (set-add x set-empty) b))))
+
+(defn set-inter [] [(a Set) (b Set)] Set
+  (match a ((MkSet xs) (match b ((MkSet ys) (MkSet (si-inter xs ys))))))
+  (prop empty-left [(b Set)] (== (set-inter set-empty b) set-empty)))
+
+(defn set-size [] [(s Set)] Int
+  (match s ((MkSet xs) (length [Int] xs)))
+  (prop non-negative [(s Set)] (<= 0 (set-size s))))
+
+; boundary to List: the sorted elements — where a native Go-map representation
+; must materialize its (sorted) contents on the way out.
+(defn set-elems [] [(s Set)] (List Int)
+  (match s ((MkSet xs) xs))
+  (prop size-is-length [(s Set)] (== (set-size s) (length [Int] (set-elems s)))))

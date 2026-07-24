@@ -1,12 +1,11 @@
 {
   "name": "map-size",
-  "hash": "a0836550ca64ebe283b7b1d4055812828e61be3cd5980818eb096cf4f596ccd2",
+  "hash": "1d96b6899013c33428ff30c5e6e825db9fd7af4949e48570a1f55d1f3fd5d4cc",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
     ""
   ],
-  "level": "proven",
-  "cases": 200,
-  "proven": 2
+  "level": "tested",
+  "cases": 200
 }

@@ -291,9 +291,11 @@ Phases 1–3 are COMPLETE, beyond the original ambitions:
   (#13) has a working first stage: `oath build` lowers a definition's closure to
   a standalone native binary, refusing anything not proof-carrying, and shows the
   "prove over the structural model, run over a native representation" pattern —
-  `Str` datatype values compile to native Go strings, verified by a differential
-  gate (compiled output == interpreter output). The fast execution path
-  (MLIR/LLVM) and native `Set`/`Map` representations remain.
+  `Str` datatype values compile to native Go strings, and `Set`/`Map` (distinct
+  types over the #37 sorted-list model) compile to native Go hash maps with O(1)
+  membership/lookup — all verified by a differential gate (compiled output ==
+  interpreter output; see docs/native-containers.md). The fast execution path
+  (MLIR/LLVM) and persistent (HAMT) maps for O(log n) functional updates remain.
 
 The conformance saga is its own result: two kernels, zero shared code,
 kept in byte-level agreement by CI — and the blind implementation found

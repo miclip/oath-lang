@@ -1,8 +1,19 @@
 {
-  "name": "set-inter",
+  "name": "si-inter",
   "prop_names": [
     "empty-left"
   ],
+  "aliases": {
+    "set-inter": {
+      "prop_names": [
+        "empty-left"
+      ],
+      "param_names": [
+        "a",
+        "b"
+      ]
+    }
+  },
   "guarantee": {
     "level": "proven",
     "cases": 200,
@@ -14,8 +25,8 @@
   "body_author": "claude-main",
   "author": "claude-main",
   "param_names": [
-    "a",
-    "b"
+    "xs",
+    "ys"
   ],
   "confinement": [
     "",

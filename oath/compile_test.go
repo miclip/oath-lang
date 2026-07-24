@@ -159,6 +159,180 @@ func TestCompileFloatInexactDifferential(t *testing.T) {
 	}
 }
 
+// Native Set (containers): a Set compiles to a native Go map (oset), with the
+// recognized set-* operations lowered to O(1) map ops, and MkSet/match-Set as
+// List boundaries. The differential gate is the whole point — the compiled
+// oset-backed program must agree with the interpreter's sorted-list model. Here
+// the entry builds a set out of order with a duplicate, then tests membership;
+// a correct native representation must dedup, and answer yes/no exactly as the
+// structural model does.
+func TestCompileNativeSetDifferential(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go toolchain not available")
+	}
+	st := newStore(t)
+	put(t, st, `(data Str [] (SNil) (SCons Int Str))`)
+	put(t, st, `(data List [a] (Nil) (Cons a (List a)))`)
+	put(t, st, `(data Set [] (MkSet (List Int)))`)
+	put(t, st, `(defn length [a] [(xs (List a))] Int
+		(match xs ((Nil) 0) ((Cons h t) (+ 1 (length [a] t)))))`)
+	put(t, st, `(defn si-member [] [(x Int) (xs (List Int))] Bool
+		(match xs ((Nil) false)
+			((Cons h t) (if (== x h) true (if (< x h) false (si-member x t))))))`)
+	put(t, st, `(defn si-insert [] [(x Int) (xs (List Int))] (List Int)
+		(match xs ((Nil) (Cons [Int] x (Nil [Int])))
+			((Cons h t) (if (< x h) (Cons [Int] x xs)
+				(if (== x h) xs (Cons [Int] h (si-insert x t)))))))`)
+	put(t, st, `(defn set-empty [] [] Set (MkSet (Nil [Int])))`)
+	put(t, st, `(defn set-member [] [(x Int) (s Set)] Bool (match s ((MkSet xs) (si-member x xs))))`)
+	put(t, st, `(defn set-add [] [(x Int) (s Set)] Set (match s ((MkSet xs) (MkSet (si-insert x xs)))))`)
+	put(t, st, `(defn si-union [] [(xs (List Int)) (ys (List Int))] (List Int)
+		(match xs ((Nil) ys) ((Cons h t) (si-insert h (si-union t ys)))))`)
+	put(t, st, `(defn set-union [] [(a Set) (b Set)] Set
+		(match a ((MkSet xs) (match b ((MkSet ys) (MkSet (si-union xs ys)))))))`)
+	put(t, st, `(defn set-size [] [(s Set)] Int (match s ((MkSet xs) (length [Int] xs))))`)
+	put(t, st, `(defn set-elems [] [(s Set)] (List Int) (match s ((MkSet xs) xs)))`)
+	// membership on a set built out of order with a duplicate: 2 is present, 5 is not.
+	put(t, st, `(defn setq [] [(args (List Str))] Str
+		(if (set-member 2 (set-add 3 (set-add 1 (set-add 2 (set-add 1 set-empty)))))
+			(if (set-member 5 (set-add 3 (set-add 1 set-empty))) "both" "first-only")
+			"neither"))`)
+	// union {1,3} ∪ {2,3} has size 3 (dedup); and its smallest element (via the
+	// set-elems boundary, which must sort) is 1. Both exercise osetElems.
+	put(t, st, `(defn head-or [] [(d Int) (xs (List Int))] Int
+		(match xs ((Nil) d) ((Cons h t) h)))`)
+	put(t, st, `(defn setq2 [] [(args (List Str))] Str
+		(if (== (set-size (set-union (set-add 3 (set-add 1 set-empty)) (set-add 3 (set-add 2 set-empty)))) 3)
+			(if (== (head-or 0 (set-elems (set-union (set-add 3 (set-add 1 set-empty)) (set-add 2 set-empty)))) 1)
+				"size3-min1" "min-wrong")
+			"size-wrong"))`)
+
+	h, ok := st.Resolve("setq")
+	if !ok {
+		t.Fatal("setq not in store")
+	}
+	src, err := emitProgram(st, h, nil)
+	if err != nil {
+		t.Fatalf("emitProgram: %v", err)
+	}
+	if !strings.Contains(src, "osetAdd(") || !strings.Contains(src, "osetMember(") {
+		t.Fatalf("expected native oset ops in generated source, got none")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module oathprog\n\ngo 1.25\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "prog")
+	if out, err := runIn(dir, "go", "build", "-o", bin, "."); err != nil {
+		t.Fatalf("go build failed:\n%s", out)
+	}
+	out, err := exec.Command(bin).Output()
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	// The interpreter's sorted-list model gives "first-only"; the native oset
+	// must agree (2 present after dedup, 5 absent).
+	if got := strings.TrimRight(string(out), "\n"); got != "first-only" {
+		t.Fatalf("compiled setq = %q, want %q (native Set diverged from the structural model)", got, "first-only")
+	}
+
+	// Second entry: union dedup (size 3) and the sorted set-elems boundary (min 1).
+	h2, _ := st.Resolve("setq2")
+	src2, err := emitProgram(st, h2, nil)
+	if err != nil {
+		t.Fatalf("emitProgram setq2: %v", err)
+	}
+	if !strings.Contains(src2, "osetUnion(") || !strings.Contains(src2, "osetElems(") {
+		t.Fatalf("expected osetUnion/osetElems in generated source")
+	}
+	dir2 := t.TempDir()
+	os.WriteFile(filepath.Join(dir2, "main.go"), []byte(src2), 0o644)
+	os.WriteFile(filepath.Join(dir2, "go.mod"), []byte("module oathprog\n\ngo 1.25\n"), 0o644)
+	bin2 := filepath.Join(dir2, "prog")
+	if out, err := runIn(dir2, "go", "build", "-o", bin2, "."); err != nil {
+		t.Fatalf("go build setq2 failed:\n%s", out)
+	}
+	out2, err := exec.Command(bin2).Output()
+	if err != nil {
+		t.Fatalf("run setq2: %v", err)
+	}
+	if got := strings.TrimRight(string(out2), "\n"); got != "size3-min1" {
+		t.Fatalf("compiled setq2 = %q, want %q (union/size/elems diverged)", got, "size3-min1")
+	}
+}
+
+// Native Map (containers): a Map compiles to a native Go map (omap) keyed by
+// the key's canonical form; recognized map-* ops lower to O(1) helpers, and
+// lookup returns a real Option ctorV (None/Some). The differential gate checks
+// the compiled omap agrees with the interpreter's sorted-assoc-list model:
+// insert overwrites on a repeated key, lookup finds the latest value and misses
+// an absent key, and the boundary (match/keys) stays key-sorted.
+func TestCompileNativeMapDifferential(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go toolchain not available")
+	}
+	st := newStore(t)
+	put(t, st, `(data Str [] (SNil) (SCons Int Str))`)
+	put(t, st, `(data List [a] (Nil) (Cons a (List a)))`)
+	put(t, st, `(data Option [a] (None) (Some a))`)
+	put(t, st, `(data Pair [a b] (Pair a b))`)
+	put(t, st, `(data Map [] (MkMap (List (Pair Int Int))))`)
+	put(t, st, `(defn length [a] [(xs (List a))] Int
+		(match xs ((Nil) 0) ((Cons h t) (+ 1 (length [a] t)))))`)
+	put(t, st, `(defn mi-lookup [] [(k Int) (m (List (Pair Int Int)))] (Option Int)
+		(match m ((Nil) (None [Int]))
+			((Cons p t) (match p ((Pair pk pv)
+				(if (== k pk) (Some [Int] pv) (if (< k pk) (None [Int]) (mi-lookup k t))))))))`)
+	put(t, st, `(defn mi-insert [] [(k Int) (v Int) (m (List (Pair Int Int)))] (List (Pair Int Int))
+		(match m ((Nil) (Cons [(Pair Int Int)] (Pair [Int Int] k v) (Nil [(Pair Int Int)])))
+			((Cons p t) (match p ((Pair pk pv)
+				(if (< k pk) (Cons [(Pair Int Int)] (Pair [Int Int] k v) m)
+					(if (== k pk) (Cons [(Pair Int Int)] (Pair [Int Int] k v) t)
+						(Cons [(Pair Int Int)] p (mi-insert k v t)))))))))`)
+	put(t, st, `(defn map-empty [] [] Map (MkMap (Nil [(Pair Int Int)])))`)
+	put(t, st, `(defn map-insert [] [(k Int) (v Int) (m Map)] Map (match m ((MkMap ps) (MkMap (mi-insert k v ps)))))`)
+	put(t, st, `(defn map-lookup [] [(k Int) (m Map)] (Option Int) (match m ((MkMap ps) (mi-lookup k ps))))`)
+	put(t, st, `(defn map-has [] [(k Int) (m Map)] Bool (match (map-lookup k m) ((None) false) ((Some v) true)))`)
+	// m = {2:20, 1:10, 2:99} inserted in that order → key 2 overwritten to 99.
+	// lookup 2 = Some 99, lookup 3 = None, has 1 = true. Report as a word.
+	put(t, st, `(defn mapq [] [(args (List Str))] Str
+		(match (map-lookup 2 (map-insert 2 99 (map-insert 1 10 (map-insert 2 20 map-empty))))
+			((None) "none")
+			((Some v) (if (== v 99)
+				(if (map-has 3 (map-insert 1 10 map-empty)) "wrong" "overwrote")
+				"stale"))))`)
+
+	h, ok := st.Resolve("mapq")
+	if !ok {
+		t.Fatal("mapq not in store")
+	}
+	src, err := emitProgram(st, h, nil)
+	if err != nil {
+		t.Fatalf("emitProgram: %v", err)
+	}
+	if !strings.Contains(src, "omapInsert(") || !strings.Contains(src, "omapLookup(") {
+		t.Fatalf("expected native omap ops in generated source")
+	}
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte(src), 0o644)
+	os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module oathprog\n\ngo 1.25\n"), 0o644)
+	bin := filepath.Join(dir, "prog")
+	if out, err := runIn(dir, "go", "build", "-o", bin, "."); err != nil {
+		t.Fatalf("go build failed:\n%s", out)
+	}
+	out, err := exec.Command(bin).Output()
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	// Interpreter: latest value for key 2 is 99, key 3 absent → "overwrote".
+	if got := strings.TrimRight(string(out), "\n"); got != "overwrote" {
+		t.Fatalf("compiled mapq = %q, want %q (native Map diverged from the structural model)", got, "overwrote")
+	}
+}
+
 func runIn(dir, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir

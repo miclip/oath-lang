@@ -1,0 +1,11 @@
+{
+  "name": "set-size",
+  "hash": "c73b49a04d37c25cd74d7925066d12b186768a6bfb80f5bd85278eb53455b768",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

@@ -1,0 +1,11 @@
+{
+  "name": "set-elems",
+  "hash": "a91bbcd741e2d02c1ee55c56e227f73e6a30e3fd4247fd6beaad3d2d682672b6",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}
