@@ -1,14 +1,12 @@
 {
   "name": "set-member",
-  "hash": "47e842f8daf5ed6da1fb0203df5a4b5cf6078e464321f440cff08323ac5004ef",
+  "hash": "00b50eb902ce941a92b0600f4654a1899e41fd4632ed06e55a6a07b7eb791717",
   "kind": "func",
-  "termination": "structural",
+  "termination": "nonrecursive",
   "confinement": [
     "",
     ""
   ],
-  "mutants_total": 5,
-  "level": "proven",
-  "cases": 200,
-  "proven": 1
+  "level": "tested",
+  "cases": 200
 }

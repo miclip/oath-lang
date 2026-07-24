@@ -1,0 +1,15 @@
+{
+  "name": "si-insert",
+  "hash": "e3ba3eec0cbaff18df44b161661a87b9344eed6707ced3888521204d51af261d",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 6,
+  "mutants_total": 6,
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

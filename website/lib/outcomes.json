@@ -1981,65 +1981,100 @@
     },
     {
       "name": "set-add",
-      "hash": "e3ba3eec0cbaff18df44b161661a87b9344eed6707ced3888521204d51af261d",
-      "level": "proven",
-      "proven_count": 3,
-      "prop_count": 3,
+      "hash": "874a3cb5d3f63c551b6e0d4365d489bf75f2528c4d79750ffd1d3b1fdd534ae1",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 2,
       "props": [
         {
-          "name": "add-commutes",
-          "proven": true
+          "name": "adds-member",
+          "proven": false
         },
         {
           "name": "add-idempotent",
-          "proven": true
-        },
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "set-elems",
+      "hash": "a91bbcd741e2d02c1ee55c56e227f73e6a30e3fd4247fd6beaad3d2d682672b6",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
         {
-          "name": "adds-member",
-          "proven": true
+          "name": "size-is-length",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "set-empty",
+      "hash": "d067aca7a83d4107c90d6aaa23befbbcc874df4ceaae0b1d984e3a5508d29efa",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "has-nothing",
+          "proven": false
         }
       ]
     },
     {
       "name": "set-inter",
-      "hash": "32765987195d3d2bf13db7f11a24f10203201a533ccad13b612e75b31ae269a5",
-      "level": "proven",
-      "proven_count": 1,
+      "hash": "8a059a2f7b565ec35c0791b90ee564d8d955c811af4ec9dc119a4c83c04f1dd5",
+      "level": "tested",
+      "proven_count": 0,
       "prop_count": 1,
       "props": [
         {
           "name": "empty-left",
-          "proven": true
+          "proven": false
         }
       ]
     },
     {
       "name": "set-member",
-      "hash": "47e842f8daf5ed6da1fb0203df5a4b5cf6078e464321f440cff08323ac5004ef",
-      "level": "proven",
-      "proven_count": 1,
+      "hash": "00b50eb902ce941a92b0600f4654a1899e41fd4632ed06e55a6a07b7eb791717",
+      "level": "tested",
+      "proven_count": 0,
       "prop_count": 1,
       "props": [
         {
           "name": "empty-has-none",
-          "proven": true
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "set-size",
+      "hash": "c73b49a04d37c25cd74d7925066d12b186768a6bfb80f5bd85278eb53455b768",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "non-negative",
+          "proven": false
         }
       ]
     },
     {
       "name": "set-union",
-      "hash": "ca87088be698faa456e6a24201af07df93bb409f5f8828cdd16a1211b96314b9",
-      "level": "proven",
-      "proven_count": 2,
+      "hash": "c2b36fe5954378a1a2a625891c8109f6ce07f1d669534c22da2f7dbc9f53d56d",
+      "level": "tested",
+      "proven_count": 0,
       "prop_count": 2,
       "props": [
         {
           "name": "empty-left",
-          "proven": true
+          "proven": false
         },
         {
           "name": "union-has-left",
-          "proven": true
+          "proven": false
         }
       ]
     },
@@ -2056,6 +2091,66 @@
         },
         {
           "name": "preserves-emptiness-never",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "si-insert",
+      "hash": "e3ba3eec0cbaff18df44b161661a87b9344eed6707ced3888521204d51af261d",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "commutes",
+          "proven": true
+        },
+        {
+          "name": "idempotent",
+          "proven": true
+        },
+        {
+          "name": "adds",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "si-inter",
+      "hash": "32765987195d3d2bf13db7f11a24f10203201a533ccad13b612e75b31ae269a5",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "empty-left",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "si-member",
+      "hash": "47e842f8daf5ed6da1fb0203df5a4b5cf6078e464321f440cff08323ac5004ef",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "empty-has-none",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "si-union",
+      "hash": "63f8d391e13d8c3baa6a59d5e70a7a9dd27d3394e1bd61d704b3ae282b6a960a",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "empty-left",
           "proven": true
         }
       ]

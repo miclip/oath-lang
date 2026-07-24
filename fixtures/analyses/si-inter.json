@@ -1,0 +1,14 @@
+{
+  "name": "si-inter",
+  "hash": "32765987195d3d2bf13db7f11a24f10203201a533ccad13b612e75b31ae269a5",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_total": 8,
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

@@ -1,0 +1,14 @@
+{
+  "name": "si-union",
+  "hash": "63f8d391e13d8c3baa6a59d5e70a7a9dd27d3394e1bd61d704b3ae282b6a960a",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_total": 4,
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

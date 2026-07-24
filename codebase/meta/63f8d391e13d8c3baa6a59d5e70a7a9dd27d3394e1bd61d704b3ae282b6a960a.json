@@ -1,25 +1,14 @@
 {
-  "name": "si-inter",
+  "name": "si-union",
   "prop_names": [
     "empty-left"
   ],
-  "aliases": {
-    "set-inter": {
-      "prop_names": [
-        "empty-left"
-      ],
-      "param_names": [
-        "a",
-        "b"
-      ]
-    }
-  },
   "guarantee": {
     "level": "proven",
     "cases": 200,
     "proven": 1
   },
-  "mutants_total": 8,
+  "mutants_total": 4,
   "termination": "structural",
   "spec_author": "claude-main",
   "body_author": "claude-main",

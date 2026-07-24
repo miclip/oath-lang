@@ -1,0 +1,8 @@
+{
+  "name": "set-empty",
+  "hash": "d067aca7a83d4107c90d6aaa23befbbcc874df4ceaae0b1d984e3a5508d29efa",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "level": "tested",
+  "cases": 200
+}

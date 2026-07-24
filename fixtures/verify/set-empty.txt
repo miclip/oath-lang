@@ -1,0 +1,1 @@
+✓ prop has-nothing              passed 200 cases

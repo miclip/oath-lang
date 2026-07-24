@@ -1,10 +1,9 @@
 {
-  "name": "set-add",
-  "hash": "874a3cb5d3f63c551b6e0d4365d489bf75f2528c4d79750ffd1d3b1fdd534ae1",
+  "name": "set-elems",
+  "hash": "a91bbcd741e2d02c1ee55c56e227f73e6a30e3fd4247fd6beaad3d2d682672b6",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
-    "",
     ""
   ],
   "level": "tested",
