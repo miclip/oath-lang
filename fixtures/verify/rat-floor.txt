@@ -1,0 +1,1 @@
+✓ prop is-lower-bound           passed 200 cases

@@ -1,0 +1,12 @@
+{
+  "name": "rat-floor",
+  "hash": "d60f775729e4dc1b8a948e7bc7dee1394ea978fa2e5788f2d1db87b2d74df75d",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

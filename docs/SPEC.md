@@ -104,9 +104,11 @@ Producers (elaborators) MUST emit, and checkers MUST enforce:
 - Match arms in constructor-declaration order, exhaustive, with the ADT
   hash recorded in the term.
 - Primitive operators are the literal strings: `+ - * / % neg == < <= and
-  or not fp-eq`. There are NO string primitives: strings are the ordinary
-  `Str` datatype (§3), and every string operation is a definition. `fp-eq` is
-  the IEEE-754 equality on `Float`, distinct from structural `==` (§3).
+  or not fp-eq to-rat to-float floor`. There are NO string primitives: strings
+  are the ordinary `Str` datatype (§3), and every string operation is a
+  definition. `fp-eq` is the IEEE-754 equality on `Float`, distinct from
+  structural `==` (§3). `to-rat`, `to-float`, and `floor` are the numeric
+  conversions (§2, §3), overloaded by source type.
 - Rational (`rat`) terms are stored in reduced form: the denominator is
   positive (`≥ 1`) and coprime to the numerator (`gcd(|num|, den) = 1`); the
   sign lives on the numerator. `0` is `0/1`. Decoders MUST reject a `rat`
@@ -310,6 +312,11 @@ Detailed synthesis obligations:
   kind); `%` is `Int`-only; `fp-eq` is `Float`-only → `Bool`; `and`/`or`/`not`
   are over `Bool`; and `==` is over equal first-order types only. There are no
   string primitives.
+- The numeric conversions are unary and overloaded by SOURCE type, with a fixed
+  result type: `to-rat` synthesizes an `Int` or `Float` operand → `Rat`;
+  `to-float` an `Int` or `Rat` → `Float`; `floor` a `Rat` or `Float` → `Int`
+  (an operand of any other type is a type error). Their runtime meaning is in
+  §3 and their SMT translation in §7.
 
 ## 3. Dynamic semantics
 
@@ -350,6 +357,19 @@ Detailed synthesis obligations:
   properties are provable; the algebraic laws IEEE floats break (associativity,
   `0.1f + 0.2f == 0.3f`) are falsified, correctly. `Float` does not implicitly
   convert to/from `Int` or `Rat`; a decimal without the `f` suffix is a `Rat`.
+- **Numeric conversions** are explicit (there is no implicit coercion):
+  - `to-rat` — `Int → Rat` is exact (`n ↦ n/1`); `Float → Rat` is exact for a
+    finite float (every finite binary64 is a dyadic rational) and a RUNTIME
+    ERROR on NaN or ±inf.
+  - `to-float` — `Int → Float` and `Rat → Float` round to the nearest binary64,
+    ties to even (total).
+  - `floor` — rounds toward −∞ to an `Int`. `Rat → Int` is total; `Float → Int`
+    is a RUNTIME ERROR on NaN or ±inf. (`floor` names its rounding rather than
+    hiding a convention; other roundings are definitions built from it.)
+  The NaN/inf errors follow the division-by-zero idiom: the narrowing has no
+  answer, so it faults rather than inventing one. The total, exact directions
+  (`Int→Rat`, `Int/Rat→Float`, `Rat→Int`) are provable (§7); the partial
+  `Float→{Rat,Int}` directions are outside the proof fragment, like `Int` `/`.
 - **Strings** are NOT primitive. A string is a value of the ordinary datatype
   `(data Str [] (SNil) (SCons Int Str))` — a sequence of Unicode scalar values
   (each an `Int` codepoint), built with the `SNil`/`SCons` constructors. It
@@ -828,6 +848,13 @@ reproducibility (given the same solver):
   `NaN = NaN`, `+0.0 ≠ -0.0`), matching kernel identity; the `fp-eq` primitive
   is IEEE `(fp.eq …)`. `/` over `Float` is admitted (total IEEE division), in
   contrast to `/` over `Int`.
+- Numeric conversions translate on their total, exact directions: `to-rat` of
+  an `Int` is `(to_real N)` → `Real`; `to-float` of an `Int` is
+  `((_ to_fp 11 53) RNE (to_real N))` and of a `Rat` is `((_ to_fp 11 53) RNE
+  R)` → `Float64`; `floor` of a `Rat` is `(to_int R)` → `Int` (SMT `to_int` is
+  floor). The `Float`-source conversions `to-rat`/`floor` are PARTIAL (NaN/inf
+  have no rational/integer) and are excluded from the fragment, like `/` over
+  `Int`.
 - SMT string literals double `"` characters inside the SMT string. Other
   string escaping must match SMT-LIB accepted literal syntax and the examples
   corpus.
