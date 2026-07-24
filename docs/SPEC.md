@@ -390,6 +390,10 @@ Generation by type — draw order is normative:
 
 - `Int`: draw `below(4)`; on 0, draw `below(5)` into boundary table
   `[-2,-1,0,1,2]`; otherwise draw `intIn(-20,20)`.
+- `Rat`: draw the numerator `intIn(-8,8)`, then the denominator `intIn(1,5)`
+  (numerator first), and reduce to lowest terms. The denominator range starts
+  at 1 so integer-valued rationals occur, and a zero numerator yields `0/1`;
+  the reduction makes the resulting value canonical.
 - `Bool`: `below(2) == 0`.
 - `Str`: length `below(size+1)`, then that many draws of `below(7)` into
   alphabet `"ab xyz!"` (bytes, in that order).
