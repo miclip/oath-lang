@@ -956,6 +956,35 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 			return nil, err
 		}
 		return tBool(), nil
+	case "to-rat":
+		// Numeric conversion → Rat. Exact from Int; exact from Float for finite
+		// values (errors on NaN/inf at runtime, §3).
+		if err := need(1); err != nil {
+			return nil, err
+		}
+		if argTys[0].K != "int" && argTys[0].K != "float" {
+			return nil, fmt.Errorf("to-rat requires Int or Float, got %s", debugTy(argTys[0]))
+		}
+		return tRat(), nil
+	case "to-float":
+		// Numeric conversion → Float, rounding to nearest (RNE). Total.
+		if err := need(1); err != nil {
+			return nil, err
+		}
+		if argTys[0].K != "int" && argTys[0].K != "rat" {
+			return nil, fmt.Errorf("to-float requires Int or Rat, got %s", debugTy(argTys[0]))
+		}
+		return tFloat(), nil
+	case "floor":
+		// Numeric conversion → Int, rounding toward −∞. Total from Rat; errors
+		// on NaN/inf from Float (§3).
+		if err := need(1); err != nil {
+			return nil, err
+		}
+		if argTys[0].K != "rat" && argTys[0].K != "float" {
+			return nil, fmt.Errorf("floor requires Rat or Float, got %s", debugTy(argTys[0]))
+		}
+		return tInt(), nil
 	}
 	return nil, fmt.Errorf("unknown primitive %q", t.Op)
 }
