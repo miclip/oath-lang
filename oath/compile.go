@@ -183,14 +183,48 @@ type emitter struct {
 	order   []string          // emission order (deps first)
 	seen    map[string]bool
 	strHash string // hash of the Str datatype; its values compile to Go strings
+	setHash string // hash of the Set datatype; its values compile to native osets
+	setOps  map[string]setOp // recognized Set-op hashes → native helper + arity
 	// Type tracking for record field resolution: the kernel's own checker,
 	// threaded alongside compilation. ctx mirrors the de Bruijn env.
 	chk *checker
 	ctx []*Ty
 }
 
+// setOp names the native Go helper a recognized Set operation lowers to and its
+// arity (so only a SATURATED application is intercepted).
+type setOp struct {
+	helper string
+	arity  int
+}
+
+// setOpTable maps the recognized Set-operation names to their native lowering.
+// A Set flows at runtime as an oset; these helpers keep it in that form.
+var setOpTable = map[string]setOp{
+	"set-empty":  {"osetEmpty", 0},
+	"set-member": {"osetMember", 2},
+	"set-add":    {"osetAdd", 2},
+	"set-union":  {"osetUnion", 2},
+	"set-inter":  {"osetInter", 2},
+	"set-size":   {"osetSize", 1},
+	"set-elems":  {"osetElems", 1},
+}
+
+// resolveNativeContainers records the Set datatype hash and the recognized
+// Set-operation hashes, so the compiler can lower them to native oset code.
+func (e *emitter) resolveNativeContainers() {
+	e.setHash, _ = e.st.Resolve("Set")
+	e.setOps = map[string]setOp{}
+	for name, op := range setOpTable {
+		if h, ok := e.st.Resolve(name); ok {
+			e.setOps[h] = op
+		}
+	}
+}
+
 func emitProgram(st *Store, entry string, capTy *Ty) (string, error) {
 	e := &emitter{st: st, fname: map[string]string{}, seen: map[string]bool{}, strHash: strTypeHash(st)}
+	e.resolveNativeContainers()
 	if err := e.closure(entry); err != nil {
 		return "", err
 	}
@@ -205,6 +239,7 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"sort"
 	"unicode/utf8"
 )
 
@@ -212,6 +247,7 @@ var _ = io.ReadAll
 var _ = http.Get
 var _ = utf8.DecodeRuneInString
 var _ = math.Float64bits
+var _ = sort.Slice
 
 // bi parses a decimal integer literal into an arbitrary-precision value.
 func bi(s string) *big.Int { v, _ := new(big.Int).SetString(s, 10); return v }
@@ -297,6 +333,72 @@ func structEq(a, b any) bool {
 	panic("structEq on function value")
 }
 
+// oset is the native representation of a Set: a hash map keyed by the element's
+// canonical decimal, mapping to the element. Membership/size are O(1); the pure
+// updates copy-on-write (O(n)); iteration re-materializes the sorted list, so
+// the compiled Set agrees with the structural sorted-list model on every
+// observable output (the differential gate).
+type oset = map[string]*big.Int
+
+func osetEmpty() any { return oset{} }
+func osetAdd(x, s any) any {
+	old := s.(oset)
+	n := make(oset, len(old)+1)
+	for k, v := range old {
+		n[k] = v
+	}
+	xi := x.(*big.Int)
+	n[xi.String()] = xi
+	return any(n)
+}
+func osetMember(x, s any) any { _, ok := s.(oset)[x.(*big.Int).String()]; return any(ok) }
+func osetUnion(a, b any) any {
+	n := make(oset)
+	for k, v := range a.(oset) {
+		n[k] = v
+	}
+	for k, v := range b.(oset) {
+		n[k] = v
+	}
+	return any(n)
+}
+func osetInter(a, b any) any {
+	n := oset{}
+	bm := b.(oset)
+	for k, v := range a.(oset) {
+		if _, ok := bm[k]; ok {
+			n[k] = v
+		}
+	}
+	return any(n)
+}
+func osetSize(s any) any { return any(big.NewInt(int64(len(s.(oset))))) }
+func osetSorted(s any) []*big.Int {
+	m := s.(oset)
+	ks := make([]*big.Int, 0, len(m))
+	for _, v := range m {
+		ks = append(ks, v)
+	}
+	sort.Slice(ks, func(i, j int) bool { return ks[i].Cmp(ks[j]) < 0 })
+	return ks
+}
+func osetElems(s any) any {
+	var lst any = &ctorV{idx: 0} // Nil
+	ks := osetSorted(s)
+	for i := len(ks) - 1; i >= 0; i-- {
+		lst = &ctorV{idx: 1, fields: []any{ks[i], lst}} // Cons
+	}
+	return lst
+}
+func osetFromList(l any) any {
+	n := oset{}
+	for c := l.(*ctorV); c.idx == 1; c = c.fields[1].(*ctorV) {
+		xi := c.fields[0].(*big.Int)
+		n[xi.String()] = xi
+	}
+	return any(n)
+}
+
 `)
 	for _, h := range e.order {
 		if err := e.emitDef(h); err != nil {
@@ -333,6 +435,12 @@ func main() {
 // closure orders the entry's dependency closure, functions only, deps first.
 func (e *emitter) closure(h string) error {
 	if e.seen[h] {
+		return nil
+	}
+	// Recognized Set operations lower to native oset helpers at their call
+	// sites, so neither the operation nor its sorted-list helpers are emitted.
+	if _, ok := e.setOps[h]; ok {
+		e.seen[h] = true
 		return nil
 	}
 	e.seen[h] = true
@@ -384,9 +492,38 @@ func (e *emitter) emitDef(h string) error {
 	return nil
 }
 
+// recognizeSetOp lowers a SATURATED call of a recognized Set operation to its
+// native oset helper (composing recursively through its arguments). Returns
+// ok=false for anything else, so normal compilation proceeds.
+func (e *emitter) recognizeSetOp(t *Term, depth int, self string) (string, bool, error) {
+	head, args := unwindApp(t)
+	if head.K != "ref" {
+		return "", false, nil
+	}
+	op, ok := e.setOps[head.Hash]
+	if !ok || len(args) != op.arity {
+		return "", false, nil
+	}
+	parts := make([]string, len(args))
+	for i := range args {
+		a, err := e.expr(args[i], depth, self)
+		if err != nil {
+			return "", false, err
+		}
+		parts[i] = a
+	}
+	return fmt.Sprintf("%s(%s)", op.helper, strings.Join(parts, ", ")), true, nil
+}
+
 // expr compiles a term to a Go expression. depth = number of binders in
 // scope (env has that many entries, innermost last).
 func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
+	// Native containers: a saturated Set operation lowers to its oset helper.
+	if s, ok, err := e.recognizeSetOp(t, depth, self); err != nil {
+		return "", err
+	} else if ok {
+		return s, nil
+	}
 	switch t.K {
 	case "var":
 		return fmt.Sprintf("env[%d]", depth-1-t.Idx), nil
@@ -475,6 +612,12 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 			// SCons Int Str: fields[0] = codepoint, fields[1] = rest (a Go string)
 			return fmt.Sprintf("any(string(rune(%s.(*big.Int).Int64())) + %s.(string))", parts[0], parts[1]), nil
 		}
+		// Set values are native osets: the MkSet constructor wraps a (List Int),
+		// so build the oset from that list (keeping the representation uniform
+		// even when a Set is constructed directly rather than via a Set op).
+		if t.Hash == e.setHash && e.setHash != "" {
+			return fmt.Sprintf("osetFromList(%s)", parts[0]), nil
+		}
 		return fmt.Sprintf("(&ctorV{idx: %d, fields: []any{%s}})", t.Idx, strings.Join(parts, ", ")), nil
 	case "match":
 		s, err := e.expr(t.A, depth, self)
@@ -485,6 +628,18 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 		// arm 0 = SNil (empty), arm 1 = SCons (head codepoint, rest string).
 		if t.Hash == e.strHash && e.strHash != "" {
 			return e.matchStr(t, s, depth, self)
+		}
+		// Match on a Set: one constructor (MkSet), irrefutable. Its bound
+		// variable is the (List Int) of sorted elements, materialized from the
+		// native oset scrutinee.
+		if t.Hash == e.setHash && e.setHash != "" {
+			e.ctx = append(e.ctx, &Ty{K: "data"}) // placeholder for the bound List
+			arm, err := e.expr(&t.Arms[0], depth+1, self)
+			e.ctx = e.ctx[:len(e.ctx)-1]
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("(func(env []any) any { return %s }(append(append([]any{}, env...), osetElems(%s))))", arm, s), nil
 		}
 		md, err := e.st.GetDef(t.Hash)
 		if err != nil {
