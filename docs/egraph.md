@@ -1,6 +1,6 @@
 # Semantic canonicalization (the e-graph) — design note
 
-**Status:** first slice in progress (2026-07). The last rung of the discovery
+**Status:** shipped (2026-07) — commutativity + type-directed associativity. The last rung of the discovery
 ladder (docs/discovery.md): find definitions that are the SAME FUNCTION even when
 their bodies differ — body-equivalence, not just same-property (rung 2) or
 provably-satisfies-my-spec (proof-implication).
@@ -54,14 +54,18 @@ The first, soundest rules are the algebraic ones for the built-in operators:
   `+`, `*`, `==` (structural equality is symmetric), `and`, `or` all commute for
   all their types (`+`/`*` commute even for `Float` — only associativity fails
   there). `(+ a b)` and `(+ b a)` normalize to one form. **This slice.**
-- **Associativity** — flatten and re-sort `+`/`*` chains. Sound for `Int` and
-  `Rat`, NOT for `Float` (float addition isn't associative — that is exactly the
-  law `examples/float.oath` falsifies). So associativity must be *type-directed*:
-  applied only where the operand type admits it. *Next* (needs the operand type
-  threaded through normalization, as the compiler already does).
+- **Associativity** — flatten and re-sort `+`/`*` chains (and `and`/`or`), so
+  `(+ (+ a b) c)`, `(+ a (+ b c))`, and `(+ c (+ b a))` all normalize to one
+  form. This is **type-directed**: sound for `Int`/`Rat` (and `and`/`or` over
+  `Bool`), but NOT for `Float` — float addition isn't associative, which is
+  exactly the law `examples/float.oath` falsifies, so a `Float` chain is only
+  commutatively sorted, never flattened. `eNormalize` therefore threads the
+  checker and de Bruijn context and synthesizes the operator's operand type to
+  decide (`isACPrim`). **This slice** — the numeric tower told the e-graph where
+  each rule is allowed to fire.
 - Unit/identity laws (`x + 0 = x`, `x * 1 = x`), and eventually a real
   saturating e-graph with a growable rule set and equality-saturation extraction,
-  are the deeper versions.
+  are the deeper versions still to come.
 
 `eNormalize` walks a term applying the confluent rules directly to a normal form
 (a full e-graph data structure isn't needed while the rules are confluent);

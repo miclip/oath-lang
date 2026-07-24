@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"sort"
 )
 
 // canonNaN is the single quiet-NaN bit pattern every NaN collapses to, so that
@@ -184,40 +185,108 @@ func termBytes(t *Term) []byte {
 }
 
 // commutativePrims commute for EVERY operand type (structural `==` is symmetric;
-// `and`/`or` are non-short-circuiting; `+`/`*` commute even for Float — only
-// associativity fails there, docs/egraph.md). So sorting their operands into a
-// canonical order is a sound rewrite everywhere.
+// `and`/`or` are non-short-circuiting; `+`/`*` commute even for Float). So
+// sorting their operands into a canonical order is a sound rewrite everywhere.
 var commutativePrims = map[string]bool{"+": true, "*": true, "==": true, "and": true, "or": true}
 
+// isACPrim reports whether a primitive is associative-AND-commutative for the
+// given operand type — so a chain of it can be flattened and re-sorted.
+// `and`/`or` are AC over Bool always; `+`/`*` are AC over Int and Rat but NOT
+// Float (float addition is not associative — the law examples/float.oath
+// falsifies — so flattening a Float chain would be unsound). `==` commutes but
+// does not associate, so it is never flattened.
+func isACPrim(op string, argTy *Ty) bool {
+	switch op {
+	case "and", "or":
+		return true
+	case "+", "*":
+		return argTy != nil && (argTy.K == "int" || argTy.K == "rat")
+	}
+	return false
+}
+
+// acFlatten collects the leaves of a chain of one AC operator (already-normalized
+// sub-terms of the same op are recursed into).
+func acFlatten(op string, args []Term) []Term {
+	var out []Term
+	for i := range args {
+		if args[i].K == "prim" && args[i].Op == op && len(args[i].Args) == 2 {
+			out = append(out, acFlatten(op, args[i].Args)...)
+		} else {
+			out = append(out, args[i])
+		}
+	}
+	return out
+}
+
+// acRebuild sorts the leaves and rebuilds a canonical right-nested chain, so any
+// association/order of the same leaves yields one form.
+func acRebuild(op string, leaves []Term) *Term {
+	sort.Slice(leaves, func(i, j int) bool {
+		return bytes.Compare(termBytes(&leaves[i]), termBytes(&leaves[j])) < 0
+	})
+	cur := leaves[len(leaves)-1]
+	for i := len(leaves) - 2; i >= 0; i-- {
+		cur = Term{K: "prim", Op: op, Args: []Term{leaves[i], cur}}
+	}
+	return &cur
+}
+
 // eNormalize rewrites a term to a canonical form under the confluent algebraic
-// rewrite rules — currently commutativity (canonical operand order for a
-// commutative primitive). It is the semantic-canonicalization key for discovery
-// (the e-graph's first slice, docs/egraph.md). It NEVER affects identity: a
-// definition's hash is still the O1 encoding of its ACTUAL AST; this only draws
-// equivalence edges between existing objects.
-func eNormalize(t *Term) *Term {
+// rewrite rules: commutativity (canonical operand order) and TYPE-DIRECTED
+// associativity (flatten + sort `+`/`*` chains over Int/Rat and `and`/`or` over
+// Bool — never Float). It is type-aware, threading the checker and de Bruijn
+// context so it knows an operator's operand type. It NEVER affects identity
+// (docs/egraph.md): a definition's hash is still the O1 encoding of its ACTUAL
+// AST; this only draws equivalence edges between existing objects.
+func eNormalize(chk *checker, ctx []*Ty, t *Term) *Term {
 	if t == nil {
 		return nil
 	}
+	push := func(ty *Ty) []*Ty { return append(append([]*Ty{}, ctx...), ty) }
 	nt := *t
-	nt.A = eNormalize(t.A)
-	nt.B = eNormalize(t.B)
-	nt.C = eNormalize(t.C)
-	if len(t.Args) > 0 {
+	switch t.K {
+	case "lam":
+		nt.A = eNormalize(chk, push(t.Ty), t.A)
+	case "let":
+		nt.A = eNormalize(chk, ctx, t.A)
+		nt.B = eNormalize(chk, push(t.Ty), t.B)
+	case "if":
+		nt.A = eNormalize(chk, ctx, t.A)
+		nt.B = eNormalize(chk, ctx, t.B)
+		nt.C = eNormalize(chk, ctx, t.C)
+	case "app":
+		nt.A = eNormalize(chk, ctx, t.A)
+		nt.B = eNormalize(chk, ctx, t.B)
+	case "field":
+		nt.A = eNormalize(chk, ctx, t.A)
+	case "match":
+		nt.A = eNormalize(chk, ctx, t.A)
+		nt.Arms = make([]Term, len(t.Arms))
+		scrutTy, terr := chk.synth(ctx, t.A)
+		md, derr := chk.st.GetDef(t.Hash)
+		for i := range t.Arms {
+			armCtx := ctx
+			if terr == nil && derr == nil && scrutTy.K == "data" && i < len(md.Ctors) {
+				for _, f := range instCtorFields(md, scrutTy.Hash, scrutTy.Args, i) {
+					armCtx = append(append([]*Ty{}, armCtx...), f)
+				}
+			}
+			nt.Arms[i] = *eNormalize(chk, armCtx, &t.Arms[i])
+		}
+	case "prim", "ctor", "record":
 		nt.Args = make([]Term, len(t.Args))
 		for i := range t.Args {
-			nt.Args[i] = *eNormalize(&t.Args[i])
+			nt.Args[i] = *eNormalize(chk, ctx, &t.Args[i])
 		}
-	}
-	if len(t.Arms) > 0 {
-		nt.Arms = make([]Term, len(t.Arms))
-		for i := range t.Arms {
-			nt.Arms[i] = *eNormalize(&t.Arms[i])
-		}
-	}
-	if t.K == "prim" && commutativePrims[t.Op] && len(nt.Args) == 2 {
-		if bytes.Compare(termBytes(&nt.Args[0]), termBytes(&nt.Args[1])) > 0 {
-			nt.Args[0], nt.Args[1] = nt.Args[1], nt.Args[0]
+		if t.K == "prim" && commutativePrims[t.Op] && len(nt.Args) == 2 {
+			argTy, _ := chk.synth(ctx, &t.Args[0])
+			if isACPrim(t.Op, argTy) {
+				return acRebuild(t.Op, acFlatten(t.Op, nt.Args))
+			}
+			if bytes.Compare(termBytes(&nt.Args[0]), termBytes(&nt.Args[1])) > 0 {
+				nt.Args[0], nt.Args[1] = nt.Args[1], nt.Args[0]
+			}
 		}
 	}
 	return &nt
@@ -227,11 +296,12 @@ func eNormalize(t *Term) *Term {
 // e-normalized body. Two definitions with the same eHash compute the same
 // function up to the rewrite rules — the same equivalence class, though (by
 // design) DIFFERENT identities.
-func eHash(d *Def) string {
+func eHash(st *Store, d *Def) string {
+	chk := &checker{st: st, selfTyVars: d.TyVars, selfTy: d.Ty}
 	e := &enc{}
 	e.ty(d.Ty)
 	if d.Body != nil {
-		e.term(eNormalize(d.Body))
+		e.term(eNormalize(chk, nil, d.Body))
 	}
 	s := sha256.Sum256(e.b)
 	return hex.EncodeToString(s[:])

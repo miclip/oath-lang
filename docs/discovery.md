@@ -122,10 +122,11 @@ and match). What remains:
 - **Body-equivalence** has a first slice: `oath find --equiv <name>` (and the
   `find_equiv` MCP tool) find definitions that are the SAME FUNCTION up to the
   rewrite rules — a different implementation that normalizes to the same
-  canonical form. This is the e-graph (docs/egraph.md); today the rule is
-  commutativity (`(+ a b)` and `(+ b a)` share an `eHash` but keep distinct
-  identities), with type-directed associativity and a full saturating engine as
-  the deeper versions. Full extensional equivalence is undecidable, so this
+  canonical form. This is the e-graph (docs/egraph.md); the rules are
+  commutativity (`(+ a b)` ≡ `(+ b a)`) and **type-directed associativity**
+  (`(+ (+ a b) c)` ≡ `(+ a (+ b c))` over Int/Rat, but NOT Float, whose addition
+  isn't associative) — matched defs share an `eHash` but keep distinct
+  identities. Unit laws and a full saturating engine are the deeper versions. Full extensional equivalence is undecidable, so this
   collapses things equal *under the rules*, never all equal functions.
 
 The rungs compose: content-hash match (up to type) for the fast common case,
