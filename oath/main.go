@@ -17,6 +17,7 @@ usage:
   oath log [name]                     append-only submission journal (all attempts, incl. rejections)
   oath ls                             list named definitions and their guarantees
   oath get <name>                     print the human projection of a definition
+  oath find <name>                    find definitions that satisfy the same PROPERTY (by content hash, not name)
   oath context <name...> [--budget N] spec-only slice of the named defs + transitive deps (no bodies)
   oath dependents <name>              list definitions that reference a definition
   oath verify <name>                  re-run a definition's properties
@@ -122,6 +123,11 @@ func main() {
 			fail(fmt.Errorf("usage: oath get <name>"))
 		}
 		cmdGet(st, args[1])
+	case "find":
+		if len(args) != 2 {
+			fail(fmt.Errorf("usage: oath find <name>"))
+		}
+		cmdFind(st, args[1])
 	case "verify":
 		if len(args) != 2 {
 			fail(fmt.Errorf("usage: oath verify <name>"))
@@ -341,6 +347,14 @@ func cmdLs(st *Store) {
 
 func cmdGet(st *Store, name string) {
 	out, err := apiGet(st, name)
+	if err != nil {
+		fail(err)
+	}
+	fmt.Print(out)
+}
+
+func cmdFind(st *Store, name string) {
+	out, err := apiFind(st, name)
 	if err != nil {
 		fail(err)
 	}

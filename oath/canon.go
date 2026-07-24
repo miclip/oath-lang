@@ -88,6 +88,20 @@ func hashDef(d *Def) string {
 	return hex.EncodeToString(s[:])
 }
 
+// propHash is the content address of a PROPERTY on its own: the canonical
+// encoding of its binders and body, hashed. Because the function under proof is
+// `self` (not a ref) and binders are de Bruijn, a pure algebraic law like
+// commutativity `(== (self a b) (self b a))` has the SAME propHash wherever it
+// appears — so "which proven definitions satisfy this spec?" is a hash lookup,
+// not a search. This is content-addressing applied to specs, not just code.
+func propHash(p *Prop) string {
+	e := &enc{}
+	e.tys(p.Binders)
+	e.term(&p.Body)
+	s := sha256.Sum256(e.b)
+	return hex.EncodeToString(s[:])
+}
+
 // hashDefV0 is the legacy JSON-based identity (kernel ≤0.6), retained ONLY
 // for the one-shot store migration's old→new mapping.
 func hashDefV0(d *Def) string {

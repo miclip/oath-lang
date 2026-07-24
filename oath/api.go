@@ -209,6 +209,119 @@ func apiGet(st *Store, name string) (string, error) {
 	return printDef(st, h)
 }
 
+// provenContains reports whether property index i was SMT-proven for this def.
+func provenContains(m *Meta, i int) bool {
+	if m == nil {
+		return false
+	}
+	for _, p := range m.ProvenProps {
+		if p == i {
+			return true
+		}
+	}
+	return false
+}
+
+// apiFind is the spec-query discovery surface (query by example): given a
+// definition, find OTHER definitions that satisfy the SAME property — matched
+// by the property's content address (propHash), NOT by name. A property shared
+// and PROVEN on both sides means the two definitions are interchangeable for
+// that law. This is discovery by meaning-so-far-as-specified, over the proofs
+// already in the store, with no name trusted.
+func apiFind(st *Store, name string) (string, error) {
+	qh, ok := st.Resolve(name)
+	if !ok {
+		return "", fmt.Errorf("no definition named %q", name)
+	}
+	qd, err := st.GetDef(qh)
+	if err != nil {
+		return "", err
+	}
+	if qd.K != "func" || len(qd.Props) == 0 {
+		return "", fmt.Errorf("%q has no properties to query on", name)
+	}
+	qm, _ := st.GetMeta(qh)
+
+	propName := func(m *Meta, i int) string {
+		if m != nil && i < len(m.PropNames) && m.PropNames[i] != "" {
+			return m.PropNames[i]
+		}
+		return fmt.Sprintf("prop %d", i)
+	}
+
+	// The query is this def's properties, each by content hash.
+	type qprop struct {
+		name   string
+		hash   string
+		proven bool
+	}
+	var queries []qprop
+	qidx := map[string]int{} // propHash -> index into queries
+	for i := range qd.Props {
+		ph := propHash(&qd.Props[i])
+		if _, seen := qidx[ph]; seen {
+			continue
+		}
+		qidx[ph] = len(queries)
+		queries = append(queries, qprop{propName(qm, i), ph, provenContains(qm, i)})
+	}
+
+	// Scan every OTHER definition for a property with a matching content hash.
+	type match struct {
+		def      string
+		propName string
+		proven   bool
+	}
+	matches := make([][]match, len(queries))
+	names := st.Names()
+	keys := make([]string, 0, len(names))
+	for k := range names {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		h := names[k]
+		if h == qh {
+			continue // don't match the query against itself
+		}
+		d, err := st.GetDef(h)
+		if err != nil || d.K != "func" {
+			continue
+		}
+		m, _ := st.GetMeta(h)
+		for i := range d.Props {
+			if j, ok := qidx[propHash(&d.Props[i])]; ok {
+				matches[j] = append(matches[j], match{k, propName(m, i), provenContains(m, i)})
+			}
+		}
+	}
+
+	mark := func(proven bool) string {
+		if proven {
+			return "proven"
+		}
+		return "tested"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "properties of %s, and which other definitions satisfy each (matched by content hash, not name):\n", name)
+	for _, q := range queries {
+		j := qidx[q.hash]
+		fmt.Fprintf(&b, "\n  · %s [%s here]  #%s\n", q.name, mark(q.proven), shortHash(q.hash))
+		if len(matches[j]) == 0 {
+			b.WriteString("      (no other definition shares this law)\n")
+			continue
+		}
+		for _, m := range matches[j] {
+			flag := ""
+			if m.proven && q.proven {
+				flag = "  ← proven on both: interchangeable for this law"
+			}
+			fmt.Fprintf(&b, "      %-18s (%s as %q)%s\n", m.def, mark(m.proven), m.propName, flag)
+		}
+	}
+	return b.String(), nil
+}
+
 func apiEval(st *Store, src string) (string, error) {
 	forms, err := parseForms(src)
 	if err != nil {
