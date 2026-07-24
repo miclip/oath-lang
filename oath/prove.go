@@ -201,6 +201,8 @@ func (c *smtCtx) sortOf(t *Ty) (string, error) {
 	switch t.K {
 	case "int":
 		return "Int", nil
+	case "rat":
+		return "Real", nil
 	case "bool":
 		return "Bool", nil
 	case "fun":
@@ -415,16 +417,19 @@ func (c *smtCtx) ensureFn(h string, d *Def, args []Ty) (smtVal, error) {
 }
 
 var smtPrimOps = map[string]string{
-	"+": "+", "-": "-", "*": "*", "neg": "-",
+	"+": "+", "-": "-", "*": "*", "neg": "-", "/": "/",
 	"<": "<", "<=": "<=", "and": "and", "or": "or", "not": "not",
 	"==": "=",
 }
 
 var smtPrimSorts = map[string]string{
-	"+": "Int", "-": "Int", "*": "Int", "neg": "Int",
+	"+": "Int", "-": "Int", "*": "Int", "neg": "Int", "/": "Int",
 	"<": "Bool", "<=": "Bool", "and": "Bool", "or": "Bool", "not": "Bool",
 	"==": "Bool",
 }
+
+// arithPrims preserve their operand's numeric sort (Int or Real) as the result.
+var arithPrims = map[string]bool{"+": true, "-": true, "*": true, "/": true, "neg": true}
 
 func (c *smtCtx) tr(t *Term, env []smtVal) (string, string, error) {
 	c.depth++
@@ -441,6 +446,16 @@ func (c *smtCtx) tr(t *Term, env []smtVal) (string, string, error) {
 			return fmt.Sprintf("(- %s)", new(big.Int).Neg(t.Int).String()), "Int", nil
 		}
 		return t.Int.String(), "Int", nil
+	case "rat":
+		// A rational renders as (/ num den) over Real — Z3's rational theory is
+		// exact, so 0.1 + 0.2 proves == 3/10 with no rounding. num carries the
+		// sign; den > 0.
+		num, den := t.Rat.Num(), t.Rat.Denom()
+		numStr := num.String()
+		if num.Sign() < 0 {
+			numStr = fmt.Sprintf("(- %s)", new(big.Int).Neg(num).String())
+		}
+		return fmt.Sprintf("(/ %s %s)", numStr, den.String()), "Real", nil
 	case "bool":
 		return fmt.Sprintf("%v", t.Bool), "Bool", nil
 	case "if":
@@ -464,22 +479,33 @@ func (c *smtCtx) tr(t *Term, env []smtVal) (string, string, error) {
 		}
 		return c.tr(t.B, append(append([]smtVal{}, env...), smtVal{expr: bound, sort: s}))
 	case "prim":
-		if t.Op == "/" || t.Op == "%" {
-			return "", "", fmt.Errorf("%s is untranslatable (kernel truncates, SMT-LIB is Euclidean)", t.Op)
+		var parts []string
+		argSort := ""
+		for i := range t.Args {
+			a, s, err := c.tr(&t.Args[i], env)
+			if err != nil {
+				return "", "", err
+			}
+			if i == 0 {
+				argSort = s
+			}
+			parts = append(parts, a)
+		}
+		// `%` is never translatable; `/` truncates over Int (SMT-LIB is
+		// Euclidean) but is EXACT over Real, so it translates for rationals.
+		if t.Op == "%" || (t.Op == "/" && argSort != "Real") {
+			return "", "", fmt.Errorf("%s is untranslatable over %s (kernel truncates, SMT-LIB is Euclidean)", t.Op, argSort)
 		}
 		op, ok := smtPrimOps[t.Op]
 		if !ok {
 			return "", "", fmt.Errorf("primitive %s is outside the provable fragment", t.Op)
 		}
-		var parts []string
-		for i := range t.Args {
-			a, _, err := c.tr(&t.Args[i], env)
-			if err != nil {
-				return "", "", err
-			}
-			parts = append(parts, a)
+		// Arithmetic preserves the operand's numeric sort (Int or Real).
+		sort := smtPrimSorts[t.Op]
+		if arithPrims[t.Op] {
+			sort = argSort
 		}
-		return "(" + op + " " + strings.Join(parts, " ") + ")", smtPrimSorts[t.Op], nil
+		return "(" + op + " " + strings.Join(parts, " ") + ")", sort, nil
 	case "ctor":
 		dt, err := c.ensureDT(t.Hash, t.TyArgs)
 		if err != nil {

@@ -54,6 +54,12 @@ func genValue(st *Store, ty *Ty, size int, r *rng) (Value, error) {
 			return Value{K: "int", Int: big.NewInt(boundary[r.below(len(boundary))])}, nil
 		}
 		return Value{K: "int", Int: big.NewInt(r.intIn(-20, 20))}, nil
+	case "rat":
+		// small rationals — numerator in a boundary-biased range, positive
+		// denominator in [1,5] (so 0, ±1, and non-integer values all appear).
+		num := big.NewInt(r.intIn(-8, 8))
+		den := big.NewInt(r.intIn(1, 5))
+		return Value{K: "rat", Rat: new(big.Rat).SetFrac(num, den)}, nil
 	case "bool":
 		return Value{K: "bool", Bool: r.below(2) == 0}, nil
 	case "record":

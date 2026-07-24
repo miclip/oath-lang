@@ -32,6 +32,7 @@ type sx struct {
 	K    string // list | brack | brace | sym | int | str
 	Sym  string
 	Int  *big.Int
+	Rat  *big.Rat
 	Str  string
 	Kids []sx
 	Line int
@@ -45,6 +46,7 @@ type token struct {
 	kind string // ( ) [ ] { } sym int str
 	sym  string
 	i    *big.Int
+	r    *big.Rat
 	s    string
 	line int
 }
@@ -107,6 +109,10 @@ func lex(src string) ([]token, error) {
 			word := src[i:j]
 			if n, ok := new(big.Int).SetString(word, 10); ok {
 				toks = append(toks, token{kind: "int", i: n, line: line})
+			} else if rr, ok := new(big.Rat).SetString(word); ok {
+				// A decimal (3.14) or fraction (1/2) literal — Int is tried first,
+				// so a bare integer never reaches here.
+				toks = append(toks, token{kind: "rat", r: rr, line: line})
 			} else {
 				toks = append(toks, token{kind: "sym", sym: word, line: line})
 			}
@@ -130,6 +136,8 @@ func (r *reader) read() (sx, error) {
 	switch t.kind {
 	case "int":
 		return sx{K: "int", Int: t.i, Line: t.line}, nil
+	case "rat":
+		return sx{K: "rat", Rat: t.r, Line: t.line}, nil
 	case "str":
 		return sx{K: "str", Str: t.s, Line: t.line}, nil
 	case "sym":
@@ -226,6 +234,8 @@ func (e *elab) parseTy(x sx) (*Ty, error) {
 		switch x.Sym {
 		case "Int":
 			return tInt(), nil
+		case "Rat":
+			return tRat(), nil
 		case "Bool":
 			return tBool(), nil
 		}
@@ -353,6 +363,8 @@ func (e *elab) elabTerm(x sx) (*Term, error) {
 	switch x.K {
 	case "int":
 		return &Term{K: "int", Int: x.Int}, nil
+	case "rat":
+		return &Term{K: "rat", Rat: x.Rat}, nil
 	case "str":
 		// String-literal sugar: "abc" elaborates to the codepoint chain
 		// (SCons 97 (SCons 98 (SCons 99 (SNil)))). Str is an ordinary inductive

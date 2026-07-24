@@ -213,6 +213,9 @@ var _ = utf8.DecodeRuneInString
 // bi parses a decimal integer literal into an arbitrary-precision value.
 func bi(s string) *big.Int { v, _ := new(big.Int).SetString(s, 10); return v }
 
+// ra parses a rational literal ("num/den") into an exact big.Rat.
+func ra(s string) *big.Rat { v, _ := new(big.Rat).SetString(s); return v }
+
 // capFn lifts a real-world Go function into an Oath closure value.
 func capFn(f func(string) string) *closure {
 	return &closure{code: func(env []any, arg any) any { return f(arg.(string)) }}
@@ -238,6 +241,8 @@ func structEq(a, b any) bool {
 	switch x := a.(type) {
 	case *big.Int:
 		return x.Cmp(b.(*big.Int)) == 0
+	case *big.Rat:
+		return x.Cmp(b.(*big.Rat)) == 0
 	case bool:
 		return x == b.(bool)
 	case string:
@@ -355,6 +360,8 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 		// primitive operands carry (e.g. `.(int64)`, `.(string)`) apply — a
 		// bare typed constant like int64(1) can't be type-asserted.
 		return fmt.Sprintf("any(bi(%q))", t.Int.String()), nil
+	case "rat":
+		return fmt.Sprintf("any(ra(%q))", t.Rat.RatString()), nil
 	case "bool":
 		return fmt.Sprintf("any(%s)", strconv.FormatBool(t.Bool)), nil
 	case "lam":
@@ -551,6 +558,32 @@ func (e *emitter) prim(t *Term, depth int, self string) (string, error) {
 			return "", err
 		}
 		args = append(args, a)
+	}
+	// Arithmetic and comparison are numeric-overloaded: Int (*big.Int) or Rat
+	// (*big.Rat). We type-direct off the first operand's synthesized sort so the
+	// emitted assertions match the runtime representation. Rat is exact real
+	// division (Quo, no truncation) and has no `%`; that is enforced upstream by
+	// the type checker, so we only reach `%` on Int here.
+	rat := false
+	if len(t.Args) > 0 {
+		if ty, err := e.chk.synth(e.ctx, &t.Args[0]); err == nil && ty.K == "rat" {
+			rat = true
+		}
+	}
+	if rat {
+		ratOp := map[string]string{"+": "Add", "-": "Sub", "*": "Mul", "/": "Quo"}
+		switch t.Op {
+		case "+", "-", "*", "/":
+			return fmt.Sprintf("any(new(big.Rat).%s(%s.(*big.Rat), %s.(*big.Rat)))", ratOp[t.Op], args[0], args[1]), nil
+		case "neg":
+			return fmt.Sprintf("any(new(big.Rat).Neg(%s.(*big.Rat)))", args[0]), nil
+		case "<":
+			return fmt.Sprintf("any(%s.(*big.Rat).Cmp(%s.(*big.Rat)) < 0)", args[0], args[1]), nil
+		case "<=":
+			return fmt.Sprintf("any(%s.(*big.Rat).Cmp(%s.(*big.Rat)) <= 0)", args[0], args[1]), nil
+		case "==":
+			return fmt.Sprintf("any(structEq(%s, %s))", args[0], args[1]), nil
+		}
 	}
 	// Integers are arbitrary-precision (*big.Int); + - * / % never overflow.
 	bigOp := map[string]string{"+": "Add", "-": "Sub", "*": "Mul", "/": "Quo", "%": "Rem"}

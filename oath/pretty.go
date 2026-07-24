@@ -34,6 +34,8 @@ func printTy(st *Store, t *Ty, tvs []string) string {
 	switch t.K {
 	case "int":
 		return "Int"
+	case "rat":
+		return "Rat"
 	case "bool":
 		return "Bool"
 	case "str":
@@ -114,6 +116,8 @@ func (p *printer) term(t *Term, selfName string) string {
 		return fmt.Sprintf("?v%d", t.Idx)
 	case "int":
 		return fmt.Sprintf("%d", t.Int)
+	case "rat":
+		return t.Rat.RatString()
 	case "bool":
 		return fmt.Sprintf("%v", t.Bool)
 	case "str":
@@ -208,6 +212,8 @@ func printValue(st *Store, v Value) string {
 	switch v.K {
 	case "int":
 		return fmt.Sprintf("%d", v.Int)
+	case "rat":
+		return v.Rat.RatString()
 	case "bool":
 		return fmt.Sprintf("%v", v.Bool)
 	case "str":

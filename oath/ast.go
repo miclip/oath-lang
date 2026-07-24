@@ -27,6 +27,7 @@ type Ty struct {
 }
 
 func tInt() *Ty                       { return &Ty{K: "int"} }
+func tRat() *Ty                       { return &Ty{K: "rat"} }
 func tBool() *Ty                      { return &Ty{K: "bool"} }
 func tVar(i int) *Ty                  { return &Ty{K: "var", Var: i} }
 func tFun(a, b *Ty) *Ty               { return &Ty{K: "fun", A: a, B: b} }
@@ -40,6 +41,7 @@ type Term struct {
 	K      string   `json:"k"`                // var | int | bool | str | lam | app | let | if | prim | ref | self | ctor | match | record | field
 	Idx    int      `json:"idx,omitempty"`    // k=var: de Bruijn index; k=ctor: constructor index
 	Int    *big.Int `json:"int,omitempty"`    // k=int (arbitrary precision — Int is ℤ)
+	Rat    *big.Rat `json:"rat,omitempty"`    // k=rat (arbitrary precision — Rat is ℚ)
 	Bool   bool     `json:"bool,omitempty"`   // k=bool
 	Str    string   `json:"str,omitempty"`    // k=str: literal value
 	Ty     *Ty      `json:"ty,omitempty"`     // k=lam: param type; k=let: bound type

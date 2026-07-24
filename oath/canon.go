@@ -35,6 +35,7 @@ const (
 	tagTyData   = 0x06
 	tagTyRec    = 0x07
 	tagTyRecord = 0x08
+	tagTyRat    = 0x09
 )
 
 // Term tags.
@@ -54,6 +55,7 @@ const (
 	tagTmMatch  = 0x1C
 	tagTmRecord = 0x1D
 	tagTmField  = 0x1E
+	tagTmRat    = 0x1F
 )
 
 // Def tags.
@@ -117,6 +119,8 @@ func (e *enc) ty(t *Ty) {
 		e.u8(tagTyInt)
 	case "bool":
 		e.u8(tagTyBool)
+	case "rat":
+		e.u8(tagTyRat)
 	case "var":
 		e.u8(tagTyVar)
 		e.u32(uint32(t.Var))
@@ -158,6 +162,12 @@ func (e *enc) term(t *Term) {
 	case "int":
 		e.u8(tagTmInt)
 		e.bigint(t.Int)
+	case "rat":
+		// A rational encodes as its reduced numerator and denominator; big.Rat
+		// keeps them coprime with a positive denominator, so this is canonical.
+		e.u8(tagTmRat)
+		e.bigint(t.Rat.Num())
+		e.bigint(t.Rat.Denom())
 	case "bool":
 		e.u8(tagTmBool)
 		if t.Bool {
@@ -355,6 +365,8 @@ func (d *dec) ty() (*Ty, error) {
 	switch tag {
 	case tagTyInt:
 		return tInt(), nil
+	case tagTyRat:
+		return tRat(), nil
 	case tagTyBool:
 		return tBool(), nil
 	case tagTyVar:
@@ -449,6 +461,23 @@ func (d *dec) term() (*Term, error) {
 			return nil, err
 		}
 		return &Term{K: "int", Int: v}, nil
+	case tagTmRat:
+		num, err := d.bigint()
+		if err != nil {
+			return nil, err
+		}
+		den, err := d.bigint()
+		if err != nil {
+			return nil, err
+		}
+		if den.Sign() <= 0 {
+			return nil, d.fail("rational denominator must be positive")
+		}
+		g := new(big.Int).GCD(nil, nil, new(big.Int).Abs(num), den)
+		if g.Cmp(big.NewInt(1)) != 0 {
+			return nil, d.fail("non-canonical rational (numerator/denominator not coprime)")
+		}
+		return &Term{K: "rat", Rat: new(big.Rat).SetFrac(num, den)}, nil
 	case tagTmBool:
 		v, err := d.u8()
 		if err != nil {

@@ -1,0 +1,28 @@
+; Rationals (#36). Rat is ℚ — arbitrary precision, exact. Decimal literals like
+; 0.1 and fraction literals like 1/2 elaborate to reduced rationals, so 0.1 + 0.2
+; is EXACTLY 3/10 (the classic float trap doesn't exist here). And because Z3's
+; real/rational theory is complete, the clean algebraic laws that IEEE floats
+; violate — associativity, distributivity, division-inverse — all PROVE.
+;
+; The properties are stated over the named operations (not over raw `+`/`*`), so
+; the def body is genuinely under test: mutating it breaks the laws.
+
+(defn rat-add [] [(a Rat) (b Rat)] Rat
+  (+ a b)
+  (prop commutes [(a Rat) (b Rat)] (== (rat-add a b) (rat-add b a)))
+  (prop assoc [(a Rat) (b Rat) (c Rat)]
+    (== (rat-add (rat-add a b) c) (rat-add a (rat-add b c)))))
+
+(defn rat-mul [] [(a Rat) (b Rat)] Rat
+  (* a b)
+  (prop commutes [(a Rat) (b Rat)] (== (rat-mul a b) (rat-mul b a)))
+  (prop distributes [(a Rat) (b Rat) (c Rat)]
+    (== (rat-mul a (+ b c)) (+ (rat-mul a b) (rat-mul a c)))))
+
+; exact division: (a / b) * b == a for every nonzero b — true over ℚ, false for
+; floats. Rat `/` is real division, so it lands in the provable fragment (Int `/`
+; does not, because it truncates). The def normalizes b = 0 to return a, so the
+; law is simply that recovering a through b is the identity.
+(defn rat-recover [] [(a Rat) (b Rat)] Rat
+  (if (== b 0/1) a (* (/ a b) b))
+  (prop is-identity [(a Rat) (b Rat)] (== (rat-recover a b) a)))

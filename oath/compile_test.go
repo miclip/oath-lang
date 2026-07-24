@@ -68,6 +68,52 @@ func TestCompileNativeStrDifferential(t *testing.T) {
 	}
 }
 
+// Rat (#36) compiles to *big.Rat and arithmetic is exact — the same guarantee
+// the interpreter and prover give. Rat can't be an entry type ((List Str)->Str),
+// so this drives rat codegen through a Str-returning entry that computes with
+// rationals internally: 0.1 + 0.2 == 3/10 EXACTLY (the float trap the structural
+// model avoids). A wrong representation (asserting *big.Int on a *big.Rat) would
+// panic; a lossy one would print "inexact". Both differ from what `oath eval`
+// gives, which is the gate.
+func TestCompileRatExactDifferential(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go toolchain not available")
+	}
+	st := newStore(t)
+	put(t, st, `(data Str [] (SNil) (SCons Int Str))`)
+	put(t, st, `(data List [a] (Nil) (Cons a (List a)))`)
+	// exact?: ignores args, returns "exact" iff 0.1 + 0.2 is exactly 3/10.
+	put(t, st, `(defn exactp [] [(args (List Str))] Str
+		(if (== (+ 0.1 0.2) 3/10) "exact" "inexact"))`)
+
+	h, ok := st.Resolve("exactp")
+	if !ok {
+		t.Fatal("exactp not in store")
+	}
+	src, err := emitProgram(st, h, nil)
+	if err != nil {
+		t.Fatalf("emitProgram: %v", err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module oathprog\n\ngo 1.25\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "prog")
+	if out, err := runIn(dir, "go", "build", "-o", bin, "."); err != nil {
+		t.Fatalf("go build failed:\n%s", out)
+	}
+	out, err := exec.Command(bin).Output()
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got := strings.TrimRight(string(out), "\n"); got != "exact" {
+		t.Fatalf("compiled exactp = %q, want %q (rationals are not exact under compilation)", got, "exact")
+	}
+}
+
 func runIn(dir, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
