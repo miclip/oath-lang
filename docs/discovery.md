@@ -76,13 +76,18 @@ e-graph from destabilizing the foundation when it lands.
 
 ## Honest limits (and the roadmap they imply)
 
-`oath find` today is an **exact** match on the property's canonical form,
-including binder types. So:
+`oath find` matches a property up to its operand types (`propHashGeneral`
+generalizes the primitive leaf types in the binders to positional type
+variables, so commutativity over `Int` and over `Rat` both become `[t0, t0]`
+and match). What remains:
 
-- **Cross-type laws don't match yet.** Commutativity over `Int` and over `Rat`
-  are different hashes (different binder types), even though they're "the same
-  law." *Next:* normalize binder types to variables so a law matches across the
-  types it's polymorphic in.
+- **Body-embedded types aren't generalized yet.** Generalization today covers
+  binder types, which is complete for the pure algebraic laws whose bodies
+  carry no types (commutativity, associativity, idempotence). A law whose *body*
+  mentions a type — a generic callee's type arguments, a `(Nil [Int])` in the
+  statement — still matches only same-type (it's safe, never a false match,
+  just not yet cross-type). *Next:* thread the same type-generalization through
+  the body's `ctor`/`ref`/`self` type arguments.
 - **It's query-by-example, not query-by-fresh-spec.** You point at a def that
   already has the property. *Next:* write a standalone spec (a prop over `self`)
   and query it directly — the same `propHash` lookup, just a new front door.

@@ -102,6 +102,71 @@ func propHash(p *Prop) string {
 	return hex.EncodeToString(s[:])
 }
 
+// generalizeTypes replaces the PRIMITIVE leaf types (Int, Rat, Float, Bool)
+// inside a set of binder types with positional type variables, assigned by
+// order of first appearance and shared across equal leaves. Structure (fun,
+// data, record, rec) is preserved, and data hashes are kept — so `(List Int)`
+// becomes `(List t0)` (matching `(List Rat)`), but `List` and `Tree` stay
+// distinct. This is the anti-unification that lets a law match across the
+// operand types it is polymorphic in.
+func generalizeTypes(binders []Ty) []Ty {
+	next := 0
+	seen := map[string]int{}
+	var gen func(t *Ty) Ty
+	gen = func(t *Ty) Ty {
+		switch t.K {
+		case "int", "rat", "float", "bool":
+			idx, ok := seen[t.K]
+			if !ok {
+				idx = next
+				next++
+				seen[t.K] = idx
+			}
+			return *tVar(idx)
+		case "fun":
+			return *tFun(ptrTy(gen(t.A)), ptrTy(gen(t.B)))
+		case "data":
+			return *tDataTy(t.Hash, genArgs(t.Args, gen))
+		case "rec":
+			return *tRec(genArgs(t.Args, gen))
+		case "record":
+			out := *t
+			out.Args = genArgs(t.Args, gen)
+			return out
+		default:
+			return *t
+		}
+	}
+	out := make([]Ty, len(binders))
+	for i := range binders {
+		out[i] = gen(&binders[i])
+	}
+	return out
+}
+
+func genArgs(args []Ty, gen func(*Ty) Ty) []Ty {
+	out := make([]Ty, len(args))
+	for i := range args {
+		out[i] = gen(&args[i])
+	}
+	return out
+}
+
+func ptrTy(t Ty) *Ty { return &t }
+
+// propHashGeneral is the content address of a property with its binder types
+// GENERALIZED (generalizeTypes). So commutativity over Int and over Rat — same
+// body (which for a pure algebraic law carries no types), binders that both
+// generalize to `[t0, t0]` — hash to the same value and match. Exact same-type
+// matching still uses propHash; this is the cross-type discovery key.
+func propHashGeneral(p *Prop) string {
+	e := &enc{}
+	e.tys(generalizeTypes(p.Binders))
+	e.term(&p.Body)
+	s := sha256.Sum256(e.b)
+	return hex.EncodeToString(s[:])
+}
+
 // hashDefV0 is the legacy JSON-based identity (kernel ≤0.6), retained ONLY
 // for the one-shot store migration's old→new mapping.
 func hashDefV0(d *Def) string {
