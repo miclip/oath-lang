@@ -98,6 +98,13 @@ every ambiguity found this way.
 - `docs/generics.md` — dictionary-passing convention (#33 B1): a type
   class is a capability record; generic combinators in
   examples/generic.oath, proven over ALL dictionaries; B2/B3 deferred.
+- `docs/floats.md` — the IEEE `Float` identity decision (bit-identity, `==` is
+  Leibniz/SMT `=`, canonical NaN); `docs/native-containers.md` — `Set`/`Map`
+  compiled to native Go maps, differential-gated (#13).
+- `docs/discovery.md` — `oath find`: discovery by property content-hash, not
+  name (spec-query, cross-type, proof-implication); the invariant that the
+  discovery layer never touches identity. `docs/tutorial/circle.md` — a worked
+  compiled example (reads a radius, prints circle area over exact ℚ).
 - `docs/experiments/` — split-agent, rematch, and flywheel writeups.
 - `oathrs/DIVERGENCES.md` — 60+ entries; the N-version findings record.
 - History of decisions lives in commit messages (deliberately detailed) and

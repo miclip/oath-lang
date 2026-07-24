@@ -141,6 +141,30 @@ export default function Architecture() {
         directory of bundles; all trust lives in the importer.
       </p>
 
+      <h2>Discovery: finding proven code by what it does</h2>
+      <p>
+        A registry is only useful if you can <em>draw</em> proven code from it instead
+        of rebuilding — and that means discovery keyed on meaning, not on names (the one
+        non-authoritative layer). It falls out of content-addressing:{" "}
+        <strong>properties are content-addressed too</strong>. A property is stored as{" "}
+        <code>(binders, body)</code> with the function as <code>self</code> and de Bruijn
+        binders, so a pure law like commutativity has one canonical hash wherever it
+        appears — &ldquo;which proven definitions satisfy this spec?&rdquo; is a hash
+        lookup, not a search.
+      </p>
+      <p>
+        <code>oath find</code> exposes four name-free modes: by example (who shares a
+        law with this def?), by a fresh spec you write (<code>self</code> is the sought
+        function), matched <em>up to operand types</em> (<code>Int</code> and{" "}
+        <code>Rat</code> commutativity match), and — because a property is{" "}
+        <em>portable</em> — by <strong>proof-implication</strong>: append your spec to
+        each same-signature definition and prove it, so commutativity written{" "}
+        <code>(== (self b a) (self a b))</code> still finds <code>+</code> even though its
+        AST differs. One invariant runs through all of it, and guards the eventual
+        e-graph: the discovery layer draws edges <em>over</em> the hash graph; it never
+        touches identity. Semantics is a view, not a redefinition.
+      </p>
+
       <h2>Compiling to executables</h2>
       <p>
         <code>oath build</code> compiles a definition&apos;s dependency closure to a

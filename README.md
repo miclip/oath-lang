@@ -221,6 +221,36 @@ same rules as local code. Proofs are re-earned with `oath prove`, never
 imported. A registry is just a directory of bundles; all trust lives in
 the importer.
 
+## Discovery: find proven code by what it does
+
+Every other lookup is by *name*, and names are the one non-authoritative layer
+(a label anyone can repoint). So discovery keys on **meaning** instead. The
+realization is that *properties are content-addressed too*: a property is stored
+as `(binders, body)` with the function as `self` and de Bruijn binders, so a
+pure law like commutativity — `(== (self a b) (self b a))` — has one canonical
+hash wherever it appears. "Which proven definitions satisfy this spec?" becomes a
+hash lookup, not a search.
+
+```
+$ oath find rat-add                        # by example: who shares a law?
+  · commutes [proven here]  #f230af55f94f
+      rat-mul   (proven as "commutes")  ← proven on both: interchangeable
+
+$ oath find --spec spec.oath               # by a fresh spec: who proved it?
+      rat-add   (proven as "commutes")  ← a proven implementation of this spec
+
+$ oath find --implies flipped.oath         # by PROOF: who provably satisfies it?
+      rat-add   ← provably satisfies it (direct)
+```
+
+Four modes, all name-free: by example, by a spec you write (`self` is the sought
+function), matched *up to operand types* (Int and Rat commutativity match), and —
+because a property is portable — by **proof-implication**: append your spec to
+each same-signature definition and prove it, so commutativity written
+`(== (self b a) (self a b))` still finds `+` even though its AST differs. This is
+the layer that makes the commons real: pull proven code by property, rebuild
+nothing. Full rationale in [docs/discovery.md](docs/discovery.md).
+
 ## Compiling to executables
 
 `oath build <name> [-o out]` compiles a definition's dependency closure to
@@ -246,7 +276,8 @@ boundary) are the next rung.
 
 `oath serve` speaks MCP over stdio, so any agent session can mount the
 substrate as native tools — `context`, `put` (source text in, verdicts out),
-`get`, `ls`, `eval`, `verify`, `mutate`, `dependents`, `log`. The repo's
+`get`, `ls`, `find`/`find_spec`/`find_implies` (discovery by property), `eval`,
+`verify`, `mutate`, `dependents`, `log`. The repo's
 `.mcp.json` registers it for Claude Code automatically; other clients point
 at `./oath/oath serve`.
 
