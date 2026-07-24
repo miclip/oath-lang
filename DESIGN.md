@@ -296,6 +296,21 @@ Phases 1–3 are COMPLETE, beyond the original ambitions:
   membership/lookup — all verified by a differential gate (compiled output ==
   interpreter output; see docs/native-containers.md). The fast execution path
   (MLIR/LLVM) and persistent (HAMT) maps for O(log n) functional updates remain.
+- **Discovery — the commons made usable.** The public registry (#14) is more
+  than storage; its point is that you draw *proven* code from it instead of
+  rebuilding. That needs discovery keyed on MEANING, not on names (the one
+  non-authoritative layer). `oath find` is the first rung, and it fell out of
+  content-addressing: a property is stored `(binders, body)` with the function
+  as `self` and de Bruijn binders, so a pure law has one canonical hash wherever
+  it appears — "who satisfies this spec?" is a hash lookup. Four modes shipped
+  (docs/discovery.md): by example, by a fresh spec you write, matched up to
+  operand types, and — because a property is *portable* — by proof-implication
+  (append your spec to each same-signature definition and prove it, so a law
+  written differently from any stated one is still found). A load-bearing
+  invariant runs through all of it and guards the eventual e-graph: the
+  discovery layer draws edges *over* the hash graph, it never touches identity.
+  Semantics is a view, not a redefinition — the e-graph (body-equivalence) is
+  the last open rung.
 
 The conformance saga is its own result: two kernels, zero shared code,
 kept in byte-level agreement by CI — and the blind implementation found
