@@ -222,51 +222,35 @@ func provenContains(m *Meta, i int) bool {
 	return false
 }
 
-// apiFind is the spec-query discovery surface (query by example): given a
-// definition, find OTHER definitions that satisfy the SAME property — matched
-// by the property's content address (propHash), NOT by name. A property shared
-// and PROVEN on both sides means the two definitions are interchangeable for
-// that law. This is discovery by meaning-so-far-as-specified, over the proofs
-// already in the store, with no name trusted.
-func apiFind(st *Store, name string) (string, error) {
-	qh, ok := st.Resolve(name)
-	if !ok {
-		return "", fmt.Errorf("no definition named %q", name)
+func propNameOf(m *Meta, i int) string {
+	if m != nil && i < len(m.PropNames) && m.PropNames[i] != "" {
+		return m.PropNames[i]
 	}
-	qd, err := st.GetDef(qh)
-	if err != nil {
-		return "", err
-	}
-	if qd.K != "func" || len(qd.Props) == 0 {
-		return "", fmt.Errorf("%q has no properties to query on", name)
-	}
-	qm, _ := st.GetMeta(qh)
+	return fmt.Sprintf("prop %d", i)
+}
 
-	propName := func(m *Meta, i int) string {
-		if m != nil && i < len(m.PropNames) && m.PropNames[i] != "" {
-			return m.PropNames[i]
-		}
-		return fmt.Sprintf("prop %d", i)
-	}
-
-	// The query is this def's properties, each by content hash.
+// findFromDef is the shared spec-query lookup: given a definition's properties
+// (a stored def for query-by-example, or an ephemeral one elaborated from a
+// fresh spec), find every OTHER definition in the store that satisfies each,
+// matched by the property's generalized content hash — no name trusted.
+// excludeHash omits the query def itself (empty for an ephemeral spec).
+func findFromDef(st *Store, qd *Def, qm *Meta, excludeHash, header string) string {
 	type qprop struct {
 		name   string
 		hash   string
 		proven bool
 	}
 	var queries []qprop
-	qidx := map[string]int{} // propHash -> index into queries
+	qidx := map[string]int{}
 	for i := range qd.Props {
 		ph := propHashGeneral(&qd.Props[i])
 		if _, seen := qidx[ph]; seen {
 			continue
 		}
 		qidx[ph] = len(queries)
-		queries = append(queries, qprop{propName(qm, i), ph, provenContains(qm, i)})
+		queries = append(queries, qprop{propNameOf(qm, i), ph, provenContains(qm, i)})
 	}
 
-	// Scan every OTHER definition for a property with a matching content hash.
 	type match struct {
 		def      string
 		propName string
@@ -281,8 +265,8 @@ func apiFind(st *Store, name string) (string, error) {
 	sort.Strings(keys)
 	for _, k := range keys {
 		h := names[k]
-		if h == qh {
-			continue // don't match the query against itself
+		if h == excludeHash {
+			continue
 		}
 		d, err := st.GetDef(h)
 		if err != nil || d.K != "func" {
@@ -291,7 +275,7 @@ func apiFind(st *Store, name string) (string, error) {
 		m, _ := st.GetMeta(h)
 		for i := range d.Props {
 			if j, ok := qidx[propHashGeneral(&d.Props[i])]; ok {
-				matches[j] = append(matches[j], match{k, propName(m, i), provenContains(m, i)})
+				matches[j] = append(matches[j], match{k, propNameOf(m, i), provenContains(m, i)})
 			}
 		}
 	}
@@ -303,21 +287,78 @@ func apiFind(st *Store, name string) (string, error) {
 		return "tested"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "properties of %s, and which other definitions satisfy each (matched by content hash up to operand types, not name):\n", name)
+	b.WriteString(header)
 	for _, q := range queries {
 		j := qidx[q.hash]
-		fmt.Fprintf(&b, "\n  · %s [%s here]  #%s\n", q.name, mark(q.proven), shortHash(q.hash))
+		fmt.Fprintf(&b, "\n  · %s [%s]  #%s\n", q.name, mark(q.proven)+" here", shortHash(q.hash))
 		if len(matches[j]) == 0 {
-			b.WriteString("      (no other definition shares this law)\n")
+			b.WriteString("      (no definition in the store satisfies this)\n")
 			continue
 		}
 		for _, m := range matches[j] {
 			flag := ""
 			if m.proven && q.proven {
 				flag = "  ← proven on both: interchangeable for this law"
+			} else if m.proven {
+				flag = "  ← a proven implementation of this spec"
 			}
 			fmt.Fprintf(&b, "      %-18s (%s as %q)%s\n", m.def, mark(m.proven), m.propName, flag)
 		}
+	}
+	return b.String()
+}
+
+// apiFind is spec-query by example: given a definition, find OTHER definitions
+// that satisfy the SAME property, matched by the property's generalized content
+// hash, NOT by name. A property proven on both sides means the two are
+// interchangeable for that law — discovery by meaning, no name trusted.
+func apiFind(st *Store, name string) (string, error) {
+	qh, ok := st.Resolve(name)
+	if !ok {
+		return "", fmt.Errorf("no definition named %q", name)
+	}
+	qd, err := st.GetDef(qh)
+	if err != nil {
+		return "", err
+	}
+	if qd.K != "func" || len(qd.Props) == 0 {
+		return "", fmt.Errorf("%q has no properties to query on", name)
+	}
+	qm, _ := st.GetMeta(qh)
+	header := fmt.Sprintf("properties of %s, and which other definitions satisfy each (matched by content hash up to operand types, not name):\n", name)
+	return findFromDef(st, qd, qm, qh, header), nil
+}
+
+// apiFindSpec is spec-query by a FRESH spec: elaborate a (defn ...) whose
+// PROPERTIES are the query (the sought function is `self`; the body can be any
+// trivial expression of the right type), then find every definition that
+// satisfies them. This is "I have a spec — who has proven an implementation?",
+// the core commons interaction, with no name and no example needed.
+func apiFindSpec(st *Store, src string) (string, error) {
+	forms, err := parseForms(src)
+	if err != nil {
+		return "", err
+	}
+	if len(forms) == 0 {
+		return "", fmt.Errorf("spec query is empty")
+	}
+	var b strings.Builder
+	for _, f := range forms {
+		if f.K != "list" || len(f.Kids) == 0 || !f.Kids[0].isSym("defn") {
+			return "", fmt.Errorf("a spec query must be a (defn ...) whose properties are the query")
+		}
+		def, meta, err := elabFunc(st, f)
+		if err != nil {
+			return "", err
+		}
+		if err := checkDef(st, def); err != nil {
+			return "", fmt.Errorf("spec query does not typecheck: %w", err)
+		}
+		if len(def.Props) == 0 {
+			return "", fmt.Errorf("spec query %q has no properties (the query lives in the (prop ...) clauses)", meta.Name)
+		}
+		header := fmt.Sprintf("spec query %q — which proven definitions satisfy it (by content hash, no name, no example):\n", meta.Name)
+		b.WriteString(findFromDef(st, def, meta, "", header))
 	}
 	return b.String(), nil
 }

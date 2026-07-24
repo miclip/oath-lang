@@ -18,6 +18,7 @@ usage:
   oath ls                             list named definitions and their guarantees
   oath get <name>                     print the human projection of a definition
   oath find <name>                    find definitions that satisfy the same PROPERTY (by content hash, not name)
+  oath find --spec <file>             find definitions that satisfy a FRESH spec (a defn whose props are the query)
   oath context <name...> [--budget N] spec-only slice of the named defs + transitive deps (no bodies)
   oath dependents <name>              list definitions that reference a definition
   oath verify <name>                  re-run a definition's properties
@@ -124,10 +125,13 @@ func main() {
 		}
 		cmdGet(st, args[1])
 	case "find":
-		if len(args) != 2 {
-			fail(fmt.Errorf("usage: oath find <name>"))
+		if len(args) == 3 && args[1] == "--spec" {
+			cmdFindSpec(st, args[2])
+		} else if len(args) == 2 {
+			cmdFind(st, args[1])
+		} else {
+			fail(fmt.Errorf("usage: oath find <name>  |  oath find --spec <file>"))
 		}
-		cmdFind(st, args[1])
 	case "verify":
 		if len(args) != 2 {
 			fail(fmt.Errorf("usage: oath verify <name>"))
@@ -355,6 +359,18 @@ func cmdGet(st *Store, name string) {
 
 func cmdFind(st *Store, name string) {
 	out, err := apiFind(st, name)
+	if err != nil {
+		fail(err)
+	}
+	fmt.Print(out)
+}
+
+func cmdFindSpec(st *Store, path string) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		fail(err)
+	}
+	out, err := apiFindSpec(st, string(src))
 	if err != nil {
 		fail(err)
 	}

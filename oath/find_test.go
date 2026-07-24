@@ -69,6 +69,37 @@ func TestFindCrossTypeMatch(t *testing.T) {
 	}
 }
 
+// Fresh-spec query: write a specification (a defn whose props are the query),
+// and find proven implementations — no example, no name of the target used.
+func TestFindSpecFreshQuery(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(defn plus-r [] [(a Rat) (b Rat)] Rat (+ a b)
+		(prop comm [(a Rat) (b Rat)] (== (plus-r a b) (plus-r b a))))`)
+
+	// The query is a fresh Int-commutativity spec; plus-r is Rat and never named.
+	out, err := apiFindSpec(st, `(defn wanted [] [(a Int) (b Int)] Int (+ a b)
+		(prop commutative [(a Int) (b Int)] (== (wanted a b) (wanted b a))))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "plus-r") {
+		t.Fatalf("fresh spec (Int commutativity) should find plus-r (Rat, cross-type):\n%s", out)
+	}
+	// (plus-r is only `tested` here — no Z3 in unit tests — so the "proven
+	// implementation" flag is exercised by the live demo against the real corpus,
+	// where rat-add/rat-mul are proven.)
+
+	// A spec nobody satisfies returns cleanly (no false matches).
+	out2, err := apiFindSpec(st, `(defn odd [] [(a Int)] Int (+ a 1)
+		(prop weird [(a Int)] (== (odd (odd a)) a)))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out2, "plus-r") {
+		t.Fatalf("an unrelated spec must not match plus-r:\n%s", out2)
+	}
+}
+
 func mustDef(t *testing.T, st *Store, name string) *Def {
 	t.Helper()
 	h, ok := st.Resolve(name)

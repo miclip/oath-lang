@@ -74,8 +74,13 @@ func mcpTools() []map[string]any {
 		},
 		{
 			"name":        "find",
-			"description": "Spec-query (discovery by property, not by name): given a definition, find every OTHER definition that satisfies the same property, matched by the property's CONTENT HASH. A law shared and PROVEN on both sides means the two are interchangeable for it — this is how you reuse proven code without trusting a name. Query by example: point at a def whose property you want, get back who else satisfies it.",
+			"description": "Spec-query (discovery by property, not by name): given a definition, find every OTHER definition that satisfies the same property, matched by the property's CONTENT HASH (up to operand types). A law shared and PROVEN on both sides means the two are interchangeable for it — this is how you reuse proven code without trusting a name. Query by example: point at a def whose property you want, get back who else satisfies it.",
 			"inputSchema": obj(map[string]any{"name": str("definition name whose properties to query by")}, "name"),
+		},
+		{
+			"name":        "find_spec",
+			"description": "Spec-query by a FRESH spec (the core commons interaction): supply a (defn ...) whose (prop ...) clauses are the query — the sought function is `self`, the body can be any trivial expression of the right type — and get back every PROVEN definition that satisfies it, matched by content hash, no name and no example needed. This is 'I have a spec; who has already proven an implementation?'.",
+			"inputSchema": obj(map[string]any{"source": str("an Oath (defn ...) whose properties are the spec to search for")}, "source"),
 		},
 		{
 			"name":        "eval",
@@ -155,6 +160,8 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string)
 		return apiGet(st, a.Name)
 	case "find":
 		return apiFind(st, a.Name)
+	case "find_spec":
+		return apiFindSpec(st, a.Source)
 	case "ls":
 		return apiLs(st), nil
 	case "eval":

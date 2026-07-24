@@ -42,27 +42,37 @@ last and each further from name-dependence:
    the biggest build; roadmap (DESIGN.md flags egg/e-graphs). Its hard
    constraint is below.
 
-## `oath find` (rung 2, today) — query by example
+## `oath find` (rung 2, today)
 
-```
-oath find <name>
-```
-Given a definition, returns every *other* definition that satisfies the same
-property, matched by `propHash`. A law proven on both sides is flagged
-`interchangeable for this law`. Example:
+Two front doors, both matching on the generalized property content hash
+(`propHashGeneral` — matched *up to operand types*):
 
+**Query by example** — point at a def whose property you want:
 ```
 $ oath find rat-add
-  · commutes [proven here]  #b5c36a6c0677
+  · commutes [proven here]  #f230af55f94f
       rat-mul   (proven as "commutes")  ← proven on both: interchangeable for this law
-  · assoc [proven here]  #c4280ba37ac5
-      (no other definition shares this law)
+  · assoc [proven here]  #59b248e21d01
+      (no definition in the store satisfies this)
 ```
 
-`rat-mul` was found with **no name trusted** — purely because its commutativity
-property hashes to the same value as `rat-add`'s. Available over MCP too (the
-`find` tool), since agents are the intended consumers: generate a spec, ask the
-commons who already proved it, reuse instead of rebuild.
+**Query by fresh spec** — write the property you want; the sought function is
+`self`, the body is any trivial placeholder of the right type:
+```
+$ cat spec.oath
+(defn wanted [] [(a Int) (b Int)] Int (+ a b)
+  (prop commutative [(a Int) (b Int)] (== (wanted a b) (wanted b a))))
+$ oath find --spec spec.oath
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+  · commutative [tested here]  #f230af55f94f
+      rat-add   (proven as "commutes")  ← a proven implementation of this spec
+      rat-mul   (proven as "commutes")  ← a proven implementation of this spec
+```
+
+Both find `rat-add`/`rat-mul` with **no name trusted** and (here) across types
+— an `Int` spec matched the `Rat` implementations. Both are exposed over MCP
+(`find` and `find_spec`), since agents are the intended consumers: generate a
+spec, ask the commons who already proved it, reuse instead of rebuild.
 
 ## The invariant that protects the substrate
 
@@ -88,9 +98,15 @@ and match). What remains:
   statement — still matches only same-type (it's safe, never a false match,
   just not yet cross-type). *Next:* thread the same type-generalization through
   the body's `ctor`/`ref`/`self` type arguments.
-- **It's query-by-example, not query-by-fresh-spec.** You point at a def that
-  already has the property. *Next:* write a standalone spec (a prop over `self`)
-  and query it directly — the same `propHash` lookup, just a new front door.
+- **Query by fresh spec** is now supported alongside query-by-example:
+  `oath find --spec <file>` (and the `find_spec` MCP tool) elaborate a `(defn
+  ...)` whose `(prop ...)` clauses are the query — the sought function is
+  `self`, the body is any trivial well-typed placeholder — and return every
+  proven definition that satisfies them. This is "I have a spec; who has proven
+  an implementation?", the core commons interaction, with no name and no example
+  needed. The dummy body is the one wart (you must write a well-typed
+  placeholder to give `self` a signature); auto-synthesizing an inhabitant of
+  the return type would remove it.
 - **It's exact-shape, not implication.** It finds defs with the *same* law, not
   defs whose (possibly stronger) law *implies* yours. *Next:* proof-based
   implication — "does this def's spec entail mine?" — which needs the prover.
