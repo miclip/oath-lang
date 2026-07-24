@@ -9,6 +9,9 @@ use num_bigint::BigInt;
 pub enum Value {
     // `Int` is ℤ — arbitrary precision (SPEC §3).
     Int(BigInt),
+    // `Rat` is ℚ — exact, arbitrary precision, always kept in reduced form
+    // (den ≥ 1, gcd(|num|,den) = 1, sign on the numerator) (SPEC §3).
+    Rat(BigInt, BigInt),
     Bool(bool),
     Data { hash: String, idx: u32, fields: Vec<Value> },
     Record { names: Vec<String>, vals: Vec<Value> },
@@ -32,6 +35,8 @@ pub enum Native {
 pub fn struct_eq(a: &Value, b: &Value) -> Result<bool, String> {
     match (a, b) {
         (Value::Int(x), Value::Int(y)) => Ok(x == y),
+        // Rationals are reduced, so structural pair equality is value equality.
+        (Value::Rat(nx, dx), Value::Rat(ny, dy)) => Ok(nx == ny && dx == dy),
         (Value::Bool(x), Value::Bool(y)) => Ok(x == y),
         (Value::Data { idx: i, fields: fa, .. }, Value::Data { idx: j, fields: fb, .. }) => {
             if i != j || fa.len() != fb.len() {
@@ -72,6 +77,17 @@ pub fn print_value(store: &Store, v: &Value) -> String {
 fn print_into(store: &Store, v: &Value, out: &mut String) {
     match v {
         Value::Int(n) => out.push_str(&n.to_string()),
+        // Rat prints in lowest terms (SPEC §3.2): an integer-valued rational as
+        // a bare integer, otherwise `num/den` with the sign on the numerator.
+        Value::Rat(num, den) => {
+            if *den == BigInt::from(1) {
+                out.push_str(&num.to_string());
+            } else {
+                out.push_str(&num.to_string());
+                out.push('/');
+                out.push_str(&den.to_string());
+            }
+        }
         Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
         Value::Record { names, vals } => {
             out.push('{');

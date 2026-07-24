@@ -86,6 +86,7 @@ impl Store {
             Sexpr::Sym(name) => match name.as_str() {
                 "Int" => Ok(Ty::Int),
                 "Bool" => Ok(Ty::Bool),
+                "Rat" => Ok(Ty::Rat),
                 // `Str` is no longer a primitive type — it resolves to the `Str`
                 // datatype like any other ADT (via the data lookup below).
                 _ => {
@@ -184,6 +185,8 @@ impl Store {
     ) -> ER<Term> {
         match s {
             Sexpr::Int(n) => Ok(Term::Int(n.clone())),
+            // Rational literal (SPEC §1.4): already reduced by the reader.
+            Sexpr::Rat(num, den) => Ok(Term::Rat { num: num.clone(), den: den.clone() }),
             // STRING-LITERAL SUGAR (SPEC §1.4): `"…"` desugars to the codepoint
             // chain `(SCons c0 (SCons c1 … (SNil)))`, byte-identical to the ctor
             // form. There is no string-literal term anymore.

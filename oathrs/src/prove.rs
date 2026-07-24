@@ -330,6 +330,9 @@ fn sort_of(store: &Store, ty: &Ty, sc: &mut Sorts) -> String {
     match ty {
         Ty::Int => "Int".to_string(),
         Ty::Bool => "Bool".to_string(),
+        // `Rat` translates to the SMT sort `Real` (SPEC §7.1) — Z3's linear real
+        // arithmetic is a complete decidable theory.
+        Ty::Rat => "Real".to_string(),
         Ty::Fun(a, b) => format!("(Array {} {})", sort_of(store, a, sc), sort_of(store, b, sc)),
         Ty::Data { hash, args } => {
             // SPEC §7.1: a data sort name is the sanitized metadata definition
@@ -577,6 +580,11 @@ impl<'a> Cx<'a> {
                 Ok(env[idx].clone())
             }
             Term::Int(n) => Ok((fmt_int(n), Ty::Int)),
+            // A rat literal `num/den` renders as `(/ NUM DEN)` over `Real`, with
+            // a negative numerator rendered `(- N)`; `0/1` is `(/ 0 1)` (SPEC §7.1).
+            Term::Rat { num, den } => {
+                Ok((format!("(/ {} {})", fmt_int(num), fmt_int(den)), Ty::Rat))
+            }
             Term::Bool(b) => Ok(((if *b { "true" } else { "false" }).to_string(), Ty::Bool)),
             Term::Lam { .. } => Err(()),
             Term::Prim { op, args } => self.tr_prim(op, args, env, tyenv, self_hash, self_tyargs),
@@ -708,18 +716,34 @@ impl<'a> Cx<'a> {
         self_hash: &str,
         self_tyargs: &[Ty],
     ) -> Result<(String, Ty), ()> {
-        if op == "/" || op == "%" {
-            return Err(()); // excluded: kernel truncates, SMT-LIB is Euclidean
+        if op == "%" {
+            return Err(()); // `%` over Int excluded: kernel truncates, SMT is Euclidean
         }
+        // Translate operands, keeping each operand's SMT type. The numeric-
+        // overloaded prims propagate the operand kind: `Int` stays `Int`, `Rat`
+        // (sort `Real`) stays `Rat` (SPEC §7.1).
         let mut e = Vec::new();
-        for a in args {
-            e.push(self.tr(a, env, tyenv, self_hash, self_tyargs)?.0);
+        let mut opnd_ty = Ty::Int;
+        for (i, a) in args.iter().enumerate() {
+            let (ae, at) = self.tr(a, env, tyenv, self_hash, self_tyargs)?;
+            if i == 0 {
+                opnd_ty = at;
+            }
+            e.push(ae);
         }
+        let is_rat = matches!(opnd_ty, Ty::Rat);
+        // `/` over `Int` is excluded (truncating vs Euclidean); `/` over `Rat` is
+        // admitted — it is exact real division and translates faithfully (SPEC §7).
+        if op == "/" && !is_rat {
+            return Err(());
+        }
+        let num_ty = if is_rat { Ty::Rat } else { Ty::Int };
         let (sexpr, ty) = match op {
-            "+" => (format!("(+ {} {})", e[0], e[1]), Ty::Int),
-            "-" => (format!("(- {} {})", e[0], e[1]), Ty::Int),
-            "*" => (format!("(* {} {})", e[0], e[1]), Ty::Int),
-            "neg" => (format!("(- {})", e[0]), Ty::Int),
+            "+" => (format!("(+ {} {})", e[0], e[1]), num_ty),
+            "-" => (format!("(- {} {})", e[0], e[1]), num_ty),
+            "*" => (format!("(* {} {})", e[0], e[1]), num_ty),
+            "/" => (format!("(/ {} {})", e[0], e[1]), num_ty),
+            "neg" => (format!("(- {})", e[0]), num_ty),
             "<" => (format!("(< {} {})", e[0], e[1]), Ty::Bool),
             "<=" => (format!("(<= {} {})", e[0], e[1]), Ty::Bool),
             "==" => (format!("(= {} {})", e[0], e[1]), Ty::Bool),
@@ -2549,7 +2573,7 @@ impl<'a, 'c> MeasureWalk<'a, 'c> {
                 }
             }
             Term::Field { a, .. } => self.walk(a, env, guards, poisoned),
-            Term::Ref { .. } | Term::Var(_) | Term::Int(_) | Term::Bool(_) => {}
+            Term::Ref { .. } | Term::Var(_) | Term::Int(_) | Term::Rat { .. } | Term::Bool(_) => {}
         }
     }
 

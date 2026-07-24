@@ -41,10 +41,12 @@ properties for every possible network.
 
 `examples/undertested.oath` is the exhibit for why the rungs differ: its
 property passes all 200 test cases and is refuted by Z3 at x = -401, outside
-anything the generator draws. The standing caveat on every proof: Z3 reasons
-over unbounded integers; the evaluator uses int64. Division stays outside
-the fragment on purpose (kernel truncates, SMT-LIB is Euclidean — a
-"proof" would certify the wrong theorem).
+anything the generator draws. Z3 reasons over unbounded integers and the
+evaluator matches it — `Int` is arbitrary precision, so a proof carries no
+overflow caveat. Integer division stays outside the fragment on purpose
+(kernel truncates, SMT-LIB is Euclidean — a "proof" would certify the wrong
+theorem); rational division does not — `Rat` is exact ℚ over the `Real` sort,
+so `(a/b)*b == a` is proven.
 
 Two more dimensions ride alongside: **termination** (a structural checker
 proves totality where recursion visibly descends, including lexicographic
@@ -111,6 +113,13 @@ out for human auditors.
 Binders are explicitly annotated; type arguments may be omitted and are inferred
 (`length t`). Checking is bidirectional local synthesis — no full inference and
 no unification of two unknowns — small enough to audit.
+
+Numbers are exact. `Int` is ℤ (arbitrary precision — no overflow) and `Rat`
+is ℚ (arbitrary-precision rationals). Decimal literals like `0.1` and fractions
+like `1/2` are `Rat`, so `0.1 + 0.2` is exactly `3/10` — there is no `Float` and
+no rounding. Because Z3's real arithmetic is complete, the laws IEEE floats break
+are *proven*: `examples/rat.oath` proves rational associativity, distributivity,
+and exact division-inverse `(a/b)*b == a`.
 
 Strings are the ordinary `Str` datatype (a codepoint sequence, not a primitive —
 see `docs/structural-strings.md`); with structural records (`examples/records.oath`):

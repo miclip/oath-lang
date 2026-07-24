@@ -103,6 +103,7 @@ impl<'a> Machine<'a> {
                 Ok(env[idx].clone())
             }
             Term::Int(v) => Ok(Value::Int(v.clone())),
+            Term::Rat { num, den } => Ok(Value::Rat(num.clone(), den.clone())),
             Term::Bool(b) => Ok(Value::Bool(*b)),
             Term::Lam { a, .. } => Ok(Value::Closure {
                 env: env.clone(),
@@ -200,6 +201,14 @@ fn eval_prim(op: &str, vs: &[Value]) -> Result<Value, String> {
         }
     };
     let zero = BigInt::from(0);
+    // Numeric-overloaded primitives (SPEC §3): `+ - * / neg < <=` dispatch on the
+    // runtime kind of the (first) operand. The gate guarantees both operands
+    // share one kind, so a `Rat` first operand means a rational operation.
+    if matches!(vs.first(), Some(Value::Rat(_, _)))
+        && matches!(op, "+" | "-" | "*" | "/" | "neg" | "<" | "<=")
+    {
+        return eval_rat_prim(op, vs);
+    }
     match op {
         "+" => Ok(Value::Int(int(&vs[0])? + int(&vs[1])?)),
         "-" => Ok(Value::Int(int(&vs[0])? - int(&vs[1])?)),
@@ -228,5 +237,44 @@ fn eval_prim(op: &str, vs: &[Value]) -> Result<Value, String> {
         "or" => Ok(Value::Bool(boolean(&vs[0])? || boolean(&vs[1])?)),
         "not" => Ok(Value::Bool(!boolean(&vs[0])?)),
         _ => Err(format!("unknown primitive {}", op)),
+    }
+}
+
+/// Exact rational arithmetic (SPEC §3). Operands are reduced (num, den) pairs
+/// with `den ≥ 1`. Results are re-reduced to canonical form. `/` is exact real
+/// division (no truncation); division by zero is a runtime error.
+fn eval_rat_prim(op: &str, vs: &[Value]) -> Result<Value, String> {
+    let rat = |v: &Value| -> Result<(BigInt, BigInt), String> {
+        match v {
+            Value::Rat(n, d) => Ok((n.clone(), d.clone())),
+            _ => Err("expected rat operand".into()),
+        }
+    };
+    let reduce = |n: BigInt, d: BigInt| -> Result<Value, String> {
+        match crate::ir::reduce_rat(n, d) {
+            Some((n, d)) => Ok(Value::Rat(n, d)),
+            None => Err("division by zero".into()),
+        }
+    };
+    match op {
+        "neg" => {
+            let (n, d) = rat(&vs[0])?;
+            Ok(Value::Rat(-n, d))
+        }
+        _ => {
+            let (a, b) = rat(&vs[0])?; // a/b
+            let (c, d) = rat(&vs[1])?; // c/d
+            match op {
+                "+" => reduce(&a * &d + &c * &b, &b * &d),
+                "-" => reduce(&a * &d - &c * &b, &b * &d),
+                "*" => reduce(&a * &c, &b * &d),
+                // exact real division: (a/b)/(c/d) = (a*d)/(b*c)
+                "/" => reduce(&a * &d, &b * &c),
+                // b, d > 0, so ordering is a*d vs c*b
+                "<" => Ok(Value::Bool(&a * &d < &c * &b)),
+                "<=" => Ok(Value::Bool(&a * &d <= &c * &b)),
+                _ => Err(format!("unknown rational primitive {}", op)),
+            }
+        }
     }
 }

@@ -7,8 +7,9 @@ import (
 
 // Value is a runtime value. Types are fully erased at runtime.
 type Value struct {
-	K      string // int | bool | str | closure | data | record | native
+	K      string // int | rat | bool | str | closure | data | record | native
 	Int    *big.Int
+	Rat    *big.Rat
 	Bool   bool
 	Str    string   // str: value
 	Names  []string // record: field names, sorted, parallel to Fields
@@ -62,6 +63,8 @@ func (e *evaluator) evalInner(env []Value, slf string, t *Term) (Value, error) {
 		return env[len(env)-1-t.Idx], nil
 	case "int":
 		return Value{K: "int", Int: t.Int}, nil
+	case "rat":
+		return Value{K: "rat", Rat: t.Rat}, nil
 	case "bool":
 		return Value{K: "bool", Bool: t.Bool}, nil
 	case "record":
@@ -204,6 +207,32 @@ func (e *evaluator) evalPrim(env []Value, slf string, t *Term) (Value, error) {
 	}
 	vInt := func(x *big.Int) Value { return Value{K: "int", Int: x} }
 	vBool := func(x bool) Value { return Value{K: "bool", Bool: x} }
+	// Rational arithmetic — dispatched on operand kind. Rat is ℚ (exact),
+	// so `/` is true division and never truncates.
+	if len(args) > 0 && args[0].K == "rat" {
+		vRat := func(x *big.Rat) Value { return Value{K: "rat", Rat: x} }
+		switch t.Op {
+		case "+":
+			return vRat(new(big.Rat).Add(args[0].Rat, args[1].Rat)), nil
+		case "-":
+			return vRat(new(big.Rat).Sub(args[0].Rat, args[1].Rat)), nil
+		case "*":
+			return vRat(new(big.Rat).Mul(args[0].Rat, args[1].Rat)), nil
+		case "/":
+			if args[1].Rat.Sign() == 0 {
+				return Value{}, fmt.Errorf("division by zero")
+			}
+			return vRat(new(big.Rat).Quo(args[0].Rat, args[1].Rat)), nil
+		case "neg":
+			return vRat(new(big.Rat).Neg(args[0].Rat)), nil
+		case "<":
+			return vBool(args[0].Rat.Cmp(args[1].Rat) < 0), nil
+		case "<=":
+			return vBool(args[0].Rat.Cmp(args[1].Rat) <= 0), nil
+		case "==":
+			return vBool(args[0].Rat.Cmp(args[1].Rat) == 0), nil
+		}
+	}
 	switch t.Op {
 	case "+":
 		return vInt(new(big.Int).Add(args[0].Int, args[1].Int)), nil
@@ -255,6 +284,8 @@ func structEq(a, b Value) (bool, error) {
 	switch a.K {
 	case "int":
 		return a.Int.Cmp(b.Int) == 0, nil
+	case "rat":
+		return a.Rat.Cmp(b.Rat) == 0, nil
 	case "bool":
 		return a.Bool == b.Bool, nil
 	case "record":

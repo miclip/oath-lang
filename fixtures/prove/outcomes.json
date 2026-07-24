@@ -1477,6 +1477,53 @@
       ]
     },
     {
+      "name": "rat-add",
+      "hash": "e04d7c974bd936affe6c045507dd4923d4bcbafd951314f01a4483cc74798061",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "commutes",
+          "proven": true
+        },
+        {
+          "name": "assoc",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "rat-mul",
+      "hash": "d09a0eb33a7bb8a49e87b6473b72159b0aa4042b9fd1468a178b48023a7cabd0",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "commutes",
+          "proven": true
+        },
+        {
+          "name": "distributes",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "rat-recover",
+      "hash": "c5647f27f6693b674191800dbb4d74deda6eb6569eb88fc4e012b7a071b333cf",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "is-identity",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "rename-key",
       "hash": "be82b31a32c1e1ba3e9236525b1139d61068e3013101f6dea0ade0e07bb3bf9b",
       "level": "proven",

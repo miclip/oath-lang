@@ -76,6 +76,20 @@ pub fn generate(store: &Store, ty: &Ty, size: i64, rng: &mut Rng) -> Result<Valu
             }
         }
         Ty::Bool => Ok(Value::Bool(rng.below(2) == 0)),
+        // `Rat` (SPEC §4): draw the numerator `intIn(-8,8)`, THEN the
+        // denominator `intIn(1,5)` (numerator first), and reduce to lowest
+        // terms. The denominator range starts at 1 so integer-valued rationals
+        // occur, and a zero numerator yields `0/1`.
+        Ty::Rat => {
+            let num = rng.int_in(-8, 8);
+            let den = rng.int_in(1, 5);
+            let (n, d) = crate::ir::reduce_rat(
+                num_bigint::BigInt::from(num),
+                num_bigint::BigInt::from(den),
+            )
+            .expect("denominator ≥ 1 is nonzero");
+            Ok(Value::Rat(n, d))
+        }
         Ty::Fun(a, b) => {
             if matches!(**a, Ty::Int) && matches!(**b, Ty::Int) {
                 match rng.below(4) {

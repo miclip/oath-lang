@@ -1,0 +1,2 @@
+✓ prop commutes                 passed 200 cases
+✓ prop distributes              passed 200 cases

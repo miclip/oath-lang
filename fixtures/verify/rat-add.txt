@@ -1,0 +1,2 @@
+✓ prop commutes                 passed 200 cases
+✓ prop assoc                    passed 200 cases

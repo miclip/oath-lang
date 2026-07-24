@@ -333,6 +333,20 @@ fn cmd_enctest(dir: &str) -> i32 {
             },
         ),
         ("negative_int", Def::Func { tyvars: 0, ty: Ty::Int, body: Term::Int(num_bigint::BigInt::from(-401)), props: vec![] }),
+        // §1.5: a `rat` term whose encoding witnesses the reduced numerator/
+        // denominator `bigint` pair (a negative, non-integer rational, -7/4).
+        (
+            "negative_rat",
+            Def::Func {
+                tyvars: 0,
+                ty: Ty::Rat,
+                body: Term::Rat {
+                    num: num_bigint::BigInt::from(-7),
+                    den: num_bigint::BigInt::from(4),
+                },
+                props: vec![],
+            },
+        ),
         (
             "record_order",
             Def::Func {

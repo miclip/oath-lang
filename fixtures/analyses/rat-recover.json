@@ -1,0 +1,15 @@
+{
+  "name": "rat-recover",
+  "hash": "c5647f27f6693b674191800dbb4d74deda6eb6569eb88fc4e012b7a071b333cf",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_killed": 4,
+  "mutants_total": 4,
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

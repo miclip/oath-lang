@@ -19,7 +19,7 @@ func substTy(t *Ty, args []Ty) *Ty {
 		return nil
 	}
 	switch t.K {
-	case "int", "bool":
+	case "int", "rat", "bool":
 		return t
 	case "var":
 		if t.Var < len(args) {
@@ -45,7 +45,7 @@ func substTy(t *Ty, args []Ty) *Ty {
 // reference once the ADT's hash is known.
 func resolveRec(t *Ty, h string) *Ty {
 	switch t.K {
-	case "int", "bool", "var":
+	case "int", "rat", "bool", "var":
 		return t
 	case "fun":
 		return tFun(resolveRec(t.A, h), resolveRec(t.B, h))
@@ -113,7 +113,7 @@ func matchTy(pat, got *Ty, subst []*Ty) error {
 		return fmt.Errorf("expected %s, got %s", debugTy(pat), debugTy(got))
 	}
 	switch pat.K {
-	case "int", "bool":
+	case "int", "rat", "bool":
 		return nil
 	case "var":
 		if pat.Var != got.Var {
@@ -198,7 +198,7 @@ func checkTyWF(st *Store, t *Ty, ntyvars int, allowRec bool) error {
 		return fmt.Errorf("missing type")
 	}
 	switch t.K {
-	case "int", "bool":
+	case "int", "rat", "bool":
 		return nil
 	case "record":
 		if len(t.Names) != len(t.Args) {
@@ -396,6 +396,8 @@ func (c *checker) synth(ctx []*Ty, t *Term) (*Ty, error) {
 		return ctx[len(ctx)-1-t.Idx], nil
 	case "int":
 		return tInt(), nil
+	case "rat":
+		return tRat(), nil
 	case "bool":
 		return tBool(), nil
 	case "record":
@@ -876,8 +878,28 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 		}
 		return nil
 	}
+	// Arithmetic and comparison are numeric-overloaded: every operand must be
+	// the SAME numeric type, Int or Rat. Result is that type (arithmetic) or
+	// Bool (comparison).
+	numericTy := func() (*Ty, error) {
+		if len(argTys) == 0 || (argTys[0].K != "int" && argTys[0].K != "rat") {
+			return nil, fmt.Errorf("primitive %s requires Int or Rat arguments", t.Op)
+		}
+		k := argTys[0].K
+		for _, a := range argTys {
+			if a.K != k {
+				return nil, fmt.Errorf("primitive %s requires all operands the same numeric type, got %s and %s", t.Op, k, debugTy(a))
+			}
+		}
+		return &Ty{K: k}, nil
+	}
 	switch t.Op {
-	case "+", "-", "*", "/", "%":
+	case "+", "-", "*", "/":
+		if err := need(2); err != nil {
+			return nil, err
+		}
+		return numericTy()
+	case "%":
 		if err := need(2); err != nil {
 			return nil, err
 		}
@@ -889,15 +911,12 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 		if err := need(1); err != nil {
 			return nil, err
 		}
-		if err := allInt(); err != nil {
-			return nil, err
-		}
-		return tInt(), nil
+		return numericTy()
 	case "<", "<=":
 		if err := need(2); err != nil {
 			return nil, err
 		}
-		if err := allInt(); err != nil {
+		if _, err := numericTy(); err != nil {
 			return nil, err
 		}
 		return tBool(), nil
@@ -983,6 +1002,8 @@ func debugTy(t *Ty) string {
 	switch t.K {
 	case "int":
 		return "Int"
+	case "rat":
+		return "Rat"
 	case "bool":
 		return "Bool"
 	case "record":
