@@ -95,6 +95,17 @@ export default function Architecture() {
         <code>+0.0 &ne; -0.0</code> (SMT <code>=</code>), with IEEE&apos;s{" "}
         <code>fp.eq</code> kept as a separate opt-in primitive.
       </p>
+      <p>
+        The three interconvert explicitly — <code>to-rat</code>,{" "}
+        <code>to-float</code>, <code>floor</code>, overloaded by source type. The
+        total, exact directions are provable (Z3 <code>to_real</code> /{" "}
+        <code>to_fp</code> / <code>to_int</code>): converting an <code>Int</code>{" "}
+        into ℚ and flooring back is a proven identity, and the exact rational{" "}
+        <code>1/10</code> is proven to round to precisely the <code>0.1f</code>{" "}
+        literal. The narrowings that can fail — <code>Float</code> to{" "}
+        <code>Rat</code> or <code>Int</code> on a NaN or infinity — fault at
+        runtime like division by zero, and stay outside the proof fragment.
+      </p>
 
       <h2>Two kernels, one spec</h2>
       <p>
