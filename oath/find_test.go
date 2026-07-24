@@ -158,11 +158,11 @@ func TestFindEquiv(t *testing.T) {
 		t.Fatal("commutative variants must keep distinct identities")
 	}
 	// ...but the same EQUIVALENCE key.
-	if eHash(sab) != eHash(sba) {
+	if eHash(st, sab) != eHash(st, sba) {
 		t.Fatal("commutative variants should share an eHash")
 	}
 	// A non-commutative body is not collapsed.
-	if eHash(sab) == eHash(dab) {
+	if eHash(st, sab) == eHash(st, dab) {
 		t.Fatal("subtraction is not commutative — must not share an eHash with +")
 	}
 
@@ -175,6 +175,37 @@ func TestFindEquiv(t *testing.T) {
 	}
 	if strings.Contains(out, "dab") {
 		t.Fatalf("find --equiv sab must NOT surface dab:\n%s", out)
+	}
+}
+
+// Type-directed associativity: over Int, a+b+c collapses to one form regardless
+// of association/order; over Float it must NOT (float addition is not
+// associative), so associativity is applied only where the operand type admits.
+func TestFindEquivTypeDirectedAssoc(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(defn il [] [(a Int) (b Int) (c Int)] Int (+ (+ a b) c))`)
+	put(t, st, `(defn ir [] [(a Int) (b Int) (c Int)] Int (+ a (+ b c)))`)
+	put(t, st, `(defn fl [] [(a Float) (b Float) (c Float)] Float (+ (+ a b) c))`)
+	put(t, st, `(defn fr [] [(a Float) (b Float) (c Float)] Float (+ a (+ b c)))`)
+
+	il, ir := mustDef(t, st, "il"), mustDef(t, st, "ir")
+	fl, fr := mustDef(t, st, "fl"), mustDef(t, st, "fr")
+
+	if eHash(st, il) != eHash(st, ir) {
+		t.Fatal("Int associativity variants should share an eHash")
+	}
+	if eHash(st, fl) == eHash(st, fr) {
+		t.Fatal("Float associativity is unsound — must NOT collapse")
+	}
+	out, err := apiFindEquiv(st, "il")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "ir") {
+		t.Fatalf("find --equiv il should surface ir (Int assoc):\n%s", out)
+	}
+	if out2, _ := apiFindEquiv(st, "fl"); strings.Contains(out2, "fr") {
+		t.Fatalf("find --equiv fl must NOT surface fr (float doesn't associate):\n%s", out2)
 	}
 }
 

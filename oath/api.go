@@ -459,7 +459,7 @@ func apiFindEquiv(st *Store, name string) (string, error) {
 	if qd.K != "func" {
 		return "", fmt.Errorf("%q is not a function definition", name)
 	}
-	target := eHash(qd)
+	target := eHash(st, qd)
 
 	names := st.Names()
 	keys := make([]string, 0, len(names))
@@ -479,7 +479,7 @@ func apiFindEquiv(st *Store, name string) (string, error) {
 		if err != nil || d.K != "func" || seen[h] {
 			continue
 		}
-		if eHash(d) == target {
+		if eHash(st, d) == target {
 			seen[h] = true
 			m, _ := st.GetMeta(h)
 			g := "asserted"
