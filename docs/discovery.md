@@ -119,11 +119,16 @@ and match). What remains:
   first version restricts candidates to an EXACT signature match (no cross-type
   re-typing yet) and pays a proof per candidate; the win is finding defs that
   satisfy your spec *however they wrote their own*.
-- **It's still spec-equivalence, not body-equivalence.** Two different proven
-  `sort`s with unrelated specs won't link. *That* is the e-graph — canonicalizing
-  bodies that are provably equal — the last rung.
+- **Body-equivalence** has a first slice: `oath find --equiv <name>` (and the
+  `find_equiv` MCP tool) find definitions that are the SAME FUNCTION up to the
+  rewrite rules — a different implementation that normalizes to the same
+  canonical form. This is the e-graph (docs/egraph.md); today the rule is
+  commutativity (`(+ a b)` and `(+ b a)` share an `eHash` but keep distinct
+  identities), with type-directed associativity and a full saturating engine as
+  the deeper versions. Full extensional equivalence is undecidable, so this
+  collapses things equal *under the rules*, never all equal functions.
 
 The rungs compose: content-hash match (up to type) for the fast common case,
-proof-implication for the semantic cases it misses, and eventually the e-graph
-for body-equivalence — every step loosening name-dependence further, none of
-them touching identity.
+proof-implication for the semantic cases it misses, and the e-graph for
+body-equivalence — every step loosening name-dependence further, and every one
+of them drawing edges *over* the hash graph, none touching identity.

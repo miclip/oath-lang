@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -174,6 +175,66 @@ func tyBytes(t *Ty) []byte {
 	e := &enc{}
 	e.ty(t)
 	return e.b
+}
+
+func termBytes(t *Term) []byte {
+	e := &enc{}
+	e.term(t)
+	return e.b
+}
+
+// commutativePrims commute for EVERY operand type (structural `==` is symmetric;
+// `and`/`or` are non-short-circuiting; `+`/`*` commute even for Float — only
+// associativity fails there, docs/egraph.md). So sorting their operands into a
+// canonical order is a sound rewrite everywhere.
+var commutativePrims = map[string]bool{"+": true, "*": true, "==": true, "and": true, "or": true}
+
+// eNormalize rewrites a term to a canonical form under the confluent algebraic
+// rewrite rules — currently commutativity (canonical operand order for a
+// commutative primitive). It is the semantic-canonicalization key for discovery
+// (the e-graph's first slice, docs/egraph.md). It NEVER affects identity: a
+// definition's hash is still the O1 encoding of its ACTUAL AST; this only draws
+// equivalence edges between existing objects.
+func eNormalize(t *Term) *Term {
+	if t == nil {
+		return nil
+	}
+	nt := *t
+	nt.A = eNormalize(t.A)
+	nt.B = eNormalize(t.B)
+	nt.C = eNormalize(t.C)
+	if len(t.Args) > 0 {
+		nt.Args = make([]Term, len(t.Args))
+		for i := range t.Args {
+			nt.Args[i] = *eNormalize(&t.Args[i])
+		}
+	}
+	if len(t.Arms) > 0 {
+		nt.Arms = make([]Term, len(t.Arms))
+		for i := range t.Arms {
+			nt.Arms[i] = *eNormalize(&t.Arms[i])
+		}
+	}
+	if t.K == "prim" && commutativePrims[t.Op] && len(nt.Args) == 2 {
+		if bytes.Compare(termBytes(&nt.Args[0]), termBytes(&nt.Args[1])) > 0 {
+			nt.Args[0], nt.Args[1] = nt.Args[1], nt.Args[0]
+		}
+	}
+	return &nt
+}
+
+// eHash is the equivalence-class key of a definition: its signature plus its
+// e-normalized body. Two definitions with the same eHash compute the same
+// function up to the rewrite rules — the same equivalence class, though (by
+// design) DIFFERENT identities.
+func eHash(d *Def) string {
+	e := &enc{}
+	e.ty(d.Ty)
+	if d.Body != nil {
+		e.term(eNormalize(d.Body))
+	}
+	s := sha256.Sum256(e.b)
+	return hex.EncodeToString(s[:])
 }
 
 // hashDefV0 is the legacy JSON-based identity (kernel ≤0.6), retained ONLY

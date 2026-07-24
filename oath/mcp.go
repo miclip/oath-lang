@@ -88,6 +88,11 @@ func mcpTools() []map[string]any {
 			"inputSchema": obj(map[string]any{"source": str("an Oath (defn ...) whose properties are the spec to prove against candidates")}, "source"),
 		},
 		{
+			"name":        "find_equiv",
+			"description": "Discovery by BODY-EQUIVALENCE (the e-graph): find every definition that is the SAME FUNCTION as this one up to the rewrite rules (currently commutativity) — a different implementation that normalizes to the same canonical form. The matched definitions keep DISTINCT identities; this draws an equivalence edge, it never merges objects. This is how a fresh implementation finds the proven one it's equal to.",
+			"inputSchema": obj(map[string]any{"name": str("definition name to find equivalents of")}, "name"),
+		},
+		{
 			"name":        "eval",
 			"description": "Typecheck and evaluate a single Oath expression, e.g. (sort (Cons [Int] 2 (Cons [Int] 1 (Nil [Int])))).",
 			"inputSchema": obj(map[string]any{"expr": str("Oath expression")}, "expr"),
@@ -169,6 +174,8 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string)
 		return apiFindSpec(st, a.Source)
 	case "find_implies":
 		return apiFindImplies(st, a.Source)
+	case "find_equiv":
+		return apiFindEquiv(st, a.Name)
 	case "ls":
 		return apiLs(st), nil
 	case "eval":
