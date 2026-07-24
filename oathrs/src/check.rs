@@ -87,6 +87,7 @@ impl<'a> Checker<'a> {
             }
             Term::Int(_) => Ok(Ty::Int),
             Term::Rat { .. } => Ok(Ty::Rat),
+            Term::Float(_) => Ok(Ty::Float),
             Term::Bool(_) => Ok(Ty::Bool),
             Term::Lam { ty, a } => {
                 wf(self.store, ty, self.nvars, false, 0)?;
@@ -486,14 +487,15 @@ impl<'a> Checker<'a> {
     // -----------------------------------------------------------------------
     /// Fix the numeric kind of an overloaded arithmetic/ordering primitive
     /// (SPEC §2.1) by SYNTHESIZING its first operand on a probe: the result must
-    /// be `Int` or `Rat`, otherwise the primitive is rejected.
+    /// be `Int`, `Rat`, or `Float`, otherwise the primitive is rejected.
     fn numeric_kind(&self, first: &Term, ctx: &mut Vec<Ty>) -> Result<Ty, String> {
         let mut probe = first.clone();
         let mut pctx = ctx.clone();
         match self.synth(&mut probe, &mut pctx)? {
             Ty::Int => Ok(Ty::Int),
             Ty::Rat => Ok(Ty::Rat),
-            _ => Err("arithmetic operand is neither Int nor Rat".into()),
+            Ty::Float => Ok(Ty::Float),
+            _ => Err("arithmetic operand is neither Int, Rat, nor Float".into()),
         }
     }
 
@@ -567,6 +569,17 @@ impl<'a> Checker<'a> {
                 }
                 Ok(Ty::Bool)
             }
+            // `fp-eq` is `Float`-only (IEEE-754 equality, SPEC §2/§3): both
+            // operands CHECK against `Float`, result is `Bool`.
+            "fp-eq" => {
+                if args.len() != 2 {
+                    return Err(arity_err(2));
+                }
+                for a in args.iter_mut() {
+                    self.check(a, &Ty::Float, ctx)?;
+                }
+                Ok(Ty::Bool)
+            }
             "and" | "or" => {
                 if args.len() != 2 {
                     return Err(arity_err(2));
@@ -616,7 +629,9 @@ fn match_ty(pat: &Ty, g: &Ty, s: &mut [Option<Ty>]) -> Result<(), String> {
         }
     }
     match (pat, g) {
-        (Ty::Int, Ty::Int) | (Ty::Bool, Ty::Bool) | (Ty::Rat, Ty::Rat) => Ok(()),
+        (Ty::Int, Ty::Int) | (Ty::Bool, Ty::Bool) | (Ty::Rat, Ty::Rat) | (Ty::Float, Ty::Float) => {
+            Ok(())
+        }
         (Ty::Var(i), Ty::Var(j)) if i == j => Ok(()),
         (Ty::Fun(pa, pb), Ty::Fun(ga, gb)) => {
             match_ty(pa, ga, s)?;
@@ -723,7 +738,7 @@ fn check_record_names(names: &[String]) -> Result<(), String> {
 
 fn wf(store: &Store, ty: &Ty, nvars: u32, allow_rec: bool, rec_arity: u32) -> Result<(), String> {
     match ty {
-        Ty::Int | Ty::Bool | Ty::Rat => Ok(()),
+        Ty::Int | Ty::Bool | Ty::Rat | Ty::Float => Ok(()),
         Ty::Var(i) => {
             if *i < nvars {
                 Ok(())
@@ -779,7 +794,7 @@ fn wf(store: &Store, ty: &Ty, nvars: u32, allow_rec: bool, rec_arity: u32) -> Re
 
 fn concrete(ty: &Ty) -> bool {
     match ty {
-        Ty::Int | Ty::Bool | Ty::Rat => true,
+        Ty::Int | Ty::Bool | Ty::Rat | Ty::Float => true,
         Ty::Var(_) | Ty::Rec { .. } => false,
         Ty::Fun(a, b) => concrete(a) && concrete(b),
         Ty::Data { args, .. } => args.iter().all(concrete),

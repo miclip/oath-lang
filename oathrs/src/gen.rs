@@ -61,6 +61,21 @@ fn hex_decode(h: &str) -> Vec<u8> {
 
 const INT_BOUNDARY: [i64; 5] = [-2, -1, 0, 1, 2];
 
+/// Float boundary/special table (SPEC §4), as raw binary64 bit patterns in the
+/// normative order `[+0.0, -0.0, 1.0, -1.0, 0.5, 2.0, +inf, -inf, NaN]` — so
+/// ±0.0, the infinities, and (canonical) NaN are all exercised.
+const FLOAT_BOUNDARY: [u64; 9] = [
+    0x0000_0000_0000_0000, // +0.0
+    0x8000_0000_0000_0000, // -0.0
+    0x3FF0_0000_0000_0000, // 1.0
+    0xBFF0_0000_0000_0000, // -1.0
+    0x3FE0_0000_0000_0000, // 0.5
+    0x4000_0000_0000_0000, // 2.0
+    0x7FF0_0000_0000_0000, // +inf
+    0xFFF0_0000_0000_0000, // -inf
+    0x7FF8_0000_0000_0000, // NaN (canonical)
+];
+
 pub fn generate(store: &Store, ty: &Ty, size: i64, rng: &mut Rng) -> Result<Value, String> {
     // Size is clamped to a minimum of 0 on entry to every generation call.
     let size = size.max(0);
@@ -89,6 +104,22 @@ pub fn generate(store: &Store, ty: &Ty, size: i64, rng: &mut Rng) -> Result<Valu
             )
             .expect("denominator ≥ 1 is nonzero");
             Ok(Value::Rat(n, d))
+        }
+        // `Float` (SPEC §4): draw `below(4)`; on 0, draw `below(9)` into the
+        // boundary/special table; otherwise draw the numerator `intIn(-8,8)`,
+        // THEN the denominator `intIn(1,4)` (numerator first), and take
+        // `numerator / denominator` as a binary64. Every generated NaN is
+        // canonical.
+        Ty::Float => {
+            let bits = if rng.below(4) == 0 {
+                let k = rng.below(9) as usize;
+                FLOAT_BOUNDARY[k]
+            } else {
+                let num = rng.int_in(-8, 8);
+                let den = rng.int_in(1, 4);
+                (num as f64 / den as f64).to_bits()
+            };
+            Ok(Value::Float(crate::ir::canon_f64_bits(bits)))
         }
         Ty::Fun(a, b) => {
             if matches!(**a, Ty::Int) && matches!(**b, Ty::Int) {

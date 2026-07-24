@@ -9,13 +9,21 @@ import (
 )
 
 // parseFloatLit recognizes an IEEE Float literal: a token ending in `f` whose
-// prefix parses as a float64 (0.1f, 1f, 3.14f, 1e9f, -2.5f). Returns ok=false
-// for anything else, so bare symbols and Rat/Int literals fall through.
+// prefix matches the PORTABLE decimal float grammar (0.1f, 1f, 3.14f, 1e9f,
+// -2.5f). Returns ok=false for anything else, so bare symbols and Rat/Int
+// literals fall through. We reject the parts of Go's ParseFloat grammar that
+// are not portable — hex floats (`0x1p4`) and digit-separator underscores
+// (`1_000`) — so a second kernel using a plain decimal float parser agrees
+// byte-for-byte (SPEC §1.4).
 func parseFloatLit(word string) (float64, bool) {
 	if len(word) < 2 || word[len(word)-1] != 'f' {
 		return 0, false
 	}
-	f, err := strconv.ParseFloat(word[:len(word)-1], 64)
+	body := word[:len(word)-1]
+	if strings.ContainsAny(body, "_xXpP") {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(body, 64)
 	if err != nil {
 		return 0, false
 	}

@@ -1,0 +1,12 @@
+{
+  "name": "f-scale-inv",
+  "hash": "fec8b5271ba347e1b476444bbcd14d9eb78439e2e811f177d8d18a0f520b2b73",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 3,
+  "mutants_total": 3,
+  "level": "falsified"
+}

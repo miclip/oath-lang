@@ -338,6 +338,19 @@
       ]
     },
     {
+      "name": "f-scale-inv",
+      "hash": "fec8b5271ba347e1b476444bbcd14d9eb78439e2e811f177d8d18a0f520b2b73",
+      "level": "falsified",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "recovers",
+          "proven": false
+        }
+      ]
+    },
+    {
       "name": "f-tenths",
       "hash": "18889b76c77e197cb680975e1038e70adb3c475b93d767e93c508fda3394a58b",
       "level": "falsified",

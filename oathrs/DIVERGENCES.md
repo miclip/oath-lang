@@ -1559,3 +1559,88 @@ independent kernels would silently disagree on the actual draw sequence. That is
 precisely the class of divergence N-version testing exists to catch: identical
 observable outputs masking non-identical semantics. Pinning the rule in §4 makes
 the two kernels' `Rat` generators bit-for-bit identical.
+
+## 78. `Float` primitive (IEEE-754 binary64): three under-pinned byte surfaces
+
+**Found by:** blind implementation of the new `Float` (IEEE-754 binary64)
+primitive from SPEC §1.1–1.5, §2, §3.2, §4, §7.1, plus `docs/floats.md`.
+**Outcome: conformance passes fully (oracle mode: checks 1–4 + the 303-script
+byte oracle; empirically z3 4.16.0 proves `f-mul-id` 1/1 and `f-double` 1/1 and
+falsifies `f-tenths` 0/1; the three `analyses/f-*.json` re-derive byte-identically
+from the float prove run).** Everything byte-observable is pinned and reproduced;
+three surfaces are under-pinned but not corpus-exercised, so the inferred reading
+could silently diverge from a differently-inferred kernel. All three are recorded
+here as the N-version findings.
+
+Reproduced exactly (byte-pinned by fixtures):
+- Encoding: `Ty` tag `0x0A`, `Term` tag `0x20` = 8 raw big-endian binary64 bytes,
+  NaN canonicalized to `0x7FF8000000000000`. The strict decoder REJECTS any other
+  NaN bit pattern (like a non-reduced rational); `-0.0`/`+0.0`/`±inf` are distinct
+  accepted values. Validated against `fixtures/encoding/negative_float.bin`
+  (a func Def with body −2.5 = `0xC004000000000000`).
+- Identity/equality: a `Float` value IS its canonicalized 64-bit pattern (held as
+  a raw `u64`), so structural `==` is bitwise Leibniz — `NaN == NaN` true,
+  `+0.0 == -0.0` false — distinct from the IEEE `fp-eq` primitive.
+- Lexer: integer first, then a `Float` literal (an `f`-suffixed token whose prefix
+  parses as a binary64) BEFORE rational, then symbol. The corpus literals are
+  `0.1f 0.2f 0.3f 1.0f 2.0f`.
+- Typing: `+ - * / neg < <=` numeric-overloaded over Int|Rat|Float (synth the
+  first operand to fix the kind); `%` Int-only; `fp-eq` Float-only → Bool;
+  `< <=` → Bool. `/` over Float is admitted (IEEE division).
+- Dynamic: IEEE ops at round-nearest-ties-even, TOTAL (x/0 = ±inf, 0/0 = NaN),
+  NaN canonicalized on every result; `< <=` IEEE-ordered (NaN ⇒ false).
+- Generation (§4): `below(4)`; on 0 `below(9)` into
+  `[+0.0,-0.0,1.0,-1.0,0.5,2.0,+inf,-inf,NaN]`; else numerator `intIn(-8,8)` then
+  denominator `intIn(1,4)`, `num/den` as binary64. (§4 DOES pin `Float`, unlike the
+  `Rat` gap in #77.)
+- SMT (§7.1): `Float → Float64`; literal → `(fp (_ bvSIGN 1) (_ bvEXP 11)
+  (_ bvMANT 52))` from the exact canonicalized bits; `+ - * /` → `(fp.add RNE …)`
+  etc.; `neg` → `(fp.neg …)`; `< <=` → `(fp.lt …)`/`(fp.leq …)`; structural `==`
+  → SMT `=`; `fp-eq` → `(fp.eq …)`. The three float direct-attempt scripts
+  (`f-mul-id` 0, `f-double` 0, `f-tenths` 0) are byte-identical to
+  `fixtures/prove/scripts.txt`. NOTE — the SMT sort is emitted as Z3's built-in
+  abbreviation `Float64`, not the spelled-out `(_ FloatingPoint 11 53)`; §7.1
+  gives both as equal and the fixture hashes only pin the choice indirectly (via
+  `f-mul-id`/`f-double`, whose `(declare-const b0 Float64)` line the hash covers).
+  `Float64` reproduces the hashes; `(_ FloatingPoint 11 53)` does not.
+
+### Finding 1 — float PRINTING (§3.2) is asserted but not byte-verified
+§3.2 pins the finite-float print form to Go's `strconv.FormatFloat(f, 'g', -1,
+64)` (shortest round-tripping decimal, fixed-point within a bounded exponent range
+else lowercase-`e` scientific), with `f` suffix and specials `inff`/`-inff`/`nanf`.
+But the corpus **never prints a `Float` value**: the only float counterexample,
+`f-tenths`, is a NULLARY prop, so its `verify/f-tenths.txt` counterexample line is
+an empty inputs list (`counterexample: ` + trailing space) — confirmed
+byte-identical. Rust's native shortest-float formatter is not Go's `'g'`
+(different fixed-vs-scientific thresholds, different special spellings), so I
+implemented Go's `'g'` algorithm by hand (shortest digits + decimal-point position
+from Rust's `{:e}`, then the `exp<-4 || exp>=21` selection). This is asserted from
+the spec but **not pinned by any fixture** — a value like `1e21f` or `1e-5f` would
+be the first byte to distinguish a Go-`'g'` printer from a naive one, and the
+corpus contains none. If a future fixture prints a float, this is the most likely
+divergence point.
+
+### Finding 2 — SMT special-value literal rendering: §7.1 vs floats.md disagree
+§7.1 (normative) says a float literal renders **uniformly** as `(fp (_ bvS 1)
+(_ bvE 11) (_ bvM 52))` from its bits — which I implemented for all values,
+including NaN/±inf/±0. `docs/floats.md` (design note) instead says "literal →
+`(fp …)` / the appropriate FP constant (canonical NaN → `(_ NaN 11 53)`)",
+implying NaN → `(_ NaN 11 53)` and presumably `±inf → (_ ±oo 11 53)`. The two
+disagree on special values. No corpus float SMT script contains a special literal
+(the three scripts use only `0.1f 0.2f 0.3f 1.0f 2.0f`, all finite normals), so
+the choice is **unobservable** in the fixtures. I followed §7.1 (the normative
+document) — uniform `(fp …)`. A kernel that followed floats.md would produce
+identical bytes on the whole corpus and diverge only on a special-value literal
+that no fixture exercises.
+
+### Finding 3 — float lexing: Go `ParseFloat` vs Rust `f64` accept different tails
+The lexer rule is "a token ending in `f` whose prefix parses as a binary64"; §1.4
+and floats.md pin the acceptor to Go's `strconv.ParseFloat`. I used Rust's `f64`
+parser as the analog — for finite decimals (the entire corpus) both are correctly
+rounded and produce the identical binary64, verified via the SMT literal hashes.
+But the two acceptors are not identical on exotic prefixes: Go's `ParseFloat`
+accepts hex floats (`0x1p-2`) and digit separators (`1_000.0`); Rust's `f64`
+parser rejects both. So a token like `0x1p-2f` would lex as a `Float` under a Go
+kernel and as a `symbol` under this one — a classification (hence hash) divergence.
+No such token appears in the corpus or gate fixtures, so it is unobservable here;
+it is recorded as the boundary where the two lexers part.

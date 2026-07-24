@@ -10,6 +10,9 @@ pub enum Sexpr {
     // `Rat` is ℚ — held as an already-reduced numerator/denominator pair
     // (SPEC §1.4: rational literals elaborate to reduced form).
     Rat(BigInt, BigInt),
+    // `Float` is IEEE-754 binary64 — held as the canonicalized 64-bit pattern
+    // (SPEC §1.4: an `f`-suffixed token whose prefix parses as a binary64).
+    Float(u64),
     Str(String),
     Sym(String),
     List(Vec<Sexpr>),
@@ -198,19 +201,39 @@ impl<'a> Reader<'a> {
         }
         let tok = String::from_utf8(buf)
             .map_err(|_| format!("line {}: invalid UTF-8 in token", self.line))?;
-        // Atom classification (SPEC §1.4), integer FIRST so `3` is an `int` not
-        // `3/1`: a decimal `big.Int` token is an `int`; otherwise a token that
-        // parses as a rational (`big.Rat` syntax — a decimal like `3.14`/`0.1`,
-        // or a fraction `num/den`, either optionally signed) is a `rat`,
-        // elaborated to reduced form; otherwise it is a symbol.
+        // Atom classification (SPEC §1.4). The order is normative: (1) integer
+        // FIRST so `3` is an `int`, not `3/1`; (2) a `float` — a token ending in
+        // `f` whose prefix parses as a binary64 — BEFORE rational, so `0.1f` is a
+        // `float` while `0.1` is a `rat`; (3) a `rat` (`big.Rat` syntax); (4)
+        // otherwise a symbol (a bare `f`/`fold` has no numeric prefix).
         if let Ok(n) = tok.parse::<BigInt>() {
             Ok(Sexpr::Int(n))
+        } else if let Some(bits) = parse_float(&tok) {
+            Ok(Sexpr::Float(bits))
         } else if let Some((num, den)) = parse_rational(&tok) {
             Ok(Sexpr::Rat(num, den))
         } else {
             Ok(Sexpr::Sym(tok))
         }
     }
+}
+
+/// Parse a `Float` literal (SPEC §1.4): a token ending in `f` whose prefix
+/// parses as an IEEE-754 binary64. Returns the canonicalized 64-bit pattern, or
+/// `None` (the token is not a float and falls through to rational/symbol). The
+/// prefix is parsed by Rust's `f64` parser, the analog of Go's
+/// `strconv.ParseFloat` — both are correctly rounded (round-nearest-even), so a
+/// finite decimal like `0.1` yields the identical binary64. `inf`/`nan` are not
+/// spelled by the corpus; a bare `f` (empty prefix) is a symbol. See
+/// DIVERGENCES.md for the rare prefixes (hex floats, digit separators) where
+/// Go's parser and Rust's parser accept different strings.
+fn parse_float(tok: &str) -> Option<u64> {
+    let prefix = tok.strip_suffix('f')?;
+    if prefix.is_empty() {
+        return None;
+    }
+    let f: f64 = prefix.parse::<f64>().ok()?;
+    Some(crate::ir::canon_f64_bits(f.to_bits()))
 }
 
 /// Parse a `big.Rat`-style rational literal to reduced (numerator, denominator)

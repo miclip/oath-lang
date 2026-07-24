@@ -129,8 +129,12 @@ input. A conforming surface elaborator MUST therefore match these rules:
 - Atoms are integer literals, float literals, rational literals, string
   literals, or symbols. Lexing tries, in order: (1) a decimal integer
   (arbitrary precision, `big.Int` syntax — optional leading `-`, then digits)
-  → `int`; (2) a **float** — a token ending in `f` whose prefix parses as a
-  binary64 (`0.1f`, `1f`, `3.14f`, `1e9f`, optionally signed) → `float`; (3) a
+  → `int`; (2) a **float** — a token ending in `f` whose prefix matches the
+  PORTABLE decimal float grammar `[+-]?( D+ (. D*)? | . D+ )([eE][+-]?D+)?` or a
+  case-insensitive `[+-]?(inf|infinity|nan)` (`0.1f`, `1f`, `3.14f`, `1e9f`,
+  `-2.5f`) → `float`. Hex floats (`0x1p4`) and digit-separator underscores
+  (`1_000`) are NOT accepted, even where a host `ParseFloat` would — so a second
+  kernel with a plain decimal parser agrees byte-for-byte; (3) a
   **rational** (`big.Rat` syntax: a decimal like `3.14`/`0.1`, or a fraction
   `num/den`, optionally signed) → `rat`, reduced; (4) otherwise a symbol.
   Integer is tried first (so `3` is `int`, not `3/1`); the `f` suffix is tried

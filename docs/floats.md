@@ -121,7 +121,10 @@ unaffected). `inf`/`nan` are not literals — they arise from operations
 ## Prover mapping
 
 - `Float` → Z3 sort `(_ FloatingPoint 11 53)`.
-- literal → `(fp …)` / the appropriate FP constant (canonical NaN → `(_ NaN 11 53)`).
+- literal → uniformly `(fp (_ bvS 1) (_ bvE 11) (_ bvM 52))` from the exact
+  canonicalized bits, for EVERY value including NaN / ±inf / ±0 (no special
+  `(_ NaN …)` / `(_ +oo …)` / `(_ +zero …)` forms — one code path, one
+  representation per value). This is the normative rule; see SPEC §7.1.
 - `+ - * / neg` → `fp.add`/`fp.sub`/`fp.mul`/`fp.div`/`fp.neg` at `RNE`.
 - `< <=` → `fp.lt` / `fp.leq` (IEEE ordered: NaN unordered ⇒ false).
 - `==` → SMT `=` (Leibniz), matching kernel identity.

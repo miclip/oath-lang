@@ -6,7 +6,8 @@ use crate::ir::*;
 use crate::sexpr::{Reader, Sexpr};
 use std::collections::{BTreeMap, HashSet};
 
-const PRIMS: &[&str] = &["+", "-", "*", "/", "%", "neg", "==", "<", "<=", "and", "or", "not"];
+const PRIMS: &[&str] =
+    &["+", "-", "*", "/", "%", "neg", "==", "<", "<=", "and", "or", "not", "fp-eq"];
 
 #[derive(Clone)]
 pub struct DataInfo {
@@ -87,6 +88,7 @@ impl Store {
                 "Int" => Ok(Ty::Int),
                 "Bool" => Ok(Ty::Bool),
                 "Rat" => Ok(Ty::Rat),
+                "Float" => Ok(Ty::Float),
                 // `Str` is no longer a primitive type — it resolves to the `Str`
                 // datatype like any other ADT (via the data lookup below).
                 _ => {
@@ -187,6 +189,8 @@ impl Store {
             Sexpr::Int(n) => Ok(Term::Int(n.clone())),
             // Rational literal (SPEC §1.4): already reduced by the reader.
             Sexpr::Rat(num, den) => Ok(Term::Rat { num: num.clone(), den: den.clone() }),
+            // Float literal (SPEC §1.4): the reader already canonicalized the bits.
+            Sexpr::Float(bits) => Ok(Term::Float(*bits)),
             // STRING-LITERAL SUGAR (SPEC §1.4): `"…"` desugars to the codepoint
             // chain `(SCons c0 (SCons c1 … (SNil)))`, byte-identical to the ctor
             // form. There is no string-literal term anymore.

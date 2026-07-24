@@ -18,6 +18,28 @@ pub enum Ty {
     Record { names: Vec<String>, args: Vec<Ty> },
     // `Rat` is ℚ — arbitrary-precision exact rationals (SPEC §3), tag 0x09.
     Rat,
+    // `Float` is IEEE-754 binary64 (SPEC §3), tag 0x0A.
+    Float,
+}
+
+/// The one canonical NaN bit pattern (SPEC §1.3, §3): every NaN — any payload,
+/// signaling or quiet — is canonicalized to this quiet NaN.
+pub const CANON_NAN_BITS: u64 = 0x7FF8_0000_0000_0000;
+
+/// True iff a binary64 bit pattern is a NaN (exponent all ones, mantissa ≠ 0).
+pub fn is_nan_bits(bits: u64) -> bool {
+    ((bits >> 52) & 0x7FF) == 0x7FF && (bits & 0x000F_FFFF_FFFF_FFFF) != 0
+}
+
+/// Canonicalize a binary64 bit pattern (SPEC §1.3): every NaN maps to the one
+/// quiet pattern `CANON_NAN_BITS`; all other patterns — including `-0.0` and
+/// `±inf` — are left exactly as they are (distinct values with distinct bits).
+pub fn canon_f64_bits(bits: u64) -> u64 {
+    if is_nan_bits(bits) {
+        CANON_NAN_BITS
+    } else {
+        bits
+    }
 }
 
 use num_bigint::{BigInt, BigUint, Sign};
@@ -68,6 +90,12 @@ pub enum Term {
     // `Rat` term (SPEC §1.2 tag 0x1F): reduced numerator/denominator `bigint`
     // pair (den ≥ 1, gcd(|num|,den) = 1, sign on the numerator, 0 = 0/1).
     Rat { num: BigInt, den: BigInt },
+    // `Float` term (SPEC §1.2 tag 0x20): the canonicalized 64-bit IEEE-754
+    // binary64 pattern. Identity is bit-identity (structural `==` is Leibniz),
+    // so the value IS its (NaN-canonicalized) bits — held as a raw `u64` so
+    // derived `Eq` is exactly the bitwise Leibniz equality (`NaN == NaN`,
+    // `+0.0 != -0.0`). Always stored canonicalized (NaN → one quiet pattern).
+    Float(u64),
     // (tag 0x13 reserved — string literals now elaborate to `Str` ctor chains)
     Lam { ty: Ty, a: Box<Term> },
     App { a: Box<Term>, b: Box<Term> },
@@ -192,6 +220,7 @@ fn enc_ty(t: &Ty, out: &mut Vec<u8>) {
             }
         }
         Ty::Rat => out.push(0x09),
+        Ty::Float => out.push(0x0A),
     }
 }
 
@@ -213,6 +242,13 @@ fn enc_term(t: &Term, out: &mut Vec<u8>) {
             out.push(0x1F);
             put_bigint(out, num);
             put_bigint(out, den);
+        }
+        // `float` (SPEC §1.2 tag 0x20): 8 raw big-endian IEEE-754 binary64 bytes,
+        // NaN canonicalized (canonicalized already at construction; re-applied
+        // here so a producer path can never emit a non-canonical NaN).
+        Term::Float(bits) => {
+            out.push(0x20);
+            out.extend_from_slice(&canon_f64_bits(*bits).to_be_bytes());
         }
         Term::Lam { ty, a } => {
             out.push(0x14);
@@ -449,6 +485,7 @@ fn dec_ty(c: &mut Cur) -> Result<Ty, String> {
             Ok(Ty::Record { names, args })
         }
         0x09 => Ok(Ty::Rat),
+        0x0A => Ok(Ty::Float),
         t => Err(format!("O1: unknown Ty tag 0x{:02x}", t)),
     }
 }
@@ -470,6 +507,20 @@ fn dec_term(c: &mut Cur) -> Result<Term, String> {
                 );
             }
             Ok(Term::Rat { num, den })
+        }
+        // `float` (SPEC §1.2/§1.3): 8 raw big-endian IEEE-754 bytes. Strict
+        // decoders MUST reject any NON-canonical NaN bit pattern (exactly as a
+        // non-reduced rational is rejected) — so a float value has one encoding.
+        // `-0.0`, `+0.0`, and `±inf` are distinct, accepted values.
+        0x20 => {
+            let raw = c.take(8)?;
+            let bits = u64::from_be_bytes([
+                raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7],
+            ]);
+            if is_nan_bits(bits) && bits != CANON_NAN_BITS {
+                return Err("O1: non-canonical NaN float (must be 0x7FF8000000000000)".into());
+            }
+            Ok(Term::Float(bits))
         }
         // 0x13 is RESERVED (was the string-literal term) — strict decoders reject.
         0x14 => {
