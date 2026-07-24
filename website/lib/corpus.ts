@@ -46,6 +46,8 @@ put(["length", "append", "map", "reverse", "sum", "contains", "drop", "take", "c
 put(["is-sorted", "insert", "sort", "merge"], "Sorting");
 put(["t-insert", "t-member", "t-size", "t-flatten"], "Trees");
 put(["q-push", "q-peek", "q-drop", "q-to-list"], "Queue");
+put(["Set", "set-empty", "set-member", "set-add", "set-union", "set-inter", "set-size", "set-elems", "si-member", "si-insert", "si-union", "si-inter"], "Set (native-compiled)");
+put(["Map", "map-empty", "map-lookup", "map-insert", "map-has", "map-size", "map-keys", "map-values", "map-merge", "mi-lookup", "mi-insert", "mi-keys", "mi-values", "mi-merge"], "Map (native-compiled)");
 put(["kv-get", "kv-put", "rename-key", "safe-get", "stash", "leak"], "Worlds & state");
 put(["i-contains", "i-overlaps", "i-intersect", "i-hull"], "Intervals");
 put(["full-name", "greet", "greet-or-guest", "shout", "join-with", "initials-or", "or-else"], "Strings & records");
