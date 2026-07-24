@@ -73,6 +73,11 @@ func mcpTools() []map[string]any {
 			"inputSchema": obj(map[string]any{}),
 		},
 		{
+			"name":        "find",
+			"description": "Spec-query (discovery by property, not by name): given a definition, find every OTHER definition that satisfies the same property, matched by the property's CONTENT HASH. A law shared and PROVEN on both sides means the two are interchangeable for it — this is how you reuse proven code without trusting a name. Query by example: point at a def whose property you want, get back who else satisfies it.",
+			"inputSchema": obj(map[string]any{"name": str("definition name whose properties to query by")}, "name"),
+		},
+		{
 			"name":        "eval",
 			"description": "Typecheck and evaluate a single Oath expression, e.g. (sort (Cons [Int] 2 (Cons [Int] 1 (Nil [Int])))).",
 			"inputSchema": obj(map[string]any{"expr": str("Oath expression")}, "expr"),
@@ -148,6 +153,8 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string)
 		return out, nil
 	case "get":
 		return apiGet(st, a.Name)
+	case "find":
+		return apiFind(st, a.Name)
 	case "ls":
 		return apiLs(st), nil
 	case "eval":
