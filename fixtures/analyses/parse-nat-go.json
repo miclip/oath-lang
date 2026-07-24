@@ -1,0 +1,13 @@
+{
+  "name": "parse-nat-go",
+  "hash": "5492d77957cdc464628301003b095974422ce222a033c2cfd4c0836c09a64ef9",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_total": 12,
+  "level": "tested",
+  "cases": 200
+}

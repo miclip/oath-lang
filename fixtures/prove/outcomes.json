@@ -107,6 +107,23 @@
       ]
     },
     {
+      "name": "circle",
+      "hash": "b9df489c7e772dce670558046a0a913a4827313b890e4f507c5f847dae5cd436",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "r5",
+          "proven": false
+        },
+        {
+          "name": "r10",
+          "proven": false
+        }
+      ]
+    },
+    {
       "name": "clamp",
       "hash": "9fa25283f279fb8302a5dfd5da227148bc5b0daac0ad6ef6d27b1b9acab76a00",
       "level": "proven",
@@ -432,6 +449,19 @@
         {
           "name": "cons-step",
           "proven": true
+        }
+      ]
+    },
+    {
+      "name": "first-or",
+      "hash": "775f5b2a57d77658a10e23842f4e59acd16e7963c3b268ed7ddf775a9c2b79e5",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "empty",
+          "proven": false
         }
       ]
     },
@@ -1438,6 +1468,36 @@
       ]
     },
     {
+      "name": "parse-nat",
+      "hash": "a977ae2123091b58c45a12de1900c052dfe38d3ce60ac39aa438975f9ac06c5d",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "reads-zero",
+          "proven": false
+        },
+        {
+          "name": "reads-42",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "parse-nat-go",
+      "hash": "5492d77957cdc464628301003b095974422ce222a033c2cfd4c0836c09a64ef9",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "empty",
+          "proven": false
+        }
+      ]
+    },
+    {
       "name": "pow",
       "hash": "090cc5373e20d9b4f5f459b69ac63263b5d2f4d7d5c798591f8add8ac579076e",
       "level": "proven",
@@ -2158,6 +2218,32 @@
         {
           "name": "preserves-emptiness-never",
           "proven": true
+        }
+      ]
+    },
+    {
+      "name": "show-int",
+      "hash": "a9472d7aa2146acc2f37afbefdd8b098fa92322d59355e243451cf547e107104",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "roundtrip",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "show-nat",
+      "hash": "1d0a9ecfb0eab9baa4782839fac41b93f9490d6ac98cc04d3001555cc97e108c",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "single-digit",
+          "proven": false
         }
       ]
     },

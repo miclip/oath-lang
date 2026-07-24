@@ -1,0 +1,23 @@
+{
+  "name": "circle",
+  "prop_names": [
+    "r5",
+    "r10"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "mutants_killed": 38,
+  "mutants_total": 41,
+  "termination": "unknown",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "args"
+  ],
+  "confinement": [
+    ""
+  ]
+}

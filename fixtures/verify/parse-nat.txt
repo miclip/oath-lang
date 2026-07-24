@@ -1,0 +1,2 @@
+✓ prop reads-zero               passed 200 cases
+✓ prop reads-42                 passed 200 cases

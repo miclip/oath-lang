@@ -1,0 +1,23 @@
+{
+  "name": "parse-nat-go",
+  "prop_names": [
+    "empty"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "mutants_total": 12,
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "acc",
+    "s"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

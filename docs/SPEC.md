@@ -796,7 +796,15 @@ reproducibility (given the same solver):
   and its body translated at first touch regardless of totality — so a
   non-total callee's own callees get declared too. This is byte-visible in
   the script fixtures as orphan `declare-fun`s (`fn_rle_expand` in the
-  rle-encode goldens arrives through non-total `rle-decode`'s body). Additionally, a property already
+  rle-encode goldens arrives through non-total `rle-decode`'s body). If this
+  eager body translation reaches an operator EXCLUDED from translation (`/` or
+  `%` over `Int`, below), the callee's body cannot be fully registered, and the
+  direct-attempt script is NOT emitted for any property whose goal triggers it:
+  the property is recorded unprovable with no script, and its line is ABSENT
+  from `prove/scripts.txt`. (The verdict is unchanged — the callee is
+  uninterpreted, so the goal would return `unknown` from an emitted script
+  anyway; a decimal `show` over `Int`, which recurses on `n / 10`, is the
+  canonical case.) Additionally, a property already
   refuted by deterministic testing (§4) is never recorded as proven even if the
   solver reports it valid — the concrete counterexample governs.
 - `match` translates to tester/selector ite-chains.

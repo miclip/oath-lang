@@ -1,0 +1,13 @@
+{
+  "name": "parse-nat",
+  "hash": "a977ae2123091b58c45a12de1900c052dfe38d3ce60ac39aa438975f9ac06c5d",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 2,
+  "mutants_total": 2,
+  "level": "tested",
+  "cases": 200
+}

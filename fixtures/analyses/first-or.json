@@ -1,0 +1,13 @@
+{
+  "name": "first-or",
+  "hash": "775f5b2a57d77658a10e23842f4e59acd16e7963c3b268ed7ddf775a9c2b79e5",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "mutants_total": 1,
+  "level": "tested",
+  "cases": 200
+}

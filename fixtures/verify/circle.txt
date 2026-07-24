@@ -1,0 +1,2 @@
+✓ prop r5                       passed 200 cases
+✓ prop r10                      passed 200 cases
