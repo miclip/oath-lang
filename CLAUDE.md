@@ -103,8 +103,11 @@ every ambiguity found this way.
   compiled to native Go maps, differential-gated (#13).
 - `docs/discovery.md` — `oath find`: discovery by property content-hash, not
   name (spec-query, cross-type, proof-implication); the invariant that the
-  discovery layer never touches identity. `docs/tutorial/circle.md` — a worked
-  compiled example (reads a radius, prints circle area over exact ℚ).
+  discovery layer never touches identity; `docs/egraph.md` — semantic
+  canonicalization (body-equivalence via AC-normalization; type-directed).
+- `docs/tutorial/circle.md` — a worked compiled example (reads a radius, prints
+  circle area over exact ℚ); `docs/tutorial/discovery.md` — the four `find`
+  modes end to end (by example, fresh spec, proof-implication, e-graph).
 - `docs/experiments/` — split-agent, rematch, and flywheel writeups.
 - `oathrs/DIVERGENCES.md` — 60+ entries; the N-version findings record.
 - History of decisions lives in commit messages (deliberately detailed) and
