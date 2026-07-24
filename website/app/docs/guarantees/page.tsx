@@ -65,11 +65,15 @@ export default function Guarantees() {
 
       <h2>The standing caveat</h2>
       <p>
-        Z3 reasons over unbounded integers; the evaluator uses int64. A proof is valid{" "}
-        <em>modulo overflow</em>, and the corpus says so. Division and modulo stay
-        outside the proof fragment on purpose: the kernel truncates while SMT-LIB is
-        Euclidean, so a &quot;proof&quot; over division would certify the wrong
-        theorem.
+        Z3 reasons over unbounded integers, and the evaluator now matches it:{" "}
+        <code>Int</code> is arbitrary precision, so a proof carries no{" "}
+        <em>modulo overflow</em> asterisk. Integer division and modulo still stay
+        outside the proof fragment on purpose — the kernel truncates toward zero
+        while SMT-LIB integer division is Euclidean, so a &quot;proof&quot; over{" "}
+        <code>Int</code> division would certify the wrong theorem. Rational
+        division is different: <code>Rat</code> is exact ℚ, its <code>/</code> is
+        real division, and it translates faithfully to the <code>Real</code> sort —
+        so <code>(a/b)*b == a</code> is genuinely proven, not merely tested.
       </p>
 
       <h2>Four dimensions, not one</h2>

@@ -64,6 +64,20 @@ export default function Architecture() {
         not a defined answer int64 can&apos;t hold; it&apos;s an answer we compute. (A
         compiled program computing 10²⁴ prints the right number, not a wrapped one.)
       </p>
+      <p>
+        <code>Rat</code> is ℚ — exact, arbitrary-precision rationals. Decimal
+        literals like <code>0.1</code> and fractions like <code>1/2</code> are{" "}
+        <code>Rat</code>, so <code>0.1 + 0.2</code> is exactly <code>3/10</code>;
+        there is deliberately no <code>Float</code> and no rounding. This is the
+        same lens that made strings <em>structural</em>, pointed the other way.
+        Z3&apos;s sequence theory is <em>incomplete</em>, so <code>Str</code> is an
+        inductive datatype proven by induction; Z3&apos;s linear real arithmetic is{" "}
+        <em>complete</em>, so <code>Rat</code> stays a primitive that translates
+        straight to the <code>Real</code> sort. The payoff is that the algebraic
+        laws IEEE floats violate — associativity, distributivity, exact
+        division-inverse <code>(a/b)*b == a</code> — are <em>proven</em>, not merely
+        tested. Structure where the solver is weak; primitive where it is strong.
+      </p>
 
       <h2>Two kernels, one spec</h2>
       <p>

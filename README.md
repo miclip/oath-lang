@@ -112,6 +112,13 @@ Binders are explicitly annotated; type arguments may be omitted and are inferred
 (`length t`). Checking is bidirectional local synthesis — no full inference and
 no unification of two unknowns — small enough to audit.
 
+Numbers are exact. `Int` is ℤ (arbitrary precision — no overflow) and `Rat`
+is ℚ (arbitrary-precision rationals). Decimal literals like `0.1` and fractions
+like `1/2` are `Rat`, so `0.1 + 0.2` is exactly `3/10` — there is no `Float` and
+no rounding. Because Z3's real arithmetic is complete, the laws IEEE floats break
+are *proven*: `examples/rat.oath` proves rational associativity, distributivity,
+and exact division-inverse `(a/b)*b == a`.
+
 Strings are the ordinary `Str` datatype (a codepoint sequence, not a primitive —
 see `docs/structural-strings.md`); with structural records (`examples/records.oath`):
 
