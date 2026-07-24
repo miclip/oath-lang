@@ -36,7 +36,7 @@ TESTED_ONLY = rle-expand rle-decode e-mod e-div rot
 OATH = ./oath/oath
 AUTHOR ?= claude-main
 
-.PHONY: build verify prove mutate check fixtures
+.PHONY: build verify prove mutate check fixtures tutorials check-web-tutorials
 
 build:
 	cd oath && go build -o oath .
@@ -85,6 +85,20 @@ check-web-ledger:
 	@diff -q fixtures/prove/outcomes.json website/lib/outcomes.json >/dev/null \
 		&& echo "web ledger in sync ✓" \
 		|| { echo "ERROR: website/lib/outcomes.json drifted from fixtures/prove/outcomes.json — run 'make fixtures'"; exit 1; }
+
+# The website renders the tutorials from docs/tutorial/*.md (the single source),
+# copied verbatim into website/content/tutorials/ so the Vercel build (rooted at
+# website/) can read them. Regenerate after editing a tutorial; the guard fails
+# CI if the committed copies drift.
+tutorials:
+	@cp docs/tutorial/*.md website/content/tutorials/
+
+check-web-tutorials:
+	@for f in docs/tutorial/*.md; do \
+		diff -q "$$f" "website/content/tutorials/$$(basename $$f)" >/dev/null || \
+		{ echo "ERROR: website/content/tutorials/ drifted from docs/tutorial/ — run 'make tutorials'"; exit 1; }; \
+	done
+	@echo "web tutorials in sync ✓"
 
 # Playground compute engine (#34): compile the kernel to browser wasm, ship
 # Go's loader, and snapshot the committed store — the three derived assets the

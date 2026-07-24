@@ -1254,3 +1254,13 @@ pre,
     font-size: 22px;
   }
 }
+
+/* Tutorials index cards */
+.tut-list { display: grid; gap: 0.9rem; margin-top: 1.5rem; }
+.tut-card {
+  display: block; padding: 1rem 1.2rem; border: 1px solid var(--border, #2a2a2a);
+  border-radius: 10px; text-decoration: none; transition: border-color 0.15s, background 0.15s;
+}
+.tut-card:hover { border-color: var(--accent, #6ea8fe); background: rgba(110,168,254,0.05); }
+.tut-card h3 { margin: 0 0 0.3rem; }
+.tut-card p { margin: 0; opacity: 0.8; font-size: 0.95rem; }

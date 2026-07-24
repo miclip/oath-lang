@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { tutorials } from "@/lib/tutorials";
 
 const GROUPS: { title: string; links: { href: string; label: string }[] }[] = [
   {
@@ -16,6 +17,13 @@ const GROUPS: { title: string; links: { href: string; label: string }[] }[] = [
     links: [
       { href: "/docs/guarantees", label: "The guarantee ladder" },
       { href: "/docs/architecture", label: "Architecture" },
+    ],
+  },
+  {
+    title: "Tutorials",
+    links: [
+      { href: "/docs/tutorials", label: "All tutorials" },
+      ...tutorials.map((t) => ({ href: `/docs/tutorials/${t.slug}`, label: t.title })),
     ],
   },
   {
