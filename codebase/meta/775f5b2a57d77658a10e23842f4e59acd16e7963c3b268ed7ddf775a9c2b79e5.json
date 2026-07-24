@@ -1,0 +1,23 @@
+{
+  "name": "first-or",
+  "prop_names": [
+    "empty"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "mutants_total": 1,
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "d",
+    "xs"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

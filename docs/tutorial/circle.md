@@ -7,12 +7,12 @@ It's a small program that happens to touch the whole substrate: structural
 strings, the numeric tower (`Int`, exact `Rat`), the numeric conversions, and
 the native compiler.
 
-Source: [`circle.oath`](circle.oath).
+Source: [`../../examples/circle.oath`](../../examples/circle.oath).
 
 ## Run it
 
 ```console
-$ oath put docs/tutorial/circle.oath
+$ oath put examples/circle.oath
 $ oath build circle -o /tmp/circle
 $ /tmp/circle 5
 area(r=5) ~ 78
@@ -99,20 +99,22 @@ every `Str` is a native Go string and every `Rat` a `big.Rat`, so the compiled
 binary is ordinary fast native code — kept honest by the compiler's differential
 gate (compiled output must equal what `oath eval` produces).
 
-## Why this lives in `docs/tutorial/`, not `examples/`
+## A spec finding it surfaced (issue #64, now resolved)
 
-The curated `examples/` corpus doubles as the cross-kernel conformance suite,
-and this program deliberately steps onto a frontier that corpus avoids: it has
-proof properties (`circle`'s `r5`/`r10`) that transitively reference a
-`termination unproven`, division-using function (`show-int`). That combination
-surfaced a real ambiguity in how the two kernels generate proof *scripts* for
-such a goal — the reference (Go) kernel emits no direct-attempt script when
-eager body-translation reaches an excluded operator, while the independent
-(Rust) kernel emits one with the callee left uninterpreted. Both reach the same
-verdict (unprovable → the property stays `tested`), but the script bytes differ,
-which the byte-oracle conformance check flags.
+This program has proof properties (`circle`'s `r5`/`r10`) that transitively
+reference a `termination unproven`, division-using function (`show-int`). That
+combination exposed a real ambiguity in how the two kernels generate proof
+*scripts* for such a goal: per §7.2 a non-total callee like `show-nat` is left
+uninterpreted but its body is *eagerly translated* to discover its callees —
+and that eager translation reaches the excluded `/`/`%` operators. The reference
+(Go) kernel emitted no direct-attempt script in that case; the independent
+(Rust) kernel emitted one with the callee uninterpreted. Both reach the same
+verdict (unprovable → the property stays `tested`), but the script bytes
+differed, which the byte-oracle conformance check flagged.
 
-That's the N-version methodology doing its job — it's a finding, not a bug in
-this program — and it's tracked in issue #64 for a proper spec clarification.
-Until then, this tutorial stays out of the conformance corpus so the finding
-doesn't gate CI, while remaining a fully working, buildable example.
+That's the N-version methodology doing its job — a finding, not a bug in this
+program. It's now pinned in SPEC §7.2: when eager body translation reaches an
+excluded operator, no direct-attempt script is emitted (the property is recorded
+unprovable with no script — the same verdict an emitted script would give, since
+the callee is uninterpreted). Both kernels agree, and `circle` is a first-class
+member of the conformance corpus.

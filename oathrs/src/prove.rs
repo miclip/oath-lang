@@ -446,6 +446,17 @@ struct Cx<'a> {
     // quantified lemmas); a quantifier-free `sat` is a genuine refutation
     // (SPEC §7.2) and induction cannot add power.
     quantified: bool,
+    // SPEC §7.2 (#64): set true when EAGER body translation of a (recursive)
+    // callee reaches an operator EXCLUDED from translation (`/` or `%` over
+    // `Int`). Such a callee's body cannot be fully registered; the direct-attempt
+    // script is then NOT emitted for the property whose goal triggered it (the
+    // line is absent from prove/scripts.txt). Set at the excluded return points in
+    // `tr_prim`; consumed by `direct_script_opts`. An excluded op reached by INLINE
+    // instead fails the goal translation directly (`.ok()?` → None), so this flag
+    // only ever changes the outcome for the recursive eager-body case — the verdict
+    // is unchanged either way (the callee is uninterpreted, so the goal is
+    // `unknown` with or without an emitted script).
+    excluded_int_divmod: bool,
 }
 
 impl<'a> Cx<'a> {
@@ -458,6 +469,7 @@ impl<'a> Cx<'a> {
             axiom_order: Vec::new(),
             axiomatized: BTreeSet::new(),
             quantified: false,
+            excluded_int_divmod: false,
         }
     }
 
@@ -736,7 +748,10 @@ impl<'a> Cx<'a> {
         self_tyargs: &[Ty],
     ) -> Result<(String, Ty), ()> {
         if op == "%" {
-            return Err(()); // `%` over Int excluded: kernel truncates, SMT is Euclidean
+            // `%` over Int excluded: kernel truncates, SMT is Euclidean. `%` is
+            // Int-only in the fragment, so this is always the excluded case (§7.2 #64).
+            self.excluded_int_divmod = true;
+            return Err(());
         }
         // Translate operands, keeping each operand's SMT type. The numeric-
         // overloaded prims propagate the operand kind: `Int` stays `Int`, `Rat`
@@ -815,6 +830,10 @@ impl<'a> Cx<'a> {
         // `/` over `Int` is excluded (truncating vs Euclidean); `/` over `Rat` is
         // admitted — it is exact real division and translates faithfully (SPEC §7).
         if op == "/" && !is_rat {
+            // `/` over Int is excluded (only Rat/Float division is admitted, above).
+            // Mark it so eager registration of a recursive callee body that reaches
+            // it suppresses the direct-attempt script (§7.2 #64).
+            self.excluded_int_divmod = true;
             return Err(());
         }
         let num_ty = if is_rat { Ty::Rat } else { Ty::Int };
@@ -1152,6 +1171,15 @@ impl<'a> Prover<'a> {
             env.push((vname, bt.clone()));
         }
         let goal = cx.tr(&prop.body, &env, &[], def_hash, &[]).ok()?.0;
+        // SPEC §7.2 (#64): if eager body translation of a recursive callee reached
+        // an excluded Int `/`/`%` (so the callee could not be fully registered), no
+        // direct-attempt script is emitted — the property is recorded unprovable with
+        // no script and its line is absent from prove/scripts.txt. (An excluded op in
+        // the goal or an inlined callee already failed the `.ok()?` above; this
+        // catches the surviving-goal-but-unregistered-callee case.)
+        if cx.excluded_int_divmod {
+            return None;
+        }
         // Script layout: lemma asserts, binder declarations, then the goal.
         let mut tail = String::new();
         tail.push_str(&lem);

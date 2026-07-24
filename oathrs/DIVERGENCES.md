@@ -1710,3 +1710,49 @@ every finite binary64 is a dyadic rational; I decompose the IEEE fields exactly
 decomposition and floors toward −∞. NaN/±inf (`exp == 0x7FF`) yield the
 division-by-zero-style runtime error. Spec-determined, but recorded because it is
 entirely un-exercised by fixtures.
+
+## 80. Untranslatable EAGER callee body suppresses the direct SCRIPT (#64, §7.2) — RESOLVED
+
+**Status: RESOLVED.** A previously-latent script-generation divergence, now pinned
+normatively in §7.2 (the EAGER-registration paragraph, the new "excluded operator"
+sentences) and exercised by `examples/circle.oath`.
+
+### The gap
+§7.2 says registration is EAGER: every recursive callee is declared and its body
+translated at first touch, regardless of totality, so its own callees get declared
+too. What the prose did NOT originally pin is what happens when that eager body
+translation reaches an operator EXCLUDED from translation (`/` or `%` over `Int`):
+the callee's defining equation cannot be built. My kernel handled this by leaving
+the callee uninterpreted with no rollback (correct for the ASSERT — a non-total
+`show-*` recursing on `n / 10` stays uninterpreted anyway) — but it still went on
+to EMIT the direct-attempt script for any property whose goal merely *applies* that
+callee. The Go reference emits NONE: when eager body translation hits the excluded
+operator, the direct-attempt script is not emitted at all, and the property's line
+is ABSENT from `prove/scripts.txt`.
+
+The distinction is subtle because an excluded op reached by INLINE (a *non-recursive*
+callee such as `e-mod`/`e-div`, beta-reduced into the goal) already fails the goal
+translation directly, so its script was correctly absent all along. Only the
+*recursive* eager-body case (`show-nat` recurses on `n / 10`) survived goal
+translation with the callee left uninterpreted, and there my kernel wrongly emitted
+a script. `circle.oath` is the first corpus definition to exercise it: `show-nat`
+prop 0, `show-int` prop 0, and `circle` props 0 and 1 all reach `show-nat`'s excluded
+body through eager registration. My kernel emitted four extra script lines; those
+were the ONLY divergence (hashes, canonical bytes, and verify transcripts for circle
+already reproduced, since it is ordinary datatypes/defs).
+
+### The fix (aligned to the spec)
+A `Cx` flag `excluded_int_divmod` is set at the two `tr_prim` return points that
+exclude `/`/`%` over `Int`, and `direct_script_opts` returns `None` (no script) when
+it is set after building lemmas + goal. Because an excluded op reached by inline
+already fails the goal `.ok()?`, this flag only ever changes the outcome for the
+recursive eager-body case — matching the Go behavior of absence. The verdict is
+unchanged: the callee is uninterpreted, so the goal is `unknown` with or without an
+emitted script (`try_direct`'s `None` branch already maps to `Ok(Unknown)`). `/`/`%`
+over `Int` remain untranslated; `/` over `Rat` (`rat-recover`) and `/` over `Float`
+(`f-scale-inv`) are admitted and unaffected.
+
+**RESOLVED.** With `circle.oath` in the corpus, `conformance.sh` (oracle mode) is a
+full PASS: 324 direct-attempt scripts byte-identical to `fixtures/prove/scripts.txt`,
+the four `circle`/`show-nat`/`show-int` lines correctly absent, and checks 1-4
+(hashes, canonical, gate, verify) unchanged.

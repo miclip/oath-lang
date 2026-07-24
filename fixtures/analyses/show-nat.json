@@ -1,0 +1,13 @@
+{
+  "name": "show-nat",
+  "hash": "1d0a9ecfb0eab9baa4782839fac41b93f9490d6ac98cc04d3001555cc97e108c",
+  "kind": "func",
+  "termination": "unknown",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 4,
+  "mutants_total": 25,
+  "level": "tested",
+  "cases": 200
+}
