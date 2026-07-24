@@ -233,20 +233,28 @@ Oath is a synthesis, not an invention; the pieces have owners:
   runtime. This was the first `proven` fact to enter the metadata.
 - **No canonical binary encoding** — v0 hashes Go's deterministic JSON; a
   real spec must define encoding independent of any host language.
-- **No mutual recursion or effects; no IEEE floats — by choice, exact
-  rationals instead.** The effect/capability system is the next major design
-  piece. Numbers are settled: `Int` is ℤ (arbitrary precision) and `Rat` is ℚ
-  (arbitrary-precision exact rationals). There is deliberately no `Float` —
-  `0.1 + 0.2` is exactly `3/10`, and the algebraic laws IEEE floats violate
-  (associativity, distributivity, `(a/b)*b == a`) are proven, not merely
-  tested. This is the flip side of the strings decision and the same lens: put
-  a type where the solver is strong. Z3's sequence theory is INCOMPLETE, so
-  `Str` became a structural datatype to be proven inductively; Z3's linear real
-  arithmetic is COMPLETE, so `Rat` stays a primitive and translates straight to
-  the `Real` sort. Structure where the solver is weak, primitive where it is
-  strong. (Structural records landed after v0; strings are now the ordinary
-  `Str` datatype, not a primitive — see docs/structural-strings.md. Record
-  field names are semantic — part of the type and hash — but field order is
+- **No mutual recursion or effects.** The effect/capability system is the next
+  major design piece. Numbers, by contrast, are settled — three primitives,
+  chosen by the same lens: put a type where the solver is strong. `Int` is ℤ
+  (arbitrary precision); `Rat` is ℚ (arbitrary-precision exact rationals); and
+  `Float` is IEEE-754 binary64, for bit-level interop with the outside world.
+  The lens is completeness: Z3's sequence theory is INCOMPLETE, so `Str` became
+  a *structural* datatype proven by induction — while Z3's real (LRA) and float
+  (FPA) theories are both COMPLETE, so `Rat` and `Float` stay *primitive* and
+  translate straight to the `Real` and `Float64` sorts. Structure where the
+  solver is weak, primitive where it is strong. `Rat` and `Float` split the
+  numeric world cleanly: `0.1 + 0.2` is exactly `3/10` as a `Rat` (the clean
+  algebraic laws — associativity, distributivity, `(a/b)*b == a` — are proven),
+  while `0.1f + 0.2f` is the honest `0.30000000000000004f` as a `Float` (that
+  law is falsified, correctly — floats reach `proven` for their *true*
+  properties, like `x + x == x*2`, since FPA is decidable). The one subtlety
+  `Float` forces is identity: a content-addressed kernel needs one canonical
+  form, so a `Float` value IS its bit pattern (NaN canonicalized to one),
+  structural `==` is Leibniz equality (`NaN == NaN`, `+0.0 ≠ -0.0` — SMT `=`),
+  and IEEE's `fp.eq` is a separate opt-in primitive. See docs/floats.md.
+  (Structural records landed after v0; strings are now the ordinary `Str`
+  datatype, not a primitive — see docs/structural-strings.md. Record field
+  names are semantic — part of the type and hash — but field order is
   canonicalized away, like variable names before it.)
 - **e-graph canonicalization** (collapsing semantically-equivalent forms,
   not just alpha-equivalent ones) is future work.
@@ -265,9 +273,9 @@ Phases 1–3 are COMPLETE, beyond the original ambitions:
   fully PROVEN, insertion sort 7/7. The Rust kernel exists — built BLIND
   from docs/SPEC.md + fixtures by an agent that never saw the Go source,
   conforming byte-for-byte on all six checks, wasm32-ready. Effects
-  resolved by capability passing + state-as-data (docs/effects.md); IEEE
-  floats stay out by design (exact `Rat` covers the need); mutual recursion
-  remains out.
+  resolved by capability passing + state-as-data (docs/effects.md); the numeric
+  tower is complete — `Int` (ℤ), `Rat` (ℚ), and `Float` (IEEE-754); mutual
+  recursion remains out.
 - **Phase 3 ✓** — MCP over stdio and over HTTP with authenticated
   principals (the team store), spec-only context slices by token budget,
   and a repoint policy that makes authorship separation enforcement, not

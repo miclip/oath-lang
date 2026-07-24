@@ -114,12 +114,17 @@ Binders are explicitly annotated; type arguments may be omitted and are inferred
 (`length t`). Checking is bidirectional local synthesis — no full inference and
 no unification of two unknowns — small enough to audit.
 
-Numbers are exact. `Int` is ℤ (arbitrary precision — no overflow) and `Rat`
-is ℚ (arbitrary-precision rationals). Decimal literals like `0.1` and fractions
-like `1/2` are `Rat`, so `0.1 + 0.2` is exactly `3/10` — there is no `Float` and
-no rounding. Because Z3's real arithmetic is complete, the laws IEEE floats break
-are *proven*: `examples/rat.oath` proves rational associativity, distributivity,
-and exact division-inverse `(a/b)*b == a`.
+Three numeric primitives, chosen so the solver is always strong. `Int` is ℤ
+(arbitrary precision — no overflow); `Rat` is ℚ (arbitrary-precision exact
+rationals); `Float` is IEEE-754 binary64 (opt in with an `f` suffix: `0.1f`).
+A bare decimal like `0.1` is a `Rat`, so `0.1 + 0.2` is exactly `3/10` — no
+rounding — and `examples/rat.oath` proves rational associativity, distributivity,
+and exact division-inverse `(a/b)*b == a`. The same sum as `Float` is the honest
+`0.1f + 0.2f = 0.30000000000000004f`. Both theories (Z3's reals and floats) are
+complete, so both prove: `examples/float.oath` proves `x*1.0 == x` and `x+x ==
+x*2` for *every* float (including NaN/±inf/±0), while `0.1f + 0.2f == 0.3f` is
+correctly *falsified*. (`Float` identity is bitwise — `NaN == NaN`, `+0.0 ≠
+-0.0`; IEEE `fp.eq` is a separate primitive. See `docs/floats.md`.)
 
 Strings are the ordinary `Str` datatype (a codepoint sequence, not a primitive —
 see `docs/structural-strings.md`); with structural records (`examples/records.oath`):
