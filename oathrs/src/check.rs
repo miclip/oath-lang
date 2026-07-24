@@ -86,6 +86,7 @@ impl<'a> Checker<'a> {
                 Ok(ctx[n - 1 - *i as usize].clone())
             }
             Term::Int(_) => Ok(Ty::Int),
+            Term::Rat { .. } => Ok(Ty::Rat),
             Term::Bool(_) => Ok(Ty::Bool),
             Term::Lam { ty, a } => {
                 wf(self.store, ty, self.nvars, false, 0)?;
@@ -483,10 +484,24 @@ impl<'a> Checker<'a> {
     // Primitives — operands are CHECKED against their known operand type; `==`
     // synthesizes one operand and checks the other against it.
     // -----------------------------------------------------------------------
+    /// Fix the numeric kind of an overloaded arithmetic/ordering primitive
+    /// (SPEC §2.1) by SYNTHESIZING its first operand on a probe: the result must
+    /// be `Int` or `Rat`, otherwise the primitive is rejected.
+    fn numeric_kind(&self, first: &Term, ctx: &mut Vec<Ty>) -> Result<Ty, String> {
+        let mut probe = first.clone();
+        let mut pctx = ctx.clone();
+        match self.synth(&mut probe, &mut pctx)? {
+            Ty::Int => Ok(Ty::Int),
+            Ty::Rat => Ok(Ty::Rat),
+            _ => Err("arithmetic operand is neither Int nor Rat".into()),
+        }
+    }
+
     fn synth_prim(&self, op: &str, args: &mut [Term], ctx: &mut Vec<Ty>) -> Result<Ty, String> {
         let arity_err = |n: usize| format!("primitive {} takes {} operand(s)", op, n);
         match op {
-            "+" | "-" | "*" | "/" | "%" => {
+            // `%` is Int-only (it truncates); operands CHECK against `Int`.
+            "%" => {
                 if args.len() != 2 {
                     return Err(arity_err(2));
                 }
@@ -494,20 +509,38 @@ impl<'a> Checker<'a> {
                     self.check(a, &Ty::Int, ctx)?;
                 }
                 Ok(Ty::Int)
+            }
+            // `+ - * /` are NUMERIC-OVERLOADED over `Int` or `Rat` (SPEC §2.1):
+            // SYNTHESIZE the first operand to fix the numeric kind, reject if it
+            // is neither, then CHECK every operand against that same kind. The
+            // result is the operand kind (`/` means truncating int division over
+            // `Int`, exact real division over `Rat`).
+            "+" | "-" | "*" | "/" => {
+                if args.len() != 2 {
+                    return Err(arity_err(2));
+                }
+                let k = self.numeric_kind(&args[0], ctx)?;
+                for a in args.iter_mut() {
+                    self.check(a, &k, ctx)?;
+                }
+                Ok(k)
             }
             "neg" => {
                 if args.len() != 1 {
                     return Err(arity_err(1));
                 }
-                self.check(&mut args[0], &Ty::Int, ctx)?;
-                Ok(Ty::Int)
+                let k = self.numeric_kind(&args[0], ctx)?;
+                self.check(&mut args[0], &k, ctx)?;
+                Ok(k)
             }
+            // `< <=` are numeric-overloaded over `Int`|`Rat` but return `Bool`.
             "<" | "<=" => {
                 if args.len() != 2 {
                     return Err(arity_err(2));
                 }
+                let k = self.numeric_kind(&args[0], ctx)?;
                 for a in args.iter_mut() {
-                    self.check(a, &Ty::Int, ctx)?;
+                    self.check(a, &k, ctx)?;
                 }
                 Ok(Ty::Bool)
             }
@@ -583,7 +616,7 @@ fn match_ty(pat: &Ty, g: &Ty, s: &mut [Option<Ty>]) -> Result<(), String> {
         }
     }
     match (pat, g) {
-        (Ty::Int, Ty::Int) | (Ty::Bool, Ty::Bool) => Ok(()),
+        (Ty::Int, Ty::Int) | (Ty::Bool, Ty::Bool) | (Ty::Rat, Ty::Rat) => Ok(()),
         (Ty::Var(i), Ty::Var(j)) if i == j => Ok(()),
         (Ty::Fun(pa, pb), Ty::Fun(ga, gb)) => {
             match_ty(pa, ga, s)?;
@@ -690,7 +723,7 @@ fn check_record_names(names: &[String]) -> Result<(), String> {
 
 fn wf(store: &Store, ty: &Ty, nvars: u32, allow_rec: bool, rec_arity: u32) -> Result<(), String> {
     match ty {
-        Ty::Int | Ty::Bool => Ok(()),
+        Ty::Int | Ty::Bool | Ty::Rat => Ok(()),
         Ty::Var(i) => {
             if *i < nvars {
                 Ok(())
@@ -746,7 +779,7 @@ fn wf(store: &Store, ty: &Ty, nvars: u32, allow_rec: bool, rec_arity: u32) -> Re
 
 fn concrete(ty: &Ty) -> bool {
     match ty {
-        Ty::Int | Ty::Bool => true,
+        Ty::Int | Ty::Bool | Ty::Rat => true,
         Ty::Var(_) | Ty::Rec { .. } => false,
         Ty::Fun(a, b) => concrete(a) && concrete(b),
         Ty::Data { args, .. } => args.iter().all(concrete),

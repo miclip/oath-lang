@@ -16,9 +16,48 @@ pub enum Ty {
     Rec { args: Vec<Ty> },
     // names sorted ascending bytewise, unique; args parallel
     Record { names: Vec<String>, args: Vec<Ty> },
+    // `Rat` is ℚ — arbitrary-precision exact rationals (SPEC §3), tag 0x09.
+    Rat,
 }
 
-use num_bigint::{BigInt, Sign};
+use num_bigint::{BigInt, BigUint, Sign};
+
+/// Euclidean gcd of two magnitudes.
+fn gcd_biguint(mut a: BigUint, mut b: BigUint) -> BigUint {
+    let zero = BigUint::from(0u32);
+    while b != zero {
+        let r = &a % &b;
+        a = std::mem::replace(&mut b, r);
+    }
+    a
+}
+
+/// Reduce a rational to canonical form (SPEC §1.3): denominator positive
+/// (`≥ 1`) and coprime to the numerator, sign on the numerator, `0` as `0/1`.
+/// Returns `None` when the denominator is zero (not a valid rational).
+pub fn reduce_rat(num: BigInt, den: BigInt) -> Option<(BigInt, BigInt)> {
+    if den.sign() == Sign::NoSign {
+        return None;
+    }
+    // Move any sign onto the numerator: |den| is the working denominator.
+    let (num, den) = if den.sign() == Sign::Minus { (-num, -den) } else { (num, den) };
+    if num.sign() == Sign::NoSign {
+        return Some((BigInt::from(0), BigInt::from(1)));
+    }
+    let g = gcd_biguint(num.magnitude().clone(), den.magnitude().clone());
+    let g = BigInt::from_biguint(Sign::Plus, g);
+    Some((&num / &g, &den / &g))
+}
+
+/// A rational is in canonical (reduced) form iff its denominator is `≥ 1` and
+/// coprime to the numerator (SPEC §1.3). `0` must be `0/1`.
+fn is_reduced_rat(num: &BigInt, den: &BigInt) -> bool {
+    if den.sign() != Sign::Plus {
+        return false; // denominator must be ≥ 1 (positive, nonzero)
+    }
+    let one = BigUint::from(1u32);
+    gcd_biguint(num.magnitude().clone(), den.magnitude().clone()) == one
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Term {
@@ -26,6 +65,9 @@ pub enum Term {
     // `Int` is ℤ — arbitrary precision (SPEC §3). Encoded as `bigint` (§1.1).
     Int(BigInt),
     Bool(bool),
+    // `Rat` term (SPEC §1.2 tag 0x1F): reduced numerator/denominator `bigint`
+    // pair (den ≥ 1, gcd(|num|,den) = 1, sign on the numerator, 0 = 0/1).
+    Rat { num: BigInt, den: BigInt },
     // (tag 0x13 reserved — string literals now elaborate to `Str` ctor chains)
     Lam { ty: Ty, a: Box<Term> },
     App { a: Box<Term>, b: Box<Term> },
@@ -149,6 +191,7 @@ fn enc_ty(t: &Ty, out: &mut Vec<u8>) {
                 enc_ty(a, out);
             }
         }
+        Ty::Rat => out.push(0x09),
     }
 }
 
@@ -165,6 +208,11 @@ fn enc_term(t: &Term, out: &mut Vec<u8>) {
         Term::Bool(b) => {
             out.push(0x12);
             out.push(if *b { 0x01 } else { 0x00 });
+        }
+        Term::Rat { num, den } => {
+            out.push(0x1F);
+            put_bigint(out, num);
+            put_bigint(out, den);
         }
         Term::Lam { ty, a } => {
             out.push(0x14);
@@ -400,6 +448,7 @@ fn dec_ty(c: &mut Cur) -> Result<Ty, String> {
             check_ascending(&names)?;
             Ok(Ty::Record { names, args })
         }
+        0x09 => Ok(Ty::Rat),
         t => Err(format!("O1: unknown Ty tag 0x{:02x}", t)),
     }
 }
@@ -409,6 +458,19 @@ fn dec_term(c: &mut Cur) -> Result<Term, String> {
         0x10 => Ok(Term::Var(c.u32()?)),
         0x11 => Ok(Term::Int(c.bigint()?)),
         0x12 => Ok(Term::Bool(c.boolean()?)),
+        // `rat` (SPEC §1.2/§1.3): reduced numerator/denominator `bigint` pair.
+        // Strict decoders MUST reject a non-positive denominator or a
+        // non-coprime (non-canonical) pair — so equal rationals have one identity.
+        0x1F => {
+            let num = c.bigint()?;
+            let den = c.bigint()?;
+            if !is_reduced_rat(&num, &den) {
+                return Err(
+                    "O1: rat not in reduced form (den ≥ 1 and gcd(|num|,den) = 1 required)".into(),
+                );
+            }
+            Ok(Term::Rat { num, den })
+        }
         // 0x13 is RESERVED (was the string-literal term) — strict decoders reject.
         0x14 => {
             let ty = dec_ty(c)?;

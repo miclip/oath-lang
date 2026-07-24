@@ -1492,3 +1492,70 @@ fixtures pin it. Fixed to emit `mutants_killed` only when nonzero, which makes a
 128 analyses byte-identical. A third kernel would hit the same surprise the first
 time a re-seed produces a zero-kill score; the analyses-output format should be
 documented (which mutation fields are omitted at which zero).
+
+## 77. `Rat` primitive: generation draw-order was unspecified — RESOLVED
+
+**Status: RESOLVED.** The gap below was real; it is now closed by a normative
+`Rat` bullet added to SPEC §4 (immediately after the `Int` rule): *"draw the
+numerator `intIn(-8,8)`, then the denominator `intIn(1,5)` (numerator first), and
+reduce to lowest terms."* `gen.rs` was aligned to that exact draw order/ranges
+(previously this kernel had inferred a different scheme — Int-boundary numerator +
+`intIn(1,9)` denominator — which produced the same observable verdicts but NOT the
+same internal draw sequence). Both kernels now generate byte-for-byte identical
+`Rat` value streams, not merely identical observable outputs. The entry is kept as
+the record of the ambiguity that was found and fixed.
+
+**Found by:** blind implementation of the new `Rat` (ℚ, arbitrary-precision
+rationals) primitive from SPEC §1.1–1.5, §2, §3, §7.
+**Outcome: conformance passes (oracle mode: checks 1–4 + the 300-script byte
+oracle; rat proofs 2/2, 2/2, 1/1 and rat analyses byte-identical when re-derived
+in isolation). One genuine spec gap surfaced in §4 — since fixed.**
+
+Everything byte-observable about `Rat` is pinned and reproduced exactly:
+- Encoding: `Ty` tag `0x09`, `Term` tag `0x1F` = `bigint` numerator ++ `bigint`
+  denominator in reduced form (den ≥ 1, gcd(|num|,den)=1, sign on numerator,
+  0 = 0/1). The strict decoder REJECTS a non-positive denominator or a
+  non-coprime pair. Validated against `fixtures/encoding/negative_rat.bin`
+  (a func Def with body −7/4: `1f 01 00000001 07  00 00000001 04`).
+- Lexer: integer tried first, then `big.Rat`-style rational (decimal `3.14`/`0.1`
+  or fraction `num/den`, optionally signed), then symbol. The only rat literal in
+  the corpus is `0/1`.
+- Typing: `+ - * / neg < <=` numeric-overloaded over Int|Rat (synth the first
+  operand to fix the kind, then check both against it); `%` Int-only; `< <=`
+  return Bool; `/` truncating over Int, exact-real over Rat.
+- Dynamic: exact ℚ arithmetic, results re-reduced; printing in lowest terms
+  (den = 1 prints as a bare integer, else `num/den`).
+- SMT: `Rat → Real`; literal `num/den → (/ NUM DEN)` (negative numerator `(- N)`);
+  `/` over Real admitted, `/`,`%` over Int excluded. The three rat direct-attempt
+  scripts (`rat-add` 0/1, `rat-mul` 0/1, `rat-recover` 0) are byte-identical to
+  `fixtures/prove/scripts.txt`.
+
+### The gap: §4 does not define `Rat` value generation
+SPEC §4's "Generation by type — draw order is normative" enumerates `Int`, `Bool`,
+`Str`, `Int -> Int`, other function types, `Record`, and `Data`. It says nothing
+about `Rat`, yet the three rat properties are verified over **200 generated cases**
+and mutation-tested over **60**. So a conforming kernel MUST generate `Rat` values
+but has no normative draw order to follow.
+
+**Why it still conforms:** the generated values are unobservable in the fixtures.
+`verify/rat-*.txt` records only "passed 200 cases" (all three laws are true over ℚ,
+so any generator passes), and `analyses/rat-*.json` records only kill COUNTS, not
+values. The only value-sensitive requirement is that `rat-recover`'s if-branch-swap
+mutant (`(if (== b 0/1) (* (/ a b) b) a)`) be killed, which needs a case where
+`b = 0/1` (any other `b` makes the swapped body return `a`, agreeing with the law).
+
+**Resolution (implemented, now matches §4):** the normative rule is numerator
+`intIn(-8,8)` first, then denominator `intIn(1,5)`, reduced. Because the denominator
+range starts at 1 and the numerator range includes 0, `0/1` occurs within the 60
+mutation cases and `rat-recover`'s if-branch-swap mutant dies — so
+`analyses/rat-recover.json` re-derives byte-identically with `mutants_killed: 4`.
+
+*Historical note (the ambiguity that prompted the fix):* before §4 gained this
+bullet, its draw-order list enumerated Int/Bool/Str/functions/Record/Data only, so
+a conforming kernel had to generate `Rat` values with no normative guidance. The
+values are unobservable in the fixtures (verify records only pass counts, analyses
+only kill counts), so an inferred scheme reproduced the required COUNTS — but two
+independent kernels would silently disagree on the actual draw sequence. That is
+precisely the class of divergence N-version testing exists to catch: identical
+observable outputs masking non-identical semantics. Pinning the rule in §4 makes
+the two kernels' `Rat` generators bit-for-bit identical.

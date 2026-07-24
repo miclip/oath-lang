@@ -7,6 +7,9 @@ use num_bigint::BigInt;
 pub enum Sexpr {
     // `Int` is ℤ — arbitrary precision (SPEC §3).
     Int(BigInt),
+    // `Rat` is ℚ — held as an already-reduced numerator/denominator pair
+    // (SPEC §1.4: rational literals elaborate to reduced form).
+    Rat(BigInt, BigInt),
     Str(String),
     Sym(String),
     List(Vec<Sexpr>),
@@ -195,13 +198,91 @@ impl<'a> Reader<'a> {
         }
         let tok = String::from_utf8(buf)
             .map_err(|_| format!("line {}: invalid UTF-8 in token", self.line))?;
-        // A token that parses as an arbitrary-precision integer is an integer;
-        // otherwise a symbol. (`Int` is ℤ, so no i64 range limit.)
+        // Atom classification (SPEC §1.4), integer FIRST so `3` is an `int` not
+        // `3/1`: a decimal `big.Int` token is an `int`; otherwise a token that
+        // parses as a rational (`big.Rat` syntax — a decimal like `3.14`/`0.1`,
+        // or a fraction `num/den`, either optionally signed) is a `rat`,
+        // elaborated to reduced form; otherwise it is a symbol.
         if let Ok(n) = tok.parse::<BigInt>() {
             Ok(Sexpr::Int(n))
+        } else if let Some((num, den)) = parse_rational(&tok) {
+            Ok(Sexpr::Rat(num, den))
         } else {
             Ok(Sexpr::Sym(tok))
         }
+    }
+}
+
+/// Parse a `big.Rat`-style rational literal to reduced (numerator, denominator)
+/// form (SPEC §1.4). Accepts a fraction `num/den` (both optionally signed
+/// integers, denominator nonzero) or a decimal `[sign]int[.frac]` (e.g. `3.14`,
+/// `0.1`, `-2.5`). Returns `None` for anything else (which becomes a symbol).
+fn parse_rational(tok: &str) -> Option<(BigInt, BigInt)> {
+    if tok.is_empty() {
+        return None;
+    }
+    // Fraction form: exactly one '/'.
+    if let Some(slash) = tok.find('/') {
+        if tok[slash + 1..].contains('/') {
+            return None;
+        }
+        let num = parse_signed_int(&tok[..slash])?;
+        let den = parse_signed_int(&tok[slash + 1..])?;
+        return crate::ir::reduce_rat(num, den);
+    }
+    // Decimal form: an optional sign, integer digits, a single '.', frac digits.
+    // At least one digit must appear overall, and a '.' must be present (else the
+    // integer branch already handled it, or it is a symbol).
+    let dot = tok.find('.')?;
+    if tok[dot + 1..].contains('.') {
+        return None;
+    }
+    let (sign_neg, rest) = strip_sign(tok);
+    let rest_dot = rest.find('.')?;
+    let int_part = &rest[..rest_dot];
+    let frac_part = &rest[rest_dot + 1..];
+    if int_part.is_empty() && frac_part.is_empty() {
+        return None;
+    }
+    if !int_part.bytes().all(|b| b.is_ascii_digit())
+        || !frac_part.bytes().all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    // value = (int_part ++ frac_part) / 10^len(frac_part)
+    let digits = format!("{}{}", int_part, frac_part);
+    let mut num: BigInt = if digits.is_empty() {
+        BigInt::from(0)
+    } else {
+        digits.parse::<BigInt>().ok()?
+    };
+    if sign_neg {
+        num = -num;
+    }
+    let mut den = BigInt::from(1);
+    let ten = BigInt::from(10);
+    for _ in 0..frac_part.len() {
+        den *= &ten;
+    }
+    crate::ir::reduce_rat(num, den)
+}
+
+/// Parse an optionally-signed decimal integer (a fraction component).
+fn parse_signed_int(s: &str) -> Option<BigInt> {
+    if s.is_empty() {
+        return None;
+    }
+    s.parse::<BigInt>().ok()
+}
+
+/// Split a leading `+`/`-` sign, returning (is_negative, remainder).
+fn strip_sign(s: &str) -> (bool, &str) {
+    if let Some(r) = s.strip_prefix('-') {
+        (true, r)
+    } else if let Some(r) = s.strip_prefix('+') {
+        (false, r)
+    } else {
+        (false, s)
     }
 }
 
