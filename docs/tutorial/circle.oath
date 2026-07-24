@@ -1,0 +1,56 @@
+; A real program: read a radius from the command line and print the area of a
+; circle. It ties the whole substrate together — structural strings (Str), the
+; numeric tower (Int, exact Rat), the conversions (to-rat, floor), and the
+; native compiler (`oath build` lowers this to a standalone binary).
+;
+; pi is approximated by the rational 355/113 (correct to six decimals). The
+; intermediate area pi * r^2 is an EXACT rational — no floating-point drift — and
+; we floor it to a whole number of square units for display.
+;
+; Two honest halves worth noticing:
+;   * READING a number recurses on the STRING's structure — it is total.
+;   * WRITING a number recurses on n / 10 — integer division is outside the
+;     termination checker's measure fragment, so show-* is `termination unproven`.
+;     It runs correctly and its round-trip law is tested; certifying it is a
+;     real frontier, and the kernel says so rather than pretending.
+
+; --- reading a number: structural recursion on the string (TOTAL) ---
+(defn parse-nat-go [] [(acc Int) (s Str)] Int
+  (match s
+    ((SNil) acc)
+    ((SCons c rest) (parse-nat-go (+ (* 10 acc) (- c 48)) rest)))
+  (prop empty [(acc Int)] (== (parse-nat-go acc (SNil)) acc)))
+
+(defn parse-nat [] [(s Str)] Int
+  (parse-nat-go 0 s)
+  (prop reads-zero [] (== (parse-nat "0") 0))
+  (prop reads-42 [] (== (parse-nat "42") 42)))
+
+; --- writing a number: recursion on n / 10 (termination-unproven frontier) ---
+(defn show-nat [] [(n Int)] Str
+  (if (< n 10)
+      (SCons (+ 48 n) (SNil))
+      (str-append (show-nat (/ n 10)) (SCons (+ 48 (% n 10)) (SNil))))
+  (prop single-digit [(d Int)]
+    (if (< d 10) (if (<= 0 d) (== (str-len (show-nat d)) 1) true) true)))
+
+(defn show-int [] [(n Int)] Str
+  (if (< n 0) (SCons 45 (show-nat (neg n))) (show-nat n))
+  ; the round-trip law: writing then reading a natural is the identity. Tested
+  ; (it reasons through division, which the prover leaves uninterpreted).
+  (prop roundtrip [(n Int)] (if (<= 0 n) (== (parse-nat (show-int n)) n) true)))
+
+(defn first-or [] [(d Str) (xs (List Str))] Str
+  (match xs ((Nil) d) ((Cons h t) h))
+  (prop empty [(d Str)] (== (first-or d (Nil [Str])) d)))
+
+; --- the program: area = floor(pi * r^2), pi ~ 355/113, computed over exact ℚ ---
+(defn circle [] [(args (List Str))] Str
+  (let (r Int (parse-nat (first-or "0" args)))
+    (str-append
+      (str-append (str-append "area(r=" (show-int r)) ") ~ ")
+      (show-int (floor (* 355/113 (to-rat (* r r)))))))
+  (prop r5 [(x Int)]
+    (== (circle (Cons [Str] "5" (Nil [Str]))) "area(r=5) ~ 78"))
+  (prop r10 [(x Int)]
+    (== (circle (Cons [Str] "10" (Nil [Str]))) "area(r=10) ~ 314")))
