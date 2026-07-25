@@ -120,6 +120,11 @@ resource "google_cloud_run_v2_service" "server" {
         name  = "OATH_STORE"
         value = "/store"
       }
+      # Serialize mutable-store writes against the worker (shared gcsfuse store).
+      env {
+        name  = "OATH_STORE_LOCK"
+        value = "1"
+      }
       env {
         name  = "OATH_TOKENS_FILE"
         value = "/secrets/tokens/tokens.json"

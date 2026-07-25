@@ -175,6 +175,11 @@ func (s *Store) StoreObject(d *Def, m *Meta) (string, error) {
 // Repoint points name at h. Returns the previous hash ("" if the name is
 // new or already pointed at h).
 func (s *Store) Repoint(name, h string) (string, error) {
+	release, err := s.lockMutable()
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	names := s.Names()
 	prev := names[name]
 	names[name] = h
@@ -245,6 +250,11 @@ func (s *Store) GetMeta(h string) (*Meta, error) {
 // SetMeta rewrites a definition's metadata (names, guarantee). Metadata is
 // mutable precisely because it is not part of the definition's identity.
 func (s *Store) SetMeta(h string, m *Meta) error {
+	release, err := s.lockMutable()
+	if err != nil {
+		return err
+	}
+	defer release()
 	mb, _ := json.MarshalIndent(m, "", "  ")
 	if err := writeFileAtomic(filepath.Join(s.Root, "meta", h+".json"), mb, 0o644); err != nil {
 		return err
@@ -369,6 +379,14 @@ func chainAnchor(prior []byte) string {
 }
 
 func (s *Store) AppendLog(e *LogEntry) error {
+	// Serialize the read-prior→append critical section: the chain hash is
+	// computed from the current tail, so an interleaved append by another writer
+	// would fork the chain (#14). No-op unless OATH_STORE_LOCK is set.
+	release, err := s.lockMutable()
+	if err != nil {
+		return err
+	}
+	defer release()
 	e.Verifier = kernelVersion
 	e.Time = time.Now().UTC().Format(time.RFC3339)
 	prior, _ := os.ReadFile(s.logPath()) // absent → empty prefix, anchor = sha256("")

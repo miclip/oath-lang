@@ -36,6 +36,11 @@ resource "google_cloud_run_v2_job" "worker" {
           name  = "OATH_STORE"
           value = "/store"
         }
+        # Serialize mutable-store writes against the serve instance.
+        env {
+          name  = "OATH_STORE_LOCK"
+          value = "1"
+        }
         volume_mounts {
           name       = "store"
           mount_path = "/store"

@@ -82,6 +82,23 @@ jobs:
             -var "server_image=${IMAGE}" \
             -var "custom_domain=${{ vars.REGISTRY_DOMAIN }}"
 
+      - name: smoke test (endpoint actually serves)
+        working-directory: terraform
+        run: |
+          API="$(terraform output -raw api_url)"
+          echo "probing $API/mcp"
+          # GET /mcp must be the oath handler: 405 'POST only'. A 404/5xx means a
+          # broken image or a store it can't open — fail the deploy, don't call it
+          # green just because apply returned.
+          for i in $(seq 1 10); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$API/mcp" || true)"
+            echo "attempt $i: HTTP $code"
+            [ "$code" = "405" ] && { echo "healthy"; exit 0; }
+            sleep 6
+          done
+          echo "::error::registry did not return the expected 405 from /mcp after deploy"
+          exit 1
+
       - name: report endpoint
         working-directory: terraform
         run: |
