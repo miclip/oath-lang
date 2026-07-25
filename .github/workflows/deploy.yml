@@ -1,0 +1,91 @@
+# Deploy the Oath registry to GCP. Keyless auth via Workload Identity Federation
+# (no service-account key stored in GitHub). Triggered manually (type DEPLOY to
+# confirm) or by pushing a v* tag. The GCP side — project, billing, WIF, state
+# bucket, Artifact Registry — is stood up once by terraform/bootstrap/bootstrap.sh;
+# see docs/deploy.md.
+#
+# Required repo SECRETS:  GCP_PROJECT_ID, GCP_WIF_PROVIDER, GCP_DEPLOYER_SA,
+#                         TF_STATE_BUCKET
+# Optional repo VARIABLE: GCP_REGION (defaults to us-central1)
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type DEPLOY to confirm a billed deploy"
+        required: true
+        default: ""
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: deploy-registry
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # required for Workload Identity Federation
+
+jobs:
+  deploy:
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.confirm == 'DEPLOY' }}
+    runs-on: ubuntu-latest
+    env:
+      PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+      AR_REPO: oath
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: oath/go.mod
+
+      - name: kernel build + tests (don't ship a broken kernel)
+        run: cd oath && go build ./... && go test ./...
+
+      - id: auth
+        name: authenticate to GCP (keyless)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOYER_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: resolve image ref
+        run: echo "IMAGE=${REGION}-docker.pkg.dev/${PROJECT}/${AR_REPO}/oath:${GITHUB_SHA}" >> "$GITHUB_ENV"
+
+      - name: build + push image
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: terraform apply
+        working-directory: terraform
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="prefix=${AR_REPO}/state"
+          terraform apply -auto-approve -input=false \
+            -var "project_id=${PROJECT}" \
+            -var "region=${REGION}" \
+            -var "server_image=${IMAGE}"
+
+      - name: report endpoint
+        working-directory: terraform
+        run: |
+          echo "### Oath registry deployed :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- API: $(terraform output -raw api_url)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Store bucket: $(terraform output -raw store_bucket)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Worker Job: $(terraform output -raw worker_job)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Fetch the admin bearer token with: \`terraform -chdir=terraform output -raw admin_token\`" >> "$GITHUB_STEP_SUMMARY"

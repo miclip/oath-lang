@@ -1,10 +1,11 @@
-# CDN for the object store. Content-addressed objects never change, so they are
-# the ideal CDN case: an aggressive, effectively-permanent cache with global
-# reach and near-zero origin cost. This is the read path — the cheap one — and
-# it needs no trusted compute at all, because clients verify by hash.
+# CDN for immutable content-addressed objects: the ideal CDN case — an
+# aggressive, effectively-permanent cache, no trusted compute (clients verify by
+# hash). Gated off by default (var.objects_public = false) and disabled in v1.
 #
-# Only created when objects are public (var.objects_public). If reads go through
-# the API instead, delete this file.
+# CAUTION: in v1 the store bucket ALSO holds MUTABLE files (names.json,
+# log.jsonl, proofq/) behind the gcsfuse mount, and a 1-year TTL would serve
+# those stale. Only enable this once objects live in a SEPARATE immutable bucket
+# (the GCS object-store driver, #14) — not over the combined v1 store bucket.
 
 resource "google_compute_backend_bucket" "objects" {
   count       = var.objects_public ? 1 : 0
