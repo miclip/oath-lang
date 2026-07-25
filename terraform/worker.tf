@@ -20,6 +20,10 @@ resource "google_cloud_run_v2_job" "worker" {
       service_account       = google_service_account.server.email
       execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
       max_retries           = 1
+      # Proving is CPU-heavy and one tick should clear a big chunk of the queue
+      # (each proof is idempotent; --scan skips already-proven defs). A goal gets
+      # up to proveWallCap=600s, so allow several within one task.
+      timeout = "1800s"
 
       volumes {
         name = "store"
@@ -47,8 +51,8 @@ resource "google_cloud_run_v2_job" "worker" {
         }
         resources {
           limits = {
-            cpu    = "2"
-            memory = "1Gi"
+            cpu    = "4"
+            memory = "2Gi"
           }
         }
       }

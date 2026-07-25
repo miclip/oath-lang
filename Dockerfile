@@ -16,8 +16,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /out/oath .
 # ---- runtime: kernel + pinned z3 ----
 # Proof outcomes are solver-version-sensitive (SPEC §10.5); pin the SAME z3
 # 4.16.0 the conformance CI pins, so a deployed worker's verdicts match the
-# canonical fixtures.
-FROM debian:bookworm-slim AS runtime
+# canonical fixtures. The base MUST match that z3 build's glibc: the pinned
+# z3-…-glibc-2.39 binary needs glibc ≥ 2.39, so the runtime is ubuntu:24.04
+# (glibc 2.39, same as the CI runner) — on debian bookworm (glibc 2.36) z3
+# fails to execute and every proof aborts environmentally.
+FROM ubuntu:24.04 AS runtime
 ARG Z3_VERSION=4.16.0
 ARG Z3_DIST=z3-4.16.0-x64-glibc-2.39
 RUN apt-get update \
