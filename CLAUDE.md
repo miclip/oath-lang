@@ -10,10 +10,12 @@ the substrate is the product.
 
 ## State of the project
 
-- Two kernels: `oath/` (Go reference, ~7k lines, zero deps) and `oathrs/`
-  (independent Rust, built BLIND from the spec — see "The second kernel").
-  `docs/SPEC.md` is NORMATIVE — any change affecting hashes, verdicts, or
-  semantics MUST update it; identity is the O1 binary encoding (§1), and
+- Two kernels: `oath/` (Go reference, zero deps in the DEFAULT build — the
+  optional GCS+Postgres store backend adds a Postgres driver only under
+  `-tags cloud`; conformance/wasm/default builds stay dependency-free) and
+  `oathrs/` (independent Rust, built BLIND from the spec — see "The second
+  kernel"). `docs/SPEC.md` is NORMATIVE — any change affecting hashes, verdicts,
+  or semantics MUST update it; identity is the O1 binary encoding (§1), and
   encoding changes fork reality.
 - Guarantee system, all real and CI-guarded: asserted → tested
   (deterministic, hash-seeded) → PROVEN (Z3, direct + structural induction,
@@ -21,23 +23,47 @@ the substrate is the product.
   (lexicographic), confinement (closure-tracking), spec strength (mutation
   + justified waivers), provenance (append-only tamper-evident journal,
   authenticated principals on the HTTP store).
-- 33 definitions fully PROVEN (insertion sort 7/7, reverse-involution, the
-  KV world laws); honest exhibits remain deliberately: bad-reverse
-  (falsified), spin (termination unproven), abs-small (tested-but-refuted).
+- ~105 definitions fully PROVEN (insertion sort 7/7, reverse-involution, the
+  KV world laws, native set/map laws, queue/tree/interval); honest exhibits
+  remain deliberately: bad-reverse (falsified), spin (termination unproven),
+  abs-small (tested-but-refuted), and the SMT-incomplete/non-theorem defs stay
+  `tested`.
 - KEY OPERATIONAL FACT: mutation scores and waivers are structure×SEED
   facts (seeds derive from hashes) — never carry them across identity
   changes; `oath migrate-encoding` drops them by design. A fixture is only
   evidence once you know it was regenerated under the current identity.
 
+## The live registry (#14, closed)
+
+The public content-addressed registry is DEPLOYED and live at
+**registry.oath-lang.org** (GCP Cloud Run, deployed keyless from GitHub Actions;
+custom domain + managed TLS; see `docs/deploy.md`). What it runs:
+- **Signed puts** — Ed25519 signatures on journal entries (SPEC §8.4); a
+  principal is a keypair (`oath keygen`, `put --key`).
+- **Verification worker pool** — `oath prove-worker` proves `require_proven`
+  names out of band (SPEC §8.5); the bulk `--scan` proves the corpus in
+  dependency order, IN PARALLEL by dependency level (one z3 per core), gated on a
+  proof-state fingerprint so a settled corpus is a no-op. `docs/registry-verification.md`.
+- **Auth** — signature auth (`X-Oath-Pubkey`/`X-Oath-Signature`; the principal IS
+  the key) with capability-limited bearer tokens (read-only by default) for
+  MCP/AI clients; policy gains `owner_pubkey` (key-scoped names). `docs/registry-auth.md`.
+- **Store-driver seam** — Store runs over a pluggable `backend` (backend.go):
+  fs + in-memory (tested), and a GCS-objects + Postgres-index cloud backend
+  behind `-tags cloud` (CI-integration-tested, `oath migrate-store` + Terraform
+  wiring staged; the live cutover is deliberate — `docs/store-drivers.md`). The
+  live registry still runs the fs-over-gcsfuse store (single-instance).
+- **Release pipeline** — `git tag vX` cuts a GitHub Release of both kernels for
+  all platforms (`.github/workflows/release.yml`); deploy is manual (`deploy.yml`).
+
 ## Roadmap / backlog
 
-GitHub issues on miclip/oath-lang. ALL ENGINEERING ISSUES ARE CLOSED
-(as of 2026-07-15): team store & policy, six-check cross-kernel
-conformance + CI, O1 binary identity + migration, prover fixpoint +
-relevance filtering, fixture coverage, stateful worlds. Open: #13
-(compiler backend) and #14 (public registry) — research projects, each
-deserving a dedicated session. Read closed issues for the full history;
-commit messages carry the design reasoning.
+GitHub issues on miclip/oath-lang. Closed as of 2026-07: team store & policy,
+conformance + CI, O1 identity, prover fixpoint, stateful worlds, and #14 (the
+live registry above). Open research projects, each its own session: **#13**
+(compiler backend), **#65** (discovery roadmap), **#66** (delegated token minting
++ authorized-key registration gate — the registry's onboarding, deferred while
+contribution is open). Read closed issues + commit messages for the design
+reasoning.
 
 ## Working in this repo
 
@@ -108,6 +134,10 @@ every ambiguity found this way.
 - `docs/tutorial/circle.md` — a worked compiled example (reads a radius, prints
   circle area over exact ℚ); `docs/tutorial/discovery.md` — the four `find`
   modes end to end (by example, fresh spec, proof-implication, e-graph).
+- Registry (the #14 layer): `docs/deploy.md` — the GCP/CI deploy walkthrough;
+  `docs/registry-auth.md` — signatures-as-principals decision; `docs/registry-verification.md`
+  — the verification worker pool + async require_proven gate; `docs/store-drivers.md`
+  — the backend seam, GCS/Postgres drivers, and the cutover runbook.
 - `docs/experiments/` — split-agent, rematch, and flywheel writeups.
 - `oathrs/DIVERGENCES.md` — 60+ entries; the N-version findings record.
 - History of decisions lives in commit messages (deliberately detailed) and
