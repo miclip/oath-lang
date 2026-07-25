@@ -149,11 +149,49 @@ The seam makes this tractable without cloud dependencies:
 - A **differential test**: the same sequence of puts/proves/repoints against the
   fs store and a driver must produce identical `oath log`, `names`, and hashes.
 
-## Why staged, not shipped here
+## Status (what's built)
 
-The rewire touches the audit trail (`VerifyLog`'s byte-offset anchoring, the
-atomic-write path, the queue lease) — the one part of the system that is
-explicitly non-regenerable. It deserves the in-memory + testcontainer harness
-above as a safety net before it goes near a live journal, which is a focused
-effort, not a tail-end refactor. This document is the contract that makes that
-effort mechanical.
+- **Seam + fs + in-memory backends — shipped, tested** (`backend.go`). The whole
+  store suite runs backend-agnostic; a parity test proves fs and memory yield
+  byte-identical identity and a journal that verifies on both.
+- **GCS object backend — shipped, unit-tested** (`backend_cloud.go`, `-tags
+  cloud`). Immutable objects/meta over the GCS JSON REST API with metadata-server
+  auth; get/put/list round-trip tested against a fake GCS (httptest).
+- **Postgres index backend — shipped, compile-verified only.** Names, journal,
+  proof queue (`FOR UPDATE SKIP LOCKED`), and a cross-instance advisory lock, via
+  `database/sql`. **Not integration-tested against a live database in this repo**,
+  and it writes the non-regenerable journal — validate against a staging Postgres
+  before production. A known refinement: the seam's `readNames`/`writeNames` is a
+  whole-index replace, so the PG backend rewrites all names per repoint under the
+  advisory lock (correct, since the lock serializes cross-instance) rather than a
+  row-level transactional repoint; adding a `repointName` seam method is the
+  follow-on for finer concurrency.
+
+### Building and selecting it
+
+```sh
+go build -tags cloud -o oath .        # cloud driver compiled in (adds the pg driver dep)
+OATH_BACKEND=cloud \
+OATH_OBJECT_BUCKET=my-objects \
+OATH_DB_DSN='postgres://…' \
+OATH_DB_DRIVER=postgres \             # matches the registered database/sql driver
+  oath serve --http :8080
+```
+
+The default build (no `-tags cloud`) is unchanged and zero-dependency;
+`OATH_BACKEND=cloud` errors there rather than silently falling back. The
+deployment image adds a driver via a blank import in a `//go:build cloud` file it
+supplies, e.g. `import _ "github.com/lib/pq"` (kept out of this repo so the tree
+stays dependency-free; the driver name in `OATH_DB_DRIVER` must match).
+
+## Still to do
+
+- Integration-test the Postgres backend (testcontainer) and run the store suite
+  through it, plus an fs-vs-pg differential.
+- `oath migrate-store` (design above) to backfill an fs store into GCS + Postgres.
+- The `repointName` transactional-seam refinement, then drop the serve
+  single-instance cap (`min=0, max=N`) and wire the serve container to the DB.
+
+The audit trail (`VerifyLog`'s byte anchoring, the queue lease) is the reason the
+Postgres path stays opt-in until it has the testcontainer harness — a focused
+effort, guided by this contract, not a silent prod cutover.

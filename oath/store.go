@@ -36,7 +36,22 @@ type Store struct {
 // their entries. Passing nil clears it (back to unattributed).
 func (s *Store) SetSigner(priv ed25519.PrivateKey) { s.signer = priv }
 
+// cloudBackendOpener is installed by the cloud-tagged build (backend_cloud.go).
+// It stays nil in the default zero-dependency build, so OATH_BACKEND has no
+// effect unless the binary was built with `-tags cloud`.
+var cloudBackendOpener func() (backend, string, error)
+
 func OpenStore(root string) (*Store, error) {
+	if os.Getenv("OATH_BACKEND") == "cloud" {
+		if cloudBackendOpener == nil {
+			return nil, fmt.Errorf("OATH_BACKEND=cloud but this binary was built without the cloud driver (build with -tags cloud)")
+		}
+		be, label, err := cloudBackendOpener()
+		if err != nil {
+			return nil, err
+		}
+		return newStoreWithBackend(be, label)
+	}
 	be, err := openFSBackend(root)
 	if err != nil {
 		return nil, err
