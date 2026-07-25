@@ -24,6 +24,11 @@ output "objects_cdn_ip" {
   value       = var.objects_public ? google_compute_global_address.objects[0].address : ""
 }
 
+output "custom_domain_dns" {
+  description = "DNS records to add at the parent domain's host to activate the custom domain. Empty when custom_domain is unset."
+  value       = var.custom_domain == "" ? [] : google_cloud_run_domain_mapping.registry[0].status[0].resource_records
+}
+
 output "db_connection_name" {
   description = "Cloud SQL connection name, when enable_database = true. Empty otherwise."
   value       = var.enable_database ? google_sql_database_instance.index[0].connection_name : ""

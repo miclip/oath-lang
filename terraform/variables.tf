@@ -26,6 +26,12 @@ variable "objects_public" {
   default     = false
 }
 
+variable "custom_domain" {
+  type        = string
+  description = "Custom domain to map to the serve service (e.g. registry.oath-lang.org). Empty = use the run.app URL only. Requires the PARENT domain (oath-lang.org) verified for this project in Google Search Console first; apply fails otherwise."
+  default     = ""
+}
+
 variable "worker_schedule" {
   type        = string
   description = "Cron schedule for the proof worker Job (Cloud Scheduler). Drains the queue and binds require_proven names."

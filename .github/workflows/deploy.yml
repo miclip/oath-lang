@@ -79,7 +79,8 @@ jobs:
           terraform apply -auto-approve -input=false \
             -var "project_id=${PROJECT}" \
             -var "region=${REGION}" \
-            -var "server_image=${IMAGE}"
+            -var "server_image=${IMAGE}" \
+            -var "custom_domain=${{ vars.REGISTRY_DOMAIN }}"
 
       - name: report endpoint
         working-directory: terraform
@@ -91,3 +92,12 @@ jobs:
           echo "- Worker Job: $(terraform output -raw worker_job)" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Fetch the admin bearer token with: \`terraform -chdir=terraform output -raw admin_token\`" >> "$GITHUB_STEP_SUMMARY"
+          # If a custom domain is mapped, print the DNS record(s) to add.
+          DNS="$(terraform output -json custom_domain_dns 2>/dev/null || echo '[]')"
+          if [ "$DNS" != "[]" ] && [ -n "$DNS" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Custom domain — add these DNS records at oath-lang.org's host:**" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "$DNS" | jq -r '.[] | "\(.type)\t\(.name)\t\(.rrdata)"' >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi

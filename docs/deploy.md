@@ -83,6 +83,40 @@ curl -s "$API/mcp" -H "Authorization: Bearer $TOKEN" \
 Put a definition, then watch the worker prove a `require_proven` name on the next
 tick (`oath log` shows `pending → prove → put/accepted`).
 
+## Custom domain (e.g. registry.oath-lang.org)
+
+The `run.app` URL works as-is; this maps a vanity domain onto it with a
+Google-managed TLS cert. One-time:
+
+1. **Verify the parent domain** for the project. In
+   [Google Search Console](https://search.google.com/search-console), verify
+   ownership of `oath-lang.org` (add the TXT record it gives you at your DNS
+   host), then in the GCP console add the project's deployer as a verified owner.
+   Without this, the domain mapping fails to create.
+
+2. **Point CI at the domain** — set a repo variable:
+
+   ```sh
+   gh variable set REGISTRY_DOMAIN --body registry.oath-lang.org
+   ```
+
+3. **Re-run the deploy.** Terraform creates the mapping and the run summary
+   prints the DNS record to add (a `CNAME` to `ghs.googlehosted.com` for a
+   subdomain). Also available any time:
+
+   ```sh
+   terraform -chdir=terraform output -json custom_domain_dns
+   ```
+
+4. **Add that record** at whatever hosts `oath-lang.org` DNS (your registrar or
+   Vercel's DNS — the site itself stays on Vercel; this is just a new subdomain
+   record). The cert provisions in ~15 min, then `https://registry.oath-lang.org`
+   is live.
+
+> Cloud Run managed domain mappings are regional and simple; for multi-region or
+> heavier routing, the scale-up path is a global HTTPS load balancer with a
+> serverless NEG (more Terraform, not needed for v1).
+
 ## Turning on signed verdicts (optional)
 
 By default the worker records proofs **unsigned** (still fully re-verifiable). To
