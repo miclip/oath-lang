@@ -48,8 +48,11 @@ the store is the audit trail and is not regenerable.
 1. **Single instance.** The filesystem store over gcsfuse has one safe writer, so
    the serve service is pinned to `min=max=1` and the worker runs briefly out of
    band. Real, persistent, low-traffic — not multi-instance. Multi-instance is
-   the Postgres name-index + GCS object-store drivers (`enable_database` + #14);
-   the config is built so that is a driver change, not a re-architecture.
+   the Postgres name-index + GCS object-store drivers (`enable_database` + #14) —
+   designed in [`docs/store-drivers.md`](../docs/store-drivers.md): a byte-level
+   backend seam, GCS for immutable objects, transactional Postgres for the name
+   index + journal + proof queue. The config is built so that is a driver change,
+   not a re-architecture.
 2. **gcsfuse durability, not transactions.** Writes persist to GCS, but gcsfuse
    rename is copy-then-delete, not atomic. Two writers (serve + a worker tick
    overlapping) can in principle race the journal/index. Low-traffic v1 keeps the
