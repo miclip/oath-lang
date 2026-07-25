@@ -39,7 +39,7 @@ func TestStoreLockStaleBreak(t *testing.T) {
 	t.Setenv("OATH_STORE_LOCK", "1")
 	st := newStore(t)
 
-	release, err := st.lockMutable()
+	release, err := st.be.lock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestStoreLockStaleBreak(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	release2, err := st.lockMutable() // must break the stale lock, not time out
+	release2, err := st.be.lock() // must break the stale lock, not time out
 	if err != nil {
 		t.Fatalf("stale lock not broken: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestStoreLockDisabledIsNoOp(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(st.Root, ".lock"), []byte("stale"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	release, err := st.lockMutable()
+	release, err := st.be.lock()
 	if err != nil {
 		t.Fatalf("disabled lock returned error: %v", err)
 	}

@@ -34,14 +34,14 @@ const (
 
 func storeLockEnabled() bool { return os.Getenv("OATH_STORE_LOCK") != "" }
 
-// lockMutable acquires the store's write lock and returns a release func. When
-// locking is disabled it is a no-op. The returned release is always safe to
-// call (idempotent enough for a defer).
-func (s *Store) lockMutable() (func(), error) {
+// fsFileLock acquires the filesystem store's write lock and returns a release
+// func. When locking is disabled it is a no-op. The returned release is always
+// safe to call (idempotent enough for a defer). Used by fsBackend.lock.
+func fsFileLock(root string) (func(), error) {
 	if !storeLockEnabled() {
 		return func() {}, nil
 	}
-	path := filepath.Join(s.Root, ".lock")
+	path := filepath.Join(root, ".lock")
 	deadline := time.Now().Add(storeLockTimeout)
 	for {
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
