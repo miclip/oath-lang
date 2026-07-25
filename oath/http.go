@@ -74,7 +74,32 @@ func loadTokens(path string) (map[string]tokenEntry, error) {
 	return m, nil
 }
 
-func cmdServeHTTP(st *Store, addr, tokensPath string) {
+// loadAuthorizedKeys reads a JSON array of hex Ed25519 pubkeys — the write
+// allowlist (#66). Empty path → nil, meaning open contribution.
+func loadAuthorizedKeys(path string) (map[string]bool, error) {
+	if path == "" {
+		return nil, nil
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var keys []string
+	if err := json.Unmarshal(b, &keys); err != nil {
+		return nil, fmt.Errorf("corrupt authorized-keys file: %w", err)
+	}
+	set := map[string]bool{}
+	for _, k := range keys {
+		k = strings.TrimSpace(k)
+		if _, err := hex.DecodeString(k); err != nil || len(k) != ed25519.PublicKeySize*2 {
+			return nil, fmt.Errorf("authorized-keys: %q is not a 32-byte hex pubkey", k)
+		}
+		set[k] = true
+	}
+	return set, nil
+}
+
+func cmdServeHTTP(st *Store, addr, tokensPath, authKeysPath string) {
 	// Two ways to authenticate a principal, and a request needs exactly one:
 	//   - SIGNATURE (the real one, #14): X-Oath-Pubkey + X-Oath-Signature, an
 	//     Ed25519 signature over the raw request body. The principal IS the key —
@@ -84,12 +109,21 @@ func cmdServeHTTP(st *Store, addr, tokensPath string) {
 	//     clients that cannot sign. Only active when --tokens is given.
 	// An unauthenticated store is still impossible: with no token file and no
 	// valid signature, every request 401s.
+	//
+	// --authorized-keys is the OPTIONAL registration gate (#66): a JSON array of
+	// hex pubkeys allowed to WRITE. Empty/absent → open contribution (any signer
+	// may write). When set, an unlisted key still authenticates and READS, but its
+	// writes are refused — reads stay open (the store is public, re-verifiable).
 	var tokens map[string]tokenEntry
 	if tokensPath != "" {
 		var err error
 		if tokens, err = loadTokens(tokensPath); err != nil {
 			fail(err)
 		}
+	}
+	authKeys, err := loadAuthorizedKeys(authKeysPath)
+	if err != nil {
+		fail(err)
 	}
 	mux := http.NewServeMux()
 	// A human hitting the root gets a plain-text banner, not a 404 — the URL is
@@ -112,7 +146,7 @@ func cmdServeHTTP(st *Store, addr, tokensPath string) {
 			http.Error(w, "bad body", http.StatusBadRequest)
 			return
 		}
-		principal, canWrite, ok := authenticatePrincipal(r, body, tokens)
+		principal, canWrite, ok := authenticatePrincipal(r, body, tokens, authKeys)
 		if !ok {
 			http.Error(w, "unauthenticated: present a valid X-Oath-Signature over the body, or a known bearer token", http.StatusUnauthorized)
 			return
@@ -130,7 +164,11 @@ func cmdServeHTTP(st *Store, addr, tokensPath string) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	})
-	fmt.Printf("oath team store: http://%s/mcp (signature auth always on; %d bearer principals; store %s)\n", addr, len(tokens), st.Root)
+	gate := "open contribution"
+	if authKeys != nil {
+		gate = fmt.Sprintf("%d authorized writer key(s)", len(authKeys))
+	}
+	fmt.Printf("oath team store: http://%s/mcp (signature auth always on; %d bearer principals; %s; store %s)\n", addr, len(tokens), gate, st.Root)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		fail(err)
 	}
@@ -145,7 +183,7 @@ func cmdServeHTTP(st *Store, addr, tokensPath string) {
 // authenticatePrincipal returns (principal, canWrite, ok). A key-holder who
 // signs gets full capability; a bearer token gets only what it was granted
 // (read-only by default). A present-but-invalid signature is a hard rejection.
-func authenticatePrincipal(r *http.Request, body []byte, tokens map[string]tokenEntry) (string, bool, bool) {
+func authenticatePrincipal(r *http.Request, body []byte, tokens map[string]tokenEntry, authKeys map[string]bool) (string, bool, bool) {
 	pubHex := r.Header.Get("X-Oath-Pubkey")
 	sigHex := r.Header.Get("X-Oath-Signature")
 	if pubHex != "" || sigHex != "" {
@@ -154,8 +192,11 @@ func authenticatePrincipal(r *http.Request, body []byte, tokens map[string]token
 		if perr != nil || serr != nil || len(pub) != ed25519.PublicKeySize || !ed25519.Verify(ed25519.PublicKey(pub), body, sig) {
 			return "", false, false
 		}
-		// The principal IS the key (docs/registry-auth.md); key-holders may write.
-		return pubHex, true, true
+		// The principal IS the key (docs/registry-auth.md). Writes are open unless
+		// a registration allowlist is set, in which case only listed keys may write
+		// (#66); an unlisted key still authenticates and reads.
+		canWrite := authKeys == nil || authKeys[pubHex]
+		return pubHex, canWrite, true
 	}
 	if token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
 		if entry, ok := tokens[token]; ok {

@@ -74,6 +74,14 @@ token auth, so a forged key can't be laundered into a token principal. An
 unauthenticated store remains impossible: with no token file and no valid
 signature, every request 401s. (docs/registry-auth.md)
 
+**Registration gate (`--authorized-keys`, #66).** Optionally restrict *who may
+write*: `oath serve --authorized-keys <file>` (or `OATH_AUTHORIZED_KEYS`), a JSON
+array of hex pubkeys. When set, only a listed key may write — an unlisted key
+still authenticates and READS (the store is public, re-verifiable), but its writes
+are refused. Absent/empty = open contribution (any signer writes), the default.
+This is the gate half of #66; delegated token minting (a key issuing scoped,
+expiring tokens for its agents) is the other half, still open.
+
 **Bearer tokens are capability-limited.** A token is read-only by default: it can
 read, discover, and re-verify, but the state-changing tools — `put` (authors
 objects, moves names) and `cross --record` — are refused unless the token is

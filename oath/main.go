@@ -272,7 +272,7 @@ func main() {
 		}
 		cmdProve(st, args[1])
 	case "serve":
-		httpAddr, tokensPath := "", ""
+		httpAddr, tokensPath, authKeysPath := "", "", os.Getenv("OATH_AUTHORIZED_KEYS")
 		rest := args[1:]
 		for i := 0; i < len(rest); i++ {
 			switch {
@@ -282,12 +282,15 @@ func main() {
 			case rest[i] == "--tokens" && i+1 < len(rest):
 				tokensPath = rest[i+1]
 				i++
+			case rest[i] == "--authorized-keys" && i+1 < len(rest):
+				authKeysPath = rest[i+1]
+				i++
 			default:
-				fail(fmt.Errorf("usage: oath serve [--http addr --tokens file]"))
+				fail(fmt.Errorf("usage: oath serve [--http addr --tokens file --authorized-keys file]"))
 			}
 		}
 		if httpAddr != "" {
-			cmdServeHTTP(st, httpAddr, tokensPath)
+			cmdServeHTTP(st, httpAddr, tokensPath, authKeysPath)
 		} else {
 			cmdServe(st)
 		}
