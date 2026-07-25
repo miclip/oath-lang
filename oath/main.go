@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const usage = `oath — a content-addressed, spec-carrying language kernel
@@ -18,6 +19,10 @@ usage:
                                       (--context: the context-hash the code was authored against;
                                        --key: Ed25519 private key — signs the journal entry, pubkey = principal)
   oath keygen [--out <prefix>]        generate an Ed25519 signing keypair (<prefix>.key + <prefix>.pub)
+  oath prove-worker [--scan] [--once] [--key <file>] [--interval D] [--lease D]
+                                      drain the proof queue: SMT-prove queued objects out of band,
+                                      bind require_proven names once proven (#14). --scan seeds the
+                                      queue from every tested-but-unproven def; --key signs verdicts
   oath log [name]                     append-only submission journal (all attempts, incl. rejections)
   oath ls                             list named definitions and their guarantees
   oath get <name>                     print the human projection of a definition
@@ -120,6 +125,48 @@ func main() {
 			}
 		}
 		cmdKeygen(prefix)
+	case "prove-worker":
+		o := proveWorkerOpts{author: os.Getenv("OATH_AUTHOR")}
+		keyFile := os.Getenv("OATH_KEY")
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			switch {
+			case rest[i] == "--scan":
+				o.scan = true
+			case rest[i] == "--once":
+				o.once = true
+			case rest[i] == "--key" && i+1 < len(rest):
+				keyFile = rest[i+1]
+				i++
+			case rest[i] == "--author" && i+1 < len(rest):
+				o.author = rest[i+1]
+				i++
+			case rest[i] == "--interval" && i+1 < len(rest):
+				d, derr := time.ParseDuration(rest[i+1])
+				if derr != nil {
+					fail(fmt.Errorf("--interval: %w", derr))
+				}
+				o.interval = d
+				i++
+			case rest[i] == "--lease" && i+1 < len(rest):
+				d, derr := time.ParseDuration(rest[i+1])
+				if derr != nil {
+					fail(fmt.Errorf("--lease: %w", derr))
+				}
+				o.leaseTTL = d
+				i++
+			default:
+				fail(fmt.Errorf("prove-worker: unexpected argument %q", rest[i]))
+			}
+		}
+		if keyFile != "" {
+			priv, pub := loadSigningKey(keyFile)
+			st.SetSigner(priv)
+			if o.author == "" {
+				o.author = pub
+			}
+		}
+		cmdProveWorker(st, o)
 	case "log":
 		filter := ""
 		if len(args) > 1 {
@@ -323,7 +370,7 @@ type putReport struct {
 	Name        string     `json:"name"`
 	Hash        string     `json:"hash,omitempty"`
 	Kind        string     `json:"kind"`
-	Status      string     `json:"status"` // accepted | falsified | rejected
+	Status      string     `json:"status"` // accepted | falsified | rejected | blocked | pending
 	Guarantee   string     `json:"guarantee,omitempty"`
 	Termination string     `json:"termination,omitempty"`
 	Confinement string     `json:"confinement,omitempty"`

@@ -1645,6 +1645,15 @@ func apiProve(st *Store, name string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("no definition named %q", name)
 	}
+	return apiProveHash(st, h, name)
+}
+
+// apiProveHash proves a specific object by hash, independent of any name. The
+// verification worker pool (#14) needs this: a `require_proven` name defers its
+// repoint, so while a job is pending the NAME still resolves to the previous
+// object — the proof must target the stored candidate hash, not the name.
+// `display` is used only for the human-readable report.
+func apiProveHash(st *Store, h string, display string) (string, error) {
 	d, err := st.GetDef(h)
 	if err != nil {
 		return "", err
@@ -1657,7 +1666,7 @@ func apiProve(st *Store, name string) (string, error) {
 		return "", err
 	}
 	if len(d.Props) == 0 {
-		return fmt.Sprintf("%s swears no properties — nothing to prove.\n", name), nil
+		return fmt.Sprintf("%s swears no properties — nothing to prove.\n", display), nil
 	}
 	if err := z3Available(); err != nil {
 		return "", err

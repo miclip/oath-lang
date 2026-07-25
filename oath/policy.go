@@ -29,6 +29,7 @@ type PolicyRule struct {
 	RequireTotal                bool     `json:"require_total,omitempty"`
 	ForbidFalsified             bool     `json:"forbid_falsified,omitempty"`
 	MinMutationScore            float64  `json:"min_mutation_score,omitempty"` // 0..1; runs the mutation engine if the object is unscored
+	RequireProven               bool     `json:"require_proven,omitempty"`     // name only binds once EVERY property is SMT-proven (#14)
 }
 
 type Policy struct {
@@ -145,6 +146,45 @@ func evalPolicy(st *Store, pol *Policy, name, h string, def *Def, specAuthor, bo
 		}
 	}
 	return true, ""
+}
+
+// isFullyProven reports whether every property of def carries an SMT proof. The
+// prover sets Guarantee.Level to "proven" iff all properties proved (prove.go),
+// but we also confirm the proof set is complete as defense in depth.
+func isFullyProven(m *Meta, def *Def) bool {
+	return m.Guarantee.Level == "proven" && len(m.ProvenProps) == len(def.Props) && len(def.Props) > 0
+}
+
+// provenGate is the asynchronous half of the repoint decision (#14). Because
+// proving is too heavy to run inside a put, a require_proven name cannot be
+// decided synchronously: the object is stored and its verdicts (tested,
+// termination, mutation) are known, but the PROOF is not. This returns one of:
+//
+//	"pass"    — no proof gate, or the object is already fully proven: bind now.
+//	"pending" — proof required and not yet earned, but attainable: defer the
+//	            bind, enqueue the object, let a worker prove and bind it later.
+//	"blocked" — proof required but unattainable: a falsified def can never prove,
+//	            and a def that swears no properties has nothing to prove.
+//
+// It runs AFTER evalPolicy's synchronous checks pass, so a pending job is only
+// ever enqueued for an object that already clears forbid_falsified /
+// require_total / min_mutation_score — no point proving something a synchronous
+// rule already rejects.
+func provenGate(pol *Policy, name string, m *Meta, def *Def) (state, reason string) {
+	rule := pol.ruleFor(name)
+	if rule == nil || !rule.RequireProven || def.K != "func" {
+		return "pass", ""
+	}
+	if isFullyProven(m, def) {
+		return "pass", ""
+	}
+	if m.Guarantee.Level == "falsified" {
+		return "blocked", "policy: this name requires proven properties; the definition is falsified and can never be proven"
+	}
+	if len(def.Props) == 0 {
+		return "blocked", "policy: this name requires proven properties; the definition swears none"
+	}
+	return "pending", "policy: this name requires proven properties; queued for the verification worker (name unchanged until proof lands)"
 }
 
 func orWord(s, fallback string) string {

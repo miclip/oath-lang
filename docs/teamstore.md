@@ -28,7 +28,8 @@ change the trust story:
       "require_authorship_separation": true,
       "require_total": true,
       "forbid_falsified": true,
-      "min_mutation_score": 0.8
+      "min_mutation_score": 0.8,
+      "require_proven": true
     }
   ]
 }
@@ -45,6 +46,11 @@ change the trust story:
 - `min_mutation_score` — spec strength floor, computed as (killed + waived)
   / total; the store runs the mutation engine on demand if the object is
   unscored. Waivers count because they carry recorded justification.
+- `require_proven` — every property must be SMT-proven. Unlike the others,
+  this is decided ASYNCHRONOUSLY: proving is too heavy to run inside a put,
+  so the name-bind is DEFERRED (journaled `pending`) and the object is queued
+  for `oath prove-worker`, which proves it out of band and binds the name once
+  every property proves. See `docs/registry-verification.md` and SPEC §8.5.
 
 ## Semantics worth knowing
 

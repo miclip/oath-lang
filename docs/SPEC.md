@@ -1227,7 +1227,7 @@ fixtures are external to the hashed definition.
 Append-only, one JSON object per line: `seq`, `time` (RFC3339 UTC),
 `author` (principal string, self-reported in local mode), `verifier`
 (kernel version string), `name`, `kind`, `status`
-(`accepted`|`falsified`|`rejected`|`blocked` (repoint refused by store policy; object stored, name unchanged)), `hash`, `prev` (on repoint), `error`,
+(`accepted`|`falsified`|`rejected`|`blocked` (repoint refused by store policy; object stored, name unchanged)|`pending` (repoint DEFERRED awaiting an out-of-band proof under a `require_proven` policy (§8.5); object stored, name unchanged until a verification worker resolves it to `accepted` or `blocked`)), `hash`, `prev` (on repoint), `error`,
 `guarantee`, `termination`, `context`, `pubkey` (optional; §8.2), `sig`
 (optional; §8.2), `chain`. Every submission attempt MUST
 be journaled, including gate rejections (which store no object). A cross-check
@@ -1270,7 +1270,11 @@ codebase/
   meta/<hash>.json      indented metadata JSON, two-space indent
   names.json            indented object mapping name -> current hash
   log.jsonl             append-only compact JSON log entries
+  proofq/<hash>.job     pending verification-worker jobs (§8.5); .lease when claimed
 ```
+
+`proofq/` is an optional work queue, not part of identity or the conformance
+corpus; a kernel without the async proof gate (§8.5) need not create it.
 
 Object filenames MUST match their hash, and a conforming reader MUST reject or
 at least report an object whose canonical bytes do not hash to the filename.
@@ -1391,6 +1395,42 @@ rejected, not treated as unattributed. Entries with neither field are
 unattributed and impose no signature obligation. This is metadata (never part of
 definition identity); the reference kernel key format is hex of the 64-byte
 Ed25519 private key (a 32-byte seed is also accepted) in a `.key` file.
+
+### 8.5 The async proof gate (require_proven)
+
+Every guarantee a repoint policy (§8.3 / the store policy model) enforces —
+`forbid_falsified`, `require_total`, `min_mutation_score` — is recomputed
+synchronously in the put path: the kernel re-runs the tests, termination, and (on
+demand) the mutation engine against the submitted object before deciding the
+name. **Proof is the exception.** SMT proving is unbounded work (§7.2) and cannot
+run inside a submission, so a `require_proven` rule cannot be decided
+synchronously.
+
+A `require_proven` rule therefore splits the repoint decision in two:
+
+1. At put time, after the synchronous policy checks pass, the object is stored
+   and its verdicts recorded, but if it is not already fully proven the name is
+   **not** moved. The attempt is journaled `pending` and the object hash is
+   enqueued for out-of-band proving. A def that can never be proven — one that is
+   `falsified`, or one that swears no properties — is journaled `blocked`
+   instead, not `pending`.
+2. A verification worker proves the queued object (deterministically — seeds
+   derive from the content hash and the solver is pinned, so any worker yields
+   the identical verdict). When every property proves, the worker re-checks the
+   synchronous policy and repoints the name, journaling `accepted` (a `put`-kind
+   entry with `prev`); the worker MAY sign this entry (§8.4), making the bound
+   `proven` badge an authenticated "the verifier re-proved this" rather than a
+   publisher's claim. If the object does not fully prove, the name stays put and
+   the attempt is journaled `blocked`. The worker also records the proof itself
+   as a `prove`-kind `accepted` entry.
+
+This is metadata mechanism, not identity: the queue, the `pending` state, and the
+worker are all outside the hashed `Def`. A kernel MAY omit the gate entirely
+(treating `require_proven` as unsupported); one that implements it MUST NOT bind a
+`require_proven` name to an object that is not fully proven. Because proofs are
+re-earned by whoever consumes the object, a consumer never has to trust that the
+worker actually proved anything — the gate is a convenience and a policy-
+enforcement tier, not a root of trust.
 
 ## 9. The hashed/metadata boundary
 

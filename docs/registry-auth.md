@@ -78,6 +78,12 @@ all historical provenance permanently weaker.
    tokens become an optional transport shim.
 4. `export`/`import`: carry and verify the signature end-to-end.
 
+Related substrate (built alongside this): the **verification worker pool** —
+`oath prove-worker` re-proves `require_proven` names out of band and signs the
+resulting `proven` verdict, so the badge is an authenticated "the verifier
+re-proved this" rather than a publisher's claim. See
+`docs/registry-verification.md` and SPEC §8.5.
+
 The verification model (re-prove locally) is unchanged — signatures add the
 authorship dimension on top of the hash and the proof. The hosted infrastructure
 (GCS objects, Cloud Run API, Cloud SQL name index + journal) is in

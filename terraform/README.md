@@ -20,10 +20,16 @@ and cheap:
 `terraform apply` also enables the needed APIs and wires a least-privilege
 service account for the server.
 
-Not included (yet): the **verification worker pool** (a CPU-heavy Cloud Run
-Jobs / queue tier that re-runs the gate + Z3 for policy enforcement and
-`find --implies`). Add it when the server enforces `forbid_falsified` /
-`require_total` server-side rather than trusting submitted verdicts.
+Not provisioned here (yet): the **verification worker pool** (a CPU-heavy Cloud
+Run Jobs / queue tier that re-runs Z3 for `require_proven` enforcement and
+`find --implies`). The *kernel* side of it is built — `oath prove-worker` drains
+a proof queue, proves out of band, and binds `require_proven` names once proven
+(SPEC §8.5); `docs/registry-verification.md` gives the design and how it maps
+onto a `proof_jobs` table in the Cloud SQL instance below plus a Cloud Run Jobs
+worker service. What's left is the Terraform for that Jobs service + table and
+the GCS/Postgres store drivers. (The other policy checks — `forbid_falsified`,
+`require_total`, `min_mutation_score` — are already recomputed synchronously in
+the put path, so they need no worker.)
 
 ## Apply
 

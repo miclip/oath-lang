@@ -107,6 +107,36 @@ func apiPut(st *Store, src string, author string, ctxHash string) ([]putReport, 
 			continue
 		}
 
+		// The asynchronous half: a require_proven name cannot bind until the
+		// object is SMT-proven, and proving is too heavy to run here. Defer the
+		// bind — store stays put, object is queued for the worker (#14).
+		gm, _ := st.GetMeta(h)
+		switch state, greason := provenGate(pol, meta.Name, gm, def); state {
+		case "blocked":
+			rep.Status = "blocked"
+			rep.Error = greason
+			_ = st.AppendLog(&LogEntry{
+				Author: author, Name: meta.Name, Kind: def.K, Status: "blocked",
+				Hash: h, Error: greason, Guarantee: rep.Guarantee, Termination: rep.Termination,
+				Context: ctxHash,
+			})
+			results = append(results, rep)
+			continue
+		case "pending":
+			rep.Status = "pending"
+			rep.Error = greason
+			if err := st.EnqueueProof(ProofJob{Hash: h, Name: meta.Name, Submitter: author, Gate: true}); err != nil {
+				return results, err
+			}
+			_ = st.AppendLog(&LogEntry{
+				Author: author, Name: meta.Name, Kind: def.K, Status: "pending",
+				Hash: h, Error: greason, Guarantee: rep.Guarantee, Termination: rep.Termination,
+				Context: ctxHash,
+			})
+			results = append(results, rep)
+			continue
+		}
+
 		prev, err := st.Repoint(meta.Name, h)
 		if err != nil {
 			return results, err
@@ -140,6 +170,9 @@ func renderPutReports(results []putReport) string {
 		case rep.Status == "blocked":
 			fmt.Fprintf(&b, "⛔ %-16s BLOCKED: %s\n", rep.Name, rep.Error)
 			fmt.Fprintf(&b, "    object stored as #%s (%s); the name still points at its previous version\n", shortHash(rep.Hash), rep.Guarantee)
+		case rep.Status == "pending":
+			fmt.Fprintf(&b, "⏳ %-16s PENDING PROOF: %s\n", rep.Name, rep.Error)
+			fmt.Fprintf(&b, "    object stored as #%s (%s); queued for `oath prove-worker` — the name binds once every property is proven\n", shortHash(rep.Hash), rep.Guarantee)
 		case rep.Kind == "data":
 			fmt.Fprintf(&b, "✓ %-16s #%s  data (%d constructors)%s\n", rep.Name, shortHash(rep.Hash), rep.Ctors, status)
 		default:
