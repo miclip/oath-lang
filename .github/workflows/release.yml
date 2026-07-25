@@ -1,0 +1,87 @@
+# Cut a release of both kernels on a version tag. The Go reference kernel (oath)
+# is pure, CGO-free Go, so it cross-compiles to every platform from one runner;
+# the independent Rust kernel (oathrs) is built natively per-OS. A final job
+# collects the archives, writes SHA256SUMS, and publishes a GitHub Release.
+#
+#   git tag v0.7.0 && git push origin v0.7.0
+#
+# (Version tags also trigger deploy.yml — a tag ships the registry and cuts the
+# release together; they're independent jobs.)
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  oath:
+    name: oath kernel (Go — all platforms)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: oath/go.mod
+      - name: test, then cross-compile + archive
+        run: |
+          cd oath && go test ./... && cd ..
+          mkdir -p dist
+          for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            os="${t%/*}"; arch="${t#*/}"; ext=""
+            [ "$os" = windows ] && ext=".exe"
+            ( cd oath && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+                go build -trimpath -ldflags "-s -w" -o "../dist/oath$ext" . )
+            tar -C dist -czf "dist/oath-${GITHUB_REF_NAME}-$os-$arch.tar.gz" "oath$ext"
+            rm -f "dist/oath$ext"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oath
+          path: dist/*.tar.gz
+
+  oathrs:
+    name: oathrs kernel (Rust — ${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-latest, label: linux-amd64 }
+          - { runner: macos-latest, label: darwin-arm64 }
+          - { runner: macos-13, label: darwin-amd64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: build + archive
+        run: |
+          cd oathrs && cargo build --release && cd ..
+          mkdir -p dist
+          tar -C oathrs/target/release -czf "dist/oathrs-${GITHUB_REF_NAME}-${{ matrix.label }}.tar.gz" oathrs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oathrs-${{ matrix.label }}
+          path: dist/*.tar.gz
+
+  release:
+    name: publish GitHub Release
+    needs: [oath, oathrs]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: checksums
+        run: cd dist && sha256sum *.tar.gz > SHA256SUMS
+      - name: create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
