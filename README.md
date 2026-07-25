@@ -289,10 +289,49 @@ from the bearer token, spoofed author fields are ignored — and a repoint
 policy (`<store>/policy.json`) that can require spec/body authorship
 separation, proven termination, and spec-strength floors before a *name*
 moves. Objects always store (content addressing); policy governs only what
-names point at, so a blocked submission leaves the previous version live. A
-public registry of shared verified definitions is the eventual third layer;
-content addressing means no namespace wars — names are local, hashes are
-universal.
+names point at, so a blocked submission leaves the previous version live.
+
+## The live registry
+
+The third layer is up: a public content-addressed registry at
+**[registry.oath-lang.org](https://registry.oath-lang.org)** — the same MCP
+surface over HTTPS, deployed to GCP straight from CI
+([docs/deploy.md](docs/deploy.md)). Content addressing means no namespace wars —
+names are local, hashes are universal.
+
+Authentication has two tiers, and you pick per name:
+
+- **Bearer token** — the standard MCP-over-HTTP auth, so off-the-shelf agent
+  clients (Claude and other MCP clients) connect the way they already do. Oath
+  is a substrate *for AI to use*, so this is a first-class path, not an
+  afterthought.
+- **Signature** — `X-Oath-Pubkey` + an Ed25519 signature over the request body;
+  the principal *is* the key. Unforgeable, offline-verifiable, no shared secret —
+  the host is not a root of trust. A present-but-invalid signature is rejected,
+  never downgraded to token auth.
+
+Capability follows the tier: a **bearer token is read-only by default** — it
+reads, discovers, and re-verifies, but `put` and other state changes need an
+explicitly write-scoped token or a signature. So a leaked read token can browse,
+never corrupt. And assurance is per-name: the repoint policy can reserve a name
+to a key (`owner_pubkey` — a token principal structurally can't satisfy it) and
+defer a name until every property is **machine-proven** (`require_proven`), which
+a background worker pool discharges out of band, signing each verdict. Generic
+agents read and discover over tokens; authorship and the names that matter are
+locked to keys and proofs.
+
+```sh
+# the server answers on /mcp (405 to GET confirms it's live):
+curl -s https://registry.oath-lang.org/mcp \
+  -H 'content-type: application/json' \
+  -H "X-Oath-Pubkey: $PUB" -H "X-Oath-Signature: $SIG" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+Nothing about it is a root of trust: every proof is re-earned by whoever consumes
+a definition, and the store is public, re-verifiable bytes. See
+[docs/registry-auth.md](docs/registry-auth.md) and
+[docs/registry-verification.md](docs/registry-verification.md).
 
 ## Layout
 

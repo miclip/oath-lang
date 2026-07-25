@@ -133,7 +133,7 @@ func mcpTools() []map[string]any {
 // mcpCallTool dispatches one tool call. principal, when non-empty, is an
 // AUTHENTICATED identity (HTTP transport) and overrides any client-supplied
 // author; the stdio transport passes "" (local trust, self-reported author).
-func mcpCallTool(st *Store, name string, args json.RawMessage, principal string) (string, error) {
+func mcpCallTool(st *Store, name string, args json.RawMessage, principal string, canWrite bool) (string, error) {
 	var a struct {
 		Names   []string `json:"names"`
 		Budget  int      `json:"budget"`
@@ -149,6 +149,13 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string)
 		if err := json.Unmarshal(args, &a); err != nil {
 			return "", fmt.Errorf("bad arguments: %w", err)
 		}
+	}
+	// Capability gate: state-changing tools require write. `put` authors objects
+	// and moves names; `cross --record` writes the journal. A read-only bearer
+	// token can still read, discover, and re-verify — just not author. Sign the
+	// request or use a write-scoped token. (#14)
+	if (name == "put" || (name == "cross" && a.Record)) && !canWrite {
+		return "", fmt.Errorf("principal %q is read-only: %q needs write capability — sign the request (X-Oath-Signature) or use a token with \"write\": true", principal, name)
 	}
 	switch name {
 	case "context":
@@ -228,7 +235,7 @@ func cmdServe(st *Store) {
 		if strings.HasPrefix(req.Method, "notifications/") {
 			continue
 		}
-		resp := handleRPC(st, &req, "")
+		resp := handleRPC(st, &req, "", true) // local stdio: the invoking user owns the store
 		reply(req.ID, resp.Result, resp.Error)
 	}
 }

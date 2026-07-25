@@ -23,8 +23,11 @@ resource "google_secret_manager_secret" "tokens" {
 
 resource "google_secret_manager_secret_version" "tokens" {
   secret = google_secret_manager_secret.tokens.id
+  # The initial admin is write-capable (it's the operator/bootstrap principal).
+  # Additional principals you add later default to READ-ONLY unless you set
+  # "write": true — a bearer token should not author or move names by default.
   secret_data = jsonencode({
-    (random_password.admin_token.result) = { principal = "admin" }
+    (random_password.admin_token.result) = { principal = "admin", write = true }
   })
 }
 

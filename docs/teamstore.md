@@ -62,13 +62,32 @@ change the trust story:
 - **Signature (the real one).** `X-Oath-Pubkey` + `X-Oath-Signature`: an Ed25519
   signature over the raw request body. The principal is the key — unforgeable,
   offline-checkable, no shared secret, and the server holds nothing. Always on.
-- **Bearer token (the shim).** A server-vouched principal for clients that can't
-  sign; only active when `--tokens` is given. Tokens are now optional.
+- **Bearer token.** A server-vouched principal — the standard MCP-over-HTTP auth,
+  so off-the-shelf agent/MCP clients (Oath is a substrate *for AI to use*)
+  connect the way they already do. First-class, not deprecated; only active when
+  `--tokens` is given. The trade-off is honest: a token is a shared secret and
+  the server vouches for it, so reserve names that matter to keys
+  (`owner_pubkey`), which a token principal can't satisfy.
 
 A present-but-invalid signature is rejected outright — it never falls through to
 token auth, so a forged key can't be laundered into a token principal. An
 unauthenticated store remains impossible: with no token file and no valid
 signature, every request 401s. (docs/registry-auth.md)
+
+**Bearer tokens are capability-limited.** A token is read-only by default: it can
+read, discover, and re-verify, but the state-changing tools — `put` (authors
+objects, moves names) and `cross --record` — are refused unless the token is
+granted `"write": true`. A signature always carries full capability (a key-holder
+authors as themselves). So a leaked read-only token can browse, never corrupt;
+writing needs either an explicitly write-scoped token or a signature. The tokens
+file:
+
+```json
+{
+  "<secret-token>": { "principal": "ci-bot", "write": true },
+  "<other-token>":  { "principal": "readonly-agent" }
+}
+```
 
 ## Semantics worth knowing
 
