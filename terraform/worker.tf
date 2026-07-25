@@ -48,9 +48,33 @@ resource "google_cloud_run_v2_job" "worker" {
           name  = "OATH_STORE_LOCK"
           value = "1"
         }
+        # Cloud backend env — present only when enable_database=true (cutover).
+        dynamic "env" {
+          for_each = local.cloud_env
+          content {
+            name  = env.value.name
+            value = env.value.secret == null ? env.value.value : null
+            dynamic "value_source" {
+              for_each = env.value.secret == null ? [] : [1]
+              content {
+                secret_key_ref {
+                  secret  = env.value.secret
+                  version = "latest"
+                }
+              }
+            }
+          }
+        }
         volume_mounts {
           name       = "store"
           mount_path = "/store"
+        }
+        dynamic "volume_mounts" {
+          for_each = var.enable_database ? [1] : []
+          content {
+            name       = "cloudsql"
+            mount_path = "/cloudsql"
+          }
         }
         resources {
           limits = {
@@ -60,6 +84,15 @@ resource "google_cloud_run_v2_job" "worker" {
             # fails to exec and every proof aborts — see Dockerfile.
             cpu    = "4"
             memory = "16Gi"
+          }
+        }
+      }
+      dynamic "volumes" {
+        for_each = var.enable_database ? [1] : []
+        content {
+          name = "cloudsql"
+          cloud_sql_instance {
+            instances = local.cloud_sql_instances
           }
         }
       }

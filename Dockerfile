@@ -11,7 +11,12 @@
 FROM golang:1.25-bookworm AS build
 WORKDIR /src/oath
 COPY oath/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /out/oath .
+# Build with -tags cloud so the registry image carries the GCS+Postgres backend
+# (docs/store-drivers.md). It stays DORMANT unless OATH_BACKEND=cloud, so this is
+# backward-compatible with the filesystem store; activation is an env flip, no
+# image rebuild. The kernel/CI default build stays zero-dependency — only this
+# deployment image pulls the pg driver.
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -tags cloud -o /out/oath .
 
 # ---- runtime: kernel + pinned z3 ----
 # Proof outcomes are solver-version-sensitive (SPEC §10.5); pin the SAME z3

@@ -19,6 +19,8 @@ usage:
                                       (--context: the context-hash the code was authored against;
                                        --key: Ed25519 private key — signs the journal entry, pubkey = principal)
   oath keygen [--out <prefix>]        generate an Ed25519 signing keypair (<prefix>.key + <prefix>.pub)
+  oath migrate-store                  copy the OATH_STORE filesystem store into the cloud backend
+                                      (GCS objects + Postgres index; cloud build only; docs/store-drivers.md)
   oath prove-worker [--scan] [--once] [--key <file>] [--interval D] [--lease D]
                                       drain the proof queue: SMT-prove queued objects out of band,
                                       bind require_proven names once proven (#14). --scan seeds the
@@ -125,6 +127,8 @@ func main() {
 			}
 		}
 		cmdKeygen(prefix)
+	case "migrate-store":
+		cmdMigrateStore(storeDir)
 	case "prove-worker":
 		o := proveWorkerOpts{author: os.Getenv("OATH_AUTHOR")}
 		keyFile := os.Getenv("OATH_KEY")
@@ -465,6 +469,41 @@ func loadSigningKey(path string) (ed25519.PrivateKey, string) {
 		fail(fmt.Errorf("signing key %s has wrong length %d (want %d-byte key or %d-byte seed)", path, len(raw), ed25519.PrivateKeySize, ed25519.SeedSize))
 	}
 	return priv, hex.EncodeToString(priv.Public().(ed25519.PublicKey))
+}
+
+// cmdMigrateStore copies the filesystem store at OATH_STORE into the cloud
+// backend (GCS objects + Postgres index), byte-preserving the journal so its
+// chain still verifies, then verifies the destination. Run with the fs store as
+// OATH_STORE, the destination as OATH_OBJECT_BUCKET + OATH_DB_DSN, and
+// OATH_BACKEND UNSET (the source is always the filesystem). Requires the cloud
+// build (`-tags cloud`). See docs/store-drivers.md.
+func cmdMigrateStore(srcRoot string) {
+	if cloudBackendOpener == nil {
+		fail(fmt.Errorf("migrate-store needs the cloud driver: rebuild with -tags cloud"))
+	}
+	src, err := openFSBackend(srcRoot)
+	if err != nil {
+		fail(err)
+	}
+	dst, label, err := cloudBackendOpener()
+	if err != nil {
+		fail(err)
+	}
+	fmt.Printf("migrating filesystem store %s → %s\n", srcRoot, label)
+	n, err := migrateBackend(src, dst)
+	if err != nil {
+		fail(fmt.Errorf("migration failed: %w", err))
+	}
+	// The migrated journal must reconstruct with an intact hash chain, or the
+	// audit trail did not survive — refuse to call it done otherwise.
+	dstStore, err := newStoreWithBackend(dst, label)
+	if err != nil {
+		fail(err)
+	}
+	if err := dstStore.VerifyLog(); err != nil {
+		fail(fmt.Errorf("migrated journal FAILS verification (audit trail not intact): %w", err))
+	}
+	fmt.Printf("migrated %d objects; destination journal verified ✓\n", n)
 }
 
 func cmdLog(st *Store, filter string) {

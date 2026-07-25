@@ -129,6 +129,25 @@ resource "google_cloud_run_v2_service" "server" {
         name  = "OATH_TOKENS_FILE"
         value = "/secrets/tokens/tokens.json"
       }
+      # Cloud backend env (OATH_BACKEND=cloud, OATH_OBJECT_BUCKET, OATH_DB_DSN) —
+      # present only when enable_database=true. OATH_BACKEND=cloud makes OATH_STORE
+      # and the gcsfuse mount inert.
+      dynamic "env" {
+        for_each = local.cloud_env
+        content {
+          name  = env.value.name
+          value = env.value.secret == null ? env.value.value : null
+          dynamic "value_source" {
+            for_each = env.value.secret == null ? [] : [1]
+            content {
+              secret_key_ref {
+                secret  = env.value.secret
+                version = "latest"
+              }
+            }
+          }
+        }
+      }
       volume_mounts {
         name       = "store"
         mount_path = "/store"
@@ -137,10 +156,26 @@ resource "google_cloud_run_v2_service" "server" {
         name       = "tokens"
         mount_path = "/secrets/tokens"
       }
+      dynamic "volume_mounts" {
+        for_each = var.enable_database ? [1] : []
+        content {
+          name       = "cloudsql"
+          mount_path = "/cloudsql"
+        }
+      }
       resources {
         limits = {
           cpu    = "1"
           memory = "512Mi"
+        }
+      }
+    }
+    dynamic "volumes" {
+      for_each = var.enable_database ? [1] : []
+      content {
+        name = "cloudsql"
+        cloud_sql_instance {
+          instances = local.cloud_sql_instances
         }
       }
     }
@@ -231,4 +266,41 @@ resource "google_project_iam_member" "server_sql" {
   project = var.project_id
   role    = "roles/cloudsql.client"
   member  = "serviceAccount:${google_service_account.server.email}"
+}
+
+# The full lib/pq DSN (via the Cloud SQL unix socket) that OATH_DB_DSN points at
+# when OATH_BACKEND=cloud. Holds the password, so it lives in Secret Manager.
+resource "google_secret_manager_secret" "db_dsn" {
+  count     = var.enable_database ? 1 : 0
+  secret_id = "${var.name_prefix}-db-dsn"
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.enabled]
+}
+
+resource "google_secret_manager_secret_version" "db_dsn" {
+  count       = var.enable_database ? 1 : 0
+  secret      = google_secret_manager_secret.db_dsn[0].id
+  secret_data = "host=/cloudsql/${google_sql_database_instance.index[0].connection_name} user=${google_sql_user.app[0].name} password=${random_password.db[0].result} dbname=${google_sql_database.registry[0].name} sslmode=disable"
+}
+
+resource "google_secret_manager_secret_iam_member" "server_db_dsn" {
+  count     = var.enable_database ? 1 : 0
+  secret_id = google_secret_manager_secret.db_dsn[0].id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.server.email}"
+}
+
+# The cloud-backend wiring for a container (serve or worker), gated on
+# enable_database. Referenced from the Cloud Run resources via dynamic blocks so
+# the default (filesystem) deploy is untouched. Cutover: enable_database=true,
+# `oath migrate-store`, redeploy. See docs/store-drivers.md.
+locals {
+  cloud_env = var.enable_database ? [
+    { name = "OATH_BACKEND", value = "cloud", secret = null },
+    { name = "OATH_OBJECT_BUCKET", value = google_storage_bucket.objects.name, secret = null },
+    { name = "OATH_DB_DSN", value = null, secret = one(google_secret_manager_secret.db_dsn[*].secret_id) },
+  ] : []
+  cloud_sql_instances = var.enable_database ? [google_sql_database_instance.index[0].connection_name] : []
 }

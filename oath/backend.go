@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -282,6 +283,55 @@ func (m *memBackend) lock() (func(), error) { m.mu.Lock(); return m.mu.Unlock, n
 
 var _ backend = (*fsBackend)(nil)
 var _ backend = (*memBackend)(nil)
+
+// migrateBackend copies an entire store from one backend to another: the
+// immutable objects and their metadata, the name index, and the journal —
+// byte-for-byte and in order, so the migrated journal's hash chain still
+// verifies (docs/store-drivers.md). Content addressing makes it idempotent and
+// safe to re-run. The proof queue is intentionally NOT migrated: jobs are
+// transient work items the destination's `prove-worker --scan` regenerates.
+// Returns the object count copied.
+func migrateBackend(src, dst backend) (int, error) {
+	hashes, err := src.listObjects()
+	if err != nil {
+		return 0, err
+	}
+	for _, h := range hashes {
+		ob, ok, err := src.getObject(h)
+		if err != nil {
+			return 0, err
+		}
+		if !ok {
+			continue
+		}
+		if err := dst.putObject(h, ob); err != nil {
+			return 0, err
+		}
+		if mb, ok, err := src.getMeta(h); err == nil && ok {
+			if err := dst.putMeta(h, mb); err != nil {
+				return 0, err
+			}
+		}
+	}
+	if nb, ok, err := src.readNames(); err == nil && ok {
+		if err := dst.writeNames(nb); err != nil {
+			return 0, err
+		}
+	}
+	jb, err := src.readJournal()
+	if err != nil {
+		return 0, err
+	}
+	for _, line := range bytes.SplitAfter(jb, []byte("\n")) {
+		if len(line) == 0 {
+			continue // trailing split artifact
+		}
+		if err := dst.appendJournal(line); err != nil {
+			return 0, err
+		}
+	}
+	return len(hashes), nil
+}
 
 // errCorruptNames is returned by OpenStore when the name index exists but does
 // not parse — losing every name silently is worse than refusing to open.

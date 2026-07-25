@@ -184,14 +184,39 @@ deployment image adds a driver via a blank import in a `//go:build cloud` file i
 supplies, e.g. `import _ "github.com/lib/pq"` (kept out of this repo so the tree
 stays dependency-free; the driver name in `OATH_DB_DRIVER` must match).
 
+### Now built (beyond the seam)
+
+- **Postgres integration test — CI-green.** `backend_cloud_pg_test.go` (cloud-
+  tagged, gated on `OATH_TEST_PG_DSN`) round-trips the pg index and runs a full
+  Store over Postgres + in-memory objects; the hash-chained journal VERIFIES over
+  Postgres. CI's `cloud-backend` job stands up a real `postgres:15` and runs it.
+- **`oath migrate-store`** — copies the fs store into the cloud backend
+  (objects/meta to GCS, name index + journal to Postgres), byte-preserving the
+  journal so its chain still verifies, and refuses to finish unless the migrated
+  journal passes `VerifyLog`. Tested mem→mem in the default build.
+- **Deploy wiring** — the registry image builds `-tags cloud` (dormant unless
+  `OATH_BACKEND=cloud`), and the Terraform wires `OATH_BACKEND` /
+  `OATH_OBJECT_BUCKET` / `OATH_DB_DSN` + the Cloud SQL socket onto serve and the
+  worker, gated on `enable_database` — so the default (fs) deploy is untouched.
+
+### Cutover runbook
+
+1. `terraform apply -var enable_database=true` → stands up Cloud SQL + the DSN
+   secret and wires the containers (still serving the fs store until the flip).
+2. `OATH_STORE=<fs store> OATH_OBJECT_BUCKET=<bucket> OATH_DB_DSN=<dsn> \
+   oath migrate-store` (a cloud-tagged binary) — copies the store into GCS +
+   Postgres; it verifies the migrated journal before exiting.
+3. Redeploy (the image already carries the cloud backend); `OATH_BACKEND=cloud`
+   is now set, so serve + worker use Postgres. Drop `min_instance_count` to 0 and
+   raise `max` — Postgres is the coordinator now, so the single-writer cap and
+   `OATH_STORE_LOCK` are no longer needed.
+
 ## Still to do
 
-- Integration-test the Postgres backend (testcontainer) and run the store suite
-  through it, plus an fs-vs-pg differential.
-- `oath migrate-store` (design above) to backfill an fs store into GCS + Postgres.
-- The `repointName` transactional-seam refinement, then drop the serve
-  single-instance cap (`min=0, max=N`) and wire the serve container to the DB.
-
-The audit trail (`VerifyLog`'s byte anchoring, the queue lease) is the reason the
-Postgres path stays opt-in until it has the testcontainer harness — a focused
-effort, guided by this contract, not a silent prod cutover.
+- The `repointName` transactional-seam refinement (finer-grained than the
+  whole-index `writeNames` the pg backend does under the advisory lock).
+- Run the full store test suite (journal chain, tamper, proof queue) through the
+  pg backend in CI, not just the round-trip smoke tests, and an fs-vs-pg
+  differential.
+- Execute the cutover itself — the one step that touches the live audit trail, so
+  it stays a deliberate operator action, not a workflow side effect.

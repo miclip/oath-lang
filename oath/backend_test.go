@@ -53,6 +53,43 @@ func TestBackendParityFSvsMem(t *testing.T) {
 	}
 }
 
+// migrateBackend copies a whole store to another backend: same identity, same
+// names, and a journal that still verifies (its chain reconstructs byte-for-byte
+// from the migrated lines).
+func TestMigrateBackendPreservesJournalChain(t *testing.T) {
+	src := newStore(t)
+	put(t, src, `(defn one [] [] Int 1)`)
+	put(t, src, `(defn two [] [] Int 2)`)
+	if err := src.VerifyLog(); err != nil {
+		t.Fatalf("source journal: %v", err)
+	}
+
+	dstBE := newMemBackend()
+	n, err := migrateBackend(src.be, dstBE)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	dst, err := newStoreWithBackend(dstBE, "dst")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dst.VerifyLog(); err != nil {
+		t.Fatalf("migrated journal fails verification: %v", err)
+	}
+	if !reflect.DeepEqual(src.AllHashes(), dst.AllHashes()) {
+		t.Fatalf("object set diverged: src=%v dst=%v", src.AllHashes(), dst.AllHashes())
+	}
+	if len(src.AllHashes()) != n {
+		t.Fatalf("migrated count %d != object count %d", n, len(src.AllHashes()))
+	}
+	if sh, _ := src.Resolve("one"); func() bool { dh, _ := dst.Resolve("one"); return dh == sh && sh != "" }() == false {
+		t.Fatal("name index did not migrate")
+	}
+	if got := len(dst.ReadLog()); got != len(src.ReadLog()) {
+		t.Fatalf("journal length diverged: src=%d dst=%d", len(src.ReadLog()), got)
+	}
+}
+
 // The proof queue works over the in-memory backend with the same lease/reclaim
 // semantics the fs backend has.
 func TestMemBackendProofQueue(t *testing.T) {
