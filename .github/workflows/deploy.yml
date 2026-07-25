@@ -12,14 +12,14 @@
 name: deploy
 
 on:
+  # Deploy is manual-only: a version tag cuts a release (release.yml), it does not
+  # ship the registry. Deploying is a deliberate, billed action — run it here.
   workflow_dispatch:
     inputs:
       confirm:
         description: "Type DEPLOY to confirm a billed deploy"
         required: true
         default: ""
-  push:
-    tags: ["v*"]
 
 concurrency:
   group: deploy-registry

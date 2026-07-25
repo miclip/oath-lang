@@ -5,8 +5,8 @@
 #
 #   git tag v0.7.0 && git push origin v0.7.0
 #
-# (Version tags also trigger deploy.yml — a tag ships the registry and cuts the
-# release together; they're independent jobs.)
+# A version tag cuts a release only; deploying the registry is a separate,
+# manual action (deploy.yml → workflow_dispatch).
 name: release
 
 on:
