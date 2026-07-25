@@ -51,6 +51,24 @@ change the trust story:
   so the name-bind is DEFERRED (journaled `pending`) and the object is queued
   for `oath prove-worker`, which proves it out of band and binds the name once
   every property proves. See `docs/registry-verification.md` and SPEC §8.5.
+- `owner_pubkey` — reserve the name to one Ed25519 key: only a put authenticated
+  as that pubkey may repoint it. Combined with signature auth (below), this is
+  unforgeable, self-sovereign name ownership.
+
+## Authentication: signatures, not (just) tokens
+
+`oath serve` authenticates a principal two ways, and a request needs one:
+
+- **Signature (the real one).** `X-Oath-Pubkey` + `X-Oath-Signature`: an Ed25519
+  signature over the raw request body. The principal is the key — unforgeable,
+  offline-checkable, no shared secret, and the server holds nothing. Always on.
+- **Bearer token (the shim).** A server-vouched principal for clients that can't
+  sign; only active when `--tokens` is given. Tokens are now optional.
+
+A present-but-invalid signature is rejected outright — it never falls through to
+token auth, so a forged key can't be laundered into a token principal. An
+unauthenticated store remains impossible: with no token file and no valid
+signature, every request 401s. (docs/registry-auth.md)
 
 ## Semantics worth knowing
 

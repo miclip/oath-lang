@@ -74,8 +74,12 @@ all historical provenance permanently weaker.
 2. **[built]** `oath` CLI: `oath keygen` generates a keypair; `oath put --key
    <file>` (or `OATH_KEY`) signs the entry and defaults the author label to the
    signer's pubkey.
-3. `oath serve`: verify signatures; bind scopes to keys in the repoint policy;
-   tokens become an optional transport shim.
+3. **[built]** `oath serve`: authenticates a principal by an Ed25519 signature
+   over the request body (`X-Oath-Pubkey` + `X-Oath-Signature`) — the principal
+   IS the key, no shared secret. Bearer tokens still work but are now the
+   optional transport shim (serve runs without a tokens file). The repoint policy
+   gains `owner_pubkey`: a name only its owning key may repoint. A
+   present-but-invalid signature is a hard rejection, never a fall-through.
 4. `export`/`import`: carry and verify the signature end-to-end.
 
 Related substrate (built alongside this): the **verification worker pool** —

@@ -30,6 +30,7 @@ type PolicyRule struct {
 	ForbidFalsified             bool     `json:"forbid_falsified,omitempty"`
 	MinMutationScore            float64  `json:"min_mutation_score,omitempty"` // 0..1; runs the mutation engine if the object is unscored
 	RequireProven               bool     `json:"require_proven,omitempty"`     // name only binds once EVERY property is SMT-proven (#14)
+	OwnerPubkey                 string   `json:"owner_pubkey,omitempty"`       // hex Ed25519 key; only this principal may repoint the name (#14)
 }
 
 type Policy struct {
@@ -118,6 +119,14 @@ func evalPolicy(st *Store, pol *Policy, name, h string, def *Def, specAuthor, bo
 	m, err := st.GetMeta(h)
 	if err != nil {
 		return false, "policy: metadata unavailable: " + err.Error()
+	}
+	// Scope-owned-by-key (#14): a name reserved to a pubkey may only be repointed
+	// by that principal. Authorship is the authenticated key (signature auth sets
+	// the author to the caller's pubkey), so an impostor with a different key —
+	// or a bearer principal — cannot move the name. Unforgeable ownership without
+	// the server being a trust root.
+	if rule.OwnerPubkey != "" && m.Author != rule.OwnerPubkey {
+		return false, fmt.Sprintf("policy: name is owned by key %s…; submitter %q may not repoint it", shortHash(rule.OwnerPubkey), m.Author)
 	}
 	if rule.ForbidFalsified && m.Guarantee.Level == "falsified" {
 		return false, "policy: falsified definitions may not hold this name"

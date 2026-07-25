@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -47,12 +49,21 @@ func loadTokens(path string) (map[string]tokenEntry, error) {
 }
 
 func cmdServeHTTP(st *Store, addr, tokensPath string) {
-	if tokensPath == "" {
-		fail(fmt.Errorf("--http requires --tokens <file>: an unauthenticated network store would make every journal entry a lie"))
-	}
-	tokens, err := loadTokens(tokensPath)
-	if err != nil {
-		fail(err)
+	// Two ways to authenticate a principal, and a request needs exactly one:
+	//   - SIGNATURE (the real one, #14): X-Oath-Pubkey + X-Oath-Signature, an
+	//     Ed25519 signature over the raw request body. The principal IS the key —
+	//     unforgeable, no shared secret, and the server holds nothing. This is
+	//     always available, so tokens are now optional.
+	//   - BEARER TOKEN (the transport shim): a server-vouched principal, for
+	//     clients that cannot sign. Only active when --tokens is given.
+	// An unauthenticated store is still impossible: with no token file and no
+	// valid signature, every request 401s.
+	var tokens map[string]tokenEntry
+	if tokensPath != "" {
+		var err error
+		if tokens, err = loadTokens(tokensPath); err != nil {
+			fail(err)
+		}
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
@@ -60,20 +71,14 @@ func cmdServeHTTP(st *Store, addr, tokensPath string) {
 			http.Error(w, "POST only (stateless streamable-HTTP subset)", http.StatusMethodNotAllowed)
 			return
 		}
-		auth := r.Header.Get("Authorization")
-		token, ok := strings.CutPrefix(auth, "Bearer ")
-		if !ok {
-			http.Error(w, "missing bearer token", http.StatusUnauthorized)
-			return
-		}
-		entry, ok := tokens[token]
-		if !ok {
-			http.Error(w, "unknown token", http.StatusUnauthorized)
-			return
-		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))
 		if err != nil {
 			http.Error(w, "bad body", http.StatusBadRequest)
+			return
+		}
+		principal, ok := authenticatePrincipal(r, body, tokens)
+		if !ok {
+			http.Error(w, "unauthenticated: present a valid X-Oath-Signature over the body, or a known bearer token", http.StatusUnauthorized)
 			return
 		}
 		var req rpcRequest
@@ -85,14 +90,40 @@ func cmdServeHTTP(st *Store, addr, tokensPath string) {
 			w.WriteHeader(http.StatusAccepted)
 			return
 		}
-		resp := handleRPC(st, &req, entry.Principal)
+		resp := handleRPC(st, &req, principal)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	})
-	fmt.Printf("oath team store: http://%s/mcp (%d principals; store %s)\n", addr, len(tokens), st.Root)
+	fmt.Printf("oath team store: http://%s/mcp (signature auth always on; %d bearer principals; store %s)\n", addr, len(tokens), st.Root)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		fail(err)
 	}
+}
+
+// authenticatePrincipal resolves the caller to a principal, or (,false). A
+// signature (if the headers are present) is checked first and MUST be valid —
+// present-but-invalid is a rejection, never a silent fall-through to tokens, so
+// a forged pubkey can't be laundered into a token principal. The signed message
+// is the exact request body; replay protection (nonce/timestamp) is a later
+// addition, no weaker than a replayable bearer token today.
+func authenticatePrincipal(r *http.Request, body []byte, tokens map[string]tokenEntry) (string, bool) {
+	pubHex := r.Header.Get("X-Oath-Pubkey")
+	sigHex := r.Header.Get("X-Oath-Signature")
+	if pubHex != "" || sigHex != "" {
+		pub, perr := hex.DecodeString(pubHex)
+		sig, serr := hex.DecodeString(sigHex)
+		if perr != nil || serr != nil || len(pub) != ed25519.PublicKeySize || !ed25519.Verify(ed25519.PublicKey(pub), body, sig) {
+			return "", false
+		}
+		// The principal IS the key (docs/registry-auth.md).
+		return pubHex, true
+	}
+	if token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
+		if entry, ok := tokens[token]; ok {
+			return entry.Principal, true
+		}
+	}
+	return "", false
 }
 
 // handleRPC serves one JSON-RPC request. principal, when non-empty, is the
