@@ -384,25 +384,7 @@ export default function Home() {
             <Link href="/docs" className="btn">
               Read the docs
             </Link>
-            <a
-              href="https://registry.oath-lang.org"
-              target="_blank"
-              rel="noreferrer"
-              className="btn"
-            >
-              Live registry ↗
-            </a>
           </div>
-          <p
-            className="section-lead"
-            style={{ margin: "24px auto 0", fontSize: 15, opacity: 0.8 }}
-          >
-            The public registry is live at{" "}
-            <code style={{ fontSize: 13 }}>registry.oath-lang.org</code> — the
-            same MCP surface over HTTPS, authenticated by Ed25519 signature (the
-            principal <em>is</em> the key) with capability-limited bearer tokens
-            for agent clients. Deployed from CI; the host is not a root of trust.
-          </p>
         </div>
       </section>
 

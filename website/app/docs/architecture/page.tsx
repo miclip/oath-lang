@@ -122,13 +122,20 @@ export default function Architecture() {
       <h2>The hosted layer</h2>
       <p>
         <code>oath serve</code> speaks MCP — over stdio for a local, one-store-per-project
-        setup, or over HTTP for a team store with principals authenticated by bearer
-        token. On the hosted store, journal authorship derives from the token and
-        client-supplied author fields are ignored. A repoint policy governs what a{" "}
-        <em>name</em> may point at — it can require spec/body authorship separation,
-        proven termination, and spec-strength floors before a name moves. Objects always
-        store; policy governs only names, so a blocked submission leaves the previous
-        version live.
+        setup, or over HTTP for a hosted store. Principals authenticate by an Ed25519
+        signature over the request body (the principal <em>is</em> the key — unforgeable,
+        no shared secret), with capability-limited bearer tokens as the MCP-client shim
+        (read-only unless granted write). A repoint policy governs what a <em>name</em>{" "}
+        may point at — it can require spec/body authorship separation, proven termination,
+        spec-strength floors, reserve a name to a key (<code>owner_pubkey</code>), or defer
+        a name until every property is machine-proven. Objects always store; policy governs
+        only names, so a blocked submission leaves the previous version live.
+      </p>
+      <p>
+        A reference instance runs at{" "}
+        <a href="https://registry.oath-lang.org">registry.oath-lang.org</a> (deployed from
+        CI; the host is not a root of trust — every proof is re-earned by whoever consumes
+        a definition).
       </p>
 
       <h2>Publishing: trust by reproduction</h2>
