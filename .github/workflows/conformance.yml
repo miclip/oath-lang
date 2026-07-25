@@ -97,3 +97,33 @@ jobs:
           targets: wasm32-wasip1
       - name: build library + CLI for wasm (prove feature excluded)
         run: cd oathrs && cargo build --target wasm32-wasip1 --release --no-default-features
+
+  cloud-backend:
+    name: cloud backend (Postgres) — integration
+    # The default kernel is zero-dep; the GCS+Postgres store backend is behind
+    # `-tags cloud`. This job stands up a real Postgres and runs the pg
+    # integration tests against it — the harness store-drivers.md requires before
+    # the backend touches a live journal.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: oathtest
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: oath/go.mod
+      - name: cloud build stays compilable
+        run: cd oath && go build -tags cloud ./...
+      - name: Postgres + GCS integration tests
+        env:
+          OATH_TEST_PG_DSN: "postgres://postgres:postgres@localhost:5432/oathtest?sslmode=disable"
+        run: cd oath && go test -tags cloud -run 'TestPG|TestGCS' ./...
