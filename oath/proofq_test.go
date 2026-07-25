@@ -144,6 +144,31 @@ func TestScanBulkProveFixpointGate(t *testing.T) {
 	}
 }
 
+// Several independent provable defs (same dependency level) prove CONCURRENTLY
+// under scanBulkProve. Run with -race to catch data races in the parallel path.
+func TestScanBulkProveParallel(t *testing.T) {
+	requireZ3(t)
+	st := newStore(t)
+	put(t, st, `(defn dbl [] [(x Int)] Int (+ x x)
+		(prop p [(x Int)] (== (dbl x) (+ x x))))`)
+	put(t, st, `(defn trip [] [(x Int)] Int (+ x (+ x x))
+		(prop q [(x Int)] (== (trip x) (+ x (+ x x)))))`)
+	put(t, st, `(defn quad [] [(x Int)] Int (+ (+ x x) (+ x x))
+		(prop r [(x Int)] (== (quad x) (+ (+ x x) (+ x x)))))`)
+
+	scanBulkProve(st, "test")
+
+	for _, n := range []string{"dbl", "trip", "quad"} {
+		h, _ := st.Resolve(n)
+		if m, _ := st.GetMeta(h); m.Guarantee.Level != "proven" {
+			t.Fatalf("%s not proven after parallel scan: %q", n, m.Guarantee.Level)
+		}
+	}
+	if err := st.VerifyLog(); err != nil {
+		t.Fatalf("journal after parallel scan: %v", err)
+	}
+}
+
 // The upgrade role: a def that already holds its name at `tested` is re-proven
 // by --scan and upgraded to `proven` in place — no name change.
 func TestProveWorkerScanUpgradesTested(t *testing.T) {

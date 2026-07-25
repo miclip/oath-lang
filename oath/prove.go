@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -903,7 +904,10 @@ func (c *smtCtx) formulaWith(d *Def, h string, p *Prop, assign map[int]string) (
 // calibLastConsumed records the rlimit the last runZ3 call spent. It backs the
 // OATH_PROVE_SPLIT per-phase diagnostic (a durable debugging hook alongside
 // OATH_PROVE_CALIBRATE); nothing in the proof outcome depends on it.
-var calibLastConsumed int64
+// atomic because parallel scanBulkProve runs runZ3Budget from many goroutines;
+// this is a diagnostic side-channel (OATH_PROVE_SPLIT), never a proof input, so
+// a racy value would be harmless — but keep it race-clean.
+var calibLastConsumed atomic.Int64
 
 // runZ3 runs a goal at the full deterministic budget (SPEC §7.2). The
 // OATH_PROVE_RLIMIT override exists for testing only.
@@ -1012,7 +1016,7 @@ func runZ3Budget(script string, rl int64) (string, bool) {
 			fmt.Fprintf(os.Stderr, "CALIB-RAW %q\n", raw)
 		}
 	}
-	calibLastConsumed = consumed
+	calibLastConsumed.Store(consumed)
 	if strings.HasPrefix(res, "unsat") || strings.HasPrefix(res, "sat") {
 		return res, false
 	}
@@ -1174,7 +1178,7 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 				v = "sat"
 			}
 			fmt.Fprintf(os.Stderr, "SPLIT\t%s.%s\tphase=lemma-free\tconsumed=%d\tverdict=%s\n",
-				m.Name, pname, calibLastConsumed, v)
+				m.Name, pname, calibLastConsumed.Load(), v)
 		}
 		if strings.HasPrefix(lf, "unsat") {
 			return propOutcome{status: "proven", method: "direct (lemma-free)"}
@@ -1239,7 +1243,7 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 			v = "sat"
 		}
 		fmt.Fprintf(os.Stderr, "SPLIT\t%s.%s\tphase=direct\thasDT=%v\twall=%s\tconsumed=%d\tverdict=%s\n",
-			m.Name, pname, hasDTBinder, time.Since(directStart), calibLastConsumed, v)
+			m.Name, pname, hasDTBinder, time.Since(directStart), calibLastConsumed.Load(), v)
 	}
 	if capHit {
 		sawInvalid = true
@@ -1621,7 +1625,7 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 	if inductionEligible {
 		fb, fbCap := runZ3(directScript)
 		if os.Getenv("OATH_PROVE_SPLIT") != "" {
-			fmt.Fprintf(os.Stderr, "SPLIT\t%s\tphase=direct-fallback\tconsumed=%d\n", m.Name, calibLastConsumed)
+			fmt.Fprintf(os.Stderr, "SPLIT\t%s\tphase=direct-fallback\tconsumed=%d\n", m.Name, calibLastConsumed.Load())
 		}
 		if fbCap {
 			sawInvalid = true

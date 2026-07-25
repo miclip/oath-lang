@@ -78,11 +78,13 @@ resource "google_cloud_run_v2_job" "worker" {
         }
         resources {
           limits = {
-            # z3 needs real memory for the inductive proofs; at 2Gi the container
-            # was OOM-killed mid-run (16 GiB requires cpu >= 4). Also: the runtime
-            # base must match the pinned z3 build's glibc (ubuntu:24.04) or z3
-            # fails to exec and every proof aborts — see Dockerfile.
-            cpu    = "4"
+            # 8 vCPU because the worker proves a dependency level N-way in parallel
+            # (one z3 per core) — a full corpus pass becomes minutes, not hours.
+            # 16 GiB because z3's inductive proofs are memory-heavy (at 2Gi the
+            # container was OOM-killed mid-run). The runtime base must match the
+            # pinned z3 build's glibc (ubuntu:24.04) or z3 fails to exec — see
+            # Dockerfile.
+            cpu    = "8"
             memory = "16Gi"
           }
         }

@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"runtime"
+	"sync"
 	"time"
 )
 
@@ -98,41 +100,97 @@ func scanBulkProve(st *Store, author string) {
 		fmt.Println("prove-worker: proof state unchanged since last scan — nothing to prove")
 		return
 	}
-	order := topoFuncOrder(st)
+	// PARALLELISM. Proving is the bottleneck and each z3 goal is a separate
+	// subprocess, so independent proofs run concurrently across cores. Two defs
+	// are safe to prove at once iff neither is the other's (transitive)
+	// dependency — exactly the defs that share a dependency LEVEL. So prove level
+	// by level (a barrier between levels keeps lemmas ready), fanning out within a
+	// level up to GOMAXPROCS. The Store cache is mutex-guarded and metadata writes
+	// serialize on the store lock, so concurrent apiProveHash on distinct defs is
+	// safe; the deterministic verdict is unaffected (only wall-clock changes).
+	levels := topoFuncLevels(st)
+	conc := runtime.GOMAXPROCS(0)
+	who := author
+	if who == "" {
+		who = "prove-worker"
+	}
+	var out sync.Mutex // serializes the count, log line, and journal append
 	proved := 0
-	for _, h := range order {
-		d, err := st.GetDef(h)
-		if err != nil || d.K != "func" || len(d.Props) == 0 {
-			continue
-		}
-		m, err := st.GetMeta(h)
-		if err != nil || isFullyProven(m, d) || m.Guarantee.Level == "falsified" {
-			continue
-		}
-		before := len(m.ProvenProps)
-		if _, err := apiProveHash(st, h, m.Name); err != nil {
-			continue // a strategy was environmentally aborted — leave it tested
-		}
-		if m2, err := st.GetMeta(h); err == nil && len(m2.ProvenProps) > before {
-			proved++
-			mark := "·"
-			if isFullyProven(m2, d) {
-				mark = "✓"
+	for lv := range levels {
+		sem := make(chan struct{}, conc)
+		var wg sync.WaitGroup
+		for _, h := range levels[lv] {
+			d, err := st.GetDef(h)
+			if err != nil || d.K != "func" || len(d.Props) == 0 {
+				continue
 			}
-			fmt.Printf("%s %-16s #%s  %s\n", mark, m2.Name, shortHash(h), guaranteeString(m2.Guarantee))
-			who := author
-			if who == "" {
-				who = "prove-worker"
+			m, err := st.GetMeta(h)
+			if err != nil || isFullyProven(m, d) || m.Guarantee.Level == "falsified" {
+				continue
 			}
-			_ = st.AppendLog(&LogEntry{Author: who, Name: m2.Name, Kind: "prove", Status: "accepted",
-				Hash: h, Guarantee: guaranteeString(m2.Guarantee)})
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(h, name string, d *Def, before int) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				if _, err := apiProveHash(st, h, name); err != nil {
+					return // a strategy was environmentally aborted — leave it tested
+				}
+				m2, err := st.GetMeta(h)
+				if err != nil || len(m2.ProvenProps) <= before {
+					return
+				}
+				mark := "·"
+				if isFullyProven(m2, d) {
+					mark = "✓"
+				}
+				out.Lock()
+				proved++
+				fmt.Printf("%s %-16s #%s  %s\n", mark, name, shortHash(h), guaranteeString(m2.Guarantee))
+				_ = st.AppendLog(&LogEntry{Author: who, Name: name, Kind: "prove", Status: "accepted",
+					Hash: h, Guarantee: guaranteeString(m2.Guarantee)})
+				out.Unlock()
+			}(h, m.Name, d, len(m.ProvenProps))
 		}
+		wg.Wait() // barrier: level lv fully settled before lv+1 (its lemmas)
 	}
 	// Record the new fixpoint. Newly-landed proofs move the fingerprint, so the
 	// NEXT scan re-runs and lets any def that needed them as lemmas prove; once a
 	// scan proves nothing new, the fingerprint is stable and scans become no-ops.
 	_ = st.be.putMeta(proofFixpointKey, []byte(proofStateFingerprint(st)))
-	fmt.Printf("prove-worker: scan complete — %d definition(s) advanced\n", proved)
+	fmt.Printf("prove-worker: scan complete — %d definition(s) advanced (%d-way)\n", proved, conc)
+}
+
+// topoFuncLevels groups every object hash by dependency LEVEL: level 0 has no
+// dependencies among the corpus, and a def's level is one past its deepest
+// dependency. Defs in the same level cannot depend on each other, so a whole
+// level can be proven concurrently once the levels below it are settled.
+func topoFuncLevels(st *Store) [][]string {
+	order := topoFuncOrder(st) // dependencies before dependents
+	level := make(map[string]int, len(order))
+	maxLevel := -1
+	for _, h := range order {
+		lv := 0
+		if d, err := st.GetDef(h); err == nil {
+			for _, dep := range sortedDepHashes(d) {
+				if l := level[dep] + 1; l > lv {
+					lv = l
+				}
+			}
+		}
+		level[h] = lv
+		if lv > maxLevel {
+			maxLevel = lv
+		}
+	}
+	if maxLevel < 0 {
+		return nil
+	}
+	out := make([][]string, maxLevel+1)
+	for _, h := range order {
+		out[level[h]] = append(out[level[h]], h)
+	}
+	return out
 }
 
 // topoFuncOrder returns every object hash with dependencies BEFORE dependents

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,8 +21,9 @@ const kernelVersion = "oath-kernel/0.7"
 // object and a repointed name; nothing is ever edited in place, so dependents
 // referencing the old hash can never break.
 type Store struct {
-	Root  string  // filesystem root (fs backend) or a descriptive label
-	be    backend // the byte-level storage seam (backend.go, docs/store-drivers.md)
+	Root  string       // filesystem root (fs backend) or a descriptive label
+	be    backend      // the byte-level storage seam (backend.go, docs/store-drivers.md)
+	mu    sync.RWMutex // guards the in-memory caches so the worker can prove in parallel
 	defs  map[string]*Def
 	metas map[string]*Meta
 	// signer, when set, signs every journal entry this store appends with an
@@ -182,9 +184,11 @@ func (s *Store) StoreObject(d *Def, m *Meta) (string, error) {
 	if err := s.be.putMeta(h, mb); err != nil {
 		return "", err
 	}
+	s.mu.Lock()
 	s.defs[h] = d
 	mm := *m
 	s.metas[h] = &mm
+	s.mu.Unlock()
 	return h, nil
 }
 
@@ -210,11 +214,14 @@ func (s *Store) Repoint(name, h string) (string, error) {
 
 // CacheDef registers a definition in memory only — used to evaluate
 // candidate/mutant definitions without admitting them to the codebase.
-func (s *Store) CacheDef(h string, d *Def) { s.defs[h] = d }
+func (s *Store) CacheDef(h string, d *Def) { s.mu.Lock(); s.defs[h] = d; s.mu.Unlock() }
 
 func (s *Store) GetDef(h string) (*Def, error) {
-	if d, ok := s.defs[h]; ok {
-		return d, nil
+	s.mu.RLock()
+	d0, ok := s.defs[h]
+	s.mu.RUnlock()
+	if ok {
+		return d0, nil
 	}
 	b, ok, err := s.be.getObject(h)
 	if err != nil {
@@ -241,18 +248,26 @@ func (s *Store) GetDef(h string) (*Def, error) {
 	// because it is checked, not merely because it is content-addressed.
 	// Cache before checking: checkDef resolves dependency hashes through
 	// GetDef, and self-reference never goes through a hash, so this cannot
-	// recurse on h; a valid def stays cached, an invalid one is evicted.
+	// recurse on h; a valid def stays cached, an invalid one is evicted. The
+	// cache mutex is released around checkDef, which re-enters GetDef for deps.
+	s.mu.Lock()
 	s.defs[h] = &d
+	s.mu.Unlock()
 	if err := checkDef(s, &d); err != nil {
+		s.mu.Lock()
 		delete(s.defs, h)
+		s.mu.Unlock()
 		return nil, fmt.Errorf("stored object %s is not well-formed: %w", shortHash(h), err)
 	}
 	return &d, nil
 }
 
 func (s *Store) GetMeta(h string) (*Meta, error) {
-	if m, ok := s.metas[h]; ok {
-		return m, nil
+	s.mu.RLock()
+	m0, ok := s.metas[h]
+	s.mu.RUnlock()
+	if ok {
+		return m0, nil
 	}
 	b, ok, err := s.be.getMeta(h)
 	if err != nil {
@@ -265,7 +280,9 @@ func (s *Store) GetMeta(h string) (*Meta, error) {
 	if err := json.Unmarshal(b, &m); err != nil {
 		return nil, err
 	}
+	s.mu.Lock()
 	s.metas[h] = &m
+	s.mu.Unlock()
 	return &m, nil
 }
 
@@ -282,7 +299,9 @@ func (s *Store) SetMeta(h string, m *Meta) error {
 		return err
 	}
 	mm := *m
+	s.mu.Lock()
 	s.metas[h] = &mm
+	s.mu.Unlock()
 	return nil
 }
 
