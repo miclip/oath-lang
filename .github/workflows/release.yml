@@ -44,26 +44,33 @@ jobs:
           path: dist/*.tar.gz
 
   oathrs:
-    name: oathrs kernel (Rust — ${{ matrix.label }})
+    name: oathrs kernel (Rust — ${{ matrix.os }})
+    # Linux on ubuntu; BOTH macOS arches on the arm64 macos-latest runner —
+    # Apple's toolchain cross-compiles arm64↔x86_64 natively, so we don't wait on
+    # the scarce Intel (macos-13) runner.
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { runner: ubuntu-latest, label: linux-amd64 }
-          - { runner: macos-latest, label: darwin-arm64 }
-          - { runner: macos-13, label: darwin-amd64 }
+          - { runner: ubuntu-latest, os: linux, targets: "x86_64-unknown-linux-gnu:linux-amd64" }
+          - { runner: macos-latest, os: macos, targets: "aarch64-apple-darwin:darwin-arm64 x86_64-apple-darwin:darwin-amd64" }
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: build + archive
+      - name: build + archive each target
         run: |
-          cd oathrs && cargo build --release && cd ..
           mkdir -p dist
-          tar -C oathrs/target/release -czf "dist/oathrs-${GITHUB_REF_NAME}-${{ matrix.label }}.tar.gz" oathrs
+          for entry in ${{ matrix.targets }}; do
+            target="${entry%%:*}"; label="${entry##*:}"
+            rustup target add "$target"
+            ( cd oathrs && cargo build --release --target "$target" )
+            tar -C "oathrs/target/$target/release" \
+                -czf "dist/oathrs-${GITHUB_REF_NAME}-$label.tar.gz" oathrs
+          done
       - uses: actions/upload-artifact@v4
         with:
-          name: oathrs-${{ matrix.label }}
+          name: oathrs-${{ matrix.os }}
           path: dist/*.tar.gz
 
   release:
