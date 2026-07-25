@@ -34,8 +34,8 @@ variable "custom_domain" {
 
 variable "worker_schedule" {
   type        = string
-  description = "Cron schedule for the proof worker Job (Cloud Scheduler). Drains the queue and binds require_proven names."
-  default     = "*/5 * * * *"
+  description = "Cron schedule for the proof worker Job (Cloud Scheduler). Must be longer than the Job's per-task timeout so runs never overlap (concurrent writers on the gcsfuse store trigger stale handles)."
+  default     = "*/30 * * * *"
 }
 
 variable "enable_database" {

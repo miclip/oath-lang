@@ -20,10 +20,12 @@ resource "google_cloud_run_v2_job" "worker" {
       service_account       = google_service_account.server.email
       execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
       max_retries           = 1
-      # Proving is CPU-heavy and one tick should clear a big chunk of the queue
-      # (each proof is idempotent; --scan skips already-proven defs). A goal gets
-      # up to proveWallCap=600s, so allow several within one task.
-      timeout = "1800s"
+      # Proving is CPU+memory-heavy. z3 spends the full deterministic budget on
+      # the non-theorem (tested-only) defs before giving up, so a pass is slow;
+      # --scan skips already-proven defs, so successive passes converge. Keep the
+      # per-task cap BELOW the schedule interval (worker_schedule) so runs never
+      # overlap — concurrent writers on the gcsfuse store trigger stale handles.
+      timeout = "1500s"
 
       volumes {
         name = "store"
@@ -51,8 +53,12 @@ resource "google_cloud_run_v2_job" "worker" {
         }
         resources {
           limits = {
+            # z3 needs real memory for the inductive proofs; at 2Gi the container
+            # was OOM-killed mid-run (16 GiB requires cpu >= 4). Also: the runtime
+            # base must match the pinned z3 build's glibc (ubuntu:24.04) or z3
+            # fails to exec and every proof aborts — see Dockerfile.
             cpu    = "4"
-            memory = "2Gi"
+            memory = "16Gi"
           }
         }
       }
