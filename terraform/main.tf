@@ -157,7 +157,7 @@ resource "google_cloud_run_v2_service" "server" {
         mount_path = "/secrets/tokens"
       }
       dynamic "volume_mounts" {
-        for_each = var.enable_database ? [1] : []
+        for_each = local.cloud_active ? [1] : []
         content {
           name       = "cloudsql"
           mount_path = "/cloudsql"
@@ -171,7 +171,7 @@ resource "google_cloud_run_v2_service" "server" {
       }
     }
     dynamic "volumes" {
-      for_each = var.enable_database ? [1] : []
+      for_each = local.cloud_active ? [1] : []
       content {
         name = "cloudsql"
         cloud_sql_instance {
@@ -297,10 +297,15 @@ resource "google_secret_manager_secret_iam_member" "server_db_dsn" {
 # the default (filesystem) deploy is untouched. Cutover: enable_database=true,
 # `oath migrate-store`, redeploy. See docs/store-drivers.md.
 locals {
-  cloud_env = var.enable_database ? [
+  # activate_cloud_backend (not enable_database) is the flip: the DB can exist and
+  # be migrated into while serve still runs on the filesystem store, and only this
+  # switches OATH_BACKEND. Guard: activating without the DB provisioned is a
+  # misconfiguration.
+  cloud_active = var.activate_cloud_backend && var.enable_database
+  cloud_env = local.cloud_active ? [
     { name = "OATH_BACKEND", value = "cloud", secret = null },
     { name = "OATH_OBJECT_BUCKET", value = google_storage_bucket.objects.name, secret = null },
     { name = "OATH_DB_DSN", value = null, secret = one(google_secret_manager_secret.db_dsn[*].secret_id) },
   ] : []
-  cloud_sql_instances = var.enable_database ? [google_sql_database_instance.index[0].connection_name] : []
+  cloud_sql_instances = local.cloud_active ? [google_sql_database_instance.index[0].connection_name] : []
 }

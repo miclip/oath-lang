@@ -40,7 +40,13 @@ variable "worker_schedule" {
 
 variable "enable_database" {
   type        = bool
-  description = "Provision Cloud SQL (Postgres) for the name index + journal. Off for the v1 filesystem-over-gcsfuse store, which needs no database; turn on when the Postgres store driver lands (#14) so you do not pay for an idle instance meanwhile."
+  description = "Provision Cloud SQL (Postgres) + the DSN secret for the name index + journal. This does NOT switch the store to Postgres — serve/worker keep using the filesystem store until activate_cloud_backend=true. Off by default so you do not pay for an idle instance."
+  default     = false
+}
+
+variable "activate_cloud_backend" {
+  type        = bool
+  description = "Switch serve + worker to the Postgres/GCS store (OATH_BACKEND=cloud + DSN + Cloud SQL socket). Requires enable_database. Keep false until AFTER `oath migrate-store` has copied the fs store into the DB — flipping it before migration would serve an EMPTY registry. This is the deliberate cutover flip (docs/store-drivers.md)."
   default     = false
 }
 

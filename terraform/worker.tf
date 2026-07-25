@@ -70,7 +70,7 @@ resource "google_cloud_run_v2_job" "worker" {
           mount_path = "/store"
         }
         dynamic "volume_mounts" {
-          for_each = var.enable_database ? [1] : []
+          for_each = local.cloud_active ? [1] : []
           content {
             name       = "cloudsql"
             mount_path = "/cloudsql"
@@ -90,7 +90,7 @@ resource "google_cloud_run_v2_job" "worker" {
         }
       }
       dynamic "volumes" {
-        for_each = var.enable_database ? [1] : []
+        for_each = local.cloud_active ? [1] : []
         content {
           name = "cloudsql"
           cloud_sql_instance {

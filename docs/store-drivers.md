@@ -201,15 +201,24 @@ stays dependency-free; the driver name in `OATH_DB_DRIVER` must match).
 
 ### Cutover runbook
 
-1. `terraform apply -var enable_database=true` → stands up Cloud SQL + the DSN
-   secret and wires the containers (still serving the fs store until the flip).
-2. `OATH_STORE=<fs store> OATH_OBJECT_BUCKET=<bucket> OATH_DB_DSN=<dsn> \
-   oath migrate-store` (a cloud-tagged binary) — copies the store into GCS +
-   Postgres; it verifies the migrated journal before exiting.
-3. Redeploy (the image already carries the cloud backend); `OATH_BACKEND=cloud`
-   is now set, so serve + worker use Postgres. Drop `min_instance_count` to 0 and
-   raise `max` — Postgres is the coordinator now, so the single-writer cap and
-   `OATH_STORE_LOCK` are no longer needed.
+The two gates are deliberately separate so the DB can be provisioned and migrated
+into while serve still runs on the filesystem store — `enable_database` provisions,
+`activate_cloud_backend` flips. Never flip before migrating (you would serve an
+empty registry); `cloud_active = activate && enable`, so a flip without the DB is
+a safe no-op.
+
+1. **Provision** — `terraform apply -var enable_database=true`. Stands up Cloud
+   SQL + the DSN secret; serve/worker keep using the fs store.
+2. **Migrate** — `OATH_STORE=<fs store> OATH_OBJECT_BUCKET=<bucket>
+   OATH_DB_DSN=<dsn> oath migrate-store` (a cloud-tagged binary; the DSN uses the
+   DB's public IP or the proxy since it runs outside Cloud Run). It copies the
+   store into GCS + Postgres and verifies the migrated journal before exiting.
+3. **Flip** — `terraform apply -var enable_database=true -var
+   activate_cloud_backend=true`. Now `OATH_BACKEND=cloud` + the DSN + Cloud SQL
+   socket are wired onto serve and the worker (the image already carries the
+   backend). Then drop `min_instance_count` to 0 and raise `max` — Postgres is the
+   coordinator, so the single-writer cap and `OATH_STORE_LOCK` are no longer
+   needed.
 
 ## Still to do
 
