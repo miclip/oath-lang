@@ -67,9 +67,13 @@ all historical provenance permanently weaker.
 
 ## What this changes in the code (the build)
 
-1. Kernel: a `pubkey` + signature on the journal entry; put verifies the
-   signature over the object hash; `unattributed` = unsigned.
-2. `oath` CLI: `--key <file>` (or an agent's key) to sign puts; key generation.
+1. **[built]** Kernel: a `pubkey` + Ed25519 signature on the journal entry
+   (`oath/store.go`); the signature covers the authored fields; `VerifyLog`
+   rejects a bad or forged signature; `unattributed` = unsigned. Specified in
+   SPEC §8.4.
+2. **[built]** `oath` CLI: `oath keygen` generates a keypair; `oath put --key
+   <file>` (or `OATH_KEY`) signs the entry and defaults the author label to the
+   signer's pubkey.
 3. `oath serve`: verify signatures; bind scopes to keys in the repoint policy;
    tokens become an optional transport shim.
 4. `export`/`import`: carry and verify the signature end-to-end.

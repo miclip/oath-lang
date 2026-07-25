@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -22,7 +23,17 @@ type Store struct {
 	Root  string
 	defs  map[string]*Def
 	metas map[string]*Meta
+	// signer, when set, signs every journal entry this store appends with an
+	// Ed25519 key (docs/registry-auth.md). A principal IS a keypair: the
+	// signature over the authored fields is unforgeable, offline-verifiable
+	// authorship, so the host is not the root of trust. Unset = unattributed
+	// (unsigned) puts.
+	signer ed25519.PrivateKey
 }
+
+// SetSigner attaches an Ed25519 private key so subsequent AppendLog calls sign
+// their entries. Passing nil clears it (back to unattributed).
+func (s *Store) SetSigner(priv ed25519.PrivateKey) { s.signer = priv }
 
 func OpenStore(root string) (*Store, error) {
 	for _, d := range []string{root, filepath.Join(root, "objects"), filepath.Join(root, "meta")} {
@@ -309,7 +320,26 @@ type LogEntry struct {
 	Guarantee   string `json:"guarantee,omitempty"`
 	Termination string `json:"termination,omitempty"`
 	Context     string `json:"context,omitempty"` // hash of the context slice the author built against (#4)
+	Pubkey      string `json:"pubkey,omitempty"`  // hex Ed25519 public key of the signer; absent = unattributed (#14)
+	Sig         string `json:"sig,omitempty"`     // hex Ed25519 signature over the entry's authored fields (docs/registry-auth.md)
 	Chain       string `json:"chain,omitempty"`   // tamper-evidence: SHA-256(prev chain + this entry sans chain)
+}
+
+// signedContent is the deterministic byte string a signer signs: the entry with
+// the store-assigned fields (seq, time, verifier, chain) and the signature
+// itself zeroed. So the signature covers exactly the AUTHORED fields — pubkey,
+// author label, name, kind, status, object hash, prior hash, verdicts, context —
+// independent of where the entry lands in the log. The chain seals ordering on
+// top; the signature seals authorship. (docs/registry-auth.md)
+func signedContent(e *LogEntry) []byte {
+	c := *e
+	c.Seq = 0
+	c.Time = ""
+	c.Verifier = ""
+	c.Chain = ""
+	c.Sig = ""
+	b, _ := json.Marshal(&c)
+	return b
 }
 
 func (s *Store) logPath() string { return filepath.Join(s.Root, "log.jsonl") }
@@ -343,6 +373,13 @@ func (s *Store) AppendLog(e *LogEntry) error {
 	e.Time = time.Now().UTC().Format(time.RFC3339)
 	prior, _ := os.ReadFile(s.logPath()) // absent → empty prefix, anchor = sha256("")
 	e.Seq = strings.Count(string(prior), "\n") + 1
+	// Sign the authored fields before chaining, so the chain seals the signature
+	// too. signedContent zeroes the store-assigned fields, so the signature is
+	// independent of where this entry lands (docs/registry-auth.md).
+	if s.signer != nil {
+		e.Pubkey = hex.EncodeToString(s.signer.Public().(ed25519.PublicKey))
+		e.Sig = hex.EncodeToString(ed25519.Sign(s.signer, signedContent(e)))
+	}
 	e.Chain = ""
 	body, _ := json.Marshal(e)
 	e.Chain = chainHash(chainAnchor(prior), body)
@@ -388,6 +425,20 @@ func (s *Store) VerifyLog() error {
 		}
 		if e.Seq != line {
 			return fmt.Errorf("journal line %d has seq %d: entries are missing or reordered", line, e.Seq)
+		}
+		// A signed entry must carry a signature valid under its own pubkey over
+		// its authored fields. Unsigned (no pubkey) entries are allowed — they
+		// are unattributed. A pubkey without a valid signature, or vice versa, is
+		// a forged or corrupted attribution.
+		if e.Pubkey != "" || e.Sig != "" {
+			pub, perr := hex.DecodeString(e.Pubkey)
+			sig, serr := hex.DecodeString(e.Sig)
+			if perr != nil || serr != nil || len(pub) != ed25519.PublicKeySize {
+				return fmt.Errorf("journal line %d has a malformed signature or pubkey", line)
+			}
+			if !ed25519.Verify(ed25519.PublicKey(pub), signedContent(&e), sig) {
+				return fmt.Errorf("journal line %d fails signature verification: the entry was tampered with or is not signed by %s", line, e.Pubkey)
+			}
 		}
 		if e.Chain == "" {
 			if chained {

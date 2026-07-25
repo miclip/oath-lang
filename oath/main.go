@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,9 +13,11 @@ import (
 const usage = `oath — a content-addressed, spec-carrying language kernel
 
 usage:
-  oath put [--json] [--author <id>] [--context <hash>] <file.oath>
+  oath put [--json] [--author <id>] [--context <hash>] [--key <file>] <file.oath>
                                       elaborate, typecheck, store, verify; every attempt is journaled
-                                      (--context: the context-hash the code was authored against)
+                                      (--context: the context-hash the code was authored against;
+                                       --key: Ed25519 private key — signs the journal entry, pubkey = principal)
+  oath keygen [--out <prefix>]        generate an Ed25519 signing keypair (<prefix>.key + <prefix>.pub)
   oath log [name]                     append-only submission journal (all attempts, incl. rejections)
   oath ls                             list named definitions and their guarantees
   oath get <name>                     print the human projection of a definition
@@ -66,6 +70,7 @@ func main() {
 		jsonMode := false
 		author := os.Getenv("OATH_AUTHOR")
 		ctxHash := ""
+		keyFile := os.Getenv("OATH_KEY")
 		var files []string
 		rest := args[1:]
 		for i := 0; i < len(rest); i++ {
@@ -78,17 +83,43 @@ func main() {
 			case rest[i] == "--context" && i+1 < len(rest):
 				ctxHash = rest[i+1]
 				i++
+			case rest[i] == "--key" && i+1 < len(rest):
+				keyFile = rest[i+1]
+				i++
 			default:
 				files = append(files, rest[i])
+			}
+		}
+		// A signing key makes the put attributed by SIGNATURE, not by an
+		// unverified label: the pubkey is the principal. Default the author label
+		// to the key's own pubkey so `oath log` shows who signed without needing
+		// a separate --author (docs/registry-auth.md).
+		if keyFile != "" {
+			priv, pub := loadSigningKey(keyFile)
+			st.SetSigner(priv)
+			if author == "" {
+				author = pub
 			}
 		}
 		if author == "" {
 			author = "unattributed"
 		}
 		if len(files) != 1 {
-			fail(fmt.Errorf("usage: oath put [--json] [--author <id>] [--context <hash>] <file.oath>"))
+			fail(fmt.Errorf("usage: oath put [--json] [--author <id>] [--context <hash>] [--key <file>] <file.oath>"))
 		}
 		cmdPut(st, files[0], jsonMode, author, ctxHash)
+	case "keygen":
+		prefix := "oath"
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			if (rest[i] == "--out" || rest[i] == "-o") && i+1 < len(rest) {
+				prefix = rest[i+1]
+				i++
+			} else {
+				prefix = rest[i]
+			}
+		}
+		cmdKeygen(prefix)
 	case "log":
 		filter := ""
 		if len(args) > 1 {
@@ -339,6 +370,54 @@ func cmdPut(st *Store, path string, jsonMode bool, author string, ctxHash string
 	if code != 0 {
 		os.Exit(code)
 	}
+}
+
+// cmdKeygen writes a fresh Ed25519 keypair. The private key (<prefix>.key, mode
+// 0600, hex of the 64-byte key) is the principal's secret; the public key
+// (<prefix>.pub, hex of 32 bytes) IS the principal's identity — share it freely.
+// Authorship is the signature over the object; the host stores signed bytes and
+// never holds a secret (docs/registry-auth.md).
+func cmdKeygen(prefix string) {
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		fail(err)
+	}
+	keyPath := prefix + ".key"
+	pubPath := prefix + ".pub"
+	if _, err := os.Stat(keyPath); err == nil {
+		fail(fmt.Errorf("%s already exists; refusing to overwrite a signing key", keyPath))
+	}
+	if err := os.WriteFile(keyPath, []byte(hex.EncodeToString(priv)+"\n"), 0o600); err != nil {
+		fail(err)
+	}
+	if err := os.WriteFile(pubPath, []byte(hex.EncodeToString(pub)+"\n"), 0o644); err != nil {
+		fail(err)
+	}
+	fmt.Printf("wrote %s (private, keep secret) and %s\n", keyPath, pubPath)
+	fmt.Printf("principal (pubkey): %s\n", hex.EncodeToString(pub))
+}
+
+// loadSigningKey reads a hex-encoded Ed25519 private key and returns it with its
+// hex pubkey. Accepts either the 64-byte key or a 32-byte seed.
+func loadSigningKey(path string) (ed25519.PrivateKey, string) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		fail(fmt.Errorf("reading signing key %s: %w", path, err))
+	}
+	raw, err := hex.DecodeString(strings.TrimSpace(string(b)))
+	if err != nil {
+		fail(fmt.Errorf("signing key %s is not valid hex: %w", path, err))
+	}
+	var priv ed25519.PrivateKey
+	switch len(raw) {
+	case ed25519.PrivateKeySize:
+		priv = ed25519.PrivateKey(raw)
+	case ed25519.SeedSize:
+		priv = ed25519.NewKeyFromSeed(raw)
+	default:
+		fail(fmt.Errorf("signing key %s has wrong length %d (want %d-byte key or %d-byte seed)", path, len(raw), ed25519.PrivateKeySize, ed25519.SeedSize))
+	}
+	return priv, hex.EncodeToString(priv.Public().(ed25519.PublicKey))
 }
 
 func cmdLog(st *Store, filter string) {

@@ -1228,7 +1228,8 @@ Append-only, one JSON object per line: `seq`, `time` (RFC3339 UTC),
 `author` (principal string, self-reported in local mode), `verifier`
 (kernel version string), `name`, `kind`, `status`
 (`accepted`|`falsified`|`rejected`|`blocked` (repoint refused by store policy; object stored, name unchanged)), `hash`, `prev` (on repoint), `error`,
-`guarantee`, `termination`, `context`, `chain`. Every submission attempt MUST
+`guarantee`, `termination`, `context`, `pubkey` (optional; §8.2), `sig`
+(optional; §8.2), `chain`. Every submission attempt MUST
 be journaled, including gate rejections (which store no object). A cross-check
 (§6.4) recorded to the journal uses `kind` = `cross`, status `accepted` (AGREE)
 or `falsified` (DISAGREE), with the two cross-checked object hashes carried in
@@ -1360,6 +1361,36 @@ command explicitly documents JSON mode.
   response; unknown methods return `-32601`. Tool call failures are encoded as
   successful JSON-RPC responses with `isError: true` and a text body beginning
   `error: `.
+
+### 8.4 Signed entries (authorship)
+
+A journal entry MAY be signed, making authorship unforgeable and verifiable
+offline — the host is not the root of trust. A principal IS an Ed25519 keypair;
+its public key is its identity. The chain (§8) seals ORDERING; a signature seals
+AUTHORSHIP, and the two are independent (re-chaining a forged entry does not make
+it verify).
+
+- `pubkey`: lowercase hex of the 32-byte Ed25519 public key of the signer.
+  Absent (or empty) means the entry is **unattributed** — signing is opt-in and
+  a store of unsigned entries is conformant.
+- `sig`: lowercase hex of the 64-byte Ed25519 signature over the entry's
+  *signed content*.
+
+The **signed content** is the entry's compact JSON with the store-assigned
+fields `seq`, `time`, `verifier`, and `chain`, and the `sig` field itself, all
+set empty/omitted — i.e. the signature covers exactly the authored fields
+(including `pubkey`), independent of where the entry lands in the log. A signer
+sets `pubkey` and `sig` before the `chain` is computed, so the chain covers the
+signature too.
+
+A verifier MUST, for every entry whose `pubkey` or `sig` is non-empty, reject
+the journal unless `pubkey` is a well-formed 32-byte key and `sig` is a valid
+Ed25519 signature under it over the signed content. An entry carrying a `pubkey`
+with no valid signature (or vice versa) is a forged attribution and MUST be
+rejected, not treated as unattributed. Entries with neither field are
+unattributed and impose no signature obligation. This is metadata (never part of
+definition identity); the reference kernel key format is hex of the 64-byte
+Ed25519 private key (a 32-byte seed is also accepted) in a `.key` file.
 
 ## 9. The hashed/metadata boundary
 
