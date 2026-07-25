@@ -20,12 +20,13 @@ resource "google_cloud_run_v2_job" "worker" {
       service_account       = google_service_account.server.email
       execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
       max_retries           = 1
-      # Proving is CPU+memory-heavy. z3 spends the full deterministic budget on
-      # the non-theorem (tested-only) defs before giving up, so a pass is slow;
-      # --scan skips already-proven defs, so successive passes converge. Keep the
-      # per-task cap BELOW the schedule interval (worker_schedule) so runs never
-      # overlap — concurrent writers on the gcsfuse store trigger stale handles.
-      timeout = "1500s"
+      # A --scan pass proves the whole corpus in dependency order (fast for the
+      # provable defs) but z3 burns the full deterministic budget on each
+      # non-theorem before giving up, so a full pass is long. The timeout must fit
+      # a whole pass, or the proof-state fingerprint never settles and the
+      # non-theorems get re-attempted forever; keep it BELOW worker_schedule so
+      # runs never overlap (concurrent gcsfuse writers → stale handles).
+      timeout = "7200s"
 
       volumes {
         name = "store"

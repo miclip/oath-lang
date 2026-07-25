@@ -122,6 +122,28 @@ func TestProveWorkerBindsAfterProof(t *testing.T) {
 	}
 }
 
+// scanBulkProve upgrades a provable def to proven and records the proof-state
+// fingerprint, so a second scan with nothing changed is a no-op (the fixpoint
+// gate — no re-burning the budget on already-settled defs).
+func TestScanBulkProveFixpointGate(t *testing.T) {
+	requireZ3(t)
+	st := newStore(t)
+	put(t, st, dblSrc)
+
+	scanBulkProve(st, "test")
+	h, _ := st.Resolve("dbl")
+	if m, _ := st.GetMeta(h); m.Guarantee.Level != "proven" {
+		t.Fatalf("dbl not proven after scan: %q", m.Guarantee.Level)
+	}
+	prev, ok, _ := st.be.getMeta(proofFixpointKey)
+	if !ok {
+		t.Fatal("no fixpoint marker recorded")
+	}
+	if string(prev) != proofStateFingerprint(st) {
+		t.Fatal("fixpoint marker doesn't match current proof state — a re-scan would re-burn")
+	}
+}
+
 // The upgrade role: a def that already holds its name at `tested` is re-proven
 // by --scan and upgraded to `proven` in place — no name change.
 func TestProveWorkerScanUpgradesTested(t *testing.T) {

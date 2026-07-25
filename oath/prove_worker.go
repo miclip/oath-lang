@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"time"
 )
@@ -43,8 +45,7 @@ func cmdProveWorker(st *Store, o proveWorkerOpts) {
 		o.interval = 5 * time.Second
 	}
 	if o.scan {
-		n := seedProofQueue(st)
-		fmt.Printf("seeded %d tested-but-unproven definition(s) into the proof queue\n", n)
+		scanBulkProve(st, o.author)
 	}
 	for {
 		worked := 0
@@ -69,11 +70,37 @@ func cmdProveWorker(st *Store, o proveWorkerOpts) {
 	}
 }
 
-// seedProofQueue enqueues every function that is verified (tested) but not yet
-// fully proven and not falsified — the background upgrade work list.
-func seedProofQueue(st *Store) int {
-	n := 0
-	for _, h := range st.AllHashes() {
+// proofFixpointKey is a reserved (non-hash) meta key holding the proof-state
+// fingerprint at the last completed scan. It is never a definition hash, so it
+// never collides with a real object.
+const proofFixpointKey = "proof-scan-fixpoint"
+
+// scanBulkProve upgrades tested definitions to proven — correctly and without
+// wasted work (the background-upgrade role of #14).
+//
+// Two properties make it converge instead of grinding:
+//
+//   - DEPENDENCY ORDER. A proof draws its lemma library from the definition's
+//     transitive dependencies' proven properties (§7.2). Proving in topological
+//     order (dependencies first) means every provable definition has its lemmas
+//     ready on its FIRST attempt — no def is wasted attempting a proof that can
+//     only succeed after a sibling proves later.
+//   - FIXPOINT GATING. The genuinely-unprovable definitions (non-theorems, or
+//     SMT-incomplete fragments) burn the full deterministic budget every time
+//     they are attempted. Re-attempting them on every scheduled scan is pure
+//     waste: a tested def can only newly prove if the store's proof state has
+//     changed. So the scan is skipped entirely when the proof-state fingerprint
+//     matches the last scan's — the lemma-growth-gating principle (#24) lifted to
+//     the whole store. New puts or new proofs move the fingerprint and re-arm it.
+func scanBulkProve(st *Store, author string) {
+	fp := proofStateFingerprint(st)
+	if prev, ok, _ := st.be.getMeta(proofFixpointKey); ok && string(prev) == fp {
+		fmt.Println("prove-worker: proof state unchanged since last scan — nothing to prove")
+		return
+	}
+	order := topoFuncOrder(st)
+	proved := 0
+	for _, h := range order {
 		d, err := st.GetDef(h)
 		if err != nil || d.K != "func" || len(d.Props) == 0 {
 			continue
@@ -82,11 +109,73 @@ func seedProofQueue(st *Store) int {
 		if err != nil || isFullyProven(m, d) || m.Guarantee.Level == "falsified" {
 			continue
 		}
-		if st.EnqueueProof(ProofJob{Hash: h, Name: m.Name, Gate: false}) == nil {
-			n++
+		before := len(m.ProvenProps)
+		if _, err := apiProveHash(st, h, m.Name); err != nil {
+			continue // a strategy was environmentally aborted — leave it tested
+		}
+		if m2, err := st.GetMeta(h); err == nil && len(m2.ProvenProps) > before {
+			proved++
+			mark := "·"
+			if isFullyProven(m2, d) {
+				mark = "✓"
+			}
+			fmt.Printf("%s %-16s #%s  %s\n", mark, m2.Name, shortHash(h), guaranteeString(m2.Guarantee))
+			who := author
+			if who == "" {
+				who = "prove-worker"
+			}
+			_ = st.AppendLog(&LogEntry{Author: who, Name: m2.Name, Kind: "prove", Status: "accepted",
+				Hash: h, Guarantee: guaranteeString(m2.Guarantee)})
 		}
 	}
-	return n
+	// Record the new fixpoint. Newly-landed proofs move the fingerprint, so the
+	// NEXT scan re-runs and lets any def that needed them as lemmas prove; once a
+	// scan proves nothing new, the fingerprint is stable and scans become no-ops.
+	_ = st.be.putMeta(proofFixpointKey, []byte(proofStateFingerprint(st)))
+	fmt.Printf("prove-worker: scan complete — %d definition(s) advanced\n", proved)
+}
+
+// topoFuncOrder returns every object hash with dependencies BEFORE dependents
+// (post-order DFS over the dependency graph). Content addressing forbids cycles
+// — a def's hash embeds its dependencies — so the visiting guard is belt-and-
+// suspenders.
+func topoFuncOrder(st *Store) []string {
+	order := make([]string, 0)
+	state := map[string]int8{} // 0 unseen, 1 visiting, 2 done
+	var visit func(h string)
+	visit = func(h string) {
+		if state[h] != 0 {
+			return
+		}
+		state[h] = 1
+		if d, err := st.GetDef(h); err == nil {
+			for _, dep := range sortedDepHashes(d) {
+				visit(dep)
+			}
+		}
+		state[h] = 2
+		order = append(order, h)
+	}
+	for _, h := range st.AllHashes() {
+		visit(h)
+	}
+	return order
+}
+
+// proofStateFingerprint hashes the proof state of the whole store: every object
+// and its set of proven property indices. It changes exactly when a new object
+// enters or a proof lands — the only events that can let a tested def newly
+// prove.
+func proofStateFingerprint(st *Store) string {
+	h := sha256.New()
+	for _, hash := range st.AllHashes() { // AllHashes is sorted → stable
+		m, err := st.GetMeta(hash)
+		if err != nil {
+			continue
+		}
+		fmt.Fprintf(h, "%s:%v;", hash, m.ProvenProps)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // processProofJob proves one queued object and resolves its consequence: for an
