@@ -20,6 +20,14 @@ on:
         description: "Type DEPLOY to confirm a billed deploy"
         required: true
         default: ""
+      enable_database:
+        description: "Provision Cloud SQL (billed) — cutover step 1. Serve stays on fs."
+        type: boolean
+        default: false
+      activate_cloud_backend:
+        description: "Flip serve+worker to Postgres — cutover step 3 (AFTER migrate-store)."
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-registry
@@ -80,7 +88,9 @@ jobs:
             -var "project_id=${PROJECT}" \
             -var "region=${REGION}" \
             -var "server_image=${IMAGE}" \
-            -var "custom_domain=${{ vars.REGISTRY_DOMAIN }}"
+            -var "custom_domain=${{ vars.REGISTRY_DOMAIN }}" \
+            -var "enable_database=${{ inputs.enable_database }}" \
+            -var "activate_cloud_backend=${{ inputs.activate_cloud_backend }}"
 
       - name: smoke test (endpoint actually serves)
         working-directory: terraform
