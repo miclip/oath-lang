@@ -100,17 +100,14 @@ PROVIDER_RESOURCE="projects/${PROJECT_NUMBER}/locations/global/workloadIdentityP
 cat <<EOF
 
 ============================================================
-Bootstrap complete. Set these on the GitHub repo
-(${GITHUB_REPO} → Settings → Secrets and variables → Actions):
+Bootstrap complete. Keyless auth => no secrets. Set these as repo VARIABLES
+(${GITHUB_REPO} → Settings → Secrets and variables → Actions → Variables tab):
 
-  SECRETS
     GCP_PROJECT_ID    ${PROJECT_ID}
     GCP_DEPLOYER_SA   ${DEPLOYER_SA}
     GCP_WIF_PROVIDER  ${PROVIDER_RESOURCE}
     TF_STATE_BUCKET   ${STATE_BUCKET}
-
-  VARIABLE (optional; defaults to us-central1)
-    GCP_REGION        ${REGION}
+    GCP_REGION        ${REGION}      (optional; defaults to us-central1)
 
 Then run the "deploy" workflow (Actions → deploy → Run workflow → type DEPLOY),
 or push a v* tag. See docs/deploy.md.

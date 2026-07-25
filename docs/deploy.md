@@ -42,16 +42,18 @@ a driver change, not a re-architecture.
 
    It prints the four secret values to set next. (Idempotent — safe to re-run.)
 
-3. **Set GitHub repo secrets** (Settings → Secrets and variables → Actions):
+3. **Set GitHub repo variables** (Settings → Secrets and variables → Actions →
+   **Variables** tab). Keyless auth means there are no secrets to store — these
+   are all identifiers, not credentials (WIF security is the provider's
+   repo-bound attribute condition + IAM, not the secrecy of these strings):
 
-   | Secret | From bootstrap output |
+   | Variable | From bootstrap output |
    |---|---|
    | `GCP_PROJECT_ID` | your project id |
    | `GCP_DEPLOYER_SA` | `oath-deployer@…iam.gserviceaccount.com` |
    | `GCP_WIF_PROVIDER` | `projects/NUMBER/locations/global/workloadIdentityPools/…/providers/…` |
    | `TF_STATE_BUCKET` | `PROJECT-oath-tfstate` |
-
-   Optional **variable** `GCP_REGION` (defaults to `us-central1`).
+   | `GCP_REGION` | optional; defaults to `us-central1` |
 
 ## Deploy
 

@@ -4,9 +4,11 @@
 # bucket, Artifact Registry — is stood up once by terraform/bootstrap/bootstrap.sh;
 # see docs/deploy.md.
 #
-# Required repo SECRETS:  GCP_PROJECT_ID, GCP_WIF_PROVIDER, GCP_DEPLOYER_SA,
-#                         TF_STATE_BUCKET
-# Optional repo VARIABLE: GCP_REGION (defaults to us-central1)
+# Keyless means there are no secrets to store — every value below is a plain repo
+# VARIABLE (identifiers, not credentials; WIF security is the provider's
+# repo-bound attribute condition + IAM, not the secrecy of these strings):
+#   GCP_PROJECT_ID, GCP_WIF_PROVIDER, GCP_DEPLOYER_SA, TF_STATE_BUCKET
+#   GCP_REGION (optional; defaults to us-central1)
 name: deploy
 
 on:
@@ -32,7 +34,7 @@ jobs:
     if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.confirm == 'DEPLOY' }}
     runs-on: ubuntu-latest
     env:
-      PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+      PROJECT: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.GCP_REGION || 'us-central1' }}
       AR_REPO: oath
     steps:
@@ -50,8 +52,8 @@ jobs:
         name: authenticate to GCP (keyless)
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOYER_SA }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
 
       - uses: google-github-actions/setup-gcloud@v2
 
@@ -72,7 +74,7 @@ jobs:
         working-directory: terraform
         run: |
           terraform init -input=false \
-            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
             -backend-config="prefix=${AR_REPO}/state"
           terraform apply -auto-approve -input=false \
             -var "project_id=${PROJECT}" \
