@@ -21,6 +21,27 @@ import (
 //
 // Tokens file (never committed): {"<token>": {"principal": "name"}, ...}
 
+const registryBanner = `Oath — public verified-codebase registry
+=========================================
+
+This is an MCP-over-HTTP endpoint, not a web page.
+
+  POST /mcp    JSON-RPC 2.0 — initialize, tools/list, tools/call
+               tools: context, put, get, ls, find[/_spec/_implies/_equiv],
+                      eval, verify, mutate, prove, cross, dependents, log
+
+Authentication (one required):
+  X-Oath-Pubkey + X-Oath-Signature    Ed25519 over the raw request body;
+                                       the principal IS the key (full capability)
+  Authorization: Bearer <token>        read-only by default
+
+Every definition is content-addressed (identity = hash of its canonical form)
+and every proof is re-earned by whoever consumes it — the host is not a root of
+trust. The store is public, re-verifiable bytes.
+
+Docs & source: https://github.com/miclip/oath-lang
+`
+
 type tokenEntry struct {
 	Principal string `json:"principal"`
 	// Write grants state-changing tools (put, cross --record). Default false: a
@@ -71,6 +92,16 @@ func cmdServeHTTP(st *Store, addr, tokensPath string) {
 		}
 	}
 	mux := http.NewServeMux()
+	// A human hitting the root gets a plain-text banner, not a 404 — the URL is
+	// shareable and self-documenting even though the real surface is /mcp.
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		fmt.Fprint(w, registryBanner)
+	})
 	mux.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "POST only (stateless streamable-HTTP subset)", http.StatusMethodNotAllowed)
