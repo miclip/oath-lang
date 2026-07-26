@@ -19,14 +19,22 @@ resource "google_cloud_run_v2_job" "worker" {
     template {
       service_account       = google_service_account.server.email
       execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
-      max_retries           = 1
+      max_retries           = 0
       # A --scan pass proves the whole corpus in dependency order (fast for the
       # provable defs) but z3 burns the full deterministic budget on each
       # non-theorem before giving up, so a full pass is long. The timeout must fit
       # a whole pass, or the proof-state fingerprint never settles and the
       # non-theorems get re-attempted forever; keep it BELOW worker_schedule so
       # runs never overlap (concurrent gcsfuse writers → stale handles).
-      timeout = "7200s"
+      #
+      # 8h, not 2h: GCP's per-core speed is well below a dev laptop's, so z3 goals
+      # that finish under their rlimit budget locally hit the 600s wall-cap here —
+      # the whole heavy tail runs several times slower than local. At 2h a pass
+      # timed out mid-tail every time, committing nothing new and re-attempting the
+      # same doomed level forever (the corpus sat at 73/105 for hours). max_retries
+      # is 0 so a run that still overruns fails cleanly instead of auto-burning a
+      # second full-length attempt.
+      timeout = "28800s"
 
       volumes {
         name = "store"
