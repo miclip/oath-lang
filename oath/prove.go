@@ -1765,7 +1765,7 @@ func apiProveHash(st *Store, h string, display string) (string, error) {
 	var lemmaCount, ownProven int
 	for round := 0; ; round++ {
 		c := newSmtCtx(st, d, h)
-		lemmaCount, ownProven = loadLemmaLibrary(c, st, d, h, m)
+		lemmaCount, ownProven = loadLemmaLibrary(c, st, d, h, m, -1)
 		outcomes = make([]propOutcome, len(d.Props))
 		attempted := make([]bool, len(d.Props))
 		provenSet = make([]bool, len(d.Props))
@@ -1787,7 +1787,7 @@ func apiProveHash(st *Store, h string, display string) (string, error) {
 				// leak axioms accrued by earlier attempts into later scripts,
 				// the acquisition-history dependence this design eliminates.
 				ac := newSmtCtx(st, d, h)
-				loadLemmaLibrary(ac, st, d, h, m)
+				loadLemmaLibrary(ac, st, d, h, m, pi)
 				already := map[int]bool{}
 				for _, mp := range m.ProvenProps {
 					already[mp] = true
@@ -1917,7 +1917,16 @@ func cmdProve(st *Store, name string) {
 // properties of transitive dependencies, then the definition's own
 // previously-proven properties (tagged by index). Shared by apiProve and
 // the script-hash fixture generator so both see identical libraries.
-func loadLemmaLibrary(c *smtCtx, st *Store, d *Def, h string, m *Meta) (int, int) {
+// goalPI is the property this library is being loaded FOR: author hints are
+// admitted only for that goal, so hinting one property leaves its siblings'
+// scripts byte-identical. Pass -1 when no goal is in scope (bookkeeping counts),
+// which admits no hints. Scoping matters beyond tidiness: candidate translation
+// accumulates declarations and defining-equation axioms into the context, so an
+// unscoped hint would leak its target's declarations into every sibling's
+// script — precisely the acquisition-history dependence the fresh-context-per-
+// attempt rule exists to eliminate (the script must be a function of (goal,
+// lemma set) alone).
+func loadLemmaLibrary(c *smtCtx, st *Store, d *Def, h string, m *Meta, goalPI int) (int, int) {
 	// Collect every candidate lemma (transitive-dependency proven props plus
 	// the definition's own recorded proven props), then TRANSLATE in
 	// canonical ascending (definition-hash, property-index) order — the same
@@ -1974,12 +1983,13 @@ func loadLemmaLibrary(c *smtCtx, st *Store, d *Def, h string, m *Meta) (int, int
 	// surface them). Only a currently-PROVEN target is admitted — an inert hint
 	// (unproven, falsified, or missing target) is silently skipped, so the
 	// admission stays sound: the prover only ever asserts already-proven facts.
-	if len(m.Hints) > 0 {
+	if goalPI >= 0 && len(m.Hints[goalPI]) > 0 {
 		inCands := map[string]bool{}
 		for _, cd := range cands {
 			inCands[fmt.Sprintf("%s#%d", cd.dh, cd.pi)] = true
 		}
-		for _, refs := range m.Hints {
+		{
+			refs := m.Hints[goalPI]
 			for _, hr := range refs {
 				key := fmt.Sprintf("%s#%d", hr.Def, hr.Prop)
 				if inCands[key] {
@@ -2053,7 +2063,7 @@ func directAttemptScript(st *Store, h string, pi int) (string, error) {
 		return "", fmt.Errorf("no property %d", pi)
 	}
 	c := newSmtCtx(st, d, h)
-	loadLemmaLibrary(c, st, d, h, m)
+	loadLemmaLibrary(c, st, d, h, m, pi)
 	p := &d.Props[pi]
 	footprint := goalFootprint(c.st, h, d, p)
 	var binderDecls []string

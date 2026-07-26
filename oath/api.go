@@ -461,7 +461,10 @@ func apiFindImplies(st *Store, src string) (string, error) {
 			}
 			pi := len(d.Props)
 			c := newSmtCtx(st, &aug, h)
-			loadLemmaLibrary(c, st, &aug, h, m)
+			// -1: the goal here is a SYNTHETIC query property appended past the
+			// definition's own props, not one the author hinted — its hints (keyed
+			// by real prop index) must not leak into a discovery query.
+			loadLemmaLibrary(c, st, &aug, h, m, -1)
 			if o := c.proveOne(&aug, h, m, &aug.Props[pi], pi); o.status == "proven" {
 				fmt.Fprintf(&b, "      %-18s ← provably satisfies it (%s)\n", k, o.method)
 				found = true
