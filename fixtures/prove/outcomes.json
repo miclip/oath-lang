@@ -1635,7 +1635,13 @@
         },
         {
           "name": "push-count-pushed",
-          "proven": true
+          "proven": true,
+          "hints": [
+            {
+              "def": "ed0b40d5d68f69718921542d3e4bbe4284cd1cdae9e6a885f4f84090d137791d",
+              "prop": 0
+            }
+          ]
         },
         {
           "name": "push-order-anchor",
@@ -2626,11 +2632,23 @@
       "props": [
         {
           "name": "insert-count-inserted",
-          "proven": true
+          "proven": true,
+          "hints": [
+            {
+              "def": "ed0b40d5d68f69718921542d3e4bbe4284cd1cdae9e6a885f4f84090d137791d",
+              "prop": 0
+            }
+          ]
         },
         {
           "name": "insert-count-others",
-          "proven": true
+          "proven": true,
+          "hints": [
+            {
+              "def": "ed0b40d5d68f69718921542d3e4bbe4284cd1cdae9e6a885f4f84090d137791d",
+              "prop": 0
+            }
+          ]
         },
         {
           "name": "insert-length",

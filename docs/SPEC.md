@@ -1493,9 +1493,24 @@ fixtures/
   verify/*.txt              property verdicts and counterexamples
   analyses/*.json           termination, confinement, mutation scores
   prove/*.smt2              emitted obligations or obligation hashes
-  prove/outcomes.json       solver version, outcome, method, detail
+  prove/outcomes.json       solver version, outcome, method, detail;
+                            per-property author hints (#67)
   api/*.txt                 stable CLI/MCP text outputs
 ```
+
+**Hints in the fixture channel (normative, #67).** Author hints are store
+METADATA, not source: a kernel that reads only `.oath` text cannot know them, so
+a hinted goal's script would be irreproducible from source alone. `prove/
+outcomes.json` therefore carries them, per property, alongside the recorded
+proof outcome — it is already the channel by which recorded proof state reaches
+an independent kernel, and a hint is proof state in the same sense. Each entry
+names its target as `{"def": <definition hash>, "prop": <index>}`; targets are
+HASHES, never names, so they resolve identically in any kernel (each computes
+hashes itself). A kernel reproducing `prove/scripts.txt` MUST apply the hints
+given for a property when assembling that property's lemma set, and MUST NOT
+apply them to any other property. The field is absent when a property has no
+hints, so a hint-free corpus produces byte-identical fixtures to one from a
+kernel predating the feature.
 
 No second implementation is trusted until it passes the fixtures without
 consulting the Go source.
