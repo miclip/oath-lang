@@ -159,6 +159,7 @@ func (s *Store) StoreObject(d *Def, m *Meta) (string, error) {
 	if prev, err := s.GetMeta(h); err == nil {
 		m.Guarantee = prev.Guarantee
 		m.ProvenProps = prev.ProvenProps
+		m.Hints = prev.Hints // author hints are hash-keyed facts; a re-put from source carries none
 		m.MutantsKilled, m.MutantsTotal = prev.MutantsKilled, prev.MutantsTotal
 		m.WaivedMutants = prev.WaivedMutants
 		m.Termination = prev.Termination

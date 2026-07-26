@@ -39,6 +39,9 @@ usage:
   oath waive <name> <mutant> "<why>"  record a surviving mutant as judged-equivalent, with justification
   oath cross <nameA> <nameB> [--record]  N-version misalignment check: run each spec against the other's body
   oath prove <name>                   SMT-prove properties for ALL inputs (non-recursive Int/Bool fragment)
+  oath hint <name> <prop> <lemma>[.<prop>]  admit a proven property as a lemma for a goal (#67)
+  oath hint <name>                    list a definition's proof hints
+  oath hint --clear <name> [<prop>]   remove hints (all, or one property's)
   oath eval "<expr>"                  typecheck and evaluate an expression
   oath serve                          MCP server over stdio (tools for agent sessions)
   oath serve --http <addr> --tokens <file>
@@ -271,6 +274,31 @@ func main() {
 			fail(fmt.Errorf("usage: oath prove <name>"))
 		}
 		cmdProve(st, args[1])
+	case "hint":
+		rest := args[1:]
+		var out string
+		var err error
+		switch {
+		case len(rest) >= 1 && rest[0] == "--clear":
+			if len(rest) < 2 || len(rest) > 3 {
+				fail(fmt.Errorf("usage: oath hint --clear <name> [<prop>]"))
+			}
+			propSpec := ""
+			if len(rest) == 3 {
+				propSpec = rest[2]
+			}
+			out, err = apiHintClear(st, rest[1], propSpec)
+		case len(rest) == 1:
+			out, err = apiHintList(st, rest[0])
+		case len(rest) == 3:
+			out, err = apiHint(st, rest[0], rest[1], rest[2])
+		default:
+			fail(fmt.Errorf("usage: oath hint <name> <prop> <lemma>[.<prop>]  |  oath hint <name>  |  oath hint --clear <name> [<prop>]"))
+		}
+		if err != nil {
+			fail(err)
+		}
+		fmt.Print(out)
 	case "serve":
 		httpAddr, tokensPath, authKeysPath := "", "", os.Getenv("OATH_AUTHORIZED_KEYS")
 		rest := args[1:]

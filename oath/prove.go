@@ -94,9 +94,22 @@ type smtVal struct {
 
 type lemma struct {
 	ownIdx   int // index of the prop this lemma came from in the def under proof; -1 for dependency lemmas
+	propIdx  int // index of the prop within defHash (its OWN def), for ALL lemmas — the hint-match key (#67)
 	text     string
 	defHash  string          // the definition the lemma belongs to
 	mentions map[string]bool // every definition hash the lemma's binders/body reference
+}
+
+// hintedLemma reports whether property pi of the goal def names this lemma as an
+// author-supplied admission (#67): a match on (defHash, propIdx). A hinted lemma
+// bypasses the footprint relevance filter — sound because it is itself proven.
+func hintedLemma(m *Meta, pi int, l *lemma) bool {
+	for _, hr := range m.Hints[pi] {
+		if hr.Def == l.defHash && hr.Prop == l.propIdx {
+			return true
+		}
+	}
+	return false
 }
 
 type smtCtx struct {
@@ -1068,6 +1081,31 @@ type propOutcome struct {
 // pi is the property's own index — its own lemma (from a prior run) is
 // excluded so a property can never prove itself.
 func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcome {
+	o := c.proveOneInner(d, h, m, p, pi)
+	// Annotate "(hinted)" when the proof succeeded with an author-supplied lemma
+	// actually in scope (#67): a legible signal that this guarantee needed a
+	// nudge. The lemma-free strategy admits no lemmas, so it is never hinted.
+	if o.status == "proven" && !strings.Contains(o.method, "lemma-free") && c.hintsInScope(m, h, pi) {
+		o.method += " (hinted)"
+	}
+	return o
+}
+
+// hintsInScope reports whether an author hint for property pi named a lemma the
+// library actually collected AND admitted (proven, translatable, not the goal's
+// own property) — the condition under which the hint could have helped.
+func (c *smtCtx) hintsInScope(m *Meta, h string, pi int) bool {
+	for _, hr := range m.Hints[pi] {
+		for i := range c.lemmas {
+			if c.lemmas[i].ownIdx != pi && c.lemmas[i].defHash == hr.Def && c.lemmas[i].propIdx == hr.Prop {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propOutcome {
 	// Script stability: all emitted symbols are STRUCTURALLY named (binder
 	// index, constructor-field index, function-parameter index) — no
 	// counters exist, so a goal's script is canonical by construction:
@@ -1120,7 +1158,7 @@ func (c *smtCtx) proveOne(d *Def, h string, m *Meta, p *Prop, pi int) propOutcom
 		var adm []*lemma
 		if withLemmas {
 			for i := range c.lemmas {
-				if c.lemmas[i].ownIdx != pi && lemmaAdmissible(&c.lemmas[i], h, footprint) {
+				if c.lemmas[i].ownIdx != pi && (lemmaAdmissible(&c.lemmas[i], h, footprint) || hintedLemma(m, pi, &c.lemmas[i])) {
 					adm = append(adm, &c.lemmas[i])
 				}
 			}
@@ -1913,6 +1951,45 @@ func loadLemmaLibrary(c *smtCtx, st *Store, d *Def, h string, m *Meta) (int, int
 		}
 	}
 	ownCount := len(cands) - ownStart
+	// Author hints (#67): admit named proven properties even when they lie
+	// OUTSIDE the goal's dependency closure (the relevance filter would never
+	// surface them). Only a currently-PROVEN target is admitted — an inert hint
+	// (unproven, falsified, or missing target) is silently skipped, so the
+	// admission stays sound: the prover only ever asserts already-proven facts.
+	if len(m.Hints) > 0 {
+		inCands := map[string]bool{}
+		for _, cd := range cands {
+			inCands[fmt.Sprintf("%s#%d", cd.dh, cd.pi)] = true
+		}
+		for _, refs := range m.Hints {
+			for _, hr := range refs {
+				key := fmt.Sprintf("%s#%d", hr.Def, hr.Prop)
+				if inCands[key] {
+					continue
+				}
+				hd, err := st.GetDef(hr.Def)
+				if err != nil || hd.K != "func" || hr.Prop < 0 || hr.Prop >= len(hd.Props) {
+					continue
+				}
+				hm, err := st.GetMeta(hr.Def)
+				if err != nil {
+					continue
+				}
+				proven := false
+				for _, ppi := range hm.ProvenProps {
+					if ppi == hr.Prop {
+						proven = true
+						break
+					}
+				}
+				if !proven {
+					continue
+				}
+				inCands[key] = true
+				cands = append(cands, cand{hr.Def, hr.Prop})
+			}
+		}
+	}
 	sort.Slice(cands, func(a, b int) bool {
 		if cands[a].dh != cands[b].dh {
 			return cands[a].dh < cands[b].dh
@@ -1933,7 +2010,7 @@ func loadLemmaLibrary(c *smtCtx, st *Store, d *Def, h string, m *Meta) (int, int
 		if err != nil {
 			continue
 		}
-		c.lemmas = append(c.lemmas, lemma{ownIdx: own, defHash: cd.dh, mentions: propMentions(cd.dh, &dd.Props[cd.pi]),
+		c.lemmas = append(c.lemmas, lemma{ownIdx: own, propIdx: cd.pi, defHash: cd.dh, mentions: propMentions(cd.dh, &dd.Props[cd.pi]),
 			text: "(assert " + f + ")"})
 		added++
 	}
@@ -1985,7 +2062,7 @@ func directAttemptScript(st *Store, h string, pi int) (string, error) {
 	}
 	var adm []*lemma
 	for i := range c.lemmas {
-		if c.lemmas[i].ownIdx != pi && lemmaAdmissible(&c.lemmas[i], h, footprint) {
+		if c.lemmas[i].ownIdx != pi && (lemmaAdmissible(&c.lemmas[i], h, footprint) || hintedLemma(m, pi, &c.lemmas[i])) {
 			adm = append(adm, &c.lemmas[i])
 		}
 	}
@@ -2006,4 +2083,218 @@ func directAttemptScript(st *Store, h string, pi int) (string, error) {
 		b.WriteString("(get-model)\n")
 	}
 	return b.String(), nil
+}
+
+// resolvePropIdx maps a property spec — a name or a 0-based index — to its index
+// within a definition's props. Names resolve through the metadata's PropNames.
+func resolvePropIdx(m *Meta, nprops int, spec string) (int, error) {
+	for i := 0; i < nprops && i < len(m.PropNames); i++ {
+		if m.PropNames[i] == spec {
+			return i, nil
+		}
+	}
+	if n, err := strconv.Atoi(spec); err == nil {
+		if n < 0 || n >= nprops {
+			return 0, fmt.Errorf("property index %d out of range (0..%d)", n, nprops-1)
+		}
+		return n, nil
+	}
+	return 0, fmt.Errorf("no property named %q", spec)
+}
+
+// apiHint records an author-supplied proof hint (#67): for property `propSpec` of
+// `name`, admit proven properties of `lemmaSpec` as lemmas, bypassing the §7.2
+// relevance filter (a performance gate, never a soundness gate). Only PROVEN
+// targets are ever admitted, so a hint can help discharge a goal but never make
+// a false one provable. `lemmaSpec` is "<lemma>" (all its currently-proven props)
+// or "<lemma>.<prop>" (one property, by name or index). Identity-neutral: hints
+// live in metadata keyed to this object's hash, never in its AST.
+func apiHint(st *Store, name, propSpec, lemmaSpec string) (string, error) {
+	h, ok := st.Resolve(name)
+	if !ok {
+		return "", fmt.Errorf("no definition named %q", name)
+	}
+	d, err := st.GetDef(h)
+	if err != nil {
+		return "", err
+	}
+	m, err := st.GetMeta(h)
+	if err != nil {
+		return "", err
+	}
+	pi, err := resolvePropIdx(m, len(d.Props), propSpec)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", name, err)
+	}
+
+	lname, lpropSpec := lemmaSpec, ""
+	if i := strings.LastIndex(lemmaSpec, "."); i >= 0 {
+		lname, lpropSpec = lemmaSpec[:i], lemmaSpec[i+1:]
+	}
+	lh, ok := st.Resolve(lname)
+	if !ok {
+		return "", fmt.Errorf("no definition named %q", lname)
+	}
+	if lh == h {
+		return "", fmt.Errorf("a definition cannot hint its own properties — siblings are already admissible")
+	}
+	ld, err := st.GetDef(lh)
+	if err != nil {
+		return "", err
+	}
+	lm, err := st.GetMeta(lh)
+	if err != nil {
+		return "", err
+	}
+	provenSet := map[int]bool{}
+	for _, ppi := range lm.ProvenProps {
+		provenSet[ppi] = true
+	}
+	var targets []int
+	if lpropSpec == "" {
+		targets = append(targets, lm.ProvenProps...)
+		sort.Ints(targets)
+		if len(targets) == 0 {
+			return "", fmt.Errorf("%s has no proven properties to admit — prove it first", lname)
+		}
+	} else {
+		lpi, err := resolvePropIdx(lm, len(ld.Props), lpropSpec)
+		if err != nil {
+			return "", fmt.Errorf("%s: %w", lname, err)
+		}
+		if !provenSet[lpi] {
+			return "", fmt.Errorf("%s.%s is not proven — only proven properties may be admitted as hints", lname, metaPropName(lm, lpi))
+		}
+		targets = []int{lpi}
+	}
+
+	if m.Hints == nil {
+		m.Hints = map[int][]HintRef{}
+	}
+	added := 0
+	for _, lpi := range targets {
+		dup := false
+		for _, hr := range m.Hints[pi] {
+			if hr.Def == lh && hr.Prop == lpi {
+				dup = true
+				break
+			}
+		}
+		if dup {
+			continue
+		}
+		m.Hints[pi] = append(m.Hints[pi], HintRef{Def: lh, Prop: lpi})
+		added++
+	}
+	if added == 0 {
+		return fmt.Sprintf("no new hints for %s.%s (already present)\n", name, metaPropName(m, pi)), nil
+	}
+	sort.Slice(m.Hints[pi], func(a, b int) bool {
+		if m.Hints[pi][a].Def != m.Hints[pi][b].Def {
+			return m.Hints[pi][a].Def < m.Hints[pi][b].Def
+		}
+		return m.Hints[pi][a].Prop < m.Hints[pi][b].Prop
+	})
+	if err := st.SetMeta(h, m); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("+ hint  %s.%s ← %s  (%d lemma%s admitted); re-run `oath prove %s`\n",
+		name, metaPropName(m, pi), lemmaSpec, added, plural(added), name), nil
+}
+
+// apiHintList reports the hints recorded on a definition, resolving lemma hashes
+// back to names, and flags any that reference a now-unproven target (inert).
+func apiHintList(st *Store, name string) (string, error) {
+	h, ok := st.Resolve(name)
+	if !ok {
+		return "", fmt.Errorf("no definition named %q", name)
+	}
+	m, err := st.GetMeta(h)
+	if err != nil {
+		return "", err
+	}
+	if len(m.Hints) == 0 {
+		return fmt.Sprintf("%s: no hints\n", name), nil
+	}
+	pis := make([]int, 0, len(m.Hints))
+	for pi := range m.Hints {
+		pis = append(pis, pi)
+	}
+	sort.Ints(pis)
+	var b strings.Builder
+	fmt.Fprintf(&b, "hints for %s:\n", name)
+	for _, pi := range pis {
+		for _, hr := range m.Hints[pi] {
+			lname := st.NameOf(hr.Def)
+			if lname == "" {
+				lname = shortHash(hr.Def)
+			}
+			status := ""
+			if lm, err := st.GetMeta(hr.Def); err == nil {
+				proven := false
+				for _, ppi := range lm.ProvenProps {
+					if ppi == hr.Prop {
+						proven = true
+						break
+					}
+				}
+				if !proven {
+					status = "  ⚠ target not proven — inert"
+				}
+			} else {
+				status = "  ⚠ target missing — inert"
+			}
+			fmt.Fprintf(&b, "  %s ← %s.%d%s\n", metaPropName(m, pi), lname, hr.Prop, status)
+		}
+	}
+	return b.String(), nil
+}
+
+// apiHintClear removes hints. propSpec == "" clears every hint on the definition;
+// otherwise it clears only the named/indexed property's hints.
+func apiHintClear(st *Store, name, propSpec string) (string, error) {
+	h, ok := st.Resolve(name)
+	if !ok {
+		return "", fmt.Errorf("no definition named %q", name)
+	}
+	d, err := st.GetDef(h)
+	if err != nil {
+		return "", err
+	}
+	m, err := st.GetMeta(h)
+	if err != nil {
+		return "", err
+	}
+	if len(m.Hints) == 0 {
+		return fmt.Sprintf("%s: no hints to clear\n", name), nil
+	}
+	if propSpec == "" {
+		m.Hints = nil
+		if err := st.SetMeta(h, m); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("cleared all hints on %s; re-run `oath prove %s`\n", name, name), nil
+	}
+	pi, err := resolvePropIdx(m, len(d.Props), propSpec)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", name, err)
+	}
+	if _, ok := m.Hints[pi]; !ok {
+		return fmt.Sprintf("%s.%s: no hints\n", name, metaPropName(m, pi)), nil
+	}
+	delete(m.Hints, pi)
+	if len(m.Hints) == 0 {
+		m.Hints = nil
+	}
+	if err := st.SetMeta(h, m); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("cleared hints on %s.%s; re-run `oath prove %s`\n", name, metaPropName(m, pi), name), nil
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }

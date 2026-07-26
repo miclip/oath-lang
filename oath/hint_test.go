@@ -1,0 +1,150 @@
+package main
+
+import (
+	"strings"
+	"testing"
+)
+
+// A hint may only admit a PROVEN property — the soundness guard. Hinting an
+// unproven property is refused at authoring time (#67).
+func TestHintRejectsUnprovenLemma(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(defn lemdef [] [] Int 3
+		(prop l-refl [(x Int)] (== x x)))`)
+	put(t, st, `(defn goaldef [] [] Int 5
+		(prop g-refl [(y Int)] (== y y)))`)
+
+	// lemdef.l-refl is not proven yet → the hint must be refused.
+	if _, err := apiHint(st, "goaldef", "g-refl", "lemdef.l-refl"); err == nil {
+		t.Fatal("hinting an unproven property was accepted; want rejection")
+	}
+}
+
+// A definition cannot hint its own siblings (already admissible) — refused.
+func TestHintRejectsSelfHint(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(defn selfdef [] [] Int 5
+		(prop a [(y Int)] (== y y))
+		(prop b [(z Int)] (== z z)))`)
+	if _, err := apiHint(st, "selfdef", "a", "selfdef.b"); err == nil {
+		t.Fatal("self-hint was accepted; want rejection")
+	}
+}
+
+// apiHint records a hint, apiHintClear removes it, and the hint survives a
+// re-put of the same object (it is a hash-keyed, verdict-adjacent fact).
+func TestHintRecordMergeClear(t *testing.T) {
+	requireZ3(t)
+	st := newStore(t)
+	put(t, st, `(defn lemdef [] [] Int 3
+		(prop l-refl [(x Int)] (== x x)))`)
+	put(t, st, `(defn goaldef [] [] Int 5
+		(prop g-refl [(y Int)] (== y y)))`)
+
+	if _, err := apiProve(st, "lemdef"); err != nil {
+		t.Fatalf("prove lemdef: %v", err)
+	}
+	if _, err := apiHint(st, "goaldef", "g-refl", "lemdef.l-refl"); err != nil {
+		t.Fatalf("apiHint: %v", err)
+	}
+
+	gh, _ := st.Resolve("goaldef")
+	m, _ := st.GetMeta(gh)
+	if len(m.Hints[0]) != 1 {
+		t.Fatalf("hint not recorded: %+v", m.Hints)
+	}
+
+	// Re-put the identical source: the hint must survive the metadata merge.
+	put(t, st, `(defn goaldef [] [] Int 5
+		(prop g-refl [(y Int)] (== y y)))`)
+	m2, _ := st.GetMeta(gh)
+	if len(m2.Hints[0]) != 1 {
+		t.Fatalf("hint lost across re-put: %+v", m2.Hints)
+	}
+
+	// Clear it.
+	if _, err := apiHintClear(st, "goaldef", ""); err != nil {
+		t.Fatalf("apiHintClear: %v", err)
+	}
+	m3, _ := st.GetMeta(gh)
+	if len(m3.Hints) != 0 {
+		t.Fatalf("hint not cleared: %+v", m3.Hints)
+	}
+}
+
+// The mechanism itself: a hinted lemma enters the canonical proof script for a
+// goal even though the relevance filter would exclude it (the goal does not
+// reference the lemma's definition at all). This is the whole feature — the
+// hint changes the admitted lemma SET, bypassing the §7.2 footprint gate. It is
+// sound because the admitted fact is already proven.
+func TestHintExpandsAdmittedLemmaSet(t *testing.T) {
+	requireZ3(t)
+	st := newStore(t)
+	// lemdef's proven property is a universally-quantified fact; when admitted as
+	// a lemma it emits an `(assert (forall ...))`. goaldef does NOT reference
+	// lemdef, so absent a hint the filter never surfaces it.
+	put(t, st, `(defn lemdef [] [] Int 3
+		(prop l-refl [(x Int)] (== x x)))`)
+	put(t, st, `(defn goaldef [] [] Int 5
+		(prop g-refl [(y Int)] (== y y)))`)
+	if _, err := apiProve(st, "lemdef"); err != nil {
+		t.Fatalf("prove lemdef: %v", err)
+	}
+
+	gh, _ := st.Resolve("goaldef")
+
+	before, err := directAttemptScript(st, gh, 0)
+	if err != nil {
+		t.Fatalf("directAttemptScript before: %v", err)
+	}
+	if strings.Contains(before, "forall") {
+		t.Fatalf("unhinted script already admits a quantified lemma:\n%s", before)
+	}
+
+	if _, err := apiHint(st, "goaldef", "g-refl", "lemdef.l-refl"); err != nil {
+		t.Fatalf("apiHint: %v", err)
+	}
+
+	after, err := directAttemptScript(st, gh, 0)
+	if err != nil {
+		t.Fatalf("directAttemptScript after: %v", err)
+	}
+	if !strings.Contains(after, "forall") {
+		t.Fatalf("hinted lemma did not enter the script:\n%s", after)
+	}
+}
+
+// A hint that references a now-unproven target is inert — never admitted to the
+// script — so it can never launder a falsehood. We build the hint while proven,
+// then simulate the target regressing by clearing its ProvenProps.
+func TestHintInertWhenTargetUnproven(t *testing.T) {
+	requireZ3(t)
+	st := newStore(t)
+	put(t, st, `(defn lemdef [] [] Int 3
+		(prop l-refl [(x Int)] (== x x)))`)
+	put(t, st, `(defn goaldef [] [] Int 5
+		(prop g-refl [(y Int)] (== y y)))`)
+	if _, err := apiProve(st, "lemdef"); err != nil {
+		t.Fatalf("prove lemdef: %v", err)
+	}
+	if _, err := apiHint(st, "goaldef", "g-refl", "lemdef.l-refl"); err != nil {
+		t.Fatalf("apiHint: %v", err)
+	}
+
+	// Regress the target: strip its proven set.
+	lh, _ := st.Resolve("lemdef")
+	lm, _ := st.GetMeta(lh)
+	lm.ProvenProps = nil
+	if err := st.SetMeta(lh, lm); err != nil {
+		t.Fatalf("SetMeta: %v", err)
+	}
+
+	gh, _ := st.Resolve("goaldef")
+	after, err := directAttemptScript(st, gh, 0)
+	if err != nil {
+		t.Fatalf("directAttemptScript: %v", err)
+	}
+	if strings.Contains(after, "forall") {
+		t.Fatalf("inert hint (unproven target) was admitted:\n%s", after)
+	}
+}

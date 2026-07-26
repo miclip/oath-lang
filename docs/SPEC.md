@@ -969,6 +969,31 @@ reproducibility (given the same solver):
   exists to remove). This bounds each proof's
   axiom set by what the goal can reach instead of by the library's size
   (#25).
+- **Author-supplied hints (normative, #67).** A definition's metadata MAY
+  carry, per property index `pi`, a list of *hints*: references `(defHash,
+  propIdx)` to proven properties of OTHER definitions. Hints are metadata
+  only — they are NOT part of the object's canonical encoding (§1) and do not
+  affect its hash; two objects differing only in hints are the same object,
+  and hints merge on re-put like other verdict-adjacent facts. For the goal
+  that is property `pi` of the definition under proof, a hinted lemma
+  `(defHash, propIdx)` is admissible EVEN WHEN the footprint relevance test
+  above would exclude it, PROVIDED `propIdx` is a currently-proven property of
+  `defHash` (present in that definition's proven-property set). A hint whose
+  target is unproven, falsified, or missing is INERT — never admitted. A
+  hinted lemma MAY belong to a definition outside the goal's footprint (and
+  outside the dependency closure); a kernel collects it as an additional lemma
+  candidate, and its declarations enter the problem as any lemma's do.
+  Admission is purely ADDITIVE: the admitted set is still the sibling and
+  footprint-admissible lemmas, PLUS the proven hinted lemmas, emitted in the
+  same canonical (defHash, propIdx) order; a hint never removes a lemma and
+  never affects the lemma-free attempt (which admits none). Soundness is by
+  construction — only already-proven facts are ever asserted, so a hint can
+  make a true goal reachable within budget but can never make a false goal
+  `unsat`; hints are a reachability lever over the same non-monotone solver,
+  not a change to what counts as proved. A property proven with at least one
+  hinted lemma in its admitted set, by a strategy other than the lemma-free
+  attempt, is REPORTED as hinted (the method string carries a `(hinted)`
+  suffix); this is a legibility annotation and does not affect the verdict.
 - **Lexicographic induction (normative).** When single-binder induction
   fails, kernels MUST attempt lexicographic induction on each ordered pair
   (i, j) of distinct datatype-sorted binders, in ascending (i, j) order,

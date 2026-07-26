@@ -137,6 +137,20 @@ type Meta struct {
 	ParamNames    []string                `json:"param_names,omitempty"`    // funcs: surface parameter names (projection aid)
 	Confinement   []string                `json:"confinement,omitempty"`    // funcs: per-param "confined" | "escapes" | "" (first-order)
 	ProvenProps   []int                   `json:"proven_props,omitempty"`   // indices of SMT-proven properties (the lemma library)
+	Hints         map[int][]HintRef       `json:"hints,omitempty"`          // per-property author-supplied lemma admissions (#67)
+}
+
+// HintRef names a proven property of some definition that the author asks the
+// prover to admit as a lemma for a specific goal — bypassing the §7.2 relevance
+// filter, which is a PERFORMANCE gate (a budget-limited solver is non-monotone
+// in its axiom set), never a soundness gate. Admitting an already-PROVEN fact is
+// sound by construction: it can help discharge a goal, never make a false one
+// provable. A hint referencing an unproven property is inert (never admitted).
+// Identity-neutral: hints live in metadata, keyed to this object's hash, and
+// never enter the canonical AST — the same object with or without hints.
+type HintRef struct {
+	Def  string `json:"def"`  // hash of the definition whose proven property is admitted
+	Prop int    `json:"prop"` // property index within that definition
 }
 
 // collectDeps returns the set of definition hashes a def references.

@@ -19,7 +19,8 @@ the substrate is the product.
   encoding changes fork reality.
 - Guarantee system, all real and CI-guarded: asserted → tested
   (deterministic, hash-seeded) → PROVEN (Z3, direct + structural induction,
-  relevance-filtered lemma library per §7.2). Per-def verdicts: termination
+  relevance-filtered lemma library per §7.2; `oath hint` admits a named proven
+  lemma the filter excluded — sound, identity-neutral, #67). Per-def verdicts: termination
   (lexicographic), confinement (closure-tracking), spec strength (mutation
   + justified waivers), provenance (append-only tamper-evident journal,
   authenticated principals on the HTTP store).
