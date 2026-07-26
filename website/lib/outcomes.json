@@ -183,6 +183,19 @@
       ]
     },
     {
+      "name": "count-append",
+      "hash": "ed0b40d5d68f69718921542d3e4bbe4284cd1cdae9e6a885f4f84090d137791d",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "splits-over-append",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "count-by",
       "hash": "851d636b947699a11d6748a2c5fcaa1d8fed3f2c725317197813c07b9373c494",
       "level": "proven",
@@ -1604,8 +1617,8 @@
     {
       "name": "q-push",
       "hash": "743484c1807d7893bb22f35f255c7830b5b707e6d9ac633f48e1854f0af92293",
-      "level": "tested",
-      "proven_count": 4,
+      "level": "proven",
+      "proven_count": 5,
       "prop_count": 5,
       "props": [
         {
@@ -1622,7 +1635,13 @@
         },
         {
           "name": "push-count-pushed",
-          "proven": false
+          "proven": true,
+          "hints": [
+            {
+              "def": "ed0b40d5d68f69718921542d3e4bbe4284cd1cdae9e6a885f4f84090d137791d",
+              "prop": 0
+            }
+          ]
         },
         {
           "name": "push-order-anchor",
@@ -2608,16 +2627,28 @@
       "name": "t-insert",
       "hash": "312101f6dfd4a4aecf341d92d861d1c08755e72701c5f9b1a929b8d974a6adbd",
       "level": "tested",
-      "proven_count": 2,
+      "proven_count": 4,
       "prop_count": 5,
       "props": [
         {
           "name": "insert-count-inserted",
-          "proven": false
+          "proven": true,
+          "hints": [
+            {
+              "def": "ed0b40d5d68f69718921542d3e4bbe4284cd1cdae9e6a885f4f84090d137791d",
+              "prop": 0
+            }
+          ]
         },
         {
           "name": "insert-count-others",
-          "proven": false
+          "proven": true,
+          "hints": [
+            {
+              "def": "ed0b40d5d68f69718921542d3e4bbe4284cd1cdae9e6a885f4f84090d137791d",
+              "prop": 0
+            }
+          ]
         },
         {
           "name": "insert-length",

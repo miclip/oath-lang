@@ -1,0 +1,14 @@
+{
+  "name": "count-append",
+  "hash": "ed0b40d5d68f69718921542d3e4bbe4284cd1cdae9e6a885f4f84090d137791d",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

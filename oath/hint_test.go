@@ -174,3 +174,42 @@ func TestProveWallCapEnvOverride(t *testing.T) {
 		t.Fatalf("zero override = %v, want default (0 would abort everything)", got)
 	}
 }
+
+// SOUNDNESS (SPEC §7.2): a property is never its own lemma, and that exclusion
+// is applied BEFORE hints. A hand-written self-hint in metadata — which `oath
+// hint` refuses to record, but nothing stops an editor from writing — must be
+// discarded by the prover, or a hint could assert the goal as its own axiom and
+// "prove" anything. The blind Rust kernel surfaced this as an unpinned rule
+// (DIVERGENCES 81c); it is now normative and tested on both sides.
+func TestHintCannotMakePropertyItsOwnLemma(t *testing.T) {
+	requireZ3(t)
+	st := newStore(t)
+	// A FALSE property. If a self-hint were honored it would be asserted as its
+	// own lemma and would "prove" — the exact unsoundness this guards.
+	put(t, st, `(defn selfhint [] [(n Int)] Int n
+		(prop bogus [(n Int)] (== (selfhint n) (+ n 1))))`)
+	h, _ := st.Resolve("selfhint")
+	m, _ := st.GetMeta(h)
+	m.Hints = map[int][]HintRef{0: {{Def: h, Prop: 0}}} // prop 0 hints ITSELF
+	if err := st.SetMeta(h, m); err != nil {
+		t.Fatalf("SetMeta: %v", err)
+	}
+
+	if _, err := apiProve(st, "selfhint"); err != nil {
+		t.Fatalf("prove: %v", err)
+	}
+	m2, _ := st.GetMeta(h)
+	for _, pi := range m2.ProvenProps {
+		if pi == 0 {
+			t.Fatal("UNSOUND: a self-hinted property proved itself")
+		}
+	}
+	// And the emitted script must not contain the goal as an admitted lemma.
+	sc, err := directAttemptScript(st, h, 0)
+	if err != nil {
+		t.Fatalf("directAttemptScript: %v", err)
+	}
+	if strings.Count(sc, "(+ b0 1)") > 1 {
+		t.Fatalf("self-hinted lemma leaked into the script:\n%s", sc)
+	}
+}

@@ -994,6 +994,19 @@ reproducibility (given the same solver):
   hinted lemma in its admitted set, by a strategy other than the lemma-free
   attempt, is REPORTED as hinted (the method string carries a `(hinted)`
   suffix); this is a legibility annotation and does not affect the verdict.
+  Two consequences of "additive" that a kernel MUST NOT get wrong:
+  - **Set union, not concatenation.** If a hinted lemma is ALREADY an admissible
+    candidate for the goal, the hint makes no difference: the lemma is asserted
+    exactly ONCE, and the emitted bytes are identical to the unhinted script. A
+    redundant hint is a no-op, never a duplicated assertion.
+  - **A property is never its own lemma (soundness).** The rule that a goal's own
+    property is excluded from its lemma set is absolute and is applied BEFORE
+    hints: a kernel MUST discard any hinted lemma whose (definition hash,
+    property index) IS the goal being proven, whatever the metadata says. Without
+    this a hint could assert the goal as an axiom and "prove" anything, so this is
+    a soundness requirement, not a preference. Hints naming the definition under
+    proof are in any case redundant — sibling lemmas are already admissible
+    unconditionally — and authoring tools SHOULD refuse to record one.
 - **Lexicographic induction (normative).** When single-binder induction
   fails, kernels MUST attempt lexicographic induction on each ordered pair
   (i, j) of distinct datatype-sorted binders, in ascending (i, j) order,
@@ -1493,9 +1506,24 @@ fixtures/
   verify/*.txt              property verdicts and counterexamples
   analyses/*.json           termination, confinement, mutation scores
   prove/*.smt2              emitted obligations or obligation hashes
-  prove/outcomes.json       solver version, outcome, method, detail
+  prove/outcomes.json       solver version, outcome, method, detail;
+                            per-property author hints (#67)
   api/*.txt                 stable CLI/MCP text outputs
 ```
+
+**Hints in the fixture channel (normative, #67).** Author hints are store
+METADATA, not source: a kernel that reads only `.oath` text cannot know them, so
+a hinted goal's script would be irreproducible from source alone. `prove/
+outcomes.json` therefore carries them, per property, alongside the recorded
+proof outcome — it is already the channel by which recorded proof state reaches
+an independent kernel, and a hint is proof state in the same sense. Each entry
+names its target as `{"def": <definition hash>, "prop": <index>}`; targets are
+HASHES, never names, so they resolve identically in any kernel (each computes
+hashes itself). A kernel reproducing `prove/scripts.txt` MUST apply the hints
+given for a property when assembling that property's lemma set, and MUST NOT
+apply them to any other property. The field is absent when a property has no
+hints, so a hint-free corpus produces byte-identical fixtures to one from a
+kernel predating the feature.
 
 No second implementation is trusted until it passes the fixtures without
 consulting the Go source.

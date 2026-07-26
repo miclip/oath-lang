@@ -12,6 +12,24 @@
   (prop bounded-by-length [(x Int) (xs (List Int))]
     (<= (count x xs) (length [Int] xs))))
 
+; count's missing counterpart to append.length-adds: occurrences split over a
+; concatenation. A STEPPING-STONE lemma (#67) — several goals elsewhere observe a
+; structure through `count` after flattening it with `append` (t-insert's count
+; laws, q-push's push-count-pushed), and each needs exactly this equation to get
+; past its inductive step. It lives in its own definition rather than as another
+; `count` prop because adding a prop to `count` would change count's hash and
+; fork every definition downstream of it; a new definition is identity-neutral.
+;
+; The goals that need it do NOT reference count-append, so §7.2's relevance
+; filter (correctly) excludes it from their lemma sets — it is out of their
+; footprint. `oath hint <goal> <prop> count-append.splits-over-append` admits it
+; for exactly the goals that ask for it, which is what #67 exists to do. The body
+; is the witness; the law is the property.
+(defn count-append [] [(x Int) (a (List Int)) (b (List Int))] Int
+  (+ (count x a) (count x b))
+  (prop splits-over-append [(x Int) (a (List Int)) (b (List Int))]
+    (== (count x (append [Int] a b)) (+ (count x a) (count x b)))))
+
 (defn is-sorted [] [(xs (List Int))] Bool
   (match xs
     ((Nil) true)

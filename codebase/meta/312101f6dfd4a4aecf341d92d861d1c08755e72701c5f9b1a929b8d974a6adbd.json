@@ -10,7 +10,7 @@
   "guarantee": {
     "level": "tested",
     "cases": 200,
-    "proven": 2
+    "proven": 4
   },
   "mutants_killed": 6,
   "mutants_total": 6,
@@ -27,7 +27,23 @@
     ""
   ],
   "proven_props": [
+    0,
+    1,
     2,
     4
-  ]
+  ],
+  "hints": {
+    "0": [
+      {
+        "def": "ed0b40d5d68f69718921542d3e4bbe4284cd1cdae9e6a885f4f84090d137791d",
+        "prop": 0
+      }
+    ],
+    "1": [
+      {
+        "def": "ed0b40d5d68f69718921542d3e4bbe4284cd1cdae9e6a885f4f84090d137791d",
+        "prop": 0
+      }
+    ]
+  }
 }

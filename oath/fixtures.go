@@ -19,11 +19,11 @@ package main
 //   MANIFEST.md           what this tree is and how to regenerate it
 
 import (
-	"math/big"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,6 +70,15 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 	type propOut struct {
 		Name   string `json:"name"`
 		Proven bool   `json:"proven"`
+		// Author hints for this goal (#67). Hints live in STORE METADATA, not in
+		// .oath source, so a kernel reading only source could never reproduce a
+		// hinted goal's script. They ride here because outcomes.json is already
+		// the channel by which the byte-oracle hands recorded proof state to an
+		// independent kernel — hints are proof state in exactly the same sense.
+		// Targets are DEFINITION HASHES, which are portable across kernels (each
+		// computes them itself), never names. omitempty keeps a hint-free corpus
+		// byte-identical to before the feature existed.
+		Hints []HintRef `json:"hints,omitempty"`
 	}
 	type proveEntry struct {
 		Name        string    `json:"name"`
@@ -134,7 +143,7 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		}
 		e := proveEntry{Name: name, Hash: h, Level: m.Guarantee.Level, ProvenCount: len(m.ProvenProps), PropCount: len(d.Props)}
 		for pi := range d.Props {
-			e.Props = append(e.Props, propOut{Name: metaPropName(m, pi), Proven: provenSet[pi]})
+			e.Props = append(e.Props, propOut{Name: metaPropName(m, pi), Proven: provenSet[pi], Hints: m.Hints[pi]})
 		}
 		outcomes = append(outcomes, e)
 	}
@@ -213,7 +222,6 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 	}
 	fmt.Fprintf(&log, "prove/scripts/: %d golden script texts\n", goldenCount)
 
-
 	// §1.5 golden encoding fixtures: hand-built Defs demonstrating the encoding
 	// rules a second kernel must reproduce byte-for-byte. These are ENCODING
 	// demonstrations, not necessarily well-typed terms.
@@ -229,7 +237,7 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		{"hash_reference", "hash references are 32 raw bytes, not hex text",
 			&Def{K: "func", Ty: tBool(), Body: &Term{K: "ctor",
 				Hash: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
-				Idx: 0, Args: []Term{{K: "bool"}}}}},
+				Idx:  0, Args: []Term{{K: "bool"}}}}},
 		{"empty_lists", "counts are u32; empty lists are a bare zero count (props here)",
 			&Def{K: "func", Ty: tInt(), Body: &Term{K: "int", Int: big.NewInt(0)},
 				Props: []Prop{{Binders: []Ty{}, Body: Term{K: "bool", Bool: true}}}}},
