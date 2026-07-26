@@ -7,9 +7,19 @@
 # independently-authored green bodies for one oath; `rot` aliases the winner.
 # Topological order: list → str (needs List) → records (defines Option/Pair/
 # Result, needs str) → everything else. The committed store always has every
-# dependency, so this order matters only for a from-scratch rebuild.
-EXAMPLES = list str records arith inferred sort generic merge tree interval queue rle ediv rot_hl rot_f rot_h2 \
-           rot_h3 rot extras ints service leaky stateful cli netcli set map
+# dependency, so this order matters only for a from-scratch rebuild — which is
+# exactly why it silently rotted. Two fixes, both verified by putting this list
+# into an EMPTY store and getting all 162 definitions with no errors:
+#   - extras moved BEFORE the rot* files: they call drop/take, which extras
+#     defines. The old order only worked because the committed store already
+#     held drop from an earlier run.
+#   - rat, float, convert, circle ADDED. They are real corpus members (present
+#     in codebase/ and pinned in fixtures/hashes.txt) but were missing from this
+#     list, so `make verify` never re-put them. That is how the live registry
+#     ended up with no rational family at all — a corpus push driven by this
+#     list cannot push what the list omits.
+EXAMPLES = list str records arith inferred sort generic merge tree interval queue rle ediv extras rot_hl rot_f \
+           rot_h2 rot_h3 rot ints rat float convert service leaky stateful cli netcli set map circle
 EXHIBITS = undertested nontotal bad_reverse
 PROVABLE = length append sum count reverse map filter foldr foldl \
            reverse-onto flatten all any snoc find last init \
@@ -36,7 +46,7 @@ TESTED_ONLY = rle-expand rle-decode e-mod e-div rot
 OATH = ./oath/oath
 AUTHOR ?= claude-main
 
-.PHONY: build verify prove mutate check fixtures tutorials check-web-tutorials
+.PHONY: build verify prove mutate check fixtures tutorials check-web-tutorials print-order
 
 build:
 	cd oath && go build -o oath .
@@ -110,3 +120,8 @@ playground-assets: build
 	@cp website/lib/playground/memfs.js website/public/pgrt/memfs.js
 	@node website/lib/playground/gen-snapshot.mjs .
 	@echo "playground assets assembled in website/public/pgrt/"
+# The corpus in dependency order, one source of truth for both `make verify` and
+# scripts/push-corpus.sh — so a registry push can never disagree with the local
+# put order (that disagreement is how the registry ended up missing rat/convert).
+print-order:
+	@echo $(EXAMPLES) $(EXHIBITS)
