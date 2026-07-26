@@ -263,6 +263,30 @@ func (s *Store) GetDef(h string) (*Def, error) {
 	return &d, nil
 }
 
+// RefreshMutable drops the cached MUTABLE state so the next read observes what
+// is actually on the backend right now (#70).
+//
+// A serve instance and a prove-worker are SEPARATE PROCESSES over one shared
+// store: the worker records proofs out of band, and a long-lived reader that
+// cached metadata at startup keeps serving the verdicts it saw then — for the
+// registry that meant the proven count sat frozen at 73 for hours while the
+// worker had actually advanced the store to 99, and only a redeploy (a fresh
+// process) revealed it. That is not a display nit: the registry's entire claim
+// is that clients read verdicts it re-derived, so serving a stale one is serving
+// a false one.
+//
+// Only `metas` is dropped. `defs` is deliberately NOT: objects are
+// content-addressed, so the bytes under a hash can never change — an immutable
+// cache is correct by construction, and it holds the expensive part (decoded
+// ASTs). Metadata is the only thing that legitimately moves under a fixed hash,
+// and it is small JSON. The name index is not cached at all (Names() always
+// reads through), so it was never stale.
+func (s *Store) RefreshMutable() {
+	s.mu.Lock()
+	s.metas = map[string]*Meta{}
+	s.mu.Unlock()
+}
+
 func (s *Store) GetMeta(h string) (*Meta, error) {
 	s.mu.RLock()
 	m0, ok := s.metas[h]

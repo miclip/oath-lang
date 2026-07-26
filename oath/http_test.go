@@ -159,3 +159,62 @@ func TestOwnerPubkeyScopedRepoint(t *testing.T) {
 		t.Fatal("name lost")
 	}
 }
+
+// #70: a serve instance and a prove-worker are separate processes over one
+// store. A reader that cached metadata at startup kept serving the verdicts it
+// saw then — the registry's proven count sat frozen for hours while the worker
+// had actually advanced the store, and only a redeploy revealed it. Simulate
+// exactly that: a SECOND Store over the same root records a proof, and the
+// first must observe it after RefreshMutable.
+func TestServeObservesOutOfBandVerdicts(t *testing.T) {
+	root := t.TempDir()
+	reader, err := OpenStore(root)
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	if _, err := apiPut(reader, `(defn oob [] [] Int 1
+		(prop triv [(x Int)] (== x x)))`, "test", ""); err != nil {
+		t.Fatal(err)
+	}
+	h, _ := reader.Resolve("oob")
+
+	// Warm the reader's cache, as a long-lived server does.
+	if m, err := reader.GetMeta(h); err != nil || len(m.ProvenProps) != 0 {
+		t.Fatalf("baseline: err=%v proven=%v", err, m.ProvenProps)
+	}
+
+	// A DIFFERENT process (a worker) records a proof against the same root.
+	worker, err := OpenStore(root)
+	if err != nil {
+		t.Fatalf("OpenStore worker: %v", err)
+	}
+	wm, err := worker.GetMeta(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wm.ProvenProps = []int{0}
+	wm.Guarantee.Level = "proven"
+	if err := worker.SetMeta(h, wm); err != nil {
+		t.Fatalf("worker SetMeta: %v", err)
+	}
+
+	// Without refreshing, the reader is stale — this is the bug.
+	if m, _ := reader.GetMeta(h); len(m.ProvenProps) != 0 {
+		t.Fatal("precondition failed: reader was not actually caching")
+	}
+	// After refreshing, it must see the worker's verdict.
+	reader.RefreshMutable()
+	m, err := reader.GetMeta(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.ProvenProps) != 1 || m.Guarantee.Level != "proven" {
+		t.Fatalf("stale after refresh: proven=%v level=%q", m.ProvenProps, m.Guarantee.Level)
+	}
+
+	// Objects are content-addressed and must stay cached across a refresh —
+	// dropping them would be pure cost with no correctness gain.
+	if _, err := reader.GetDef(h); err != nil {
+		t.Fatalf("GetDef after refresh: %v", err)
+	}
+}

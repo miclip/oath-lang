@@ -235,6 +235,11 @@ func cmdServe(st *Store) {
 		if strings.HasPrefix(req.Method, "notifications/") {
 			continue
 		}
+		// Same freshness rule as the HTTP surface (#70): this loop is long-lived
+		// too, and a `prove`/`prove-worker` running beside it writes verdicts out
+		// of band. An agent session holding a stdio server open would otherwise
+		// keep reporting the guarantees it saw at startup.
+		st.RefreshMutable()
 		resp := handleRPC(st, &req, "", true) // local stdio: the invoking user owns the store
 		reply(req.ID, resp.Result, resp.Error)
 	}

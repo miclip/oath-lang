@@ -160,6 +160,14 @@ func cmdServeHTTP(st *Store, addr, tokensPath, authKeysPath string) {
 			w.WriteHeader(http.StatusAccepted)
 			return
 		}
+		// Observe the store as it is NOW, not as it was when this process
+		// started (#70). The prove-worker writes verdicts out of band, so a
+		// cached view served stale — and stale verdicts from a registry whose
+		// whole claim is "these were re-derived here" are false verdicts, not
+		// slow ones. Per REQUEST, not per tool call: one request is one
+		// consistent snapshot, and the caching still pays for itself within a
+		// heavy call (a prove touches the same metadata many times).
+		st.RefreshMutable()
 		resp := handleRPC(st, &req, principal, canWrite)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
