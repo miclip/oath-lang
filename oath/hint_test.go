@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // A hint may only admit a PROVEN property — the soundness guard. Hinting an
@@ -146,5 +147,30 @@ func TestHintInertWhenTargetUnproven(t *testing.T) {
 	}
 	if strings.Contains(after, "forall") {
 		t.Fatalf("inert hint (unproven target) was admitted:\n%s", after)
+	}
+}
+
+// The wall-clock safety cap is host-tunable via OATH_PROVE_WALLCAP_SEC (#14
+// registry worker on slow cores). It is NOT part of any recorded verdict, so a
+// tuned cap changes only how long a slow machine may run before an environmental
+// abort — never an outcome. Default stays 600s so local/CI/conformance are
+// byte-identical.
+func TestProveWallCapEnvOverride(t *testing.T) {
+	if got := proveWallCap(); got != proveWallCapDefault {
+		t.Fatalf("default wall cap = %v, want %v", got, proveWallCapDefault)
+	}
+	t.Setenv("OATH_PROVE_WALLCAP_SEC", "1800")
+	if got := proveWallCap(); got != 1800*time.Second {
+		t.Fatalf("override wall cap = %v, want 1800s", got)
+	}
+	// A malformed or non-positive value falls back to the default (never 0, which
+	// would abort every attempt instantly).
+	t.Setenv("OATH_PROVE_WALLCAP_SEC", "nonsense")
+	if got := proveWallCap(); got != proveWallCapDefault {
+		t.Fatalf("malformed override = %v, want default", got)
+	}
+	t.Setenv("OATH_PROVE_WALLCAP_SEC", "0")
+	if got := proveWallCap(); got != proveWallCapDefault {
+		t.Fatalf("zero override = %v, want default (0 would abort everything)", got)
 	}
 }

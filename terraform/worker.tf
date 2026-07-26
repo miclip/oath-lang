@@ -34,7 +34,13 @@ resource "google_cloud_run_v2_job" "worker" {
       # same doomed level forever (the corpus sat at 73/105 for hours). max_retries
       # is 0 so a run that still overruns fails cleanly instead of auto-burning a
       # second full-length attempt.
-      timeout = "28800s"
+      #
+      # 12h (not 8h) because the wall-cap below is raised for this slow hardware:
+      # a bigger per-goal cap means the genuine non-theorems burn proportionally
+      # longer before giving up, stretching the whole pass. The task timeout must
+      # still exceed a full pass (or the fingerprint never settles), and stay
+      # under worker_schedule (daily) so passes never overlap.
+      timeout = "43200s"
 
       volumes {
         name = "store"
@@ -55,6 +61,19 @@ resource "google_cloud_run_v2_job" "worker" {
         env {
           name  = "OATH_STORE_LOCK"
           value = "1"
+        }
+        # Raise z3's wall-clock safety cap for this slow hardware. Cloud Run's
+        # per-core speed is well below a dev laptop's, so goals that finish under
+        # their (deterministic) rlimit budget locally hit the 600s default cap
+        # here and abort UNRECORDED — the corpus plateaued ~29 short of local.
+        # The cap is not part of any recorded verdict (a cap hit is an
+        # environmental abort, never an outcome), so raising it only lets slow
+        # cores reach the SAME verdict; it never changes one. Tunable live with
+        # `gcloud run jobs update oath-worker --set-env-vars OATH_PROVE_WALLCAP_SEC=<n>`
+        # then re-execute — no rebuild — since bigger caps also lengthen the pass.
+        env {
+          name  = "OATH_PROVE_WALLCAP_SEC"
+          value = tostring(var.worker_wallcap_sec)
         }
         # Cloud backend env — present only when enable_database=true (cutover).
         dynamic "env" {

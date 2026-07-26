@@ -14,7 +14,7 @@ import (
 // is the native run step; the browser build (z3host_wasm.go) reaches z3-solver
 // through a worker bridge instead.
 func execZ3(full string) (string, bool) {
-	ctx, cancel := context.WithTimeout(context.Background(), proveWallCap)
+	ctx, cancel := context.WithTimeout(context.Background(), proveWallCap())
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "z3", "-in")
 	cmd.Stdin = strings.NewReader(full)

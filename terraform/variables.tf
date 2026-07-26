@@ -32,6 +32,12 @@ variable "custom_domain" {
   default     = ""
 }
 
+variable "worker_wallcap_sec" {
+  type        = number
+  description = "Per-goal z3 wall-clock safety cap (seconds) for the proof worker (OATH_PROVE_WALLCAP_SEC). NOT part of any recorded verdict — a cap hit is an environmental abort, never an outcome — so this is a host-speed knob: Cloud Run's slow cores need more than the 600s default to let z3 finish the same rlimit budget. Bigger caps also lengthen a pass (non-theorems burn longer before giving up), so keep timeout > a full pass. Tune live via `gcloud run jobs update`."
+  default     = 1800
+}
+
 variable "worker_schedule" {
   type        = string
   description = "Cron schedule for the proof worker Job (Cloud Scheduler). Must be longer than the Job's per-task timeout (28800s / 8h) so runs never overlap (concurrent writers on the gcsfuse store trigger stale handles — an overlapping scheduled tick + manual run wedged the corpus at 73/105 for hours). Once the corpus is fully proven, the fingerprint gate makes each scan a fast no-op."

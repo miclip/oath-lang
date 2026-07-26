@@ -69,7 +69,25 @@ const proveDirectRlimit = 4_000_000
 // FEWER premises is strictly sound, while a lemma-free `sat` is left to the
 // canonical attempt rather than reasoned about here.
 const proveLemmaFreeRlimit = 4_000_000
-const proveWallCap = 600 * time.Second
+
+// proveWallCapDefault is the wall-clock safety cap on a single z3 attempt. It is
+// NOT part of any recorded verdict — a cap hit is an environmental abort, never
+// an outcome (SPEC §7.2; execZ3 is explicitly host-specific) — so the value is a
+// property of the HOST, not of identity: a slower machine needs a larger cap to
+// let z3 finish consuming the SAME rlimit budget and return the SAME verdict a
+// fast machine gets under the default. proveWallCap reads OATH_PROVE_WALLCAP_SEC
+// so a slow deployment (e.g. the registry's Cloud Run worker) can raise it
+// WITHOUT a code change; the default keeps local/CI/conformance byte-identical.
+const proveWallCapDefault = 600 * time.Second
+
+func proveWallCap() time.Duration {
+	if v := os.Getenv("OATH_PROVE_WALLCAP_SEC"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			return time.Duration(n) * time.Second
+		}
+	}
+	return proveWallCapDefault
+}
 
 var smtNameRe = regexp.MustCompile(`[^A-Za-z0-9]`)
 
