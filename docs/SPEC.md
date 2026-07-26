@@ -994,6 +994,19 @@ reproducibility (given the same solver):
   hinted lemma in its admitted set, by a strategy other than the lemma-free
   attempt, is REPORTED as hinted (the method string carries a `(hinted)`
   suffix); this is a legibility annotation and does not affect the verdict.
+  Two consequences of "additive" that a kernel MUST NOT get wrong:
+  - **Set union, not concatenation.** If a hinted lemma is ALREADY an admissible
+    candidate for the goal, the hint makes no difference: the lemma is asserted
+    exactly ONCE, and the emitted bytes are identical to the unhinted script. A
+    redundant hint is a no-op, never a duplicated assertion.
+  - **A property is never its own lemma (soundness).** The rule that a goal's own
+    property is excluded from its lemma set is absolute and is applied BEFORE
+    hints: a kernel MUST discard any hinted lemma whose (definition hash,
+    property index) IS the goal being proven, whatever the metadata says. Without
+    this a hint could assert the goal as an axiom and "prove" anything, so this is
+    a soundness requirement, not a preference. Hints naming the definition under
+    proof are in any case redundant — sibling lemmas are already admissible
+    unconditionally — and authoring tools SHOULD refuse to record one.
 - **Lexicographic induction (normative).** When single-binder induction
   fails, kernels MUST attempt lexicographic induction on each ordered pair
   (i, j) of distinct datatype-sorted binders, in ascending (i, j) order,

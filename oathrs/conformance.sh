@@ -123,7 +123,13 @@ if [ "$MODE" = "oracle" ]; then
 fi
 
 echo "== Proving (z3) — shared by checks 5-6, this is the slow step =="
-"$BIN" prove "$EX"/*.oath > "$TMP/prove.txt" 2> "$TMP/prove.err"
+# Author hints (#67, SPEC §7.2/§10) are store METADATA — not in `.oath` source
+# and not in any hash — so a kernel that elaborates only source cannot know
+# them. They reach us the same way the recorded proof state does: through the
+# fixture channel. `--hints` takes ONLY the hint lists from outcomes.json (never
+# the recorded verdicts), so the re-derivation stays cold; without it the three
+# hinted goals would be attempted with a lemma set the reference never used.
+"$BIN" prove --hints "$FIX/prove/outcomes.json" "$EX"/*.oath > "$TMP/prove.txt" 2> "$TMP/prove.err"
 pstat=$?
 if [ $pstat -eq 3 ]; then
   # The wall cap is SAFETY-ONLY and not outcome-determining (SPEC §7.2):

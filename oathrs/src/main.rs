@@ -188,8 +188,22 @@ fn cmd_analyze(paths: &[String], out_dir: Option<&str>, proofs_path: Option<&str
 }
 
 #[cfg(feature = "prove")]
-fn cmd_prove(paths: &[String]) -> i32 {
+/// `--hints <outcomes.json>` (optional) supplies the author hints (#67) for the
+/// run. Hints are store metadata: they are not in `.oath` source and not in the
+/// hash, so a kernel that elaborates only source has none — the fixture channel
+/// (SPEC §10) is how they reach it. Without the flag the run is hint-free.
+fn cmd_prove(paths: &[String], hints_path: Option<&str>) -> i32 {
     use oathrs::prove;
+    let hints = match hints_path {
+        Some(p) => match read_outcomes(p) {
+            Ok((_, h)) => h,
+            Err(e) => {
+                eprintln!("error: {}", e);
+                return 1;
+            }
+        },
+        None => prove::Hints::new(),
+    };
     let files = match read_files(paths) {
         Ok(f) => f,
         Err(e) => {
@@ -227,7 +241,7 @@ fn cmd_prove(paths: &[String]) -> i32 {
             }
         }
     }
-    let results = prove::prove_all(&store, &falsified);
+    let results = prove::prove_all(&store, &falsified, &hints);
     // print keyed by name, sorted
     let mut by_name: Vec<(&String, &String)> = store
         .func_by_name
@@ -247,6 +261,261 @@ fn cmd_prove(paths: &[String]) -> i32 {
         }
     }
     0
+}
+
+// ---------------------------------------------------------------------------
+// A minimal JSON reader for the fixture channel (SPEC §10). Only
+// `prove/outcomes.json` is read this way — the recorded proof state, and (#67)
+// the per-property author hints, which are store METADATA and therefore cannot
+// be recovered from `.oath` source. Nothing here touches identity; it is CLI
+// plumbing, not kernel semantics, which is why it lives in the binary rather
+// than the library.
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "prove")]
+#[derive(Debug, Clone)]
+enum Json {
+    Null,
+    Bool(bool),
+    Num(String),
+    Str(String),
+    Arr(Vec<Json>),
+    Obj(Vec<(String, Json)>),
+}
+
+#[cfg(feature = "prove")]
+impl Json {
+    fn get(&self, key: &str) -> Option<&Json> {
+        match self {
+            Json::Obj(kvs) => kvs.iter().find(|(k, _)| k == key).map(|(_, v)| v),
+            _ => None,
+        }
+    }
+    fn arr(&self) -> &[Json] {
+        match self {
+            Json::Arr(v) => v,
+            _ => &[],
+        }
+    }
+    fn str(&self) -> Option<&str> {
+        match self {
+            Json::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+    fn usize(&self) -> Option<usize> {
+        match self {
+            Json::Num(n) => n.parse().ok(),
+            _ => None,
+        }
+    }
+    fn is_true(&self) -> bool {
+        matches!(self, Json::Bool(true))
+    }
+}
+
+#[cfg(feature = "prove")]
+struct JsonParser<'a> {
+    b: &'a [u8],
+    i: usize,
+}
+
+#[cfg(feature = "prove")]
+impl<'a> JsonParser<'a> {
+    fn ws(&mut self) {
+        while self.i < self.b.len() && (self.b[self.i] as char).is_ascii_whitespace() {
+            self.i += 1;
+        }
+    }
+    fn lit(&mut self, s: &str) -> Result<(), String> {
+        if self.b[self.i..].starts_with(s.as_bytes()) {
+            self.i += s.len();
+            Ok(())
+        } else {
+            Err(format!("expected {} at byte {}", s, self.i))
+        }
+    }
+    fn string(&mut self) -> Result<String, String> {
+        self.lit("\"")?;
+        let mut out = String::new();
+        while self.i < self.b.len() {
+            let c = self.b[self.i];
+            self.i += 1;
+            match c {
+                b'"' => return Ok(out),
+                b'\\' => {
+                    let e = *self.b.get(self.i).ok_or("truncated escape")?;
+                    self.i += 1;
+                    match e {
+                        b'"' => out.push('"'),
+                        b'\\' => out.push('\\'),
+                        b'/' => out.push('/'),
+                        b'b' => out.push('\u{8}'),
+                        b'f' => out.push('\u{c}'),
+                        b'n' => out.push('\n'),
+                        b'r' => out.push('\r'),
+                        b't' => out.push('\t'),
+                        b'u' => {
+                            let h = std::str::from_utf8(
+                                self.b.get(self.i..self.i + 4).ok_or("truncated \\u")?,
+                            )
+                            .map_err(|e| e.to_string())?;
+                            let cp = u32::from_str_radix(h, 16).map_err(|e| e.to_string())?;
+                            self.i += 4;
+                            out.push(char::from_u32(cp).unwrap_or('\u{fffd}'));
+                        }
+                        _ => return Err(format!("bad escape \\{}", e as char)),
+                    }
+                }
+                _ => {
+                    // Copy the raw UTF-8 byte run for this character.
+                    let start = self.i - 1;
+                    let len = if c < 0x80 {
+                        1
+                    } else if c >> 5 == 0b110 {
+                        2
+                    } else if c >> 4 == 0b1110 {
+                        3
+                    } else {
+                        4
+                    };
+                    self.i = start + len;
+                    out.push_str(
+                        std::str::from_utf8(self.b.get(start..self.i).ok_or("truncated utf8")?)
+                            .map_err(|e| e.to_string())?,
+                    );
+                }
+            }
+        }
+        Err("unterminated string".into())
+    }
+    fn value(&mut self) -> Result<Json, String> {
+        self.ws();
+        match *self.b.get(self.i).ok_or("unexpected end of JSON")? {
+            b'{' => {
+                self.i += 1;
+                let mut kvs = Vec::new();
+                self.ws();
+                if self.b.get(self.i) == Some(&b'}') {
+                    self.i += 1;
+                    return Ok(Json::Obj(kvs));
+                }
+                loop {
+                    self.ws();
+                    let k = self.string()?;
+                    self.ws();
+                    self.lit(":")?;
+                    let v = self.value()?;
+                    kvs.push((k, v));
+                    self.ws();
+                    match self.b.get(self.i) {
+                        Some(b',') => self.i += 1,
+                        Some(b'}') => {
+                            self.i += 1;
+                            return Ok(Json::Obj(kvs));
+                        }
+                        _ => return Err(format!("bad object at byte {}", self.i)),
+                    }
+                }
+            }
+            b'[' => {
+                self.i += 1;
+                let mut items = Vec::new();
+                self.ws();
+                if self.b.get(self.i) == Some(&b']') {
+                    self.i += 1;
+                    return Ok(Json::Arr(items));
+                }
+                loop {
+                    items.push(self.value()?);
+                    self.ws();
+                    match self.b.get(self.i) {
+                        Some(b',') => self.i += 1,
+                        Some(b']') => {
+                            self.i += 1;
+                            return Ok(Json::Arr(items));
+                        }
+                        _ => return Err(format!("bad array at byte {}", self.i)),
+                    }
+                }
+            }
+            b'"' => Ok(Json::Str(self.string()?)),
+            b't' => {
+                self.lit("true")?;
+                Ok(Json::Bool(true))
+            }
+            b'f' => {
+                self.lit("false")?;
+                Ok(Json::Bool(false))
+            }
+            b'n' => {
+                self.lit("null")?;
+                Ok(Json::Null)
+            }
+            _ => {
+                let start = self.i;
+                while self.i < self.b.len()
+                    && matches!(self.b[self.i], b'-' | b'+' | b'.' | b'e' | b'E' | b'0'..=b'9')
+                {
+                    self.i += 1;
+                }
+                if start == self.i {
+                    return Err(format!("bad value at byte {}", self.i));
+                }
+                Ok(Json::Num(
+                    String::from_utf8_lossy(&self.b[start..self.i]).into_owned(),
+                ))
+            }
+        }
+    }
+}
+
+#[cfg(feature = "prove")]
+fn json_parse(text: &str) -> Result<Json, String> {
+    let mut p = JsonParser { b: text.as_bytes(), i: 0 };
+    let v = p.value()?;
+    p.ws();
+    Ok(v)
+}
+
+/// Read the recorded proof state out of a `prove/outcomes.json` (SPEC §10): the
+/// set of proven `(definition hash, property index)` pairs, plus the per-goal
+/// author hints (#67). A hint entry names its target as
+/// `{"def": <hash>, "prop": <index>}` — hashes, never names, so it resolves
+/// identically in any kernel. The `hints` field is absent when a property has
+/// none, so a hint-free corpus reads exactly as it did before the feature.
+#[cfg(feature = "prove")]
+fn read_outcomes(
+    path: &str,
+) -> Result<(std::collections::BTreeSet<(String, usize)>, oathrs::prove::Hints), String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("reading {}: {}", path, e))?;
+    let doc = json_parse(&text).map_err(|e| format!("parsing {}: {}", path, e))?;
+    let mut proven = std::collections::BTreeSet::new();
+    let mut hints = oathrs::prove::Hints::new();
+    for d in doc.get("definitions").map(|v| v.arr()).unwrap_or(&[]) {
+        let hash = match d.get("hash").and_then(|v| v.str()) {
+            Some(h) => h.to_string(),
+            None => continue,
+        };
+        for (pi, p) in d.get("props").map(|v| v.arr()).unwrap_or(&[]).iter().enumerate() {
+            if p.get("proven").map(|v| v.is_true()).unwrap_or(false) {
+                proven.insert((hash.clone(), pi));
+            }
+            let hs: Vec<(String, usize)> = p
+                .get("hints")
+                .map(|v| v.arr())
+                .unwrap_or(&[])
+                .iter()
+                .filter_map(|h| {
+                    Some((h.get("def")?.str()?.to_string(), h.get("prop")?.usize()?))
+                })
+                .collect();
+            if !hs.is_empty() {
+                hints.insert((hash.clone(), pi), hs);
+            }
+        }
+    }
+    Ok((proven, hints))
 }
 
 /// Byte oracle (SPEC §7.2): emit `name\tprop\tsha256` for every property's
@@ -271,36 +540,16 @@ fn cmd_scripts(paths: &[String], outcomes_path: &str) -> i32 {
             return 1;
         }
     };
-    let text = match std::fs::read_to_string(outcomes_path) {
-        Ok(t) => t,
+    // Recorded proof state + author hints (#67) from the fixture channel.
+    let (proven, hints) = match read_outcomes(outcomes_path) {
+        Ok(v) => v,
         Err(e) => {
-            eprintln!("error reading {}: {}", outcomes_path, e);
+            eprintln!("error: {}", e);
             return 1;
         }
     };
-    // Recorded proven state: (def hash, zero-based prop index) that are proven.
-    // The pretty-printed outcomes.json puts one field per line; a def's "hash"
-    // opens it (resetting the prop counter), and each prop's "proven" advances it.
-    let mut proven = std::collections::BTreeSet::new();
-    let mut cur = String::new();
-    let mut pi = 0usize;
-    for line in text.lines() {
-        let t = line.trim();
-        if let Some(rest) = t.strip_prefix("\"hash\":") {
-            let h: String = rest.chars().filter(|c| c.is_ascii_hexdigit()).collect();
-            if h.len() == 64 {
-                cur = h;
-                pi = 0;
-            }
-        } else if t.starts_with("\"proven\":") {
-            if t.contains("true") {
-                proven.insert((cur.clone(), pi));
-            }
-            pi += 1;
-        }
-    }
     println!("# name\tprop\tsha256(direct-attempt script)");
-    for (name, idx, sha) in prove::scripts_for(&store, &proven) {
+    for (name, idx, sha) in prove::scripts_for(&store, &proven, &hints) {
         println!("{}\t{}\t{}", name, idx, sha);
     }
     0
@@ -517,7 +766,24 @@ fn run() -> i32 {
             cmd_analyze(&files, out_dir.as_deref(), proofs.as_deref())
         }
         #[cfg(feature = "prove")]
-        "prove" => cmd_prove(&args[2..]),
+        "prove" => {
+            let mut hints: Option<String> = None;
+            let mut files: Vec<String> = Vec::new();
+            let mut i = 2;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--hints" => {
+                        hints = args.get(i + 1).cloned();
+                        i += 2;
+                    }
+                    _ => {
+                        files.push(args[i].clone());
+                        i += 1;
+                    }
+                }
+            }
+            cmd_prove(&files, hints.as_deref())
+        }
         #[cfg(feature = "prove")]
         "scripts" => {
             let mut outcomes: Option<String> = None;

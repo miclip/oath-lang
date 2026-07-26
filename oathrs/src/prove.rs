@@ -2179,6 +2179,14 @@ fn dep_closure(store: &Store, hash: &str) -> Vec<String> {
     order
 }
 
+/// Author-supplied proof hints (SPEC §7.2 "Author-supplied hints", §10): per
+/// goal `(definition hash, property index)`, a list of `(definition hash,
+/// property index)` references to proven properties of OTHER definitions.
+/// Hints are METADATA — they never enter the canonical encoding and never
+/// change a hash — so an independent kernel receives them through the fixture
+/// channel (`prove/outcomes.json`), not through `.oath` source.
+pub type Hints = BTreeMap<(String, usize), Vec<(String, usize)>>;
+
 /// The candidate lemma set for property `pi` of `def_hash` given a proven set
 /// (SPEC §7.2 construction): every proven property of the transitive dependency
 /// closure, plus every recorded-proven property of the definition itself
@@ -2187,12 +2195,31 @@ fn dep_closure(store: &Store, hash: &str) -> Vec<String> {
 /// by `index != pi` (siblings admissible, the own lemma excluded). All are
 /// translated (touching declarations/axioms); only admissible ones are asserted.
 /// Sorted by (definition-hash, property-index).
+///
+/// Author hints for THIS goal (SPEC §7.2, #67) are applied last and are purely
+/// ADDITIVE: a hinted `(defHash, propIdx)` that is currently proven becomes
+/// admissible even when the footprint filter excluded it, and — if it lies
+/// outside the dependency closure entirely — joins the candidate list as a new
+/// member. A hint whose target is unproven/missing is INERT. The canonical
+/// (defHash, propIdx) emission order is unchanged, and nothing is ever removed.
+/// The two MUSTs §7.2 spells out under "consequences of additive":
+///   * SET UNION, NOT CONCATENATION — a hint naming a lemma that is already an
+///     admissible candidate is a NO-OP: the lemma is asserted exactly once and
+///     the script bytes equal the unhinted script's. Enforced by looking the
+///     candidate up and (at most) raising its admissibility, never pushing a
+///     second entry for the same key.
+///   * A PROPERTY IS NEVER ITS OWN LEMMA — the own-property exclusion is
+///     absolute and applies BEFORE hints, so a hint whose target IS the goal
+///     `(def_hash, pi)` is DISCARDED whatever the metadata says. This is a
+///     soundness requirement: admitting it would assert the goal as its own
+///     axiom and make any property "provable".
 fn candidate_lemmas(
     store: &Store,
     def_hash: &str,
     pi: usize,
     prop: &Prop,
     proven: &BTreeSet<(String, usize)>,
+    hints: &Hints,
 ) -> Vec<(String, usize, bool)> {
     let fp = footprint(store, def_hash, prop);
     let mut cands = Vec::new();
@@ -2212,6 +2239,35 @@ fn candidate_lemmas(
             }
         }
     }
+    if let Some(hs) = hints.get(&(def_hash.to_string(), pi)) {
+        for (h, j) in hs {
+            // SOUNDNESS (§7.2): the own-property exclusion is applied BEFORE
+            // hints and is absolute — a hint at the goal itself is discarded, so
+            // no hint can ever assert the goal as its own axiom. Checked first,
+            // ahead of every other test, because no later condition may rescue it.
+            if h == def_hash && *j == pi {
+                continue;
+            }
+            // INERT unless the target property is currently proven, and unless
+            // it actually exists as a property of a function definition.
+            if !proven.contains(&(h.clone(), *j)) {
+                continue;
+            }
+            match store.def_by_hash.get(h) {
+                Some(Def::Func { props, .. }) if *j < props.len() => {}
+                _ => continue,
+            }
+            // SET UNION (§7.2): at most one entry per (defHash, propIdx) — an
+            // already-present candidate is raised to admissible (a no-op when it
+            // already was), never duplicated, so a redundant hint cannot change
+            // the emitted bytes.
+            match cands.iter_mut().find(|c| c.0 == *h && c.1 == *j) {
+                Some(c) => c.2 = true,
+                // Outside the closure: an extra candidate, admitted.
+                None => cands.push((h.clone(), *j, true)),
+            }
+        }
+    }
     cands.sort_by(|a, b| (a.0.as_str(), a.1).cmp(&(b.0.as_str(), b.1)));
     cands
 }
@@ -2224,6 +2280,7 @@ fn candidate_lemmas(
 pub fn scripts_for(
     store: &Store,
     proven: &BTreeSet<(String, usize)>,
+    hints: &Hints,
 ) -> Vec<(String, usize, String)> {
     let prover = Prover { store };
     let mut by_name: Vec<(String, String)> = store
@@ -2239,7 +2296,7 @@ pub fn scripts_for(
             _ => continue,
         };
         for (pi, prop) in props.iter().enumerate() {
-            let cands = candidate_lemmas(store, &hash, pi, prop, proven);
+            let cands = candidate_lemmas(store, &hash, pi, prop, proven, hints);
             if let Some((script, _)) = prover.direct_script(&hash, prop, &cands) {
                 out.push((name.clone(), pi, sha256_hex(script.as_bytes())));
             }
@@ -2254,7 +2311,11 @@ pub struct ProofResult {
 
 /// Prove all properties of every func definition; returns per-def results and
 /// records proven props so later definitions can use them as lemmas.
-pub fn prove_all(store: &Store, falsified: &BTreeSet<String>) -> BTreeMap<String, ProofResult> {
+pub fn prove_all(
+    store: &Store,
+    falsified: &BTreeSet<String>,
+    hints: &Hints,
+) -> BTreeMap<String, ProofResult> {
     // process definitions in dependency order (deps first)
     let func_hashes: Vec<String> = store
         .def_by_hash
@@ -2365,7 +2426,7 @@ pub fn prove_all(store: &Store, falsified: &BTreeSet<String>) -> BTreeMap<String
                     if in_run.contains(&key) {
                         continue;
                     }
-                    let cands = candidate_lemmas(store, hash, pi, prop, &combined);
+                    let cands = candidate_lemmas(store, hash, pi, prop, &combined, hints);
                     let proved = match cache.get(&key) {
                         Some((c, r)) if *c == cands => *r,
                         _ => {
@@ -2874,4 +2935,211 @@ fn measure_site_unsat(preamble: &str, cand: &Cand, site: &MSite) -> bool {
     };
     let script = format!("{}(assert {})\n(check-sat)\n", preamble, body);
     matches!(run_z3(&script, z3_rlimit()), Ok(Outcome::Unsat))
+}
+
+#[cfg(test)]
+mod tests {
+    //! Unit tests for the #67 author-hint rules of SPEC §7.2. These are pure —
+    //! `candidate_lemmas` and `direct_script` build the lemma set and the script
+    //! BYTES without running z3 — so they need no solver on PATH.
+    use super::*;
+    use crate::elaborate::elaborate_corpus;
+
+    /// A three-definition corpus. `quad`'s body calls `twice`, so `twice` is in
+    /// `quad`'s footprint AND dependency closure (its lemma is admissible with no
+    /// hint at all). `unrelated` is reachable from nothing, so its lemma is
+    /// neither a candidate nor admissible for a `quad` goal — the case a hint
+    /// exists to override.
+    const SRC: &str = r#"
+(defn twice [] [(n Int)] Int
+  (* 2 n)
+  (prop doubles [(n Int)] (== (twice n) (+ n n))))
+
+(defn unrelated [] [(n Int)] Int
+  (+ n 1)
+  (prop succ [(n Int)] (== (unrelated n) (+ n 1))))
+
+(defn quad [] [(n Int)] Int
+  (twice (twice n))
+  (prop unfolds [(n Int)] (== (quad n) (twice (twice n))))
+  (prop is-four-n [(n Int)] (== (quad n) (* 4 n))))
+"#;
+
+    struct Fix {
+        store: Store,
+        twice: String,
+        unrelated: String,
+        quad: String,
+        proven: BTreeSet<(String, usize)>,
+    }
+
+    fn fixture() -> Fix {
+        let store = elaborate_corpus(&[("t.oath".to_string(), SRC.to_string())])
+            .expect("test corpus elaborates");
+        let h = |n: &str| store.func_by_name.get(n).expect("defined").hash.clone();
+        let (twice, unrelated, quad) = (h("twice"), h("unrelated"), h("quad"));
+        // Everything proven, so nothing is INERT for the wrong reason.
+        let proven: BTreeSet<(String, usize)> = [
+            (twice.clone(), 0),
+            (unrelated.clone(), 0),
+            (quad.clone(), 0),
+            (quad.clone(), 1),
+        ]
+        .into_iter()
+        .collect();
+        Fix { store, twice, unrelated, quad, proven }
+    }
+
+    impl Fix {
+        fn prop(&self, hash: &str, pi: usize) -> Prop {
+            match self.store.def_by_hash.get(hash) {
+                Some(Def::Func { props, .. }) => props[pi].clone(),
+                _ => panic!("not a func"),
+            }
+        }
+        fn cands(&self, pi: usize, hints: &Hints) -> Vec<(String, usize, bool)> {
+            candidate_lemmas(&self.store, &self.quad, pi, &self.prop(&self.quad, pi), &self.proven, hints)
+        }
+        fn script(&self, pi: usize, hints: &Hints) -> String {
+            let prover = Prover { store: &self.store };
+            prover
+                .direct_script(&self.quad, &self.prop(&self.quad, pi), &self.cands(pi, hints))
+                .expect("goal is inside the provable fragment")
+                .0
+        }
+        fn hint(&self, pi: usize, target: (&str, usize)) -> Hints {
+            let mut hs = Hints::new();
+            hs.insert((self.quad.clone(), pi), vec![(target.0.to_string(), target.1)]);
+            hs
+        }
+    }
+
+    fn admissible(cands: &[(String, usize, bool)]) -> Vec<(String, usize)> {
+        cands.iter().filter(|c| c.2).map(|c| (c.0.clone(), c.1)).collect()
+    }
+
+    /// Baseline: with no hints, the in-closure lemma is admitted, the sibling is
+    /// admitted, the goal's OWN property is not, and the unrelated definition is
+    /// not even a candidate. Everything below is measured against this.
+    #[test]
+    fn baseline_lemma_set() {
+        let f = fixture();
+        let c = f.cands(1, &Hints::new());
+        let mut want = vec![(f.quad.clone(), 0), (f.twice.clone(), 0)];
+        want.sort();
+        assert_eq!(
+            admissible(&c),
+            want,
+            "sibling + in-footprint dependency are the admitted lemmas"
+        );
+        assert!(!c.iter().any(|x| x.0 == f.unrelated), "out-of-closure def is no candidate");
+        assert!(
+            c.iter().any(|x| x.0 == f.quad && x.1 == 1 && !x.2),
+            "the goal's own property is a candidate but NOT admissible"
+        );
+    }
+
+    /// §7.2 "a hinted lemma MAY belong to a definition outside the goal's
+    /// footprint (and outside the dependency closure)": the hint must ADD it.
+    /// This is the feature working at all — the other tests bound it.
+    #[test]
+    fn hint_admits_out_of_footprint_lemma() {
+        let f = fixture();
+        let base = f.cands(1, &Hints::new());
+        let hinted = f.cands(1, &f.hint(1, (&f.unrelated, 0)));
+        assert_eq!(hinted.len(), base.len() + 1, "exactly one candidate added");
+        assert!(
+            hinted.iter().any(|x| x.0 == f.unrelated && x.1 == 0 && x.2),
+            "the hinted out-of-footprint lemma is admitted"
+        );
+        // Canonical (defHash, propIdx) order is preserved, additively.
+        let mut sorted = hinted.clone();
+        sorted.sort_by(|a, b| (a.0.as_str(), a.1).cmp(&(b.0.as_str(), b.1)));
+        assert_eq!(hinted, sorted);
+        assert_ne!(f.script(1, &Hints::new()), f.script(1, &f.hint(1, (&f.unrelated, 0))));
+    }
+
+    /// §7.2 MUST — SET UNION, NOT CONCATENATION. `twice` prop 0 is already an
+    /// admissible candidate; hinting it must be a total no-op, down to the bytes.
+    /// Under a concatenating implementation the lemma would be asserted twice.
+    #[test]
+    fn redundant_hint_on_admissible_dependency_is_a_noop() {
+        let f = fixture();
+        assert_eq!(f.cands(1, &Hints::new()), f.cands(1, &f.hint(1, (&f.twice, 0))));
+        assert_eq!(f.script(1, &Hints::new()), f.script(1, &f.hint(1, (&f.twice, 0))));
+    }
+
+    /// §7.2 MUST — same union rule for a SIBLING hint (a property of the
+    /// definition under proof other than the goal): siblings are admissible
+    /// unconditionally, so the hint changes nothing.
+    #[test]
+    fn redundant_hint_on_sibling_is_a_noop() {
+        let f = fixture();
+        assert_eq!(f.cands(1, &Hints::new()), f.cands(1, &f.hint(1, (&f.quad, 0))));
+        assert_eq!(f.script(1, &Hints::new()), f.script(1, &f.hint(1, (&f.quad, 0))));
+    }
+
+    /// §7.2 MUST — SOUNDNESS: a property is never its own lemma, and the
+    /// exclusion is applied BEFORE hints. A hint naming the goal itself must be
+    /// discarded even though its target is recorded proven.
+    ///
+    /// This test FAILS if the guard in `candidate_lemmas` is removed: without it
+    /// the hint flips the goal's own candidate to admissible and the goal is
+    /// asserted as its own axiom (`(assert (forall ((q0 Int)) (= (fn_quad_Int q0)
+    /// (* 4 q0))))` appears in the script), which would let anything "prove".
+    #[test]
+    fn self_hint_at_the_goal_is_discarded() {
+        let f = fixture();
+        let hinted = f.cands(1, &f.hint(1, (&f.quad, 1)));
+        assert_eq!(hinted, f.cands(1, &Hints::new()), "candidate set unchanged");
+        assert!(
+            hinted.iter().any(|x| x.0 == f.quad && x.1 == 1 && !x.2),
+            "the goal's own property stays INADMISSIBLE despite the hint"
+        );
+        let base = f.script(1, &Hints::new());
+        assert_eq!(base, f.script(1, &f.hint(1, (&f.quad, 1))), "script bytes unchanged");
+        // The equality above is not vacuous: force-admitting the goal's own
+        // property (what an unguarded self-hint would do) DOES change the bytes —
+        // the goal's formula appears as a positive lemma assert. So the test
+        // genuinely fails if the guard is removed.
+        let mut unsound = f.cands(1, &Hints::new());
+        for c in unsound.iter_mut() {
+            if c.0 == f.quad && c.1 == 1 {
+                c.2 = true;
+            }
+        }
+        let prover = Prover { store: &f.store };
+        let unsound_script = prover
+            .direct_script(&f.quad, &f.prop(&f.quad, 1), &unsound)
+            .expect("translates")
+            .0;
+        assert_ne!(base, unsound_script, "admitting the self-lemma would change the script");
+        assert_eq!(
+            unsound_script.matches("(assert").count(),
+            base.matches("(assert").count() + 1,
+            "the extra assert is exactly the goal asserted as its own axiom"
+        );
+    }
+
+    /// §7.2: a hint whose target is not currently proven is INERT.
+    #[test]
+    fn hint_at_an_unproven_target_is_inert() {
+        let f = fixture();
+        let mut thin = f.proven.clone();
+        thin.remove(&(f.unrelated.clone(), 0));
+        let hints = f.hint(1, (&f.unrelated, 0));
+        let base = candidate_lemmas(&f.store, &f.quad, 1, &f.prop(&f.quad, 1), &thin, &Hints::new());
+        let hinted = candidate_lemmas(&f.store, &f.quad, 1, &f.prop(&f.quad, 1), &thin, &hints);
+        assert_eq!(base, hinted, "an unproven hint target is never admitted");
+    }
+
+    /// §7.2: "Hints apply ONLY to the property they are attached to" — a hint on
+    /// prop 1 must not touch prop 0's script.
+    #[test]
+    fn hints_do_not_leak_to_sibling_properties() {
+        let f = fixture();
+        let hints = f.hint(1, (&f.unrelated, 0));
+        assert_eq!(f.cands(0, &Hints::new()), f.cands(0, &hints));
+        assert_eq!(f.script(0, &Hints::new()), f.script(0, &hints));
+    }
 }

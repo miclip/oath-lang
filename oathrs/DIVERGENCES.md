@@ -1756,3 +1756,129 @@ over `Int` remain untranslated; `/` over `Rat` (`rat-recover`) and `/` over `Flo
 full PASS: 324 direct-attempt scripts byte-identical to `fixtures/prove/scripts.txt`,
 the four `circle`/`show-nat`/`show-int` lines correctly absent, and checks 1-4
 (hashes, canonical, gate, verify) unchanged.
+
+## 81. Author-supplied proof hints (#67, §7.2 + §10) — RESOLVED first-try; two sub-questions AMENDED INTO THE SPEC
+
+**Status: RESOLVED for the corpus, and (b)/(c) below are now RESOLVED IN THE SPEC.**
+Implemented blind from §7.2 ("Author-supplied hints") + §10 ("Hints in the fixture
+channel"); the byte oracle went from 3 differing entries (`q-push` p3, `t-insert`
+p0, `t-insert` p1 — exactly the corpus's three hinted goals) to byte-identical on
+the first build, with the other 322 unchanged. The normative prose was sufficient
+for the corpus: hints are a purely additive, per-goal admission override on the
+§7.2 footprint relevance filter, inert unless the target `(defHash, propIdx)` is
+currently proven, canonical `(defHash, propIdx)` emission order unchanged.
+
+**Amendment (this is the blind method paying out).** The two open questions I
+recorded here — (b) union-vs-concatenation for a redundant hint, and (c) a hint
+naming the goal itself — were both genuine gaps, and (c) was a real SOUNDNESS hole:
+nothing in the original prose stopped a kernel from admitting a hint at the goal and
+asserting the property as its own axiom. §7.2's hints rule now carries a normative
+paragraph, "Two consequences of *additive* that a kernel MUST NOT get wrong",
+pinning both: (1) SET UNION, NOT CONCATENATION — a redundant hint is a no-op and the
+bytes equal the unhinted script's; (2) A PROPERTY IS NEVER ITS OWN LEMMA — the
+own-property exclusion is absolute and applied BEFORE hints, so a hint at the goal
+MUST be discarded whatever the metadata says. Both readings I had guessed at (union;
+and the observation that self-hints are unsound) are the ones the spec adopted; the
+second I had NOT implemented, and it is now a guard plus a mutation-checked test.
+The findings below are kept as written, each with its resolution appended.
+
+Three points the prose left to the implementer. (a) is corpus-pinned; (b) and (c)
+are now spec-pinned but remain UNEXERCISED BY THE CORPUS.
+
+### (a) A hinted lemma outside the dependency CLOSURE — settled by the corpus
+§7.2 says a hinted lemma "MAY belong to a definition outside the goal's footprint
+(and outside the dependency closure); a kernel collects it as an additional lemma
+candidate". All three corpus hints are exactly this case: `count-append` prop 0 is
+not in the candidate list for `q-push`/`t-insert` at all (instrumentation confirms
+all three take the *append a new candidate* path, never the *flip an existing
+candidate to admissible* path). Its declarations/axioms therefore enter the problem
+through the ordinary lemma-translation loop, in canonical position. Byte-confirmed.
+
+### (b) **RESOLVED BY SPEC AMENDMENT; still un-corpus'd** — a hint naming a lemma that is ALREADY a candidate
+Nothing in the corpus hints at a lemma the closure already collected. Two readings
+of "the admitted set is … PLUS the proven hinted lemmas":
+  1. SET-UNION (my choice): the hint flips the existing candidate's admissibility
+     to `true` (or is a no-op if it was already admissible); one assert, in its
+     canonical position.
+  2. LITERAL CONCATENATION: the hinted lemma is appended as a second candidate, so
+     an already-admissible lemma would be asserted TWICE.
+Reading 2 makes the assert block sensitive to a redundant hint, which contradicts
+"Admission is purely ADDITIVE … a hint never removes a lemma" read as a
+set-theoretic statement, and would make an author's harmless duplicate hint change
+the script bytes. I took reading 1. A one-line corpus witness (hint a lemma the
+footprint filter already admits) would pin it; until then this is the highest-risk
+spot for a cross-kernel byte disagreement in #67.
+
+**RESOLVED — reading 1 is now normative.** §7.2: "If a hinted lemma is ALREADY an
+admissible candidate for the goal, the hint makes no difference: the lemma is
+asserted exactly ONCE, and the emitted bytes are identical to the unhinted script. A
+redundant hint is a no-op, never a duplicated assertion." My kernel looks the
+candidate up by `(defHash, propIdx)` and at most RAISES its admissibility — it never
+pushes a second entry for the same key — so union is structural, not incidental.
+Covered by `redundant_hint_on_admissible_dependency_is_a_noop` and
+`redundant_hint_on_sibling_is_a_noop` (both candidate-set and script-byte equality);
+mutation-checked — replacing the lookup with an unconditional `push` fails both.
+**Still un-corpus'd:** no corpus definition carries a redundant hint, so this path
+is pinned by spec + unit test only, never by a fixture byte.
+
+### (c) **RESOLVED BY SPEC AMENDMENT — was a real soundness hole in my kernel; still un-corpus'd**
+§7.2 defines hints as references "to proven properties of OTHER definitions", so a
+self-hint is out of scope by construction. My kernel does not special-case it:
+a hint at `(defUnderProof, pi)` would flip the own-lemma exclusion and assert the
+goal as its own lemma — unsound. Nothing in the fixture channel can express this in
+the corpus, and a hint-authoring path would have to reject it. Recording it because
+the prose states the restriction in the definition rather than as a MUST on the
+consumer; a defensive kernel might instead ignore self-hints. (If the reference
+kernel *filters* self-hints rather than trusting the authoring path, that difference
+is invisible until someone writes one.)
+
+**RESOLVED — the consumer-side MUST now exists, and my kernel had the hole.** §7.2:
+"The rule that a goal's own property is excluded from its lemma set is absolute and
+is applied BEFORE hints: a kernel MUST discard any hinted lemma whose (definition
+hash, property index) IS the goal being proven, whatever the metadata says." This is
+the one place where writing the kernel blind found a defect in the *design*, not just
+an ambiguity in the prose: trusting the authoring path is not a defence, because the
+hint list is store metadata that any principal can put and that no hash protects, so
+a single self-hint would have let the kernel assert a goal as its own axiom and
+report anything as PROVEN. `candidate_lemmas` now discards `(def_hash, pi)` hints as
+its FIRST test, before the proven/existence checks, so nothing downstream can rescue
+one. Covered by `self_hint_at_the_goal_is_discarded`, which asserts the candidate
+set, the admissibility flag, and the script bytes are all unchanged by such a hint,
+plus a non-vacuity check that force-admitting the self-lemma DOES change the bytes
+(one extra positive assert); mutation-checked — deleting the guard fails the test.
+Note the guard is narrower than "hints at the definition under proof": a hint at a
+SIBLING property is legal and, by (b), simply a no-op, since siblings are already
+admissible unconditionally. **Still un-corpus'd**, and unrepresentable in the corpus
+by construction — the fixture channel could carry a self-hint, but a conforming
+authoring path will never write one.
+
+### §10's fixture channel is under-specified for the FULL (cold re-derivation) mode
+§10 pins hints in `prove/outcomes.json` and says "a kernel reproducing
+`prove/scripts.txt` MUST apply the hints given for a property" — the byte-oracle
+path. It says nothing about the other conformance path, check 6: re-deriving every
+outcome by actually running the solver from source (`oathrs prove`). Hints are
+metadata and are NOT in `.oath` source, so a source-only cold run gives the three
+hinted goals a strictly smaller lemma set than the reference used, and check 6 would
+be expected to diverge on them — through no kernel disagreement. I therefore added
+`oathrs prove --hints <outcomes.json>` (hint lists only; the recorded verdicts are
+NOT read, so the re-derivation stays cold) and `conformance.sh` passes it in full
+mode. §10 would benefit from saying explicitly that the hint channel feeds the
+re-derivation path too, not only the script oracle. **Note: this full-mode change is
+unverified empirically** — a cold run is hours of solver time and was not run here;
+oracle mode is a full PASS. **Still OPEN after the (b)/(c) amendment**: the amended
+paragraph pins hint SEMANTICS, not the channel's reach, so §10 still speaks only of
+reproducing `prove/scripts.txt`.
+
+### What the corpus actually pins, after all of the above
+Byte-confirmed by fixtures: (a) only — a proven hint at a lemma outside the goal's
+footprint AND outside its dependency closure, admitted additively in canonical
+position (3 goals: `q-push` p3, `t-insert` p0/p1, all naming `count-append` p0).
+Pinned by spec + `cargo test` but by no fixture byte: redundant hints (b), self-hints
+(c), inert hints at unproven targets, and hint isolation between sibling properties.
+Adding a redundant hint to one corpus definition would convert (b) from unit-tested
+to byte-tested at the cost of zero new definitions; (c) is unrepresentable in a
+well-formed corpus and will stay test-only.
+
+**Post-amendment validation:** 325/325 scripts still byte-identical (the two new
+rules are no-ops on a corpus with no redundant or self-hints, exactly as predicted),
+`conformance.sh` oracle mode PASS, `cargo test` 7/7.
