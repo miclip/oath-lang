@@ -226,6 +226,13 @@ func topoFuncOrder(st *Store) []string {
 // prove.
 func proofStateFingerprint(st *Store) string {
 	h := sha256.New()
+	// The prover CONFIG is part of the state: a goal that aborted under a smaller
+	// wall-cap (or a different rlimit) can newly prove under a larger one, so a
+	// config change must re-arm the scan exactly as a new proof or object does.
+	// Without this, raising the registry worker's OATH_PROVE_WALLCAP_SEC on slow
+	// hardware was a silent no-op — the fingerprint matched and the rescan skipped
+	// the very defs the bigger cap was meant to recover.
+	fmt.Fprintf(h, "cfg:rlimit=%d;wallcap=%ds;\n", effectiveRlimit(), int64(proveWallCap()/time.Second))
 	for _, hash := range st.AllHashes() { // AllHashes is sorted → stable
 		m, err := st.GetMeta(hash)
 		if err != nil {
