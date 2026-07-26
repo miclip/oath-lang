@@ -2,7 +2,7 @@
   "name": "show-int",
   "hash": "a9472d7aa2146acc2f37afbefdd8b098fa92322d59355e243451cf547e107104",
   "kind": "func",
-  "termination": "unknown",
+  "termination": "nonrecursive",
   "confinement": [
     ""
   ],

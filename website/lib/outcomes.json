@@ -283,7 +283,7 @@
       "name": "e-div",
       "hash": "100733cab4b27d438fede96e30f46f6b2b4a186327946a8bbcdd11ef51984061",
       "level": "tested",
-      "proven_count": 0,
+      "proven_count": 3,
       "prop_count": 5,
       "props": [
         {
@@ -292,7 +292,7 @@
         },
         {
           "name": "zero-divisor-is-zero",
-          "proven": false
+          "proven": true
         },
         {
           "name": "shift-by-divisor",
@@ -300,11 +300,11 @@
         },
         {
           "name": "negate-divisor-negates",
-          "proven": false
+          "proven": true
         },
         {
           "name": "quadrant-anchors",
-          "proven": false
+          "proven": true
         }
       ]
     },
@@ -312,20 +312,20 @@
       "name": "e-mod",
       "hash": "362696e75c132c35360999d78d28fc0bcb327d6eb2119e2a60c6b9dbba4862f2",
       "level": "tested",
-      "proven_count": 0,
+      "proven_count": 5,
       "prop_count": 6,
       "props": [
         {
           "name": "nonneg",
-          "proven": false
+          "proven": true
         },
         {
           "name": "below-abs-divisor",
-          "proven": false
+          "proven": true
         },
         {
           "name": "zero-divisor-is-a",
-          "proven": false
+          "proven": true
         },
         {
           "name": "periodic",
@@ -333,11 +333,11 @@
         },
         {
           "name": "divisor-sign-irrelevant",
-          "proven": false
+          "proven": true
         },
         {
           "name": "quadrant-anchors",
-          "proven": false
+          "proven": true
         }
       ]
     },
@@ -1500,13 +1500,13 @@
     {
       "name": "parse-nat-go",
       "hash": "5492d77957cdc464628301003b095974422ce222a033c2cfd4c0836c09a64ef9",
-      "level": "tested",
-      "proven_count": 0,
+      "level": "proven",
+      "proven_count": 1,
       "prop_count": 1,
       "props": [
         {
           "name": "empty",
-          "proven": false
+          "proven": true
         }
       ]
     },
@@ -2256,13 +2256,13 @@
     {
       "name": "show-nat",
       "hash": "1d0a9ecfb0eab9baa4782839fac41b93f9490d6ac98cc04d3001555cc97e108c",
-      "level": "tested",
-      "proven_count": 0,
+      "level": "proven",
+      "proven_count": 1,
       "prop_count": 1,
       "props": [
         {
           "name": "single-digit",
-          "proven": false
+          "proven": true
         }
       ]
     },

@@ -797,20 +797,77 @@ reproducibility (given the same solver):
   non-total callee's own callees get declared too. This is byte-visible in
   the script fixtures as orphan `declare-fun`s (`fn_rle_expand` in the
   rle-encode goldens arrives through non-total `rle-decode`'s body). If this
-  eager body translation reaches an operator EXCLUDED from translation (`/` or
-  `%` over `Int`, below), the callee's body cannot be fully registered, and the
+  eager body translation reaches an operator EXCLUDED from translation (see the
+  exclusion list below), the callee's body cannot be fully registered, and the
   direct-attempt script is NOT emitted for any property whose goal triggers it:
   the property is recorded unprovable with no script, and its line is ABSENT
-  from `prove/scripts.txt`. (The verdict is unchanged — the callee is
+  from `prove/scripts.txt`. The verdict is unchanged — the callee is
   uninterpreted, so the goal would return `unknown` from an emitted script
-  anyway; a decimal `show` over `Int`, which recurses on `n / 10`, is the
-  canonical case.) Additionally, a property already
+  anyway. (Until #71 this rule's canonical witness was a decimal `show` over
+  `Int`, which recurses on `n / 10`. That example is now OBSOLETE: `/` and `%`
+  over `Int` translate, and `show-nat` consequently GAINS a script and proves.
+  The rule still governs the operators that remain excluded, but as of #71 no
+  corpus definition exercises it, so it is pinned by prose rather than by a
+  fixture — treat it as untested when changing this area.) Additionally, a property already
   refuted by deterministic testing (§4) is never recorded as proven even if the
   solver reports it valid — the concrete counterexample governs.
 - `match` translates to tester/selector ite-chains.
-- **Excluded, permanently or pending**: `/` and `%` over `Int` (the kernel
-  truncates toward zero, SMT-LIB integer division is Euclidean — translation
-  would prove the wrong theorem); partial application; lambda values in
+- **`/` and `%` over `Int` (normative, #71).** The kernel's `/` truncates toward
+  zero and its `%` takes the DIVIDEND's sign (Go `big.Int` `Quo`/`Rem`), whereas
+  SMT-LIB's `div`/`mod` are Euclidean (`0 ≤ (mod a b) < |b|`). They agree when
+  the dividend is non-negative and differ otherwise, so `div`/`mod` MUST NOT be
+  emitted directly — that would prove a different theorem. They are instead
+  DEFINED in terms of them. A kernel translating an `Int` `/` or `%` MUST emit
+  these two definitions, verbatim and exactly once each, before first use, and
+  translate `(/ a b)` to `(oath_tquo A B)` and `(% a b)` to `(oath_trem A B)`:
+
+  ```
+  (define-fun oath_tquo ((a Int) (b Int)) Int
+    (ite (>= a 0) (div a b)
+      (ite (= (mod a b) 0) (div a b)
+        (+ (div a b) (ite (> b 0) 1 (- 1))))))
+  (define-fun oath_trem ((a Int) (b Int)) Int
+    (ite (>= a 0) (mod a b)
+      (ite (= (mod a b) 0) 0
+        (- (mod a b) (ite (> b 0) b (- b))))))
+  ```
+
+  For `b ≠ 0` this is exactly the kernel's semantics: it is the unique `(q, r)`
+  with `a = b·q + r`, `|r| < |b|`, and `r` sharing `a`'s sign or zero — which is
+  machine-checkable, and `oathrs`'s conformance run is expected to reproduce the
+  emitted bytes rather than re-derive the algebra.
+
+  **Division by zero is deliberately left unconstrained.** In the kernel `/` and
+  `%` by zero are ERRORS — the operations are partial — so there is no value to
+  model. SMT-LIB leaves `div`/`mod` by zero unspecified, and the definitions
+  above inherit that, making the translated term an arbitrary fixed value there.
+  This is the SOUND direction: a property whose truth depends on the result of
+  division by zero simply will not prove, because the solver may choose any
+  value. A kernel MUST NOT "helpfully" pin a zero-divisor result (e.g. to 0);
+  doing so would prove properties the kernel's own evaluator cannot run.
+
+  Emit the definitions ONLY when an `Int` `/` or `%` is actually translated, so
+  scripts for goals that use neither are byte-identical to those emitted before
+  this rule existed. Two placement details are BYTE-significant, hence normative:
+  - **Both, together, on first use of either.** Translating an `Int` `/` emits
+    `oath_trem` as well, and vice versa. A kernel MUST NOT emit only the operator
+    it happens to need.
+  - **At the point of first use, not hoisted.** The pair is appended to the
+    DECLARATION stream at the moment the first `Int` `/` or `%` is translated, so
+    it sits after whatever declarations were already accumulated and before those
+    that follow. A kernel MUST NOT float them to the top of the script.
+  - **Operands first.** Within the triggering application itself, the OPERANDS are
+    translated before the pair is appended — so any declaration first touched by
+    an operand precedes the two definitions. (This is forced for `/`, which is
+    numerically overloaded: the `Int` case is not known until operand 0's sort
+    is. `%` is statically `Int`-only per §2.1 and could in principle be
+    pre-scanned, so the ordering is stated rather than left to inference.)
+  - **The code fence above is INDENTED for markdown; "verbatim" means the
+    DEDENTED text.** Each definition is `\n`-terminated with no blank line
+    between them. A kernel that copies the leading two spaces literally will fail
+    every affected hash, and because `prove/scripts.txt` stores only sha256 there
+    is no expected text to diff against — so this is called out explicitly.
+- **Excluded, permanently or pending**: partial application; lambda values in
   argument position. Note `/` over `Rat` (exact real division) and `/` over
   `Float` (IEEE `fp.div`) are NOT excluded — both translate faithfully
   (§7.1), so rational division-inverse and float division laws are provable.

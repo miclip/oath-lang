@@ -446,17 +446,12 @@ struct Cx<'a> {
     // quantified lemmas); a quantifier-free `sat` is a genuine refutation
     // (SPEC §7.2) and induction cannot add power.
     quantified: bool,
-    // SPEC §7.2 (#64): set true when EAGER body translation of a (recursive)
-    // callee reaches an operator EXCLUDED from translation (`/` or `%` over
-    // `Int`). Such a callee's body cannot be fully registered; the direct-attempt
-    // script is then NOT emitted for the property whose goal triggered it (the
-    // line is absent from prove/scripts.txt). Set at the excluded return points in
-    // `tr_prim`; consumed by `direct_script_opts`. An excluded op reached by INLINE
-    // instead fails the goal translation directly (`.ok()?` → None), so this flag
-    // only ever changes the outcome for the recursive eager-body case — the verdict
-    // is unchanged either way (the callee is uninterpreted, so the goal is
-    // `unknown` with or without an emitted script).
-    excluded_int_divmod: bool,
+    // SPEC §7.1 (#71): set once the truncating-division bridge (`oath_tquo` /
+    // `oath_trem`) has been appended to the declaration stream. The pair is
+    // emitted TOGETHER on first use of EITHER `Int` `/` or `%`, exactly once,
+    // at the point of first use — not hoisted — so it sits after whatever
+    // declarations had already accumulated and before those that follow.
+    tdiv_defined: bool,
 }
 
 impl<'a> Cx<'a> {
@@ -469,8 +464,36 @@ impl<'a> Cx<'a> {
             axiom_order: Vec::new(),
             axiomatized: BTreeSet::new(),
             quantified: false,
-            excluded_int_divmod: false,
+            tdiv_defined: false,
         }
+    }
+
+    /// SPEC §7.1 (#71): the kernel's `/` truncates toward zero and its `%` takes
+    /// the DIVIDEND's sign, while SMT-LIB's `div`/`mod` are Euclidean. Emitting
+    /// `div`/`mod` directly would prove a different theorem, so both operators
+    /// are bridged through these two definitions, emitted VERBATIM and exactly
+    /// once each. Division by zero is deliberately left unconstrained — SMT-LIB
+    /// leaves `div`/`mod` by zero unspecified and these inherit that, which is
+    /// the sound direction (the kernel's own `/` and `%` by zero are errors).
+    fn ensure_tdiv(&mut self) {
+        if self.tdiv_defined {
+            return;
+        }
+        self.tdiv_defined = true;
+        self.sc.decls.push(
+            "(define-fun oath_tquo ((a Int) (b Int)) Int\n  \
+             (ite (>= a 0) (div a b)\n    \
+             (ite (= (mod a b) 0) (div a b)\n      \
+             (+ (div a b) (ite (> b 0) 1 (- 1))))))\n"
+                .to_string(),
+        );
+        self.sc.decls.push(
+            "(define-fun oath_trem ((a Int) (b Int)) Int\n  \
+             (ite (>= a 0) (mod a b)\n    \
+             (ite (= (mod a b) 0) 0\n      \
+             (- (mod a b) (ite (> b 0) b (- b))))))\n"
+                .to_string(),
+        );
     }
 
     fn instance_id(hash: &str, cargs: &[Ty], sc: &mut Sorts, store: &Store) -> String {
@@ -747,12 +770,6 @@ impl<'a> Cx<'a> {
         self_hash: &str,
         self_tyargs: &[Ty],
     ) -> Result<(String, Ty), ()> {
-        if op == "%" {
-            // `%` over Int excluded: kernel truncates, SMT is Euclidean. `%` is
-            // Int-only in the fragment, so this is always the excluded case (§7.2 #64).
-            self.excluded_int_divmod = true;
-            return Err(());
-        }
         // Translate operands, keeping each operand's SMT type. The numeric-
         // overloaded prims propagate the operand kind: `Int` stays `Int`, `Rat`
         // (sort `Real`) stays `Rat`, `Float` (sort `Float64`) stays `Float`
@@ -827,14 +844,15 @@ impl<'a> Cx<'a> {
         if op == "fp-eq" {
             return Err(());
         }
-        // `/` over `Int` is excluded (truncating vs Euclidean); `/` over `Rat` is
-        // admitted — it is exact real division and translates faithfully (SPEC §7).
-        if op == "/" && !is_rat {
-            // `/` over Int is excluded (only Rat/Float division is admitted, above).
-            // Mark it so eager registration of a recursive callee body that reaches
-            // it suppresses the direct-attempt script (§7.2 #64).
-            self.excluded_int_divmod = true;
-            return Err(());
+        // `/` and `%` over `Int` are TRUNCATING (SPEC §7.1, #71): they bridge to
+        // SMT-LIB's Euclidean `div`/`mod` through `oath_tquo`/`oath_trem`, whose
+        // definitions are appended to the declaration stream here, at the point of
+        // first use. `/` over `Rat` is exact real division and stays `(/ …)`.
+        // `%` is Int-only (§2.1), so a `%` reaching here is always the Int case.
+        if (op == "/" || op == "%") && !is_rat {
+            self.ensure_tdiv();
+            let f = if op == "/" { "oath_tquo" } else { "oath_trem" };
+            return Ok((format!("({} {} {})", f, e[0], e[1]), Ty::Int));
         }
         let num_ty = if is_rat { Ty::Rat } else { Ty::Int };
         let (sexpr, ty) = match op {
@@ -1171,15 +1189,6 @@ impl<'a> Prover<'a> {
             env.push((vname, bt.clone()));
         }
         let goal = cx.tr(&prop.body, &env, &[], def_hash, &[]).ok()?.0;
-        // SPEC §7.2 (#64): if eager body translation of a recursive callee reached
-        // an excluded Int `/`/`%` (so the callee could not be fully registered), no
-        // direct-attempt script is emitted — the property is recorded unprovable with
-        // no script and its line is absent from prove/scripts.txt. (An excluded op in
-        // the goal or an inlined callee already failed the `.ok()?` above; this
-        // catches the surviving-goal-but-unregistered-callee case.)
-        if cx.excluded_int_divmod {
-            return None;
-        }
         // Script layout: lemma asserts, binder declarations, then the goal.
         let mut tail = String::new();
         tail.push_str(&lem);

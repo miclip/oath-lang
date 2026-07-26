@@ -10,7 +10,8 @@
   ],
   "guarantee": {
     "level": "tested",
-    "cases": 200
+    "cases": 200,
+    "proven": 5
   },
   "mutants_killed": 17,
   "mutants_total": 20,
@@ -25,5 +26,12 @@
   "confinement": [
     "",
     ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    4,
+    5
   ]
 }

@@ -10,7 +10,7 @@
   },
   "mutants_killed": 38,
   "mutants_total": 41,
-  "termination": "unknown",
+  "termination": "nonrecursive",
   "spec_author": "claude-main",
   "body_author": "claude-main",
   "author": "claude-main",

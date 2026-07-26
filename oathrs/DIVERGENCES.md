@@ -1882,3 +1882,74 @@ well-formed corpus and will stay test-only.
 **Post-amendment validation:** 325/325 scripts still byte-identical (the two new
 rules are no-ops on a corpus with no redundant or self-hints, exactly as predicted),
 `conformance.sh` oracle mode PASS, `cargo test` 7/7.
+
+## 82. Truncating `/` and `%` over `Int` become translatable (#71, §7.1) — RESOLVED first-try; one stale cross-reference and two under-pinned byte details
+
+**Status: RESOLVED.** Byte-identical on the first build: 375 direct-attempt scripts
+match `fixtures/prove/scripts.txt` exactly (376 lines incl. header), `conformance.sh`
+oracle mode a full PASS, `cargo test` 7/7. The 50 lines that were missing —
+`rot`/`rot-hl`/`rot-f`/`rot-h2`/`rot-h3` (7 props each), `e-mod` (6), `e-div` (5),
+`show-nat`/`show-int`/`circle` (2 each), `parse-nat` (2, whose bytes also changed) —
+all appeared with the right hashes without a single corpus-name special case.
+
+### What the spec pins, and what it does not
+
+§7.1's `/`-and-`%`-over-`Int` rule is unusually complete for a byte-significant
+change: it gives the two `define-fun` bodies verbatim, the two translation targets
+(`oath_tquo`/`oath_trem`), the both-together-on-first-use rule, and the explicit
+not-hoisted rule. Three things it still leaves to inference:
+
+**(a) Operand-first vs bridge-first, at the emission point.** "At the point of first
+use, not hoisted" fixes the pair's position relative to *other* declarations, but not
+relative to the declarations the operands of that very `/`/`%` first-touch. `/` is
+numeric-overloaded (§2.1), so a kernel cannot even know it is looking at the `Int`
+case until it has translated operand 0 to learn its sort — which means operand
+declarations necessarily precede the pair in any straightforward implementation. My
+kernel translates both operands, then calls `ensure_tdiv()`, then builds
+`(oath_tquo A B)`. That reproduces the fixture bytes, so the reference does the same,
+but the rule as written would equally permit a kernel that pre-scans for `%` (which
+IS statically Int-only, §2.1 checks its operands against `Int`) and emits the pair
+before descending into operands. Worth a sentence: *the pair is appended after the
+declarations first touched by the operands of the triggering application.*
+
+**(b) The verbatim block's indentation is markdown-relative.** The fenced block sits
+inside a bullet and is therefore indented two spaces in `SPEC.md`; "verbatim" means
+the DEDENTED text. A blind kernel copying the file bytes literally would emit two
+leading spaces on the `(define-fun` lines and four on their continuations, and would
+fail every one of the 50 new hashes with nothing to debug against (the fixture is
+sha256-only — there is no expected text to diff). Also unstated, and byte-significant:
+each definition is `\n`-terminated, there is no blank line between the two, and they
+are two consecutive entries in the same declaration stream as `declare-datatypes` /
+`declare-fun`. Cheap fix: note that the block is dedented, or move it out of the
+bullet.
+
+**(c) The repeal of the #64 script-suppression rule is left entirely to inference,
+and §7's prose now contradicts §7.1.** The EAGER-registration paragraph in §7 is
+unchanged and still reads: "If this eager body translation reaches an operator
+EXCLUDED from translation (`/` or `%` over `Int`, below), the callee's body cannot be
+fully registered, and the direct-attempt script is NOT emitted … a decimal `show`
+over `Int`, which recurses on `n / 10`, is the canonical case." Every clause of that
+is now false: `/` over `Int` is no longer below-excluded, and `show-nat` — the named
+canonical case — is precisely one of the definitions that GAINS a script under #71.
+The rule itself survives for the genuinely excluded operators (partial application,
+lambda in argument position), but its parenthetical and its worked example must move.
+This is the finding a blind kernel is built to surface: entry 80 above added that
+suppression path on the strength of that same paragraph, and #71 silently deletes its
+only trigger. My kernel therefore removed the `excluded_int_divmod` flag and its
+`direct_script_opts` early-return outright rather than leaving dead machinery — no
+remaining operator sets it, and leaving it would have been a latent trap for whoever
+next adds an excluded primitive. **Recommend amending §7 in the same commit as §7.1.**
+
+### The fix
+`prove.rs` only. `Cx::excluded_int_divmod` → `Cx::tdiv_defined`; new
+`Cx::ensure_tdiv()` pushes the two definitions (verbatim, dedented) onto
+`Sorts::decls`, the shared first-touch declaration stream, guarded by the flag so
+each is emitted at most once per script and both together. `tr_prim`'s early `%`
+rejection is gone (it existed only because `%` is Int-only and was excluded), and the
+former `/`-over-`Int` rejection becomes `(op == "/" || op == "%") && !is_rat` →
+`ensure_tdiv()` + `(oath_tquo A B)` / `(oath_trem A B)`, result sort `Int`. Since the
+flag lives on `Cx` and `Cx` is fresh per script, the once-per-script guarantee is
+structural. `direct_script_opts` lost its `None` early-return. `/` over `Rat`
+(`(/ A B)` over `Real`) and `/` over `Float` (`fp.div RNE`) are untouched, as §7.1
+requires. Division by zero is left unconstrained — no zero-divisor guard anywhere,
+per the explicit MUST NOT.

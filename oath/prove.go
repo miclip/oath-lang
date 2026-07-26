@@ -143,6 +143,7 @@ type smtCtx struct {
 	arrows     map[string][2]string // array sort → (domain, codomain)
 	quantified bool
 	depth      int
+	intDivDefs bool // truncating-division bridge emitted? (SPEC §7.1, #71)
 }
 
 // propMentions collects every definition hash a property references
@@ -215,6 +216,39 @@ func lemmaAdmissible(l *lemma, goalDef string, fp map[string]bool) bool {
 		}
 	}
 	return true
+}
+
+// ensureIntDivDefs emits the truncating-division bridge (SPEC §7.1, #71) once,
+// on first use. The kernel's `/` truncates toward zero and `%` takes the
+// dividend's sign (Go big.Int Quo/Rem); SMT-LIB's div/mod are Euclidean, so
+// emitting them directly would prove a DIFFERENT theorem for negative dividends.
+// These definitions are exactly the kernel's semantics wherever b ≠ 0 — z3
+// itself verifies there is no (a,b) with b≠0 where they violate the defining
+// characterisation (a = b·q + r, |r| < |b|, r signed like a or zero).
+//
+// Division by zero stays UNCONSTRAINED, inheriting SMT-LIB's unspecified
+// div/mod there. That is deliberate and is the sound direction: in the kernel
+// these operations ERROR on a zero divisor, so there is no value to model, and
+// leaving it arbitrary means a property that depends on it simply fails to
+// prove. Pinning it (say to 0) would let the prover establish properties the
+// evaluator cannot even run.
+//
+// Emitted lazily so that goals touching neither operator produce byte-identical
+// scripts to those from a kernel predating this bridge.
+func (c *smtCtx) ensureIntDivDefs() {
+	if c.intDivDefs {
+		return
+	}
+	c.intDivDefs = true
+	c.decls = append(c.decls,
+		"(define-fun oath_tquo ((a Int) (b Int)) Int\n"+
+			"  (ite (>= a 0) (div a b)\n"+
+			"    (ite (= (mod a b) 0) (div a b)\n"+
+			"      (+ (div a b) (ite (> b 0) 1 (- 1))))))",
+		"(define-fun oath_trem ((a Int) (b Int)) Int\n"+
+			"  (ite (>= a 0) (mod a b)\n"+
+			"    (ite (= (mod a b) 0) 0\n"+
+			"      (- (mod a b) (ite (> b 0) b (- b))))))")
 }
 
 func newSmtCtx(st *Store, d *Def, h string) *smtCtx {
@@ -597,10 +631,21 @@ func (c *smtCtx) tr(t *Term, env []smtVal) (string, string, error) {
 		case "floor":
 			return fmt.Sprintf("(to_int %s)", parts[0]), "Int", nil
 		}
-		// `%` is never translatable; `/` truncates over Int (SMT-LIB is
-		// Euclidean) but is EXACT over Real, so it translates for rationals.
+		// Int `/` and `%` are DEFINED in terms of SMT-LIB's Euclidean div/mod
+		// rather than emitted as them (SPEC §7.1, #71): the kernel truncates
+		// toward zero and its remainder takes the dividend's sign, which differs
+		// from Euclidean whenever the dividend is negative. Over Real, `/` is
+		// exact and needs no bridge.
+		if (t.Op == "/" || t.Op == "%") && argSort == "Int" {
+			c.ensureIntDivDefs()
+			fn := "oath_tquo"
+			if t.Op == "%" {
+				fn = "oath_trem"
+			}
+			return fmt.Sprintf("(%s %s %s)", fn, parts[0], parts[1]), "Int", nil
+		}
 		if t.Op == "%" || (t.Op == "/" && argSort != "Real") {
-			return "", "", fmt.Errorf("%s is untranslatable over %s (kernel truncates, SMT-LIB is Euclidean)", t.Op, argSort)
+			return "", "", fmt.Errorf("%s is untranslatable over %s", t.Op, argSort)
 		}
 		op, ok := smtPrimOps[t.Op]
 		if !ok {

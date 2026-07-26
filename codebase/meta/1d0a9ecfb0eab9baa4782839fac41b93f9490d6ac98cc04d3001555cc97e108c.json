@@ -4,12 +4,13 @@
     "single-digit"
   ],
   "guarantee": {
-    "level": "tested",
-    "cases": 200
+    "level": "proven",
+    "cases": 200,
+    "proven": 1
   },
   "mutants_killed": 4,
   "mutants_total": 25,
-  "termination": "unknown",
+  "termination": "measure",
   "spec_author": "claude-main",
   "body_author": "claude-main",
   "author": "claude-main",
@@ -18,5 +19,8 @@
   ],
   "confinement": [
     ""
+  ],
+  "proven_props": [
+    0
   ]
 }

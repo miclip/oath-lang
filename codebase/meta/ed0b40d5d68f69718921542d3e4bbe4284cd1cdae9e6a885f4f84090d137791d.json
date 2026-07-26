@@ -8,6 +8,15 @@
     "cases": 200,
     "proven": 1
   },
+  "mutants_total": 1,
+  "waived_mutants": [
+    {
+      "hash": "6eaec3dcc0d550712ab0e5c8ead926d168236b1fcc2584602b03e00bca3a8a11",
+      "desc": "+ → -",
+      "reason": "count-append is a LEMMA CARRIER: its property states a law about count and append (count x (append a b) == count x a + count x b) and never mentions count-append itself, so the definition's own body is an unobserved witness that only has to typecheck and terminate. No property can distinguish this mutant, by construction — not a spec gap. Pinning the body would need an extra property, which would change count-append's HASH and silently break the #67 hints on q-push/t-insert that reference it by (hash, prop index).",
+      "by": "claude-main"
+    }
+  ],
   "termination": "nonrecursive",
   "spec_author": "claude-main",
   "body_author": "claude-main",

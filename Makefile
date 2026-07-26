@@ -33,7 +33,7 @@ PROVABLE = length append sum count reverse map filter foldr foldl \
            merge t-flatten t-insert t-member t-size \
            i-contains i-overlaps i-intersect i-hull \
            q-to-list q-push q-peek q-drop rle-encode \
-           sort count-by list-eq-by min-by max-by insert-by sort-by \
+           sort count-append count-by list-eq-by min-by max-by insert-by sort-by \
            take drop max2 abs sign clamp or-else shout full-name \
            greet greet-or-guest initials-or \
            map-option flat-map-option is-some is-none \

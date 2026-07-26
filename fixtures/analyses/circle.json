@@ -2,7 +2,7 @@
   "name": "circle",
   "hash": "b9df489c7e772dce670558046a0a913a4827313b890e4f507c5f847dae5cd436",
   "kind": "func",
-  "termination": "unknown",
+  "termination": "nonrecursive",
   "confinement": [
     ""
   ],

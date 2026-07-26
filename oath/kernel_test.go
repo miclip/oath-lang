@@ -141,10 +141,17 @@ func TestMalformedNestedObjectsRejected(t *testing.T) {
 func TestStaleProvenDemoted(t *testing.T) {
 	requireZ3(t)
 	st := newStore(t)
+	// The second property must PASS testing (so the verdict is not merely
+	// "falsified") while sitting outside the provable fragment, so re-proving
+	// cannot reproduce the seeded claim. Float→Rat narrowing is that: partial in
+	// general, hence untranslatable, but always defined here because the Float
+	// comes from an Int and is therefore finite. (This used to use `/` over Int,
+	// which was untranslatable until #71 gave it an exact SMT bridge.)
 	put(t, st, `(defn halfish [] [(x Int)] Int
 		(if (< x 0) (neg x) x)
 		(prop non-negative [(x Int)] (<= 0 (halfish x)))
-		(prop div-bound [(x Int)] (== (/ x 1) (/ x 1))))`)
+		(prop narrow-opaque [(x Int)]
+			(== (to-rat (to-float x)) (to-rat (to-float x)))))`)
 	h, _ := st.Resolve("halfish")
 	// Seed corrupt/stale metadata: claim fully proven.
 	m, _ := st.GetMeta(h)
@@ -159,7 +166,7 @@ func TestStaleProvenDemoted(t *testing.T) {
 	}
 	m, _ = st.GetMeta(h)
 	if m.Guarantee.Level == "proven" {
-		t.Fatalf("stale proven not demoted: level=%q proven_props=%v (want not proven; / is outside the fragment)", m.Guarantee.Level, m.ProvenProps)
+		t.Fatalf("stale proven not demoted: level=%q proven_props=%v (want not proven; Float→Rat narrowing is outside the fragment)", m.Guarantee.Level, m.ProvenProps)
 	}
 	if len(m.ProvenProps) >= len(d(st, h).Props) {
 		t.Fatalf("expected fewer than all props proven, got proven_props=%v", m.ProvenProps)
