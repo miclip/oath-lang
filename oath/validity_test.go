@@ -126,3 +126,54 @@ func TestStandingVerdictSurvivesLaterRoundAbort(t *testing.T) {
 		t.Fatalf("retention not reported for both:\n%s", out)
 	}
 }
+
+// A valid `unsat` SUPERSEDES an earlier abort on the same property within one
+// round: positive evidence no environment can fake beats an attempt that
+// produced none. Without the supersede, the report calls a proven property
+// "aborted" and — because the abort branch is checked first — a newly proven one
+// is dropped from the recorded set entirely.
+//
+// This case was previously flagged as UNTESTED (#72): the always-abort hook can
+// never let the property succeed afterwards, so the path was unreachable.
+// OATH_PROVE_FORCE_ABORT_ONCE spends the abort on the first attempt only, which
+// makes the abort-then-prove sequence reachable deterministically — no timing.
+func TestProofSupersedesEarlierAbort(t *testing.T) {
+	requireZ3(t)
+	st := newStore(t)
+	put(t, st, `(defn supersede [] [(x Int)] Int (if (< x 0) (neg x) x)
+		(prop sup-target [(x Int)] (<= 0 (supersede x)))
+		(prop sup-other [(x Int)] (== (supersede (supersede x)) (supersede x))))`)
+	// Prove cleanly FIRST so the store already records both. The re-run's round 0
+	// then reproduces exactly that set, the fixpoint is stable immediately, and
+	// round 0 IS the final round — so the abort flag it raises is the one that
+	// reaches the report and the recorded set. Without this the once-abort is
+	// spent in round 0 and a later clean round masks the bug entirely.
+	if _, err := apiProve(st, "supersede"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OATH_PROVE_FORCE_ABORT_ONCE", "sup-target")
+
+	out, err := apiProve(st, "supersede")
+	if err != nil {
+		t.Fatalf("run must succeed: %v", err)
+	}
+	// The property must end PROVEN and must NOT be reported as aborted.
+	if strings.Contains(out, "⚠ aborted") && strings.Contains(out, "sup-target") {
+		for _, line := range strings.Split(out, "\n") {
+			if strings.Contains(line, "sup-target") && strings.Contains(line, "aborted") {
+				t.Fatalf("proof did not supersede the earlier abort: %q\n%s", line, out)
+			}
+		}
+	}
+	h, _ := st.Resolve("supersede")
+	m, _ := st.GetMeta(h)
+	found := false
+	for _, pi := range m.ProvenProps {
+		if pi == 0 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("superseded property was dropped from the recorded set: proven=%v\n%s", m.ProvenProps, out)
+	}
+}

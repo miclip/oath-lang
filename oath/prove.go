@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -1190,9 +1191,54 @@ func forceAbortProps() map[string]bool {
 	return out
 }
 
+// onceAborted counts how many times each property has already been force-aborted
+// under OATH_PROVE_FORCE_ABORT_ONCE. Guarded because the worker proves a
+// dependency level concurrently.
+var onceAborted struct {
+	sync.Mutex
+	seen map[string]bool
+}
+
+// forceAbortOnce aborts a property's FIRST attempt only, letting a later attempt
+// in the SAME round succeed. That sequence — abort, then a valid `unsat` on the
+// same property — is the only way to reach the rule that a proof SUPERSEDES an
+// earlier abort, and it cannot be produced by the plain always-abort hook. Test
+// scaffolding, like OATH_PROVE_FORCE_ABORT, and equally unable to fabricate a
+// verdict: it only ever suppresses one attempt.
+func forceAbortOnce(key string) bool {
+	v := os.Getenv("OATH_PROVE_FORCE_ABORT_ONCE")
+	if v == "" {
+		return false
+	}
+	match := false
+	for _, n := range strings.Split(v, ",") {
+		if strings.TrimSpace(n) == key {
+			match = true
+			break
+		}
+	}
+	if !match {
+		return false
+	}
+	onceAborted.Lock()
+	defer onceAborted.Unlock()
+	if onceAborted.seen == nil {
+		onceAborted.seen = map[string]bool{}
+	}
+	if onceAborted.seen[key] {
+		return false // already spent: this attempt proceeds normally
+	}
+	onceAborted.seen[key] = true
+	return true
+}
+
 func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propOutcome {
-	if fa := forceAbortProps(); fa != nil && fa[metaPropName(m, pi)] {
+	pname := metaPropName(m, pi)
+	if fa := forceAbortProps(); fa != nil && fa[pname] {
 		return propOutcome{status: "invalidated", detail: "forced abort (OATH_PROVE_FORCE_ABORT)"}
+	}
+	if forceAbortOnce(pname) {
+		return propOutcome{status: "invalidated", detail: "forced abort, first attempt only (OATH_PROVE_FORCE_ABORT_ONCE)"}
 	}
 	// Script stability: all emitted symbols are STRUCTURALLY named (binder
 	// index, constructor-field index, function-parameter index) — no
@@ -1917,11 +1963,13 @@ func apiProveHash(st *Store, h string, display string) (string, error) {
 					// fake beats an attempt that produced none. Without this the
 					// report would call a proven property "aborted", and — because
 					// the abort branch is checked first — a NEWLY proven one would
-					// be dropped from the recorded set entirely. (Not discriminated
-					// by the suite: reaching it needs an abort and a later success
-					// on the same property in one round, which the deterministic
-					// force-abort hook cannot produce. Kept as an invariant, and
-					// flagged rather than left silently untested.)
+					// be dropped from the recorded set entirely.
+					// Discriminated by TestProofSupersedesEarlierAbort (mutation-
+					// checked: deleting this line fails it). Reaching it needs the
+					// abort AND a later success on one property inside the round
+					// that ends up LAST, which the always-abort hook cannot produce
+					// — hence OATH_PROVE_FORCE_ABORT_ONCE plus a pre-proved store so
+					// the fixpoint settles in a single round.
 					aborted[pi] = false
 					progress = true
 					epoch++
