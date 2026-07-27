@@ -252,10 +252,21 @@ fn cmd_prove(paths: &[String], hints_path: Option<&str>) -> i32 {
     for (name, hash) in by_name {
         if let Some(r) = results.get(hash) {
             let count = r.proven.iter().filter(|b| **b).count();
+            // SPEC §7.2 (#72): three distinct states per property. '+' PROVEN (a
+            // fresh proof, or a prior proof carried forward through an abort —
+            // never demoted), '-' UNPROVEN (attempted validly, not proven), '!'
+            // ABORTED (an attempt was environmentally invalid, so no valid
+            // verdict exists and nothing was recorded). '!' is emitted only for
+            // an abort with no standing proof: rendering an aborted property as
+            // '-' would state "not proven", a claim this run cannot make. The
+            // per-property detail (which condition, whether a prior proof was
+            // carried) goes to stderr, so this stdout surface stays the pinned
+            // conformance channel.
             let flags: String = r
                 .proven
                 .iter()
-                .map(|b| if *b { '+' } else { '-' })
+                .zip(r.aborted.iter())
+                .map(|(p, a)| if *p { '+' } else if *a { '!' } else { '-' })
                 .collect();
             println!("{}\t{}/{}\t{}", name, count, r.proven.len(), flags);
         }

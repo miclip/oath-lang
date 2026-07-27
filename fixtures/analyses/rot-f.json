@@ -10,5 +10,6 @@
   "mutants_killed": 20,
   "mutants_total": 22,
   "level": "tested",
-  "cases": 200
+  "cases": 200,
+  "proven": 3
 }

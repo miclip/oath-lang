@@ -1220,8 +1220,58 @@ reproducibility (given the same solver):
   any valid attempt keeps its verdict regardless of other attempts'
   invalidity. Invalidity taints only the NEGATIVE case: a property that
   would be recorded UNPROVEN while any of its strategy attempts was
-  invalid has no valid negative verdict, and the kernel MUST invalidate
-  the run there instead of recording. (Empirical origin of the
+  invalid has no valid negative verdict, and the kernel MUST NOT record
+  an outcome for it. **This is PER PROPERTY, not per run (normative,
+  #72).** For such a property its STANDING VERDICT stands UNCHANGED — if it
+  was proven, it stays proven, since demoting it would turn an
+  environmental abort into a verdict, the very thing this rule forbids —
+  and it is reported DISTINCTLY as aborted, never as unproven,
+  because "no valid verdict exists" is a different claim from "not
+  proven". Sibling properties are unaffected: a property whose own
+  attempts were all valid records its verdict normally, and the run as a
+  whole SUCCEEDS with partial results rather than failing. An aborted
+  property contributes no new lemma (it gains nothing this run), which is
+  the conservative direction for the run-stability fixpoint below.
+  (Earlier this invalidated the ENTIRE run, so one intractable property
+  hid every sibling's status and made the definition permanently
+  unrecordable — the `rot*` flywheel arms, 28 properties across four
+  definitions, were stuck exactly this way once #71 made their goals
+  translatable: one goal exceeds the wall cap at any practical budget, and
+  the other six could never be recorded.)
+  STANDING VERDICT means the proven set the kernel holds for the object AT
+  THE START OF THE CURRENT ROUND of the run-stability fixpoint below —
+  i.e. the recorded state as it stands, INCLUDING proofs this run
+  established in an earlier round. It is NOT a snapshot taken before the
+  run: a property proven in round 0 and aborted in round 1 keeps its
+  proof, because that proof was derived from a valid attempt and losing it
+  is the same environmental demotion this rule forbids. A kernel with no
+  recorded state (a cold `prove` that reads no stored verdicts, §10) simply
+  has an empty standing set in round 0 and carries nothing — the same rule,
+  a different input. This referent is spelled out because it is otherwise
+  ambiguous between "the store's pre-run metadata" and "the fixpoint's
+  current set", and the two disagree observably on the round-0-proven,
+  round-1-aborted case while being INVISIBLE to the byte oracle.
+  A carried-forward proof REMAINS admissible as a lemma: withdrawing it
+  would make sibling verdicts depend on which attempts happened to abort,
+  i.e. on the environment. Only a property that has never been proven
+  contributes no lemma.
+  CARRY-FORWARD WEAKENS THE FIXPOINT, and consumers must know it. This is
+  not a soundness hole — a carried verdict is backed by a valid `unsat`
+  over lemmas themselves recorded proven, and truth does not expire; an
+  abort never CREATES a verdict, it only declines to overwrite one. But the
+  run-stability fixpoint below otherwise makes the settled state
+  SELF-CERTIFYING (every recorded proof re-derivable from it), and a
+  carried-forward proof was derived from an earlier round's state, not
+  re-derived from the final one. The settled state is therefore a fixpoint
+  of F only MODULO aborted properties. Two consequences a kernel or
+  consumer MUST respect: a conformance re-derivation cannot certify an
+  aborted property at all and MUST report it as environmentally
+  inconclusive rather than as a divergence; and provenance consumers
+  (§8) MUST treat an aborted property's verdict as CARRIED, not
+  re-derived, since a lemma it leaned on may since have been dropped —
+  the verdict stays true but is not replayable from the recorded state
+  alone.
+  (Empirical origin of the
   granularity: z3 crashes with empty output — deterministically — on
   t-insert.insert-length's direct-attempt script, while structural
   induction proves the goal; run-level invalidation would have made the

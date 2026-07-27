@@ -1168,7 +1168,32 @@ func (c *smtCtx) hintsInScope(m *Meta, h string, pi int) bool {
 	return false
 }
 
+// forceAbortProps lists property names that OATH_PROVE_FORCE_ABORT asks the
+// prover to treat as environmentally aborted. This is TEST-ONLY fault injection
+// for the §7.2 per-property validity path (#72), which is otherwise reachable
+// only by winning a race against the wall clock — a timing-dependent test would
+// be flaky, and this rule is too close to soundness to leave untested. It is NOT
+// part of the spec and a conforming kernel need not implement it; unset (the
+// only production state) it does nothing. It can only ever SUPPRESS a verdict,
+// never fabricate one, so the blast radius is the safe direction.
+func forceAbortProps() map[string]bool {
+	v := os.Getenv("OATH_PROVE_FORCE_ABORT")
+	if v == "" {
+		return nil
+	}
+	out := map[string]bool{}
+	for _, n := range strings.Split(v, ",") {
+		if n = strings.TrimSpace(n); n != "" {
+			out[n] = true
+		}
+	}
+	return out
+}
+
 func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propOutcome {
+	if fa := forceAbortProps(); fa != nil && fa[metaPropName(m, pi)] {
+		return propOutcome{status: "invalidated", detail: "forced abort (OATH_PROVE_FORCE_ABORT)"}
+	}
 	// Script stability: all emitted symbols are STRUCTURALLY named (binder
 	// index, constructor-field index, function-parameter index) — no
 	// counters exist, so a goal's script is canonical by construction:
@@ -1806,8 +1831,21 @@ func apiProveHash(st *Store, h string, display string) (string, error) {
 	// state the store records — warm and cold runs converge to the same
 	// self-consistent verdicts.
 	var outcomes []propOutcome
-	var provenSet, withheld []bool
+	var provenSet, withheld, aborted []bool
 	var lemmaCount, ownProven int
+	// The STANDING verdict set for the aborted-property carry-forward: what the
+	// store records for this object right now. A property whose attempt is
+	// environmentally aborted has no valid verdict, so its standing verdict must
+	// survive untouched — dropping it would demote a proof on environmental
+	// grounds, precisely what §7.2 forbids.
+	//
+	// This is REFRESHED at the top of every round (below), not snapshotted before
+	// the loop. m.ProvenProps advances as rounds settle, so a property proven in
+	// an earlier round of THIS run has a standing verdict too; reading only the
+	// pre-run store state would discard a proof this very run derived — the same
+	// loss #72 exists to prevent. (The blind Rust kernel read the rule this way
+	// and was right; the reference did not. SPEC §7.2 now pins the referent.)
+	origProven := map[int]bool{}
 	for round := 0; ; round++ {
 		c := newSmtCtx(st, d, h)
 		lemmaCount, ownProven = loadLemmaLibrary(c, st, d, h, m, -1)
@@ -1816,6 +1854,11 @@ func apiProveHash(st *Store, h string, display string) (string, error) {
 		provenSet = make([]bool, len(d.Props))
 		lastEpoch := make([]int, len(d.Props))
 		withheld = make([]bool, len(d.Props))
+		aborted = make([]bool, len(d.Props))
+		origProven = map[int]bool{}
+		for _, pi := range m.ProvenProps {
+			origProven[pi] = true
+		}
 		epoch := 1 // bumps whenever a new own-lemma lands
 		for {
 			progress := false
@@ -1847,9 +1890,18 @@ func apiProveHash(st *Store, h string, display string) (string, error) {
 				}
 				o := ac.proveOne(d, h, m, &d.Props[pi], pi)
 				if o.status == "invalidated" {
-					// SPEC §7.2: never record from a run whose wall cap fired
-					// before the rlimit budget exhausted.
-					return "", fmt.Errorf("prove run INVALIDATED at %s: %s", pn, o.detail)
+					// SPEC §7.2, per PROPERTY (#72): an environmental abort is not
+					// evidence, so this goal gets NO verdict this run — but that is a
+					// fact about THIS property, not about its siblings. Mark it
+					// aborted, leave its recorded state alone, and carry on; a
+					// sibling whose own attempts completed cleanly still earns its
+					// verdict. Invalidating the whole run instead made one
+					// intractable property hide every other property's status.
+					aborted[pi] = true
+					attempted[pi] = true
+					lastEpoch[pi] = epoch
+					outcomes[pi] = o
+					continue
 				}
 				attempted[pi] = true
 				lastEpoch[pi] = epoch
@@ -1860,6 +1912,17 @@ func apiProveHash(st *Store, h string, display string) (string, error) {
 						continue
 					}
 					provenSet[pi] = true
+					// A valid `unsat` SUPERSEDES an earlier abort on this property
+					// within the same round: positive evidence no environment can
+					// fake beats an attempt that produced none. Without this the
+					// report would call a proven property "aborted", and — because
+					// the abort branch is checked first — a NEWLY proven one would
+					// be dropped from the recorded set entirely. (Not discriminated
+					// by the suite: reaching it needs an abort and a later success
+					// on the same property in one round, which the deterministic
+					// force-abort hook cannot produce. Kept as an invariant, and
+					// flagged rather than left silently untested.)
+					aborted[pi] = false
 					progress = true
 					epoch++
 				}
@@ -1870,7 +1933,9 @@ func apiProveHash(st *Store, h string, display string) (string, error) {
 		}
 		var newIdx []int
 		for pi := range d.Props {
-			if provenSet[pi] {
+			// An aborted property keeps whatever the store already recorded: this
+			// run produced no valid evidence either way about it.
+			if provenSet[pi] || (aborted[pi] && origProven[pi]) {
 				newIdx = append(newIdx, pi)
 			}
 		}
@@ -1907,6 +1972,19 @@ func apiProveHash(st *Store, h string, display string) (string, error) {
 		pn := metaPropName(m, pi)
 		o := outcomes[pi]
 		switch {
+		case aborted[pi]:
+			// Deliberately NOT "unproven": no valid verdict exists for this goal,
+			// which is a different claim. Whatever the store recorded stands — so a
+			// prior proof is CARRIED FORWARD into the recorded set here, not just
+			// described in the report. Demoting it would convert an environmental
+			// abort into a verdict, which is what §7.2 forbids.
+			state := "no prior proof to retain"
+			if origProven[pi] {
+				state = "prior PROVEN retained"
+				proven++
+				provenIdx = append(provenIdx, pi)
+			}
+			fmt.Fprintf(&b, "⚠ aborted   %-28s environmental abort, no valid verdict (%s)\n", pn, state)
 		case withheld[pi]:
 			fmt.Fprintf(&b, "· unproven  %-28s SMT claim contradicts a test counterexample; withheld\n", pn)
 		case provenSet[pi]:

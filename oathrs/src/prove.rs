@@ -76,15 +76,36 @@ fn z3_memory_mb() -> Option<u64> {
         .filter(|&v| v > 0)
 }
 
-/// SPEC §7.2 attempt-validity invalidation: the run is non-conformant, so we
-/// record NOTHING and abort the whole prove with exit code 3. Called only from
-/// `prove_prop`, once a property is decided UNPROVEN while a strategy attempt was
-/// invalid (per-attempt GRANULARITY) — never from an individual z3 attempt,
-/// which merely reports invalidity and lets a valid strategy win. `msg` names
-/// the failing condition.
-fn invalidate(msg: &str) -> ! {
-    eprintln!("FATAL: {}", msg);
-    std::process::exit(3);
+/// SPEC §7.2 attempt validity, PER PROPERTY (#72). The result of attempting one
+/// property. `Aborted` is the third verdict the rule demands: not a claim that
+/// the property is unproven, but the claim that NO VALID VERDICT EXISTS for it
+/// this run because one of its strategy attempts was an environmental abort
+/// (wall cap, missing telemetry, memout, canceled-below-budget). It is reported
+/// distinctly, records nothing of its own, and leaves whatever the store already
+/// recorded standing unchanged — in particular a prior PROVEN is carried forward
+/// and MUST NOT be demoted, since demoting it would turn an environmental abort
+/// into a verdict, exactly what the rule forbids.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PropVerdict {
+    Proven,
+    Unproven,
+    /// No valid verdict; the string names the first invalidating condition seen.
+    Aborted(String),
+}
+
+/// SPEC §7.2 (#72): the final composition rule of `prove_prop`, factored out so
+/// the soundness-critical direction is testable without a solver. A property
+/// PROVEN by any valid attempt is proven regardless of taint (`unsat` is
+/// positive evidence no environment can fake). A property NOT proven is
+/// `Unproven` only when every attempt was valid; if any attempt was invalid the
+/// negative has no valid verdict and the property is `Aborted` — never
+/// `Unproven`, because those are different claims.
+fn compose_verdict(proved: bool, taint: Option<String>) -> PropVerdict {
+    match (proved, taint) {
+        (true, _) => PropVerdict::Proven,
+        (false, None) => PropVerdict::Unproven,
+        (false, Some(reason)) => PropVerdict::Aborted(reason),
+    }
 }
 
 /// Extract the unsigned integer following `key` in a z3 get-info response
@@ -1827,9 +1848,15 @@ impl<'a> Prover<'a> {
     /// regardless of other attempts' invalidity. An invalid attempt yields NO
     /// evidence — it does not end the run; it only TAINTS the negative case. If no
     /// strategy proves the property and any attempt along the way was invalid, the
-    /// property has no valid negative verdict and the whole run is INVALIDATED
-    /// here (exit 3); if no attempt was invalid, the property records unproven.
-    fn prove_prop(&self, def_hash: &str, prop: &Prop, candidates: &[(String, usize, bool)]) -> bool {
+    /// property has no valid negative verdict: it returns `Aborted` (SPEC §7.2
+    /// #72, PER PROPERTY — the run continues and its siblings record normally),
+    /// never `Unproven`. If no attempt was invalid, it records `Unproven`.
+    fn prove_prop(
+        &self,
+        def_hash: &str,
+        prop: &Prop,
+        candidates: &[(String, usize, bool)],
+    ) -> PropVerdict {
         // First invalid-attempt reason seen while trying to prove this property.
         let mut taint: Option<String> = None;
 
@@ -1840,7 +1867,7 @@ impl<'a> Prover<'a> {
         // proceeds through the unchanged strategies below, so the outcome is the
         // union of this attempt and the existing search.
         if self.try_direct_lemma_free(def_hash, prop, candidates) {
-            return true;
+            return PropVerdict::Proven;
         }
 
         // SPEC §7.2 (#50, #56): a goal is INDUCTIVE-ELIGIBLE if it has at least
@@ -1862,7 +1889,7 @@ impl<'a> Prover<'a> {
 
         let (direct, quantified) = self.try_direct(def_hash, prop, candidates, direct_budget);
         match direct {
-            Ok(Outcome::Unsat) => return true, // proven; a valid attempt wins
+            Ok(Outcome::Unsat) => return PropVerdict::Proven, // proven; a valid attempt wins
             Err(reason) => {
                 // Invalid direct attempt: no evidence. Fall through to induction —
                 // a valid strategy may still prove it (the t-insert case).
@@ -1882,7 +1909,7 @@ impl<'a> Prover<'a> {
                     continue;
                 }
                 match self.try_induction_binder(def_hash, prop, k, candidates) {
-                    Ok(true) => return true,
+                    Ok(true) => return PropVerdict::Proven,
                     Ok(false) => {}
                     Err(reason) => {
                         taint.get_or_insert(reason);
@@ -1900,7 +1927,7 @@ impl<'a> Prover<'a> {
                         continue;
                     }
                     match self.try_induction_lex(def_hash, prop, i, j, candidates) {
-                        Ok(true) => return true,
+                        Ok(true) => return PropVerdict::Proven,
                         Ok(false) => {}
                         Err(reason) => {
                             taint.get_or_insert(reason);
@@ -1912,7 +1939,7 @@ impl<'a> Prover<'a> {
             // lexicographic induction have failed. Fires only when the definition
             // under proof is `measure`-total, inducting along its OWN recursion.
             match self.try_recursion_induction(def_hash, prop, candidates) {
-                Ok(true) => return true,
+                Ok(true) => return PropVerdict::Proven,
                 Ok(false) => {}
                 Err(reason) => {
                     taint.get_or_insert(reason);
@@ -1933,7 +1960,7 @@ impl<'a> Prover<'a> {
         if inductive_eligible {
             let (fb, _) = self.try_direct(def_hash, prop, candidates, z3_rlimit());
             match fb {
-                Ok(Outcome::Unsat) => return true,
+                Ok(Outcome::Unsat) => return PropVerdict::Proven,
                 Err(reason) => {
                     taint.get_or_insert(reason);
                 }
@@ -1941,19 +1968,22 @@ impl<'a> Prover<'a> {
             }
         }
 
-        // Not proven by any strategy. A tainted negative has no valid verdict:
-        // invalidate the run here (SPEC §7.2 GRANULARITY). Otherwise it is an
-        // honest, reproducible unproven.
-        if let Some(reason) = taint {
-            invalidate(&format!(
-                "attempt-validity: no strategy proved a property of def {} and an attempt was \
-                 invalid, so it has no valid negative verdict — {} — run invalidated, no outcome \
-                 recorded (SPEC §7.2 attempt validity: GRANULARITY)",
-                &def_hash[..def_hash.len().min(12)],
-                reason
-            ));
-        }
-        false
+        // Not proven by any strategy. A tainted negative has no valid verdict, so
+        // THIS PROPERTY is aborted (SPEC §7.2 GRANULARITY, PER PROPERTY #72): it
+        // records nothing, its previously recorded state stands, and its siblings
+        // and the run are unaffected. Untainted, it is an honest, reproducible
+        // unproven.
+        compose_verdict(
+            false,
+            taint.map(|reason| {
+                format!(
+                    "no strategy proved it (def {}) and an attempt was invalid, so it has no \
+                     valid negative verdict — {}",
+                    &def_hash[..def_hash.len().min(12)],
+                    reason
+                )
+            }),
+        )
     }
 }
 
@@ -2316,6 +2346,13 @@ pub fn scripts_for(
 
 pub struct ProofResult {
     pub proven: Vec<bool>, // per prop index
+    /// SPEC §7.2 (#72): per prop index, whether the property ABORTED — an
+    /// attempt was environmentally invalid and the property therefore has no
+    /// valid verdict this run. Reported DISTINCTLY from `proven == false`, which
+    /// is the positive claim "attempted validly and not proven". A property may
+    /// be both `proven` and `aborted`: its prior recorded PROVEN was carried
+    /// forward unchanged (never demoted) while this run could not re-derive it.
+    pub aborted: Vec<bool>,
 }
 
 /// Prove all properties of every func definition; returns per-def results and
@@ -2325,6 +2362,25 @@ pub fn prove_all(
     falsified: &BTreeSet<String>,
     hints: &Hints,
 ) -> BTreeMap<String, ProofResult> {
+    let prover = Prover { store };
+    prove_all_with(store, falsified, hints, |hash, _pi, prop, cands| {
+        prover.prove_prop(hash, prop, cands)
+    })
+}
+
+/// The recording layer of `prove_all`, with the per-property attempt supplied by
+/// the caller. The real driver passes `Prover::prove_prop` (z3); tests pass a
+/// deterministic oracle, which is the only way to exercise the #72 abort
+/// semantics without depending on timing or on a solver that happens to die.
+pub fn prove_all_with<F>(
+    store: &Store,
+    falsified: &BTreeSet<String>,
+    hints: &Hints,
+    mut attempt: F,
+) -> BTreeMap<String, ProofResult>
+where
+    F: FnMut(&str, usize, &Prop, &[(String, usize, bool)]) -> PropVerdict,
+{
     // process definitions in dependency order (deps first)
     let func_hashes: Vec<String> = store
         .def_by_hash
@@ -2370,8 +2426,6 @@ pub fn prove_all(
         }
     }
 
-    let prover = Prover { store };
-
     // TWO-LEVEL proof fixpoint (SPEC §7.2). A budget-limited solver is NON-
     // MONOTONE in its axiom set — a goal that proves from a small lemma set can
     // fail once more (irrelevant) lemmas are asserted and divert the search into
@@ -2408,12 +2462,24 @@ pub fn prove_all(
     };
 
     let mut recorded: BTreeSet<(String, usize)> = BTreeSet::new();
-    let mut cache: BTreeMap<(String, usize), (Vec<(String, usize, bool)>, bool)> = BTreeMap::new();
+    // SPEC §7.2 (#72): properties with no valid verdict this round, and why.
+    let mut aborted: BTreeMap<(String, usize), String> = BTreeMap::new();
+    // The per-property cache keys on the actual candidate set. An ABORTED verdict
+    // is cached like any other: re-attempting the same script under the same
+    // lemma state would burn the wall cap again per round, and an abort records
+    // nothing either way, so caching cannot change what is recorded — only how
+    // long the run takes.
+    let mut cache: BTreeMap<(String, usize), (Vec<(String, usize, bool)>, PropVerdict)> =
+        BTreeMap::new();
     for round in 0..8 {
         if progress {
             eprintln!("[prove] === round {} start ({} defs) ===", round, total_defs);
         }
         let mut in_run: BTreeSet<(String, usize)> = BTreeSet::new();
+        // Properties ABORTED this round (SPEC §7.2 #72): no valid verdict exists
+        // for them. Reset per round — only the settling round's aborts are
+        // reported, exactly as only its verdicts are recorded.
+        aborted.clear();
         // combined = recorded ∪ in_run, kept in sync as in_run grows this round.
         let mut combined = recorded.clone();
         for (di, hash) in order.iter().enumerate() {
@@ -2436,18 +2502,56 @@ pub fn prove_all(
                         continue;
                     }
                     let cands = candidate_lemmas(store, hash, pi, prop, &combined, hints);
-                    let proved = match cache.get(&key) {
-                        Some((c, r)) if *c == cands => *r,
+                    let verdict = match cache.get(&key) {
+                        Some((c, r)) if *c == cands => r.clone(),
                         _ => {
-                            let r = prover.prove_prop(hash, prop, &cands);
-                            cache.insert(key.clone(), (cands, r));
+                            let r = attempt(hash, pi, prop, &cands);
+                            cache.insert(key.clone(), (cands, r.clone()));
                             r
                         }
                     };
-                    if proved {
-                        in_run.insert(key.clone());
-                        combined.insert(key);
-                        changed = true;
+                    match verdict {
+                        PropVerdict::Proven => {
+                            in_run.insert(key.clone());
+                            combined.insert(key.clone());
+                            // A property may abort on one pass of the inner growth
+                            // loop and PROVE on a later pass of the same round
+                            // (its candidate set grew when a sibling proved). The
+                            // proof is a valid verdict, so the earlier abort is no
+                            // longer this property's state and must not be
+                            // reported: "aborted" claims no valid verdict EXISTS.
+                            aborted.remove(&key);
+                            changed = true;
+                        }
+                        PropVerdict::Unproven => {}
+                        PropVerdict::Aborted(reason) => {
+                            // SPEC §7.2 (#72), PER PROPERTY. No valid verdict for
+                            // THIS property: it records nothing of its own, its
+                            // siblings are untouched, and the run continues. Its
+                            // STANDING VERDICT stands — and the spec pins that
+                            // referent: "the proven set the kernel holds for the
+                            // object AT THE START OF THE CURRENT ROUND of the
+                            // run-stability fixpoint … INCLUDING proofs this run
+                            // established in an earlier round … NOT a snapshot
+                            // taken before the run". `recorded` is exactly that
+                            // set: it is assigned only at round end, so throughout
+                            // a round it holds what the previous round settled. So
+                            // a property proven in round 0 and aborted in round 1
+                            // keeps its proof; a cold kernel's round-0 standing set
+                            // is empty and carries nothing.
+                            //
+                            // The carry-forward is not a NEW lemma (the property
+                            // was already in `recorded`, hence already in
+                            // `combined` at round start, and §7.2: "a carried-
+                            // forward proof REMAINS admissible as a lemma"), so it
+                            // does not set `changed`: an aborted property gains
+                            // nothing this run, the conservative direction for the
+                            // run-stability fixpoint.
+                            aborted.insert(key.clone(), reason);
+                            if recorded.contains(&key) {
+                                in_run.insert(key);
+                            }
+                        }
                     }
                 }
                 if !changed {
@@ -2458,7 +2562,16 @@ pub fn prove_all(
                 // Provisional verdict = this round's in_run for the def (what will
                 // become `recorded` at round end).
                 let flags: String = (0..props.len())
-                    .map(|pi| if in_run.contains(&(hash.clone(), pi)) { '+' } else { '-' })
+                    .map(|pi| {
+                        let key = (hash.clone(), pi);
+                        if in_run.contains(&key) {
+                            '+'
+                        } else if aborted.contains_key(&key) {
+                            '!' // no valid verdict (#72), NOT "unproven"
+                        } else {
+                            '-'
+                        }
+                    })
                     .collect();
                 let cnt = flags.chars().filter(|&c| c == '+').count();
                 eprintln!("[prove] r{} done {} {}/{} {}", round, name_of(hash), cnt, props.len(), flags);
@@ -2479,8 +2592,28 @@ pub fn prove_all(
             let flags = (0..props.len())
                 .map(|pi| recorded.contains(&(hash.clone(), pi)))
                 .collect();
-            results.insert(hash.clone(), ProofResult { proven: flags });
+            let aborts = (0..props.len())
+                .map(|pi| aborted.contains_key(&(hash.clone(), pi)))
+                .collect();
+            results.insert(hash.clone(), ProofResult { proven: flags, aborted: aborts });
         }
+    }
+    // SPEC §7.2 (#72): aborted properties are reported DISTINCTLY, on stderr,
+    // naming the invalidating condition — "no valid verdict exists" is a
+    // different claim from "not proven" and must never be silently rendered as
+    // the latter. The run itself SUCCEEDS with partial results.
+    for ((hash, pi), reason) in &aborted {
+        eprintln!(
+            "ABORTED (no valid verdict, SPEC §7.2 #72): {} prop {}{} — {}",
+            name_of(hash),
+            pi,
+            if recorded.contains(&(hash.clone(), *pi)) {
+                " [prior PROVEN carried forward unchanged]"
+            } else {
+                ""
+            },
+            reason
+        );
     }
     results
 }
@@ -3150,5 +3283,253 @@ mod tests {
         let hints = f.hint(1, (&f.unrelated, 0));
         assert_eq!(f.cands(0, &Hints::new()), f.cands(0, &hints));
         assert_eq!(f.script(0, &Hints::new()), f.script(0, &hints));
+    }
+
+    // =======================================================================
+    // #72 — PER-PROPERTY attempt validity (SPEC §7.2 "Attempt validity").
+    //
+    // These are invisible to the byte oracle: the rule governs verdict
+    // RECORDING under environmental aborts, and every fixture was generated
+    // from a clean run, so no fixture exercises it. They are also unreachable
+    // through timing without being flaky. So the abort is injected
+    // DETERMINISTICALLY: `prove_all_with` takes the per-property attempt as a
+    // parameter, and these tests pass an oracle that returns
+    // `PropVerdict::Aborted` for a designated property — no z3, no clock, same
+    // answer every run. Everything below the injection point (the round loop,
+    // the growth fixpoint, the carry-forward, the reporting) is the real code.
+    // =======================================================================
+
+    /// The oracle: `abort` names properties whose attempts are environmental
+    /// aborts; every other property proves. `after` delays aborting until the
+    /// property has been attempted that many times (so a property can be PROVEN
+    /// in round 0 and abort in round 1 — the demotion case). Records every
+    /// attempt's candidate set for the no-new-lemma check.
+    struct Oracle {
+        abort: Vec<(String, usize)>,
+        after: usize,
+        until: usize,
+        attempts: std::cell::RefCell<Vec<((String, usize), Vec<(String, usize, bool)>)>>,
+    }
+
+    impl Oracle {
+        fn new(abort: Vec<(String, usize)>, after: usize) -> Self {
+            Oracle { abort, after, until: usize::MAX, attempts: Default::default() }
+        }
+        /// Abort only the attempts numbered `after..until` for the named
+        /// properties; every other attempt proves.
+        fn window(abort: Vec<(String, usize)>, after: usize, until: usize) -> Self {
+            Oracle { abort, after, until, attempts: Default::default() }
+        }
+        fn verdict(&self, hash: &str, pi: usize, cands: &[(String, usize, bool)]) -> PropVerdict {
+            let key = (hash.to_string(), pi);
+            let seen = self.attempts.borrow().iter().filter(|(k, _)| *k == key).count();
+            self.attempts.borrow_mut().push((key.clone(), cands.to_vec()));
+            if self.abort.contains(&key) && seen >= self.after && seen < self.until {
+                PropVerdict::Aborted("simulated environmental abort (wall cap)".to_string())
+            } else {
+                PropVerdict::Proven
+            }
+        }
+        /// Every candidate set any attempt was given, flattened.
+        fn all_candidates(&self) -> Vec<(String, usize, bool)> {
+            self.attempts.borrow().iter().flat_map(|(_, c)| c.clone()).collect()
+        }
+    }
+
+    fn prove_with(f: &Fix, o: &Oracle) -> BTreeMap<String, ProofResult> {
+        prove_all_with(&f.store, &BTreeSet::new(), &Hints::new(), |h, pi, _p, c| {
+            o.verdict(h, pi, c)
+        })
+    }
+
+    /// §7.2 #72 composition, the soundness direction: a property NOT proven while
+    /// an attempt was invalid is ABORTED, never UNPROVEN — "no valid verdict
+    /// exists" and "attempted validly, not proven" are different claims. A valid
+    /// proof still wins over a taint (`unsat` is evidence no environment fakes).
+    #[test]
+    fn a_tainted_negative_is_aborted_never_unproven() {
+        let taint = || Some("z3 exceeded the wall cap".to_string());
+        assert_eq!(
+            compose_verdict(false, taint()),
+            PropVerdict::Aborted("z3 exceeded the wall cap".to_string())
+        );
+        assert_ne!(compose_verdict(false, taint()), PropVerdict::Unproven);
+        assert_eq!(compose_verdict(false, None), PropVerdict::Unproven);
+        // A valid proof is unaffected by another attempt's invalidity.
+        assert_eq!(compose_verdict(true, taint()), PropVerdict::Proven);
+        assert_eq!(compose_verdict(true, None), PropVerdict::Proven);
+    }
+
+    /// §7.2 #72: "Sibling properties are unaffected ... the run as a whole
+    /// SUCCEEDS with partial results". One aborted property must not prevent any
+    /// other property — of its own definition or of any other — from recording.
+    /// (Before #72 this invalidated the ENTIRE run and recorded nothing.)
+    #[test]
+    fn an_aborted_property_does_not_block_its_siblings() {
+        let f = fixture();
+        let o = Oracle::new(vec![(f.quad.clone(), 1)], 0);
+        let r = prove_with(&f, &o);
+
+        let quad = &r[&f.quad];
+        assert_eq!(quad.proven, vec![true, false], "the sibling records its proof");
+        assert_eq!(quad.aborted, vec![false, true], "only prop 1 aborted");
+        // Other definitions record normally: the run did not end.
+        assert_eq!(r[&f.twice].proven, vec![true]);
+        assert_eq!(r[&f.unrelated].proven, vec![true]);
+        assert!(r.values().all(|p| p.aborted.iter().filter(|a| **a).count() <= 1));
+    }
+
+    /// §7.2 #72: an aborted property "is reported DISTINCTLY as aborted, never as
+    /// unproven". The recorded state must therefore keep the two apart — an
+    /// aborted property is NOT merely `proven == false`, which is the positive
+    /// claim that it was attempted validly and failed.
+    #[test]
+    fn an_aborted_property_is_not_recorded_as_unproven() {
+        let f = fixture();
+        // quad prop 0 is a genuine, validly-attempted non-proof; quad prop 1
+        // aborts. Both end up NOT recorded — the result must still tell them
+        // apart, since only one of them supports the claim "not proven".
+        let r = prove_all_with(&f.store, &BTreeSet::new(), &Hints::new(), |h, pi, _p, _c| {
+            if h == f.quad && pi == 0 {
+                PropVerdict::Unproven
+            } else if h == f.quad && pi == 1 {
+                PropVerdict::Aborted("simulated environmental abort".to_string())
+            } else {
+                PropVerdict::Proven
+            }
+        });
+        let quad = &r[&f.quad];
+        assert_eq!(quad.proven, vec![false, false], "neither is recorded proven");
+        assert_eq!(
+            quad.aborted,
+            vec![false, true],
+            "the aborted property is flagged distinctly from the honest unproven"
+        );
+    }
+
+    /// §7.2 #72, the soundness core, and the EXACT case on which the two possible
+    /// readings of "standing verdict" disagree — now pinned normatively: "the
+    /// proven set the kernel holds for the object AT THE START OF THE CURRENT
+    /// ROUND … INCLUDING proofs this run established in an earlier round. It is
+    /// NOT a snapshot taken before the run: a property proven in round 0 and
+    /// aborted in round 1 keeps its proof."
+    ///
+    /// The oracle proves every property in round 0 and aborts quad prop 1 on
+    /// every later attempt (round 1 re-attempts it under the now-larger recorded
+    /// lemma state, so the abort really is reached). Under the pre-run-snapshot
+    /// reading the cold run's snapshot is EMPTY and prop 1 would silently lose its
+    /// round-0 proof; under the pinned reading it keeps it. This test fails on the
+    /// former and passes on the latter — it is the whole difference between the
+    /// two, and it is invisible to the byte oracle.
+    #[test]
+    fn a_previously_proven_property_is_never_demoted_by_an_abort() {
+        let f = fixture();
+        let o = Oracle::new(vec![(f.quad.clone(), 1)], 1);
+        let r = prove_with(&f, &o);
+        let quad = &r[&f.quad];
+        assert!(
+            o.attempts.borrow().iter().filter(|(k, _)| *k == (f.quad.clone(), 1)).count() >= 2,
+            "the test is vacuous unless the property was re-attempted after being proven"
+        );
+        assert_eq!(quad.proven, vec![true, true], "the prior proof is carried forward");
+        assert_eq!(
+            quad.aborted,
+            vec![false, true],
+            "the abort is still reported, on top of the standing proof"
+        );
+    }
+
+    /// §7.2 #72: "An aborted property contributes no new lemma (it gains nothing
+    /// this run)". `twice`'s only property aborts from the first attempt, so it is
+    /// never recorded — and must never appear in any other goal's candidate set,
+    /// admissible or not.
+    #[test]
+    fn an_aborted_property_contributes_no_new_lemma() {
+        let f = fixture();
+        let o = Oracle::new(vec![(f.twice.clone(), 0)], 0);
+        let r = prove_with(&f, &o);
+        assert_eq!(r[&f.twice].proven, vec![false], "nothing recorded for the aborted property");
+        assert_eq!(r[&f.twice].aborted, vec![true]);
+        assert!(
+            !o.all_candidates().iter().any(|(h, pi, _)| *h == f.twice && *pi == 0),
+            "an aborted property is never offered as a lemma to any goal"
+        );
+        // Its dependents still record their own verdicts (partial results).
+        assert_eq!(r[&f.quad].proven, vec![true, true]);
+    }
+
+    /// §7.2 #72 (spec amendment): "A carried-forward proof REMAINS admissible as a
+    /// lemma: withdrawing it would make sibling verdicts depend on which attempts
+    /// happened to abort, i.e. on the environment. Only a property that has never
+    /// been proven contributes no lemma."
+    ///
+    /// `twice` prop 0 proves in round 0 and aborts from round 1 on. Its standing
+    /// proof must keep reaching `quad`'s goals as a lemma in round 1 — the round
+    /// in which its own attempt aborted.
+    #[test]
+    fn a_carried_forward_proof_is_still_admissible_as_a_lemma() {
+        let f = fixture();
+        let o = Oracle::new(vec![(f.twice.clone(), 0)], 1);
+        let r = prove_with(&f, &o);
+        assert_eq!(r[&f.twice].proven, vec![true], "the standing proof is carried forward");
+        assert_eq!(r[&f.twice].aborted, vec![true]);
+        // Attempts are recorded in order; find where round 1 starts (the second
+        // attempt of twice prop 0 — the aborted one) and check that quad's goals
+        // AFTER it were still offered twice.doubles as an admissible lemma.
+        let attempts = o.attempts.borrow();
+        let abort_at = attempts
+            .iter()
+            .enumerate()
+            .filter(|(_, (k, _))| *k == (f.twice.clone(), 0))
+            .nth(1)
+            .expect("twice prop 0 is re-attempted in round 1")
+            .0;
+        let later_quad_goals: Vec<_> = attempts[abort_at + 1..]
+            .iter()
+            .filter(|(k, _)| k.0 == f.quad)
+            .collect();
+        assert!(!later_quad_goals.is_empty(), "quad is attempted after the abort");
+        assert!(
+            later_quad_goals
+                .iter()
+                .all(|(_, c)| c.iter().any(|(h, pi, adm)| *h == f.twice && *pi == 0 && *adm)),
+            "the carried-forward proof is still an ADMISSIBLE lemma for sibling goals"
+        );
+    }
+
+    /// §7.2 #72: "aborted" is the claim that NO VALID VERDICT EXISTS. A property
+    /// that aborts on one pass of the inner growth loop and then PROVES on a later
+    /// pass of the same round has a valid verdict, so the earlier abort must not
+    /// be reported — otherwise the run would announce an abort for a property it
+    /// proved outright this run. quad prop 0 aborts on its first attempt only; the
+    /// sibling's proof grows its candidate set and it proves on the retry.
+    ///
+    /// HONEST LIMITATION, mutation-checked: this test does NOT currently
+    /// discriminate the `aborted.remove(&key)` that implements the rule — deleting
+    /// that line leaves it passing. The per-round `aborted.clear()` masks it: a
+    /// supersession makes `in_run` grow, so that round cannot be the settling
+    /// round, and the next round's clear wipes the stale entry anyway. The single
+    /// path where the entry would survive is exhaustion of the 8-round cap, which
+    /// this three-definition fixture cannot reach (the candidate-set cache freezes
+    /// each property's verdict once its lemma set stops changing, so the run
+    /// converges in a handful of rounds). The `remove` is kept as a defensive
+    /// invariant — "reported aborted" must mean "no valid verdict exists" at every
+    /// point, not merely at the settling round — and this test pins the observable
+    /// half of it: a superseded abort never reaches the recorded state.
+    #[test]
+    fn an_abort_superseded_by_a_proof_in_the_same_round_is_not_reported() {
+        let f = fixture();
+        let o = Oracle::window(vec![(f.quad.clone(), 0)], 0, 1);
+        let r = prove_with(&f, &o);
+        assert!(
+            o.attempts.borrow().iter().filter(|(k, _)| *k == (f.quad.clone(), 0)).count() >= 2,
+            "the test is vacuous unless the aborted property was re-attempted"
+        );
+        assert_eq!(r[&f.quad].proven, vec![true, true]);
+        assert_eq!(
+            r[&f.quad].aborted,
+            vec![false, false],
+            "an abort superseded by a valid proof is no longer the property's state"
+        );
     }
 }

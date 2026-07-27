@@ -1926,20 +1926,20 @@
       "name": "rot",
       "hash": "e715328a6ffacab7161a437148296e0e0b3e16b542fa039d736e39825e256d36",
       "level": "tested",
-      "proven_count": 0,
+      "proven_count": 3,
       "prop_count": 7,
       "props": [
         {
           "name": "zero-is-identity",
-          "proven": false
+          "proven": true
         },
         {
           "name": "empty-absorbs",
-          "proven": false
+          "proven": true
         },
         {
           "name": "preserves-length",
-          "proven": false
+          "proven": true
         },
         {
           "name": "shift-one-moves-head-to-back",
@@ -1963,20 +1963,20 @@
       "name": "rot-f",
       "hash": "e715328a6ffacab7161a437148296e0e0b3e16b542fa039d736e39825e256d36",
       "level": "tested",
-      "proven_count": 0,
+      "proven_count": 3,
       "prop_count": 7,
       "props": [
         {
           "name": "zero-is-identity",
-          "proven": false
+          "proven": true
         },
         {
           "name": "empty-absorbs",
-          "proven": false
+          "proven": true
         },
         {
           "name": "preserves-length",
-          "proven": false
+          "proven": true
         },
         {
           "name": "shift-one-moves-head-to-back",
@@ -2074,20 +2074,20 @@
       "name": "rot-hl",
       "hash": "e9b80a4dbecfd6de63a3aa9545330384ef1a4af54cd250000dd29b58be388c64",
       "level": "tested",
-      "proven_count": 0,
+      "proven_count": 4,
       "prop_count": 7,
       "props": [
         {
           "name": "zero-is-identity",
-          "proven": false
+          "proven": true
         },
         {
           "name": "empty-absorbs",
-          "proven": false
+          "proven": true
         },
         {
           "name": "preserves-length",
-          "proven": false
+          "proven": true
         },
         {
           "name": "shift-one-moves-head-to-back",
@@ -2103,7 +2103,7 @@
         },
         {
           "name": "decomposes-in-range",
-          "proven": false
+          "proven": true
         }
       ]
     },

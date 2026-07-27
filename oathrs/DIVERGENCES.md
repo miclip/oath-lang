@@ -1953,3 +1953,205 @@ structural. `direct_script_opts` lost its `None` early-return. `/` over `Rat`
 (`(/ A B)` over `Real`) and `/` over `Float` (`fp.div RNE`) are untouched, as §7.1
 requires. Division by zero is left unconstrained — no zero-divisor guard anywhere,
 per the explicit MUST NOT.
+
+---
+
+## 83. Per-property attempt validity (#72, §7.2 "Attempt validity") — IMPLEMENTED; four gaps, (a) and (c) now RESOLVED BY SPEC AMENDMENT — and (a) was a live defect in the REFERENCE kernel
+
+**Status: implemented from the amended §7.2 bullet alone; NOT corpus-exercisable.**
+The rule governs verdict RECORDING under environmental aborts, and every fixture was
+generated from a clean run, so the byte oracle is blind to it: `prove/scripts.txt`,
+`prove/outcomes.json` and the analyses are all byte-identical before and after this
+change, and would stay so under an implementation that got the rule exactly
+backwards. The evidence here is unit tests with a deterministically injected abort
+(`prove_all_with` takes the per-property attempt as a parameter), not fixtures.
+
+The normative prose was sufficient for the CORE of the rule — abort is per property,
+prior PROVEN is carried forward and never demoted, siblings record normally, the run
+succeeds with partial results, aborted is reported distinctly from unproven, an
+aborted property contributes no new lemma. All six went straight in. Four things it
+did not pin; **(a) and (c) have since been AMENDED INTO THE SPEC and are RESOLVED —
+and (a) is the strongest payout the blind method has produced here, because the
+reference kernel, not this one, was the kernel that had to change.** (b) and (d)
+remain open findings.
+
+### (a) **RESOLVED BY SPEC AMENDMENT — and the REFERENCE was wrong** — "already recorded" had no referent in a cold kernel
+**Resolution.** §7.2 now pins the referent normatively: "STANDING VERDICT means the
+proven set the kernel holds for the object AT THE START OF THE CURRENT ROUND of the
+run-stability fixpoint — i.e. the recorded state as it stands, INCLUDING proofs this
+run established in an earlier round. It is NOT a snapshot taken before the run: a
+property proven in round 0 and aborted in round 1 keeps its proof … A kernel with no
+recorded state (a cold `prove` …) simply has an empty standing set in round 0 and
+carries nothing — the same rule, a different input." That is the reading this kernel
+implemented, and the amendment adopts it. The REFERENCE kernel had implemented the
+other one — carry-forward read from a PRE-RUN snapshot — so a property proven in
+round 0 and aborted in round 1 silently lost its round-0 proof: an environmental
+demotion, exactly what the rule it implements forbids. The reference has been fixed
+to match. Two things are worth recording about how this surfaced. First, it was found
+by a kernel that could not see the reference and therefore had to resolve the
+ambiguity from prose alone — the ambiguity was invisible while only one
+implementation existed to read the sentence. Second, it is INVISIBLE to the byte
+oracle and to the whole fixture corpus (no fixture aborts), so no amount of
+conformance running would have caught it; the discriminating artifact is a unit test,
+`a_previously_proven_property_is_never_demoted_by_an_abort`, which mutation-checks
+clean (forcing the pre-run-snapshot reading fails it, along with the carried-forward
+lemma test).
+
+The original finding, as written before the amendment:
+
+### (a, original) "whatever the store ALREADY RECORDED stands unchanged" has no referent in a cold kernel — the one gap that can split two conforming kernels
+The rule's carry-forward is phrased against a persistent store. `oathrs prove` is
+COLD by construction (§10's fixture channel deliberately feeds it only hints, never
+recorded verdicts, so the re-derivation cannot be contaminated): at the start of a
+run nothing is recorded, so a property aborted on its FIRST attempt has no prior
+state to stand. I read "already recorded" as the state carried by the run-stability
+fixpoint — the `recorded` set that round N-1 settled — which is the only recorded
+state a cold kernel has. Under that reading:
+  * abort in round 0 → nothing recorded, property reported aborted;
+  * abort in round ≥1 on a property round N-1 recorded PROVEN → proof carried forward.
+A STATEFUL kernel proving into a live store reads the same sentence as "the store's
+metadata", and would carry a prior PROVEN through even a round-0 abort. Same corpus,
+same solver, same aborts, different recorded outcome — and the difference is invisible
+to conformance, because no fixture aborts. **Recommend the spec say which state the
+carry-forward reads: the persistent store's recorded verdict, the run's own fixpoint
+state, or (my guess at the intent) their union, with the note that a cold kernel has
+only the latter.** The `rot*` motivation in the bullet is a stateful-registry story,
+which suggests the store is meant; a cold conformance run then simply never carries
+anything forward, which is sound but means the "never demoted" clause is untestable
+in the conformance kernel.
+
+### (b) **OPEN** — the run-stability fixpoint is no longer a fixpoint of F, and the spec does not say what replaces it
+**Asked directly whether this is a SOUNDNESS concern rather than a documentation gap:
+it is not a soundness concern, and here is why, plainly.** A carried-forward verdict
+is backed by a `unsat` from a VALID attempt, over a lemma set every member of which
+was itself recorded proven at the time. Truth does not expire: the goal follows from
+statements that are true, so the recorded PROVEN is true, and it stays true no matter
+what a later round's solver does or fails to do within its budget. Nothing false can
+enter this way — an abort never CREATES a verdict, it only declines to overwrite one,
+and the only verdicts it can decline to overwrite are ones a valid `unsat` already
+established. The failure mode #72 removes (demotion by abort) was the one that made
+verdicts depend on the environment; the failure mode it introduces does not.
+
+What it does cost is REPRODUCIBILITY, and that is worth stating precisely because a
+downstream consumer can currently assume something that is no longer true. §7.2's
+fixpoint exists to guarantee that the final recorded state is SELF-CERTIFYING: every
+recorded proof is re-derivable from that state, so a fresh kernel replaying it
+reproduces it. A carried-forward proof was derived from an EARLIER round's state and
+was not re-derived from the final one — the attempt that would have done so aborted.
+Two concrete consequences: (1) a conformance re-derivation cannot certify an aborted
+property at all (my harness now reports `!` as an environmental inconclusive rather
+than a divergence, since it can neither confirm nor deny an outcome that has no valid
+verdict); (2) if a lemma L that a carried-forward proof leaned on is itself dropped
+in a later round — a legitimate demotion, valid attempt, not proven — the recorded
+state ends up holding a proof whose recorded justification is incomplete. It is still
+TRUE (L is true whether or not the budget re-finds it), but it is no longer
+REPLAYABLE from the recorded state alone, and an auditor replaying the journal would
+see a proof it cannot reconstruct.
+
+So: documentation gap plus a weakened invariant, not unsoundness. **Recommend the
+spec (i) state the weakened criterion explicitly — the settled state is a fixpoint of
+F MODULO aborted properties, i.e. a carried-forward verdict is exempt from the
+re-derivation obligation for the round in which its attempt aborted — and (ii) say
+that provenance/registry consumers must treat an aborted property's verdict as
+CARRIED, not re-derived, so "re-verify from the recorded state" is not assumed to
+succeed for it.** The original finding follows.
+
+### (b, original) The run-stability fixpoint is no longer a fixpoint of F
+§7.2's stability criterion is S = F(S): every recorded proof must be re-derivable
+from the FINAL recorded state. A carried-forward proof is by definition NOT
+re-derived this round — the attempt that would have re-derived it aborted. So the
+settled state is a fixpoint of F only MODULO the aborted properties. The bullet's
+"contributes no new lemma … the conservative direction for the run-stability
+fixpoint" acknowledges the interaction but only in the direction that cannot record
+anything new; it is silent on whether a carried-forward proof still satisfies the
+stability obligation, and on whether the fixpoint iteration should keep going in the
+hope the abort clears. My kernel: an abort NEVER sets `changed` and never enters the
+in-run set on its own, so it cannot extend the fixpoint or prevent convergence; a
+carried-forward proof re-enters the round's set without being counted as growth, so
+`in_run == recorded` still detects convergence. Net effect: the recorded state is
+"stable modulo aborts". **Recommend a sentence pinning that, e.g. "a carried-forward
+verdict is exempt from the re-derivation obligation for the round in which its
+attempt aborted; the fixpoint is otherwise unchanged".**
+
+### (c) **RESOLVED BY SPEC AMENDMENT** — may an aborted property serve as a lemma?
+**Resolution.** §7.2 now says: "A carried-forward proof REMAINS admissible as a
+lemma: withdrawing it would make sibling verdicts depend on which attempts happened
+to abort, i.e. on the environment. Only a property that has never been proven
+contributes no lemma." That is the reading this kernel implemented and the reasoning
+it recorded below, adopted verbatim in substance. Both halves are now unit-tested:
+`an_aborted_property_contributes_no_new_lemma` (a never-proven abort is never offered
+as a candidate to any goal) and `a_carried_forward_proof_is_still_admissible_as_a_lemma`
+(a standing proof is still an ADMISSIBLE candidate for sibling goals in the very round
+its own attempt aborted; mutation-checks clean). The original finding follows.
+
+### (c, original) May an aborted property serve as a lemma? — answered only for the NEW case
+"An aborted property contributes no NEW lemma" settles the property that was never
+proven: it is not in the recorded state, so it is not a candidate, and my kernel
+never offers it (unit-tested). It does not settle the CARRIED-FORWARD case: a
+property recorded PROVEN in an earlier round whose attempt aborted this round is
+still in the recorded state, and my kernel therefore still offers it as a lemma to
+siblings. I believe this is right and is what "no NEW lemma" means (nothing was
+gained; what was already there is untouched), and the alternative — withdrawing a
+standing lemma because an unrelated attempt hit the wall cap — would make sibling
+verdicts depend on the environment, exactly what the rule forbids. But the prose
+admits both readings. **Recommend: "a property whose prior PROVEN is carried forward
+remains an admissible lemma; only a property with no recorded proof contributes
+nothing."**
+
+### (d) **OPEN** — "Reported DISTINCTLY" is not pinned to a surface, and the recorded state is two-dimensional
+A property can be simultaneously (recorded PROVEN, aborted this run). The `prove`
+stdout surface — which check 6 of the conformance harness parses — is one character
+per property, so it cannot carry both. My choice: stdout stays the RECORDED state
+(`+` proven incl. carried-forward, `-` unproven), `!` marks an abort with no standing
+verdict (never `-`, since `-` asserts "attempted validly, not proven" — a claim the
+run cannot make), and the full detail — which property, which invalidating condition,
+whether a prior proof was carried — goes to STDERR, one `ABORTED (no valid verdict,
+SPEC §7.2 #72): …` line per property. `analyze --proofs` reads `c == '+'`, so an
+aborted property contributes no guarantee upgrade, which matches "records nothing".
+Two conforming kernels can render this differently; the spec pins only that unproven
+and aborted must not be conflated.
+
+### Consequential change to the conformance harness
+`oathrs/conformance.sh` no longer has an exit-3 "run INVALIDATED" branch — the kernel
+no longer has one to trigger. Instead, in FULL mode, `!` in the prove output is
+reported as an ENVIRONMENTAL inconclusive (with the raise-the-wall-cap advice) and
+fails the run: an aborted property has no valid verdict, so check 6 can neither
+confirm nor deny its outcome. That is a harness policy, not a kernel verdict — the
+prove run itself now exits 0 with partial results, per the rule.
+
+### The fix
+`prove.rs` only, plus the stdout rendering in `main.rs` and the harness branch above.
+`Prover::prove_prop` returns `PropVerdict::{Proven, Unproven, Aborted(reason)}`
+instead of `bool`; the `invalidate()` / `exit(3)` path is DELETED outright (no caller
+remains — an invalid attempt is now always a per-property fact). The final
+taint-composition step is factored into a free function `compose_verdict(proved,
+taint)` so the soundness direction (a tainted non-proof is `Aborted`, never
+`Unproven`; a valid proof beats any taint) is testable without a solver. `prove_all`
+delegates to a new `prove_all_with(store, falsified, hints, attempt)` whose `attempt`
+closure is the per-property prover — the injection point the tests use to abort
+deterministically instead of by timing. The round loop records aborts in a
+per-round map, carries a prior recorded PROVEN forward, and never lets an abort set
+`changed`. `ProofResult` gains `aborted: Vec<bool>` alongside `proven`. Aborted
+verdicts ARE cached like any other (keyed on the candidate set): re-attempting would
+burn the wall cap again every round and an abort records nothing either way, so
+caching cannot change what is recorded, only how long the run takes — the spec is
+silent on this too, but it is verdict-neutral.
+
+The STANDING VERDICT the round loop reads is `recorded`, which is assigned only at
+round end and therefore holds, throughout a round, exactly "the proven set the kernel
+holds AT THE START OF THE CURRENT ROUND" — the referent §7.2 now pins. No change was
+needed for the amendment; the round-0-proven / round-1-aborted case it turns on is
+covered by `a_previously_proven_property_is_never_demoted_by_an_abort`, which fails if
+the carry-forward is switched to a pre-run snapshot (mutation-checked). One defensive
+addition on re-reading: a property that aborts on one pass of the inner growth loop
+and PROVES on a later pass of the same round has its stale abort entry removed, since
+"aborted" asserts that no valid verdict EXISTS. Honest note, mutation-checked: that
+line is not currently discriminated by any test — the per-round reset of the abort map
+masks it everywhere except on the 8-round-cap exhaustion path, which this fixture
+cannot reach. It is kept because the invariant should hold at every point, not only at
+the settling round.
+
+Six unit tests carry the rule (none needs z3): the composition direction, siblings
+unaffected, aborted-is-not-unproven, never-demoted, carried-forward-still-a-lemma,
+and no-new-lemma. The whole suite is 14 tests; the #67 hint tests are unchanged and
+still pass.

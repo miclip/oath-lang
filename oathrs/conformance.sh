@@ -131,17 +131,23 @@ echo "== Proving (z3) — shared by checks 5-6, this is the slow step =="
 # hinted goals would be attempted with a lemma set the reference never used.
 "$BIN" prove --hints "$FIX/prove/outcomes.json" "$EX"/*.oath > "$TMP/prove.txt" 2> "$TMP/prove.err"
 pstat=$?
-if [ $pstat -eq 3 ]; then
-  # The wall cap is SAFETY-ONLY and not outcome-determining (SPEC §7.2):
-  # outcomes are fixed by (script bytes, solver, rlimit). Slow hardware
-  # that cannot exhaust the rlimit inside the default cap should raise
-  # the cap, not be mistaken for a divergence.
-  echo "  FAIL: run INVALIDATED — wall cap fired before rlimit exhausted."
-  echo "        This is slow hardware, not a kernel divergence: re-run with"
-  echo "        a raised OATHRS_Z3_WALL_CAP_MS (the cap never affects outcomes)."
-  sed -n '1,5p' "$TMP/prove.err"; fail=1
-elif [ $pstat -ne 0 ]; then
+if [ $pstat -ne 0 ]; then
   echo "  FAIL: prove command errored (exit $pstat)"; sed -n '1,5p' "$TMP/prove.err"; fail=1
+fi
+# SPEC §7.2 attempt validity is PER PROPERTY (#72): an environmental abort (wall
+# cap, missing telemetry, memout) no longer invalidates the run — the run
+# succeeds with partial results and marks the aborted properties '!'. Such a
+# property has NO valid verdict, so conformance can neither confirm nor deny its
+# outcome: report it as an ENVIRONMENTAL inconclusive (not a divergence) and fail
+# the run, since check 6 requires every outcome to be re-derived.
+if grep -q '!' "$TMP/prove.txt"; then
+  echo "  FAIL (environmental, NOT a kernel divergence): properties aborted with no valid verdict."
+  echo "        Typically slow hardware: the wall cap fired before the rlimit was"
+  echo "        exhausted. Re-run with a raised OATHRS_Z3_WALL_CAP_MS (the cap never"
+  echo "        affects outcomes — they are f(script bytes, solver, rlimit))."
+  grep '!' "$TMP/prove.txt" | sed -n '1,10p' | sed 's/^/          /'
+  grep '^ABORTED' "$TMP/prove.err" | sed -n '1,10p' | sed 's/^/          /'
+  fail=1
 fi
 
 # ---------------------------------------------------------------------------
