@@ -2000,20 +2000,20 @@
       "name": "rot-h2",
       "hash": "48a856f52aced98b6415537382a05a36bb9b579099b95746e9554c521d61572e",
       "level": "tested",
-      "proven_count": 0,
+      "proven_count": 3,
       "prop_count": 7,
       "props": [
         {
           "name": "zero-is-identity",
-          "proven": false
+          "proven": true
         },
         {
           "name": "empty-absorbs",
-          "proven": false
+          "proven": true
         },
         {
           "name": "preserves-length",
-          "proven": false
+          "proven": true
         },
         {
           "name": "shift-one-moves-head-to-back",
@@ -2037,20 +2037,20 @@
       "name": "rot-h3",
       "hash": "18228c2a22fac55420bad57e9c93c4dc4e9672e40fc3766e287f56b42bca378f",
       "level": "tested",
-      "proven_count": 0,
+      "proven_count": 4,
       "prop_count": 7,
       "props": [
         {
           "name": "zero-is-identity",
-          "proven": false
+          "proven": true
         },
         {
           "name": "empty-absorbs",
-          "proven": false
+          "proven": true
         },
         {
           "name": "preserves-length",
-          "proven": false
+          "proven": true
         },
         {
           "name": "shift-one-moves-head-to-back",
@@ -2066,7 +2066,7 @@
         },
         {
           "name": "decomposes-in-range",
-          "proven": false
+          "proven": true
         }
       ]
     },
