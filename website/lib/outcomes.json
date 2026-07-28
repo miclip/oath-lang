@@ -1631,7 +1631,13 @@
         },
         {
           "name": "push-length",
-          "proven": true
+          "proven": true,
+          "hints": [
+            {
+              "def": "78d23e273a4858e3ad9b68ed5795a75a163e1b124a1a6b75229e9842a2ba64f3",
+              "prop": 0
+            }
+          ]
         },
         {
           "name": "push-count-pushed",

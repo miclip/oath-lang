@@ -1056,6 +1056,13 @@ reproducibility (given the same solver):
     candidate for the goal, the hint makes no difference: the lemma is asserted
     exactly ONCE, and the emitted bytes are identical to the unhinted script. A
     redundant hint is a no-op, never a duplicated assertion.
+    CORPUS WITNESS (do not remove): `q-push.push-length` carries a hint naming
+    `append.length-adds`, which that goal's footprint ALREADY admits. It exists
+    solely to pin this rule in `prove/scripts.txt` — the hint is carried to every
+    kernel through `prove/outcomes.json` (§10), and a kernel that concatenated
+    rather than unioned would emit a second assertion and fail the byte oracle on
+    that line. Without it the rule would rest on each kernel's own unit tests,
+    which cannot catch the two disagreeing.
   - **A property is never its own lemma (soundness).** The rule that a goal's own
     property is excluded from its lemma set is absolute and is applied BEFORE
     hints: a kernel MUST discard any hinted lemma whose (definition hash,

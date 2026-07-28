@@ -1794,7 +1794,19 @@ all three take the *append a new candidate* path, never the *flip an existing
 candidate to admissible* path). Its declarations/axioms therefore enter the problem
 through the ordinary lemma-translation loop, in canonical position. Byte-confirmed.
 
-### (b) **RESOLVED BY SPEC AMENDMENT; still un-corpus'd** — a hint naming a lemma that is ALREADY a candidate
+### (b) **RESOLVED BY SPEC AMENDMENT, AND NOW CORPUS-PINNED** — a hint naming a lemma that is ALREADY a candidate
+
+**Update.** The "still un-corpus'd" caveat below is obsolete: the corpus now
+carries the witness this finding asked for. `q-push.push-length` hints
+`append.length-adds`, which that goal's footprint ALREADY admits, and the emitted
+script is byte-IDENTICAL to the unhinted one — verified before and after adding
+it. The hint reaches every kernel through `prove/outcomes.json`, so a kernel
+taking the concatenation reading would emit a second assertion and fail the byte
+oracle on that exact line. This rule no longer rests on each kernel's own unit
+tests, which by construction cannot catch two kernels disagreeing. §7.2 marks the
+witness "do not remove".
+
+**(b, original finding)**
 Nothing in the corpus hints at a lemma the closure already collected. Two readings
 of "the admitted set is … PLUS the proven hinted lemmas":
   1. SET-UNION (my choice): the hint flips the existing candidate's admissibility
@@ -1956,7 +1968,7 @@ per the explicit MUST NOT.
 
 ---
 
-## 83. Per-property attempt validity (#72, §7.2 "Attempt validity") — IMPLEMENTED; four gaps, (a) and (c) now RESOLVED BY SPEC AMENDMENT — and (a) was a live defect in the REFERENCE kernel
+## 83. Per-property attempt validity (#72, §7.2 "Attempt validity") — IMPLEMENTED; four gaps, (a), (b) and (c) now RESOLVED BY SPEC AMENDMENT — and (a) was a live defect in the REFERENCE kernel
 
 **Status: implemented from the amended §7.2 bullet alone; NOT corpus-exercisable.**
 The rule governs verdict RECORDING under environmental aborts, and every fixture was
@@ -2020,7 +2032,21 @@ which suggests the store is meant; a cold conformance run then simply never carr
 anything forward, which is sound but means the "never demoted" clause is untestable
 in the conformance kernel.
 
-### (b) **OPEN** — the run-stability fixpoint is no longer a fixpoint of F, and the spec does not say what replaces it
+### (b) **RESOLVED BY SPEC AMENDMENT** — the run-stability fixpoint is no longer a fixpoint of F, and the spec did not say what replaces it
+
+**Resolution.** The analysis below was accepted in full, including the judgement
+that this is a reproducibility cost rather than a soundness hole. §7.2 now states
+it normatively, under "CARRY-FORWARD WEAKENS THE FIXPOINT, and consumers must know
+it": the settled state is a fixpoint of F only MODULO aborted properties, and both
+consequences identified below are now obligations rather than folklore — a
+conformance re-derivation "MUST report it as environmentally inconclusive rather
+than as a divergence", and provenance consumers "MUST treat an aborted property's
+verdict as CARRIED, not re-derived, since a lemma it leaned on may since have been
+dropped — the verdict stays true but is not replayable from the recorded state
+alone". The harness behaviour described below (reporting `!` as inconclusive) is
+therefore now the specified behaviour, not a local choice.
+
+**(b, original finding)**
 **Asked directly whether this is a SOUNDNESS concern rather than a documentation gap:
 it is not a soundness concern, and here is why, plainly.** A carried-forward verdict
 is backed by a `unsat` from a VALID attempt, over a lemma set every member of which
