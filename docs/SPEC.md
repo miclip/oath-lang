@@ -1697,5 +1697,98 @@ apply them to any other property. The field is absent when a property has no
 hints, so a hint-free corpus produces byte-identical fixtures to one from a
 kernel predating the feature.
 
+## 11. Campaign identity (normative, #74)
+
+A mutation score is evidence, and evidence is only trustworthy when the
+computation that produced it has a REPRODUCIBLE IDENTITY. A bare killed/total
+answers "how many" and never "out of which mutants, under which policy" — so the
+score is attached to the digest of a CAMPAIGN DESCRIPTION, and a consumer decides
+whether the score is current by comparing digests rather than by reasoning about
+version strings and dates.
+
+This section specifies **only the identity**: the description, its encoding, and
+the digest. It does NOT specify the mutation engine, the worker, scheduling, or
+storage — those are registry concerns and may differ between implementations. The
+obligation on a kernel is a pure function:
+
+    campaignHash : CampaignDescription → Hash
+
+A kernel need not run mutation testing. It must be able to reproduce the identity
+of the computation being CLAIMED, which is what lets an auditor reconstruct a
+description and verify the digest instead of trusting the registry's assertion
+that some hex string is the right one. Specifying it is what stops "independently
+auditable evidence, except for the function that decides which evidence counts".
+
+### 11.1 The description
+
+Every field is included because it can change the outcome:
+
+| field | why it is identity-bearing |
+|---|---|
+| `artifact` | a score is about ONE object (its content hash) |
+| `kernel` | evaluation semantics decide whether a mutant is caught |
+| `engine` | the mutant generator revision; a new mutation kind is a different campaign |
+| `cases` | a survivor at 60 cases may be a kill at 600 — the budget is part of the claim |
+| `fuel` | evaluation budget per case |
+| `waiver-policy` | how waivers affect the score |
+| `waivers` | the waived-mutant SET. Waivers count toward the score, so adding one changes the number WITHOUT changing the code — the drift this digest exists to expose |
+
+### 11.2 Canonical encoding (BYTE-significant)
+
+A domain separator line, then one `key=value` line per field in exactly this
+order, each terminated by a single LF (`0x0A`). No spaces around `=`, no trailing
+blank line, UTF-8 throughout:
+
+```
+oath-campaign/1
+artifact=<64 lowercase hex>
+kernel=<kernel version string>
+engine=<engine id>
+cases=<decimal>
+fuel=<decimal>
+waiver-policy=<policy id>
+waivers=<hex,hex,...>
+```
+
+`waivers` is the waived mutant hashes sorted ASCENDING as byte strings and joined
+by `,` — the SET, not the recording order, since order-sensitivity would make
+identical evidence look superseded. When there are none the value is EMPTY and
+the line is still present (`waivers=` followed by LF): omitting the line would
+make "no waivers" and "field absent" the same bytes.
+
+Line framing is deliberate: no field value can be confused with a separator, and
+a value containing `=` cannot shift the parse.
+
+The digest is `SHA-256` over those bytes, rendered lowercase hex.
+
+Changing this encoding changes every campaign identity, which is a fork of what
+"current evidence" means and must be treated as such — not as a refactor.
+
+### 11.3 Freshness
+
+Given a recorded campaign digest and a description reconstructed from the
+CURRENT engine, kernel, configuration and waiver set for the same artifact:
+
+- digests equal → **MEASURED**: the score was produced under the campaign now in
+  force.
+- digests differ → **STALE**: authentic evidence, for a reproducible campaign
+  other than the one currently recognised. STALE does NOT mean false, corrupted
+  or expired, and a kernel MUST NOT present a stale score as current.
+- no recorded score → **UNMEASURED**: no campaign exists. This is distinct from a
+  score of zero, and MUST NOT be reported as one.
+
+Timestamps and signatures are deliberately absent from the description. They
+record WHEN and BY WHOM a result was captured, not WHAT was measured, and they
+belong in the journal (§8) — which is already append-only and signed. Admitting
+them here would make the identity non-reproducible and break byte-for-byte
+agreement between kernels for a property nothing needs.
+
+### 11.4 Fixtures
+
+`fixtures/campaign/vectors.txt` pins description → digest pairs, including the
+empty-waiver case and a two-waiver case in both recording orders (which must
+produce the SAME digest). A kernel reproduces the digests without consulting
+another implementation.
+
 No second implementation is trusted until it passes the fixtures without
 consulting the Go source.

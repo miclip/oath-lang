@@ -96,9 +96,13 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		Confinement   []string `json:"confinement,omitempty"`
 		MutantsKilled int      `json:"mutants_killed,omitempty"`
 		MutantsTotal  int      `json:"mutants_total,omitempty"`
-		Level         string   `json:"level"`
-		Cases         int      `json:"cases,omitempty"`
-		Proven        int      `json:"proven,omitempty"`
+		// The campaign the score was obtained under. Without it a score is
+		// detached from its conditions, and "is this current?" is unanswerable
+		// from the fixture alone (SPEC §11).
+		MutationCampaign string `json:"mutation_campaign,omitempty"`
+		Level            string `json:"level"`
+		Cases            int    `json:"cases,omitempty"`
+		Proven           int    `json:"proven,omitempty"`
 	}
 	var outcomes []proveEntry
 	var verifyCount int
@@ -117,7 +121,8 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 			Name: name, Hash: h, Kind: d.K,
 			Termination: m.Termination, Confinement: m.Confinement,
 			MutantsKilled: m.MutantsKilled, MutantsTotal: m.MutantsTotal,
-			Level: m.Guarantee.Level, Cases: m.Guarantee.Cases, Proven: m.Guarantee.Proven,
+			MutationCampaign: m.MutationCampaign,
+			Level:            m.Guarantee.Level, Cases: m.Guarantee.Cases, Proven: m.Guarantee.Proven,
 		}
 		ab, _ := json.MarshalIndent(a, "", "  ")
 		if err := write(filepath.Join("analyses", name+".json"), ab); err != nil {
@@ -159,6 +164,38 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		return "", err
 	}
 	fmt.Fprintf(&log, "prove/outcomes.json: %d definitions (solver: %s)\n", len(outcomes), solver)
+	// campaign/vectors.txt — canonical campaign descriptions and their digests
+	// (SPEC §11). These are the AUDIT vectors: a kernel reproduces the identity
+	// of a measurement without running one, and without consulting another
+	// implementation. Cases chosen for what they pin: the empty-waiver line must
+	// still be present, and two waivers in either recording order must give the
+	// SAME digest (the identity is of the SET).
+	var camp strings.Builder
+	camp.WriteString("# canonical campaign description (SPEC §11) -> sha256, one blank-line-separated block each\n")
+	for _, d := range []campaignDescription{
+		{Artifact: strings.Repeat("00", 32), Kernel: kernelVersion, Engine: mutationEngine,
+			Cases: mutantCases, Fuel: mutantFuel, WaiverPolicy: waiverPolicy},
+		{Artifact: strings.Repeat("ab", 32), Kernel: kernelVersion, Engine: mutationEngine,
+			Cases: mutantCases, Fuel: mutantFuel, WaiverPolicy: waiverPolicy,
+			Waivers: []string{strings.Repeat("11", 32)}},
+		{Artifact: strings.Repeat("ab", 32), Kernel: kernelVersion, Engine: mutationEngine,
+			Cases: mutantCases, Fuel: mutantFuel, WaiverPolicy: waiverPolicy,
+			Waivers: []string{strings.Repeat("11", 32), strings.Repeat("22", 32)}},
+		// SAME set, reversed recording order — must give the SAME digest.
+		{Artifact: strings.Repeat("ab", 32), Kernel: kernelVersion, Engine: mutationEngine,
+			Cases: mutantCases, Fuel: mutantFuel, WaiverPolicy: waiverPolicy,
+			Waivers: []string{strings.Repeat("22", 32), strings.Repeat("11", 32)}},
+		// Only the case budget differs from the first vector: a different claim.
+		{Artifact: strings.Repeat("cd", 32), Kernel: kernelVersion, Engine: mutationEngine,
+			Cases: 600, Fuel: mutantFuel, WaiverPolicy: waiverPolicy},
+	} {
+		camp.Write(campaignEncode(d))
+		fmt.Fprintf(&camp, "digest=%s\n\n", campaignDigest(d))
+	}
+	if err := write(filepath.Join("campaign", "vectors.txt"), []byte(camp.String())); err != nil {
+		return "", err
+	}
+	fmt.Fprintf(&log, "campaign/vectors.txt: 5 identity vectors\n")
 	// prove/scripts.txt — sha256 of every property's direct-attempt script
 	// under the recorded lemma state (SPEC §7.2 script stability). This is
 	// the byte oracle that pins the naming scheme, lemma order, and

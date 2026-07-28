@@ -354,37 +354,80 @@ func cmdScorable(st *Store) {
 // that no longer exists.
 const mutationEngine = "mutants-1"
 
-// campaignHash is the reproducible identity of a MEASUREMENT, not of a result.
-// A bare killed/total answers "how many", never "out of which mutants, produced
-// by which engine, under which policy" — and evidence without reproducible
-// campaign identity is an assertion with numbers attached. Hashing the campaign
-// DESCRIPTION and attaching the score to that hash lets a consumer compare
-// identities instead of inferring freshness from versions and dates piecemeal,
-// and lets an independent implementation re-run the same campaign and check.
+// campaignHash is the reproducible identity of a MEASUREMENT (SPEC §11).
 //
-// Everything that can change an outcome goes in:
-//   - the artifact itself (a score is about one object);
-//   - the kernel, since evaluation semantics decide whether a mutant is caught;
-//   - the mutant generator revision;
-//   - the execution configuration (cases per property, fuel) — a survivor at 60
-//     cases may be a kill at 600, so the budget is part of the claim;
-//   - the waiver POLICY and the waiver SET, because waivers count toward the
-//     score and a waiver added later changes the number without changing the
-//     code.
+// A bare killed/total answers "how many" and never "out of which mutants, under
+// which policy" — evidence without reproducible campaign identity is an
+// assertion with numbers attached. Because MEASURED and STALE are decided by
+// comparing this value, and consumers make trust decisions from it, its
+// construction cannot be private registry behaviour: an auditor would then have
+// to take the registry's word that a digest is correct, which is the
+// publisher-asserts shape this was introduced to remove, moved one layer in.
 //
-// Deliberately NOT included: timestamps and signatures. Those belong in the
-// journal — which is already append-only, signed, and where a
-// non-deterministic field is correct — and not in metadata, which must stay
-// reproducible so two kernels can agree on it byte-for-byte.
+// The encoding is therefore normative and deliberately dull: a domain separator,
+// then one `key=value` line per field in fixed order, each LF-terminated,
+// SHA-256, lowercase hex. Newline framing rather than delimiters inside a single
+// line, so no field value can be confused with a separator.
+//
+// Note what the kernel owes here: only campaignHash, a PURE function of the
+// description. Running mutation, scheduling, and storage stay registry concerns
+// and are NOT specified — an auditor must be able to reproduce the identity of
+// the computation being claimed, not the computation itself.
 func campaignHash(artifact string, waived []WaivedMutant) string {
-	h := sha256.New()
-	fmt.Fprintf(h, "artifact=%s;kernel=%s;engine=%s;cases=%d;fuel=%d;waiver-policy=waived-count-as-killed;",
-		artifact, kernelVersion, mutationEngine, mutantCases, mutantFuel)
 	ws := make([]string, 0, len(waived))
 	for _, w := range waived {
 		ws = append(ws, w.Hash)
 	}
-	sort.Strings(ws) // set identity, not insertion order
-	fmt.Fprintf(h, "waivers=%s", strings.Join(ws, ","))
-	return hex.EncodeToString(h.Sum(nil))
+	sort.Strings(ws) // set identity, not recording order
+	desc := campaignDescription{
+		Artifact: artifact, Kernel: kernelVersion, Engine: mutationEngine,
+		Cases: mutantCases, Fuel: mutantFuel,
+		WaiverPolicy: waiverPolicy, Waivers: ws,
+	}
+	return campaignDigest(desc)
+}
+
+// waiverPolicy names how waivers affect the score. It is part of the identity
+// because waivers count toward it: a waiver added later changes the number
+// without changing the code, which is the drift the digest exists to expose.
+const waiverPolicy = "waived-count-as-killed"
+
+// campaignDescription is the normative, canonically-encodable statement of what
+// a measurement WAS. Every field can change an outcome.
+type campaignDescription struct {
+	Artifact     string   // the object measured — a score is about one object
+	Kernel       string   // evaluation semantics decide whether a mutant is caught
+	Engine       string   // mutant generator revision
+	Cases        int      // a survivor at 60 cases may be a kill at 600
+	Fuel         int      // evaluation budget per case
+	WaiverPolicy string   // how waivers affect the score
+	Waivers      []string // waived mutant hashes, ascending; the SET, not the order
+}
+
+// campaignEncode renders the canonical bytes. Exported shape is fixed by SPEC
+// §11; changing it changes every campaign identity, which is a fork of what
+// "current evidence" means and must be treated as one.
+func campaignEncode(d campaignDescription) []byte {
+	// Sorting belongs to the ENCODING, not to the caller. The digest identifies
+	// the waiver SET, so two producers that recorded the same waivers in
+	// different orders must agree — leaving the order to callers would make
+	// identical evidence look superseded, which is the exact failure STALE is
+	// supposed to report truthfully.
+	ws := append([]string(nil), d.Waivers...)
+	sort.Strings(ws)
+	var b strings.Builder
+	b.WriteString("oath-campaign/1\n")
+	fmt.Fprintf(&b, "artifact=%s\n", d.Artifact)
+	fmt.Fprintf(&b, "kernel=%s\n", d.Kernel)
+	fmt.Fprintf(&b, "engine=%s\n", d.Engine)
+	fmt.Fprintf(&b, "cases=%d\n", d.Cases)
+	fmt.Fprintf(&b, "fuel=%d\n", d.Fuel)
+	fmt.Fprintf(&b, "waiver-policy=%s\n", d.WaiverPolicy)
+	fmt.Fprintf(&b, "waivers=%s\n", strings.Join(ws, ","))
+	return []byte(b.String())
+}
+
+func campaignDigest(d campaignDescription) string {
+	s := sha256.Sum256(campaignEncode(d))
+	return hex.EncodeToString(s[:])
 }
