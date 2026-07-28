@@ -55,6 +55,17 @@ type specStrength struct {
 	Killed int     `json:"killed"`
 	Total  int     `json:"total"`
 	Score  float64 `json:"score"`
+	// Campaign identifies the measurement that produced this score, and State
+	// tells a consumer whether to believe it: MEASURED means the score comes
+	// from the engine currently in use, STALE means it was produced by a
+	// superseded one and describes a mutant set that no longer exists. A score
+	// without that distinction is a number whose provenance cannot be checked.
+	Campaign string `json:"campaign,omitempty"`
+	// CurrentCampaign is what a fresh measurement of this artifact WOULD be
+	// identified by. A consumer compares the two hashes rather than reasoning
+	// about versions and dates.
+	CurrentCampaign string `json:"current_campaign,omitempty"`
+	State           string `json:"state"` // MEASURED | STALE
 }
 
 type explainProv struct {
@@ -121,9 +132,15 @@ func buildExplain(st *Store, name string) (*explainPkg, error) {
 		// justification — but they are listed separately so a consumer can
 		// judge the justification rather than take the number on trust.
 		killed := m.MutantsKilled + len(m.WaivedMutants)
+		state := "MEASURED"
+		current := campaignHash(h, m.WaivedMutants)
+		if m.MutationCampaign != current {
+			state = "STALE"
+		}
 		pkg.SpecStrength = &specStrength{
 			Killed: killed, Total: m.MutantsTotal,
-			Score: float64(killed) / float64(m.MutantsTotal),
+			Score:    float64(killed) / float64(m.MutantsTotal),
+			Campaign: m.MutationCampaign, CurrentCampaign: current, State: state,
 		}
 	}
 	for _, w := range m.WaivedMutants {
@@ -177,6 +194,9 @@ func explainLimitations(p *explainPkg, m *Meta) []string {
 	switch {
 	case p.SpecStrength == nil:
 		out = append(out, "spec strength UNMEASURED — no mutation score recorded, so how much the properties actually pin is unknown")
+	case p.SpecStrength.State == "STALE":
+		out = append(out, fmt.Sprintf("spec strength is STALE — %d/%d was measured by campaign %q, superseded by %q; the mutant set it describes no longer exists",
+			p.SpecStrength.Killed, p.SpecStrength.Total, shortHash(orNone(p.SpecStrength.Campaign)), shortHash(p.SpecStrength.CurrentCampaign)))
 	case p.SpecStrength.Score < 0.5:
 		out = append(out, fmt.Sprintf("spec strength is LOW (%d/%d mutants caught): the properties pass but constrain little, so passing them is weak evidence",
 			p.SpecStrength.Killed, p.SpecStrength.Total))

@@ -130,14 +130,27 @@ type Meta struct {
 	MutantsKilled int                     `json:"mutants_killed,omitempty"` // spec strength: mutants the props caught
 	MutantsTotal  int                     `json:"mutants_total,omitempty"`  // spec strength: mutants generated
 	WaivedMutants []WaivedMutant          `json:"waived_mutants,omitempty"` // surviving mutants judged equivalent, with justification
-	Termination   string                  `json:"termination,omitempty"`    // structural | nonrecursive | unknown (funcs only)
-	SpecAuthor    string                  `json:"spec_author,omitempty"`    // principal owning the props lineage (inherited when props unchanged)
-	BodyAuthor    string                  `json:"body_author,omitempty"`    // principal owning the body lineage (inherited when body unchanged)
-	Author        string                  `json:"author,omitempty"`         // principal that submitted this definition
-	ParamNames    []string                `json:"param_names,omitempty"`    // funcs: surface parameter names (projection aid)
-	Confinement   []string                `json:"confinement,omitempty"`    // funcs: per-param "confined" | "escapes" | "" (first-order)
-	ProvenProps   []int                   `json:"proven_props,omitempty"`   // indices of SMT-proven properties (the lemma library)
-	Hints         map[int][]HintRef       `json:"hints,omitempty"`          // per-property author-supplied lemma admissions (#67)
+	// MutationCampaign identifies WHICH measurement produced MutantsKilled /
+	// MutantsTotal: the engine that generated the mutants. A bare score cannot
+	// distinguish MEASURED from STALE — if the engine later generates a
+	// different mutant set, an old number describes a campaign that no longer
+	// exists, and evidence whose provenance cannot be checked is evidence that
+	// cannot be trusted. This is the same defect as a scan fingerprint that
+	// omits the kernel version, one layer out.
+	//
+	// A first, deliberately minimal step toward mutation evidence as a versioned
+	// ATTESTATION (engine, mutant-set identity, waiver policy, timestamp, result
+	// digest). Recording the engine is what makes staleness DETECTABLE; the rest
+	// makes it auditable, and is tracked separately.
+	MutationCampaign string            `json:"mutation_campaign,omitempty"`
+	Termination      string            `json:"termination,omitempty"`  // structural | nonrecursive | unknown (funcs only)
+	SpecAuthor       string            `json:"spec_author,omitempty"`  // principal owning the props lineage (inherited when props unchanged)
+	BodyAuthor       string            `json:"body_author,omitempty"`  // principal owning the body lineage (inherited when body unchanged)
+	Author           string            `json:"author,omitempty"`       // principal that submitted this definition
+	ParamNames       []string          `json:"param_names,omitempty"`  // funcs: surface parameter names (projection aid)
+	Confinement      []string          `json:"confinement,omitempty"`  // funcs: per-param "confined" | "escapes" | "" (first-order)
+	ProvenProps      []int             `json:"proven_props,omitempty"` // indices of SMT-proven properties (the lemma library)
+	Hints            map[int][]HintRef `json:"hints,omitempty"`        // per-property author-supplied lemma admissions (#67)
 }
 
 // HintRef names a proven property of some definition that the author asks the

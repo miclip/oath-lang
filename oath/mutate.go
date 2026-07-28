@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -273,6 +274,7 @@ func apiMutateHash(st *Store, h string) (string, error) {
 	}
 	b.WriteString("\n")
 	m.MutantsKilled, m.MutantsTotal = killed, len(muts)
+	m.MutationCampaign = campaignHash(h, m.WaivedMutants)
 	if err := st.SetMeta(h, m); err != nil {
 		return "", err
 	}
@@ -345,4 +347,44 @@ func cmdScorable(st *Store) {
 		}
 		fmt.Println(n)
 	}
+}
+
+// mutationEngine names the generator revision. Bump it whenever the mutant set
+// changes shape — a new mutation kind means an old score describes a campaign
+// that no longer exists.
+const mutationEngine = "mutants-1"
+
+// campaignHash is the reproducible identity of a MEASUREMENT, not of a result.
+// A bare killed/total answers "how many", never "out of which mutants, produced
+// by which engine, under which policy" — and evidence without reproducible
+// campaign identity is an assertion with numbers attached. Hashing the campaign
+// DESCRIPTION and attaching the score to that hash lets a consumer compare
+// identities instead of inferring freshness from versions and dates piecemeal,
+// and lets an independent implementation re-run the same campaign and check.
+//
+// Everything that can change an outcome goes in:
+//   - the artifact itself (a score is about one object);
+//   - the kernel, since evaluation semantics decide whether a mutant is caught;
+//   - the mutant generator revision;
+//   - the execution configuration (cases per property, fuel) — a survivor at 60
+//     cases may be a kill at 600, so the budget is part of the claim;
+//   - the waiver POLICY and the waiver SET, because waivers count toward the
+//     score and a waiver added later changes the number without changing the
+//     code.
+//
+// Deliberately NOT included: timestamps and signatures. Those belong in the
+// journal — which is already append-only, signed, and where a
+// non-deterministic field is correct — and not in metadata, which must stay
+// reproducible so two kernels can agree on it byte-for-byte.
+func campaignHash(artifact string, waived []WaivedMutant) string {
+	h := sha256.New()
+	fmt.Fprintf(h, "artifact=%s;kernel=%s;engine=%s;cases=%d;fuel=%d;waiver-policy=waived-count-as-killed;",
+		artifact, kernelVersion, mutationEngine, mutantCases, mutantFuel)
+	ws := make([]string, 0, len(waived))
+	for _, w := range waived {
+		ws = append(ws, w.Hash)
+	}
+	sort.Strings(ws) // set identity, not insertion order
+	fmt.Fprintf(h, "waivers=%s", strings.Join(ws, ","))
+	return hex.EncodeToString(h.Sum(nil))
 }
