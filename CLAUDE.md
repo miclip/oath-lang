@@ -125,6 +125,12 @@ every ambiguity found this way.
 - `docs/generics.md` — dictionary-passing convention (#33 B1): a type
   class is a capability record; generic combinators in
   examples/generic.oath, proven over ALL dictionaries; B2/B3 deferred.
+- `docs/refinements.md` — refinement types (#69), DESIGN ONLY. Settles the
+  load-bearing question: refinement identity is SYNTACTIC (semantic identity
+  would make hashing undecidable and solver-dependent, and would break the
+  blind-kernel experiment); logically-equal refinements are related by the
+  DISCOVERY layer, as bodies already are. Obligations get the guarantee ladder
+  rather than being a hard type error.
 - `docs/floats.md` — the IEEE `Float` identity decision (bit-identity, `==` is
   Leibniz/SMT `=`, canonical NaN); `docs/native-containers.md` — `Set`/`Map`
   compiled to native Go maps, differential-gated (#13).
