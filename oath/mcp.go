@@ -108,6 +108,11 @@ func mcpTools() []map[string]any {
 			"inputSchema": obj(map[string]any{"name": str("definition name")}, "name"),
 		},
 		{
+			"name":        "explain",
+			"description": "DECISION PACKAGE for one definition: the spec (properties by content hash), per-property proof status, spec strength, provenance, the exact dependency closure, and — most usefully — the LIMITATIONS, the recorded reasons NOT to use it. `find` tells you what satisfies a spec; this tells you whether to trust it, and what you are trusting if you do. Everything is derived from recorded state, so a definition cannot look better than its evidence: `tested` is distinguished from `proven`, an UNMEASURED spec strength is reported as absent rather than as zero, and waived mutants are listed with their justifications so you judge the reasoning rather than the number.",
+			"inputSchema": obj(map[string]any{"name": str("definition name")}, "name"),
+		},
+		{
 			"name":        "prove",
 			"description": "SMT-prove a definition's properties for ALL inputs (Z3, unbounded-int semantics). Works on the non-recursive Int/Bool fragment; properties outside it stay tested with the bail reason explained. Refutations return a concrete counterexample model.",
 			"inputSchema": obj(map[string]any{"name": str("definition name")}, "name"),
@@ -191,6 +196,19 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 		return apiVerify(st, a.Name)
 	case "mutate":
 		return apiMutate(st, a.Name)
+	case "explain":
+		pkg, err := buildExplain(st, a.Name)
+		if err != nil {
+			return "", err
+		}
+		// JSON over MCP: the consumer is an agent choosing between candidates,
+		// and a decision it has to parse out of prose is a decision it will get
+		// wrong. The CLI keeps the human rendering.
+		b, err := json.MarshalIndent(pkg, "", "  ")
+		if err != nil {
+			return "", err
+		}
+		return string(b), nil
 	case "cross":
 		author := a.Author
 		if principal != "" {
