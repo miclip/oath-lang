@@ -1781,21 +1781,41 @@ normalized this way — doing so would erase meaning rather than canonicalize it
 
 **Field values MUST NOT contain LF (`0x0A`) or CR (`0x0D`).** A producer given
 such a value MUST reject the description rather than encode it. This is a
-DECODABILITY requirement, not an anti-collision one: because the encoder always
-writes exactly these seven keys in this order, an embedded LF adds a line rather
-than replacing a field and so cannot forge a digest. What it defeats is the audit
-step — reconstructing a description from bytes and re-encoding it — and a byte
-stream that parses more than one way cannot be reconstructed with confidence. (An
-earlier draft justified line framing by noting that a value containing `=` cannot
-shift the parse. That is true and irrelevant: `=` is harmless under first-match
-splitting, and LF was the actual hazard.)
+DECODABILITY requirement and NOT a collision-resistance one; the distinction is
+worth keeping exact rather than overstating a cryptographic risk. No LF-based
+digest collision exists: the encoder always writes exactly these seven keys in
+this order, so an embedded LF ADDS a line rather than replacing a field and the
+byte streams differ.
 
-`artifact` and the `waivers` members are LITERAL byte strings, compared and
-emitted verbatim — the encoder performs no case folding. A description carrying
-`ABAB…` is therefore a DIFFERENT description from one carrying `abab…`, not the
-same one encoded differently, and canonicality is preserved. Producers MUST emit
-lowercase hex; a description with uppercase is well-formed but denotes something
-else. Deduplication compares these same literal bytes, before any hex decoding.
+Unique decodability is required for a different reason — **an independent auditor
+must be able to verify that the committed bytes correspond to the claimed
+structured description.** Auditing means parsing the bytes back into fields and
+re-encoding them; a stream that parses more than one way cannot be reconstructed
+with confidence, so the commitment stops being checkable by anyone who did not
+produce it. That is the property this rule protects.
+
+DECODING: split each line at the FIRST `=`; everything after it is the value,
+verbatim. A value may therefore contain `=` safely, and a vector pins this. (An
+earlier draft justified line framing by pointing at `=` — true, irrelevant, and
+the wrong character. `=` is harmless under first-match splitting; LF was the
+hazard.)
+
+`artifact` and the `waivers` members are **opaque, case-SENSITIVE byte strings
+written in a restricted textual alphabet — they are NOT hexadecimal numbers whose
+case is presentation trivia.** This deliberately overrides the usual convention
+that hex case is insignificant, and it overrides it here even though these values
+are called hashes elsewhere in this document.
+
+Consequences, stated so no implementation "helpfully" repairs them:
+- `abab…` ≠ `ABAB…`. They are DIFFERENT descriptions denoting different
+  campaigns, not one description with two spellings — which is what keeps
+  canonicality literal, since no hidden decoding or folding exists to disagree
+  about.
+- An implementation MUST NOT case-fold, normalize, or hex-decode these values at
+  ANY point — not while encoding, and not after parsing. Deduplication compares
+  these same literal bytes, before any decoding.
+- Producers MUST emit lowercase. A description carrying uppercase is well-formed
+  and simply denotes something else.
 
 Integers are rendered as SHORTEST BARE DECIMAL: no sign, no leading zeros, no
 padding, no separators. `0` encodes as `0`.
