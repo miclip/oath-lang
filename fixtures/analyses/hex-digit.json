@@ -1,0 +1,13 @@
+{
+  "name": "hex-digit",
+  "hash": "007871398c18f644e5e67228e3e06ea553d93716878dbb625c72034755a1586f",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 13,
+  "mutants_total": 14,
+  "level": "tested",
+  "cases": 200
+}

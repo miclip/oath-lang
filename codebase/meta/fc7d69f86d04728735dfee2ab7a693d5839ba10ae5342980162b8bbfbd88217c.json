@@ -3,13 +3,15 @@
   "prop_names": [
     "unsigned-is-401",
     "accepts-only-with-202",
+    "accepts-correctly-signed",
+    "tampering-is-rejected",
     "never-leaks-a-body"
   ],
   "guarantee": {
     "level": "tested",
     "cases": 200
   },
-  "mutants_killed": 3,
+  "mutants_killed": 84,
   "mutants_total": 176,
   "termination": "nonrecursive",
   "spec_author": "claude-main",

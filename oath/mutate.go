@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"sort"
 	"strings"
 )
 
@@ -324,4 +325,24 @@ func apiWaive(st *Store, name, mutantPrefix, reason, by string) (string, error) 
 		return fmt.Sprintf("○ waived %s (%s): %s\n", shortHash(mu.hash), mu.desc, reason), nil
 	}
 	return "", fmt.Errorf("no surviving mutant of %s matches %q (run oath mutate %s to list)", name, mutantPrefix, name)
+}
+
+// cmdScorable prints every definition that mutation scoring applies to — a func
+// with at least one property — one name per line, sorted. Machine-readable on
+// purpose: it is what drives `make mutate`, so the set scored is derived from
+// the store instead of from a list someone has to remember to update.
+func cmdScorable(st *Store) {
+	names := st.Names()
+	keys := make([]string, 0, len(names))
+	for k := range names {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, n := range keys {
+		d, err := st.GetDef(names[n])
+		if err != nil || d.K != "func" || len(d.Props) == 0 {
+			continue
+		}
+		fmt.Println(n)
+	}
 }

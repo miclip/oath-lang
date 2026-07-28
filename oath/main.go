@@ -36,6 +36,7 @@ usage:
   oath dependents <name>              list definitions that reference a definition
   oath verify <name>                  re-run a definition's properties
   oath mutate <name>                  score spec strength: do the properties notice mutations?
+  oath scorable                       list every definition the mutation engine can score
   oath waive <name> <mutant> "<why>"  record a surviving mutant as judged-equivalent, with justification
   oath cross <nameA> <nameB> [--record]  N-version misalignment check: run each spec against the other's body
   oath prove <name>                   SMT-prove properties for ALL inputs (non-recursive Int/Bool fragment)
@@ -228,6 +229,14 @@ func main() {
 			fail(fmt.Errorf("usage: oath verify <name>"))
 		}
 		cmdVerify(st, args[1])
+	case "scorable":
+		// Every definition the mutation engine can score: a func with at least
+		// one property. Exists so `make mutate` can be driven from the STORE
+		// rather than a hand-maintained list. Hand lists of corpus members rot
+		// silently — the same drift left rat/convert/circle out of `make verify`
+		// entirely, and left 40 definitions unscored here — and a list that must
+		// be kept in sync with content by discipline eventually will not be.
+		cmdScorable(st)
 	case "mutate":
 		if len(args) != 2 {
 			fail(fmt.Errorf("usage: oath mutate <name>"))

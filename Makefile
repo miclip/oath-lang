@@ -75,12 +75,18 @@ prove: build
 		$(OATH) prove $$n | tail -1 | sed "s/^/  $$n: /"; \
 	done
 
-# Everything with properties gets a spec-strength score. Known-equivalent
-# survivors (t-member 4/5, i-intersect 5/7, i-hull 12/15: < vs <= inside
-# min/max or behind an equality-first check) are honest denominators, not
-# spec gaps.
+# Everything with properties gets a spec-strength score — and that is now TRUE
+# rather than aspirational: the set comes from `oath scorable`, which reads the
+# STORE, not from PROVABLE/TESTED_ONLY. Those lists had drifted badly enough to
+# leave 40 definitions unscored, including every definition added for #78, and
+# the same rot had already left rat/convert/circle out of `make verify`. A list
+# kept in sync with content by discipline is a list that eventually is not.
+#
+# Known-equivalent survivors (t-member 4/5, i-intersect 5/7, i-hull 12/15: < vs
+# <= inside min/max or behind an equality-first check) are honest denominators,
+# not spec gaps.
 mutate: build
-	@for n in $(PROVABLE) $(TESTED_ONLY); do \
+	@for n in $$($(OATH) scorable); do \
 		$(OATH) mutate $$n | tail -1 | sed "s/^/  $$n: /"; \
 	done
 

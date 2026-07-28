@@ -1,0 +1,3 @@
+✓ prop zero-is-char-0           passed 200 cases
+✓ prop ten-is-char-a            passed 200 cases
+✓ prop roundtrips               passed 200 cases

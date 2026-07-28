@@ -1,3 +1,5 @@
 ✓ prop unsigned-is-401          passed 200 cases
 ✓ prop accepts-only-with-202    passed 200 cases
+✓ prop accepts-correctly-signed passed 200 cases
+✓ prop tampering-is-rejected    passed 200 cases
 ✓ prop never-leaks-a-body       passed 200 cases

@@ -1,0 +1,13 @@
+{
+  "name": "hex-encode",
+  "hash": "b92f77d92e174822bbf18d2d8158d15dd4dec4c43d8595dff2ba081f4ee523f0",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 11,
+  "mutants_total": 11,
+  "level": "tested",
+  "cases": 200
+}

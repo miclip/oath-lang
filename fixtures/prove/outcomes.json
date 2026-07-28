@@ -719,6 +719,48 @@
       ]
     },
     {
+      "name": "hex-digit",
+      "hash": "007871398c18f644e5e67228e3e06ea553d93716878dbb625c72034755a1586f",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "zero-is-char-0",
+          "proven": false
+        },
+        {
+          "name": "ten-is-char-a",
+          "proven": false
+        },
+        {
+          "name": "roundtrips",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "hex-encode",
+      "hash": "b92f77d92e174822bbf18d2d8158d15dd4dec4c43d8595dff2ba081f4ee523f0",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-encodes-empty",
+          "proven": false
+        },
+        {
+          "name": "encodes-255",
+          "proven": false
+        },
+        {
+          "name": "roundtrips-through-decode",
+          "proven": false
+        }
+      ]
+    },
+    {
       "name": "hex-nibble",
       "hash": "548c2b120a8bc1874caeeb0679a02d14d42b7e428ee6c78e05c2211583699ae1",
       "level": "proven",
@@ -3032,10 +3074,10 @@
     },
     {
       "name": "webhook",
-      "hash": "4981f2850c87e325d31add10bbc2334940491114a002ebc6608f5e0c4d0ce25d",
+      "hash": "fc7d69f86d04728735dfee2ab7a693d5839ba10ae5342980162b8bbfbd88217c",
       "level": "tested",
       "proven_count": 0,
-      "prop_count": 3,
+      "prop_count": 5,
       "props": [
         {
           "name": "unsigned-is-401",
@@ -3043,6 +3085,14 @@
         },
         {
           "name": "accepts-only-with-202",
+          "proven": false
+        },
+        {
+          "name": "accepts-correctly-signed",
+          "proven": false
+        },
+        {
+          "name": "tampering-is-rejected",
           "proven": false
         },
         {

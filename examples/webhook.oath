@@ -62,6 +62,30 @@
   (prop rejects-beyond [(now Int) (w Int)]
     (if (<= 0 w) (not (within-window now (+ now (+ w 1)) w)) true)))
 
+
+; hex-encode exists so a PROPERTY can build a correctly-signed request. Without
+; it nothing could reach the accept path: the generator cannot invent a valid
+; signature, so every generated case took a rejection branch and mutation scoring
+; recorded 3/176 — the artifact worked while its spec pinned almost nothing.
+; That is precisely the "the proof conforms to a spec that may be incomplete"
+; failure, caught by the instrument built for it.
+(defn hex-digit [] [(n Int)] Int
+  (if (< n 10) (+ 48 n) (+ 87 n))
+  (prop zero-is-char-0 [] (== (hex-digit 0) 48))
+  (prop ten-is-char-a [] (== (hex-digit 10) 97))
+  (prop roundtrips [(n Int)]
+    (if (and (<= 0 n) (<= n 15)) (== (hex-nibble (hex-digit n)) n) true)))
+
+(defn hex-encode [] [(bs (List Int))] Str
+  (match bs
+    ((Nil) (SNil))
+    ((Cons b rest)
+      (SCons (hex-digit (/ b 16)) (SCons (hex-digit (% b 16)) (hex-encode rest)))))
+  (prop empty-encodes-empty [] (== (hex-encode (Nil [Int])) (SNil)))
+  (prop encodes-255 [] (== (hex-encode (Cons [Int] 255 (Nil [Int]))) "ff"))
+  (prop roundtrips-through-decode [(bs (List Int))]
+    (if (bytes-ok bs) (== (hex-decode (hex-encode bs)) bs) true)))
+
 ; The handler. Capabilities are `env` (the shared secret and the window) and
 ; `emit` (where a validated event goes). Both are ordinary (-> Str Str) — the
 ; existing shape — because that is all this artifact needs.
@@ -94,6 +118,54 @@
   (prop accepts-only-with-202 [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)]
     (let (code Int (match (webhook caps r) ((Resp s h b) s)))
       (or (== code 202) (or (== code 401) (or (== code 400) (== code 500))))))
+
+  ; THE ACCEPT PATH. Nothing generated can reach it — the generator cannot invent
+  ; a valid signature — so the property CONSTRUCTS one: sign the body with
+  ; whatever secret this capability world returns, stamp the timestamp at the
+  ; instant of receipt, and assert the request is accepted. Without this the spec
+  ; constrained only rejections and mutation scoring read 3/176: the artifact
+  ; worked while its specification pinned almost nothing.
+  ;
+  ; The emit branch is guarded rather than assumed: a generated sink may fail,
+  ; and a failed sink is honestly a 500, not an acceptance.
+  ; The configured window must parse to a NON-NEGATIVE number. A generated `env`
+  ; returns arbitrary text, and parse-nat of a non-digit yields a negative value
+  ; — under which every request is stale. The handler failing closed there is
+  ; correct behaviour, so this is a precondition of the accept path, not a bug.
+  ; `now` must be a NATURAL: the timestamp crosses the wire through show-nat and
+  ; comes back through parse-nat, and that round-trip only holds for naturals —
+  ; a real received-at is an epoch second and never negative.
+  ; The secret needs the same guard as the body: a generated `env` returns a Str
+  ; whose codepoints may be negative, and signing those is a range error. Third
+  ; place in this artifact where {b: Int | 0 <= b <= 255} would have said it in
+  ; the type — #69's motivation, arriving from use rather than from theory.
+  (prop accepts-correctly-signed [(caps {emit (-> Str Str) env (-> Str Str)}) (body (List Int)) (now Int)]
+    (if (and (<= 0 (parse-nat ((. caps env) "WEBHOOK_WINDOW")))
+             (and (<= 0 now) (and (bytes-ok body) (bytes-ok (str-bytes ((. caps env) "WEBHOOK_SECRET"))))))
+        (let (sig Str (hex-encode (hmac-sha256 (str-bytes ((. caps env) "WEBHOOK_SECRET")) body)))
+          (let (r Request (Req "POST" "/hook"
+                               (Cons [(Pair Str Str)] (Pair [Str Str] "X-Signature" sig)
+                                 (Cons [(Pair Str Str)] (Pair [Str Str] "X-Timestamp" (show-nat now))
+                                   (Nil [(Pair Str Str)])))
+                               body now))
+            (match ((. caps emit) "/hook")
+              ((SNil) (== (match (webhook caps r) ((Resp s h b) s)) 500))
+              ((SCons c rest) (== (match (webhook caps r) ((Resp s h b) s)) 202)))))
+        true))
+
+  ; A tampered body must NOT be accepted under a signature computed for the
+  ; original — the property that actually makes this a security artifact.
+  (prop tampering-is-rejected [(caps {emit (-> Str Str) env (-> Str Str)}) (body (List Int)) (now Int)]
+    (if (and (bytes-ok body) (bytes-ok (str-bytes ((. caps env) "WEBHOOK_SECRET"))))
+        (let (sig Str (hex-encode (hmac-sha256 (str-bytes ((. caps env) "WEBHOOK_SECRET")) body)))
+          (let (tampered (List Int) (Cons [Int] 88 body))
+            (let (r Request (Req "POST" "/hook"
+                                 (Cons [(Pair Str Str)] (Pair [Str Str] "X-Signature" sig)
+                                   (Cons [(Pair Str Str)] (Pair [Str Str] "X-Timestamp" (show-nat now))
+                                     (Nil [(Pair Str Str)])))
+                                 tampered now))
+              (== (match (webhook caps r) ((Resp s h b) s)) 401))))
+        true))
 
   ; A response never carries a body or headers: this endpoint answers with a
   ; status and nothing else, so a signature failure cannot leak detail.

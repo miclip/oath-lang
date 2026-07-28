@@ -9,6 +9,8 @@
     "level": "tested",
     "cases": 200
   },
+  "mutants_killed": 288,
+  "mutants_total": 288,
   "termination": "nonrecursive",
   "spec_author": "claude-main",
   "body_author": "claude-main",

@@ -1,0 +1,3 @@
+✓ prop empty-encodes-empty      passed 200 cases
+✓ prop encodes-255              passed 200 cases
+✓ prop roundtrips-through-decode passed 200 cases
