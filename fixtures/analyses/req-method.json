@@ -1,0 +1,12 @@
+{
+  "name": "req-method",
+  "hash": "b0c4a59b92c4e2bc55ef68d8ebc612e36f8201a5f1088e415688f27e6f355e3a",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

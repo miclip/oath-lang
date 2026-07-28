@@ -1,0 +1,3 @@
+✓ prop echoes-body-exactly      passed 200 cases
+✓ prop always-200               passed 200 cases
+✓ prop reports-method           passed 200 cases

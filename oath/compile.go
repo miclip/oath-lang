@@ -57,9 +57,9 @@ func cmdBuild(st *Store, name, out string) {
 	}
 	// Entry protocols: (-> (List Str) Str), or capability-first
 	// (-> {caps...} (-> (List Str) Str)) with every field wired (stage 2).
-	capTy, ok := entryShape(st, d.Ty)
+	capTy, kind, ok := entryShape(st, d.Ty)
 	if !ok {
-		fail(fmt.Errorf("%s : %s — entry protocol requires (-> (List Str) Str) or (-> {caps} (List Str) Str) with wireable capabilities", name, debugTy(d.Ty)))
+		fail(fmt.Errorf("%s : %s — entry protocol requires (-> (List Str) Str), (-> Request Response), or either with a leading {caps} record of wireable capabilities", name, debugTy(d.Ty)))
 	}
 	if capTy != nil {
 		for i, n := range capTy.Names {
@@ -74,7 +74,7 @@ func cmdBuild(st *Store, name, out string) {
 		}
 	}
 
-	src, err := emitProgram(st, h, capTy)
+	src, err := emitProgram(st, h, capTy, kind)
 	if err != nil {
 		fail(err)
 	}
@@ -105,17 +105,63 @@ func cmdBuild(st *Store, name, out string) {
 		name, out, name, printTy(st, d.Ty, m.TyVarNames), guaranteeString(m.Guarantee))
 }
 
-// entryShape classifies an entry type. Returns (nil, true) for the pure
-// protocol (-> (List Str) Str); (capRecord, true) for the capability-first
-// protocol (-> {caps} (-> (List Str) Str)); (nil, false) otherwise.
-func entryShape(st *Store, t *Ty) (*Ty, bool) {
+// entryKind distinguishes the two entry PROTOCOLS. A CLI entry is invoked once
+// with argv and returns stdout; a HANDLER is invoked per request by the host and
+// returns a response (#78).
+//
+// Ingress is deliberately a protocol rather than a capability. A capability is
+// outbound authority the program HOLDS and may misuse — hence the confinement
+// checker. Being called is not authority: the host owns the socket, decides when
+// to invoke, and the artifact stays a pure function of the value it is handed.
+// So a handler needs no new capability, and inherits confinement checking,
+// verification against every generated request, and the refusal-to-wire gates
+// exactly as the CLI protocols do.
+type entryKind int
+
+const (
+	entryCLI entryKind = iota
+	entryHandler
+)
+
+// entryShape classifies an entry type, returning the capability record (nil if
+// the entry takes none), which protocol it speaks, and whether it is an entry at
+// all. Recognized:
+//
+//	(-> (List Str) Str)             CLI
+//	(-> {caps} (-> (List Str) Str)) CLI, capability-first
+//	(-> Request Response)           handler
+//	(-> {caps} (-> Request Response)) handler, capability-first
+func entryShape(st *Store, t *Ty) (*Ty, entryKind, bool) {
 	if isPureEntry(st, t) {
-		return nil, true
+		return nil, entryCLI, true
 	}
-	if t != nil && t.K == "fun" && t.A != nil && t.A.K == "record" && isPureEntry(st, t.B) {
-		return t.A, true
+	if isHandlerEntry(st, t) {
+		return nil, entryHandler, true
 	}
-	return nil, false
+	if t != nil && t.K == "fun" && t.A != nil && t.A.K == "record" {
+		if isPureEntry(st, t.B) {
+			return t.A, entryCLI, true
+		}
+		if isHandlerEntry(st, t.B) {
+			return t.A, entryHandler, true
+		}
+	}
+	return nil, entryCLI, false
+}
+
+// isHandlerEntry recognizes (-> Request Response), the types being those bound
+// to the names `Request` and `Response` in this store — the same by-convention
+// resolution `Str` and `List` already use.
+func isHandlerEntry(st *Store, t *Ty) bool {
+	if t == nil || t.K != "fun" {
+		return false
+	}
+	return isNamedData(st, "Request", t.A) && isNamedData(st, "Response", t.B)
+}
+
+func isNamedData(st *Store, name string, t *Ty) bool {
+	h, ok := st.Resolve(name)
+	return ok && t != nil && t.K == "data" && t.Hash == h && len(t.Args) == 0
 }
 
 // strTypeHash is the hash of the `Str` datatype in this store (the string type
@@ -182,9 +228,9 @@ type emitter struct {
 	fname   map[string]string // def hash → emitted Go function name
 	order   []string          // emission order (deps first)
 	seen    map[string]bool
-	strHash string // hash of the Str datatype; its values compile to Go strings
-	setHash string // hash of the Set datatype; its values compile to native osets
-	mapHash string // hash of the Map datatype; its values compile to native omaps
+	strHash string           // hash of the Str datatype; its values compile to Go strings
+	setHash string           // hash of the Set datatype; its values compile to native osets
+	mapHash string           // hash of the Map datatype; its values compile to native omaps
 	setOps  map[string]setOp // recognized Set/Map-op hashes → native helper + arity
 	// Type tracking for record field resolution: the kernel's own checker,
 	// threaded alongside compilation. ctx mirrors the de Bruijn env.
@@ -233,7 +279,7 @@ func (e *emitter) resolveNativeContainers() {
 	}
 }
 
-func emitProgram(st *Store, entry string, capTy *Ty) (string, error) {
+func emitProgram(st *Store, entry string, capTy *Ty, kind entryKind) (string, error) {
 	e := &emitter{st: st, fname: map[string]string{}, seen: map[string]bool{}, strHash: strTypeHash(st)}
 	e.resolveNativeContainers()
 	if err := e.closure(entry); err != nil {
@@ -251,6 +297,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"time"
 	"unicode/utf8"
 )
 
@@ -259,6 +306,7 @@ var _ = http.Get
 var _ = utf8.DecodeRuneInString
 var _ = math.Float64bits
 var _ = sort.Slice
+var _ = time.Now
 
 // bi parses a decimal integer literal into an arbitrary-precision value.
 func bi(s string) *big.Int { v, _ := new(big.Int).SetString(s, 10); return v }
@@ -512,6 +560,103 @@ func omapFromList(l any) any {
 		}
 		caps = fmt.Sprintf("\tvar realWorld any = &ctorV{idx: -1, fields: []any{%s}}\n", strings.Join(fields, ", "))
 		entryCall = fmt.Sprintf("apply(%s(nil, realWorld), args)", e.fname[entry])
+	}
+	if kind == entryHandler {
+		// HANDLER protocol (#78). The host owns the socket, TLS, routing and
+		// process lifecycle; the artifact is a pure function from a Request
+		// VALUE to a Response value. This adapter is the whole irreversible
+		// translation, and it deliberately normalizes as little as it can:
+		// the body crosses as raw BYTES, the path keeps its query, and
+		// received-at is stamped once and handed over as data.
+		//
+		// One normalization is NOT avoidable at this layer and is therefore
+		// documented rather than hidden: Go's net/http canonicalizes header
+		// KEYS (content-type → Content-Type) and stores them in a map, so
+		// cross-key order is lost. Repeats within a key keep their order, and
+		// keys are emitted in sorted order so the value is deterministic.
+		// Body bytes — what signature schemes actually sign — are exact.
+		// Recovering byte-exact header casing and interleaving needs a raw
+		// connection reader; see the limitation note on #78.
+		handlerCall := fmt.Sprintf("%s(nil, req)", e.fname[entry])
+		if capTy != nil {
+			handlerCall = fmt.Sprintf("apply(%s(nil, realWorld), req)", e.fname[entry])
+		}
+		fmt.Fprintf(&e.b, `
+func main() {
+	addr := os.Getenv("OATH_HTTP_ADDR")
+	if addr == "" {
+		addr = ":8080"
+	}
+%s	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		r.Body.Close()
+
+		// body: raw bytes, one Int per byte, built tail-first
+		var body any = &ctorV{idx: 0}
+		for i := len(raw) - 1; i >= 0; i-- {
+			body = &ctorV{idx: 1, fields: []any{big.NewInt(int64(raw[i])), body}}
+		}
+
+		// headers: (List (Pair Str Str)), sorted by key, repeats in order
+		keys := make([]string, 0, len(r.Header))
+		for k := range r.Header {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		var flatK, flatV []string
+		for _, k := range keys {
+			for _, v := range r.Header[k] {
+				flatK = append(flatK, k)
+				flatV = append(flatV, v)
+			}
+		}
+		var hs any = &ctorV{idx: 0}
+		for i := len(flatK) - 1; i >= 0; i-- {
+			pair := &ctorV{idx: 0, fields: []any{flatK[i], flatV[i]}}
+			hs = &ctorV{idx: 1, fields: []any{pair, hs}}
+		}
+
+		path := r.URL.Path
+		if r.URL.RawQuery != "" {
+			path = path + "?" + r.URL.RawQuery
+		}
+		var req any = &ctorV{idx: 0, fields: []any{
+			r.Method, path, hs, body, big.NewInt(time.Now().Unix()),
+		}}
+
+		resp, ok := (%s).(*ctorV)
+		if !ok || len(resp.fields) != 3 {
+			http.Error(w, "handler returned a malformed Response", 500)
+			return
+		}
+		status := 500
+		if n, ok := resp.fields[0].(*big.Int); ok && n.IsInt64() {
+			status = int(n.Int64())
+		}
+		for cur, _ := resp.fields[1].(*ctorV); cur != nil && cur.idx == 1; cur, _ = cur.fields[1].(*ctorV) {
+			if p, ok := cur.fields[0].(*ctorV); ok && len(p.fields) == 2 {
+				hk, _ := p.fields[0].(string)
+				hv, _ := p.fields[1].(string)
+				w.Header().Add(hk, hv)
+			}
+		}
+		var out []byte
+		for cur, _ := resp.fields[2].(*ctorV); cur != nil && cur.idx == 1; cur, _ = cur.fields[1].(*ctorV) {
+			if n, ok := cur.fields[0].(*big.Int); ok {
+				out = append(out, byte(n.Int64()))
+			}
+		}
+		w.WriteHeader(status)
+		w.Write(out)
+	})
+	fmt.Fprintf(os.Stderr, "oath handler listening on %%s\n", addr)
+	if err := http.ListenAndServe(addr, nil); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+`, caps, handlerCall)
+		return e.b.String(), nil
 	}
 	fmt.Fprintf(&e.b, `
 func main() {

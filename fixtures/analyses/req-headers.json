@@ -1,0 +1,12 @@
+{
+  "name": "req-headers",
+  "hash": "11e9cdb9a695187157648934e6eb576d55dff98d64cac1c578938eb255123760",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

@@ -1,0 +1,12 @@
+{
+  "name": "req-received-at",
+  "hash": "ea71fc7b5412f4bd1c0bdf8b92c4eb5ec48a5fe497bd4cc83646064fd8c35449",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

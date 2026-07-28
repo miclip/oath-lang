@@ -1,0 +1,12 @@
+{
+  "name": "req-body",
+  "hash": "55607d7d56085cd9d4ea0ac3c627989656b8425eff0449bffa4f3b16ffdec769",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

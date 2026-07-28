@@ -1,0 +1,95 @@
+; The HTTP handler protocol (#78). These types are the BOUNDARY: `oath build`
+; owns the irreversible translation between a network connection and a Request
+; value, and everything above that line is an ordinary pure function verified
+; against every request the generator can produce.
+;
+; The governing rule for the host adapter is NORMALIZE AS LITTLE AS POSSIBLE.
+; Method, path (with query, raw), headers (in order, repeats preserved), body
+; (raw bytes) and receipt time cross intact. Signature verification is precisely
+; where an innocent host-side rewrite — lower-casing a header, collapsing a
+; repeat, re-encoding a body — becomes a correctness bug that no test in the
+; artifact can catch, because the artifact never sees the original.
+;
+; Body is `(List Int)`, one Int per BYTE, deliberately not `Str`. Str is
+; `SCons Int Str` over CODEPOINTS and compiles to a native Go string; a payload
+; is bytes, may not be valid UTF-8, and is signed as bytes. Routing it through a
+; codepoint type would put the corruption in the TYPE rather than in the adapter,
+; where no amount of care downstream could recover it.
+;
+; received-at is a FIELD, not an ambient clock: time enters as data supplied once
+; at the boundary, so a handler stays deterministic and the generator quantifies
+; over it for free. This is the same resolution stateful worlds got (state is
+; data, transitions are code). It does NOT settle the time/interleaving model.
+
+(data Request []
+  (Req Str Str (List (Pair Str Str)) (List Int) Int))
+
+(data Response []
+  (Resp Int (List (Pair Str Str)) (List Int)))
+
+; Field accessors. Positional matching is unreadable at five fields, and these
+; give properties something to talk about.
+(defn req-method [] [(r Request)] Str
+  (match r ((Req m p h b t) m))
+  (prop reads-method [(m Str) (p Str) (h (List (Pair Str Str))) (b (List Int)) (t Int)]
+    (== (req-method (Req m p h b t)) m)))
+
+(defn req-path [] [(r Request)] Str
+  (match r ((Req m p h b t) p))
+  (prop reads-path [(m Str) (p Str) (h (List (Pair Str Str))) (b (List Int)) (t Int)]
+    (== (req-path (Req m p h b t)) p)))
+
+(defn req-headers [] [(r Request)] (List (Pair Str Str))
+  (match r ((Req m p h b t) h))
+  (prop reads-headers [(m Str) (p Str) (h (List (Pair Str Str))) (b (List Int)) (t Int)]
+    (== (req-headers (Req m p h b t)) h)))
+
+(defn req-body [] [(r Request)] (List Int)
+  (match r ((Req m p h b t) b))
+  (prop reads-body [(m Str) (p Str) (h (List (Pair Str Str))) (b (List Int)) (t Int)]
+    (== (req-body (Req m p h b t)) b)))
+
+(defn req-received-at [] [(r Request)] Int
+  (match r ((Req m p h b t) t))
+  (prop reads-received-at [(m Str) (p Str) (h (List (Pair Str Str))) (b (List Int)) (t Int)]
+    (== (req-received-at (Req m p h b t)) t)))
+
+; Header lookup returns the FIRST match and is case-SENSITIVE. Both are
+; deliberate: the adapter is forbidden to canonicalize, so a handler that wants
+; case-insensitive lookup must say so, and a handler verifying a signature must
+; be able to see repeats rather than have one silently chosen for it.
+(defn header-first [] [(hs (List (Pair Str Str))) (name Str)] (Option Str)
+  (match hs
+    ((Nil) (None [Str]))
+    ((Cons h rest)
+      (match h
+        ((Pair k v) (if (== k name) (Some [Str] v) (header-first rest name))))))
+  (prop empty-has-none [(name Str)]
+    (== (header-first (Nil [(Pair Str Str)]) name) (None [Str])))
+  (prop finds-head [(v Str) (rest (List (Pair Str Str))) (name Str)]
+    (== (header-first (Cons [(Pair Str Str)] (Pair [Str Str] name v) rest) name)
+        (Some [Str] v)))
+  (prop skips-mismatch [(k Str) (v Str) (rest (List (Pair Str Str))) (name Str)]
+    (if (== k name) true
+        (== (header-first (Cons [(Pair Str Str)] (Pair [Str Str] k v) rest) name)
+            (header-first rest name)))))
+
+; The protocol witness, deliberately boring: echo the body and report the method
+; in a header. It isolates the protocol machinery — Request in, Response out,
+; nothing to do with crypto, storage or time — so a failure here is unambiguously
+; the boundary rather than the artifact. `main-fetch` plays the same role for the
+; CLI protocol. Verified against every request the generator produces, then built
+; and run against a real HTTP client: a 4-byte binary body (00 01 FE FF) crosses
+; intact in both directions, which is the property that matters and the one a
+; codepoint-typed body would have destroyed.
+(defn echo-handler [] [(r Request)] Response
+  (Resp 200
+        (Cons [(Pair Str Str)] (Pair [Str Str] "X-Oath-Method" (req-method r)) (Nil [(Pair Str Str)]))
+        (req-body r))
+  (prop echoes-body-exactly [(r Request)]
+    (== (match (echo-handler r) ((Resp s h b) b)) (req-body r)))
+  (prop always-200 [(r Request)]
+    (== (match (echo-handler r) ((Resp s h b) s)) 200))
+  (prop reports-method [(r Request)]
+    (== (match (echo-handler r) ((Resp s h b) (header-first h "X-Oath-Method")))
+        (Some [Str] (req-method r)))))

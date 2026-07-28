@@ -1,0 +1,1 @@
+✓ prop reads-path               passed 200 cases

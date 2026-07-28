@@ -1,0 +1,12 @@
+{
+  "name": "echo-handler",
+  "hash": "604e3e90c2ffa01f1e608371f0b79c31d5b30cb8bdf525ebfd559b3ad27ab5f6",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

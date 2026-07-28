@@ -342,6 +342,27 @@
       ]
     },
     {
+      "name": "echo-handler",
+      "hash": "604e3e90c2ffa01f1e608371f0b79c31d5b30cb8bdf525ebfd559b3ad27ab5f6",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "echoes-body-exactly",
+          "proven": true
+        },
+        {
+          "name": "always-200",
+          "proven": true
+        },
+        {
+          "name": "reports-method",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "embed-add",
       "hash": "817f85803f2a419044ae8fa0ceaf5bf78870095de28b19fc50a7c55509fd5bd9",
       "level": "proven",
@@ -626,6 +647,27 @@
         },
         {
           "name": "some-passes-through",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "header-first",
+      "hash": "f0a62a28b4b450de3b55eb9efba1b9bd864ed5355e3d4f8db0ffe249e8cffb13",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-has-none",
+          "proven": true
+        },
+        {
+          "name": "finds-head",
+          "proven": true
+        },
+        {
+          "name": "skips-mismatch",
           "proven": true
         }
       ]
@@ -1816,6 +1858,71 @@
         },
         {
           "name": "length-is-n",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "req-body",
+      "hash": "55607d7d56085cd9d4ea0ac3c627989656b8425eff0449bffa4f3b16ffdec769",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "reads-body",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "req-headers",
+      "hash": "11e9cdb9a695187157648934e6eb576d55dff98d64cac1c578938eb255123760",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "reads-headers",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "req-method",
+      "hash": "b0c4a59b92c4e2bc55ef68d8ebc612e36f8201a5f1088e415688f27e6f355e3a",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "reads-method",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "req-path",
+      "hash": "eadb605e522cbb0957d9a438631dab0b2539d2b01620c0a377965d0d5e3a438d",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "reads-path",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "req-received-at",
+      "hash": "ea71fc7b5412f4bd1c0bdf8b92c4eb5ec48a5fe497bd4cc83646064fd8c35449",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "reads-received-at",
           "proven": true
         }
       ]

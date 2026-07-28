@@ -1,0 +1,12 @@
+{
+  "name": "Request",
+  "ctor_names": [
+    "Req"
+  ],
+  "guarantee": {
+    "level": "asserted"
+  },
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main"
+}

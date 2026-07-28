@@ -1,0 +1,13 @@
+{
+  "name": "header-first",
+  "hash": "f0a62a28b4b450de3b55eb9efba1b9bd864ed5355e3d4f8db0ffe249e8cffb13",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

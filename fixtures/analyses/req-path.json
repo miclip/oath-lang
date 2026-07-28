@@ -1,0 +1,12 @@
+{
+  "name": "req-path",
+  "hash": "eadb605e522cbb0957d9a438631dab0b2539d2b01620c0a377965d0d5e3a438d",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

@@ -1,0 +1,3 @@
+✓ prop empty-has-none           passed 200 cases
+✓ prop finds-head               passed 200 cases
+✓ prop skips-mismatch           passed 200 cases

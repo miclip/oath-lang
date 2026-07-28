@@ -1,0 +1,1 @@
+✓ prop reads-method             passed 200 cases

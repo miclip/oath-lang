@@ -32,7 +32,7 @@ func TestCompileNativeStrDifferential(t *testing.T) {
 	if !ok {
 		t.Fatal("greet2 not in store")
 	}
-	src, err := emitProgram(st, h, nil)
+	src, err := emitProgram(st, h, nil, entryCLI)
 	if err != nil {
 		t.Fatalf("emitProgram: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestCompileRatExactDifferential(t *testing.T) {
 	if !ok {
 		t.Fatal("exactp not in store")
 	}
-	src, err := emitProgram(st, h, nil)
+	src, err := emitProgram(st, h, nil, entryCLI)
 	if err != nil {
 		t.Fatalf("emitProgram: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestCompileFloatInexactDifferential(t *testing.T) {
 	if !ok {
 		t.Fatal("finexactp not in store")
 	}
-	src, err := emitProgram(st, h, nil)
+	src, err := emitProgram(st, h, nil, entryCLI)
 	if err != nil {
 		t.Fatalf("emitProgram: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestCompileNativeSetDifferential(t *testing.T) {
 	if !ok {
 		t.Fatal("setq not in store")
 	}
-	src, err := emitProgram(st, h, nil)
+	src, err := emitProgram(st, h, nil, entryCLI)
 	if err != nil {
 		t.Fatalf("emitProgram: %v", err)
 	}
@@ -241,7 +241,7 @@ func TestCompileNativeSetDifferential(t *testing.T) {
 
 	// Second entry: union dedup (size 3) and the sorted set-elems boundary (min 1).
 	h2, _ := st.Resolve("setq2")
-	src2, err := emitProgram(st, h2, nil)
+	src2, err := emitProgram(st, h2, nil, entryCLI)
 	if err != nil {
 		t.Fatalf("emitProgram setq2: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestCompileNativeMapDifferential(t *testing.T) {
 	if !ok {
 		t.Fatal("mapq not in store")
 	}
-	src, err := emitProgram(st, h, nil)
+	src, err := emitProgram(st, h, nil, entryCLI)
 	if err != nil {
 		t.Fatalf("emitProgram: %v", err)
 	}
