@@ -134,7 +134,8 @@ func scanBulkProve(st *Store, author string) {
 				defer wg.Done()
 				defer func() { <-sem }()
 				if _, err := apiProveHash(st, h, name); err != nil {
-					return // a strategy was environmentally aborted — leave it tested
+					return // genuine failure; an ABORTED property is no longer one of
+					// these (#72 records per-property partial results instead)
 				}
 				m2, err := st.GetMeta(h)
 				if err != nil || len(m2.ProvenProps) <= before {
@@ -226,13 +227,17 @@ func topoFuncOrder(st *Store) []string {
 // prove.
 func proofStateFingerprint(st *Store) string {
 	h := sha256.New()
-	// The prover CONFIG is part of the state: a goal that aborted under a smaller
-	// wall-cap (or a different rlimit) can newly prove under a larger one, so a
-	// config change must re-arm the scan exactly as a new proof or object does.
-	// Without this, raising the registry worker's OATH_PROVE_WALLCAP_SEC on slow
-	// hardware was a silent no-op — the fingerprint matched and the rescan skipped
-	// the very defs the bigger cap was meant to recover.
-	fmt.Fprintf(h, "cfg:rlimit=%d;wallcap=%ds;\n", effectiveRlimit(), int64(proveWallCap()/time.Second))
+	// The prover CONFIG and the KERNEL are part of the state. A goal that aborted
+	// under a smaller wall-cap (or a different rlimit) can newly prove under a
+	// larger one, and a new kernel can prove — or newly RECORD — what the old one
+	// could not, so either change must re-arm the scan exactly as a new proof or
+	// object does. Both lessons were learned the hard way: raising the registry
+	// worker's OATH_PROVE_WALLCAP_SEC was a silent no-op until the config went in
+	// here, and #72 (which banks per-property verdicts an aborted sibling used to
+	// discard) changes what a scan RECORDS while touching neither the store nor
+	// the config — so without the kernel version the corpus would sit unchanged
+	// behind a matching fingerprint, exactly the same trap one layer up.
+	fmt.Fprintf(h, "cfg:kernel=%s;rlimit=%d;wallcap=%ds;\n", kernelVersion, effectiveRlimit(), int64(proveWallCap()/time.Second))
 	for _, hash := range st.AllHashes() { // AllHashes is sorted → stable
 		m, err := st.GetMeta(hash)
 		if err != nil {
