@@ -47,8 +47,16 @@ func cmdProveWorker(st *Store, o proveWorkerOpts) {
 		o.interval = 5 * time.Second
 	}
 	if o.scan {
-		scanBulkProve(st, o.author)
+		// SCORING FIRST, deliberately. The two passes are independent — mutation
+		// needs no proofs — so the order is a scheduling decision, and the
+		// original order got it backwards: proving regularly consumes the whole
+		// task timeout on futile attempts, so scoring sat behind the pass least
+		// likely to finish and never ran. Scoring is bounded (once per object,
+		// hash-keyed) and completes; proving takes whatever remains. Putting the
+		// terminating pass first means a timeout costs progress on the unbounded
+		// work rather than losing the bounded work entirely.
 		scanBulkScore(st, o.author)
+		scanBulkProve(st, o.author)
 	}
 	for {
 		worked := 0
