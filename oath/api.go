@@ -326,7 +326,26 @@ func findFromDef(st *Store, qd *Def, qm *Meta, excludeHash, header string) strin
 		j := qidx[q.hash]
 		fmt.Fprintf(&b, "\n  · %s [%s]  #%s\n", q.name, mark(q.proven)+" here", shortHash(q.hash))
 		if len(matches[j]) == 0 {
-			b.WriteString("      (no definition in the store satisfies this)\n")
+			// An empty result is the most dangerous output this tool has. It reads
+			// as "the registry has nothing", and a caller that believes it will
+			// hand-roll something unverified when a proven implementation existed.
+			// Matching is by property content hash, so a query that is correct-
+			// looking but shaped differently — most often a call written without
+			// the explicit type application a polymorphic definition requires —
+			// misses SILENTLY. So say what is actually known: nothing states this
+			// law AS WRITTEN, and here are the definitions with a compatible
+			// signature that are worth re-querying against.
+			b.WriteString("      no definition states this law as written (matched by property content hash)\n")
+			if near := signatureNeighbours(st, qd, excludeHash); len(near) > 0 {
+				fmt.Fprintf(&b, "      %d definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your\n", len(near))
+				b.WriteString("      query may be shaped differently (a call to a POLYMORPHIC definition needs explicit\n")
+				b.WriteString("      type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):\n")
+				for _, n := range near {
+					fmt.Fprintf(&b, "        %s\n", n)
+				}
+				b.WriteString("      Try `get <name>` to read how each states its properties, or find --implies to\n")
+				b.WriteString("      search by PROOF rather than by shape.\n")
+			}
 			continue
 		}
 		for _, m := range matches[j] {
@@ -634,4 +653,41 @@ func apiLog(st *Store, filter string) string {
 			e.Seq, e.Time, e.Author, mark, e.Status, e.Name, h, detail)
 	}
 	return b.String()
+}
+
+// signatureNeighbours lists definitions whose type signature is compatible with a
+// query definition's, up to the same generalization the property matcher uses.
+// They are not matches — they are where to look next when a spec query comes back
+// empty, which is otherwise indistinguishable from an empty registry.
+func signatureNeighbours(st *Store, qd *Def, excludeHash string) []string {
+	if qd == nil || qd.Ty == nil {
+		return nil
+	}
+	want := debugTy(&generalizeTypes([]Ty{*qd.Ty})[0])
+	names := st.Names()
+	keys := make([]string, 0, len(names))
+	for k := range names {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var out []string
+	for _, k := range keys {
+		h := names[k]
+		if h == excludeHash {
+			continue
+		}
+		d, err := st.GetDef(h)
+		if err != nil || d.K != "func" || d.Ty == nil || len(d.Props) == 0 {
+			continue
+		}
+		if debugTy(&generalizeTypes([]Ty{*d.Ty})[0]) != want {
+			continue
+		}
+		m, _ := st.GetMeta(h)
+		out = append(out, fmt.Sprintf("%-18s %s", k, guaranteeString(m.Guarantee)))
+		if len(out) >= 8 {
+			break
+		}
+	}
+	return out
 }
