@@ -407,6 +407,18 @@ type campaignDescription struct {
 // campaignEncode renders the canonical bytes. Exported shape is fixed by SPEC
 // §11; changing it changes every campaign identity, which is a fork of what
 // "current evidence" means and must be treated as one.
+// campaignFieldSafe reports whether a free-form value can appear in the encoding
+// without making it ambiguous to DECODE. LF and CR are forbidden because the
+// format is line-framed: a value containing LF adds lines the schema never
+// emitted, and although that cannot forge a DIGEST — the encoder always writes
+// exactly the same seven keys in the same order, so an injected line changes the
+// byte count rather than replacing a field — it does defeat the audit step.
+// Auditing means reconstructing a description from bytes and re-encoding it, and
+// a byte stream that parses more than one way cannot be reconstructed with
+// confidence. §11's original rationale named `=` as the risk; `=` is harmless
+// under first-match splitting, and LF was the real one.
+func campaignFieldSafe(v string) bool { return !strings.ContainsAny(v, "\n\r") }
+
 func campaignEncode(d campaignDescription) []byte {
 	// CANONICAL BY DEFINITION: campaignEncode emits exactly one byte
 	// representation for every semantically identical description, so

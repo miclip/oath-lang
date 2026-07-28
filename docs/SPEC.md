@@ -1711,7 +1711,11 @@ the digest. It does NOT specify the mutation engine, the worker, scheduling, or
 storage — those are registry concerns and may differ between implementations. The
 obligation on a kernel is a pure function:
 
-    campaignHash : CampaignDescription → Hash
+    campaignEncode : CampaignDescription → bytes
+    campaignHash   : CampaignDescription → Hash
+
+Both are obligations: §11.2 and §11.4 pin the ENCODING, not merely the digest, so
+a kernel must expose the bytes to be checkable.
 
 A kernel need not run mutation testing. It must be able to reproduce the identity
 of the computation being CLAIMED, which is what lets an auditor reconstruct a
@@ -1775,8 +1779,26 @@ precedence rule, or any staged mutation sequence is a SEQUENCE and MUST NOT be
 normalized this way — doing so would erase meaning rather than canonicalize it.
 `waivers` is the only set-valued field in this description.
 
-Line framing is deliberate: no field value can be confused with a separator, and
-a value containing `=` cannot shift the parse.
+**Field values MUST NOT contain LF (`0x0A`) or CR (`0x0D`).** A producer given
+such a value MUST reject the description rather than encode it. This is a
+DECODABILITY requirement, not an anti-collision one: because the encoder always
+writes exactly these seven keys in this order, an embedded LF adds a line rather
+than replacing a field and so cannot forge a digest. What it defeats is the audit
+step — reconstructing a description from bytes and re-encoding it — and a byte
+stream that parses more than one way cannot be reconstructed with confidence. (An
+earlier draft justified line framing by noting that a value containing `=` cannot
+shift the parse. That is true and irrelevant: `=` is harmless under first-match
+splitting, and LF was the actual hazard.)
+
+`artifact` and the `waivers` members are LITERAL byte strings, compared and
+emitted verbatim — the encoder performs no case folding. A description carrying
+`ABAB…` is therefore a DIFFERENT description from one carrying `abab…`, not the
+same one encoded differently, and canonicality is preserved. Producers MUST emit
+lowercase hex; a description with uppercase is well-formed but denotes something
+else. Deduplication compares these same literal bytes, before any hex decoding.
+
+Integers are rendered as SHORTEST BARE DECIMAL: no sign, no leading zeros, no
+padding, no separators. `0` encodes as `0`.
 
 The digest is `SHA-256` over those bytes, rendered lowercase hex.
 
@@ -1815,9 +1837,17 @@ classes carry the canonicality claim:
 3. **Member sensitivity** — changing one set member MUST change both encoding and
    digest.
 
-Plus the empty-waiver line, and a description differing only in case budget
-(a survivor at 60 cases may be a kill at 600, so the budget is part of the
-claim).
+Plus: the empty-waiver line; a description differing only in case budget (a
+survivor at 60 cases may be a kill at 600, so the budget is part of the claim);
+UPPERCASE hex (a different description, since nothing folds case); single-digit
+and zero integers (pinning shortest bare decimal); a THREE-member set given out
+of order (a two-member vector cannot distinguish a sort from a swap); and a value
+containing `=` (harmless under first-match splitting — pinned rather than argued
+about).
+
+The file's own format: each block is the canonical encoding followed by a
+`digest=<hex>` line, blocks separated by a blank line. The `digest=` line is not
+part of the encoding — it is distinguishable because §11.2's key set is closed.
 
 No second implementation is trusted until it passes the fixtures without
 consulting the Go source.

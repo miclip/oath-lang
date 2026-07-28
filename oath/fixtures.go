@@ -193,6 +193,22 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		{Artifact: strings.Repeat("ab", 32), Kernel: kernelVersion, Engine: mutationEngine,
 			Cases: mutantCases, Fuel: mutantFuel, WaiverPolicy: waiverPolicy,
 			Waivers: []string{strings.Repeat("33", 32)}},
+		// UPPERCASE hex is a DIFFERENT description, not the same one encoded
+		// differently — no case folding, so canonicality holds literally.
+		{Artifact: strings.Repeat("AB", 32), Kernel: kernelVersion, Engine: mutationEngine,
+			Cases: mutantCases, Fuel: mutantFuel, WaiverPolicy: waiverPolicy},
+		// Single-digit and zero integers: pins shortest bare decimal, no padding.
+		{Artifact: strings.Repeat("ef", 32), Kernel: kernelVersion, Engine: mutationEngine,
+			Cases: 1, Fuel: 0, WaiverPolicy: waiverPolicy},
+		// Three members given out of order: sorting must be a real sort, not a
+		// pairwise swap that happens to work on two elements.
+		{Artifact: strings.Repeat("ab", 32), Kernel: kernelVersion, Engine: mutationEngine,
+			Cases: mutantCases, Fuel: mutantFuel, WaiverPolicy: waiverPolicy,
+			Waivers: []string{strings.Repeat("33", 32), strings.Repeat("11", 32), strings.Repeat("22", 32)}},
+		// A value containing `=`: harmless under first-match splitting, and the
+		// vector says so rather than leaving it to be argued about.
+		{Artifact: strings.Repeat("ab", 32), Kernel: "kernel=with=equals", Engine: mutationEngine,
+			Cases: mutantCases, Fuel: mutantFuel, WaiverPolicy: waiverPolicy},
 		// Only the case budget differs from the first vector: a different claim.
 		{Artifact: strings.Repeat("cd", 32), Kernel: kernelVersion, Engine: mutationEngine,
 			Cases: 600, Fuel: mutantFuel, WaiverPolicy: waiverPolicy},
@@ -203,7 +219,7 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 	if err := write(filepath.Join("campaign", "vectors.txt"), []byte(camp.String())); err != nil {
 		return "", err
 	}
-	fmt.Fprintf(&log, "campaign/vectors.txt: 7 identity vectors\n")
+	fmt.Fprintf(&log, "campaign/vectors.txt: 11 identity vectors\n")
 	// prove/scripts.txt — sha256 of every property's direct-attempt script
 	// under the recorded lemma state (SPEC §7.2 script stability). This is
 	// the byte oracle that pins the naming scheme, lemma order, and
