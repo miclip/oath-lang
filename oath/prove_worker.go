@@ -48,6 +48,7 @@ func cmdProveWorker(st *Store, o proveWorkerOpts) {
 	}
 	if o.scan {
 		scanBulkProve(st, o.author)
+		scanBulkScore(st, o.author)
 	}
 	for {
 		worked := 0
@@ -331,4 +332,50 @@ func proofMark(proven bool) string {
 		return "✓"
 	}
 	return "·"
+}
+
+// scanBulkScore records a spec-strength score for every definition that has
+// properties and no score yet (#74).
+//
+// This exists because `explain` made a synchronization obligation visible that
+// was previously harmless: once the registry is the SELECTION surface, evidence
+// it lacks is evidence a caller cannot weigh, and "spec strength UNMEASURED" on
+// an artifact that is in fact 3/3 is a product defect rather than a publishing
+// omission. The invariant to hold is narrow — missing evidence must stay
+// unknown, but KNOWN evidence must not stay missing.
+//
+// The score is COMPUTED here, never accepted from a publisher. That is not
+// incidental: a client-supplied mutation score is exactly the publisher-asserts
+// model this registry exists to replace, and a publisher could simply claim a
+// perfect one. `put` therefore transmits source, not verdicts, and the registry
+// re-derives — the same rule that already governs proofs. Mutation is seeded
+// from each mutant's own content hash, so the re-derivation is deterministic and
+// a second run reproduces the first.
+//
+// Scored ONCE per object: the result is hash-keyed metadata, so a settled corpus
+// re-scans as a no-op. Definitions with no mutation points (pure projections and
+// constructors) record nothing and are re-attempted each scan, which is cheap
+// because generating zero mutants is cheap.
+func scanBulkScore(st *Store, author string) {
+	scored, skipped := 0, 0
+	for _, h := range st.AllHashes() {
+		d, err := st.GetDef(h)
+		if err != nil || d.K != "func" || len(d.Props) == 0 {
+			continue
+		}
+		m, err := st.GetMeta(h)
+		if err != nil || m.MutantsTotal > 0 {
+			skipped++
+			continue
+		}
+		if _, err := apiMutate(st, m.Name); err != nil {
+			continue // outside the scorable set; leave it UNMEASURED, honestly
+		}
+		if m2, err := st.GetMeta(h); err == nil && m2.MutantsTotal > 0 {
+			scored++
+			fmt.Printf("· %-16s #%s  spec strength %d/%d\n", m2.Name, shortHash(h),
+				m2.MutantsKilled+len(m2.WaivedMutants), m2.MutantsTotal)
+		}
+	}
+	fmt.Printf("prove-worker: scoring complete — %d newly scored, %d already scored\n", scored, skipped)
 }
