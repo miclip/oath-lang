@@ -367,9 +367,36 @@ to a task an agent is actually given.
 require the caller to already think in algebraic properties — powerful once you
 know the law you want, useless at the moment you only know the goal.
 
-**Environment fit.** Effects remain unresolved (time and interleaving), so real
-programs are not merely hard to prove — they are **inexpressible**. Execution
-stops at composition.
+**Environment fit.** *(Corrected 2026-07-28 after reading the code rather than
+the roadmap — the first draft of this section said real programs are
+"inexpressible", which is wrong and worth correcting precisely, because the
+inaccuracy pointed the work at research when most of it is not.)*
+
+The MECHANISM is shipped and works end to end: a capability-first entry point is
+verified against every simulated world, and `oath build` wires genuine
+implementations exactly once at the program boundary — refusing to wire an entry
+that is falsified, unverified, or whose capability the confinement checker marks
+ESCAPES. The corpus witness `main-fetch` is PROVEN 3/3 over all worlds and then
+runs against a live HTTP server. Stateful worlds are shipped too, as a pattern:
+state is data, transitions are code, and the world's laws are ordinary proven
+properties.
+
+What is thin is the capability **VOCABULARY**. Exactly three capabilities are
+wireable, and all three are `(-> Str Str)`: `fetch` (HTTP GET), `env`,
+`readfile`. Every one is read-only and outbound. There is no ingress (nothing
+receives a request), no write of any kind, no crypto, and no clock.
+
+Take the canonical example — parse a signed webhook payload and return a
+validated event. It needs HTTP *ingress* rather than `fetch`, a signature
+primitive, a response or a store to write to, and a timestamp window. Only the
+last of those is the genuinely open research question. The rest is vocabulary:
+ordinary work of adding wireable capabilities and the primitives they need.
+
+So the accurate statement of the gap is **not** "effects are unresolved". It is:
+the effect discipline is real and proven, the vocabulary it speaks is three
+read-only string functions, and time/interleaving remains open. That is a far
+more tractable position than the first draft claimed, and it re-scopes #38 from
+research into mostly-engineering plus one hard question.
 
 **Escape hatches.** No FFI, no interop path. Adoption is all-or-nothing, which is
 the opposite of what an agent needs when one piece of a task is missing.
@@ -398,8 +425,11 @@ things agents already do.
 
 **Primary path** — completes the end-to-end loop (express → compile → execute):
 
-1. **#38 — effects.** Makes real-world artifacts expressible at all. The hard
-   blocker; everything downstream is gated on it.
+1. **#38 — effects, re-scoped.** NOT "solve effects" — the discipline is shipped
+   and proven. Two separable pieces: (a) **capability vocabulary** — ingress,
+   writes, crypto, and the primitives they need; ordinary engineering, and the
+   larger share of the value; (b) **time and interleaving** — the one genuinely
+   open research question, and the only part that deserves the word "blocker".
 2. **#13 — compiler backend.** Makes those artifacts executable in an agent's
    environment.
 3. **#65 / #74 — discovery, full.** Makes them findable from intent.
