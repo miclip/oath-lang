@@ -74,17 +74,17 @@ func mcpTools() []map[string]any {
 		},
 		{
 			"name":        "find",
-			"description": "Spec-query (discovery by property, not by name): given a definition, find every OTHER definition that satisfies the same property, matched by the property's CONTENT HASH (up to operand types). A law shared and PROVEN on both sides means the two are interchangeable for it — this is how you reuse proven code without trusting a name. Query by example: point at a def whose property you want, get back who else satisfies it.",
+			"description": "Spec-query (discovery by property, not by name): given a definition, find every OTHER definition that satisfies the same property, matched by the property's CONTENT HASH (up to operand types). A law shared and PROVEN on both sides means the two are interchangeable for it — this is how you reuse proven code without trusting a name. Query by example: point at a def whose property you want, get back who else satisfies it. Call `explain` on candidates before choosing — matching a property is not evidence that an artifact is trustworthy.",
 			"inputSchema": obj(map[string]any{"name": str("definition name whose properties to query by")}, "name"),
 		},
 		{
 			"name":        "find_spec",
-			"description": "Spec-query by a FRESH spec (the core commons interaction): supply a (defn ...) whose (prop ...) clauses are the query — the sought function is `self`, the body can be any trivial expression of the right type — and get back every PROVEN definition that satisfies it, matched by content hash, no name and no example needed. This is 'I have a spec; who has already proven an implementation?'.",
+			"description": "AGENT DISCOVERY FROM INTENT — the entry point to the discovery workflow, and the step where YOU do the translation. Take the user's natural-language requirement and project it LOCALLY into a fresh Oath (defn ...) whose (prop ...) clauses state the behaviour required: the sought function is `self`, and the body may be any trivial well-typed expression. Send only that SPEC — never the user's original intent, task context, or prose — and you get back every PROVEN definition satisfying it, matched by content hash, no name and no example needed. Sending the spec rather than the sentence is not a formality: the registry cannot leak intent it never receives, which is why the projection belongs on your side and not in a hosted service. Then call `explain` on each candidate BEFORE choosing one — satisfying the query is not the same as being trustworthy.",
 			"inputSchema": obj(map[string]any{"source": str("an Oath (defn ...) whose properties are the spec to search for")}, "source"),
 		},
 		{
 			"name":        "find_implies",
-			"description": "Spec-query by PROOF-IMPLICATION: like find_spec, but finds every definition that PROVABLY satisfies the spec (via Z3), not just the ones whose stated law matches by shape. Catches semantic matches the content-hash surface misses — e.g. commutativity written `(== (self b a) (self a b))` still proves against `+`. Slower (a proof per same-signature candidate) but the real reuse question: 'who can I prove satisfies this, however they wrote their own specs?'.",
+			"description": "Spec-query by PROOF-IMPLICATION: like find_spec, but finds every definition that PROVABLY satisfies the spec (via Z3), not just the ones whose stated law matches by shape. Catches semantic matches the content-hash surface misses — e.g. commutativity written `(== (self b a) (self a b))` still proves against `+`. Slower (a proof per same-signature candidate) but the real reuse question: 'who can I prove satisfies this, however they wrote their own specs?'. As with find_spec, project the user's intent into the spec LOCALLY and send only the spec, then call `explain` on each candidate before selecting.",
 			"inputSchema": obj(map[string]any{"source": str("an Oath (defn ...) whose properties are the spec to prove against candidates")}, "source"),
 		},
 		{
@@ -109,7 +109,7 @@ func mcpTools() []map[string]any {
 		},
 		{
 			"name":        "explain",
-			"description": "DECISION PACKAGE for one definition: the spec (properties by content hash), per-property proof status, spec strength, provenance, the exact dependency closure, and — most usefully — the LIMITATIONS, the recorded reasons NOT to use it. `find` tells you what satisfies a spec; this tells you whether to trust it, and what you are trusting if you do. Everything is derived from recorded state, so a definition cannot look better than its evidence: `tested` is distinguished from `proven`, an UNMEASURED spec strength is reported as absent rather than as zero, and waived mutants are listed with their justifications so you judge the reasoning rather than the number.",
+			"description": "DECISION PACKAGE — the SELECTION step for a candidate returned by find, find_spec or find_implies. Do NOT choose from search results alone: those tools tell you what SATISFIES a query, and this tells you whether the artifact is trustworthy and appropriate, which is a different question. Compare candidates on per-property proof status, spec strength and its freshness (MEASURED vs STALE vs UNMEASURED), provenance including whether spec and body had independent authors, the exact dependency closure, and — most usefully — the LIMITATIONS: the recorded reasons NOT to use it. Everything is derived from recorded state, so a definition cannot look better than its evidence: `tested` is distinguished from `proven`, absent mutation evidence is reported as UNMEASURED rather than as a zero score, and waived mutants are listed with their justifications so you judge the reasoning rather than the number. A definition that satisfies your spec may still be falsified, unproven, weakly specified, or measured under a superseded campaign.",
 			"inputSchema": obj(map[string]any{"name": str("definition name")}, "name"),
 		},
 		{
