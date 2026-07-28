@@ -1,8 +1,13 @@
 # Refinement types — design note (#69)
 
-**Status:** design only. Nothing is implemented, and nothing here should be
-implemented until the identity decision below is accepted, because that decision
-is not a thing you can revise later — it determines what a hash means.
+**Status:** design ACCEPTED (2026-07-28), not implemented. The identity decision
+below is settled; the encoding and checker are not started.
+
+The decision in one line, in Michael's framing: *identity is structural and
+reproducible; semantic relationships are layered above it.* Semantic dedup would
+mean the hash no longer identifies the object's representation — it would identify
+"the current toolchain's opinion about the object", contingent on normalization
+policy, solver version, and timeouts.
 
 ## What this is
 
@@ -97,6 +102,62 @@ layer** relates them. `oath find` already has the machinery (spec-query by
 property hash, proof-implication, e-graph canonicalization), and refinements
 should plug into it rather than into hashing. A `find --equiv` over refinements is
 future work, not a blocker.
+
+### "Syntactic" means the CANONICAL ENCODED AST, not source text
+
+Accepted with one sharpening that matters: *syntactic* here refers to the O1
+canonical encoding, not to what the author typed. If that is left vague,
+"syntactic identity" drifts into "implementation-dependent identity", which fails
+for the same reason semantic identity does — just more quietly.
+
+Oath already folds several distinctions away before hashing, and refinements
+inherit every one of them:
+
+- **Binder names → de Bruijn indices.** Binder names never appear in a `Def`
+  (§1), so `{x | x > 0}` and `{y | y > 0}` are ALREADY the same encoding.
+  Alpha-equivalence is not a question for refinements; it is settled.
+- **Names are metadata.** Definition, constructor, property, parameter and
+  type-variable names are not encoded and cannot affect a hash.
+- **Record field names are sorted**, so field order is not a distinction.
+- **Surface sugar desugars** before encoding.
+
+What is therefore NOT yet settled, and MUST be pinned in SPEC §1 before any
+implementation, is which of these apply inside a refinement proposition:
+
+1. **Implicit/elaborated types.** If the refinement's base type is inferrable, is
+   the elaborated type encoded, or the written one? It must be the elaborated
+   one, or the same refinement hashes differently depending on how much the
+   author annotated.
+2. **Operator desugaring.** If `>` desugars to `<` with swapped operands, then
+   `{x | x > 0}` and `{x | 0 < x}` collapse *by desugaring* — a syntactic,
+   decidable, solver-free normalization. That is legitimate and is NOT the
+   semantic identity rejected above, but it must be stated explicitly rather than
+   emerge from parser accident. Whatever the choice, it has to be the same in a
+   blind kernel reading only the spec.
+3. **Numeric literal forms** (`1` vs `0x1`, `2/4` vs `1/2` for ℚ) — already a
+   settled question for terms; confirm it extends unchanged.
+4. **Source-level aliases** for types or predicates, which must expand before
+   encoding.
+
+The rule of thumb: a transformation may run before hashing iff it is TOTAL,
+DECIDABLE, and SOLVER-FREE. Desugaring qualifies. Proving `P ⟺ Q` does not. The
+line is not "how much normalization" but "does the normalizer need to reason".
+
+### Fixture requirements (non-negotiable)
+
+The encoding change ships with fixtures demonstrating BOTH directions, or it does
+not ship:
+
+1. **Every existing corpus hash is unchanged.** Unrefined types must encode
+   byte-identically to today, so the feature cannot fork reality for definitions
+   that do not use it.
+2. **Logically equivalent, differently spelled refinements produce DIFFERENT
+   hashes.** This is the positive witness for the decision itself. Without it the
+   invariant is prose, and this project has now been bitten three times by rules
+   pinned only by prose (§7's no-script rule, #67's union rule, #72's abort
+   semantics) — two of which were silently wrong in one kernel or the other.
+
+Both belong in `fixtures/`, checked by the blind kernel, not only in unit tests.
 
 ### Consequence for the spec
 
