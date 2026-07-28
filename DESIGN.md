@@ -396,12 +396,49 @@ things agents already do.
 
 **Priority is not expressiveness. Priority is applicability.**
 
+**Primary path** — completes the end-to-end loop (express → compile → execute):
+
 1. **#38 — effects.** Makes real-world artifacts expressible at all. The hard
    blocker; everything downstream is gated on it.
 2. **#13 — compiler backend.** Makes those artifacts executable in an agent's
    environment.
-3. **#65 / #74 — discovery.** Makes them findable from intent, so the workflow
-   has an entry point.
+3. **#65 / #74 — discovery, full.** Makes them findable from intent.
+
+**Parallel track, starting now** — *discovery v0 over the current corpus*.
+
+Sequencing discovery strictly third was wrong, for a reason that took an argument
+to see. There are two loops, not one. The **end-to-end loop** above is blocked on
+effects. But the **credibility loop** an agent experiences first — search →
+inspect → compare → trust — requires neither effects nor execution. It can run
+against the 165 primitives we already have, and it should, because:
+
+- It **validates the registry thesis while it is still cheap to be wrong.** "The
+  registry is the product" is only true if querying and result-shaping work. Even
+  a narrow corpus answers: does intent → spec mapping work at all? What does a
+  decision package actually need to contain? How do you rank competing artifacts
+  by evidence? That is design that cannot be deferred without being redone.
+- It **forces the intent-versus-law gap into the open early.** Discovery v0 will
+  show where translation fails, where specs are pitched too low-level to match
+  intent, and where naming and structure are wrong. Build the richer system first
+  and you risk building it on a misaligned discovery model.
+- It **produces real value on a narrow corpus.** `oath find "stable sort of
+  integers"` returning candidate implementations with their properties, mutation
+  scores and proof coverage is already strictly better than a conventional
+  registry *for that domain* — which proves the idea before the system is
+  complete.
+
+The constraint that keeps this honest: **discovery v0 must not outpace the
+substance of the registry.** Leading with discovery alone would optimise UX over
+substance and produce fancy search over trivial artifacts. It runs in parallel to
+shape the primary path, not in place of it.
+
+**And discovery v0 is the demand-sensing instrument.** This roadmap originally
+assumed coverage would follow once effects existed. That is not guaranteed and
+probably not true: coverage follows DEMAND signals, not capability. Discovery v0
+is what records the queries agents make and fail to satisfy — which is the input
+#75 needs to be demand-led rather than a guess. Without it, the coverage
+programme repeats the very error this section exists to name, one level down:
+building what is buildable rather than what is needed.
 
 And explicitly: **#69 refinement types remain correct and are not on the critical
 path to adoption.** The design note (docs/refinements.md) settles a question that
