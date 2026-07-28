@@ -84,7 +84,10 @@ cd oath && go build -o oath . && cd ..`} />
 ./oath/oath put --json examples/sort.oath      # machine-readable verdicts
 ./oath/oath dependents append                  # reverse dependency query
 ./oath/oath mutate length                      # spec strength: do the properties
-                                               # notice mutations of the body?`} />
+                                               # notice mutations of the body?
+./oath/oath explain reverse                    # decision package: evidence,
+                                               # provenance, and the LIMITATIONS
+./oath/oath explain reverse --json             # same, for an agent to consume`} />
 
       <div className="callout">
         <p>

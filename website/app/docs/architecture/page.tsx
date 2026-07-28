@@ -138,6 +138,59 @@ export default function Architecture() {
         a definition).
       </p>
 
+      <h2>Selecting: the decision package</h2>
+      <p>
+        Finding what satisfies a spec is not the same as knowing whether to use it.{" "}
+        <code>oath explain</code> answers the second question: it returns the spec as
+        property content hashes, per-property proof status, spec strength and its
+        freshness, provenance including whether spec and body had independent authors,
+        the exact dependency closure by hash, and — most usefully — the{" "}
+        <strong>limitations</strong>, the recorded reasons <em>not</em> to use an
+        artifact. It is served over MCP as JSON, because the consumer is an agent
+        choosing between candidates.
+      </p>
+      <p>
+        Everything in it is derived from recorded state, so a definition cannot look
+        better than its evidence. <code>tested</code> is distinguished from{" "}
+        <code>proven</code>. Absent mutation evidence is reported as{" "}
+        <code>UNMEASURED</code> rather than as a zero score, because &ldquo;unknown&rdquo;
+        and &ldquo;weak&rdquo; are different claims. Waived mutants are listed with their
+        justifications, so a caller judges the reasoning rather than trusting the number.
+      </p>
+      <p>
+        The corpus supplies its own argument for why this exists. A spec query for the
+        involution law returns two candidates: <code>reverse</code>, proven 2/2 with 3/3
+        spec strength, and <code>bad-reverse</code>, which is <em>falsified</em>. Both
+        satisfy the queried property. Search alone cannot separate them; the decision
+        package does, in a form an agent can act on.
+      </p>
+
+      <h2>Campaign identity: evidence, not assertions</h2>
+      <p>
+        A mutation score of 3/3 answers &ldquo;how many&rdquo; and never &ldquo;out of
+        which mutants, under which policy&rdquo;. Evidence without a reproducible identity
+        for the computation behind it is an assertion with numbers attached — so a score
+        is attached to the digest of a <strong>campaign description</strong>: the
+        artifact, the kernel (evaluation semantics decide whether a mutant is caught), the
+        mutant generator revision, the execution budget (a survivor at 60 cases may be a
+        kill at 600), and the waiver policy and set — because waivers count toward the
+        score, so adding one changes the number without changing the code.
+      </p>
+      <p>
+        A consumer compares digests rather than reasoning about version strings and dates.
+        Equal means <code>MEASURED</code>: the score was produced under the campaign now
+        in force. Different means <code>STALE</code> — authentic evidence, for a
+        reproducible campaign other than the current one. Not false, not expired, and
+        never presented as current.
+      </p>
+      <p>
+        The registry <em>computes</em> these scores; it never accepts one from a
+        publisher. A client-supplied mutation score would be exactly the
+        publisher-asserts model this substrate replaces. The encoding is normative
+        (SPEC §11), so an auditor can reconstruct a description and check the digest
+        instead of trusting that some hex string is the right one.
+      </p>
+
       <h2>Publishing: trust by reproduction</h2>
       <p>
         The registry layer needs no trusted server. <code>oath export</code> packs a
@@ -194,6 +247,47 @@ export default function Architecture() {
         the native representation can never quietly disagree with what was proven. The
         fast execution path and persistent maps for efficient functional updates are the
         remaining work.
+      </p>
+      <p>
+        There are two entry protocols. A CLI entry is{" "}
+        <code>(-&gt; (List Str) Str)</code>, invoked once with argv. A{" "}
+        <strong>handler</strong> is <code>(-&gt; Request Response)</code>, invoked per
+        request by the host — so <code>oath build</code> emits a program that serves
+        HTTP. Ingress is deliberately a protocol rather than a capability: a capability is
+        outbound authority a program <em>holds</em> and could misuse, which is why
+        confinement checking exists, but being called is not authority. The host owns the
+        socket, TLS, routing and lifecycle; the artifact stays a pure function of the
+        value it is handed, and inherits every existing gate unchanged.
+      </p>
+      <p>
+        Either protocol may take a leading capability record. Capabilities are wired with
+        genuine implementations exactly once, at the program boundary —{" "}
+        <code>fetch</code> becomes a real HTTP GET, <code>emit</code> a real append to a
+        sink — and everything below that line received authority as an ordinary argument
+        and was verified against every simulated world before the real one arrived. The
+        compiler refuses an entry that is falsified, unverified, or whose capability the
+        confinement checker marks <code>ESCAPES</code>: a program that stores or returns
+        its capability never receives the real one.
+      </p>
+      <p>
+        The boundary adapter normalizes as little as it can. A request body crosses as raw{" "}
+        <strong>bytes</strong> — <code>(List Int)</code>, one Int per byte, deliberately
+        not <code>Str</code>, which is a codepoint list that would corrupt any byte above
+        0x7F <em>inside the type</em>, where nothing downstream could recover it. That
+        matters because signatures are computed over bytes. Time enters the same way:{" "}
+        <code>received-at</code> is a <em>field of the request</em>, supplied once at the
+        boundary, not an ambient clock — so a handler stays deterministic and the property
+        generator quantifies over it for free.
+      </p>
+      <p>
+        The worked example is <code>webhook</code>: it verifies an HMAC-SHA256 signature
+        over the raw body, rejects a stale timestamp, and emits the validated event —
+        proven properties for the logic, and exactly one trusted component. The crypto
+        primitives sit <em>outside</em> the provable fragment on purpose, because
+        modelling SHA-256 in an SMT solver is not useful even where it is possible, and an
+        axiomatization invented for the purpose would establish facts about the
+        axiomatization rather than about the algorithm. Naming that boundary precisely is
+        worth more than pretending it is not there.
       </p>
     </>
   );
