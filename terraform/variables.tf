@@ -34,8 +34,8 @@ variable "custom_domain" {
 
 variable "worker_wallcap_sec" {
   type        = number
-  description = "Per-goal z3 wall-clock safety cap (seconds) for the proof worker (OATH_PROVE_WALLCAP_SEC). NOT part of any recorded verdict — a cap hit is an environmental abort, never an outcome — so this is a host-speed knob: Cloud Run's slow cores need more than the 600s default to let z3 finish the same rlimit budget. Bigger caps also lengthen a pass (non-theorems burn longer before giving up), so keep timeout > a full pass. Tune live via `gcloud run jobs update`."
-  default     = 1800
+  description = "Per-goal z3 wall-clock safety cap (seconds) for the proof worker (OATH_PROVE_WALLCAP_SEC). NOT part of any recorded verdict — a cap hit is an environmental abort, never an outcome — so this is purely a host-speed knob. Back to the 600s default: it was raised to 1800s on the theory that the corpus plateau was wall-clock-limited, which turned out to be WRONG (the cause was stale termination metadata, fixed by re-putting). The raise bought no verdicts and tripled the cost of every futile attempt, since on slow cores the wall cap binds before the rlimit budget — a full rescan then ran ~9.5h before even reaching the rot arms and timed out short of finishing. Evidence 600s suffices: the registry proved 99 → 121 under it. Raise it only with evidence that a goal returns a verdict at the larger cap and not the smaller."
+  default     = 600
 }
 
 variable "worker_schedule" {
