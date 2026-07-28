@@ -440,6 +440,21 @@ is what records the queries agents make and fail to satisfy — which is the inp
 programme repeats the very error this section exists to name, one level down:
 building what is buildable rather than what is needed.
 
+That loop — discovery → telemetry → coverage → discovery — has one failure mode
+that must be handled or it never turns: **cold-start starvation.** Early on the
+corpus is small, so discovery results are thin, so telemetry is sparse, so
+coverage does not grow, so discovery stays thin. A rule that forbids guessing is
+correct and can also refuse to bootstrap.
+
+The bootstrap clause, which weakens nothing: coverage is demand-led by discovery
+telemetry; in the absence of sufficient telemetry, seed coverage is derived from
+PROXY demand — canonical agent tasks, known integration surfaces, repeated
+failure patterns — and every such seed is recorded as **provisional**, never
+counted as observed demand. A provisional seed that never attracts real signal
+once telemetry exists is evidence against itself and should be retired rather
+than grandfathered, or "provisional" quietly becomes "permanent" and the guessing
+this rule exists to prevent returns wearing a label.
+
 And explicitly: **#69 refinement types remain correct and are not on the critical
 path to adoption.** The design note (docs/refinements.md) settles a question that
 had to be settled — refinement identity is syntactic, semantics layers above it —
