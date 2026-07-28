@@ -358,8 +358,10 @@ func (e *elab) parseTy(x sx) (*Ty, error) {
 var primArity = map[string]int{
 	"+": 2, "-": 2, "*": 2, "/": 2, "%": 2, "neg": 1,
 	"==": 2, "<": 2, "<=": 2, "and": 2, "or": 2, "not": 1,
-	"fp-eq": 2,
+	"fp-eq":  2,
 	"to-rat": 1, "to-float": 1, "floor": 1,
+	// Crypto over byte lists (#78). The FIRST primitives taking an ADT argument.
+	"hmac-sha256": 2, "bytes-eq-ct": 2,
 }
 
 // parseRecord elaborates {name X name X ...} into sorted (names, items),

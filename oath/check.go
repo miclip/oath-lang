@@ -956,6 +956,37 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 			return nil, err
 		}
 		return tBool(), nil
+	case "hmac-sha256", "bytes-eq-ct":
+		// Crypto over byte lists (#78). These are the first primitives whose
+		// arguments are an ADT rather than a scalar: a payload is BYTES, and
+		// routing it through Str (codepoints, compiled to a Go string) would
+		// corrupt any byte above 0x7F — in the TYPE, where nothing downstream
+		// could recover it.
+		//
+		// hmac-sha256 returns the DIGEST rather than a verify verdict on
+		// purpose. A bare verify predicate would make the accept path
+		// untestable: the generator cannot forge a valid signature, so only
+		// rejection would ever be exercised. Exposing the digest lets the
+		// generator compute a correct signature and test BOTH branches.
+		// bytes-eq-ct then compares in constant time, keeping the timing
+		// property inside the primitive — Oath's structural == short-circuits
+		// and would leak the position of the first differing byte.
+		if err := need(2); err != nil {
+			return nil, err
+		}
+		lst := listOfIntTy(c.st)
+		if lst == nil {
+			return nil, fmt.Errorf("%s requires the List datatype in scope", t.Op)
+		}
+		for i, a := range argTys {
+			if !tyEq(a, lst) {
+				return nil, fmt.Errorf("%s argument %d requires (List Int), got %s", t.Op, i, debugTy(a))
+			}
+		}
+		if t.Op == "bytes-eq-ct" {
+			return tBool(), nil
+		}
+		return lst, nil
 	case "to-rat":
 		// Numeric conversion → Rat. Exact from Int; exact from Float for finite
 		// values (errors on NaN/inf at runtime, §3).
@@ -1090,4 +1121,14 @@ func debugTy(t *Ty) string {
 		return s
 	}
 	return "?"
+}
+
+// listOfIntTy is the type (List Int) in this store, or nil if List is unbound.
+// Byte strings are (List Int) — one Int per byte — deliberately not Str.
+func listOfIntTy(st *Store) *Ty {
+	h, ok := st.Resolve("List")
+	if !ok {
+		return nil
+	}
+	return &Ty{K: "data", Hash: h, Args: []Ty{{K: "int"}}}
 }

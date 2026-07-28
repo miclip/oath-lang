@@ -294,6 +294,9 @@ import (
 	"io"
 	"math"
 	"math/big"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
 	"net/http"
 	"os"
 	"sort"
@@ -307,6 +310,38 @@ var _ = utf8.DecodeRuneInString
 var _ = math.Float64bits
 var _ = sort.Slice
 var _ = time.Now
+var _ = subtle.ConstantTimeCompare
+var _ = hmac.New
+var _ = sha256.New
+
+// oBytes reads a (List Int) value as raw bytes; oList rebuilds one. Elements
+// outside 0..255 PANIC rather than truncate: a digest over silently truncated
+// input would verify against a message nobody sent.
+func oBytes(v any) []byte {
+	var out []byte
+	for cur, _ := v.(*ctorV); cur != nil && cur.idx == 1; cur, _ = cur.fields[1].(*ctorV) {
+		n, ok := cur.fields[0].(*big.Int)
+		if !ok || !n.IsInt64() || n.Int64() < 0 || n.Int64() > 255 {
+			panic("byte list element out of range 0..255")
+		}
+		out = append(out, byte(n.Int64()))
+	}
+	return out
+}
+
+func oList(b []byte) any {
+	var out any = &ctorV{idx: 0}
+	for i := len(b) - 1; i >= 0; i-- {
+		out = &ctorV{idx: 1, fields: []any{big.NewInt(int64(b[i])), out}}
+	}
+	return out
+}
+
+func oHmac(key, msg []byte) []byte {
+	m := hmac.New(sha256.New, key)
+	m.Write(msg)
+	return m.Sum(nil)
+}
 
 // bi parses a decimal integer literal into an arbitrary-precision value.
 func bi(s string) *big.Int { v, _ := new(big.Int).SetString(s, 10); return v }
@@ -1067,6 +1102,12 @@ func (e *emitter) prim(t *Term, depth int, self string) (string, error) {
 	}
 	// Numeric conversions — unary, dispatched on the source kind.
 	switch t.Op {
+	case "hmac-sha256", "bytes-eq-ct":
+		// #78: the trusted crypto boundary, compiled to the host's library.
+		if t.Op == "bytes-eq-ct" {
+			return fmt.Sprintf("any(subtle.ConstantTimeCompare(oBytes(%s), oBytes(%s)) == 1)", args[0], args[1]), nil
+		}
+		return fmt.Sprintf("oList(oHmac(oBytes(%s), oBytes(%s)))", args[0], args[1]), nil
 	case "to-rat":
 		if e.isKind(&t.Args[0], "int") {
 			return fmt.Sprintf("any(i2r(%s.(*big.Int)))", args[0]), nil

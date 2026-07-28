@@ -645,6 +645,16 @@ func (c *smtCtx) tr(t *Term, env []smtVal) (string, string, error) {
 			}
 			return fmt.Sprintf("(%s %s %s)", fn, parts[0], parts[1]), "Int", nil
 		}
+		// #78: the crypto primitives are the artifact's TRUSTED boundary and are
+		// deliberately outside the provable fragment. Modelling SHA-256 in SMT is
+		// not useful even where it is possible, and an axiomatization we invented
+		// would be a proof about our axioms rather than about the algorithm. So a
+		// property whose goal reaches the digest stays TESTED — which is the
+		// honest guarantee level for a trusted primitive. What the prover DOES
+		// verify is the handler logic around it (§7, the no-script rule applies).
+		if t.Op == "hmac-sha256" || t.Op == "bytes-eq-ct" {
+			return "", "", fmt.Errorf("%s is outside the provable fragment (trusted crypto primitive)", t.Op)
+		}
 		if t.Op == "%" || (t.Op == "/" && argSort != "Real") {
 			return "", "", fmt.Errorf("%s is untranslatable over %s", t.Op, argSort)
 		}

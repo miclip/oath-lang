@@ -1,6 +1,9 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
 	"fmt"
 	"math"
 	"math/big"
@@ -270,6 +273,27 @@ func (e *evaluator) evalPrim(env []Value, slf string, t *Term) (Value, error) {
 	// exact narrowing Float→Rat / floor toward −∞. Float→{Rat,Int} error on
 	// NaN/inf, like division by zero.
 	switch t.Op {
+	case "hmac-sha256", "bytes-eq-ct":
+		// #78: crypto over byte lists. The digest is computed by the host's
+		// library — this is a TRUSTED boundary, and deliberately the only one
+		// in the artifact: what the prover verifies is the handler's LOGIC
+		// around the digest, never SHA-256 itself.
+		a, err := bytesOfList(&args[0])
+		if err != nil {
+			return Value{}, err
+		}
+		b, err := bytesOfList(&args[1])
+		if err != nil {
+			return Value{}, err
+		}
+		if t.Op == "bytes-eq-ct" {
+			// Constant time: compare every byte regardless of mismatch, so the
+			// timing does not reveal where two digests first differ.
+			return vBool(subtle.ConstantTimeCompare(a, b) == 1), nil
+		}
+		mac := hmac.New(sha256.New, a)
+		mac.Write(b)
+		return listOfBytes(args[0].Hash, mac.Sum(nil)), nil
 	case "to-rat":
 		if args[0].K == "int" {
 			return Value{K: "rat", Rat: new(big.Rat).SetInt(args[0].Int)}, nil
@@ -388,5 +412,31 @@ func pushEnv(env []Value, v Value) []Value {
 	out := make([]Value, len(env)+1)
 	copy(out, env)
 	out[len(env)] = v
+	return out
+}
+
+// bytesOfList reads a (List Int) value as raw bytes. Each element must be a
+// byte value; anything outside 0..255 is a caller error rather than a silent
+// truncation, because a signature computed over truncated input would verify
+// against the wrong message.
+func bytesOfList(v *Value) ([]byte, error) {
+	var out []byte
+	for cur := v; cur != nil && cur.K == "data" && cur.Idx == 1; cur = &cur.Fields[1] {
+		n := cur.Fields[0].Int
+		if n == nil || !n.IsInt64() || n.Int64() < 0 || n.Int64() > 255 {
+			return nil, fmt.Errorf("byte list element out of range 0..255")
+		}
+		out = append(out, byte(n.Int64()))
+	}
+	return out, nil
+}
+
+// listOfBytes rebuilds a (List Int) value from raw bytes.
+func listOfBytes(listHash string, b []byte) Value {
+	out := Value{K: "data", Hash: listHash, Idx: 0}
+	for i := len(b) - 1; i >= 0; i-- {
+		out = Value{K: "data", Hash: listHash, Idx: 1,
+			Fields: []Value{{K: "int", Int: big.NewInt(int64(b[i]))}, out}}
+	}
 	return out
 }
