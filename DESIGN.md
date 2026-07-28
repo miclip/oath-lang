@@ -423,6 +423,11 @@ things agents already do.
 
 **Priority is not expressiveness. Priority is applicability.**
 
+The roadmap language corrects with it: not *"effects must be designed"* but
+**"the effect discipline is shipped; the capability vocabulary must be extended
+under demand."** That moves this work from language research to product
+completion.
+
 **Primary path** — completes the end-to-end loop (express → compile → execute):
 
 1. **#38 — effects, re-scoped.** NOT "solve effects" — the discipline is shipped
