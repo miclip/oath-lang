@@ -446,6 +446,32 @@ corpus is small, so discovery results are thin, so telemetry is sparse, so
 coverage does not grow, so discovery stays thin. A rule that forbids guessing is
 correct and can also refuse to bootstrap.
 
+**Telemetry lives in SPEC-SPACE, not in natural language.** The obvious design —
+capture intent text, aggregate it, apply a retention policy — makes privacy a
+matter of policy, and policy is exactly what this project refuses to rely on
+everywhere else. Intent is not neutral: an agent pastes whatever its task
+contains, which can carry customer names, unreleased product direction, or
+strategy. A registry whose entire proposition is "evidence you can check" cannot
+also be a thing that watches what you were trying to do.
+
+So the projection happens on the CLIENT. The agent turns intent into a partial
+spec — a type shape plus property fragments — and what the registry receives is
+the spec shape that failed to resolve, never the sentence that produced it:
+
+    failed:  map<Str, Bytes> -> VerifiedEvent
+             properties: signature-valid, timestamp-within-window
+
+No customer names, no product context, and strictly MORE actionable than the
+sentence: a spec shape is already a coverage request in the form the corpus is
+indexed by. Privacy here is structural rather than promised — the registry cannot
+leak raw intent it never received.
+
+The honest cost, which must be stated because it is not free: the intent → spec
+projection is the fuzzy step, it now runs where we cannot observe it, and so the
+registry loses the signal that would tell us the MAPPING is failing rather than
+the corpus. Diagnosing that needs a different, explicitly opt-in channel; it
+cannot be smuggled in as a side effect of search.
+
 The bootstrap clause, which weakens nothing: coverage is demand-led by discovery
 telemetry; in the absence of sufficient telemetry, seed coverage is derived from
 PROXY demand — canonical agent tasks, known integration surfaces, repeated
