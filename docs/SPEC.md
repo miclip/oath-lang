@@ -806,9 +806,13 @@ reproducibility (given the same solver):
   anyway. (Until #71 this rule's canonical witness was a decimal `show` over
   `Int`, which recurses on `n / 10`. That example is now OBSOLETE: `/` and `%`
   over `Int` translate, and `show-nat` consequently GAINS a script and proves.
-  The rule still governs the operators that remain excluded, but as of #71 no
-  corpus definition exercises it, so it is pinned by prose rather than by a
-  fixture — treat it as untested when changing this area.) Additionally, a property already
+  The rule still governs the operators that remain excluded, and it is
+  witnessed again: `excluded-witness.reaches-excluded-op`
+  (examples/exclusion.oath) reaches a PARTIAL APPLICATION through a non-total
+  callee's body, so its line is ABSENT from `prove/scripts.txt` while its
+  sibling `independent-of-exclusion` emits one — pinning both the suppression
+  and the fact that it is PER GOAL, not per definition. Do not delete that
+  definition to tidy the corpus; it looks pointless precisely when it works.) Additionally, a property already
   refuted by deterministic testing (§4) is never recorded as proven even if the
   solver reports it valid — the concrete counterexample governs.
 - `match` translates to tester/selector ite-chains.

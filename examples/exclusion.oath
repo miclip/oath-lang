@@ -1,0 +1,41 @@
+; A CONFORMANCE WITNESS, not a useful program. It exists to pin one normative
+; rule in §7 that would otherwise rest on prose alone:
+;
+;   when eager body-registration of a NON-TOTAL callee reaches an operator
+;   EXCLUDED from translation, no direct-attempt script is emitted for the
+;   property whose goal triggered it, and its line is ABSENT from
+;   prove/scripts.txt.
+;
+; That rule used to be witnessed by decimal `show`, which recurses on `n / 10`.
+; #71 made Int `/` and `%` translatable, so `show-nat` now emits a script and
+; proves — and the rule silently lost its only corpus witness. A rule pinned by
+; nothing is a rule two kernels can quietly disagree about (see DIVERGENCES 83a
+; for what that costs), so it is re-witnessed here with an exclusion that
+; REMAINS excluded: partial application.
+;
+; Do not "simplify" this away. Each piece is load-bearing:
+;   - apply2 has arity 2, so applying it to one argument is a partial
+;     application — outside the provable fragment (§7.1).
+;   - spin-partial is NON-TOTAL by construction (the x >= 0 branch never
+;     descends), which is what makes its body eagerly registered rather than
+;     merely asserted, and its body contains the partial application.
+;   - excluded-witness.reaches-excluded-op references spin-partial, so the goal
+;     drags that body in and hits the exclusion. Its sibling
+;     independent-of-exclusion does NOT, and still emits a script — that
+;     contrast is the point: suppression must be per-goal, not per-definition.
+; The guard `(< x 0)` keeps the property TRUE and testable: spin-partial
+; terminates on negatives, so the deterministic tester passes rather than
+; fuelling out, and the definition records `tested` instead of falsified.
+
+(defn apply2 [] [(a Int) (b Int)] Int
+  (+ a b))
+
+(defn spin-partial [] [(x Int)] (-> Int Int)
+  (if (< x 0) (apply2 x) (spin-partial x)))
+
+(defn excluded-witness [] [(x Int)] Int
+  (+ x 1)
+  (prop independent-of-exclusion [(x Int)]
+    (== (excluded-witness x) (+ x 1)))
+  (prop reaches-excluded-op [(x Int)]
+    (if (< x 0) (== ((spin-partial x) 0) ((spin-partial x) 0)) true)))

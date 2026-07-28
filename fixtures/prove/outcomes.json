@@ -355,6 +355,23 @@
       ]
     },
     {
+      "name": "excluded-witness",
+      "hash": "f55335261c552b567349e5bee50079bc6c97c0fdbbe56241dbb967c853088551",
+      "level": "tested",
+      "proven_count": 1,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "independent-of-exclusion",
+          "proven": true
+        },
+        {
+          "name": "reaches-excluded-op",
+          "proven": false
+        }
+      ]
+    },
+    {
       "name": "f-double",
       "hash": "135e96990463e472206f7ff1c0be3d83ecbc3d347641094db0cd92465b3b310c",
       "level": "proven",

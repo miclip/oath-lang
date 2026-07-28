@@ -1,0 +1,2 @@
+✓ prop independent-of-exclusion passed 200 cases
+✓ prop reaches-excluded-op      passed 200 cases

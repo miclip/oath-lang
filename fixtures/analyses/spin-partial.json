@@ -1,0 +1,10 @@
+{
+  "name": "spin-partial",
+  "hash": "b25520e6a37aa353213695776c17eea7d8b358fb3340a6ad91cf3173c58b23be",
+  "kind": "func",
+  "termination": "unknown",
+  "confinement": [
+    ""
+  ],
+  "level": "asserted"
+}

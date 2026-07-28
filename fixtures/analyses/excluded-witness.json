@@ -1,0 +1,12 @@
+{
+  "name": "excluded-witness",
+  "hash": "f55335261c552b567349e5bee50079bc6c97c0fdbbe56241dbb967c853088551",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200,
+  "proven": 1
+}

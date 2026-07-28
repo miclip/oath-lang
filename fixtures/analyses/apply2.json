@@ -1,0 +1,11 @@
+{
+  "name": "apply2",
+  "hash": "6c0735984f6579e0f8769a99152c994d717968ab5720aa2b20d57c86492e60e5",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "asserted"
+}

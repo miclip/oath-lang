@@ -1,0 +1,16 @@
+{
+  "name": "spin-partial",
+  "guarantee": {
+    "level": "asserted"
+  },
+  "termination": "unknown",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "x"
+  ],
+  "confinement": [
+    ""
+  ]
+}
