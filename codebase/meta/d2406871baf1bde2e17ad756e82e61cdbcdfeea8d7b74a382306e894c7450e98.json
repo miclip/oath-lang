@@ -1,0 +1,28 @@
+{
+  "name": "bytes-ok",
+  "prop_names": [
+    "empty-is-ok",
+    "rejects-negative",
+    "rejects-oversized"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "bs"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

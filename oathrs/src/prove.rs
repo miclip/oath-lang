@@ -791,6 +791,19 @@ impl<'a> Cx<'a> {
         self_hash: &str,
         self_tyargs: &[Ty],
     ) -> Result<(String, Ty), ()> {
+        // THE TRUSTED CRYPTO BOUNDARY (SPEC §1.3, §7, #78). `hmac-sha256` and
+        // `bytes-eq-ct` are OUTSIDE THE PROVABLE FRAGMENT — permanently, not
+        // pending. Modelling SHA-256 in SMT would establish facts about an
+        // invented axiomatization rather than about the algorithm, so a goal
+        // reaching either operation gets NO script and its property is recorded
+        // `tested`, never `proven` — exactly like partial application.
+        //
+        // The bail is BEFORE the operands are translated: translating them would
+        // append declarations to the script for a translation that cannot
+        // succeed, and declaration order is byte-significant (§7.1).
+        if op == "hmac-sha256" || op == "bytes-eq-ct" {
+            return Err(());
+        }
         // Translate operands, keeping each operand's SMT type. The numeric-
         // overloaded prims propagate the operand kind: `Int` stays `Int`, `Rat`
         // (sort `Real`) stays `Rat`, `Float` (sort `Float64`) stays `Float`

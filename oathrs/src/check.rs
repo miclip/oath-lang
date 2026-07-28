@@ -608,6 +608,25 @@ impl<'a> Checker<'a> {
                 self.check(&mut args[0], &src, ctx)?;
                 Ok(result)
             }
+            // The trusted crypto boundary (SPEC §1.3, #78). The only primitives
+            // whose operands are an ADT: both take two `(List Int)` BYTE lists.
+            // `hmac-sha256` returns the 32-byte digest as another `(List Int)`;
+            // `bytes-eq-ct` returns `Bool`. The element range `0..255` is NOT a
+            // typing obligation — `(List Int)` cannot express it — so it is a
+            // RUNTIME check in the evaluator, not a gate rejection.
+            "hmac-sha256" | "bytes-eq-ct" => {
+                if args.len() != 2 {
+                    return Err(arity_err(2));
+                }
+                let (hash, _, _) = self.store.byte_list_adt().ok_or_else(|| {
+                    format!("{} requires the `List` datatype (Nil/Cons) in scope", op)
+                })?;
+                let bytes = Ty::Data { hash, args: vec![Ty::Int] };
+                for a in args.iter_mut() {
+                    self.check(a, &bytes, ctx)?;
+                }
+                Ok(if op == "hmac-sha256" { bytes } else { Ty::Bool })
+            }
             "and" | "or" => {
                 if args.len() != 2 {
                     return Err(arity_err(2));

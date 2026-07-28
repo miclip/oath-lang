@@ -10,6 +10,9 @@ const PRIMS: &[&str] = &[
     "+", "-", "*", "/", "%", "neg", "==", "<", "<=", "and", "or", "not", "fp-eq",
     // Numeric conversions (SPEC §1.3, §2, §3): unary, overloaded by SOURCE type.
     "to-rat", "to-float", "floor",
+    // The trusted crypto boundary (SPEC §1.3, #78): the only primitives whose
+    // operands are an ADT — two `(List Int)` byte lists — rather than scalars.
+    "hmac-sha256", "bytes-eq-ct",
 ];
 
 #[derive(Clone)]
@@ -81,6 +84,26 @@ impl Store {
             return Err(EErr::Defer(name.to_string()));
         }
         Ok(None)
+    }
+
+    /// The BYTE-LIST ADT for the crypto primitives (SPEC §1.3, #78): the `List`
+    /// datatype, whose `(List Int)` instance is the operand and result type of
+    /// `hmac-sha256` and `bytes-eq-ct`.
+    ///
+    /// The spec names the type `(List Int)` but does not say how a kernel
+    /// IDENTIFIES it — `List` is an ordinary corpus datatype, not a builtin.
+    /// This resolves it the same way the surface layer already resolves the two
+    /// other spec-mandated ADTs: by METADATA NAME, exactly as string literals
+    /// require `SNil`/`SCons` in scope (§1.4) and the `list` literal sugar
+    /// requires `Nil`/`Cons`. Returns `(adt hash, Nil index, Cons index)`.
+    pub fn byte_list_adt(&self) -> Option<(String, u32, u32)> {
+        let di = self.data_by_name.get("List")?;
+        if di.tyvars != 1 {
+            return None;
+        }
+        let nil = di.ctors.iter().position(|(n, f)| n == "Nil" && f.is_empty())?;
+        let cons = di.ctors.iter().position(|(n, f)| n == "Cons" && f.len() == 2)?;
+        Some((di.hash.clone(), nil as u32, cons as u32))
     }
 
     // ---- type elaboration ----

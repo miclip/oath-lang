@@ -1,0 +1,2 @@
+✓ prop empty-maps-to-empty      passed 200 cases
+✓ prop preserves-length         passed 200 cases

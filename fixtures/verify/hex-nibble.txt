@@ -1,0 +1,2 @@
+✓ prop digits                   passed 200 cases
+✓ prop rejects-non-hex          passed 200 cases

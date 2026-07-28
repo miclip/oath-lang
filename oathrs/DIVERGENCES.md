@@ -2195,3 +2195,165 @@ Six unit tests carry the rule (none needs z3): the composition direction, siblin
 unaffected, aborted-is-not-unproven, never-demoted, carried-forward-still-a-lemma,
 and no-new-lemma. The whole suite is 14 tests; the #67 hint tests are unchanged and
 still pass.
+
+## 84. The trusted crypto boundary — `hmac-sha256` / `bytes-eq-ct` (#78, §1.3, §7) — IMPLEMENTED first-try; the ALGORITHM is pinned, but almost nothing ABOUT ITS INTERFACE is corpus-observable
+
+**Status: byte-identical on the first build.** 180 definition hashes, 179 canonical
+`.bin`, 161 `verify/*.txt`, and all 401 direct-attempt scripts match the fixtures
+exactly; `conformance.sh` oracle mode is a full PASS and `cargo test` is 22/22 (six
+new RFC 4231 vectors). A cold z3 re-derivation of the webhook subset
+(`list records str circle http webhook`) reproduces the recorded outcomes exactly:
+`bytes-ok 3/3`, `hex-decode 4/4`, `hex-nibble 2/2`, `str-bytes 2/2`,
+`within-window 3/3`, `webhook 0/3`. No corpus name is special-cased anywhere.
+
+§1.3's crypto bullet is the most *self-explaining* normative text in the spec — it
+says not only what the operations do but why each choice was made (why bytes are not
+`Str`, why permissiveness on the range is the dangerous direction, why the pair is
+digest-plus-compare rather than `verify`, why SMT modelling is not merely hard but
+pointless). That prose settled every design question I would otherwise have had to
+guess at. What it does not settle is a cluster of INTERFACE details, and — the real
+finding — the corpus cannot settle them either, because **not one fixture observes a
+digest**.
+
+### (a) The spec names the type `(List Int)` but never says how a kernel IDENTIFIES it
+
+These are the only primitives whose operands are an ADT, and `List` is an ordinary
+corpus datatype, not a builtin: it has no reserved hash, no reserved tag, and nothing
+in §1–§3 introduces it. A kernel must therefore *find* it. The two available readings:
+
+1. **By metadata name** — locate the datatype named `List` (with `Nil`/`Cons`),
+   exactly as §1.4 already requires `SNil`/`SCons` to be in scope for a string
+   literal and the `list` sugar requires `Nil`/`Cons`.
+2. **Structurally** — accept any `Data { args: [Int] }` whose shape is
+   nullary-plus-`(Int, self)`, which would also admit a differently-named list.
+
+I took (1), as `Store::byte_list_adt()`: it is the reading the kernel's existing
+spec-mandated-ADT lookups already use, and it gives the digest a definite ADT hash to
+be built from. Reading (2) is defensible and would accept strictly more programs;
+nothing in the spec or fixtures discriminates. **Worth a sentence in §1.3**: the
+operand type is the `(List Int)` instance of the datatype named `List`, whose
+constructors are `Nil`/`Cons` — the same sentence §1.4 already spends on `SNil`/`SCons`.
+
+Note the knock-on: for `hmac-sha256` the identification is not merely a gate question,
+it decides the ADT HASH embedded in every cell of the returned value. In a store with
+two structurally distinct `List`s, two conforming kernels could return digests that
+are not `==` to each other. Unobservable in this corpus (there is exactly one `List`),
+which is precisely why it should be written down before it is not.
+
+### (b) The digest's BYTE ORDER is not stated — and no fixture would catch it
+
+"returning the 32-byte digest as a byte list" does not say the list is in digest
+order, head = first byte. That is the only sane reading and it is what I implemented,
+but a kernel that built the list tail-first would produce a *reversed* digest and
+still pass every check in `conformance.sh`. The same holds for the operand direction
+(is the byte list read head-first into the HMAC input?). This is not pedantry: it is
+the one place where a silent disagreement between two kernels produces signatures
+that verify for one and not the other.
+
+### (c) `hmac-sha256 key msg` — argument order is pinned in the signature, and equally unobservable
+
+HMAC is not symmetric in its two arguments, so swapping them yields a different
+32-byte value for every input. The signature line pins the order; nothing in the
+corpus exercises it. Flagged together with (b) as the same gap: **the fixture set
+contains no HMAC test vector.** `webhook`'s three properties are all reachable
+without ever evaluating the primitive (the generator never produces the literal
+header name `X-Signature`, so every one of the 200 cases takes the 401 path), and no
+`examples/*.oath` property asserts a concrete digest. A kernel with a reversed byte
+order, swapped arguments, or — at the limit — an HMAC that is plain
+`sha256(key ++ msg)` passes conformance today. **Recommendation: put one RFC 4231
+vector in the corpus as a property**, e.g. over `str-bytes`/`hex-decode`, which
+already exist. I verified my implementation against RFC 4231 cases 1, 2, 3, 4, 6, 7
+in Rust unit tests AND end to end through the language on a scratch definition
+(`bytes-eq-ct (hmac-sha256 (str-bytes "Jefe") (str-bytes "what do ya want for
+nothing?")) (hex-decode "5bdcc146…")` evaluates to `true`, digest length 32) — but
+that is my own diligence, not conformance.
+
+### (d) "An element outside `0..255` is a RUNTIME ERROR" — in `bytes-eq-ct` too, which does not need the values
+
+The rule says "in both operations", and the rationale given is about digests over
+altered input — which is an argument about `hmac-sha256`. `bytes-eq-ct` compares
+elements and could compare them faithfully at any width. I read "both" literally and
+validate every element of both operands of both operations; the alternative reading
+(range-check only where a byte is actually consumed as a byte) is arguable and
+unpinned. Also unpinned, and unobservable for the same reason as (b)/(c):
+- **Detection order.** I decode operand 0 fully, then operand 1, left to right, and
+  fault on the first out-of-range element — so the error message names the first
+  offending byte of the leftmost bad operand. Any other order is equally conforming.
+- **Error text.** Mine is `bytes-eq-ct: byte out of range 0..255: 256`. No fixture
+  constrains it (no `verify/*.txt` reaches the primitive).
+- **Range faulting vs constant time.** A range fault necessarily aborts early and so
+  leaks *where* the bad element is — an early exit inside an operation whose whole
+  point is not to have one. Harmless (an out-of-range element is a program bug, not
+  a secret), but the two normative sentences do sit in tension and the spec does not
+  acknowledge it. There is also no gate/reject fixture for the out-of-range case; I
+  covered it with a scratch definition instead (`(bytes-eq-ct (Cons [Int] 256 (Nil
+  [Int])) (Nil [Int]))` → runtime error, no truncation).
+
+### (e) `bytes-eq-ct` on operands of DIFFERENT length is not specified
+
+"equality that MUST examine every byte" presumes a common length. I compare unequal
+(lengths differ ⟹ not equal) while still walking the longer operand to the end, so
+the running time is a function of the lengths only — lengths are not the secret, and
+the corpus relies on exactly this: `webhook` fails closed by comparing a 32-byte
+digest against `hex-decode`'s `Nil` for malformed hex. That behaviour is *required*
+for the corpus comment "invalid hex decodes to the empty list, which cannot equal a
+32-byte digest" to be true, so it is pinned by intent — just not by text.
+
+### (f) Constant time is a normative requirement with NO conformance witness
+
+§1.3 says `bytes-eq-ct` MUST examine every byte, and the fixture set cannot tell that
+apart from `==`. It is the only MUST in the spec I can satisfy or violate with no
+observable consequence. Not a defect — timing is not in the identity model — but the
+spec should say out loud that this obligation is *unchecked by conformance* and rests
+on implementer good faith, the way it says elsewhere which behaviours are trusted.
+
+### (g) §7's exclusion LIST was not updated, and the excluded-operator rule is written only for the recursive-callee case
+
+§1.3 declares both primitives outside the provable fragment; §7's own bullet
+"**Excluded, permanently or pending**: partial application; lambda values in argument
+position" does not mention them. A kernel reading §7 alone would try to translate
+them. Two sentences apart in the same document is fine for a careful reader, but the
+list is the thing implementers grep for.
+
+More substantively: §7's rule about an excluded operator is phrased entirely in terms
+of EAGER RECURSIVE-CALLEE body registration ("If this eager body translation reaches
+an operator EXCLUDED from translation … the direct-attempt script is NOT emitted for
+any property whose goal triggers it"). `webhook` is NONRECURSIVE, so it is INLINED by
+beta-reduction (§7.2) and the excluded operator lands in the goal term itself, not in
+a callee registration. The observable outcome is identical — the property's line is
+absent from `prove/scripts.txt` and it is recorded unprovable — and the fixtures
+confirm it (all three `webhook` properties absent; `webhook` is `tested`, 0/3). But
+the spec states the consequence only for the callee path; the goal path is left to
+inference. My kernel bails in `tr_prim` BEFORE translating the operands, so no
+declaration is appended for a translation that cannot succeed — declaration order is
+byte-significant (§7.1) and a partial translation could otherwise perturb a script
+that *is* emitted. Unobservable here (`webhook` emits nothing and nothing calls it),
+but it is the safe order and the spec does not pin it.
+
+### (h) Recurrence of divergence #31: the new definitions carry no mutation record
+
+`analyses/*.json` omits `mutants_*` for all six new definitions (`bytes-ok`,
+`str-bytes`, `hex-nibble`, `hex-decode`, `within-window`, `webhook`) even though each
+has a well-defined non-empty mutation set — I compute 7/12, 1/1, 11/53, 14/17, 10/11,
+3/176. This is #31 exactly: mutation presence is STORE STATE (`oath mutate` was never
+run on them), not a function of the `Def`. The four definitions #31 originally named
+have since been materialized, but the gap has reopened with three others already in
+the tree — `echo-handler` (43/43), `header-first` (2/2), `excluded-witness` (3/3),
+all of which predate this change and which I confirmed diverge on the UNMODIFIED
+corpus. So full-mode check 5 (`cmp -s` over the whole analysis file) fails on nine
+definitions, six of them new, none of them for any reason a kernel can fix. Oracle
+mode does not run check 5 and is unaffected. Either materialize the scores or make
+the harness compare mutation only where the fixture records it, as #31 asked.
+
+### The change
+
+`crypto.rs` (new): RFC 2104 HMAC over the SHA-256 already used for object identity —
+no HMAC crate, so the wasm dependency surface is unchanged — plus `bytes_eq_ct` with
+no early exit (`&`, not `&&`, on the final conjunction). `hash.rs` exposes the raw
+32-byte digest alongside the hex form. `elaborate.rs` adds the two operator strings
+to `PRIMS` and `Store::byte_list_adt()`. `check.rs` types both against `(List Int)`
+— note the `0..255` range is NOT a typing obligation, since `(List Int)` cannot
+express it (the corpus says the same thing in `bytes-ok`'s comment: this is the case
+refinement types would cover), so it is enforced at runtime and nowhere else.
+`eval.rs` decodes/builds byte lists through the store. `prove.rs` excludes both
+operators from translation.

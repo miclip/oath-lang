@@ -1,0 +1,24 @@
+{
+  "name": "webhook",
+  "prop_names": [
+    "unsigned-is-401",
+    "accepts-only-with-202",
+    "never-leaks-a-body"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "caps",
+    "r"
+  ],
+  "confinement": [
+    "confined",
+    ""
+  ]
+}

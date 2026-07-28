@@ -1,0 +1,3 @@
+✓ prop matches-published-vector passed 200 cases
+✓ prop arguments-are-not-symmetric passed 200 cases
+✓ prop length-mismatch-is-not-equal passed 200 cases

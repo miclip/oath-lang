@@ -1,0 +1,16 @@
+{
+  "name": "hmac-kat-rfc4231-2",
+  "prop_names": [
+    "matches-published-vector",
+    "arguments-are-not-symmetric",
+    "length-mismatch-is-not-equal"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main"
+}

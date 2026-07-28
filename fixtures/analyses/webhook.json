@@ -1,0 +1,12 @@
+{
+  "name": "webhook",
+  "hash": "4981f2850c87e325d31add10bbc2334940491114a002ebc6608f5e0c4d0ce25d",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

@@ -93,3 +93,26 @@
   (prop reports-method [(r Request)]
     (== (match (echo-handler r) ((Resp s h b) (header-first h "X-Oath-Method")))
         (Some [Str] (req-method r)))))
+
+; --- byte helpers, needed because (List Int) does not constrain elements ---
+; This is exactly the case refinement types (#69) exist for: {b: Int | 0 <= b <=
+; 255} would say it in the type. Until then it is an explicit predicate, and
+; every property that reaches the crypto must guard on it — the generator
+; otherwise produces negative "bytes" and falsifies by construction.
+(defn bytes-ok [] [(bs (List Int))] Bool
+  (match bs
+    ((Nil) true)
+    ((Cons b rest) (and (and (<= 0 b) (<= b 255)) (bytes-ok rest))))
+  (prop empty-is-ok [] (bytes-ok (Nil [Int])))
+  (prop rejects-negative [(rest (List Int))] (not (bytes-ok (Cons [Int] -1 rest))))
+  (prop rejects-oversized [(rest (List Int))] (not (bytes-ok (Cons [Int] 256 rest)))))
+
+; Str is a list of CODEPOINTS; bytes are what get signed. For ASCII the two
+; coincide, which is why the guard is a property rather than a comment: a
+; non-ASCII secret would silently sign different bytes than intended.
+(defn str-bytes [] [(s Str)] (List Int)
+  (match s
+    ((SNil) (Nil [Int]))
+    ((SCons c rest) (Cons [Int] c (str-bytes rest))))
+  (prop empty-maps-to-empty [] (== (str-bytes (SNil)) (Nil [Int])))
+  (prop preserves-length [(s Str)] (== (length [Int] (str-bytes s)) (str-len s))))

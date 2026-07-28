@@ -107,6 +107,27 @@
       ]
     },
     {
+      "name": "bytes-ok",
+      "hash": "d2406871baf1bde2e17ad756e82e61cdbcdfeea8d7b74a382306e894c7450e98",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-ok",
+          "proven": true
+        },
+        {
+          "name": "rejects-negative",
+          "proven": true
+        },
+        {
+          "name": "rejects-oversized",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "circle",
       "hash": "b9df489c7e772dce670558046a0a913a4827313b890e4f507c5f847dae5cd436",
       "level": "tested",
@@ -669,6 +690,69 @@
         {
           "name": "skips-mismatch",
           "proven": true
+        }
+      ]
+    },
+    {
+      "name": "hex-decode",
+      "hash": "f1b7643322d196512e7f455e3ce27fd8ad26d3311dd79ad1146a113d3cc49e43",
+      "level": "proven",
+      "proven_count": 4,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "empty-decodes-empty",
+          "proven": true
+        },
+        {
+          "name": "decodes-ff",
+          "proven": true
+        },
+        {
+          "name": "decodes-00",
+          "proven": true
+        },
+        {
+          "name": "invalid-fails-closed",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "hex-nibble",
+      "hash": "548c2b120a8bc1874caeeb0679a02d14d42b7e428ee6c78e05c2211583699ae1",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "digits",
+          "proven": true
+        },
+        {
+          "name": "rejects-non-hex",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "hmac-kat-rfc4231-2",
+      "hash": "6630325f00529070866bb8c5d05832bd7ef1d3e98728ab44da293b9a3cf0cb0c",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "matches-published-vector",
+          "proven": false
+        },
+        {
+          "name": "arguments-are-not-symmetric",
+          "proven": false
+        },
+        {
+          "name": "length-mismatch-is-not-equal",
+          "proven": false
         }
       ]
     },
@@ -2600,6 +2684,23 @@
       ]
     },
     {
+      "name": "str-bytes",
+      "hash": "cc13f713e3013bc87368150870fbcfe756ebe620af961be48131b6d38767d9ca",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-maps-to-empty",
+          "proven": true
+        },
+        {
+          "name": "preserves-length",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "str-drop",
       "hash": "caaaa5b2134ad2be30ca74ec4d480e6d7a8e5889c63800643ae1c89618684a3d",
       "level": "proven",
@@ -2925,6 +3026,48 @@
         },
         {
           "name": "err-defaults",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "webhook",
+      "hash": "4981f2850c87e325d31add10bbc2334940491114a002ebc6608f5e0c4d0ce25d",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "unsigned-is-401",
+          "proven": false
+        },
+        {
+          "name": "accepts-only-with-202",
+          "proven": false
+        },
+        {
+          "name": "never-leaks-a-body",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "within-window",
+      "hash": "b83924f8160e0a11d033dbad799627ca5a4be7b5803d939d82304d5025e91fdb",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "same-instant-ok",
+          "proven": true
+        },
+        {
+          "name": "symmetric",
+          "proven": true
+        },
+        {
+          "name": "rejects-beyond",
           "proven": true
         }
       ]

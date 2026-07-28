@@ -104,11 +104,42 @@ Producers (elaborators) MUST emit, and checkers MUST enforce:
 - Match arms in constructor-declaration order, exhaustive, with the ADT
   hash recorded in the term.
 - Primitive operators are the literal strings: `+ - * / % neg == < <= and
-  or not fp-eq to-rat to-float floor`. There are NO string primitives: strings
-  are the ordinary `Str` datatype (§3), and every string operation is a
-  definition. `fp-eq` is the IEEE-754 equality on `Float`, distinct from
+  or not fp-eq to-rat to-float floor hmac-sha256 bytes-eq-ct`. There are NO
+  string primitives: strings are the ordinary `Str` datatype (§3), and every
+  string operation is a definition. `fp-eq` is the IEEE-754 equality on `Float`, distinct from
   structural `==` (§3). `to-rat`, `to-float`, and `floor` are the numeric
   conversions (§2, §3), overloaded by source type.
+- **Crypto over byte lists (normative, #78).** `hmac-sha256` and `bytes-eq-ct`
+  are the only primitives whose arguments are an ADT rather than a scalar. Both
+  take two `(List Int)` arguments — a BYTE list, one `Int` per byte in `0..255`.
+  Byte strings are deliberately NOT `Str`: `Str` is a codepoint list (§3) that a
+  kernel may represent as native text, and a signed payload is bytes which need
+  not be valid UTF-8. Routing it through `Str` would corrupt any byte above
+  `0x7F` inside the TYPE, where nothing downstream can recover it.
+  - `hmac-sha256 key msg : (List Int)` — HMAC-SHA256 (RFC 2104 with SHA-256),
+    returning the 32-byte digest as a byte list.
+  - `bytes-eq-ct a b : Bool` — equality that MUST examine every byte regardless
+    of where the operands first differ. Structural `==` on a byte list
+    short-circuits and so leaks the position of the first difference; comparing
+    a digest with `==` is a timing oracle, which is why this exists separately.
+  Operands of DIFFERING LENGTH compare unequal — they are never an error. The
+  corpus's fail-closed behaviour depends on this: malformed hex decodes to the
+  empty list, which must simply not match a 32-byte digest.
+  An element outside `0..255` is a RUNTIME ERROR in both operations. A kernel
+  MUST NOT truncate or reduce modulo 256: a digest computed over silently
+  altered input would verify against a message nobody sent, so the failure mode
+  of being permissive here is accepting a forged payload.
+  Note the pair is deliberately digest-plus-compare rather than a single
+  `verify` predicate. A `verify` cannot be exercised on its ACCEPTING path by
+  property testing, because the generator cannot forge a valid signature; with
+  the digest exposed it can compute one, so both branches are testable.
+  **Both are OUTSIDE THE PROVABLE FRAGMENT (§7).** They are the trusted boundary:
+  modelling SHA-256 in SMT is not useful even where possible, and an
+  axiomatization invented for the purpose would establish facts about the
+  axiomatization rather than about the algorithm. A property whose goal reaches
+  either operation is recorded `tested`, never `proven` — which is the honest
+  guarantee level for a trusted primitive, and leaves the surrounding logic
+  provable as usual.
 - Rational (`rat`) terms are stored in reduced form: the denominator is
   positive (`≥ 1`) and coprime to the numerator (`gcd(|num|, den) = 1`); the
   sign lives on the numerator. `0` is `0/1`. Decoders MUST reject a `rat`
@@ -872,7 +903,13 @@ reproducibility (given the same solver):
     every affected hash, and because `prove/scripts.txt` stores only sha256 there
     is no expected text to diff against — so this is called out explicitly.
 - **Excluded, permanently or pending**: partial application; lambda values in
-  argument position. Note `/` over `Rat` (exact real division) and `/` over
+  argument position; `hmac-sha256` and `bytes-eq-ct` (§1, the trusted crypto
+  boundary — permanently, by design rather than pending). Note the exclusion
+  bites on two distinct paths: eager registration of a non-total recursive
+  callee (above), and — for a NONRECURSIVE definition, which is inlined — the
+  excluded operator landing directly in the goal. Both yield the same outcome:
+  no direct-attempt script, the property recorded `tested`, its line absent from
+  `prove/scripts.txt`. Note `/` over `Rat` (exact real division) and `/` over
   `Float` (IEEE `fp.div`) are NOT excluded — both translate faithfully
   (§7.1), so rational division-inverse and float division laws are provable.
 - Proof search: direct (assert negation, check-sat), then structural

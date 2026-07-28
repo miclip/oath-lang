@@ -1,0 +1,3 @@
+✓ prop same-instant-ok          passed 200 cases
+✓ prop symmetric                passed 200 cases
+✓ prop rejects-beyond           passed 200 cases

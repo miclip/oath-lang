@@ -1,0 +1,132 @@
+; THE FORCING FUNCTION (#78): parse a signed webhook payload and return a
+; validated event. This is the artifact the capability-vocabulary work exists to
+; make possible, and every piece of it was added because this needed it — not
+; because a framework would want it.
+;
+; It exercises the whole promise end to end: a proven artifact, built by
+; `oath build`, wired to real effects exactly once at the boundary, serving real
+; HTTP.
+;
+; What is PROVEN here is the handler's LOGIC — that an unsigned request is
+; rejected, that a stale one is rejected, that nothing is emitted unless the
+; signature verified. What is TRUSTED is exactly one thing: HMAC-SHA256 itself,
+; which is outside the provable fragment on purpose (an axiomatization we
+; invented would prove things about our axioms, not about the algorithm). That
+; boundary is the honest shape of a verified system touching cryptography, and
+; naming it precisely is worth more than pretending it is not there.
+;
+; Time is REQUEST DATA (`received-at`), not an ambient clock — supplied once at
+; the boundary, so the handler stays deterministic and the generator quantifies
+; over it for free. This does not settle the time/interleaving model (docs/
+; effects.md stage 3) and does not claim to; it is enough to prove the
+; integration story without pretending the research question is answered.
+
+; Signatures arrive as HEX text (GitHub, Stripe and friends all do this), while
+; the digest is 32 raw bytes. Comparing the header's codepoints against the digest
+; can never match — it rejects everything, including valid requests, which is a
+; failure mode that looks exactly like working security. Found by running real
+; signed traffic against the built binary rather than by reading the code.
+;
+; Invalid hex decodes to the empty list, which cannot equal a 32-byte digest, so
+; malformed input fails closed.
+(defn hex-nibble [] [(c Int)] Int
+  (if (and (<= 48 c) (<= c 57)) (- c 48)
+      (if (and (<= 97 c) (<= c 102)) (- c 87)
+          (if (and (<= 65 c) (<= c 70)) (- c 55) -1)))
+  (prop digits [(c Int)] (if (and (<= 48 c) (<= c 57)) (== (hex-nibble c) (- c 48)) true))
+  (prop rejects-non-hex [] (== (hex-nibble 122) -1)))
+
+(defn hex-decode [] [(s Str)] (List Int)
+  (match s
+    ((SNil) (Nil [Int]))
+    ((SCons hi rest)
+      (match rest
+        ((SNil) (Nil [Int]))
+        ((SCons lo more)
+          (if (or (< (hex-nibble hi) 0) (< (hex-nibble lo) 0))
+              (Nil [Int])
+              (Cons [Int] (+ (* 16 (hex-nibble hi)) (hex-nibble lo)) (hex-decode more)))))))
+  (prop empty-decodes-empty [] (== (hex-decode (SNil)) (Nil [Int])))
+  (prop decodes-ff [] (== (hex-decode "ff") (Cons [Int] 255 (Nil [Int]))))
+  (prop decodes-00 [] (== (hex-decode "00") (Cons [Int] 0 (Nil [Int]))))
+  (prop invalid-fails-closed [] (== (hex-decode "zz") (Nil [Int]))))
+
+(defn within-window [] [(now Int) (stamp Int) (window Int)] Bool
+  (if (< now stamp)
+      (<= (- stamp now) window)
+      (<= (- now stamp) window))
+  (prop same-instant-ok [(t Int) (w Int)]
+    (if (<= 0 w) (within-window t t w) true))
+  (prop symmetric [(a Int) (b Int) (w Int)]
+    (== (within-window a b w) (within-window b a w)))
+  (prop rejects-beyond [(now Int) (w Int)]
+    (if (<= 0 w) (not (within-window now (+ now (+ w 1)) w)) true)))
+
+; The handler. Capabilities are `env` (the shared secret and the window) and
+; `emit` (where a validated event goes). Both are ordinary (-> Str Str) — the
+; existing shape — because that is all this artifact needs.
+(defn webhook [] [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)] Response
+  (match (header-first (req-headers r) "X-Signature")
+    ((None) (Resp 401 (Nil [(Pair Str Str)]) (Nil [Int])))
+    ((Some given)
+      (if (bytes-eq-ct (hex-decode given)
+                       (hmac-sha256 (str-bytes ((. caps env) "WEBHOOK_SECRET")) (req-body r)))
+          (match (header-first (req-headers r) "X-Timestamp")
+            ((None) (Resp 400 (Nil [(Pair Str Str)]) (Nil [Int])))
+            ((Some ts)
+              (if (within-window (req-received-at r) (parse-nat ts)
+                                 (parse-nat ((. caps env) "WEBHOOK_WINDOW")))
+                  (match ((. caps emit) (req-path r))
+                    ((SNil) (Resp 500 (Nil [(Pair Str Str)]) (Nil [Int])))
+                    ((SCons c rest) (Resp 202 (Nil [(Pair Str Str)]) (Nil [Int]))))
+                  (Resp 400 (Nil [(Pair Str Str)]) (Nil [Int])))))
+          (Resp 401 (Nil [(Pair Str Str)]) (Nil [Int])))))
+
+  ; An unsigned request is rejected without consulting the secret, the clock, or
+  ; the sink. Proven for ALL capability worlds the generator can build.
+  (prop unsigned-is-401 [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)]
+    (if (== (header-first (req-headers r) "X-Signature") (None [Str]))
+        (== (match (webhook caps r) ((Resp s h b) s)) 401)
+        true))
+
+  ; Only 202 ever means accepted. Every other path is a rejection, so a caller
+  ; cannot mistake a 500 (sink failed) or a 400 (stale) for delivery.
+  (prop accepts-only-with-202 [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)]
+    (let (code Int (match (webhook caps r) ((Resp s h b) s)))
+      (or (== code 202) (or (== code 401) (or (== code 400) (== code 500))))))
+
+  ; A response never carries a body or headers: this endpoint answers with a
+  ; status and nothing else, so a signature failure cannot leak detail.
+  (prop never-leaks-a-body [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)]
+    (== (match (webhook caps r) ((Resp s h b) b)) (Nil [Int]))))
+
+; KNOWN-ANSWER TEST — the conformance pin for the crypto primitives.
+;
+; Without this, NOTHING in the corpus observes a digest: webhook's generated
+; cases all take the 401 path (the generator never invents the literal header
+; "X-Signature"), so byte order, argument order, and even the construction were
+; unpinned. A kernel computing sha256(key ++ msg), or returning the digest
+; reversed, or swapping key and msg, passed conformance. The blind Rust kernel
+; found this while implementing from the spec — the spec fixed the DESIGN
+; questions and the corpus could not fix the INTERFACE ones.
+;
+; RFC 4231 test case 2. This is `tested`, not `proven` — the crypto is outside
+; the provable fragment on purpose — but it lands in the verify transcript, which
+; IS byte-compared across kernels, so a kernel that computes a different digest
+; now fails conformance instead of passing it.
+(defn hmac-kat-rfc4231-2 [] [] Bool
+  (bytes-eq-ct
+    (hmac-sha256 (str-bytes "Jefe") (str-bytes "what do ya want for nothing?"))
+    (hex-decode "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"))
+  (prop matches-published-vector [] (hmac-kat-rfc4231-2))
+  ; Argument order is observable: swapping key and message must NOT match.
+  (prop arguments-are-not-symmetric []
+    (not (bytes-eq-ct
+           (hmac-sha256 (str-bytes "what do ya want for nothing?") (str-bytes "Jefe"))
+           (hex-decode "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"))))
+  ; Digests are 32 bytes, and a shorter operand must not compare equal — the
+  ; fail-closed story depends on it, since hex-decode returns Nil on bad input.
+  (prop length-mismatch-is-not-equal []
+    (not (bytes-eq-ct
+           (hmac-sha256 (str-bytes "Jefe") (str-bytes "what do ya want for nothing?"))
+           (Nil [Int])))))

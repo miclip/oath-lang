@@ -1,0 +1,3 @@
+✓ prop empty-is-ok              passed 200 cases
+✓ prop rejects-negative         passed 200 cases
+✓ prop rejects-oversized        passed 200 cases

@@ -1,0 +1,4 @@
+✓ prop empty-decodes-empty      passed 200 cases
+✓ prop decodes-ff               passed 200 cases
+✓ prop decodes-00               passed 200 cases
+✓ prop invalid-fails-closed     passed 200 cases

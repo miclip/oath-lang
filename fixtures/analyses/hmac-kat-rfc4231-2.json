@@ -1,0 +1,8 @@
+{
+  "name": "hmac-kat-rfc4231-2",
+  "hash": "6630325f00529070866bb8c5d05832bd7ef1d3e98728ab44da293b9a3cf0cb0c",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "level": "tested",
+  "cases": 200
+}

@@ -52,6 +52,81 @@ impl<'a> Machine<'a> {
         self.eval(&body, &mut fresh, hash)
     }
 
+    // -----------------------------------------------------------------------
+    // The trusted crypto boundary (SPEC §1.3, #78)
+    // -----------------------------------------------------------------------
+
+    /// `hmac-sha256` and `bytes-eq-ct`. Both operands are `(List Int)` BYTE
+    /// lists: one `Int` per byte, each in `0..255`.
+    fn eval_crypto_prim(&self, op: &str, vs: &[Value]) -> Result<Value, String> {
+        let a = self.byte_list_of(&vs[0], op)?;
+        let b = self.byte_list_of(&vs[1], op)?;
+        if op == "bytes-eq-ct" {
+            return Ok(Value::Bool(crate::crypto::bytes_eq_ct(&a, &b)));
+        }
+        // `hmac-sha256 key msg` — operand 0 is the key, operand 1 the message.
+        let digest = crate::crypto::hmac_sha256(&a, &b);
+        self.byte_list_value(&digest)
+    }
+
+    /// Decode a `(List Int)` runtime value into raw bytes.
+    ///
+    /// An element outside `0..255` is a RUNTIME ERROR (SPEC §1.3): the kernel
+    /// MUST NOT truncate or reduce modulo 256, because a digest taken over
+    /// silently altered input would verify against a message nobody sent. The
+    /// range is unrepresentable in `(List Int)`, so this is the only place it
+    /// can be enforced.
+    fn byte_list_of(&self, v: &Value, op: &str) -> Result<Vec<u8>, String> {
+        let (hash, nil, cons) = self
+            .store
+            .byte_list_adt()
+            .ok_or_else(|| format!("{} requires the `List` datatype (Nil/Cons) in scope", op))?;
+        let mut out: Vec<u8> = Vec::new();
+        let mut cur = v;
+        loop {
+            match cur {
+                Value::Data { hash: h, idx, fields } if *h == hash => {
+                    if *idx == nil {
+                        return Ok(out);
+                    }
+                    if *idx != cons || fields.len() != 2 {
+                        return Err(format!("{} expects a (List Int) operand", op));
+                    }
+                    match &fields[0] {
+                        Value::Int(n) => {
+                            // 0..255 inclusive; anything else is an error, never
+                            // a truncation.
+                            let byte = u8::try_from(n).map_err(|_| {
+                                format!("{}: byte out of range 0..255: {}", op, n)
+                            })?;
+                            out.push(byte);
+                        }
+                        _ => return Err(format!("{} expects a (List Int) operand", op)),
+                    }
+                    cur = &fields[1];
+                }
+                _ => return Err(format!("{} expects a (List Int) operand", op)),
+            }
+        }
+    }
+
+    /// Build a `(List Int)` runtime value from raw bytes (the HMAC digest).
+    fn byte_list_value(&self, bytes: &[u8]) -> Result<Value, String> {
+        let (hash, nil, cons) = self
+            .store
+            .byte_list_adt()
+            .ok_or("hmac-sha256 requires the `List` datatype (Nil/Cons) in scope")?;
+        let mut acc = Value::Data { hash: hash.clone(), idx: nil, fields: Vec::new() };
+        for b in bytes.iter().rev() {
+            acc = Value::Data {
+                hash: hash.clone(),
+                idx: cons,
+                fields: vec![Value::Int(BigInt::from(*b)), acc],
+            };
+        }
+        Ok(acc)
+    }
+
     fn apply(&mut self, f: Value, x: Value) -> Result<Value, String> {
         self.fuel -= 1;
         if self.fuel < 0 {
@@ -134,6 +209,12 @@ impl<'a> Machine<'a> {
                 let mut vs = Vec::with_capacity(args.len());
                 for a in args {
                     vs.push(self.eval(a, env, self_hash)?);
+                }
+                // The crypto primitives (SPEC §1.3, #78) produce and consume the
+                // `List` ADT, so they need the store to build their result;
+                // every other primitive is a pure function of its values.
+                if op == "hmac-sha256" || op == "bytes-eq-ct" {
+                    return self.eval_crypto_prim(op, &vs);
                 }
                 eval_prim(op, &vs)
             }

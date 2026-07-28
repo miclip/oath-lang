@@ -64,7 +64,7 @@ func cmdBuild(st *Store, name, out string) {
 	if capTy != nil {
 		for i, n := range capTy.Names {
 			if _, ok := capWiring(st, n, &capTy.Args[i]); !ok {
-				fail(fmt.Errorf("no real-world wiring for capability field %s : %s (wireable: fetch (-> Str Str), env (-> Str Str), readfile (-> Str Str))", n, debugTy(&capTy.Args[i])))
+				fail(fmt.Errorf("no real-world wiring for capability field %s : %s (wireable: fetch, env, readfile, emit — all (-> Str Str))", n, debugTy(&capTy.Args[i])))
 			}
 		}
 		// Confinement gate: an entry point that STORES or RETURNS its
@@ -215,6 +215,28 @@ func capWiring(st *Store, name string, t *Ty) (string, bool) {
 		b, err := os.ReadFile(s)
 		if err != nil { return "" }
 		return string(b)
+	})`, true
+	case "emit":
+		// #78 step 3: the minimum WRITE capability — append one record to a
+		// sink and say whether it landed. Deliberately not a storage
+		// abstraction: the webhook needs somewhere for a validated event to go,
+		// and a generic store would be vocabulary invented ahead of demand.
+		// Sink is OATH_EMIT_PATH, or stdout when unset.
+		//
+		// Returns "ok" on success and "" on failure, matching fetch/readfile's
+		// convention that the empty string is the failure value — so a handler
+		// can branch on delivery without an exception mechanism.
+		return `capFn(func(s string) string {
+		path := os.Getenv("OATH_EMIT_PATH")
+		if path == "" {
+			fmt.Println(s)
+			return "ok"
+		}
+		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if err != nil { return "" }
+		defer f.Close()
+		if _, err := f.WriteString(s + "\n"); err != nil { return "" }
+		return "ok"
 	})`, true
 	}
 	return "", false

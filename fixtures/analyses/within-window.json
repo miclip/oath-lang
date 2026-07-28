@@ -1,0 +1,14 @@
+{
+  "name": "within-window",
+  "hash": "b83924f8160e0a11d033dbad799627ca5a4be7b5803d939d82304d5025e91fdb",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

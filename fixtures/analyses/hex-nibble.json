@@ -1,0 +1,12 @@
+{
+  "name": "hex-nibble",
+  "hash": "548c2b120a8bc1874caeeb0679a02d14d42b7e428ee6c78e05c2211583699ae1",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

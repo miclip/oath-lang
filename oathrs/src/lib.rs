@@ -8,6 +8,7 @@
 
 pub mod analyze;
 pub mod check;
+pub mod crypto;
 pub mod elaborate;
 pub mod eval;
 pub mod gen;

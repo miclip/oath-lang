@@ -1,0 +1,32 @@
+{
+  "name": "within-window",
+  "prop_names": [
+    "same-instant-ok",
+    "symmetric",
+    "rejects-beyond"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "now",
+    "stamp",
+    "window"
+  ],
+  "confinement": [
+    "",
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}
