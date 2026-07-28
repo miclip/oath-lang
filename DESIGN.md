@@ -318,6 +318,117 @@ two spec bugs, a fixture bug, a migration bug, and a latent analysis bug,
 including refusing to force a stale fixture green. N-version validation
 works, and the spec, not either implementation, now carries the semantics.
 
+## The applicability inversion (2026-07-28)
+
+A decision record, not an observation. It reorders the next three milestones.
+
+### Thesis
+
+Oath's long-term value is **proof-carrying composition**: an agent assembles a
+program out of artifacts whose claims come with evidence, instead of out of
+packages whose claims come with a README. That requires three things we do not
+yet have together — real-world artifacts, discoverability by intent, and
+executability in a real environment.
+
+**The current system proves the model, but does not yet support the workflow.**
+
+The workflow an autonomous agent actually runs is `search → inspect evidence →
+compose → execute`. It does not begin with authoring, and it does not begin with
+proving. Framed that way the competition is not "Python versus proving an Oath
+program" — it is **package discovery versus proof-carrying artifact discovery**,
+which is a far stronger position. A conventional registry tells you what code
+*claims* to do. Oath can tell you what the artifact **is**, what it **claims**,
+and what **evidence** backs the claim.
+
+Which yields the sharper form: *AI does not need to prove everything it uses. It
+needs a reliable way to discover and compose things that have already been
+proven.*
+
+### Current state — the foundation is not the problem
+
+- The **evidence layer** is real and differentiated: per-property proof status,
+  mutation-scored spec strength with justified waivers, termination and
+  confinement verdicts, an append-only signed provenance journal.
+- **Content addressing solves versioning structurally** rather than by policy.
+  Dependents pin hashes, names are metadata, dependency closure is exact by
+  construction. "Evolve dependencies without destabilising everything" is not a
+  feature here; it is a consequence of identity.
+- **Cross-kernel validation is unusually strong.** Verdicts are reproduced by a
+  second kernel implemented blind from the spec. Almost no registry can offer
+  evidence of that kind about its own tooling.
+
+### Hard limits — the blocking gaps
+
+**Coverage.** 165 definitions, deep but narrow: list, sort, tree, queue,
+interval, map, set, string, rational, plus honest exhibits. Nothing corresponds
+to a task an agent is actually given.
+
+**Discovery.** `oath find` is spec-native, not intent-native. Its four modes all
+require the caller to already think in algebraic properties — powerful once you
+know the law you want, useless at the moment you only know the goal.
+
+**Environment fit.** Effects remain unresolved (time and interleaving), so real
+programs are not merely hard to prove — they are **inexpressible**. Execution
+stops at composition.
+
+**Escape hatches.** No FFI, no interop path. Adoption is all-or-nothing, which is
+the opposite of what an agent needs when one piece of a task is missing.
+
+### The structural tension
+
+This is the part that determines the next phase.
+
+> Proofs are cheapest exactly where code is easiest and least risky — pure
+> algorithms. They are hardest where agents need the most help — I/O,
+> integration, concurrency, external APIs.
+
+A proof system left to its own momentum therefore grows along the **pure** axis,
+because that is where the work succeeds. Demand sits on the **impure** axis.
+Without deliberate intervention the system optimises the wrong frontier, and it
+looks like progress the entire time: more definitions, more proofs, deeper
+corpus — in the region of least need.
+
+Stated at its most uncomfortable: Oath is currently a very good system for
+verifying things agents do not yet need. The next phase is making it usable for
+things agents already do.
+
+### The re-prioritisation
+
+**Priority is not expressiveness. Priority is applicability.**
+
+1. **#38 — effects.** Makes real-world artifacts expressible at all. The hard
+   blocker; everything downstream is gated on it.
+2. **#13 — compiler backend.** Makes those artifacts executable in an agent's
+   environment.
+3. **#65 / #74 — discovery.** Makes them findable from intent, so the workflow
+   has an entry point.
+
+And explicitly: **#69 refinement types remain correct and are not on the critical
+path to adoption.** The design note (docs/refinements.md) settles a question that
+had to be settled — refinement identity is syntactic, semantics layers above it —
+and that decision stands. It is a language feature that deepens expressiveness
+without moving applicability, so it sequences after the three above.
+
+This is a deliberate reordering, not drift. The original vision is unchanged;
+what changed is the recognition that sequencing decides whether the vision is
+reachable.
+
+### Consequence
+
+Oath is not yet a general-purpose system, and the next phase is bridging into
+reality rather than deepening theory. Success for this phase is measured by
+firsts, not by counts:
+
+- the first real integration with an external system;
+- the first end-to-end executable artifact an agent could actually deploy;
+- the first intent-driven discovery loop that returns a decision package —
+  candidates, exact specs, provenance, dependency closure, proof status, known
+  limitations — rather than a list of names.
+
+Coverage becomes a deliberate, demand-led programme (#75) rather than a
+by-product of whatever was easiest to prove. Tracking issues: #73 (this
+reframing), #74 (discovery from intent), #75 (coverage).
+
 ## Why the kernel is written in a human language
 
 The kernel is the root of trust — the one component that cannot be verified
