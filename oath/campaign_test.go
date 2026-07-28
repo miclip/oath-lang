@@ -71,3 +71,40 @@ func TestSupersededCampaignReadsStale(t *testing.T) {
 		t.Fatalf("staleness not disclosed in limitations: %v", pkg2.Limitations)
 	}
 }
+
+// SPEC §11: campaignEncode is CANONICAL BY DEFINITION — exactly one byte
+// representation per semantically identical description. If normalization lived
+// in the hash wrapper instead, an implementation could hash the encoded bytes
+// directly, get a different answer, and still believe it conformed.
+func TestCampaignEncodingIsCanonical(t *testing.T) {
+	base := campaignDescription{Artifact: "a", Kernel: "k", Engine: "e",
+		Cases: 1, Fuel: 2, WaiverPolicy: "p", Waivers: []string{"w1", "w2"}}
+
+	// 1. order-independence, at the ENCODING level not just the digest
+	rev := base
+	rev.Waivers = []string{"w2", "w1"}
+	if string(campaignEncode(base)) != string(campaignEncode(rev)) {
+		t.Fatal("encoding depends on recording order — it must identify the set")
+	}
+
+	// 2. duplicates collapse: a repeat carries no information
+	dup := base
+	dup.Waivers = []string{"w1", "w2", "w1"}
+	if string(campaignEncode(dup)) != string(campaignEncode(base)) {
+		t.Fatal("duplicate waiver changed the encoding — multiplicity must be non-semantic")
+	}
+
+	// 3. changing a MEMBER must change the encoding
+	diff := base
+	diff.Waivers = []string{"w1", "w3"}
+	if string(campaignEncode(diff)) == string(campaignEncode(base)) {
+		t.Fatal("changing a set member left the encoding unchanged")
+	}
+
+	// The empty case still emits its line, so "none" and "absent" differ.
+	empty := base
+	empty.Waivers = nil
+	if !contains(string(campaignEncode(empty)), "waivers=\n") {
+		t.Fatalf("empty waiver line omitted:\n%s", campaignEncode(empty))
+	}
+}

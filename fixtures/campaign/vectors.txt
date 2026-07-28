@@ -40,6 +40,26 @@ waivers=1111111111111111111111111111111111111111111111111111111111111111,2222222
 digest=c9f0fc50ea8b4ef5786bce1710ab9cff29fe2e6f5ad923fdce9ee87a30afffe4
 
 oath-campaign/1
+artifact=abababababababababababababababababababababababababababababababab
+kernel=oath-kernel/0.7
+engine=mutants-1
+cases=60
+fuel=500000
+waiver-policy=waived-count-as-killed
+waivers=1111111111111111111111111111111111111111111111111111111111111111
+digest=f606fbeaa56e54485dbdc18ef92767b4201b1b2b2fd985ec0d345a792f677c0c
+
+oath-campaign/1
+artifact=abababababababababababababababababababababababababababababababab
+kernel=oath-kernel/0.7
+engine=mutants-1
+cases=60
+fuel=500000
+waiver-policy=waived-count-as-killed
+waivers=3333333333333333333333333333333333333333333333333333333333333333
+digest=6a67ab0c559e02204c851a1b02261d94d100d9466c59960ee42f9a4fe59daa67
+
+oath-campaign/1
 artifact=cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd
 kernel=oath-kernel/0.7
 engine=mutants-1

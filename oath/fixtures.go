@@ -185,6 +185,14 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		{Artifact: strings.Repeat("ab", 32), Kernel: kernelVersion, Engine: mutationEngine,
 			Cases: mutantCases, Fuel: mutantFuel, WaiverPolicy: waiverPolicy,
 			Waivers: []string{strings.Repeat("22", 32), strings.Repeat("11", 32)}},
+		// DUPLICATE member: collapses, so this equals the single-waiver vector.
+		{Artifact: strings.Repeat("ab", 32), Kernel: kernelVersion, Engine: mutationEngine,
+			Cases: mutantCases, Fuel: mutantFuel, WaiverPolicy: waiverPolicy,
+			Waivers: []string{strings.Repeat("11", 32), strings.Repeat("11", 32)}},
+		// One set MEMBER changed: must change encoding and digest.
+		{Artifact: strings.Repeat("ab", 32), Kernel: kernelVersion, Engine: mutationEngine,
+			Cases: mutantCases, Fuel: mutantFuel, WaiverPolicy: waiverPolicy,
+			Waivers: []string{strings.Repeat("33", 32)}},
 		// Only the case budget differs from the first vector: a different claim.
 		{Artifact: strings.Repeat("cd", 32), Kernel: kernelVersion, Engine: mutationEngine,
 			Cases: 600, Fuel: mutantFuel, WaiverPolicy: waiverPolicy},
@@ -195,7 +203,7 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 	if err := write(filepath.Join("campaign", "vectors.txt"), []byte(camp.String())); err != nil {
 		return "", err
 	}
-	fmt.Fprintf(&log, "campaign/vectors.txt: 5 identity vectors\n")
+	fmt.Fprintf(&log, "campaign/vectors.txt: 7 identity vectors\n")
 	// prove/scripts.txt — sha256 of every property's direct-attempt script
 	// under the recorded lemma state (SPEC §7.2 script stability). This is
 	// the byte oracle that pins the naming scheme, lemma order, and

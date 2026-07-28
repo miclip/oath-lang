@@ -408,12 +408,31 @@ type campaignDescription struct {
 // §11; changing it changes every campaign identity, which is a fork of what
 // "current evidence" means and must be treated as one.
 func campaignEncode(d campaignDescription) []byte {
-	// Sorting belongs to the ENCODING, not to the caller. The digest identifies
-	// the waiver SET, so two producers that recorded the same waivers in
-	// different orders must agree — leaving the order to callers would make
-	// identical evidence look superseded, which is the exact failure STALE is
-	// supposed to report truthfully.
-	ws := append([]string(nil), d.Waivers...)
+	// CANONICAL BY DEFINITION: campaignEncode emits exactly one byte
+	// representation for every semantically identical description, so
+	// campaignHash can be boring — hash the bytes, interpret nothing. Leaving
+	// normalization in the hash wrapper would give two contracts (encode
+	// serializes a sequence; hash reinterprets it as a set) and let a conforming
+	// implementation hash the encoded bytes directly and get a different answer
+	// while believing it followed the spec.
+	//
+	// `waivers` is a genuine SET: order and multiplicity are both non-semantic.
+	// Waivers are keyed by mutant hash and a mutant can be waived once, so a
+	// repeat carries no information — duplicates COLLAPSE rather than being
+	// rejected. Sorted bytewise ascending.
+	//
+	// Note the discipline this implies: a field may only be normalized this way
+	// when order and multiplicity are non-semantic. An ordered execution phase or
+	// a precedence rule is a SEQUENCE and must never be sorted, or the encoding
+	// would erase meaning rather than canonicalize it.
+	seen := map[string]bool{}
+	ws := make([]string, 0, len(d.Waivers))
+	for _, w := range d.Waivers {
+		if !seen[w] {
+			seen[w] = true
+			ws = append(ws, w)
+		}
+	}
 	sort.Strings(ws)
 	var b strings.Builder
 	b.WriteString("oath-campaign/1\n")

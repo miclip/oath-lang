@@ -1750,11 +1750,30 @@ waiver-policy=<policy id>
 waivers=<hex,hex,...>
 ```
 
-`waivers` is the waived mutant hashes sorted ASCENDING as byte strings and joined
-by `,` — the SET, not the recording order, since order-sensitivity would make
-identical evidence look superseded. When there are none the value is EMPTY and
-the line is still present (`waivers=` followed by LF): omitting the line would
-make "no waivers" and "field absent" the same bytes.
+**The encoding is CANONICAL BY DEFINITION**: it emits exactly one byte
+representation for every semantically identical description. Normalization
+therefore belongs here and nowhere else, and the digest is simply
+`SHA-256(campaignEncode(d))` — hash the bytes, interpret nothing. Splitting the
+job (encoder serializes a sequence, hasher reinterprets it as a set) would leave
+a conforming implementation free to hash the encoded bytes directly and get a
+different answer while believing it followed this section.
+
+`waivers` is a genuine SET — **order and multiplicity are both non-semantic**.
+Waivers are keyed by mutant hash and a mutant can be waived once, so a repeat
+carries no information. The encoder therefore MUST, in this order: collapse
+duplicates, then sort ASCENDING as byte strings, then join with `,`. Duplicates
+COLLAPSE rather than being rejected — a description naming the same waiver twice
+is meaningless, not invalid.
+
+When there are none the value is EMPTY and the line is still present (`waivers=`
+followed by LF): omitting the line would make "no waivers" and "field absent" the
+same bytes.
+
+**Terminology is load-bearing here.** A field may be sorted and deduplicated ONLY
+where order and multiplicity carry no meaning. An ordered execution phase, a
+precedence rule, or any staged mutation sequence is a SEQUENCE and MUST NOT be
+normalized this way — doing so would erase meaning rather than canonicalize it.
+`waivers` is the only set-valued field in this description.
 
 Line framing is deliberate: no field value can be confused with a separator, and
 a value containing `=` cannot shift the parse.
@@ -1785,10 +1804,20 @@ agreement between kernels for a property nothing needs.
 
 ### 11.4 Fixtures
 
-`fixtures/campaign/vectors.txt` pins description → digest pairs, including the
-empty-waiver case and a two-waiver case in both recording orders (which must
-produce the SAME digest). A kernel reproduces the digests without consulting
-another implementation.
+`fixtures/campaign/vectors.txt` pins description → digest pairs. A kernel
+reproduces every digest without consulting another implementation. Three vector
+classes carry the canonicality claim:
+
+1. **Order-independence** — a two-waiver description in both recording orders
+   MUST produce identical encoding and digest.
+2. **Duplicate collapse** — a description naming one waiver twice MUST produce
+   the SAME digest as naming it once.
+3. **Member sensitivity** — changing one set member MUST change both encoding and
+   digest.
+
+Plus the empty-waiver line, and a description differing only in case budget
+(a survivor at 60 cases may be a kill at 600, so the budget is part of the
+claim).
 
 No second implementation is trusted until it passes the fixtures without
 consulting the Go source.
