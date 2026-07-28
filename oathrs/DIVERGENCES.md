@@ -1968,7 +1968,7 @@ per the explicit MUST NOT.
 
 ---
 
-## 83. Per-property attempt validity (#72, §7.2 "Attempt validity") — IMPLEMENTED; four gaps, (a), (b) and (c) now RESOLVED BY SPEC AMENDMENT — and (a) was a live defect in the REFERENCE kernel
+## 83. Per-property attempt validity (#72, §7.2 "Attempt validity") — IMPLEMENTED; four gaps, ALL now RESOLVED BY SPEC AMENDMENT — and (a) was a live defect in the REFERENCE kernel
 
 **Status: implemented from the amended §7.2 bullet alone; NOT corpus-exercisable.**
 The rule governs verdict RECORDING under environmental aborts, and every fixture was
@@ -2124,7 +2124,21 @@ admits both readings. **Recommend: "a property whose prior PROVEN is carried for
 remains an admissible lemma; only a property with no recorded proof contributes
 nothing."**
 
-### (d) **OPEN** — "Reported DISTINCTLY" is not pinned to a surface, and the recorded state is two-dimensional
+### (d) **RESOLVED BY SPEC AMENDMENT** — "Reported DISTINCTLY" is not pinned to a surface, and the recorded state is two-dimensional
+
+**Resolution.** The two-dimensionality identified here is now stated in §7.2, and
+the analysis was accepted: a property can be simultaneously recorded-proven (by
+carry-forward) and aborted-this-run, so a one-character surface cannot carry both.
+Rather than mandate a rendering, §7.2 pins the three CLAIMS a kernel must satisfy —
+never describe an aborted property as unproven; count a carried-forward proof as
+proven wherever verdicts are aggregated; make the abort and any retained verdict
+discoverable — and states explicitly that the surface is NOT pinned. The reference
+kernel leads with the abort on a line-per-property surface and names the retained
+verdict inline; this kernel puts the recorded state in the character and the detail
+on stderr. Both conform, which is the intended outcome: conformance compares
+recorded verdicts, not presentation.
+
+**(d, original finding)**
 A property can be simultaneously (recorded PROVEN, aborted this run). The `prove`
 stdout surface — which check 6 of the conformance harness parses — is one character
 per property, so it cannot carry both. My choice: stdout stays the RECORDED state

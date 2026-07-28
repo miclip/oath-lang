@@ -1234,7 +1234,24 @@ reproducibility (given the same solver):
   environmental abort into a verdict, the very thing this rule forbids —
   and it is reported DISTINCTLY as aborted, never as unproven,
   because "no valid verdict exists" is a different claim from "not
-  proven". Sibling properties are unaffected: a property whose own
+  proven".
+  REPORTING (normative, #72): the recorded state of a property and whether
+  its attempt aborted are INDEPENDENT — a property can be recorded proven
+  (by carry-forward) AND have aborted this run — so a kernel MUST satisfy
+  three claims and is otherwise free in how it renders them. (1) It MUST
+  NOT describe an aborted property as unproven, since "attempted validly,
+  not proven" is a claim the run cannot support. (2) A carried-forward
+  proof MUST still count as proven everywhere a verdict is aggregated —
+  proven counts, guarantee level, `prove/outcomes.json` — because it IS
+  the recorded state; the abort withholds new evidence, it does not
+  withdraw old. (3) The abort MUST be discoverable, together with whether
+  a standing verdict was retained. The SURFACE is deliberately NOT pinned:
+  a one-character-per-property rendering cannot carry both dimensions and
+  may put the recorded state in the character and the abort alongside it,
+  while a line-per-property rendering may lead with the abort and name the
+  retained verdict inline. Both satisfy the claims above; the reference
+  and the Rust kernel legitimately differ here, and conformance compares
+  recorded verdicts rather than presentation. Sibling properties are unaffected: a property whose own
   attempts were all valid records its verdict normally, and the run as a
   whole SUCCEEDS with partial results rather than failing. An aborted
   property contributes no new lemma (it gains nothing this run), which is
