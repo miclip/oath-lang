@@ -2357,3 +2357,173 @@ express it (the corpus says the same thing in `bytes-ok`'s comment: this is the 
 refinement types would cover), so it is enforced at runtime and nowhere else.
 `eval.rs` decodes/builds byte lists through the store. `prove.rs` excludes both
 operators from translation.
+
+## 85. Campaign identity (#74, §11) — IMPLEMENTED first-try, every vector byte-for-byte; the encoding is well pinned, but the field TYPES and the framing's threat model are not
+
+§11 is the best-specified new section I have implemented from. It is the first
+one that states its own canonicality discipline out loud ("the encoding is
+CANONICAL BY DEFINITION … the digest is simply `SHA-256(campaignEncode(d))` —
+hash the bytes, interpret nothing"), gives the byte template inline, and names
+the three canonicality claims the fixtures must carry. The result: **all seven
+vectors in `fixtures/campaign/vectors.txt` reproduced on the FIRST run, encoding
+AND digest, with no variation-hunting.** `campaign_hash` is literally
+`sha256_hex(&campaign_encode(d))` and needs to be nothing more, which is the
+property §11.2 was written to force.
+
+What §11 DETERMINED, unambiguously, from text alone:
+
+* **Field order** — the §11.2 template is an ordered listing and §11.2 says "in
+  exactly this order". No inference.
+* **Line/field framing** — "one `key=value` line per field … each terminated by
+  a single LF (`0x0A`). No spaces around `=`, no trailing blank line". Explicit,
+  including the negative (no trailing blank).
+* **The domain separator** — the literal bytes `oath-campaign/1`, positioned
+  first, in the template. §11.2 calls it "a domain separator LINE", which with
+  the LF rule below settles that it is LF-terminated (confirmed by the vectors).
+* **Absent vs. empty** — the strongest-specified point in the section: "the
+  value is EMPTY and the line is still present (`waivers=` followed by LF):
+  omitting the line would make 'no waivers' and 'field absent' the same bytes."
+  A spec that states the failure mode it is closing is a spec you cannot get
+  this wrong from.
+* **Collection framing** — join with `,`, no brackets, no spaces. Explicit.
+* **Set normalization and its ORDER** — "collapse duplicates, then sort
+  ASCENDING as byte strings, then join with `,`", plus "Duplicates COLLAPSE
+  rather than being rejected". Explicit, including which step comes first (they
+  commute, but the spec does not rely on the reader noticing that).
+* **Which fields are sets** — "`waivers` is the only set-valued field in this
+  description", with the terminology paragraph warning against generalizing to
+  sequences. Nothing to infer.
+* **Hash representation** — "`SHA-256` over those bytes, rendered lowercase
+  hex". Explicit, including case.
+* **String encoding** — "UTF-8 throughout". Explicit.
+
+What I had to INFER (each is a place a second implementation could disagree
+without contradicting §11):
+
+### (a) Integer formatting is `<decimal>` and nothing else — width, sign, and leading zeros are unstated
+
+§11.2 writes `cases=<decimal>` / `fuel=<decimal>`. It does not say bare, does not
+forbid a leading `+`, does not forbid leading zeros, does not give a width, and
+does not bound the value. The vectors show `60`, `600`, `500000` — all of which
+are equally consistent with a fixed-width or zero-padded rule that simply has no
+witness (no vector has a value where padding would be visible, e.g. a
+single-digit `cases`). **Inferred**: shortest bare decimal, no sign, no leading
+zeros, no separators — modelled as `u64`, which makes every alternative
+unrepresentable rather than merely unwritten. A vector with `cases=7` would pin
+the no-padding rule; a vector with a very large `fuel` would pin the width.
+Relatedly, §11 nowhere bounds these fields, so whether a description with
+`fuel` ≥ 2^64 is representable is a kernel-local decision. **UNTESTED.**
+
+### (b) The hex fields' TYPE is unstated, so hex CASE has no canonicalization rule — and that contradicts "canonical by definition"
+
+§11.2 writes `artifact=<64 lowercase hex>` and §11.1 says waivers are "keyed by
+mutant hash". Both are constraints on what a well-formed value LOOKS LIKE. What
+§11 never says is whether `artifact` is a *hash* (which the encoder renders in
+lowercase hex, making case unrepresentable) or a *string that must already be
+lowercase hex* (which the encoder emits verbatim). The difference is invisible
+in the vectors because every vector is already lowercase — but it is a real
+canonicality hole: if `ABAB…` and `abab…` denote the same object, then they are
+"semantically identical descriptions" and §11.2's canonicality claim REQUIRES
+the encoder to fold them to one byte string. If they do not denote the same
+object, §11 should say the field is a byte string compared literally.
+
+**Inferred**: fields stay `String` and the encoder emits them verbatim; the
+shape check lives in a separate `validate()` that is deliberately OFF the
+encoding path (see (c)). I did NOT add case folding, because inventing a
+normalization §11 does not mention is exactly the "explaining what the first
+implementation intended" failure mode. **This is the one place I would amend
+§11**: state that `artifact` and each waiver ARE hashes, and that the encoder
+renders them lowercase — or state that they are literal strings and that a
+non-lowercase description is a DIFFERENT description with a different digest.
+Either is fine; silence is not, because the two produce different digests for
+the same intent. **UNTESTED — no vector can distinguish them.**
+
+### (c) Whether duplicate comparison happens before or after decoding — determined only by accident
+
+§11.2 says sort "ASCENDING as byte strings", which pins the SORT key to the
+textual form. It says nothing about the DEDUP key. **Inferred**: dedup on the
+same textual bytes as the sort. This happens to be unobservable: for well-formed
+64-lowercase-hex values, textual dedup and hex-decoded dedup agree exactly, and
+byte-string order over lowercase hex coincides with numeric order over the
+decoded 32 bytes — so a kernel that decoded first would still reproduce all
+seven vectors. It becomes observable the moment (b) is resolved in the "mixed
+case is possible" direction: `AB…` and `ab…` are two distinct byte strings but
+one hash. So (b) and (c) are the same defect seen from two sides, and fixing (b)
+fixes both.
+
+### (d) The framing rationale addresses `=` but not the LINE TERMINATOR — the actual injection vector
+
+§11.2 justifies the design: "no field value can be confused with a separator,
+and a value containing `=` cannot shift the parse." The `=` claim is true and
+the first-`=` split makes it so. But `kernel`, `engine` and `waiver-policy` are
+free-form UTF-8 with **no escaping rule and no charset restriction**, so a
+`kernel` value of `oath-kernel/0.7\nengine=mutants-9` encodes to bytes
+INDISTINGUISHABLE from a genuine description with a different engine. That is a
+real collision between two semantically different descriptions — the exact
+failure §11.2's framing paragraph claims to have closed, missed because the
+paragraph reasons about `=` (harmless) instead of LF (fatal). §11 owes one of:
+forbid LF/CR in these values, specify an escape, or state that these values are
+registry-controlled and never attacker-supplied. **Inferred**: `validate()`
+rejects LF and CR in the three free-form fields; `campaign_encode` does not,
+because §11 gives it the total signature `CampaignDescription -> bytes` with no
+error case, and adding a rejection path a second kernel does not have would be
+its own divergence. **UNTESTED.**
+
+### (e) `campaignEncode` is named in the task and in §11's preamble, but §11's stated obligation is only `campaignHash`
+
+§11's "The obligation on a kernel is a pure function" block lists only
+`campaignHash : CampaignDescription → Hash`, while §11.2 then leans entirely on
+`campaignEncode` being a separately-meaningful function ("the digest is simply
+`SHA-256(campaignEncode(d))`"). A kernel reading the obligation block alone
+could reasonably expose only the hash, which would make the encoding — the
+byte-significant part, and the part the fixtures actually pin — unobservable
+from outside and unavailable to an auditor reconstructing a description. Minor,
+but the obligation block should name BOTH functions, since §11.4 requires
+reproducing encodings and not just digests.
+
+### (f) The fixture file's own format is not specified
+
+`fixtures/campaign/vectors.txt` is described only as pinning "description →
+digest pairs". Its actual shape — `#` comment line, blank-line-separated blocks,
+each block being the canonical encoding followed by a `digest=` line that is NOT
+part of the encoding — has to be reverse-engineered, and the `digest=` line is
+syntactically indistinguishable from a real field line. It happens to be
+unambiguous because `digest` is not one of the seven §11.2 keys, but a reader
+could plausibly have taken the digest to be an eighth field covered by the hash.
+Worth one sentence in §11.4. (This bit me not at all, but only because §11.2's
+field list is closed.)
+
+### What the vectors do and do not carry
+
+Present and doing work: the empty-waivers line, one and two members, both
+recording orders of the two-member set (identical bytes, which is the
+order-independence claim), a repeat collapsing to the single-member encoding, a
+member swap, and a cases-only change. That is exactly the §11.4 list. Not
+covered by any vector, and each corresponding to an inference above: hex case,
+integer padding, a value containing `=`, a value containing LF, a single-digit
+integer, and three-or-more-member sorting where the sort is not already
+order-preserving. My tests add the last one (three members in three orders) and
+the `=`/LF cases at the kernel level, but they are kernel tests, not
+cross-kernel fixtures, so they gate nothing in the other implementation.
+
+### The change
+
+`campaign.rs` (new, ~200 lines + tests): `CampaignDescription`, `campaign_encode`
+(all normalization), `campaign_hash` (a one-line wrapper over
+`sha256_hex(&campaign_encode(d))`), `campaign_hash_bytes`, and an off-path
+`validate()`. No new dependencies; pure computation, so the wasm surface is
+unchanged. `lib.rs` registers the module. Nothing else in the kernel was
+touched — campaign identity does not intersect object identity, the gate, eval,
+or the prover, and conformance checks 1-6 are unaffected (verified: oracle-mode
+conformance PASSes unchanged, 183 hashes / 182 canonical / 164 verify / 407
+scripts).
+
+Tests are at the ENCODING level, not only the digest, per §11.4: order
+independence over a three-member set in three orders, duplicate collapse
+(including interleaved repeats), member sensitivity (swap AND growth), the
+empty-value case (with an explicit check that `waivers=` and an omitted line
+differ), the framing shape (8 lines, key order, no CRLF, no trailing blank), a
+per-field identity-bearing check that every one of the seven fields moves the
+digest, bare-decimal integer rendering, and a check that `campaign_hash` equals
+a hand-computed SHA-256 of the fixture's own encoding bytes — which is the
+"thin wrapper" property stated as a test rather than as a comment.
