@@ -28,36 +28,52 @@ export default function NineMinuteGap() {
       <p>
         The artifact is <code>echo-handler</code>, an HTTP handler compiled by{" "}
         <code>oath build</code> and serving live requests. At the time of the first
-        reading it was <strong>already proven</strong> — 3/3 properties, machine-checked
-        by Z3 — in the author&apos;s local store. The registry declined to say so.
+        reading, <strong>the author&apos;s local store already reported it as PROVEN</strong>{" "}
+        — 3/3 properties, machine-checked by Z3. The registry declined to repeat that
+        claim.
       </p>
 
       <h2>The two readings</h2>
 
-      <div className="pipe">
-        <div className="pipe-step">
-          <span className="pipe-k">guarantee</span>
-          <span className="pipe-v">
-            12:22Z <code>tested (200 cases per property)</code>
-            <br />
-            12:31Z <code>PROVEN (all 3 properties, Z3)</code>
-          </span>
-        </div>
-        <div className="pipe-step">
-          <span className="pipe-k">spec strength</span>
-          <span className="pipe-v">43/43 MEASURED — identical in both readings</span>
-        </div>
-        <div className="pipe-step">
-          <span className="pipe-k">campaign digest</span>
-          <span className="pipe-v">
-            <code>a7eadd9c…</code> — identical in both readings
-          </span>
-        </div>
-        <div className="pipe-step">
-          <span className="pipe-k">artifact hash</span>
-          <span className="pipe-v">unchanged</span>
-        </div>
-      </div>
+      <table className="evidence">
+        <thead>
+          <tr>
+            <th>Evidence</th>
+            <th>12:22Z</th>
+            <th>12:31Z</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th>Guarantee</th>
+            <td>
+              <code>tested</code> — 200 cases per property
+            </td>
+            <td>
+              <code>PROVEN</code> — all 3 properties, Z3
+            </td>
+          </tr>
+          <tr>
+            <th>Spec strength</th>
+            <td>43/43 MEASURED</td>
+            <td>43/43 MEASURED</td>
+          </tr>
+          <tr>
+            <th>Campaign digest</th>
+            <td>
+              <code>a7eadd9c…</code>
+            </td>
+            <td>
+              <code>a7eadd9c…</code>
+            </td>
+          </tr>
+          <tr>
+            <th>Artifact hash</th>
+            <td>unchanged</td>
+            <td>unchanged</td>
+          </tr>
+        </tbody>
+      </table>
 
       <p>
         Between the two readings the registry finished its own proof pass. That is the

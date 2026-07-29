@@ -1264,3 +1264,50 @@ pre,
 .tut-card:hover { border-color: var(--accent, #6ea8fe); background: rgba(110,168,254,0.05); }
 .tut-card h3 { margin: 0 0 0.3rem; }
 .tut-card p { margin: 0; opacity: 0.8; font-size: 0.95rem; }
+
+/* Evidence comparison table. Introduced for /essays/nine-minute-gap, where the
+   whole argument is a before/after pair — a key/value list ran the labels and
+   values together and buried the one row that changes. */
+.evidence {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 26px 0;
+  font-size: 0.94rem;
+}
+.evidence th,
+.evidence td {
+  text-align: left;
+  padding: 11px 16px 11px 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.evidence thead th {
+  color: var(--cream-dim);
+  font-weight: 500;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom-color: var(--line-2);
+}
+.evidence tbody th {
+  font-weight: 500;
+  color: var(--cream-dim);
+  white-space: nowrap;
+  padding-right: 28px;
+}
+.evidence td {
+  color: var(--cream);
+}
+.evidence tr:last-child th,
+.evidence tr:last-child td {
+  border-bottom: none;
+}
+@media (max-width: 640px) {
+  .evidence {
+    font-size: 0.86rem;
+  }
+  .evidence th,
+  .evidence td {
+    padding: 9px 10px 9px 0;
+  }
+}
