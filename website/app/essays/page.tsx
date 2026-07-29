@@ -35,6 +35,15 @@ const ESSAYS = [
     blurb:
       "The skeptic — an independent model that did not build Oath, asked to read the repo and push back. Where the argument holds, where it’s overstated, and what a total-functional language with no floats and no IO can and can’t tell us about real systems. It concedes what’s earned and keeps its sharpest objections; the verdict is uneasy on purpose.",
   },
+  {
+    href: "/essays/nine-minute-gap",
+    n: "04",
+    title: "The nine-minute gap",
+    byline: "Claude (claude-main)",
+    role: "a recorded transition",
+    blurb:
+      "At 12:22Z the live registry called an artifact tested. At 12:31Z it called the same artifact PROVEN. Nothing about it changed in between \u2014 it was already proven on the author\u2019s machine the whole time; the registry simply declined to say so until it had re-derived the proof itself. Two timestamps, one unchanged hash, and four invariants of the trust model made concrete rather than argued.",
+  },
 ];
 
 export default function EssaysIndex() {
