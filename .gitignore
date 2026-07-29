@@ -1,3 +1,13 @@
 oath/oath
 oathrs/target/
 .claude/
+
+# Signing keys and bearer tokens must never enter the repository. `oath keygen`
+# writes <prefix>.key (private) and <prefix>.pub (public) into the working
+# directory, and a tokens file is a plain-JSON list of shared secrets — both are
+# one `git add -A` away from being published in an append-only, tamper-evident
+# journal that also happens to be a public git history.
+*.key
+*.pem
+tokens.json
+*tokens.json
