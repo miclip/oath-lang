@@ -28,7 +28,10 @@ func TestAuthSignatureValid(t *testing.T) {
 	r.Header.Set("X-Oath-Pubkey", h.pub)
 	r.Header.Set("X-Oath-Signature", h.sig)
 
-	got, canWrite, ok := authenticatePrincipal(r, body, nil, nil)
+	got, canWrite, signed, ok := authenticatePrincipal(r, body, nil, nil)
+	if !signed {
+		t.Fatal("valid signature must report signed=true")
+	}
 	if !ok || got != pubHex || !canWrite {
 		t.Fatalf("valid signature: got (%q,write=%v,%v), want (%q,true,true)", got, canWrite, ok, pubHex)
 	}
@@ -50,7 +53,7 @@ func TestAuthSignatureInvalidRejected(t *testing.T) {
 	// Even with a valid token present, the bad signature must win → rejected.
 	tokens := map[string]tokenEntry{"tok-abcdefabcdef12": {Principal: "admin"}}
 	r.Header.Set("Authorization", "Bearer tok-abcdefabcdef12")
-	if _, _, ok := authenticatePrincipal(r, tampered, tokens, nil); ok {
+	if _, _, _, ok := authenticatePrincipal(r, tampered, tokens, nil); ok {
 		t.Fatal("invalid signature authenticated (or fell through to token)")
 	}
 }
@@ -64,19 +67,19 @@ func TestAuthBearerToken(t *testing.T) {
 	}
 	r := httptest.NewRequest("POST", "/mcp", nil)
 	r.Header.Set("Authorization", "Bearer tok-readonlyabcd12")
-	got, canWrite, ok := authenticatePrincipal(r, []byte("{}"), tokens, nil)
+	got, canWrite, _, ok := authenticatePrincipal(r, []byte("{}"), tokens, nil)
 	if !ok || got != "alice" || canWrite {
 		t.Fatalf("read-only token: got (%q,write=%v,%v), want (alice,false,true)", got, canWrite, ok)
 	}
 
 	r2 := httptest.NewRequest("POST", "/mcp", nil)
 	r2.Header.Set("Authorization", "Bearer tok-writerxyz90abc")
-	if got, cw, ok := authenticatePrincipal(r2, []byte("{}"), tokens, nil); !ok || got != "bob" || !cw {
+	if got, cw, _, ok := authenticatePrincipal(r2, []byte("{}"), tokens, nil); !ok || got != "bob" || !cw {
 		t.Fatalf("write token: got (%q,write=%v,%v), want (bob,true,true)", got, cw, ok)
 	}
 
 	// No auth at all → rejected.
-	if _, _, ok := authenticatePrincipal(httptest.NewRequest("POST", "/mcp", nil), []byte("{}"), tokens, nil); ok {
+	if _, _, _, ok := authenticatePrincipal(httptest.NewRequest("POST", "/mcp", nil), []byte("{}"), tokens, nil); ok {
 		t.Fatal("unauthenticated request accepted")
 	}
 }
@@ -86,13 +89,13 @@ func TestCapabilityGate(t *testing.T) {
 	st := newStore(t)
 	putArgs := []byte(`{"source":"(defn z [] [] Int 1)"}`)
 
-	if _, err := mcpCallTool(st, "put", putArgs, "alice", false); err == nil {
+	if _, err := mcpCallTool(st, "put", putArgs, "alice", false, false); err == nil {
 		t.Fatal("read-only principal was allowed to put")
 	}
-	if _, err := mcpCallTool(st, "ls", nil, "alice", false); err != nil {
+	if _, err := mcpCallTool(st, "ls", nil, "alice", false, false); err != nil {
 		t.Fatalf("read-only principal blocked from ls: %v", err)
 	}
-	if _, err := mcpCallTool(st, "put", putArgs, "bob", true); err != nil {
+	if _, err := mcpCallTool(st, "put", putArgs, "bob", true, false); err != nil {
 		t.Fatalf("write principal blocked from put: %v", err)
 	}
 	if h, ok := st.Resolve("z"); !ok || h == "" {
@@ -117,14 +120,26 @@ func TestRegistrationGate(t *testing.T) {
 		return r
 	}
 
-	if p, cw, ok := authenticatePrincipal(sign(apub, apriv), body, nil, allow); !ok || !cw || p != aHex {
-		t.Fatalf("authorized key: (%q,write=%v,%v), want write", p, cw, ok)
+	if p, cw, sg, ok := authenticatePrincipal(sign(apub, apriv), body, nil, allow); !ok || !cw || !sg || p != aHex {
+		t.Fatalf("authorized key: (%q,write=%v,signed=%v,%v), want write+signed", p, cw, sg, ok)
 	}
-	if p, cw, ok := authenticatePrincipal(sign(upub, upriv), body, nil, allow); !ok || cw || p != uHex {
-		t.Fatalf("unlisted key: (%q,write=%v,%v), want authenticated but no write", p, cw, ok)
+	if p, cw, sg, ok := authenticatePrincipal(sign(upub, upriv), body, nil, allow); !ok || cw || !sg || p != uHex {
+		t.Fatalf("unlisted key: (%q,write=%v,signed=%v,%v), want authenticated, signed, no write", p, cw, sg, ok)
 	}
-	if _, cw, ok := authenticatePrincipal(sign(upub, upriv), body, nil, nil); !ok || !cw {
+	if _, cw, _, ok := authenticatePrincipal(sign(upub, upriv), body, nil, nil); !ok || !cw {
 		t.Fatal("open contribution (nil allowlist): any signer should write")
+	}
+
+	// A bearer token must report signed=false even when its PRINCIPAL NAME is a
+	// pubkey hex — which is a real configuration (the live registry's token
+	// principal was repointed to an operator's pubkey). Inferring "was signed"
+	// from the principal string would misdiagnose exactly this case, telling a
+	// token holder their key is missing from the allowlist.
+	toks := map[string]tokenEntry{"t0k": {Principal: aHex, Write: false}}
+	rt := httptest.NewRequest("POST", "/mcp", nil)
+	rt.Header.Set("Authorization", "Bearer t0k")
+	if p, cw, sg, ok := authenticatePrincipal(rt, body, toks, allow); !ok || cw || sg || p != aHex {
+		t.Fatalf("token with pubkey-shaped principal: (%q,write=%v,signed=%v,%v), want authenticated, NOT signed, no write", p, cw, sg, ok)
 	}
 }
 

@@ -138,7 +138,7 @@ func mcpTools() []map[string]any {
 // mcpCallTool dispatches one tool call. principal, when non-empty, is an
 // AUTHENTICATED identity (HTTP transport) and overrides any client-supplied
 // author; the stdio transport passes "" (local trust, self-reported author).
-func mcpCallTool(st *Store, name string, args json.RawMessage, principal string, canWrite bool) (string, error) {
+func mcpCallTool(st *Store, name string, args json.RawMessage, principal string, canWrite, signed bool) (string, error) {
 	var a struct {
 		Names   []string `json:"names"`
 		Budget  int      `json:"budget"`
@@ -160,7 +160,15 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 	// token can still read, discover, and re-verify — just not author. Sign the
 	// request or use a write-scoped token. (#14)
 	if (name == "put" || (name == "cross" && a.Record)) && !canWrite {
-		return "", fmt.Errorf("principal %q is read-only: %q needs write capability — sign the request (X-Oath-Signature) or use a token with \"write\": true", principal, name)
+		// The remedy depends on HOW the caller authenticated, and getting this
+		// wrong wastes real time: telling someone who already signed to "sign the
+		// request" hides the actual cause. It cannot be inferred from the
+		// principal string either — a bearer token's principal may legitimately BE
+		// a pubkey hex, so a signed-looking principal is not proof of a signature.
+		if signed {
+			return "", fmt.Errorf("principal %q is read-only: %q needs write capability. The request WAS validly signed, so the signature is not the problem — this key is absent from the server's authorized-keys allowlist. Add it there (the server reads the file at startup) and redeploy", principal, name)
+		}
+		return "", fmt.Errorf("principal %q is read-only: %q needs write capability — sign the request (X-Oath-Signature) with an authorized key, or use a token with \"write\": true", principal, name)
 	}
 	switch name {
 	case "context":
@@ -258,7 +266,7 @@ func cmdServe(st *Store) {
 		// of band. An agent session holding a stdio server open would otherwise
 		// keep reporting the guarantees it saw at startup.
 		st.RefreshMutable()
-		resp := handleRPC(st, &req, "", true) // local stdio: the invoking user owns the store
+		resp := handleRPC(st, &req, "", true, false) // local stdio: the invoking user owns the store
 		reply(req.ID, resp.Result, resp.Error)
 	}
 }

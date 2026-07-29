@@ -146,7 +146,7 @@ func cmdServeHTTP(st *Store, addr, tokensPath, authKeysPath string) {
 			http.Error(w, "bad body", http.StatusBadRequest)
 			return
 		}
-		principal, canWrite, ok := authenticatePrincipal(r, body, tokens, authKeys)
+		principal, canWrite, signed, ok := authenticatePrincipal(r, body, tokens, authKeys)
 		if !ok {
 			http.Error(w, "unauthenticated: present a valid X-Oath-Signature over the body, or a known bearer token", http.StatusUnauthorized)
 			return
@@ -168,7 +168,7 @@ func cmdServeHTTP(st *Store, addr, tokensPath, authKeysPath string) {
 		// consistent snapshot, and the caching still pays for itself within a
 		// heavy call (a prove touches the same metadata many times).
 		st.RefreshMutable()
-		resp := handleRPC(st, &req, principal, canWrite)
+		resp := handleRPC(st, &req, principal, canWrite, signed)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	})
@@ -191,33 +191,33 @@ func cmdServeHTTP(st *Store, addr, tokensPath, authKeysPath string) {
 // authenticatePrincipal returns (principal, canWrite, ok). A key-holder who
 // signs gets full capability; a bearer token gets only what it was granted
 // (read-only by default). A present-but-invalid signature is a hard rejection.
-func authenticatePrincipal(r *http.Request, body []byte, tokens map[string]tokenEntry, authKeys map[string]bool) (string, bool, bool) {
+func authenticatePrincipal(r *http.Request, body []byte, tokens map[string]tokenEntry, authKeys map[string]bool) (principal string, canWrite, signed, ok bool) {
 	pubHex := r.Header.Get("X-Oath-Pubkey")
 	sigHex := r.Header.Get("X-Oath-Signature")
 	if pubHex != "" || sigHex != "" {
 		pub, perr := hex.DecodeString(pubHex)
 		sig, serr := hex.DecodeString(sigHex)
 		if perr != nil || serr != nil || len(pub) != ed25519.PublicKeySize || !ed25519.Verify(ed25519.PublicKey(pub), body, sig) {
-			return "", false, false
+			return "", false, false, false
 		}
 		// The principal IS the key (docs/registry-auth.md). Writes are open unless
 		// a registration allowlist is set, in which case only listed keys may write
 		// (#66); an unlisted key still authenticates and reads.
 		canWrite := authKeys == nil || authKeys[pubHex]
-		return pubHex, canWrite, true
+		return pubHex, canWrite, true, true
 	}
 	if token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
 		if entry, ok := tokens[token]; ok {
-			return entry.Principal, entry.Write, true
+			return entry.Principal, entry.Write, false, true
 		}
 	}
-	return "", false, false
+	return "", false, false, false
 }
 
 // handleRPC serves one JSON-RPC request. principal, when non-empty, is the
 // AUTHENTICATED identity and overrides any client-supplied author. canWrite
 // gates the state-changing tools (local stdio callers pass true — local trust).
-func handleRPC(st *Store, req *rpcRequest, principal string, canWrite bool) rpcResponse {
+func handleRPC(st *Store, req *rpcRequest, principal string, canWrite, signed bool) rpcResponse {
 	resp := rpcResponse{Jsonrpc: "2.0", ID: req.ID}
 	switch req.Method {
 	case "initialize":
@@ -246,7 +246,7 @@ func handleRPC(st *Store, req *rpcRequest, principal string, canWrite bool) rpcR
 			resp.Error = &rpcError{Code: -32602, Message: "invalid params"}
 			return resp
 		}
-		text, err := mcpCallTool(st, p.Name, p.Arguments, principal, canWrite)
+		text, err := mcpCallTool(st, p.Name, p.Arguments, principal, canWrite, signed)
 		isErr := err != nil
 		if isErr {
 			text = "error: " + err.Error()

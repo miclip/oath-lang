@@ -109,6 +109,18 @@ resource "google_cloud_run_v2_service" "server" {
         }
       }
     }
+    # The signature-auth allowlist (authkeys.tf). Without it, every valid
+    # signature is write-capable.
+    volumes {
+      name = "authorized-keys"
+      secret {
+        secret = google_secret_manager_secret.authorized_keys.secret_id
+        items {
+          version = "latest"
+          path    = "authorized-keys.json"
+        }
+      }
+    }
 
     containers {
       image = var.server_image
@@ -128,6 +140,13 @@ resource "google_cloud_run_v2_service" "server" {
       env {
         name  = "OATH_TOKENS_FILE"
         value = "/secrets/tokens/tokens.json"
+      }
+      # `oath serve` reads this as the default --authorized-keys path. Setting it
+      # is what closes the gate: unset means authKeys==nil, which makes EVERY
+      # valid signature write-capable.
+      env {
+        name  = "OATH_AUTHORIZED_KEYS"
+        value = "/secrets/authorized-keys/authorized-keys.json"
       }
       # Cloud backend env (OATH_BACKEND=cloud, OATH_OBJECT_BUCKET, OATH_DB_DSN) —
       # present only when enable_database=true. OATH_BACKEND=cloud makes OATH_STORE
@@ -155,6 +174,10 @@ resource "google_cloud_run_v2_service" "server" {
       volume_mounts {
         name       = "tokens"
         mount_path = "/secrets/tokens"
+      }
+      volume_mounts {
+        name       = "authorized-keys"
+        mount_path = "/secrets/authorized-keys"
       }
       dynamic "volume_mounts" {
         for_each = local.cloud_active ? [1] : []
