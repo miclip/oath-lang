@@ -1,0 +1,32 @@
+captured: 2026-07-29T12:22Z   registry: registry.oath-lang.org
+phase: BEFORE — the registry had SCORED the artifact but had NOT yet completed
+       its own proof pass.
+
+Recorded from the live `explain` response at 12:22Z, minutes after the corpus
+push. The paired AFTER capture (loop-after.txt) was taken at 12:31Z, by which
+point the registry's proof pass had completed — the window between the two was
+about nine minutes.
+
+Note what does NOT change between the two: the artifact hash, and the mutation
+campaign digest. The identity is fixed; only the EVIDENCE improves, and each
+improvement was independently reproduced by the registry rather than inherited
+from the publisher. At the time of this capture the definition was already
+PROVEN 3/3 in the author's local store — the registry declined to say so until
+it had re-derived the proof itself.
+
+--- explain echo-handler (response) ---
+{
+  "guarantee": "tested (200 cases per property)",
+  "spec_strength": {
+    "killed": 43,
+    "total": 43,
+    "score": 1,
+    "campaign": "a7eadd9c3c09175f86dc7d97d2b6f854a62b29e5df09111a5a03e3cb3dcf1897",
+    "current_campaign": "a7eadd9c3c09175f86dc7d97d2b6f854a62b29e5df09111a5a03e3cb3dcf1897",
+    "state": "MEASURED"
+  },
+  "limitations": [
+    "3 of 3 properties are TESTED, not proven (echoes-body-exactly, always-200, reports-method) — they hold on generated cases, not for all inputs",
+    "spec and body share an author — no authorship separation, so the specification was not written independently of the code"
+  ]
+}

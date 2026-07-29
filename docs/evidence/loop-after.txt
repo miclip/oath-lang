@@ -1,0 +1,68 @@
+captured: 2026-07-29T13:17:14Z   registry: registry.oath-lang.org
+phase: AFTER — the registry completed its own proof pass
+
+--- find_spec (source) ---
+(defn q [] [(r Request)] Response (Resp 200 (Nil [(Pair Str Str)]) (Nil [Int])) (prop echoes [(r Request)] (== (match (q r) ((Resp s h b) b)) (req-body r))))
+
+--- find_spec (response) ---
+spec query "q" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · echoes [tested here]  #127bf70004a6
+      echo-handler       (proven as "echoes-body-exactly")  ← a proven implementation of this spec
+
+
+--- explain echo-handler (response) ---
+{
+  "name": "echo-handler",
+  "hash": "604e3e90c2ffa01f1e608371f0b79c31d5b30cb8bdf525ebfd559b3ad27ab5f6",
+  "guarantee": "PROVEN (all 3 properties, Z3 over unbounded ints)",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "properties": [
+    {
+      "name": "echoes-body-exactly",
+      "hash": "127bf70004a686a0640d12e3ec281e65c2258bce651e6e5a78c008a069f65ecb",
+      "status": "proven"
+    },
+    {
+      "name": "always-200",
+      "hash": "116fb39faa9ba4341df27111423bd3e44ff06f412e8afd35f38cc7a3ac3efc9a",
+      "status": "proven"
+    },
+    {
+      "name": "reports-method",
+      "hash": "1dc114b9ef62f50b1de0962955d84d4b46d9a437c838b52b294f0934fcc7434c",
+      "status": "proven"
+    }
+  ],
+  "spec_strength": {
+    "killed": 43,
+    "total": 43,
+    "score": 1,
+    "campaign": "a7eadd9c3c09175f86dc7d97d2b6f854a62b29e5df09111a5a03e3cb3dcf1897",
+    "current_campaign": "a7eadd9c3c09175f86dc7d97d2b6f854a62b29e5df09111a5a03e3cb3dcf1897",
+    "state": "MEASURED"
+  },
+  "provenance": {
+    "author": "admin",
+    "spec_author": "admin",
+    "body_author": "admin",
+    "authorship_separated": false
+  },
+  "dependencies": [
+    "List #fa452d59a235",
+    "Option #895777a9ff55",
+    "Pair #3c3d94c1dc9e",
+    "Request #5d12ea7ba780",
+    "Response #b40fd2d9d1c6",
+    "Str #e6bbed8bc934",
+    "header-first #f0a62a28b4b4",
+    "req-body #55607d7d5608",
+    "req-method #b0c4a59b92c4"
+  ],
+  "limitations": [
+    "spec and body share an author — no authorship separation, so the specification was not written independently of the code"
+  ]
+}
