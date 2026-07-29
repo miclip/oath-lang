@@ -68,11 +68,105 @@ type specStrength struct {
 	State           string `json:"state"` // MEASURED | STALE
 }
 
+// Authorship evidence ladder. A boolean `separated` conflated two different
+// claims: that two distinct private keys produced valid signatures, and that two
+// independently controlled authors produced the spec and body. Only the first is
+// re-derivable from the record, so only the first may be reported as fact.
+//
+// The rungs are deliberately named for what is ESTABLISHED, not for the process
+// that produced it — a name like "separated" invites a reader to assume the
+// stronger property. Note the ceiling: even attested separate custody proves
+// CONTROL separation, never independent thought. Two agents can hold
+// uncompromisable separate keys and still receive the same hidden context, or be
+// orchestrated toward the same mistake. No signing arrangement can close that
+// gap, so no rung claims to.
+const (
+	// authSamePrincipal: spec and body signed by the same key.
+	authSamePrincipal = "SAME_PRINCIPAL"
+	// authDistinctKeys: different keys signed, but the registry has no evidence
+	// that CONTROL was separated — one process holding both key files produces
+	// exactly this record. This is the honest ceiling until custody is attestable.
+	authDistinctKeys = "DISTINCT_KEYS_CUSTODY_UNVERIFIED"
+	// authSeparateCustody: the signing arrangement provides independently
+	// checkable evidence that one process could not use both keys. Not yet
+	// reachable — no mechanism here yet earns it, so nothing emits it.
+	authSeparateCustody = "SEPARATE_CUSTODY_ATTESTED"
+	// authUnattributed: no authorship recorded at all.
+	authUnattributed = "UNATTRIBUTED"
+)
+
 type explainProv struct {
 	Author     string `json:"author,omitempty"`
 	SpecAuthor string `json:"spec_author,omitempty"`
 	BodyAuthor string `json:"body_author,omitempty"`
-	Separated  bool   `json:"authorship_separated"`
+	// Authorship is the ladder rung this artifact's record actually supports.
+	Authorship string `json:"authorship"`
+}
+
+// authorshipLevel places an artifact on the ladder from recorded state alone.
+//
+// It deliberately does NOT consult whether the journal entries were signed —
+// that is a separate axis (is the attribution evidence or the registry's word?)
+// reported as its own limitation. Folding the two together would let a signed
+// same-key artifact outrank an unsigned distinct-key one on a scale that is
+// supposed to measure only control separation.
+func authorshipLevel(specAuthor, bodyAuthor string) string {
+	if specAuthor == "" || bodyAuthor == "" {
+		return authUnattributed
+	}
+	if specAuthor == bodyAuthor {
+		return authSamePrincipal
+	}
+	return authDistinctKeys
+}
+
+// unsignedAttribution reports whether this artifact's recorded authorship rests
+// on unsigned journal entries — i.e. whether an auditor must take the registry's
+// word for who authored it.
+//
+// It walks the whole NAME LINEAGE backwards through Prev, not just the entry for
+// this hash, because spec_author is INHERITED: when a put leaves the props
+// unchanged, the spec author carries over from the object the name previously
+// pointed at. So "which key signed the spec" is only answerable if the earlier
+// entry that introduced those props was itself signed. One unsigned link makes
+// the inherited half of the attribution unverifiable, however well-signed the
+// most recent put was.
+//
+// Conservative by construction: an object with no accepted entry at all, or a
+// lineage that runs out, counts as unverifiable rather than clean. Absence of a
+// record is not evidence of authorship.
+func unsignedAttribution(st *Store, h string) bool {
+	accepted := map[string][]LogEntry{}
+	for _, e := range st.ReadLog() {
+		if e.Status == "accepted" && e.Hash != "" {
+			accepted[e.Hash] = append(accepted[e.Hash], e)
+		}
+	}
+	seen := map[string]bool{}
+	for cur := h; cur != ""; {
+		if seen[cur] { // a repoint cycle (A→B→A) is finite evidence, not an error
+			return false
+		}
+		seen[cur] = true
+		es, ok := accepted[cur]
+		if !ok {
+			return true
+		}
+		signed, prev := false, ""
+		for _, e := range es {
+			if e.Sig != "" && e.Pubkey != "" {
+				signed = true
+			}
+			if e.Prev != "" {
+				prev = e.Prev
+			}
+		}
+		if !signed {
+			return true
+		}
+		cur = prev
+	}
+	return false
 }
 
 // buildExplain assembles the decision package for one definition.
@@ -108,8 +202,9 @@ func buildExplain(st *Store, name string) (*explainPkg, error) {
 			Author: m.Author, SpecAuthor: m.SpecAuthor, BodyAuthor: m.BodyAuthor,
 			// The split-agent result made structural: spec and body written by
 			// different principals is a stronger artifact than one author's
-			// self-assessment, and a consumer should be able to see which it is.
-			Separated: m.SpecAuthor != "" && m.BodyAuthor != "" && m.SpecAuthor != m.BodyAuthor,
+			// self-assessment, and a consumer should be able to see which it is —
+			// but only as far up the ladder as the record actually reaches.
+			Authorship: authorshipLevel(m.SpecAuthor, m.BodyAuthor),
 		},
 	}
 
@@ -158,14 +253,14 @@ func buildExplain(st *Store, name string) (*explainPkg, error) {
 	}
 	sort.Strings(pkg.Dependencies)
 
-	pkg.Limitations = explainLimitations(pkg, m)
+	pkg.Limitations = explainLimitations(st, pkg, m)
 	return pkg, nil
 }
 
 // explainLimitations is the part that matters most: the honest reasons NOT to
 // pick this artifact. Everything here is derived from recorded state, so a
 // definition cannot look better than its evidence.
-func explainLimitations(p *explainPkg, m *Meta) []string {
+func explainLimitations(st *Store, p *explainPkg, m *Meta) []string {
 	var out []string
 	var unproven []string
 	for _, pr := range p.Properties {
@@ -204,8 +299,26 @@ func explainLimitations(p *explainPkg, m *Meta) []string {
 	if len(m.WaivedMutants) > 0 {
 		out = append(out, fmt.Sprintf("%d surviving mutant(s) WAIVED as equivalent — judgement calls, listed with their justifications", len(m.WaivedMutants)))
 	}
-	if !p.Provenance.Separated {
+	// Authorship limitations, one per rung. The DISTINCT_KEYS case still carries a
+	// limitation: two key files on one machine, used by one process, produce
+	// exactly that record, and dropping the caveat there would let the registry
+	// vouch for control separation it cannot observe.
+	switch p.Provenance.Authorship {
+	case authUnattributed:
+		out = append(out, "authorship is UNATTRIBUTED — no principal is recorded for the spec or the body, so there is nothing to hold accountable for either")
+	case authSamePrincipal:
 		out = append(out, "spec and body share an author — no authorship separation, so the specification was not written independently of the code")
+	case authDistinctKeys:
+		out = append(out, "spec and body were signed by DISTINCT KEYS, but key custody and independent control were NOT verified — one process holding both keys produces this same record, so this is not evidence of independent authorship")
+	}
+	// A separate axis from the ladder: is the attribution EVIDENCE, or the
+	// registry's word for it? An unsigned journal entry records a pubkey the
+	// registry chose to write down. It may well have verified a signature at
+	// request time, but that verification left no artifact, so no third party can
+	// re-derive who authored this — and unverifiable attribution is exactly what
+	// the rest of this system refuses to report as fact.
+	if p.Provenance.Authorship != authUnattributed && unsignedAttribution(st, p.Hash) {
+		out = append(out, "the authorship above is NOT independently verifiable — the journal entries recording it carry no signature, so the recorded principals are the registry's assertion rather than evidence an auditor can check")
 	}
 	if len(out) == 0 {
 		out = append(out, "none recorded")
@@ -239,9 +352,9 @@ func cmdExplain(st *Store, name string, asJSON bool) {
 	for _, w := range pkg.Waivers {
 		fmt.Fprintf(&b, "  waived %s (%s): %s — %s\n", w.Mutant, w.Desc, w.Reason, w.By)
 	}
-	fmt.Fprintf(&b, "\nPROVENANCE: author=%s spec=%s body=%s (separated: %v)\n",
+	fmt.Fprintf(&b, "\nPROVENANCE: author=%s spec=%s body=%s\n            authorship: %s\n",
 		orNone(pkg.Provenance.Author), orNone(pkg.Provenance.SpecAuthor),
-		orNone(pkg.Provenance.BodyAuthor), pkg.Provenance.Separated)
+		orNone(pkg.Provenance.BodyAuthor), pkg.Provenance.Authorship)
 	fmt.Fprintf(&b, "\nDEPENDENCIES (%d, exact by hash):\n", len(pkg.Dependencies))
 	for _, dep := range pkg.Dependencies {
 		fmt.Fprintf(&b, "  %s\n", dep)
