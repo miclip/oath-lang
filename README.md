@@ -12,9 +12,11 @@ kernel refuses ill-typed code at the gate, runs every property with
 deterministic inputs before a name is trusted, and records an **honest
 guarantee level** on every definition:
 
-```
-asserted  →  tested (N cases)  →  PROVEN (all inputs, Z3)
-                      ↘  FALSIFIED (with counterexample)
+```mermaid
+flowchart LR
+    A[asserted] --> T["tested (N cases)"]
+    T --> P["PROVEN (all inputs, Z3)"]
+    T --> F["FALSIFIED (with counterexample)"]
 ```
 
 `proven` is real: `oath prove <name>` translates properties to SMT-LIB and
