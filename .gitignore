@@ -11,3 +11,13 @@ oathrs/target/
 *.pem
 tokens.json
 *tokens.json
+# Public keys are ignored too, which is NOT a secrecy measure — a pubkey is
+# public by definition and leaks nothing. It is about deliberateness. Committing
+# one binds a git identity (real name, email) to a registry principal in a
+# record that is immutable, forked, and archived: unpublishable after the fact.
+# It also invites the repo to be read as the trust root when the authoritative
+# list of who may publish is the registry's --authorized-keys, so a committed
+# copy goes silently stale at the first rotation while still looking canonical.
+# Publishing a key as a deliberate trust root remains fine, and `git add -f`
+# is the friction that keeps it deliberate.
+*.pub
