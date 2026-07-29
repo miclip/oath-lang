@@ -11,6 +11,7 @@ const GROUPS: { title: string; links: { href: string; label: string }[] }[] = [
       { href: "/essays/what-remains", label: "What’s left of software" },
       { href: "/essays/building-oath", label: "Building the referee" },
       { href: "/essays/outside-audit", label: "An outside audit" },
+      { href: "/essays/nine-minute-gap", label: "The nine-minute gap" },
     ],
   },
   {
