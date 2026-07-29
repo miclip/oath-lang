@@ -1,0 +1,42 @@
+MILESTONE: first independently authored artifact published through a signed registry path
+Captured 2026-07-29T22:31:25Z against a local registry with --authorized-keys.
+
+Key A (spec author): f39b3d5c791c69abbcb11ef2e354a420727f4a9d4624bcf840fc795f66ae96a0
+Key B (body author): abba2c0225e39d9a8bac92f188c2af2d400d287d945a066b5a7f41208a4c95a4
+
+--- A signs and publishes spec+body -------------------------------
+$ oath put --remote http://127.0.0.1:8792 --key A.key v1.oath
+✓ double #ea1f85daff7e  tested (200 cases per property) · total
+
+--- B signs and publishes the SAME spec with a new body -----------
+$ oath put --remote http://127.0.0.1:8792 --key B.key v2.oath
+✓ double #974b9a51085c  tested · total  (name repointed; old version ea1f85daff7e remains immutable)
+
+--- explain: authorship separation, both principals are KEYS ------
+double  #974b9a51085c
+  tested (200 cases per property)
+  termination: nonrecursive
+
+SPEC (properties, by content hash — the identity of the claim):
+  tested     is-twice                     #85833fa433e9
+  tested     zero-fixed                   #eb7151c6a1fb
+
+PROVENANCE: author=abba2c0225e39d9a8bac92f188c2af2d400d287d945a066b5a7f41208a4c95a4 spec=f39b3d5c791c69abbcb11ef2e354a420727f4a9d4624bcf840fc795f66ae96a0 body=abba2c0225e39d9a8bac92f188c2af2d400d287d945a066b5a7f41208a4c95a4 (separated: true)
+
+DEPENDENCIES (0, exact by hash):
+
+LIMITATIONS:
+  · 2 of 2 properties are TESTED, not proven (is-twice, zero-fixed) — they hold on generated cases, not for all inputs
+  · spec strength UNMEASURED — no mutation score recorded, so how much the properties actually pin is unknown
+
+--- CONTROL: single-author artifact, limitation still fires -------
+PROVENANCE: author=f39b3d5c791c69abbcb11ef2e354a420727f4a9d4624bcf840fc795f66ae96a0 spec=f39b3d5c791c69abbcb11ef2e354a420727f4a9d4624bcf840fc795f66ae96a0 body=f39b3d5c791c69abbcb11ef2e354a420727f4a9d4624bcf840fc795f66ae96a0 (separated: false)
+  · spec and body share an author — no authorship separation, so the specification was not written independently of the code
+
+--- KNOWN GAP (not closed by this run) ---------------------------
+The journal entries above carry author=<pubkey> but NO per-entry signature:
+  double   author=f39b3d5c791c... sig=ABSENT
+  double   author=abba2c0225e3... sig=ABSENT
+  triple   author=f39b3d5c791c... sig=ABSENT
+So authorship here is the registry's ASSERTION that it verified a signature,
+not evidence a third party can re-derive. Closing that is the rest of #83.

@@ -84,6 +84,7 @@ func main() {
 		author := os.Getenv("OATH_AUTHOR")
 		ctxHash := ""
 		keyFile := os.Getenv("OATH_KEY")
+		remote := os.Getenv("OATH_REGISTRY")
 		var files []string
 		rest := args[1:]
 		for i := 0; i < len(rest); i++ {
@@ -99,9 +100,23 @@ func main() {
 			case rest[i] == "--key" && i+1 < len(rest):
 				keyFile = rest[i+1]
 				i++
+			case rest[i] == "--remote" && i+1 < len(rest):
+				remote = rest[i+1]
+				i++
 			default:
 				files = append(files, rest[i])
 			}
+		}
+		// --remote publishes to a REGISTRY instead of the local store, signed. It
+		// takes several files because publication order is load-bearing on a cold
+		// registry: a definition cannot elaborate before its dependencies exist
+		// (#83).
+		if remote != "" {
+			if len(files) == 0 {
+				fail(fmt.Errorf("usage: oath put --remote <url> --key <file> <file.oath>..."))
+			}
+			cmdRemotePut(remote, keyFile, files, ctxHash)
+			return
 		}
 		// A signing key makes the put attributed by SIGNATURE, not by an
 		// unverified label: the pubkey is the principal. Default the author label
@@ -118,7 +133,7 @@ func main() {
 			author = "unattributed"
 		}
 		if len(files) != 1 {
-			fail(fmt.Errorf("usage: oath put [--json] [--author <id>] [--context <hash>] [--key <file>] <file.oath>"))
+			fail(fmt.Errorf("usage: oath put [--json] [--author <id>] [--context <hash>] [--key <file>] [--remote <url>] <file.oath>"))
 		}
 		cmdPut(st, files[0], jsonMode, author, ctxHash)
 	case "keygen":
