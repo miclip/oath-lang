@@ -128,6 +128,23 @@
       ]
     },
     {
+      "name": "check-config",
+      "hash": "3bb186fa472835cdf59d0711de06105362f7ea8c515071c38bac688ebd1a9f16",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "no-args-is-usage",
+          "proven": true
+        },
+        {
+          "name": "reports-ok-or-missing",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "circle",
       "hash": "b9df489c7e772dce670558046a0a913a4827313b890e4f507c5f847dae5cd436",
       "level": "tested",
@@ -162,6 +179,69 @@
         {
           "name": "identity-inside",
           "proven": true
+        }
+      ]
+    },
+    {
+      "name": "config-has-key",
+      "hash": "026c7502118d609a3106c199e9fb6ea854415f7a6c5f6b0c7aab719435e3bdb1",
+      "level": "tested",
+      "proven_count": 2,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-has-nothing",
+          "proven": true
+        },
+        {
+          "name": "finds-head",
+          "proven": false
+        },
+        {
+          "name": "skips-mismatch",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "config-key",
+      "hash": "7995ac55afc695307229f25f6a76d7d41503ac4a0f5fb8f61bb606761d076cb1",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "reads-key-before-eq",
+          "proven": true
+        },
+        {
+          "name": "whole-line-when-no-eq",
+          "proven": true
+        },
+        {
+          "name": "empty-stays-empty",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "config-missing",
+      "hash": "8c9e095b0d72fe2dd3338908839c2f89353f2585efb362b8d298a6f562b779a6",
+      "level": "tested",
+      "proven_count": 2,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "nothing-required-is-complete",
+          "proven": true
+        },
+        {
+          "name": "reports-a-missing-key",
+          "proven": true
+        },
+        {
+          "name": "complete-config-reports-nothing",
+          "proven": false
         }
       ]
     },

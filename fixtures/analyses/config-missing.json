@@ -1,0 +1,13 @@
+{
+  "name": "config-missing",
+  "hash": "8c9e095b0d72fe2dd3338908839c2f89353f2585efb362b8d298a6f562b779a6",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200,
+  "proven": 2
+}

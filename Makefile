@@ -19,7 +19,7 @@
 #     ended up with no rational family at all — a corpus push driven by this
 #     list cannot push what the list omits.
 EXAMPLES = list str records arith inferred sort generic merge tree interval queue rle ediv extras rot_hl rot_f \
-           rot_h2 rot_h3 rot ints rat convert service leaky stateful cli netcli set map circle http webhook exclusion
+           rot_h2 rot_h3 rot ints rat convert service leaky stateful cli netcli set map circle http webhook config exclusion
 # float belongs here, not in EXAMPLES: it carries deliberate FALSIFIED exhibits
 # (f-tenths — 0.1+0.2 ≠ 0.3 — and f-scale-inv, float scaling not being
 # invertible), so `oath put` exits nonzero by design and the `|| exit 1` in the
@@ -44,6 +44,7 @@ PROVABLE = length append sum count reverse map filter foldr foldl \
            map-size map-keys map-values map-insert map-lookup map-has map-merge \
            str-len str-append str-prefix str-take str-drop str-split str-join str-split-join \
            req-method req-path req-headers req-body req-received-at header-first echo-handler \
+           config-key config-has-key config-missing check-config \
            bytes-ok str-bytes hex-nibble hex-decode within-window
 # Props exist but sit outside the provable fragment (Int-recursion fuel
 # bounds, or / and % in bodies): mutation-scored, never proven. merge

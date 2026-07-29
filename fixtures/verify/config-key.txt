@@ -1,0 +1,3 @@
+✓ prop reads-key-before-eq      passed 200 cases
+✓ prop whole-line-when-no-eq    passed 200 cases
+✓ prop empty-stays-empty        passed 200 cases

@@ -1,0 +1,28 @@
+{
+  "name": "config-key",
+  "prop_names": [
+    "reads-key-before-eq",
+    "whole-line-when-no-eq",
+    "empty-stays-empty"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "line"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

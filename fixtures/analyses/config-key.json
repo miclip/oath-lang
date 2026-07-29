@@ -1,0 +1,12 @@
+{
+  "name": "config-key",
+  "hash": "7995ac55afc695307229f25f6a76d7d41503ac4a0f5fb8f61bb606761d076cb1",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

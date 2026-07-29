@@ -1,0 +1,3 @@
+✓ prop nothing-required-is-complete passed 200 cases
+✓ prop reports-a-missing-key    passed 200 cases
+✓ prop complete-config-reports-nothing passed 200 cases

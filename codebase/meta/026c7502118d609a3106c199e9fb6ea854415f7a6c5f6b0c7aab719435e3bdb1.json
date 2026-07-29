@@ -1,0 +1,29 @@
+{
+  "name": "config-has-key",
+  "prop_names": [
+    "empty-has-nothing",
+    "finds-head",
+    "skips-mismatch"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200,
+    "proven": 2
+  },
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "lines",
+    "key"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    2
+  ]
+}

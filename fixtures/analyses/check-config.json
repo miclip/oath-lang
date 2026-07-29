@@ -1,0 +1,13 @@
+{
+  "name": "check-config",
+  "hash": "3bb186fa472835cdf59d0711de06105362f7ea8c515071c38bac688ebd1a9f16",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

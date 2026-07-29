@@ -1,0 +1,76 @@
+; A CONFIG VALIDATOR — the second boundary-real artifact, built to answer one
+; question: does the capability vocabulary generalise, or was it shaped around
+; the webhook?
+;
+; It is deliberately different on every axis. `webhook` is a handler that
+; RECEIVES a request, verifies a signature with crypto primitives, and WRITES
+; through `emit`. This is a CLI entry that READS through `readfile` and `env` and
+; performs structural validation with no crypto at all.
+;
+; The result: it required ZERO new capability surface. The confinement checker
+; handled a two-capability record unchanged, `oath build` wired both at the
+; boundary, and the CLI protocol accepted a capability record in a combination it
+; had not seen. Built and run against real files — so the capability model is
+; doing real work rather than having been fitted to one example.
+;
+; Two artifacts is evidence, not proof. A third needing a capability that does
+; NOT exist would stress it harder, and finding a genuine gap there would be more
+; useful than another success.
+
+; A config line is "key=value". Splitting on '=' (61) yields the parts; a line
+; with no '=' yields one element, which is how a malformed line is detected
+; without a separate error channel.
+(defn config-key [] [(line Str)] Str
+  (match (str-split 61 line)
+    ((Nil) (SNil))
+    ((Cons k rest) k))
+  (prop reads-key-before-eq [] (== (config-key "host=example.com") "host"))
+  (prop whole-line-when-no-eq [] (== (config-key "malformed") "malformed"))
+  (prop empty-stays-empty [] (== (config-key (SNil)) (SNil))))
+
+(defn config-has-key [] [(lines (List Str)) (key Str)] Bool
+  (match lines
+    ((Nil) false)
+    ((Cons l rest) (if (== (config-key l) key) true (config-has-key rest key))))
+  (prop empty-has-nothing [(key Str)] (not (config-has-key (Nil [Str]) key)))
+  (prop finds-head [(rest (List Str)) (key Str)]
+    (config-has-key (Cons [Str] (str-append key "=v") rest) key))
+  (prop skips-mismatch [(l Str) (rest (List Str)) (key Str)]
+    (if (== (config-key l) key) true
+        (== (config-has-key (Cons [Str] l rest) key) (config-has-key rest key)))))
+
+; Returns the FIRST missing key, or SNil when the config is complete. Total, with
+; no error channel: the result is data the caller branches on.
+(defn config-missing [] [(lines (List Str)) (required (List Str))] Str
+  (match required
+    ((Nil) (SNil))
+    ((Cons k rest)
+      (if (config-has-key lines k) (config-missing lines rest) k)))
+  (prop nothing-required-is-complete [(lines (List Str))]
+    (== (config-missing lines (Nil [Str])) (SNil)))
+  (prop reports-a-missing-key [(lines (List Str)) (k Str) (rest (List Str))]
+    (if (config-has-key lines k) true
+        (== (config-missing lines (Cons [Str] k rest)) k)))
+  (prop complete-config-reports-nothing [(k Str) (v Str)]
+    (== (config-missing (Cons [Str] (str-append k (str-append "=" v)) (Nil [Str]))
+                        (Cons [Str] k (Nil [Str])))
+        (SNil))))
+
+; The entry point. Capabilities are `readfile` (the config) and `env` (the
+; required-key list) — both the existing (-> Str Str) shape, because that is all
+; this artifact needs. Lines split on '\n' (10), required keys on ',' (44).
+(defn check-config [] [(caps {readfile (-> Str Str) env (-> Str Str)}) (args (List Str))] Str
+  (match args
+    ((Nil) "usage: check-config <file>")
+    ((Cons path rest)
+      (match (config-missing (str-split 10 ((. caps readfile) path))
+                             (str-split 44 ((. caps env) "REQUIRED_KEYS")))
+        ((SNil) "ok")
+        ((SCons c more) (str-append "missing: " (SCons c more))))))
+  (prop no-args-is-usage [(caps {readfile (-> Str Str) env (-> Str Str)})]
+    (== (check-config caps (Nil [Str])) "usage: check-config <file>"))
+  ; The response is always one of three known shapes — a caller cannot receive
+  ; something it has no branch for.
+  (prop reports-ok-or-missing [(caps {readfile (-> Str Str) env (-> Str Str)}) (args (List Str))]
+    (let (r Str (check-config caps args))
+      (or (== r "ok") (or (== r "usage: check-config <file>") (str-prefix "missing: " r))))))

@@ -1,0 +1,13 @@
+{
+  "name": "config-has-key",
+  "hash": "026c7502118d609a3106c199e9fb6ea854415f7a6c5f6b0c7aab719435e3bdb1",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200,
+  "proven": 2
+}

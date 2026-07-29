@@ -1,0 +1,2 @@
+✓ prop no-args-is-usage         passed 200 cases
+✓ prop reports-ok-or-missing    passed 200 cases
