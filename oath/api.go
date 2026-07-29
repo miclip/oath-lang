@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 )
 
 // String-returning implementations of every verb, shared by the CLI (which
@@ -335,6 +336,11 @@ func findFromDef(st *Store, qd *Def, qm *Meta, excludeHash, header string) strin
 			// misses SILENTLY. So say what is actually known: nothing states this
 			// law AS WRITTEN, and here are the definitions with a compatible
 			// signature that are worth re-querying against.
+			// DEMAND SIGNAL (#75). A miss is the coverage request — someone
+			// tried and failed to find something. Only the structural
+			// fingerprint and signature are retained; see demand.go for what is
+			// deliberately dropped.
+			recordMiss(st, q.hash, querySignature(st, qd), time.Now())
 			b.WriteString("      no definition states this law as written (matched by property content hash)\n")
 			if near := signatureNeighbours(st, qd, excludeHash); len(near) > 0 {
 				fmt.Fprintf(&b, "      %d definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your\n", len(near))
@@ -690,4 +696,19 @@ func signatureNeighbours(st *Store, qd *Def, excludeHash string) []string {
 		}
 	}
 	return out
+}
+
+// querySignature renders the sought function's type, generalized the same way
+// the property matcher generalizes, so a recorded demand signal reads as a
+// coverage request rather than as one caller's exact phrasing.
+func querySignature(st *Store, qd *Def) string {
+	if qd == nil || qd.Ty == nil {
+		return "?"
+	}
+	// Rendered with datatype NAMES rather than hashes: a demand record has to be
+	// readable as a coverage request ("something (List a) -> (List a)"), not as
+	// an opaque fingerprint. Type names are corpus vocabulary, not caller prose,
+	// so this adds legibility without adding anything the caller authored.
+	g := generalizeTypes([]Ty{*qd.Ty})[0]
+	return printTy(st, &g, nil)
 }

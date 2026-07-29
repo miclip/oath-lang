@@ -37,6 +37,7 @@ usage:
   oath verify <name>                  re-run a definition's properties
   oath mutate <name>                  score spec strength: do the properties notice mutations?
   oath scorable                       list every definition the mutation engine can score
+  oath demand [--all]                 coverage requests: spec shapes agents sought and did not find
   oath explain <name> [--json]        decision package: spec, evidence, provenance, deps, LIMITATIONS
   oath waive <name> <mutant> "<why>"  record a surviving mutant as judged-equivalent, with justification
   oath cross <nameA> <nameB> [--record]  N-version misalignment check: run each spec against the other's body
@@ -247,6 +248,9 @@ func main() {
 			fail(fmt.Errorf("usage: oath explain <name> [--json]"))
 		}
 		cmdExplain(st, nm, asJSON)
+	case "demand":
+		// What agents looked for and did not find (#75).
+		cmdDemand(st, len(args) > 1 && args[1] == "--all")
 	case "scorable":
 		// Every definition the mutation engine can score: a func with at least
 		// one property. Exists so `make mutate` can be driven from the STORE
