@@ -34,23 +34,49 @@ package main
 // being uniquely decodable — the defect that mattered there was decodability, not
 // collision, and it is cheaper to exclude the character than to reason about it.
 //
-// WHAT `parent` BUYS. Binding the hash the name currently points at makes
-// publication a compare-and-swap. A captured envelope cannot be replayed to roll
-// a name back to an earlier version, because its parent no longer matches — and
-// this needs NO server-side nonce table, which is why it is preferred to a nonce
-// or a timestamp window. It also closes lost-update races between two agents
-// publishing the same name concurrently, for free.
+// WHAT `parent` BUYS, AND WHAT IT DOES NOT. Binding the hash the name currently
+// points at expresses a compare-and-swap, so a captured envelope cannot be
+// replayed to roll a name back — its parent no longer matches — with no
+// server-side nonce table, which is why this beats a nonce or a timestamp window.
+//
+// Two limits, stated because overclaiming them would be worse than not having
+// them:
+//
+//   1. ABA. A hash alone is not monotonic. If a name moves A → B → A, an old
+//      envelope naming parent=A becomes valid AGAIN, and the replay defence
+//      silently lapses. True ABA has never occurred in the corpus — the many
+//      repeated hashes there are idempotent re-puts of identical content, not a
+//      return to an earlier different value — but nothing FORBIDS it: revert a
+//      change and republish and you have it. Rather than assert an invariant the
+//      store does not enforce, the envelope also binds `parent_rev`, a per-name
+//      monotonic revision. Per-name rather than the global journal head on
+//      purpose: binding the head would make any concurrent publication of an
+//      UNRELATED name invalidate this envelope.
+//
+//   2. The CAS is expressed here, NOT enforced by storage. Acceptance is not
+//      atomic: the compare (Resolve) and the update (Repoint) are separate
+//      operations, and StoreObject does an unlocked read-modify-write, so two
+//      publishers can both read parent=A, both validate, and both proceed. So
+//      this closes REPLAY (an old envelope is rejected) but does NOT close
+//      concurrent lost updates. That needs an atomic compare-and-set in the
+//      backend; until then the protocol describes a guarantee the implementation
+//      does not yet keep, and saying otherwise would be the kind of unearned
+//      claim this project exists to avoid.
 
 import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
 // envelopeVersion is the domain separator. It is part of the signed bytes, so a
 // future envelope shape cannot have its signatures confused with this one's.
 const envelopeVersion = "oath-publish/1"
+
+// firstRev is the revision of a name that has never been published.
+const firstRev = 0
 
 // noParent marks a first publication — a name that pointed at nothing. Empty
 // would also be unambiguous here (the encoding is fixed-key), but an explicit
@@ -65,7 +91,11 @@ type pubEnvelope struct {
 	Name     string // full (namespaced) name the artifact is published under
 	Artifact string // content hash of the definition
 	Parent   string // hash the name pointed at before, or noParent
-	Author   string // hex Ed25519 public key of the signer
+	// ParentRev is how many times the name had ALREADY been accepted before this
+	// publication: a per-name monotonic counter. It is what makes the replay
+	// defence survive ABA, since a revision never repeats even when a hash does.
+	ParentRev int
+	Author    string // hex Ed25519 public key of the signer
 }
 
 // envelopeEncode renders the canonical signed bytes. Callers must have validated
@@ -86,6 +116,7 @@ func envelopeEncode(e pubEnvelope) []byte {
 		{"name", e.Name},
 		{"artifact", e.Artifact},
 		{"parent", e.Parent},
+		{"parent_rev", strconv.Itoa(e.ParentRev)},
 		{"author", e.Author},
 	} {
 		b.WriteString(kv[0])
@@ -128,6 +159,15 @@ func (e pubEnvelope) validate() error {
 	}
 	if e.Parent != noParent && !isHash(e.Parent) {
 		return fmt.Errorf("envelope parent %q is neither a content hash nor %q", e.Parent, noParent)
+	}
+	if e.ParentRev < 0 {
+		return fmt.Errorf("envelope parent_rev %d is negative", e.ParentRev)
+	}
+	// A first publication must agree with itself: no parent hash and no prior
+	// revisions are the same statement, and allowing them to disagree would let an
+	// envelope claim a name was fresh while pointing at a parent (or vice versa).
+	if (e.Parent == noParent) != (e.ParentRev == firstRev) {
+		return fmt.Errorf("envelope is inconsistent: parent=%q with parent_rev=%d — a first publication has both, a repoint has neither", e.Parent, e.ParentRev)
 	}
 	if len(e.Author) != ed25519.PublicKeySize*2 {
 		return fmt.Errorf("envelope author %q is not a 32-byte hex public key", e.Author)
