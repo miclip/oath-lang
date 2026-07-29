@@ -1,54 +1,72 @@
-# The AUTHORIZED-KEYS gate for signature auth (#83).
+# An OPTIONAL, OFF-BY-DEFAULT allowlist for signature auth — an operator lever,
+# NOT the onboarding model.
 #
-# WHY THIS EXISTS: `oath serve` computes a signed request's write capability as
+# Open contribution is a DESIGN DECISION, not an oversight (#66): the registry is
+# public and re-derives every verdict from content bytes, so a hostile publish
+# cannot forge evidence — it can only add an object that will be independently
+# re-verified. `owner_pubkey` in policy.json locks the names that matter. An
+# allowlist is therefore not what makes this registry safe, and switching it on
+# by default would close a door that is open on purpose.
 #
-#     canWrite := authKeys == nil || authKeys[pubHex]
+# WHY THIS IS NOT REGISTRATION. A Secret Manager allowlist means the only way to
+# register a key is to hold GCP credentials and run terraform. That makes
+# onboarding an infrastructure operation and the operator a permanent
+# bottleneck — no new user who is not already an infra admin could ever publish.
+# Public-registry onboarding must be self-service, so the real path is:
 #
-# so a server started WITHOUT an authorized-keys file treats every valid
-# Ed25519 signature as write-capable. The live registry ran exactly that way:
-# --authorized-keys was never passed and OATH_AUTHORIZED_KEYS was never set, so
-# any keypair could publish to the public registry and repoint names. That was
-# expensive to reach while no client spoke signature auth; `oath put --remote`
-# reduced it to one command, which is what made closing it urgent rather than
-# theoretical.
+#   - anyone may publish (open contribution, verdicts re-derived on arrival);
+#   - a key CLAIMS a namespace prefix on first publish, first-come;
+#   - only that key may repoint names under it (#84 generalizes owner_pubkey from
+#     an operator-edited per-name rule to a claimable prefix).
 #
-# FAIL CLOSED. The default is an EMPTY list, which is deliberate: an empty JSON
-# array parses to a non-nil, empty key set, so every signed write is refused
-# while reads keep working. An unset variable therefore denies publication rather
-# than granting it to everyone — the opposite of the behaviour being fixed.
+# Public keys also simply are not secrets, so Secret Manager is the wrong store
+# for them on its own terms; the claimable-ownership record belongs in the store,
+# which is mutable registry DATA rather than deployment config.
 #
-# The key values are NOT committed. Public keys are safe to publish but doing so
-# permanently binds a git identity to a registry principal, and the authoritative
-# list of who may publish belongs to the server, not to a file in the repo (see
-# the *.pub rule in .gitignore). Supply them at apply time via a tfvars file or
-# -var, and rotate by writing a new secret version — the server reads "latest".
+# WHAT THIS IS FOR: incident response and private deployments. If the public
+# registry is being abused, or someone runs a closed internal instance, an
+# operator can restrict signed writes to named keys without a code change. Both
+# are legitimate; neither is onboarding.
 #
-# SCOPE, so this is not oversold: this gates the SIGNATURE path only. Bearer
-# tokens are authenticated on a separate branch and remain a write path
-# regardless, so the effect is to narrow publication to "listed keys plus
-# write-capable tokens", not to seal it.
+# FAIL-SAFE DEFAULT: empty (the default) creates NOTHING and sets no env var, so
+# `oath serve` sees authKeys==nil and contribution stays open. This matters
+# because an empty allowlist is not neutral — a file containing [] parses to a
+# non-nil EMPTY set and denies every signed write, so writing [] would silently
+# close the registry. The list is therefore all-or-nothing by construction:
+# absent means open, non-empty means exactly those keys.
+#
+# SCOPE: gates the SIGNATURE path only. Bearer tokens authenticate on a separate
+# branch and stay write-capable, so enabling this narrows publication to "listed
+# keys plus write tokens" rather than sealing it.
 
 variable "authorized_publish_keys" {
   description = <<-EOT
-    Hex-encoded Ed25519 public keys permitted to PUBLISH via signature auth.
-    Empty (the default) denies all signed writes and still serves reads — fail
-    closed. Never commit real key values here; pass them at apply time.
+    OPTIONAL operator lever, off by default. Hex Ed25519 public keys permitted to
+    publish via signature auth. Empty (default) leaves contribution OPEN, which is
+    the intended posture for the public registry (#66) — do not set this to close
+    a registry you meant to leave open. Use for incident response or a private
+    deployment. Never commit real key values; pass at apply time.
   EOT
   type        = list(string)
   default     = []
 
   validation {
-    # A malformed entry would be rejected by loadAuthorizedKeys at STARTUP, and
-    # `oath serve` exits on a corrupt file — so a typo here takes the registry
-    # down rather than merely failing to authorize one key. Catch it at plan time.
+    # A malformed entry is rejected by loadAuthorizedKeys at STARTUP and `oath
+    # serve` exits, so a typo takes the registry DOWN rather than merely failing
+    # to authorize one key. Catch it at plan time instead.
     condition = alltrue([
       for k in var.authorized_publish_keys : can(regex("^[0-9a-f]{64}$", k))
     ])
-    error_message = "Each key must be exactly 64 lowercase hex characters (a 32-byte Ed25519 public key). Uppercase hex is rejected: the server compares the hex string, so ABAB… and abab… are different principals."
+    error_message = "Each key must be exactly 64 lowercase hex characters (a 32-byte Ed25519 public key). Uppercase hex is rejected: the server compares the hex string, so ABAB… and abab… would be different principals."
   }
 }
 
+locals {
+  authkeys_active = length(var.authorized_publish_keys) > 0
+}
+
 resource "google_secret_manager_secret" "authorized_keys" {
+  count     = local.authkeys_active ? 1 : 0
   secret_id = "${var.name_prefix}-authorized-keys"
   replication {
     auto {}
@@ -57,13 +75,15 @@ resource "google_secret_manager_secret" "authorized_keys" {
 }
 
 resource "google_secret_manager_secret_version" "authorized_keys" {
-  secret = google_secret_manager_secret.authorized_keys.id
+  count  = local.authkeys_active ? 1 : 0
+  secret = google_secret_manager_secret.authorized_keys[0].id
   # A bare JSON array of hex pubkeys — the shape loadAuthorizedKeys parses.
   secret_data = jsonencode(var.authorized_publish_keys)
 }
 
 resource "google_secret_manager_secret_iam_member" "server_authorized_keys" {
-  secret_id = google_secret_manager_secret.authorized_keys.secret_id
+  count     = local.authkeys_active ? 1 : 0
+  secret_id = google_secret_manager_secret.authorized_keys[0].secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.server.email}"
 }

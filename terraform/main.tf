@@ -109,15 +109,18 @@ resource "google_cloud_run_v2_service" "server" {
         }
       }
     }
-    # The signature-auth allowlist (authkeys.tf). Without it, every valid
-    # signature is write-capable.
-    volumes {
-      name = "authorized-keys"
-      secret {
-        secret = google_secret_manager_secret.authorized_keys.secret_id
-        items {
-          version = "latest"
-          path    = "authorized-keys.json"
+    # The signature-auth allowlist (authkeys.tf), mounted ONLY when keys are
+    # actually listed. Absent = open contribution, which is the designed default.
+    dynamic "volumes" {
+      for_each = local.authkeys_active ? [1] : []
+      content {
+        name = "authorized-keys"
+        secret {
+          secret = google_secret_manager_secret.authorized_keys[0].secret_id
+          items {
+            version = "latest"
+            path    = "authorized-keys.json"
+          }
         }
       }
     }
@@ -141,12 +144,16 @@ resource "google_cloud_run_v2_service" "server" {
         name  = "OATH_TOKENS_FILE"
         value = "/secrets/tokens/tokens.json"
       }
-      # `oath serve` reads this as the default --authorized-keys path. Setting it
-      # is what closes the gate: unset means authKeys==nil, which makes EVERY
-      # valid signature write-capable.
-      env {
-        name  = "OATH_AUTHORIZED_KEYS"
-        value = "/secrets/authorized-keys/authorized-keys.json"
+      # `oath serve` reads this as the default --authorized-keys path. It is set
+      # ONLY when keys are listed, because setting it to a file containing []
+      # denies every signed write — silently closing a registry that is open by
+      # design (#66). Unset means authKeys==nil: open contribution.
+      dynamic "env" {
+        for_each = local.authkeys_active ? [1] : []
+        content {
+          name  = "OATH_AUTHORIZED_KEYS"
+          value = "/secrets/authorized-keys/authorized-keys.json"
+        }
       }
       # Cloud backend env (OATH_BACKEND=cloud, OATH_OBJECT_BUCKET, OATH_DB_DSN) —
       # present only when enable_database=true. OATH_BACKEND=cloud makes OATH_STORE
@@ -175,9 +182,12 @@ resource "google_cloud_run_v2_service" "server" {
         name       = "tokens"
         mount_path = "/secrets/tokens"
       }
-      volume_mounts {
-        name       = "authorized-keys"
-        mount_path = "/secrets/authorized-keys"
+      dynamic "volume_mounts" {
+        for_each = local.authkeys_active ? [1] : []
+        content {
+          name       = "authorized-keys"
+          mount_path = "/secrets/authorized-keys"
+        }
       }
       dynamic "volume_mounts" {
         for_each = local.cloud_active ? [1] : []
