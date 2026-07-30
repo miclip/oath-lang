@@ -189,6 +189,26 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		return "", err
 	}
 
+	// gate/bytes/ — HOSTILE OBJECT BYTES (#91).
+	//
+	// The existing reject corpus tests SOURCE-level rejects: text the elaborator must
+	// refuse. It cannot reach the decoder's canonicality rules at all, because every
+	// object the kernel produces is canonical by construction. That gap let a
+	// negative-zero encoding — sign=1 with an empty magnitude, a second byte spelling
+	// of 0 — decode happily for as long as it existed, at a DISTINCT content hash. The
+	// store's load path validates sha256(bytes)==name and typechecks, deliberately not
+	// encode(decode(b))==b, so a crafted object loaded under exactly the hosted-store
+	// threat model that check exists to defend.
+	//
+	// Each vector is a REAL encoding with ONE byte-level defect. That construction is
+	// the point: generation asserts the unperturbed original DECODES and the perturbed
+	// one does NOT, so each vector witnesses one obligation rather than merely failing.
+	// A hand-written blob that is malformed in several ways at once would be rejected
+	// by whichever check runs first and would prove nothing about the rule it names.
+	if err := writeHostileBytes(write); err != nil {
+		return "", err
+	}
+
 	// campaign/vectors.txt — canonical campaign descriptions and their digests
 	// (SPEC §11). These are the AUDIT vectors: a kernel reproduces the identity
 	// of a measurement without running one, and without consulting another
@@ -472,7 +492,11 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
 6. prove/outcomes.json match, given the same solver version.
 7. campaign/vectors.txt digests reproduce (SPEC §11) — measurement identity,
    derivable without running a measurement.
-8. envelope/vectors.jsonl (SPEC §8.6): every "canonical" record's octets reproduce
+8. gate/bytes/ (SPEC §1): every *.bin except baseline.bin MUST be refused by the
+   decoder, and baseline.bin MUST decode. These are hostile OBJECT bytes — the
+   canonicality rules are unreachable from source, since every object a kernel
+   produces is canonical by construction.
+9. envelope/vectors.jsonl (SPEC §8.6): every "canonical" record's octets reproduce
    EXACTLY, every "reject" record is refused, and every "signature" record verifies
    or fails as its verdict says. These octets are what a publication signature is
    computed over, so one differing byte makes signatures from that kernel
@@ -480,7 +504,8 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
    knowledge of the reference language.
 
 Files: hashes.txt, canonical/, encoding/, gate/, verify/, analyses/,
-prove/outcomes.json, campaign/vectors.txt, envelope/vectors.jsonl.
+prove/outcomes.json, campaign/vectors.txt, envelope/vectors.jsonl,
+gate/bytes/.
 `, kernelVersion)
 	if err := write("MANIFEST.md", []byte(manifest)); err != nil {
 		return "", err
@@ -849,4 +874,73 @@ func bigRev(dec string) *big.Int {
 		panic("fixture revision literal is not decimal: " + dec)
 	}
 	return v
+}
+
+// writeHostileBytes emits fixtures/gate/bytes/: object encodings a conformant DECODER
+// must refuse, each differing from a valid encoding in exactly one place.
+func writeHostileBytes(write func(string, []byte) error) error {
+	// A minimal definition carrying a literal 0, so the integer-canonicality rules are
+	// reachable. Built in memory: `put` would write to whatever store is configured.
+	zero := &Def{K: "func", Ty: tFun(tInt(), tInt()), Body: &Term{K: "int", Int: big.NewInt(0)}}
+	valid := encodeDef(zero)
+	if _, err := decodeDef(valid); err != nil {
+		return fmt.Errorf("the baseline encoding does not decode, so no perturbation of it witnesses anything: %w", err)
+	}
+
+	// Locate the encoded zero: sign 0x00 followed by a u32 length of 0.
+	idx := -1
+	for i := 0; i+4 < len(valid); i++ {
+		if valid[i] == 0x00 && valid[i+1] == 0 && valid[i+2] == 0 && valid[i+3] == 0 && valid[i+4] == 0 {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return fmt.Errorf("could not locate an encoded zero to perturb; the fixture would be vacuous")
+	}
+
+	type hostile struct {
+		name, witnesses, why string
+		mutate               func([]byte) []byte
+	}
+	cases := []hostile{
+		{"negative_zero", "1/negative-zero",
+			"sign=0x01 with a zero-length magnitude is a SECOND encoding of 0, so one value would have two content-addressed identities",
+			func(b []byte) []byte { c := append([]byte(nil), b...); c[idx] = 0x01; return c }},
+		{"bad_sign_byte", "1/integer-sign",
+			"the sign byte is 0x00 or 0x01; any other value is malformed",
+			func(b []byte) []byte { c := append([]byte(nil), b...); c[idx] = 0x07; return c }},
+		{"trailing_bytes", "1/no-trailing-bytes",
+			"a decoder must consume exactly the object; trailing bytes would let two byte strings denote one definition",
+			func(b []byte) []byte { return append(append([]byte(nil), b...), 0x00) }},
+		{"truncated", "1/complete-object",
+			"a truncated object must be refused rather than decoded as a shorter one",
+			func(b []byte) []byte { return append([]byte(nil), b[:len(b)-1]...) }},
+	}
+
+	var man strings.Builder
+	man.WriteString("# Hostile OBJECT BYTES (SPEC §1). Each file is a real encoding with ONE\n")
+	man.WriteString("# byte-level defect; a conformant decoder MUST refuse every one.\n")
+	man.WriteString("# The unperturbed baseline decodes, so each vector isolates its own rule.\n")
+	man.WriteString("# file\twitnesses\twhy\n")
+
+	if err := write(filepath.Join("gate", "bytes", "baseline.bin"), valid); err != nil {
+		return err
+	}
+	man.WriteString("baseline.bin\t(must ACCEPT)\tthe unperturbed encoding; if this is refused the vectors below prove nothing\n")
+
+	for _, c := range cases {
+		bad := c.mutate(valid)
+		if _, err := decodeDef(bad); err == nil {
+			return fmt.Errorf("hostile-bytes vector %q is ACCEPTED by this kernel: the fixture would assert an obligation the reference does not meet", c.name)
+		}
+		if len(bad) == len(valid) && bytesEqual(bad, valid) {
+			return fmt.Errorf("hostile-bytes vector %q did not change the encoding", c.name)
+		}
+		if err := write(filepath.Join("gate", "bytes", c.name+".bin"), bad); err != nil {
+			return err
+		}
+		fmt.Fprintf(&man, "%s.bin\t%s\t%s\n", c.name, c.witnesses, c.why)
+	}
+	return write(filepath.Join("gate", "bytes", "manifest.txt"), []byte(man.String()))
 }

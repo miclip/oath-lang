@@ -14,7 +14,11 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
 6. prove/outcomes.json match, given the same solver version.
 7. campaign/vectors.txt digests reproduce (SPEC §11) — measurement identity,
    derivable without running a measurement.
-8. envelope/vectors.jsonl (SPEC §8.6): every "canonical" record's octets reproduce
+8. gate/bytes/ (SPEC §1): every *.bin except baseline.bin MUST be refused by the
+   decoder, and baseline.bin MUST decode. These are hostile OBJECT bytes — the
+   canonicality rules are unreachable from source, since every object a kernel
+   produces is canonical by construction.
+9. envelope/vectors.jsonl (SPEC §8.6): every "canonical" record's octets reproduce
    EXACTLY, every "reject" record is refused, and every "signature" record verifies
    or fails as its verdict says. These octets are what a publication signature is
    computed over, so one differing byte makes signatures from that kernel
@@ -22,4 +26,5 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
    knowledge of the reference language.
 
 Files: hashes.txt, canonical/, encoding/, gate/, verify/, analyses/,
-prove/outcomes.json, campaign/vectors.txt, envelope/vectors.jsonl.
+prove/outcomes.json, campaign/vectors.txt, envelope/vectors.jsonl,
+gate/bytes/.

@@ -1,0 +1,9 @@
+# Hostile OBJECT BYTES (SPEC §1). Each file is a real encoding with ONE
+# byte-level defect; a conformant decoder MUST refuse every one.
+# The unperturbed baseline decodes, so each vector isolates its own rule.
+# file	witnesses	why
+baseline.bin	(must ACCEPT)	the unperturbed encoding; if this is refused the vectors below prove nothing
+negative_zero.bin	1/negative-zero	sign=0x01 with a zero-length magnitude is a SECOND encoding of 0, so one value would have two content-addressed identities
+bad_sign_byte.bin	1/integer-sign	the sign byte is 0x00 or 0x01; any other value is malformed
+trailing_bytes.bin	1/no-trailing-bytes	a decoder must consume exactly the object; trailing bytes would let two byte strings denote one definition
+truncated.bin	1/complete-object	a truncated object must be refused rather than decoded as a shorter one
