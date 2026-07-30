@@ -84,7 +84,11 @@ jobs:
       # until this step existed a regression in any of them was GREEN in CI: the
       # conformance script would still pass, because it does not exercise them.
       - name: cargo test (behaviour no fixture family covers)
-        run: cd oathrs && cargo test --release
+        # Debug build deliberately: `cargo test --release` rebuilds target/release,
+        # which is the binary conformance.sh runs. Sharing that tree between a test
+        # build and a conformance run is how a long sweep gets a swapped binary
+        # mid-flight.
+        run: cd oathrs && cargo test
 
       - name: conformance (checks 1-4 + byte oracle for 5-6)
         run: |
