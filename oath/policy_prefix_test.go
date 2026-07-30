@@ -106,7 +106,7 @@ func TestNameOwnerDerivation(t *testing.T) {
 	// A later signed entry must NOT change ownership — first publish decides.
 	if err := st.AppendLog(&LogEntry{Author: "kk", Name: "n", Status: "accepted", Hash: "h2",
 		Prev: "h1", NameTransition: transitionApplied,
-		Envelope: "x", AuthorPubkey: "kk", AuthorSig: "s"}); err != nil {
+		EnvelopeB64: encodeEnvelopeB64([]byte("x")), AuthorPubkey: "kk", AuthorSig: "s"}); err != nil {
 		t.Fatal(err)
 	}
 	if owner, _ := nameOwner(st, "n"); owner != "claude-main" {
@@ -132,7 +132,7 @@ func TestNameOwnerDerivation(t *testing.T) {
 func TestNameOwnerFromSignedEntry(t *testing.T) {
 	st := newMemStoreForTest(t)
 	if err := st.AppendLog(&LogEntry{Author: "abc", Name: "n", Status: "accepted", Hash: "h",
-		NameTransition: transitionApplied, Envelope: "e", AuthorPubkey: "abc", AuthorSig: "s"}); err != nil {
+		NameTransition: transitionApplied, EnvelopeB64: encodeEnvelopeB64([]byte("e")), AuthorPubkey: "abc", AuthorSig: "s"}); err != nil {
 		t.Fatal(err)
 	}
 	owner, source := nameOwner(st, "n")
@@ -190,7 +190,7 @@ func TestTofuDoesNotCaptureNamespace(t *testing.T) {
 	st := newMemStoreForTest(t)
 	if err := st.AppendLog(&LogEntry{Author: "kk", Name: "michael/service1/foo",
 		Status: "accepted", Hash: "h", NameTransition: transitionApplied,
-		Envelope: "e", AuthorPubkey: "kk", AuthorSig: "s"}); err != nil {
+		EnvelopeB64: encodeEnvelopeB64([]byte("e")), AuthorPubkey: "kk", AuthorSig: "s"}); err != nil {
 		t.Fatal(err)
 	}
 	if owner, src := nameOwner(st, "michael/service1/foo"); owner != "kk" || src != ownerSignedFirstPublish {

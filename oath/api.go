@@ -246,7 +246,7 @@ func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pu
 			// Verbatim. Not re-encoded from the parsed envelope: the bytes ARE the
 			// statement, and a round-trip through the encoder would substitute this
 			// kernel's rendering for the author's.
-			le.Envelope, le.AuthorPubkey, le.AuthorSig = auth.Bytes, auth.Pubkey, auth.Sig
+			le.EnvelopeB64, le.AuthorPubkey, le.AuthorSig = encodeEnvelopeB64([]byte(auth.Bytes)), auth.Pubkey, auth.Sig
 		}
 		_ = st.AppendLog(le)
 		results = append(results, rep)

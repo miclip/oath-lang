@@ -52,7 +52,7 @@ func cmdAudit(st *Store) {
 			continue
 		}
 		accepted++
-		if e.Envelope != "" {
+		if e.EnvelopeB64 != "" {
 			authored++
 			byKey[e.AuthorPubkey]++
 			continue
@@ -127,12 +127,12 @@ func cmdAuditEntry(st *Store, ref string) {
 	for _, e := range hits {
 		fmt.Printf("── seq %d  %s  %s  %s\n", e.Seq, e.Time, e.Status, e.Name)
 		fmt.Printf("   artifact %s\n", orNone(e.Hash))
-		if e.Envelope == "" {
+		if e.EnvelopeB64 == "" {
 			fmt.Printf("   AUTHOR STATEMENT: none — author=%q is a label the registry recorded,\n", e.Author)
 			fmt.Printf("                     with no signature behind it.\n")
 		} else {
 			fmt.Printf("   AUTHOR STATEMENT (exact signed bytes, verified):\n")
-			for _, l := range splitLines(e.Envelope) {
+			for _, l := range splitLines(envelopeTextOf(e)) {
 				fmt.Printf("     | %s\n", l)
 			}
 			fmt.Printf("   signed by %s\n", e.AuthorPubkey)
@@ -158,4 +158,15 @@ func splitLines(s string) []string {
 		out = append(out, cur)
 	}
 	return out
+}
+
+// envelopeTextOf recovers the author's statement for DISPLAY. Decode failures are
+// shown rather than hidden: VerifyLog has already rejected the journal if this
+// cannot decode, so reaching here with bad data means something is very wrong.
+func envelopeTextOf(e LogEntry) string {
+	octets, err := decodeEnvelopeB64(e.EnvelopeB64)
+	if err != nil {
+		return "<undecodable envelope: " + err.Error() + ">"
+	}
+	return string(octets)
 }

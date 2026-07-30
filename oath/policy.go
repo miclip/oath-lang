@@ -387,7 +387,7 @@ func nameOwner(st *Store, name string) (owner, source string) {
 		if e.Name != name || !e.repointedName() {
 			continue
 		}
-		if e.Envelope != "" && e.AuthorPubkey != "" && e.AuthorSig != "" {
+		if e.EnvelopeB64 != "" && e.AuthorPubkey != "" && e.AuthorSig != "" {
 			return e.AuthorPubkey, ownerSignedFirstPublish
 		}
 		if e.Author != "" {

@@ -168,7 +168,7 @@ func unsignedAttribution(st *Store, h string) bool {
 			// anyone. Either is accepted here because both were once the only
 			// available form, but they are not equivalent, and the envelope is the one
 			// a third party can check without trusting the registry.
-			if e.Envelope != "" && e.AuthorSig != "" && e.AuthorPubkey != "" {
+			if e.EnvelopeB64 != "" && e.AuthorSig != "" && e.AuthorPubkey != "" {
 				signed = true
 			}
 			if e.Sig != "" && e.Pubkey != "" {

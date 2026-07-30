@@ -193,7 +193,19 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		{"non-canonical revision (leading zero)", "oath-publish/1\nop=put\nname=n\nartifact=" + strings.Repeat("ab", 32) + "\nparent=" + strings.Repeat("cd", 32) + "\nparent_rev=01\nauthor=" + strings.Repeat("aa", 32) + "\n"},
 		{"parent sentinel with nonzero revision", "oath-publish/1\nop=put\nname=n\nartifact=" + strings.Repeat("ab", 32) + "\nparent=-\nparent_rev=2\nauthor=" + strings.Repeat("aa", 32) + "\n"},
 		{"parent hash with revision 0", "oath-publish/1\nop=put\nname=n\nartifact=" + strings.Repeat("ab", 32) + "\nparent=" + strings.Repeat("cd", 32) + "\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32) + "\n"},
-		{"newline injected into a value", "oath-publish/1\nop=put\nname=n\nartifact=x\nparent=-\nparent_rev=0\nauthor=a\n"},
+		// Every OTHER field is valid, so this vector has exactly one reason to fail: the
+		// LF inside `name`. The earlier version used artifact=x and author=a, which
+		// failed the HEX rules instead — rejected for reasons unrelated to its label,
+		// so the injection it claimed to test was never exercised. A fixture that
+		// passes for the wrong reason is worse than a missing one: it reports coverage
+		// that does not exist.
+		//
+		// Relabelled to say what it actually establishes. On the PARSE side the LF rule
+		// is unreachable by construction — an injected LF becomes a line break, so this
+		// is caught as broken framing (8 lines, not 7), never as "a value contained an
+		// LF". The value rule proper is an ENCODER obligation and is tested there
+		// (TestEnvelopeRejectsInjection); a parse-side fixture cannot reach it.
+		{"LF in a value breaks line framing", "oath-publish/1\nop=put\nname=a\nb\nartifact=" + strings.Repeat("ab", 32) + "\nparent=-\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32) + "\n"},
 		{"reordered fields", "oath-publish/1\nname=n\nop=put\nartifact=" + strings.Repeat("ab", 32) + "\nparent=-\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32) + "\n"},
 		{"missing trailing newline", "oath-publish/1\nop=put\nname=n\nartifact=" + strings.Repeat("ab", 32) + "\nparent=-\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32)},
 		{"unknown extra field", "oath-publish/1\nop=put\nname=n\nartifact=" + strings.Repeat("ab", 32) + "\nparent=-\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32) + "\nextra=1\n"},

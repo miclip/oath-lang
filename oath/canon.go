@@ -322,10 +322,10 @@ func hashDefV0(d *Def) string {
 
 type enc struct{ b []byte }
 
-func (e *enc) u8(v byte)     { e.b = append(e.b, v) }
-func (e *enc) u32(v uint32)  { e.b = binary.BigEndian.AppendUint32(e.b, v) }
-func (e *enc) i64(v int64)   { e.b = binary.BigEndian.AppendUint64(e.b, uint64(v)) }
-func (e *enc) str(s string)  { e.u32(uint32(len(s))); e.b = append(e.b, s...) }
+func (e *enc) u8(v byte)    { e.b = append(e.b, v) }
+func (e *enc) u32(v uint32) { e.b = binary.BigEndian.AppendUint32(e.b, v) }
+func (e *enc) i64(v int64)  { e.b = binary.BigEndian.AppendUint64(e.b, uint64(v)) }
+func (e *enc) str(s string) { e.u32(uint32(len(s))); e.b = append(e.b, s...) }
 
 // bigint encodes an arbitrary-precision integer canonically: a sign byte
 // (0x00 for ≥0, 0x01 for <0), then a u32 magnitude length, then the minimal
@@ -520,7 +520,9 @@ type dec struct {
 	pos int
 }
 
-func (d *dec) fail(f string, a ...any) error { return fmt.Errorf("O1 decode @%d: %s", d.pos, fmt.Sprintf(f, a...)) }
+func (d *dec) fail(f string, a ...any) error {
+	return fmt.Errorf("O1 decode @%d: %s", d.pos, fmt.Sprintf(f, a...))
+}
 
 func (d *dec) u8() (byte, error) {
 	if d.pos >= len(d.b) {

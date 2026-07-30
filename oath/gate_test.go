@@ -66,8 +66,12 @@ func TestAuthorStatementGate(t *testing.T) {
 		if found == nil {
 			t.Fatal("no accepted entry journalled")
 		}
-		if found.Envelope != raw {
-			t.Fatalf("envelope was not persisted verbatim:\n got %q\nwant %q", found.Envelope, raw)
+		octets, derr := decodeEnvelopeB64(found.EnvelopeB64)
+		if derr != nil {
+			t.Fatalf("persisted envelope does not decode: %v", derr)
+		}
+		if string(octets) != raw {
+			t.Fatalf("envelope octets were not persisted verbatim:\n got %q\nwant %q", octets, raw)
 		}
 		if found.AuthorPubkey != pubHex || found.AuthorSig != sig {
 			t.Fatal("author key/signature not persisted")

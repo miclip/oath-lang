@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -411,15 +413,23 @@ type LogEntry struct {
 	// The AUTHOR's half of the record (#83), distinct from Pubkey/Sig above, which
 	// are whatever key the STORE was configured with signing the derived entry.
 	//
-	// Envelope holds the EXACT canonical bytes the author signed — persisted, never
-	// reconstructed from the fields below. Reconstruction would let a future encoder
-	// change silently invalidate historical signatures: the signature would still be
-	// correct and would no longer verify, the worst failure mode an audit trail has.
-	// These bytes are the historical statement; the duplicated fields are only its
-	// interpretation, and VerifyLog rejects any disagreement between them.
-	Envelope     string `json:"envelope,omitempty"`
-	AuthorPubkey string `json:"author_pubkey,omitempty"` // hex Ed25519 key that signed Envelope
-	AuthorSig    string `json:"author_sig,omitempty"`    // hex signature over Envelope's exact bytes
+	// EnvelopeB64 holds the EXACT canonical octets the author signed, base64-encoded
+	// — persisted, never reconstructed from the fields below. Reconstruction would let
+	// a future encoder change silently invalidate historical signatures: the signature
+	// would still be correct and would no longer verify, the worst failure an audit
+	// trail has. These octets are the historical statement; the duplicated fields are
+	// only its interpretation, and VerifyLog rejects any disagreement between them.
+	//
+	// BASE64 IS A STORAGE REPRESENTATION, NOT PART OF THE STATEMENT. Envelope octets
+	// contain LFs and a journal is one JSON object per line, so they cannot appear
+	// literally; "verbatim" therefore means the exact octets are recoverable as the
+	// DECODED value of this field. Verification decodes and verifies over the
+	// recovered octets — never over the base64 text, never over JSON string bytes.
+	// The encoding is named in the field so a reader cannot mistake one representation
+	// for another.
+	EnvelopeB64  string `json:"envelope_b64,omitempty"`
+	AuthorPubkey string `json:"author_pubkey,omitempty"` // hex Ed25519 key that signed the envelope
+	AuthorSig    string `json:"author_sig,omitempty"`    // hex signature over the DECODED envelope octets
 	// NameTransition records what happened to the NAME — a different dimension from
 	// Status, which records what the registry concluded about the ARTIFACT. A
 	// definition can be FALSIFIED and still bind its name; a request can be REJECTED
@@ -624,12 +634,18 @@ func (s *Store) VerifyLog() error {
 		// The AUTHOR's publication statement (#83). Verified against the PERSISTED
 		// envelope bytes, never a re-encoding, so an old entry is checked under the
 		// format it was written with rather than whatever the current encoder emits.
-		if e.Envelope != "" || e.AuthorSig != "" || e.AuthorPubkey != "" {
-			if e.Envelope == "" || e.AuthorSig == "" || e.AuthorPubkey == "" {
+		if e.EnvelopeB64 != "" || e.AuthorSig != "" || e.AuthorPubkey != "" {
+			if e.EnvelopeB64 == "" || e.AuthorSig == "" || e.AuthorPubkey == "" {
 				return fmt.Errorf("journal line %d has a partial author record (envelope=%v key=%v sig=%v): all three or none, since any one alone attests to nothing",
-					line, e.Envelope != "", e.AuthorPubkey != "", e.AuthorSig != "")
+					line, e.EnvelopeB64 != "", e.AuthorPubkey != "", e.AuthorSig != "")
 			}
-			env, perr := envelopeParse([]byte(e.Envelope))
+			octets, derr := decodeEnvelopeB64(e.EnvelopeB64)
+			if derr != nil {
+				return fmt.Errorf("journal line %d: %w", line, derr)
+			}
+			// Parse and verify over the RECOVERED OCTETS. The base64 text and the JSON
+			// string bytes are storage representations; neither is the statement.
+			env, perr := envelopeParse(octets)
 			if perr != nil {
 				return fmt.Errorf("journal line %d has an unparseable author envelope: %w", line, perr)
 			}
@@ -708,4 +724,80 @@ func (s *Store) AllHashes() []string {
 		return nil
 	}
 	return out
+}
+
+// Canonical base64 for persisted envelope octets (SPEC §8.6.3).
+//
+// Dialect pinned deliberately, because "base64" alone admits several spellings of
+// one byte string and this field is compared and re-encoded: STANDARD alphabet
+// (RFC 4648 §4, +/), padding REQUIRED, no line breaks, no whitespace, no
+// URL-safe substitutions.
+//
+// decodeEnvelopeB64 additionally requires that re-encoding the decoded octets
+// reproduces the input string exactly. Without that, alternate spellings — stray
+// whitespace, missing padding, non-canonical trailing bits — would decode to the
+// same octets from different stored bytes, which is the same unique-decodability
+// property the envelope encoding itself insists on. Canonical writing with lenient
+// reading protects nothing.
+func encodeEnvelopeB64(octets []byte) string {
+	return base64.StdEncoding.EncodeToString(octets)
+}
+
+func decodeEnvelopeB64(s string) ([]byte, error) {
+	octets, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return nil, fmt.Errorf("envelope_b64 is not standard padded base64: %w", err)
+	}
+	if encodeEnvelopeB64(octets) != s {
+		return nil, fmt.Errorf("envelope_b64 is not canonical: it decodes, but re-encoding yields different text (whitespace, missing padding, or non-canonical trailing bits)")
+	}
+	return octets, nil
+}
+
+// journalFieldOrder is the NORMATIVE field order of a journal entry's compact JSON
+// (SPEC §8.1). It is not a formatting preference: `chain` hashes the entry and §8.4
+// signs it, both over "the entry's compact JSON", so two implementations ordering
+// these differently compute different chain values and different signatures — and
+// each then rejects the other's journal wholesale. An undefined order is a
+// byte-level fork waiting for a second implementation.
+//
+// Must stay in lockstep with the LogEntry struct's declaration order, which is what
+// encoding/json emits. TestJournalFieldOrderIsNormative asserts they agree, so this
+// list cannot silently drift from the bytes.
+var journalFieldOrder = []string{
+	"seq", "time", "author", "verifier", "name", "kind", "status", "hash", "prev",
+	"error", "guarantee", "termination", "context", "pubkey", "sig",
+	"envelope_b64", "author_pubkey", "author_sig", "name_transition", "chain",
+}
+
+// canonicalJournalLine re-encodes an entry to its canonical compact JSON.
+func canonicalJournalLine(e *LogEntry) ([]byte, error) { return json.Marshal(e) }
+
+// strictJournalLine parses a stored line and requires that re-encoding it
+// reproduces the input bytes exactly.
+//
+// The same rule the envelope encoding lives by, applied one layer out: canonical
+// WRITING with lenient READING protects nothing, because a normative field order
+// would then constrain only writers while readers happily accepted reordered,
+// re-spaced or duplicate-keyed entries. Since `chain` and §8.4 signatures are
+// computed over these bytes, accepting a second spelling of one entry means
+// accepting two different identities for it.
+func strictJournalLine(raw []byte) (*LogEntry, error) {
+	var e LogEntry
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&e); err != nil {
+		return nil, fmt.Errorf("entry is not a canonical journal object: %w", err)
+	}
+	if dec.More() {
+		return nil, fmt.Errorf("entry has trailing content after the JSON object")
+	}
+	re, err := canonicalJournalLine(&e)
+	if err != nil {
+		return nil, err
+	}
+	if !bytes.Equal(re, raw) {
+		return nil, fmt.Errorf("entry is not canonical: it parses, but re-encoding yields different bytes — field order, spacing or duplicate keys differ from the normative form (SPEC §8.1)")
+	}
+	return &e, nil
 }

@@ -39,7 +39,7 @@ func TestVerifyLogAuthorRecord(t *testing.T) {
 		}
 		return &LogEntry{
 			Author: pubHex, Name: "n", Kind: "func", Status: "accepted",
-			Hash: artifact, Envelope: string(raw), AuthorPubkey: pubHex, AuthorSig: sig,
+			Hash: artifact, EnvelopeB64: encodeEnvelopeB64(raw), AuthorPubkey: pubHex, AuthorSig: sig,
 		}
 	}
 
@@ -58,12 +58,16 @@ func TestVerifyLogAuthorRecord(t *testing.T) {
 		wantErr string
 	}{
 		{"envelope without signature", func(e *LogEntry) { e.AuthorSig = "" }, "partial author record"},
-		{"signature without envelope", func(e *LogEntry) { e.Envelope = "" }, "partial author record"},
+		{"signature without envelope", func(e *LogEntry) { e.EnvelopeB64 = "" }, "partial author record"},
 		{"key disagrees with envelope", func(e *LogEntry) { e.AuthorPubkey = strings.Repeat("b", 64) }, "envelope names author"},
 		{"entry name differs from signed name", func(e *LogEntry) { e.Name = "other" }, "author signed name"},
 		{"entry artifact differs from signed artifact", func(e *LogEntry) { e.Hash = strings.Repeat("c", 64) }, "author signed artifact"},
 		{"entry claims a parent the author did not sign", func(e *LogEntry) { e.Prev = strings.Repeat("d", 64) }, "author signed parent"},
-		{"envelope bytes altered", func(e *LogEntry) { e.Envelope = strings.Replace(e.Envelope, "name=n", "name=z", 1) }, "does not verify"},
+		{"envelope octets altered", func(e *LogEntry) {
+			oct, _ := decodeEnvelopeB64(e.EnvelopeB64)
+			e.EnvelopeB64 = encodeEnvelopeB64([]byte(strings.Replace(string(oct), "name=n", "name=z", 1)))
+		}, "does not verify"},
+		{"non-canonical base64 (whitespace)", func(e *LogEntry) { e.EnvelopeB64 = " " + e.EnvelopeB64 }, "not standard padded base64"},
 	} {
 		st := newMemStoreForTest(t)
 		e := base()

@@ -217,8 +217,8 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 			// (a same-hash re-publication is a valid recorded no-op), and a client
 			// checking what was persisted means the publication it just made.
 			for _, e := range st.ReadLog() {
-				if e.Hash == a.Hash && e.Envelope != "" {
-					resp["envelope"] = e.Envelope
+				if e.Hash == a.Hash && e.EnvelopeB64 != "" {
+					resp["envelope_b64"] = e.EnvelopeB64
 					resp["author_pubkey"] = e.AuthorPubkey
 				}
 			}

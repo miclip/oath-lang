@@ -178,6 +178,16 @@ func main() {
 			fail(fmt.Errorf("usage: oath publish --remote <url> --key <file> [--dry-run] [--json] [-y] <file.oath>"))
 		}
 		cmdPublish(st, endpoint, keyFile, file, dryRun, jsonOut, yes)
+	case "ownership":
+		// The pre-enforcement census (#84): what the registry believes about who
+		// controls every name, and what enabling enforcement would do.
+		verbose := true
+		for _, x := range args[1:] {
+			if x == "--summary" {
+				verbose = false
+			}
+		}
+		cmdOwnership(st, verbose)
 	case "audit":
 		if len(args) > 1 {
 			cmdAuditEntry(st, args[1])

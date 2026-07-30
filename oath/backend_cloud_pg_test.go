@@ -39,10 +39,10 @@ type pgComposite struct {
 	idx *pgIndex
 }
 
-func (c *pgComposite) readNames() ([]byte, bool, error) { return c.idx.readNames() }
-func (c *pgComposite) writeNames(b []byte) error        { return c.idx.writeNames(b) }
-func (c *pgComposite) readJournal() ([]byte, error)     { return c.idx.readJournal() }
-func (c *pgComposite) appendJournal(b []byte) error     { return c.idx.appendJournal(b) }
+func (c *pgComposite) readNames() ([]byte, bool, error)      { return c.idx.readNames() }
+func (c *pgComposite) writeNames(b []byte) error             { return c.idx.writeNames(b) }
+func (c *pgComposite) readJournal() ([]byte, error)          { return c.idx.readJournal() }
+func (c *pgComposite) appendJournal(b []byte) error          { return c.idx.appendJournal(b) }
 func (c *pgComposite) enqueueProof(h string, b []byte) error { return c.idx.enqueueProof(h, b) }
 func (c *pgComposite) claimProof(now time.Time, ttl time.Duration) ([]byte, bool, error) {
 	return c.idx.claimProof(now, ttl)

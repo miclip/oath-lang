@@ -110,7 +110,7 @@ var clientPub string
 type headResp struct {
 	Parent       string `json:"parent"`
 	ParentRev    int    `json:"parent_rev"`
-	Envelope     string `json:"envelope"`
+	EnvelopeB64  string `json:"envelope_b64"`
 	AuthorPubkey string `json:"author_pubkey"`
 }
 
@@ -152,7 +152,7 @@ func remoteEnvelopeOf(endpoint, hash string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return h.Envelope, nil
+	return h.EnvelopeB64, nil
 }
 
 // remotePutSigned publishes source with an author statement. envBytes is sent
