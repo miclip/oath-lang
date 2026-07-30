@@ -214,6 +214,9 @@ func envelopeVerify(e pubEnvelope, sigHex string) error {
 	if err != nil || len(pub) != ed25519.PublicKeySize {
 		return fmt.Errorf("envelope author is not a usable public key")
 	}
+	if err := rejectWeakKey(pub); err != nil {
+		return err
+	}
 	sig, err := hex.DecodeString(sigHex)
 	if err != nil || len(sig) != ed25519.SignatureSize {
 		return fmt.Errorf("publication signature is not a %d-byte hex signature", ed25519.SignatureSize)
@@ -306,4 +309,34 @@ func bytesEqual(a, b []byte) bool {
 		}
 	}
 	return true
+}
+
+// rejectWeakKey refuses public keys that cannot carry an authorship claim.
+//
+// SPEC §8.6.4a requires small-order `A` to be rejected, because with such a key the
+// verification equation degenerates and signatures verify for parties who do not
+// hold the key — so an "author" would be unforgeable in name only. For A = identity
+// the equation becomes [S]B = R, and a forgery needs only curve arithmetic.
+//
+// PARTIAL, AND DELIBERATELY SAID SO. This catches the all-zero encoding, which is
+// the identity point and the trivially reachable case. The remaining seven
+// small-order points cannot be detected without curve arithmetic, and Go's
+// crypto/ed25519 neither exposes it nor rejects them; adding a curve dependency
+// would break the dependency-free default build (see CLAUDE.md), which is a real
+// decision rather than an oversight. Tracked separately.
+//
+// Claiming full §8.6.4a conformance here would be exactly the unearned claim this
+// project refuses elsewhere, so the gap is named rather than assumed closed.
+func rejectWeakKey(pub []byte) error {
+	allZero := true
+	for _, b := range pub {
+		if b != 0 {
+			allZero = false
+			break
+		}
+	}
+	if allZero {
+		return fmt.Errorf("public key is the identity point (all-zero encoding): a small-order key cannot carry an authorship claim, since signatures under it verify for parties who do not hold it (SPEC §8.6.4a)")
+	}
+	return nil
 }

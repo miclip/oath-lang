@@ -1597,6 +1597,28 @@ when empty.
 > is the exact divergence §8.2.1 exists to prevent, occurring inside §8.2.1. Found
 > by an independent implementation running the vectors against the text.
 
+String values are escaped MINIMALLY: only `"`, `\`, and characters below U+0020
+are escaped, using JSON's short forms where they exist (`\"`, `\\`, `\b`, `\f`,
+`\n`, `\r`, `\t`) and `\u00XX` otherwise. All other characters, INCLUDING
+non-ASCII, appear as literal UTF-8. `<`, `>`, `&` and `/` MUST NOT be escaped.
+
+Two exceptions, both required: U+2028 and U+2029 MUST be escaped as `\u2028` and
+`\u2029`. They are Unicode line terminators and the journal is a line-delimited
+format, so a literal one invites a reader splitting on Unicode line boundaries to
+see two records where there is one.
+
+Member order alone is not sufficient for byte agreement while string values still
+have several valid spellings. `error` and `guarantee` are free-form, so a rejection
+message containing `<` is enough to fork two implementations — and since chain
+hashes, entry signatures and entry digests are all computed over these bytes, that
+fork means each rejects the other's journal wholesale. Note that at least one widely
+used encoder escapes `<`, `>` and `&` by default for HTML safety; that is a
+language-specific habit, not an RFC 8259 requirement, and it is not canonical here.
+
+The canonical line is the JSON object bytes ALONE. The record separator (a single
+LF between entries) is a framing concern and is NOT part of entry identity: it does
+not enter the chain, the entry signature, or the entry digest.
+
 A verifier MUST read entries STRICTLY: parse the line, re-encode it canonically,
 and reject the journal unless the result is byte-identical to the stored line.
 Unknown members, duplicated members, reordered members, added whitespace, and
@@ -1618,10 +1640,18 @@ publication, and a reader that selects the first or last matching entry is
 guessing which was meant.
 
 The identity of one publication is its **entry digest**: SHA-256 over the exact
-canonical entry line of §8.2.1, lowercase hex. Because `chain` is part of that
-line, the digest fixes the entry's POSITION as well as its content: two entries
-identical in content at different positions have different chains and therefore
-different digests.
+canonical entry line of §8.2.1, lowercase hex — the object bytes only, excluding the
+record separator.
+
+Where the entry is CHAINED, the digest also fixes its position, because `chain` is
+part of the line and two entries identical in content at different positions have
+different chains. Where it is NOT chained, the digest identifies content only: an
+unchained entry duplicated verbatim at another position has the same digest.
+
+> An earlier draft claimed the digest fixes position unconditionally. It does not:
+> `chain` is not an always-present member, so a digest cannot establish position
+> without a chain or a signed external index. An implementation relying on
+> positional uniqueness MUST therefore require the entry to be chained.
 
 An ordinal (`seq`) is a convenience for humans and does not survive copying
 between stores; the entry digest does. An implementation SHOULD return both when
@@ -1965,9 +1995,15 @@ Verification MUST follow RFC 8032 §5.1.7 with the **cofactorless** equation
   the same key, which contradicts an envelope being *the author's statement*;
 - `R` and `A` are canonical point encodings.
 
-A small-order `A` is not rejected by these rules; an implementation MAY refuse
-one, and if it does the refusal MUST NOT depend on the message, so the two
-behaviours cannot disagree about any signature made by a real key.
+A small-order `A` MUST be **rejected**.
+
+> This was previously a MAY, which is not a tenable option in this position: if two
+> conforming verifiers may disagree about whether one signature is valid, then
+> journal validity is not portable, and "is this journal well-formed" stops having a
+> single answer. The argument for permitting it — that no real key is small-order —
+> is probabilistic, and conformance is not. MUST-reject is chosen over MUST-accept
+> because a small-order key cannot make a meaningful authorship claim: signatures
+> under it verify for parties who do not hold it.
 
 Signing is deterministic (RFC 8032), so a signature is a function of the private
 key and the message with no randomness to record. Conformance vectors therefore

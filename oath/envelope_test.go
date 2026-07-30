@@ -265,3 +265,19 @@ func TestEnvelopeVerifiesPersistedBytes(t *testing.T) {
 		}
 	}
 }
+
+// A small-order key cannot carry an authorship claim (SPEC §8.6.4a). The identity
+// point is the reachable case and must be refused before any signature is checked.
+func TestRejectsIdentityKey(t *testing.T) {
+	e := testEnvelope()
+	e.Author = strings.Repeat("00", 32)
+	if err := envelopeVerify(e, strings.Repeat("aa", 64)); err == nil {
+		t.Fatal("an all-zero (identity) author key was accepted: signatures under it verify for parties who do not hold it")
+	}
+	if err := rejectWeakKey(make([]byte, 32)); err == nil {
+		t.Fatal("rejectWeakKey accepted the identity point")
+	}
+	if err := rejectWeakKey([]byte(strings.Repeat("\x01", 32))); err != nil {
+		t.Fatal("rejectWeakKey refused an ordinary key")
+	}
+}

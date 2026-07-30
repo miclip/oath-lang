@@ -600,7 +600,9 @@ func signedContent(e *LogEntry) []byte {
 	c.Verifier = ""
 	c.Chain = ""
 	c.Sig = ""
-	b, _ := json.Marshal(&c)
+	// Canonical encoder, not json.Marshal: the signature is over these bytes, so the
+	// writer must produce exactly what a canonical reader reconstructs.
+	b, _ := canonicalJournalLine(&c)
 	return b
 }
 
@@ -649,9 +651,9 @@ func (s *Store) AppendLog(e *LogEntry) error {
 		e.Sig = hex.EncodeToString(ed25519.Sign(s.signer, signedContent(e)))
 	}
 	e.Chain = ""
-	body, _ := json.Marshal(e)
+	body, _ := canonicalJournalLine(e)
 	e.Chain = chainHash(chainAnchor(prior), body)
-	b, _ := json.Marshal(e)
+	b, _ := canonicalJournalLine(e)
 	err = s.be.appendJournal(append(b, '\n'))
 	return err
 }
@@ -757,7 +759,7 @@ func (s *Store) VerifyLog() error {
 			}
 			want := e.Chain
 			e.Chain = ""
-			body, _ := json.Marshal(e)
+			body, _ := canonicalJournalLine(&e)
 			if chainHash(prev, body) != want {
 				return fmt.Errorf("journal line %d fails the hash chain: this or an earlier line was edited, inserted, or deleted", line)
 			}
@@ -840,7 +842,37 @@ var journalFieldOrder = []string{
 }
 
 // canonicalJournalLine re-encodes an entry to its canonical compact JSON.
-func canonicalJournalLine(e *LogEntry) ([]byte, error) { return json.Marshal(e) }
+//
+// STRING ESCAPING IS PINNED, and this is why it cannot just be json.Marshal:
+// member order alone is not enough for byte agreement while string VALUES still
+// have several valid JSON spellings. `error` and `guarantee` are free-form, so a
+// rejection message containing "<" is enough to fork two kernels — and since chain
+// hashes, entry signatures and entry digests are all over these bytes, a fork there
+// means the two reject each other's journals wholesale.
+//
+// Go's default encoder escapes "<", ">" and "&" as \u003c/\u003e/\u0026 for HTML
+// safety. That is a language-specific habit no independent implementer would
+// reproduce from RFC 8259, so it is disabled: the canonical form escapes ONLY what
+// JSON requires — '"', '\', and control characters below U+0020 — leaving all other
+// characters, including non-ASCII, as literal UTF-8.
+//
+// The one deliberate exception is U+2028 and U+2029, which Go escapes regardless and
+// which the canonical form REQUIRES escaped. That is not an accommodation of the
+// encoder: both are Unicode line terminators, and a journal is a line-delimited
+// format, so a literal one inside an entry invites a reader that splits on Unicode
+// line boundaries to see two records where there is one.
+func canonicalJournalLine(e *LogEntry) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(e); err != nil {
+		return nil, err
+	}
+	// Encoder appends a newline; the canonical line is the object bytes alone. The
+	// record separator is a framing concern and is NOT part of entry identity, so it
+	// must not reach the chain, the signature, or the digest.
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
+}
 
 // strictJournalLine parses a stored line and requires that re-encoding it
 // reproduces the input bytes exactly.
