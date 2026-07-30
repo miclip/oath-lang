@@ -100,6 +100,12 @@ func loadAuthorizedKeys(path string) (map[string]bool, error) {
 }
 
 func cmdServeHTTP(st *Store, addr, tokensPath, authKeysPath string) {
+	// Demand telemetry is a REGISTRY-side aggregate: it only means anything across many
+	// callers, so the serving process is the only thing that should record it. A local
+	// `oath find` is a read, and a read that writes into a git-tracked store would make
+	// two clones diverge by who searched what (#94).
+	EnableDemandRecording()
+
 	// Two ways to authenticate a principal, and a request needs exactly one:
 	//   - SIGNATURE (the real one, #14): X-Oath-Pubkey + X-Oath-Signature, an
 	//     Ed25519 signature over the raw request body. The principal IS the key —

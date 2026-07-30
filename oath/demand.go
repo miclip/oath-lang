@@ -43,12 +43,30 @@ import (
 // collides with a real object.
 const demandKey = "discovery-demand"
 
-// demandFloor is the frequency below which a record is never REPORTED. One
-// unusual query from one agent is not a demand signal, and surfacing it would
-// turn a coverage instrument into a record of what a single caller wanted —
-// which is the surveillance shape this design exists to avoid. Entries below the
-// floor are still counted, because you cannot know a count without counting.
+// demandFloor is the frequency below which a record is never REPORTED. One unusual
+// query is not a demand signal, and surfacing it would turn a coverage instrument
+// into a record of what a single caller wanted — the surveillance shape this design
+// avoids. Entries below the floor are still counted, because you cannot know a count
+// without counting.
+//
+// IT IS NOT ANTI-GAMING, and an earlier comment implied it was. No principal is
+// recorded — deliberately — so one caller looping the same miss three times
+// manufactures "demand" indistinguishable from three callers wanting the same thing.
+// The floor is a PRIORITISATION HEURISTIC that suppresses noise; treating it as
+// protection would be relying on a property the design specifically gave up.
 const demandFloor = 3
+
+// demandRecording gates whether misses are persisted at all. OFF by default, because
+// `find` is a READ and a read that mutates tracked state is a surprise: the store
+// lives in git, the documented workflow commits it, so two clones would diverge by who
+// searched what. Demand is a REGISTRY-side aggregate — it only means anything across
+// many callers — so the serving process turns it on and a local CLI never does.
+var demandRecording bool
+
+// EnableDemandRecording is called by the hosted store at startup. Nothing else calls
+// it, and it is not readable from the environment: a local `oath find` must not begin
+// writing to a git-tracked directory because a variable was set somewhere.
+func EnableDemandRecording() { demandRecording = true }
 
 type demandRecord struct {
 	PropHash  string `json:"prop_hash"` // generalized property content hash
@@ -70,7 +88,7 @@ func loadDemand(st *Store) map[string]*demandRecord {
 // no-match: a query that matched, or that failed to elaborate, is not a demand
 // signal — the first found what it wanted and the second never asked.
 func recordMiss(st *Store, propHash, signature string, now time.Time) {
-	if propHash == "" {
+	if !demandRecording || propHash == "" {
 		return
 	}
 	day := now.UTC().Format("2006-01-02")

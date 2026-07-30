@@ -11,6 +11,10 @@ import (
 // is structural — the registry retains strictly less than it receives — so the
 // test is on what reaches storage, not on intent.
 func TestDemandRecordsShapeNotProse(t *testing.T) {
+	// Recording is gated to the serving process (#94); these exercise the recording
+	// logic itself, so they turn it on explicitly rather than relying on a default.
+	EnableDemandRecording()
+	defer func() { demandRecording = false }()
 	st := newStore(t)
 	put(t, st, `(data List [a] (Nil) (Cons a (List a)))`)
 
@@ -40,6 +44,10 @@ func TestDemandRecordsShapeNotProse(t *testing.T) {
 // Repeat misses aggregate rather than accumulating separate entries — a count is
 // the signal, a list of occurrences would be a log of individual callers.
 func TestDemandAggregates(t *testing.T) {
+	// Recording is gated to the serving process (#94); these exercise the recording
+	// logic itself, so they turn it on explicitly rather than relying on a default.
+	EnableDemandRecording()
+	defer func() { demandRecording = false }()
 	st := newStore(t)
 	now := time.Now()
 	for i := 0; i < 5; i++ {
@@ -63,4 +71,44 @@ func TestDemandIgnoresEmptyHash(t *testing.T) {
 	if len(loadDemand(st)) != 0 {
 		t.Fatal("empty hash recorded as a demand signal")
 	}
+}
+
+// `find` is a READ. Recording a miss writes into the store's meta directory, which is
+// git-tracked and which the documented workflow commits — so a read that writes would
+// make two clones diverge by who searched what. Off unless a serving process enables it.
+func TestDemandRecordingIsOffByDefault(t *testing.T) {
+	if demandRecording {
+		t.Fatal("demand recording defaults to ON: a local `oath find` would write to a tracked store")
+	}
+	st := newMemStoreForTest(t)
+	recordMiss(st, "abc", "(-> Int Int)", time.Now())
+	if len(loadDemand(st)) != 0 {
+		t.Fatal("a miss was persisted with recording disabled")
+	}
+
+	// And it must work when a registry turns it on, or the feature is dead.
+	EnableDemandRecording()
+	defer func() { demandRecording = false }()
+	recordMiss(st, "abc", "(-> Int Int)", time.Now())
+	d := loadDemand(st)
+	if len(d) != 1 || d["abc"].Count != 1 {
+		t.Fatalf("recording enabled but the miss was not persisted: %+v", d)
+	}
+}
+
+// The floor suppresses noise; it is NOT anti-gaming, because no principal is recorded.
+// One caller looping a miss reaches the floor alone.
+func TestDemandFloorIsNotAntiGaming(t *testing.T) {
+	EnableDemandRecording()
+	defer func() { demandRecording = false }()
+	st := newMemStoreForTest(t)
+	for i := 0; i < demandFloor; i++ {
+		recordMiss(st, "same", "(-> Int Int)", time.Now())
+	}
+	if got := loadDemand(st)["same"].Count; got != demandFloor {
+		t.Fatalf("count = %d, want %d", got, demandFloor)
+	}
+	// Documented rather than defended: a single caller reaching the floor is
+	// indistinguishable from demandFloor distinct callers, by design — the principal
+	// is deliberately not recorded.
 }

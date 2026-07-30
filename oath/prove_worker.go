@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 )
@@ -128,6 +129,8 @@ func scanBulkProve(st *Store, author string) {
 	for lv := range levels {
 		sem := make(chan struct{}, conc)
 		var wg sync.WaitGroup
+		// Results for this level, appended in canonical order after the barrier.
+		var pending []LogEntry
 		for _, h := range levels[lv] {
 			d, err := st.GetDef(h)
 			if err != nil || d.K != "func" || len(d.Props) == 0 {
@@ -157,12 +160,28 @@ func scanBulkProve(st *Store, author string) {
 				out.Lock()
 				proved++
 				fmt.Printf("%s %-16s #%s  %s\n", mark, name, shortHash(h), guaranteeString(m2.Guarantee))
-				_ = st.AppendLog(&LogEntry{Author: who, Name: name, Kind: "prove", Status: "accepted",
-					Hash: h, Guarantee: guaranteeString(m2.Guarantee)})
+				// BUFFERED, not appended here. Journalling inside the goroutine writes in
+				// completion order, so two runs over identical inputs produce journals
+				// that differ in ORDER — and since each entry chains the previous, the
+				// whole chain downstream differs too. Verdicts are unaffected (defs
+				// within a level are independent), but `log.jsonl` stops being
+				// byte-reproducible after a parallel scan, which is the one property an
+				// append-only audit trail should not lose to a scheduling detail.
+				pending = append(pending, LogEntry{Author: who, Name: name, Kind: "prove",
+					Status: "accepted", Hash: h, Guarantee: guaranteeString(m2.Guarantee),
+					NameTransition: transitionNone})
 				out.Unlock()
 			}(h, m.Name, d, len(m.ProvenProps))
 		}
 		wg.Wait() // barrier: level lv fully settled before lv+1 (its lemmas)
+
+		// Append in a canonical order — by name — so the journal is a function of the
+		// corpus rather than of goroutine scheduling. The barrier already exists for
+		// lemma correctness; ordering here costs nothing beyond it.
+		sort.Slice(pending, func(i, j int) bool { return pending[i].Name < pending[j].Name })
+		for i := range pending {
+			_ = st.AppendLog(&pending[i])
+		}
 	}
 	// Record the new fixpoint. Newly-landed proofs move the fingerprint, so the
 	// NEXT scan re-runs and lets any def that needed them as lemmas prove; once a
