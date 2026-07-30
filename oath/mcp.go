@@ -145,10 +145,15 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 		Source  string   `json:"source"`
 		Author  string   `json:"author"`
 		Context string   `json:"context"`
-		Name    string   `json:"name"`
-		NameB   string   `json:"name_b"`
-		Record  bool     `json:"record"`
-		Expr    string   `json:"expr"`
+		// The author's signed publication statement (#83). Envelope carries the
+		// EXACT canonical bytes that were signed; the server must not normalise,
+		// re-encode or pretty-print them at any point on the way to the journal.
+		Envelope  string `json:"envelope"`
+		Signature string `json:"signature"`
+		Name      string `json:"name"`
+		NameB     string `json:"name_b"`
+		Record    bool   `json:"record"`
+		Expr      string `json:"expr"`
 	}
 	if len(args) > 0 {
 		if err := json.Unmarshal(args, &a); err != nil {
@@ -180,7 +185,20 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 		if principal != "" {
 			a.Author = principal
 		}
-		results, err := apiPut(st, a.Source, a.Author, a.Context)
+		// An author statement is only meaningful from a SIGNED request: the signing
+		// key must be the authenticated principal, so a bearer-token caller cannot
+		// present a statement attributed to somebody else's key.
+		var auth *pubAuth
+		if a.Envelope != "" || a.Signature != "" {
+			if !signed {
+				return "", fmt.Errorf("an author statement (envelope/signature) requires a SIGNED request: with a bearer token the principal is server-vouched, so a statement naming a key could not be tied to this caller")
+			}
+			if a.Envelope == "" || a.Signature == "" {
+				return "", fmt.Errorf("author statement is incomplete: both envelope and signature are required, since either alone attests to nothing")
+			}
+			auth = &pubAuth{Bytes: a.Envelope, Sig: a.Signature, Pubkey: principal}
+		}
+		results, err := apiPutSigned(st, a.Source, a.Author, a.Context, auth)
 		out := renderPutReports(results)
 		if err != nil {
 			return "", fmt.Errorf("%s%w", out, err)

@@ -18,6 +18,24 @@ import (
 // author supplies one, is the context-slice hash it built against (#4) and
 // is stamped on every journal entry this submission produces.
 func apiPut(st *Store, src string, author string, ctxHash string) ([]putReport, error) {
+	return apiPutSigned(st, src, author, ctxHash, nil)
+}
+
+// pubAuth is an author's signed publication statement, as received: the EXACT
+// bytes and the signature over them. The bytes are never re-serialized between
+// arrival and journalling — they are the author's historical statement, and
+// normalising them would destroy the very thing being recorded.
+type pubAuth struct {
+	Bytes  string // exact canonical envelope bytes as received
+	Sig    string // hex signature over Bytes
+	Pubkey string // authenticated principal's key (NOT taken from the envelope)
+}
+
+// apiPutSigned is apiPut with an optional author statement. When auth is non-nil
+// the statement is verified BEFORE the name moves, so an invalid signature can
+// never appear as an accepted publication (#83). Verification order matters: each
+// check below is cheap relative to the next, and none of them mutate the name.
+func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pubAuth) ([]putReport, error) {
 	if author == "" {
 		author = "unattributed"
 	}
@@ -91,6 +109,68 @@ func apiPut(st *Store, src string, author string, ctxHash string) ([]putReport, 
 			}
 		}
 
+		// THE AUTHOR-STATEMENT GATE. Everything here happens after elaboration (so
+		// the artifact hash is known) and before Repoint (so a failure leaves the
+		// name exactly where it was). The object itself is already stored, which is
+		// correct and harmless: content addressing makes storage idempotent, and an
+		// unreferenced object is inert. What must not happen is a NAME moving on an
+		// unverified statement.
+		if auth != nil {
+			env, err := envelopeParse([]byte(auth.Bytes))
+			if err != nil {
+				rep.Status = "rejected"
+				rep.Error = fmt.Sprintf("author envelope is not canonical: %v", err)
+				results = append(results, rep)
+				_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K,
+					Status: "rejected", Hash: h, Error: rep.Error})
+				continue
+			}
+			// The signing key is the AUTHENTICATED principal, never the one the
+			// envelope names. Trusting the envelope's own author field would let a
+			// caller present someone else's key and have it verified against itself.
+			if env.Author != auth.Pubkey {
+				rep.Status = "rejected"
+				rep.Error = fmt.Sprintf("envelope is signed for %s but the request authenticated as %s", shortHash(env.Author), shortHash(auth.Pubkey))
+				results = append(results, rep)
+				_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K,
+					Status: "rejected", Hash: h, Error: rep.Error})
+				continue
+			}
+			if err := envelopeVerify(env, auth.Sig); err != nil {
+				rep.Status = "rejected"
+				rep.Error = err.Error()
+				results = append(results, rep)
+				_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K,
+					Status: "rejected", Hash: h, Error: rep.Error})
+				continue
+			}
+			// The signed transition must be the transition being requested. The
+			// artifact hash is RECOMPUTED from submitted content, so client and
+			// server must agree on identity — which turns the cross-kernel
+			// determinism guarantee into an enforced precondition rather than an
+			// assumption.
+			curParent, curRev := nameRevision(st, meta.Name)
+			mismatch := ""
+			switch {
+			case env.Name != meta.Name:
+				mismatch = fmt.Sprintf("signed name %q, publishing %q", env.Name, meta.Name)
+			case env.Artifact != h:
+				mismatch = fmt.Sprintf("signed artifact %s, submitted content hashes to %s", shortHash(env.Artifact), shortHash(h))
+			case env.Parent != curParent:
+				mismatch = fmt.Sprintf("signed parent %s, but %q currently points at %s — the name moved since the envelope was made, or this is a replay", shortHash(env.Parent), meta.Name, shortHash(curParent))
+			case env.ParentRev != curRev:
+				mismatch = fmt.Sprintf("signed parent_rev %d, but %q is at revision %d — a replay whose parent hash happens to match again (ABA)", env.ParentRev, meta.Name, curRev)
+			}
+			if mismatch != "" {
+				rep.Status = "rejected"
+				rep.Error = "author statement does not match the requested transition: " + mismatch
+				results = append(results, rep)
+				_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K,
+					Status: "rejected", Hash: h, Error: rep.Error})
+				continue
+			}
+		}
+
 		specAuthor, bodyAuthor := attributeAuthorship(st, meta.Name, def, author)
 		pol, err := LoadPolicy(st.Root)
 		if err != nil {
@@ -147,11 +227,18 @@ func apiPut(st *Store, src string, author string, ctxHash string) ([]putReport, 
 			m.SpecAuthor, m.BodyAuthor = specAuthor, bodyAuthor
 			_ = st.SetMeta(h, m)
 		}
-		_ = st.AppendLog(&LogEntry{
+		le := &LogEntry{
 			Author: author, Name: meta.Name, Kind: def.K, Status: rep.Status,
 			Hash: h, Prev: prev, Guarantee: rep.Guarantee, Termination: rep.Termination,
 			Context: ctxHash,
-		})
+		}
+		if auth != nil {
+			// Verbatim. Not re-encoded from the parsed envelope: the bytes ARE the
+			// statement, and a round-trip through the encoder would substitute this
+			// kernel's rendering for the author's.
+			le.Envelope, le.AuthorPubkey, le.AuthorSig = auth.Bytes, auth.Pubkey, auth.Sig
+		}
+		_ = st.AppendLog(le)
 		results = append(results, rep)
 	}
 	return results, nil
@@ -711,4 +798,32 @@ func querySignature(st *Store, qd *Def) string {
 	// so this adds legibility without adding anything the caller authored.
 	g := generalizeTypes([]Ty{*qd.Ty})[0]
 	return printTy(st, &g, nil)
+}
+
+// nameRevision returns the transition a publication of `name` would replace: the
+// hash the name currently points at (or noParent) and its per-name revision — the
+// number of accepted publications it has already had.
+//
+// Both halves are DERIVED, so a client and the registry compute the same values
+// from the same journal without a shared counter to drift. The revision is what
+// makes the parent check survive ABA: a hash can return to an earlier value, a
+// count cannot.
+//
+// A name that does not resolve is treated as never published (noParent, 0). That
+// is sound here specifically because names are only ever REPOINTED, never deleted
+// — so unresolvable and never-published are the same state. If deletion is ever
+// added, this must change: a deleted-then-recreated name whose revision reset to
+// zero would make every historical envelope for it replayable.
+func nameRevision(st *Store, name string) (string, int) {
+	rev := 0
+	for _, e := range st.ReadLog() {
+		if e.Name == name && e.Status == "accepted" {
+			rev++
+		}
+	}
+	h, ok := st.Resolve(name)
+	if !ok || rev == 0 {
+		return noParent, firstRev
+	}
+	return h, rev
 }
