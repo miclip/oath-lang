@@ -7,10 +7,22 @@ hosted layer is built key-first rather than retrofitted.
 
 ## The decision
 
-**A principal is a keypair. Authorship is a signature over the object hash,
-carried in the bundle. Every journal entry is signed.** Bearer tokens, if kept
-at all, are a compatibility shim for the connection, never the source of
-provenance.
+**A principal is a keypair. Authorship is a signature over a canonical
+publication ENVELOPE, persisted verbatim. Bearer tokens are a compatibility shim
+for the connection, never the source of provenance.**
+
+> **Amended 2026-07-30, when this was implemented (#83).** This section
+> originally said authorship was "a signature over the object hash". That is
+> not enough, and the correction is load-bearing: a signature over the artifact
+> hash alone is valid *forever, for any name, in any operation* — a bearer
+> credential wearing a signature's clothing. It cannot express "I publish THIS
+> content under THIS name, replacing THIS version". The envelope (SPEC §8.6)
+> binds operation, name, artifact, parent and per-name revision together, so a
+> signature authorizes one state transition and no other.
+>
+> It also said "every journal entry is signed". That was a target, not a fact,
+> and the gap is now measured rather than asserted — `oath audit` reports signed
+> versus unsigned coverage, and the committed corpus is 531 unsigned entries.
 
 ## Why (and why now)
 
@@ -93,3 +105,45 @@ authorship dimension on top of the hash and the proof. The hosted infrastructure
 (GCS objects, Cloud Run API, Cloud SQL name index + journal) is in
 `terraform/` and is agnostic to this: it stores signed bytes and an index; the
 trust lives in the signatures and the client, not the server.
+
+
+## As implemented (#83): two signatures, two different claims
+
+The working system has two independent signatures. Conflating them was the
+mistake that took longest to see, because both are "a signature on a journal
+entry":
+
+| | question it answers | signer | what it cannot do |
+|---|---|---|---|
+| **entry signature** (SPEC §8.4) | has this record been altered since it was written? | whoever holds the store's key | establish authorship — a store can sign an entry naming anyone |
+| **publication envelope** (SPEC §8.6) | who requested this exact transition? | the author, before submitting | prove the record was not later tampered with |
+
+An author signs only what an author controls: name, artifact, parent, revision.
+It MUST NOT cover `status`, `guarantee` or `termination` — those are the
+registry's findings, re-derived from content bytes, and an author cannot predict
+them. Requiring a signature over them would make a policy decision
+indistinguishable from a forged statement.
+
+The envelope BYTES are persisted, never reconstructed from the entry's fields.
+Reconstruction would let a future encoder change silently invalidate historical
+signatures: the signature stays correct and stops verifying, which is the worst
+failure an audit trail has.
+
+### The rule for tokens, unchanged and now enforced
+
+The token says the caller may reach the registry. The signature says who
+authored the publication. An author statement is only accepted on a *signed*
+request — with a bearer token the principal is server-vouched, so a statement
+naming a key could not be tied to the caller.
+
+### What this does NOT establish
+
+- **Atomic application.** The envelope expresses a compare-and-swap; the
+  fs-over-gcsfuse store does not enforce it (compare and update are separate
+  operations). Historical replay IS prevented; two correctly signed publications
+  naming the same parent can still both verify. The transactional store is the
+  prerequisite, not an optimisation.
+- **Custody separation.** Distinct keys for spec and body are not evidence of
+  independent authorship: one process holding both key files produces an
+  identical record. `oath explain` reports
+  `DISTINCT_KEYS_CUSTODY_UNVERIFIED` and keeps the limitation (#82).
