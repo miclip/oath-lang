@@ -23,12 +23,24 @@ package main
 // that class of bug is why this belongs in the kernel once rather than in each
 // script.
 //
-// NOT SOLVED HERE, deliberately: replay. An identical signed put is idempotent
-// for the OBJECT (content addressing) but it also REPOINTS the name, so a
-// captured envelope could later roll a name back to an earlier version. Fixing
-// that needs a nonce or timestamp binding plus server-side state, which is a
-// design decision about the store backend rather than a client change. Tracked
-// on #83 rather than half-built here.
+// REPLAY IS NOW CLOSED, by a different mechanism than this comment once predicted.
+// It said a fix would need "a nonce or timestamp binding plus server-side state".
+// It does not: the publication envelope (SPEC §8.6) binds the PARENT hash and the
+// per-name REVISION, so a captured envelope names a transition that no longer
+// exists and is refused with no server-side table at all. The revision is what
+// makes it survive an A→B→A cycle, where a parent hash alone becomes valid again.
+//
+// WHAT REMAINS OPEN is narrower and different: the envelope expresses a
+// compare-and-swap, and the filesystem store does not enforce one. Compare and
+// update are separate operations, so two correctly signed publications naming the
+// same parent can both verify before one overwrites the other. Historical replay
+// is prevented; concurrent lost updates are not. That is the transactional store's
+// job, which makes the Postgres cutover a correctness dependency rather than an
+// upgrade.
+//
+// This comment is kept rather than deleted because the prediction it got wrong is
+// worth preserving: the obvious defence (nonce plus state) was more machinery and
+// a weaker guarantee than binding what the author was actually claiming.
 
 import (
 	"bytes"

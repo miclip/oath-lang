@@ -1,9 +1,22 @@
 # Registry auth: signed puts, keys as principals
 
-**Status:** decision of record for the public registry (#14) and the eventual
-hardening of the team store (docs/teamstore.md). NOT yet built — the current
-`oath serve --http --tokens` uses bearer tokens; this pins the target so the
-hosted layer is built key-first rather than retrofitted.
+**Status:** BUILT, with named limits. Signed publication is live end to end
+(#83): `oath publish` and `oath put --remote --key` sign, `oath serve` verifies
+the request, and the accepted journal entry carries the author's canonical
+publication envelope, key and signature, so authorship is checkable offline by
+anyone holding the journal (`oath audit`). Bearer tokens remain, deliberately —
+they are the transport shim for MCP clients that cannot sign, never the source
+of provenance.
+
+> This header previously read "NOT yet built", which was accurate when the
+> document was a target and stopped being so once #83 landed. A status line that
+> lags its implementation is the same defect as a coverage claim that lags its
+> vectors: it is a statement about the system that nothing re-derives.
+
+What is NOT established, and is stated in full in "What this does NOT establish"
+below: atomic application of a signed transition (the envelope expresses a
+compare-and-swap the filesystem store cannot enforce), and custody separation
+(distinct keys are not evidence of independent control).
 
 ## The decision
 

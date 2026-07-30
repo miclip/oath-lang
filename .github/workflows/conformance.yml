@@ -56,6 +56,12 @@ jobs:
       - name: mutation boundary (release binary contains no rule-disable path)
         run: make mutation-boundary
 
+      # Numbers in prose are claims. README/DESIGN carried "99 fully proven (299
+      # properties)" long after the real figures were 123 and 348/427 — nothing was
+      # wrong with the kernel, the prose drifted and no check read it.
+      - name: documented numbers match the machine's ledger (#96)
+        run: make check-doc-numbers
+
       - name: website proof ledger matches canonical fixtures (#30)
         # The site claims its numbers are read live from the machine's ledger.
         # Fail if website/lib/outcomes.json has drifted from fixtures/.

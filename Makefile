@@ -117,6 +117,15 @@ conformance-score:
 # or deploy; the mutation machinery is exactly the capability an attacker wants, and
 # shipping it inside the artifact whose guarantees it switches off would make the
 # measurement tooling the vulnerability.
+# Prose carrying numbers is prose making claims. This asserts the documented figures
+# against fixtures/prove/outcomes.json and codebase/names.json, so README/DESIGN counts
+# cannot drift the way "99 fully proven (299 properties)" did while the real figures
+# were 123 and 348/427. A reworded sentence FAILS rather than silently dropping out of
+# coverage.
+.PHONY: check-doc-numbers
+check-doc-numbers:
+	@python3 scripts/check-doc-numbers.py
+
 .PHONY: mutation-boundary
 mutation-boundary:
 	@./scripts/verify-no-mutation-in-release.sh

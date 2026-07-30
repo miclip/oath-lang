@@ -269,7 +269,7 @@ Phases 1–3 are COMPLETE, beyond the original ambitions:
   waivers, and an O1 binary identity encoding that inherits nothing from
   any host language (SPEC §1; store migrated wholesale, mappings journaled).
 - **Phase 2 ✓ (mostly)** — SMT proofs are real INCLUDING structural
-  induction with a relevance-filtered lemma library (§7.2): 99 definitions
+  induction with a relevance-filtered lemma library (§7.2): 123 definitions
   fully PROVEN, insertion sort 7/7. The Rust kernel exists — built BLIND
   from docs/SPEC.md + fixtures by an agent that never saw the Go source,
   conforming byte-for-byte on all six checks, wasm32-ready. Effects
@@ -359,7 +359,7 @@ proven.*
 
 ### Hard limits — the blocking gaps
 
-**Coverage.** 165 definitions, deep but narrow: list, sort, tree, queue,
+**Coverage.** 187 definitions, deep but narrow: list, sort, tree, queue,
 interval, map, set, string, rational, plus honest exhibits. Nothing corresponds
 to a task an agent is actually given.
 
@@ -445,7 +445,7 @@ Sequencing discovery strictly third was wrong, for a reason that took an argumen
 to see. There are two loops, not one. The **end-to-end loop** above is blocked on
 effects. But the **credibility loop** an agent experiences first — search →
 inspect → compare → trust — requires neither effects nor execution. It can run
-against the 165 primitives we already have, and it should, because:
+against the 187 primitives we already have, and it should, because:
 
 - It **validates the registry thesis while it is still cheap to be wrong.** "The
   registry is the product" is only true if querying and result-shaping work. Even
