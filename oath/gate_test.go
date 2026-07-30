@@ -188,3 +188,136 @@ func TestRejectedAttemptDoesNotDisturbRevision(t *testing.T) {
 		t.Fatalf("a previously prepared envelope was invalidated by an unrelated rejected attempt: %+v (%v)", reps, err)
 	}
 }
+
+// The bug the blind Rust implementation predicted from the spec alone: a same-hash
+// re-publication is accepted, and the journal then fails its OWN verifier, because
+// Repoint collapsed an unchanged binding to prev="" while the envelope named the
+// real parent. A correctly signed, correctly accepted publication produced a broken
+// journal.
+func TestSameHashRepublicationKeepsJournalValid(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	pubHex := hex.EncodeToString(pub)
+	st := newMemStoreForTest(t)
+
+	publish := func() []putReport {
+		t.Helper()
+		parent, rev := nameRevision(st, "dbl")
+		env := pubEnvelope{Op: "put", Name: "dbl", Artifact: artifactHashOf(t, st, gateSrc),
+			Parent: parent, ParentRev: rev, Author: pubHex}
+		sig, err := envelopeSign(priv, env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		reps, err := apiPutSigned(st, gateSrc, pubHex, "", &pubAuth{
+			Bytes: string(envelopeEncode(env)), Sig: sig, Pubkey: pubHex})
+		if err != nil {
+			t.Fatalf("publish failed: %v", err)
+		}
+		return reps
+	}
+
+	publish()
+	if err := st.VerifyLog(); err != nil {
+		t.Fatalf("first publication broke the journal: %v", err)
+	}
+	ownerBefore, srcBefore := nameOwner(st, "dbl")
+	_, revBefore := nameRevision(st, "dbl")
+
+	// Republish IDENTICAL content: a valid publication of the hash already bound.
+	reps := publish()
+	if err := st.VerifyLog(); err != nil {
+		t.Fatalf("same-hash re-publication broke the journal: %v", err)
+	}
+	if reps[0].Status != "accepted" {
+		t.Fatalf("a no-op re-publication should still be accepted, got %q", reps[0].Status)
+	}
+
+	// It is a recorded no-op, so it must version nothing and own nothing.
+	if _, rev := nameRevision(st, "dbl"); rev != revBefore {
+		t.Fatalf("a no-op advanced the revision %d -> %d: revision must version the BINDING, not count publications", revBefore, rev)
+	}
+	owner, src := nameOwner(st, "dbl")
+	if owner != ownerBefore || src != srcBefore {
+		t.Fatalf("a no-op changed ownership from (%q,%q) to (%q,%q): re-publishing an unchanged artifact must not acquire its name", ownerBefore, srcBefore, owner, src)
+	}
+	// And the entry must say so rather than leaving it to inference.
+	log := st.ReadLog()
+	last := log[len(log)-1]
+	if last.NameTransition != transitionUnchanged {
+		t.Fatalf("no-op recorded name_transition=%q, want %q", last.NameTransition, transitionUnchanged)
+	}
+	if last.Prev != last.Hash {
+		t.Fatalf("no-op recorded prev=%q, want the real prior binding %q", last.Prev, last.Hash)
+	}
+}
+
+// An envelope stays valid across everything that leaves the name state unchanged:
+// rejected attempts, prove/cross events, and same-hash re-publications. It becomes
+// invalid only once an applied transition changes the binding. That is clean CAS.
+func TestEnvelopeSurvivesNonTransitions(t *testing.T) {
+	st := newMemStoreForTest(t)
+	// Bind the name for real: nameRevision reads the journal AND resolves the name,
+	// so a journal-only fixture would describe a store that cannot exist.
+	if _, err := st.Repoint("n", "h1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendLog(&LogEntry{Name: "n", Kind: "func", Status: "accepted",
+		Hash: "h1", NameTransition: transitionApplied}); err != nil {
+		t.Fatal(err)
+	}
+	_, rev := nameRevision(st, "n")
+	if rev != 1 {
+		t.Fatalf("setup: revision %d after one applied transition, want 1", rev)
+	}
+
+	for _, e := range []*LogEntry{
+		{Name: "n", Kind: "func", Status: "rejected", Hash: "h9", NameTransition: transitionNone},
+		{Name: "n", Kind: "func", Status: "blocked", Hash: "h9", NameTransition: transitionNone},
+		{Name: "n", Kind: "prove", Status: "accepted", Hash: "h1", NameTransition: transitionNone},
+		{Name: "n", Kind: "cross", Status: "accepted", Hash: "h1", NameTransition: transitionNone},
+		{Name: "n", Kind: "func", Status: "accepted", Hash: "h1", Prev: "h1", NameTransition: transitionUnchanged},
+	} {
+		if err := st.AppendLog(e); err != nil {
+			t.Fatal(err)
+		}
+		if _, got := nameRevision(st, "n"); got != rev {
+			t.Fatalf("%s/%s advanced the revision to %d (was %d): an envelope prepared against the old state would be invalidated by an event that changed nothing",
+				e.Kind, e.Status, got, rev)
+		}
+	}
+	// A real change DOES advance it.
+	if _, err := st.Repoint("n", "h2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendLog(&LogEntry{Name: "n", Kind: "func", Status: "accepted",
+		Hash: "h2", Prev: "h1", NameTransition: transitionApplied}); err != nil {
+		t.Fatal(err)
+	}
+	if _, got := nameRevision(st, "n"); got != rev+1 {
+		t.Fatalf("an applied transition did not advance the revision: %d, want %d", got, rev+1)
+	}
+}
+
+// Legacy entries have no name_transition, so it is derived — and the derivation must
+// exclude kinds that never touched a name. Missing that is how a proof-worker entry
+// inflates a name's revision.
+func TestLegacyTransitionDerivationExcludesNonPutKinds(t *testing.T) {
+	for _, tc := range []struct {
+		kind, status, prev, hash, want string
+	}{
+		{"func", "accepted", "", "h", transitionApplied},
+		{"data", "accepted", "", "h", transitionApplied},
+		{"func", "falsified", "", "h", transitionApplied},
+		{"func", "accepted", "h", "h", transitionUnchanged},
+		{"prove", "accepted", "", "h", transitionNone},
+		{"cross", "accepted", "", "h", transitionNone},
+		{"cross", "falsified", "", "h", transitionNone},
+		{"func", "rejected", "", "h", transitionNone},
+		{"func", "blocked", "", "h", transitionNone},
+	} {
+		e := &LogEntry{Kind: tc.kind, Status: tc.status, Prev: tc.prev, Hash: tc.hash}
+		if got := e.nameTransitionOf(); got != tc.want {
+			t.Fatalf("legacy %s/%s: derived %q, want %q", tc.kind, tc.status, got, tc.want)
+		}
+	}
+}

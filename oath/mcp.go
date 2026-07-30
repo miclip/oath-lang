@@ -213,11 +213,13 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 		parent, rev := nameRevision(st, a.Name)
 		resp := map[string]any{"name": a.Name, "parent": parent, "parent_rev": rev}
 		if a.Hash != "" {
+			// LAST match, not first: the same artifact may be published more than once
+			// (a same-hash re-publication is a valid recorded no-op), and a client
+			// checking what was persisted means the publication it just made.
 			for _, e := range st.ReadLog() {
 				if e.Hash == a.Hash && e.Envelope != "" {
 					resp["envelope"] = e.Envelope
 					resp["author_pubkey"] = e.AuthorPubkey
-					break
 				}
 			}
 		}

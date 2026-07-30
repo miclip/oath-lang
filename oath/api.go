@@ -122,7 +122,8 @@ func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pu
 				rep.Error = fmt.Sprintf("author envelope is not canonical: %v", err)
 				results = append(results, rep)
 				_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K,
-					Status: "rejected", Hash: h, Error: rep.Error})
+					Status: "rejected", Hash: h, Error: rep.Error,
+					NameTransition: transitionNone})
 				continue
 			}
 			// The signing key is the AUTHENTICATED principal, never the one the
@@ -133,7 +134,8 @@ func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pu
 				rep.Error = fmt.Sprintf("envelope is signed for %s but the request authenticated as %s", shortHash(env.Author), shortHash(auth.Pubkey))
 				results = append(results, rep)
 				_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K,
-					Status: "rejected", Hash: h, Error: rep.Error})
+					Status: "rejected", Hash: h, Error: rep.Error,
+					NameTransition: transitionNone})
 				continue
 			}
 			if err := envelopeVerify(env, auth.Sig); err != nil {
@@ -141,7 +143,8 @@ func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pu
 				rep.Error = err.Error()
 				results = append(results, rep)
 				_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K,
-					Status: "rejected", Hash: h, Error: rep.Error})
+					Status: "rejected", Hash: h, Error: rep.Error,
+					NameTransition: transitionNone})
 				continue
 			}
 			// The signed transition must be the transition being requested. The
@@ -166,7 +169,8 @@ func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pu
 				rep.Error = "author statement does not match the requested transition: " + mismatch
 				results = append(results, rep)
 				_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K,
-					Status: "rejected", Hash: h, Error: rep.Error})
+					Status: "rejected", Hash: h, Error: rep.Error,
+					NameTransition: transitionNone})
 				continue
 			}
 		}
@@ -231,9 +235,12 @@ func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pu
 			Author: author, Name: meta.Name, Kind: def.K, Status: rep.Status,
 			Hash: h, Prev: prev, Guarantee: rep.Guarantee, Termination: rep.Termination,
 			Context: ctxHash,
-			// Reached only after Repoint succeeded, so the name DID move — whatever
-			// verdict Status carries.
-			Transition: transitionApplied,
+			// Reached only after Repoint succeeded, so a name operation happened —
+			// but not necessarily a state CHANGE. A publication of the hash already
+			// bound is a recorded no-op: valid, journalled, and not a new version of
+			// the binding. Distinguishing them here is what keeps parent_rev a state
+			// version rather than a publication counter.
+			NameTransition: nameTransition(prev, h),
 		}
 		if auth != nil {
 			// Verbatim. Not re-encoded from the parsed envelope: the bytes ARE the
@@ -252,7 +259,14 @@ func renderPutReports(results []putReport) string {
 	var b strings.Builder
 	for _, rep := range results {
 		status := ""
-		if rep.Prev != "" {
+		switch {
+		case rep.Prev == "":
+			// First publication of this name; nothing was displaced.
+		case rep.Prev == rep.Hash:
+			// A no-op. Saying "repointed" here, with the SAME hash presented as the
+			// "old version", reads as a change that did not happen.
+			status = "  (no-op: the name already pointed at this version)"
+		default:
 			status = fmt.Sprintf("  (name repointed; old version %s remains immutable)", shortHash(rep.Prev))
 		}
 		switch {
@@ -833,4 +847,14 @@ func nameRevision(st *Store, name string) (string, int) {
 		return noParent, firstRev
 	}
 	return h, rev
+}
+
+// nameTransition classifies what a successful publication did to the binding.
+// `prev` is the hash the name pointed at before (empty only for a first
+// publication), `h` the hash it points at now.
+func nameTransition(prev, h string) string {
+	if prev == h {
+		return transitionUnchanged
+	}
+	return transitionApplied
 }

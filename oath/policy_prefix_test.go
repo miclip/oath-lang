@@ -96,7 +96,7 @@ func TestNameOwnerDerivation(t *testing.T) {
 	st := newMemStoreForTest(t)
 	// An UNSIGNED first publication: the owner is a label the store wrote down.
 	if err := st.AppendLog(&LogEntry{Author: "claude-main", Name: "n", Status: "accepted",
-		Hash: "h1", Transition: transitionApplied}); err != nil {
+		Hash: "h1", NameTransition: transitionApplied}); err != nil {
 		t.Fatal(err)
 	}
 	owner, source := nameOwner(st, "n")
@@ -105,7 +105,7 @@ func TestNameOwnerDerivation(t *testing.T) {
 	}
 	// A later signed entry must NOT change ownership — first publish decides.
 	if err := st.AppendLog(&LogEntry{Author: "kk", Name: "n", Status: "accepted", Hash: "h2",
-		Prev: "h1", Transition: transitionApplied,
+		Prev: "h1", NameTransition: transitionApplied,
 		Envelope: "x", AuthorPubkey: "kk", AuthorSig: "s"}); err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestNameOwnerDerivation(t *testing.T) {
 func TestNameOwnerFromSignedEntry(t *testing.T) {
 	st := newMemStoreForTest(t)
 	if err := st.AppendLog(&LogEntry{Author: "abc", Name: "n", Status: "accepted", Hash: "h",
-		Transition: transitionApplied, Envelope: "e", AuthorPubkey: "abc", AuthorSig: "s"}); err != nil {
+		NameTransition: transitionApplied, Envelope: "e", AuthorPubkey: "abc", AuthorSig: "s"}); err != nil {
 		t.Fatal(err)
 	}
 	owner, source := nameOwner(st, "n")
@@ -189,7 +189,7 @@ func TestPolicyRejectsAmbiguity(t *testing.T) {
 func TestTofuDoesNotCaptureNamespace(t *testing.T) {
 	st := newMemStoreForTest(t)
 	if err := st.AppendLog(&LogEntry{Author: "kk", Name: "michael/service1/foo",
-		Status: "accepted", Hash: "h", Transition: transitionApplied,
+		Status: "accepted", Hash: "h", NameTransition: transitionApplied,
 		Envelope: "e", AuthorPubkey: "kk", AuthorSig: "s"}); err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestTofuDoesNotCaptureNamespace(t *testing.T) {
 func TestOwnershipFromFalsifiedButApplied(t *testing.T) {
 	st := newMemStoreForTest(t)
 	if err := st.AppendLog(&LogEntry{Author: "who", Name: "n", Status: "falsified",
-		Hash: "h", Transition: transitionApplied}); err != nil {
+		Hash: "h", NameTransition: transitionApplied}); err != nil {
 		t.Fatal(err)
 	}
 	if owner, _ := nameOwner(st, "n"); owner != "who" {

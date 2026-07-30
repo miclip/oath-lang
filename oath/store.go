@@ -196,6 +196,18 @@ func (s *Store) StoreObject(d *Def, m *Meta) (string, error) {
 
 // Repoint points name at h. Returns the previous hash ("" if the name is
 // new or already pointed at h).
+// Repoint binds `name` to `h` and returns the hash it pointed at BEFORE — the
+// previous binding, always, including when it already pointed at `h`.
+//
+// It used to collapse an unchanged binding to "", which destroyed the distinction
+// between "there was no previous value" and "the previous value was the same one".
+// That mattered the moment a publication signature bound the parent: a same-hash
+// re-publication journalled prev="" while its envelope named the real parent, so
+// the entry disagreed with the statement its author signed and the journal failed
+// its own verifier. A correctly signed, correctly accepted publication produced a
+// broken journal.
+//
+// Callers that need to know whether the binding MOVED compare prev against h.
 func (s *Store) Repoint(name, h string) (string, error) {
 	release, err := s.be.lock()
 	if err != nil {
@@ -207,9 +219,6 @@ func (s *Store) Repoint(name, h string) (string, error) {
 	names[name] = h
 	if err := s.writeNames(names); err != nil {
 		return "", err
-	}
-	if prev == h {
-		prev = ""
 	}
 	return prev, nil
 }
@@ -411,19 +420,27 @@ type LogEntry struct {
 	Envelope     string `json:"envelope,omitempty"`
 	AuthorPubkey string `json:"author_pubkey,omitempty"` // hex Ed25519 key that signed Envelope
 	AuthorSig    string `json:"author_sig,omitempty"`    // hex signature over Envelope's exact bytes
-	// Transition records what happened to the NAME, which is a different dimension
-	// from Status (what the registry concluded about the artifact). A definition can
-	// be FALSIFIED and still become the value bound to a name; a request can be
-	// REJECTED and belong in the journal without moving anything. Inferring one from
-	// the other is inherently fragile — a new status reopens the ABA hole the moment
-	// someone forgets to add it to an allowlist. Set at the Repoint site itself, so
-	// it cannot be forgotten by a future code path.
+	// NameTransition records what happened to the NAME — a different dimension from
+	// Status, which records what the registry concluded about the ARTIFACT. A
+	// definition can be FALSIFIED and still bind its name; a request can be REJECTED
+	// and belong in the journal without moving anything; a `prove` or `cross` entry
+	// concerns an artifact and touches no name at all. Deriving one dimension from
+	// the other is what made this fragile twice, so it is recorded directly:
 	//
-	// "applied" = the name now points at Hash. Empty on historical entries written
-	// before this field existed, which is why repointedName still falls back to a
-	// status allowlist for them.
-	Transition string `json:"transition,omitempty"`
-	Chain      string `json:"chain,omitempty"` // tamper-evidence: SHA-256(prev chain + this entry sans chain)
+	//   applied    the name binding CHANGED (A -> B, or first publication)
+	//   unchanged  a valid publication targeted the hash already bound (A -> A)
+	//   none       no name operation occurred: rejected, blocked, pending, prove, cross
+	//
+	// Only `applied` versions the binding. That is what parent_rev must count: a
+	// revision is a STATE version, not a publication counter. If a same-hash re-put
+	// advanced it, a harmless no-op would invalidate every envelope prepared against
+	// a state that never changed — duplicating the journal's event count while
+	// weakening the CAS model. ABA still closes, because A -> B -> A increments twice
+	// and an old envelope for the first A carries the wrong revision.
+	//
+	// Empty on entries written before this field existed; see nameTransitionOf.
+	NameTransition string `json:"name_transition,omitempty"`
+	Chain          string `json:"chain,omitempty"` // tamper-evidence: SHA-256(prev chain + this entry sans chain)
 }
 
 // signedContent is the deterministic byte string a signer signs: the entry with
@@ -432,8 +449,12 @@ type LogEntry struct {
 // author label, name, kind, status, object hash, prior hash, verdicts, context —
 // independent of where the entry lands in the log. The chain seals ordering on
 // top; the signature seals authorship. (docs/registry-auth.md)
-// transitionApplied marks a journal entry whose name now points at its Hash.
-const transitionApplied = "applied"
+// Name-transition values. See LogEntry.NameTransition.
+const (
+	transitionApplied   = "applied"
+	transitionUnchanged = "unchanged"
+	transitionNone      = "none"
+)
 
 // repointedName reports whether this entry MOVED the name it records.
 //
@@ -455,20 +476,42 @@ const transitionApplied = "applied"
 // already-prepared legitimate envelope, or make client and registry disagree about
 // the current parent.
 func (e *LogEntry) repointedName() bool {
-	// The explicit record wins wherever it exists: it is written at the Repoint call
-	// site, so it states what happened rather than inferring it.
-	if e.Transition != "" {
-		return e.Transition == transitionApplied
+	return e.nameTransitionOf() == transitionApplied
+}
+
+// nameTransitionOf returns the entry's name transition, deriving it only for
+// LEGACY entries written before the field existed.
+//
+// The legacy derivation is quarantined here rather than spread through callers, so
+// there is exactly one place where inference happens and it is visibly confined to
+// old data. New entries state their transition and are never inferred.
+//
+// Legacy rules, and why each is what it is:
+//   - kinds other than data/func never touched a name (`prove` and `cross` entries
+//     concern an artifact), so they are `none` regardless of status. Missing this is
+//     how a proof-worker entry could inflate a name's revision;
+//   - accepted/falsified DID bind the name, so they are transitions. Falsified must
+//     stay included: falsified entries in the committed corpus carry `prev`;
+//   - a legacy entry whose prev EQUALS its hash was a no-op, so `unchanged`. Old
+//     entries collapsed an unchanged binding to prev="", so this is rarely
+//     detectable in practice — which is precisely why the collapse was removed.
+func (e *LogEntry) nameTransitionOf() string {
+	if e.NameTransition != "" {
+		return e.NameTransition
 	}
-	// Historical entries predate the field. The allowlist reproduces the behaviour
-	// they were written under, and must not be "tidied": falsified entries in the
-	// committed corpus DO carry prev, so dropping falsified here would silently
-	// undercount every pre-existing name's revision.
+	switch e.Kind {
+	case "data", "func", "":
+	default:
+		return transitionNone
+	}
 	switch e.Status {
 	case "accepted", "falsified":
-		return true
+		if e.Prev != "" && e.Prev == e.Hash {
+			return transitionUnchanged
+		}
+		return transitionApplied
 	}
-	return false
+	return transitionNone
 }
 
 func signedContent(e *LogEntry) []byte {
