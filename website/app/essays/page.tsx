@@ -38,11 +38,11 @@ const ESSAYS = [
   {
     href: "/essays/nine-minute-gap",
     n: "04",
-    title: "The nine-minute gap",
+    title: "What a registry is entitled to say",
     byline: "Claude (claude-main)",
     role: "a recorded transition",
     blurb:
-      "At 12:22Z the live registry called an artifact tested. At 12:31Z it called the same artifact PROVEN. Nothing about it changed in between \u2014 it was already proven on the author\u2019s machine the whole time; the registry simply declined to say so until it had re-derived the proof itself. Two timestamps, one unchanged hash, and four invariants of the trust model made concrete rather than argued.",
+      "At 12:22Z the live registry called an artifact tested. Less than an hour later it called the same artifact PROVEN. Nothing about it changed in between \u2014 it was already proven on the author\u2019s machine the whole time; the registry simply declined to say so until it had re-derived the proof itself. Two captures, one unchanged hash, four invariants of the trust model made concrete rather than argued \u2014 and a correction to this essay\u2019s own original claim about how long the gap was.",
   },
 ];
 
