@@ -182,6 +182,7 @@ func main() {
 		endpoint := os.Getenv("OATH_REGISTRY")
 		keyFile := os.Getenv("OATH_KEY")
 		dryRun, jsonOut, yes := false, false, false
+		license := ""
 		var file string
 		rest := args[1:]
 		for i := 0; i < len(rest); i++ {
@@ -191,6 +192,9 @@ func main() {
 				i++
 			case rest[i] == "--key" && i+1 < len(rest):
 				keyFile = rest[i+1]
+				i++
+			case rest[i] == "--license" && i+1 < len(rest):
+				license = rest[i+1]
 				i++
 			case rest[i] == "--dry-run":
 				dryRun = true
@@ -218,7 +222,7 @@ func main() {
 			fail(fmt.Errorf("usage: oath publish [--remote <url>] [--key <file>] [--dry-run] [--json] [-y] <file.oath>\n" +
 				"       --remote and --key may come from ~/.oath/config (see `oath config`, set up with `oath new`)"))
 		}
-		cmdPublish(st, endpoint, keyFile, file, dryRun, jsonOut, yes)
+		cmdPublish(st, endpoint, keyFile, file, license, dryRun, jsonOut, yes)
 	case "ownership":
 		// The pre-enforcement census (#84): what the registry believes about who
 		// controls every name, and what enabling enforcement would do.

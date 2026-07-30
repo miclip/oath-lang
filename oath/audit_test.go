@@ -31,7 +31,7 @@ func TestVerifyLogAuthorRecord(t *testing.T) {
 	// A well-formed signed entry, used as the baseline every case perturbs.
 	base := func() *LogEntry {
 		env := pubEnvelope{Op: "put", Name: "n", Artifact: artifact,
-			Parent: noParent, ParentRev: firstRev(), Author: pubHex}
+			Parent: noParent, ParentRev: firstRev(), Author: pubHex, License: noLicense}
 		raw := envelopeEncode(env)
 		sig, err := envelopeSign(priv, env)
 		if err != nil {
@@ -112,7 +112,7 @@ func TestRefusedAttemptWithEnvelopeStillVerifies(t *testing.T) {
 
 	// An envelope signed against a parent that is NOT what the entry records.
 	env := pubEnvelope{Op: "put", Name: "n", Artifact: strings.Repeat("a", 64),
-		Parent: strings.Repeat("b", 64), ParentRev: revOf(1), Author: pubHex}
+		Parent: strings.Repeat("b", 64), ParentRev: revOf(1), Author: pubHex, License: noLicense}
 	sig, err := envelopeSign(priv, env)
 	if err != nil {
 		t.Fatal(err)

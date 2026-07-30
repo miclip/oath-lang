@@ -71,9 +71,21 @@ import (
 	"strings"
 )
 
-// envelopeVersion is the domain separator. It is part of the signed bytes, so a
-// future envelope shape cannot have its signatures confused with this one's.
-const envelopeVersion = "oath-publish/1"
+// envelopeVersion is the format this kernel EMITS. It is part of the signed bytes, so
+// a signature made under one shape can never be read under another — which is what
+// makes adding a field a version bump rather than a compatibility hazard.
+const envelopeVersion = "oath-publish/2"
+
+// envelopeVersionV1 is still READ. Historical entries were signed under it and their
+// signatures must keep verifying: §8.6.1 requires verification to use the format
+// recorded with the entry, not whatever the current encoder emits. A kernel that
+// stopped reading /1 would invalidate correct signatures rather than reject bad ones.
+const envelopeVersionV1 = "oath-publish/1"
+
+// noLicense marks a publication that asserts no licensing terms. Explicit rather than
+// empty, for the same reason noParent is: "the publisher said nothing" and "a field
+// nobody populated" are different facts, and only the first is a statement.
+const noLicense = "-"
 
 // firstRev is the revision of a name that has never been published.
 func firstRev() *big.Int { return big.NewInt(0) }
@@ -112,6 +124,26 @@ type pubEnvelope struct {
 	// local counter need only count real events.
 	ParentRev *big.Int
 	Author    string // hex Ed25519 public key of the signer
+	// License is the terms the PUBLISHER asserts for this publication — an SPDX
+	// expression such as "MIT", "MIT OR Apache-2.0", or "GPL-3.0 WITH
+	// Classpath-exception-2.0" — or noLicense.
+	//
+	// IT IS AN ASSERTION, NOT A DERIVED FACT (DESIGN.md, "What belongs inside
+	// identity"). The publisher states terms; the registry may later derive
+	// compatibility across a dependency closure, and those are different claims that
+	// must never be reported as one.
+	//
+	// It lives HERE, in the signed publication, rather than in the artifact graph. A
+	// license is a claim about a publication, not a property of the bytes: making it a
+	// dependency would fork identity on every relicensing, make "MIT OR Apache-2.0"
+	// inexpressible as one artifact, and put a legal assertion inside structural
+	// identity. Content identity must not change when only human claims change.
+	//
+	// Deliberately NOT validated as SPDX syntax. Validating it here would make this
+	// kernel an authority on licence expressions; it is only the notary for what the
+	// author said. The semantics layer that interprets it is a separate, fallible
+	// model.
+	License string
 }
 
 // envelopeEncode renders the canonical signed bytes. Callers must have validated
@@ -119,22 +151,30 @@ type pubEnvelope struct {
 // emitting bytes that cannot be uniquely decoded, because a silently-corrupt
 // canonical encoding is the one failure that would be discovered years later by
 // someone unable to verify a signature they should have been able to trust.
-func envelopeEncode(e pubEnvelope) []byte {
+func envelopeEncode(e pubEnvelope) []byte { return envelopeEncodeAs(e, envelopeVersion) }
+
+// envelopeEncodeAs renders under a SPECIFIC format version, so historical bytes can be
+// reproduced for verification rather than only re-signed under the current shape.
+func envelopeEncodeAs(e pubEnvelope, version string) []byte {
 	if err := e.validate(); err != nil {
 		panic("envelopeEncode on an invalid envelope: " + err.Error())
 	}
 	var b strings.Builder
-	b.WriteString(envelopeVersion)
+	b.WriteString(version)
 	b.WriteByte('\n')
-	// Fixed order, fixed count. Do not sort, do not omit, do not add.
-	for _, kv := range [][2]string{
+	// Fixed order, fixed count PER VERSION. Do not sort, do not omit, do not add.
+	kvs := [][2]string{
 		{"op", e.Op},
 		{"name", e.Name},
 		{"artifact", e.Artifact},
 		{"parent", e.Parent},
 		{"parent_rev", e.ParentRev.String()},
 		{"author", e.Author},
-	} {
+	}
+	if version != envelopeVersionV1 {
+		kvs = append(kvs, [2]string{"license", e.License})
+	}
+	for _, kv := range kvs {
 		b.WriteString(kv[0])
 		b.WriteByte('=')
 		b.WriteString(kv[1])
@@ -158,7 +198,7 @@ func envelopeSafe(s string) bool {
 func (e pubEnvelope) validate() error {
 	for _, f := range []struct{ k, v string }{
 		{"op", e.Op}, {"name", e.Name}, {"artifact", e.Artifact},
-		{"parent", e.Parent}, {"author", e.Author},
+		{"parent", e.Parent}, {"author", e.Author}, {"license", e.License},
 	} {
 		if f.v == "" {
 			return fmt.Errorf("envelope field %q is empty", f.k)
@@ -275,14 +315,26 @@ func envelopeParse(b []byte) (pubEnvelope, error) {
 		return e, fmt.Errorf("envelope does not end with a newline: it is truncated or was re-wrapped in transit")
 	}
 	lines := strings.Split(strings.TrimSuffix(s, "\n"), "\n")
-	if len(lines) == 0 || (ruleOn("8.6.1/version-tag") && lines[0] != envelopeVersion) {
-		got := ""
-		if len(lines) > 0 {
-			got = lines[0]
-		}
-		return e, fmt.Errorf("unsupported envelope format %q: this kernel verifies %q", got, envelopeVersion)
+	if len(lines) == 0 {
+		return e, fmt.Errorf("envelope is empty")
 	}
-	want := []string{"op", "name", "artifact", "parent", "parent_rev", "author"}
+	// Dispatch on the RECORDED format, not the current one. §8.6.1 requires historical
+	// verification to use the format an entry was written under; a kernel that only
+	// read its newest shape would reject correct old signatures, which is a worse
+	// failure than accepting a bad one because it destroys evidence rather than
+	// admitting it.
+	var want []string
+	switch {
+	case lines[0] == envelopeVersion:
+		want = []string{"op", "name", "artifact", "parent", "parent_rev", "author", "license"}
+	case lines[0] == envelopeVersionV1:
+		want = []string{"op", "name", "artifact", "parent", "parent_rev", "author"}
+	case !ruleOn("8.6.1/version-tag"):
+		want = []string{"op", "name", "artifact", "parent", "parent_rev", "author", "license"}
+	default:
+		return e, fmt.Errorf("unsupported envelope format %q: this kernel verifies %q and %q",
+			lines[0], envelopeVersion, envelopeVersionV1)
+	}
 	body := lines[1:]
 	if ruleOn("8.6.1/field-count") && len(body) != len(want) {
 		return e, fmt.Errorf("envelope has %d fields, expected exactly %d: %v", len(body), len(want), want)
@@ -320,14 +372,25 @@ func envelopeParse(b []byte) (pubEnvelope, error) {
 	if ruleOn("8.6.1/canonical-decimal") && rev.String() != vals[4] {
 		return e, fmt.Errorf("envelope parent_rev %q is not canonical decimal (would be %q)", vals[4], rev.String())
 	}
-	e = pubEnvelope{Op: vals[0], Name: vals[1], Artifact: vals[2], Parent: vals[3], ParentRev: rev, Author: vals[5]}
+	e = pubEnvelope{Op: vals[0], Name: vals[1], Artifact: vals[2], Parent: vals[3],
+		ParentRev: rev, Author: vals[5]}
+	if len(vals) > 6 {
+		e.License = vals[6]
+	} else {
+		// A /1 envelope asserted no terms — it could not. Recorded as the explicit
+		// sentinel so a reader cannot mistake "the format had no field" for "the
+		// publisher chose to say nothing"; both are absences, but only one was a choice.
+		e.License = noLicense
+	}
 	if err := e.validate(); err != nil {
 		return pubEnvelope{}, err
 	}
 	// Belt and braces: the bytes we were given must be exactly what this envelope
 	// encodes. Anything else means the parser accepted a spelling the encoder
 	// would never emit, so the two halves have drifted.
-	if ruleOn("8.6.1/reencode") && !bytesEqual(envelopeEncode(e), b) {
+	// Re-encode under the format the bytes DECLARE, or a /1 envelope would be re-encoded
+	// as /2 and fail its own canonicality check.
+	if ruleOn("8.6.1/reencode") && !bytesEqual(envelopeEncodeAs(e, lines[0]), b) {
 		return pubEnvelope{}, fmt.Errorf("envelope bytes are not canonical: they parse, but re-encoding produces different bytes")
 	}
 	return e, nil
@@ -416,10 +479,12 @@ func rejectWeakKey(pub []byte) error {
 func (e pubEnvelope) equal(o pubEnvelope) bool {
 	if e.ParentRev == nil || o.ParentRev == nil {
 		return e.ParentRev == o.ParentRev && e.Op == o.Op && e.Name == o.Name &&
-			e.Artifact == o.Artifact && e.Parent == o.Parent && e.Author == o.Author
+			e.Artifact == o.Artifact && e.Parent == o.Parent && e.Author == o.Author &&
+			e.License == o.License
 	}
 	return e.Op == o.Op && e.Name == o.Name && e.Artifact == o.Artifact &&
-		e.Parent == o.Parent && e.Author == o.Author && e.ParentRev.Cmp(o.ParentRev) == 0
+		e.Parent == o.Parent && e.Author == o.Author && e.License == o.License &&
+		e.ParentRev.Cmp(o.ParentRev) == 0
 }
 
 // checkPublication decides whether an author statement authorises the transition

@@ -108,6 +108,12 @@ type explainProv struct {
 	// must never read as historical cryptographic evidence.
 	Owner       string `json:"owner,omitempty"`
 	OwnerSource string `json:"owner_source,omitempty"`
+	// License is the terms the PUBLISHER asserted in the signed publication envelope.
+	// It is an assertion, never a derivation: the registry can later evaluate
+	// compatibility across a dependency closure, and reporting the two as one claim is
+	// the conflation this project exists to avoid (DESIGN.md, "What belongs inside
+	// identity"). Empty means no publication carried terms.
+	License string `json:"license,omitempty"`
 }
 
 // authorshipLevel places an artifact on the ladder from recorded state alone.
@@ -226,6 +232,7 @@ func buildExplain(st *Store, name string) (*explainPkg, error) {
 	}
 
 	pkg.Provenance.Owner, pkg.Provenance.OwnerSource = nameOwner(st, name)
+	pkg.Provenance.License = assertedLicense(st, name)
 
 	for pi := range d.Props {
 		pn := metaPropName(m, pi)
@@ -330,6 +337,19 @@ func explainLimitations(st *Store, p *explainPkg, m *Meta) []string {
 	case authDistinctKeys:
 		out = append(out, "spec and body were signed by DISTINCT KEYS, but key custody and independent control were NOT verified — one process holding both keys produces this same record, so this is not evidence of independent authorship")
 	}
+	// Licensing. The publisher's terms are an assertion; nothing here has evaluated
+	// them against the dependency closure, and saying so is the point — a consumer who
+	// reads a licence off an artifact and acts on it is making a legal decision, and
+	// this system has derived none of it.
+	switch p.Provenance.License {
+	case "":
+		out = append(out, "no publication of this name asserted licensing terms — reuse rights are UNSTATED, not permissive")
+	case noLicense:
+		out = append(out, "the publisher explicitly asserted NO licensing terms — reuse rights are unstated, which is not the same as granted")
+	default:
+		out = append(out, fmt.Sprintf("licensing is the publisher's ASSERTION (%s), not a derived fact: nothing here has evaluated it against the %d dependency(ies), and compatibility of a composition is a separate question this does not answer",
+			p.Provenance.License, len(p.Dependencies)))
+	}
 	// Control of the NAME, separate from authorship of the code. A label owner is
 	// still enforced where trust-on-first-publish is on, but it is not cryptographic
 	// ownership, and a consumer deciding whether to depend on this name should know
@@ -382,6 +402,9 @@ func cmdExplain(st *Store, name string, asJSON bool) {
 	fmt.Fprintf(&b, "\nPROVENANCE: author=%s spec=%s body=%s\n            authorship: %s\n",
 		orNone(pkg.Provenance.Author), orNone(pkg.Provenance.SpecAuthor),
 		orNone(pkg.Provenance.BodyAuthor), pkg.Provenance.Authorship)
+	if l := pkg.Provenance.License; l != "" && l != noLicense {
+		fmt.Fprintf(&b, "            license: %s (ASSERTED by the publisher, signed; NOT evaluated)\n", l)
+	}
 	if pkg.Provenance.Owner != "" {
 		fmt.Fprintf(&b, "            name owner: %s\n              via %s (%s)\n",
 			pkg.Provenance.Owner, pkg.Provenance.OwnerSource,
@@ -420,4 +443,28 @@ func ownerSourceMeaning(source string) string {
 		return "present configuration, NOT history: editable by whoever holds the store"
 	}
 	return "unrecorded"
+}
+
+// assertedLicense reports the terms the most recent APPLIED publication of a name
+// asserted, read from its signed envelope.
+//
+// Read from the envelope rather than stored separately, so it is the author's signed
+// statement and not a field the registry could have written. Returns "" when no
+// publication carried terms — distinct from noLicense, which is a publisher choosing to
+// assert none.
+func assertedLicense(st *Store, name string) string {
+	lic := ""
+	for _, t := range nameTransitions(st.ReadLog(), name) {
+		if t.Transition != transitionApplied || t.Entry.EnvelopeB64 == "" {
+			continue
+		}
+		octets, err := decodeEnvelopeB64(t.Entry.EnvelopeB64)
+		if err != nil {
+			continue
+		}
+		if env, perr := envelopeParse(octets); perr == nil {
+			lic = env.License
+		}
+	}
+	return lic
 }

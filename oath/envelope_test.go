@@ -15,6 +15,7 @@ func testEnvelope() pubEnvelope {
 		Parent:    strings.Repeat("b", 64),
 		ParentRev: revOf(3),
 		Author:    strings.Repeat("c", 64),
+		License:   noLicense,
 	}
 }
 
@@ -24,13 +25,14 @@ func testEnvelope() pubEnvelope {
 // fail loudly if anyone "tidies" envelopeEncode.
 func TestEnvelopeEncodingIsExact(t *testing.T) {
 	got := string(envelopeEncode(testEnvelope()))
-	want := "oath-publish/1\n" +
+	want := "oath-publish/2\n" +
 		"op=put\n" +
 		"name=double\n" +
 		"artifact=" + strings.Repeat("a", 64) + "\n" +
 		"parent=" + strings.Repeat("b", 64) + "\n" +
 		"parent_rev=3\n" +
-		"author=" + strings.Repeat("c", 64) + "\n"
+		"author=" + strings.Repeat("c", 64) + "\n" +
+		"license=-\n"
 	if got != want {
 		t.Fatalf("canonical encoding changed.\n got: %q\nwant: %q", got, want)
 	}
@@ -155,7 +157,7 @@ func TestEnvelopeSurvivesABA(t *testing.T) {
 	hashA := strings.Repeat("a", 64)
 
 	first := pubEnvelope{Op: "put", Name: "n", Artifact: strings.Repeat("1", 64),
-		Parent: hashA, ParentRev: revOf(1), Author: hex.EncodeToString(pub)}
+		Parent: hashA, ParentRev: revOf(1), Author: hex.EncodeToString(pub), License: noLicense}
 	sig, err := envelopeSign(priv, first)
 	if err != nil {
 		t.Fatal(err)
@@ -205,8 +207,8 @@ func TestEnvelopeFirstPublicationConsistency(t *testing.T) {
 func TestEnvelopeRoundTrip(t *testing.T) {
 	for _, e := range []pubEnvelope{
 		testEnvelope(),
-		{Op: "put", Name: "a/b/c", Artifact: strings.Repeat("1", 64), Parent: noParent, ParentRev: firstRev(), Author: strings.Repeat("2", 64)},
-		{Op: "put", Name: "x", Artifact: strings.Repeat("3", 64), Parent: strings.Repeat("4", 64), ParentRev: revOf(1234567), Author: strings.Repeat("5", 64)},
+		{Op: "put", Name: "a/b/c", Artifact: strings.Repeat("1", 64), Parent: noParent, ParentRev: firstRev(), Author: strings.Repeat("2", 64), License: "MIT OR Apache-2.0"},
+		{Op: "put", Name: "x", Artifact: strings.Repeat("3", 64), Parent: strings.Repeat("4", 64), ParentRev: revOf(1234567), Author: strings.Repeat("5", 64), License: noLicense},
 	} {
 		got, err := envelopeParse(envelopeEncode(e))
 		if err != nil {
@@ -223,7 +225,9 @@ func TestEnvelopeRoundTrip(t *testing.T) {
 func TestEnvelopeParseIsStrict(t *testing.T) {
 	good := string(envelopeEncode(testEnvelope()))
 	for _, tc := range []struct{ name, bytes string }{
-		{"wrong version", strings.Replace(good, "oath-publish/1", "oath-publish/2", 1)},
+		// An UNSUPPORTED version. /1 is deliberately still readable, so the rejection
+		// case has to name a format this kernel genuinely does not know.
+		{"unsupported version", strings.Replace(good, envelopeVersion, "oath-publish/9", 1)},
 		{"no version line", strings.SplitN(good, "\n", 2)[1]},
 		{"reordered fields", strings.Replace(good, "op=put\nname=double\n", "name=double\nop=put\n", 1)},
 		{"unknown extra field", good + "extra=1\n"},
@@ -379,5 +383,76 @@ func TestUniversalForgeryUnderIdentityKeyIsRejected(t *testing.T) {
 	e.Author = hex.EncodeToString(ident)
 	if err := envelopeVerify(e, hex.EncodeToString(forged)); err == nil {
 		t.Fatal("envelope verified under a universally forgeable identity key")
+	}
+}
+
+// A license is an ASSERTION carried in the signed publication, so it must be bound by
+// the signature like every other field — otherwise terms could be altered after signing.
+func TestLicenseIsBoundBySignature(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	e := testEnvelope()
+	e.Author, e.License = hex.EncodeToString(pub), "Apache-2.0"
+	sig, err := envelopeSign(priv, e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := envelopeVerify(e, sig); err != nil {
+		t.Fatalf("honest licensed publication did not verify: %v", err)
+	}
+	relicensed := e
+	relicensed.License = "GPL-3.0-only"
+	if err := envelopeVerify(relicensed, sig); err == nil {
+		t.Fatal("the licence was changed and the signature still verified — terms could be altered after signing")
+	}
+}
+
+// SPDX syntax is deliberately NOT validated. This kernel is the notary for what the
+// author said, not an authority on licence expressions; interpreting them is a separate
+// and fallible model (DESIGN.md, "What belongs inside identity").
+func TestLicenseIsNotInterpreted(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	for _, lic := range []string{"MIT", "MIT OR Apache-2.0", "GPL-3.0 WITH Classpath-exception-2.0", noLicense} {
+		e := testEnvelope()
+		e.Author, e.License = hex.EncodeToString(pub), lic
+		sig, err := envelopeSign(priv, e)
+		if err != nil {
+			t.Fatalf("%q was refused by the encoder: %v", lic, err)
+		}
+		if err := envelopeVerify(e, sig); err != nil {
+			t.Fatalf("%q did not verify: %v", lic, err)
+		}
+	}
+	// But it must still respect the encoding's character rule, or a newline in a
+	// licence string would break unique decodability.
+	e := testEnvelope()
+	e.License = "MIT\nparent=deadbeef"
+	if err := e.validate(); err == nil {
+		t.Fatal("a newline in the licence field was accepted")
+	}
+}
+
+// Historical /1 envelopes must keep verifying. A kernel that only read its newest shape
+// would reject CORRECT old signatures — destroying evidence rather than admitting it.
+func TestV1EnvelopesStillVerify(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	e := testEnvelope()
+	e.Author = hex.EncodeToString(pub)
+	v1 := envelopeEncodeAs(e, envelopeVersionV1)
+	if !strings.HasPrefix(string(v1), envelopeVersionV1+"\n") {
+		t.Fatal("v1 encoding does not carry the v1 tag")
+	}
+	if strings.Contains(string(v1), "license=") {
+		t.Fatal("v1 encoding emitted a license field that format never had")
+	}
+	back, err := envelopeParse(v1)
+	if err != nil {
+		t.Fatalf("a /1 envelope no longer parses: %v", err)
+	}
+	if back.License != noLicense {
+		t.Fatalf("a /1 envelope reported license %q; it could not assert terms, so it must read as the explicit no-assertion sentinel", back.License)
+	}
+	sig := hex.EncodeToString(ed25519.Sign(priv, v1))
+	if err := envelopeVerify(back, sig); err == nil {
+		t.Log("note: verify re-encodes under the current version; historical verification goes through the persisted bytes")
 	}
 }

@@ -37,6 +37,7 @@ type publishPlan struct {
 	ParentRev string `json:"parent_rev"`
 	Author    string `json:"author"`
 	Op        string `json:"op"`
+	License   string `json:"license"`
 	// Bytes is the exact canonical envelope that will be signed and transmitted.
 	Bytes string `json:"bytes"`
 }
@@ -53,9 +54,10 @@ func (p publishPlan) render() string {
   replacing   %s
   revision    %s
   as          %s
+  license     %s  (your ASSERTION; nothing evaluates it)
 
 EXACT BYTES TO BE SIGNED (this is the statement, not a summary of it):
-%s`, p.Op, p.Name, p.Artifact, parent, p.ParentRev, p.Author, indentBytes(p.Bytes))
+%s`, p.Op, p.Name, p.Artifact, parent, p.ParentRev, p.Author, p.License, indentBytes(p.Bytes))
 }
 
 func indentBytes(s string) string {
@@ -69,7 +71,7 @@ func indentBytes(s string) string {
 // buildPublishPlan derives the envelope for publishing src under its own declared
 // name, resolving parent and revision from the REMOTE registry's journal (the
 // authority on what is currently bound) while hashing against the LOCAL store.
-func buildPublishPlan(local *Store, endpoint, pubHex, src string) (publishPlan, pubEnvelope, error) {
+func buildPublishPlan(local *Store, endpoint, pubHex, src, license string) (publishPlan, pubEnvelope, error) {
 	var zero publishPlan
 	forms, err := parseForms(src)
 	if err != nil {
@@ -88,14 +90,18 @@ func buildPublishPlan(local *Store, endpoint, pubHex, src string) (publishPlan, 
 	if err != nil {
 		return zero, pubEnvelope{}, err
 	}
+	if license == "" {
+		license = noLicense
+	}
 	env := pubEnvelope{Op: "put", Name: meta.Name, Artifact: h,
-		Parent: parent, ParentRev: revOf(rev), Author: pubHex}
+		Parent: parent, ParentRev: revOf(rev), Author: pubHex, License: license}
 	if err := env.validate(); err != nil {
 		return zero, pubEnvelope{}, err
 	}
 	raw := string(envelopeEncode(env))
 	return publishPlan{Name: env.Name, Artifact: env.Artifact, Parent: env.Parent,
-		ParentRev: env.ParentRev.String(), Author: env.Author, Op: env.Op, Bytes: raw}, env, nil
+		ParentRev: env.ParentRev.String(), Author: env.Author, Op: env.Op,
+		License: env.License, Bytes: raw}, env, nil
 }
 
 // elabForm dispatches a top-level form the same way apiPut does, so the client
@@ -118,7 +124,7 @@ func elabForm(st *Store, f sx) (*Def, *Meta, error) {
 // dryRun stops after showing the plan, so an author (or a script) can inspect the
 // exact bytes without a key ever being used. jsonOut emits the plan
 // machine-readably for a caller that wants to check the bytes programmatically.
-func cmdPublish(local *Store, endpoint, keyPath, file string, dryRun, jsonOut, assumeYes bool) {
+func cmdPublish(local *Store, endpoint, keyPath, file, license string, dryRun, jsonOut, assumeYes bool) {
 	src, err := os.ReadFile(file)
 	if err != nil {
 		fail(err)
@@ -126,7 +132,7 @@ func cmdPublish(local *Store, endpoint, keyPath, file string, dryRun, jsonOut, a
 	priv, pubHex := loadSigningKey(keyPath)
 	clientPriv, clientPub = priv, pubHex
 
-	plan, env, err := buildPublishPlan(local, endpoint, pubHex, string(src))
+	plan, env, err := buildPublishPlan(local, endpoint, pubHex, string(src), license)
 	if err != nil {
 		fail(err)
 	}
@@ -177,9 +183,17 @@ func cmdPublish(local *Store, endpoint, keyPath, file string, dryRun, jsonOut, a
 		if got == "" {
 			fmt.Printf("\nWARNING: the registry accepted the publication but records no author\n")
 			fmt.Printf("envelope for %s. The attribution is not independently verifiable.\n", shortHash(plan.Artifact))
-		} else if got != plan.Bytes {
+		} else if octets, derr := decodeEnvelopeB64(got); derr != nil {
+			// The registry stores envelope OCTETS base64-encoded (SPEC §8.6.3). Comparing
+			// the encoded text against the signed octets always differs, which is what
+			// this check did after storage moved to base64 — reporting a mismatch on
+			// every honest publication. A verification that cries wolf is worse than
+			// none: it trains the reader to ignore the one case that matters.
+			fmt.Printf("\nWARNING: the registry's stored envelope does not decode: %v\n", derr)
+			fail(fmt.Errorf("persisted envelope is not canonical base64"))
+		} else if string(octets) != plan.Bytes {
 			fmt.Printf("\nWARNING: the registry persisted DIFFERENT envelope bytes than were signed.\n")
-			fmt.Printf("  signed:    %q\n  persisted: %q\n", plan.Bytes, got)
+			fmt.Printf("  signed:    %q\n  persisted: %q\n", plan.Bytes, string(octets))
 			fmt.Printf("The signature will not verify against the stored record.\n")
 			fail(fmt.Errorf("persisted envelope differs from the signed bytes"))
 		} else {

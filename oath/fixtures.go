@@ -550,21 +550,21 @@ func writeEnvelopeVectors(write func(string, []byte) error) error {
 		env   pubEnvelope
 	}{
 		{"first publication (parent sentinel, revision 0)", pubEnvelope{Op: "put", Name: "double",
-			Artifact: strings.Repeat("11", 32), Parent: noParent, ParentRev: firstRev(), Author: strings.Repeat("aa", 32)}},
+			Artifact: strings.Repeat("11", 32), Parent: noParent, ParentRev: firstRev(), Author: strings.Repeat("aa", 32), License: "MIT"}},
 		{"repoint with a real parent", pubEnvelope{Op: "put", Name: "double",
-			Artifact: strings.Repeat("22", 32), Parent: strings.Repeat("11", 32), ParentRev: revOf(1), Author: strings.Repeat("bb", 32)}},
+			Artifact: strings.Repeat("22", 32), Parent: strings.Repeat("11", 32), ParentRev: revOf(1), Author: strings.Repeat("bb", 32), License: "MIT OR Apache-2.0"}},
 		{"namespaced name, multi-digit revision", pubEnvelope{Op: "put", Name: "michael/service1/verify-webhook",
-			Artifact: strings.Repeat("33", 32), Parent: strings.Repeat("44", 32), ParentRev: revOf(1042), Author: strings.Repeat("cc", 32)}},
+			Artifact: strings.Repeat("33", 32), Parent: strings.Repeat("44", 32), ParentRev: revOf(1042), Author: strings.Repeat("cc", 32), License: "GPL-3.0 WITH Classpath-exception-2.0"}},
 		// The three rules the §8 amendment newly specified were exactly the three no
 		// vector exercised — prose added in response to an audit is especially likely
 		// to need a fixture immediately, because nothing has ever tested it.
 		{"name containing '=' (lines split at the FIRST '=')", pubEnvelope{Op: "put", Name: "eq=name",
-			Artifact: strings.Repeat("55", 32), Parent: noParent, ParentRev: firstRev(), Author: strings.Repeat("dd", 32)}},
+			Artifact: strings.Repeat("55", 32), Parent: noParent, ParentRev: firstRev(), Author: strings.Repeat("dd", 32), License: noLicense}},
 		{"non-ASCII name (octets are UTF-8, emitted literally)", pubEnvelope{Op: "put", Name: "café/λ-fold",
-			Artifact: strings.Repeat("66", 32), Parent: noParent, ParentRev: firstRev(), Author: strings.Repeat("ee", 32)}},
+			Artifact: strings.Repeat("66", 32), Parent: noParent, ParentRev: firstRev(), Author: strings.Repeat("ee", 32), License: "Apache-2.0"}},
 		{"parent_rev beyond 2^64 (arbitrary precision, not a machine word)", pubEnvelope{Op: "put", Name: "deep",
 			Artifact: strings.Repeat("77", 32), Parent: strings.Repeat("88", 32),
-			ParentRev: bigRev("340282366920938463463374607431768211457"), Author: strings.Repeat("ff", 32)}},
+			ParentRev: bigRev("340282366920938463463374607431768211457"), Author: strings.Repeat("ff", 32), License: noLicense}},
 	}
 	for _, c := range canon {
 		octets := envelopeEncode(c.env)
@@ -632,7 +632,7 @@ func writeEnvelopeVectors(write func(string, []byte) error) error {
 	pubHex := hex.EncodeToString(priv.Public().(ed25519.PublicKey))
 
 	env := pubEnvelope{Op: "put", Name: "double", Artifact: strings.Repeat("55", 32),
-		Parent: strings.Repeat("66", 32), ParentRev: revOf(7), Author: pubHex}
+		Parent: strings.Repeat("66", 32), ParentRev: revOf(7), Author: pubHex, License: noLicense}
 	octets := envelopeEncode(env)
 	sig, err := envelopeSign(priv, env)
 	if err != nil {
@@ -811,7 +811,7 @@ func writeEnvelopeVectors(write func(string, []byte) error) error {
 		accept        bool
 	}
 	good := pubEnvelope{Op: "put", Name: storeName, Artifact: storeArtifact,
-		Parent: curParent, ParentRev: revOf(curRev), Author: pubHex}
+		Parent: curParent, ParentRev: revOf(curRev), Author: pubHex, License: noLicense}
 	goodSig, err := envelopeSign(priv, good)
 	if err != nil {
 		return err

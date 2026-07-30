@@ -39,7 +39,7 @@ func TestAuthorStatementGate(t *testing.T) {
 		st := newMemStoreForTest(t)
 		h := artifactHashOf(t, st, gateSrc)
 		env := pubEnvelope{Op: "put", Name: "dbl", Artifact: h,
-			Parent: noParent, ParentRev: firstRev(), Author: pubHex}
+			Parent: noParent, ParentRev: firstRev(), Author: pubHex, License: noLicense}
 		sig, err := envelopeSign(priv, env)
 		if err != nil {
 			t.Fatal(err)
@@ -170,7 +170,7 @@ func TestRejectedAttemptDoesNotDisturbRevision(t *testing.T) {
 
 	h := artifactHashOf(t, st, gateSrc)
 	honest := pubEnvelope{Op: "put", Name: "dbl", Artifact: h,
-		Parent: noParent, ParentRev: firstRev(), Author: pubHex}
+		Parent: noParent, ParentRev: firstRev(), Author: pubHex, License: noLicense}
 	sig, err := envelopeSign(priv, honest)
 	if err != nil {
 		t.Fatal(err)
@@ -207,7 +207,7 @@ func TestSameHashRepublicationKeepsJournalValid(t *testing.T) {
 		t.Helper()
 		parent, rev := nameRevision(st, "dbl")
 		env := pubEnvelope{Op: "put", Name: "dbl", Artifact: artifactHashOf(t, st, gateSrc),
-			Parent: parent, ParentRev: revOf(rev), Author: pubHex}
+			Parent: parent, ParentRev: revOf(rev), Author: pubHex, License: noLicense}
 		sig, err := envelopeSign(priv, env)
 		if err != nil {
 			t.Fatal(err)
