@@ -169,20 +169,10 @@ func cmdVectors(path string) {
 	for _, v := range vs {
 		kinds[v.Kind]++
 	}
-	var ambiguous []string
-	for _, v := range vs {
-		if out := witnessOutcome(v); out == obligationAmbiguous || out == obligationBaselineFail {
-			ambiguous = append(ambiguous, fmt.Sprintf("%s %q claims to witness %s but is %s",
-				v.Kind, v.Label, v.Witnesses, out))
-		}
-	}
-	if len(ambiguous) > 0 {
-		fmt.Printf("VECTOR CLAIMS: %d record(s) do not demonstrate the obligation they name\n", len(ambiguous))
-		for _, a := range ambiguous {
-			fmt.Printf("  %s\n", a)
-		}
-		fmt.Println()
-	}
+	// Claim-checking requires disabling rules, so it lives in the harness build only
+	// (rules_harness.go). A production `oath vectors` runs the suite; it cannot ask
+	// what the suite would CATCH, because answering that means weakening verification.
+	reportVectorClaims(vs)
 	if len(failures) == 0 {
 		fmt.Printf("VECTORS: PASS — %d records (%d canonical, %d reject, %d signature, %d store)\n",
 			len(vs), kinds["canonical"], kinds["reject"], kinds["signature"], kinds["store"])
@@ -193,87 +183,4 @@ func cmdVectors(path string) {
 		fmt.Printf("  %s\n", f)
 	}
 	fail(fmt.Errorf("vector suite failed"))
-}
-
-// Obligation verdicts.
-const (
-	obligationWitnessed = "WITNESSED"
-	// AMBIGUOUS: removing the named rule does not change the outcome, so something
-	// else decides it. Not a synonym for broken — it means this vector cannot be
-	// CREDITED to this rule, and a suite counting it would overstate its coverage.
-	obligationAmbiguous = "AMBIGUOUS"
-	// BASELINE-FAIL: the vector does not hold even with every rule enabled, so the
-	// suite is broken and no coverage statement derived from it means anything.
-	obligationBaselineFail = "BASELINE-FAIL"
-)
-
-// alternateRejector finds WHICH other rule rejects a vector whose claimed rule has
-// been removed. That answer turns the report from a verdict into a work queue: an
-// AMBIGUOUS rule with a named subsumer is a decision (write a more isolated vector, or
-// accept that only the composite guarantee is measurable), while one with no named
-// subsumer is a mystery worth investigating.
-//
-// Returns "" when nothing else accounts for it.
-func alternateRejector(v vectorRecord, claimed string) string {
-	for _, r := range normativeRules {
-		if r.ID == claimed || r.Family != familyEnvelope {
-			continue
-		}
-		var stillFails bool
-		withRulesDisabled([]string{claimed, r.ID}, func() {
-			stillFails = len(runVectors([]vectorRecord{v})) == 0
-		})
-		// With BOTH off the vector's expectation is violated -> this rule was the one
-		// doing the rejecting once the claimed rule was gone.
-		var violated bool
-		withRulesDisabled([]string{claimed, r.ID}, func() {
-			violated = len(runVectors([]vectorRecord{v})) > 0
-		})
-		_ = stillFails
-		if violated {
-			return r.ID
-		}
-	}
-	return ""
-}
-
-// witnessOutcome measures ONE vector's claim: does it fail because of the rule it
-// names, or for some other reason?
-//
-// The test is differential rather than observational. A negative vector that simply
-// fails proves nothing — it may be malformed in several ways at once and be caught by
-// whichever check runs first. So the rule it claims is switched OFF and the vector
-// re-run:
-//
-//	fails with the rule on, PASSES with it off  -> WITNESSED   (the rule is load-bearing)
-//	fails with the rule on, FAILS with it off   -> AMBIGUOUS   (something else rejects it)
-//	passes with the rule on                     -> UNWITNESSED (it constrains nothing)
-//
-// AMBIGUOUS is not a synonym for broken. It means this vector cannot be credited to
-// this rule, and a suite that counted it would overstate its own coverage — the exact
-// failure §10.1 exists to prevent.
-func witnessOutcome(v vectorRecord) string {
-	if v.Witnesses == "" {
-		return ""
-	}
-	// runVectors reports EXPECTATION VIOLATED, not "the input was rejected". A healthy
-	// negative vector therefore produces no failure at baseline — getting this polarity
-	// wrong reported every vector as unwitnessed, which was implausible enough to be
-	// obvious, but the same mistake in the other direction would have silently inflated
-	// the score instead.
-	if len(runVectors([]vectorRecord{v})) > 0 {
-		return obligationBaselineFail
-	}
-	violated := false
-	withRulesDisabled([]string{v.Witnesses}, func() {
-		violated = len(runVectors([]vectorRecord{v})) > 0
-	})
-	if violated {
-		return obligationWitnessed
-	}
-	// The outcome did not change when the rule was removed, so this vector does not
-	// depend on it. For a NEGATIVE vector that means some other check rejects the input
-	// first — the "newline vector" failure, where a fixture is credited for being
-	// rejected at all rather than for the reason it names.
-	return obligationAmbiguous
 }

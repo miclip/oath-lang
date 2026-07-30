@@ -79,6 +79,10 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
+	if fn, ok := harnessCommands[args[0]]; ok {
+		fn(args[1:])
+		return
+	}
 	switch args[0] {
 	case "put":
 		jsonMode := false
@@ -231,16 +235,6 @@ func main() {
 			path = args[1]
 		}
 		cmdVectors(path)
-	case "conformance-score":
-		path, verbose := "fixtures/envelope/vectors.jsonl", false
-		for _, a := range args[1:] {
-			if a == "--json" {
-				verbose = true
-			} else {
-				path = a
-			}
-		}
-		cmdConformanceScore(path, verbose)
 	case "audit":
 		mode, ref := "", ""
 		rest := args[1:]

@@ -1,3 +1,5 @@
+//go:build harness
+
 package main
 
 import "testing"

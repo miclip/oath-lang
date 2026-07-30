@@ -102,6 +102,15 @@ check: verify prove
 # matches what the kernel embeds. The constants are DERIVED from p, d and L and
 # self-verified ([8]P = identity, on-curve, base point excluded) — never transcribed,
 # because a recalled constant guarding a signature check is an unverified claim.
+# The conformance-coverage harness. Built with -tags harness because the mutation
+# machinery can disable verification rules, so it must not exist in a shipped binary:
+# a production build compiles a ruleOn that returns a constant, leaving no branch to
+# switch off and no state to hold one.
+.PHONY: conformance-score
+conformance-score:
+	@cd oath && go build -tags harness -o oath-harness .
+	@./oath/oath-harness conformance-score
+
 .PHONY: small-order
 small-order:
 	@python3 scripts/derive-small-order.py > /tmp/oath-soe.txt || { echo "derivation FAILED its own checks"; exit 1; }
