@@ -587,6 +587,24 @@ func (d *dec) bigint() (*big.Int, error) {
 	if n > 0 && mag[0] == 0 {
 		return nil, d.fail("non-canonical integer (leading zero)")
 	}
+	// Reject NEGATIVE ZERO. sign=1 with an empty magnitude decodes to the same value
+	// as the canonical sign=0 form, so two byte sequences would mean one integer — and
+	// since identity is the hash of these bytes, that is two content-addressed
+	// identities for 0.
+	//
+	// The kernel never PRODUCES this (encoding is canonical), which is exactly why it
+	// survived: the gap is only reachable by bytes that did not come from an encoder.
+	// The store's load path validates sha256(bytes)==name and typechecks, deliberately
+	// not encode(decode(b))==b, and its own comment cites the hosted-store threat model
+	// as the reason to re-validate. A hand-crafted negative zero therefore loaded at a
+	// distinct hash in precisely the threat model that check exists to defend against.
+	//
+	// The blind Rust kernel rejected this from the spec text alone (DIVERGENCES #76).
+	// Conformance passed anyway because the reject corpus exercises SOURCE-level
+	// rejects and has no hostile-object-bytes class — an obligation nothing witnessed.
+	if sign == 1 && n == 0 {
+		return nil, d.fail("non-canonical integer (negative zero): sign=1 with an empty magnitude is a second encoding of 0")
+	}
 	d.pos += n
 	v := new(big.Int).SetBytes(mag)
 	if sign == 1 {

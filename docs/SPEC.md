@@ -29,7 +29,7 @@ Every field is always written; there is exactly one encoding per definition.
 | `u8` | one byte |
 | `u32` | 4 bytes, big-endian unsigned (counts, indices) |
 | `i64` | 8 bytes, big-endian two's complement (used only for magnitudes, if ever) |
-| `bigint` | `u8` sign (`0x00` ≥0, `0x01` <0) ++ `u32` magnitude byte-length ++ minimal big-endian magnitude bytes (no leading zeros; zero is sign `0x00`, length 0) |
+| `bigint` | `u8` sign (`0x00` ≥0, `0x01` <0) ++ `u32` magnitude byte-length ++ minimal big-endian magnitude bytes (no leading zeros; zero is sign `0x00`, length 0 — sign `0x01` with length 0 is a NEGATIVE ZERO and MUST be rejected) |
 | `str` | `u32` byte-length ++ raw UTF-8 bytes (NO escaping of any kind) |
 | `hash` | 32 raw bytes (the referenced definition's SHA-256) |
 | `list<X>` | `u32` count ++ that many `X` |
@@ -84,7 +84,9 @@ Canonical bytes begin with the 2-byte magic `0x4F 0x31` ("O1").
 | 0x02 | func | `u32` tyvars, Ty declared type, Term body, `u32` prop count, then per prop: `list<Ty>` binders, Term body |
 
 Decoders MUST be strict: unknown tags, malformed bool bytes, record names
-not strictly ascending, and trailing bytes are all rejected — so decode
+not strictly ascending, non-canonical integers (a leading-zero magnitude, or a
+NEGATIVE ZERO — sign `0x01` with a zero-length magnitude, which would be a second
+encoding of `0`), and trailing bytes are all rejected — so decode
 followed by encode is the identity on valid objects, and no second encoding
 of any definition exists.
 
