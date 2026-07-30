@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // The repoint policy (#3): content addressing makes STORAGE unconditional —
@@ -24,7 +25,11 @@ import (
 // submitting principal. A brand-new name assigns both to the submitter.
 
 type PolicyRule struct {
-	Names                       []string `json:"names"` // exact names; "*" matches all
+	// Names selects which definitions this rule governs. Three pattern forms:
+	// an exact name, a namespace prefix "michael/*" (matching names UNDER
+	// michael/), or "*" for all. The MOST SPECIFIC matching pattern wins,
+	// independent of the order rules appear in the file (see ruleFor).
+	Names                       []string `json:"names"`
 	RequireAuthorshipSeparation bool     `json:"require_authorship_separation,omitempty"`
 	RequireTotal                bool     `json:"require_total,omitempty"`
 	ForbidFalsified             bool     `json:"forbid_falsified,omitempty"`
@@ -52,18 +57,60 @@ func LoadPolicy(root string) (*Policy, error) {
 	return &p, nil
 }
 
+// patternSpecificity scores how narrowly a policy pattern selects names. Higher
+// wins. Returns -1 when the pattern does not match at all.
+//
+//	exact name        len(name)+1   most specific: names precisely one thing
+//	"prefix/*"        len(prefix)   longer prefixes beat shorter ones
+//	"*"               0             least specific: the catch-all
+//
+// A prefix pattern "michael/*" matches names UNDER michael/, and deliberately not
+// the bare name "michael". A namespace and a definition that happens to share its
+// first segment are different things, and silently folding them together would let
+// a prefix claim capture a name its owner never reasoned about. Owning the bare
+// name too is expressible by listing it.
+func patternSpecificity(pattern, name string) int {
+	if pattern == name {
+		return len(name) + 1
+	}
+	if pattern == "*" {
+		return 0
+	}
+	if prefix, ok := strings.CutSuffix(pattern, "/*"); ok {
+		if strings.HasPrefix(name, prefix+"/") {
+			return len(prefix)
+		}
+	}
+	return -1
+}
+
+// ruleFor returns the policy rule governing `name`: the MOST SPECIFIC match, not
+// the first one in the file.
+//
+// It used to return the first rule listing the name or "*", which made behaviour
+// depend on document order — a rule with names ["*"] placed above a specific rule
+// silently shadowed it, so a policy could be correct as written and wrong as
+// ordered. That is an invisible failure: the shadowed rule looks present.
+// Specificity ordering makes the file's meaning independent of its layout.
+//
+// Ties (two patterns of equal specificity, e.g. the same prefix listed twice) fall
+// back to document order, since there is nothing else to distinguish them.
 func (p *Policy) ruleFor(name string) *PolicyRule {
 	if p == nil {
 		return nil
 	}
+	best, bestScore := -1, -1
 	for i := range p.Rules {
 		for _, n := range p.Rules[i].Names {
-			if n == name || n == "*" {
-				return &p.Rules[i]
+			if sc := patternSpecificity(n, name); sc > bestScore {
+				best, bestScore = i, sc
 			}
 		}
 	}
-	return nil
+	if best < 0 {
+		return nil
+	}
+	return &p.Rules[best]
 }
 
 func jsonEq(a, b any) bool {
