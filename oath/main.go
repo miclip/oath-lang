@@ -239,6 +239,15 @@ func main() {
 			path = args[1]
 		}
 		cmdVectors(path)
+	case "license":
+		if len(args) < 2 {
+			fail(fmt.Errorf("usage: oath license <name> — evaluates the asserted terms across the dependency closure"))
+		}
+		pkg, err := buildExplain(st, args[1])
+		if err != nil {
+			fail(err)
+		}
+		fmt.Print(evaluateLicensing(st, args[1], pkg.Dependencies).render())
 	case "audit":
 		mode, ref := "", ""
 		rest := args[1:]
