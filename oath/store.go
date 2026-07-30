@@ -485,8 +485,77 @@ const (
 // must not advance a revision — otherwise an invalid attempt could invalidate an
 // already-prepared legitimate envelope, or make client and registry disagree about
 // the current parent.
+// repointedName is valid ONLY for entries that declare their transition. Legacy
+// entries cannot be classified in isolation — see nameTransitions.
 func (e *LogEntry) repointedName() bool {
 	return e.nameTransitionOf() == transitionApplied
+}
+
+// nameTransitions folds the journal for one name, yielding each of its entries with
+// its EFFECTIVE transition.
+//
+// A fold is required, not a convenience. For legacy entries the obvious per-entry
+// test — "prev equals hash, so it was a no-op" — CANNOT WORK, because the rule those
+// entries were written under omitted `prev` whenever the name already pointed at the
+// same hash. A legacy no-op therefore has no `prev` at all, and an absent `prev` is
+// irrecoverably ambiguous between "the name was new" and "the name was already
+// here". 526 entries in the committed corpus are in exactly that state.
+//
+// Testing prev==hash on legacy data does not merely miss some no-ops; it misses ALL
+// of them, so every repeated publication counts as a state change. Measured on the
+// committed corpus: 169 of 187 names get an inflated revision, one of them counting
+// 8 revisions for a single distinct state. That turns the revision back into the
+// publication counter it is explicitly not, and quietly falsifies the replay story
+// for the whole existing corpus.
+//
+// Folding recovers the truth without needing `prev`: track what the name is bound to
+// and compare each entry's hash against it. Declared transitions always win where
+// present; derivation applies only to entries that predate the field.
+func nameTransitions(entries []LogEntry, name string) []struct {
+	Entry      LogEntry
+	Transition string
+} {
+	var out []struct {
+		Entry      LogEntry
+		Transition string
+	}
+	bound := "" // what `name` is bound to as of the entries seen so far
+	for _, e := range entries {
+		if e.Name != name {
+			continue
+		}
+		t := e.NameTransition
+		if t == "" {
+			t = legacyTransition(&e, bound)
+		}
+		if t == transitionApplied {
+			bound = e.Hash
+		}
+		out = append(out, struct {
+			Entry      LogEntry
+			Transition string
+		}{e, t})
+	}
+	return out
+}
+
+// legacyTransition derives the transition of a pre-field entry, given what the name
+// was bound to immediately before it.
+func legacyTransition(e *LogEntry, bound string) string {
+	switch e.Kind {
+	case "data", "func", "":
+	default:
+		// `prove` and `cross` entries concern an ARTIFACT and touch no name.
+		return transitionNone
+	}
+	switch e.Status {
+	case "accepted", "falsified":
+		if e.Hash != "" && e.Hash == bound {
+			return transitionUnchanged
+		}
+		return transitionApplied
+	}
+	return transitionNone
 }
 
 // nameTransitionOf returns the entry's name transition, deriving it only for

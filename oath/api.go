@@ -840,12 +840,11 @@ func querySignature(st *Store, qd *Def) string {
 // zero would make every historical envelope for it replayable.
 func nameRevision(st *Store, name string) (string, int) {
 	rev := 0
-	for _, e := range st.ReadLog() {
-		// Entries that MOVED the name, which is not the same as accepted ones: a
-		// falsified definition still binds its name. Counting only "accepted" would
-		// undercount, letting an A→B→A cycle reuse a revision — reopening exactly
-		// the ABA hole the revision closes. See LogEntry.repointedName.
-		if e.Name == name && e.repointedName() {
+	// Folded, not filtered: a legacy no-op is undetectable from one entry (see
+	// nameTransitions), so a per-entry test counts every re-publication as a state
+	// change and inflates the revision.
+	for _, t := range nameTransitions(st.ReadLog(), name) {
+		if t.Transition == transitionApplied {
 			rev++
 		}
 	}

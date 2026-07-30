@@ -325,3 +325,55 @@ func TestLegacyTransitionDerivationExcludesNonPutKinds(t *testing.T) {
 		}
 	}
 }
+
+// The legacy revision derivation must FOLD, not test prev==hash per entry.
+//
+// Pre-amendment entries omitted `prev` when the name already pointed at the same
+// hash, so a legacy no-op carries no prev at all — and an absent prev is ambiguous
+// between "new name" and "already here". A per-entry test therefore misses every
+// legacy no-op and counts each re-publication as a state change. Measured on the
+// committed corpus when this was wrong: 169 of 187 names inflated.
+func TestLegacyNoOpRequiresFolding(t *testing.T) {
+	// A legacy history: first publication, then six identical re-puts, all with the
+	// prev field ABSENT exactly as the old rule wrote them.
+	entries := []LogEntry{{Seq: 1, Name: "n", Kind: "func", Status: "accepted", Hash: "hA"}}
+	for i := 2; i <= 7; i++ {
+		entries = append(entries, LogEntry{Seq: i, Name: "n", Kind: "func", Status: "accepted", Hash: "hA"})
+	}
+	got := nameTransitions(entries, "n")
+	if len(got) != 7 {
+		t.Fatalf("fold returned %d entries, want 7", len(got))
+	}
+	if got[0].Transition != transitionApplied {
+		t.Fatalf("first publication: %q, want applied", got[0].Transition)
+	}
+	for i := 1; i < 7; i++ {
+		if got[i].Transition != transitionUnchanged {
+			t.Fatalf("entry %d re-published the SAME hash and was classified %q — a per-entry test on an absent prev cannot see this, which is why the derivation must fold", i+1, got[i].Transition)
+		}
+	}
+
+	// A genuine A→B→A cycle must still count three applied transitions, or ABA
+	// protection lapses.
+	aba := []LogEntry{
+		{Seq: 1, Name: "m", Kind: "func", Status: "accepted", Hash: "hA"},
+		{Seq: 2, Name: "m", Kind: "func", Status: "accepted", Hash: "hB"},
+		{Seq: 3, Name: "m", Kind: "func", Status: "accepted", Hash: "hA"},
+	}
+	applied := 0
+	for _, tr := range nameTransitions(aba, "m") {
+		if tr.Transition == transitionApplied {
+			applied++
+		}
+	}
+	if applied != 3 {
+		t.Fatalf("A→B→A counted %d applied transitions, want 3: an old envelope for the first A must carry a stale revision", applied)
+	}
+
+	// Declared transitions always win over derivation.
+	declared := []LogEntry{{Seq: 1, Name: "d", Kind: "func", Status: "accepted",
+		Hash: "hA", NameTransition: transitionUnchanged}}
+	if got := nameTransitions(declared, "d"); got[0].Transition != transitionUnchanged {
+		t.Fatalf("declared transition was overridden by derivation: %q", got[0].Transition)
+	}
+}

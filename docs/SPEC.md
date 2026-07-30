@@ -1587,7 +1587,15 @@ other's journal wholesale. An undefined order is a byte-level fork waiting for a
 second implementation.
 
 Members whose value is empty (or zero, for `seq`) are omitted, except `seq`,
-`time`, `author`, `name`, and `status`, which are always present.
+`time`, `author`, `verifier`, `name`, and `status`, which are always present even
+when empty.
+
+> `verifier` was missing from this list in the first draft of §8.2.1. Because the
+> conformance vectors carry `"verifier":""`, a strict reader implementing the prose
+> literally REFUSED the fixture's own journal line — so the prose and the vectors
+> described two different chains, signatures and entry digests for one entry, which
+> is the exact divergence §8.2.1 exists to prevent, occurring inside §8.2.1. Found
+> by an independent implementation running the vectors against the text.
 
 A verifier MUST read entries STRICTLY: parse the line, re-encode it canonically,
 and reject the journal unless the result is byte-identical to the stored line.
@@ -1825,9 +1833,29 @@ carry the member:
 - entries whose `kind` is neither `data` nor `func` (nor absent) applied nothing.
   A `prove` (§8.5) or `cross` entry concerns an ARTIFACT and touches no name, so
   counting it would inflate a name's revision;
-- otherwise, `accepted` and `falsified` applied a transition, except that an entry
-  whose `prev` equals its `hash` was a no-op (`unchanged`);
+- otherwise, `accepted` and `falsified` applied a transition, EXCEPT where the
+  entry's `hash` already equals what the name is bound to at that point in the log,
+  which is a no-op (`unchanged`);
 - every other status applied nothing.
+
+The derivation is a FOLD over the name's entries, not a per-entry predicate. It
+must track what the name is bound to as it goes, and compare each entry's `hash`
+against that running value.
+
+> A per-entry test — "`prev` equals `hash`, so it was a no-op" — cannot work, and
+> the first draft of this section specified exactly that. The rule legacy entries
+> were written under (§8.2, before amendment) omitted `prev` whenever the name
+> already pointed at the same hash, so a legacy no-op carries NO `prev`, and an
+> absent `prev` is irrecoverably ambiguous between "the name was new" and "the name
+> was already here". The test therefore misses not some no-ops but ALL of them.
+>
+> Measured on the reference corpus: 169 of 187 names would receive an inflated
+> revision, one counting 8 revisions for a single distinct state, with 526 entries
+> in the ambiguous state. That turns the revision back into the publication counter
+> this section opens by saying it is not, and quietly falsifies the replay-protection
+> property for every pre-amendment name. Found by an independent implementation,
+> which proved it from the pre-amendment §8.2 text quoted in §8.2's own amendment
+> note.
 
 A revision MUST be monotonic per name and MUST NOT be reused. Names in this
 version are only ever repointed, never deleted, so an unresolvable name is one
@@ -1883,17 +1911,25 @@ the entry's member order is normative — see §8.2.1.
 
 #### 8.6.4 Verification obligations
 
-A verifier MUST, for every entry where any of `envelope`, `author_pubkey`,
+A verifier MUST, for every entry where any of `envelope_b64`, `author_pubkey`,
 `author_sig` is non-empty, reject the journal unless ALL of:
 
 1. all three are present. Any one alone attests to nothing;
-2. `envelope` parses under §8.6.1 and re-encodes to itself;
+2. `envelope_b64` decodes under §8.6.3's pinned dialect, and the decoded octets
+   parse under §8.6.1 and re-encode to themselves;
 3. the envelope's `author` equals `author_pubkey`;
 4. `author_sig` is a valid signature under `author_pubkey` over the octets
    **decoded from** `envelope_b64` — not over a re-encoding of the parsed
    envelope, and not over the base64 text;
 5. the envelope's `name`, `artifact`, and `parent` equal the entry's `name`,
    `hash`, and `prev` respectively, where an empty `prev` corresponds to `-`.
+
+> This section previously named a member `envelope`, which §8.6.3 had renamed to
+> `envelope_b64`. That reading FAILS OPEN, which is why it matters more than a
+> typo: an implementation checking presence member-by-member finds `envelope`
+> always absent, concludes no obligation applies, and accepts every forged
+> publication while passing every vector. Found by an independent implementation
+> reasoning about the failure direction rather than the wording.
 
 Failing (5) means the store recorded a transition its author did not sign, which
 MUST be a hard failure rather than a warning. Entries with none of the three fields

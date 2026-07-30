@@ -152,7 +152,10 @@ func cmdAuditEntry(st *Store, ref, mode string) {
 		d, _ := entryDigest(&e)
 		fmt.Printf("── seq %d  %s  %s  %s\n", e.Seq, e.Time, e.Status, e.Name)
 		fmt.Printf("   publication %s   (this entry; --entry addresses it)\n", shortHash(d))
-		fmt.Printf("   name transition: %s\n", e.nameTransitionOf())
+		// The FOLDED transition, not the per-entry derivation: a legacy no-op cannot be
+		// identified from one entry, so displaying nameTransitionOf here would show
+		// every re-publication as a state change while nameRevision counts correctly.
+		fmt.Printf("   name transition: %s\n", foldedTransition(entries, e))
 		fmt.Printf("   artifact %s\n", orNone(e.Hash))
 		if e.EnvelopeB64 == "" {
 			fmt.Printf("   AUTHOR STATEMENT: none — author=%q is a label the registry recorded,\n", e.Author)
@@ -196,4 +199,15 @@ func envelopeTextOf(e LogEntry) string {
 		return "<undecodable envelope: " + err.Error() + ">"
 	}
 	return string(octets)
+}
+
+// foldedTransition resolves one entry's effective transition by folding its name's
+// history — the only way a legacy no-op is identifiable (see nameTransitions).
+func foldedTransition(entries []LogEntry, want LogEntry) string {
+	for _, t := range nameTransitions(entries, want.Name) {
+		if t.Entry.Seq == want.Seq {
+			return t.Transition
+		}
+	}
+	return want.nameTransitionOf()
 }
