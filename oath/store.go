@@ -830,10 +830,10 @@ func encodeEnvelopeB64(octets []byte) string {
 
 func decodeEnvelopeB64(s string) ([]byte, error) {
 	octets, err := base64.StdEncoding.DecodeString(s)
-	if err != nil {
+	if err != nil && ruleOn("8.6.3/base64-dialect") {
 		return nil, fmt.Errorf("envelope_b64 is not standard padded base64: %w", err)
 	}
-	if encodeEnvelopeB64(octets) != s {
+	if ruleOn("8.6.3/base64-canonical") && encodeEnvelopeB64(octets) != s {
 		return nil, fmt.Errorf("envelope_b64 is not canonical: it decodes, but re-encoding yields different text (whitespace, missing padding, or non-canonical trailing bits)")
 	}
 	return octets, nil

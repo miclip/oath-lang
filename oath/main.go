@@ -225,6 +225,22 @@ func main() {
 			}
 		}
 		cmdOwnership(st, verbose)
+	case "vectors":
+		path := "fixtures/envelope/vectors.jsonl"
+		if len(args) > 1 {
+			path = args[1]
+		}
+		cmdVectors(path)
+	case "conformance-score":
+		path, verbose := "fixtures/envelope/vectors.jsonl", false
+		for _, a := range args[1:] {
+			if a == "--json" {
+				verbose = true
+			} else {
+				path = a
+			}
+		}
+		cmdConformanceScore(path, verbose)
 	case "audit":
 		mode, ref := "", ""
 		rest := args[1:]
