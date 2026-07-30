@@ -129,8 +129,51 @@ echo "== Proving (z3) — shared by checks 5-6, this is the slow step =="
 # fixture channel. `--hints` takes ONLY the hint lists from outcomes.json (never
 # the recorded verdicts), so the re-derivation stays cold; without it the three
 # hinted goals would be attempted with a lemma set the reference never used.
+# WALL CAP HEADROOM. The cap is a per-goal WALL limit, and it is the thing that
+# turns gradual corpus growth into an abrupt failure: nothing degrades visibly
+# until a goal crosses it, then that goal has no valid verdict and check 6 cannot
+# complete. The corpus grew 2.6x in a fortnight (162 -> 419 direct-attempt
+# scripts) while the cap stayed at its default, which is how a run that used to
+# finish began aborting.
+#
+# So it scales with the work rather than being re-raised whenever it bites — this
+# is the SECOND time raising it has been the fix (see the commit titled "CI
+# full-conformance job: raise the wall cap").
+#
+# BE HONEST ABOUT WHAT THIS BUYS: headroom improves COMPLETION RELIABILITY. It
+# does not improve throughput. Goals still run strictly serially, so a bigger cap
+# makes a slow run slower rather than faster. Throughput needs proof sharding,
+# which is a separate change to the kernel (see the --shard work).
+if [ -z "${OATHRS_Z3_WALL_CAP_MS:-}" ]; then
+  _goals=$(wc -l < "$FIX/prove/scripts.txt" 2>/dev/null | tr -d ' ')
+  [ -z "$_goals" ] && _goals=0
+  # 600s floor, plus 2s of headroom per direct-attempt script. At 419 scripts that
+  # is ~1438s. The multiplier is a judgement, not a derivation: it tracks growth
+  # without unbounded patience, and the report below shows whether it is enough.
+  _cap=$(( 600000 + _goals * 2000 ))
+  # BOUNDED, because scaling the cap cuts both ways. A larger per-goal ceiling means a
+  # hard goal runs LONGER before aborting, so the serial total grows — and the CI job
+  # has a 350-minute timeout. Unbounded scaling would trade "aborted goals" for "killed
+  # job", which is strictly worse: an abort is reported with diagnostics, a killed job
+  # leaves nothing. 20 minutes per goal is the ceiling until sharding makes total wall
+  # time tractable.
+  _max=1200000
+  [ "$_cap" -gt "$_max" ] && _cap=$_max
+  export OATHRS_Z3_WALL_CAP_MS="$_cap"
+  echo "  wall cap: ${_cap}ms per goal (600s floor + 2s x ${_goals} scripts, capped at 20m)"
+else
+  echo "  wall cap: ${OATHRS_Z3_WALL_CAP_MS}ms (from the environment)"
+fi
+echo "  NOTE: the cap governs COMPLETION, not speed. Goals run serially, so a larger"
+echo "        cap makes a slow run LONGER, never shorter. Throughput needs proof"
+echo "        sharding; until then this job may still exceed a CI time limit, and that"
+echo "        is a scheduling fact rather than a kernel divergence."
+
+_t0=$(date +%s)
 "$BIN" prove --hints "$FIX/prove/outcomes.json" "$EX"/*.oath > "$TMP/prove.txt" 2> "$TMP/prove.err"
 pstat=$?
+_elapsed=$(( $(date +%s) - _t0 ))
+echo "  proving wall time: ${_elapsed}s"
 if [ $pstat -ne 0 ]; then
   echo "  FAIL: prove command errored (exit $pstat)"; sed -n '1,5p' "$TMP/prove.err"; fail=1
 fi
@@ -147,7 +190,23 @@ if grep -q '!' "$TMP/prove.txt"; then
   echo "        affects outcomes — they are f(script bytes, solver, rlimit))."
   grep '!' "$TMP/prove.txt" | sed -n '1,10p' | sed 's/^/          /'
   grep '^ABORTED' "$TMP/prove.err" | sed -n '1,10p' | sed 's/^/          /'
+  echo "        This is a PER-GOAL z3 wall timeout, not the harness or CI job timeout."
+  echo "        Distinguishing them matters: a per-goal abort leaves a property with no"
+  echo "        valid verdict and is reported here; a harness or CI timeout kills the run"
+  echo "        outright and leaves no report at all."
   fail=1
+fi
+
+# EARLY WARNING. A fixed ceiling fails abruptly: nothing degrades visibly until a
+# goal crosses it. Reporting how close the worst goals came makes the NEXT crossing
+# predictable rather than a surprise — the failure mode is gradual growth against a
+# constant, so the useful signal is proximity, not the binary outcome.
+if [ -s "$TMP/prove.err" ]; then
+  _near=$(grep -c 'NEAR-CAP' "$TMP/prove.err" 2>/dev/null || echo 0)
+  [ "$_near" -gt 0 ] && {
+    echo "  WARNING: $_near goal(s) used >80% of the wall cap without aborting."
+    echo "           They will abort as the corpus grows. Raise the cap or shard the work."
+  }
 fi
 
 # ---------------------------------------------------------------------------
