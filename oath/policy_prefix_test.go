@@ -99,9 +99,9 @@ func TestNameOwnerDerivation(t *testing.T) {
 		Hash: "h1", Transition: transitionApplied}); err != nil {
 		t.Fatal(err)
 	}
-	owner, byKey := nameOwner(st, "n")
-	if owner != "claude-main" || byKey {
-		t.Fatalf("unsigned first publish: got (%q,byKey=%v), want (claude-main,false)", owner, byKey)
+	owner, source := nameOwner(st, "n")
+	if owner != "claude-main" || source != ownerLegacyLabel {
+		t.Fatalf("unsigned first publish: got (%q,%q), want (claude-main,legacy-label)", owner, source)
 	}
 	// A later signed entry must NOT change ownership — first publish decides.
 	if err := st.AppendLog(&LogEntry{Author: "kk", Name: "n", Status: "accepted", Hash: "h2",
@@ -135,9 +135,9 @@ func TestNameOwnerFromSignedEntry(t *testing.T) {
 		Transition: transitionApplied, Envelope: "e", AuthorPubkey: "abc", AuthorSig: "s"}); err != nil {
 		t.Fatal(err)
 	}
-	owner, byKey := nameOwner(st, "n")
-	if owner != "abc" || !byKey {
-		t.Fatalf("signed first publish: got (%q,byKey=%v), want (abc,true)", owner, byKey)
+	owner, source := nameOwner(st, "n")
+	if owner != "abc" || source != ownerSignedFirstPublish {
+		t.Fatalf("signed first publish: got (%q,%q), want (abc,signed-first-publication)", owner, source)
 	}
 }
 
@@ -147,5 +147,86 @@ func TestTrustOnFirstPublishIsOptIn(t *testing.T) {
 	off := &Policy{Rules: []PolicyRule{{Names: []string{"*"}}}}
 	if r := off.ruleFor("n"); r == nil || r.TrustOnFirstPublish {
 		t.Fatal("trust_on_first_publish must default to false")
+	}
+}
+
+// An ambiguous policy must be REJECTED at load, not silently resolved. A policy
+// that enforces something while the operator believes it enforces what they wrote
+// is worse than one that refuses to load.
+func TestPolicyRejectsAmbiguity(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		pol  Policy
+	}{
+		{"duplicate pattern across rules", Policy{Rules: []PolicyRule{
+			{Names: []string{"michael/*"}, OwnerPubkey: "aa"},
+			{Names: []string{"michael/*"}, OwnerPubkey: "bb"},
+		}}},
+		{"degenerate empty-prefix pattern", Policy{Rules: []PolicyRule{{Names: []string{"/*"}}}}},
+		{"empty names list", Policy{Rules: []PolicyRule{{Names: nil}}}},
+		{"empty pattern", Policy{Rules: []PolicyRule{{Names: []string{""}}}}},
+		{"star used as a glob", Policy{Rules: []PolicyRule{{Names: []string{"mich*el"}}}}},
+		{"star inside a prefix", Policy{Rules: []PolicyRule{{Names: []string{"a*b/*"}}}}},
+	} {
+		if err := tc.pol.validate(); err == nil {
+			t.Fatalf("%s: accepted — an ambiguous or malformed policy must not load", tc.name)
+		}
+	}
+	// A well-formed nested policy must still load: nesting is not ambiguity.
+	ok := Policy{Rules: []PolicyRule{
+		{Names: []string{"*"}},
+		{Names: []string{"michael/*"}},
+		{Names: []string{"michael/service1/*"}},
+		{Names: []string{"michael/service1/webhook"}},
+	}}
+	if err := ok.validate(); err != nil {
+		t.Fatalf("a validly nested policy was rejected: %v", err)
+	}
+}
+
+// TOFU establishes ownership of an EXACT NAME only. Publishing one child must not
+// capture the namespace, or a single publication becomes a land grab.
+func TestTofuDoesNotCaptureNamespace(t *testing.T) {
+	st := newMemStoreForTest(t)
+	if err := st.AppendLog(&LogEntry{Author: "kk", Name: "michael/service1/foo",
+		Status: "accepted", Hash: "h", Transition: transitionApplied,
+		Envelope: "e", AuthorPubkey: "kk", AuthorSig: "s"}); err != nil {
+		t.Fatal(err)
+	}
+	if owner, src := nameOwner(st, "michael/service1/foo"); owner != "kk" || src != ownerSignedFirstPublish {
+		t.Fatalf("exact name not owned: (%q,%q)", owner, src)
+	}
+	// Nothing else in or above that namespace is owned by publishing one child.
+	for _, other := range []string{"michael/service1/bar", "michael/service1", "michael", "michael/other/foo"} {
+		if owner, _ := nameOwner(st, other); owner != "" {
+			t.Fatalf("publishing michael/service1/foo captured %q (owner %q): TOFU must be exact-name only", other, owner)
+		}
+	}
+}
+
+// A FALSIFIED but applied first publication establishes the name; a rejected one
+// does not. Both directions matter (rule 3).
+func TestOwnershipFromFalsifiedButApplied(t *testing.T) {
+	st := newMemStoreForTest(t)
+	if err := st.AppendLog(&LogEntry{Author: "who", Name: "n", Status: "falsified",
+		Hash: "h", Transition: transitionApplied}); err != nil {
+		t.Fatal(err)
+	}
+	if owner, _ := nameOwner(st, "n"); owner != "who" {
+		t.Fatal("a falsified-but-APPLIED first publication must establish the name: it still binds it")
+	}
+}
+
+// Configured policy names a key but is NOT historical evidence — it must not be
+// treated as cryptographic ownership.
+func TestConfiguredPolicyIsNotCryptographicEvidence(t *testing.T) {
+	if ownerIsCryptographic(ownerConfiguredPolicy) {
+		t.Fatal("an operator-editable policy file must not count as cryptographic ownership evidence")
+	}
+	if ownerIsCryptographic(ownerLegacyLabel) {
+		t.Fatal("a legacy label must not count as cryptographic ownership evidence")
+	}
+	if !ownerIsCryptographic(ownerSignedFirstPublish) {
+		t.Fatal("a signed first publication IS re-verifiable from the journal")
 	}
 }

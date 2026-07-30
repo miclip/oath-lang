@@ -61,7 +61,58 @@ func LoadPolicy(root string) (*Policy, error) {
 	if err := json.Unmarshal(b, &p); err != nil {
 		return nil, fmt.Errorf("corrupt policy.json: %w", err)
 	}
+	if err := p.validate(); err != nil {
+		return nil, fmt.Errorf("invalid policy.json: %w", err)
+	}
 	return &p, nil
+}
+
+// validate rejects a policy that cannot be resolved unambiguously, rather than
+// letting ruleFor pick a winner. An ambiguous policy that silently resolves is the
+// worst outcome: it enforces SOMETHING, the operator believes it enforces what
+// they wrote, and nothing surfaces the difference.
+//
+// WHY DUPLICATE PATTERNS ARE THE ONLY AMBIGUITY. For a given name, the patterns
+// that can match are: the exact name (unique, score len+1); prefixes ending at a
+// segment boundary (necessarily nested, so all of different length and therefore
+// different score); and "*" (score 0). Distinct patterns matching one name
+// therefore always have distinct specificity — so a tie is possible ONLY when the
+// same pattern appears in two rules. Detecting that statically at load is
+// equivalent to a runtime conflict check, and it fails at configuration time
+// instead of on some later publication.
+//
+// The one exception is the degenerate prefix "/*", whose empty prefix scores 0 and
+// would tie with "*" for names beginning with "/". It is rejected outright: a
+// namespace with an empty name is not a thing anyone means.
+func (p *Policy) validate() error {
+	if p == nil {
+		return nil
+	}
+	seen := map[string]int{}
+	for i := range p.Rules {
+		if len(p.Rules[i].Names) == 0 {
+			return fmt.Errorf("rule %d matches nothing: `names` is empty", i)
+		}
+		for _, n := range p.Rules[i].Names {
+			if n == "" {
+				return fmt.Errorf("rule %d contains an empty pattern", i)
+			}
+			if n == "/*" {
+				return fmt.Errorf("rule %d uses the degenerate pattern \"/*\": an empty namespace prefix is ambiguous with \"*\"", i)
+			}
+			if strings.HasSuffix(n, "/*") && strings.Contains(strings.TrimSuffix(n, "/*"), "*") {
+				return fmt.Errorf("rule %d pattern %q: \"*\" is only meaningful as a whole pattern or as a trailing \"/*\"", i, n)
+			}
+			if n != "*" && !strings.HasSuffix(n, "/*") && strings.Contains(n, "*") {
+				return fmt.Errorf("rule %d pattern %q: \"*\" is only meaningful as a whole pattern or as a trailing \"/*\" — it is not a glob", i, n)
+			}
+			if prior, dup := seen[n]; dup {
+				return fmt.Errorf("pattern %q appears in both rule %d and rule %d: the scope is governed twice and which rule wins would depend on file order", n, prior, i)
+			}
+			seen[n] = i
+		}
+	}
+	return nil
 }
 
 // patternSpecificity scores how narrowly a policy pattern selects names. Higher
@@ -100,8 +151,11 @@ func patternSpecificity(pattern, name string) int {
 // ordered. That is an invisible failure: the shadowed rule looks present.
 // Specificity ordering makes the file's meaning independent of its layout.
 //
-// Ties (two patterns of equal specificity, e.g. the same prefix listed twice) fall
-// back to document order, since there is nothing else to distinguish them.
+// Ties cannot occur in a VALIDATED policy: distinct patterns matching one name
+// always have distinct specificity, so the only possible tie is a duplicated
+// pattern, which Policy.validate rejects at load (see its comment for the
+// argument). This function therefore never has to break a tie, and must not start
+// doing so silently — if a tie ever appears, the policy skipped validation.
 func (p *Policy) ruleFor(name string) *PolicyRule {
 	if p == nil {
 		return nil
@@ -183,8 +237,8 @@ func evalPolicy(st *Store, pol *Policy, name, h string, def *Def, specAuthor, bo
 	// configured: an explicit OwnerPubkey is an operator decision and outranks
 	// anything derived from history.
 	if rule.OwnerPubkey == "" && rule.TrustOnFirstPublish {
-		if owner, byKey := nameOwner(st, name); owner != "" && owner != m.Author {
-			if byKey {
+		if owner, source := nameOwner(st, name); owner != "" && owner != m.Author {
+			if ownerIsCryptographic(source) {
 				return false, fmt.Sprintf("policy: %q is owned by key %s… (first publisher, signed); submitter %q may not repoint it",
 					name, shortHash(owner), m.Author)
 			}
@@ -286,19 +340,67 @@ func orWord(s, fallback string) string {
 // repoint against a label still has value (it stops a DIFFERENT authenticated
 // principal moving the name) but it is not cryptographic ownership, and reporting
 // it as though it were would be the authorship-boolean mistake again.
-func nameOwner(st *Store, name string) (owner string, byKey bool) {
+// Ownership SOURCES. Strength alone (key vs label) is not enough: an operator can
+// edit policy.json at any moment, so a rule in a current config file must never be
+// presentable as historical cryptographic evidence. Where the authority came from
+// is as decision-relevant as how strong it is.
+const (
+	// ownerNone: the name has never had a transition applied.
+	ownerNone = ""
+	// ownerSignedFirstPublish: derived from a signed first publication. Historical
+	// and cryptographic — a third party can re-verify it from the journal alone.
+	ownerSignedFirstPublish = "signed-first-publication"
+	// ownerLegacyLabel: derived from an UNSIGNED first publication. Historical but
+	// not cryptographic: the principal is a string the registry recorded.
+	ownerLegacyLabel = "legacy-label"
+	// ownerConfiguredPolicy: an explicit owner_pubkey in the CURRENT policy file.
+	// Strong (it names a key) but not historical — it reflects present
+	// configuration, is editable by whoever holds the store, and says nothing about
+	// who published anything.
+	ownerConfiguredPolicy = "registry-configured-policy"
+	// ownerSignedAdoption: authority adopted by an explicit signed operation.
+	// Reserved; adoption is not implemented yet, so nothing emits this.
+	ownerSignedAdoption = "signed-adoption"
+)
+
+// nameOwner derives who owns `name`, and from WHERE.
+//
+// TOFU establishes ownership of an EXACT NAME only. Publishing
+// michael/service1/foo does not make anyone the owner of michael/service1/*, or
+// publishing one child would silently capture a whole namespace. Prefix authority
+// comes only from an explicit rule, reservation, or adoption — never from
+// inference (#84).
+//
+// A legacy label owner is reported as such and MUST NOT be promoted to enforceable
+// key ownership by inference. Signed adoption, when it exists, changes authority
+// PROSPECTIVELY; it will not rewrite the authorship of earlier entries.
+//
+// CAVEAT under the filesystem store: two concurrent FIRST publications can race to
+// become the TOFU owner, because establishing the first owner is not atomic. This
+// prevents ordinary unauthorized repoints immediately; atomic first-owner
+// establishment is pending the transactional store.
+func nameOwner(st *Store, name string) (owner, source string) {
 	for _, e := range st.ReadLog() {
+		// repointedName, not Status: a FALSIFIED but applied first publication does
+		// establish the name; rejected, blocked and pending do not, or a failed
+		// submission would squat a name for free.
 		if e.Name != name || !e.repointedName() {
 			continue
 		}
-		signed := e.Envelope != "" && e.AuthorPubkey != "" && e.AuthorSig != ""
-		if signed {
-			return e.AuthorPubkey, true
+		if e.Envelope != "" && e.AuthorPubkey != "" && e.AuthorSig != "" {
+			return e.AuthorPubkey, ownerSignedFirstPublish
 		}
 		if e.Author != "" {
-			return e.Author, false
+			return e.Author, ownerLegacyLabel
 		}
-		return "unattributed", false
+		return "unattributed", ownerLegacyLabel
 	}
-	return "", false
+	return "", ownerNone
+}
+
+// ownerIsCryptographic reports whether a source constitutes evidence a third party
+// can re-derive from the journal. Configured policy is deliberately excluded: it
+// names a key, but it is a present-tense operator statement, not history.
+func ownerIsCryptographic(source string) bool {
+	return source == ownerSignedFirstPublish || source == ownerSignedAdoption
 }

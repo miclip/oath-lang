@@ -102,13 +102,12 @@ type explainProv struct {
 	// Authorship is the ladder rung this artifact's record actually supports.
 	Authorship string `json:"authorship"`
 	// Owner is the principal that FIRST published this name (#84) — who may repoint
-	// it, where trust-on-first-publish is enabled. OwnerVerified distinguishes a
-	// KEY (the first publication carried a signed envelope, so a third party can
-	// check it) from a bare LABEL the registry recorded. The distinction is the same
-	// one the authorship ladder draws, applied to control of the name rather than
-	// to who wrote the code.
-	Owner         string `json:"owner,omitempty"`
-	OwnerVerified bool   `json:"owner_verified"`
+	// it, where trust-on-first-publish is enabled. OwnerSource says where that
+	// authority came from, which is as decision-relevant as its strength: a key
+	// named in the CURRENT policy file is editable by whoever holds the store and
+	// must never read as historical cryptographic evidence.
+	Owner       string `json:"owner,omitempty"`
+	OwnerSource string `json:"owner_source,omitempty"`
 }
 
 // authorshipLevel places an artifact on the ladder from recorded state alone.
@@ -226,7 +225,7 @@ func buildExplain(st *Store, name string) (*explainPkg, error) {
 		},
 	}
 
-	pkg.Provenance.Owner, pkg.Provenance.OwnerVerified = nameOwner(st, name)
+	pkg.Provenance.Owner, pkg.Provenance.OwnerSource = nameOwner(st, name)
 
 	for pi := range d.Props {
 		pn := metaPropName(m, pi)
@@ -335,8 +334,9 @@ func explainLimitations(st *Store, p *explainPkg, m *Meta) []string {
 	// still enforced where trust-on-first-publish is on, but it is not cryptographic
 	// ownership, and a consumer deciding whether to depend on this name should know
 	// which of the two is protecting it.
-	if p.Provenance.Owner != "" && !p.Provenance.OwnerVerified {
-		out = append(out, fmt.Sprintf("the name is owned by %q on the strength of an UNSIGNED first publication — a recorded label, not a verified key, so who may repoint this name is not independently checkable", p.Provenance.Owner))
+	if p.Provenance.Owner != "" && !ownerIsCryptographic(p.Provenance.OwnerSource) {
+		out = append(out, fmt.Sprintf("the name is owned by %q via %s — %s, so who may repoint this name is NOT independently checkable from the journal",
+			p.Provenance.Owner, p.Provenance.OwnerSource, ownerSourceMeaning(p.Provenance.OwnerSource)))
 	}
 	// A separate axis from the ladder: is the attribution EVIDENCE, or the
 	// registry's word for it? An unsigned journal entry records a pubkey the
@@ -383,11 +383,9 @@ func cmdExplain(st *Store, name string, asJSON bool) {
 		orNone(pkg.Provenance.Author), orNone(pkg.Provenance.SpecAuthor),
 		orNone(pkg.Provenance.BodyAuthor), pkg.Provenance.Authorship)
 	if pkg.Provenance.Owner != "" {
-		kind := "LABEL (unverified — recorded by the registry)"
-		if pkg.Provenance.OwnerVerified {
-			kind = "KEY (signed first publication)"
-		}
-		fmt.Fprintf(&b, "            name owner: %s — %s\n", pkg.Provenance.Owner, kind)
+		fmt.Fprintf(&b, "            name owner: %s\n              via %s (%s)\n",
+			pkg.Provenance.Owner, pkg.Provenance.OwnerSource,
+			ownerSourceMeaning(pkg.Provenance.OwnerSource))
 	}
 	fmt.Fprintf(&b, "\nDEPENDENCIES (%d, exact by hash):\n", len(pkg.Dependencies))
 	for _, dep := range pkg.Dependencies {
@@ -405,4 +403,21 @@ func orNone(s string) string {
 		return "(none)"
 	}
 	return s
+}
+
+// ownerSourceMeaning spells out what an ownership source does and does not
+// establish. Written out at every call site rather than left to the reader,
+// because "owner" reads as authoritative regardless of where it came from.
+func ownerSourceMeaning(source string) string {
+	switch source {
+	case ownerSignedFirstPublish:
+		return "historical and cryptographic: re-verifiable from the journal alone"
+	case ownerSignedAdoption:
+		return "authority adopted by a signed operation at a recorded point, not retroactive"
+	case ownerLegacyLabel:
+		return "historical but NOT cryptographic: a principal string the registry recorded on an unsigned entry"
+	case ownerConfiguredPolicy:
+		return "present configuration, NOT history: editable by whoever holds the store"
+	}
+	return "unrecorded"
 }
