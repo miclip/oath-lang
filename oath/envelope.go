@@ -333,30 +333,55 @@ func bytesEqual(a, b []byte) bool {
 
 // rejectWeakKey refuses public keys that cannot carry an authorship claim.
 //
-// SPEC §8.6.4a requires small-order `A` to be rejected, because with such a key the
+// SPEC §8.6.4a requires small-order `A` to be rejected: with such a key the
 // verification equation degenerates and signatures verify for parties who do not
-// hold the key — so an "author" would be unforgeable in name only. For A = identity
-// the equation becomes [S]B = R, and a forgery needs only curve arithmetic.
+// hold it, so an "author" would be unforgeable in name only. For A = identity the
+// equation collapses to [S]B = R and a forgery needs only curve arithmetic.
 //
-// PARTIAL, AND DELIBERATELY SAID SO. This catches the all-zero encoding, which is
-// the identity point and the trivially reachable case. The remaining seven
-// small-order points cannot be detected without curve arithmetic, and Go's
-// crypto/ed25519 neither exposes it nor rejects them; adding a curve dependency
-// would break the dependency-free default build (see CLAUDE.md), which is a real
-// decision rather than an oversight. Tracked separately.
+// A BLOCKLIST, not arithmetic. The eight points of order dividing 8 have fixed
+// encodings, so membership is a byte comparison — no curve code, and the default
+// build stays dependency-free (CLAUDE.md). Go's crypto/ed25519 does NOT reject these
+// itself: it decodes them happily and merely fails the equation for signatures not
+// crafted for them, which is not the same as refusing the key.
 //
-// Claiming full §8.6.4a conformance here would be exactly the unearned claim this
-// project refuses elsewhere, so the gap is named rather than assumed closed.
+// THE CONSTANTS ARE DERIVED, NOT TRANSCRIBED. scripts/derive-small-order.py computes
+// them from p, d and L and verifies each is on the curve with [8]P = identity and an
+// order dividing 8, and that the base point is NOT among them so the derivation
+// cannot pass vacuously. Re-running it reproduces this list exactly.
+//
+// That discipline is not ceremony. A recalled constant in the middle of a signature
+// check is an unverified claim guarding a security property, and this project has
+// already been bitten once by a misremembered RFC 8032 vector — where the right
+// response was an independent oracle rather than adjusting code to match.
+//
+// Non-canonical encodings of these points are deliberately absent: they are refused
+// one layer down, where decoding requires a canonical point encoding (§8.6.4a), so
+// listing them here would duplicate a rule rather than add one.
+// DERIVED by scripts/derive-small-order.py from p, d and L — NOT transcribed.
+// Every entry verified on-curve with [8]P = identity and order dividing 8;
+// the base point is verified NOT to be among them, so the derivation cannot
+// pass vacuously. Re-run the script to reproduce this list.
+var smallOrderEncodings = [][32]byte{
+	{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // order 4
+	{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80}, // order 4
+	{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // order 1
+	{0x26, 0xe8, 0x95, 0x8f, 0xc2, 0xb2, 0x27, 0xb0, 0x45, 0xc3, 0xf4, 0x89, 0xf2, 0xef, 0x98, 0xf0, 0xd5, 0xdf, 0xac, 0x05, 0xd3, 0xc6, 0x33, 0x39, 0xb1, 0x38, 0x02, 0x88, 0x6d, 0x53, 0xfc, 0x05}, // order 8
+	{0x26, 0xe8, 0x95, 0x8f, 0xc2, 0xb2, 0x27, 0xb0, 0x45, 0xc3, 0xf4, 0x89, 0xf2, 0xef, 0x98, 0xf0, 0xd5, 0xdf, 0xac, 0x05, 0xd3, 0xc6, 0x33, 0x39, 0xb1, 0x38, 0x02, 0x88, 0x6d, 0x53, 0xfc, 0x85}, // order 8
+	{0xc7, 0x17, 0x6a, 0x70, 0x3d, 0x4d, 0xd8, 0x4f, 0xba, 0x3c, 0x0b, 0x76, 0x0d, 0x10, 0x67, 0x0f, 0x2a, 0x20, 0x53, 0xfa, 0x2c, 0x39, 0xcc, 0xc6, 0x4e, 0xc7, 0xfd, 0x77, 0x92, 0xac, 0x03, 0x7a}, // order 8
+	{0xc7, 0x17, 0x6a, 0x70, 0x3d, 0x4d, 0xd8, 0x4f, 0xba, 0x3c, 0x0b, 0x76, 0x0d, 0x10, 0x67, 0x0f, 0x2a, 0x20, 0x53, 0xfa, 0x2c, 0x39, 0xcc, 0xc6, 0x4e, 0xc7, 0xfd, 0x77, 0x92, 0xac, 0x03, 0xfa}, // order 8
+	{0xec, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f}, // order 2
+}
+
 func rejectWeakKey(pub []byte) error {
-	allZero := true
-	for _, b := range pub {
-		if b != 0 {
-			allZero = false
-			break
-		}
+	if len(pub) != ed25519.PublicKeySize {
+		return fmt.Errorf("public key is %d bytes, expected %d", len(pub), ed25519.PublicKeySize)
 	}
-	if allZero {
-		return fmt.Errorf("public key is the identity point (all-zero encoding): a small-order key cannot carry an authorship claim, since signatures under it verify for parties who do not hold it (SPEC §8.6.4a)")
+	var k [32]byte
+	copy(k[:], pub)
+	for _, bad := range smallOrderEncodings {
+		if k == bad {
+			return fmt.Errorf("public key %s… has small order: such a key cannot carry an authorship claim, since signatures under it verify for parties who do not hold it (SPEC §8.6.4a)", hex.EncodeToString(pub[:6]))
+		}
 	}
 	return nil
 }

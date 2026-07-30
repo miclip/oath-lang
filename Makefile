@@ -98,6 +98,17 @@ check: verify prove
 # `make check` so proof outcomes reflect the latest verdicts. Also refresh the
 # website's rendered copy of the proof ledger so it cannot drift from canon
 # (contract: website/lib/outcomes.json is a verbatim copy — see #30).
+# Re-derive the Ed25519 small-order blocklist (SPEC §8.6.4a) and check it still
+# matches what the kernel embeds. The constants are DERIVED from p, d and L and
+# self-verified ([8]P = identity, on-curve, base point excluded) — never transcribed,
+# because a recalled constant guarding a signature check is an unverified claim.
+.PHONY: small-order
+small-order:
+	@python3 scripts/derive-small-order.py > /tmp/oath-soe.txt || { echo "derivation FAILED its own checks"; exit 1; }
+	@grep '^	{0x' /tmp/oath-soe.txt | sed 's/ \/\/ order [0-9]*//' | sort > /tmp/oath-soe-a.txt
+	@grep -A 20 '^var smallOrderEncodings' oath/envelope.go | grep '^	{0x' | sed 's/ \/\/ order [0-9]*//' | sort > /tmp/oath-soe-b.txt
+	@diff /tmp/oath-soe-a.txt /tmp/oath-soe-b.txt && echo "small-order blocklist reproduces from the derivation"
+
 fixtures: build
 	@$(OATH) fixtures fixtures
 	@cp fixtures/prove/outcomes.json website/lib/outcomes.json

@@ -281,3 +281,61 @@ func TestRejectsIdentityKey(t *testing.T) {
 		t.Fatal("rejectWeakKey refused an ordinary key")
 	}
 }
+
+// Every derived small-order encoding must be refused, and ordinary keys must not be.
+//
+// Both halves matter. A blocklist that rejects too little leaves the hole open; one
+// that rejects too much would refuse real authors, and a check that refuses
+// everything would "pass" a rejection test while breaking the system.
+func TestRejectsAllSmallOrderKeys(t *testing.T) {
+	if len(smallOrderEncodings) != 8 {
+		t.Fatalf("blocklist has %d entries, expected 8 — the 8-torsion subgroup of Ed25519 has exactly 8 points", len(smallOrderEncodings))
+	}
+	seen := map[[32]byte]bool{}
+	for i, k := range smallOrderEncodings {
+		if seen[k] {
+			t.Fatalf("blocklist entry %d is a duplicate: the derivation emitted the same point twice", i)
+		}
+		seen[k] = true
+		if err := rejectWeakKey(k[:]); err == nil {
+			t.Fatalf("small-order key %x… was ACCEPTED", k[:6])
+		}
+	}
+
+	// Real keys must pass. Generated rather than fixed, so this cannot pass by
+	// happening to avoid one hardcoded value.
+	for i := 0; i < 32; i++ {
+		pub, _, err := ed25519.GenerateKey(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := rejectWeakKey(pub); err != nil {
+			t.Fatalf("a freshly generated key was refused as small-order: %v", err)
+		}
+	}
+
+	// Non-vacuity, mirroring the derivation script's own check: the Ed25519 BASE point
+	// must not be classified small-order. If it were, the blocklist would be wrong in
+	// a way that rejects every honest signer.
+	basePub := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)).Public().(ed25519.PublicKey)
+	if err := rejectWeakKey(basePub); err != nil {
+		t.Fatalf("a key derived from an all-zero SEED (a legitimate key) was refused: %v", err)
+	}
+
+	// A wrong-length key is refused rather than silently indexed.
+	if err := rejectWeakKey(make([]byte, 31)); err == nil {
+		t.Fatal("a 31-byte public key was accepted")
+	}
+}
+
+// An envelope naming any small-order author must fail verification before the
+// signature is even considered.
+func TestEnvelopeRejectsEverySmallOrderAuthor(t *testing.T) {
+	for _, k := range smallOrderEncodings {
+		e := testEnvelope()
+		e.Author = hex.EncodeToString(k[:])
+		if err := envelopeVerify(e, strings.Repeat("aa", 64)); err == nil {
+			t.Fatalf("envelope with small-order author %x… verified", k[:6])
+		}
+	}
+}
