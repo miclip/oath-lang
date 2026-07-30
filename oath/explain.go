@@ -101,6 +101,14 @@ type explainProv struct {
 	BodyAuthor string `json:"body_author,omitempty"`
 	// Authorship is the ladder rung this artifact's record actually supports.
 	Authorship string `json:"authorship"`
+	// Owner is the principal that FIRST published this name (#84) — who may repoint
+	// it, where trust-on-first-publish is enabled. OwnerVerified distinguishes a
+	// KEY (the first publication carried a signed envelope, so a third party can
+	// check it) from a bare LABEL the registry recorded. The distinction is the same
+	// one the authorship ladder draws, applied to control of the name rather than
+	// to who wrote the code.
+	Owner         string `json:"owner,omitempty"`
+	OwnerVerified bool   `json:"owner_verified"`
 }
 
 // authorshipLevel places an artifact on the ladder from recorded state alone.
@@ -218,6 +226,8 @@ func buildExplain(st *Store, name string) (*explainPkg, error) {
 		},
 	}
 
+	pkg.Provenance.Owner, pkg.Provenance.OwnerVerified = nameOwner(st, name)
+
 	for pi := range d.Props {
 		pn := metaPropName(m, pi)
 		status := "tested"
@@ -321,6 +331,13 @@ func explainLimitations(st *Store, p *explainPkg, m *Meta) []string {
 	case authDistinctKeys:
 		out = append(out, "spec and body were signed by DISTINCT KEYS, but key custody and independent control were NOT verified — one process holding both keys produces this same record, so this is not evidence of independent authorship")
 	}
+	// Control of the NAME, separate from authorship of the code. A label owner is
+	// still enforced where trust-on-first-publish is on, but it is not cryptographic
+	// ownership, and a consumer deciding whether to depend on this name should know
+	// which of the two is protecting it.
+	if p.Provenance.Owner != "" && !p.Provenance.OwnerVerified {
+		out = append(out, fmt.Sprintf("the name is owned by %q on the strength of an UNSIGNED first publication — a recorded label, not a verified key, so who may repoint this name is not independently checkable", p.Provenance.Owner))
+	}
 	// A separate axis from the ladder: is the attribution EVIDENCE, or the
 	// registry's word for it? An unsigned journal entry records a pubkey the
 	// registry chose to write down. It may well have verified a signature at
@@ -365,6 +382,13 @@ func cmdExplain(st *Store, name string, asJSON bool) {
 	fmt.Fprintf(&b, "\nPROVENANCE: author=%s spec=%s body=%s\n            authorship: %s\n",
 		orNone(pkg.Provenance.Author), orNone(pkg.Provenance.SpecAuthor),
 		orNone(pkg.Provenance.BodyAuthor), pkg.Provenance.Authorship)
+	if pkg.Provenance.Owner != "" {
+		kind := "LABEL (unverified — recorded by the registry)"
+		if pkg.Provenance.OwnerVerified {
+			kind = "KEY (signed first publication)"
+		}
+		fmt.Fprintf(&b, "            name owner: %s — %s\n", pkg.Provenance.Owner, kind)
+	}
 	fmt.Fprintf(&b, "\nDEPENDENCIES (%d, exact by hash):\n", len(pkg.Dependencies))
 	for _, dep := range pkg.Dependencies {
 		fmt.Fprintf(&b, "  %s\n", dep)

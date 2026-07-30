@@ -89,3 +89,63 @@ func TestPatternSpecificityOrdering(t *testing.T) {
 		t.Fatal("a non-matching pattern must score -1, not 0 — 0 is the catch-all's score")
 	}
 }
+
+// Trust on first publish: the first principal to publish a name owns it, and the
+// derivation must report whether that owner is a KEY or a bare LABEL.
+func TestNameOwnerDerivation(t *testing.T) {
+	st := newMemStoreForTest(t)
+	// An UNSIGNED first publication: the owner is a label the store wrote down.
+	if err := st.AppendLog(&LogEntry{Author: "claude-main", Name: "n", Status: "accepted",
+		Hash: "h1", Transition: transitionApplied}); err != nil {
+		t.Fatal(err)
+	}
+	owner, byKey := nameOwner(st, "n")
+	if owner != "claude-main" || byKey {
+		t.Fatalf("unsigned first publish: got (%q,byKey=%v), want (claude-main,false)", owner, byKey)
+	}
+	// A later signed entry must NOT change ownership — first publish decides.
+	if err := st.AppendLog(&LogEntry{Author: "kk", Name: "n", Status: "accepted", Hash: "h2",
+		Prev: "h1", Transition: transitionApplied,
+		Envelope: "x", AuthorPubkey: "kk", AuthorSig: "s"}); err != nil {
+		t.Fatal(err)
+	}
+	if owner, _ := nameOwner(st, "n"); owner != "claude-main" {
+		t.Fatalf("ownership moved to a later publisher: got %q — trust on FIRST publish", owner)
+	}
+	// A name never published has no owner, which must be distinguishable from
+	// "owned by nobody in particular".
+	if owner, _ := nameOwner(st, "absent"); owner != "" {
+		t.Fatalf("an unpublished name reported owner %q", owner)
+	}
+	// An entry that did NOT apply a transition must not establish ownership: a
+	// rejected attempt is not a claim.
+	st2 := newMemStoreForTest(t)
+	if err := st2.AppendLog(&LogEntry{Author: "squatter", Name: "m", Status: "rejected", Hash: "h"}); err != nil {
+		t.Fatal(err)
+	}
+	if owner, _ := nameOwner(st2, "m"); owner != "" {
+		t.Fatalf("a REJECTED attempt established ownership as %q — squatting by failed submission", owner)
+	}
+}
+
+// A signed first publication yields KEY ownership.
+func TestNameOwnerFromSignedEntry(t *testing.T) {
+	st := newMemStoreForTest(t)
+	if err := st.AppendLog(&LogEntry{Author: "abc", Name: "n", Status: "accepted", Hash: "h",
+		Transition: transitionApplied, Envelope: "e", AuthorPubkey: "abc", AuthorSig: "s"}); err != nil {
+		t.Fatal(err)
+	}
+	owner, byKey := nameOwner(st, "n")
+	if owner != "abc" || !byKey {
+		t.Fatalf("signed first publish: got (%q,byKey=%v), want (abc,true)", owner, byKey)
+	}
+}
+
+// TrustOnFirstPublish must be OPT-IN: without it, derived ownership imposes
+// nothing, or enabling prefix rules would retroactively freeze existing names.
+func TestTrustOnFirstPublishIsOptIn(t *testing.T) {
+	off := &Policy{Rules: []PolicyRule{{Names: []string{"*"}}}}
+	if r := off.ruleFor("n"); r == nil || r.TrustOnFirstPublish {
+		t.Fatal("trust_on_first_publish must default to false")
+	}
+}

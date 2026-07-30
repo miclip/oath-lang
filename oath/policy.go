@@ -36,6 +36,13 @@ type PolicyRule struct {
 	MinMutationScore            float64  `json:"min_mutation_score,omitempty"` // 0..1; runs the mutation engine if the object is unscored
 	RequireProven               bool     `json:"require_proven,omitempty"`     // name only binds once EVERY property is SMT-proven (#14)
 	OwnerPubkey                 string   `json:"owner_pubkey,omitempty"`       // hex Ed25519 key; only this principal may repoint the name (#14)
+	// TrustOnFirstPublish derives ownership from the journal when OwnerPubkey is
+	// unset: the first principal to publish a name owns it, and only that principal
+	// may repoint it (#84). OPT-IN, and deliberately so — switching it on is a
+	// migration, not a default. A store whose existing names were published under a
+	// principal that can no longer authenticate would find every repoint blocked,
+	// so the operator must face adoption explicitly rather than discover it.
+	TrustOnFirstPublish bool `json:"trust_on_first_publish,omitempty"`
 }
 
 type Policy struct {
@@ -172,6 +179,21 @@ func evalPolicy(st *Store, pol *Policy, name, h string, def *Def, specAuthor, bo
 	// the author to the caller's pubkey), so an impostor with a different key —
 	// or a bearer principal — cannot move the name. Unforgeable ownership without
 	// the server being a trust root.
+	// Trust on first publish (#84), consulted only when no explicit owner is
+	// configured: an explicit OwnerPubkey is an operator decision and outranks
+	// anything derived from history.
+	if rule.OwnerPubkey == "" && rule.TrustOnFirstPublish {
+		if owner, byKey := nameOwner(st, name); owner != "" && owner != m.Author {
+			if byKey {
+				return false, fmt.Sprintf("policy: %q is owned by key %s… (first publisher, signed); submitter %q may not repoint it",
+					name, shortHash(owner), m.Author)
+			}
+			// The owner is a LABEL, so say so. Someone debugging this needs to know
+			// they are being refused by an unverifiable claim, not by a signature.
+			return false, fmt.Sprintf("policy: %q is owned by %q (first publisher) and submitter is %q. NOTE: that ownership rests on an UNSIGNED journal entry, so the owner is a recorded label rather than a verified key — it is enforced, but it is not cryptographic ownership",
+				name, owner, m.Author)
+		}
+	}
 	if rule.OwnerPubkey != "" && m.Author != rule.OwnerPubkey {
 		return false, fmt.Sprintf("policy: name is owned by key %s…; submitter %q may not repoint it", shortHash(rule.OwnerPubkey), m.Author)
 	}
@@ -248,4 +270,35 @@ func orWord(s, fallback string) string {
 		return fallback
 	}
 	return s
+}
+
+// nameOwner derives who owns `name` from the journal: the principal on the FIRST
+// entry that applied a transition to it (trust on first publish).
+//
+// Derived rather than stored, so there is no ownership table to drift from the
+// history it is supposed to summarise, and any party holding the journal computes
+// the same answer. Returns ("", false) for a name that has never been published.
+//
+// The second return is the part that must not be dropped: whether that first
+// publication carried an author ENVELOPE, i.e. whether the owner is a KEY or a
+// bare LABEL. `claude-main` is a string the registry wrote down; a pubkey with an
+// envelope behind it is a fact a third party can check. Enforcing owner-only
+// repoint against a label still has value (it stops a DIFFERENT authenticated
+// principal moving the name) but it is not cryptographic ownership, and reporting
+// it as though it were would be the authorship-boolean mistake again.
+func nameOwner(st *Store, name string) (owner string, byKey bool) {
+	for _, e := range st.ReadLog() {
+		if e.Name != name || !e.repointedName() {
+			continue
+		}
+		signed := e.Envelope != "" && e.AuthorPubkey != "" && e.AuthorSig != ""
+		if signed {
+			return e.AuthorPubkey, true
+		}
+		if e.Author != "" {
+			return e.Author, false
+		}
+		return "unattributed", false
+	}
+	return "", false
 }
