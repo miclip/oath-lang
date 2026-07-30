@@ -36,12 +36,26 @@ else
   note PASS "no scorer command"
 fi
 
-echo "== 3. mutation-specific symbols and strings must be absent =="
-for marker in "disable-one-normative-rule" "withRulesDisabled" "harness/known-noop" "disabledRules"; do
-  if strings "$tmp/oath" 2>/dev/null | grep -q -- "$marker"; then
+echo "== 3. mutation-specific markers must be absent — and each must be DISCRIMINATING =="
+# A marker that appears in NEITHER build is worse than no check: it passes on the
+# release binary for reasons unrelated to the machinery, and inflates the count of
+# checks that appear to have run. The first version of this gate had exactly that
+# defect — `disabledRules` is an unexported variable name Go does not retain in the
+# string table, so the check could never fire in either direction.
+#
+# Every marker is therefore validated against BOTH builds: present in the tagged one
+# (proving the check can detect the machinery) and absent from the release one (the
+# property under test). Only string constants survive reliably; identifiers do not.
+( cd oath && go build -tags conformance_mutation -o "$tmp/oath-tagged" . )
+for marker in "disable-one-normative-rule" "withRulesDisabled" "harness/known-noop"; do
+  in_tagged=$(strings "$tmp/oath-tagged" 2>/dev/null | grep -c -- "$marker" || true)
+  in_release=$(strings "$tmp/oath" 2>/dev/null | grep -c -- "$marker" || true)
+  if [ "$in_tagged" -eq 0 ]; then
+    note FAIL "marker is NON-DISCRIMINATING (absent from the tagged build too): $marker"; fail=1
+  elif [ "$in_release" -ne 0 ]; then
     note FAIL "found marker in release binary: $marker"; fail=1
   else
-    note PASS "absent: $marker"
+    note PASS "absent from release, present in tagged: $marker"
   fi
 done
 
@@ -53,8 +67,7 @@ else
 fi
 
 echo "== 5. the tagged scorer builds separately and its anchors calibrate =="
-( cd oath && go build -tags conformance_mutation -o "$tmp/oath-vector-score" . )
-score="$("$tmp/oath-vector-score" conformance-score 2>&1 || true)"
+score="$("$tmp/oath-tagged" conformance-score 2>&1 || true)"
 if grep -q "obligations witnessed" <<<"$score"; then
   note PASS "scorer reports a measurement"
 else
