@@ -161,8 +161,8 @@ func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pu
 				mismatch = fmt.Sprintf("signed artifact %s, submitted content hashes to %s", shortHash(env.Artifact), shortHash(h))
 			case env.Parent != curParent:
 				mismatch = fmt.Sprintf("signed parent %s, but %q currently points at %s — the name moved since the envelope was made, or this is a replay", shortHash(env.Parent), meta.Name, shortHash(curParent))
-			case env.ParentRev != curRev:
-				mismatch = fmt.Sprintf("signed parent_rev %d, but %q is at revision %d — a replay whose parent hash happens to match again (ABA)", env.ParentRev, meta.Name, curRev)
+			case env.ParentRev.Cmp(revOf(curRev)) != 0:
+				mismatch = fmt.Sprintf("signed parent_rev %s, but %q is at revision %d — a replay whose parent hash happens to match again (ABA)", env.ParentRev, meta.Name, curRev)
 			}
 			if mismatch != "" {
 				rep.Status = "rejected"
@@ -850,7 +850,7 @@ func nameRevision(st *Store, name string) (string, int) {
 	}
 	h, ok := st.Resolve(name)
 	if !ok || rev == 0 {
-		return noParent, firstRev
+		return noParent, 0
 	}
 	return h, rev
 }

@@ -139,7 +139,7 @@ func remoteNameRevision(endpoint, name string) (string, int, error) {
 		return "", 0, err
 	}
 	if h.Parent == "" {
-		return noParent, firstRev, nil
+		return noParent, 0, nil
 	}
 	return h.Parent, h.ParentRev, nil
 }

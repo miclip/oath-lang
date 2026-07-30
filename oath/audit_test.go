@@ -31,7 +31,7 @@ func TestVerifyLogAuthorRecord(t *testing.T) {
 	// A well-formed signed entry, used as the baseline every case perturbs.
 	base := func() *LogEntry {
 		env := pubEnvelope{Op: "put", Name: "n", Artifact: artifact,
-			Parent: noParent, ParentRev: firstRev, Author: pubHex}
+			Parent: noParent, ParentRev: firstRev(), Author: pubHex}
 		raw := envelopeEncode(env)
 		sig, err := envelopeSign(priv, env)
 		if err != nil {

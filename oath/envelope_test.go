@@ -13,7 +13,7 @@ func testEnvelope() pubEnvelope {
 		Name:      "double",
 		Artifact:  strings.Repeat("a", 64),
 		Parent:    strings.Repeat("b", 64),
-		ParentRev: 3,
+		ParentRev: revOf(3),
 		Author:    strings.Repeat("c", 64),
 	}
 }
@@ -64,7 +64,7 @@ func TestEnvelopeFieldsAllBind(t *testing.T) {
 		"name":       func(e *pubEnvelope) { e.Name = "triple" },
 		"artifact":   func(e *pubEnvelope) { e.Artifact = strings.Repeat("d", 64) },
 		"parent":     func(e *pubEnvelope) { e.Parent = strings.Repeat("f", 64) },
-		"parent_rev": func(e *pubEnvelope) { e.ParentRev = 4 },
+		"parent_rev": func(e *pubEnvelope) { e.ParentRev = revOf(4) },
 		"author":     func(e *pubEnvelope) { e.Author = strings.Repeat("e", 64) },
 	}
 	for field, f := range perturb {
@@ -109,7 +109,7 @@ func TestEnvelopeSignAndVerify(t *testing.T) {
 		{"different artifact (content substitution)", func(e *pubEnvelope) { e.Artifact = strings.Repeat("9", 64) }},
 		{"different name (published elsewhere)", func(e *pubEnvelope) { e.Name = "other" }},
 		{"different parent (REPLAY / rollback)", func(e *pubEnvelope) { e.Parent = strings.Repeat("7", 64) }},
-		{"REPLAY under ABA: same parent hash, later revision", func(e *pubEnvelope) { e.ParentRev = 9 }},
+		{"REPLAY under ABA: same parent hash, later revision", func(e *pubEnvelope) { e.ParentRev = revOf(9) }},
 	} {
 		bad := e
 		tc.mutate(&bad)
@@ -131,7 +131,7 @@ func TestEnvelopeSignAndVerify(t *testing.T) {
 func TestEnvelopeFirstPublication(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(nil)
 	e := testEnvelope()
-	e.Author, e.Parent, e.ParentRev = hex.EncodeToString(pub), noParent, firstRev
+	e.Author, e.Parent, e.ParentRev = hex.EncodeToString(pub), noParent, firstRev()
 	sig, err := envelopeSign(priv, e)
 	if err != nil {
 		t.Fatalf("first publication is not signable: %v", err)
@@ -141,7 +141,7 @@ func TestEnvelopeFirstPublication(t *testing.T) {
 	}
 	// ...and must not be interchangeable with a publication that HAD a parent.
 	withParent := e
-	withParent.Parent, withParent.ParentRev = strings.Repeat("b", 64), 1
+	withParent.Parent, withParent.ParentRev = strings.Repeat("b", 64), revOf(1)
 	if err := envelopeVerify(withParent, sig); err == nil {
 		t.Fatal("a no-parent signature verified against a publication with a parent")
 	}
@@ -155,7 +155,7 @@ func TestEnvelopeSurvivesABA(t *testing.T) {
 	hashA := strings.Repeat("a", 64)
 
 	first := pubEnvelope{Op: "put", Name: "n", Artifact: strings.Repeat("1", 64),
-		Parent: hashA, ParentRev: 1, Author: hex.EncodeToString(pub)}
+		Parent: hashA, ParentRev: revOf(1), Author: hex.EncodeToString(pub)}
 	sig, err := envelopeSign(priv, first)
 	if err != nil {
 		t.Fatal(err)
@@ -164,7 +164,7 @@ func TestEnvelopeSurvivesABA(t *testing.T) {
 	// The name has since returned to hashA, so parent matches once more — but two
 	// further repoints happened, so the revision does not.
 	replayed := first
-	replayed.ParentRev = 3
+	replayed.ParentRev = revOf(3)
 	if err := envelopeVerify(replayed, sig); err == nil {
 		t.Fatal("captured envelope replayed after A→B→A: parent hash matched again and nothing else stopped it")
 	}
@@ -176,11 +176,11 @@ func TestEnvelopeSurvivesABA(t *testing.T) {
 // exists so a future "prettier" formatter cannot introduce a second one.
 func TestEnvelopeRevisionIsCanonicalDecimal(t *testing.T) {
 	e := testEnvelope()
-	e.ParentRev = 3
+	e.ParentRev = revOf(3)
 	if !strings.Contains(string(envelopeEncode(e)), "parent_rev=3\n") {
 		t.Fatal("revision is not rendered as a bare canonical decimal")
 	}
-	e.ParentRev = -1
+	e.ParentRev = revOf(-1)
 	if err := e.validate(); err == nil {
 		t.Fatal("negative revision accepted")
 	}
@@ -190,11 +190,11 @@ func TestEnvelopeRevisionIsCanonicalDecimal(t *testing.T) {
 // revision (or vice versa) would let an envelope describe two different states.
 func TestEnvelopeFirstPublicationConsistency(t *testing.T) {
 	e := testEnvelope()
-	e.Parent, e.ParentRev = noParent, 2
+	e.Parent, e.ParentRev = noParent, revOf(2)
 	if err := e.validate(); err == nil {
 		t.Fatal("noParent with a nonzero revision accepted: inconsistent state was signable")
 	}
-	e.Parent, e.ParentRev = strings.Repeat("b", 64), firstRev
+	e.Parent, e.ParentRev = strings.Repeat("b", 64), firstRev()
 	if err := e.validate(); err == nil {
 		t.Fatal("a parent hash with revision 0 accepted: inconsistent state was signable")
 	}
@@ -205,14 +205,14 @@ func TestEnvelopeFirstPublicationConsistency(t *testing.T) {
 func TestEnvelopeRoundTrip(t *testing.T) {
 	for _, e := range []pubEnvelope{
 		testEnvelope(),
-		{Op: "put", Name: "a/b/c", Artifact: strings.Repeat("1", 64), Parent: noParent, ParentRev: firstRev, Author: strings.Repeat("2", 64)},
-		{Op: "put", Name: "x", Artifact: strings.Repeat("3", 64), Parent: strings.Repeat("4", 64), ParentRev: 1234567, Author: strings.Repeat("5", 64)},
+		{Op: "put", Name: "a/b/c", Artifact: strings.Repeat("1", 64), Parent: noParent, ParentRev: firstRev(), Author: strings.Repeat("2", 64)},
+		{Op: "put", Name: "x", Artifact: strings.Repeat("3", 64), Parent: strings.Repeat("4", 64), ParentRev: revOf(1234567), Author: strings.Repeat("5", 64)},
 	} {
 		got, err := envelopeParse(envelopeEncode(e))
 		if err != nil {
 			t.Fatalf("round-trip failed for %+v: %v", e, err)
 		}
-		if got != e {
+		if !got.equal(e) {
 			t.Fatalf("round-trip changed the envelope:\n got %+v\nwant %+v", got, e)
 		}
 	}

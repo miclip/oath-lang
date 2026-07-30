@@ -155,7 +155,12 @@ func cmdAuditEntry(st *Store, ref, mode string) {
 		// The FOLDED transition, not the per-entry derivation: a legacy no-op cannot be
 		// identified from one entry, so displaying nameTransitionOf here would show
 		// every re-publication as a state change while nameRevision counts correctly.
-		fmt.Printf("   name transition: %s\n", foldedTransition(entries, e))
+		// Source as well as value: after the fold these two cases are not equally
+		// direct, and showing only the value would imply they are. A declared
+		// transition is what the store recorded; a derived one is what the history
+		// implies about an entry written before the field existed.
+		tr, src := foldedTransition(entries, e)
+		fmt.Printf("   name transition: %s\n   transition source: %s\n", tr, src)
 		fmt.Printf("   artifact %s\n", orNone(e.Hash))
 		if e.EnvelopeB64 == "" {
 			fmt.Printf("   AUTHOR STATEMENT: none — author=%q is a label the registry recorded,\n", e.Author)
@@ -203,11 +208,15 @@ func envelopeTextOf(e LogEntry) string {
 
 // foldedTransition resolves one entry's effective transition by folding its name's
 // history — the only way a legacy no-op is identifiable (see nameTransitions).
-func foldedTransition(entries []LogEntry, want LogEntry) string {
+func foldedTransition(entries []LogEntry, want LogEntry) (transition, source string) {
+	src := "declared"
+	if want.NameTransition == "" {
+		src = "derived-from-legacy-history"
+	}
 	for _, t := range nameTransitions(entries, want.Name) {
 		if t.Entry.Seq == want.Seq {
-			return t.Transition
+			return t.Transition, src
 		}
 	}
-	return want.nameTransitionOf()
+	return want.nameTransitionOf(), src
 }

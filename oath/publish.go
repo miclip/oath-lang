@@ -34,7 +34,7 @@ type publishPlan struct {
 	Name      string `json:"name"`
 	Artifact  string `json:"artifact"`
 	Parent    string `json:"parent"`
-	ParentRev int    `json:"parent_rev"`
+	ParentRev string `json:"parent_rev"`
 	Author    string `json:"author"`
 	Op        string `json:"op"`
 	// Bytes is the exact canonical envelope that will be signed and transmitted.
@@ -51,7 +51,7 @@ func (p publishPlan) render() string {
   name        %s
   artifact    %s
   replacing   %s
-  revision    %d
+  revision    %s
   as          %s
 
 EXACT BYTES TO BE SIGNED (this is the statement, not a summary of it):
@@ -89,13 +89,13 @@ func buildPublishPlan(local *Store, endpoint, pubHex, src string) (publishPlan, 
 		return zero, pubEnvelope{}, err
 	}
 	env := pubEnvelope{Op: "put", Name: meta.Name, Artifact: h,
-		Parent: parent, ParentRev: rev, Author: pubHex}
+		Parent: parent, ParentRev: revOf(rev), Author: pubHex}
 	if err := env.validate(); err != nil {
 		return zero, pubEnvelope{}, err
 	}
 	raw := string(envelopeEncode(env))
 	return publishPlan{Name: env.Name, Artifact: env.Artifact, Parent: env.Parent,
-		ParentRev: env.ParentRev, Author: env.Author, Op: env.Op, Bytes: raw}, env, nil
+		ParentRev: env.ParentRev.String(), Author: env.Author, Op: env.Op, Bytes: raw}, env, nil
 }
 
 // elabForm dispatches a top-level form the same way apiPut does, so the client
@@ -157,9 +157,9 @@ func cmdPublish(local *Store, endpoint, keyPath, file string, dryRun, jsonOut, a
 		// A stale parent/revision is the one failure with a specific remedy, and the
 		// remedy is deliberately NOT automatic — see the file comment.
 		if newParent, newRev, rerr := remoteNameRevision(endpoint, plan.Name); rerr == nil &&
-			(newParent != plan.Parent || newRev != plan.ParentRev) {
+			(newParent != plan.Parent || fmt.Sprintf("%d", newRev) != plan.ParentRev) {
 			fmt.Printf("\nCONFLICT: %q moved while this envelope was being prepared.\n", plan.Name)
-			fmt.Printf("  signed against  parent %s (revision %d)\n", plan.Parent, plan.ParentRev)
+			fmt.Printf("  signed against  parent %s (revision %s)\n", plan.Parent, plan.ParentRev)
 			fmt.Printf("  now at          parent %s (revision %d)\n", newParent, newRev)
 			fmt.Printf("\nThe signature is still valid for the transition it describes, which is no\n")
 			fmt.Printf("longer the transition available. It has NOT been re-signed automatically:\n")

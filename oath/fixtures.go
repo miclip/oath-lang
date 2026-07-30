@@ -522,16 +522,26 @@ func writeEnvelopeVectors(write func(string, []byte) error) error {
 		env   pubEnvelope
 	}{
 		{"first publication (parent sentinel, revision 0)", pubEnvelope{Op: "put", Name: "double",
-			Artifact: strings.Repeat("11", 32), Parent: noParent, ParentRev: firstRev, Author: strings.Repeat("aa", 32)}},
+			Artifact: strings.Repeat("11", 32), Parent: noParent, ParentRev: firstRev(), Author: strings.Repeat("aa", 32)}},
 		{"repoint with a real parent", pubEnvelope{Op: "put", Name: "double",
-			Artifact: strings.Repeat("22", 32), Parent: strings.Repeat("11", 32), ParentRev: 1, Author: strings.Repeat("bb", 32)}},
+			Artifact: strings.Repeat("22", 32), Parent: strings.Repeat("11", 32), ParentRev: revOf(1), Author: strings.Repeat("bb", 32)}},
 		{"namespaced name, multi-digit revision", pubEnvelope{Op: "put", Name: "michael/service1/verify-webhook",
-			Artifact: strings.Repeat("33", 32), Parent: strings.Repeat("44", 32), ParentRev: 1042, Author: strings.Repeat("cc", 32)}},
+			Artifact: strings.Repeat("33", 32), Parent: strings.Repeat("44", 32), ParentRev: revOf(1042), Author: strings.Repeat("cc", 32)}},
+		// The three rules the §8 amendment newly specified were exactly the three no
+		// vector exercised — prose added in response to an audit is especially likely
+		// to need a fixture immediately, because nothing has ever tested it.
+		{"name containing '=' (lines split at the FIRST '=')", pubEnvelope{Op: "put", Name: "eq=name",
+			Artifact: strings.Repeat("55", 32), Parent: noParent, ParentRev: firstRev(), Author: strings.Repeat("dd", 32)}},
+		{"non-ASCII name (octets are UTF-8, emitted literally)", pubEnvelope{Op: "put", Name: "café/λ-fold",
+			Artifact: strings.Repeat("66", 32), Parent: noParent, ParentRev: firstRev(), Author: strings.Repeat("ee", 32)}},
+		{"parent_rev beyond 2^64 (arbitrary precision, not a machine word)", pubEnvelope{Op: "put", Name: "deep",
+			Artifact: strings.Repeat("77", 32), Parent: strings.Repeat("88", 32),
+			ParentRev: bigRev("340282366920938463463374607431768211457"), Author: strings.Repeat("ff", 32)}},
 	}
 	for _, c := range canon {
 		octets := envelopeEncode(c.env)
 		back, err := envelopeParse(octets)
-		if err != nil || back != c.env {
+		if err != nil || !back.equal(c.env) {
 			return fmt.Errorf("canonical envelope vector %q does not round-trip through this kernel: %v", c.label, err)
 		}
 		if err := emit(map[string]any{"kind": "canonical", "label": c.label,
@@ -591,7 +601,7 @@ func writeEnvelopeVectors(write func(string, []byte) error) error {
 	pubHex := hex.EncodeToString(priv.Public().(ed25519.PublicKey))
 
 	env := pubEnvelope{Op: "put", Name: "double", Artifact: strings.Repeat("55", 32),
-		Parent: strings.Repeat("66", 32), ParentRev: 7, Author: pubHex}
+		Parent: strings.Repeat("66", 32), ParentRev: revOf(7), Author: pubHex}
 	octets := envelopeEncode(env)
 	sig, err := envelopeSign(priv, env)
 	if err != nil {
@@ -625,7 +635,7 @@ func writeEnvelopeVectors(write func(string, []byte) error) error {
 		{"name", func(e *pubEnvelope) { e.Name = "other" }},
 		{"artifact", func(e *pubEnvelope) { e.Artifact = strings.Repeat("99", 32) }},
 		{"parent", func(e *pubEnvelope) { e.Parent = strings.Repeat("77", 32) }},
-		{"parent_rev", func(e *pubEnvelope) { e.ParentRev = 8 }},
+		{"parent_rev", func(e *pubEnvelope) { e.ParentRev = revOf(8) }},
 		{"author", func(e *pubEnvelope) { e.Author = strings.Repeat("dd", 32) }},
 	} {
 		bad := env
@@ -650,6 +660,50 @@ func writeEnvelopeVectors(write func(string, []byte) error) error {
 		}
 	}
 
+	// §8.6.4a vectors. This section previously had NONE, which is how a blind
+	// implementation could pass every vector while using a permissive Ed25519 library
+	// that ignored the convention entirely. Each is self-validated below.
+	//
+	// MALLEABILITY: S+L is a second encoding of the same signature. Accepting it would
+	// mean two distinct byte strings both "the author's signature" over one statement,
+	// which contradicts the envelope being a singular statement.
+	sigBytes, _ := hex.DecodeString(sig)
+	malleable := append([]byte(nil), sigBytes...)
+	// L = 2^252 + 27742317777372353535851937790883648493, little-endian.
+	order := []byte{0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c, 0xf7, 0xa2,
+		0xde, 0xf9, 0xde, 0x14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10}
+	var carry uint16
+	for i := 0; i < 32; i++ {
+		v := uint16(malleable[32+i]) + uint16(order[i]) + carry
+		malleable[32+i] = byte(v & 0xff)
+		carry = v >> 8
+	}
+	malHex := hex.EncodeToString(malleable)
+	if envelopeVerify(env, malHex) == nil {
+		return fmt.Errorf("malleability vector VERIFIES: a non-canonical S is being accepted, so one statement has two valid signatures")
+	}
+	if err := emit(map[string]any{"kind": "signature", "label": "non-canonical S (S+L malleability)",
+		"octets_b64": encodeEnvelopeB64(octets), "author_pubkey": pubHex, "author_sig": malHex,
+		"verdict": "reject",
+		"reason":  "S MUST be canonical (< L); S+L is a second encoding of one signature (SPEC §8.6.4a)"}); err != nil {
+		return err
+	}
+
+	// SMALL-ORDER KEY: the identity point. Signatures under it verify for parties who
+	// do not hold it, so it cannot carry an authorship claim.
+	weak := env
+	weak.Author = strings.Repeat("00", 32)
+	weakOct := []byte(strings.Replace(string(octets), "author="+pubHex, "author="+weak.Author, 1))
+	if envelopeVerify(weak, sig) == nil {
+		return fmt.Errorf("small-order key vector VERIFIES: the identity point is being accepted as an author")
+	}
+	if err := emit(map[string]any{"kind": "signature", "label": "small-order author key (identity point)",
+		"octets_b64": encodeEnvelopeB64(weakOct), "author_pubkey": weak.Author, "author_sig": sig,
+		"verdict": "reject",
+		"reason":  "a small-order A MUST be rejected: signatures under it verify for parties who do not hold the key (SPEC §8.6.4a)"}); err != nil {
+		return err
+	}
+
 	// Byte-level alternate spellings of the STORED field: same octets, different text.
 	for _, alt := range []struct{ label, b64, reason string }{
 		{"envelope_b64 with leading whitespace", " " + entry.EnvelopeB64, "not standard padded base64"},
@@ -665,4 +719,15 @@ func writeEnvelopeVectors(write func(string, []byte) error) error {
 	}
 
 	return write(filepath.Join("envelope", "vectors.jsonl"), []byte(out.String()))
+}
+
+// bigRev parses a decimal revision for fixture construction, panicking on a literal
+// this file got wrong — a malformed constant must fail generation loudly rather than
+// emit a vector nobody can reproduce.
+func bigRev(dec string) *big.Int {
+	v, ok := new(big.Int).SetString(dec, 10)
+	if !ok {
+		panic("fixture revision literal is not decimal: " + dec)
+	}
+	return v
 }

@@ -1437,9 +1437,21 @@ fixtures are external to the hashed definition.
 Append-only, one JSON object per line: `seq`, `time` (RFC3339 UTC),
 `author` (principal string, self-reported in local mode), `verifier`
 (kernel version string), `name`, `kind`, `status`
-(`accepted`|`falsified`|`rejected`|`blocked` (repoint refused by store policy; object stored, name unchanged)|`pending` (repoint DEFERRED awaiting an out-of-band proof under a `require_proven` policy (§8.5); object stored, name unchanged until a verification worker resolves it to `accepted` or `blocked`)), `hash`, `prev` (on repoint), `error`,
-`guarantee`, `termination`, `context`, `pubkey` (optional; §8.2), `sig`
-(optional; §8.2), `chain`. Every submission attempt MUST
+(`accepted`|`falsified`|`rejected`|`blocked` (repoint refused by store policy; object stored, name unchanged)|`pending` (repoint DEFERRED awaiting an out-of-band proof under a `require_proven` policy (§8.5); object stored, name unchanged until a verification worker resolves it to `accepted` or `blocked`)), `hash`, `prev` (previous binding; §8.2), `error`,
+`guarantee`, `termination`, `context`, `pubkey` (optional; §8.4), `sig`
+(optional; §8.4), `envelope_b64`, `author_pubkey`, `author_sig` (the author's
+publication statement; optional, all-or-none; §8.6.3), `name_transition`
+(`applied`|`unchanged`|`none`; §8.6.2), `chain`.
+
+The exact member ORDER, the omission rule, and string escaping are normative — see
+§8.2.1. This list names the members; §8.2.1 fixes their bytes.
+
+Note that `prev` is the previous binding on EVERY publication of an existing name,
+including one that re-publishes the hash already bound; it is omitted only when the
+name did not previously exist (§8.2). Whether the binding changed is
+`name_transition`, and MUST NOT be inferred from `prev`.
+
+Every submission attempt MUST
 be journaled, including gate rejections (which store no object). A cross-check
 (§6.4) recorded to the journal uses `kind` = `cross`, status `accepted` (AGREE)
 or `falsified` (DISAGREE), with the two cross-checked object hashes carried in
@@ -2102,6 +2114,25 @@ Three record kinds, each keyed by `kind`:
 
 Keys are derived from `seed_b64`. Signing is deterministic (§8.6.4a), so a
 signature is a function of seed and octets.
+
+Coverage is stated here because a vector suite that silently under-covers reads as
+conformance it has not established. Round two of the blind-implementation exercise
+passed every vector while three defects survived in the prose, and the three rules
+§8 had most recently added were exactly the three nothing exercised — prose written
+in response to an audit is the most likely to lack a fixture, because nothing has
+ever run against it.
+
+Currently witnessed: §8.6.1's encoding and every rejection rule; §8.6.2's revision
+arithmetic; §8.6.3's base64 dialect including non-canonical spellings; §8.6.4's
+five verification clauses via tamper records; §8.6.4a's canonical-`S` and
+small-order-key rules.
+
+Currently NOT witnessed, and stated so rather than left to be discovered: the three
+store-side MUSTs of §8.6.4 (authenticated-principal binding, artifact recomputation,
+parent/revision currency) have no fixture shape, because expressing them needs a
+journal-plus-request vector rather than a single record. Half of §8.6's normative
+weight is store-side, and a kernel can pass every vector here without implementing
+any of it.
 
 ## 11. Campaign identity (normative, #74)
 

@@ -39,7 +39,7 @@ func TestAuthorStatementGate(t *testing.T) {
 		st := newMemStoreForTest(t)
 		h := artifactHashOf(t, st, gateSrc)
 		env := pubEnvelope{Op: "put", Name: "dbl", Artifact: h,
-			Parent: noParent, ParentRev: firstRev, Author: pubHex}
+			Parent: noParent, ParentRev: firstRev(), Author: pubHex}
 		sig, err := envelopeSign(priv, env)
 		if err != nil {
 			t.Fatal(err)
@@ -92,7 +92,7 @@ func TestAuthorStatementGate(t *testing.T) {
 		{"signature does not verify", func(e *pubEnvelope) { e.Artifact = strings.Repeat("9", 64) }, false, "does not verify"},
 		{"signed a different name", func(e *pubEnvelope) { e.Name = "other" }, true, "signed name"},
 		{"signed a different artifact", func(e *pubEnvelope) { e.Artifact = strings.Repeat("8", 64) }, true, "submitted content hashes to"},
-		{"claims a parent on a fresh name", func(e *pubEnvelope) { e.Parent, e.ParentRev = strings.Repeat("7", 64), 2 }, true, "currently points at"},
+		{"claims a parent on a fresh name", func(e *pubEnvelope) { e.Parent, e.ParentRev = strings.Repeat("7", 64), revOf(2) }, true, "currently points at"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st, env, sig := build(t)
@@ -170,7 +170,7 @@ func TestRejectedAttemptDoesNotDisturbRevision(t *testing.T) {
 
 	h := artifactHashOf(t, st, gateSrc)
 	honest := pubEnvelope{Op: "put", Name: "dbl", Artifact: h,
-		Parent: noParent, ParentRev: firstRev, Author: pubHex}
+		Parent: noParent, ParentRev: firstRev(), Author: pubHex}
 	sig, err := envelopeSign(priv, honest)
 	if err != nil {
 		t.Fatal(err)
@@ -183,7 +183,7 @@ func TestRejectedAttemptDoesNotDisturbRevision(t *testing.T) {
 	bogusSig, _ := envelopeSign(priv, bogus)
 	_, _ = apiPutSigned(st, gateSrc, pubHex, "", &pubAuth{Bytes: bogusRaw, Sig: bogusSig, Pubkey: pubHex})
 
-	if p, r := nameRevision(st, "dbl"); p != noParent || r != firstRev {
+	if p, r := nameRevision(st, "dbl"); p != noParent || r != 0 {
 		t.Fatalf("a rejected attempt disturbed the transition: parent=%s rev=%d", p, r)
 	}
 	// ...and the envelope prepared BEFORE it must still be accepted.
@@ -207,7 +207,7 @@ func TestSameHashRepublicationKeepsJournalValid(t *testing.T) {
 		t.Helper()
 		parent, rev := nameRevision(st, "dbl")
 		env := pubEnvelope{Op: "put", Name: "dbl", Artifact: artifactHashOf(t, st, gateSrc),
-			Parent: parent, ParentRev: rev, Author: pubHex}
+			Parent: parent, ParentRev: revOf(rev), Author: pubHex}
 		sig, err := envelopeSign(priv, env)
 		if err != nil {
 			t.Fatal(err)

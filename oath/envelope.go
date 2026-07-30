@@ -67,7 +67,7 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
-	"strconv"
+	"math/big"
 	"strings"
 )
 
@@ -76,7 +76,12 @@ import (
 const envelopeVersion = "oath-publish/1"
 
 // firstRev is the revision of a name that has never been published.
-const firstRev = 0
+func firstRev() *big.Int { return big.NewInt(0) }
+
+// revOf lifts the kernel's local counter into the envelope's arbitrary-precision
+// form. Local counts are bounded by the journal that produced them; envelope values
+// are not.
+func revOf(n int) *big.Int { return big.NewInt(int64(n)) }
 
 // noParent marks a first publication — a name that pointed at nothing. Empty
 // would also be unambiguous here (the encoding is fixed-key), but an explicit
@@ -91,10 +96,21 @@ type pubEnvelope struct {
 	Name     string // full (namespaced) name the artifact is published under
 	Artifact string // content hash of the definition
 	Parent   string // hash the name pointed at before, or noParent
-	// ParentRev is how many times the name had ALREADY been accepted before this
-	// publication: a per-name monotonic counter. It is what makes the replay
+	// ParentRev is how many state transitions the name had ALREADY undergone before
+	// this publication: a per-name monotonic counter. It is what makes the replay
 	// defence survive ABA, since a revision never repeats even when a hash does.
-	ParentRev int
+	//
+	// ARBITRARY PRECISION, not a machine word. §8.6.1 forbids a machine-word limit
+	// because a bounded parser would declare a valid historical statement MALFORMED
+	// rather than merely unsupported — an envelope is a permanent record, and a
+	// verifier that cannot read one cannot say anything about it. This also matches
+	// the kernel's existing stance on numbers, where Int is ℤ rather than a width.
+	//
+	// The kernel's own counter (nameRevision) stays a machine int: it counts entries
+	// in a journal it holds, so it is bounded by what physically exists. The
+	// asymmetry is deliberate — the WIRE format must accept any valid statement, the
+	// local counter need only count real events.
+	ParentRev *big.Int
 	Author    string // hex Ed25519 public key of the signer
 }
 
@@ -116,7 +132,7 @@ func envelopeEncode(e pubEnvelope) []byte {
 		{"name", e.Name},
 		{"artifact", e.Artifact},
 		{"parent", e.Parent},
-		{"parent_rev", strconv.Itoa(e.ParentRev)},
+		{"parent_rev", e.ParentRev.String()},
 		{"author", e.Author},
 	} {
 		b.WriteString(kv[0])
@@ -160,14 +176,17 @@ func (e pubEnvelope) validate() error {
 	if e.Parent != noParent && !isHash(e.Parent) {
 		return fmt.Errorf("envelope parent %q is neither a content hash nor %q", e.Parent, noParent)
 	}
-	if e.ParentRev < 0 {
-		return fmt.Errorf("envelope parent_rev %d is negative", e.ParentRev)
+	if e.ParentRev == nil {
+		return fmt.Errorf("envelope parent_rev is absent")
+	}
+	if e.ParentRev.Sign() < 0 {
+		return fmt.Errorf("envelope parent_rev %s is negative", e.ParentRev)
 	}
 	// A first publication must agree with itself: no parent hash and no prior
 	// revisions are the same statement, and allowing them to disagree would let an
 	// envelope claim a name was fresh while pointing at a parent (or vice versa).
-	if (e.Parent == noParent) != (e.ParentRev == firstRev) {
-		return fmt.Errorf("envelope is inconsistent: parent=%q with parent_rev=%d — a first publication has both, a repoint has neither", e.Parent, e.ParentRev)
+	if (e.Parent == noParent) != (e.ParentRev.Sign() == 0) {
+		return fmt.Errorf("envelope is inconsistent: parent=%q with parent_rev=%s — a first publication has both, a repoint has neither", e.Parent, e.ParentRev)
 	}
 	if len(e.Author) != ed25519.PublicKeySize*2 {
 		return fmt.Errorf("envelope author %q is not a 32-byte hex public key", e.Author)
@@ -277,14 +296,15 @@ func envelopeParse(b []byte) (pubEnvelope, error) {
 		}
 		vals[i] = v
 	}
-	rev, err := strconv.Atoi(vals[4])
-	if err != nil {
-		return e, fmt.Errorf("envelope parent_rev %q is not an integer", vals[4])
+	// Arbitrary precision: a bounded parse would reject a valid historical statement.
+	rev, ok := new(big.Int).SetString(vals[4], 10)
+	if !ok {
+		return e, fmt.Errorf("envelope parent_rev %q is not a decimal integer", vals[4])
 	}
-	// Reject any non-canonical spelling of the number ("03", "+3", " 3"), which
-	// would parse to the same value from different bytes.
-	if strconv.Itoa(rev) != vals[4] {
-		return e, fmt.Errorf("envelope parent_rev %q is not canonical decimal (would be %q)", vals[4], strconv.Itoa(rev))
+	// Reject any non-canonical spelling ("03", "+3", " 3"), which would parse to the
+	// same value from different bytes.
+	if rev.String() != vals[4] {
+		return e, fmt.Errorf("envelope parent_rev %q is not canonical decimal (would be %q)", vals[4], rev.String())
 	}
 	e = pubEnvelope{Op: vals[0], Name: vals[1], Artifact: vals[2], Parent: vals[3], ParentRev: rev, Author: vals[5]}
 	if err := e.validate(); err != nil {
@@ -339,4 +359,19 @@ func rejectWeakKey(pub []byte) error {
 		return fmt.Errorf("public key is the identity point (all-zero encoding): a small-order key cannot carry an authorship claim, since signatures under it verify for parties who do not hold it (SPEC §8.6.4a)")
 	}
 	return nil
+}
+
+// equal compares two envelopes by VALUE.
+//
+// Necessary because ParentRev is a *big.Int: Go's `==` on pubEnvelope compares the
+// POINTER, so two envelopes with identical revisions compare unequal while printing
+// identically — a failure that looks like a bug in whatever is being tested rather
+// than in the comparison. Anything checking envelope equality must use this.
+func (e pubEnvelope) equal(o pubEnvelope) bool {
+	if e.ParentRev == nil || o.ParentRev == nil {
+		return e.ParentRev == o.ParentRev && e.Op == o.Op && e.Name == o.Name &&
+			e.Artifact == o.Artifact && e.Parent == o.Parent && e.Author == o.Author
+	}
+	return e.Op == o.Op && e.Name == o.Name && e.Artifact == o.Artifact &&
+		e.Parent == o.Parent && e.Author == o.Author && e.ParentRev.Cmp(o.ParentRev) == 0
 }
