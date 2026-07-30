@@ -542,6 +542,124 @@ Coverage becomes a deliberate, demand-led programme (#75) rather than a
 by-product of whatever was easiest to prove. Tracking issues: #73 (this
 reframing), #74 (discovery from intent), #75 (coverage).
 
+## What belongs inside identity (2026-07-30)
+
+Licensing forced a question the project had answered implicitly and never
+stated: **which facts about an artifact belong inside its identity, and which
+belong outside it?**
+
+The decision is that licensing lives on the PUBLICATION layer, not in the
+artifact graph. The general principle it settles is broader than licensing, and
+is the reason this is an architectural record rather than a feature design.
+
+### The principle
+
+> **Content identity must not change when only human claims change.**
+
+Structure determines identity; publications make claims about that identity.
+Licenses, authorship, descriptions, repository URLs, support contacts,
+deprecation notices and security advisories are all claims ABOUT an artifact or
+a publication. None may change the artifact hash.
+
+This is the same line already drawn for refinement types (identity is SYNTACTIC,
+because semantic identity would make hashing undecidable) and for campaign
+identity (a measurement is identified by its description, not folded into the
+thing measured). Licensing is the third case, and stating the rule once is
+better than deriving it a fourth time.
+
+### Three layers that look similar and are not
+
+| layer | made by | means |
+|---|---|---|
+| **artifact** | the kernel | "this is the content" |
+| **publication** | the publisher | "I publish this artifact under this name, on these terms" |
+| **registry evidence** | the registry | "these are facts I independently derived" |
+
+A license belongs on the middle layer — not because it is "metadata", but
+because it is an ASSERTION MADE DURING PUBLICATION. That is exactly where
+authorship already lives, and the signed publication envelope (SPEC §8.6) is
+already the mechanism for binding an author's claim to a specific transition.
+
+### Why not an artifact the implementation depends on
+
+The obvious design is a `license` artifact that code depends on, so the
+dependency graph carries it. It was rejected, and the identity argument is
+decisive: **if licensing changes the artifact hash, then legal assertions become
+part of structural identity.**
+
+Three consequences follow immediately, each of which is wrong:
+
+- **Relicensing would invalidate downstream content hashes.** Apache-2.0 → BSL →
+  Apache-2.0 would fork identity three times while the code never changed, and
+  every downstream pin would break on a legal decision.
+- **Dual licensing would be inexpressible.** "MIT OR Apache-2.0" is one artifact
+  with two grants; as a dependency it becomes two different objects with
+  identical code, contradicting the invariant that structurally identical
+  definitions content-address to the SAME object.
+- **Identical code would stop being identical code**, depending on how someone
+  later chose to publish it.
+
+Licenses are also many-to-many in ways code is not: `MIT OR Apache-2.0`,
+`GPL-3.0 WITH Classpath-exception`. Those are publication TERMS, not properties
+of the bytes. Keeping them outside identity makes that natural rather than
+something the type system has to be bent around.
+
+### Licensing itself has two layers, and they are the ClaimedGuarantee split
+
+**Publisher assertion** — "I license this publication under Apache-2.0." Signed,
+historical, immutable. The legal intent stays with the author.
+
+**Registry evaluation** — "given these dependency licenses, this publication
+satisfies policy X." Derived, recomputed, and versioned as the policy engine
+improves.
+
+This is precisely the split the registry already makes between a claimed
+guarantee and a re-derived one. The publisher asserts; the registry derives
+compatibility, inheritance through the dependency closure, conflicts, and
+whether a composition satisfies a requested policy.
+
+### The mechanism already exists
+
+Nothing here needs new machinery, which is a good sign the layering is right:
+
+- the **signed envelope** already binds author, name, artifact and parent, so a
+  license assertion is signed publication evidence by construction;
+- **license history** is a sequence of name transitions. Apache → BSL → Apache is
+  unambiguous because `parent` and `parent_rev` distinguish the second Apache
+  publication from the first — the ABA protection built for replay defence turns
+  out to be exactly what a licensing history needs;
+- the **dependency closure is already exact and by hash**, which is what makes
+  transitive license evaluation possible at all. This is the part a
+  repository-centric platform cannot do: it stores code and attaches a license,
+  but has no verified dependency graph to reason over.
+
+### Vocabulary: not PROVEN
+
+License compatibility over a finite lattice of grants is **decidable by
+evaluation**, not proved over unbounded inputs. It is a derived verdict of the
+same kind as `termination` or `confinement`, and it MUST NOT reuse `PROVEN`,
+which in this system means machine-checked by an SMT solver over all inputs.
+Overloading that word here would be the same overclaim the authorship ladder
+exists to prevent. A separate vocabulary — LICENSE EVALUATION: compatible /
+incompatible / undetermined — keeps the two apart.
+
+### The failure mode that is different in kind
+
+A wrong `tested` verdict costs a reader a bug. A wrong "commercial use: yes"
+costs them a lawsuit.
+
+So the machine semantics must be visibly a MODEL — contributed, reviewable,
+versioned and fallible — never an authority. SPDX supplies identifiers, not
+semantics; the semantics layer is Oath's own and carries Oath's own
+fallibility. That belongs on the face of any surface that reports it, not in a
+footnote, and it is the one place in this system where the honest-limitations
+discipline protects against legal harm rather than technical error.
+
+The corollary, and the answer to most of the policy questions in #97: a
+signature is provenance, a proof is evidence, and a registry entry is
+publication — not a licence, and not a transfer. Each is a different claim, and
+the whole discipline of this project is not conflating claims.
+
 ## Why the kernel is written in a human language
 
 The kernel is the root of trust — the one component that cannot be verified
