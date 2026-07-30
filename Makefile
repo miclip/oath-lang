@@ -122,6 +122,15 @@ conformance-score:
 # cannot drift the way "99 fully proven (299 properties)" did while the real figures
 # were 123 and 348/427. A reworded sentence FAILS rather than silently dropping out of
 # coverage.
+# FIXTURE INTEGRITY. Every committed fixture must have one reproducible producer, one
+# unambiguous identity, and this check that the tree is exactly the producers' output.
+# Generation goes to a CLEAN temp dir and the COMPLETE tree is compared both ways —
+# comparing only known paths finds files that changed but never files the generator
+# stopped emitting, which stay committed forever and misrepresent the corpus.
+.PHONY: check-fixtures
+check-fixtures:
+	@python3 scripts/check-fixture-integrity.py
+
 .PHONY: check-doc-numbers
 check-doc-numbers:
 	@python3 scripts/check-doc-numbers.py
