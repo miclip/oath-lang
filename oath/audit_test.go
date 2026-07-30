@@ -99,3 +99,67 @@ func TestVerifyLogAllowsUnauthoredEntries(t *testing.T) {
 		t.Fatalf("an unsigned entry must verify (it attests to nothing, but it is not corrupt): %v", err)
 	}
 }
+
+// A REFUSED publication must be journallable with its envelope. §8 requires every
+// attempt to be journalled; a refused attempt records the state that caused the
+// refusal, so its `prev` names the CURRENT binding while its envelope names the stale
+// one it was signed against. Checking §8.6.4(5) unscoped would make the honest record
+// of a correct refusal fail the journal — the round-one §8.2 defect one layer up.
+func TestRefusedAttemptWithEnvelopeStillVerifies(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	pubHex := hex.EncodeToString(pub)
+	st := newMemStoreForTest(t)
+
+	// An envelope signed against a parent that is NOT what the entry records.
+	env := pubEnvelope{Op: "put", Name: "n", Artifact: strings.Repeat("a", 64),
+		Parent: strings.Repeat("b", 64), ParentRev: revOf(1), Author: pubHex}
+	sig, err := envelopeSign(priv, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendLog(&LogEntry{
+		Author: pubHex, Name: "n", Kind: "func", Status: "rejected",
+		Hash: strings.Repeat("c", 64), Prev: strings.Repeat("d", 64),
+		Error:          "stale parent",
+		EnvelopeB64:    encodeEnvelopeB64(envelopeEncode(env)),
+		AuthorPubkey:   pubHex,
+		AuthorSig:      sig,
+		NameTransition: transitionNone,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.VerifyLog(); err != nil {
+		t.Fatalf("journalling a REFUSED attempt with its envelope broke the journal: %v\n"+
+			"clause 5 must be scoped to entries that applied a transition", err)
+	}
+
+	// A gate rejection carries no hash at all and must also be journallable.
+	if err := st.AppendLog(&LogEntry{
+		Author: pubHex, Name: "m", Kind: "func", Status: "rejected",
+		Error:          "did not elaborate",
+		EnvelopeB64:    encodeEnvelopeB64(envelopeEncode(env)),
+		AuthorPubkey:   pubHex,
+		AuthorSig:      sig,
+		NameTransition: transitionNone,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.VerifyLog(); err != nil {
+		t.Fatalf("a gate rejection carrying an envelope broke the journal: %v", err)
+	}
+
+	// But an APPLIED entry disagreeing with its envelope must STILL fail hard.
+	if err := st.AppendLog(&LogEntry{
+		Author: pubHex, Name: "n", Kind: "func", Status: "accepted",
+		Hash: strings.Repeat("9", 64), Prev: strings.Repeat("b", 64),
+		EnvelopeB64:    encodeEnvelopeB64(envelopeEncode(env)),
+		AuthorPubkey:   pubHex,
+		AuthorSig:      sig,
+		NameTransition: transitionApplied,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.VerifyLog(); err == nil {
+		t.Fatal("an APPLIED entry whose artifact disagrees with its envelope was accepted: scoping clause 5 must not disable it")
+	}
+}

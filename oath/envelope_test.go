@@ -339,3 +339,45 @@ func TestEnvelopeRejectsEverySmallOrderAuthor(t *testing.T) {
 		}
 	}
 }
+
+// The UNIVERSAL FORGERY the small-order rule exists to stop, and the proof that a
+// partial blocklist was worse than useless.
+//
+// A = identity, R = identity, S = 0 satisfies [S]B = R + [k]A for ANY message: [0]B is
+// the identity, and identity + [k]identity is the identity. No private key is involved.
+// Go's crypto/ed25519 accepts it, verified directly.
+//
+// The earlier partial check blocked only the ALL-ZERO encoding — which is y=0, a point
+// of order 4, and which does NOT admit this forgery. So it rejected a key nobody could
+// exploit while accepting the one anybody could. A blocklist covering the wrong subset
+// is not partial protection; it is the appearance of protection.
+func TestUniversalForgeryUnderIdentityKeyIsRejected(t *testing.T) {
+	ident := make([]byte, 32)
+	ident[0] = 0x01 // the identity point. NOT all-zeros — that is order 4.
+
+	forged := make([]byte, 64)
+	copy(forged[:32], ident) // R = identity, S = 0
+
+	// Baseline: the raw primitive accepts it, for any message. If this ever stops
+	// being true the test below is no longer proving anything.
+	if !ed25519.Verify(ed25519.PublicKey(ident), []byte("anything"), forged) {
+		t.Skip("the underlying primitive no longer accepts this forgery; the rule is enforced elsewhere")
+	}
+
+	// The kernel must refuse the KEY, before any signature arithmetic.
+	if err := rejectWeakKey(ident); err == nil {
+		t.Fatal("the identity key was accepted: a universal forgery is possible under it")
+	}
+	// And the all-zero (order 4) key must also be refused — it is small-order even
+	// though it does not admit this particular forgery.
+	if err := rejectWeakKey(make([]byte, 32)); err == nil {
+		t.Fatal("the all-zero (order 4) key was accepted")
+	}
+
+	// End to end: an envelope naming the identity as author must not verify.
+	e := testEnvelope()
+	e.Author = hex.EncodeToString(ident)
+	if err := envelopeVerify(e, hex.EncodeToString(forged)); err == nil {
+		t.Fatal("envelope verified under a universally forgeable identity key")
+	}
+}

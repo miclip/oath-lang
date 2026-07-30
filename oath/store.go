@@ -730,20 +730,34 @@ func (s *Store) VerifyLog() error {
 			// disagreement means the registry recorded a transition the author did not
 			// sign. That is precisely the substitution this record exists to prevent,
 			// so it is a hard failure rather than a warning.
-			parent := e.Prev
-			if parent == "" {
-				parent = noParent
-			}
-			for _, m := range []struct {
-				what, signed, recorded string
-			}{
-				{"name", env.Name, e.Name},
-				{"artifact", env.Artifact, e.Hash},
-				{"parent", env.Parent, parent},
-			} {
-				if m.signed != m.recorded {
-					return fmt.Errorf("journal line %d: the author signed %s=%q but the entry records %q — the registry recorded a transition its author did not sign",
-						line, m.what, m.signed, m.recorded)
+			// Clause 5 (§8.6.4) applies ONLY to an entry that APPLIED a transition.
+			//
+			// A refused attempt legitimately records the state that caused the refusal —
+			// a `prev` naming the current binding while the envelope names the stale one
+			// it was signed against — so checking it unscoped would make the honest
+			// record of a correct refusal fail the journal. A gate rejection is worse
+			// still: it carries no `hash`, while `artifact` must be 64 hex, so the clause
+			// could never hold.
+			//
+			// Scoped with an `if` rather than a `continue`: continuing would skip to the
+			// next entry and bypass this entry's CHAIN verification too, silently
+			// weakening tamper-evidence in the name of narrowing one clause.
+			if e.nameTransitionOf() == transitionApplied {
+				parent := e.Prev
+				if parent == "" {
+					parent = noParent
+				}
+				for _, m := range []struct {
+					what, signed, recorded string
+				}{
+					{"name", env.Name, e.Name},
+					{"artifact", env.Artifact, e.Hash},
+					{"parent", env.Parent, parent},
+				} {
+					if m.signed != m.recorded {
+						return fmt.Errorf("journal line %d: the author signed %s=%q but the entry records %q — the registry recorded a transition its author did not sign",
+							line, m.what, m.signed, m.recorded)
+					}
 				}
 			}
 		}

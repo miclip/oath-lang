@@ -692,18 +692,55 @@ func writeEnvelopeVectors(write func(string, []byte) error) error {
 		return err
 	}
 
-	// SMALL-ORDER KEY: the identity point. Signatures under it verify for parties who
-	// do not hold it, so it cannot carry an authorship claim.
-	weak := env
-	weak.Author = strings.Repeat("00", 32)
-	weakOct := []byte(strings.Replace(string(octets), "author="+pubHex, "author="+weak.Author, 1))
-	if envelopeVerify(weak, sig) == nil {
-		return fmt.Errorf("small-order key vector VERIFIES: the identity point is being accepted as an author")
+	// SMALL-ORDER KEY. This vector previously used the all-zero encoding, described it
+	// as the identity point, and paired it with a signature made under a REAL key —
+	// three mistakes compounding into a vector that constrained nothing:
+	//
+	//   - all-zeros is y=0, a point of ORDER 4. The identity is 0100…00. The
+	//     derivation script prints the orders and I mislabelled it anyway;
+	//   - a real key's signature fails the curve equation under any other key, so a
+	//     verifier with NO small-order rule at all returns `reject` and passes;
+	//   - and the order-4 key does not admit the forgery the rule exists to stop.
+	//
+	// The witnessing vector is a closed form needing no private key and no curve code:
+	// A = identity, R = identity, S = 0 satisfies [S]B = R + [k]A for ANY message,
+	// because [0]B is the identity and identity + [k]identity is the identity. Go's
+	// crypto/ed25519 accepts it. Only the small-order rule stops it, so a kernel
+	// lacking that rule now FAILS this vector instead of passing it.
+	identKey := make([]byte, ed25519.PublicKeySize)
+	identKey[0] = 0x01
+	identHex := hex.EncodeToString(identKey)
+	forged := make([]byte, ed25519.SignatureSize)
+	copy(forged[:32], identKey) // R = identity, S = 0
+	forgedHex := hex.EncodeToString(forged)
+	identEnv := env
+	identEnv.Author = identHex
+	identOct := envelopeEncode(identEnv)
+	if envelopeVerify(identEnv, forgedHex) == nil {
+		return fmt.Errorf("universal-forgery vector VERIFIES: the identity key is accepted as an author, so any party can forge under it")
 	}
-	if err := emit(map[string]any{"kind": "signature", "label": "small-order author key (identity point)",
-		"octets_b64": encodeEnvelopeB64(weakOct), "author_pubkey": weak.Author, "author_sig": sig,
+	// Self-check that the vector is not vacuous: the raw primitive MUST accept this,
+	// or the vector would pass for reasons unrelated to the rule.
+	if !ed25519.Verify(ed25519.PublicKey(identKey), []byte("anything"), forged) {
+		return fmt.Errorf("universal-forgery vector is vacuous: the primitive rejects it for unrelated reasons, so it does not witness the small-order rule")
+	}
+	if err := emit(map[string]any{"kind": "signature", "label": "small-order author key (identity) with a universal forgery",
+		"octets_b64": encodeEnvelopeB64(identOct), "author_pubkey": identHex, "author_sig": forgedHex,
 		"verdict": "reject",
-		"reason":  "a small-order A MUST be rejected: signatures under it verify for parties who do not hold the key (SPEC §8.6.4a)"}); err != nil {
+		"reason":  "A = identity with R = identity and S = 0 satisfies the verification equation for ANY message with no private key; ONLY the §8.6.4a small-order rule refuses it, so a kernel without that rule fails this vector"}); err != nil {
+		return err
+	}
+	// And an order-4 small-order key, so the rule is witnessed beyond the identity.
+	order4 := strings.Repeat("00", 32)
+	o4Env := env
+	o4Env.Author = order4
+	if envelopeVerify(o4Env, sig) == nil {
+		return fmt.Errorf("order-4 key vector VERIFIES")
+	}
+	if err := emit(map[string]any{"kind": "signature", "label": "small-order author key (order 4, y=0)",
+		"octets_b64": encodeEnvelopeB64(envelopeEncode(o4Env)), "author_pubkey": order4, "author_sig": sig,
+		"verdict": "reject",
+		"reason":  "y=0 is a point of order 4 — small-order regardless of whether it admits a forgery (SPEC §8.6.4a)"}); err != nil {
 		return err
 	}
 

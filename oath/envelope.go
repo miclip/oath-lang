@@ -335,8 +335,15 @@ func bytesEqual(a, b []byte) bool {
 //
 // SPEC §8.6.4a requires small-order `A` to be rejected: with such a key the
 // verification equation degenerates and signatures verify for parties who do not
-// hold it, so an "author" would be unforgeable in name only. For A = identity the
-// equation collapses to [S]B = R and a forgery needs only curve arithmetic.
+// hold it, so an "author" would be unforgeable in name only.
+//
+// The exploitable case is concrete rather than theoretical: with A = the IDENTITY
+// point (encoded 0100…00 — NOT all-zeros, which is y=0 and has order 4), the choice
+// R = identity, S = 0 satisfies [S]B = R + [k]A for ANY message, with no private key.
+// Go's crypto/ed25519 accepts it. An earlier partial version of this check blocked
+// only the all-zero encoding, so it refused a key nobody could exploit while
+// accepting the one anybody could — the appearance of protection rather than partial
+// protection.
 //
 // A BLOCKLIST, not arithmetic. The eight points of order dividing 8 have fixed
 // encodings, so membership is a byte comparison — no curve code, and the default

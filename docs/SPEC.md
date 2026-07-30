@@ -1899,20 +1899,14 @@ against that running value.
 > which proved it from the pre-amendment §8.2 text quoted in §8.2's own amendment
 > note.
 
-A revision MUST be monotonic per name and MUST NOT be reused. Names in this
-version are only ever repointed, never deleted, so an unresolvable name is one
-that was never published (`parent=-`, `parent_rev=0`). An implementation that adds
-deletion MUST NOT allow a revision to reset, or every historical envelope for a
-recreated name becomes replayable; a tombstone retaining the revision, never
-reusing a deleted name, or a permanent name epoch inside the envelope are the safe
-designs.
-
 A revision MUST be monotonic per name and MUST NOT be reused. This is what makes
-replay protection survive an A→B→A cycle, where a `parent` hash alone becomes
-valid again. Names in this version are only ever repointed, never deleted, so an
+replay protection survive an A→B→A cycle, where a `parent` hash alone becomes valid
+again. Names in this version are only ever repointed, never deleted, so an
 unresolvable name is one that was never published (`parent=-`, `parent_rev=0`). An
 implementation that adds deletion MUST NOT allow a revision to reset, or every
-historical envelope for a recreated name becomes replayable.
+historical envelope for a recreated name becomes replayable; a tombstone retaining
+the revision, never reusing a deleted name, or a permanent name epoch inside the
+envelope are the safe designs.
 
 #### 8.6.3 Journal fields
 
@@ -1963,8 +1957,24 @@ A verifier MUST, for every entry where any of `envelope_b64`, `author_pubkey`,
 4. `author_sig` is a valid signature under `author_pubkey` over the octets
    **decoded from** `envelope_b64` — not over a re-encoding of the parsed
    envelope, and not over the base64 text;
-5. the envelope's `name`, `artifact`, and `parent` equal the entry's `name`,
-   `hash`, and `prev` respectively, where an empty `prev` corresponds to `-`.
+5. **for an entry whose `name_transition` is `applied`**, the envelope's `name`,
+   `artifact`, and `parent` equal the entry's `name`, `hash`, and `prev`
+   respectively, where an empty `prev` corresponds to `-`.
+
+> Clause 5 was previously UNSCOPED, which made it impossible to journal a refused
+> publication honestly. §8 requires every submission attempt to be journalled and
+> §8.6.4 says a failed attempt SHOULD be, but a refused attempt records the state
+> that caused the refusal — a `prev` naming the current binding while the envelope
+> names the stale one it was signed against. Unscoped, clause 5 then rejects the
+> whole journal. Gate rejections were worse: they carry no `hash` at all, while
+> `artifact` must be 64 hex, so the clause could never hold.
+>
+> The scope follows from the clause's own rationale — "the store recorded a
+> transition its author did not sign" is a statement about an entry that RECORDED a
+> transition. An entry that applied nothing makes no such claim, and its envelope is
+> a record of what was attempted rather than of what happened. Found by an
+> independent implementation, which noted this is the round-one §8.2 defect one layer
+> up: a rule written for the accepted case, applied to every case.
 
 > This section previously named a member `envelope`, which §8.6.3 had renamed to
 > `envelope_b64`. That reading FAILS OPEN, which is why it matters more than a
@@ -2099,7 +2109,7 @@ reading the fixtures requires no knowledge of any implementation's string-litera
 syntax. A fixture format that presumes the reference language is not a cross-kernel
 fixture.
 
-Three record kinds, each keyed by `kind`:
+Four record kinds, each keyed by `kind`:
 
 - `canonical` — a structured `envelope` and the `octets_b64` it MUST encode to.
   These octets are what a signature is computed over, so one differing byte makes
@@ -2122,10 +2132,38 @@ passed every vector while three defects survived in the prose, and the three rul
 in response to an audit is the most likely to lack a fixture, because nothing has
 ever run against it.
 
-Currently witnessed: §8.6.1's encoding and every rejection rule; §8.6.2's revision
-arithmetic; §8.6.3's base64 dialect including non-canonical spellings; §8.6.4's
-five verification clauses via tamper records; §8.6.4a's canonical-`S` and
-small-order-key rules.
+> **This paragraph previously overstated coverage on four of its five clauses.** An
+> independent implementation measured the suite by disabling each normative rule in
+> turn and re-running it: **15 of 17 rules could be deleted with the suite still
+> passing.** A conformance claim is a claim like any other, and this one was not
+> derived — it was asserted from having written the vectors. The corrected statement
+> follows, and the method is the one this project already uses on specifications:
+> mutate the thing under test and see whether anything notices.
+
+Witnessed, and measured to be so: §8.6.1's encoding and its rejection rules;
+§8.6.3's base64 dialect including non-canonical spellings; §8.2.1's member order;
+§8.6.4a's canonical-`S` rule and its small-order rule (the latter only since a vector
+carrying an actual universal forgery replaced one that any rule-less verifier passed).
+
+NOT witnessed, and each is a real gap rather than an oversight:
+
+- **§8.6.2's revision arithmetic, entirely.** The vectors carry revision *values*, not
+  arithmetic. The transition table, the three-valued member, the FOLD, the KIND
+  restriction, the A→A no-op and ABA are all unexercised.
+- **Three of §8.6.4's five clauses.** Clause 1 needs an entry with a PARTIAL field set;
+  clause 3 is only distinguishable from clause 4 when a signature is valid under
+  `author_pubkey` while the envelope names someone else; clause 5 needs an entry
+  disagreeing with its envelope, and the file contains exactly one journal line — the
+  honest one.
+- **§8.2.1's escaping, §8.2.2's entry digest, §8.4's signed content, and §8's chain.**
+  There is no journal fixture family and no expected digest or chain value anywhere in
+  the tree, so two implementations can compute different publication identities and
+  both conform.
+- **The reachable majority of §8.6.1's value-character rule.** LF is unreachable from
+  the parse side, but CR, DEL and NUL are not: `name=a\rb` is seven well-formed lines
+  whose value contains a forbidden character.
+- **Cofactorless versus cofactored verification, and small-order `R`.** §8.6.4a names
+  only `A`, and no vector distinguishes the two equations.
 
 Also witnessed, via a fourth record kind: §8.6.4's three store-side MUSTs. A `store`
 record carries a `state` (what the store currently believes about the name) and a
