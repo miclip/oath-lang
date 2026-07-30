@@ -130,3 +130,61 @@ func TestAuthorStatementGate(t *testing.T) {
 		}
 	})
 }
+
+// The revision must count entries that MOVED the name, not merely accepted ones,
+// and must NOT be advanced by attempts that never repointed.
+//
+// Both halves are load-bearing. Undercounting (missing a falsified repoint) lets
+// an A→B→A cycle reuse a revision, reopening the ABA hole. Overcounting (advancing
+// on a rejected attempt) would let one invalid submission invalidate an already
+// prepared legitimate envelope, and make client and registry disagree about the
+// current parent.
+func TestNameRevisionCountsRepointsOnly(t *testing.T) {
+	for _, tc := range []struct {
+		status string
+		moves  bool
+	}{
+		{"accepted", true},
+		{"falsified", true}, // still binds the name — observed in the committed corpus
+		{"rejected", false},
+		{"blocked", false},
+		{"pending", false},
+	} {
+		e := &LogEntry{Status: tc.status}
+		if got := e.repointedName(); got != tc.moves {
+			t.Fatalf("status %q: repointedName()=%v, want %v", tc.status, got, tc.moves)
+		}
+	}
+}
+
+// End-to-end: a rejected attempt must leave the parent/revision a later honest
+// envelope was prepared against completely untouched.
+func TestRejectedAttemptDoesNotDisturbRevision(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	pubHex := hex.EncodeToString(pub)
+	st := newMemStoreForTest(t)
+
+	h := artifactHashOf(t, st, gateSrc)
+	honest := pubEnvelope{Op: "put", Name: "dbl", Artifact: h,
+		Parent: noParent, ParentRev: firstRev, Author: pubHex}
+	sig, err := envelopeSign(priv, honest)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A bogus attempt lands in the journal as rejected...
+	bogus := honest
+	bogus.Name = "elsewhere"
+	bogusRaw := string(envelopeEncode(bogus))
+	bogusSig, _ := envelopeSign(priv, bogus)
+	_, _ = apiPutSigned(st, gateSrc, pubHex, "", &pubAuth{Bytes: bogusRaw, Sig: bogusSig, Pubkey: pubHex})
+
+	if p, r := nameRevision(st, "dbl"); p != noParent || r != firstRev {
+		t.Fatalf("a rejected attempt disturbed the transition: parent=%s rev=%d", p, r)
+	}
+	// ...and the envelope prepared BEFORE it must still be accepted.
+	reps, err := apiPutSigned(st, gateSrc, pubHex, "", &pubAuth{Bytes: string(envelopeEncode(honest)), Sig: sig, Pubkey: pubHex})
+	if err != nil || len(reps) == 0 || reps[0].Status != "accepted" {
+		t.Fatalf("a previously prepared envelope was invalidated by an unrelated rejected attempt: %+v (%v)", reps, err)
+	}
+}

@@ -420,6 +420,33 @@ type LogEntry struct {
 // author label, name, kind, status, object hash, prior hash, verdicts, context —
 // independent of where the entry lands in the log. The chain seals ordering on
 // top; the signature seals authorship. (docs/registry-auth.md)
+// repointedName reports whether this entry MOVED the name it records.
+//
+// Defined in one place because two things depend on agreeing about it: the
+// per-name revision that anchors replay protection, and any future reader
+// reconstructing a name's history. Getting it wrong is quiet — an undercounted
+// revision does not fail, it just stops distinguishing an A→B→A cycle, which is
+// the one thing the revision exists to do.
+//
+// FALSIFIED ENTRIES REPOINT. A definition whose properties fail is still stored
+// and still binds its name: falsification is an honest recorded verdict, not a
+// rejection (a policy with forbid_falsified turns it into "blocked" instead, and
+// blocked does NOT move the name). The committed corpus contains falsified entries
+// carrying `prev`, so this is observed behaviour, not a hypothetical.
+//
+// rejected / blocked / pending do NOT repoint: each returns before Repoint. They
+// belong to the history of what HAPPENED, but an attempt that never moved the name
+// must not advance a revision — otherwise an invalid attempt could invalidate an
+// already-prepared legitimate envelope, or make client and registry disagree about
+// the current parent.
+func (e *LogEntry) repointedName() bool {
+	switch e.Status {
+	case "accepted", "falsified":
+		return true
+	}
+	return false
+}
+
 func signedContent(e *LogEntry) []byte {
 	c := *e
 	c.Seq = 0

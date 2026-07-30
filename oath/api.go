@@ -817,7 +817,11 @@ func querySignature(st *Store, qd *Def) string {
 func nameRevision(st *Store, name string) (string, int) {
 	rev := 0
 	for _, e := range st.ReadLog() {
-		if e.Name == name && e.Status == "accepted" {
+		// Entries that MOVED the name, which is not the same as accepted ones: a
+		// falsified definition still binds its name. Counting only "accepted" would
+		// undercount, letting an A→B→A cycle reuse a revision — reopening exactly
+		// the ABA hole the revision closes. See LogEntry.repointedName.
+		if e.Name == name && e.repointedName() {
 			rev++
 		}
 	}
