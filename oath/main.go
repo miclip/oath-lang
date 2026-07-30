@@ -189,10 +189,24 @@ func main() {
 		}
 		cmdOwnership(st, verbose)
 	case "audit":
-		if len(args) > 1 {
-			cmdAuditEntry(st, args[1])
-		} else {
+		mode, ref := "", ""
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			switch {
+			case rest[i] == "--entry" && i+1 < len(rest):
+				mode, ref = "entry", rest[i+1]
+				i++
+			case rest[i] == "--position" && i+1 < len(rest):
+				mode, ref = "position", rest[i+1]
+				i++
+			default:
+				ref = rest[i]
+			}
+		}
+		if ref == "" {
 			cmdAudit(st)
+		} else {
+			cmdAuditEntry(st, ref, mode)
 		}
 	case "migrate-store":
 		cmdMigrateStore(storeDir)
@@ -505,6 +519,12 @@ type putReport struct {
 	Ctors       int        `json:"ctors,omitempty"`
 	Error       string     `json:"error,omitempty"`
 	Props       []propJSON `json:"props,omitempty"`
+	// The identity of THIS PUBLICATION, distinct from the artifact's identity above.
+	// An artifact hash says what was published; these say which publication of it.
+	// JournalEntry is the durable address (a digest over the exact canonical journal
+	// line, so it survives copying); JournalPosition is the human-facing ordinal.
+	JournalPosition int    `json:"journal_position,omitempty"`
+	JournalEntry    string `json:"journal_entry,omitempty"`
 }
 
 type propJSON struct {

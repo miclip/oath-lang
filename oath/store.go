@@ -801,3 +801,25 @@ func strictJournalLine(raw []byte) (*LogEntry, error) {
 	}
 	return &e, nil
 }
+
+// entryDigest is the durable identity of ONE PUBLICATION: SHA-256 over the exact
+// canonical journal line.
+//
+// An artifact hash identifies CONTENT, not a publication of that content. The same
+// artifact can legitimately be published repeatedly — a same-hash re-publication is
+// a valid recorded no-op — so "the publication of hash X" is ambiguous the moment
+// there is more than one. Selecting the first or the last match is a guess about
+// what the caller meant, and it happens to be right only until it isn't.
+//
+// The digest commits to the whole canonical line, `chain` included, so it also fixes
+// the entry's position in the log: two entries identical in content but at different
+// positions have different chains and therefore different digests. An ordinal is
+// useful for humans and does not survive copying between stores; the digest does.
+func entryDigest(e *LogEntry) (string, error) {
+	line, err := canonicalJournalLine(e)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(line)
+	return hex.EncodeToString(sum[:]), nil
+}

@@ -32,6 +32,7 @@ package main
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 func cmdAudit(st *Store) {
@@ -113,19 +114,45 @@ func sortedByCount(m map[string]int) []string {
 // cmdAuditEntry prints the full verifiable record for one publication — the
 // author's signed statement and the registry's findings side by side, so a reader
 // can see which half is which. Selected by artifact hash or name.
-func cmdAuditEntry(st *Store, ref string) {
+// cmdAuditEntry prints the verifiable record for a publication.
+//
+// Three ways to address one, deliberately distinct rather than one overloaded
+// lookup: `mode` is "entry" for a journal-entry digest (the durable identity of a
+// specific publication), "position" for its ordinal, or "" for a name/artifact
+// lookup which may legitimately match SEVERAL publications. Conflating them is what
+// made an artifact-hash lookup silently stand in for a publication address.
+func cmdAuditEntry(st *Store, ref, mode string) {
 	entries := st.ReadLog()
 	var hits []LogEntry
-	for _, e := range entries {
-		if e.Hash == ref || e.Name == ref {
-			hits = append(hits, e)
+	for i := range entries {
+		e := entries[i]
+		switch mode {
+		case "entry":
+			if d, err := entryDigest(&e); err == nil && strings.HasPrefix(d, ref) {
+				hits = append(hits, e)
+			}
+		case "position":
+			if fmt.Sprintf("%d", e.Seq) == ref {
+				hits = append(hits, e)
+			}
+		default:
+			if e.Hash == ref || e.Name == ref {
+				hits = append(hits, e)
+			}
 		}
 	}
 	if len(hits) == 0 {
-		fail(fmt.Errorf("no journal entry for %q (try a name or a full artifact hash)", ref))
+		fail(fmt.Errorf("no journal entry for %q (name, artifact hash, --entry <digest> or --position <ordinal>)", ref))
+	}
+	if mode == "" && len(hits) > 1 {
+		fmt.Printf("NOTE: %q matches %d publications. An artifact hash identifies CONTENT,\n", ref, len(hits))
+		fmt.Printf("not a publication of it — address one with --entry <digest> to be exact.\n\n")
 	}
 	for _, e := range hits {
+		d, _ := entryDigest(&e)
 		fmt.Printf("── seq %d  %s  %s  %s\n", e.Seq, e.Time, e.Status, e.Name)
+		fmt.Printf("   publication %s   (this entry; --entry addresses it)\n", shortHash(d))
+		fmt.Printf("   name transition: %s\n", e.nameTransitionOf())
 		fmt.Printf("   artifact %s\n", orNone(e.Hash))
 		if e.EnvelopeB64 == "" {
 			fmt.Printf("   AUTHOR STATEMENT: none — author=%q is a label the registry recorded,\n", e.Author)

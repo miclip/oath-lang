@@ -19,6 +19,7 @@ package main
 //   MANIFEST.md           what this tree is and how to regenerate it
 
 import (
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -164,73 +165,24 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		return "", err
 	}
 	fmt.Fprintf(&log, "prove/outcomes.json: %d definitions (solver: %s)\n", len(outcomes), solver)
-	// envelope/vectors.txt — canonical publication envelopes (SPEC §8.6). A blind
-	// kernel must reproduce these bytes EXACTLY: they are what a signature covers,
-	// so a single differing byte makes every signature from that kernel unverifiable
-	// elsewhere. Cases chosen for what they pin: the first-publication sentinel and
-	// its revision-0 pairing, a repoint with a real parent, a namespaced name, and a
-	// multi-digit revision (so nobody pads it).
-	var envf strings.Builder
-	envf.WriteString("# canonical publication envelope (SPEC §8.6), one blank-line-separated block each\n")
-	envf.WriteString("# Each block is the EXACT byte sequence a signature is computed over.\n\n")
-	for _, e := range []pubEnvelope{
-		{Op: "put", Name: "double", Artifact: strings.Repeat("11", 32),
-			Parent: noParent, ParentRev: firstRev, Author: strings.Repeat("aa", 32)},
-		{Op: "put", Name: "double", Artifact: strings.Repeat("22", 32),
-			Parent: strings.Repeat("11", 32), ParentRev: 1, Author: strings.Repeat("bb", 32)},
-		{Op: "put", Name: "michael/service1/verify-webhook", Artifact: strings.Repeat("33", 32),
-			Parent: strings.Repeat("44", 32), ParentRev: 1042, Author: strings.Repeat("cc", 32)},
-	} {
-		envf.Write(envelopeEncode(e))
-		envf.WriteString("\n")
-	}
-	// Inputs a conformant kernel MUST REJECT (§8.6.1). Listed as escaped one-liners
-	// because several are only distinguishable from a valid envelope by a character
-	// that does not survive being pasted into a file.
-	envf.WriteString("# MUST REJECT — each is a distinct way to smuggle a second byte spelling\n")
-	for _, bad := range []struct{ why, bytes string }{
-		{"uppercase hex artifact", "oath-publish/1\nop=put\nname=n\nartifact=" + strings.ToUpper(strings.Repeat("ab", 32)) + "\nparent=-\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32) + "\n"},
-		{"non-canonical revision (leading zero)", "oath-publish/1\nop=put\nname=n\nartifact=" + strings.Repeat("ab", 32) + "\nparent=" + strings.Repeat("cd", 32) + "\nparent_rev=01\nauthor=" + strings.Repeat("aa", 32) + "\n"},
-		{"parent sentinel with nonzero revision", "oath-publish/1\nop=put\nname=n\nartifact=" + strings.Repeat("ab", 32) + "\nparent=-\nparent_rev=2\nauthor=" + strings.Repeat("aa", 32) + "\n"},
-		{"parent hash with revision 0", "oath-publish/1\nop=put\nname=n\nartifact=" + strings.Repeat("ab", 32) + "\nparent=" + strings.Repeat("cd", 32) + "\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32) + "\n"},
-		// Every OTHER field is valid, so this vector has exactly one reason to fail: the
-		// LF inside `name`. The earlier version used artifact=x and author=a, which
-		// failed the HEX rules instead — rejected for reasons unrelated to its label,
-		// so the injection it claimed to test was never exercised. A fixture that
-		// passes for the wrong reason is worse than a missing one: it reports coverage
-		// that does not exist.
-		//
-		// Relabelled to say what it actually establishes. On the PARSE side the LF rule
-		// is unreachable by construction — an injected LF becomes a line break, so this
-		// is caught as broken framing (8 lines, not 7), never as "a value contained an
-		// LF". The value rule proper is an ENCODER obligation and is tested there
-		// (TestEnvelopeRejectsInjection); a parse-side fixture cannot reach it.
-		{"LF in a value breaks line framing", "oath-publish/1\nop=put\nname=a\nb\nartifact=" + strings.Repeat("ab", 32) + "\nparent=-\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32) + "\n"},
-		{"reordered fields", "oath-publish/1\nname=n\nop=put\nartifact=" + strings.Repeat("ab", 32) + "\nparent=-\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32) + "\n"},
-		{"missing trailing newline", "oath-publish/1\nop=put\nname=n\nartifact=" + strings.Repeat("ab", 32) + "\nparent=-\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32)},
-		{"unknown extra field", "oath-publish/1\nop=put\nname=n\nartifact=" + strings.Repeat("ab", 32) + "\nparent=-\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32) + "\nextra=1\n"},
-		{"wrong format version", "oath-publish/2\nop=put\nname=n\nartifact=" + strings.Repeat("ab", 32) + "\nparent=-\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32) + "\n"},
-	} {
-		// SELF-VALIDATE. A fixture asserting "MUST REJECT" that this kernel accepts
-		// would ship a false obligation to a blind implementer, who has no other
-		// source to check it against. Better to fail generation than to publish it.
-		if _, perr := envelopeParse([]byte(bad.bytes)); perr == nil {
-			return "", fmt.Errorf("envelope reject fixture %q is ACCEPTED by this kernel: the fixture would assert an obligation the reference implementation does not meet", bad.why)
-		}
-		fmt.Fprintf(&envf, "reject %-40s %q\n", bad.why, bad.bytes)
-	}
-	// And the accept cases must round-trip, or the canonical bytes above are not
-	// actually what this kernel reads back.
-	for _, e := range []pubEnvelope{
-		{Op: "put", Name: "double", Artifact: strings.Repeat("11", 32),
-			Parent: noParent, ParentRev: firstRev, Author: strings.Repeat("aa", 32)},
-	} {
-		got, perr := envelopeParse(envelopeEncode(e))
-		if perr != nil || got != e {
-			return "", fmt.Errorf("envelope fixture does not round-trip through this kernel: %v", perr)
-		}
-	}
-	if err := write(filepath.Join("envelope", "vectors.txt"), []byte(envf.String())); err != nil {
+	// envelope/vectors.jsonl — the signed-publication conformance vectors (SPEC §8.6).
+	//
+	// JSONL with every octet string carried as canonical base64. That choice is the
+	// point: the previous format used Go's %q quoting, so reading it required
+	// implementing another language's string-literal rules — inside a corpus whose
+	// entire purpose is being readable by an INDEPENDENT kernel. A fixture format that
+	// presumes the reference language is not a cross-kernel fixture.
+	//
+	// Base64 also removes the representation ambiguity that made the old file lie: an
+	// octet sequence containing LFs has no unambiguous one-line text spelling, which is
+	// exactly why envelope_b64 exists in the journal.
+	//
+	// Three record kinds:
+	//   canonical  structured envelope -> the exact octets it MUST encode to
+	//   reject     octets a conformant parser MUST refuse, with the reason
+	//   signature  the WHOLE path: envelope, octets, envelope_b64, key, signature,
+	//              canonical journal line, and the expected verdict
+	if err := writeEnvelopeVectors(write); err != nil {
 		return "", err
 	}
 
@@ -517,12 +469,15 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
 6. prove/outcomes.json match, given the same solver version.
 7. campaign/vectors.txt digests reproduce (SPEC §11) — measurement identity,
    derivable without running a measurement.
-8. envelope/vectors.txt bytes reproduce EXACTLY, and every "reject" line is
-   rejected (SPEC §8.6). These are what a publication signature is computed over,
-   so one differing byte makes signatures from that kernel unverifiable elsewhere.
+8. envelope/vectors.jsonl (SPEC §8.6): every "canonical" record's octets reproduce
+   EXACTLY, every "reject" record is refused, and every "signature" record verifies
+   or fails as its verdict says. These octets are what a publication signature is
+   computed over, so one differing byte makes signatures from that kernel
+   unverifiable elsewhere. JSONL with base64 octets so reading the fixtures needs no
+   knowledge of the reference language.
 
 Files: hashes.txt, canonical/, encoding/, gate/, verify/, analyses/,
-prove/outcomes.json, campaign/vectors.txt, envelope/vectors.txt.
+prove/outcomes.json, campaign/vectors.txt, envelope/vectors.jsonl.
 `, kernelVersion)
 	if err := write("MANIFEST.md", []byte(manifest)); err != nil {
 		return "", err
@@ -538,4 +493,176 @@ func cmdFixtures(st *Store, outdir string) {
 		fail(err)
 	}
 	fmt.Print(out)
+}
+
+// writeEnvelopeVectors emits fixtures/envelope/vectors.jsonl. Every vector is
+// SELF-VALIDATED before it is written: a reject case this kernel accepts, or an
+// accept case it cannot reproduce, fails generation rather than shipping a false
+// obligation to an implementer who has no other source to check it against.
+func writeEnvelopeVectors(write func(string, []byte) error) error {
+	var out strings.Builder
+	emit := func(v map[string]any) error {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		out.Write(b)
+		out.WriteByte('\n')
+		return nil
+	}
+
+	envJSON := func(e pubEnvelope) map[string]any {
+		return map[string]any{"op": e.Op, "name": e.Name, "artifact": e.Artifact,
+			"parent": e.Parent, "parent_rev": e.ParentRev, "author": e.Author}
+	}
+
+	// --- canonical: structured envelope -> exact octets -------------------------
+	canon := []struct {
+		label string
+		env   pubEnvelope
+	}{
+		{"first publication (parent sentinel, revision 0)", pubEnvelope{Op: "put", Name: "double",
+			Artifact: strings.Repeat("11", 32), Parent: noParent, ParentRev: firstRev, Author: strings.Repeat("aa", 32)}},
+		{"repoint with a real parent", pubEnvelope{Op: "put", Name: "double",
+			Artifact: strings.Repeat("22", 32), Parent: strings.Repeat("11", 32), ParentRev: 1, Author: strings.Repeat("bb", 32)}},
+		{"namespaced name, multi-digit revision", pubEnvelope{Op: "put", Name: "michael/service1/verify-webhook",
+			Artifact: strings.Repeat("33", 32), Parent: strings.Repeat("44", 32), ParentRev: 1042, Author: strings.Repeat("cc", 32)}},
+	}
+	for _, c := range canon {
+		octets := envelopeEncode(c.env)
+		back, err := envelopeParse(octets)
+		if err != nil || back != c.env {
+			return fmt.Errorf("canonical envelope vector %q does not round-trip through this kernel: %v", c.label, err)
+		}
+		if err := emit(map[string]any{"kind": "canonical", "label": c.label,
+			"envelope": envJSON(c.env), "octets_b64": encodeEnvelopeB64(octets)}); err != nil {
+			return err
+		}
+	}
+
+	// --- reject: octets a conformant parser MUST refuse -------------------------
+	hex64, key64 := strings.Repeat("ab", 32), strings.Repeat("aa", 32)
+	valid := "oath-publish/1\nop=put\nname=n\nartifact=" + hex64 + "\nparent=-\nparent_rev=0\nauthor=" + key64 + "\n"
+	rejects := []struct{ label, octets, reason string }{
+		{"uppercase hex artifact", strings.Replace(valid, hex64, strings.ToUpper(hex64), 1),
+			"hashes are compared as bytes, so ABAB… and abab… would be two statements about one artifact"},
+		{"non-canonical revision (leading zero)",
+			"oath-publish/1\nop=put\nname=n\nartifact=" + hex64 + "\nparent=" + strings.Repeat("cd", 32) + "\nparent_rev=01\nauthor=" + key64 + "\n",
+			"\"01\" and \"1\" would be different bytes for one revision"},
+		{"parent sentinel with nonzero revision", strings.Replace(valid, "parent_rev=0", "parent_rev=2", 1),
+			"a first publication has both the sentinel and revision 0, or neither"},
+		{"parent hash with revision 0", strings.Replace(valid, "parent=-", "parent="+strings.Repeat("cd", 32), 1),
+			"same consistency rule from the other side"},
+		{"LF in a value breaks line framing", strings.Replace(valid, "name=n", "name=a\nb", 1),
+			"an injected LF becomes a line break, so this is caught as 8 lines rather than 7; the value rule proper is an ENCODER obligation and is unreachable from the parse side"},
+		{"reordered fields", "oath-publish/1\nname=n\nop=put\nartifact=" + hex64 + "\nparent=-\nparent_rev=0\nauthor=" + key64 + "\n",
+			"field order is part of the canonical encoding"},
+		{"missing trailing newline", strings.TrimSuffix(valid, "\n"),
+			"framing is part of the encoding; a truncated envelope is not a shorter valid one"},
+		{"unknown extra field", valid + "extra=1\n", "an unknown key is a second spelling of the same statement"},
+		{"wrong format version", strings.Replace(valid, "oath-publish/1", "oath-publish/2", 1),
+			"the version is inside the signed octets, so a signature under one format cannot be read under another"},
+	}
+	for _, r := range rejects {
+		if _, err := envelopeParse([]byte(r.octets)); err == nil {
+			return fmt.Errorf("envelope reject vector %q is ACCEPTED by this kernel: the fixture would assert an obligation the reference implementation does not meet", r.label)
+		}
+		if err := emit(map[string]any{"kind": "reject", "label": r.label,
+			"octets_b64": encodeEnvelopeB64([]byte(r.octets)), "reason": r.reason}); err != nil {
+			return err
+		}
+	}
+
+	// --- signature: the whole path, end to end ---------------------------------
+	//
+	// Pins every step a kernel must reproduce: structured envelope -> canonical
+	// octets -> envelope_b64 as stored -> signature over the DECODED octets ->
+	// canonical journal line. Plus one tamper vector per signed field, and byte-level
+	// alternate spellings that must not be accepted.
+	//
+	// The key is derived from a FIXED seed so the vectors are reproducible; Ed25519
+	// signing is deterministic, so the signature is a function of (seed, octets) with
+	// no randomness to pin separately.
+	seed := make([]byte, ed25519.SeedSize)
+	for i := range seed {
+		seed[i] = byte(i + 1)
+	}
+	priv := ed25519.NewKeyFromSeed(seed)
+	pubHex := hex.EncodeToString(priv.Public().(ed25519.PublicKey))
+
+	env := pubEnvelope{Op: "put", Name: "double", Artifact: strings.Repeat("55", 32),
+		Parent: strings.Repeat("66", 32), ParentRev: 7, Author: pubHex}
+	octets := envelopeEncode(env)
+	sig, err := envelopeSign(priv, env)
+	if err != nil {
+		return err
+	}
+	if err := envelopeVerify(env, sig); err != nil {
+		return fmt.Errorf("signature vector does not verify in this kernel: %w", err)
+	}
+	entry := &LogEntry{Author: pubHex, Name: env.Name, Kind: "func", Status: "accepted",
+		Hash: env.Artifact, Prev: env.Parent, Guarantee: "tested (200 cases per property)",
+		Termination: "nonrecursive", EnvelopeB64: encodeEnvelopeB64(octets),
+		AuthorPubkey: pubHex, AuthorSig: sig, NameTransition: transitionApplied}
+	line, err := canonicalJournalLine(entry)
+	if err != nil {
+		return err
+	}
+	if err := emit(map[string]any{"kind": "signature", "label": "honest publication",
+		"seed_b64": encodeEnvelopeB64(seed), "envelope": envJSON(env),
+		"octets_b64": encodeEnvelopeB64(octets), "envelope_b64": entry.EnvelopeB64,
+		"author_pubkey": pubHex, "author_sig": sig,
+		"journal_line_b64": encodeEnvelopeB64(line), "verdict": "accept"}); err != nil {
+		return err
+	}
+
+	// One tamper vector per SIGNED field: each must fail verification.
+	for _, t := range []struct {
+		field string
+		mut   func(*pubEnvelope)
+	}{
+		{"op", func(e *pubEnvelope) { e.Op = "put " }},
+		{"name", func(e *pubEnvelope) { e.Name = "other" }},
+		{"artifact", func(e *pubEnvelope) { e.Artifact = strings.Repeat("99", 32) }},
+		{"parent", func(e *pubEnvelope) { e.Parent = strings.Repeat("77", 32) }},
+		{"parent_rev", func(e *pubEnvelope) { e.ParentRev = 8 }},
+		{"author", func(e *pubEnvelope) { e.Author = strings.Repeat("dd", 32) }},
+	} {
+		bad := env
+		t.mut(&bad)
+		// `op` and `author` tampering may make the envelope invalid outright, which is
+		// also a rejection — record the octets either way so a kernel can check that it
+		// refuses, whether at validation or at signature verification.
+		var badOct []byte
+		if bad.validate() == nil {
+			badOct = envelopeEncode(bad)
+			if envelopeVerify(bad, sig) == nil {
+				return fmt.Errorf("tamper vector for %q still verifies: the field is not bound by the signature", t.field)
+			}
+		} else {
+			badOct = []byte(strings.Replace(string(octets), "op=put\n", "op=put \n", 1))
+		}
+		if err := emit(map[string]any{"kind": "signature", "label": "tampered " + t.field,
+			"tampered_field": t.field, "octets_b64": encodeEnvelopeB64(badOct),
+			"author_pubkey": pubHex, "author_sig": sig, "verdict": "reject",
+			"reason": "the signature is over the original octets; every field is bound"}); err != nil {
+			return err
+		}
+	}
+
+	// Byte-level alternate spellings of the STORED field: same octets, different text.
+	for _, alt := range []struct{ label, b64, reason string }{
+		{"envelope_b64 with leading whitespace", " " + entry.EnvelopeB64, "not standard padded base64"},
+		{"envelope_b64 unpadded", strings.TrimRight(entry.EnvelopeB64, "="), "padding is required by the pinned dialect"},
+	} {
+		if _, derr := decodeEnvelopeB64(alt.b64); derr == nil {
+			return fmt.Errorf("alternate base64 spelling %q is accepted by this kernel", alt.label)
+		}
+		if err := emit(map[string]any{"kind": "reject", "label": alt.label,
+			"envelope_b64": alt.b64, "reason": alt.reason}); err != nil {
+			return err
+		}
+	}
+
+	return write(filepath.Join("envelope", "vectors.jsonl"), []byte(out.String()))
 }

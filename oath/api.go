@@ -248,7 +248,14 @@ func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pu
 			// kernel's rendering for the author's.
 			le.EnvelopeB64, le.AuthorPubkey, le.AuthorSig = encodeEnvelopeB64([]byte(auth.Bytes)), auth.Pubkey, auth.Sig
 		}
-		_ = st.AppendLog(le)
+		if err := st.AppendLog(le); err == nil {
+			// The publication's own identity, so a client can address and verify the
+			// exact accepted transition rather than searching by artifact hash.
+			rep.JournalPosition = le.Seq
+			if d, derr := entryDigest(le); derr == nil {
+				rep.JournalEntry = d
+			}
+		}
 		results = append(results, rep)
 	}
 	return results, nil
