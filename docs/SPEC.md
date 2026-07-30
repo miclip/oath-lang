@@ -1548,8 +1548,77 @@ conformance fixture must specify exact journal bytes if journal replay is under
 test.
 
 Gate rejection logs contain no object hash. Accepted and falsified logs contain
-the stored object hash; `prev` is the previous hash for the submitted name, or
-omitted when the name was new or already pointed at the same hash.
+the stored object hash; `prev` is the hash the submitted name pointed at BEFORE
+this entry — **always**, including when it already pointed at the same hash. It
+is omitted only when the name did not previously exist.
+
+> **Amended.** This previously also omitted `prev` "when the name already
+> pointed at the same hash". That was harmless while nothing signed the
+> transition, and became a contradiction once §8.6 bound the parent: a same-hash
+> re-publication journalled an absent `prev`, while its envelope named the real
+> parent, so §8.6.4(5) compared `-` against a hash and MUST fail. A correctly
+> signed, correctly accepted publication produced a journal that failed its own
+> verifier. Collapsing an unchanged binding to "absent" destroyed the distinction
+> between *there was no previous value* and *the previous value was the same
+> one* — and the second is exactly what a parent commitment needs to express.
+>
+> This defect was found by an independent implementation reading only the
+> normative text, which derived the contradiction before any code was compared.
+
+Whether the binding CHANGED is recorded separately and MUST NOT be inferred from
+`prev` — see `name_transition` in §8.6.3.
+
+### 8.2.1 Canonical entry encoding
+
+A journal entry is a compact JSON object whose members appear in exactly this
+order:
+
+```
+seq, time, author, verifier, name, kind, status, hash, prev, error,
+guarantee, termination, context, pubkey, sig,
+envelope_b64, author_pubkey, author_sig, name_transition, chain
+```
+
+Field order is NORMATIVE, not a formatting preference. `chain` (§8) and the
+entry signature (§8.4) are both computed over "the entry's compact JSON", so two
+implementations ordering these members differently compute different chain values
+and different signatures for the same logical entry — and each then rejects the
+other's journal wholesale. An undefined order is a byte-level fork waiting for a
+second implementation.
+
+Members whose value is empty (or zero, for `seq`) are omitted, except `seq`,
+`time`, `author`, `name`, and `status`, which are always present.
+
+A verifier MUST read entries STRICTLY: parse the line, re-encode it canonically,
+and reject the journal unless the result is byte-identical to the stored line.
+Unknown members, duplicated members, reordered members, added whitespace, and
+trailing content after the object are all errors.
+
+Canonical writing with lenient reading protects nothing: a normative order would
+then bind writers while readers accepted several spellings of one entry, and
+since `chain` and signatures are over these bytes, accepting a second spelling
+means accepting two identities for one entry. It follows that a tool MUST NOT
+parse a non-canonical line, normalize it, and verify the normalized form — that
+verifies a statement other than the one the journal contains.
+
+### 8.2.2 Publication identity
+
+An artifact hash identifies CONTENT, not a publication of that content. The same
+artifact may be published more than once — a re-publication of the hash already
+bound is a valid recorded no-op (§8.6.2) — so an artifact hash does not address a
+publication, and a reader that selects the first or last matching entry is
+guessing which was meant.
+
+The identity of one publication is its **entry digest**: SHA-256 over the exact
+canonical entry line of §8.2.1, lowercase hex. Because `chain` is part of that
+line, the digest fixes the entry's POSITION as well as its content: two entries
+identical in content at different positions have different chains and therefore
+different digests.
+
+An ordinal (`seq`) is a convenience for humans and does not survive copying
+between stores; the entry digest does. An implementation SHOULD return both when
+accepting a publication, so a client can verify the exact accepted transition
+rather than searching for it.
 
 ### 8.3 API and MCP result shape
 
@@ -1682,12 +1751,23 @@ author=<64 lowercase hex>
 The version line is inside the signed bytes, so a signature under one format
 version can never be mistaken for another.
 
+The octets are UTF-8. (An implementation reading them as bytes never needs to
+decode, but a name may contain non-ASCII, and two encodings of one name would be
+two different statements.)
+
 A conformant implementation MUST reject an envelope, on both encoding and
 verification, unless all of:
 
+- the first line is exactly the format tag this version defines
+  (`oath-publish/1`). A different tag is not a newer envelope to be
+  interpreted — it is an envelope this version cannot verify, and accepting it
+  under these rules would read a signature made under one format as though it
+  were made under another;
 - every value is free of LF, CR, and any character below `0x20` or equal to
   `0x7F`. A value containing LF would inject a line, and the encoding would stop
-  being uniquely decodable;
+  being uniquely decodable. Note this rule is reachable only on the ENCODING
+  side: an injected LF in stored octets presents as a line-count error, never as
+  "a value contained an LF";
 - `op` is `put` (the only operation defined in this version);
 - `artifact` is 64 **lowercase** hex characters. Uppercase MUST be rejected: the
   encoding is compared as bytes, so `ABAB…` and `abab…` would be different
@@ -1696,7 +1776,12 @@ verification, unless all of:
   value;
 - `parent_rev` is a non-negative integer in canonical decimal — no leading zeros,
   no sign, no spaces. `03` and `+3` MUST be rejected, since they would be distinct
-  bytes for one revision;
+  bytes for one revision. It is **unbounded**: an implementation MUST NOT impose a
+  machine-word limit, because doing so would declare a valid historical statement
+  malformed once a name had been repointed often enough;
+- `name` is non-empty and otherwise unconstrained by this section beyond the
+  character rule above. In particular a name MAY contain `=`; parsing splits each
+  line at its FIRST `=`, so `name=a=b` names `a=b` and is not ambiguous;
 - `parent` is `-` **if and only if** `parent_rev` is `0`. A first publication has
   both or neither; allowing disagreement would let one envelope describe two
   different states;
@@ -1711,13 +1796,46 @@ at creation and discard it at verification.
 #### 8.6.2 The name revision
 
 `parent_rev` is the number of journal entries that have **applied a transition** to
-that name — not the number of accepted entries. A definition may be `falsified` and
-still bind its name; a `rejected`, `blocked`, or `pending` entry belongs in the
-journal without moving anything.
+that name. It versions the name BINDING; it is not a publication counter, and the
+journal already counts and orders events.
 
-An entry has applied a transition if its `transition` field is `applied`. For
-entries written before that field existed, an implementation MUST fall back to
-treating `accepted` and `falsified` as applied, and everything else as not.
+A revision therefore counts distinct name STATES:
+
+| before → after | transition | revision |
+|---|---|---|
+| (none) → A | `applied` | increments |
+| A → B | `applied` | increments |
+| A → A | `unchanged` | **unchanged** |
+| no name operation | `none` | unchanged |
+
+A re-publication of the hash already bound is a recorded **no-op**: valid,
+journalled, and not a new version of the binding. If it advanced the revision, a
+harmless no-op would invalidate every envelope prepared against a state that never
+changed. ABA protection is unaffected: A → B → A increments twice, so an envelope
+naming the first A carries the wrong revision even though the hash matches again.
+
+An entry has applied a transition if and only if its `name_transition` member is
+`applied`. This MUST NOT be inferred from `status`, `kind`, `prev`, or artifact
+equality for any entry that carries the member.
+
+For LEGACY entries written before `name_transition` existed, an implementation
+MUST derive it as follows, and MUST NOT extend this derivation to entries that
+carry the member:
+
+- entries whose `kind` is neither `data` nor `func` (nor absent) applied nothing.
+  A `prove` (§8.5) or `cross` entry concerns an ARTIFACT and touches no name, so
+  counting it would inflate a name's revision;
+- otherwise, `accepted` and `falsified` applied a transition, except that an entry
+  whose `prev` equals its `hash` was a no-op (`unchanged`);
+- every other status applied nothing.
+
+A revision MUST be monotonic per name and MUST NOT be reused. Names in this
+version are only ever repointed, never deleted, so an unresolvable name is one
+that was never published (`parent=-`, `parent_rev=0`). An implementation that adds
+deletion MUST NOT allow a revision to reset, or every historical envelope for a
+recreated name becomes replayable; a tombstone retaining the revision, never
+reusing a deleted name, or a permanent name epoch inside the envelope are the safe
+designs.
 
 A revision MUST be monotonic per name and MUST NOT be reused. This is what makes
 replay protection survive an A→B→A cycle, where a `parent` hash alone becomes
@@ -1728,18 +1846,40 @@ historical envelope for a recreated name becomes replayable.
 
 #### 8.6.3 Journal fields
 
-- `envelope`: the exact envelope bytes as received. A store MUST persist them
-  verbatim and MUST NOT re-encode, normalize, or reformat them at any point. They
-  are the historical statement; the duplicated fields below are its interpretation.
-  Reconstructing them later from those fields would let an encoder change silently
-  invalidate old signatures — the signature would remain correct and stop
-  verifying.
-- `author_pubkey`: lowercase hex of the key that signed `envelope`.
-- `author_sig`: lowercase hex of the 64-byte signature over `envelope`'s exact
-  bytes.
-- `transition`: `applied` when the name now points at `hash`; absent otherwise.
+- `envelope_b64`: the exact envelope octets, base64-encoded. A store MUST persist
+  the octets verbatim and MUST NOT re-encode, normalize, or reformat them at any
+  point. They are the historical statement; the duplicated fields below are its
+  interpretation. Reconstructing them later from those fields would let an encoder
+  change silently invalidate old signatures — the signature would remain correct
+  and stop verifying.
 
-These are metadata and never part of definition identity (§9).
+  **Base64 is a storage representation, not a transformation of the statement.**
+  Envelope octets contain LFs and a journal is one JSON object per line (§8.1), so
+  they cannot appear literally. "Verbatim" therefore means the exact octets are
+  recoverable as the DECODED value of this member.
+
+  The dialect is pinned, because "base64" alone admits several spellings of one
+  byte string and this member is compared and re-encoded (§8.2.1): RFC 4648 §4
+  **standard** alphabet (`+` and `/`), padding **required**, no line breaks, no
+  whitespace anywhere, no URL-safe substitutions. A verifier MUST additionally
+  reject the member unless re-encoding the decoded octets reproduces it exactly,
+  so alternate spellings that decode to the same octets from different stored
+  bytes are refused.
+
+- `author_pubkey`: lowercase hex of the key that signed the envelope octets.
+- `author_sig`: lowercase hex of the 64-byte signature over the **decoded**
+  envelope octets. Never over the base64 text, and never over the JSON string
+  bytes that carry it.
+- `name_transition`: `applied`, `unchanged`, or `none` (§8.6.2). This records what
+  happened to the NAME, which is a different dimension from `status`, which records
+  what the store concluded about the ARTIFACT. A definition may be `falsified` and
+  still bind its name; a request may be `rejected` and belong in the journal
+  without moving anything; a `prove` or `cross` entry concerns an artifact and
+  touches no name. Deriving either dimension from the other is not reliable, so
+  both are recorded.
+
+These are metadata and never part of definition identity (§9). Their position in
+the entry's member order is normative — see §8.2.1.
 
 #### 8.6.4 Verification obligations
 
@@ -1749,8 +1889,9 @@ A verifier MUST, for every entry where any of `envelope`, `author_pubkey`,
 1. all three are present. Any one alone attests to nothing;
 2. `envelope` parses under §8.6.1 and re-encodes to itself;
 3. the envelope's `author` equals `author_pubkey`;
-4. `author_sig` is a valid signature under `author_pubkey` over the **persisted**
-   bytes — not over a re-encoding;
+4. `author_sig` is a valid signature under `author_pubkey` over the octets
+   **decoded from** `envelope_b64` — not over a re-encoding of the parsed
+   envelope, and not over the base64 text;
 5. the envelope's `name`, `artifact`, and `parent` equal the entry's `name`,
    `hash`, and `prev` respectively, where an empty `prev` corresponds to `-`.
 
@@ -1773,6 +1914,28 @@ A statement failing any check MUST NOT move the name. The object itself MAY stil
 be stored: storage is idempotent under content addressing and an unreferenced
 object is inert. A failed attempt SHOULD be journalled, so the log records what
 happened rather than only what succeeded.
+
+#### 8.6.4a The signature convention
+
+"A valid Ed25519 signature" is not a single predicate, and the choices are
+observable between implementations: a signature one kernel accepts another may
+reject. This version pins them.
+
+Verification MUST follow RFC 8032 §5.1.7 with the **cofactorless** equation
+(`[S]B = R + [k]A`), and MUST reject a signature unless:
+
+- the encoded `S` is canonical, i.e. strictly less than the group order `L`.
+  Non-canonical `S` values admit a second signature over the same message under
+  the same key, which contradicts an envelope being *the author's statement*;
+- `R` and `A` are canonical point encodings.
+
+A small-order `A` is not rejected by these rules; an implementation MAY refuse
+one, and if it does the refusal MUST NOT depend on the message, so the two
+behaviours cannot disagree about any signature made by a real key.
+
+Signing is deterministic (RFC 8032), so a signature is a function of the private
+key and the message with no randomness to record. Conformance vectors therefore
+pin a seed rather than a nonce.
 
 #### 8.6.5 What this does not guarantee
 
@@ -1843,6 +2006,30 @@ given for a property when assembling that property's lemma set, and MUST NOT
 apply them to any other property. The field is absent when a property has no
 hints, so a hint-free corpus produces byte-identical fixtures to one from a
 kernel predating the feature.
+
+### 10.1 Signed-publication vectors
+
+`fixtures/envelope/vectors.jsonl` is the conformance surface for §8.6. It is JSONL,
+and every octet string is carried as canonical base64 (§8.6.3) — deliberately, so
+reading the fixtures requires no knowledge of any implementation's string-literal
+syntax. A fixture format that presumes the reference language is not a cross-kernel
+fixture.
+
+Three record kinds, each keyed by `kind`:
+
+- `canonical` — a structured `envelope` and the `octets_b64` it MUST encode to.
+  These octets are what a signature is computed over, so one differing byte makes
+  every signature that implementation produces unverifiable elsewhere. The failure
+  is silent: the signature stays correct and stops verifying.
+- `reject` — `octets_b64` (or `envelope_b64`) a conformant implementation MUST
+  refuse, with the reason.
+- `signature` — the whole path: `envelope`, `octets_b64`, `envelope_b64` as stored,
+  `author_pubkey`, `author_sig`, `journal_line_b64`, and the expected `verdict`.
+  Tamper records carry `tampered_field` and MUST fail verification; a signed field
+  that still verifies after tampering is not bound by the signature.
+
+Keys are derived from `seed_b64`. Signing is deterministic (§8.6.4a), so a
+signature is a function of seed and octets.
 
 ## 11. Campaign identity (normative, #74)
 
