@@ -182,6 +182,9 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 	//   reject     octets a conformant parser MUST refuse, with the reason
 	//   signature  the WHOLE path: envelope, octets, envelope_b64, key, signature,
 	//              canonical journal line, and the expected verdict
+	//   store      §8.6.4's store-side MUSTs: a STATE (what the store believes) plus a
+	//              REQUEST (signed octets, signature, authenticated principal, and the
+	//              artifact the store recomputed), with the expected verdict
 	if err := writeEnvelopeVectors(write); err != nil {
 		return "", err
 	}
@@ -714,6 +717,82 @@ func writeEnvelopeVectors(write func(string, []byte) error) error {
 		}
 		if err := emit(map[string]any{"kind": "reject", "label": alt.label,
 			"envelope_b64": alt.b64, "reason": alt.reason}); err != nil {
+			return err
+		}
+	}
+
+	// --- store: the three §8.6.4 store-side MUSTs ------------------------------
+	//
+	// These had NO fixture shape, which meant half of §8.6's normative weight was
+	// unwitnessed: a kernel could pass every other vector without implementing any of
+	// the acceptance preconditions. Expressing them needs a STATE plus a REQUEST, not
+	// a single record — what the store currently believes, and what is being asked of
+	// it.
+	//
+	// Every verdict below is self-validated against checkPublication, the same
+	// function the put path uses. That matters: a generator that re-implements the
+	// rule it witnesses can agree with itself while both are wrong.
+	storeName := "double"
+	storeArtifact := strings.Repeat("55", 32)
+	curParent, curRev := strings.Repeat("66", 32), 7
+	type storeCase struct {
+		label, reason string
+		env           pubEnvelope
+		sig           string
+		principal     string
+		artifact      string // what the store recomputes from the submitted content
+		parent        string
+		rev           int
+		accept        bool
+	}
+	good := pubEnvelope{Op: "put", Name: storeName, Artifact: storeArtifact,
+		Parent: curParent, ParentRev: revOf(curRev), Author: pubHex}
+	goodSig, err := envelopeSign(priv, good)
+	if err != nil {
+		return err
+	}
+	// A SECOND key from a fixed seed. GenerateKey(nil) is random, which makes the
+	// emitted fixture differ between runs — fixtures must be reproducible or they
+	// cannot be a conformance target, and the determinism test rightly rejects them.
+	otherSeed := make([]byte, ed25519.SeedSize)
+	for i := range otherSeed {
+		otherSeed[i] = byte(0xa0 + i)
+	}
+	other := ed25519.NewKeyFromSeed(otherSeed).Public().(ed25519.PublicKey)
+	cases := []storeCase{
+		{label: "current statement authorises the transition",
+			reason: "signer is the authenticated principal, artifact recomputes, parent and revision are current",
+			env:    good, sig: goodSig, principal: pubHex, artifact: storeArtifact, parent: curParent, rev: curRev, accept: true},
+		{label: "signer is not the authenticated principal",
+			reason: "the signing key MUST be the authenticated principal; verifying against the envelope's own author would always succeed, so any caller could replay anyone's statement",
+			env:    good, sig: goodSig, principal: hex.EncodeToString(other), artifact: storeArtifact, parent: curParent, rev: curRev},
+		{label: "submitted content hashes to a different artifact",
+			reason: "the artifact hash MUST be recomputed from submitted content, making client/store agreement on identity an enforced precondition",
+			env:    good, sig: goodSig, principal: pubHex, artifact: strings.Repeat("99", 32), parent: curParent, rev: curRev},
+		{label: "signed parent is stale (name moved)",
+			reason: "the signed parent MUST be the name's current binding; otherwise a captured envelope replays against a newer state",
+			env:    good, sig: goodSig, principal: pubHex, artifact: storeArtifact, parent: strings.Repeat("77", 32), rev: curRev},
+		{label: "signed revision is stale though the parent hash matches (ABA)",
+			reason: "the revision MUST also be current; a hash can return to an earlier value, a revision cannot",
+			env:    good, sig: goodSig, principal: pubHex, artifact: storeArtifact, parent: curParent, rev: curRev + 2},
+	}
+	for _, c := range cases {
+		gotErr := checkPublication(c.env, c.sig, c.principal, storeName, c.artifact, c.parent, c.rev)
+		if c.accept && gotErr != nil {
+			return fmt.Errorf("store vector %q should ACCEPT but this kernel refuses it: %v", c.label, gotErr)
+		}
+		if !c.accept && gotErr == nil {
+			return fmt.Errorf("store vector %q should REJECT and this kernel accepts it: the precondition is not enforced", c.label)
+		}
+		verdict := "reject"
+		if c.accept {
+			verdict = "accept"
+		}
+		if err := emit(map[string]any{"kind": "store", "label": c.label,
+			"state":   map[string]any{"name": storeName, "bound": c.parent, "parent_rev": fmt.Sprintf("%d", c.rev)},
+			"request": map[string]any{"octets_b64": encodeEnvelopeB64(envelopeEncode(c.env)), "author_sig": c.sig, "authenticated_principal": c.principal, "recomputed_artifact": c.artifact},
+			"verdict": verdict,
+			"reason":  c.reason}); err != nil {
 			return err
 		}
 	}

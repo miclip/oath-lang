@@ -375,3 +375,44 @@ func (e pubEnvelope) equal(o pubEnvelope) bool {
 	return e.Op == o.Op && e.Name == o.Name && e.Artifact == o.Artifact &&
 		e.Parent == o.Parent && e.Author == o.Author && e.ParentRev.Cmp(o.ParentRev) == 0
 }
+
+// checkPublication decides whether an author statement authorises the transition
+// being requested — the three store-side MUSTs of SPEC §8.6.4, in one place.
+//
+// Extracted so the put path and the conformance-vector generator share ONE
+// implementation. Previously this logic lived inline in the put path, which meant
+// the vectors asserting it were written by hand against a second reading of the
+// spec; a vector generator that re-implements the rule it is meant to witness can
+// agree with itself while both are wrong.
+//
+// Arguments are the store's OWN findings, not the author's claims: artifactHash is
+// recomputed from submitted content, curParent/curRev are read from the store.
+// Returns nil when the statement authorises the transition.
+func checkPublication(env pubEnvelope, sigHex, principal, name, artifactHash, curParent string, curRev int) error {
+	// The signing key must be the AUTHENTICATED principal, not the key the envelope
+	// names. Verifying against the envelope's own author would always succeed, so any
+	// caller could present any valid statement made by anyone.
+	if env.Author != principal {
+		return fmt.Errorf("envelope is signed for %s but the request authenticated as %s", shortHash(env.Author), shortHash(principal))
+	}
+	if err := envelopeVerify(env, sigHex); err != nil {
+		return err
+	}
+	if env.Name != name {
+		return fmt.Errorf("author statement does not match the requested transition: signed name %q, publishing %q", env.Name, name)
+	}
+	// RECOMPUTED, not taken from the statement. This makes agreement between the
+	// client's and the store's elaboration an enforced precondition rather than an
+	// assumption — identity is a pure function of content, so a disagreement here is
+	// a real divergence and not a formality.
+	if env.Artifact != artifactHash {
+		return fmt.Errorf("author statement does not match the requested transition: signed artifact %s, submitted content hashes to %s", shortHash(env.Artifact), shortHash(artifactHash))
+	}
+	if env.Parent != curParent {
+		return fmt.Errorf("author statement does not match the requested transition: signed parent %s, but %q currently points at %s — the name moved since the envelope was made, or this is a replay", shortHash(env.Parent), name, shortHash(curParent))
+	}
+	if env.ParentRev.Cmp(revOf(curRev)) != 0 {
+		return fmt.Errorf("author statement does not match the requested transition: signed parent_rev %s, but %q is at revision %d — a replay whose parent hash happens to match again (ABA)", env.ParentRev, name, curRev)
+	}
+	return nil
+}

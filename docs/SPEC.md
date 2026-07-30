@@ -2127,12 +2127,19 @@ arithmetic; §8.6.3's base64 dialect including non-canonical spellings; §8.6.4'
 five verification clauses via tamper records; §8.6.4a's canonical-`S` and
 small-order-key rules.
 
-Currently NOT witnessed, and stated so rather than left to be discovered: the three
-store-side MUSTs of §8.6.4 (authenticated-principal binding, artifact recomputation,
-parent/revision currency) have no fixture shape, because expressing them needs a
-journal-plus-request vector rather than a single record. Half of §8.6's normative
-weight is store-side, and a kernel can pass every vector here without implementing
-any of it.
+Also witnessed, via a fourth record kind: §8.6.4's three store-side MUSTs. A `store`
+record carries a `state` (what the store currently believes about the name) and a
+`request` (the signed octets, the signature, the authenticated principal, and the
+artifact hash the store recomputed from submitted content), with the expected
+`verdict`. Expressing these needs state-plus-request rather than a single record,
+which is why they were unwitnessed until now — and half of §8.6's normative weight is
+store-side, so a kernel could previously pass every vector without implementing any of
+it.
+
+Currently NOT witnessed: the LF-in-a-value rule of §8.6.1, which is unreachable from
+the parse side by construction (an injected LF presents as a line-count error), so it
+is an encoder obligation a fixture cannot express; and full §8.6.4a small-order
+coverage beyond the identity point, which needs curve arithmetic.
 
 ## 11. Campaign identity (normative, #74)
 

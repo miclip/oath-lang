@@ -116,57 +116,17 @@ func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pu
 		// unreferenced object is inert. What must not happen is a NAME moving on an
 		// unverified statement.
 		if auth != nil {
-			env, err := envelopeParse([]byte(auth.Bytes))
-			if err != nil {
-				rep.Status = "rejected"
-				rep.Error = fmt.Sprintf("author envelope is not canonical: %v", err)
-				results = append(results, rep)
-				_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K,
-					Status: "rejected", Hash: h, Error: rep.Error,
-					NameTransition: transitionNone})
-				continue
+			env, perr := envelopeParse([]byte(auth.Bytes))
+			var gerr error
+			if perr != nil {
+				gerr = fmt.Errorf("author envelope is not canonical: %v", perr)
+			} else {
+				curParent, curRev := nameRevision(st, meta.Name)
+				gerr = checkPublication(env, auth.Sig, auth.Pubkey, meta.Name, h, curParent, curRev)
 			}
-			// The signing key is the AUTHENTICATED principal, never the one the
-			// envelope names. Trusting the envelope's own author field would let a
-			// caller present someone else's key and have it verified against itself.
-			if env.Author != auth.Pubkey {
+			if gerr != nil {
 				rep.Status = "rejected"
-				rep.Error = fmt.Sprintf("envelope is signed for %s but the request authenticated as %s", shortHash(env.Author), shortHash(auth.Pubkey))
-				results = append(results, rep)
-				_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K,
-					Status: "rejected", Hash: h, Error: rep.Error,
-					NameTransition: transitionNone})
-				continue
-			}
-			if err := envelopeVerify(env, auth.Sig); err != nil {
-				rep.Status = "rejected"
-				rep.Error = err.Error()
-				results = append(results, rep)
-				_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K,
-					Status: "rejected", Hash: h, Error: rep.Error,
-					NameTransition: transitionNone})
-				continue
-			}
-			// The signed transition must be the transition being requested. The
-			// artifact hash is RECOMPUTED from submitted content, so client and
-			// server must agree on identity — which turns the cross-kernel
-			// determinism guarantee into an enforced precondition rather than an
-			// assumption.
-			curParent, curRev := nameRevision(st, meta.Name)
-			mismatch := ""
-			switch {
-			case env.Name != meta.Name:
-				mismatch = fmt.Sprintf("signed name %q, publishing %q", env.Name, meta.Name)
-			case env.Artifact != h:
-				mismatch = fmt.Sprintf("signed artifact %s, submitted content hashes to %s", shortHash(env.Artifact), shortHash(h))
-			case env.Parent != curParent:
-				mismatch = fmt.Sprintf("signed parent %s, but %q currently points at %s — the name moved since the envelope was made, or this is a replay", shortHash(env.Parent), meta.Name, shortHash(curParent))
-			case env.ParentRev.Cmp(revOf(curRev)) != 0:
-				mismatch = fmt.Sprintf("signed parent_rev %s, but %q is at revision %d — a replay whose parent hash happens to match again (ABA)", env.ParentRev, meta.Name, curRev)
-			}
-			if mismatch != "" {
-				rep.Status = "rejected"
-				rep.Error = "author statement does not match the requested transition: " + mismatch
+				rep.Error = gerr.Error()
 				results = append(results, rep)
 				_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K,
 					Status: "rejected", Hash: h, Error: rep.Error,
