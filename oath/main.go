@@ -148,6 +148,12 @@ func main() {
 			}
 		}
 		cmdKeygen(prefix)
+	case "audit":
+		if len(args) > 1 {
+			cmdAuditEntry(st, args[1])
+		} else {
+			cmdAudit(st)
+		}
 	case "migrate-store":
 		cmdMigrateStore(storeDir)
 	case "prove-worker":

@@ -223,3 +223,87 @@ func envelopeVerify(e pubEnvelope, sigHex string) error {
 	}
 	return nil
 }
+
+// envelopeParse decodes persisted envelope bytes back into fields.
+//
+// WHY A PARSER EXISTS AT ALL, when there is already an encoder: the journal
+// persists the EXACT bytes the author signed, and verification must read those
+// bytes rather than re-encode from the entry's fields. Reconstruction would mean
+// a future encoder change silently invalidates every historical signature — the
+// signature would still be correct and would no longer verify, which is the worst
+// possible failure for an audit trail. The stored bytes are the historical signed
+// statement; these parsed fields are only its interpretation.
+//
+// That also fixes the version question. The version lives in the bytes, so an old
+// entry is verified under the format it was written with. This function accepts
+// only oath-publish/1; a future format gets its own branch, and neither can be
+// mistaken for the other because the separator is inside the signed material.
+//
+// STRICT ON PURPOSE. Unknown keys, missing keys, duplicates, reordering and
+// trailing bytes are all errors. A lenient parser would let two different byte
+// sequences produce the same fields, which is exactly the unique-decodability
+// property the encoding exists to guarantee — leniency here would give it away at
+// the other end.
+func envelopeParse(b []byte) (pubEnvelope, error) {
+	var e pubEnvelope
+	s := string(b)
+	if !strings.HasSuffix(s, "\n") {
+		return e, fmt.Errorf("envelope does not end with a newline: it is truncated or was re-wrapped in transit")
+	}
+	lines := strings.Split(strings.TrimSuffix(s, "\n"), "\n")
+	if len(lines) == 0 || lines[0] != envelopeVersion {
+		got := ""
+		if len(lines) > 0 {
+			got = lines[0]
+		}
+		return e, fmt.Errorf("unsupported envelope format %q: this kernel verifies %q", got, envelopeVersion)
+	}
+	want := []string{"op", "name", "artifact", "parent", "parent_rev", "author"}
+	body := lines[1:]
+	if len(body) != len(want) {
+		return e, fmt.Errorf("envelope has %d fields, expected exactly %d: %v", len(body), len(want), want)
+	}
+	vals := make([]string, len(want))
+	for i, line := range body {
+		k, v, found := strings.Cut(line, "=")
+		if !found {
+			return e, fmt.Errorf("envelope line %d is not key=value", i+2)
+		}
+		if k != want[i] {
+			return e, fmt.Errorf("envelope field %d is %q, expected %q: field order is part of the canonical encoding", i+1, k, want[i])
+		}
+		vals[i] = v
+	}
+	rev, err := strconv.Atoi(vals[4])
+	if err != nil {
+		return e, fmt.Errorf("envelope parent_rev %q is not an integer", vals[4])
+	}
+	// Reject any non-canonical spelling of the number ("03", "+3", " 3"), which
+	// would parse to the same value from different bytes.
+	if strconv.Itoa(rev) != vals[4] {
+		return e, fmt.Errorf("envelope parent_rev %q is not canonical decimal (would be %q)", vals[4], strconv.Itoa(rev))
+	}
+	e = pubEnvelope{Op: vals[0], Name: vals[1], Artifact: vals[2], Parent: vals[3], ParentRev: rev, Author: vals[5]}
+	if err := e.validate(); err != nil {
+		return pubEnvelope{}, err
+	}
+	// Belt and braces: the bytes we were given must be exactly what this envelope
+	// encodes. Anything else means the parser accepted a spelling the encoder
+	// would never emit, so the two halves have drifted.
+	if !bytesEqual(envelopeEncode(e), b) {
+		return pubEnvelope{}, fmt.Errorf("envelope bytes are not canonical: they parse, but re-encoding produces different bytes")
+	}
+	return e, nil
+}
+
+func bytesEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

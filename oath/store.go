@@ -399,7 +399,19 @@ type LogEntry struct {
 	Context     string `json:"context,omitempty"` // hash of the context slice the author built against (#4)
 	Pubkey      string `json:"pubkey,omitempty"`  // hex Ed25519 public key of the signer; absent = unattributed (#14)
 	Sig         string `json:"sig,omitempty"`     // hex Ed25519 signature over the entry's authored fields (docs/registry-auth.md)
-	Chain       string `json:"chain,omitempty"`   // tamper-evidence: SHA-256(prev chain + this entry sans chain)
+	// The AUTHOR's half of the record (#83), distinct from Pubkey/Sig above, which
+	// are whatever key the STORE was configured with signing the derived entry.
+	//
+	// Envelope holds the EXACT canonical bytes the author signed — persisted, never
+	// reconstructed from the fields below. Reconstruction would let a future encoder
+	// change silently invalidate historical signatures: the signature would still be
+	// correct and would no longer verify, the worst failure mode an audit trail has.
+	// These bytes are the historical statement; the duplicated fields are only its
+	// interpretation, and VerifyLog rejects any disagreement between them.
+	Envelope     string `json:"envelope,omitempty"`
+	AuthorPubkey string `json:"author_pubkey,omitempty"` // hex Ed25519 key that signed Envelope
+	AuthorSig    string `json:"author_sig,omitempty"`    // hex signature over Envelope's exact bytes
+	Chain        string `json:"chain,omitempty"`         // tamper-evidence: SHA-256(prev chain + this entry sans chain)
 }
 
 // signedContent is the deterministic byte string a signer signs: the entry with
@@ -513,6 +525,45 @@ func (s *Store) VerifyLog() error {
 			}
 			if !ed25519.Verify(ed25519.PublicKey(pub), signedContent(&e), sig) {
 				return fmt.Errorf("journal line %d fails signature verification: the entry was tampered with or is not signed by %s", line, e.Pubkey)
+			}
+		}
+		// The AUTHOR's publication statement (#83). Verified against the PERSISTED
+		// envelope bytes, never a re-encoding, so an old entry is checked under the
+		// format it was written with rather than whatever the current encoder emits.
+		if e.Envelope != "" || e.AuthorSig != "" || e.AuthorPubkey != "" {
+			if e.Envelope == "" || e.AuthorSig == "" || e.AuthorPubkey == "" {
+				return fmt.Errorf("journal line %d has a partial author record (envelope=%v key=%v sig=%v): all three or none, since any one alone attests to nothing",
+					line, e.Envelope != "", e.AuthorPubkey != "", e.AuthorSig != "")
+			}
+			env, perr := envelopeParse([]byte(e.Envelope))
+			if perr != nil {
+				return fmt.Errorf("journal line %d has an unparseable author envelope: %w", line, perr)
+			}
+			if env.Author != e.AuthorPubkey {
+				return fmt.Errorf("journal line %d: envelope names author %s but the entry records %s", line, env.Author, e.AuthorPubkey)
+			}
+			if verr := envelopeVerify(env, e.AuthorSig); verr != nil {
+				return fmt.Errorf("journal line %d: author signature does not verify: %w", line, verr)
+			}
+			// The duplicated fields are an INTERPRETATION of the signed bytes, so any
+			// disagreement means the registry recorded a transition the author did not
+			// sign. That is precisely the substitution this record exists to prevent,
+			// so it is a hard failure rather than a warning.
+			parent := e.Prev
+			if parent == "" {
+				parent = noParent
+			}
+			for _, m := range []struct {
+				what, signed, recorded string
+			}{
+				{"name", env.Name, e.Name},
+				{"artifact", env.Artifact, e.Hash},
+				{"parent", env.Parent, parent},
+			} {
+				if m.signed != m.recorded {
+					return fmt.Errorf("journal line %d: the author signed %s=%q but the entry records %q — the registry recorded a transition its author did not sign",
+						line, m.what, m.signed, m.recorded)
+				}
 			}
 		}
 		if e.Chain == "" {

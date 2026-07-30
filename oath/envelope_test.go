@@ -199,3 +199,69 @@ func TestEnvelopeFirstPublicationConsistency(t *testing.T) {
 		t.Fatal("a parent hash with revision 0 accepted: inconsistent state was signable")
 	}
 }
+
+// Round-trip: whatever the encoder emits, the parser must recover exactly. This
+// is the property that lets the journal store bytes and verification read them.
+func TestEnvelopeRoundTrip(t *testing.T) {
+	for _, e := range []pubEnvelope{
+		testEnvelope(),
+		{Op: "put", Name: "a/b/c", Artifact: strings.Repeat("1", 64), Parent: noParent, ParentRev: firstRev, Author: strings.Repeat("2", 64)},
+		{Op: "put", Name: "x", Artifact: strings.Repeat("3", 64), Parent: strings.Repeat("4", 64), ParentRev: 1234567, Author: strings.Repeat("5", 64)},
+	} {
+		got, err := envelopeParse(envelopeEncode(e))
+		if err != nil {
+			t.Fatalf("round-trip failed for %+v: %v", e, err)
+		}
+		if got != e {
+			t.Fatalf("round-trip changed the envelope:\n got %+v\nwant %+v", got, e)
+		}
+	}
+}
+
+// The parser must be STRICT: leniency would let two different byte sequences
+// yield the same fields, discarding unique decodability at the reading end.
+func TestEnvelopeParseIsStrict(t *testing.T) {
+	good := string(envelopeEncode(testEnvelope()))
+	for _, tc := range []struct{ name, bytes string }{
+		{"wrong version", strings.Replace(good, "oath-publish/1", "oath-publish/2", 1)},
+		{"no version line", strings.SplitN(good, "\n", 2)[1]},
+		{"reordered fields", strings.Replace(good, "op=put\nname=double\n", "name=double\nop=put\n", 1)},
+		{"unknown extra field", good + "extra=1\n"},
+		{"missing field", strings.Replace(good, "parent_rev=3\n", "", 1)},
+		{"no trailing newline", strings.TrimSuffix(good, "\n")},
+		{"non-canonical revision", strings.Replace(good, "parent_rev=3\n", "parent_rev=03\n", 1)},
+		{"duplicated field", strings.Replace(good, "op=put\n", "op=put\nop=put\n", 1)},
+		{"trailing junk", good + "\n"},
+	} {
+		if _, err := envelopeParse([]byte(tc.bytes)); err == nil {
+			t.Fatalf("parser accepted %s: a second byte spelling maps to the same envelope", tc.name)
+		}
+	}
+}
+
+// The signature must verify against the PERSISTED bytes, not against a
+// re-encoding. This test simulates the failure the design exists to prevent: an
+// entry stored under one format being verified by a kernel whose encoder moved on.
+func TestEnvelopeVerifiesPersistedBytes(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	e := testEnvelope()
+	e.Author = hex.EncodeToString(pub)
+	persisted := envelopeEncode(e)
+	sig := hex.EncodeToString(ed25519.Sign(priv, persisted))
+
+	parsed, err := envelopeParse(persisted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := envelopeVerify(parsed, sig); err != nil {
+		t.Fatalf("signature over persisted bytes did not verify: %v", err)
+	}
+	// A single altered byte must break it — the bytes are the statement.
+	tampered := append([]byte(nil), persisted...)
+	tampered[len(tampered)-2] ^= 0x01
+	if _, err := envelopeParse(tampered); err == nil {
+		if err := envelopeVerify(parsed, hex.EncodeToString(ed25519.Sign(priv, tampered))); err == nil {
+			t.Fatal("tampered bytes verified against the original envelope")
+		}
+	}
+}
