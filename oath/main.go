@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -136,8 +137,25 @@ func main() {
 			fail(fmt.Errorf("usage: oath put [--json] [--author <id>] [--context <hash>] [--key <file>] [--remote <url>] <file.oath>"))
 		}
 		cmdPut(st, files[0], jsonMode, author, ctxHash)
+	case "config":
+		cmdConfig(args[1:])
+	case "new":
+		ns, registry := "", ""
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			if rest[i] == "--remote" && i+1 < len(rest) {
+				registry = rest[i+1]
+				i++
+			} else {
+				ns = rest[i]
+			}
+		}
+		cmdNew(ns, registry)
 	case "keygen":
-		prefix := "oath"
+		// Default OUTSIDE the working directory. The previous default wrote ./oath.key,
+		// which is how a signing key ended up in a git repository — the ignore rule
+		// catches the symptom, this removes the hazard. An explicit path still wins.
+		prefix := ""
 		rest := args[1:]
 		for i := 0; i < len(rest); i++ {
 			if (rest[i] == "--out" || rest[i] == "-o") && i+1 < len(rest) {
@@ -146,6 +164,12 @@ func main() {
 			} else {
 				prefix = rest[i]
 			}
+		}
+		if prefix == "" {
+			if err := os.MkdirAll(filepath.Join(oathHome(), "keys"), 0o700); err != nil {
+				fail(err)
+			}
+			prefix = filepath.Join(oathHome(), "keys", "default")
 		}
 		cmdKeygen(prefix)
 	case "publish":
@@ -174,8 +198,21 @@ func main() {
 				file = rest[i]
 			}
 		}
+		// Fall back to ~/.oath/config (#86) so the defaults are load-bearing rather
+		// than decorative. Precedence is flag > env > config, and `oath config` reports
+		// which one won — a publication going somewhere unexpected is exactly when the
+		// SOURCE of a setting matters more than its value.
+		if cfg, _, cerr := loadClientConfig(); cerr == nil {
+			if endpoint == "" {
+				endpoint = cfg.Registry
+			}
+			if keyFile == "" {
+				keyFile = cfg.Key
+			}
+		}
 		if endpoint == "" || keyFile == "" || file == "" {
-			fail(fmt.Errorf("usage: oath publish --remote <url> --key <file> [--dry-run] [--json] [-y] <file.oath>"))
+			fail(fmt.Errorf("usage: oath publish [--remote <url>] [--key <file>] [--dry-run] [--json] [-y] <file.oath>\n" +
+				"       --remote and --key may come from ~/.oath/config (see `oath config`, set up with `oath new`)"))
 		}
 		cmdPublish(st, endpoint, keyFile, file, dryRun, jsonOut, yes)
 	case "ownership":
