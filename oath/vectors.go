@@ -207,6 +207,36 @@ const (
 	obligationBaselineFail = "BASELINE-FAIL"
 )
 
+// alternateRejector finds WHICH other rule rejects a vector whose claimed rule has
+// been removed. That answer turns the report from a verdict into a work queue: an
+// AMBIGUOUS rule with a named subsumer is a decision (write a more isolated vector, or
+// accept that only the composite guarantee is measurable), while one with no named
+// subsumer is a mystery worth investigating.
+//
+// Returns "" when nothing else accounts for it.
+func alternateRejector(v vectorRecord, claimed string) string {
+	for _, r := range normativeRules {
+		if r.ID == claimed || r.Family != familyEnvelope {
+			continue
+		}
+		var stillFails bool
+		withRulesDisabled([]string{claimed, r.ID}, func() {
+			stillFails = len(runVectors([]vectorRecord{v})) == 0
+		})
+		// With BOTH off the vector's expectation is violated -> this rule was the one
+		// doing the rejecting once the claimed rule was gone.
+		var violated bool
+		withRulesDisabled([]string{claimed, r.ID}, func() {
+			violated = len(runVectors([]vectorRecord{v})) > 0
+		})
+		_ = stillFails
+		if violated {
+			return r.ID
+		}
+	}
+	return ""
+}
+
 // witnessOutcome measures ONE vector's claim: does it fail because of the rule it
 // names, or for some other reason?
 //
@@ -234,10 +264,10 @@ func witnessOutcome(v vectorRecord) string {
 	if len(runVectors([]vectorRecord{v})) > 0 {
 		return obligationBaselineFail
 	}
-	prev := disabledRule
-	disabledRule = v.Witnesses
-	violated := len(runVectors([]vectorRecord{v})) > 0
-	disabledRule = prev
+	violated := false
+	withRulesDisabled([]string{v.Witnesses}, func() {
+		violated = len(runVectors([]vectorRecord{v})) > 0
+	})
 	if violated {
 		return obligationWitnessed
 	}

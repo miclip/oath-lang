@@ -121,14 +121,46 @@ func ruleInventoryDigest(fam string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// disabledRule names the single rule currently switched off. Unexported and never
-// read from the environment — see the file comment. Empty means every rule is on,
-// which is the only state any real invocation ever sees.
-var disabledRule string
+// disabledRules is the set of rules currently switched off. A SET rather than a
+// single id because identifying what ELSE rejects an input requires disabling two
+// rules at once: the one a vector claims, and a candidate for the check that is
+// actually catching it.
+//
+// Unexported and never read from the environment — see the file comment. Empty is the
+// only state any real invocation ever sees.
+var disabledRules = map[string]bool{}
 
 // ruleOn reports whether a normative rule is currently enforced. Enforcement sites
 // read this; production always gets true.
-func ruleOn(id string) bool { return disabledRule != id }
+func ruleOn(id string) bool { return !disabledRules[id] }
+
+// withRulesDisabled runs fn with exactly the named rules off, restoring the previous
+// set afterwards even if fn panics — a mutated verifier is deliberately weaker and may
+// reach paths the enforced one never does, and leaking a disabled rule into later
+// measurements would corrupt every subsequent verdict.
+func withRulesDisabled(ids []string, fn func()) {
+	prev := disabledRules
+	disabledRules = map[string]bool{}
+	for k := range prev {
+		disabledRules[k] = true
+	}
+	for _, id := range ids {
+		disabledRules[id] = true
+	}
+	defer func() { disabledRules = prev }()
+	fn()
+}
+
+// harnessNoopRule is consulted by NOTHING. The scorer asserts it comes back
+// UNWITNESSED: if it ever reads as witnessed, the aggregation is crediting rules for
+// failures they did not cause, and every other number in the report is suspect.
+const harnessNoopRule = "harness/known-noop"
+
+// harnessWitnessRule is a real rule known to be load-bearing. The scorer asserts it
+// comes back WITNESSED. Together these two catch the failure that actually happened
+// while building this: a polarity inversion reported every rule as unwitnessed, and
+// the same mistake in the other direction would have silently inflated the score.
+const harnessWitnessRule = "8.6.4a/signature-valid"
 
 // ruleKnown guards against the score silently measuring a rule that no enforcement
 // site consults — a typo in an ID would otherwise show up as an "unwitnessed" rule
@@ -168,6 +200,10 @@ type reportedRule struct {
 	What    string `json:"what"`
 	Verdict string `json:"verdict"`
 	Vectors int    `json:"failing_vectors,omitempty"`
+	// Baseline and Disabled record the OUTCOME either side of the mutation, so a reader
+	// sees the differential rather than only the verdict derived from it.
+	Baseline string `json:"baseline,omitempty"`
+	Disabled string `json:"disabled,omitempty"`
 }
 
 type reportedClaim struct {
@@ -175,6 +211,10 @@ type reportedClaim struct {
 	Label     string `json:"label"`
 	Witnesses string `json:"witnesses"`
 	Verdict   string `json:"verdict"`
+	// SubsumedBy names the rule that rejects this input once the claimed one is
+	// removed. Its presence turns AMBIGUOUS into a decision: write a more isolated
+	// vector, or accept that only the composite guarantee is measurable.
+	SubsumedBy string `json:"subsumed_by,omitempty"`
 }
 
 // mutationOperator names WHAT was mutated. Recorded because "2 of 17" under
@@ -200,6 +240,18 @@ func cmdConformanceScore(vectorPath string, jsonOut bool) {
 		fail(fmt.Errorf("cannot measure coverage against a failing baseline"))
 	}
 
+	// HARNESS SELF-TEST, before any number is reported. The scorer is now evidence in
+	// its own right, and a polarity inversion or an aggregation slip produces a
+	// plausible-looking score rather than an obvious failure — which is exactly what
+	// happened while building it. A rule known to be load-bearing must read WITNESSED,
+	// and a rule nothing consults must read UNWITNESSED.
+	if err := harnessSelfTest(vs); err != nil {
+		fmt.Printf("HARNESS SELF-TEST FAILED: %v\n\n", err)
+		fmt.Printf("The measurement mechanism is not behaving, so no score derived from it can\n")
+		fmt.Printf("be trusted. Refusing to report one.\n")
+		fail(fmt.Errorf("harness self-test failed"))
+	}
+
 	fam := familyEnvelope
 	rules := rulesInFamily(fam)
 	rep := conformanceReport{
@@ -212,9 +264,8 @@ func cmdConformanceScore(vectorPath string, jsonOut bool) {
 	}
 
 	for _, r := range rules {
-		disabledRule = r.ID
-		caught := runVectors(vs)
-		disabledRule = ""
+		var caught []string
+		withRulesDisabled([]string{r.ID}, func() { caught = runVectors(vs) })
 		verdict := obligationAmbiguous
 		if len(caught) > 0 {
 			verdict = obligationWitnessed
@@ -222,13 +273,22 @@ func cmdConformanceScore(vectorPath string, jsonOut bool) {
 		} else {
 			verdict = "UNWITNESSED"
 		}
-		rep.Rules = append(rep.Rules, reportedRule{r.ID, r.Sec, r.What, verdict, len(caught)})
+		rr := reportedRule{ID: r.ID, Section: r.Sec, What: r.What, Verdict: verdict,
+			Vectors: len(caught), Baseline: "reject", Disabled: "reject"}
+		if verdict == obligationWitnessed {
+			rr.Disabled = "accept"
+		}
+		rep.Rules = append(rep.Rules, rr)
 	}
 	sort.Slice(rep.Rules, func(i, j int) bool { return rep.Rules[i].ID < rep.Rules[j].ID })
 
 	for _, v := range vs {
 		if out := witnessOutcome(v); out != "" && out != obligationWitnessed {
-			rep.VectorClaims = append(rep.VectorClaims, reportedClaim{v.Kind, v.Label, v.Witnesses, out})
+			c := reportedClaim{Kind: v.Kind, Label: v.Label, Witnesses: v.Witnesses, Verdict: out}
+			if out == obligationAmbiguous {
+				c.SubsumedBy = alternateRejector(v, v.Witnesses)
+			}
+			rep.VectorClaims = append(rep.VectorClaims, c)
 		}
 	}
 
@@ -250,7 +310,11 @@ func cmdConformanceScore(vectorPath string, jsonOut bool) {
 	if len(rep.VectorClaims) > 0 {
 		fmt.Printf("\nVECTORS NOT DEMONSTRATING THEIR DECLARED OBLIGATION (%d):\n", len(rep.VectorClaims))
 		for _, c := range rep.VectorClaims {
-			fmt.Printf("  [%s] %q claims %s\n", c.Verdict, c.Label, c.Witnesses)
+			sub := c.SubsumedBy
+			if sub == "" {
+				sub = "(nothing else accounts for it)"
+			}
+			fmt.Printf("  [%s] %-44s claims %-26s subsumed by %s\n", c.Verdict, trunc(c.Label, 44), c.Witnesses, sub)
 		}
 		fmt.Printf("\nAMBIGUOUS means removing the named rule does not change the outcome, so some\n")
 		fmt.Printf("other check decides it. The vector may be perfectly valid and still not be\n")
@@ -271,4 +335,19 @@ func fileDigest(path string) string {
 	}
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
+}
+
+// harnessSelfTest proves the measurement mechanism works before any score derived
+// from it is reported.
+func harnessSelfTest(vs []vectorRecord) error {
+	var caught []string
+	withRulesDisabled([]string{harnessWitnessRule}, func() { caught = runVectors(vs) })
+	if len(caught) == 0 {
+		return fmt.Errorf("%s is known to be load-bearing, but disabling it broke nothing — the harness is not detecting failures at all (a polarity inversion reports every rule as unwitnessed)", harnessWitnessRule)
+	}
+	withRulesDisabled([]string{harnessNoopRule}, func() { caught = runVectors(vs) })
+	if len(caught) != 0 {
+		return fmt.Errorf("%s is consulted by nothing, yet disabling it produced %d failure(s) — the aggregation is crediting rules for failures they did not cause", harnessNoopRule, len(caught))
+	}
+	return nil
 }
