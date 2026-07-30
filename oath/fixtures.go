@@ -164,6 +164,64 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		return "", err
 	}
 	fmt.Fprintf(&log, "prove/outcomes.json: %d definitions (solver: %s)\n", len(outcomes), solver)
+	// envelope/vectors.txt — canonical publication envelopes (SPEC §8.6). A blind
+	// kernel must reproduce these bytes EXACTLY: they are what a signature covers,
+	// so a single differing byte makes every signature from that kernel unverifiable
+	// elsewhere. Cases chosen for what they pin: the first-publication sentinel and
+	// its revision-0 pairing, a repoint with a real parent, a namespaced name, and a
+	// multi-digit revision (so nobody pads it).
+	var envf strings.Builder
+	envf.WriteString("# canonical publication envelope (SPEC §8.6), one blank-line-separated block each\n")
+	envf.WriteString("# Each block is the EXACT byte sequence a signature is computed over.\n\n")
+	for _, e := range []pubEnvelope{
+		{Op: "put", Name: "double", Artifact: strings.Repeat("11", 32),
+			Parent: noParent, ParentRev: firstRev, Author: strings.Repeat("aa", 32)},
+		{Op: "put", Name: "double", Artifact: strings.Repeat("22", 32),
+			Parent: strings.Repeat("11", 32), ParentRev: 1, Author: strings.Repeat("bb", 32)},
+		{Op: "put", Name: "michael/service1/verify-webhook", Artifact: strings.Repeat("33", 32),
+			Parent: strings.Repeat("44", 32), ParentRev: 1042, Author: strings.Repeat("cc", 32)},
+	} {
+		envf.Write(envelopeEncode(e))
+		envf.WriteString("\n")
+	}
+	// Inputs a conformant kernel MUST REJECT (§8.6.1). Listed as escaped one-liners
+	// because several are only distinguishable from a valid envelope by a character
+	// that does not survive being pasted into a file.
+	envf.WriteString("# MUST REJECT — each is a distinct way to smuggle a second byte spelling\n")
+	for _, bad := range []struct{ why, bytes string }{
+		{"uppercase hex artifact", "oath-publish/1\nop=put\nname=n\nartifact=" + strings.ToUpper(strings.Repeat("ab", 32)) + "\nparent=-\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32) + "\n"},
+		{"non-canonical revision (leading zero)", "oath-publish/1\nop=put\nname=n\nartifact=" + strings.Repeat("ab", 32) + "\nparent=" + strings.Repeat("cd", 32) + "\nparent_rev=01\nauthor=" + strings.Repeat("aa", 32) + "\n"},
+		{"parent sentinel with nonzero revision", "oath-publish/1\nop=put\nname=n\nartifact=" + strings.Repeat("ab", 32) + "\nparent=-\nparent_rev=2\nauthor=" + strings.Repeat("aa", 32) + "\n"},
+		{"parent hash with revision 0", "oath-publish/1\nop=put\nname=n\nartifact=" + strings.Repeat("ab", 32) + "\nparent=" + strings.Repeat("cd", 32) + "\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32) + "\n"},
+		{"newline injected into a value", "oath-publish/1\nop=put\nname=n\nartifact=x\nparent=-\nparent_rev=0\nauthor=a\n"},
+		{"reordered fields", "oath-publish/1\nname=n\nop=put\nartifact=" + strings.Repeat("ab", 32) + "\nparent=-\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32) + "\n"},
+		{"missing trailing newline", "oath-publish/1\nop=put\nname=n\nartifact=" + strings.Repeat("ab", 32) + "\nparent=-\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32)},
+		{"unknown extra field", "oath-publish/1\nop=put\nname=n\nartifact=" + strings.Repeat("ab", 32) + "\nparent=-\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32) + "\nextra=1\n"},
+		{"wrong format version", "oath-publish/2\nop=put\nname=n\nartifact=" + strings.Repeat("ab", 32) + "\nparent=-\nparent_rev=0\nauthor=" + strings.Repeat("aa", 32) + "\n"},
+	} {
+		// SELF-VALIDATE. A fixture asserting "MUST REJECT" that this kernel accepts
+		// would ship a false obligation to a blind implementer, who has no other
+		// source to check it against. Better to fail generation than to publish it.
+		if _, perr := envelopeParse([]byte(bad.bytes)); perr == nil {
+			return "", fmt.Errorf("envelope reject fixture %q is ACCEPTED by this kernel: the fixture would assert an obligation the reference implementation does not meet", bad.why)
+		}
+		fmt.Fprintf(&envf, "reject %-40s %q\n", bad.why, bad.bytes)
+	}
+	// And the accept cases must round-trip, or the canonical bytes above are not
+	// actually what this kernel reads back.
+	for _, e := range []pubEnvelope{
+		{Op: "put", Name: "double", Artifact: strings.Repeat("11", 32),
+			Parent: noParent, ParentRev: firstRev, Author: strings.Repeat("aa", 32)},
+	} {
+		got, perr := envelopeParse(envelopeEncode(e))
+		if perr != nil || got != e {
+			return "", fmt.Errorf("envelope fixture does not round-trip through this kernel: %v", perr)
+		}
+	}
+	if err := write(filepath.Join("envelope", "vectors.txt"), []byte(envf.String())); err != nil {
+		return "", err
+	}
+
 	// campaign/vectors.txt — canonical campaign descriptions and their digests
 	// (SPEC §11). These are the AUDIT vectors: a kernel reproduces the identity
 	// of a measurement without running one, and without consulting another
@@ -445,9 +503,14 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
 4. verify/<name>.txt reproduces byte-for-byte (verdicts + counterexamples).
 5. analyses/<name>.json match (termination, confinement, mutation, guarantee).
 6. prove/outcomes.json match, given the same solver version.
+7. campaign/vectors.txt digests reproduce (SPEC §11) — measurement identity,
+   derivable without running a measurement.
+8. envelope/vectors.txt bytes reproduce EXACTLY, and every "reject" line is
+   rejected (SPEC §8.6). These are what a publication signature is computed over,
+   so one differing byte makes signatures from that kernel unverifiable elsewhere.
 
 Files: hashes.txt, canonical/, encoding/, gate/, verify/, analyses/,
-prove/outcomes.json.
+prove/outcomes.json, campaign/vectors.txt, envelope/vectors.txt.
 `, kernelVersion)
 	if err := write("MANIFEST.md", []byte(manifest)); err != nil {
 		return "", err

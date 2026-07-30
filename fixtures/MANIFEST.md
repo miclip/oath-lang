@@ -12,6 +12,11 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
 4. verify/<name>.txt reproduces byte-for-byte (verdicts + counterexamples).
 5. analyses/<name>.json match (termination, confinement, mutation, guarantee).
 6. prove/outcomes.json match, given the same solver version.
+7. campaign/vectors.txt digests reproduce (SPEC §11) — measurement identity,
+   derivable without running a measurement.
+8. envelope/vectors.txt bytes reproduce EXACTLY, and every "reject" line is
+   rejected (SPEC §8.6). These are what a publication signature is computed over,
+   so one differing byte makes signatures from that kernel unverifiable elsewhere.
 
 Files: hashes.txt, canonical/, encoding/, gate/, verify/, analyses/,
-prove/outcomes.json.
+prove/outcomes.json, campaign/vectors.txt, envelope/vectors.txt.

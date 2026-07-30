@@ -1642,6 +1642,153 @@ re-earned by whoever consumes the object, a consumer never has to trust that the
 worker actually proved anything — the gate is a convenience and a policy-
 enforcement tier, not a root of trust.
 
+### 8.6 Signed publication (the author's statement)
+
+§8.4 signs a journal ENTRY, which seals custody: the entry has not been altered
+since it was written. It does not establish authorship to a third party, because
+the entry is composed by the store — a store could sign an entry naming anyone.
+A **publication envelope** is the author's own statement, signed before submission
+and persisted verbatim, so authorship becomes checkable without trusting the store.
+
+The two are independent and MAY both be present. They answer different questions:
+
+| | question answered | signer |
+|---|---|---|
+| entry signature (§8.4) | has this record been altered? | whoever holds the store's key |
+| publication envelope | who requested this exact transition? | the author |
+
+An envelope covers only what the author controls: the name, the artifact, and the
+transition. It MUST NOT cover store-derived verdicts (`status`, `guarantee`,
+`termination`, policy outcome) — those are re-derivable from content bytes (§7),
+and an author cannot predict them, so requiring a signature over them would make a
+policy decision indistinguishable from a forged statement.
+
+#### 8.6.1 Canonical encoding
+
+An envelope is a byte string: a version line, then exactly six `key=value` lines,
+in the order below, each terminated by one LF (`0x0A`). There is no other
+whitespace, no trailing content, and no optional field.
+
+```
+oath-publish/1
+op=put
+name=<name>
+artifact=<64 lowercase hex>
+parent=<64 lowercase hex | ->
+parent_rev=<canonical decimal>
+author=<64 lowercase hex>
+```
+
+The version line is inside the signed bytes, so a signature under one format
+version can never be mistaken for another.
+
+A conformant implementation MUST reject an envelope, on both encoding and
+verification, unless all of:
+
+- every value is free of LF, CR, and any character below `0x20` or equal to
+  `0x7F`. A value containing LF would inject a line, and the encoding would stop
+  being uniquely decodable;
+- `op` is `put` (the only operation defined in this version);
+- `artifact` is 64 **lowercase** hex characters. Uppercase MUST be rejected: the
+  encoding is compared as bytes, so `ABAB…` and `abab…` would be different
+  statements about one artifact;
+- `parent` is 64 lowercase hex, or exactly `-` meaning the name had no previous
+  value;
+- `parent_rev` is a non-negative integer in canonical decimal — no leading zeros,
+  no sign, no spaces. `03` and `+3` MUST be rejected, since they would be distinct
+  bytes for one revision;
+- `parent` is `-` **if and only if** `parent_rev` is `0`. A first publication has
+  both or neither; allowing disagreement would let one envelope describe two
+  different states;
+- `author` is 64 lowercase hex.
+
+Parsing MUST be strict: unknown keys, missing keys, duplicated keys, reordered
+keys, a missing trailing LF, and trailing bytes are all errors. An implementation
+MUST additionally verify that re-encoding the parsed value reproduces the input
+bytes exactly. Canonical encoding without canonical parsing would protect identity
+at creation and discard it at verification.
+
+#### 8.6.2 The name revision
+
+`parent_rev` is the number of journal entries that have **applied a transition** to
+that name — not the number of accepted entries. A definition may be `falsified` and
+still bind its name; a `rejected`, `blocked`, or `pending` entry belongs in the
+journal without moving anything.
+
+An entry has applied a transition if its `transition` field is `applied`. For
+entries written before that field existed, an implementation MUST fall back to
+treating `accepted` and `falsified` as applied, and everything else as not.
+
+A revision MUST be monotonic per name and MUST NOT be reused. This is what makes
+replay protection survive an A→B→A cycle, where a `parent` hash alone becomes
+valid again. Names in this version are only ever repointed, never deleted, so an
+unresolvable name is one that was never published (`parent=-`, `parent_rev=0`). An
+implementation that adds deletion MUST NOT allow a revision to reset, or every
+historical envelope for a recreated name becomes replayable.
+
+#### 8.6.3 Journal fields
+
+- `envelope`: the exact envelope bytes as received. A store MUST persist them
+  verbatim and MUST NOT re-encode, normalize, or reformat them at any point. They
+  are the historical statement; the duplicated fields below are its interpretation.
+  Reconstructing them later from those fields would let an encoder change silently
+  invalidate old signatures — the signature would remain correct and stop
+  verifying.
+- `author_pubkey`: lowercase hex of the key that signed `envelope`.
+- `author_sig`: lowercase hex of the 64-byte signature over `envelope`'s exact
+  bytes.
+- `transition`: `applied` when the name now points at `hash`; absent otherwise.
+
+These are metadata and never part of definition identity (§9).
+
+#### 8.6.4 Verification obligations
+
+A verifier MUST, for every entry where any of `envelope`, `author_pubkey`,
+`author_sig` is non-empty, reject the journal unless ALL of:
+
+1. all three are present. Any one alone attests to nothing;
+2. `envelope` parses under §8.6.1 and re-encodes to itself;
+3. the envelope's `author` equals `author_pubkey`;
+4. `author_sig` is a valid signature under `author_pubkey` over the **persisted**
+   bytes — not over a re-encoding;
+5. the envelope's `name`, `artifact`, and `parent` equal the entry's `name`,
+   `hash`, and `prev` respectively, where an empty `prev` corresponds to `-`.
+
+Failing (5) means the store recorded a transition its author did not sign, which
+MUST be a hard failure rather than a warning. Entries with none of the three fields
+impose no obligation and are conformant.
+
+A store accepting a publication MUST, **before** the name moves:
+
+- verify the signing key is the **authenticated principal**, not the key the
+  envelope names. Verifying against the envelope's own `author` would always
+  succeed, so a caller could submit any valid statement made by anyone;
+- recompute the artifact hash from the submitted content and require it to equal
+  the signed `artifact`. Because identity is a pure function of content (§1), this
+  makes agreement between the client's and the store's elaboration an enforced
+  precondition;
+- require the signed `parent` and `parent_rev` to be the name's current values.
+
+A statement failing any check MUST NOT move the name. The object itself MAY still
+be stored: storage is idempotent under content addressing and an unreferenced
+object is inert. A failed attempt SHOULD be journalled, so the log records what
+happened rather than only what succeeded.
+
+#### 8.6.5 What this does not guarantee
+
+The envelope expresses a compare-and-swap; it does not by itself make application
+atomic. Where compare and update are separate operations, two correctly signed
+publications naming the same parent can both verify before one overwrites the
+other. Historical **replay** is prevented — an old envelope fails the parent or
+revision check — but concurrent same-parent publication is not. A store claiming
+atomic signed transitions MUST enforce the comparison and the update in a single
+atomic operation; an implementation that cannot MUST NOT claim it.
+
+Distinct signing keys for spec and body are also not evidence of independent
+authorship: one process holding both keys produces an identical record. Custody
+separation is a separate, stronger claim and is not established by any mechanism in
+this version.
+
 ## 9. The hashed/metadata boundary
 
 Hashed (identity): the `Def` — structure, types, bodies, properties.

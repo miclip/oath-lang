@@ -1,0 +1,37 @@
+# canonical publication envelope (SPEC §8.6), one blank-line-separated block each
+# Each block is the EXACT byte sequence a signature is computed over.
+
+oath-publish/1
+op=put
+name=double
+artifact=1111111111111111111111111111111111111111111111111111111111111111
+parent=-
+parent_rev=0
+author=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+oath-publish/1
+op=put
+name=double
+artifact=2222222222222222222222222222222222222222222222222222222222222222
+parent=1111111111111111111111111111111111111111111111111111111111111111
+parent_rev=1
+author=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+oath-publish/1
+op=put
+name=michael/service1/verify-webhook
+artifact=3333333333333333333333333333333333333333333333333333333333333333
+parent=4444444444444444444444444444444444444444444444444444444444444444
+parent_rev=1042
+author=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+
+# MUST REJECT — each is a distinct way to smuggle a second byte spelling
+reject uppercase hex artifact                   "oath-publish/1\nop=put\nname=n\nartifact=ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB\nparent=-\nparent_rev=0\nauthor=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+reject non-canonical revision (leading zero)    "oath-publish/1\nop=put\nname=n\nartifact=abababababababababababababababababababababababababababababababab\nparent=cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\nparent_rev=01\nauthor=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+reject parent sentinel with nonzero revision    "oath-publish/1\nop=put\nname=n\nartifact=abababababababababababababababababababababababababababababababab\nparent=-\nparent_rev=2\nauthor=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+reject parent hash with revision 0              "oath-publish/1\nop=put\nname=n\nartifact=abababababababababababababababababababababababababababababababab\nparent=cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\nparent_rev=0\nauthor=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+reject newline injected into a value            "oath-publish/1\nop=put\nname=n\nartifact=x\nparent=-\nparent_rev=0\nauthor=a\n"
+reject reordered fields                         "oath-publish/1\nname=n\nop=put\nartifact=abababababababababababababababababababababababababababababababab\nparent=-\nparent_rev=0\nauthor=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+reject missing trailing newline                 "oath-publish/1\nop=put\nname=n\nartifact=abababababababababababababababababababababababababababababababab\nparent=-\nparent_rev=0\nauthor=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+reject unknown extra field                      "oath-publish/1\nop=put\nname=n\nartifact=abababababababababababababababababababababababababababababababab\nparent=-\nparent_rev=0\nauthor=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nextra=1\n"
+reject wrong format version                     "oath-publish/2\nop=put\nname=n\nartifact=abababababababababababababababababababababababababababababababab\nparent=-\nparent_rev=0\nauthor=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
