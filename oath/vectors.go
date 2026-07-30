@@ -170,7 +170,7 @@ func cmdVectors(path string) {
 		kinds[v.Kind]++
 	}
 	// Claim-checking requires disabling rules, so it lives in the harness build only
-	// (rules_harness.go). A production `oath vectors` runs the suite; it cannot ask
+	// (rule_disable_mutation.go). A production `oath vectors` runs the suite; it cannot ask
 	// what the suite would CATCH, because answering that means weakening verification.
 	reportVectorClaims(vs)
 	if len(failures) == 0 {

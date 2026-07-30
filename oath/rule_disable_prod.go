@@ -1,4 +1,4 @@
-//go:build !harness
+//go:build !conformance_mutation
 
 package main
 
@@ -7,7 +7,7 @@ package main
 // unconditional check, so a shipped binary contains no code path capable of disabling
 // a verification rule.
 //
-// The harness build (rules_harness.go) replaces this with a switchable version. Only
+// The mutation build (rule_disable_mutation.go) replaces this with a switchable version. Only
 // that build can measure conformance coverage, which is the correct trade: a scoring
 // mechanism must not exist in the artifact whose guarantees it can switch off.
 func ruleOn(string) bool { return true }

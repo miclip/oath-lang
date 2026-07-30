@@ -108,8 +108,18 @@ check: verify prove
 # switch off and no state to hold one.
 .PHONY: conformance-score
 conformance-score:
-	@cd oath && go build -tags harness -o oath-harness .
-	@./oath/oath-harness conformance-score
+	@cd oath && go build -tags conformance_mutation -o oath-vector-score .
+	@./oath/oath-vector-score conformance-score
+
+# RELEASE GATE. The property is behavioural — no invocation of the production binary,
+# under any arguments or environment, can disable a normative verification rule — so it
+# is checked against the built artifact rather than the source. Run before any release
+# or deploy; the mutation machinery is exactly the capability an attacker wants, and
+# shipping it inside the artifact whose guarantees it switches off would make the
+# measurement tooling the vulnerability.
+.PHONY: mutation-boundary
+mutation-boundary:
+	@./scripts/verify-no-mutation-in-release.sh
 
 .PHONY: small-order
 small-order:

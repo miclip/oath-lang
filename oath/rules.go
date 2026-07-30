@@ -25,14 +25,14 @@ package main
 // still exist in a shipped binary, reachable by any future caller inside the package
 // and present for anyone inspecting it.
 //
-// The switch therefore lives behind the `harness` build tag (rules_harness.go). A
-// normal build compiles rules_prod.go instead, where ruleOn is a function returning a
+// The switch therefore lives behind the `conformance_mutation` build tag (rule_disable_mutation.go). A
+// normal build compiles rule_disable_prod.go instead, where ruleOn is a function returning a
 // constant — the compiler folds every call site, so there is no branch to disable a
 // rule and no state that could hold one. The true claim moves from "unreachable
 // through configuration and exported APIs" to "production binaries do not contain
 // code paths capable of disabling verification rules".
 //
-// Build the harness with:  go build -tags harness
+// Build the scorer with:  go build -tags conformance_mutation
 
 import (
 	"crypto/sha256"

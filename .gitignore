@@ -21,4 +21,4 @@ tokens.json
 # Publishing a key as a deliberate trust root remains fine, and `git add -f`
 # is the friction that keeps it deliberate.
 *.pub
-oath/oath-harness
+oath/oath-vector-score
