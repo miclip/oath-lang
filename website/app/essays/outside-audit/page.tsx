@@ -21,15 +21,16 @@ export default function OutsideAudit() {
         I did not build Oath. That matters, because Oath’s best claim is about
         reproduction rather than authorship. I read the repo as an outside reviewer: the
         spec, design notes, experiment reports, Rust divergence log, proof ledger, and
-        the two existing essays.
+        the project essays.
       </p>
 
       <p>
         The strongest evidence is real. The current <code>fixtures/prove/outcomes.json</code>{" "}
-        ledger says kernel <code>oath-kernel/0.7</code>, Z3 4.16.0, 114 definitions with
-        properties, 360 properties, 299 proven properties, and 99 fully proven
-        definitions. It also keeps 13 tested definitions and 2 falsified definitions in
-        view. That is a serious artifact.
+        ledger says kernel <code>oath-kernel/0.7</code>, Z3 4.16.0, 168 definitions with
+        properties, 427 properties, 348 proven properties, and 123 fully proven
+        definitions. It also keeps 41 tested definitions and 4 falsified definitions in
+        view. That is a serious artifact, and the site’s browsable corpus data is copied
+        from that ledger rather than maintained as a parallel claim.
       </p>
 
       <p>
@@ -55,9 +56,16 @@ export default function OutsideAudit() {
         independently authored specs can run their properties against each other’s
         bodies, and disagreement comes back with a counterexample. That is the right
         shape of answer. It still depends on genuine independence, and two authors can
-        still converge on the same wrong brief. Local journal authorship and context
-        hashes are self-reported until a hosted store enforces them. The spec itself
-        admits tail deletion needs an external anchor.
+        still converge on the same wrong brief. Hosted MCP has also changed the
+        provenance story: <code>registry.oath-lang.org</code> accepts signed JSON-RPC
+        requests where the public key is the principal, bearer tokens are read-only
+        unless granted write, and state-changing tools are capability-gated. That is a
+        real improvement over local self-report. It authenticates who submitted a formal
+        claim; it still cannot decide whether the claim captures the intended behavior.
+        Publication envelopes now bind the name, artifact, parent, and per-name revision,
+        which is the right replay defense for authored transitions. Bearer tokens remain
+        server-vouched, the v1 filesystem store does not make the compare-and-set atomic,
+        and the spec itself admits tail deletion needs an external anchor.
       </p>
 
       <p>
@@ -77,10 +85,29 @@ export default function OutsideAudit() {
         models, and the later standard-library work extends the corpus through proven
         list combinators, results, options, pairs, and dictionary-passing generics. That
         says precise contracts can make implementation surprisingly clerical for small,
-        pure modules. It says less about real systems. Oath has no floats, no real IO in
-        the proof story, no mutual recursion, and division is deliberately outside the
-        SMT fragment. Effects are capability-shaped and simulated at the boundary. Many
-        hard behaviors of production systems live exactly where this fragment stops.
+        pure modules. It says less about real systems. Oath now has IEEE-754
+        <code>Float</code> with true float laws proven and false ones falsified, real
+        capability entry points wired once at the program boundary, and an SMT bridge for
+        integer division and modulo away from zero divisors; rational and float division
+        are in the proof fragment. Those are material expansions. The remaining boundary
+        is narrower but still real: no mutual recursion, partial float narrowings and
+        crypto primitives outside proof, capability worlds that serialize one history,
+        and no general account yet of time, concurrency, or messy production effects.
+      </p>
+
+      <p>
+        The public registry matters for the project’s actual audience. This is not only a
+        local CLI with a nice ledger: <code>oath serve</code> exposes the substrate as MCP,
+        and the live registry gives agents tools for context, discovery, explanation,
+        verification, mutation, proof, cross-checking, and submission over HTTPS. The
+        capability split is sensible: read tokens can browse, discover, and re-verify;
+        writes require a signature or an explicitly write-scoped token; important names
+        can be reserved to <code>owner_pubkey</code>; and <code>require_proven</code> can
+        defer a name until a worker re-proves it. That strengthens the operational trust
+        story. It also adds ordinary operational assumptions: v1 is a single-writer
+        hosted store, worker verdict signatures depend on deployment configuration, and
+        consumers still need to re-earn proofs rather than treat the registry badge as a
+        root of trust.
       </p>
 
       <p>
@@ -107,11 +134,11 @@ export default function OutsideAudit() {
       <p>
         So my verdict is less uneasy, but still uneasy. Oath has not eliminated trust. It
         has relocated trust into formal specs, kernel conformance, solver semantics,
-        fixture discipline, and the independence of the parties writing claims. That
-        relocation is useful. It gives auditors smaller surfaces and better artifacts.
-        Cross-checking gives the hardest remaining question a machine-visible pressure
-        test, but not an escape hatch: who writes the oath, and how independent are they
-        really?
+        fixture discipline, hosted write authority, registry operations, and the
+        independence of the parties writing claims. That relocation is useful. It gives
+        auditors smaller surfaces and better artifacts. Cross-checking and signed MCP
+        provenance give the hardest remaining question more machine-visible pressure, but
+        not an escape hatch: who writes the oath, and how independent are they really?
       </p>
 
       <details className="essay-change-log">
@@ -146,12 +173,23 @@ export default function OutsideAudit() {
             misalignment, while preserving the honest limit: independently authored
             specs can still agree on the same wrong intent.
           </p>
+          <p>
+            <strong>2026-07-30 — Registry, MCP, floats, and proof boundaries moved.</strong>{" "}
+            The public MCP registry is live, signature auth makes the public key the
+            hosted principal, publication envelopes persist the author’s signed transition,
+            bearer tokens are read-only unless granted write, and state-changing tools are
+            capability-gated. The corpus also grew to 168 definitions, 427 properties, 348
+            proven properties, and 123 fully proven definitions; <code>Float</code>, real
+            capability entry wiring, and the integer division bridge narrow several
+            original objections without removing the final one about intent and
+            independence.
+          </p>
         </div>
       </details>
 
       <div className="essay-next">
         <span>The series</span>
-        <Link href="/essays">← All three essays</Link>
+        <Link href="/essays">← All essays</Link>
       </div>
     </>
   );

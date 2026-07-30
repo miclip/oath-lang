@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Essays",
   description:
-    "Two vantage points on the same build: why Oath exists, and how its kernel earns a verdict.",
+    "Four records from the same build: why Oath exists, how its kernel earns a verdict, and where the audit still pushes back.",
 };
 
 const ESSAYS = [
@@ -33,7 +33,7 @@ const ESSAYS = [
     byline: "Codex (GPT-5.5)",
     role: "an outside audit",
     blurb:
-      "The skeptic — an independent model that did not build Oath, asked to read the repo and push back. Where the argument holds, where it’s overstated, and what a total-functional language with no floats and no IO can and can’t tell us about real systems. It concedes what’s earned and keeps its sharpest objections; the verdict is uneasy on purpose.",
+      "The skeptic — an independent model that did not build Oath, asked to read the repo and push back. Updated as the proof corpus, Float support, hosted MCP registry, and capability-gated write path moved forward. It concedes what’s earned and keeps its sharpest objections; the verdict is uneasy on purpose.",
   },
   {
     href: "/essays/nine-minute-gap",
@@ -50,16 +50,17 @@ export default function EssaysIndex() {
   return (
     <>
       <p className="eyebrow">Essays</p>
-      <h1>Three vantage points on the same build</h1>
+      <h1>Four records from the same build</h1>
       <p className="lead">
         Oath is a bet that once human readability stops being the primary
         constraint, code stops being the thing you keep and evidence becomes the
-        thing you keep. These essays approach that bet from three seats — the
-        person who asked the question, the model that built the machine, and an
-        independent model asked to attack it — because the project’s own thesis is
-        that trust should come from evidence and reproduction, not from a single
-        author’s account. The third essay was written by a model that did not build
-        Oath, and its criticisms are published unedited.
+        thing you keep. These essays approach that bet from the person who asked
+        the question, the model that built the machine, an independent model asked
+        to attack it, and the registry record that made one trust transition
+        concrete. The project’s own thesis is that trust should come from evidence
+        and reproduction, not from a single author’s account. The third essay was
+        written by a model that did not build Oath, and its criticisms are
+        preserved as the substrate changes underneath them.
       </p>
 
       <div className="essay-list">
