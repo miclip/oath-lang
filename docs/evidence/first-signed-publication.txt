@@ -1,0 +1,99 @@
+MILESTONE: first publicly auditable signed publication
+Atomic concurrent publication explicitly UNGUARANTEED (pending the transactional store).
+Captured 2026-07-30T00:43:48Z, local registry with --authorized-keys.
+
+Key A: f39b3d5c791c69abbcb11ef2e354a420727f4a9d4624bcf840fc795f66ae96a0
+Key B: abba2c0225e39d9a8bac92f188c2af2d400d287d945a066b5a7f41208a4c95a4
+
+--- expose before signing (--dry-run: no key used, nothing sent) ---
+ABOUT TO SIGN
+  operation   put
+  name        double
+  artifact    ea1f85daff7ea2fc79e2fafa88b7145e4f127f1600e1af3a89a71bf59b0492bd
+  replacing   974b9a51085c428c776f1c6606dff6339e11267a50f35bb2a2e926aaccf242ef
+  revision    2
+  as          f39b3d5c791c69abbcb11ef2e354a420727f4a9d4624bcf840fc795f66ae96a0
+
+EXACT BYTES TO BE SIGNED (this is the statement, not a summary of it):
+  | oath-publish/1
+  | op=put
+  | name=double
+  | artifact=ea1f85daff7ea2fc79e2fafa88b7145e4f127f1600e1af3a89a71bf59b0492bd
+  | parent=974b9a51085c428c776f1c6606dff6339e11267a50f35bb2a2e926aaccf242ef
+  | parent_rev=2
+  | author=f39b3d5c791c69abbcb11ef2e354a420727f4a9d4624bcf840fc795f66ae96a0
+
+--dry-run: nothing signed, nothing sent.
+
+--- A publishes; client verifies persisted bytes ---
+$ oath publish --remote … --key A.key v1.oath
+✓ double #ea1f85daff7e  tested · total
+verified: the registry persisted the exact 202 bytes that were signed.
+
+--- B publishes the same spec with a new body ---
+✓ double #974b9a51085c  tested · total  (name repointed; ea1f85daff7e remains immutable)
+verified: the registry persisted the exact 265 bytes that were signed.
+
+--- oath audit: 0 -> 2 cryptographically authored ---
+JOURNAL: VERIFIED — 2 entries, chain intact
+  every author signature present verifies against its PERSISTED envelope bytes,
+  and each envelope agrees with the transition the entry records.
+
+AUTHORSHIP COVERAGE (2 accepted publications):
+       2  cryptographically authored — a key signed the exact publication
+       0  UNSIGNED — the recorded author is a label, not evidence
+
+SIGNING KEYS:
+       1  abba2c0225e39d9a8bac92f188c2af2d400d287d945a066b5a7f41208a4c95a4
+       1  f39b3d5c791c69abbcb11ef2e354a420727f4a9d4624bcf840fc795f66ae96a0
+
+--- oath audit double: author statement and registry findings, separated ---
+── seq 1  2026-07-30T00:42:52Z  accepted  double
+   artifact ea1f85daff7ea2fc79e2fafa88b7145e4f127f1600e1af3a89a71bf59b0492bd
+   AUTHOR STATEMENT (exact signed bytes, verified):
+     | oath-publish/1
+     | op=put
+     | name=double
+     | artifact=ea1f85daff7ea2fc79e2fafa88b7145e4f127f1600e1af3a89a71bf59b0492bd
+     | parent=-
+     | parent_rev=0
+     | author=f39b3d5c791c69abbcb11ef2e354a420727f4a9d4624bcf840fc795f66ae96a0
+   signed by f39b3d5c791c69abbcb11ef2e354a420727f4a9d4624bcf840fc795f66ae96a0
+   REGISTRY FINDINGS (re-derivable from the artifact, not taken on trust):
+     guarantee=tested (200 cases per property) termination=nonrecursive
+   REGISTRY CUSTODY: chain=8fd85cc6b60d
+
+── seq 2  2026-07-30T00:42:52Z  accepted  double
+   artifact 974b9a51085c428c776f1c6606dff6339e11267a50f35bb2a2e926aaccf242ef
+   AUTHOR STATEMENT (exact signed bytes, verified):
+     | oath-publish/1
+     | op=put
+     | name=double
+     | artifact=974b9a51085c428c776f1c6606dff6339e11267a50f35bb2a2e926aaccf242ef
+     | parent=ea1f85daff7ea2fc79e2fafa88b7145e4f127f1600e1af3a89a71bf59b0492bd
+     | parent_rev=1
+     | author=abba2c0225e39d9a8bac92f188c2af2d400d287d945a066b5a7f41208a4c95a4
+   signed by abba2c0225e39d9a8bac92f188c2af2d400d287d945a066b5a7f41208a4c95a4
+   REGISTRY FINDINGS (re-derivable from the artifact, not taken on trust):
+     guarantee=tested (200 cases per property) termination=nonrecursive
+   REGISTRY CUSTODY: chain=a2fe932bc41b
+
+--- explain: advanced exactly one rung ---
+PROVENANCE: author=abba2c0225e39d9a8bac92f188c2af2d400d287d945a066b5a7f41208a4c95a4 spec=f39b3d5c791c69abbcb11ef2e354a420727f4a9d4624bcf840fc795f66ae96a0 body=abba2c0225e39d9a8bac92f188c2af2d400d287d945a066b5a7f41208a4c95a4
+            authorship: DISTINCT_KEYS_CUSTODY_UNVERIFIED
+
+DEPENDENCIES (0, exact by hash):
+
+LIMITATIONS:
+  · 2 of 2 properties are TESTED, not proven (is-twice, zero-fixed) — they hold on generated cases, not for all inputs
+  · spec strength UNMEASURED — no mutation score recorded, so how much the properties actually pin is unknown
+  · spec and body were signed by DISTINCT KEYS, but key custody and independent control were NOT verified — one process holding both keys produces this same record, so this is not evidence of independent authorship
+
+--- WHAT IS STILL NOT GUARANTEED ---
+1. Atomic application. The envelope expresses a CAS; the fs-over-gcsfuse store
+   does not enforce it (compare and update are separate; StoreObject's write is
+   unlocked). Historical replay IS prevented. Two correctly-signed publications
+   against the same parent may still both verify. Postgres is the prerequisite.
+2. Custody. Distinct keys are not evidence of independent control: one process
+   holding both key files produces this identical record.
+3. The committed corpus (531 entries) remains UNSIGNED and still reports so.

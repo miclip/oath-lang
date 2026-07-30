@@ -151,6 +151,7 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 		Envelope  string `json:"envelope"`
 		Signature string `json:"signature"`
 		Name      string `json:"name"`
+		Hash      string `json:"hash"`
 		NameB     string `json:"name_b"`
 		Record    bool   `json:"record"`
 		Expr      string `json:"expr"`
@@ -204,6 +205,24 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 			return "", fmt.Errorf("%s%w", out, err)
 		}
 		return out, nil
+	case "head":
+		// What a signing client needs before it can build an envelope: the parent it
+		// would replace, that name's revision, and (for verification after publishing)
+		// the envelope bytes the registry has recorded for an artifact. Structured
+		// output on purpose — a client parsing `log` prose would break on rewording.
+		parent, rev := nameRevision(st, a.Name)
+		resp := map[string]any{"name": a.Name, "parent": parent, "parent_rev": rev}
+		if a.Hash != "" {
+			for _, e := range st.ReadLog() {
+				if e.Hash == a.Hash && e.Envelope != "" {
+					resp["envelope"] = e.Envelope
+					resp["author_pubkey"] = e.AuthorPubkey
+					break
+				}
+			}
+		}
+		b, _ := json.Marshal(resp)
+		return string(b), nil
 	case "get":
 		return apiGet(st, a.Name)
 	case "find":

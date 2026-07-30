@@ -411,7 +411,19 @@ type LogEntry struct {
 	Envelope     string `json:"envelope,omitempty"`
 	AuthorPubkey string `json:"author_pubkey,omitempty"` // hex Ed25519 key that signed Envelope
 	AuthorSig    string `json:"author_sig,omitempty"`    // hex signature over Envelope's exact bytes
-	Chain        string `json:"chain,omitempty"`         // tamper-evidence: SHA-256(prev chain + this entry sans chain)
+	// Transition records what happened to the NAME, which is a different dimension
+	// from Status (what the registry concluded about the artifact). A definition can
+	// be FALSIFIED and still become the value bound to a name; a request can be
+	// REJECTED and belong in the journal without moving anything. Inferring one from
+	// the other is inherently fragile — a new status reopens the ABA hole the moment
+	// someone forgets to add it to an allowlist. Set at the Repoint site itself, so
+	// it cannot be forgotten by a future code path.
+	//
+	// "applied" = the name now points at Hash. Empty on historical entries written
+	// before this field existed, which is why repointedName still falls back to a
+	// status allowlist for them.
+	Transition string `json:"transition,omitempty"`
+	Chain      string `json:"chain,omitempty"` // tamper-evidence: SHA-256(prev chain + this entry sans chain)
 }
 
 // signedContent is the deterministic byte string a signer signs: the entry with
@@ -420,6 +432,9 @@ type LogEntry struct {
 // author label, name, kind, status, object hash, prior hash, verdicts, context —
 // independent of where the entry lands in the log. The chain seals ordering on
 // top; the signature seals authorship. (docs/registry-auth.md)
+// transitionApplied marks a journal entry whose name now points at its Hash.
+const transitionApplied = "applied"
+
 // repointedName reports whether this entry MOVED the name it records.
 //
 // Defined in one place because two things depend on agreeing about it: the
@@ -440,6 +455,15 @@ type LogEntry struct {
 // already-prepared legitimate envelope, or make client and registry disagree about
 // the current parent.
 func (e *LogEntry) repointedName() bool {
+	// The explicit record wins wherever it exists: it is written at the Repoint call
+	// site, so it states what happened rather than inferring it.
+	if e.Transition != "" {
+		return e.Transition == transitionApplied
+	}
+	// Historical entries predate the field. The allowlist reproduces the behaviour
+	// they were written under, and must not be "tidied": falsified entries in the
+	// committed corpus DO carry prev, so dropping falsified here would silently
+	// undercount every pre-existing name's revision.
 	switch e.Status {
 	case "accepted", "falsified":
 		return true

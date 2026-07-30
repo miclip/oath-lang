@@ -43,6 +43,126 @@ import (
 	"time"
 )
 
+// mcpCallSigned makes one signed MCP tool call and returns the tool's text output.
+// The body is signed and transmitted verbatim; nothing re-serializes it in between.
+//
+// Reads are signed too, because `oath serve` authenticates every request — there is
+// no anonymous access to authenticate a query against.
+func mcpCallSigned(endpoint string, priv ed25519.PrivateKey, pubHex, tool string, args map[string]any) (string, error) {
+	body, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+		"params": map[string]any{"name": tool, "arguments": args},
+	})
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequest("POST", strings.TrimSuffix(endpoint, "/")+"/mcp", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Oath-Pubkey", pubHex)
+	req.Header.Set("X-Oath-Signature", hex.EncodeToString(ed25519.Sign(priv, body)))
+	resp, err := (&http.Client{Timeout: 300 * time.Second}).Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return "", fmt.Errorf("registry rejected the signature (401) on %s", tool)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("registry returned HTTP %d on %s: %s", resp.StatusCode, tool, strings.TrimSpace(string(raw)))
+	}
+	var rpc struct {
+		Result struct {
+			Content []struct{ Text string } `json:"content"`
+			IsError bool                    `json:"isError"`
+		} `json:"result"`
+		Error *struct{ Message string } `json:"error"`
+	}
+	if err := json.Unmarshal(raw, &rpc); err != nil {
+		return "", fmt.Errorf("registry returned unparseable JSON-RPC: %s", strings.TrimSpace(string(raw)))
+	}
+	if rpc.Error != nil {
+		return "", fmt.Errorf("registry: %s", rpc.Error.Message)
+	}
+	var b strings.Builder
+	for _, c := range rpc.Result.Content {
+		b.WriteString(c.Text)
+	}
+	if rpc.Result.IsError {
+		return b.String(), fmt.Errorf("%s", strings.TrimSpace(b.String()))
+	}
+	return b.String(), nil
+}
+
+// clientKey is set by cmdPublish so the query helpers can sign. Held here rather
+// than threaded through every helper signature; the process publishes as one
+// identity per invocation.
+var clientPriv ed25519.PrivateKey
+var clientPub string
+
+type headResp struct {
+	Parent       string `json:"parent"`
+	ParentRev    int    `json:"parent_rev"`
+	Envelope     string `json:"envelope"`
+	AuthorPubkey string `json:"author_pubkey"`
+}
+
+func remoteHead(endpoint, name, hash string) (headResp, error) {
+	var h headResp
+	args := map[string]any{"name": name}
+	if hash != "" {
+		args["hash"] = hash
+	}
+	out, err := mcpCallSigned(endpoint, clientPriv, clientPub, "head", args)
+	if err != nil {
+		return h, err
+	}
+	if err := json.Unmarshal([]byte(out), &h); err != nil {
+		return h, fmt.Errorf("registry head response is not JSON (is it running a kernel without `head`?): %s", strings.TrimSpace(out))
+	}
+	return h, nil
+}
+
+// remoteNameRevision asks the REGISTRY what a publication of name would replace.
+// The registry is the authority: a local guess would sign a transition that does
+// not exist there.
+func remoteNameRevision(endpoint, name string) (string, int, error) {
+	h, err := remoteHead(endpoint, name, "")
+	if err != nil {
+		return "", 0, err
+	}
+	if h.Parent == "" {
+		return noParent, firstRev, nil
+	}
+	return h.Parent, h.ParentRev, nil
+}
+
+// remoteEnvelopeOf returns the envelope bytes the registry recorded for an
+// artifact, so the client can confirm the persisted statement is byte-identical to
+// what it signed.
+func remoteEnvelopeOf(endpoint, hash string) (string, error) {
+	h, err := remoteHead(endpoint, "", hash)
+	if err != nil {
+		return "", err
+	}
+	return h.Envelope, nil
+}
+
+// remotePutSigned publishes source with an author statement. envBytes is sent
+// EXACTLY as signed.
+func remotePutSigned(endpoint, source, envBytes, sig, pubHex string) (string, error) {
+	return mcpCallSigned(endpoint, clientPriv, clientPub, "put", map[string]any{
+		"source": source, "envelope": envBytes, "signature": sig,
+	})
+}
+
 // remotePut publishes source to a registry over MCP, authenticated by an
 // Ed25519 signature over the request body. The key never leaves the process and
 // is not sent; the pubkey travels as the claimed principal and the server

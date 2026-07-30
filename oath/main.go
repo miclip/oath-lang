@@ -148,6 +148,36 @@ func main() {
 			}
 		}
 		cmdKeygen(prefix)
+	case "publish":
+		// Signed publication (#83): show the exact bytes, sign locally, send them
+		// unchanged, then confirm the registry persisted the same bytes.
+		endpoint := os.Getenv("OATH_REGISTRY")
+		keyFile := os.Getenv("OATH_KEY")
+		dryRun, jsonOut, yes := false, false, false
+		var file string
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			switch {
+			case rest[i] == "--remote" && i+1 < len(rest):
+				endpoint = rest[i+1]
+				i++
+			case rest[i] == "--key" && i+1 < len(rest):
+				keyFile = rest[i+1]
+				i++
+			case rest[i] == "--dry-run":
+				dryRun = true
+			case rest[i] == "--json":
+				jsonOut = true
+			case rest[i] == "--yes" || rest[i] == "-y":
+				yes = true
+			default:
+				file = rest[i]
+			}
+		}
+		if endpoint == "" || keyFile == "" || file == "" {
+			fail(fmt.Errorf("usage: oath publish --remote <url> --key <file> [--dry-run] [--json] [-y] <file.oath>"))
+		}
+		cmdPublish(st, endpoint, keyFile, file, dryRun, jsonOut, yes)
 	case "audit":
 		if len(args) > 1 {
 			cmdAuditEntry(st, args[1])

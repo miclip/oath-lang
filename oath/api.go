@@ -231,6 +231,9 @@ func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pu
 			Author: author, Name: meta.Name, Kind: def.K, Status: rep.Status,
 			Hash: h, Prev: prev, Guarantee: rep.Guarantee, Termination: rep.Termination,
 			Context: ctxHash,
+			// Reached only after Repoint succeeded, so the name DID move — whatever
+			// verdict Status carries.
+			Transition: transitionApplied,
 		}
 		if auth != nil {
 			// Verbatim. Not re-encoded from the parsed envelope: the bytes ARE the

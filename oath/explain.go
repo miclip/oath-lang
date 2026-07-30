@@ -154,6 +154,16 @@ func unsignedAttribution(st *Store, h string) bool {
 		}
 		signed, prev := false, ""
 		for _, e := range es {
+			// The AUTHOR's envelope is what makes attribution verifiable: it binds a
+			// key to this exact publication. The registry's own Pubkey/Sig pair proves
+			// CUSTODY (the entry has not been altered since it was written) and says
+			// nothing about who authored it — a registry could sign an entry naming
+			// anyone. Either is accepted here because both were once the only
+			// available form, but they are not equivalent, and the envelope is the one
+			// a third party can check without trusting the registry.
+			if e.Envelope != "" && e.AuthorSig != "" && e.AuthorPubkey != "" {
+				signed = true
+			}
 			if e.Sig != "" && e.Pubkey != "" {
 				signed = true
 			}
