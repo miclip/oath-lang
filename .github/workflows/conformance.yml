@@ -42,6 +42,20 @@ jobs:
           make verify
           git diff --exit-code codebase/names.json \
             || { echo "::error::reference kernel produced different hashes than the committed store"; exit 1; }
+      # DRAFTED, HELD BACK — see #95. names.json catches IDENTITY drift but not a
+      # fixture whose content changed with no hash moving. The obvious gate is
+      # `make fixtures && git diff --exit-code fixtures/`, and it FAILS today: `map`
+      # and `Map` collide on case-insensitive filesystems, so a tree generated on
+      # macOS has 186 canonical fixtures for 187 definitions while Linux emits 187.
+      # Landing a knowingly-red gate teaches people to ignore gates, so this waits
+      # for the collision fix rather than shipping broken.
+
+      # The mutation machinery can weaken verification, so it must not exist in a
+      # release artifact. Checked against the BUILT BINARY, since a mis-specified build
+      # tag produces a normal-looking oath that contains it.
+      - name: mutation boundary (release binary contains no rule-disable path)
+        run: make mutation-boundary
+
       - name: website proof ledger matches canonical fixtures (#30)
         # The site claims its numbers are read live from the machine's ledger.
         # Fail if website/lib/outcomes.json has drifted from fixtures/.
@@ -58,6 +72,14 @@ jobs:
           curl -sSL -o z3.zip https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip
           unzip -q z3.zip
           echo "$PWD/z3-4.16.0-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
+      # The Rust kernel's UN-CORPUS'D normative behaviour is enforced only here. Its
+      # per-property abort semantics (#72), never-demote carry-forward (#83), self-hint
+      # soundness guard (#67) and campaign vector oracle have no fixture family, so
+      # until this step existed a regression in any of them was GREEN in CI: the
+      # conformance script would still pass, because it does not exercise them.
+      - name: cargo test (behaviour no fixture family covers)
+        run: cd oathrs && cargo test --release
+
       - name: conformance (checks 1-4 + byte oracle for 5-6)
         run: |
           z3 --version
