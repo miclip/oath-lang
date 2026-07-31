@@ -145,9 +145,18 @@ every ambiguity found this way.
   `docs/registry-auth.md` — signatures-as-principals decision; `docs/registry-verification.md`
   — the verification worker pool + async require_proven gate; `docs/store-drivers.md`
   — the backend seam, GCS/Postgres drivers, and the cutover runbook.
-- `docs/implementability.json` + SPEC §13 — the independent-implementability
-  ledger: can an unseen implementer build a section from the published surface
-  WITHOUT inference? Distinct from conformance; no run has reached PASS yet.
+- SPEC §13 + `docs/implementability.json` — independent implementability. NOTE
+  FOR FUTURE SESSIONS: this is a GUARDRAIL, not the project. It has done its job
+  (generalised past §12, found a fifth defect class, documented its own
+  boundary); do not spend cycles refining the measurement. Use it when changing
+  normative text, and treat §8.6's unwitnessed obligations as ordinary evolution
+  of that section. DESIGN.md carries the durable results: the three-layer model
+  (historical assertions / derived facts / equivalence), their epistemic
+  contracts and distinct failure modes, and the line the record model follows —
+  *the journal preserves everything the publisher signed and nothing the registry
+  merely computed*.
+  The ledger asks: can an unseen implementer build a section from the published
+  surface WITHOUT inference? Distinct from conformance; no run has reached PASS yet.
   `scripts/blind-export.py` builds the isolated dispatch root (preflight-verified,
   no `.git`); `docs/experiments/blind-license-evaluation.md` is the round record.
 - `docs/experiments/` — split-agent, rematch, and flywheel writeups.

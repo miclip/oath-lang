@@ -801,6 +801,60 @@ section whose semantics are undecided will fail an implementability round for a
 reason the round cannot repair, and running one anyway would measure the same
 four open decisions repeatedly while looking like progress.
 
+## The epistemic contracts (2026-07-31)
+
+Each layer has its own contract, and — the part that makes the taxonomy sharp —
+its own failure mode. They are not variations of one mistake:
+
+| layer | contract | failure mode | what goes wrong |
+|---|---|---|---|
+| 1. HISTORICAL ASSERTIONS | preserve what only the participants knew | **evidence is LOST** | information destroyed at admission and unrecoverable |
+| 2. DERIVED FACTS | trust nothing history can recompute | **evidence is INVENTED** | self-certification: the party being checked supplies the check |
+| 3. EQUIVALENCE | never leave equality to an implementation | **evidence is SPLIT** | permanent fork; two correct implementations disagree forever |
+
+Layer 1 examples: the author's statement, `parent`, `parent_rev`, publication
+digest, signatures. Layer 2: transition, revision counts, guarantees, ownership
+state. Layer 3: the Ed25519 verification equation, canonical `S`, point encoding,
+base64 identity.
+
+The discoverability asymmetry is what tells you where blind implementation stops
+being the right tool:
+
+| layer | mechanically DISCOVERABLE? | mechanically CHECKABLE? |
+|---|---|---|
+| historical assertions | yes | yes |
+| derived facts | yes | yes |
+| equivalence | **no** | yes — that a convention is PINNED, never that it is right |
+
+Layer 3's check is genuinely weaker and should not be presented as equal to the
+others. You cannot mechanically verify that a convention is correct; you can only
+verify that one was chosen (IMPL-EQUIVALENCE-PINNED). Layers 1 and 2 have a test
+— could history reconstruct this, and who computes it — and layer 3 has none,
+which is exactly why the blind rounds surfaced its questions and could not settle
+them.
+
+### What the project turned out to be about
+
+Every difficult design decision this year reduced to one of four questions:
+
+- who is allowed to ASSERT this?
+- can history RECONSTRUCT this?
+- what does this identity NAME?
+- what counts as the SAME thing?
+
+None is a programming-language question. Oath began as a language with proofs and
+is more accurately described now as a protocol for epistemic boundaries — the
+proofs are one kind of evidence it carries rather than the point of it.
+
+### And a note on where this stops being the story
+
+The methodology has earned its keep: it generalised beyond the section it was
+built on, produced a defect class nobody was looking for, and — most usefully —
+documented its own boundary. It is now a GUARDRAIL, not the project. The
+remaining unwitnessed obligations belong to the ordinary evolution of §8.6 rather
+than to a research narrative, and further cycles spent refining the measurement
+would be sharpening a tool instead of using it.
+
 ## Three layers, and why the last one resists methodology (2026-07-31)
 
 The protocol turns out to have three conceptual layers, and they need different
