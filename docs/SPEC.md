@@ -2355,3 +2355,123 @@ part of the encoding — it is distinguishable because §11.2's key set is close
 
 No second implementation is trusted until it passes the fixtures without
 consulting the Go source.
+
+## 12. License evaluation (normative)
+
+A publication may ASSERT licensing terms in its signed envelope (§8.6.1,
+`license`). This section defines what a registry may DERIVE from those
+assertions across a dependency closure, and how such a derivation is
+identified.
+
+The two are different claims and MUST NOT be reported as one. An assertion is
+signed, historical and the publisher's. An evaluation is computed, will be
+recomputed differently as the model changes, and is the registry's.
+
+**This section does not define legal meaning.** SPDX supplies identifiers, not
+semantics; the mapping from an identifier to the grants below is a MODEL, is
+versioned, and is fallible. An evaluation reproduces what a particular model
+concluded from particular signed assertions — nothing more. It is not advice,
+and it MUST NOT be reported as a proof (§7): compatibility over a finite lattice
+is decided by evaluation, not proved over unbounded inputs.
+
+### 12.1 Three-valued grants
+
+An evaluation reports, per dimension, one of `YES`, `NO`, `UNSTATED`.
+
+`UNSTATED` is not a synonym for `NO`. It means the model has no basis to answer,
+and the distinction is what stops an absence becoming a permission.
+
+The dimensions are of two KINDS, and the kind determines how values combine:
+
+- **permissions** — `commercial`, `redistribute`, `modify`, `patent_grant`.
+  "May I?"
+- **obligations** — `share_alike`. "Must I?"
+
+### 12.2 Combination
+
+For a composition — an artifact together with its transitive dependency closure
+— each dimension is folded across every member's asserted terms.
+
+**Permissions** combine conservatively toward denial:
+
+| inputs contain | result |
+|---|---|
+| any `NO` | `NO` |
+| otherwise, any `UNSTATED` | `UNSTATED` |
+| otherwise | `YES` |
+
+**Obligations** combine conservatively toward the obligation:
+
+| inputs contain | result |
+|---|---|
+| any `YES` | `YES` |
+| otherwise, any `UNSTATED` | `UNSTATED` |
+| otherwise | `NO` |
+
+The two orders are OPPOSITE and a conformant implementation MUST NOT use one
+operator for both. A prohibition anywhere defeats a permission; a reciprocal
+requirement anywhere binds the whole composition. Folding an obligation with the
+permission rule reports "no reciprocal obligation" about terms nobody has read.
+
+`UNSTATED` is CONTAGIOUS in both directions. Ignorance can establish neither a
+permission nor the absence of an obligation, so one unknown input makes the
+composition unknown however many others were definite.
+
+> The asymmetry that matters: a false `UNSTATED` is inconvenient, a false `YES`
+> is harmful. An implementation MUST be checked in the permissive direction —
+> for each dimension, mutating the combiner toward permissiveness must be
+> detectable. A suite that catches false denials while missing false permissions
+> is pointed the wrong way for this domain.
+
+### 12.3 Model lookup
+
+An asserted expression resolves to a set of grants, or to none.
+
+An implementation MUST yield all-`UNSTATED`, never a grant, when:
+
+- the expression is absent, or is the explicit no-assertion sentinel `-`;
+- the identifier is not in the model;
+- the expression is COMPOUND — containing ` OR `, ` AND `, or ` WITH `.
+
+Compound expressions MUST NOT be resolved by the registry. `MIT OR Apache-2.0`
+requires choosing a disjunct, which is a decision with legal consequence and
+belongs to the consumer.
+
+A model MAY contain any set of identifiers. A missing entry is safe: it yields
+`UNSTATED`. A wrong entry is not, because it yields a confident falsehood.
+
+### 12.4 Evaluation identity
+
+An evaluation MUST record the ENGINE, the MODEL version, the POLICY, and a
+DIGEST over the assertions consumed. Without them a verdict is a claim whose
+method can change invisibly: alter the lattice and every historical result
+silently means something else. This is the requirement of §11 applied one layer
+out.
+
+The digest is SHA-256, lowercase hex, over a canonical encoding: the domain
+separator `oath-license-eval/1` and one LF-terminated line each, in this order:
+
+```
+oath-license-eval/1
+engine=<engine>
+model=<model version>
+policy=<policy>
+input=<name>=<asserted expression>      (one per consumed assertion)
+```
+
+Input lines are sorted by `name` before hashing. The same assertions evaluated in
+a different order are the SAME evaluation, and MUST produce the same digest —
+otherwise fixture or traversal order would make one evaluation appear to be two.
+
+Changing the engine, the model version, the policy, any consumed name or any
+consumed expression MUST change the digest.
+
+### 12.5 What an evaluation does not establish
+
+- It is not a legal opinion, and MUST be presented as derived.
+- It does not verify that an asserted expression is valid SPDX. The publication
+  layer is the notary for what the author signed, not an authority on licence
+  syntax; validating there would drift publication into policy enforcement.
+- It does not resolve compound expressions on a consumer's behalf.
+- `UNSTATED` is not permission. A consumer may adopt "treat `UNSTATED` as deny"
+  or "require explicit grants"; a registry MUST NOT choose that for them.
