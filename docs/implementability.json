@@ -178,7 +178,19 @@
         ],
         "method": "The taxonomy is deliberately WITHHELD from the dispatch brief. Supplying it would shape what the subject looks for and convert a test of the taxonomy into a confirmation of it. Findings are classified afterwards, by us, against the list recorded here."
       },
-      "prediction": "Specific pre-registered guess, recorded so it can lose: \u00a78.6.4a requires rejecting a small-order public key and neither lists the encodings nor states how to derive them, so a blind implementation cannot obtain them from the surface. That would be class 2 (hidden normative inputs) \u2014 the same class round two found in \u00a712, appearing independently in a section developed years apart. Noted BEFORE dispatch and deliberately NOT repaired first, since pre-repairing is teaching to the test."
+      "prediction": "Specific pre-registered guess, recorded so it can lose: \u00a78.6.4a requires rejecting a small-order public key and neither lists the encodings nor states how to derive them, so a blind implementation cannot obtain them from the surface. That would be class 2 (hidden normative inputs) \u2014 the same class round two found in \u00a712, appearing independently in a section developed years apart. Noted BEFORE dispatch and deliberately NOT repaired first, since pre-repairing is teaching to the test.",
+      "interpretation": {
+        "recorded": "before the outcome was known",
+        "why": "Deciding how to READ each possible outcome after seeing one is the same defect as writing a hypothesis after the result. Recorded here so no outcome can be reframed into a success, and so a clean result cannot be quietly discounted as a null one.",
+        "what_generalisation_requires": "NOT that the same defects recur. That is the weaker claim, and the recurrence prediction below tests only it. Generalisation requires the PROCESS to expose specification insufficiency on a section it was not developed against, without relying on licensing-specific machinery and without prior hints.",
+        "readings": {
+          "class 2 reproduces (small-order or otherwise)": "a defect class found in \u00a712 recurring in an independently evolved domain \u2014 evidence the taxonomy is general rather than \u00a712-shaped",
+          "all findings map onto the four classes": "the taxonomy holds on a section it was not derived from; stronger than any individual recurrence",
+          "a FIFTH class appears": "the most valuable outcome. The taxonomy was \u00a712-shaped and is now larger. Record the new class and re-examine \u00a712 for instances of it",
+          "genuinely inference-free PASS": "POSITIVE, not null. It would show the method can DISTINGUISH a mature section from an immature one rather than mechanically generating findings \u2014 which is the failure mode a process like this is most at risk of. Only counts if the derivation log holds up: expert knowledge filling a silent spec is inference, and a correct implementation built from undocumented prior knowledge is still evidence the specification was insufficient",
+          "the methodology itself breaks on \u00a78.6": "a real result, not a failed run. It would mean the method depends on properties \u00a712 happened to have \u2014 most likely a fixture family that cannot express what the section does, which \u00a712 already hit once at LICENSE-CLOSURE-EXCLUSIVE"
+        }
+      }
     }
   ]
 }
