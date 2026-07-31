@@ -104,6 +104,8 @@ var normativeRules = []normativeRule{
 	{"LICENSE-ORDER-INDEPENDENT", "§12.4", "input order does not change the evaluation digest", familyLicense},
 	{"LICENSE-LOOKUP-PRECEDENCE", "§12.3", "the compound test precedes the model lookup, so a compound key cannot be resolved", familyLicense},
 	{"LICENSE-LOOKUP-EXACT", "§12.3", "identifiers match by exact octet equality; no case-folding, trimming or normalisation", familyLicense},
+	{"LICENSE-ENGINE-DEFINED", "§12.3", "the engine names the evaluator and is not a property of the model", familyLicense},
+	{"LICENSE-PUBLICATION-SENTINEL", "§12.4", "a member with no determinable publication encodes the sentinel, never an omission or a substitute", familyLicense},
 	{"LICENSE-POLICY-DEFINED", "§12.3", "an unrecognised policy is not reproducible and is never evaluated as composition", familyLicense},
 	{"LICENSE-INPUT-COMPLETE", "§12.4", "every closure member contributes a pair, including one asserting nothing", familyLicense},
 	{"LICENSE-IDENTITY-ARTIFACT", "§12.4", "members are identified by artifact hash, so renaming does not change an evaluation", familyLicense},

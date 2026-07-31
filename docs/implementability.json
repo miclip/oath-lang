@@ -1,10 +1,10 @@
 {
   "_comment": [
-    "Independent-implementability ledger (SPEC §13). One record per blind",
+    "Independent-implementability ledger (SPEC \u00a713). One record per blind",
     "implementation attempt. This file is an ASSERTION about runs that happened;",
     "scripts/check-implementability.py machine-checks the half that can be checked",
-    "— that each surface_digest is exactly what blind-export.py reproduces from the",
-    "recorded source — and enforces the structural rules §13 states. The verdict",
+    "\u2014 that each surface_digest is exactly what blind-export.py reproduces from the",
+    "recorded source \u2014 and enforces the structural rules \u00a713 states. The verdict",
     "itself is attested by the implementer and cannot be re-derived by CI, which is",
     "why it carries the evidence pointer rather than standing alone.",
     "Rounds are append-only. A superseded verdict is never edited: it is a fact",
@@ -14,39 +14,43 @@
     {
       "round": 1,
       "date": "2026-07-30",
-      "sections": ["12"],
+      "sections": [
+        "12"
+      ],
       "source": "d736dac8f97a",
       "surface_digest": null,
-      "surface_note": "NOT RECORDED. This run predates blind-export.py and ran in a git worktree, so the supplied surface was not pinned by a manifest and cannot be reconstructed exactly. Per §13.3 the claim is therefore unbound, and is retained as history rather than as evidence.",
+      "surface_note": "NOT RECORDED. This run predates blind-export.py and ran in a git worktree, so the supplied surface was not pinned by a manifest and cannot be reconstructed exactly. Per \u00a713.3 the claim is therefore unbound, and is retained as history rather than as evidence.",
       "verdict": "PASS-WITH-INFERENCE",
       "vectors": "8/8",
       "inferred": [
-        "the entire model lattice, reverse-engineered from vectors; the Apache-2.0 row was demonstrably free — all-UNSTATED, all-YES and all-NO each still passed 8/8",
-        "§12.4 encoding details not stated in that section"
+        "the entire model lattice, reverse-engineered from vectors; the Apache-2.0 row was demonstrably free \u2014 all-UNSTATED, all-YES and all-NO each still passed 8/8",
+        "\u00a712.4 encoding details not stated in that section"
       ],
       "contamination": [
         "two commit SUBJECT LINES reached the agent's terminal via `git checkout` and `git log --oneline -1`; isolation was instructional rather than structural",
-        "part of §12 was repaired in 234e3ee between dispatch and return, so the run partly tested a document that no longer existed"
+        "part of \u00a712 was repaired in 234e3ee between dispatch and return, so the run partly tested a document that no longer existed"
       ],
       "evidence": "docs/experiments/blind-license-evaluation.md",
-      "implementer_statement": "A reader with §12 and no fixtures cannot produce a single verdict. The vectors are functioning as normative text here."
+      "implementer_statement": "A reader with \u00a712 and no fixtures cannot produce a single verdict. The vectors are functioning as normative text here."
     },
     {
       "round": 2,
       "date": "2026-07-30",
-      "sections": ["12"],
+      "sections": [
+        "12"
+      ],
       "source": "dda0b1a6ef883631acc7b3b15eef79bcde429384",
       "surface_digest": "74200c755b89baafb7c4e09d0a34a60ebbaa91d284a758e2a046cb56c3eeab7f",
       "verdict": "PASS-WITH-INFERENCE",
       "vectors": "16/16",
       "inferred": [
-        "`policy` — a required component of a normative identity with no vocabulary, default, semantics or stated source anywhere in the document; obtainable only by reading a fixture record, and BLOCKING: without the vectors no digest was producible at all",
+        "`policy` \u2014 a required component of a normative identity with no vocabulary, default, semantics or stated source anywhere in the document; obtainable only by reading a fixture record, and BLOCKING: without the vectors no digest was producible at all",
         "the source of `engine`",
         "whether a member asserting nothing contributes an input pair",
         "the tie-break when two pairs share a name",
         "whether duplicate pairs are collapsed",
-        "the text encoding of the digest bytes, stated in §11.2 and §8.6.1 but not in §12.4",
-        "identifier matching discipline — literal, case-folded, or trimmed",
+        "the text encoding of the digest bytes, stated in \u00a711.2 and \u00a78.6.1 but not in \u00a712.4",
+        "identifier matching discipline \u2014 literal, case-folded, or trimmed",
         "the vector records' own schema, documented nowhere"
       ],
       "contamination": [
@@ -54,7 +58,37 @@
         "the subject wrote one file to the parent directory by mistake, moved it back, and ran `ls` there, seeing only `scratchpad` and `tasks`; no project content was exposed"
       ],
       "evidence": "docs/experiments/blind-license-evaluation.md",
-      "implementer_statement": "The claim under test — reproducible without inference — does not hold, principally because the `policy` field is a required component of a normative digest with no definition anywhere in the document."
+      "implementer_statement": "The claim under test \u2014 reproducible without inference \u2014 does not hold, principally because the `policy` field is a required component of a normative digest with no definition anywhere in the document."
+    },
+    {
+      "round": 3,
+      "date": "2026-07-30",
+      "sections": [
+        "12"
+      ],
+      "source": "7abe61650c82bd4b7857581f6790f0af9a873352",
+      "surface_digest": "1bb5f8fc08f7d85c8c3e04a63bbd5ccc07e4fb6022073b32862156f1d1107bee",
+      "verdict": "PASS-WITH-INFERENCE",
+      "vectors": "23/25",
+      "inferred": [
+        "`engine` \u2014 a required component of a normative identity with no vocabulary, default or stated source; the IDENTICAL defect repaired for `policy` one line above and not looked for in its sibling",
+        "sort DIRECTION \u2014 LICENSE-ORDER-INDEPENDENT names the sort keys and never says ascending; a descending implementation is prose-conformant and fixture-refuted",
+        "which key of model.json is the model version; the model file's SCHEMA is nowhere specified",
+        "a model row missing a dimension, or carrying a value outside {YES,NO,UNSTATED}",
+        "whether an unrecognised policy still computes a digest \u2014 resolved from a label in the non-normative matrix SCRIPT, disclosed as such by the subject",
+        "whether the character exclusion covers the header lines or only the triple",
+        "case sensitivity of the compound-operator test",
+        "whether uppercase hex in input-artifact/input-publication is rejected, case-folded, or encoded verbatim",
+        "how a `/1` envelope's no-assertion state joins to the `-` sentinel",
+        "the encoding for a member with no publication identity \u2014 NOT DETERMINED, and the reason two published vectors were irreproducible",
+        "the vector file's record schema"
+      ],
+      "contamination": [
+        "the subject's session context was injected with the project's CLAUDE.md and a memory index from outside the working directory; it did not seek them and could not decline them. It reports they contain no mention of licences, evaluation, grants, the lattice, or anything in \u00a712 \u2014 recorded as a fact rather than weighed as a judgement",
+        "the subject read scripts/license-rule-matrix.py before the vector boundary (it is a named input) and discloses that its EXPECTED label for LICENSE-POLICY-DEFINED influenced one pre-boundary assumption"
+      ],
+      "evidence": "docs/experiments/blind-license-evaluation.md",
+      "implementer_statement": "A working implementation exists and reproduces 23 of 25 vectors on its first run. But several encoding details were not determined by the prose, and two fixtures are not reproducible from the specification at all."
     }
   ]
 }

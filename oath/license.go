@@ -350,9 +350,9 @@ func (i licenseInput) member() string {
 	if i.Artifact != "" {
 		return i.Artifact
 	}
-	// A closure member with no resolvable artifact still has to be distinguishable
-	// and MUST NOT silently borrow a name: this marks it unresolved instead.
-	return "unresolved:" + i.Name
+	// A member with no resolvable artifact still has to be distinguishable and
+	// MUST NOT silently borrow a name.
+	return noLicense
 }
 
 // pub is the publication identity bound by a triple. An input with none is
@@ -363,7 +363,7 @@ func (i licenseInput) pub() string {
 	if i.Publication != "" {
 		return i.Publication
 	}
-	return "unpublished"
+	return noLicense
 }
 
 func digestSafe(v string) bool {
@@ -372,7 +372,11 @@ func digestSafe(v string) bool {
 			return false
 		}
 	}
-	return true
+	// U+2028/U+2029 are NOT control octets, so the loop above admits them — and a
+	// Unicode-aware line splitter then reads a one-member evaluation as a
+	// multi-member composition carrying a grant nobody published. §8.2.1 escapes
+	// both by name for this hazard.
+	return !strings.ContainsRune(v, '\u2028') && !strings.ContainsRune(v, '\u2029')
 }
 
 // licenseModelBytes is the canonical published form of the model — the exact bytes
@@ -432,7 +436,15 @@ func evaluationDigest(ev licenseEvaluation) string {
 	var b strings.Builder
 	b.WriteString("oath-license-eval/1\n")
 	if ruleOn("LICENSE-IDENTITY-INPUT") {
-		b.WriteString("engine=" + ev.Engine + "\n")
+		eng := ev.Engine
+		if !ruleOn("LICENSE-ENGINE-DEFINED") {
+			// MUTATION: treat the engine as a property of the MODEL. Plausible,
+			// because a published model file carries one — and wrong: the model is
+			// the lattice, the engine is what consults it, so this makes two
+			// components of the digest non-independent.
+			eng = licenseEngine
+		}
+		b.WriteString("engine=" + eng + "\n")
 	}
 	if ruleOn("LICENSE-MODEL-VERSIONED") {
 		b.WriteString("model=" + ev.Model + "\n")
@@ -486,7 +498,13 @@ func evaluationDigest(ev licenseEvaluation) string {
 			if ruleOn("LICENSE-IDENTITY-UNAMBIGUOUS") {
 				b.WriteString("input-artifact=" + i.member() + "\n")
 				if ruleOn("LICENSE-IDENTITY-PUBLICATION") {
-					b.WriteString("input-publication=" + i.pub() + "\n")
+					if i.Publication == "" && !ruleOn("LICENSE-PUBLICATION-SENTINEL") {
+						// MUTATION: omit the line instead of encoding the sentinel.
+						// This collapses a triple into a pair, letting an
+						// unidentifiable member borrow an identifiable one's bytes.
+					} else {
+						b.WriteString("input-publication=" + i.pub() + "\n")
+					}
 				}
 				b.WriteString("input-license=" + i.License + "\n")
 			} else {
@@ -584,7 +602,16 @@ func runLicenseVectors(vs []licenseVector) []string {
 	for _, v := range vs {
 		switch v.Kind {
 		case "evaluation":
-			g := evalFromAssertionsIn(vectorModel(v), v.Assertions)
+			// §12.3 LICENSE-POLICY-DEFINED has a second clause the digest cannot
+			// witness: an unrecognised policy MUST NOT be evaluated under
+			// `composition` and reported as agreement. Refusing is the obligation;
+			// producing a different digest is LICENSE-IDENTITY-INPUT's clause.
+			var g grants
+			if ruleOn("LICENSE-POLICY-DEFINED") && v.Policy != licensePolicyComposition {
+				g = grants{}
+			} else {
+				g = evalFromAssertionsIn(vectorModel(v), v.Assertions)
+			}
 			got := map[string]string{"commercial": g.Commercial.String(), "redistribute": g.Redistribute.String(),
 				"modify": g.Modify.String(), "patent_grant": g.PatentGrant.String(), "share_alike": g.ShareAlike.String()}
 			for k, want := range v.Expect {

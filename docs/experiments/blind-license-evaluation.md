@@ -213,3 +213,93 @@ to `UNSTATED` merely for lacking a name — but a hash fully identifies a member
 and a name was never what made it evaluable.
 
 License family: 18/18 obligations witnessed, matrix complete.
+
+## Round three — 2026-07-30, base `7abe61650c82`, surface `1bb5f8fc…`
+
+**Classification: PASS-WITH-INFERENCE.** 23/25 vectors on the first run, and the
+first round where the score went DOWN — because two published fixtures turned out
+not to be reproducible from the specification at all.
+
+Isolation held (allowlist export, preflight-verified, no `.git`). The subject
+disclosed two contamination facts unprompted, including one the harness cannot
+remove: its session context carried the project's `CLAUDE.md` from outside the
+working directory. It reports that file mentions nothing about licensing, and
+correctly declined to weigh whether that mattered — recorded as a fact, per
+`IMPL-CONTAMINATION-RECORDED`.
+
+### The result that matters most
+
+**Two published vectors were IRREPRODUCIBLE from the normative text.** The
+collision-pair vectors omit `publication`, and the reference kernel encoded the
+absent value as a literal `unpublished` — a magic string appearing NOWHERE in the
+specification. The subject searched more than 160,000 candidate encodings, failed
+to reproduce either digest, and then did the right thing: it refused to tune its
+implementation to match, and reported the fixtures as unreproducible instead.
+
+That is the experiment working exactly as intended. An undocumented sentinel in
+the reference is indistinguishable, to a blind reader, from a specification that
+cannot be implemented — and a subject willing to reverse-engineer would have
+buried it. Now `LICENSE-PUBLICATION-SENTINEL`: the sentinel is `-`, it is never
+omitted, and never substituted.
+
+### The defect that had a sibling
+
+`engine` was a required component of a normative identity with no vocabulary, no
+default and no stated source. That is the IDENTICAL defect round two found in
+`policy` — repaired one line above, and never looked for in its neighbour.
+Fixing one instance of a defect class and not searching for its siblings is how
+the class survives. Now `LICENSE-ENGINE-DEFINED`, which also settles that the
+engine is not a property of the model: a published model file carrying an
+`engine` key made two components of the digest non-independent.
+
+### Two contradictions I introduced
+
+- `LICENSE-IDENTITY-INPUT` still read "any consumed NAME … MUST change the
+  digest" while `LICENSE-IDENTITY-ARTIFACT` said names MUST NOT contribute. It
+  also omitted the model digest, the artifact hash and the publication identity —
+  under-describing the very encoding it enumerates.
+- §8.6.1's rejection rule still named `oath-publish/1` as "the format tag this
+  version defines" while its own encoding block said `/2` — the same drift
+  `check-spec-vs-fixtures` was built to catch, in a sentence that gate does not
+  read.
+
+### U+2028: the forgery surface, one code point up
+
+The character rule excluded LF, CR, `<0x20` and `0x7F`. U+2028 and U+2029 are
+none of those, so a conformant implementation accepts them — and a Unicode-aware
+line splitter (ECMAScript's `split(/\r?\n|\u2028|\u2029/)`, ICU, several text
+pipelines) then reads a ONE-member evaluation as a multi-member composition
+carrying a grant nobody published. §8.2.1 escapes both by name for exactly this
+hazard. §12.4 had again inherited a rule's letter without its purpose — the third
+time this specific inheritance failure has appeared in three rounds.
+
+### Our own gates, again
+
+The subject ran 30 clause-level mutants and found three that survived the suite:
+`LICENSE-POLICY-DEFINED`'s constraint clause (its only vector tested that the
+digest DIFFERS, which is `LICENSE-IDENTITY-INPUT`'s clause — so an implementation
+could evaluate an unrecognised policy as `composition`, report agreement, and
+pass), `LICENSE-INPUT-COMPLETE`'s duplicate clause, and
+`LICENSE-ORDER-INDEPENDENT`'s tie-break clause.
+
+Its sharpest observation is about the matrix: it reported all three
+`[witnessed]` and printed `MATRIX: COMPLETE`, because the matrix measures *a
+vector CLAIMING a rule*, not *a vector CONSTRAINING it* — "exactly the gap the
+script's own docstring says it exists to close, occurring inside the script".
+The clause-level refinement added after round two moved the boundary without
+removing it: claiming is still not constraining.
+
+### Open, and not silently patched
+
+- Nothing requires `input-license` to match the expression inside the envelope
+  whose entry digest is `input-publication`. A registry can name a real
+  publication beside a false expression; the identity verifies perfectly and
+  proves only that the registry hashed what it said it hashed. Binding the
+  publication captures the REFERENCE, never the agreement between the reference
+  and the expression beside it.
+- The `-` sentinel is lossy: an absent assertion, a `/1` envelope, and an
+  envelope literally asserting `-` all encode identically, though §8.6.1 insists
+  the first two are different historical facts.
+
+License family after repair: 20/20 obligations witnessed (was 18/18), matrix
+complete with clause coverage for three more rules.

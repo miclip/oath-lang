@@ -1046,15 +1046,28 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		// PRECEDENCE. A compound whose left operand IS in the model: a lookup-first
 		// implementation resolves it, which LICENSE-LOOKUP-COMPOUND forbids.
 
+		// POLICY, the CONSTRAINT clause. An unrecognised policy selected the input
+		// set by an unknown rule, so its verdict is not reproducible and must not
+		// be reported as agreement. Distinct from the digest clause, which only
+		// says the identity differs.
+		{"an unrecognised policy is not evaluated as composition", "LICENSE-POLICY-DEFINED",
+			[]string{"MIT", "MIT"}, all("UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED")},
 		{"a transitive dependency changes the root result", "",
 			[]string{"MIT", "MIT", "GPL-3.0-only"}, all("YES", "YES", "YES", "UNSTATED", "YES")},
 	}
 
 	for _, c := range cases {
+		pol := licensePolicyComposition
+		if c.witnesses == "LICENSE-POLICY-DEFINED" {
+			pol = "not-a-policy"
+		}
 		if c.witnesses != "" && !ruleKnown(c.witnesses) {
 			return fmt.Errorf("license vector %q declares unknown rule %q", c.label, c.witnesses)
 		}
 		got := evalFromAssertions(c.inputs)
+		if pol != licensePolicyComposition {
+			got = grants{} // §12.3: not evaluated under composition
+		}
 		want := c.want
 		actual := map[string]string{"commercial": got.Commercial.String(), "redistribute": got.Redistribute.String(),
 			"modify": got.Modify.String(), "patent_grant": got.PatentGrant.String(), "share_alike": got.ShareAlike.String()}
@@ -1065,7 +1078,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 			}
 		}
 		if err := emit(map[string]any{"kind": "evaluation", "label": c.label, "witnesses": c.witnesses,
-			"policy": "composition", "engine": licenseEngine, "model": licenseModelVersion,
+			"policy": pol, "engine": licenseEngine, "model": licenseModelVersion,
 			"assertions": c.inputs, "expect": want}); err != nil {
 			return err
 		}
@@ -1258,6 +1271,69 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 			{Artifact: artA, Publication: pubB, Name: "a", License: "MIT"},
 			{Artifact: artB, Publication: pubB, Name: "b", License: "Apache-2.0"}},
 		"digest": evaluationDigest(otherPub)}); err != nil {
+		return err
+	}
+
+	// INPUT-COMPLETE clause 2: a member appearing TWICE contributes twice. No
+	// identity vector had a duplicated member, and the fold is idempotent, so
+	// deduplicating passed every vector while changing what a composition is.
+	dup := base
+	dup.Inputs = []licenseInput{
+		{Artifact: artA, Publication: pubA, License: "MIT"},
+		{Artifact: artA, Publication: pubA, License: "MIT"}}
+	single := dup
+	single.Inputs = dup.Inputs[:1]
+	if evaluationDigest(dup) == evaluationDigest(single) {
+		return fmt.Errorf("a member appearing twice was deduplicated; two different compositions share an identity")
+	}
+	if err := emit(map[string]any{"kind": "identity",
+		"label": "a member appearing twice contributes twice",
+		"witnesses": "LICENSE-INPUT-COMPLETE", "policy": base.Policy, "engine": base.Engine,
+		"model": base.Model, "model_digest": base.ModelDigest, "assertions": []string{},
+		"pairs": []licensePair{{Artifact: artA, Publication: pubA, License: "MIT"},
+			{Artifact: artA, Publication: pubA, License: "MIT"}},
+		"digest": evaluationDigest(dup)}); err != nil {
+		return err
+	}
+
+	// ORDER clause 2: artifact hash alone is NOT a total order. The same artifact
+	// under two publications, presented both ways, must hash identically — the
+	// tie-break is what makes that true, and nothing exercised it.
+	tie := base
+	tie.Inputs = []licenseInput{
+		{Artifact: artA, Publication: pubA, License: "MIT"},
+		{Artifact: artA, Publication: pubB, License: "Apache-2.0"}}
+	tieRev := tie
+	tieRev.Inputs = []licenseInput{tie.Inputs[1], tie.Inputs[0]}
+	if evaluationDigest(tie) != evaluationDigest(tieRev) {
+		return fmt.Errorf("two publications of ONE artifact hashed differently by presentation order; sorting on artifact alone is not a total order")
+	}
+	if err := emit(map[string]any{"kind": "identity",
+		"label": "one artifact under two publications sorts deterministically",
+		"witnesses": "LICENSE-ORDER-INDEPENDENT", "policy": base.Policy, "engine": base.Engine,
+		"model": base.Model, "model_digest": base.ModelDigest, "assertions": []string{},
+		"pairs": []licensePair{{Artifact: artA, Publication: pubB, License: "Apache-2.0"},
+			{Artifact: artA, Publication: pubA, License: "MIT"}},
+		"digest": evaluationDigest(tie)}); err != nil {
+		return err
+	}
+
+	// The publication SENTINEL. A member whose publication cannot be determined
+	// encodes `-`; the reference previously emitted an undocumented `unpublished`,
+	// making two published vectors irreproducible from the normative text.
+	nopub := base
+	nopub.Inputs = []licenseInput{{Artifact: artA, License: "MIT"}}
+	explicit := base
+	explicit.Inputs = []licenseInput{{Artifact: artA, Publication: noLicense, License: "MIT"}}
+	if evaluationDigest(nopub) != evaluationDigest(explicit) {
+		return fmt.Errorf("an absent publication did not encode as the sentinel; the encoding uses a value this specification does not define")
+	}
+	if err := emit(map[string]any{"kind": "identity",
+		"label": "an undeterminable publication encodes the sentinel",
+		"witnesses": "LICENSE-PUBLICATION-SENTINEL", "policy": base.Policy, "engine": base.Engine,
+		"model": base.Model, "model_digest": base.ModelDigest, "assertions": []string{},
+		"pairs": []licensePair{{Artifact: artA, Publication: "-", License: "MIT"}},
+		"digest": evaluationDigest(nopub)}); err != nil {
 		return err
 	}
 

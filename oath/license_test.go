@@ -60,8 +60,11 @@ func TestUnknownLicensesYieldUnstated(t *testing.T) {
 // would silently reinterpret every historical verdict, the defect campaign identity
 // exists to prevent.
 func TestEvaluationDigestBindsMethodAndInputs(t *testing.T) {
-	base := licenseEvaluation{Policy: "composition", Engine: licenseEngine, Model: licenseModelVersion,
-		Inputs: []licenseInput{{Name: "a", License: "MIT"}, {Name: "b", License: "Apache-2.0"}}}
+	base := licenseEvaluation{Policy: licensePolicyComposition, Engine: licenseEngine,
+		Model: licenseModelVersion, ModelDigest: licenseModelDigest(),
+		Inputs: []licenseInput{
+			{Artifact: "11", Publication: "aa", Name: "a", License: "MIT"},
+			{Artifact: "22", Publication: "bb", Name: "b", License: "Apache-2.0"}}}
 	d := evaluationDigest(base)
 
 	for _, tc := range []struct {
@@ -71,8 +74,10 @@ func TestEvaluationDigestBindsMethodAndInputs(t *testing.T) {
 		{"engine", func(e *licenseEvaluation) { e.Engine = "other/1" }},
 		{"model", func(e *licenseEvaluation) { e.Model = "other-lattice/2" }},
 		{"policy", func(e *licenseEvaluation) { e.Policy = "redistribution" }},
+		{"the model content", func(e *licenseEvaluation) { e.ModelDigest = "deadbeef" }},
 		{"an input licence", func(e *licenseEvaluation) { e.Inputs[1].License = "GPL-3.0-only" }},
-		{"an input name", func(e *licenseEvaluation) { e.Inputs[0].Name = "z" }},
+		{"an input artifact", func(e *licenseEvaluation) { e.Inputs[0].Artifact = "99" }},
+		{"an input publication", func(e *licenseEvaluation) { e.Inputs[0].Publication = "zz" }},
 	} {
 		m := base
 		m.Inputs = append([]licenseInput(nil), base.Inputs...)
@@ -80,6 +85,17 @@ func TestEvaluationDigestBindsMethodAndInputs(t *testing.T) {
 		if evaluationDigest(m) == d {
 			t.Fatalf("changing %s did not change the digest — a stale verdict would be undetectable", tc.name)
 		}
+	}
+
+	// A NAME must NOT change the digest (§12.4 LICENSE-IDENTITY-ARTIFACT). Names are
+	// discovery paths: renaming changes how the closure was found, never what was
+	// evaluated, and §9 makes them mutable without changing identity.
+	renamed := base
+	renamed.Inputs = append([]licenseInput(nil), base.Inputs...)
+	renamed.Inputs[0].Name = "service"
+	renamed.Inputs[1].Name = "vendored-lib"
+	if evaluationDigest(renamed) != d {
+		t.Fatal("renaming a member changed the evaluation digest; identity is following the discovery path rather than the artifacts")
 	}
 
 	// Input ORDER must not matter: the same assertions evaluated in a different order

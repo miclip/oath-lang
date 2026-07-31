@@ -1832,7 +1832,7 @@ A conformant implementation MUST reject an envelope, on both encoding and
 verification, unless all of:
 
 - the first line is exactly the format tag this version defines
-  (`oath-publish/1`). A different tag is not a newer envelope to be
+  (`oath-publish/2`). A different tag is not a newer envelope to be
   interpreted — it is an envelope this version cannot verify, and accepting it
   under these rules would read a signature made under one format as though it
   were made under another;
@@ -2615,9 +2615,36 @@ all three to be reproducible:
 | `input-publication` | whose grant was consumed |
 | `input-license` | what terms that grant asserted |
 
+**LICENSE-PUBLICATION-SENTINEL.** A closure member whose publication identity
+cannot be determined MUST encode `input-publication=-`, the same no-assertion
+sentinel §8.6.1 uses. It MUST NOT be omitted, and MUST NOT be given a
+substituted value.
+
+Omitting the line would collapse the triple into a pair and let an
+unidentifiable member borrow an identifiable one's encoding, which is the same
+collision LICENSE-INPUT-COMPLETE forbids one paragraph down. Substituting some
+other value — a name, a placeholder string, the artifact hash again — is worse:
+the digest would then attest to a publication identity that does not exist.
+
+> The reference kernel emitted a literal `unpublished` here, a magic value
+> appearing nowhere in this document. Two published vectors were consequently
+> IRREPRODUCIBLE from the normative text: an independent implementation searched
+> more than 160,000 candidate encodings for them and correctly refused to tune
+> its implementation to match. An undocumented sentinel in the reference is
+> indistinguishable, to a blind reader, from a specification that cannot be
+> implemented.
+
 **LICENSE-IDENTITY-UNAMBIGUOUS.** Each component of a triple occupies its own
-LINE, and every value MUST exclude LF, CR, and any octet below `0x20` or equal
-to `0x7F`. Both rules are load-bearing, and neither is decorative:
+LINE, and every value MUST exclude LF, CR, any octet below `0x20` or equal to
+`0x7F`, and the code points U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH
+SEPARATOR).
+
+> U+2028/U+2029 are not control octets, so an exclusion phrased only in terms of
+> `0x20`/`0x7F` admits them — and a Unicode-aware line splitter (ECMAScript's
+> `split(/\r?\n|\u2028|\u2029/)`, ICU, several text pipelines) then reads a
+> ONE-member evaluation as a multi-member composition carrying a grant nobody
+> published. §8.2.1 escapes both by name for precisely this hazard; §12.4 again
+> inherited a rule's letter without its purpose. Both rules are load-bearing, and neither is decorative:
 
 - a single `input=<member>=<expression>` line has no sound split, because a value
   may itself contain `=` — so `"a=b"` with `"MIT"` and `"a"` with `"b=MIT"`
@@ -2632,6 +2659,22 @@ encoding did not satisfy it. §8.6.1 had established the same character
 discipline for the same reason; §12.4 inherited none of it. A rule and the
 encoding that must implement it are separate obligations, and stating the
 rule does not discharge the encoding.
+
+**LICENSE-ENGINE-DEFINED.** `engine` names the EVALUATOR that produced the
+verdict — the implementation of §12 itself, versioned independently of the model
+it consults. The engine of this specification is `oath-license/1`. An
+implementation that changes how §12's rules are applied MUST advance this
+identifier rather than reuse it.
+
+`engine` is NOT a property of the model, even where a published model file
+happens to carry one for convenience: the model is the lattice, the engine is
+what consults it, and conflating them makes the two components of the digest
+non-independent.
+
+> This identifier had no definition, no vocabulary and no stated source — the
+> identical defect the paragraph below records for `policy`, one line further up
+> and left unfixed when `policy` was repaired. Fixing one instance of a defect
+> class and not looking for its siblings is how the class survives.
 
 **LICENSE-POLICY-DEFINED.** `policy` names the rule by which the input set was
 SELECTED from the store. Exactly one value is defined by this specification:
@@ -2672,8 +2715,15 @@ determines the order. The same assertions evaluated in
 a different order are the SAME evaluation, and MUST produce the same digest —
 otherwise fixture or traversal order would make one evaluation appear to be two.
 
-**LICENSE-IDENTITY-INPUT.** Changing the engine, the model version, the policy,
-any consumed name or any consumed expression MUST change the digest.
+**LICENSE-IDENTITY-INPUT.** Changing the engine, the model version, the model
+digest, the policy, or any consumed artifact hash, publication identity or
+asserted expression MUST change the digest. Changing a NAME MUST NOT.
+
+> This rule previously named "any consumed name" and omitted the model digest,
+> the artifact hash and the publication identity — so it simultaneously
+> CONTRADICTED LICENSE-IDENTITY-ARTIFACT above and under-described the encoding
+> below it. A rule that enumerates the digest's components must be re-checked
+> against the encoding whenever either moves; nothing else notices.
 
 **LICENSE-CLOSURE-EXCLUSIVE.** ONLY assertions belonging to the artifact and its
 exact transitive dependency closure are consumed. An artifact outside the closure
