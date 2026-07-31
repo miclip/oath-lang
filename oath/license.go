@@ -212,8 +212,17 @@ func combineObligation(acc, next tri) tri {
 }
 
 type licenseInput struct {
-	Name    string
-	License string
+	// Artifact is what the pair is IDENTIFIED by (§12.4 LICENSE-IDENTITY-ARTIFACT).
+	// Name is PROVENANCE — reported so a reader can see how the closure was located,
+	// never hashed, because §9 makes names mutable without changing identity.
+	Artifact string
+	// Publication is the §8.2.2 entry digest of the publication whose assertion
+	// was consumed — WHOSE grant this is. The same artifact can carry different
+	// assertions under different publications, and the same expression asserted by
+	// two principals is two different grants over the same bytes.
+	Publication string
+	Name        string
+	License     string
 	Reason  string // why the model could not answer, when it could not
 }
 
@@ -234,26 +243,33 @@ func evaluateLicensing(st *Store, name string, deps []string) licenseEvaluation 
 	ev := licenseEvaluation{Policy: licensePolicyComposition, Engine: licenseEngine,
 		Model: licenseModelVersion, ModelDigest: licenseModelDigest()}
 
-	add := func(n string) {
+	// add takes the ARTIFACT as the member identity and the name as provenance
+	// (§12.4 LICENSE-IDENTITY-ARTIFACT). The asserted expression still travels with
+	// the artifact, because a licence assertion belongs to a PUBLICATION rather
+	// than to the code — one artifact published twice under different terms is two
+	// input pairs, and correctly two evaluations.
+	add := func(artifact, n string) {
 		lic := assertedLicense(st, n)
 		g, reason := modelLookup(lic)
 		if lic == "" {
 			lic = "(none)"
 		}
+		in := licenseInput{Artifact: artifact, Publication: publicationOf(st, n, artifact),
+			Name: n, License: lic, Reason: reason}
 		// SPEC §12.4 LICENSE-IDENTITY-UNAMBIGUOUS. A value that cannot be encoded
 		// on a digest line is not evaluated: encoding it anyway would let one
-		// assertion forge another composition's digest. Fail CLOSED — the input is
-		// reported, counted as unmodeled, and grants nothing. Silently stripping
-		// the offending octets would be worse than refusing, because the digest
-		// would then attest to a string nobody asserted.
-		if !digestSafe(n) || !digestSafe(lic) {
-			ev.Inputs = append(ev.Inputs, licenseInput{Name: shortHash(n), License: "(unencodable)",
-				Reason: "name or expression contains an octet §12.4 forbids in a digest line"})
+		// assertion forge another composition's digest. Fail CLOSED. Silently
+		// stripping the offending octets would be worse than refusing, because the
+		// digest would then attest to a string nobody asserted.
+		if !digestSafe(in.member()) || !digestSafe(lic) {
+			ev.Inputs = append(ev.Inputs, licenseInput{Artifact: artifact, Name: shortHash(n),
+				License: "(unencodable)",
+				Reason:  "member or expression contains an octet §12.4 forbids in a digest line"})
 			ev.Unmodeled++
 			ev.Result = grants{}
 			return
 		}
-		ev.Inputs = append(ev.Inputs, licenseInput{Name: n, License: lic, Reason: reason})
+		ev.Inputs = append(ev.Inputs, in)
 		if reason != "" {
 			ev.Unmodeled++
 		}
@@ -270,21 +286,34 @@ func evaluateLicensing(st *Store, name string, deps []string) licenseEvaluation 
 		}
 	}
 
-	add(name)
+	add(st.Names()[name], name)
 	for _, d := range deps {
-		// Dependencies are listed by hash in the decision package; resolve to a name so
-		// the evaluation reports something a reader can act on.
-		if n := nameOfHash(st, d); n != "" {
-			add(n)
-		} else {
-			ev.Inputs = append(ev.Inputs, licenseInput{Name: shortHash(d), License: "(unresolved)",
-				Reason: "dependency has no bound name, so no publication asserted terms for it"})
-			ev.Unmodeled++
-			ev.Result = grants{} // unknown input makes the whole composition unknown
-		}
+		// Dependencies arrive BY HASH, which is exactly the member identity. A name
+		// is resolved only so the evaluation reports something a reader can act on;
+		// an unnamed dependency is still a fully identified member, and no longer
+		// poisons the composition merely for lacking a name.
+		add(d, nameOfHash(st, d))
 	}
 	ev.Digest = evaluationDigest(ev)
 	return ev
+}
+// publicationOf returns the §8.2.2 entry digest of the publication that most
+// recently BOUND name to hash — the publication whose licence assertion an
+// evaluation consumes. Searching backwards finds the transition currently in
+// force rather than the first one that ever matched.
+func publicationOf(st *Store, name, hash string) string {
+	entries := st.ReadLog()
+	for i := len(entries) - 1; i >= 0; i-- {
+		e := entries[i]
+		if e.Name != name || e.Hash != hash {
+			continue
+		}
+		if d, derr := entryDigest(&entries[i]); derr == nil {
+			return d
+		}
+		return ""
+	}
+	return ""
 }
 
 func nameOfHash(st *Store, h string) string {
@@ -305,6 +334,38 @@ func nameOfHash(st *Store, h string) string {
 // rule is not cosmetic: an LF inside a value injects a line, letting a single
 // assertion forge the digest of a two-input composition. §8.6.1 established the
 // same rule for the same reason; §12.4 originally inherited none of it.
+// member is the value an input pair is identified by in the digest: its artifact
+// hash. LICENSE-IDENTITY-ARTIFACT — binding the NAME instead would move an
+// evaluation's identity on a rename, when nothing about the evaluated software
+// changed, which is the same defect as making artifact identity depend on a
+// repository path.
+func (i licenseInput) member() string {
+	if !ruleOn("LICENSE-IDENTITY-ARTIFACT") {
+		// MUTATION: identify members by NAME. Plausible — names are what a reader
+		// sees — and wrong: §9 makes names mutable without changing identity, so an
+		// evaluation would move on a rename while nothing about the evaluated
+		// software changed.
+		return i.Name
+	}
+	if i.Artifact != "" {
+		return i.Artifact
+	}
+	// A closure member with no resolvable artifact still has to be distinguishable
+	// and MUST NOT silently borrow a name: this marks it unresolved instead.
+	return "unresolved:" + i.Name
+}
+
+// pub is the publication identity bound by a triple. An input with none is
+// marked rather than omitted: a member whose publication cannot be identified is
+// a DIFFERENT fact from one published anonymously, and collapsing them would let
+// an unidentifiable grant borrow an identifiable one's digest.
+func (i licenseInput) pub() string {
+	if i.Publication != "" {
+		return i.Publication
+	}
+	return "unpublished"
+}
+
 func digestSafe(v string) bool {
 	for _, c := range []byte(v) {
 		if c < 0x20 || c == 0x7F {
@@ -363,7 +424,7 @@ func licenseModelDigest() string {
 func evaluationDigest(ev licenseEvaluation) string {
 	if ruleOn("LICENSE-IDENTITY-UNAMBIGUOUS") {
 		for _, i := range ev.Inputs {
-			if !digestSafe(i.Name) || !digestSafe(i.License) {
+			if !digestSafe(i.member()) || !digestSafe(i.pub()) || !digestSafe(i.License) {
 				return ""
 			}
 		}
@@ -397,9 +458,14 @@ func evaluationDigest(ev licenseEvaluation) string {
 	in := append([]licenseInput(nil), ev.Inputs...)
 	if ruleOn("LICENSE-ORDER-INDEPENDENT") {
 		// Name alone is NOT a total order, so it does not determine a digest.
+		// Artifact hash alone is not a total order: the same artifact can appear
+		// twice in a closure under different asserted terms.
 		sort.Slice(in, func(i, j int) bool {
-			if in[i].Name != in[j].Name {
-				return in[i].Name < in[j].Name
+			if in[i].member() != in[j].member() {
+				return in[i].member() < in[j].member()
+			}
+			if in[i].pub() != in[j].pub() {
+				return in[i].pub() < in[j].pub()
 			}
 			return in[i].License < in[j].License
 		})
@@ -418,12 +484,15 @@ func evaluationDigest(ev licenseEvaluation) string {
 			// `a`/`b=MIT` encoded identically, violating LICENSE-IDENTITY-INPUT
 			// two paragraphs below.
 			if ruleOn("LICENSE-IDENTITY-UNAMBIGUOUS") {
-				b.WriteString("input-name=" + i.Name + "\n")
+				b.WriteString("input-artifact=" + i.member() + "\n")
+				if ruleOn("LICENSE-IDENTITY-PUBLICATION") {
+					b.WriteString("input-publication=" + i.pub() + "\n")
+				}
 				b.WriteString("input-license=" + i.License + "\n")
 			} else {
 				// The superseded encoding, retained ONLY so the scorer can disable
 				// the rule and confirm a vector notices. It is not injective.
-				b.WriteString("input=" + i.Name + "=" + i.License + "\n")
+				b.WriteString("input=" + i.member() + "=" + i.License + "\n")
 			}
 		}
 	}
@@ -472,8 +541,11 @@ func (ev licenseEvaluation) render() string {
 // --- conformance surface (SPEC §10) ------------------------------------------------
 
 type licensePair struct {
-	Name    string `json:"name"`
-	License string `json:"license"`
+	// Artifact is what the digest binds; Name is provenance only (§12.4).
+	Artifact    string `json:"artifact,omitempty"`
+	Publication string `json:"publication,omitempty"`
+	Name        string `json:"name,omitempty"`
+	License     string `json:"license"`
 }
 
 type licenseVector struct {
@@ -524,7 +596,8 @@ func runLicenseVectors(vs []licenseVector) []string {
 			var in []licenseInput
 			if len(v.Pairs) > 0 {
 				for _, pr := range v.Pairs {
-					in = append(in, licenseInput{Name: pr.Name, License: pr.License})
+					in = append(in, licenseInput{Artifact: pr.Artifact, Publication: pr.Publication,
+						Name: pr.Name, License: pr.License})
 				}
 			} else {
 				for _, a := range v.Assertions {

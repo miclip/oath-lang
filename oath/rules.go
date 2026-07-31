@@ -106,6 +106,8 @@ var normativeRules = []normativeRule{
 	{"LICENSE-LOOKUP-EXACT", "§12.3", "identifiers match by exact octet equality; no case-folding, trimming or normalisation", familyLicense},
 	{"LICENSE-POLICY-DEFINED", "§12.3", "an unrecognised policy is not reproducible and is never evaluated as composition", familyLicense},
 	{"LICENSE-INPUT-COMPLETE", "§12.4", "every closure member contributes a pair, including one asserting nothing", familyLicense},
+	{"LICENSE-IDENTITY-ARTIFACT", "§12.4", "members are identified by artifact hash, so renaming does not change an evaluation", familyLicense},
+	{"LICENSE-IDENTITY-PUBLICATION", "§12.4", "each member binds WHOSE grant was consumed, so identical terms from two publishers are two grants", familyLicense},
 	{"LICENSE-IDENTITY-MODEL-CONTENT", "§12.4", "the digest binds the model's BYTES, not a version string the lattice can outlive", familyLicense},
 	{"LICENSE-FOLD-NONEMPTY", "§12.2", "an empty composition yields UNSTATED, never the fold's identity element", familyLicense},
 	{"LICENSE-IDENTITY-UNAMBIGUOUS", "§12.4", "name and expression are separately encoded, so no two distinct compositions share a digest", familyLicense},

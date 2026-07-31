@@ -2545,7 +2545,8 @@ engine=<engine>
 model=<model version>
 model-digest=<64 lowercase hex>
 policy=<policy>
-input-name=<name>                       (one PAIR per closure member)
+input-artifact=<64 lowercase hex>       (one TRIPLE per closure member)
+input-publication=<64 lowercase hex>
 input-license=<asserted expression>
 ```
 
@@ -2566,13 +2567,61 @@ was stated and the encoding permitted precisely it.
 > one `NO` to `YES` in the lattice, leave `spdx-lattice/1` untouched, and every
 > published evaluation identity still checks out.
 
-**LICENSE-IDENTITY-UNAMBIGUOUS.** A name and its expression occupy SEPARATE
-lines, and every value MUST exclude LF, CR, and any octet below `0x20` or equal
+> **A licence evaluation is a verdict about exact artifacts under exact
+> publication terms. Names are discovery paths and MUST NOT contribute to
+> evaluation identity.**
+
+**LICENSE-IDENTITY-ARTIFACT.** An input triple identifies its member by ARTIFACT
+HASH, never by name. Names are PROVENANCE — they record how the closure was
+located and MUST be reported alongside an evaluation — but they are not part of
+its identity.
+
+§9 states that names are mutable without changing identity, so binding them here
+would make an evaluation change when nothing about the evaluated software did:
+rename `app` to `service`, leave every artifact and every asserted expression
+untouched, and the identity would move. That is the same defect as making
+artifact identity depend on a repository path. It is also inconsistent with the
+rest of this specification — §11.2 binds `artifact=<64 hex>`, and every verdict
+the kernel records is a hash-keyed fact — so the name-bound form was the outlier
+rather than the pattern.
+
+The two claims are different and both are wanted:
+
+| claim | answers | bound by |
+|---|---|---|
+| the EVALUATION | these exact artifacts, under this exact model and policy, produced this verdict | §12.4 |
+| the PUBLICATION | this name pointed at this artifact when the evaluation was requested | §8.2, §8.6 |
+
+**LICENSE-IDENTITY-PUBLICATION.** Each triple ALSO binds the PUBLICATION
+IDENTITY — the entry digest of §8.2.2 — of the publication whose assertion was
+consumed. The artifact hash identifies the code being evaluated; the publication
+identity identifies WHOSE grant is being relied on.
+
+Both are required, and neither substitutes for the other. Licensing is a
+publication claim rather than a property of the code (§8.6.1), so the same
+artifact hash can legitimately carry different assertions under different
+publications — and, just as importantly, the SAME expression asserted by two
+different principals is two different grants over the same bytes. Binding the
+artifact and the expression alone would collapse those into one identity, which
+is the same class of error as binding the name: an identity that fails to
+distinguish claims that differ in who made them.
+
+The three components answer three separate questions, and an evaluation needs
+all three to be reproducible:
+
+| component | answers |
+|---|---|
+| `input-artifact` | which code was evaluated |
+| `input-publication` | whose grant was consumed |
+| `input-license` | what terms that grant asserted |
+
+**LICENSE-IDENTITY-UNAMBIGUOUS.** Each component of a triple occupies its own
+LINE, and every value MUST exclude LF, CR, and any octet below `0x20` or equal
 to `0x7F`. Both rules are load-bearing, and neither is decorative:
 
-- a single `input=<name>=<expression>` line has no sound split, because §8.6.1
-  permits `=` inside a name — so `name="a=b", expr="MIT"` and `name="a",
-  expr="b=MIT"` encode to identical bytes;
+- a single `input=<member>=<expression>` line has no sound split, because a value
+  may itself contain `=` — so `"a=b"` with `"MIT"` and `"a"` with `"b=MIT"`
+  encode to identical bytes;
 - without the character rule an expression containing an LF injects a line, so
   ONE assertion can reproduce the digest of a DIFFERENT composition — a forgery
   surface in the one value whose purpose is to make a change of method visible.
@@ -2614,10 +2663,12 @@ deduplicated, and a member appearing twice in the closure contributes twice.
 > would cover two compositions that disagree. Demonstrated, and both readings
 > passed every vector.
 
-**LICENSE-ORDER-INDEPENDENT.** Input PAIRS are sorted before hashing by `name`,
-then by asserted expression where names are equal, comparing by OCTET value so
-ordering never depends on locale, language, or a Unicode collation. Sorting by
-name alone is not a total order and so does not determine a digest. The same assertions evaluated in
+**LICENSE-ORDER-INDEPENDENT.** Input TRIPLES are sorted before hashing by
+artifact hash, then publication identity, then asserted expression, comparing by
+OCTET value so ordering never depends on locale, language, or a Unicode
+collation. Artifact hash alone is not a total order — the same artifact may
+appear in a closure under several publications — so the full triple is what
+determines the order. The same assertions evaluated in
 a different order are the SAME evaluation, and MUST produce the same digest —
 otherwise fixture or traversal order would make one evaluation appear to be two.
 

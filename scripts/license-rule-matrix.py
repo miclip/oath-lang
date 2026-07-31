@@ -71,6 +71,8 @@ EXPECTED = {
     "LICENSE-LOOKUP-PRECEDENCE": "a compound is not resolved even when its operand is modelled",
     "LICENSE-POLICY-DEFINED": "an unrecognised policy is a different evaluation",
     "LICENSE-INPUT-COMPLETE": "a member asserting nothing still contributes an input pair",
+    "LICENSE-IDENTITY-ARTIFACT": "renaming members does not change the evaluation",
+    "LICENSE-IDENTITY-PUBLICATION": "the same terms from a different publication is a different evaluation",
     "LICENSE-IDENTITY-MODEL-CONTENT": "editing the lattice changes the digest even under a fixed version string",
 }
 

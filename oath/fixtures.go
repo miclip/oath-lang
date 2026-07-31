@@ -1102,13 +1102,21 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 	// IDENTITY vectors:	// IDENTITY vectors: the digest must bind method and inputs, and must not depend on
 	// order. Without these, changing the lattice next year would silently reinterpret
 	// every historical verdict.
-	baseInputs := []licenseInput{{Name: "a", License: "MIT"}, {Name: "b", License: "Apache-2.0"}}
+	// Members are ARTIFACT HASHES (§12.4 LICENSE-IDENTITY-ARTIFACT). Fixed literals
+	// rather than corpus hashes, so the vector family stays a statement about the
+	// RULES rather than about this store.
+	const artA = "1111111111111111111111111111111111111111111111111111111111111111"
+	const artB = "2222222222222222222222222222222222222222222222222222222222222222"
+	const pubA = "aaaa000000000000000000000000000000000000000000000000000000000000"
+	const pubB = "bbbb000000000000000000000000000000000000000000000000000000000000"
+	baseInputs := []licenseInput{{Artifact: artA, Publication: pubA, Name: "a", License: "MIT"},
+		{Artifact: artB, Publication: pubB, Name: "b", License: "Apache-2.0"}}
 	base := licenseEvaluation{Policy: licensePolicyComposition, Engine: licenseEngine,
 		Model: licenseModelVersion, ModelDigest: licenseModelDigest(), Inputs: baseInputs}
 	baseDigest := evaluationDigest(base)
 	if err := emit(map[string]any{"kind": "identity", "label": "evaluation digest over method and sorted inputs",
 		"witnesses": "LICENSE-IDENTITY-INPUT", "policy": base.Policy, "engine": base.Engine,
-		"model": base.Model, "model_digest": base.ModelDigest, "assertions": []string{"a=MIT", "b=Apache-2.0"}, "digest": baseDigest}); err != nil {
+		"model": base.Model, "model_digest": base.ModelDigest, "pairs": []licensePair{{Artifact: artA, Publication: pubA, Name: "a", License: "MIT"}, {Artifact: artB, Publication: pubB, Name: "b", License: "Apache-2.0"}}, "assertions": []string{}, "digest": baseDigest}); err != nil {
 		return err
 	}
 	rev := base
@@ -1125,7 +1133,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 	}
 	if err := emit(map[string]any{"kind": "identity", "label": "changing the model changes the evaluation",
 		"witnesses": "LICENSE-MODEL-VERSIONED", "policy": base.Policy, "engine": base.Engine,
-		"model": modelChanged.Model, "model_digest": modelChanged.ModelDigest, "assertions": []string{"a=MIT", "b=Apache-2.0"},
+		"model": modelChanged.Model, "model_digest": modelChanged.ModelDigest, "pairs": []licensePair{{Artifact: artA, Publication: pubA, Name: "a", License: "MIT"}, {Artifact: artB, Publication: pubB, Name: "b", License: "Apache-2.0"}}, "assertions": []string{},
 		"digest": evaluationDigest(modelChanged)}); err != nil {
 		return err
 	}
@@ -1147,7 +1155,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		}
 		if err := emit(map[string]any{"kind": "identity", "label": d.label,
 			"witnesses": "LICENSE-IDENTITY-INPUT", "policy": v.Policy, "engine": v.Engine,
-			"model": v.Model, "model_digest": v.ModelDigest, "assertions": []string{"a=MIT", "b=Apache-2.0"}, "digest": dig}); err != nil {
+			"model": v.Model, "model_digest": v.ModelDigest, "pairs": []licensePair{{Artifact: artA, Publication: pubA, Name: "a", License: "MIT"}, {Artifact: artB, Publication: pubB, Name: "b", License: "Apache-2.0"}}, "assertions": []string{}, "digest": dig}); err != nil {
 			return err
 		}
 	}
@@ -1160,8 +1168,8 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 	// that omits the character rule therefore forges a real evaluation identity.
 	forgery := licenseEvaluation{Policy: base.Policy, Engine: base.Engine, Model: base.Model,
 		ModelDigest: base.ModelDigest,
-		Inputs: []licenseInput{{Name: "a",
-			License: "MIT\ninput-name=b\ninput-license=Apache-2.0"}}}
+		Inputs: []licenseInput{{Artifact: artA, Publication: pubA,
+			License: "MIT\ninput-artifact=" + artB + "\ninput-publication=" + pubB + "\ninput-license=Apache-2.0"}}}
 	if d := evaluationDigest(forgery); d != "" {
 		return fmt.Errorf("the character rule did not refuse an assertion embedding LF (got digest %s); one assertion can forge another composition's identity", shortHash(d))
 	}
@@ -1169,7 +1177,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		"label": "an embedded newline cannot forge a two-input digest",
 		"witnesses": "LICENSE-IDENTITY-UNAMBIGUOUS", "policy": base.Policy, "engine": base.Engine,
 		"model": base.Model, "model_digest": base.ModelDigest, "assertions": []string{},
-		"pairs": []licensePair{{Name: "a", License: "MIT\ninput-name=b\ninput-license=Apache-2.0"}},
+		"pairs": []licensePair{{Artifact: artA, Publication: pubA, License: "MIT\ninput-artifact=" + artB + "\ninput-publication=" + pubB + "\ninput-license=Apache-2.0"}},
 		"expect_rejected": true}); err != nil {
 		return err
 	}
@@ -1180,9 +1188,9 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 	// Both readings passed every vector until this one existed.
 	withNone := licenseEvaluation{Policy: base.Policy, Engine: base.Engine, Model: base.Model,
 		ModelDigest: base.ModelDigest,
-		Inputs:      []licenseInput{{Name: "a", License: "MIT"}, {Name: "b", License: "-"}}}
+		Inputs:      []licenseInput{{Artifact: artA, Publication: pubA, License: "MIT"}, {Artifact: artB, Publication: pubB, License: "-"}}}
 	alone := withNone
-	alone.Inputs = []licenseInput{{Name: "a", License: "MIT"}}
+	alone.Inputs = []licenseInput{{Artifact: artA, Publication: pubA, License: "MIT"}}
 	if evaluationDigest(withNone) == evaluationDigest(alone) {
 		return fmt.Errorf("a member asserting nothing was dropped from the digest: {a:MIT, b:(none)} and {a:MIT} share an identity while their verdicts differ")
 	}
@@ -1190,7 +1198,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		"label": "a member asserting nothing still contributes an input pair",
 		"witnesses": "LICENSE-INPUT-COMPLETE", "policy": base.Policy, "engine": base.Engine,
 		"model": base.Model, "model_digest": base.ModelDigest,
-		"assertions": []string{}, "pairs": []licensePair{{Name: "a", License: "MIT"}, {Name: "b", License: "-"}},
+		"assertions": []string{}, "pairs": []licensePair{{Artifact: artA, Publication: pubA, License: "MIT"}, {Artifact: artB, Publication: pubB, License: "-"}},
 		"digest": evaluationDigest(withNone)}); err != nil {
 		return err
 	}
@@ -1206,11 +1214,54 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		"label": "an unrecognised policy is a different evaluation",
 		"witnesses": "LICENSE-POLICY-DEFINED", "policy": unk.Policy, "engine": base.Engine,
 		"model": base.Model, "model_digest": base.ModelDigest,
-		"assertions": []string{"a=MIT", "b=Apache-2.0"}, "digest": evaluationDigest(unk)}); err != nil {
+		"pairs": []licensePair{{Artifact: artA, Publication: pubA, Name: "a", License: "MIT"}, {Artifact: artB, Publication: pubB, Name: "b", License: "Apache-2.0"}}, "assertions": []string{}, "digest": evaluationDigest(unk)}); err != nil {
 		return err
 	}
 
-	// The MODEL CONTENT binding.	// The MODEL CONTENT binding. Changing the lattice while holding the version
+	// ARTIFACT IDENTITY. The same artifacts reached by DIFFERENT names are the same
+	// evaluation. Binding names would make this pair differ, and that is the defect:
+	// nothing about the evaluated software changed, only the route by which the
+	// closure was located.
+	renamed := base
+	renamed.Inputs = []licenseInput{
+		{Artifact: artA, Publication: pubA, Name: "service", License: "MIT"},
+		{Artifact: artB, Publication: pubB, Name: "vendored-lib", License: "Apache-2.0"}}
+	if evaluationDigest(renamed) != baseDigest {
+		return fmt.Errorf("renaming a member changed the evaluation digest; identity is following the discovery path rather than the artifacts")
+	}
+	if err := emit(map[string]any{"kind": "identity",
+		"label": "renaming members does not change the evaluation",
+		"witnesses": "LICENSE-IDENTITY-ARTIFACT", "policy": base.Policy, "engine": base.Engine,
+		"model": base.Model, "model_digest": base.ModelDigest, "assertions": []string{},
+		"pairs": []licensePair{
+			{Artifact: artA, Publication: pubA, Name: "service", License: "MIT"},
+			{Artifact: artB, Publication: pubB, Name: "vendored-lib", License: "Apache-2.0"}},
+		"digest": baseDigest}); err != nil {
+		return err
+	}
+
+	// PUBLICATION IDENTITY. Same artifact, same asserted terms, DIFFERENT publisher.
+	// Two grants over the same bytes, which must not share an identity — otherwise
+	// an evaluation cannot say whose grant it relied on.
+	otherPub := base
+	otherPub.Inputs = []licenseInput{
+		{Artifact: artA, Publication: pubB, Name: "a", License: "MIT"},
+		{Artifact: artB, Publication: pubB, Name: "b", License: "Apache-2.0"}}
+	if evaluationDigest(otherPub) == baseDigest {
+		return fmt.Errorf("the same terms asserted by a different publication produced the same digest; the evaluation cannot say whose grant it consumed")
+	}
+	if err := emit(map[string]any{"kind": "identity",
+		"label": "the same terms from a different publication is a different evaluation",
+		"witnesses": "LICENSE-IDENTITY-PUBLICATION", "policy": base.Policy, "engine": base.Engine,
+		"model": base.Model, "model_digest": base.ModelDigest, "assertions": []string{},
+		"pairs": []licensePair{
+			{Artifact: artA, Publication: pubB, Name: "a", License: "MIT"},
+			{Artifact: artB, Publication: pubB, Name: "b", License: "Apache-2.0"}},
+		"digest": evaluationDigest(otherPub)}); err != nil {
+		return err
+	}
+
+	// The MODEL CONTENT binding. Changing the lattice while holding the version
 	// string fixed must change every identity, or historical verdicts are
 	// reinterpreted rather than superseded.
 	swapped := base
@@ -1222,13 +1273,13 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		"label": "editing the lattice changes the digest even under a fixed version string",
 		"witnesses": "LICENSE-IDENTITY-MODEL-CONTENT", "policy": base.Policy, "engine": base.Engine,
 		"model": base.Model, "model_digest": swapped.ModelDigest,
-		"assertions": []string{"a=MIT", "b=Apache-2.0"}, "digest": evaluationDigest(swapped)}); err != nil {
+		"pairs": []licensePair{{Artifact: artA, Publication: pubA, Name: "a", License: "MIT"}, {Artifact: artB, Publication: pubB, Name: "b", License: "Apache-2.0"}}, "assertions": []string{}, "digest": evaluationDigest(swapped)}); err != nil {
 		return err
 	}
 
 	if err := emit(map[string]any{"kind": "identity", "label": "input order does not change the digest",
 		"witnesses": "LICENSE-ORDER-INDEPENDENT", "policy": base.Policy, "engine": base.Engine,
-		"model": base.Model, "model_digest": base.ModelDigest, "assertions": []string{"b=Apache-2.0", "a=MIT"}, "digest": baseDigest}); err != nil {
+		"model": base.Model, "model_digest": base.ModelDigest, "assertions": []string{}, "pairs": []licensePair{{Artifact: artB, Publication: pubB, Name: "b", License: "Apache-2.0"}, {Artifact: artA, Publication: pubA, Name: "a", License: "MIT"}}, "digest": baseDigest}); err != nil {
 		return err
 	}
 
@@ -1241,14 +1292,14 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		label string
 		pair  licensePair
 	}{
-		{"a name containing = does not collide with a shifted split", licensePair{Name: "a=b", License: "MIT"}},
-		{"the shifted split is a different evaluation", licensePair{Name: "a", License: "b=MIT"}},
+		{"a member containing = does not collide with a shifted split", licensePair{Artifact: "a=b", License: "MIT"}},
+		{"the shifted split is a different evaluation", licensePair{Artifact: "a", License: "b=MIT"}},
 	}
 	var ambDigests []string
 	for _, a := range amb {
 		ev := licenseEvaluation{Policy: base.Policy, Engine: base.Engine, Model: base.Model,
 			ModelDigest: base.ModelDigest,
-			Inputs:      []licenseInput{{Name: a.pair.Name, License: a.pair.License}}}
+			Inputs:      []licenseInput{{Artifact: a.pair.Artifact, License: a.pair.License}}}
 		d := evaluationDigest(ev)
 		ambDigests = append(ambDigests, d)
 		if err := emit(map[string]any{"kind": "identity", "label": a.label,

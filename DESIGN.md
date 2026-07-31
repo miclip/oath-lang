@@ -660,6 +660,33 @@ signature is provenance, a proof is evidence, and a registry entry is
 publication — not a licence, and not a transfer. Each is a different claim, and
 the whole discipline of this project is not conflating claims.
 
+## What a licence evaluation is about (2026-07-30)
+
+Evaluation identity binds the ARTIFACT CLOSURE, not the names that located it.
+Names are provenance and presentation.
+
+The question was whether an evaluation is about publications or about software.
+Oath had already answered it everywhere else: `explain` carries a name but
+explains the artifact reached at that hash, and every derived verdict —
+guarantee, termination, properties, spec strength — is a hash-keyed fact.
+Licensing was the lone exception, so this is not a special identity rule for
+§12; it is §12 rejoining the pattern. Binding names produced a property with no
+defensible reading: rename `app` to `service`, change no artifact and no
+assertion, and the evaluation identity moved — the same defect as making artifact
+identity depend on a repository path.
+
+But artifact alone over-corrects, because licensing is a PUBLICATION claim rather
+than a property of the code. The same artifact can carry different assertions
+under different publications, and the same expression asserted by two principals
+is two different grants over the same bytes. So an input is a triple: artifact
+hash (which code), publication identity (whose grant — the §8.2.2 entry digest),
+asserted expression (what terms). The mutable name stays outside identity as
+recorded provenance.
+
+This is the same separation that keeps paying out across the project — identity
+vs publication, publisher assertion vs registry derivation, authorship vs
+custody, implementation vs evidence — rather than a new principle.
+
 ## Independent implementability as a measured property (2026-07-30)
 
 Conformance testing asks whether an implementation agrees with the vectors.

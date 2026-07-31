@@ -164,11 +164,52 @@ rejected — gating on both restores independent measurability.
 License family after repair: 16/16 obligations witnessed (was 11/11 over a
 smaller inventory), 22 vectors, matrix complete with clause-level coverage.
 
-### Still open
+### Resolved after round two: what an evaluation is about
 
-`LICENSE-IDENTITY-*` binds NAMES, which §9 states are mutable without changing
-identity, and never an artifact hash — while §11.2, one layer in, binds
-`artifact=<64 hex>`. So `app→lib` and `lib→app` are the same evaluation, and
-after a repoint the same digest covers different code. This is a design decision
-about what an evaluation is scoped to, not a defect to patch silently, and it is
-left open deliberately.
+Round two left one item open deliberately, because it was an architecture
+question rather than a defect: `LICENSE-IDENTITY-*` bound NAMES, which §9 states
+are mutable without changing identity, while §11.2 one layer in binds an artifact
+hash.
+
+Settled in favour of the artifacts, and the decisive evidence was that Oath had
+already answered it everywhere else. `explainPkg` carries a human-readable name,
+but guarantee, termination, properties and spec strength all describe the
+artifact reached at that hash; verdict fields are hash-keyed facts throughout the
+kernel. Licensing was the lone exception, so this was not a new identity rule for
+§12 — it was bringing §12 back into line.
+
+The governing sentence now in §12.4:
+
+> A licence evaluation is a verdict about exact artifacts under exact publication
+> terms. Names are discovery paths and MUST NOT contribute to evaluation identity.
+
+An input is a TRIPLE, and each component answers a question the other two cannot:
+
+| component | answers |
+|---|---|
+| `input-artifact` | which code was evaluated |
+| `input-publication` | whose grant was consumed (§8.2.2 entry digest) |
+| `input-license` | what terms that grant asserted |
+
+The publication component is what stops the artifact binding from over-correcting.
+Licensing is a publication claim, not a property of the code, so the same artifact
+can carry different assertions under different publications — and the same
+expression asserted by two different principals is two different grants over the
+same bytes. Binding artifact and expression alone would collapse those, which is
+the same class of error as binding the name: an identity that fails to
+distinguish claims differing in who made them.
+
+Both original failure modes are closed, and each is now witnessed by a vector
+that fails if the property is lost:
+
+- renaming or aliasing identical artifacts does not create a different evaluation
+  (`LICENSE-IDENTITY-ARTIFACT`);
+- repointing a name to different code cannot reuse the old digest, because the
+  artifact closure changes.
+
+One consequence worth noting: a dependency with no bound name no longer poisons a
+composition. It was previously marked `(unresolved)` and forced the whole result
+to `UNSTATED` merely for lacking a name — but a hash fully identifies a member,
+and a name was never what made it evaluable.
+
+License family: 18/18 obligations witnessed, matrix complete.
