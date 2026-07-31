@@ -1831,9 +1831,9 @@ two different statements.)
 A conformant implementation MUST reject an envelope, on both encoding and
 verification, unless all of:
 
-- the first line is exactly the format tag this version defines
-  (`oath-publish/2`). A different tag is not a newer envelope to be
-  interpreted — it is an envelope this version cannot verify, and accepting it
+- the first line is a format tag this version DEFINES — `oath-publish/2`, or
+  `oath-publish/1` for historical verification (§8.6.1). Any OTHER tag is not a
+  newer envelope to be interpreted — it is an envelope this version cannot verify, and accepting it
   under these rules would read a signature made under one format as though it
   were made under another;
 - every value is free of LF, CR, and any character below `0x20` or equal to
@@ -1859,6 +1859,15 @@ verification, unless all of:
   both or neither; allowing disagreement would let one envelope describe two
   different states;
 - `author` is 64 lowercase hex.
+
+> This bullet read "exactly `oath-publish/2`" while the paragraph above it said
+> "Implementations MUST still read `/1`". Both were added by repairs, in
+> different rounds, and neither round re-read the other's text — so the section
+> simultaneously REQUIRED and FORBADE accepting a `/1` envelope. Nothing
+> witnessed either reading: every `/1` vector in the corpus is a `reject` record
+> refused on other grounds, so a conformant implementation could take either side
+> and pass. A contradiction no fixture can see is invisible to conformance and
+> visible only to someone implementing from the prose.
 
 Parsing MUST be strict: unknown keys, missing keys, duplicated keys, reordered
 keys, a missing trailing LF, and trailing bytes are all errors. An implementation
@@ -2890,6 +2899,29 @@ The failure is invisible to field-level review because nothing is missing from
 the list of inputs. It is only visible by asking what the resulting value is a
 name for, and then checking that the encoding contains an answer.
 
+**IMPL-WITNESS-FAITHFUL.** A conformance witness MUST be able to produce what it
+witnesses, and MUST NOT be carried in a form that defeats the rule it exists to
+demonstrate.
+
+A witness is not merely a test case; it is a claim about the specification, and
+it can be wrong in ways the specification is not. Both failure modes were found
+in one section:
+
+- an envelope `canonical` record pairs a structured envelope with the octets it
+  claims to encode to. For months the structured half carried the SIX keys of
+  `oath-publish/1` while the octets carried `/2`'s seven — so no record could
+  produce its own bytes, while §10.1 and the fixture manifest both asserted that
+  they could;
+- the record labelled "arbitrary precision, not a machine word" carried its
+  revision as a JSON NUMBER. A float64 reader decodes `2^128 + 1` OFF BY ONE, so
+  the witness for the unbounded-integer rule was defeated by its own carrier —
+  and the file was internally inconsistent, since other records already used a
+  string.
+
+Neither is visible to the gates that compare committed fixtures against generated
+ones: both halves were equally wrong, so nothing drifted. A witness has to be
+checked against the property it claims, not only against its producer.
+
 **IMPL-NORMATIVE-SOURCE.** Every byte contributing to a normative identity MUST
 have a normative source. A constant, sentinel, separator or key that exists only
 in an implementation makes every value containing it irreproducible from the
@@ -2948,6 +2980,21 @@ section named:
 | artifact | schema and interpretation | version binding |
 |---|---|---|
 | `fixtures/license/model.json` | §12.3 (LICENSE-MODEL-SCHEMA, LICENSE-MODEL-PUBLISHED) | `model` member; bound into every evaluation identity as `model=` and `model-digest=` (§12.4) |
+| **RFC 8032** (Ed25519) | §8.6.4a selects the variant and the rejection rules; RFC 8032 supplies the curve parameters, point encoding, hash and key expansion | cited by RFC number; §8.6.4a pins the choices RFC 8032 leaves open |
+
+RFC 8032 is an EXTERNAL normative reference: incorporated by reference like any
+other normative data, but retrieved from its publisher rather than from this
+distribution, so IMPL-DATA-RETRIEVABLE is satisfied by the RFC number.
+
+> It was not declared at all until an independent implementation of §8.6 pointed
+> out that a reader holding only this document cannot obtain `p`, `L`, `d`, the
+> base point, the hash, or the clamping rule — and therefore cannot implement
+> §8.6.4a. Every one of those is a byte contributing to a normative identity with
+> no source in the declared surface (IMPL-NORMATIVE-SOURCE), and the omission was
+> invisible because a competent implementer supplies them from habit. That is
+> exactly the substitution §13.2 classes as INFERENCE: a correct implementation
+> built from undocumented knowledge is still evidence the specification was
+> insufficient.
 
 The following are CONFORMANCE WITNESSES ONLY. They demonstrate the rules and a
 candidate implementation may check itself against them, but they define nothing

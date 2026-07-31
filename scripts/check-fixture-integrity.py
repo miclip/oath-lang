@@ -33,6 +33,7 @@ on a case-insensitive filesystem `map.bin` and `Map.bin` are one inode, so a cor
 187 definitions can yield 186 files with nothing reporting a problem.
 """
 
+import base64
 import filecmp
 import json
 import os
@@ -131,6 +132,43 @@ def main():
             failures.append(f"DRIFT      {f} — committed content differs from generated")
         for c in collapsed:
             failures.append(f"COLLAPSED  {c}")
+
+        # SELF-REPRODUCTION. A witness must be able to produce what it witnesses.
+        # Every `canonical` envelope record pairs a STRUCTURED envelope with the
+        # octets it claims to encode to — and for months the structured half
+        # carried oath-publish/1's six keys while the octets carried /2's seven,
+        # so no record could produce its own bytes. Both §10.1 and MANIFEST.md
+        # asserted that they could. This is a defect in the MEASUREMENT
+        # APPARATUS rather than in the kernel or the spec, and no existing gate
+        # looked for it: drift compares committed against generated, and both
+        # were equally wrong.
+        env = tmp / "envelope" / "vectors.jsonl"
+        if env.exists():
+            checked = 0
+            for line in env.read_text().splitlines():
+                if not line.strip():
+                    continue
+                v = json.loads(line)
+                if v.get("kind") != "canonical":
+                    continue
+                checked += 1
+                octets = base64.b64decode(v["octets_b64"]).decode("utf-8")
+                keys = [l.split("=", 1)[0] for l in octets.split("\n") if l][1:]
+                have = sorted(v.get("envelope", {}).keys())
+                if have != sorted(keys):
+                    failures.append(
+                        f"UNREPRODUCIBLE envelope/vectors.jsonl {v.get('label','?')!r}: structured "
+                        f"half has {have}, octets encode {sorted(keys)} — the record cannot produce "
+                        f"its own bytes")
+                for k, val in v.get("envelope", {}).items():
+                    if not isinstance(val, str):
+                        failures.append(
+                            f"LOSSY     envelope/vectors.jsonl {v.get('label','?')!r}: member {k!r} is "
+                            f"a JSON {type(val).__name__}, not a string — a float64 JSON reader "
+                            f"corrupts large values, defeating the rule the vector witnesses")
+            if checked == 0:
+                failures.append("UNREPRODUCIBLE no canonical envelope records found — this check "
+                                "is measuring nothing")
 
         # MANIFEST: every emitted family must be described, or the corpus
         # under-describes itself and a candidate kernel can pass by ignoring what

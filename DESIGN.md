@@ -768,6 +768,47 @@ shape as every defect these rounds have found — the prose asserting a property
 the encoding does not deliver — so it should be settled in text before anything
 is written.
 
+## A fifth defect class: the defective witness (2026-07-31)
+
+§8.6 was chosen to test whether the four-class taxonomy generalised. It produced
+a FIFTH class, which was the pre-registered "most valuable outcome":
+
+| class | subject of the defect |
+|---|---|
+| 1 MISSING MEANING | the specification |
+| 2 HIDDEN NORMATIVE INPUTS | the specification |
+| 3 INTERNAL INCONSISTENCY | the specification |
+| 4 INCOMPLETELY DEFINED OBJECTS | the specification |
+| **5 DEFECTIVE WITNESS** | **the measurement apparatus** |
+
+The first four are all defects in the document. The fifth is a defect in the
+thing measuring the document, and it is invisible to every gate built for the
+first four — drift checks compare committed fixtures against generated ones, and
+in both §8.6 instances BOTH HALVES WERE EQUALLY WRONG, so nothing drifted.
+
+Now IMPL-WITNESS-FAITHFUL, and gated: `check-fixture-integrity` requires every
+canonical envelope record to reproduce its own octets and forbids non-string
+members. Verified against both historical defects.
+
+### Re-examining §12 for the class, as the pre-registration required
+
+It was there all along; we lacked the name and classified each instance inside
+one of the first four:
+
+- a vector carried §12.4's character-rule REJECTION obligation while the prose
+  stated only the exclusion (round four) — the fixture was the sole source of a
+  normative rule;
+- `model_licenses`, the per-vector model override the whole precedence test
+  depends on, exists nowhere in the prose;
+- `fixtures/MANIFEST.md` cites DESIGN.md as the licence vectors' authority — a
+  document outside the declared normative surface;
+- the licence vector schema is documented nowhere, so the conformance surface
+  itself cannot be consumed without inference.
+
+That retroactive fit is the strongest evidence the class is real rather than an
+artefact of §8.6: naming it made four previously-miscategorised findings resolve
+into one shape.
+
 ## Four defect classes, and the limits of the measurement language (2026-07-31)
 
 Four blind rounds against §12 produced four qualitatively different failures, in

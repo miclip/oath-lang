@@ -164,7 +164,6 @@
         "fixtures/envelope/vectors.jsonl",
         "fixtures/MANIFEST.md"
       ],
-      "status": "DISPATCHED",
       "research_question": "Does the implementability methodology GENERALISE across independently evolved sections? Four rounds matured \u00a712 and each found a new defect class, but the methodology was validated only on the section receiving all the attention. \u00a78.6 is the harder test: 8/18 obligations witnessed, one prior blind implementation, much older design decisions, and dense interaction with identity, signatures, journals and conformance. If the method depends on licensing it should visibly fail here.",
       "hypothesis": "\u00a78.6, on this surface, is NOT yet independently implementable without inference \u2014 predicted from its lower witnessed coverage, not from any audit. The stronger claim under test is not about \u00a78.6 at all: it is that the METHOD produces the same quality of finding on a section it was not developed against.",
       "hypothesis_recorded": "before dispatch",
@@ -190,7 +189,46 @@
           "genuinely inference-free PASS": "POSITIVE, not null. It would show the method can DISTINGUISH a mature section from an immature one rather than mechanically generating findings \u2014 which is the failure mode a process like this is most at risk of. Only counts if the derivation log holds up: expert knowledge filling a silent spec is inference, and a correct implementation built from undocumented prior knowledge is still evidence the specification was insufficient",
           "the methodology itself breaks on \u00a78.6": "a real result, not a failed run. It would mean the method depends on properties \u00a712 happened to have \u2014 most likely a fixture family that cannot express what the section does, which \u00a712 already hit once at LICENSE-CLOSURE-EXCLUSIVE"
         }
-      }
+      },
+      "verdict": "PASS-WITH-INFERENCE",
+      "vectors": "26/32",
+      "hypothesis_outcome": "DISPROVED",
+      "constructive": true,
+      "constructive_note": "Six canonical vectors could not be reproduced because the fixture's own structured half omits `license`. The implementer diagnosed the cause, refused to tune around it, and instead added an explicitly-labelled repair mode that supplies ONLY the missing field and still demands exact byte reproduction \u2014 reaching 32/32 under it, which proves the encoder byte-exact while leaving the reported score at 26/32.",
+      "prediction_outcome": "CONFIRMED, and broader than predicted. The guess was that \u00a78.6.4a's small-order encodings were unobtainable. The actual finding is larger: RFC 8032 was not in \u00a713.1b at all, so p, L, d, the base point, SHA-512 and the clamping rule were ALL outside the declared surface. Class 2 reproduced in a section developed years apart from \u00a712.",
+      "taxonomy_outcome": {
+        "result": "A FIFTH CLASS \u2014 the pre-registered most-valuable outcome",
+        "new_class": "5. DEFECTIVE WITNESS \u2014 the measurement apparatus is wrong in a way the specification is not. Classes 1-4 are all defects in the document; this one is a defect in the thing measuring it, and is invisible to drift checks because both halves of the fixture were equally wrong.",
+        "instances": [
+          "six canonical records carry oath-publish/1's six keys while their octets are /2 with seven lines \u2014 the record cannot produce its own bytes, while \u00a710.1 and MANIFEST.md both assert it can",
+          "the vector labelled 'arbitrary precision, not a machine word' carries 2^128+1 as a JSON NUMBER; a float64 reader decodes it OFF BY ONE, defeating the rule the vector witnesses",
+          "\u00a710.1's coverage paragraph \u2014 itself the product of an earlier round's correction \u2014 still overstates on 2 of 5 clauses",
+          "the vectors' `witnesses` vocabulary (8.6.1/field-count, \u2026) appears NOWHERE in the prose: 0 of 8 identifiers, against 39 in \u00a712/\u00a713"
+        ],
+        "retroactive": "Re-examining \u00a712 as pre-registered found four prior instances that had been classified inside the first four classes: a vector carrying the character-rule rejection obligation the prose omitted; `model_licenses` existing nowhere in the prose; MANIFEST citing DESIGN.md, outside the surface; the licence vector schema undocumented. The class was always there and lacked a name.",
+        "classes_1_to_4_also_recurred": true
+      },
+      "methodology_outcome": "GENERALISES. The process exposed insufficiency on a section it was not developed against, using no licensing-specific machinery: all four original classes recurred, 26 of 47 obligations were shown deletable with the suite passing, and the method produced a class the \u00a712 rounds never isolated. It did not mechanically generate findings \u2014 the Ed25519 core, the envelope grammar and the journal encoding were all reported as cleanly derived.",
+      "inferred": [
+        "whether oath-publish/1 is accepted or rejected \u2014 \u00a78.6.1 both requires reading it and requires rejecting any tag that is not /2, and NOTHING witnesses either reading",
+        "all Ed25519 parameters: p, L, d, the base point, SHA-512, clamping, point compression \u2014 RFC 8032 was not a declared normative input",
+        "the test for 'small-order A': the method is unspecified",
+        "whether a mixed-order (torsion-carrying, non-small-order) key is rejected",
+        "whether the store must require envelope author == authenticated principal \u2014 security-relevant",
+        "the case of the \\u00XX escape in \u00a78.2.1: written with capital X placeholders, and the two choices give different entry digests for the same entry",
+        "whether invalid UTF-8 must be rejected",
+        "whether uppercase hex in author_pubkey/author_sig must be rejected",
+        "whether clause 5 applies to a legacy entry via the derived transition",
+        "small-order or non-canonical R",
+        "journal member value types and seq rendering",
+        "the entire schema of fixtures/envelope/vectors.jsonl"
+      ],
+      "contamination": [
+        "the subject's session context carried the project's CLAUDE.md and a memory index, unsought and undeclinable. It reports no envelope format, field list, encoding detail, verification clause or constant appeared there, and classes the run 'mildly contaminated at the project-awareness level and uncontaminated at the rule level'",
+        "it ran `wc -l` over the vector file before the boundary and so knew the record count (32); disclosed in its predictions at the time"
+      ],
+      "evidence": "docs/experiments/blind-license-evaluation.md",
+      "implementer_statement": "A working implementation exists, but \u00a78.6 could not be built without inference, and the inference is not confined to cosmetics \u2014 one undetermined point is security-relevant and another is a live contradiction in the prose."
     }
   ]
 }

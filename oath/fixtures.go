@@ -566,9 +566,22 @@ func writeEnvelopeVectors(write func(string, []byte) error) error {
 		return nil
 	}
 
+	// envJSON renders the STRUCTURED half of a vector. Two defects lived here, both
+	// found by an independent implementation that could not reproduce the octets:
+	//
+	//  - `license` was absent, so the structured half carried oath-publish/1's key
+	//    set while octets_b64 carried a /2 envelope with seven lines. The record
+	//    could not produce its own octets — the exact defect §8.6.1's own note
+	//    congratulates itself for catching IN THE PROSE, fixed there and left here.
+	//  - `parent_rev` was emitted as a JSON NUMBER. The vector labelled "arbitrary
+	//    precision, not a machine word" carries 2^128+1, and a float64 JSON reader
+	//    (Go into interface{}, JavaScript JSON.parse) decodes it OFF BY ONE. The
+	//    witness for the bignum rule was defeated by its own carrier, and the file
+	//    was internally inconsistent: `store` records already used a string.
 	envJSON := func(e pubEnvelope) map[string]any {
 		return map[string]any{"op": e.Op, "name": e.Name, "artifact": e.Artifact,
-			"parent": e.Parent, "parent_rev": e.ParentRev, "author": e.Author}
+			"parent": e.Parent, "parent_rev": e.ParentRev.String(), "author": e.Author,
+			"license": e.License}
 	}
 
 	// --- canonical: structured envelope -> exact octets -------------------------
