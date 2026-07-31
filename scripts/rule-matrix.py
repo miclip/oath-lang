@@ -32,6 +32,12 @@ OUT_OF_SCOPE = {
     "LICENSE-CLOSURE-EXCLUSIVE":
         "needs a STORE with an artifact outside the closure; a vector is (assertions, verdict) "
         "and cannot express 'and this unrelated publication changed nothing'",
+    "LICENSE-ASSERTED-BY-PUBLICATION":
+        "needs a JOURNAL: the rule couples a licence assertion to a name TRANSITION, and a "
+        "vector is (assertions, verdict) handed straight to the evaluator — it never travels "
+        "through a transition at all. This is the SECOND rule this family structurally cannot "
+        "reach (see LICENSE-CLOSURE-EXCLUSIVE), and it was found by a real publication rather "
+        "than by any fixture, which is what a coverage limit looks like from the outside",
     "LICENSE-MODEL-PUBLISHED":
         "an obligation about a FILE existing and matching the kernel, not about a verdict. "
         "Enforced by check-fixture-integrity, which regenerates license/model.json and "

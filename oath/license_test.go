@@ -125,3 +125,36 @@ func TestRenderingDoesNotClaimProof(t *testing.T) {
 		t.Fatal("the rendering claims proof for a computed verdict")
 	}
 }
+
+// TestUnchangedPublicationAssertsLicense pins the defect the first real signed
+// publication exposed (SPEC §12.3 LICENSE-ASSERTED-BY-PUBLICATION). A publisher
+// re-publishing IDENTICAL content with terms is relicensing; scoping the
+// assertion to `applied` discarded it, and no vector could catch that because
+// vectors hand assertions straight to the evaluator and never pass through a
+// name transition.
+func TestUnchangedPublicationAssertsLicense(t *testing.T) {
+	env := pubEnvelope{Op: "put", Name: "n", Artifact: strings.Repeat("a", 64),
+		Parent: strings.Repeat("a", 64), ParentRev: revOf(1),
+		Author: strings.Repeat("b", 64), License: "Apache-2.0"}
+	b64 := encodeEnvelopeB64(envelopeEncode(env))
+
+	st := newMemStoreForTest(t)
+	for _, e := range []LogEntry{
+		{Name: "n", Kind: "func", Status: "accepted", Hash: "hA"},
+		{Name: "n", Kind: "func", Status: "accepted", Hash: "hA",
+			EnvelopeB64: b64, AuthorPubkey: env.Author, AuthorSig: "s"},
+	} {
+		le := e
+		if err := st.AppendLog(&le); err != nil {
+			t.Fatalf("AppendLog: %v", err)
+		}
+	}
+	trs := nameTransitions(st.ReadLog(), "n")
+	if trs[1].Transition != transitionUnchanged {
+		t.Fatalf("setup: transition = %q, want unchanged", trs[1].Transition)
+	}
+	if got := assertedLicense(st, "n"); got != "Apache-2.0" {
+		t.Fatalf("assertedLicense = %q, want Apache-2.0 — an unchanged publication "+
+			"still asserts its author's terms", got)
+	}
+}

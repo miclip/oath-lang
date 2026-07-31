@@ -2572,6 +2572,25 @@ belongs to the consumer.
 A model MAY contain any set of identifiers. A missing entry is safe: it yields
 `UNSTATED`. A wrong entry is not, because it yields a confident falsehood.
 
+**LICENSE-ASSERTED-BY-PUBLICATION.** A licence is asserted by a PUBLICATION, not
+by a name transition. Every ACCEPTED publication of a name carries its author's
+asserted terms, whether or not the name moved — an entry whose transition is
+`unchanged` asserts terms exactly as one whose transition is `applied` does. Only
+an entry that published nothing (`none`) asserts nothing.
+
+Scoping the assertion to `applied` discards the terms on a re-publication of
+identical content, which is precisely how RELICENSING works: the code does not
+change, the terms do. It would also make dual licensing unexpressible, since a
+second publication of the same artifact under different terms would be silently
+ignored rather than recorded.
+
+> Found by the first real signed publication to a registry, after the fixture
+> family reported 22/22 obligations witnessed. No vector could have caught it:
+> vectors supply assertions directly to the evaluator and never travel through a
+> name transition, so the entire coupling between publication and transition was
+> outside what the witness family could express. A conformance suite cannot
+> witness an interaction its fixtures do not model.
+
 **LICENSE-MODEL-SCHEMA.** The published model is a JSON object with exactly
 these members:
 

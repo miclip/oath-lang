@@ -453,9 +453,19 @@ func ownerSourceMeaning(source string) string {
 // publication carried terms — distinct from noLicense, which is a publisher choosing to
 // assert none.
 func assertedLicense(st *Store, name string) string {
+	// SPEC §12.3 LICENSE-ASSERTED-BY-PUBLICATION. A licence is asserted by a
+	// PUBLICATION, not by a name transition, so any ACCEPTED publication carries
+	// its author's terms — including one whose transition is `unchanged`.
+	//
+	// This was scoped to `applied`, which silently discarded the assertion on a
+	// re-publication of identical content. That is exactly how relicensing works:
+	// the code does not change, the terms do. Found by the first real signed
+	// publication, after fixtures had reported 22/22 obligations witnessed — no
+	// vector had an `unchanged` transition carrying an envelope, because vectors
+	// supply assertions directly and never go through a transition at all.
 	lic := ""
 	for _, t := range nameTransitions(st.ReadLog(), name) {
-		if t.Transition != transitionApplied || t.Entry.EnvelopeB64 == "" {
+		if t.Transition == transitionNone || t.Entry.EnvelopeB64 == "" {
 			continue
 		}
 		octets, err := decodeEnvelopeB64(t.Entry.EnvelopeB64)
