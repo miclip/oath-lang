@@ -1116,6 +1116,29 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		"digest": evaluationDigest(modelChanged)}); err != nil {
 		return err
 	}
+	// ENGINE and POLICY vary independently. LICENSE-IDENTITY-INPUT names all three
+	// of engine, policy and inputs, and disabling the WHOLE rule is caught — but a
+	// kernel that hardcoded engine or policy while computing inputs correctly still
+	// passed every vector, because only `model` had a varying one. A rule covering
+	// three dimensions needs a vector per dimension; whole-rule disablement measures
+	// the coarsest possible mutation and quietly certifies the rest.
+	for _, d := range []struct{ field, label, engine, policy string }{
+		{"engine", "changing the engine changes the evaluation", "oath-license/99", base.Policy},
+		{"policy", "changing the policy changes the evaluation", base.Engine, "closure-only"},
+	} {
+		v := base
+		v.Engine, v.Policy = d.engine, d.policy
+		dig := evaluationDigest(v)
+		if dig == baseDigest {
+			return fmt.Errorf("changing the %s did not change the digest; two different evaluation methods would be indistinguishable", d.field)
+		}
+		if err := emit(map[string]any{"kind": "identity", "label": d.label,
+			"witnesses": "LICENSE-IDENTITY-INPUT", "policy": v.Policy, "engine": v.Engine,
+			"model": v.Model, "assertions": []string{"a=MIT", "b=Apache-2.0"}, "digest": dig}); err != nil {
+			return err
+		}
+	}
+
 	if err := emit(map[string]any{"kind": "identity", "label": "input order does not change the digest",
 		"witnesses": "LICENSE-ORDER-INDEPENDENT", "policy": base.Policy, "engine": base.Engine,
 		"model": base.Model, "assertions": []string{"b=Apache-2.0", "a=MIT"}, "digest": baseDigest}); err != nil {

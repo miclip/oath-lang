@@ -32,6 +32,10 @@ OUT_OF_SCOPE = {
     "LICENSE-CLOSURE-EXCLUSIVE":
         "needs a STORE with an artifact outside the closure; a vector is (assertions, verdict) "
         "and cannot express 'and this unrelated publication changed nothing'",
+    "LICENSE-MODEL-PUBLISHED":
+        "an obligation about a FILE existing and matching the kernel, not about a verdict. "
+        "Enforced by check-fixture-integrity, which regenerates license/model.json and "
+        "byte-compares it — a vector cannot witness its own inputs being published",
 }
 
 EXPECTED = {
