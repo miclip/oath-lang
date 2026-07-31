@@ -151,14 +151,23 @@ def main():
 
     files = sorted(p for p in dest.rglob("*") if p.is_file())
     lines = [f"{digest(p)}  {p.relative_to(dest).as_posix()}" for p in files]
-    (dest / "MANIFEST.sha256").write_text("\n".join(lines) + "\n")
+    manifest = "\n".join(lines) + "\n"
+    (dest / "MANIFEST.sha256").write_text(manifest)
+
+    # The SURFACE DIGEST identifies the exact published surface a blind run was
+    # given. An implementability claim (§13) is meaningless without it: "the
+    # specification is implementable" is only ever a statement about a specific set
+    # of supplied bytes, and quoting a commit SHA is not enough, since the same
+    # commit can be exported with a different allowlist.
+    surface = hashlib.sha256(manifest.encode()).hexdigest()
 
     # The brief records the pinned SOURCE identity without exposing any commit
     # message. A SHA is a coordinate; a subject line is a summary of intent, and
     # only the second one can coach.
     (dest / "BRIEF.md").write_text(
         f"# Dispatch root\n\n"
-        f"Pinned source: `{full}`\n\n"
+        f"Pinned source: `{full}`\n"
+        f"Surface digest: `{surface}`\n\n"
         f"This directory is the COMPLETE set of inputs supplied for this task. It was\n"
         f"produced by allowlist export from a pinned commit and contains no repository\n"
         f"history: no `.git`, no branches, no tags, no commit messages, and no diffs.\n"
@@ -170,6 +179,7 @@ def main():
 
     bad = preflight(dest, full)
     print(f"exported {len(files)} file(s) from {full[:12]} to {dest}")
+    print(f"  surface digest {surface}")
     for p in files:
         print(f"  {digest(p)[:12]}  {p.relative_to(dest).as_posix()}")
     print()

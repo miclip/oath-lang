@@ -145,6 +145,11 @@ every ambiguity found this way.
   `docs/registry-auth.md` — signatures-as-principals decision; `docs/registry-verification.md`
   — the verification worker pool + async require_proven gate; `docs/store-drivers.md`
   — the backend seam, GCS/Postgres drivers, and the cutover runbook.
+- `docs/implementability.json` + SPEC §13 — the independent-implementability
+  ledger: can an unseen implementer build a section from the published surface
+  WITHOUT inference? Distinct from conformance; no run has reached PASS yet.
+  `scripts/blind-export.py` builds the isolated dispatch root (preflight-verified,
+  no `.git`); `docs/experiments/blind-license-evaluation.md` is the round record.
 - `docs/experiments/` — split-agent, rematch, and flywheel writeups.
 - `oathrs/DIVERGENCES.md` — 60+ entries; the N-version findings record.
 - History of decisions lives in commit messages (deliberately detailed) and

@@ -69,6 +69,13 @@ jobs:
       - name: normative prose describes the bytes the kernel emits
         run: make check-spec-bytes
 
+      # Conformance cannot express "the specification is insufficient" — a suite is
+      # written by someone who already knows the answers. §13 records what blind
+      # implementation attempts found, and machine-checks the half that can be:
+      # every claimed surface digest must reproduce from its source commit.
+      - name: independent-implementability ledger (SPEC §13)
+        run: make check-implementability
+
       - name: website proof ledger matches canonical fixtures (#30)
         # The site claims its numbers are read live from the machine's ledger.
         # Fail if website/lib/outcomes.json has drifted from fixtures/.

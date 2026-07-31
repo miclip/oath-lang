@@ -154,6 +154,14 @@ check-spec-bytes:
 blind-export:
 	@python3 scripts/blind-export.py $(SHA) $(DEST)
 
+# SPEC §13. A DIFFERENT question from conformance: not "does this implementation
+# agree with the vectors" but "could an independent implementer build this from the
+# published surface without hidden knowledge". Three blind runs have now passed the
+# vectors and independently reported they could not.
+.PHONY: check-implementability
+check-implementability:
+	@python3 scripts/check-implementability.py
+
 # License evaluation coverage, measured the same way: disable each rule, re-run.
 # Rule-to-vector matrix: does every NORMATIVE rule have a witnessing vector? The
 # opposite check from license-score, which asks whether disabling an implementation

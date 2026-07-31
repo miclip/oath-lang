@@ -1,0 +1,60 @@
+{
+  "_comment": [
+    "Independent-implementability ledger (SPEC §13). One record per blind",
+    "implementation attempt. This file is an ASSERTION about runs that happened;",
+    "scripts/check-implementability.py machine-checks the half that can be checked",
+    "— that each surface_digest is exactly what blind-export.py reproduces from the",
+    "recorded source — and enforces the structural rules §13 states. The verdict",
+    "itself is attested by the implementer and cannot be re-derived by CI, which is",
+    "why it carries the evidence pointer rather than standing alone.",
+    "Rounds are append-only. A superseded verdict is never edited: it is a fact",
+    "about a surface that existed, and later repair does not make it untrue."
+  ],
+  "rounds": [
+    {
+      "round": 1,
+      "date": "2026-07-30",
+      "sections": ["12"],
+      "source": "d736dac8f97a",
+      "surface_digest": null,
+      "surface_note": "NOT RECORDED. This run predates blind-export.py and ran in a git worktree, so the supplied surface was not pinned by a manifest and cannot be reconstructed exactly. Per §13.3 the claim is therefore unbound, and is retained as history rather than as evidence.",
+      "verdict": "PASS-WITH-INFERENCE",
+      "vectors": "8/8",
+      "inferred": [
+        "the entire model lattice, reverse-engineered from vectors; the Apache-2.0 row was demonstrably free — all-UNSTATED, all-YES and all-NO each still passed 8/8",
+        "§12.4 encoding details not stated in that section"
+      ],
+      "contamination": [
+        "two commit SUBJECT LINES reached the agent's terminal via `git checkout` and `git log --oneline -1`; isolation was instructional rather than structural",
+        "part of §12 was repaired in 234e3ee between dispatch and return, so the run partly tested a document that no longer existed"
+      ],
+      "evidence": "docs/experiments/blind-license-evaluation.md",
+      "implementer_statement": "A reader with §12 and no fixtures cannot produce a single verdict. The vectors are functioning as normative text here."
+    },
+    {
+      "round": 2,
+      "date": "2026-07-30",
+      "sections": ["12"],
+      "source": "dda0b1a6ef883631acc7b3b15eef79bcde429384",
+      "surface_digest": "74200c755b89baafb7c4e09d0a34a60ebbaa91d284a758e2a046cb56c3eeab7f",
+      "verdict": "PASS-WITH-INFERENCE",
+      "vectors": "16/16",
+      "inferred": [
+        "`policy` — a required component of a normative identity with no vocabulary, default, semantics or stated source anywhere in the document; obtainable only by reading a fixture record, and BLOCKING: without the vectors no digest was producible at all",
+        "the source of `engine`",
+        "whether a member asserting nothing contributes an input pair",
+        "the tie-break when two pairs share a name",
+        "whether duplicate pairs are collapsed",
+        "the text encoding of the digest bytes, stated in §11.2 and §8.6.1 but not in §12.4",
+        "identifier matching discipline — literal, case-folded, or trimmed",
+        "the vector records' own schema, documented nowhere"
+      ],
+      "contamination": [
+        "the subject disclosed recognising this project from context available to it outside the task, and stated it did not consult that context; unremovable by the harness and the reason its clean first-run score is discounted",
+        "the subject wrote one file to the parent directory by mistake, moved it back, and ran `ls` there, seeing only `scratchpad` and `tasks`; no project content was exposed"
+      ],
+      "evidence": "docs/experiments/blind-license-evaluation.md",
+      "implementer_statement": "The claim under test — reproducible without inference — does not hold, principally because the `policy` field is a required component of a normative digest with no definition anywhere in the document."
+    }
+  ]
+}

@@ -660,6 +660,71 @@ signature is provenance, a proof is evidence, and a registry entry is
 publication — not a licence, and not a transfer. Each is a different claim, and
 the whole discipline of this project is not conflating claims.
 
+## Independent implementability as a measured property (2026-07-30)
+
+Conformance testing asks whether an implementation agrees with the vectors.
+After three blind implementation rounds we are also measuring something else,
+and it turned out to be the more useful question:
+
+> Could an independent implementer build this honestly from the published
+> surface alone, without hidden knowledge?
+
+The two are not the same, and passing the first says almost nothing about the
+second. Every blind round so far has followed the identical progression: the
+implementation passes, the vectors pass, and the implementer independently
+reports that it could not have built the thing honestly from the prose. A
+specification whose reader must infer rules from fixtures has already failed —
+however green the suite — because the NEXT implementer is not guaranteed to
+infer the same rules.
+
+**The fixes this finds are almost never algorithmic.** Across three rounds they
+were: a field participating in identity with no stated meaning (`policy`); an
+encoding contradicting a rule the same section had already stated; a lattice
+determining every verdict while living outside the normative surface entirely;
+and an empty-input case inheriting an unsafe algebraic identity. None is a
+missing algorithm. Each is a place where the protocol was not independently
+reconstructible, and none is visible to a conformance suite — because a
+conformance suite is written by someone who already has the answers.
+
+**Why it is a property of the SPECIFICATION, not of either implementation.**
+Two implementations can agree perfectly with each other and with every vector
+while both disagree with the document, or while the document alone determines
+neither of them. That is the class `check-spec-vs-fixtures` closes for formats;
+§13 closes it for meaning.
+
+SPEC §13 defines the measurement, three verdicts (`PASS` /
+`PASS-WITH-INFERENCE` / `FAIL`), and what a claim binds. Two design points carry
+most of the weight:
+
+- **A passing score is not evidence, and is stated normatively not to be.** An
+  implementer who tries a reading and keeps whichever one passes has shown the
+  FIXTURES are sufficient, which was never in question. This deliberately
+  inverts the usual reading of a green suite.
+- **A claim binds a SURFACE, not a commit.** "Implementable" is a statement
+  about an exact set of supplied bytes; the same commit exported with one extra
+  file can turn `PASS-WITH-INFERENCE` into `PASS` without the document changing.
+  The surface digest is recomputable from the source, so that half of every
+  claim is machine-checked rather than asserted — the same
+  published-and-pointed-at discipline §12.3 needed one layer down.
+
+The verdict itself is attested by the implementer and cannot be re-derived by
+CI: re-running the experiment is the only reproduction, and a subject who has
+seen the answers is no longer a valid subject. The gate is therefore split
+explicitly into machine-checked, structurally-enforced, and attested parts.
+Claiming to verify the verdict would be the same error the ledger exists to
+catch.
+
+**Current state, recorded rather than advertised: no run has reached `PASS`.**
+`docs/implementability.json` is the ledger; the gate prints that fact on every
+successful run.
+
+The granularity keeps refining under measurement, and that is the measurement
+working rather than failing. We began scoring RULES; a rule turned out to
+contain several independent obligations, so we now score CLAUSES. Expect clauses
+to contain independent semantic obligations next. Each refinement is the
+measurement revealing that the specification's granularity was too coarse to
+express what it was promising.
+
 ## Why the kernel is written in a human language
 
 The kernel is the root of trust — the one component that cannot be verified

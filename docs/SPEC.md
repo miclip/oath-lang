@@ -2643,3 +2643,105 @@ verdict remains a statement about the model that produced it.
 - It does not resolve compound expressions on a consumer's behalf.
 - `UNSTATED` is not permission. A consumer may adopt "treat `UNSTATED` as deny"
   or "require explicit grants"; a registry MUST NOT choose that for them.
+
+## 13. Independent implementability (normative, measurement)
+
+Conformance asks: does this implementation agree with the vectors? This section
+asks a different question, about the SPECIFICATION rather than about any
+implementation:
+
+> Could an independent implementer build this honestly from the published
+> surface alone, without hidden knowledge?
+
+The two are not the same question, and passing the first tells you almost
+nothing about the second. Two implementations can agree perfectly with each
+other and with every vector while both disagree with the document — or while the
+document alone determines neither of them. A specification that requires its
+reader to infer rules from fixtures has ALREADY FAILED, however green the suite
+is, because the next implementer is not guaranteed to infer the same rules.
+
+### 13.1 The measurement
+
+**IMPL-MEASURED-BY-CONSTRUCTION.** Independent implementability is measured by
+an INDEPENDENT IMPLEMENTATION ATTEMPT and by nothing else. It cannot be measured
+by review, by checklist, by counting rule identifiers, or by an author's
+judgement that the text reads completely. The property is precisely that
+somebody who does not already know the answers can reconstruct them, and only
+somebody who does not already know the answers can test it.
+
+**IMPL-SCORE-IS-NOT-EVIDENCE.** A passing vector score is NOT evidence of
+independent implementability, and MUST NOT be reported as though it were. An
+implementer who resolves an ambiguity by trying a reading and keeping whichever
+one passes has demonstrated that the FIXTURES are sufficient — which was never
+in question — while saying nothing about the prose. This inverts the usual
+reading of a green suite, deliberately.
+
+### 13.2 The three verdicts
+
+| verdict | meaning |
+|---|---|
+| `PASS` | every rule and encoding detail was stated in the normative text or supplied as a NAMED input the text points at. Nothing was inferred, guessed, or confirmed against a fixture. |
+| `PASS-WITH-INFERENCE` | a working implementation was produced, but at least one rule had to be inferred rather than derived. The implementation is evidence; the specification is not yet sufficient. |
+| `FAIL` | no working implementation was produced from the supplied surface. |
+
+**IMPL-INFERENCE-DEFINED.** A rule is INFERRED, not derived, if the implementer:
+
+- worked it out by observing what a vector expected;
+- guessed a value, encoding detail, separator, ordering, or default and then
+  confirmed it against a fixture;
+- resolved an ambiguity by selecting whichever reading made a vector pass; or
+- supplied it from prior knowledge of this project rather than from the text.
+
+The distinction is about the ORDER OF DISCOVERY, not the final correctness. A
+rule that happens to be right is still inferred if the document did not
+determine it — and it is exactly those rules that a second independent
+implementer may get differently.
+
+**IMPL-VERDICT-BY-SUBJECT.** The verdict is reported by the implementer, not by
+the specification's authors. An author is the one party who cannot measure this,
+having the answers already. A claim of `PASS` MUST carry the implementer's own
+statement that nothing was inferred; absent that statement the verdict is
+`PASS-WITH-INFERENCE` at best.
+
+### 13.3 What a claim binds
+
+**IMPL-SURFACE-BOUND.** "This specification is implementable" is never a
+statement about a document; it is a statement about an exact set of supplied
+bytes. A claim MUST therefore record:
+
+| field | why |
+|---|---|
+| `source` | the pinned commit the surface was exported from |
+| `surface_digest` | SHA-256 over the manifest of every supplied file and its digest |
+| `verdict` | §13.2 |
+| `inferred` | each rule that had to be inferred, or an empty list |
+| `contamination` | anything the subject saw beyond the supplied surface, including prior knowledge of the project |
+
+The commit alone is NOT sufficient to identify a surface: the same commit can be
+exported with a different file selection, and adding one file can turn
+`PASS-WITH-INFERENCE` into `PASS` without the document changing at all. The
+surface digest is recomputable from the source, so this half of every claim is
+checkable rather than asserted.
+
+**IMPL-CONTAMINATION-RECORDED.** Anything the subject saw beyond the supplied
+surface MUST be recorded, including partial exposure and prior familiarity with
+the project, and MUST NOT be discounted on the grounds that it probably did not
+matter. Whether it mattered is a judgement; whether it happened is a fact, and
+only the second belongs in the record.
+
+### 13.4 Scope
+
+A verdict applies to the SECTIONS a run actually attempted, never to the
+document as a whole. Implementability is not a property the specification has
+uniformly: one section can be fully reconstructible while its neighbour is
+determined only by fixtures.
+
+> Why this section exists. Three consecutive blind runs of this specification
+> produced the same shape of result: the implementation passed, the vectors
+> passed, and the implementer independently reported that it could not have
+> built the thing honestly from the prose. The defects that surfaced were almost
+> never algorithmic — they were fields participating in identity with no stated
+> meaning, encodings contradicting rules the same section had already stated, and
+> a lattice that determined every verdict while living outside the normative
+> surface entirely. None of those is visible to a conformance suite, because a
+> conformance suite is written by someone who already knows the answers.
