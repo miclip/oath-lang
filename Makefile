@@ -135,6 +135,15 @@ check-fixtures:
 check-doc-numbers:
 	@python3 scripts/check-doc-numbers.py
 
+# The spec is the conformance target, and nothing compared it to the BYTES. §8.6.1
+# documented a six-line oath-publish/1 envelope for several commits after the kernel
+# began emitting seven-line /2 — every other gate passed throughout, because the
+# kernel, the fixtures and their agreement were all self-consistent. Only an
+# independent implementation reading the prose would have noticed, and one did.
+.PHONY: check-spec-bytes
+check-spec-bytes:
+	@python3 scripts/check-spec-vs-fixtures.py
+
 # License evaluation coverage, measured the same way: disable each rule, re-run.
 # Rule-to-vector matrix: does every NORMATIVE rule have a witnessing vector? The
 # opposite check from license-score, which asks whether disabling an implementation

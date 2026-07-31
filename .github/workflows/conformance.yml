@@ -62,6 +62,13 @@ jobs:
       - name: documented numbers match the machine's ledger (#96)
         run: make check-doc-numbers
 
+      # A prose FORMAT is a claim too, and a costlier one: the spec is the only
+      # artifact an independent implementer reads. §8.6.1 described an envelope the
+      # kernel had stopped producing, and every byte-level gate kept passing because
+      # none of them reads the document.
+      - name: normative prose describes the bytes the kernel emits
+        run: make check-spec-bytes
+
       - name: website proof ledger matches canonical fixtures (#30)
         # The site claims its numbers are read live from the machine's ledger.
         # Fail if website/lib/outcomes.json has drifted from fixtures/.
