@@ -64,12 +64,14 @@ do: PROTOCOL (normative; apply §13's guardrails), REGISTRY implementation,
 AGENT WORKFLOW, UI/rendering. "The registry needs X" stopped being an argument
 for changing the protocol.
 
-For a new JOURNAL field specifically, the layer decides the answer (DESIGN.md):
-reconstructible from history → do not store it, re-derive on every verification;
-irrecoverable → preserve it, and note whether it is SIGNED (evidence) or merely
-OBSERVED by the registry (irrecoverable but unverifiable — `time` is the
-existing case, and is not evidence despite looking like it); affects identity →
-pin the equivalence relation explicitly and version it.
+For a new JOURNAL field, ask: WHO WAS THE ONLY PARTY CAPABLE OF KNOWING THIS AT
+THE MOMENT IT HAPPENED? (DESIGN.md, four categories)
+  - a participant signed it        → ASSERTION. Preserve verbatim.
+  - nobody — it is computed        → DERIVED. Do not store; re-derive on every verification.
+  - only the actor performing it   → OBSERVATION. Preserve, and LABEL it as an
+    observation: it is authoritative about the observer and nothing else, and no
+    verifier can check it (`time`, the authenticated principal).
+  - it defines what counts as SAME → EQUIVALENCE. Pin it, explicitly, versioned.
 
 ## Roadmap / backlog
 

@@ -2924,6 +2924,23 @@ one passes has demonstrated that the FIXTURES are sufficient — which was never
 in question — while saying nothing about the prose. This inverts the usual
 reading of a green suite, deliberately.
 
+**IMPL-OBSERVATION-LABELLED.** A recorded fact that is neither asserted by a
+participant nor derivable from history is an OBSERVATION — known only to the
+actor that performed the event. It MUST be preserved, because nobody else can
+recreate it, and it MUST be presented as an observation rather than as an
+assertion or a derived fact.
+
+An observation is authoritative about the observer and about nothing else. A
+journal's acceptance timestamp is not "the publication time"; it is the time that
+registry claims it accepted the publication. No verifier can check it — a
+registry can backdate an entry and nothing in the record contradicts it — so a
+reader MUST NOT be invited to treat it as checked. The checkable ordering
+evidence is `seq` and `chain`.
+
+Labelling is the whole obligation. An unlabelled observation is read as an
+assertion by the next person, which silently converts an unverifiable claim into
+apparent evidence.
+
 **IMPL-EQUIVALENCE-PINNED.** Wherever this specification depends on two things
 being "the same" — two signatures, two encodings of one value, two byte sequences
 naming one publication — the EQUIVALENCE RELATION MUST be stated explicitly,

@@ -813,35 +813,61 @@ and becomes "which layer does it belong to?":
 
 ### Testing the procedure found a fourth category
 
-Applied to `time`, the procedure gives the wrong answer, and that is worth
-recording rather than smoothing over. `time` is written by the registry
+Applied to `time`, the procedure gave the wrong answer, and forcing `time` into
+either existing bucket was the wrong repair. `time` is written by the registry
 (`time.Now()`), is NOT inside the signed envelope, and history cannot reconstruct
-it. "Preserve what the publisher signed, discard what the registry computed" says
-DO NOT STORE IT — and storing it is obviously correct.
+it. It is neither an author assertion nor a derived fact. It is an OBSERVATION.
 
-So the partition's real axis is not WHO ASSERTED but WHAT CAN BE RECONSTRUCTED:
+> An observation is a fact known only by the actor performing the event, asserted
+> by no participant and reconstructible by nobody afterwards.
 
-| | reconstructible from history | not reconstructible |
+That makes the test sharper than "can history reconstruct this?":
+
+> **Who was the only party capable of knowing this at the moment it happened?**
+
+| field | who knew it | verdict |
 |---|---|---|
-| **signed by a participant** | derive it (nothing is signed here today) | PRESERVE — author assertions |
-| **observed by the registry** | derive it — transitions, revision counts | PRESERVE — registry observations |
+| `parent_rev` | the author (and the registry) | preserve the AUTHOR'S SIGNED statement |
+| `name_transition` | nobody intrinsically — it is computed | DERIVE |
+| `time` | only the registry, by performing the acceptance | preserve as a REGISTRY OBSERVATION |
 
-`time` sits in the fourth cell: preserved because it is irrecoverable, but NOT
-evidence in the sense a signature is, because nobody can verify it. A registry
-can backdate an entry and no verifier will ever know. That is a real limitation
-of the current journal and it has never been stated — the ordering evidence is
-`seq` and `chain`, which are checkable, while `time` is decoration a reader may
-reasonably mistake for evidence.
+Crucially this does not reintroduce self-certification. The registry is not
+saying "the transition was applied", which history can check and therefore must.
+It is saying "I observed this request at this instant", which history cannot
+check and nobody else could ever supply.
 
-The refinement: preservation is decided by RECONSTRUCTIBILITY, and trust is
-decided separately by WHO ATTESTED. The original line remains right about
-everything it covers; it simply did not cover the cell where a registry observes
-something irrecoverable.
+### The record model, in four categories
 
-Left open deliberately, and it is layer-1 work rather than layer-3: whether
-`time` should be an author assertion inside the signed envelope, remain an
-unverifiable registry observation, or be labelled as one in the rendering so it
-is not read as evidence.
+| category | contract | why |
+|---|---|---|
+| ASSERTIONS | preserve | nobody else can recreate a participant's claim |
+| OBSERVATIONS | preserve | nobody else can recreate the event |
+| DERIVED FACTS | never preserve | everybody can recreate them |
+| EQUIVALENCE | pin | nobody can derive a convention |
+
+Assertions: `artifact`, `parent`, `parent_rev`, `license`, the signed author
+identity. Observations: the acceptance timestamp, the authenticated principal.
+Derived: transition, revision, ownership, guarantees. Equivalence: Ed25519
+validity, canonical encoding, base64 identity.
+
+### An observation MUST be labelled as one
+
+This follows directly from the distinction and is the part most likely to be lost
+later. An unlabelled observation gets read as an assertion by the next person.
+
+The registry timestamp is not "the publication time". It is *the time this
+registry claims it accepted the publication*. The registry is authoritative about
+its own observation and about nothing else — not about universal time, and not
+about anything a third party could contradict. A verifier cannot check it, so a
+reader must not be invited to treat it as checked.
+
+The same distinction already exists in the corpus without having been named: an
+unsigned entry's `author` is the registry's OBSERVATION of who it authenticated,
+while a signed entry's author is an ASSERTION inside the envelope. `explain`
+already says as much for the first case — "a principal string the registry
+recorded on an unsigned entry, so who may repoint this name is NOT independently
+checkable" — which is exactly an observation being labelled as one. The model was
+being applied before it was written down.
 
 ## Four concerns that now evolve independently (2026-07-31)
 
