@@ -108,6 +108,22 @@ func mcpTools() []map[string]any {
 			"inputSchema": obj(map[string]any{"name": str("definition name")}, "name"),
 		},
 		{
+			"name": "license",
+			"description": "DERIVED licensing verdict for a definition and its exact transitive " +
+				"dependency closure (SPEC §12). Returns what the composition PERMITS in five " +
+				"dimensions — commercial use, redistribution, modification, patent grant, and the " +
+				"share-alike OBLIGATION — together with the evaluation's identity: engine, model " +
+				"version, model content digest, policy, and a digest binding every consumed " +
+				"assertion. Distinct from `explain`, which reports the publisher's raw ASSERTION " +
+				"and explicitly declines to evaluate it. Read the result the way it is written: " +
+				"UNSTATED is NOT permission, it is absence of evidence, and it is CONTAGIOUS — one " +
+				"unknown or unmodelled dependency makes the whole composition unknown however many " +
+				"others granted. This is not legal advice and is not PROVEN: it is a reproducible " +
+				"derivation under a NAMED, versioned model, and the digest exists so a verdict can " +
+				"be re-derived and compared rather than trusted.",
+			"inputSchema": obj(map[string]any{"name": str("definition name")}, "name"),
+		},
+		{
 			"name":        "explain",
 			"description": "DECISION PACKAGE — the SELECTION step for a candidate returned by find, find_spec or find_implies. Do NOT choose from search results alone: those tools tell you what SATISFIES a query, and this tells you whether the artifact is trustworthy and appropriate, which is a different question. Compare candidates on per-property proof status, spec strength and its freshness (MEASURED vs STALE vs UNMEASURED), provenance including whether spec and body had independent authors, the exact dependency closure, and — most usefully — the LIMITATIONS: the recorded reasons NOT to use it. Everything is derived from recorded state, so a definition cannot look better than its evidence: `tested` is distinguished from `proven`, absent mutation evidence is reported as UNMEASURED rather than as a zero score, and waived mutants are listed with their justifications so you judge the reasoning rather than the number. A definition that satisfies your spec may still be falsified, unproven, weakly specified, or measured under a superseded campaign.",
 			"inputSchema": obj(map[string]any{"name": str("definition name")}, "name"),
@@ -243,6 +259,47 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 		return apiVerify(st, a.Name)
 	case "mutate":
 		return apiMutate(st, a.Name)
+	case "license":
+		pkg, err := buildExplain(st, a.Name)
+		if err != nil {
+			return "", err
+		}
+		ev := evaluateLicensing(st, a.Name, pkg.Dependencies)
+		// JSON, for the same reason explain is: the consumer is an agent deciding
+		// whether it may ship something, and the dimensions plus the evaluation
+		// identity are the decision — prose it has to parse is a decision it gets
+		// wrong. The CLI keeps the human rendering.
+		b, err := json.MarshalIndent(struct {
+			Name         string         `json:"name"`
+			Engine       string         `json:"engine"`
+			Model        string         `json:"model"`
+			ModelDigest  string         `json:"model_digest"`
+			Policy       string         `json:"policy"`
+			Digest       string         `json:"evaluation_digest"`
+			Commercial   string         `json:"commercial_use"`
+			Redistribute string         `json:"redistribution"`
+			Modify       string         `json:"modification"`
+			PatentGrant  string         `json:"patent_grant"`
+			ShareAlike   string         `json:"share_alike_obligation"`
+			Unmodelled   int            `json:"unmodelled_inputs"`
+			Inputs       []licenseInput `json:"inputs"`
+			Caveat       string         `json:"caveat"`
+		}{
+			Name: a.Name, Engine: ev.Engine, Model: ev.Model, ModelDigest: ev.ModelDigest,
+			Policy: ev.Policy, Digest: ev.Digest,
+			Commercial:   ev.Result.Commercial.String(),
+			Redistribute: ev.Result.Redistribute.String(),
+			Modify:       ev.Result.Modify.String(),
+			PatentGrant:  ev.Result.PatentGrant.String(),
+			ShareAlike:   ev.Result.ShareAlike.String(),
+			Unmodelled:   ev.Unmodeled, Inputs: ev.Inputs,
+			Caveat: "DERIVED under a named, versioned model — not legal advice and not PROVEN. " +
+				"UNSTATED is absence of evidence, never permission, and it is contagious.",
+		}, "", "  ")
+		if err != nil {
+			return "", err
+		}
+		return string(b), nil
 	case "explain":
 		pkg, err := buildExplain(st, a.Name)
 		if err != nil {

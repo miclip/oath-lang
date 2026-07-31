@@ -172,7 +172,6 @@ func modelLookup(expr string) (grants, string) {
 	return modelLookupIn(licenseModel, expr)
 }
 
-
 // combine folds a PERMISSION across a composition. UNSTATED wins over YES — once any
 // input is unknown the answer is unknown, however many others granted. NO wins over
 // everything, since a prohibition anywhere binds the whole.
@@ -215,15 +214,15 @@ type licenseInput struct {
 	// Artifact is what the pair is IDENTIFIED by (§12.4 LICENSE-IDENTITY-ARTIFACT).
 	// Name is PROVENANCE — reported so a reader can see how the closure was located,
 	// never hashed, because §9 makes names mutable without changing identity.
-	Artifact string
+	Artifact string `json:"artifact"`
 	// Publication is the §8.2.2 entry digest of the publication whose assertion
 	// was consumed — WHOSE grant this is. The same artifact can carry different
 	// assertions under different publications, and the same expression asserted by
 	// two principals is two different grants over the same bytes.
-	Publication string
-	Name        string
-	License     string
-	Reason  string // why the model could not answer, when it could not
+	Publication string `json:"publication"`
+	Name        string `json:"name"`
+	License     string `json:"license"`
+	Reason      string `json:"reason,omitempty"` // why the model could not answer, when it could not
 }
 
 type licenseEvaluation struct {
@@ -234,7 +233,7 @@ type licenseEvaluation struct {
 	// Subject is the artifact the evaluation is ABOUT (§12.4
 	// LICENSE-IDENTITY-SUBJECT). Without it two entry points into one component
 	// share a digest, and every empty closure collapses onto one identity.
-	Subject string
+	Subject   string
 	Digest    string
 	Result    grants
 	Inputs    []licenseInput
@@ -302,6 +301,7 @@ func evaluateLicensing(st *Store, name string, deps []string) licenseEvaluation 
 	ev.Digest = evaluationDigest(ev)
 	return ev
 }
+
 // publicationOf returns the §8.2.2 entry digest of the publication that most
 // recently BOUND name to hash — the publication whose licence assertion an
 // evaluation consumes. Searching backwards finds the transition currently in
@@ -587,23 +587,23 @@ type licensePair struct {
 }
 
 type licenseVector struct {
-	Kind       string            `json:"kind"`
-	Label      string            `json:"label"`
-	Witnesses  string            `json:"witnesses,omitempty"`
-	Policy     string            `json:"policy"`
-	Engine     string            `json:"engine"`
-	Model      string            `json:"model"`
-	Assertions []string          `json:"assertions"`
+	Kind       string   `json:"kind"`
+	Label      string   `json:"label"`
+	Witnesses  string   `json:"witnesses,omitempty"`
+	Policy     string   `json:"policy"`
+	Engine     string   `json:"engine"`
+	Model      string   `json:"model"`
+	Assertions []string `json:"assertions"`
 	// Pairs carries name and expression as SEPARATE values. `assertions` encodes
 	// them as "<name>=<expr>" and so cannot express a name containing `=` — the
 	// very ambiguity §12.4 forbids. A vector witnessing
 	// LICENSE-IDENTITY-UNAMBIGUOUS therefore CANNOT use `assertions`: the fixture
 	// format has to be able to state what the rule is about.
-	Pairs []licensePair `json:"pairs,omitempty"`
-	Expect     map[string]string `json:"expect,omitempty"`
-	Digest      string `json:"digest,omitempty"`
-	Subject     string `json:"subject,omitempty"`
-	ModelDigest string `json:"model_digest,omitempty"`
+	Pairs       []licensePair     `json:"pairs,omitempty"`
+	Expect      map[string]string `json:"expect,omitempty"`
+	Digest      string            `json:"digest,omitempty"`
+	Subject     string            `json:"subject,omitempty"`
+	ModelDigest string            `json:"model_digest,omitempty"`
 	// ModelLicenses lets a vector supply its OWN model. §12.3 permits a model to
 	// contain any set of identifiers, and LICENSE-LOOKUP-PRECEDENCE is load-bearing
 	// precisely when one carries a COMPOUND key — a case the published model does
