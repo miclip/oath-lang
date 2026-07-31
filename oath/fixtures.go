@@ -622,23 +622,23 @@ func writeEnvelopeVectors(write func(string, []byte) error) error {
 	hex64, key64 := strings.Repeat("ab", 32), strings.Repeat("aa", 32)
 	valid := "oath-publish/1\nop=put\nname=n\nartifact=" + hex64 + "\nparent=-\nparent_rev=0\nauthor=" + key64 + "\n"
 	rejects := []struct{ label, witnesses, octets, reason string }{
-		{"uppercase hex artifact", "8.6.1/lowercase-hex", strings.Replace(valid, hex64, strings.ToUpper(hex64), 1),
+		{"uppercase hex artifact", "ENV-HEX-LOWERCASE", strings.Replace(valid, hex64, strings.ToUpper(hex64), 1),
 			"hashes are compared as bytes, so ABAB… and abab… would be two statements about one artifact"},
-		{"non-canonical revision (leading zero)", "8.6.1/canonical-decimal",
+		{"non-canonical revision (leading zero)", "ENV-REV-CANONICAL",
 			"oath-publish/1\nop=put\nname=n\nartifact=" + hex64 + "\nparent=" + strings.Repeat("cd", 32) + "\nparent_rev=01\nauthor=" + key64 + "\n",
 			"\"01\" and \"1\" would be different bytes for one revision"},
-		{"parent sentinel with nonzero revision", "8.6.1/parent-consistency", strings.Replace(valid, "parent_rev=0", "parent_rev=2", 1),
+		{"parent sentinel with nonzero revision", "ENV-PARENT-CONSISTENT", strings.Replace(valid, "parent_rev=0", "parent_rev=2", 1),
 			"a first publication has both the sentinel and revision 0, or neither"},
-		{"parent hash with revision 0", "8.6.1/parent-consistency", strings.Replace(valid, "parent=-", "parent="+strings.Repeat("cd", 32), 1),
+		{"parent hash with revision 0", "ENV-PARENT-CONSISTENT", strings.Replace(valid, "parent=-", "parent="+strings.Repeat("cd", 32), 1),
 			"same consistency rule from the other side"},
-		{"LF in a value breaks line framing", "8.6.1/field-count", strings.Replace(valid, "name=n", "name=a\nb", 1),
+		{"LF in a value breaks line framing", "ENV-FIELD-COUNT", strings.Replace(valid, "name=n", "name=a\nb", 1),
 			"an injected LF becomes a line break, so this is caught as 8 lines rather than 7; the value rule proper is an ENCODER obligation and is unreachable from the parse side"},
-		{"reordered fields", "8.6.1/field-order", "oath-publish/1\nname=n\nop=put\nartifact=" + hex64 + "\nparent=-\nparent_rev=0\nauthor=" + key64 + "\n",
+		{"reordered fields", "ENV-FIELD-ORDER", "oath-publish/1\nname=n\nop=put\nartifact=" + hex64 + "\nparent=-\nparent_rev=0\nauthor=" + key64 + "\n",
 			"field order is part of the canonical encoding"},
-		{"missing trailing newline", "8.6.1/trailing-lf", strings.TrimSuffix(valid, "\n"),
+		{"missing trailing newline", "ENV-LINE-LF", strings.TrimSuffix(valid, "\n"),
 			"framing is part of the encoding; a truncated envelope is not a shorter valid one"},
-		{"unknown extra field", "8.6.1/field-count", valid + "extra=1\n", "an unknown key is a second spelling of the same statement"},
-		{"wrong format version", "8.6.1/version-tag", strings.Replace(valid, "oath-publish/1", "oath-publish/2", 1),
+		{"unknown extra field", "ENV-FIELD-COUNT", valid + "extra=1\n", "an unknown key is a second spelling of the same statement"},
+		{"wrong format version", "ENV-TAG", strings.Replace(valid, "oath-publish/1", "oath-publish/2", 1),
 			"the version is inside the signed octets, so a signature under one format cannot be read under another"},
 	}
 	for _, r := range rejects {

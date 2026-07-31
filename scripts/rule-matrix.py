@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rule-to-vector matrix for SPEC §12 (license evaluation).
+"""Rule-to-vector matrix for a SPEC section (pass the section as argv[1]).
 
 WHAT THIS CATCHES, and it is the opposite failure from the one the conformance scorer
 catches. The scorer measures whether disabling an IMPLEMENTATION rule breaks a vector.
@@ -95,16 +95,33 @@ EXPECTED = {
 }
 
 
+# Section-parameterised. The matrix was licensing-shaped, which meant §8.6 — the
+# section with the WORST coverage — could not be measured this way at all. A
+# measurement tool that only fits the best-measured section is measuring the wrong
+# thing.
+SECTIONS = {
+    "12": {"start": "## 12. License evaluation", "end": None,
+           "pattern": r"LICENSE-[A-Z-]+",
+           "vectors": "fixtures/license/vectors.jsonl"},
+    "8.6": {"start": "### 8.6", "end": "## 9.",
+            "pattern": r"\b(?:ENV|SIG)-[A-Z0-9-]+",
+            "vectors": "fixtures/envelope/vectors.jsonl"},
+}
+SECTION = sys.argv[1] if len(sys.argv) > 1 else "12"
+
+
 def spec_rules():
+    cfg = SECTIONS[SECTION]
     spec = (ROOT / "docs" / "SPEC.md").read_text()
-    sec = spec[spec.index("## 12. License evaluation"):]
-    return sorted(set(re.findall(r"LICENSE-[A-Z-]+", sec)))
+    i = spec.index(cfg["start"])
+    sec = spec[i: spec.index(cfg["end"], i)] if cfg["end"] else spec[i:]
+    return sorted(set(re.findall(cfg["pattern"], sec)))
 
 
 def vector_claims():
     """Rules the fixture family actually claims to witness, plus every label."""
     claims, labels = {}, []
-    path = ROOT / "fixtures" / "license" / "vectors.jsonl"
+    path = ROOT / SECTIONS[SECTION]["vectors"]
     for line in path.read_text().splitlines():
         if not line.strip():
             continue
@@ -120,7 +137,7 @@ def main():
     rules = spec_rules()
     claims, labels = vector_claims()
 
-    print("RULE-TO-VECTOR MATRIX — SPEC §12\n")
+    print(f"RULE-TO-VECTOR MATRIX — SPEC §{SECTION}\n")
     print(f"  {len(rules)} normative rule identifier(s) in the prose")
     print(f"  {len(labels)} vector(s) in the family, {len(claims)} distinct rule(s) claimed\n")
 
@@ -152,8 +169,11 @@ def main():
             print(f"  [UNWITNESSED] {r:<28} expected: {want or '(no expectation recorded)'}")
             unwitnessed.append(r)
 
-    orphans = [c for c in claims if c.upper() not in {r.upper() for r in rules}
-               and not c.upper().startswith("LICENSE-")]
+    # CLAIM: a witness must cite an identifier the PROSE defines. §8.6's vectors
+    # cited a vocabulary (8.6.1/field-count, …) that appeared in the fixtures and
+    # in the kernel's rule inventory and NOWHERE in the specification — so a
+    # conformance report could not name what it had tested.
+    orphans = [c for c in claims if c.upper() not in {r.upper() for r in rules}]
     if orphans:
         print("\n  vectors claiming rules that are NOT normative identifiers:")
         for o in sorted(orphans):

@@ -203,14 +203,14 @@ func (e pubEnvelope) validate() error {
 		if f.v == "" {
 			return fmt.Errorf("envelope field %q is empty", f.k)
 		}
-		if ruleOn("8.6.1/value-characters") && !envelopeSafe(f.v) {
+		if ruleOn("ENV-VALUE-CHARS") && !envelopeSafe(f.v) {
 			return fmt.Errorf("envelope field %q contains a newline or control character, which would break canonical encoding", f.k)
 		}
 	}
 	if e.Op != "put" {
 		return fmt.Errorf("envelope op %q is not a known operation", e.Op)
 	}
-	if ruleOn("8.6.1/lowercase-hex") && !isHash(e.Artifact) {
+	if ruleOn("ENV-HEX-LOWERCASE") && !isHash(e.Artifact) {
 		return fmt.Errorf("envelope artifact %q is not a content hash", e.Artifact)
 	}
 	if e.Parent != noParent && !isHash(e.Parent) {
@@ -225,7 +225,7 @@ func (e pubEnvelope) validate() error {
 	// A first publication must agree with itself: no parent hash and no prior
 	// revisions are the same statement, and allowing them to disagree would let an
 	// envelope claim a name was fresh while pointing at a parent (or vice versa).
-	if ruleOn("8.6.1/parent-consistency") && (e.Parent == noParent) != (e.ParentRev.Sign() == 0) {
+	if ruleOn("ENV-PARENT-CONSISTENT") && (e.Parent == noParent) != (e.ParentRev.Sign() == 0) {
 		return fmt.Errorf("envelope is inconsistent: parent=%q with parent_rev=%s — a first publication has both, a repoint has neither", e.Parent, e.ParentRev)
 	}
 	if len(e.Author) != ed25519.PublicKeySize*2 {
@@ -273,7 +273,7 @@ func envelopeVerify(e pubEnvelope, sigHex string) error {
 	if err != nil || len(pub) != ed25519.PublicKeySize {
 		return fmt.Errorf("envelope author is not a usable public key")
 	}
-	if ruleOn("8.6.4a/small-order") {
+	if ruleOn("SIG-SMALL-ORDER") {
 		if err := rejectWeakKey(pub); err != nil {
 			return err
 		}
@@ -282,7 +282,7 @@ func envelopeVerify(e pubEnvelope, sigHex string) error {
 	if err != nil || len(sig) != ed25519.SignatureSize {
 		return fmt.Errorf("publication signature is not a %d-byte hex signature", ed25519.SignatureSize)
 	}
-	if ruleOn("8.6.4a/signature-valid") && !ed25519.Verify(ed25519.PublicKey(pub), envelopeEncode(e), sig) {
+	if ruleOn("ENV-VERIFY-SIGNATURE") && !ed25519.Verify(ed25519.PublicKey(pub), envelopeEncode(e), sig) {
 		return fmt.Errorf("publication signature does not verify: the envelope was altered in transit, or it was not signed by %s", e.Author)
 	}
 	return nil
@@ -311,7 +311,7 @@ func envelopeVerify(e pubEnvelope, sigHex string) error {
 func envelopeParse(b []byte) (pubEnvelope, error) {
 	var e pubEnvelope
 	s := string(b)
-	if ruleOn("8.6.1/trailing-lf") && !strings.HasSuffix(s, "\n") {
+	if ruleOn("ENV-LINE-LF") && !strings.HasSuffix(s, "\n") {
 		return e, fmt.Errorf("envelope does not end with a newline: it is truncated or was re-wrapped in transit")
 	}
 	lines := strings.Split(strings.TrimSuffix(s, "\n"), "\n")
@@ -329,14 +329,14 @@ func envelopeParse(b []byte) (pubEnvelope, error) {
 		want = []string{"op", "name", "artifact", "parent", "parent_rev", "author", "license"}
 	case lines[0] == envelopeVersionV1:
 		want = []string{"op", "name", "artifact", "parent", "parent_rev", "author"}
-	case !ruleOn("8.6.1/version-tag"):
+	case !ruleOn("ENV-TAG"):
 		want = []string{"op", "name", "artifact", "parent", "parent_rev", "author", "license"}
 	default:
 		return e, fmt.Errorf("unsupported envelope format %q: this kernel verifies %q and %q",
 			lines[0], envelopeVersion, envelopeVersionV1)
 	}
 	body := lines[1:]
-	if ruleOn("8.6.1/field-count") && len(body) != len(want) {
+	if ruleOn("ENV-FIELD-COUNT") && len(body) != len(want) {
 		return e, fmt.Errorf("envelope has %d fields, expected exactly %d: %v", len(body), len(want), want)
 	}
 	vals := make([]string, len(want))
@@ -354,7 +354,7 @@ func envelopeParse(b []byte) (pubEnvelope, error) {
 		if !found {
 			return e, fmt.Errorf("envelope line %d is not key=value", i+2)
 		}
-		if ruleOn("8.6.1/field-order") && k != want[i] {
+		if ruleOn("ENV-FIELD-ORDER") && k != want[i] {
 			return e, fmt.Errorf("envelope field %d is %q, expected %q: field order is part of the canonical encoding", i+1, k, want[i])
 		}
 		vals[i] = v
@@ -369,7 +369,7 @@ func envelopeParse(b []byte) (pubEnvelope, error) {
 	}
 	// Reject any non-canonical spelling ("03", "+3", " 3"), which would parse to the
 	// same value from different bytes.
-	if ruleOn("8.6.1/canonical-decimal") && rev.String() != vals[4] {
+	if ruleOn("ENV-REV-CANONICAL") && rev.String() != vals[4] {
 		return e, fmt.Errorf("envelope parent_rev %q is not canonical decimal (would be %q)", vals[4], rev.String())
 	}
 	e = pubEnvelope{Op: vals[0], Name: vals[1], Artifact: vals[2], Parent: vals[3],
@@ -390,7 +390,7 @@ func envelopeParse(b []byte) (pubEnvelope, error) {
 	// would never emit, so the two halves have drifted.
 	// Re-encode under the format the bytes DECLARE, or a /1 envelope would be re-encoded
 	// as /2 and fail its own canonicality check.
-	if ruleOn("8.6.1/reencode") && !bytesEqual(envelopeEncodeAs(e, lines[0]), b) {
+	if ruleOn("ENV-REENCODE") && !bytesEqual(envelopeEncodeAs(e, lines[0]), b) {
 		return pubEnvelope{}, fmt.Errorf("envelope bytes are not canonical: they parse, but re-encoding produces different bytes")
 	}
 	return e, nil
@@ -503,26 +503,26 @@ func checkPublication(env pubEnvelope, sigHex, principal, name, artifactHash, cu
 	// The signing key must be the AUTHENTICATED principal, not the key the envelope
 	// names. Verifying against the envelope's own author would always succeed, so any
 	// caller could present any valid statement made by anyone.
-	if ruleOn("8.6.4/principal-binding") && env.Author != principal {
+	if ruleOn("ENV-STORE-PRINCIPAL") && env.Author != principal {
 		return fmt.Errorf("envelope is signed for %s but the request authenticated as %s", shortHash(env.Author), shortHash(principal))
 	}
 	if err := envelopeVerify(env, sigHex); err != nil {
 		return err
 	}
-	if ruleOn("8.6.4/name-match") && env.Name != name {
+	if ruleOn("ENV-STORE-NAME") && env.Name != name {
 		return fmt.Errorf("author statement does not match the requested transition: signed name %q, publishing %q", env.Name, name)
 	}
 	// RECOMPUTED, not taken from the statement. This makes agreement between the
 	// client's and the store's elaboration an enforced precondition rather than an
 	// assumption — identity is a pure function of content, so a disagreement here is
 	// a real divergence and not a formality.
-	if ruleOn("8.6.4/artifact-recompute") && env.Artifact != artifactHash {
+	if ruleOn("ENV-STORE-ARTIFACT") && env.Artifact != artifactHash {
 		return fmt.Errorf("author statement does not match the requested transition: signed artifact %s, submitted content hashes to %s", shortHash(env.Artifact), shortHash(artifactHash))
 	}
-	if ruleOn("8.6.4/parent-current") && env.Parent != curParent {
+	if ruleOn("ENV-STORE-CAS") && env.Parent != curParent {
 		return fmt.Errorf("author statement does not match the requested transition: signed parent %s, but %q currently points at %s — the name moved since the envelope was made, or this is a replay", shortHash(env.Parent), name, shortHash(curParent))
 	}
-	if ruleOn("8.6.4/revision-current") && env.ParentRev.Cmp(revOf(curRev)) != 0 {
+	if ruleOn("ENV-STORE-REV") && env.ParentRev.Cmp(revOf(curRev)) != 0 {
 		return fmt.Errorf("author statement does not match the requested transition: signed parent_rev %s, but %q is at revision %d — a replay whose parent hash happens to match again (ABA)", env.ParentRev, name, curRev)
 	}
 	return nil

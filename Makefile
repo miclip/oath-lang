@@ -180,9 +180,16 @@ check-normative-source:
 # opposite check from license-score, which asks whether disabling an implementation
 # rule breaks a vector. Run BEFORE dispatching a blind implementation — without it, an
 # unwitnessed rule and an unstated one produce the same symptom.
+# Section-parameterised: `make rule-matrix SECTION=8.6`. Not yet a CI gate for
+# §8.6 — 22 of its 29 obligations have no vector, which is the honest measured
+# state and the next work rather than something to hide behind a passing check.
+.PHONY: rule-matrix
+rule-matrix:
+	@python3 scripts/rule-matrix.py $(or $(SECTION),12)
+
 .PHONY: license-matrix
 license-matrix:
-	@python3 scripts/license-rule-matrix.py
+	@python3 scripts/rule-matrix.py 12
 
 .PHONY: license-score
 license-score:

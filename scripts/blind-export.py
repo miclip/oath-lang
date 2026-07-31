@@ -71,12 +71,12 @@ DATA = SURFACES["12"][0]
 WITNESSES = SURFACES["12"][1]
 
 # DELIBERATELY EXCLUDED, and this is a correction rather than an omission.
-# scripts/license-rule-matrix.py is our COVERAGE MEASUREMENT TOOL — neither prose
+# scripts/rule-matrix.py is our COVERAGE MEASUREMENT TOOL — neither prose
 # nor data, but a description of our own intent. Round three's subject disclosed
 # that one of its EXPECTED labels nudged a pre-boundary assumption, so its
 # presence made the surface easier than the specification it was standing in for.
 # A rule taken from tooling is inferred, not derived (§13.1a).
-EXCLUDED = ["scripts/license-rule-matrix.py"]
+EXCLUDED = ["scripts/rule-matrix.py"]
 
 ALLOW = PROSE + DATA + WITNESSES
 

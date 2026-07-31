@@ -56,7 +56,7 @@ const harnessNoopRule = "harness/known-noop"
 // comes back WITNESSED. Together these two catch the failure that actually happened
 // while building this: a polarity inversion reported every rule as unwitnessed, and
 // the same mistake in the other direction would have silently inflated the score.
-const harnessWitnessRule = "8.6.4a/signature-valid"
+const harnessWitnessRule = "ENV-VERIFY-SIGNATURE"
 
 // conformanceReport is the machine-readable evidence §10.1 references.
 //

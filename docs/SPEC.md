@@ -1788,7 +1788,8 @@ policy decision indistinguishable from a forged statement.
 
 An envelope is a byte string: a version line, then a fixed number of `key=value` lines,
 in the order below, each terminated by one LF (`0x0A`). There is no other
-whitespace, no trailing content, and no optional field.
+whitespace, no trailing content, and no optional field (**ENV-FIELD-COUNT**,
+**ENV-FIELD-ORDER**, **ENV-LINE-LF**).
 
 ```
 oath-publish/2
@@ -1829,36 +1830,37 @@ decode, but a name may contain non-ASCII, and two encodings of one name would be
 two different statements.)
 
 A conformant implementation MUST reject an envelope, on both encoding and
-verification, unless all of:
+verification, unless all of (**ENV-REENCODE** additionally requires that parsed
+octets re-encode to themselves byte-for-byte):
 
-- the first line is a format tag this version DEFINES — `oath-publish/2`, or
+- **ENV-TAG.** the first line is a format tag this version DEFINES — `oath-publish/2`, or
   `oath-publish/1` for historical verification (§8.6.1). Any OTHER tag is not a
   newer envelope to be interpreted — it is an envelope this version cannot verify, and accepting it
   under these rules would read a signature made under one format as though it
   were made under another;
-- every value is free of LF, CR, and any character below `0x20` or equal to
+- **ENV-VALUE-CHARS.** every value is free of LF, CR, and any character below `0x20` or equal to
   `0x7F`. A value containing LF would inject a line, and the encoding would stop
   being uniquely decodable. Note this rule is reachable only on the ENCODING
   side: an injected LF in stored octets presents as a line-count error, never as
   "a value contained an LF";
-- `op` is `put` (the only operation defined in this version);
-- `artifact` is 64 **lowercase** hex characters. Uppercase MUST be rejected: the
+- **ENV-OP-PUT.** `op` is `put` (the only operation defined in this version);
+- **ENV-HEX-LOWERCASE.** `artifact` is 64 **lowercase** hex characters. Uppercase MUST be rejected: the
   encoding is compared as bytes, so `ABAB…` and `abab…` would be different
   statements about one artifact;
-- `parent` is 64 lowercase hex, or exactly `-` meaning the name had no previous
+- **ENV-PARENT-FORM.** `parent` is 64 lowercase hex, or exactly `-` meaning the name had no previous
   value;
-- `parent_rev` is a non-negative integer in canonical decimal — no leading zeros,
+- **ENV-REV-CANONICAL.** `parent_rev` is a non-negative integer in canonical decimal — no leading zeros,
   no sign, no spaces. `03` and `+3` MUST be rejected, since they would be distinct
   bytes for one revision. It is **unbounded**: an implementation MUST NOT impose a
   machine-word limit, because doing so would declare a valid historical statement
   malformed once a name had been repointed often enough;
-- `name` is non-empty and otherwise unconstrained by this section beyond the
+- **ENV-NAME-NONEMPTY.** `name` is non-empty and otherwise unconstrained by this section beyond the
   character rule above. In particular a name MAY contain `=`; parsing splits each
   line at its FIRST `=`, so `name=a=b` names `a=b` and is not ambiguous;
-- `parent` is `-` **if and only if** `parent_rev` is `0`. A first publication has
+- **ENV-PARENT-CONSISTENT.** `parent` is `-` **if and only if** `parent_rev` is `0`. A first publication has
   both or neither; allowing disagreement would let one envelope describe two
   different states;
-- `author` is 64 lowercase hex.
+- **ENV-AUTHOR-HEX.** `author` is 64 lowercase hex.
 
 > This bullet read "exactly `oath-publish/2`" while the paragraph above it said
 > "Implementations MUST still read `/1`". Both were added by repairs, in
@@ -1957,7 +1959,7 @@ envelope are the safe designs.
   The dialect is pinned, because "base64" alone admits several spellings of one
   byte string and this member is compared and re-encoded (§8.2.1): RFC 4648 §4
   **standard** alphabet (`+` and `/`), padding **required**, no line breaks, no
-  whitespace anywhere, no URL-safe substitutions. A verifier MUST additionally
+  whitespace anywhere, no URL-safe substitutions (**ENV-B64-DIALECT**). **ENV-B64-CANONICAL**: a verifier MUST additionally
   reject the member unless re-encoding the decoded octets reproduces it exactly,
   so alternate spellings that decode to the same octets from different stored
   bytes are refused.
@@ -1982,14 +1984,14 @@ the entry's member order is normative — see §8.2.1.
 A verifier MUST, for every entry where any of `envelope_b64`, `author_pubkey`,
 `author_sig` is non-empty, reject the journal unless ALL of:
 
-1. all three are present. Any one alone attests to nothing;
-2. `envelope_b64` decodes under §8.6.3's pinned dialect, and the decoded octets
+1. **ENV-VERIFY-PRESENT.** all three are present. Any one alone attests to nothing;
+2. **ENV-VERIFY-DECODE.** `envelope_b64` decodes under §8.6.3's pinned dialect, and the decoded octets
    parse under §8.6.1 and re-encode to themselves;
-3. the envelope's `author` equals `author_pubkey`;
-4. `author_sig` is a valid signature under `author_pubkey` over the octets
+3. **ENV-VERIFY-AUTHOR.** the envelope's `author` equals `author_pubkey`;
+4. **ENV-VERIFY-SIGNATURE.** `author_sig` is a valid signature under `author_pubkey` over the octets
    **decoded from** `envelope_b64` — not over a re-encoding of the parsed
    envelope, and not over the base64 text;
-5. **for an entry whose `name_transition` is `applied`**, the envelope's `name`,
+5. **ENV-VERIFY-AGREES.** for an entry whose `name_transition` is `applied`, the envelope's `name`,
    `artifact`, and `parent` equal the entry's `name`, `hash`, and `prev`
    respectively, where an empty `prev` corresponds to `-`.
 
@@ -2021,14 +2023,16 @@ impose no obligation and are conformant.
 
 A store accepting a publication MUST, **before** the name moves:
 
-- verify the signing key is the **authenticated principal**, not the key the
+- **ENV-STORE-PRINCIPAL.** verify the signing key is the **authenticated principal**, not the key the
   envelope names. Verifying against the envelope's own `author` would always
   succeed, so a caller could submit any valid statement made by anyone;
-- recompute the artifact hash from the submitted content and require it to equal
+- **ENV-STORE-ARTIFACT.** recompute the artifact hash from the submitted content and require it to equal
   the signed `artifact`. Because identity is a pure function of content (§1), this
   makes agreement between the client's and the store's elaboration an enforced
   precondition;
-- require the signed `parent` and `parent_rev` to be the name's current values.
+- **ENV-STORE-NAME.** require the signed `name` to be the name being published;
+- **ENV-STORE-CAS.** require the signed `parent` to be the name's current binding;
+- **ENV-STORE-REV.** require the signed `parent_rev` to be the name's current revision. This is what makes ABA replay detectable, since a hash alone is not monotonic.
 
 A statement failing any check MUST NOT move the name. The object itself MAY still
 be stored: storage is idempotent under content addressing and an unreferenced
@@ -2041,15 +2045,15 @@ happened rather than only what succeeded.
 observable between implementations: a signature one kernel accepts another may
 reject. This version pins them.
 
-Verification MUST follow RFC 8032 §5.1.7 with the **cofactorless** equation
+**SIG-COFACTORLESS.** Verification MUST follow RFC 8032 §5.1.7 with the **cofactorless** equation
 (`[S]B = R + [k]A`), and MUST reject a signature unless:
 
-- the encoded `S` is canonical, i.e. strictly less than the group order `L`.
+- **SIG-S-CANONICAL.** the encoded `S` is canonical, i.e. strictly less than the group order `L`.
   Non-canonical `S` values admit a second signature over the same message under
   the same key, which contradicts an envelope being *the author's statement*;
-- `R` and `A` are canonical point encodings.
+- **SIG-POINTS-CANONICAL.** `R` and `A` are canonical point encodings.
 
-A small-order `A` MUST be **rejected**.
+**SIG-SMALL-ORDER.** A small-order `A` MUST be **rejected**.
 
 > This was previously a MAY, which is not a tenable option in this position: if two
 > conforming verifiers may disagree about whether one signature is valid, then
@@ -2899,6 +2903,25 @@ The failure is invisible to field-level review because nothing is missing from
 the list of inputs. It is only visible by asking what the resulting value is a
 name for, and then checking that the encoding contains an answer.
 
+> **Four questions for any conformance witness.** The SOURCE / SUBJECT / SURFACE
+> triad above interrogates a normative IDENTITY. A witness needs its own, because
+> a witness can be wrong in ways the specification is not:
+>
+> - **CLAIM** — which exact normative clause does this witness say it exercises,
+>   and is that clause named in the PROSE? (§8.6's vectors cited a vocabulary
+>   present only in the fixtures and the reference kernel.)
+> - **CARRIER** — can its representation preserve every value needed to exercise
+>   that clause? (A bignum witness carried as a JSON number cannot.)
+> - **CAUSALITY** — does disabling the clause change the result? (This is what the
+>   §10 mutation scorer measures, and it is the only one of the four that was
+>   already enforced.)
+> - **SELF-REPRODUCTION** — can the witness regenerate any bytes, digest,
+>   signature or record it claims to contain?
+>
+> CAUSALITY alone is not sufficient and was long assumed to be. It answers whether
+> a rule matters to the outcome; it cannot show that the fixture faithfully
+> represents the input it says it does.
+
 **IMPL-WITNESS-FAITHFUL.** A conformance witness MUST be able to produce what it
 witnesses, and MUST NOT be carried in a form that defeats the rule it exists to
 demonstrate.
@@ -3007,7 +3030,7 @@ and no rule may be read out of them:
 | `fixtures/campaign/vectors.txt` | §11 |
 | `fixtures/canonical/`, `fixtures/encoding/` | §1 identity encoding |
 | `fixtures/verify/`, `fixtures/analyses/`, `fixtures/prove/`, `fixtures/gate/` | §2–§7 verdicts |
-| `scripts/license-rule-matrix.py` | coverage measurement; NOT part of any dispatch surface |
+| `scripts/rule-matrix.py` | coverage measurement; NOT part of any dispatch surface |
 
 **IMPL-DATA-RETRIEVABLE.** Normative data MUST be retrievable from its declared
 path in this specification's distribution, and a consumer MUST verify the bytes

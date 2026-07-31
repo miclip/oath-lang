@@ -43,21 +43,21 @@ func TestRuleSwitchRestores(t *testing.T) {
 	if len(disabledRules) != 0 {
 		t.Fatal("rules are disabled outside a measurement")
 	}
-	withRulesDisabled([]string{"8.6.1/lowercase-hex"}, func() {
-		if ruleOn("8.6.1/lowercase-hex") {
+	withRulesDisabled([]string{"ENV-HEX-LOWERCASE"}, func() {
+		if ruleOn("ENV-HEX-LOWERCASE") {
 			t.Fatal("rule was not disabled inside the closure")
 		}
 	})
-	if !ruleOn("8.6.1/lowercase-hex") {
+	if !ruleOn("ENV-HEX-LOWERCASE") {
 		t.Fatal("rule stayed disabled after the closure returned")
 	}
 	// Restores even when the mutated verifier panics — a weaker verifier may reach
 	// paths the enforced one never does.
 	func() {
 		defer func() { _ = recover() }()
-		withRulesDisabled([]string{"8.6.1/field-count"}, func() { panic("boom") })
+		withRulesDisabled([]string{"ENV-FIELD-COUNT"}, func() { panic("boom") })
 	}()
-	if !ruleOn("8.6.1/field-count") {
+	if !ruleOn("ENV-FIELD-COUNT") {
 		t.Fatal("a panic inside a measurement leaked a disabled rule into later ones")
 	}
 }
