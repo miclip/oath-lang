@@ -105,6 +105,26 @@
         "fixtures/MANIFEST.md",
         "scripts/license-rule-matrix.py"
       ]
+    },
+    {
+      "round": 4,
+      "date": "2026-07-31",
+      "sections": [
+        "12",
+        "13"
+      ],
+      "source": "78700a5896f9d810d4c7c4c3878dcfffc7c71760",
+      "surface_digest": "e0ee5df50fda211fd44b6ad6d7f073b5e0765019d7901f0a472173bf71a4c300",
+      "supplied": [
+        "docs/SPEC.md",
+        "fixtures/license/model.json",
+        "fixtures/license/vectors.jsonl",
+        "fixtures/MANIFEST.md"
+      ],
+      "status": "DISPATCHED",
+      "hypothesis": "The declared normative surface \u2014 this document plus the normative data \u00a713.1b incorporates \u2014 is now sufficient for an independent implementation of \u00a712 WITHOUT INFERENCE. Recorded BEFORE dispatch so it is falsifiable rather than narrated afterwards: if the round returns PASS-WITH-INFERENCE, this hypothesis is disproved and the inferred list says exactly where the surface is still incomplete.",
+      "hypothesis_recorded": "before dispatch",
+      "prediction": "If a defect is found it will most likely NOT be in licensing. \u00a713.1a/\u00a713.1b created a new abstraction \u2014 the prose/normative-data boundary \u2014 and this run is its first independent user, so the likeliest findings are that a declared schema constrains one thing and not another, that an artifact's interpretation is still implied rather than stated, or that the versioning rule is underspecified."
     }
   ]
 }

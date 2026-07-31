@@ -129,9 +129,37 @@ def main():
     verified = 0
     for r in rounds:
         n = r.get("round", "?")
-        for f in REQUIRED:
-            if f not in r:
-                failures.append(f"round {n}: missing required field `{f}` (§13.3)")
+        # Outcome fields are required of a COMPLETED round. A pre-registered one
+        # has no outcome yet, and demanding one would make pre-registration
+        # impossible — which is the point of separating the two states.
+        if r.get("status") != "DISPATCHED":
+            for f in REQUIRED:
+                if f not in r:
+                    failures.append(f"round {n}: missing required field `{f}` (§13.3)")
+        # PRE-REGISTRATION. A round may be recorded as DISPATCHED before it
+        # returns, carrying a hypothesis and no verdict. Recording the hypothesis
+        # first is what makes it falsifiable: a hypothesis written after the
+        # result is a narration of the result, and would quietly convert every
+        # round into a confirmation.
+        if r.get("status") == "DISPATCHED":
+            if r.get("verdict"):
+                failures.append(f"round {n}: DISPATCHED but already carries a verdict — "
+                                f"remove `status` when recording the outcome")
+            if not (r.get("hypothesis") or "").strip():
+                failures.append(f"round {n}: DISPATCHED without a pre-registered hypothesis")
+            print(f"  round {n}  DISPATCHED (pre-registered)      §{','.join(r.get('sections', []))}")
+            sd_pending, src_pending = r.get("surface_digest"), r.get("source")
+            got = recompute_surface(src_pending, r.get("supplied")) if sd_pending else None
+            ok = got == sd_pending
+            if sd_pending and not ok:
+                failures.append(f"round {n}: pre-registered surface {sd_pending[:16]}… does not "
+                                f"reproduce from {src_pending[:12]}")
+            print(f"    surface: {'verified ' + sd_pending[:16] + '…' if ok else 'UNVERIFIED'}")
+            if ok:
+                verified += 1
+            print(f"    hypothesis on record; outcome not yet known")
+            continue
+
         v = r.get("verdict")
         if v not in VERDICTS:
             failures.append(f"round {n}: verdict {v!r} is not one of {sorted(VERDICTS)}")

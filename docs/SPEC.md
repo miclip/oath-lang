@@ -2910,6 +2910,12 @@ rule that happens to be right is still inferred if the document did not
 determine it — and it is exactly those rules that a second independent
 implementer may get differently.
 
+**IMPL-PRE-REGISTERED.** A run's HYPOTHESIS SHOULD be recorded before dispatch,
+and MUST NOT be edited after the outcome is known. A hypothesis written
+afterwards is a narration of the result: it converts every round into a
+confirmation and makes the measurement unfalsifiable, which is the one failure
+this ledger cannot detect from its own contents.
+
 **IMPL-CONSTRUCTIVE-FAILURE.** A run MAY be annotated CONSTRUCTIVE when the
 implementer, on failing to reproduce a published fixture, declined to infer the
 missing rule and reported the fixture as irreproducible instead of adjusting the
