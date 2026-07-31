@@ -231,6 +231,10 @@ type licenseEvaluation struct {
 	Engine      string
 	Model       string
 	ModelDigest string
+	// Subject is the artifact the evaluation is ABOUT (§12.4
+	// LICENSE-IDENTITY-SUBJECT). Without it two entry points into one component
+	// share a digest, and every empty closure collapses onto one identity.
+	Subject string
 	Digest    string
 	Result    grants
 	Inputs    []licenseInput
@@ -241,7 +245,8 @@ type licenseEvaluation struct {
 // publication asserted.
 func evaluateLicensing(st *Store, name string, deps []string) licenseEvaluation {
 	ev := licenseEvaluation{Policy: licensePolicyComposition, Engine: licenseEngine,
-		Model: licenseModelVersion, ModelDigest: licenseModelDigest()}
+		Model: licenseModelVersion, ModelDigest: licenseModelDigest(),
+		Subject: st.Names()[name]}
 
 	// add takes the ARTIFACT as the member identity and the name as provenance
 	// (§12.4 LICENSE-IDENTITY-ARTIFACT). The asserted expression still travels with
@@ -366,6 +371,16 @@ func (i licenseInput) pub() string {
 	return noLicense
 }
 
+// subjectOr returns the evaluated artifact, or the §8.6.1 sentinel when there is
+// none. Omitting the line would make a subjectless evaluation encode as a SHORTER
+// record, which is the collapse LICENSE-IDENTITY-SUBJECT prevents.
+func subjectOr(h string) string {
+	if h == "" {
+		return noLicense
+	}
+	return h
+}
+
 func digestSafe(v string) bool {
 	for _, c := range []byte(v) {
 		if c < 0x20 || c == 0x7F {
@@ -468,6 +483,9 @@ func evaluationDigest(ev licenseEvaluation) string {
 			pol = licensePolicyComposition
 		}
 		b.WriteString("policy=" + pol + "\n")
+	}
+	if ruleOn("LICENSE-IDENTITY-SUBJECT") {
+		b.WriteString("subject=" + subjectOr(ev.Subject) + "\n")
 	}
 	in := append([]licenseInput(nil), ev.Inputs...)
 	if ruleOn("LICENSE-ORDER-INDEPENDENT") {
@@ -584,6 +602,7 @@ type licenseVector struct {
 	Pairs []licensePair `json:"pairs,omitempty"`
 	Expect     map[string]string `json:"expect,omitempty"`
 	Digest      string `json:"digest,omitempty"`
+	Subject     string `json:"subject,omitempty"`
 	ModelDigest string `json:"model_digest,omitempty"`
 	// ModelLicenses lets a vector supply its OWN model. §12.3 permits a model to
 	// contain any set of identifiers, and LICENSE-LOOKUP-PRECEDENCE is load-bearing
@@ -647,7 +666,7 @@ func runLicenseVectors(vs []licenseVector) []string {
 				continue
 			}
 			ev := licenseEvaluation{Policy: v.Policy, Engine: v.Engine, Model: v.Model,
-				ModelDigest: v.ModelDigest, Inputs: in}
+				ModelDigest: v.ModelDigest, Subject: v.Subject, Inputs: in}
 			if d := evaluationDigest(ev); d != v.Digest {
 				fail = append(fail, fmt.Sprintf("identity %q: digest %s, want %s", v.Label, shortHash(d), shortHash(v.Digest)))
 			}

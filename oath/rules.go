@@ -109,6 +109,7 @@ var normativeRules = []normativeRule{
 	{"LICENSE-PUBLICATION-SENTINEL", "§12.4", "a member with no determinable publication encodes the sentinel, never an omission or a substitute", familyLicense},
 	{"LICENSE-POLICY-DEFINED", "§12.3", "an unrecognised policy is not reproducible and is never evaluated as composition", familyLicense},
 	{"LICENSE-INPUT-COMPLETE", "§12.4", "every closure member contributes a pair, including one asserting nothing", familyLicense},
+	{"LICENSE-IDENTITY-SUBJECT", "§12.4", "the identity names the artifact the evaluation is ABOUT, not only its members", familyLicense},
 	{"LICENSE-IDENTITY-ARTIFACT", "§12.4", "members are identified by artifact hash, so renaming does not change an evaluation", familyLicense},
 	{"LICENSE-IDENTITY-PUBLICATION", "§12.4", "each member binds WHOSE grant was consumed, so identical terms from two publishers are two grants", familyLicense},
 	{"LICENSE-IDENTITY-MODEL-CONTENT", "§12.4", "the digest binds the model's BYTES, not a version string the lattice can outlive", familyLicense},

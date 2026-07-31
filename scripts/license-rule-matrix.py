@@ -48,6 +48,7 @@ CLAUSES = {
     "LICENSE-IDENTITY-UNAMBIGUOUS": [
         "the two-line split, so a name containing `=` cannot shift into the expression",
         "the character exclusion, so an embedded LF cannot inject an input line",
+        "U+2028/U+2029, which are not control octets and so escape an octet-only rule",
     ],
     "LICENSE-POLICY-DEFINED": [
         "an unrecognised policy is a different identity",
@@ -63,6 +64,7 @@ CLAUSES = {
     ],
     "LICENSE-LOOKUP-EXACT": [
         "case is significant",
+        "a trailing space is not trimmed",
         "surrounding punctuation is not stripped",
     ],
 }
@@ -86,6 +88,7 @@ EXPECTED = {
     "LICENSE-MODEL-SCHEMA": "a malformed model row grants nothing",
     "LICENSE-ENGINE-DEFINED": "changing the engine changes the evaluation",
     "LICENSE-PUBLICATION-SENTINEL": "an undeterminable publication encodes the sentinel",
+    "LICENSE-IDENTITY-SUBJECT": "the same closure about a different artifact is a different evaluation",
     "LICENSE-IDENTITY-ARTIFACT": "renaming members does not change the evaluation",
     "LICENSE-IDENTITY-PUBLICATION": "the same terms from a different publication is a different evaluation",
     "LICENSE-IDENTITY-MODEL-CONTENT": "editing the lattice changes the digest even under a fixed version string",

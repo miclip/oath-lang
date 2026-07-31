@@ -121,10 +121,35 @@
         "fixtures/license/vectors.jsonl",
         "fixtures/MANIFEST.md"
       ],
-      "status": "DISPATCHED",
       "hypothesis": "The declared normative surface \u2014 this document plus the normative data \u00a713.1b incorporates \u2014 is now sufficient for an independent implementation of \u00a712 WITHOUT INFERENCE. Recorded BEFORE dispatch so it is falsifiable rather than narrated afterwards: if the round returns PASS-WITH-INFERENCE, this hypothesis is disproved and the inferred list says exactly where the surface is still incomplete.",
       "hypothesis_recorded": "before dispatch",
-      "prediction": "If a defect is found it will most likely NOT be in licensing. \u00a713.1a/\u00a713.1b created a new abstraction \u2014 the prose/normative-data boundary \u2014 and this run is its first independent user, so the likeliest findings are that a declared schema constrains one thing and not another, that an artifact's interpretation is still implied rather than stated, or that the versioning rule is underspecified."
+      "prediction": "If a defect is found it will most likely NOT be in licensing. \u00a713.1a/\u00a713.1b created a new abstraction \u2014 the prose/normative-data boundary \u2014 and this run is its first independent user, so the likeliest findings are that a declared schema constrains one thing and not another, that an artifact's interpretation is still implied rather than stated, or that the versioning rule is underspecified.",
+      "verdict": "PASS-WITH-INFERENCE",
+      "vectors": "27/30",
+      "hypothesis_outcome": "DISPROVED",
+      "constructive": true,
+      "constructive_note": "Three vectors turn on one undetermined clause \u2014 what to EMIT for an unrecognised policy. The implementer identified that both readings satisfy the stated rule, declined to adopt the fixtures' reading because doing so would be inference, and left the vectors failing. It also ran the alternative reading in a separate probe, confirmed all three reproduce exactly under it, and did not modify the implementation.",
+      "prediction_outcome": "PARTLY CONFIRMED. The prediction was that findings would fall at the prose/normative-data boundary. The implementer called that boundary 'the best-specified part of \u00a712' \u2014 so the prediction was wrong about where the WEAKNESS was \u2014 but it still yielded three real defects there: model retrieval unspecified, consumer behaviour on a malformed model undefined, and no obligation to RECOMPUTE model-digest. The largest findings were elsewhere: the identity never bound its subject.",
+      "inferred": [
+        "what to EMIT for an unrecognised policy \u2014 the rule named a prohibition and never defined the behaviour; cost three vectors",
+        "the calling convention for \u00a712: no signature, no input schema, no output schema, where \u00a711 supplies one",
+        "the vector file's own schema, described nowhere in the supplied surface",
+        "whether a producer must REJECT a value violating the character rule (\u00a711.2 and \u00a78.6.1 state it; \u00a712.4 stated only the exclusion)",
+        "whether the character rule binds header values or only triple values",
+        "whether uppercase hex is rejected, case-folded, or encoded verbatim",
+        "whether an empty closure has a digest at all",
+        "the empty-string expression, distinct from absent and from the sentinel",
+        "whether the compound operators include their surrounding spaces, and whether the test is case-sensitive",
+        "whether policy has a default when unsupplied",
+        "how to RETRIEVE the model bytes given a version and a content digest"
+      ],
+      "contamination": [
+        "the subject disclosed prior familiarity: its session context carried the project's CLAUDE.md and a memory index, unsought and undeclinable. It reports the \u00a712 material there is nil and licence evaluation is unmentioned, and assesses that it gave no rule but may have made \u00a78.2.2/\u00a79 cross-references quicker to place",
+        "it ran `wc -l` on the vector file during manifest verification before the boundary, so it knew the record COUNT (30) while writing its predictions; disclosed there at the time, no content seen",
+        "after the first run it probed an alternative policy reading against three fixtures; labelled post-hoc, and the implementation was not changed"
+      ],
+      "evidence": "docs/experiments/blind-license-evaluation.md",
+      "implementer_statement": "A working implementation came out of the prose plus model.json, but eleven things were not determined by them, and I left three vectors failing rather than tune to them."
     }
   ]
 }

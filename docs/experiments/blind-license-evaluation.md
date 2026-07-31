@@ -303,3 +303,97 @@ removing it: claiming is still not constraining.
 
 License family after repair: 20/20 obligations witnessed (was 18/18), matrix
 complete with clause coverage for three more rules.
+
+## Round four — 2026-07-31, base `78700a5896f9`, surface `e0ee5df5…`
+
+**Classification: PASS-WITH-INFERENCE, CONSTRUCTIVE. The pre-registered
+hypothesis is DISPROVED.** 27/30, and three of those failures were left standing
+on purpose.
+
+This was the first round with a hypothesis recorded BEFORE dispatch: *the
+declared normative surface is now sufficient for an independent implementation of
+§12 without inference*. It is not. Eleven things were undetermined, and the
+inferred list says exactly where.
+
+### The prediction was half right, in an informative way
+
+The prediction was that findings would fall at the prose/normative-data boundary,
+that abstraction being new and this its first independent user. The implementer
+called that boundary **"the best-specified part of §12"** — so the prediction was
+wrong about where the weakness lay. It still produced three real defects there:
+the model's RETRIEVAL is unspecified (an outside auditor holding
+`model=spdx-lattice/1` and a content digest has no stated way to resolve them);
+consumer behaviour on a MALFORMED model is undefined (reject or degrade, both
+conformant); and nothing obliges a verifier to RECOMPUTE `model-digest`, which
+leaves the attack that field exists to stop fully intact — serve lattice `M`,
+evaluate against `M'`, publish `SHA-256(M)`.
+
+The largest finding was somewhere else entirely.
+
+### The identity never named what it was an evaluation OF
+
+There was no `subject`. The encoding bound a method and a multiset of members,
+and §12.2 has defined a composition as "an artifact TOGETHER WITH its transitive
+dependency closure" the entire time. Two consequences, both reproduced:
+
+- evaluating `A` over closure `{A, B}` and `B` over closure `{B, A}` — two entry
+  points into one component, or a cycle — produce the SAME digest, so no verdict
+  can be attributed to a subject;
+- every empty closure collapses to one identity, because with no members there is
+  nothing left to distinguish them. `LICENSE-FOLD-NONEMPTY` fixes the VERDICT for
+  an empty closure and says nothing about its identity.
+
+The distinguished artifact was in the definition from the start and absent from
+the encoding — the same rule-versus-encoding disagreement §12.4's own notes
+already record twice.
+
+### The refusal that cost the score
+
+Three failing vectors turn on ONE undetermined clause: `LICENSE-POLICY-DEFINED`
+said what an implementation MUST NOT do — not invent a policy, not evaluate an
+unrecognised one as `composition` — and never said what to EMIT. Refusing
+outright and encoding-then-withholding both satisfy it, and they disagree on the
+digest, which is where identity lives.
+
+The implementer chose refusal, then verified in a SEPARATE probe that all three
+vectors reproduce exactly under the other reading, and **did not change the
+implementation**, on the grounds that adopting the fixtures' reading would be
+inference by §13.2's definition. That is the behaviour the constructive
+annotation exists to record, arrived at independently.
+
+### Two coverage gaps, one of them the dangerous one
+
+§12.3 names three lookup hazards by hand — `mit`, `MIT `, `(MIT)`. Vectors
+covered the first and third. **The missing one is the only one whose lenient
+reading yields a full commercial grant** rather than another `UNSTATED`; the two
+that were covered both fail safe. §12.3's own note predicts this scenario word
+for word, and it remained true of the vector set.
+
+And the U+2028 clause — added in response to round three's audit — had **no
+vector at all**. A stated-but-unwitnessed forgery surface is the worst
+combination: an implementation excluding only control octets passes everything.
+
+### A fixture was carrying a rule the prose did not contain
+
+§11.2 and §8.6.1 both state that a producer given a character-rule violation MUST
+REJECT. §12.4 stated only the exclusion — so the rejection obligation was carried
+by vector 18 rather than by the specification. A vector asserting a rule the
+document does not contain is the exact inversion §13 exists to detect, occurring
+inside the section §13 is about.
+
+### Repaired
+
+`subject` bound; the policy behaviour defined; the rejection obligation stated;
+`model-digest` recomputation made mandatory; `IMPL-DATA-RETRIEVABLE` added; the
+stale "pair" wording corrected to "triple"; vectors added for the subject, the
+trailing space and U+2028. 22/22 obligations witnessed, matrix complete with
+clause coverage for the two new clauses.
+
+### Not repaired, deliberately
+
+The publisher/expression agreement question (still the open design record); the
+model's extensibility, since `LICENSE-MODEL-SCHEMA`'s "exactly five dimensions"
+means a superseding model cannot add one; and `LICENSE-CLOSURE-EXCLUSIVE`, which
+this fixture format structurally cannot witness — every record hands the closure
+over pre-assembled, so closure ASSEMBLY is untested and half of what
+`policy=composition` means is unmeasured.

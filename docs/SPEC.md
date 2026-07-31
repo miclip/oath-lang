@@ -2579,6 +2579,7 @@ engine=<engine>
 model=<model version>
 model-digest=<64 lowercase hex>
 policy=<policy>
+subject=<64 lowercase hex>
 input-artifact=<64 lowercase hex>       (one TRIPLE per closure member)
 input-publication=<64 lowercase hex>
 input-license=<asserted expression>
@@ -2587,7 +2588,13 @@ input-license=<asserted expression>
 All lines are UTF-8, with no space around `=` and no trailing blank line.
 
 **LICENSE-IDENTITY-MODEL-CONTENT.** `model-digest` is SHA-256 over the published
-model's exact bytes (§12.3). Binding the version STRING alone is not sufficient
+model's exact bytes (§12.3), and a verifier MUST RECOMPUTE it from the model it
+consulted rather than accepting the field as given.
+
+Without recomputation the field is an assertion, and the attack it exists to stop
+survives intact: a registry can serve lattice `M` publicly, evaluate against `M'`
+with one `NO` flipped to `YES`, and publish `model-digest = SHA-256(M)`. Every
+identity then verifies against bytes nobody used. Binding the version STRING alone is not sufficient
 and MUST NOT be relied on: a version string is an assertion by whoever edits the
 lattice, so a table can be changed while the string stays fixed, and every
 historical digest then still verifies while meaning the opposite of what it
@@ -2604,6 +2611,25 @@ was stated and the encoding permitted precisely it.
 > **A licence evaluation is a verdict about exact artifacts under exact
 > publication terms. Names are discovery paths and MUST NOT contribute to
 > evaluation identity.**
+
+**LICENSE-IDENTITY-SUBJECT.** `subject` is the artifact hash the evaluation is
+ABOUT — the artifact §12.2's composition is formed around. It is bound in
+addition to the closure, never in place of it.
+
+Without it an evaluation identity names a method and a set of members but never
+what it is an evaluation OF, and two consequences follow that the identity is
+supposed to prevent. Evaluating `A` over closure `{A, B}` and evaluating `B` over
+closure `{B, A}` — two entry points into one component, or a dependency cycle —
+produce the SAME digest, so a verdict cannot be attributed to a subject. And
+every mis-assembled closure collapses: with no members there is nothing to
+distinguish them, so "we failed to assemble `app`" and "we failed to assemble
+`payments`" are one published evaluation. `LICENSE-FOLD-NONEMPTY` fixes the
+VERDICT for an empty closure and says nothing about its identity.
+
+> §12.2 defines a composition as "an artifact TOGETHER WITH its transitive
+> dependency closure". The distinguished artifact was in the definition from the
+> start and absent from the encoding — a rule and its encoding disagreeing again,
+> which is the defect class §12.4's notes already record twice.
 
 **LICENSE-IDENTITY-ARTIFACT.** An input triple identifies its member by ARTIFACT
 HASH, never by name. Names are PROVENANCE — they record how the closure was
@@ -2671,7 +2697,14 @@ the digest would then attest to a publication identity that does not exist.
 **LICENSE-IDENTITY-UNAMBIGUOUS.** Each component of a triple occupies its own
 LINE, and every value MUST exclude LF, CR, any octet below `0x20` or equal to
 `0x7F`, and the code points U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH
-SEPARATOR).
+SEPARATOR). A producer given such a value MUST REJECT the evaluation rather than
+encode it.
+
+> §11.2 and §8.6.1 both state the rejection obligation explicitly; §12.4 stated
+> only the exclusion, so the obligation was carried by a FIXTURE rather than by
+> the prose — a vector asserting a rule the specification does not contain, which
+> is the exact inversion §13 exists to detect, occurring inside the section §13
+> is about.
 
 > U+2028/U+2029 are not control octets, so an exclusion phrased only in terms of
 > `0x20`/`0x7F` admits them — and a Unicode-aware line splitter (ECMAScript's
@@ -2721,6 +2754,21 @@ An implementation MUST NOT invent a policy value, and MUST treat an evaluation
 carrying an unrecognised policy as one it cannot reproduce, rather than
 evaluating it under `composition` and reporting agreement.
 
+Concretely, on an unrecognised policy an implementation MUST:
+
+- ENCODE the policy verbatim and produce the digest normally — the identity
+  records what was claimed, and an evaluation nobody can reproduce still has to
+  be nameable in order to be reported as unreproducible;
+- WITHHOLD the verdict, yielding all-`UNSTATED`, rather than folding under
+  `composition`.
+
+> The rule previously said what an implementation must NOT do and never what to
+> emit, so refusing outright and encoding-then-withholding were both conformant —
+> and they disagree on the digest, which is where identity lives. A blind
+> implementation chose the first, left three vectors failing rather than tune to
+> them, and reported the gap. Naming a prohibition is not the same as defining
+> the behaviour.
+
 > Before this table existed, `policy` was a REQUIRED component of a normative
 > identity with no vocabulary, no default, no semantics and no stated source —
 > derivable only by reading it out of a fixture. It was the single hole that made
@@ -2730,7 +2778,7 @@ evaluating it under `composition` and reporting agreement.
 > documentation gap but an unbounded one.
 
 **LICENSE-INPUT-COMPLETE.** EVERY member of the selected closure contributes
-exactly one input pair, INCLUDING a member that asserts nothing — which
+exactly one input TRIPLE, INCLUDING a member that asserts nothing — which
 contributes its no-assertion sentinel `-`. Members are never skipped, never
 deduplicated, and a member appearing twice in the closure contributes twice.
 
@@ -2882,6 +2930,16 @@ and no rule may be read out of them:
 | `fixtures/canonical/`, `fixtures/encoding/` | §1 identity encoding |
 | `fixtures/verify/`, `fixtures/analyses/`, `fixtures/prove/`, `fixtures/gate/` | §2–§7 verdicts |
 | `scripts/license-rule-matrix.py` | coverage measurement; NOT part of any dispatch surface |
+
+**IMPL-DATA-RETRIEVABLE.** Normative data MUST be retrievable from its declared
+path in this specification's distribution, and a consumer MUST verify the bytes
+it retrieves against the content digest the identity binds.
+
+Publication alone is not enough for an identity to be auditable by a third party.
+An evaluation naming `model=spdx-lattice/1` and `model-digest=a3aa…` gives an
+outside auditor a content digest and, absent this rule, no stated way to resolve
+it — so the reproducibility §11 exists to establish would hold only for readers
+who already have the repository.
 
 **IMPL-DATA-SUPERSEDED.** Normative data is versioned, never edited in place. A
 future `model-v2.json` does not invalidate earlier evaluations: their identities
