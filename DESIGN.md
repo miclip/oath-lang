@@ -768,6 +768,43 @@ shape as every defect these rounds have found — the prose asserting a property
 the encoding does not deliver — so it should be settled in text before anything
 is written.
 
+## The epistemology applied to itself (2026-07-31)
+
+The implementability experiment ended up governed by the same rules as the
+software it measures. That was not planned; each constraint was added because the
+alternative had already failed once, and the alternatives failed for the reasons
+Oath's own design anticipates.
+
+| Oath principle | the experiment's analogue |
+|---|---|
+| a publisher cannot choose `PROVEN` | the dispatcher cannot choose `PASS` after the fact |
+| the registry reports only what it reproduced | the ledger reports only observed outcomes |
+| identity binds exact bytes | the surface digest binds the exact normative surface |
+| the journal is append-only | rounds are append-only |
+| historical claims are not reinterpreted | old rounds are not re-scored |
+| campaign identity fixes the evaluation context | the surface digest fixes the experimental context |
+| assertion precedes derivation, and is labelled | the hypothesis precedes dispatch, and is labelled |
+
+Two of these were learned the hard way rather than reasoned to.
+
+**Old rounds are not re-scored.** Removing a file from the export allowlist
+instantly broke both historical claims, because re-exporting an old commit with
+today's list computes a surface that experiment never used. The fix was to bind
+each claim to the file list it was actually given — the same move as binding an
+evaluation to its model's content rather than to a version string it can outlive.
+
+**A hypothesis after the result carries no information.** "The specification is
+sufficient", written after a `PASS`, is a description. Written before dispatch it
+is a prediction that can be wrong. That is precisely the assertion/derivation
+distinction the project draws everywhere else, applied to its own methodology —
+and the ledger cannot detect its absence from its own contents, which is why it
+had to become a rule.
+
+The same logic governs WHEN a constraint may be added. §13.4's requirement that a
+verdict name its sections and its surface was written while a run was in flight
+and its outcome unknown. Deciding how a `PASS` may be phrased after obtaining one
+is indistinguishable from shaping the claim to fit the result.
+
 ## Independent implementability as a measured property (2026-07-30)
 
 Conformance testing asks whether an implementation agrees with the vectors.

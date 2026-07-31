@@ -171,6 +171,15 @@ def main():
         # statement AND nothing inferred. An author cannot upgrade a verdict by
         # deciding in hindsight that an inference was obvious.
         if v == "PASS":
+            # §13.4 IMPL-VERDICT-SCOPED. A PASS must name what it covers and the
+            # bytes it covers them on, or it reads as a claim about the whole
+            # document — unfalsifiable, and false wherever a section has never
+            # been attempted.
+            if not r.get("sections"):
+                failures.append(f"round {n}: PASS without naming the sections attempted (§13.4)")
+            if not r.get("surface_digest"):
+                failures.append(f"round {n}: PASS on an unbound surface — a PASS must name the "
+                                f"exact bytes it was obtained against (§13.4)")
             if r.get("inferred"):
                 failures.append(
                     f"round {n}: verdict PASS with {len(r['inferred'])} inferred rule(s) — "
@@ -248,6 +257,11 @@ def main():
         return 1
 
     best = [r for r in rounds if r.get("verdict") == "PASS"]
+    for r in best:
+        # Rendered in §13.4's form so the claim cannot be quoted more broadly than
+        # it was earned.
+        print(f"  §{', §'.join(r['sections'])}, on normative surface "
+              f"{r['surface_digest'][:16]}…, was independently implemented without inference.")
     print(f"IMPLEMENTABILITY LEDGER: PASS — every claim is structurally sound and all")
     print(f"{verified} bound surface digest(s) reproduce from their source commits.")
     if not best:

@@ -2962,8 +2962,23 @@ only the second belongs in the record.
 
 ### 13.4 Scope
 
-A verdict applies to the SECTIONS a run actually attempted, never to the
-document as a whole. Implementability is not a property the specification has
+**IMPL-VERDICT-SCOPED.** A verdict applies to the SECTIONS a run actually
+attempted, on the SURFACE it was given, and MUST be reported in those terms. The
+form is:
+
+> §12, on normative surface `e0ee5df5…`, was independently implemented without
+> inference.
+
+and NEVER "the specification is independently implementable". The narrower
+sentence is the stronger one, because it is exactly true: it names what was
+attempted and the bytes it was attempted against, both of which a reader can
+check. The broad sentence is unfalsifiable and, on any document with sections
+nobody has attempted, false.
+
+This constraint was written while a run was IN FLIGHT and its outcome unknown.
+That timing is the point — deciding how a `PASS` may be phrased after obtaining
+one is indistinguishable from shaping the claim to fit the result, which is the
+same defect IMPL-PRE-REGISTERED addresses one paragraph up. Implementability is not a property the specification has
 uniformly: one section can be fully reconstructible while its neighbour is
 determined only by fixtures.
 
