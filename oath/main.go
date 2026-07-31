@@ -219,7 +219,7 @@ func main() {
 			}
 		}
 		if endpoint == "" || keyFile == "" || file == "" {
-			fail(fmt.Errorf("usage: oath publish [--remote <url>] [--key <file>] [--dry-run] [--json] [-y] <file.oath>\n" +
+			fail(fmt.Errorf("usage: oath publish [--remote <url>] [--key <file>] [--license <SPDX>] [--dry-run] [--json] [-y] <file.oath>\n" +
 				"       --remote and --key may come from ~/.oath/config (see `oath config`, set up with `oath new`)"))
 		}
 		cmdPublish(st, endpoint, keyFile, file, license, dryRun, jsonOut, yes)
