@@ -92,6 +92,53 @@ func TestPatternSpecificityOrdering(t *testing.T) {
 
 // Trust on first publish: the first principal to publish a name owns it, and the
 // derivation must report whether that owner is a KEY or a bare LABEL.
+// Adoption converts a CONFIGURED owner into a corroborated one, and only when the
+// journal shows that key actually publishing. The obvious alternative — letting
+// the first signed publisher of a legacy-label name become its cryptographic
+// owner — is a land grab: trust-on-first-publish is off by default, so any key
+// could sign over any legacy name and would own it the moment enforcement was
+// enabled. Adoption must therefore grant no authority that was not declared first.
+func TestSignedAdoptionRequiresBothConfigAndEvidence(t *testing.T) {
+	st := newMemStoreForTest(t)
+	if err := st.AppendLog(&LogEntry{Author: "admin", Name: "n", Status: "accepted",
+		Hash: "h1", NameTransition: transitionApplied}); err != nil {
+		t.Fatal(err)
+	}
+	pol := &Policy{Rules: []PolicyRule{{Names: []string{"n"}, OwnerPubkey: "kk"}}}
+
+	// Configured but NOT corroborated: present-tense configuration only.
+	if _, src := nameOwnerUnderPolicy(st, pol, "n"); src != ownerConfiguredPolicy {
+		t.Fatalf("configured-only source = %q, want %q", src, ownerConfiguredPolicy)
+	}
+	if ownerIsCryptographic(ownerConfiguredPolicy) {
+		t.Fatal("configuration must not count as cryptographic: it is not re-derivable from the journal")
+	}
+
+	// A signed publication by a DIFFERENT key must not corroborate anything.
+	if err := st.AppendLog(&LogEntry{Author: "zz", Name: "n", Status: "accepted", Hash: "h2",
+		Prev: "h1", NameTransition: transitionApplied,
+		EnvelopeB64: encodeEnvelopeB64([]byte("x")), AuthorPubkey: "zz", AuthorSig: "s"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, src := nameOwnerUnderPolicy(st, pol, "n"); src != ownerConfiguredPolicy {
+		t.Fatalf("a stranger's signature corroborated the configured owner: got %q", src)
+	}
+
+	// The CONFIGURED key signs: now the claim is evidence.
+	if err := st.AppendLog(&LogEntry{Author: "kk", Name: "n", Status: "accepted", Hash: "h3",
+		Prev: "h2", NameTransition: transitionApplied,
+		EnvelopeB64: encodeEnvelopeB64([]byte("y")), AuthorPubkey: "kk", AuthorSig: "s"}); err != nil {
+		t.Fatal(err)
+	}
+	owner, src := nameOwnerUnderPolicy(st, pol, "n")
+	if owner != "kk" || src != ownerSignedAdoption {
+		t.Fatalf("got (%q,%q), want (kk,%q)", owner, src, ownerSignedAdoption)
+	}
+	if !ownerIsCryptographic(src) {
+		t.Fatal("adoption must count as cryptographic: it IS re-derivable from the journal")
+	}
+}
+
 func TestNameOwnerDerivation(t *testing.T) {
 	st := newMemStoreForTest(t)
 	// An UNSIGNED first publication: the owner is a label the store wrote down.

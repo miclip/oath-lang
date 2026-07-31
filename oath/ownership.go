@@ -72,7 +72,9 @@ func ownershipCensus(st *Store, pol *Policy) []ownershipRow {
 				if derivedOwner != "" && derivedOwner != rule.OwnerPubkey {
 					r.ShadowedOwner, r.ShadowedSource = derivedOwner, derivedSource
 				}
-				r.Owner, r.OwnerSource = rule.OwnerPubkey, ownerConfiguredPolicy
+				// ADOPTION: a configured key the journal shows actually signing a
+				// publication of this name is corroborated rather than merely declared.
+				r.Owner, r.OwnerSource = nameOwnerUnderPolicy(st, pol, name)
 			}
 		}
 

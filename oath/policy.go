@@ -379,6 +379,57 @@ const (
 // become the TOFU owner, because establishing the first owner is not atomic. This
 // prevents ordinary unauthorized repoints immediately; atomic first-owner
 // establishment is pending the transactional store.
+// signedPublicationBy reports whether the journal records a publication of `name`
+// signed by `pubkey`. This is the CORROBORATION half of adoption: policy naming a
+// key is a present-tense operator statement, and this is the historical evidence
+// that the named key actually acted.
+func signedPublicationBy(st *Store, name, pubkey string) bool {
+	if pubkey == "" {
+		return false
+	}
+	for _, e := range st.ReadLog() {
+		if e.Name != name || !e.repointedName() {
+			continue
+		}
+		if e.AuthorPubkey == pubkey && e.EnvelopeB64 != "" && e.AuthorSig != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// nameOwnerUnderPolicy resolves ownership with policy precedence applied, and is
+// the single place the ADOPTION upgrade happens.
+//
+// A configured OwnerPubkey outranks history — it is an operator decision — but on
+// its own it is present-tense CONFIGURATION and a third party cannot re-derive it
+// from the journal. When the journal ALSO shows that key signing a publication of
+// the name, the claim stops being merely configured: it is corroborated by
+// evidence, which is ownerSignedAdoption ("authority adopted by a signed operation
+// at a recorded point, not retroactive").
+//
+// WHY ADOPTION IS NOT AUTOMATIC. Letting the first signed publisher of a
+// legacy-label name simply become its cryptographic owner was the obvious
+// implementation and is a LAND GRAB: trust-on-first-publish is off by default, so
+// any key could sign over any legacy name and would then own it the moment an
+// operator enabled enforcement. Requiring an operator statement first means
+// adoption grants no authority that was not already declared — it only converts a
+// declaration into checkable history.
+func nameOwnerUnderPolicy(st *Store, pol *Policy, name string) (owner, source string) {
+	derived, derivedSrc := nameOwner(st, name)
+	if pol == nil {
+		return derived, derivedSrc
+	}
+	rule := pol.ruleFor(name)
+	if rule == nil || rule.OwnerPubkey == "" {
+		return derived, derivedSrc
+	}
+	if signedPublicationBy(st, name, rule.OwnerPubkey) {
+		return rule.OwnerPubkey, ownerSignedAdoption
+	}
+	return rule.OwnerPubkey, ownerConfiguredPolicy
+}
+
 func nameOwner(st *Store, name string) (owner, source string) {
 	for _, e := range st.ReadLog() {
 		// repointedName, not Status: a FALSIFIED but applied first publication does
