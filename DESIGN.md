@@ -801,6 +801,86 @@ section whose semantics are undecided will fail an implementability round for a
 reason the round cannot repair, and running one anyway would measure the same
 four open decisions repeatedly while looking like progress.
 
+## The architecture as a decision procedure — and a gap it exposed (2026-07-31)
+
+The three layers are more useful as a PROCEDURE than as a description. When
+someone proposes adding a field, the first question stops being "is it useful?"
+and becomes "which layer does it belong to?":
+
+- an author ASSERTION → preserve it, because nothing can reconstruct it;
+- DERIVABLE from history → do not store it, and re-derive on every verification;
+- affects IDENTITY → pin the equivalence relation, versioned and explicit.
+
+### Testing the procedure found a fourth category
+
+Applied to `time`, the procedure gives the wrong answer, and that is worth
+recording rather than smoothing over. `time` is written by the registry
+(`time.Now()`), is NOT inside the signed envelope, and history cannot reconstruct
+it. "Preserve what the publisher signed, discard what the registry computed" says
+DO NOT STORE IT — and storing it is obviously correct.
+
+So the partition's real axis is not WHO ASSERTED but WHAT CAN BE RECONSTRUCTED:
+
+| | reconstructible from history | not reconstructible |
+|---|---|---|
+| **signed by a participant** | derive it (nothing is signed here today) | PRESERVE — author assertions |
+| **observed by the registry** | derive it — transitions, revision counts | PRESERVE — registry observations |
+
+`time` sits in the fourth cell: preserved because it is irrecoverable, but NOT
+evidence in the sense a signature is, because nobody can verify it. A registry
+can backdate an entry and no verifier will ever know. That is a real limitation
+of the current journal and it has never been stated — the ordering evidence is
+`seq` and `chain`, which are checkable, while `time` is decoration a reader may
+reasonably mistake for evidence.
+
+The refinement: preservation is decided by RECONSTRUCTIBILITY, and trust is
+decided separately by WHO ATTESTED. The original line remains right about
+everything it covers; it simply did not cover the cell where a registry observes
+something irrecoverable.
+
+Left open deliberately, and it is layer-1 work rather than layer-3: whether
+`time` should be an author assertion inside the signed envelope, remain an
+unverifiable registry observation, or be labelled as one in the rendering so it
+is not read as evidence.
+
+## Four concerns that now evolve independently (2026-07-31)
+
+A stable protocol means these stop moving together, and keeping them apart is a
+deliberate act rather than an emergent property:
+
+| concern | example | changes when |
+|---|---|---|
+| PROTOCOL | signed licensing, the journal record model | the normative document changes — and only with §13's guardrails applied |
+| REGISTRY implementation | background verification workers, store backends | operations change; no normative consequence |
+| AGENT WORKFLOW | blind dispatch, subagent orchestration | how work gets done changes |
+| UI / rendering | `explain` output, the website | presentation changes |
+
+Earlier in the project these evolved together, which is why "the registry needs
+feature X" was once a sufficient argument for changing the protocol. It no longer
+is. The question for any proposal is which of the four it belongs to, and only
+the first one alters what a conformant implementation must do.
+
+That the deployed registry now LAGS the protocol — it still writes the
+pre-`parent_rev` format and consumes the transition it should derive — is
+evidence the separation is real. Updating it will be implementing the protocol
+rather than redefining it, which is the first time that direction has held.
+
+## What humans are left reviewing (2026-07-31)
+
+The project started from: if AI writes most software, what should humans review?
+The answer got sharper than "evidence over code", and it mirrors the three
+layers:
+
+- **assertions** — what is being claimed, and by whom?
+- **evidence** — what can be independently re-derived?
+- **conventions** — what definitions of identity and equivalence did we choose?
+
+Implementation is not on the list. It becomes an optimisation problem, checkable
+by machine against the three above. What remains irreducibly human is deciding
+what may be claimed, what counts as proof of it, and what counts as the same
+thing — which are the same three questions the protocol layers answer, arrived at
+from the opposite direction.
+
 ## The epistemic contracts (2026-07-31)
 
 Each layer has its own contract, and — the part that makes the taxonomy sharp —

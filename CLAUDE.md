@@ -56,6 +56,21 @@ custom domain + managed TLS; see `docs/deploy.md`). What it runs:
 - **Release pipeline** — `git tag vX` cuts a GitHub Release of both kernels for
   all platforms (`.github/workflows/release.yml`); deploy is manual (`deploy.yml`).
 
+## Before adding anything to the protocol
+
+Ask which of four concerns a proposal belongs to — they now evolve
+independently, and only the first changes what a conformant implementation must
+do: PROTOCOL (normative; apply §13's guardrails), REGISTRY implementation,
+AGENT WORKFLOW, UI/rendering. "The registry needs X" stopped being an argument
+for changing the protocol.
+
+For a new JOURNAL field specifically, the layer decides the answer (DESIGN.md):
+reconstructible from history → do not store it, re-derive on every verification;
+irrecoverable → preserve it, and note whether it is SIGNED (evidence) or merely
+OBSERVED by the registry (irrecoverable but unverifiable — `time` is the
+existing case, and is not evidence despite looking like it); affects identity →
+pin the equivalence relation explicitly and version it.
+
 ## Roadmap / backlog
 
 GitHub issues on miclip/oath-lang. Closed as of 2026-07: team store & policy,
