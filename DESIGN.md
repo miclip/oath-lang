@@ -801,6 +801,78 @@ section whose semantics are undecided will fail an implementability round for a
 reason the round cannot repair, and running one anyway would measure the same
 four open decisions repeatedly while looking like progress.
 
+## Three layers, and why the last one resists methodology (2026-07-31)
+
+The protocol turns out to have three conceptual layers, and they need different
+kinds of decision:
+
+| layer | question | how it is settled |
+|---|---|---|
+| 1. HISTORICAL ASSERTIONS | what must be preserved because only the participants knew it | by asking whether history could reconstruct it |
+| 2. DERIVED FACTS | what history should recompute rather than trust | by asking who computes it and whether they are trusted |
+| 3. EQUIVALENCE RELATIONS | which byte sequences or signatures count as the same thing | by CONVENTION — pinned, versioned, applied consistently |
+
+Layers 1 and 2 have answers you can argue to. Layer 3 does not: "when are two
+signatures the same signature" and "when are two octet sequences the same
+publication" are not questions with mathematically correct answers, which is
+exactly why the blind rounds surfaced them and could not resolve them. Reasonable
+systems choose differently. What matters is not which convention is chosen but
+that it is EXPLICIT, VERSIONED, and applied everywhere — an unstated equivalence
+is the one defect that makes two correct implementations disagree forever.
+
+§8.6.4a already does this well for signatures and says so in its own words ("this
+version pins them"), which is why it is the model for the two open decisions
+rather than another instance of them.
+
+The partition that fell out of layers 1 and 2:
+
+| preserved forever | always derived |
+|---|---|
+| the author's statement (envelope octets) | name transition |
+| publication digest | guarantee |
+| artifact hash | property verdicts |
+| parent | termination |
+| parent_rev | ownership state |
+| signatures | revision counts |
+
+### The inversion: a justification should survive its application
+
+`parent_rev` was almost adopted for the wrong reason, and the difference matters
+beyond §8.
+
+  weak: store `parent_rev` so replay protection works.
+  strong: store every historical assertion, because history cannot reconstruct it.
+
+Under the second, replay protection is a THEOREM of the design rather than its
+premise — and the design keeps standing if replay protection stops being the
+motivating concern. A justification tied to one application dies with that
+application; a justification about what history can and cannot recover does not.
+
+The precise fact at stake makes it concrete. A verifier can always derive what
+the revision ACTUALLY WAS. It can never derive what the AUTHOR BELIEVED it was.
+Publish against revision 37 after someone advanced the name to 38, and history
+tells you the current revision was 38 — it cannot tell you an envelope was signed
+believing 37. That belief exists only in the signed statement, and discarding it
+destroys it permanently. Replay detection is downstream of that.
+
+### Honest measurement declines before it improves
+
+Every time a measurement here became more discriminating, its headline number got
+worse:
+
+- implementability scores FELL because inference was refused rather than papered
+  over;
+- envelope witnessed coverage stayed at 8 while the obligation count rose to 20,
+  because obligations were split correctly and nothing was written to cover them;
+- the rule matrix got "worse" when it stopped conflating causal influence with
+  faithful representation.
+
+A project optimising the ratio would have avoided all three. The objective here
+is the TRUTHFULNESS of the ratio, and 8/20 that honestly says twelve are
+unwitnessed is worth more than 20/20 obtained by weakening obligations or
+inflating witnesses. Treat a declining number after a measurement change as
+evidence the measurement improved, and an improving one as the thing to check.
+
 ## The dividing line the whole record model follows (2026-07-31)
 
 > The journal preserves everything the publisher SIGNED, and nothing the registry

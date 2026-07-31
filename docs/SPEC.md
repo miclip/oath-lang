@@ -2924,6 +2924,26 @@ one passes has demonstrated that the FIXTURES are sufficient — which was never
 in question — while saying nothing about the prose. This inverts the usual
 reading of a green suite, deliberately.
 
+**IMPL-EQUIVALENCE-PINNED.** Wherever this specification depends on two things
+being "the same" — two signatures, two encodings of one value, two byte sequences
+naming one publication — the EQUIVALENCE RELATION MUST be stated explicitly,
+versioned, and applied consistently. An implementation MUST NOT leave it to a
+library's default or to what is conventional.
+
+Such a choice is CONVENTIONAL: there is no mathematically correct answer to "when
+are two signatures the same signature", and reasonable systems differ. That is
+precisely why it must be pinned rather than reasoned about. An unstated
+equivalence is the defect that makes two correct implementations disagree
+permanently, each certain the other is wrong, with no fixture able to arbitrate
+because both satisfy every stated rule.
+
+> §8.6.4a is the model: it selects the cofactorless equation, requires canonical
+> `S`, requires canonical point encodings, and rejects small-order keys — then
+> says in its own words that this version pins them, and explains why a MAY was
+> untenable. That is what every equivalence decision in this document should look
+> like. Where one is still open, it is open BECAUSE the convention has not been
+> chosen, not because the question is unclear.
+
 > **Three questions for any normative identity.** The rules below are stated
 > separately because each is independently checkable, but they are one review
 > discipline and apply to anything that hashes a semantic object — publication
