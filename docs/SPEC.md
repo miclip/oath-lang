@@ -1590,7 +1590,7 @@ order:
 ```
 seq, time, author, verifier, name, kind, status, hash, prev, error,
 guarantee, termination, context, pubkey, sig,
-envelope_b64, author_pubkey, author_sig, name_transition, chain
+envelope_b64, author_pubkey, author_sig, parent_rev, name_transition, chain
 ```
 
 Field order is NORMATIVE, not a formatting preference. `chain` (§8) and the
@@ -1965,6 +1965,10 @@ envelope are the safe designs.
   bytes are refused.
 
 - `author_pubkey`: lowercase hex of the key that signed the envelope octets.
+- `parent_rev`: the revision the author SIGNED AGAINST, as a decimal STRING. It is
+  the author's own claim about what they were publishing over, preserved verbatim
+  rather than recomputed. A JSON string and never a number: §8.6.1 makes the
+  revision unbounded, and a float64 reader corrupts values past 2^53.
 - `author_sig`: lowercase hex of the 64-byte signature over the **decoded**
   envelope octets. Never over the base64 text, and never over the JSON string
   bytes that carry it.
@@ -2021,11 +2025,34 @@ A verifier MUST, for every entry where any of `envelope_b64`, `author_pubkey`,
 Failing (5) means the store recorded a transition its author did not sign, which
 MUST be a hard failure rather than a warning.
 
+**ENV-VERIFY-REVISION.** For an entry carrying `parent_rev`, the value MUST equal
+the envelope's `parent_rev`, and MUST equal the name's revision derived from the
+journal history preceding the entry.
+
+> Without a persisted revision, ABA replay survives offline verification
+> entirely: after `n` → A → B → A, an envelope signed against the FIRST A carries
+> a stale revision, but clause 5 compares only name, artifact and parent — all of
+> which are valid again after the cycle — and no entry member records the
+> revision that would expose it. §8.6.2 claims "ABA protection is unaffected"
+> because the envelope carries the revision; the journal then discarded it at
+> admission, so the protection held only inside a live store. An offline auditor
+> could not check the one property the revision exists to provide.
+>
+> Entries predating this member are verified without the check, and a verifier
+> SHOULD report that the revision was unavailable rather than that it matched.
+
 **ENV-VERIFY-DERIVED-TRANSITION.** A verifier MUST DERIVE the transition from the
 journal history preceding the entry (§8.6.2), and MUST NOT take it from the
 entry's `name_transition` member. Where a stored `name_transition` disagrees with
 the derived value, the entry MUST fail verification.
 
+> **What the journal preserves: everything the publisher SIGNED, and nothing the
+> registry merely COMPUTED.** That single line decides both of this section's
+> record-model rules and would have predicted them. A revision the author signed
+> against is evidence and is kept verbatim; a transition the registry calculated
+> is a computation and is re-derived. The journal had it exactly backwards —
+> storing the computed transition and discarding the signed revision.
+>
 > Offline verification derives facts; it does not consume them. `name_transition`
 > is not a publisher claim — it is a property of journal history, and it is
 > written by the store. Reading it inverts the trust model for exactly the field

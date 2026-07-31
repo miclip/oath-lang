@@ -207,6 +207,12 @@ func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pu
 			// statement, and a round-trip through the encoder would substitute this
 			// kernel's rendering for the author's.
 			le.EnvelopeB64, le.AuthorPubkey, le.AuthorSig = encodeEnvelopeB64([]byte(auth.Bytes)), auth.Pubkey, auth.Sig
+			// The revision the author SIGNED AGAINST, preserved as their claim
+			// rather than recomputed later (§8.2.1). The journal keeps everything
+			// the publisher signed and nothing the registry merely computed.
+			if env, perr := envelopeParse([]byte(auth.Bytes)); perr == nil {
+				le.ParentRev = env.ParentRev.String()
+			}
 		}
 		if err := st.AppendLog(le); err == nil {
 			// The publication's own identity, so a client can address and verify the

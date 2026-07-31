@@ -78,6 +78,8 @@ var normativeRules = []normativeRule{
 	{"ENV-REENCODE", "§8.6.1", "parsed octets must re-encode to themselves", familyEnvelope},
 	{"ENV-B64-DIALECT", "§8.6.3", "envelope_b64 is standard padded base64", familyEnvelope},
 	{"ENV-B64-CANONICAL", "§8.6.3", "envelope_b64 must re-encode to itself", familyEnvelope},
+	{"ENV-VERIFY-REVISION", "§8.6.4", "the persisted revision equals the signed one and the derived one, so ABA replay is detectable offline", familyEnvelope},
+	{"ENV-VERIFY-DERIVED-TRANSITION", "§8.6.4", "the transition is derived from journal history, never taken from the entry", familyEnvelope},
 	{"ENV-STORE-PRINCIPAL", "§8.6.4", "the signer must be the authenticated principal", familyEnvelope},
 	{"ENV-STORE-ARTIFACT", "§8.6.4", "the signed artifact must equal the recomputed hash", familyEnvelope},
 	{"ENV-STORE-NAME", "§8.6.4", "the signed name must be the name being published", familyEnvelope},

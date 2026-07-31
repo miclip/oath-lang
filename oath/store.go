@@ -430,6 +430,17 @@ type LogEntry struct {
 	EnvelopeB64  string `json:"envelope_b64,omitempty"`
 	AuthorPubkey string `json:"author_pubkey,omitempty"` // hex Ed25519 key that signed the envelope
 	AuthorSig    string `json:"author_sig,omitempty"`    // hex signature over the DECODED envelope octets
+	// ParentRev is the revision the author SIGNED AGAINST — their own claim about
+	// what they were publishing over, preserved verbatim. Without it the author's
+	// statement disappears at admission and a verifier can only reconstruct the
+	// number from history, so ABA replay is undetectable offline: the envelope says
+	// "revision 37" and nothing durable records that it did.
+	//
+	// A STRING, never a JSON number. §8.6.1 makes the revision unbounded, and a
+	// float64 JSON reader corrupts values past 2^53 — a defect found in the
+	// envelope fixtures, where the vector demonstrating arbitrary precision was
+	// itself carried in a lossy form.
+	ParentRev string `json:"parent_rev,omitempty"`
 	// NameTransition records what happened to the NAME — a different dimension from
 	// Status, which records what the registry concluded about the ARTIFACT. A
 	// definition can be FALSIFIED and still bind its name; a request can be REJECTED
@@ -868,7 +879,7 @@ func decodeEnvelopeB64(s string) ([]byte, error) {
 var journalFieldOrder = []string{
 	"seq", "time", "author", "verifier", "name", "kind", "status", "hash", "prev",
 	"error", "guarantee", "termination", "context", "pubkey", "sig",
-	"envelope_b64", "author_pubkey", "author_sig", "name_transition", "chain",
+	"envelope_b64", "author_pubkey", "author_sig", "parent_rev", "name_transition", "chain",
 }
 
 // canonicalJournalLine re-encodes an entry to its canonical compact JSON.

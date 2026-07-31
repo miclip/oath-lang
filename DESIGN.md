@@ -801,6 +801,54 @@ section whose semantics are undecided will fail an implementability round for a
 reason the round cannot repair, and running one anyway would measure the same
 four open decisions repeatedly while looking like progress.
 
+## The dividing line the whole record model follows (2026-07-31)
+
+> The journal preserves everything the publisher SIGNED, and nothing the registry
+> merely COMPUTED.
+
+One line, and it decides both §8.6 record-model questions — it would have
+predicted them rather than being extracted from them afterwards.
+
+The journal had it exactly backwards. It stored `name_transition`, which the
+registry computes, and discarded `parent_rev`, which the author signed. So the
+computed thing was durable and trusted, while the evidence disappeared at
+admission. Fixing each separately produced the same answer twice, which is how
+the line got found.
+
+`parent_rev` is unlike `name_transition` in the way that matters: the author KNEW
+it at publication time — they had to, in order to sign the envelope. The signed
+statement is "I believe I am publishing against revision 37", and that is
+evidence about what the author believed, not a fact about history that can be
+recovered later. Reconstructing 37 from the journal answers a different question:
+what the revision actually WAS, not what the author claimed it was. Only the
+first can expose a stale envelope.
+
+## DECIDED: the signed revision is persisted (2026-07-31)
+
+`parent_rev` is now a journal member, and ENV-VERIFY-REVISION requires it to
+equal both the envelope's value and the revision derived from preceding history.
+
+Without it, ABA replay survived offline verification entirely. After `n` → A → B
+→ A, an envelope signed against the FIRST A carries a stale revision — but clause
+5 compares only name, artifact and parent, every one of which is valid again
+after the cycle, and no entry member recorded the revision that would expose it.
+§8.6.2 claims "ABA protection is unaffected" because the ENVELOPE carries the
+revision; the journal then discarded it at admission, so the protection held only
+inside a live store. An offline auditor could not check the single property the
+revision exists to provide.
+
+It is a STRING, never a JSON number — §8.6.1 makes the revision unbounded and a
+float64 reader corrupts values past 2^53. That is not a hypothetical: the
+envelope fixture demonstrating arbitrary precision was itself carried in a lossy
+form, and this member was designed around that finding rather than repeating it.
+
+MIGRATION. Verified before landing: all 548 committed entries re-serialise
+byte-identically under the new field order, because §8.2.1 omits empty members
+and no existing entry carries the field. History is not rewritten, no chain value
+moves, no entry digest changes. Entries predating the member are verified without
+the check, and a verifier reports the revision as unavailable rather than as
+matched — the same disclosure discipline as reconstructed transitions.
+
 ## DECIDED: a transition is derived, not consumed (2026-07-31)
 
 Offline verification derives facts; it does not consume them.

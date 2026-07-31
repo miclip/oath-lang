@@ -17,7 +17,7 @@ func TestJournalFieldOrderIsNormative(t *testing.T) {
 	e := &LogEntry{Seq: 1, Time: "t", Author: "a", Verifier: "v", Name: "n", Kind: "func",
 		Status: "accepted", Hash: "h", Prev: "p", Error: "e", Guarantee: "g",
 		Termination: "structural", Context: "c", Pubkey: "pk", Sig: "s",
-		EnvelopeB64: "ZQ==", AuthorPubkey: "apk", AuthorSig: "as",
+		EnvelopeB64: "ZQ==", AuthorPubkey: "apk", AuthorSig: "as", ParentRev: "37",
 		NameTransition: transitionApplied, Chain: "ch"}
 	b, err := json.Marshal(e)
 	if err != nil {
