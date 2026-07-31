@@ -41,10 +41,16 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # (file, function, spec section) — every function that builds bytes some other
 # implementation must reproduce exactly.
+# (file, function, spec section, SUBJECT FIELD) — the last column answers
+# "identity of what?" (§13, IMPL-IDENTITY-SUBJECT). Naming it here forces the
+# question to be asked of every encoder, because the failure is invisible to
+# field-level review: nothing is missing from the input list, and the encoding
+# still does not say what the value is a name for. §12.4 bound a method and a set
+# of members with no subject for months, and every field in it was correct.
 ENCODERS = [
-    ("oath/envelope.go", "envelopeEncodeAs", "§8.6.1"),
-    ("oath/license.go", "evaluationDigest", "§12.4"),
-    ("oath/mutate.go", "campaignEncode", "§11.2"),
+    ("oath/envelope.go", "envelopeEncodeAs", "§8.6.1", "artifact="),
+    ("oath/license.go", "evaluationDigest", "§12.4", "subject="),
+    ("oath/mutate.go", "campaignEncode", "§11.2", "artifact="),
 ]
 
 # Literals that are structure rather than content: separators and formatting that
@@ -97,7 +103,7 @@ def main():
     failures, checked = [], 0
 
     print("NORMATIVE SOURCE — every identity byte must be findable in the spec\n")
-    for rel, func, section in ENCODERS:
+    for rel, func, section, subject in ENCODERS:
         code = body(ROOT / rel, func)
         if not code:
             failures.append(f"{rel}: function {func}() not found — re-pin this check rather than dropping it")
@@ -106,6 +112,13 @@ def main():
         if not lits:
             failures.append(f"{rel}:{func}() — no literals extracted; the check is measuring nothing here")
             continue
+        emitted = {l.replace("\\n", "\n").strip("\n") for l in lits}
+        if subject not in emitted:
+            failures.append(
+                f"{rel}:{func}() binds no SUBJECT — it emits no {subject!r} line, so the "
+                f"value it produces does not say what it is an identity OF (§13, "
+                f"IMPL-IDENTITY-SUBJECT)")
+
         missing = []
         for lit in sorted(set(lits)):
             # Compare on the value the encoder actually emits: Go escapes are
@@ -118,7 +131,8 @@ def main():
             if probe not in spec:
                 missing.append(val)
         status = "ok" if not missing else f"{len(missing)} UNSOURCED"
-        print(f"  {section:<8} {rel}:{func}()  {len(set(lits))} literal(s), {status}")
+        subj = "subject ok" if subject in emitted else "NO SUBJECT"
+        print(f"  {section:<8} {rel}:{func}()  {len(set(lits))} literal(s), {status}, {subj}")
         for v in missing:
             failures.append(
                 f"{rel}:{func}() emits {v!r}, which appears nowhere in docs/SPEC.md — "

@@ -768,6 +768,58 @@ shape as every defect these rounds have found — the prose asserting a property
 the encoding does not deliver — so it should be settled in text before anything
 is written.
 
+## Four defect classes, and the limits of the measurement language (2026-07-31)
+
+Four blind rounds against §12 produced four qualitatively different failures, in
+a progression that looks like it generalises beyond this section:
+
+| round | class | what it means |
+|---|---|---|
+| 1 | MISSING MEANING | the document did not say enough to proceed honestly |
+| 2 | HIDDEN NORMATIVE INPUTS | the meaning existed, but lived in fixtures or in the implementation rather than the declared surface |
+| 3 | INTERNAL INCONSISTENCY | enough was communicated to implement, but the document contradicted itself and leaned on undocumented implementation constants |
+| 4 | INCOMPLETELY DEFINED OBJECTS | every field was correct and the encoding still did not say what it identified |
+
+The fourth is the one worth naming, because field-level review cannot see it.
+Nothing was missing from §12.4's list of inputs; the identity simply never
+answered "identity of WHAT?". That became IMPL-IDENTITY-SUBJECT, and
+check-normative-source now asks it of every identity encoder mechanically — the
+review question turned into a column in a table.
+
+### The refusal is transmitted by the process, not by the implementer
+
+The most valuable artifact of round four is not a repair. Facing three
+irreproducible vectors, the implementer identified that both readings satisfied
+the stated rule, verified the alternative reading in a SEPARATE probe, and
+declined to adopt it because doing so would be inference — leaving the vectors
+failing and reporting the gap.
+
+That behaviour was not specific to that subject. It came from §13's definition of
+inference and from the dispatch brief. The original N-version goal was "make an
+independent kernel agree"; this is a different and better one — make an
+independent implementer behave scientifically. The discipline now lives in the
+published specification and the harness rather than in whoever is running.
+
+### The measurement language has limits, and it has hit one
+
+LICENSE-CLOSURE-EXCLUSIVE is unwitnessed and, more importantly, UNWITNESSABLE:
+every vector hands the closure over pre-assembled, so the fixture family can
+express closure EVALUATION and cannot express closure CONSTRUCTION. Half of what
+`policy=composition` means is therefore unmeasured.
+
+This is not a missing test case, and adding cases will never fix it. It is the
+fixture language being unable to state the property — the same situation as an
+implementation language that cannot express an invariant. The honest consequence
+is that "out of scope for this family" must never be reported as equivalent to
+"witnessed": the rule-to-vector matrix distinguishes them for exactly this
+reason, and the distinction is what makes the limitation visible instead of
+comfortable.
+
+The next work on fixtures is therefore about EXPRESSIVENESS rather than coverage.
+A family that could state "this store, this dependency graph, this artifact
+outside the closure" would witness the rule; no number of (assertions, verdict)
+records ever will.
+
 ## The epistemology applied to itself (2026-07-31)
 
 The implementability experiment ended up governed by the same rules as the

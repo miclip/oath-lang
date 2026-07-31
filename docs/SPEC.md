@@ -2859,6 +2859,23 @@ one passes has demonstrated that the FIXTURES are sufficient — which was never
 in question — while saying nothing about the prose. This inverts the usual
 reading of a green suite, deliberately.
 
+**IMPL-IDENTITY-SUBJECT.** Every normative identity MUST explicitly identify its
+SUBJECT — the object the identity is an identity OF. Binding the identity's
+inputs is not sufficient and does not imply it.
+
+The question a review must ask of any identity encoding is not "are all the
+fields bound?" but "identity of WHAT?". Those come apart precisely when the
+subject is implied by context that the encoding does not carry. §12.4 bound a
+method and a multiset of members and never the artifact the evaluation was
+about — so two entry points into one dependency component produced the same
+identity, and every empty closure produced one identity for every possible
+subject. Each field was correct; the encoding still did not say what it
+identified.
+
+The failure is invisible to field-level review because nothing is missing from
+the list of inputs. It is only visible by asking what the resulting value is a
+name for, and then checking that the encoding contains an answer.
+
 **IMPL-NORMATIVE-SOURCE.** Every byte contributing to a normative identity MUST
 have a normative source. A constant, sentinel, separator or key that exists only
 in an implementation makes every value containing it irreproducible from the

@@ -167,6 +167,10 @@ check-implementability:
 # `unpublished` — a value in no document — making two published vectors
 # irreproducible from the normative text. The word was incidental; the defect was
 # the implementation knowing something the specification did not.
+# Also asks IMPL-IDENTITY-SUBJECT of every identity encoder: not "are the fields
+# bound?" but "identity of WHAT?". §12.4 bound a method and a set of members with
+# no subject for months, and every field in it was correct — which is why
+# field-level review could not see it.
 .PHONY: check-normative-source
 check-normative-source:
 	@python3 scripts/check-normative-source.py
