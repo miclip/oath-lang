@@ -401,9 +401,11 @@ func licenseModelBytes() []byte {
 		rows[k] = row{g.Commercial.String(), g.Redistribute.String(), g.Modify.String(),
 			g.PatentGrant.String(), g.ShareAlike.String()}
 	}
+	// No `engine` member: §12.3 LICENSE-MODEL-SCHEMA. The engine is the evaluator,
+	// the model is the lattice it consults — carrying one inside the model's bytes
+	// made engine= and model-digest= non-independent components of one identity.
 	b, err := json.MarshalIndent(map[string]any{
-		"model":  licenseModelVersion,
-		"engine": licenseEngine,
+		"model": licenseModelVersion,
 		"note": "Permissions fold as MINIMUM and obligations as MAXIMUM over NO < UNSTATED < YES (SPEC §12.2). " +
 			"share_alike is the only OBLIGATION dimension here; the rest are permissions. " +
 			"An identifier absent from this table yields all-UNSTATED, which is safe; a wrong entry is not.",
@@ -668,12 +670,30 @@ func vectorModel(v licenseVector) map[string]grants {
 	return m
 }
 
+// triFrom reads one model cell. SPEC §12.3 LICENSE-MODEL-SCHEMA: an absent member
+// or a value outside {YES, NO, UNSTATED} — including one differing only in case —
+// reads UNSTATED. Both permissive alternatives are the NATURAL ones, which is why
+// both had to be stated: defaulting an absent share_alike to NO reports "no
+// reciprocal obligation" about a row that never said so, and case-folding "yes"
+// grants terms nobody wrote.
 func triFrom(s string) tri {
 	switch s {
 	case "YES":
 		return triYes
 	case "NO":
 		return triNo
+	case "UNSTATED":
+		return triUnstated
+	}
+	if !ruleOn("LICENSE-MODEL-SCHEMA") {
+		// MUTATION: be lenient. Case-fold, and read anything unrecognised as a grant.
+		switch strings.ToUpper(strings.TrimSpace(s)) {
+		case "YES", "":
+			return triYes
+		case "NO":
+			return triNo
+		}
+		return triYes
 	}
 	return triUnstated
 }

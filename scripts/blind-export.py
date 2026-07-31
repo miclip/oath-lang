@@ -27,7 +27,7 @@ project, or knowledge carried in from another session. Those are bounded by
 dispatching a fresh agent and by recording the residual risk honestly — not by
 this script, and not by claiming a stronger result than the setup earns.
 
-Usage:  python3 scripts/blind-export.py <sha> <dest-dir>
+Usage:  python3 scripts/blind-export.py [--paths a,b,c] <sha> <dest-dir>
 """
 
 import hashlib
@@ -38,18 +38,33 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# The complete supplied surface. §12 is not self-contained: it cites §8.6.1 for
-# the licence field and its character rules, §8.6.4 for historical verification,
-# and §11 for campaign identity — so the normative document ships whole. Shipping
-# an excerpt would mean hand-selecting which cross-references the subject may
-# resolve, which is itself a form of coaching.
-ALLOW = [
-    "docs/SPEC.md",
-    "fixtures/license/model.json",
-    "fixtures/license/vectors.jsonl",
-    "fixtures/MANIFEST.md",
-    "scripts/license-rule-matrix.py",
-]
+# The supplied surface, in the three kinds §13.1a defines. Anything not in one of
+# these lists is absent by construction.
+#
+# The normative document ships WHOLE. §12 is not self-contained — it cites §8.6.1
+# for the licence field and its character rules, §8.6.4 for historical
+# verification, §8.2.2 for publication identity and §11 for campaign identity —
+# and shipping an excerpt would mean hand-selecting which cross-references the
+# subject may resolve, which is itself a form of coaching.
+PROSE = ["docs/SPEC.md"]
+
+# NORMATIVE DATA: incorporated by reference, schema and interpretation defined in
+# the prose (§13.1b). Part of the specification, so consuming it is derivation.
+DATA = ["fixtures/license/model.json"]
+
+# CONFORMANCE WITNESSES: for the subject to CHECK itself against, never to build
+# from. Supplied because a run that cannot self-check produces a weaker report.
+WITNESSES = ["fixtures/license/vectors.jsonl", "fixtures/MANIFEST.md"]
+
+# DELIBERATELY EXCLUDED, and this is a correction rather than an omission.
+# scripts/license-rule-matrix.py is our COVERAGE MEASUREMENT TOOL — neither prose
+# nor data, but a description of our own intent. Round three's subject disclosed
+# that one of its EXPECTED labels nudged a pre-boundary assumption, so its
+# presence made the surface easier than the specification it was standing in for.
+# A rule taken from tooling is inferred, not derived (§13.1a).
+EXCLUDED = ["scripts/license-rule-matrix.py"]
+
+ALLOW = PROSE + DATA + WITNESSES
 
 # Paths whose PRESENCE invalidates the run. Checked against the produced tree, so
 # this is a verification of the artifact rather than a description of intent.
@@ -105,6 +120,11 @@ def preflight(dest: Path, sha: str) -> list:
         if rel in FORBIDDEN_FILES or rel.startswith(FORBIDDEN_PREFIXES):
             bad.append(f"forbidden path exported: {rel}")
 
+    for rel in rels:
+        if rel in EXCLUDED and rel not in ALLOW:
+            bad.append(f"measurement tooling in dispatch surface: {rel} — neither "
+                       f"normative prose nor normative data (§13.1a)")
+
     allowed = set(ALLOW) | {"MANIFEST.sha256", "BRIEF.md"}
     for rel in rels:
         if rel not in allowed:
@@ -135,10 +155,23 @@ def preflight(dest: Path, sha: str) -> list:
 
 
 def main():
-    if len(sys.argv) != 3:
+    # An optional explicit path list REPRODUCES a historical surface. A claim binds
+    # the bytes that were supplied, and the exporter's allowlist evolves — so
+    # re-exporting an old commit with today's list produces a different surface
+    # than the experiment actually used, and the recomputation would be checking
+    # the wrong thing while looking rigorous.
+    paths = None
+    argv = sys.argv[1:]
+    if len(argv) >= 3 and argv[0] == "--paths":
+        paths = [p for p in argv[1].split(",") if p]
+        argv = argv[2:]
+    if len(argv) != 2:
         print(__doc__.strip().split("Usage:")[-1].strip())
         return 2
-    sha, dest = sys.argv[1], Path(sys.argv[2]).resolve()
+    sha, dest = argv[0], Path(argv[1]).resolve()
+    global ALLOW
+    if paths is not None:
+        ALLOW = paths
 
     full = sh("git", "rev-parse", sha).stdout.strip()
     if not full:
@@ -174,8 +207,17 @@ def main():
         f"There is no reference implementation here and none is reachable.\n\n"
         f"`MANIFEST.sha256` lists every supplied file with its SHA-256, so the inputs\n"
         f"you worked from can be verified after the fact.\n\n"
-        f"Files:\n" + "".join(f"- `{p.relative_to(dest).as_posix()}`\n" for p in files
-                              if p.name != "BRIEF.md") + "\n")
+        f"## What each supplied file IS\n\n"
+        f"This distinction is load-bearing. Consuming normative data is DERIVATION;\n"
+        f"reading a rule out of a witness is INFERENCE.\n\n"
+        f"NORMATIVE PROSE — the specification itself:\n"
+        + "".join(f"- `{f}`\n" for f in PROSE) +
+        f"\nNORMATIVE DATA — incorporated by reference; schema and interpretation are\n"
+        f"defined in the prose, so you may consume these as specification:\n"
+        + "".join(f"- `{f}`\n" for f in DATA) +
+        f"\nCONFORMANCE WITNESSES — check yourself against these, but do NOT read rules\n"
+        f"out of them. A rule obtained from a fixture is inferred, not derived:\n"
+        + "".join(f"- `{f}`\n" for f in WITNESSES) + "\n")
 
     bad = preflight(dest, full)
     print(f"exported {len(files)} file(s) from {full[:12]} to {dest}")

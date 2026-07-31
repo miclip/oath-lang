@@ -1112,7 +1112,33 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		return err
 	}
 
-	// IDENTITY vectors:	// IDENTITY vectors: the digest must bind method and inputs, and must not depend on
+	// MODEL SCHEMA. A row with a MISSING dimension and an out-of-vocabulary value.
+	// Both read UNSTATED; the lenient readings (absent obligation = NO, "yes" =
+	// YES) are the natural ones, and both grant terms nobody wrote.
+	sloppyModel := map[string]map[string]string{
+		"Sloppy-1.0": {"commercial": "yes", "redistribute": "YES", "modify": "YES",
+			"patent_grant": "UNSTATED"}, // share_alike absent; commercial wrong case
+	}
+	sm := map[string]grants{}
+	for k, r := range sloppyModel {
+		sm[k] = grants{triFrom(r["commercial"]), triFrom(r["redistribute"]), triFrom(r["modify"]),
+			triFrom(r["patent_grant"]), triFrom(r["share_alike"])}
+	}
+	if g := evalFromAssertionsIn(sm, []string{"Sloppy-1.0"}); g.Commercial != triUnstated || g.ShareAlike != triUnstated {
+		return fmt.Errorf("a malformed model row was read leniently (commercial=%s share_alike=%s); an absent or out-of-vocabulary cell must read UNSTATED",
+			g.Commercial, g.ShareAlike)
+	}
+	if err := emit(map[string]any{"kind": "evaluation",
+		"label": "a malformed model row grants nothing",
+		"witnesses": "LICENSE-MODEL-SCHEMA", "policy": licensePolicyComposition,
+		"engine": licenseEngine, "model": licenseModelVersion,
+		"model_licenses": sloppyModel, "assertions": []string{"Sloppy-1.0"},
+		"expect": map[string]string{"commercial": "UNSTATED", "redistribute": "YES",
+			"modify": "YES", "patent_grant": "UNSTATED", "share_alike": "UNSTATED"}}); err != nil {
+		return err
+	}
+
+	// IDENTITY vectors: the digest must bind method and inputs, and must not depend on
 	// order. Without these, changing the lattice next year would silently reinterpret
 	// every historical verdict.
 	// Members are ARTIFACT HASHES (§12.4 LICENSE-IDENTITY-ARTIFACT). Fixed literals

@@ -2507,6 +2507,40 @@ belongs to the consumer.
 A model MAY contain any set of identifiers. A missing entry is safe: it yields
 `UNSTATED`. A wrong entry is not, because it yields a confident falsehood.
 
+**LICENSE-MODEL-SCHEMA.** The published model is a JSON object with exactly
+these members:
+
+| member | type | meaning |
+|---|---|---|
+| `model` | string | the model version bound as `model=` by §12.4 |
+| `note` | string | informational; carries no normative weight |
+| `licenses` | object | identifier → row |
+
+A ROW is a JSON object with exactly the five dimension members of §12.1 —
+`commercial`, `redistribute`, `modify`, `patent_grant`, `share_alike` — each
+whose value is exactly one of the strings `YES`, `NO`, `UNSTATED`.
+
+An implementation MUST treat as `UNSTATED`, for that dimension:
+
+- a row member that is absent;
+- a value outside `{YES, NO, UNSTATED}`, including one differing only in case.
+
+Both are safe by the argument §12.3 already makes — a missing entry yields
+`UNSTATED`, a wrong entry yields a confident falsehood — and BOTH readings had to
+be stated, because the permissive alternatives are the natural ones. Defaulting
+an absent `share_alike` to `NO` reports "no reciprocal obligation" about a row
+that never said so, and case-folding `"yes"` to `YES` grants terms nobody wrote.
+
+The model MUST NOT carry an `engine` member. The engine is the evaluator and the
+model is the lattice it consults (§12.3, LICENSE-ENGINE-DEFINED); carrying one
+inside the model's bytes made `engine=` and `model-digest=` non-independent
+components of the same identity.
+
+> None of this was specified. A blind implementation could read the supplied
+> file but could not know its shape was fixed, what an out-of-vocabulary value
+> meant, or which member was the version — so a schema change would silently
+> break every independent implementation while every gate stayed green.
+
 **LICENSE-MODEL-PUBLISHED.** The model is NOT part of this specification, and
 this section deliberately does not fix its contents: a lattice mapping
 identifiers to grants is a policy artifact with legal consequence, it is
@@ -2790,6 +2824,70 @@ been identical. What went wrong was that the IMPLEMENTATION KNEW SOMETHING THE
 SPECIFICATION DID NOT, and an identity encoding is the one place where that is
 fatal rather than untidy, because every byte of it is load-bearing for a value
 others must reproduce exactly.
+
+### 13.1a The normative surface
+
+A specification is not only prose. Real protocols incorporate grammars,
+registries, Unicode tables, opcode assignments — data that determines behaviour
+and lives outside the sentences. This document does the same, and the
+implementability measurement is only well defined once the boundary is explicit.
+
+Material divides into three kinds, and conflating any two makes a verdict
+meaningless:
+
+| kind | what it is | may an implementation consume it? |
+|---|---|---|
+| NORMATIVE PROSE | algorithms, semantics, identities, obligations | yes — it is the specification |
+| NORMATIVE DATA | versioned artifacts this document incorporates BY REFERENCE, whose schema and interpretation it defines | yes — it is part of the specification |
+| CONFORMANCE WITNESSES | fixtures that demonstrate the rules, and tooling that measures coverage | for SELF-CHECKING only; never as a source of rules |
+
+**IMPL-NORMATIVE-DATA.** An implementation MAY consume any artifact whose SCHEMA
+and INTERPRETATION are normatively defined by this document. It MUST NOT infer
+either. An artifact incorporated by reference without its schema specified is not
+normative data — it is a fixture the prose gestures at, and reading rules out of
+it is inference (§13.2).
+
+**IMPL-SURFACE-DECLARED.** The normative surface is the union of this document
+and the NORMATIVE DATA listed in §13.1b — not "whatever files a particular export
+happened to contain". A `surface_digest` covering more than the declared surface
+measures a different and easier experiment than the one being claimed.
+
+> The distinction matters in the permissive direction. Round three's subject
+> disclosed that a coverage-measuring SCRIPT, supplied in its dispatch surface,
+> carried a label that nudged one of its pre-boundary assumptions. That script is
+> neither prose nor data — it is our measurement apparatus, describing our
+> intent — so a rule taken from it is inferred, not derived, and its presence
+> made the surface easier than the specification. Witnesses and tooling are for
+> checking an implementation, never for building one.
+
+### 13.1b Normative inputs
+
+The following artifacts form part of this specification. Each is incorporated by
+reference, versioned, and has its schema and interpretation defined in the
+section named:
+
+| artifact | schema and interpretation | version binding |
+|---|---|---|
+| `fixtures/license/model.json` | §12.3 (LICENSE-MODEL-SCHEMA, LICENSE-MODEL-PUBLISHED) | `model` member; bound into every evaluation identity as `model=` and `model-digest=` (§12.4) |
+
+The following are CONFORMANCE WITNESSES ONLY. They demonstrate the rules and a
+candidate implementation may check itself against them, but they define nothing
+and no rule may be read out of them:
+
+| artifact | witnesses |
+|---|---|
+| `fixtures/license/vectors.jsonl` | §12 |
+| `fixtures/envelope/vectors.jsonl` | §8.6 |
+| `fixtures/campaign/vectors.txt` | §11 |
+| `fixtures/canonical/`, `fixtures/encoding/` | §1 identity encoding |
+| `fixtures/verify/`, `fixtures/analyses/`, `fixtures/prove/`, `fixtures/gate/` | §2–§7 verdicts |
+| `scripts/license-rule-matrix.py` | coverage measurement; NOT part of any dispatch surface |
+
+**IMPL-DATA-SUPERSEDED.** Normative data is versioned, never edited in place. A
+future `model-v2.json` does not invalidate earlier evaluations: their identities
+name the artifact they consumed, by version and by content digest, so old
+evaluations stay reproducible while new ones bind the new artifact. This is
+§11's campaign-identity discipline applied to the specification's own inputs.
 
 ### 13.2 The three verdicts
 

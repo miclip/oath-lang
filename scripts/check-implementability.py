@@ -35,6 +35,7 @@ published-model rule fixed one layer down.
 """
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -45,15 +46,27 @@ ROOT = Path(__file__).resolve().parent.parent
 VERDICTS = {"PASS", "PASS-WITH-INFERENCE", "FAIL"}
 REQUIRED = ["round", "date", "sections", "source", "verdict", "inferred",
             "contamination", "evidence", "implementer_statement"]
+# A bound claim must also record WHICH FILES were supplied. Without it the digest
+# can only be reproduced by whatever the exporter happens to ship today.
+REQUIRED_IF_BOUND = ["supplied"]
 
 
-def recompute_surface(source: str) -> str | None:
-    """Re-export the pinned commit and return its surface digest, or None."""
+def recompute_surface(source: str, supplied=None) -> str | None:
+    """Re-export the pinned commit and return its surface digest, or None.
+
+    `supplied` is the file list the claim RECORDS. Reproducing with it rather than
+    with the exporter's current allowlist is what makes a historical claim stay
+    checkable: the allowlist evolves — a measurement script was removed from it
+    after round three — and re-exporting with today's list would silently compute
+    a surface the experiment never used.
+    """
     tmp = Path(tempfile.mkdtemp(prefix="oath-implcheck-"))
     try:
-        r = subprocess.run([sys.executable, str(ROOT / "scripts" / "blind-export.py"),
-                            source, str(tmp / "root")],
-                           capture_output=True, text=True, cwd=ROOT)
+        cmd = [sys.executable, str(ROOT / "scripts" / "blind-export.py")]
+        if supplied:
+            cmd += ["--paths", ",".join(supplied)]
+        cmd += [source, str(tmp / "root")]
+        r = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
         if r.returncode != 0:
             return None
         for line in r.stdout.splitlines():
@@ -62,6 +75,28 @@ def recompute_surface(source: str) -> str | None:
         return None
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def surface_declaration():
+    """The NORMATIVE DATA §13.1b declares, and what blind-export actually ships.
+
+    These must agree. §13's IMPL-SURFACE-DECLARED says the normative surface is
+    the document plus the declared data — not whatever a particular export
+    contained — so a declaration that can drift from the exporter reintroduces
+    exactly the prose-vs-artifact gap this project keeps finding. Parsed from the
+    table rather than restated here, so this check cannot agree with itself.
+    """
+    spec = (ROOT / "docs" / "SPEC.md").read_text()
+    i = spec.index("### 13.1b")
+    j = spec.index("**IMPL-DATA-SUPERSEDED", i)
+    sec = spec[i:j]
+    witness_at = sec.index("CONFORMANCE WITNESSES ONLY")
+    declared = set(re.findall(r"`(fixtures/[^`]+|scripts/[^`]+)`", sec[:witness_at]))
+
+    exporter = (ROOT / "scripts" / "blind-export.py").read_text()
+    m = re.search(r"^DATA = \[(.*?)\]", exporter, re.S | re.M)
+    shipped = set(re.findall(r'"([^"]+)"', m.group(1))) if m else set()
+    return declared, shipped
 
 
 def main():
@@ -74,6 +109,20 @@ def main():
 
     failures = []
     print(f"INDEPENDENT IMPLEMENTABILITY — SPEC §13\n")
+
+    declared, shipped = surface_declaration()
+    if not declared:
+        failures.append("§13.1b declares no normative data — either the table moved or this "
+                        "check stopped matching it; re-pin rather than dropping it")
+    for f in sorted(declared - shipped):
+        failures.append(f"§13.1b declares {f} as NORMATIVE DATA but blind-export does not ship it — "
+                        f"a subject would be asked to derive from an artifact it was never given")
+    for f in sorted(shipped - declared):
+        failures.append(f"blind-export ships {f} as normative data but §13.1b does not declare it — "
+                        f"the measured surface is larger than the specified one")
+    print(f"  normative data: {len(declared)} declared, {len(shipped)} shipped"
+          + ("  ✓ agree" if declared == shipped else "  ✗ DISAGREE"))
+    print()
     print(f"  {len(rounds)} recorded run(s)\n")
 
     seen = set()
@@ -112,6 +161,12 @@ def main():
 
         # §13.3 IMPL-SURFACE-BOUND — the machine-checkable half.
         src, sd = r.get("source"), r.get("surface_digest")
+        if sd is not None:
+            for f in REQUIRED_IF_BOUND:
+                if not r.get(f):
+                    failures.append(f"round {n}: bound claim without `{f}` — the digest could only "
+                                    f"be reproduced by the exporter's current allowlist, not by the "
+                                    f"surface actually supplied")
         if sd is None:
             note = (r.get("surface_note") or "").strip()
             if not note:
@@ -120,7 +175,7 @@ def main():
                     f"must say WHY it is unbound (§13.3)")
             status = "UNBOUND (see surface_note)"
         else:
-            got = recompute_surface(src)
+            got = recompute_surface(src, r.get("supplied"))
             if got is None:
                 status = f"UNVERIFIABLE — cannot export {src[:12]} from this checkout"
                 failures.append(f"round {n}: surface_digest recorded but {src[:12]} could not be exported")

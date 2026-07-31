@@ -83,6 +83,7 @@ EXPECTED = {
     "LICENSE-LOOKUP-PRECEDENCE": "a compound is not resolved even when its operand is modelled",
     "LICENSE-POLICY-DEFINED": "an unrecognised policy is a different evaluation",
     "LICENSE-INPUT-COMPLETE": "a member asserting nothing still contributes an input pair",
+    "LICENSE-MODEL-SCHEMA": "a malformed model row grants nothing",
     "LICENSE-ENGINE-DEFINED": "changing the engine changes the evaluation",
     "LICENSE-PUBLICATION-SENTINEL": "an undeterminable publication encodes the sentinel",
     "LICENSE-IDENTITY-ARTIFACT": "renaming members does not change the evaluation",

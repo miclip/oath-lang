@@ -58,7 +58,14 @@
         "the subject wrote one file to the parent directory by mistake, moved it back, and ran `ls` there, seeing only `scratchpad` and `tasks`; no project content was exposed"
       ],
       "evidence": "docs/experiments/blind-license-evaluation.md",
-      "implementer_statement": "The claim under test \u2014 reproducible without inference \u2014 does not hold, principally because the `policy` field is a required component of a normative digest with no definition anywhere in the document."
+      "implementer_statement": "The claim under test \u2014 reproducible without inference \u2014 does not hold, principally because the `policy` field is a required component of a normative digest with no definition anywhere in the document.",
+      "supplied": [
+        "docs/SPEC.md",
+        "fixtures/license/model.json",
+        "fixtures/license/vectors.jsonl",
+        "fixtures/MANIFEST.md",
+        "scripts/license-rule-matrix.py"
+      ]
     },
     {
       "round": 3,
@@ -90,7 +97,14 @@
       "evidence": "docs/experiments/blind-license-evaluation.md",
       "implementer_statement": "A working implementation exists and reproduces 23 of 25 vectors on its first run. But several encoding details were not determined by the prose, and two fixtures are not reproducible from the specification at all.",
       "constructive": true,
-      "constructive_note": "On failing to reproduce two published fixtures the implementer searched over 160,000 candidate encodings, declined to infer the missing sentinel, and reported the fixtures as irreproducible rather than adjusting until they matched. 23/25 carrying that refusal is stronger evidence than 25/25 obtained by adaptation: it is the first round demonstrating resistance to teaching-to-the-test, and it is what exposed an undocumented constant in the reference."
+      "constructive_note": "On failing to reproduce two published fixtures the implementer searched over 160,000 candidate encodings, declined to infer the missing sentinel, and reported the fixtures as irreproducible rather than adjusting until they matched. 23/25 carrying that refusal is stronger evidence than 25/25 obtained by adaptation: it is the first round demonstrating resistance to teaching-to-the-test, and it is what exposed an undocumented constant in the reference.",
+      "supplied": [
+        "docs/SPEC.md",
+        "fixtures/license/model.json",
+        "fixtures/license/vectors.jsonl",
+        "fixtures/MANIFEST.md",
+        "scripts/license-rule-matrix.py"
+      ]
     }
   ]
 }
