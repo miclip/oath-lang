@@ -687,6 +687,87 @@ This is the same separation that keeps paying out across the project — identit
 vs publication, publisher assertion vs registry derivation, authorship vs
 custody, implementation vs evidence — rather than a new principle.
 
+## Two review disciplines the blind rounds produced (2026-07-31)
+
+Neither is about licensing. Both came out of §12 and both generalise to any
+specification work here.
+
+### Search the class, not the occurrence
+
+When a blind round names a defect, the follow-up must not be "fix this
+occurrence". It must be "search the entire normative surface for siblings".
+
+Round two found `policy` was a required component of a normative identity with
+no vocabulary, no default and no stated source. It was repaired. Round three
+found `engine` — one line above, in the same encoding, with the identical
+defect. Nobody had looked. Fixing one instance of a defect class without
+searching for the rest is how the class survives, and a checklist derived from
+the first instance will not find the second because it was written from the
+first.
+
+The mechanical half of this one is now `check-normative-source`, which asserts
+every literal in every identity encoder appears in the spec — the general form of
+the undocumented-`unpublished` defect. Building it immediately found that the
+gate itself was under-measuring: it understood `WriteString` but not `Fprintf`,
+so seven of `campaignEncode`'s eight keys were unchecked while it reported "ok".
+The discipline applies to the tools that enforce it.
+
+### Copy the reason, not the rule
+
+Three rounds in a row, §12 inherited the LETTER of a rule from §8.6.1 or §11.2
+without its RATIONALE:
+
+- §8.6.1 excluded control characters from envelope values because an embedded LF
+  injects a line. §12.4 got the character rule later, and only after a
+  demonstrated forgery.
+- §8.2.1 escapes U+2028/U+2029 BY NAME because a Unicode-aware line splitter
+  treats them as line terminators. §12.4's exclusion was phrased in terms of
+  `0x20`/`0x7F`, which admits both — the same forgery, one code point up.
+- §11.2 hashes the waiver SET rather than a waiver-set version, so the content
+  cannot change beneath a fixed name. §12.4 bound `model=<version string>` and
+  let the lattice be edited under it.
+
+Reviewing an inherited rule by asking "did we copy the rule?" passes every one of
+these. Asking "did we copy the REASON this rule exists?" fails all three
+immediately. The second question is the one to ask, because a rule transplanted
+without its rationale is re-derived by the next reader from its wording alone —
+and its wording is exactly what was tuned to the original hazard.
+
+## OPEN: what an evaluation is over (2026-07-31)
+
+DESIGN ONLY — no code, deliberately. Raised by round three and not patched,
+because it decides what a licence evaluation IS rather than fixing an omission.
+
+§12.4 binds `input-publication` (an entry digest) beside `input-license` (an
+expression), and nothing requires the second to be what the first actually
+asserted. A registry can name a real publication next to a false expression; the
+identity verifies perfectly on any conformant kernel and reports whatever grant
+it likes. The digest proves the registry hashed what it said it hashed. It does
+not prove those were the publishers' terms.
+
+Two models, and they are not equivalent:
+
+**A — the evaluation is over CLAIMED TERMS.** The triple is what the evaluator
+consumed, self-attested. The digest makes an evaluation reproducible and
+comparable; whether the inputs were faithful is a separate audit against the
+journal. Cheap, local, and honest about what it proves — but "whose grant" is
+then a reference the identity never checks.
+
+**B — the evaluation is over CONTAINED TERMS.** `input-license` MUST equal the
+`license` field inside the envelope whose entry digest is `input-publication`,
+and an evaluation that cannot demonstrate that is not conformant. This makes the
+publication binding mean what §12.4's prose already claims it means — but it
+requires the evaluator to read the journal, turns evaluation into a verification
+of publication history, and raises what a conformant kernel does when the
+referenced entry is unavailable.
+
+The tell that this is unresolved rather than merely unimplemented: §12.4 argues
+that binding the publication captures "whose grant is being relied on", which is
+model B's claim, while the encoding implements model A. That gap is the same
+shape as every defect these rounds have found — the prose asserting a property
+the encoding does not deliver — so it should be settled in text before anything
+is written.
+
 ## Independent implementability as a measured property (2026-07-30)
 
 Conformance testing asks whether an implementation agrees with the vectors.

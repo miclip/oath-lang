@@ -82,6 +82,13 @@ jobs:
       - name: independent-implementability ledger (SPEC §13)
         run: make check-implementability
 
+      # Every byte of a normative identity must have a normative source. A
+      # constant living only in the reference makes the vectors containing it
+      # irreproducible from the spec — indistinguishable, to a blind reader, from
+      # a specification that cannot be implemented.
+      - name: identity constants are findable in the spec (SPEC §13)
+        run: make check-normative-source
+
       - name: website proof ledger matches canonical fixtures (#30)
         # The site claims its numbers are read live from the machine's ledger.
         # Fail if website/lib/outcomes.json has drifted from fixtures/.

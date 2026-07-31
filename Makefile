@@ -162,6 +162,15 @@ blind-export:
 check-implementability:
 	@python3 scripts/check-implementability.py
 
+# SPEC §13 IMPL-NORMATIVE-SOURCE. Every literal in every identity encoder must be
+# findable in the spec. The kernel once encoded an undeterminable publication as
+# `unpublished` — a value in no document — making two published vectors
+# irreproducible from the normative text. The word was incidental; the defect was
+# the implementation knowing something the specification did not.
+.PHONY: check-normative-source
+check-normative-source:
+	@python3 scripts/check-normative-source.py
+
 # License evaluation coverage, measured the same way: disable each rule, re-run.
 # Rule-to-vector matrix: does every NORMATIVE rule have a witnessing vector? The
 # opposite check from license-score, which asks whether disabling an implementation

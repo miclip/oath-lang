@@ -134,11 +134,18 @@ def main():
                 status = f"verified {sd[:16]}…"
                 verified += 1
 
+        # §13.2 IMPL-CONSTRUCTIVE-FAILURE. Surfaced in the report because a lower
+        # vector count carrying a refusal to infer is a BETTER result than a
+        # higher one obtained by adaptation, and nothing else in the output says so.
+        if r.get("constructive") and not (r.get("constructive_note") or "").strip():
+            failures.append(f"round {n}: marked constructive with no note saying what was refused (§13.2)")
+
         infn = len(r.get("inferred") or [])
         print(f"  round {n}  {v:<20} vectors {r.get('vectors','—'):<7} "
               f"§{','.join(r.get('sections', []))}")
         print(f"    surface: {status}")
-        print(f"    {infn} inferred rule(s), {len(r.get('contamination') or [])} contamination note(s)")
+        print(f"    {infn} inferred rule(s), {len(r.get('contamination') or [])} contamination note(s)"
+              + ("  [CONSTRUCTIVE: refused to infer]" if r.get("constructive") else ""))
 
     print()
     if failures:

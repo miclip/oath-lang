@@ -88,7 +88,9 @@
         "the subject read scripts/license-rule-matrix.py before the vector boundary (it is a named input) and discloses that its EXPECTED label for LICENSE-POLICY-DEFINED influenced one pre-boundary assumption"
       ],
       "evidence": "docs/experiments/blind-license-evaluation.md",
-      "implementer_statement": "A working implementation exists and reproduces 23 of 25 vectors on its first run. But several encoding details were not determined by the prose, and two fixtures are not reproducible from the specification at all."
+      "implementer_statement": "A working implementation exists and reproduces 23 of 25 vectors on its first run. But several encoding details were not determined by the prose, and two fixtures are not reproducible from the specification at all.",
+      "constructive": true,
+      "constructive_note": "On failing to reproduce two published fixtures the implementer searched over 160,000 candidate encodings, declined to infer the missing sentinel, and reported the fixtures as irreproducible rather than adjusting until they matched. 23/25 carrying that refusal is stronger evidence than 25/25 obtained by adaptation: it is the first round demonstrating resistance to teaching-to-the-test, and it is what exposed an undocumented constant in the reference."
     }
   ]
 }

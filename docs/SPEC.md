@@ -2777,6 +2777,20 @@ one passes has demonstrated that the FIXTURES are sufficient — which was never
 in question — while saying nothing about the prose. This inverts the usual
 reading of a green suite, deliberately.
 
+**IMPL-NORMATIVE-SOURCE.** Every byte contributing to a normative identity MUST
+have a normative source. A constant, sentinel, separator or key that exists only
+in an implementation makes every value containing it irreproducible from the
+specification — and to a blind reader that is indistinguishable from a
+specification which cannot be implemented at all.
+
+This is stated as a general obligation because the defect is not tied to any one
+value. A reference kernel encoded an undeterminable publication as the literal
+`unpublished`; had the constant been `none` or `missing` the defect would have
+been identical. What went wrong was that the IMPLEMENTATION KNEW SOMETHING THE
+SPECIFICATION DID NOT, and an identity encoding is the one place where that is
+fatal rather than untidy, because every byte of it is load-bearing for a value
+others must reproduce exactly.
+
 ### 13.2 The three verdicts
 
 | verdict | meaning |
@@ -2797,6 +2811,18 @@ The distinction is about the ORDER OF DISCOVERY, not the final correctness. A
 rule that happens to be right is still inferred if the document did not
 determine it — and it is exactly those rules that a second independent
 implementer may get differently.
+
+**IMPL-CONSTRUCTIVE-FAILURE.** A run MAY be annotated CONSTRUCTIVE when the
+implementer, on failing to reproduce a published fixture, declined to infer the
+missing rule and reported the fixture as irreproducible instead of adjusting the
+implementation until it matched.
+
+The annotation records something a score cannot. A suite passed by adaptation
+demonstrates that the fixtures are reachable; a suite deliberately LEFT FAILING,
+with the gap reported, demonstrates that the specification was insufficient AND
+that the measurement resisted teaching-to-the-test. The second is stronger
+evidence, and a lower vector count carrying it is a better result than a higher
+one without.
 
 **IMPL-VERDICT-BY-SUBJECT.** The verdict is reported by the implementer, not by
 the specification's authors. An author is the one party who cannot measure this,
