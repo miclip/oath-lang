@@ -68,15 +68,68 @@ jobs:
       - name: resolve image ref
         run: echo "IMAGE=${REGION}-docker.pkg.dev/${PROJECT}/${AR_REPO}/oath:${GITHUB_SHA}" >> "$GITHUB_ENV"
 
+      # --- Cutover custody. docs/deploy-delta.md Phase A steps 1-2.
+      # The live journal is the state this deploy changes, and the smoke test below
+      # only proves the endpoint serves. Snapshot BEFORE apply, verify the snapshot
+      # with the NEW checker, and refuse to deploy over a journal that is already
+      # inconsistent — otherwise a pre-existing defect gets attributed to this
+      # deploy and the baseline comparison afterwards is meaningless.
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: snapshot the live journal (pre-deploy)
+        id: presnap
+        working-directory: terraform
+        run: |
+          # Read the bucket from STATE rather than reconstructing the name. The
+          # name embeds var.name_prefix, and guessing its default would silently
+          # snapshot the wrong bucket (or nothing) on any non-default deployment —
+          # producing a green custody check over a journal that is not the live one.
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="prefix=${AR_REPO}/state"
+          BUCKET="$(terraform output -raw store_bucket 2>/dev/null || true)"
+          if [ -z "$BUCKET" ]; then
+            echo "::warning::no store_bucket in terraform state — treating as a FIRST deploy."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "BUCKET=$BUCKET" >> "$GITHUB_ENV"
+          mkdir -p ../.cutover
+          if gcloud storage cp "gs://$BUCKET/log.jsonl" ../.cutover/pre-deploy.jsonl 2>/tmp/cp.err; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "snapshotted $(wc -l < ../.cutover/pre-deploy.jsonl) entries from gs://$BUCKET/log.jsonl"
+          elif ! gcloud storage ls "gs://$BUCKET/" >/dev/null 2>&1; then
+            # CANNOT READ THE BUCKET. This is NOT a first deploy, and the two must
+            # not be conflated: one means there is no history to protect, the
+            # other means there may be history we cannot see. Deploying blind over
+            # a journal we lack custody of is the situation this whole step exists
+            # to prevent, so fail rather than warn.
+            echo "::error::cannot list gs://$BUCKET — the deployer service account may lack"
+            echo "storage read on the store bucket. Refusing to deploy without custody of the"
+            echo "live journal. Grant roles/storage.objectViewer to the deployer SA, or"
+            echo "confirm the bucket is genuinely absent."
+            cat /tmp/cp.err || true
+            exit 1
+          else
+            # Bucket readable, no journal in it: a genuine FIRST deploy. Not a
+            # silent pass — say so, and record that no baseline exists for the
+            # post-deploy comparison.
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::gs://$BUCKET is readable but contains no log.jsonl — treating"
+            echo "as a FIRST deploy. If this registry has served before, the store has moved."
+          fi
+
+      - name: verify the pre-deploy snapshot with the new checker
+        if: steps.presnap.outputs.exists == 'true'
+        run: python3 scripts/cutover-check.py .cutover/pre-deploy.jsonl
+
       - name: build + push image
         run: |
           gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
           docker build -t "$IMAGE" .
           docker push "$IMAGE"
 
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
 
       - name: terraform apply
         working-directory: terraform
@@ -108,6 +161,29 @@ jobs:
           done
           echo "::error::registry did not return the expected 405 from /mcp after deploy"
           exit 1
+
+      # --- Cutover custody. docs/deploy-delta.md Phase A step 5.
+      # The smoke test above proves the endpoint SERVES. It says nothing about
+      # whether the new binary reinterpreted history it did not write, which is
+      # the actual risk of this cutover. Re-snapshot and diff against the
+      # pre-deploy baseline: existing entries must be byte-identical and none may
+      # have disappeared.
+      - name: verify history is unchanged (post-deploy vs baseline)
+        if: steps.presnap.outputs.exists == 'true'
+        run: |
+          gcloud storage cp "gs://$BUCKET/log.jsonl" .cutover/post-deploy.jsonl
+          python3 scripts/cutover-check.py .cutover/post-deploy.jsonl .cutover/pre-deploy.jsonl
+
+      # Evidence retention. Both snapshots are kept whether the deploy passed or
+      # failed — a failed cutover is exactly when the before/after pair is needed,
+      # and reconstructing it afterwards is impossible.
+      - name: retain cutover snapshots
+        if: always() && steps.presnap.outputs.exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cutover-snapshots-${{ github.sha }}
+          path: .cutover/
+          retention-days: 90
 
       - name: report endpoint
         working-directory: terraform

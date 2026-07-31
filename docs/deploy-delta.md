@@ -101,21 +101,37 @@ caution — it is where reversibility actually ends.
 
 ### Phase A — REVERSIBLE (deploy + read-only)
 
-1. **Snapshot** the live journal and current name pointers. This is the operational
-   custody step and everything below depends on it.
-2. **Verify the snapshot with the NEW binary** before deploying:
-   `python3 scripts/cutover-check.py <snapshot>` — requires every entry to
-   re-encode byte-identically, the chain intact, no partial signature set, and no
-   unsigned entry claiming a revision. Then `oath audit` against the same
-   snapshot: chain intact, zero signature mismatches, legacy revision state
-   reported UNAVAILABLE rather than fabricated.
-3. **Deploy the new binary. Publish nothing.**
-4. **Read-only smoke checks:** `explain` on existing names still reports unsigned
-   and licensing `UNSTATED`; ownership and revision counts unchanged; no existing
-   entry reinterpreted as signed; live journal audit still passes.
-5. **Re-run the cutover check with the pre-deploy snapshot as BASELINE:**
-   `cutover-check.py <post-deploy> <pre-deploy>` — existing entries must be
-   unchanged and nothing may have disappeared.
+**Steps 1, 2 and 5 are now ENFORCED BY `deploy.yml`** rather than performed by
+hand. The workflow reads the bucket from terraform state, snapshots the journal
+before `terraform apply`, verifies it, and re-verifies against that baseline
+after the smoke test. Both snapshots upload as a 90-day artifact whether the
+deploy succeeded or failed — a failed cutover is exactly when the before/after
+pair is needed, and it cannot be reconstructed later.
+
+1. **Snapshot** the live journal before apply. *(automated)* The bucket is read
+   from `terraform output store_bucket`, never reconstructed from a name prefix:
+   guessing the prefix would silently snapshot the wrong bucket and produce a
+   green custody check over a journal that is not the live one.
+2. **Verify the snapshot** with `cutover-check.py`. *(automated, blocking)* Every
+   entry must re-encode byte-identically, the chain must be intact, no signature
+   set may be partial, no unsigned entry may claim a revision. A journal that is
+   ALREADY inconsistent blocks the deploy — otherwise a pre-existing defect gets
+   attributed to this cutover and the baseline comparison means nothing.
+3. **Deploy the new binary. Publish nothing.** *(automated)*
+4. **Read-only smoke checks.** *(manual)* `explain` on existing names still
+   reports unsigned and licensing `UNSTATED`; ownership and revision counts
+   unchanged; no existing entry reinterpreted as signed.
+5. **Baseline comparison.** *(automated, blocking)* `cutover-check.py
+   <post-deploy> <pre-deploy>` — existing entries byte-identical, nothing
+   disappeared. The pre-existing smoke test proves the endpoint SERVES; it says
+   nothing about whether history was reinterpreted, which is this cutover's
+   actual risk.
+
+**A permissions failure is not a first deploy.** The workflow distinguishes them:
+a readable bucket with no `log.jsonl` is a genuine first deploy and warns; a
+bucket it cannot list FAILS the deploy. Conflating them would let a missing IAM
+grant read as "no history to protect" and deploy blind over a journal nobody
+could see.
 
 **GO / NO-GO GATE.** Phase A completing cleanly is its own decision point. Do not
 proceed to B on the same authorisation.
