@@ -77,6 +77,7 @@ def main():
     print(f"  {len(rounds)} recorded run(s)\n")
 
     seen = set()
+    verified = 0
     for r in rounds:
         n = r.get("round", "?")
         for f in REQUIRED:
@@ -131,6 +132,7 @@ def main():
                     f"longer exists")
             else:
                 status = f"verified {sd[:16]}…"
+                verified += 1
 
         infn = len(r.get("inferred") or [])
         print(f"  round {n}  {v:<20} vectors {r.get('vectors','—'):<7} "
@@ -145,9 +147,19 @@ def main():
             print(f"  {f}")
         return 1
 
+    # A gate that verified nothing must not be the reason CI is green. Every round
+    # being UNBOUND is a legitimate ledger state exactly once — before the export
+    # harness existed — and never again, so it is reported as a failure rather than
+    # allowed to pass silently.
+    if verified == 0:
+        print("IMPLEMENTABILITY LEDGER: FAIL — no claim's surface digest could be verified")
+        print("  Every recorded round is unbound or unverifiable, so this check confirmed")
+        print("  nothing. A check that quietly matches nothing is worse than no check.")
+        return 1
+
     best = [r for r in rounds if r.get("verdict") == "PASS"]
-    print("IMPLEMENTABILITY LEDGER: PASS — every claim is structurally sound and every")
-    print("bound surface digest reproduces from its source commit.")
+    print(f"IMPLEMENTABILITY LEDGER: PASS — every claim is structurally sound and all")
+    print(f"{verified} bound surface digest(s) reproduce from their source commits.")
     if not best:
         print()
         print("  NOTE: no run has yet reached §13's PASS. Every recorded attempt produced a")

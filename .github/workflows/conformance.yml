@@ -25,6 +25,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # SPEC §13 binds each implementability claim to a surface digest that is
+          # RECOMPUTED by re-exporting the recorded source commit. A shallow clone
+          # cannot reach historical commits, so the check could not run at all —
+          # and a check that cannot run must not be the reason CI is green.
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
