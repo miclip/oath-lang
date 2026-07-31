@@ -24,6 +24,10 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
    DERIVED claim with legal consequence, so the direction that matters is FALSE
    PERMISSION: any mutation turning an unknown or prohibited composition into YES must
    be caught. A false UNSTATED is inconvenient; a false YES is harmful.
+   license/model.json (SPEC §12.3 LICENSE-MODEL-PUBLISHED) is the NAMED model those
+   verdicts are relative to. It is an INPUT, not an expectation: the specification
+   deliberately does not fix the table, so without this file the vectors would be the
+   only description of it and every row no vector exercises would be unconstrained.
 10. envelope/vectors.jsonl (SPEC §8.6): every "canonical" record's octets reproduce
    EXACTLY, every "reject" record is refused, and every "signature" record verifies
    or fails as its verdict says. These octets are what a publication signature is

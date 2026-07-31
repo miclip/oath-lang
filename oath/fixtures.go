@@ -222,6 +222,9 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 	if err := writeLicenseVectors(write); err != nil {
 		return "", err
 	}
+	if err := writeLicenseModel(write); err != nil {
+		return "", err
+	}
 
 	// campaign/vectors.txt — canonical campaign descriptions and their digests
 	// (SPEC §11). These are the AUDIT vectors: a kernel reproduces the identity
@@ -516,6 +519,10 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
    DERIVED claim with legal consequence, so the direction that matters is FALSE
    PERMISSION: any mutation turning an unknown or prohibited composition into YES must
    be caught. A false UNSTATED is inconvenient; a false YES is harmful.
+   license/model.json (SPEC §12.3 LICENSE-MODEL-PUBLISHED) is the NAMED model those
+   verdicts are relative to. It is an INPUT, not an expectation: the specification
+   deliberately does not fix the table, so without this file the vectors would be the
+   only description of it and every row no vector exercises would be unconstrained.
 10. envelope/vectors.jsonl (SPEC §8.6): every "canonical" record's octets reproduce
    EXACTLY, every "reject" record is refused, and every "signature" record verifies
    or fails as its verdict says. These octets are what a publication signature is
@@ -966,6 +973,47 @@ func writeHostileBytes(write func(string, []byte) error) error {
 }
 
 // writeLicenseVectors emits fixtures/license/vectors.jsonl.
+// writeLicenseModel emits fixtures/license/model.json — SPEC §12.3
+// LICENSE-MODEL-PUBLISHED. The model is deliberately NOT normative text (it is a
+// policy artifact expected to be corrected), but it must be an input the
+// specification points at. Without this file a reader with §12 and no fixtures
+// cannot derive a single verdict, and an independent implementation is forced to
+// reverse-engineer rows from the vectors — which quietly promotes the vectors to
+// normative text and leaves every unexercised row unconstrained.
+func writeLicenseModel(write func(string, []byte) error) error {
+	type row struct {
+		Commercial   string `json:"commercial"`
+		Redistribute string `json:"redistribute"`
+		Modify       string `json:"modify"`
+		PatentGrant  string `json:"patent_grant"`
+		ShareAlike   string `json:"share_alike"`
+	}
+	ids := make([]string, 0, len(licenseModel))
+	for k := range licenseModel {
+		ids = append(ids, k)
+	}
+	sort.Strings(ids)
+	rows := make(map[string]row, len(ids))
+	for _, k := range ids {
+		g := licenseModel[k]
+		rows[k] = row{g.Commercial.String(), g.Redistribute.String(), g.Modify.String(),
+			g.PatentGrant.String(), g.ShareAlike.String()}
+	}
+	doc := map[string]any{
+		"model":  licenseModelVersion,
+		"engine": licenseEngine,
+		"note": "Permissions fold as MINIMUM and obligations as MAXIMUM over NO < UNSTATED < YES (SPEC §12.2). " +
+			"share_alike is the only OBLIGATION dimension here; the rest are permissions. " +
+			"An identifier absent from this table yields all-UNSTATED, which is safe; a wrong entry is not.",
+		"licenses": rows,
+	}
+	b, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return err
+	}
+	return write(filepath.Join("license", "model.json"), append(b, '\n'))
+}
+
 func writeLicenseVectors(write func(string, []byte) error) error {
 	var out strings.Builder
 	emit := func(v map[string]any) error {
@@ -1009,6 +1057,11 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		// implemented and dead.
 		{"a known prohibition binds the composition", "LICENSE-PERMISSION-NO",
 			[]string{"MIT", "CC-BY-NC-4.0"}, all("NO", "YES", "YES", "UNSTATED", "NO")},
+		// The EMPTY composition. Reachable only by mis-assembling a closure, but
+		// the literal §12.2 tables grant everything on it, so the conservative
+		// answer has to be witnessed rather than assumed.
+		{"an empty composition grants nothing", "LICENSE-FOLD-NONEMPTY",
+			[]string{}, all("UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED")},
 		{"a transitive dependency changes the root result", "",
 			[]string{"MIT", "MIT", "GPL-3.0-only"}, all("YES", "YES", "YES", "UNSTATED", "YES")},
 	}
@@ -1069,6 +1122,36 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		return err
 	}
 
+	// The COLLISION PAIR. Under the previous one-line `input=<name>=<expr>`
+	// encoding these two DISTINCT compositions hashed identically, because
+	// §8.6.1 permits `=` inside a name and the line had no sound split. The pair
+	// is emitted as a vector so the property is witnessed rather than asserted in
+	// prose — and generation FAILS if a kernel ever collides them again.
+	amb := []struct {
+		label string
+		pair  licensePair
+	}{
+		{"a name containing = does not collide with a shifted split", licensePair{Name: "a=b", License: "MIT"}},
+		{"the shifted split is a different evaluation", licensePair{Name: "a", License: "b=MIT"}},
+	}
+	var ambDigests []string
+	for _, a := range amb {
+		ev := licenseEvaluation{Policy: base.Policy, Engine: base.Engine, Model: base.Model,
+			Inputs: []licenseInput{{Name: a.pair.Name, License: a.pair.License}}}
+		d := evaluationDigest(ev)
+		ambDigests = append(ambDigests, d)
+		if err := emit(map[string]any{"kind": "identity", "label": a.label,
+			"witnesses": "LICENSE-IDENTITY-UNAMBIGUOUS", "policy": base.Policy, "engine": base.Engine,
+			"model": base.Model, "assertions": []string{}, "pairs": []licensePair{a.pair},
+			"digest": d}); err != nil {
+			return err
+		}
+	}
+	if ambDigests[0] == ambDigests[1] {
+		return fmt.Errorf("name=%q/expr=%q and name=%q/expr=%q share a digest: the encoding is not injective, so one assertion can forge another composition's identity",
+			amb[0].pair.Name, amb[0].pair.License, amb[1].pair.Name, amb[1].pair.License)
+	}
+
 	return write(filepath.Join("license", "vectors.jsonl"), []byte(out.String()))
 }
 
@@ -1076,7 +1159,15 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 // folds a closure, without needing a store. Kept separate so the vectors describe the
 // RULES rather than a particular corpus.
 func evalFromAssertions(exprs []string) grants {
+	// SPEC §12.2 LICENSE-FOLD-NONEMPTY. The zero value is UNSTATED in every
+	// dimension, so an empty fold is already conservative here. Read literally,
+	// the §12.2 tables fall through both rows on zero inputs and yield YES — the
+	// operator's identity — which grants everything on the strength of nothing.
 	var acc grants
+	if len(exprs) == 0 && !ruleOn("LICENSE-FOLD-NONEMPTY") {
+		return grants{Commercial: triYes, Redistribute: triYes, Modify: triYes,
+			PatentGrant: triYes, ShareAlike: triNo} // the identity: a false YES
+	}
 	for i, e := range exprs {
 		g, _ := modelLookup(e)
 		if i == 0 {

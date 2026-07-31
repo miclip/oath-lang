@@ -45,6 +45,7 @@ EXPECTED = {
     "LICENSE-IDENTITY-INPUT": "digest over method and sorted inputs",
     "LICENSE-CLOSURE-EXCLUSIVE": "an artifact outside the closure changes nothing",
     "LICENSE-MODEL-VERSIONED": "changing the model changes the evaluation",
+    "LICENSE-IDENTITY-UNAMBIGUOUS": "a name containing = does not collide with a shifted split",
 }
 
 

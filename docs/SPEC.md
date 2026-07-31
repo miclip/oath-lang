@@ -1786,19 +1786,40 @@ policy decision indistinguishable from a forged statement.
 
 #### 8.6.1 Canonical encoding
 
-An envelope is a byte string: a version line, then exactly six `key=value` lines,
+An envelope is a byte string: a version line, then a fixed number of `key=value` lines,
 in the order below, each terminated by one LF (`0x0A`). There is no other
 whitespace, no trailing content, and no optional field.
 
 ```
-oath-publish/1
+oath-publish/2
 op=put
 name=<name>
 artifact=<64 lowercase hex>
 parent=<64 lowercase hex | ->
 parent_rev=<canonical decimal>
 author=<64 lowercase hex>
+license=<SPDX expression | ->
 ```
+
+`license` is the terms the publisher ASSERTS for this publication (§12), and `-`
+asserts none. It is deliberately NOT validated here: this layer is the notary for
+what the author signed, and checking expression syntax would drift publication
+into policy enforcement.
+
+`oath-publish/1` is the same shape WITHOUT the `license` line — six lines, not
+seven. Implementations MUST still read it: §8.6.4 requires an entry to be
+verified under the format it was recorded with, and a kernel that read only its
+newest shape would reject correct historical signatures, destroying evidence
+rather than admitting it. A `/1` envelope asserts no terms, and MUST be reported
+as that explicit no-assertion state rather than as an empty field — "the format
+had no licence line" and "the publisher chose to say nothing" are different
+historical facts.
+
+> This section documented only `/1` for several commits after the kernel began
+> emitting `/2`, so the normative text described an envelope the reference no
+> longer produced and the vectors no longer contained. A blind implementation
+> reading it would have built `/1` and failed every canonical vector — which is
+> precisely how it was found.
 
 The version line is inside the signed bytes, so a signature under one format
 version can never be mistaken for another.
@@ -2425,6 +2446,23 @@ permission rule reports "no reciprocal obligation" about terms nobody has read.
 permission nor the absence of an obligation, so one unknown input makes the
 composition unknown however many others were definite.
 
+Equivalently, over the total order `NO < UNSTATED < YES`, permissions fold as
+MINIMUM and obligations as MAXIMUM. Contagion is then not a separate rule but a
+consequence of `UNSTATED` sitting between the two definite values. An
+implementation MAY use either formulation; they agree on every input.
+
+**LICENSE-FOLD-NONEMPTY.** The fold is NEVER applied to an empty input set. A
+composition always contains at least the artifact itself, so an implementation
+that reaches an empty fold has mis-assembled the closure, and MUST yield
+`UNSTATED` in every dimension rather than the operator's identity element.
+
+> This matters because the identity for permissions is `YES` — the tables above,
+> read literally over zero inputs, fall through both rows and grant everything.
+> A false `YES` produced by reading the specification CORRECTLY is a
+> specification defect, not an implementation defect, and it is exactly the
+> permissive direction the note below demands be checked. Found by a blind
+> implementation working from this section alone.
+
 > The asymmetry that matters: a false `UNSTATED` is inconvenient, a false `YES`
 > is harmful. An implementation MUST be checked in the permissive direction —
 > for each dimension, mutating the combiner toward permissiveness must be
@@ -2450,6 +2488,27 @@ belongs to the consumer.
 A model MAY contain any set of identifiers. A missing entry is safe: it yields
 `UNSTATED`. A wrong entry is not, because it yields a confident falsehood.
 
+**LICENSE-MODEL-PUBLISHED.** The model is NOT part of this specification, and
+this section deliberately does not fix its contents: a lattice mapping
+identifiers to grants is a policy artifact with legal consequence, it is
+expected to be corrected and superseded, and §12.4 already makes each version
+distinguishable. Freezing it here would make every correction a specification
+fork.
+
+It MUST NEVERTHELESS BE PUBLISHED. Conformance is always relative to a NAMED
+model, and the model this corpus is scored against is supplied as a fixture at
+`fixtures/license/model.json`, carrying the same version string the digest
+binds. An implementation reproduces verdicts by reading that file, not by
+inferring the table from the vectors.
+
+> Before this was stated, §12.3 described a mechanism whose inputs appeared
+> nowhere: a reader with the prose and no fixtures could not derive a single
+> verdict, and an independent implementation reverse-engineered rows from the
+> vectors instead. That silently promotes the fixtures to normative text —
+> whereupon a row no vector exercises is unconstrained, and any values at all
+> for it pass the suite. The model must be an input the specification POINTS AT,
+> not one it implies.
+
 ### 12.4 Evaluation identity
 
 An evaluation MUST record the ENGINE, the MODEL version, the POLICY, and a
@@ -2466,10 +2525,30 @@ oath-license-eval/1
 engine=<engine>
 model=<model version>
 policy=<policy>
-input=<name>=<asserted expression>      (one per consumed assertion)
+input-name=<name>                       (one PAIR per consumed assertion)
+input-license=<asserted expression>
 ```
 
-**LICENSE-ORDER-INDEPENDENT.** Input lines are sorted by `name` before hashing. The same assertions evaluated in
+**LICENSE-IDENTITY-UNAMBIGUOUS.** A name and its expression occupy SEPARATE
+lines, and every value MUST exclude LF, CR, and any octet below `0x20` or equal
+to `0x7F`. Both rules are load-bearing, and neither is decorative:
+
+- a single `input=<name>=<expression>` line has no sound split, because §8.6.1
+  permits `=` inside a name — so `name="a=b", expr="MIT"` and `name="a",
+  expr="b=MIT"` encode to identical bytes;
+- without the character rule an expression containing an LF injects a line, so
+  ONE assertion can reproduce the digest of a DIFFERENT composition — a forgery
+  surface in the one value whose purpose is to make a change of method visible.
+
+Both collisions were demonstrated against the previous encoding, and both
+violated LICENSE-IDENTITY-INPUT below: the rule was already stated and the
+encoding did not satisfy it. §8.6.1 had established the same character
+discipline for the same reason; §12.4 inherited none of it. A rule and the
+encoding that must implement it are separate obligations, and stating the
+rule does not discharge the encoding.
+
+**LICENSE-ORDER-INDEPENDENT.** Input PAIRS are sorted by `name` before hashing,
+comparing by octet value so ordering never depends on locale or language. The same assertions evaluated in
 a different order are the SAME evaluation, and MUST produce the same digest —
 otherwise fixture or traversal order would make one evaluation appear to be two.
 

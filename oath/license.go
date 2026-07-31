@@ -194,6 +194,19 @@ func evaluateLicensing(st *Store, name string, deps []string) licenseEvaluation 
 		if lic == "" {
 			lic = "(none)"
 		}
+		// SPEC §12.4 LICENSE-IDENTITY-UNAMBIGUOUS. A value that cannot be encoded
+		// on a digest line is not evaluated: encoding it anyway would let one
+		// assertion forge another composition's digest. Fail CLOSED — the input is
+		// reported, counted as unmodeled, and grants nothing. Silently stripping
+		// the offending octets would be worse than refusing, because the digest
+		// would then attest to a string nobody asserted.
+		if !digestSafe(n) || !digestSafe(lic) {
+			ev.Inputs = append(ev.Inputs, licenseInput{Name: shortHash(n), License: "(unencodable)",
+				Reason: "name or expression contains an octet §12.4 forbids in a digest line"})
+			ev.Unmodeled++
+			ev.Result = grants{}
+			return
+		}
 		ev.Inputs = append(ev.Inputs, licenseInput{Name: n, License: lic, Reason: reason})
 		if reason != "" {
 			ev.Unmodeled++
@@ -242,6 +255,19 @@ func nameOfHash(st *Store, h string) string {
 // consumed assertions sorted by name. Changing the engine, the model, the policy, or any
 // input assertion produces a different digest, so a stale verdict is detectable rather
 // than merely old.
+// digestSafe reports whether v may appear in a §12.4 digest line. The character
+// rule is not cosmetic: an LF inside a value injects a line, letting a single
+// assertion forge the digest of a two-input composition. §8.6.1 established the
+// same rule for the same reason; §12.4 originally inherited none of it.
+func digestSafe(v string) bool {
+	for _, c := range []byte(v) {
+		if c < 0x20 || c == 0x7F {
+			return false
+		}
+	}
+	return true
+}
+
 func evaluationDigest(ev licenseEvaluation) string {
 	var b strings.Builder
 	b.WriteString("oath-license-eval/1\n")
@@ -260,7 +286,19 @@ func evaluationDigest(ev licenseEvaluation) string {
 	}
 	if ruleOn("LICENSE-IDENTITY-INPUT") {
 		for _, i := range in {
-			b.WriteString("input=" + i.Name + "=" + i.License + "\n")
+			// SPEC §12.4 LICENSE-IDENTITY-UNAMBIGUOUS: name and expression on
+			// SEPARATE lines. A single `input=<name>=<expr>` line has no sound
+			// split — §8.6.1 permits `=` inside a name — so `a=b`/`MIT` and
+			// `a`/`b=MIT` encoded identically, violating LICENSE-IDENTITY-INPUT
+			// two paragraphs below.
+			if ruleOn("LICENSE-IDENTITY-UNAMBIGUOUS") {
+				b.WriteString("input-name=" + i.Name + "\n")
+				b.WriteString("input-license=" + i.License + "\n")
+			} else {
+				// The superseded encoding, retained ONLY so the scorer can disable
+				// the rule and confirm a vector notices. It is not injective.
+				b.WriteString("input=" + i.Name + "=" + i.License + "\n")
+			}
 		}
 	}
 	sum := sha256.Sum256([]byte(b.String()))
@@ -307,6 +345,11 @@ func (ev licenseEvaluation) render() string {
 
 // --- conformance surface (SPEC §10) ------------------------------------------------
 
+type licensePair struct {
+	Name    string `json:"name"`
+	License string `json:"license"`
+}
+
 type licenseVector struct {
 	Kind       string            `json:"kind"`
 	Label      string            `json:"label"`
@@ -315,6 +358,12 @@ type licenseVector struct {
 	Engine     string            `json:"engine"`
 	Model      string            `json:"model"`
 	Assertions []string          `json:"assertions"`
+	// Pairs carries name and expression as SEPARATE values. `assertions` encodes
+	// them as "<name>=<expr>" and so cannot express a name containing `=` — the
+	// very ambiguity §12.4 forbids. A vector witnessing
+	// LICENSE-IDENTITY-UNAMBIGUOUS therefore CANNOT use `assertions`: the fixture
+	// format has to be able to state what the rule is about.
+	Pairs []licensePair `json:"pairs,omitempty"`
 	Expect     map[string]string `json:"expect,omitempty"`
 	Digest     string            `json:"digest,omitempty"`
 }
@@ -334,10 +383,18 @@ func runLicenseVectors(vs []licenseVector) []string {
 				}
 			}
 		case "identity":
-			in := make([]licenseInput, 0, len(v.Assertions))
-			for _, a := range v.Assertions {
-				n, l, _ := strings.Cut(a, "=")
-				in = append(in, licenseInput{Name: n, License: l})
+			var in []licenseInput
+			if len(v.Pairs) > 0 {
+				for _, pr := range v.Pairs {
+					in = append(in, licenseInput{Name: pr.Name, License: pr.License})
+				}
+			} else {
+				for _, a := range v.Assertions {
+					// Lossy by construction; only sound because these vectors use
+					// names without `=`. See licenseVector.Pairs.
+					n, l, _ := strings.Cut(a, "=")
+					in = append(in, licenseInput{Name: n, License: l})
+				}
 			}
 			ev := licenseEvaluation{Policy: v.Policy, Engine: v.Engine, Model: v.Model, Inputs: in}
 			if d := evaluationDigest(ev); d != v.Digest {

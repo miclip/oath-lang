@@ -102,6 +102,8 @@ var normativeRules = []normativeRule{
 	// reach it. Listed for inventory completeness and excluded from this denominator.
 	{"LICENSE-CLOSURE-EXCLUSIVE", "§12.4", "only assertions in the exact closure are consumed", familyIntegration},
 	{"LICENSE-ORDER-INDEPENDENT", "§12.4", "input order does not change the evaluation digest", familyLicense},
+	{"LICENSE-FOLD-NONEMPTY", "§12.2", "an empty composition yields UNSTATED, never the fold's identity element", familyLicense},
+	{"LICENSE-IDENTITY-UNAMBIGUOUS", "§12.4", "name and expression are separately encoded, so no two distinct compositions share a digest", familyLicense},
 
 	// Reachable only with a journal or a live store. Listed so the inventory is
 	// complete and the gap is visible, but EXCLUDED from the envelope suite's

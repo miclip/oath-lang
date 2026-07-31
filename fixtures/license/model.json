@@ -1,0 +1,84 @@
+{
+  "engine": "oath-license/1",
+  "licenses": {
+    "AGPL-3.0-only": {
+      "commercial": "YES",
+      "redistribute": "YES",
+      "modify": "YES",
+      "patent_grant": "YES",
+      "share_alike": "YES"
+    },
+    "Apache-2.0": {
+      "commercial": "YES",
+      "redistribute": "YES",
+      "modify": "YES",
+      "patent_grant": "YES",
+      "share_alike": "NO"
+    },
+    "BSD-2-Clause": {
+      "commercial": "YES",
+      "redistribute": "YES",
+      "modify": "YES",
+      "patent_grant": "UNSTATED",
+      "share_alike": "NO"
+    },
+    "BSD-3-Clause": {
+      "commercial": "YES",
+      "redistribute": "YES",
+      "modify": "YES",
+      "patent_grant": "UNSTATED",
+      "share_alike": "NO"
+    },
+    "CC-BY-NC-4.0": {
+      "commercial": "NO",
+      "redistribute": "YES",
+      "modify": "YES",
+      "patent_grant": "UNSTATED",
+      "share_alike": "NO"
+    },
+    "GPL-2.0-only": {
+      "commercial": "YES",
+      "redistribute": "YES",
+      "modify": "YES",
+      "patent_grant": "UNSTATED",
+      "share_alike": "YES"
+    },
+    "GPL-3.0-only": {
+      "commercial": "YES",
+      "redistribute": "YES",
+      "modify": "YES",
+      "patent_grant": "YES",
+      "share_alike": "YES"
+    },
+    "ISC": {
+      "commercial": "YES",
+      "redistribute": "YES",
+      "modify": "YES",
+      "patent_grant": "UNSTATED",
+      "share_alike": "NO"
+    },
+    "MIT": {
+      "commercial": "YES",
+      "redistribute": "YES",
+      "modify": "YES",
+      "patent_grant": "UNSTATED",
+      "share_alike": "NO"
+    },
+    "MPL-2.0": {
+      "commercial": "YES",
+      "redistribute": "YES",
+      "modify": "YES",
+      "patent_grant": "YES",
+      "share_alike": "YES"
+    },
+    "Unlicense": {
+      "commercial": "YES",
+      "redistribute": "YES",
+      "modify": "YES",
+      "patent_grant": "UNSTATED",
+      "share_alike": "NO"
+    }
+  },
+  "model": "spdx-lattice/1",
+  "note": "Permissions fold as MINIMUM and obligations as MAXIMUM over NO \u003c UNSTATED \u003c YES (SPEC §12.2). share_alike is the only OBLIGATION dimension here; the rest are permissions. An identifier absent from this table yields all-UNSTATED, which is safe; a wrong entry is not."
+}
