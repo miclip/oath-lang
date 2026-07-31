@@ -90,6 +90,10 @@ var licenseModel = map[string]grants{
 	"AGPL-3.0-only": {triYes, triYes, triYes, triYes, triYes},
 	"MPL-2.0":       {triYes, triYes, triYes, triYes, triYes},
 	"Unlicense":     {triYes, triYes, triYes, triUnstated, triNo},
+	// A licence that PROHIBITS. Without at least one, the permission combiner's
+	// NO-dominance branch is unreachable from the model and no vector can witness
+	// LICENSE-PERMISSION-NO — the rule would be stated, implemented, and dead.
+	"CC-BY-NC-4.0": {triNo, triYes, triYes, triUnstated, triNo},
 }
 
 // modelLookup resolves an asserted expression. Compound expressions are NOT parsed:
@@ -102,7 +106,7 @@ func modelLookup(expr string) (grants, string) {
 	if g, ok := licenseModel[expr]; ok {
 		return g, ""
 	}
-	if ruleOn("license/compound-unstated") {
+	if ruleOn("LICENSE-LOOKUP-COMPOUND") {
 		if strings.Contains(expr, " OR ") {
 			return grants{}, "compound expression: choosing a disjunct is the consumer's decision, not the registry's"
 		}
@@ -116,7 +120,7 @@ func modelLookup(expr string) (grants, string) {
 			return g, ""
 		}
 	}
-	if !ruleOn("license/unknown-unstated") {
+	if !ruleOn("LICENSE-LOOKUP-UNKNOWN") {
 		// MUTATION: the dangerous direction. An unmodelled identifier becomes a full
 		// grant, so an unknown composition reads as permitted.
 		return grants{Commercial: triYes, Redistribute: triYes, Modify: triYes,
@@ -137,10 +141,10 @@ func modelLookup(expr string) (grants, string) {
 // obligation" about terms nobody had read, which is precisely the false-permission
 // direction that matters most here.
 func combine(acc, next tri) tri {
-	if ruleOn("license/prohibition-dominates") && (acc == triNo || next == triNo) {
+	if ruleOn("LICENSE-PERMISSION-NO") && (acc == triNo || next == triNo) {
 		return triNo
 	}
-	if ruleOn("license/unstated-contagion") && (acc == triUnstated || next == triUnstated) {
+	if ruleOn("LICENSE-PERMISSION-UNKNOWN") && (acc == triUnstated || next == triUnstated) {
 		return triUnstated
 	}
 	return triYes
@@ -151,10 +155,13 @@ func combine(acc, next tri) tri {
 // NO: not knowing whether an obligation exists is not the same as knowing there is
 // none, and only the second is safe to report.
 func combineObligation(acc, next tri) tri {
-	if ruleOn("license/prohibition-dominates") && (acc == triYes || next == triYes) {
+	// Its OWN rule identifiers, not the permission combiner's. Sharing them would make
+	// the two dimensions indistinguishable to the scorer: disabling one rule would
+	// perturb both combiners, and a mutation could not be attributed to either.
+	if ruleOn("LICENSE-OBLIGATION-YES") && (acc == triYes || next == triYes) {
 		return triYes
 	}
-	if ruleOn("license/unstated-contagion") && (acc == triUnstated || next == triUnstated) {
+	if ruleOn("LICENSE-OBLIGATION-UNKNOWN") && (acc == triUnstated || next == triUnstated) {
 		return triUnstated
 	}
 	return triNo
@@ -238,16 +245,20 @@ func nameOfHash(st *Store, h string) string {
 func evaluationDigest(ev licenseEvaluation) string {
 	var b strings.Builder
 	b.WriteString("oath-license-eval/1\n")
-	if ruleOn("license/digest-binds-method") {
+	if ruleOn("LICENSE-IDENTITY-INPUT") {
 		b.WriteString("engine=" + ev.Engine + "\n")
+	}
+	if ruleOn("LICENSE-MODEL-VERSIONED") {
 		b.WriteString("model=" + ev.Model + "\n")
+	}
+	if ruleOn("LICENSE-IDENTITY-INPUT") {
 		b.WriteString("policy=" + ev.Policy + "\n")
 	}
 	in := append([]licenseInput(nil), ev.Inputs...)
-	if ruleOn("license/digest-order-invariant") {
+	if ruleOn("LICENSE-ORDER-INDEPENDENT") {
 		sort.Slice(in, func(i, j int) bool { return in[i].Name < in[j].Name })
 	}
-	if ruleOn("license/digest-binds-inputs") {
+	if ruleOn("LICENSE-IDENTITY-INPUT") {
 		for _, i := range in {
 			b.WriteString("input=" + i.Name + "=" + i.License + "\n")
 		}

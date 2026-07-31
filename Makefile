@@ -136,6 +136,14 @@ check-doc-numbers:
 	@python3 scripts/check-doc-numbers.py
 
 # License evaluation coverage, measured the same way: disable each rule, re-run.
+# Rule-to-vector matrix: does every NORMATIVE rule have a witnessing vector? The
+# opposite check from license-score, which asks whether disabling an implementation
+# rule breaks a vector. Run BEFORE dispatching a blind implementation — without it, an
+# unwitnessed rule and an unstated one produce the same symptom.
+.PHONY: license-matrix
+license-matrix:
+	@python3 scripts/license-rule-matrix.py
+
 .PHONY: license-score
 license-score:
 	@cd oath && go build -tags conformance_mutation -o oath-vector-score .

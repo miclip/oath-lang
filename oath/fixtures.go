@@ -991,14 +991,24 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 	cases := []lcase{
 		{"all modelled and permissive", "", []string{"MIT", "MIT", "BSD-3-Clause"},
 			all("YES", "YES", "YES", "UNSTATED", "NO")},
-		{"one ABSENT assertion among permissive dependencies", "license/unstated-contagion",
+		{"one ABSENT assertion among permissive dependencies", "LICENSE-PERMISSION-UNKNOWN",
 			[]string{"MIT", "-", "MIT"}, all("UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED")},
-		{"one UNKNOWN identifier among permissive dependencies", "license/unknown-unstated",
+		{"one UNKNOWN identifier among permissive dependencies", "LICENSE-LOOKUP-UNKNOWN",
 			[]string{"MIT", "NotARealLicense-1.0"}, all("UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED")},
-		{"compound expression is not resolved", "license/compound-unstated",
+		{"compound expression is not resolved", "LICENSE-LOOKUP-COMPOUND",
 			[]string{"MIT OR Apache-2.0"}, all("UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED")},
-		{"a share-alike obligation propagates to the root", "",
+		{"a share-alike obligation propagates to the root", "LICENSE-OBLIGATION-YES",
 			[]string{"MIT", "GPL-3.0-only"}, all("YES", "YES", "YES", "UNSTATED", "YES")},
+		// The obligation dimension combined with an UNKNOWN input. Distinct from the
+		// permission case: not knowing whether an obligation exists is not knowing there
+		// is none, so it must read UNSTATED rather than NO.
+		{"an obligation dimension with an unknown input", "LICENSE-OBLIGATION-UNKNOWN",
+			[]string{"MIT", "NotModelled-2.0"}, all("UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED")},
+		// A licence that PROHIBITS. Until the model contained one, the permission
+		// combiner's NO-dominance branch was unreachable and this rule was stated,
+		// implemented and dead.
+		{"a known prohibition binds the composition", "LICENSE-PERMISSION-NO",
+			[]string{"MIT", "CC-BY-NC-4.0"}, all("NO", "YES", "YES", "UNSTATED", "NO")},
 		{"a transitive dependency changes the root result", "",
 			[]string{"MIT", "MIT", "GPL-3.0-only"}, all("YES", "YES", "YES", "UNSTATED", "YES")},
 	}
@@ -1031,7 +1041,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 	base := licenseEvaluation{Policy: "composition", Engine: licenseEngine, Model: licenseModelVersion, Inputs: baseInputs}
 	baseDigest := evaluationDigest(base)
 	if err := emit(map[string]any{"kind": "identity", "label": "evaluation digest over method and sorted inputs",
-		"witnesses": "license/digest-binds-inputs", "policy": base.Policy, "engine": base.Engine,
+		"witnesses": "LICENSE-IDENTITY-INPUT", "policy": base.Policy, "engine": base.Engine,
 		"model": base.Model, "assertions": []string{"a=MIT", "b=Apache-2.0"}, "digest": baseDigest}); err != nil {
 		return err
 	}
@@ -1040,8 +1050,21 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 	if evaluationDigest(rev) != baseDigest {
 		return fmt.Errorf("input order changed the evaluation digest; the same evaluation would appear to be two")
 	}
+	// The model version must be bound, or changing the lattice would silently
+	// reinterpret every historical verdict rather than producing a new one.
+	modelChanged := base
+	modelChanged.Model = "spdx-lattice/99"
+	if evaluationDigest(modelChanged) == baseDigest {
+		return fmt.Errorf("changing the model version did not change the digest; historical verdicts would be reinterpreted rather than superseded")
+	}
+	if err := emit(map[string]any{"kind": "identity", "label": "changing the model changes the evaluation",
+		"witnesses": "LICENSE-MODEL-VERSIONED", "policy": base.Policy, "engine": base.Engine,
+		"model": modelChanged.Model, "assertions": []string{"a=MIT", "b=Apache-2.0"},
+		"digest": evaluationDigest(modelChanged)}); err != nil {
+		return err
+	}
 	if err := emit(map[string]any{"kind": "identity", "label": "input order does not change the digest",
-		"witnesses": "license/digest-order-invariant", "policy": base.Policy, "engine": base.Engine,
+		"witnesses": "LICENSE-ORDER-INDEPENDENT", "policy": base.Policy, "engine": base.Engine,
 		"model": base.Model, "assertions": []string{"b=Apache-2.0", "a=MIT"}, "digest": baseDigest}); err != nil {
 		return err
 	}

@@ -90,13 +90,18 @@ var normativeRules = []normativeRule{
 	// consumer-visible derived claim with legal consequence, so the dangerous direction
 	// is a FALSE PERMISSION: a mutation turning an unknown or prohibited composition
 	// into YES must be caught. A false UNSTATED is inconvenient; a false YES is harmful.
-	{"license/unstated-contagion", "DESIGN", "UNSTATED propagates: one unknown input makes the composition unknown", familyLicense},
-	{"license/prohibition-dominates", "DESIGN", "a known prohibition binds the whole composition", familyLicense},
-	{"license/unknown-unstated", "DESIGN", "an unmodelled identifier yields UNSTATED, never a grant", familyLicense},
-	{"license/compound-unstated", "DESIGN", "compound expressions are not resolved by the registry", familyLicense},
-	{"license/digest-binds-method", "DESIGN", "engine, model and policy are bound by the evaluation digest", familyLicense},
-	{"license/digest-binds-inputs", "DESIGN", "every consumed assertion is bound by the evaluation digest", familyLicense},
-	{"license/digest-order-invariant", "DESIGN", "input order does not change the evaluation digest", familyLicense},
+	{"LICENSE-PERMISSION-UNKNOWN", "§12.2", "UNSTATED propagates: one unknown input makes the composition unknown", familyLicense},
+	{"LICENSE-PERMISSION-NO", "§12.2", "a known prohibition binds the whole composition", familyLicense},
+	{"LICENSE-LOOKUP-UNKNOWN", "§12.3", "an unmodelled identifier yields UNSTATED, never a grant", familyLicense},
+	{"LICENSE-LOOKUP-COMPOUND", "§12.3", "compound expressions are not resolved by the registry", familyLicense},
+	{"LICENSE-IDENTITY-INPUT", "§12.4", "engine, model, policy and every consumed assertion are bound by the digest", familyLicense},
+	{"LICENSE-OBLIGATION-YES", "§12.2", "an obligation anywhere binds the whole composition", familyLicense},
+	{"LICENSE-OBLIGATION-UNKNOWN", "§12.2", "UNSTATED propagates in the obligation direction too", familyLicense},
+	{"LICENSE-MODEL-VERSIONED", "§12.4", "the model version is bound by the digest, so a model change is distinguishable", familyLicense},
+	// Needs a STORE with an artifact outside the closure, so the vector family cannot
+	// reach it. Listed for inventory completeness and excluded from this denominator.
+	{"LICENSE-CLOSURE-EXCLUSIVE", "§12.4", "only assertions in the exact closure are consumed", familyIntegration},
+	{"LICENSE-ORDER-INDEPENDENT", "§12.4", "input order does not change the evaluation digest", familyLicense},
 
 	// Reachable only with a journal or a live store. Listed so the inventory is
 	// complete and the gap is visible, but EXCLUDED from the envelope suite's

@@ -2374,6 +2374,12 @@ concluded from particular signed assertions — nothing more. It is not advice,
 and it MUST NOT be reported as a proof (§7): compatibility over a finite lattice
 is decided by evaluation, not proved over unbounded inputs.
 
+Each normative rule below carries a STABLE IDENTIFIER. Identifiers exist so a
+conformance report can say which obligation a vector witnesses, and so a reader
+can tell a specification defect from a missing fixture — without them, "the
+vectors constrain something the prose does not" and "the prose states something
+no vector witnesses" are indistinguishable.
+
 ### 12.1 Three-valued grants
 
 An evaluation reports, per dimension, one of `YES`, `NO`, `UNSTATED`.
@@ -2392,7 +2398,8 @@ The dimensions are of two KINDS, and the kind determines how values combine:
 For a composition — an artifact together with its transitive dependency closure
 — each dimension is folded across every member's asserted terms.
 
-**Permissions** combine conservatively toward denial:
+**LICENSE-PERMISSION-NO / LICENSE-PERMISSION-UNKNOWN.** Permissions combine
+conservatively toward denial:
 
 | inputs contain | result |
 |---|---|
@@ -2400,7 +2407,8 @@ For a composition — an artifact together with its transitive dependency closur
 | otherwise, any `UNSTATED` | `UNSTATED` |
 | otherwise | `YES` |
 
-**Obligations** combine conservatively toward the obligation:
+**LICENSE-OBLIGATION-YES / LICENSE-OBLIGATION-UNKNOWN.** Obligations combine
+conservatively toward the obligation:
 
 | inputs contain | result |
 |---|---|
@@ -2427,13 +2435,15 @@ composition unknown however many others were definite.
 
 An asserted expression resolves to a set of grants, or to none.
 
-An implementation MUST yield all-`UNSTATED`, never a grant, when:
+**LICENSE-LOOKUP-UNKNOWN.** An implementation MUST yield all-`UNSTATED`, never a
+grant, when:
 
 - the expression is absent, or is the explicit no-assertion sentinel `-`;
 - the identifier is not in the model;
 - the expression is COMPOUND — containing ` OR `, ` AND `, or ` WITH `.
 
-Compound expressions MUST NOT be resolved by the registry. `MIT OR Apache-2.0`
+**LICENSE-LOOKUP-COMPOUND.** Compound expressions MUST NOT be resolved by the
+registry. `MIT OR Apache-2.0`
 requires choosing a disjunct, which is a decision with legal consequence and
 belongs to the consumer.
 
@@ -2459,12 +2469,22 @@ policy=<policy>
 input=<name>=<asserted expression>      (one per consumed assertion)
 ```
 
-Input lines are sorted by `name` before hashing. The same assertions evaluated in
+**LICENSE-ORDER-INDEPENDENT.** Input lines are sorted by `name` before hashing. The same assertions evaluated in
 a different order are the SAME evaluation, and MUST produce the same digest —
 otherwise fixture or traversal order would make one evaluation appear to be two.
 
-Changing the engine, the model version, the policy, any consumed name or any
-consumed expression MUST change the digest.
+**LICENSE-IDENTITY-INPUT.** Changing the engine, the model version, the policy,
+any consumed name or any consumed expression MUST change the digest.
+
+**LICENSE-CLOSURE-EXCLUSIVE.** ONLY assertions belonging to the artifact and its
+exact transitive dependency closure are consumed. An artifact outside the closure
+MUST NOT affect either the verdict or the digest — otherwise an unrelated
+publication elsewhere in the registry could change what a composition is reported
+to permit.
+
+**LICENSE-MODEL-VERSIONED.** Changing the model MUST produce evaluations
+distinguishable from earlier ones rather than reinterpreting them. A historical
+verdict remains a statement about the model that produced it.
 
 ### 12.5 What an evaluation does not establish
 
