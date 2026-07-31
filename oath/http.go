@@ -28,7 +28,9 @@ This is an MCP-over-HTTP endpoint, not a web page.
 
   POST /mcp    JSON-RPC 2.0 — initialize, tools/list, tools/call
                tools: context, put, get, ls, find[/_spec/_implies/_equiv],
-                      eval, verify, mutate, prove, cross, dependents, log
+                      eval, verify, mutate, prove, explain, license, cross,
+                      dependents, log
+               (tools/list is authoritative; this line is prose and can drift)
 
 Authentication (one required):
   X-Oath-Pubkey + X-Oath-Signature    Ed25519 over the raw request body;
