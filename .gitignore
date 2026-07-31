@@ -22,3 +22,4 @@ tokens.json
 # is the friction that keeps it deliberate.
 *.pub
 oath/oath-vector-score
+__pycache__/

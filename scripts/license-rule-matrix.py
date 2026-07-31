@@ -38,6 +38,23 @@ OUT_OF_SCOPE = {
         "byte-compares it — a vector cannot witness its own inputs being published",
 }
 
+# A rule identifier can cover SEVERAL independent clauses, and witnessing was
+# tracked per identifier. LICENSE-IDENTITY-UNAMBIGUOUS has two — the two-line split
+# and the character exclusion — and one vector covering the split made the whole rule
+# read "witnessed" while the clause the prose itself calls "a forgery surface" had no
+# vector at all. That clause was then demonstrated to reproduce a PUBLISHED digest.
+# A rule listed here with N clauses now requires N claiming vectors.
+CLAUSES = {
+    "LICENSE-IDENTITY-UNAMBIGUOUS": [
+        "the two-line split, so a name containing `=` cannot shift into the expression",
+        "the character exclusion, so an embedded LF cannot inject an input line",
+    ],
+    "LICENSE-LOOKUP-EXACT": [
+        "case is significant",
+        "surrounding punctuation is not stripped",
+    ],
+}
+
 EXPECTED = {
     "LICENSE-LOOKUP-UNKNOWN": "unknown identifier among permissive dependencies",
     "LICENSE-LOOKUP-COMPOUND": "compound expression is not resolved",
@@ -50,6 +67,11 @@ EXPECTED = {
     "LICENSE-CLOSURE-EXCLUSIVE": "an artifact outside the closure changes nothing",
     "LICENSE-MODEL-VERSIONED": "changing the model changes the evaluation",
     "LICENSE-IDENTITY-UNAMBIGUOUS": "a name containing = does not collide with a shifted split",
+    "LICENSE-LOOKUP-EXACT": "a case-variant identifier is not the identifier",
+    "LICENSE-LOOKUP-PRECEDENCE": "a compound is not resolved even when its operand is modelled",
+    "LICENSE-POLICY-DEFINED": "an unrecognised policy is a different evaluation",
+    "LICENSE-INPUT-COMPLETE": "a member asserting nothing still contributes an input pair",
+    "LICENSE-IDENTITY-MODEL-CONTENT": "editing the lattice changes the digest even under a fixed version string",
 }
 
 
@@ -94,8 +116,15 @@ def main():
         # false positive would hide exactly what this script exists to find.
         by_claim = claims.get(r, [])
         by_label = [l for l in labels if want and all(w in l.lower() for w in want.lower().split()[:3])]
-        if by_claim:
-            print(f"  [witnessed  ] {r:<28} claimed by: {by_claim[0][:44]}")
+        need = CLAUSES.get(r)
+        if need and len(by_claim) < len(need):
+            print(f"  [PARTIAL    ] {r:<28} {len(by_claim)} vector(s) for {len(need)} clause(s)")
+            for c in need[len(by_claim):]:
+                print(f"                 unwitnessed clause: {c}")
+            unwitnessed.append(f"{r} (clause coverage: {len(by_claim)}/{len(need)})")
+        elif by_claim:
+            extra = f" [{len(by_claim)}/{len(need)} clauses]" if need else ""
+            print(f"  [witnessed  ] {r:<28} claimed by: {by_claim[0][:44]}{extra}")
         elif by_label:
             print(f"  [by-label   ] {r:<28} likely: {by_label[0][:44]}")
             print(f"                 (no vector CLAIMS this rule; add `witnesses` to make it explicit)")

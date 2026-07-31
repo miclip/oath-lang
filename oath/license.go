@@ -29,6 +29,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -39,6 +40,11 @@ import (
 const (
 	licenseEngine       = "oath-license/1"
 	licenseModelVersion = "spdx-lattice/1"
+	// SPEC §12.3 LICENSE-POLICY-DEFINED. The ONLY policy this specification
+	// defines. It names how the input set was SELECTED, so an unrecognised value
+	// changes the verdict as well as the identity and must never be silently
+	// treated as this one.
+	licensePolicyComposition = "composition"
 )
 
 // tri is a three-valued grant. UNSTATED is not a synonym for NO: it means the model has
@@ -99,35 +105,73 @@ var licenseModel = map[string]grants{
 // modelLookup resolves an asserted expression. Compound expressions are NOT parsed:
 // "MIT OR Apache-2.0" requires choosing a disjunct, which is a decision with legal
 // consequence that belongs to the consumer, not to the registry.
-func modelLookup(expr string) (grants, string) {
+func isCompound(expr string) bool {
+	return strings.Contains(expr, " OR ") || strings.Contains(expr, " AND ") ||
+		strings.Contains(expr, " WITH ")
+}
+
+func compoundResult(expr string) (grants, string) {
+	if strings.Contains(expr, " OR ") {
+		return grants{}, "compound expression: choosing a disjunct is the consumer's decision, not the registry's"
+	}
+	return grants{}, "compound expression the model does not evaluate"
+}
+
+func modelLookupIn(model map[string]grants, expr string) (grants, string) {
 	if expr == "" || expr == noLicense {
 		return grants{}, "no terms asserted"
 	}
-	if g, ok := licenseModel[expr]; ok {
+	// SPEC §12.3 LICENSE-LOOKUP-PRECEDENCE: the compound test comes FIRST. A model
+	// MAY contain any set of identifiers, so with the lookup first a model carrying
+	// a compound key would RESOLVE it — which LICENSE-LOOKUP-COMPOUND forbids.
+	// Unordered, the two rules contradict each other on a permitted input.
+	// PRECEDENCE governs WHERE the compound test runs; LICENSE-LOOKUP-COMPOUND
+	// governs WHETHER compounds are rejected at all. Gating this branch on both is
+	// what keeps them independently measurable: with precedence rejecting compounds
+	// unconditionally, disabling LOOKUP-COMPOUND changed nothing and the two rules
+	// hid each other's removal.
+	if ruleOn("LICENSE-LOOKUP-COMPOUND") && ruleOn("LICENSE-LOOKUP-PRECEDENCE") && isCompound(expr) {
+		return compoundResult(expr)
+	}
+	// LICENSE-LOOKUP-EXACT: exact octet equality.
+	if g, ok := model[expr]; ok {
 		return g, ""
 	}
-	if ruleOn("LICENSE-LOOKUP-COMPOUND") {
-		if strings.Contains(expr, " OR ") {
-			return grants{}, "compound expression: choosing a disjunct is the consumer's decision, not the registry's"
+	if !ruleOn("LICENSE-LOOKUP-EXACT") {
+		// MUTATION: "helpful" normalisation, and the most dangerous mutation in
+		// this section — it turns an expression the publisher never wrote into a
+		// full grant, one layer BELOW the fold that would otherwise catch it.
+		norm := strings.ToUpper(strings.Trim(strings.TrimSpace(expr), "()"))
+		for k, g := range model {
+			if strings.ToUpper(k) == norm {
+				return g, ""
+			}
 		}
-		if strings.Contains(expr, " AND ") || strings.Contains(expr, " WITH ") {
-			return grants{}, "compound expression the model does not evaluate"
+	}
+	if ruleOn("LICENSE-LOOKUP-COMPOUND") {
+		if isCompound(expr) {
+			return compoundResult(expr)
 		}
 	} else if i := strings.Index(expr, " OR "); i > 0 {
-		// MUTATION: resolve to the first disjunct. Plausible and wrong — it silently
-		// picks terms on the consumer's behalf.
-		if g, ok := licenseModel[expr[:i]]; ok {
+		// MUTATION: resolve to the first disjunct. Plausible and wrong — it picks
+		// terms on the consumer's behalf.
+		if g, ok := model[expr[:i]]; ok {
 			return g, ""
 		}
 	}
 	if !ruleOn("LICENSE-LOOKUP-UNKNOWN") {
-		// MUTATION: the dangerous direction. An unmodelled identifier becomes a full
-		// grant, so an unknown composition reads as permitted.
+		// MUTATION: the dangerous direction. An unmodelled identifier becomes a
+		// full grant, so an unknown composition reads as permitted.
 		return grants{Commercial: triYes, Redistribute: triYes, Modify: triYes,
 			PatentGrant: triYes, ShareAlike: triNo}, ""
 	}
 	return grants{}, "identifier not in the model"
 }
+
+func modelLookup(expr string) (grants, string) {
+	return modelLookupIn(licenseModel, expr)
+}
+
 
 // combine folds a PERMISSION across a composition. UNSTATED wins over YES — once any
 // input is unknown the answer is unknown, however many others granted. NO wins over
@@ -174,9 +218,10 @@ type licenseInput struct {
 }
 
 type licenseEvaluation struct {
-	Policy    string
-	Engine    string
-	Model     string
+	Policy      string
+	Engine      string
+	Model       string
+	ModelDigest string
 	Digest    string
 	Result    grants
 	Inputs    []licenseInput
@@ -186,7 +231,8 @@ type licenseEvaluation struct {
 // evaluateLicensing derives what an artifact's closure permits, from the terms each
 // publication asserted.
 func evaluateLicensing(st *Store, name string, deps []string) licenseEvaluation {
-	ev := licenseEvaluation{Policy: "composition", Engine: licenseEngine, Model: licenseModelVersion}
+	ev := licenseEvaluation{Policy: licensePolicyComposition, Engine: licenseEngine,
+		Model: licenseModelVersion, ModelDigest: licenseModelDigest()}
 
 	add := func(n string) {
 		lic := assertedLicense(st, n)
@@ -268,7 +314,60 @@ func digestSafe(v string) bool {
 	return true
 }
 
+// licenseModelBytes is the canonical published form of the model — the exact bytes
+// fixtures/license/model.json carries (SPEC §12.3). Shared with the fixture writer so
+// the digest can never bind a serialisation the corpus does not publish.
+func licenseModelBytes() []byte {
+	type row struct {
+		Commercial   string `json:"commercial"`
+		Redistribute string `json:"redistribute"`
+		Modify       string `json:"modify"`
+		PatentGrant  string `json:"patent_grant"`
+		ShareAlike   string `json:"share_alike"`
+	}
+	ids := make([]string, 0, len(licenseModel))
+	for k := range licenseModel {
+		ids = append(ids, k)
+	}
+	sort.Strings(ids)
+	rows := make(map[string]row, len(ids))
+	for _, k := range ids {
+		g := licenseModel[k]
+		rows[k] = row{g.Commercial.String(), g.Redistribute.String(), g.Modify.String(),
+			g.PatentGrant.String(), g.ShareAlike.String()}
+	}
+	b, err := json.MarshalIndent(map[string]any{
+		"model":  licenseModelVersion,
+		"engine": licenseEngine,
+		"note": "Permissions fold as MINIMUM and obligations as MAXIMUM over NO < UNSTATED < YES (SPEC §12.2). " +
+			"share_alike is the only OBLIGATION dimension here; the rest are permissions. " +
+			"An identifier absent from this table yields all-UNSTATED, which is safe; a wrong entry is not.",
+		"licenses": rows,
+	}, "", "  ")
+	if err != nil {
+		panic("license model is not serialisable: " + err.Error())
+	}
+	return append(b, '\n')
+}
+
+func licenseModelDigest() string {
+	sum := sha256.Sum256(licenseModelBytes())
+	return hex.EncodeToString(sum[:])
+}
+
+// evaluationDigest returns "" — REFUSAL — when any input cannot be safely encoded
+// (SPEC §12.4). Refusal rather than a digest is the whole point: the previous guard
+// lived in evaluateLicensing, so the store path was safe while any direct caller of
+// this function could still forge a two-input identity from one assertion. A safety
+// rule enforced at one call site is enforced nowhere.
 func evaluationDigest(ev licenseEvaluation) string {
+	if ruleOn("LICENSE-IDENTITY-UNAMBIGUOUS") {
+		for _, i := range ev.Inputs {
+			if !digestSafe(i.Name) || !digestSafe(i.License) {
+				return ""
+			}
+		}
+	}
 	var b strings.Builder
 	b.WriteString("oath-license-eval/1\n")
 	if ruleOn("LICENSE-IDENTITY-INPUT") {
@@ -277,15 +376,42 @@ func evaluationDigest(ev licenseEvaluation) string {
 	if ruleOn("LICENSE-MODEL-VERSIONED") {
 		b.WriteString("model=" + ev.Model + "\n")
 	}
+	if ruleOn("LICENSE-IDENTITY-MODEL-CONTENT") {
+		// The version string is an ASSERTION by whoever edits the lattice; the
+		// content digest is not. Binding only the string lets a table be changed
+		// while every historical evaluation still verifies and now means the
+		// opposite — the exact harm this section opens by naming. §11.2 hashes the
+		// waiver SET rather than a version, for the same reason.
+		b.WriteString("model-digest=" + ev.ModelDigest + "\n")
+	}
 	if ruleOn("LICENSE-IDENTITY-INPUT") {
-		b.WriteString("policy=" + ev.Policy + "\n")
+		pol := ev.Policy
+		if !ruleOn("LICENSE-POLICY-DEFINED") && pol != licensePolicyComposition {
+			// MUTATION: treat an unrecognised policy as `composition`. The verdict
+			// is then reported as agreement with an evaluation that selected its
+			// inputs by a DIFFERENT rule.
+			pol = licensePolicyComposition
+		}
+		b.WriteString("policy=" + pol + "\n")
 	}
 	in := append([]licenseInput(nil), ev.Inputs...)
 	if ruleOn("LICENSE-ORDER-INDEPENDENT") {
-		sort.Slice(in, func(i, j int) bool { return in[i].Name < in[j].Name })
+		// Name alone is NOT a total order, so it does not determine a digest.
+		sort.Slice(in, func(i, j int) bool {
+			if in[i].Name != in[j].Name {
+				return in[i].Name < in[j].Name
+			}
+			return in[i].License < in[j].License
+		})
 	}
 	if ruleOn("LICENSE-IDENTITY-INPUT") {
 		for _, i := range in {
+			if !ruleOn("LICENSE-INPUT-COMPLETE") && (i.License == "(none)" || i.License == noLicense) {
+				// MUTATION: skip members that assert nothing. This is the reading
+				// that COLLIDES — {a:MIT, b:(none)} then encodes exactly as {a:MIT}
+				// while their verdicts differ.
+				continue
+			}
 			// SPEC §12.4 LICENSE-IDENTITY-UNAMBIGUOUS: name and expression on
 			// SEPARATE lines. A single `input=<name>=<expr>` line has no sound
 			// split — §8.6.1 permits `=` inside a name — so `a=b`/`MIT` and
@@ -365,7 +491,19 @@ type licenseVector struct {
 	// format has to be able to state what the rule is about.
 	Pairs []licensePair `json:"pairs,omitempty"`
 	Expect     map[string]string `json:"expect,omitempty"`
-	Digest     string            `json:"digest,omitempty"`
+	Digest      string `json:"digest,omitempty"`
+	ModelDigest string `json:"model_digest,omitempty"`
+	// ModelLicenses lets a vector supply its OWN model. §12.3 permits a model to
+	// contain any set of identifiers, and LICENSE-LOOKUP-PRECEDENCE is load-bearing
+	// precisely when one carries a COMPOUND key — a case the published model does
+	// not contain and should not, since polluting a policy artifact to make a test
+	// reachable would corrupt the thing under test.
+	ModelLicenses map[string]map[string]string `json:"model_licenses,omitempty"`
+	// ExpectRejected marks a vector whose inputs a conformant kernel MUST REFUSE
+	// to encode (§12.4's character rule). Its digest is published so the value an
+	// unsafe implementation would produce is on the record — the point is that a
+	// conformant one never reaches it.
+	ExpectRejected bool `json:"expect_rejected,omitempty"`
 }
 
 // runLicenseVectors executes the family and returns each FAILURE. Empty means pass.
@@ -374,7 +512,7 @@ func runLicenseVectors(vs []licenseVector) []string {
 	for _, v := range vs {
 		switch v.Kind {
 		case "evaluation":
-			g := evalFromAssertions(v.Assertions)
+			g := evalFromAssertionsIn(vectorModel(v), v.Assertions)
 			got := map[string]string{"commercial": g.Commercial.String(), "redistribute": g.Redistribute.String(),
 				"modify": g.Modify.String(), "patent_grant": g.PatentGrant.String(), "share_alike": g.ShareAlike.String()}
 			for k, want := range v.Expect {
@@ -396,11 +534,46 @@ func runLicenseVectors(vs []licenseVector) []string {
 					in = append(in, licenseInput{Name: n, License: l})
 				}
 			}
-			ev := licenseEvaluation{Policy: v.Policy, Engine: v.Engine, Model: v.Model, Inputs: in}
+			if v.ExpectRejected {
+				// The obligation is REFUSAL, not a matching digest.
+				for _, i := range in {
+					if !digestSafe(i.Name) || !digestSafe(i.License) {
+						continue
+					}
+					fail = append(fail, fmt.Sprintf("identity %q: input %q is encodable, but §12.4's character rule must reject it — this kernel can forge a two-input digest from one assertion", v.Label, i.Name))
+				}
+				continue
+			}
+			ev := licenseEvaluation{Policy: v.Policy, Engine: v.Engine, Model: v.Model,
+				ModelDigest: v.ModelDigest, Inputs: in}
 			if d := evaluationDigest(ev); d != v.Digest {
 				fail = append(fail, fmt.Sprintf("identity %q: digest %s, want %s", v.Label, shortHash(d), shortHash(v.Digest)))
 			}
 		}
 	}
 	return fail
+}
+
+// vectorModel returns the model a vector is evaluated against: its own if it
+// supplies one, otherwise the published model.
+func vectorModel(v licenseVector) map[string]grants {
+	if len(v.ModelLicenses) == 0 {
+		return licenseModel
+	}
+	m := make(map[string]grants, len(v.ModelLicenses))
+	for k, row := range v.ModelLicenses {
+		m[k] = grants{triFrom(row["commercial"]), triFrom(row["redistribute"]),
+			triFrom(row["modify"]), triFrom(row["patent_grant"]), triFrom(row["share_alike"])}
+	}
+	return m
+}
+
+func triFrom(s string) tri {
+	switch s {
+	case "YES":
+		return triYes
+	case "NO":
+		return triNo
+	}
+	return triUnstated
 }

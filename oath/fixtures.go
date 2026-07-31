@@ -981,37 +981,10 @@ func writeHostileBytes(write func(string, []byte) error) error {
 // reverse-engineer rows from the vectors — which quietly promotes the vectors to
 // normative text and leaves every unexercised row unconstrained.
 func writeLicenseModel(write func(string, []byte) error) error {
-	type row struct {
-		Commercial   string `json:"commercial"`
-		Redistribute string `json:"redistribute"`
-		Modify       string `json:"modify"`
-		PatentGrant  string `json:"patent_grant"`
-		ShareAlike   string `json:"share_alike"`
-	}
-	ids := make([]string, 0, len(licenseModel))
-	for k := range licenseModel {
-		ids = append(ids, k)
-	}
-	sort.Strings(ids)
-	rows := make(map[string]row, len(ids))
-	for _, k := range ids {
-		g := licenseModel[k]
-		rows[k] = row{g.Commercial.String(), g.Redistribute.String(), g.Modify.String(),
-			g.PatentGrant.String(), g.ShareAlike.String()}
-	}
-	doc := map[string]any{
-		"model":  licenseModelVersion,
-		"engine": licenseEngine,
-		"note": "Permissions fold as MINIMUM and obligations as MAXIMUM over NO < UNSTATED < YES (SPEC §12.2). " +
-			"share_alike is the only OBLIGATION dimension here; the rest are permissions. " +
-			"An identifier absent from this table yields all-UNSTATED, which is safe; a wrong entry is not.",
-		"licenses": rows,
-	}
-	b, err := json.MarshalIndent(doc, "", "  ")
-	if err != nil {
-		return err
-	}
-	return write(filepath.Join("license", "model.json"), append(b, '\n'))
+	// The bytes come from licenseModelBytes() so the model-digest bound into every
+	// evaluation identity (§12.4) is a digest of exactly what this file publishes.
+	// Serialising it twice would let the two drift apart silently.
+	return write(filepath.Join("license", "model.json"), licenseModelBytes())
 }
 
 func writeLicenseVectors(write func(string, []byte) error) error {
@@ -1062,6 +1035,17 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		// answer has to be witnessed rather than assumed.
 		{"an empty composition grants nothing", "LICENSE-FOLD-NONEMPTY",
 			[]string{}, all("UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED")},
+		// EXACT MATCHING. The largest unconstrained surface in §12: with matching
+		// undefined, a "helpfully normalising" registry turns an expression the
+		// publisher never wrote into a full commercial grant, one layer BELOW the
+		// fold that would otherwise have caught it.
+		{"a case-variant identifier is not the identifier", "LICENSE-LOOKUP-EXACT",
+			[]string{"MIT", "mit"}, all("UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED")},
+		{"surrounding punctuation is not stripped before lookup", "LICENSE-LOOKUP-EXACT",
+			[]string{"MIT", "(MIT)"}, all("UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED")},
+		// PRECEDENCE. A compound whose left operand IS in the model: a lookup-first
+		// implementation resolves it, which LICENSE-LOOKUP-COMPOUND forbids.
+
 		{"a transitive dependency changes the root result", "",
 			[]string{"MIT", "MIT", "GPL-3.0-only"}, all("YES", "YES", "YES", "UNSTATED", "YES")},
 	}
@@ -1087,15 +1071,44 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		}
 	}
 
-	// IDENTITY vectors: the digest must bind method and inputs, and must not depend on
+	// PRECEDENCE, with a model that CONTAINS the compound key. This is the only
+	// shape that separates LICENSE-LOOKUP-PRECEDENCE from LICENSE-LOOKUP-COMPOUND:
+	// when the model lacks the key both rules reject it and each hides the other's
+	// removal. §12.3 permits any set of identifiers, so this model is legal — and
+	// a lookup-first implementation RESOLVES it, granting terms the consumer never
+	// chose between.
+	compoundModel := map[string]map[string]string{
+		"MIT":                {"commercial": "YES", "redistribute": "YES", "modify": "YES", "patent_grant": "UNSTATED", "share_alike": "NO"},
+		"MIT AND GPL-3.0-only": {"commercial": "YES", "redistribute": "YES", "modify": "YES", "patent_grant": "YES", "share_alike": "YES"},
+	}
+	cm := map[string]grants{}
+	for k, r := range compoundModel {
+		cm[k] = grants{triFrom(r["commercial"]), triFrom(r["redistribute"]), triFrom(r["modify"]),
+			triFrom(r["patent_grant"]), triFrom(r["share_alike"])}
+	}
+	if g := evalFromAssertionsIn(cm, []string{"MIT AND GPL-3.0-only"}); g.Commercial != triUnstated {
+		return fmt.Errorf("a compound key present in the model was RESOLVED (commercial=%s); the compound test must precede the lookup", g.Commercial)
+	}
+	if err := emit(map[string]any{"kind": "evaluation",
+		"label": "a compound present in the model is still not resolved",
+		"witnesses": "LICENSE-LOOKUP-PRECEDENCE", "policy": licensePolicyComposition,
+		"engine": licenseEngine, "model": licenseModelVersion,
+		"model_licenses": compoundModel, "assertions": []string{"MIT AND GPL-3.0-only"},
+		"expect": map[string]string{"commercial": "UNSTATED", "redistribute": "UNSTATED",
+			"modify": "UNSTATED", "patent_grant": "UNSTATED", "share_alike": "UNSTATED"}}); err != nil {
+		return err
+	}
+
+	// IDENTITY vectors:	// IDENTITY vectors: the digest must bind method and inputs, and must not depend on
 	// order. Without these, changing the lattice next year would silently reinterpret
 	// every historical verdict.
 	baseInputs := []licenseInput{{Name: "a", License: "MIT"}, {Name: "b", License: "Apache-2.0"}}
-	base := licenseEvaluation{Policy: "composition", Engine: licenseEngine, Model: licenseModelVersion, Inputs: baseInputs}
+	base := licenseEvaluation{Policy: licensePolicyComposition, Engine: licenseEngine,
+		Model: licenseModelVersion, ModelDigest: licenseModelDigest(), Inputs: baseInputs}
 	baseDigest := evaluationDigest(base)
 	if err := emit(map[string]any{"kind": "identity", "label": "evaluation digest over method and sorted inputs",
 		"witnesses": "LICENSE-IDENTITY-INPUT", "policy": base.Policy, "engine": base.Engine,
-		"model": base.Model, "assertions": []string{"a=MIT", "b=Apache-2.0"}, "digest": baseDigest}); err != nil {
+		"model": base.Model, "model_digest": base.ModelDigest, "assertions": []string{"a=MIT", "b=Apache-2.0"}, "digest": baseDigest}); err != nil {
 		return err
 	}
 	rev := base
@@ -1112,7 +1125,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 	}
 	if err := emit(map[string]any{"kind": "identity", "label": "changing the model changes the evaluation",
 		"witnesses": "LICENSE-MODEL-VERSIONED", "policy": base.Policy, "engine": base.Engine,
-		"model": modelChanged.Model, "assertions": []string{"a=MIT", "b=Apache-2.0"},
+		"model": modelChanged.Model, "model_digest": modelChanged.ModelDigest, "assertions": []string{"a=MIT", "b=Apache-2.0"},
 		"digest": evaluationDigest(modelChanged)}); err != nil {
 		return err
 	}
@@ -1134,14 +1147,88 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		}
 		if err := emit(map[string]any{"kind": "identity", "label": d.label,
 			"witnesses": "LICENSE-IDENTITY-INPUT", "policy": v.Policy, "engine": v.Engine,
-			"model": v.Model, "assertions": []string{"a=MIT", "b=Apache-2.0"}, "digest": dig}); err != nil {
+			"model": v.Model, "model_digest": v.ModelDigest, "assertions": []string{"a=MIT", "b=Apache-2.0"}, "digest": dig}); err != nil {
 			return err
 		}
 	}
 
+	// The CHARACTER RULE clause. §12.4's LICENSE-IDENTITY-UNAMBIGUOUS has TWO
+	// clauses and only the two-line split was witnessed; the clause the prose calls
+	// "a forgery surface" had no vector at all. It is reachable against a PUBLISHED
+	// digest: a single assertion whose expression embeds LF plus two input lines
+	// reproduces the two-member digest above exactly. A conformant-looking kernel
+	// that omits the character rule therefore forges a real evaluation identity.
+	forgery := licenseEvaluation{Policy: base.Policy, Engine: base.Engine, Model: base.Model,
+		ModelDigest: base.ModelDigest,
+		Inputs: []licenseInput{{Name: "a",
+			License: "MIT\ninput-name=b\ninput-license=Apache-2.0"}}}
+	if d := evaluationDigest(forgery); d != "" {
+		return fmt.Errorf("the character rule did not refuse an assertion embedding LF (got digest %s); one assertion can forge another composition's identity", shortHash(d))
+	}
+	if err := emit(map[string]any{"kind": "identity",
+		"label": "an embedded newline cannot forge a two-input digest",
+		"witnesses": "LICENSE-IDENTITY-UNAMBIGUOUS", "policy": base.Policy, "engine": base.Engine,
+		"model": base.Model, "model_digest": base.ModelDigest, "assertions": []string{},
+		"pairs": []licensePair{{Name: "a", License: "MIT\ninput-name=b\ninput-license=Apache-2.0"}},
+		"expect_rejected": true}); err != nil {
+		return err
+	}
+
+	// INPUT COMPLETENESS. Under the reading that skips members asserting nothing,
+	// {a:MIT, b:(none)} encodes exactly as {a:MIT} — one identity covering two
+	// compositions whose VERDICTS DIFFER (all-UNSTATED against a commercial grant).
+	// Both readings passed every vector until this one existed.
+	withNone := licenseEvaluation{Policy: base.Policy, Engine: base.Engine, Model: base.Model,
+		ModelDigest: base.ModelDigest,
+		Inputs:      []licenseInput{{Name: "a", License: "MIT"}, {Name: "b", License: "-"}}}
+	alone := withNone
+	alone.Inputs = []licenseInput{{Name: "a", License: "MIT"}}
+	if evaluationDigest(withNone) == evaluationDigest(alone) {
+		return fmt.Errorf("a member asserting nothing was dropped from the digest: {a:MIT, b:(none)} and {a:MIT} share an identity while their verdicts differ")
+	}
+	if err := emit(map[string]any{"kind": "identity",
+		"label": "a member asserting nothing still contributes an input pair",
+		"witnesses": "LICENSE-INPUT-COMPLETE", "policy": base.Policy, "engine": base.Engine,
+		"model": base.Model, "model_digest": base.ModelDigest,
+		"assertions": []string{}, "pairs": []licensePair{{Name: "a", License: "MIT"}, {Name: "b", License: "-"}},
+		"digest": evaluationDigest(withNone)}); err != nil {
+		return err
+	}
+
+	// POLICY. An unrecognised policy is not reproducible; it must never be
+	// evaluated as `composition` and reported as agreement.
+	unk := base
+	unk.Policy = "not-a-policy"
+	if evaluationDigest(unk) == baseDigest {
+		return fmt.Errorf("an unrecognised policy produced the composition digest; a different selection rule would be reported as the same evaluation")
+	}
+	if err := emit(map[string]any{"kind": "identity",
+		"label": "an unrecognised policy is a different evaluation",
+		"witnesses": "LICENSE-POLICY-DEFINED", "policy": unk.Policy, "engine": base.Engine,
+		"model": base.Model, "model_digest": base.ModelDigest,
+		"assertions": []string{"a=MIT", "b=Apache-2.0"}, "digest": evaluationDigest(unk)}); err != nil {
+		return err
+	}
+
+	// The MODEL CONTENT binding.	// The MODEL CONTENT binding. Changing the lattice while holding the version
+	// string fixed must change every identity, or historical verdicts are
+	// reinterpreted rather than superseded.
+	swapped := base
+	swapped.ModelDigest = "0000000000000000000000000000000000000000000000000000000000000000"
+	if evaluationDigest(swapped) == baseDigest {
+		return fmt.Errorf("editing the lattice under a fixed version string left the digest unchanged; every historical evaluation would still verify while meaning the opposite")
+	}
+	if err := emit(map[string]any{"kind": "identity",
+		"label": "editing the lattice changes the digest even under a fixed version string",
+		"witnesses": "LICENSE-IDENTITY-MODEL-CONTENT", "policy": base.Policy, "engine": base.Engine,
+		"model": base.Model, "model_digest": swapped.ModelDigest,
+		"assertions": []string{"a=MIT", "b=Apache-2.0"}, "digest": evaluationDigest(swapped)}); err != nil {
+		return err
+	}
+
 	if err := emit(map[string]any{"kind": "identity", "label": "input order does not change the digest",
 		"witnesses": "LICENSE-ORDER-INDEPENDENT", "policy": base.Policy, "engine": base.Engine,
-		"model": base.Model, "assertions": []string{"b=Apache-2.0", "a=MIT"}, "digest": baseDigest}); err != nil {
+		"model": base.Model, "model_digest": base.ModelDigest, "assertions": []string{"b=Apache-2.0", "a=MIT"}, "digest": baseDigest}); err != nil {
 		return err
 	}
 
@@ -1160,12 +1247,13 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 	var ambDigests []string
 	for _, a := range amb {
 		ev := licenseEvaluation{Policy: base.Policy, Engine: base.Engine, Model: base.Model,
-			Inputs: []licenseInput{{Name: a.pair.Name, License: a.pair.License}}}
+			ModelDigest: base.ModelDigest,
+			Inputs:      []licenseInput{{Name: a.pair.Name, License: a.pair.License}}}
 		d := evaluationDigest(ev)
 		ambDigests = append(ambDigests, d)
 		if err := emit(map[string]any{"kind": "identity", "label": a.label,
 			"witnesses": "LICENSE-IDENTITY-UNAMBIGUOUS", "policy": base.Policy, "engine": base.Engine,
-			"model": base.Model, "assertions": []string{}, "pairs": []licensePair{a.pair},
+			"model": base.Model, "model_digest": base.ModelDigest, "assertions": []string{}, "pairs": []licensePair{a.pair},
 			"digest": d}); err != nil {
 			return err
 		}
@@ -1182,6 +1270,10 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 // folds a closure, without needing a store. Kept separate so the vectors describe the
 // RULES rather than a particular corpus.
 func evalFromAssertions(exprs []string) grants {
+	return evalFromAssertionsIn(licenseModel, exprs)
+}
+
+func evalFromAssertionsIn(model map[string]grants, exprs []string) grants {
 	// SPEC §12.2 LICENSE-FOLD-NONEMPTY. The zero value is UNSTATED in every
 	// dimension, so an empty fold is already conservative here. Read literally,
 	// the §12.2 tables fall through both rows on zero inputs and yield YES — the
@@ -1192,7 +1284,7 @@ func evalFromAssertions(exprs []string) grants {
 			PatentGrant: triYes, ShareAlike: triNo} // the identity: a false YES
 	}
 	for i, e := range exprs {
-		g, _ := modelLookup(e)
+		g, _ := modelLookupIn(model, e)
 		if i == 0 {
 			acc = g
 			continue

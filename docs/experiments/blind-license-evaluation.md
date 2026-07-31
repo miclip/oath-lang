@@ -80,28 +80,95 @@ agent was therefore testing a §12 that no longer existed by the time it
 reported. Concurrent repair of the artifact under test is its own methodological
 cost, and the fix is to pin and freeze, not to hurry.
 
-## Round two — base `dda0b1a6ef88`
+## Round two — 2026-07-30, base `dda0b1a6ef88`
 
-Dispatched against the repaired normative surface to test a different and
-stronger claim:
+**Classification: PASS WITH INFERENCE AGAIN — but a different, much smaller
+inference, and a far sharper set of findings.**
 
-> An unseen implementation can reproduce §12, the published model, verdicts, and
-> evaluation identities **without inference**.
+16/16 vectors passed on the first execution, and the digest reproduced first
+attempt with no iteration. That is again not the result. The claim under test
+was that an unseen implementation could reproduce §12 WITHOUT inference, and it
+does not hold — for one blocking reason and several smaller ones.
 
-The round-one implementation and transcript are preserved as evidence and were
-NOT adapted or extended; round two is a fresh agent with no access to either.
+The isolation held: `git archive` export, preflight-verified, no `.git`. The
+agent stayed inside the dispatch root and disclosed two boundary events of its
+own accord (it wrote a file one directory up by mistake and moved it back, then
+`ls`d that directory, seeing only `scratchpad` and `tasks`). Neither exposed
+project content. It also disclosed recognising the project from prior context
+without consulting it — a residual the harness cannot remove, and the reason its
+clean first-run score should be discounted rather than celebrated.
 
-Isolation is now structural. `scripts/blind-export.py` materializes the dispatch
-root by allowlist export from a pinned commit — `git archive`, so no `.git`, no
-branches, tags, reflogs, commit subjects, or diffs exist to leak, and an
-untracked working-tree file cannot ride along. A preflight then verifies the
-PRODUCED DIRECTORY rather than trusting the dispatch instructions: it fails on
-any `.git`, any forbidden path, any file the allowlist does not name, and on
-reference-implementation identifiers appearing in the tree. This mirrors the
-release-binary mutation gate, which verifies the artifact rather than the build
-instructions, and it is checked in the failing direction against a deliberately
-contaminated tree.
+### What round one had fixed, and it held
 
-What isolation still cannot bound: a public remote, prior model exposure to this
-project, or knowledge carried in from another session. Those are limited by
-dispatching a fresh agent and by stating the residual risk, not by the script.
+`LICENSE-MODEL-PUBLISHED` worked exactly as designed. The agent reported it never
+needed to reverse-engineer a row, called `model.json` "the strongest part of this
+section", and every verdict traced to a citation in a derivation log it wrote
+BEFORE opening the vectors. The round-one repair is confirmed by the thing that
+found the defect.
+
+### The blocking hole
+
+**`policy` was a required component of a normative identity with no definition
+anywhere in the document** — no vocabulary, no default, no semantics, no stated
+source. The agent could only obtain it by reading it out of a fixture record.
+Without the vectors it could not have produced ANY digest. This is §12.3's own
+warning ("silently promotes the fixtures to normative text") reappearing one
+field over, in a field that selects the input set and therefore changes the
+verdict as well as the identity.
+
+### Four defects that survived round one
+
+1. **The digest bound the model's VERSION STRING, not its bytes.** Flip one `NO`
+   to `YES` in the lattice, leave `spdx-lattice/1` untouched, and every published
+   evaluation identity still verifies while meaning the opposite. Verbatim the
+   harm §12.4 opens by naming. §11.2 — the section §12.4 claims to be applying
+   one layer out — hashes the waiver SET rather than a version, for exactly this
+   reason. Now `model-digest`.
+2. **The character rule was unwitnessed, and the forgery reproduced a PUBLISHED
+   digest.** `LICENSE-IDENTITY-UNAMBIGUOUS` has two clauses; only the two-line
+   split had a vector. A single assertion whose expression embeds LF reproduces
+   the two-member vector's digest `cd8ae415…` byte-for-byte. The reference kernel
+   refused it — but only in `evaluateLicensing`, so any direct caller of
+   `evaluationDigest` could still forge. A safety rule enforced at one call site
+   is enforced nowhere; refusal now lives in the digest function.
+3. **"One pair per consumed assertion" was ambiguous, and one reading collides.**
+   Skipping members that assert nothing makes `{a:MIT, b:(none)}` encode exactly
+   as `{a:MIT}` while their verdicts differ — all-`UNSTATED` against a commercial
+   grant. Both readings passed every vector.
+4. **The lookup was completely unconstrained.** With matching undefined, `mit`,
+   `MIT ` and `(MIT)` yield `UNSTATED` from one conformant registry and a FULL
+   COMMERCIAL GRANT from another that helpfully normalises. `fixtures/MANIFEST.md`
+   promises that false permission is the direction that matters; that guarantee
+   held for §12.2's fold and failed completely for §12.3's lookup one layer below
+   it. The fold cannot protect against a wrong answer handed to it.
+
+Also: compound-vs-lookup precedence was unordered (a model MAY contain a compound
+key, and lookup-first resolves it); sorting by name alone is not a total order;
+duplicates and text encoding were unstated.
+
+### The finding about our own gates
+
+11 of 18 mutations the agent tried survived the full suite. More pointed: the
+rule-to-vector matrix — built specifically to find unwitnessed prose — reported
+`MATRIX: COMPLETE` while the clause the specification itself calls "a forgery
+surface" had no vector. Witnessing was tracked per RULE IDENTIFIER, and a rule
+can carry several independent clauses. The matrix now requires a vector per
+clause, and is checked in the failing direction.
+
+Two rules were also found to SHADOW each other: with precedence rejecting
+compounds unconditionally, disabling `LICENSE-LOOKUP-COMPOUND` changed nothing,
+so each hid the other's removal and the scorer called both witnessed. Precedence
+governs WHERE the test runs; the compound rule governs WHETHER compounds are
+rejected — gating on both restores independent measurability.
+
+License family after repair: 16/16 obligations witnessed (was 11/11 over a
+smaller inventory), 22 vectors, matrix complete with clause-level coverage.
+
+### Still open
+
+`LICENSE-IDENTITY-*` binds NAMES, which §9 states are mutable without changing
+identity, and never an artifact hash — while §11.2, one layer in, binds
+`artifact=<64 hex>`. So `app→lib` and `lib→app` are the same evaluation, and
+after a repoint the same digest covers different code. This is a design decision
+about what an evaluation is scoped to, not a defect to patch silently, and it is
+left open deliberately.

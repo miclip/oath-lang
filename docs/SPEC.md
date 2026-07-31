@@ -2474,11 +2474,30 @@ that reaches an empty fold has mis-assembled the closure, and MUST yield
 An asserted expression resolves to a set of grants, or to none.
 
 **LICENSE-LOOKUP-UNKNOWN.** An implementation MUST yield all-`UNSTATED`, never a
-grant, when:
+grant. The tests are applied IN THIS ORDER, and the order is normative:
 
-- the expression is absent, or is the explicit no-assertion sentinel `-`;
-- the identifier is not in the model;
-- the expression is COMPOUND — containing ` OR `, ` AND `, or ` WITH `.
+1. the expression is absent, or is the explicit no-assertion sentinel `-`;
+2. the expression is COMPOUND — containing ` OR `, ` AND `, or ` WITH `;
+3. the identifier is not in the model.
+
+**LICENSE-LOOKUP-PRECEDENCE.** The compound test precedes the model lookup.
+Since a model MAY contain any set of identifiers, one containing a compound key
+would otherwise let a lookup-first implementation RESOLVE a compound expression,
+which `LICENSE-LOOKUP-COMPOUND` forbids. Unordered, the two rules contradict each
+other on an input the specification permits to exist.
+
+**LICENSE-LOOKUP-EXACT.** The identifier is matched by EXACT OCTET EQUALITY. An
+implementation MUST NOT case-fold, trim whitespace, strip punctuation, or
+otherwise normalise the expression before lookup. An unmatched identifier is
+already safe — it yields `UNSTATED` — so normalisation buys nothing and risks
+everything: it converts a value the publisher did not write into a grant.
+
+> This was the largest unconstrained surface in this section. With matching
+> undefined, `mit`, `MIT ` and `(MIT)` each yield `UNSTATED` from one conformant
+> registry and a FULL COMMERCIAL GRANT from another that helpfully normalises,
+> with both passing every vector. §12.2's fold was checked hard in the permissive
+> direction while the lookup one layer down was not checked at all — and the fold
+> cannot protect against a wrong answer handed to it.
 
 **LICENSE-LOOKUP-COMPOUND.** Compound expressions MUST NOT be resolved by the
 registry. `MIT OR Apache-2.0`
@@ -2524,10 +2543,28 @@ separator `oath-license-eval/1` and one LF-terminated line each, in this order:
 oath-license-eval/1
 engine=<engine>
 model=<model version>
+model-digest=<64 lowercase hex>
 policy=<policy>
-input-name=<name>                       (one PAIR per consumed assertion)
+input-name=<name>                       (one PAIR per closure member)
 input-license=<asserted expression>
 ```
+
+All lines are UTF-8, with no space around `=` and no trailing blank line.
+
+**LICENSE-IDENTITY-MODEL-CONTENT.** `model-digest` is SHA-256 over the published
+model's exact bytes (§12.3). Binding the version STRING alone is not sufficient
+and MUST NOT be relied on: a version string is an assertion by whoever edits the
+lattice, so a table can be changed while the string stays fixed, and every
+historical digest then still verifies while meaning the opposite of what it
+meant. That is verbatim the harm this section opens by naming — "alter the
+lattice and every historical result silently means something else" — so the rule
+was stated and the encoding permitted precisely it.
+
+> §11.2 hashes the waiver SET rather than a waiver-set version, for exactly this
+> reason. §12.4 claimed to be §11 applied one layer out and then bound a name
+> where §11.2 binds content. A blind implementation demonstrated the swap: flip
+> one `NO` to `YES` in the lattice, leave `spdx-lattice/1` untouched, and every
+> published evaluation identity still checks out.
 
 **LICENSE-IDENTITY-UNAMBIGUOUS.** A name and its expression occupy SEPARATE
 lines, and every value MUST exclude LF, CR, and any octet below `0x20` or equal
@@ -2547,8 +2584,40 @@ discipline for the same reason; §12.4 inherited none of it. A rule and the
 encoding that must implement it are separate obligations, and stating the
 rule does not discharge the encoding.
 
-**LICENSE-ORDER-INDEPENDENT.** Input PAIRS are sorted by `name` before hashing,
-comparing by octet value so ordering never depends on locale or language. The same assertions evaluated in
+**LICENSE-POLICY-DEFINED.** `policy` names the rule by which the input set was
+SELECTED from the store. Exactly one value is defined by this specification:
+
+| policy | meaning |
+|---|---|
+| `composition` | the artifact together with its exact transitive dependency closure (§12.2) |
+
+An implementation MUST NOT invent a policy value, and MUST treat an evaluation
+carrying an unrecognised policy as one it cannot reproduce, rather than
+evaluating it under `composition` and reporting agreement.
+
+> Before this table existed, `policy` was a REQUIRED component of a normative
+> identity with no vocabulary, no default, no semantics and no stated source —
+> derivable only by reading it out of a fixture. It was the single hole that made
+> "implementable from the prose alone" false: without the vectors an
+> implementation could not produce any digest at all. A field that selects the
+> input set also silently changes the verdict, so leaving it open was not a
+> documentation gap but an unbounded one.
+
+**LICENSE-INPUT-COMPLETE.** EVERY member of the selected closure contributes
+exactly one input pair, INCLUDING a member that asserts nothing — which
+contributes its no-assertion sentinel `-`. Members are never skipped, never
+deduplicated, and a member appearing twice in the closure contributes twice.
+
+> Skipping non-asserting members is the reading that collides. Under it
+> `{a:MIT, b:(none)}` and `{a:MIT}` encode identically while their verdicts
+> differ — all-`UNSTATED` against a commercial grant — so one evaluation identity
+> would cover two compositions that disagree. Demonstrated, and both readings
+> passed every vector.
+
+**LICENSE-ORDER-INDEPENDENT.** Input PAIRS are sorted before hashing by `name`,
+then by asserted expression where names are equal, comparing by OCTET value so
+ordering never depends on locale, language, or a Unicode collation. Sorting by
+name alone is not a total order and so does not determine a digest. The same assertions evaluated in
 a different order are the SAME evaluation, and MUST produce the same digest —
 otherwise fixture or traversal order would make one evaluation appear to be two.
 

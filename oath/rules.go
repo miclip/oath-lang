@@ -102,6 +102,11 @@ var normativeRules = []normativeRule{
 	// reach it. Listed for inventory completeness and excluded from this denominator.
 	{"LICENSE-CLOSURE-EXCLUSIVE", "§12.4", "only assertions in the exact closure are consumed", familyIntegration},
 	{"LICENSE-ORDER-INDEPENDENT", "§12.4", "input order does not change the evaluation digest", familyLicense},
+	{"LICENSE-LOOKUP-PRECEDENCE", "§12.3", "the compound test precedes the model lookup, so a compound key cannot be resolved", familyLicense},
+	{"LICENSE-LOOKUP-EXACT", "§12.3", "identifiers match by exact octet equality; no case-folding, trimming or normalisation", familyLicense},
+	{"LICENSE-POLICY-DEFINED", "§12.3", "an unrecognised policy is not reproducible and is never evaluated as composition", familyLicense},
+	{"LICENSE-INPUT-COMPLETE", "§12.4", "every closure member contributes a pair, including one asserting nothing", familyLicense},
+	{"LICENSE-IDENTITY-MODEL-CONTENT", "§12.4", "the digest binds the model's BYTES, not a version string the lattice can outlive", familyLicense},
 	{"LICENSE-FOLD-NONEMPTY", "§12.2", "an empty composition yields UNSTATED, never the fold's identity element", familyLicense},
 	{"LICENSE-IDENTITY-UNAMBIGUOUS", "§12.4", "name and expression are separately encoded, so no two distinct compositions share a digest", familyLicense},
 
