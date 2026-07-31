@@ -93,9 +93,15 @@ def surface_declaration():
     witness_at = sec.index("CONFORMANCE WITNESSES ONLY")
     declared = set(re.findall(r"`(fixtures/[^`]+|scripts/[^`]+)`", sec[:witness_at]))
 
+    # The exporter's surfaces are PER SECTION; §13.1b declares the normative data
+    # of the whole document. Compare against the UNION, so a section that declares
+    # no data (§8.6 today) neither hides a declared artifact nor is treated as one.
     exporter = (ROOT / "scripts" / "blind-export.py").read_text()
-    m = re.search(r"^DATA = \[(.*?)\]", exporter, re.S | re.M)
-    shipped = set(re.findall(r'"([^"]+)"', m.group(1))) if m else set()
+    m = re.search(r"^SURFACES = \{(.*?)^\}", exporter, re.S | re.M)
+    shipped = set()
+    if m:
+        for data_list, _witness in re.findall(r"\(\[(.*?)\],\s*\[(.*?)\]\)", m.group(1), re.S):
+            shipped |= set(re.findall(r'"([^"]+)"', data_list))
     return declared, shipped
 
 

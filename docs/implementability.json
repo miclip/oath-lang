@@ -150,6 +150,35 @@
       ],
       "evidence": "docs/experiments/blind-license-evaluation.md",
       "implementer_statement": "A working implementation came out of the prose plus model.json, but eleven things were not determined by them, and I left three vectors failing rather than tune to them."
+    },
+    {
+      "round": 5,
+      "date": "2026-07-31",
+      "sections": [
+        "8.6"
+      ],
+      "source": "1d7fcaf85d7c83bcc459d522f440201f94364672",
+      "surface_digest": "e7925143a82ee8998f5416103902d0b6a63948c0f3e5108f81142501a7fe2b33",
+      "supplied": [
+        "docs/SPEC.md",
+        "fixtures/envelope/vectors.jsonl",
+        "fixtures/MANIFEST.md"
+      ],
+      "status": "DISPATCHED",
+      "research_question": "Does the implementability methodology GENERALISE across independently evolved sections? Four rounds matured \u00a712 and each found a new defect class, but the methodology was validated only on the section receiving all the attention. \u00a78.6 is the harder test: 8/18 obligations witnessed, one prior blind implementation, much older design decisions, and dense interaction with identity, signatures, journals and conformance. If the method depends on licensing it should visibly fail here.",
+      "hypothesis": "\u00a78.6, on this surface, is NOT yet independently implementable without inference \u2014 predicted from its lower witnessed coverage, not from any audit. The stronger claim under test is not about \u00a78.6 at all: it is that the METHOD produces the same quality of finding on a section it was not developed against.",
+      "hypothesis_recorded": "before dispatch",
+      "taxonomy_hypothesis": {
+        "claim": "Every finding will fall into one of the four defect classes \u00a712 produced. A FIFTH class would be the more valuable outcome: it would show the taxonomy is \u00a712-shaped rather than general.",
+        "classes": [
+          "1. MISSING MEANING \u2014 the document does not say enough to proceed honestly",
+          "2. HIDDEN NORMATIVE INPUTS \u2014 meaning exists but lives in fixtures or implementation, not the declared surface",
+          "3. INTERNAL INCONSISTENCY \u2014 enough is communicated to implement, but the document contradicts itself or leans on undocumented constants",
+          "4. INCOMPLETELY DEFINED OBJECTS \u2014 every field is correct and the encoding still does not say what it identifies"
+        ],
+        "method": "The taxonomy is deliberately WITHHELD from the dispatch brief. Supplying it would shape what the subject looks for and convert a test of the taxonomy into a confirmation of it. Findings are classified afterwards, by us, against the list recorded here."
+      },
+      "prediction": "Specific pre-registered guess, recorded so it can lose: \u00a78.6.4a requires rejecting a small-order public key and neither lists the encodings nor states how to derive them, so a blind implementation cannot obtain them from the surface. That would be class 2 (hidden normative inputs) \u2014 the same class round two found in \u00a712, appearing independently in a section developed years apart. Noted BEFORE dispatch and deliberately NOT repaired first, since pre-repairing is teaching to the test."
     }
   ]
 }

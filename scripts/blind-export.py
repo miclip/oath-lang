@@ -27,7 +27,7 @@ project, or knowledge carried in from another session. Those are bounded by
 dispatching a fresh agent and by recording the residual risk honestly — not by
 this script, and not by claiming a stronger result than the setup earns.
 
-Usage:  python3 scripts/blind-export.py [--paths a,b,c] <sha> <dest-dir>
+Usage:  python3 scripts/blind-export.py [--section 8.6] [--paths a,b,c] <sha> <dest-dir>
 """
 
 import hashlib
@@ -48,13 +48,27 @@ ROOT = Path(__file__).resolve().parent.parent
 # subject may resolve, which is itself a form of coaching.
 PROSE = ["docs/SPEC.md"]
 
+# Per-section surfaces. The methodology is only a methodology if it is not
+# licensing-shaped, so the harness takes a SECTION rather than assuming one.
+# Each entry is (normative data, conformance witnesses) for that section, and the
+# data list must match what §13.1b declares — check-implementability enforces it.
+SURFACES = {
+    "12": (["fixtures/license/model.json"],
+           ["fixtures/license/vectors.jsonl", "fixtures/MANIFEST.md"]),
+    # §8.6 declares NO normative data. That is the honest current state, not an
+    # omission in this table: if the section turns out to need an artifact it
+    # never declared, that is a finding for the round rather than something to
+    # quietly supply here.
+    "8.6": ([], ["fixtures/envelope/vectors.jsonl", "fixtures/MANIFEST.md"]),
+}
+
 # NORMATIVE DATA: incorporated by reference, schema and interpretation defined in
 # the prose (§13.1b). Part of the specification, so consuming it is derivation.
-DATA = ["fixtures/license/model.json"]
+DATA = SURFACES["12"][0]
 
 # CONFORMANCE WITNESSES: for the subject to CHECK itself against, never to build
 # from. Supplied because a run that cannot self-check produces a weaker report.
-WITNESSES = ["fixtures/license/vectors.jsonl", "fixtures/MANIFEST.md"]
+WITNESSES = SURFACES["12"][1]
 
 # DELIBERATELY EXCLUDED, and this is a correction rather than an omission.
 # scripts/license-rule-matrix.py is our COVERAGE MEASUREMENT TOOL — neither prose
@@ -162,6 +176,14 @@ def main():
     # the wrong thing while looking rigorous.
     paths = None
     argv = sys.argv[1:]
+    global DATA, WITNESSES
+    if len(argv) >= 3 and argv[0] == "--section":
+        sec = argv[1]
+        if sec not in SURFACES:
+            print(f"FAIL: no declared surface for §{sec}")
+            return 1
+        DATA, WITNESSES = SURFACES[sec]
+        argv = argv[2:]
     if len(argv) >= 3 and argv[0] == "--paths":
         paths = [p for p in argv[1].split(",") if p]
         argv = argv[2:]
@@ -172,6 +194,8 @@ def main():
     global ALLOW
     if paths is not None:
         ALLOW = paths
+    else:
+        ALLOW = PROSE + DATA + WITNESSES
 
     full = sh("git", "rev-parse", sha).stdout.strip()
     if not full:

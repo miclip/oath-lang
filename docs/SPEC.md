@@ -2859,6 +2859,20 @@ one passes has demonstrated that the FIXTURES are sufficient — which was never
 in question — while saying nothing about the prose. This inverts the usual
 reading of a green suite, deliberately.
 
+> **Three questions for any normative identity.** The rules below are stated
+> separately because each is independently checkable, but they are one review
+> discipline and apply to anything that hashes a semantic object — publication
+> identity, campaign identity, evaluation identity, and whatever comes next:
+>
+> - **SOURCE** — does every byte contributing to this identity have a normative
+>   source? (IMPL-NORMATIVE-SOURCE)
+> - **SUBJECT** — what is this identity a name FOR? (IMPL-IDENTITY-SUBJECT)
+> - **SURFACE** — is every normative input it depends on explicitly declared?
+>   (IMPL-SURFACE-DECLARED, §13.1a)
+>
+> Each was learned from a defect that field-level review did not catch, and each
+> is now enforced mechanically rather than by recollection.
+
 **IMPL-IDENTITY-SUBJECT.** Every normative identity MUST explicitly identify its
 SUBJECT — the object the identity is an identity OF. Binding the identity's
 inputs is not sufficient and does not imply it.
