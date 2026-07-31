@@ -144,6 +144,16 @@ check-doc-numbers:
 check-spec-bytes:
 	@python3 scripts/check-spec-vs-fixtures.py
 
+# Materialize an ISOLATED dispatch root for a blind implementation, and verify the
+# produced directory rather than the instructions. Round one ran in a worktree with
+# an instruction not to inspect history, and two commit subjects still reached the
+# agent's terminal through ordinary setup commands. A tree with no .git cannot leak
+# history however the setup is worded.
+#   make blind-export SHA=<commit> DEST=<dir>
+.PHONY: blind-export
+blind-export:
+	@python3 scripts/blind-export.py $(SHA) $(DEST)
+
 # License evaluation coverage, measured the same way: disable each rule, re-run.
 # Rule-to-vector matrix: does every NORMATIVE rule have a witnessing vector? The
 # opposite check from license-score, which asks whether disabling an implementation
