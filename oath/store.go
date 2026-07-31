@@ -514,34 +514,50 @@ func (e *LogEntry) repointedName() bool {
 func nameTransitions(entries []LogEntry, name string) []struct {
 	Entry      LogEntry
 	Transition string
+	Stated     string
+	Disagrees  bool
 } {
 	var out []struct {
 		Entry      LogEntry
 		Transition string
+		Stated     string
+		Disagrees  bool
 	}
 	bound := "" // what `name` is bound to as of the entries seen so far
 	for _, e := range entries {
 		if e.Name != name {
 			continue
 		}
-		t := e.NameTransition
-		if t == "" {
-			t = legacyTransition(&e, bound)
-		}
+		// SPEC §8.6.4 ENV-VERIFY-DERIVED-TRANSITION. The transition is DERIVED from
+		// journal history and the stored member is only cross-checked. It used to
+		// be the reverse — "declared transitions always win where present" — which
+		// inverted the trust model for the one field deciding whether clause 5
+		// runs at all: a store could label a transition `unchanged`, attach a
+		// genuine signature over an unrelated envelope, and the entry passed every
+		// clause.
+		t := deriveTransition(&e, bound)
+		disagrees := e.NameTransition != "" && e.NameTransition != t
 		if t == transitionApplied {
 			bound = e.Hash
 		}
 		out = append(out, struct {
 			Entry      LogEntry
 			Transition string
-		}{e, t})
+			Stated     string
+			Disagrees  bool
+		}{e, t, e.NameTransition, disagrees})
 	}
 	return out
 }
 
 // legacyTransition derives the transition of a pre-field entry, given what the name
 // was bound to immediately before it.
-func legacyTransition(e *LogEntry, bound string) string {
+// deriveTransition computes an entry's transition from the entry and what the name
+// was bound to immediately before it. This is the AUTHORITATIVE value (§8.6.4
+// ENV-VERIFY-DERIVED-TRANSITION); a stored `name_transition` is cross-checked
+// against it, never trusted in its place. For entries predating the field there is
+// nothing to cross-check, and the result is reported as reconstructed.
+func deriveTransition(e *LogEntry, bound string) string {
 	switch e.Kind {
 	case "data", "func", "":
 	default:

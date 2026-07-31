@@ -370,10 +370,24 @@ func TestLegacyNoOpRequiresFolding(t *testing.T) {
 		t.Fatalf("A→B→A counted %d applied transitions, want 3: an old envelope for the first A must carry a stale revision", applied)
 	}
 
-	// Declared transitions always win over derivation.
+	// SPEC §8.6.4 ENV-VERIFY-DERIVED-TRANSITION: derivation is AUTHORITATIVE and a
+	// stored transition is only cross-checked. This test previously asserted the
+	// opposite ("declared transitions always win"), which is the model the
+	// hostile-store finding overturned: a store that writes the transition also
+	// decides whether clause 5 runs, so trusting the field inverts the trust model
+	// for the one member that gates the check.
 	declared := []LogEntry{{Seq: 1, Name: "d", Kind: "func", Status: "accepted",
 		Hash: "hA", NameTransition: transitionUnchanged}}
-	if got := nameTransitions(declared, "d"); got[0].Transition != transitionUnchanged {
-		t.Fatalf("declared transition was overridden by derivation: %q", got[0].Transition)
+	got2 := nameTransitions(declared, "d")
+	if got2[0].Transition != transitionApplied {
+		t.Fatalf("derivation gave %q for a first publication binding hA, want applied — "+
+			"the stored value must not override history", got2[0].Transition)
+	}
+	if !got2[0].Disagrees {
+		t.Fatal("a stored transition contradicting the derived one was not flagged; " +
+			"a store could then label a transition `unchanged` and skip clause 5")
+	}
+	if got2[0].Stated != transitionUnchanged {
+		t.Fatalf("the stored value must still be REPORTED for audit, got %q", got2[0].Stated)
 	}
 }

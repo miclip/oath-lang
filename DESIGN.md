@@ -768,6 +768,70 @@ shape as every defect these rounds have found — the prose asserting a property
 the encoding does not deliver — so it should be settled in text before anything
 is written.
 
+## Where the methodology stops: specification engineering vs protocol design (2026-07-31)
+
+Five blind rounds produced two kinds of finding, and only one of them is
+something the method can fix.
+
+| SPECIFICATION ENGINEERING | PROTOCOL DESIGN |
+|---|---|
+| missing meaning | what is a transition? |
+| hidden normative inputs | what constitutes publication identity? |
+| internal inconsistency | what exactly is signed? |
+| incompletely defined objects | what is a durable historical fact? |
+| defective witnesses | |
+| *the method systematically finds and closes these* | *someone has to choose the semantics* |
+
+The distinction matters because it narrows what the implementability process
+claims. It does not tell you how to design a protocol. It tells you WHERE the
+protocol has not yet made a decision — which is a smaller and far more useful
+role, and one that stops the method from being driven past its competence.
+
+The tell is uniform: every question round five left open asks *what belongs in
+the immutable historical record*, not *what should the implementation do*. Should
+a transition be trusted or derived? Must `parent_rev` be persisted? What
+constitutes an Ed25519 publication? Is publication identity stable under
+alternate base64 spellings? §8.6 stopped being about envelopes and signatures
+somewhere along the way and became a question about what makes a historical fact
+durable.
+
+**Consequently §8.6 will not be driven to green by further blind rounds, and
+should not be.** The remaining blockers are not implementability failures. A
+section whose semantics are undecided will fail an implementability round for a
+reason the round cannot repair, and running one anyway would measure the same
+four open decisions repeatedly while looking like progress.
+
+## DECIDED: a transition is derived, not consumed (2026-07-31)
+
+Offline verification derives facts; it does not consume them.
+
+`name_transition` is written by the store, and it is not a publisher claim — it
+is a property of journal history. Reading it from the entry inverted the trust
+model for precisely the field that decides whether §8.6.4 clause 5 runs: a store
+could label a transition `unchanged`, attach a genuine signature over an
+unrelated envelope, and the entry passed every clause. That is the asymmetry this
+project has spent its whole life removing everywhere else.
+
+Now ENV-VERIFY-DERIVED-TRANSITION: the verifier derives the transition from
+preceding journal history, and a stored value disagreeing with the derived one is
+a verification failure.
+
+**Entry verification is therefore a whole-journal operation.** Accepting that is
+not a new cost — chain integrity, replay protection, revision evolution and
+ownership history are already journal properties, and an isolated entry has never
+been independently meaningful. `name_transition` was the one field pretending
+otherwise, and the pretence is what the attack used.
+
+Legacy entries predating the field are reconstructed under §8.6.2's KIND
+restriction and reported as reconstructed rather than as stated. History is not
+rewritten; how it was interpreted is disclosed.
+
+STILL OPEN, and each is protocol design rather than specification engineering:
+whether `parent_rev` must be committed into each accepted entry (without it, ABA
+replay survives offline verification); which Ed25519 equation defines validity
+where cofactored and cofactorless disagree; and whether canonical base64 pad bits
+are part of publication identity.
+
 ## A fifth defect class: the defective witness (2026-07-31)
 
 §8.6 was chosen to test whether the four-class taxonomy generalised. It produced

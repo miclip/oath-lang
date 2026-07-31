@@ -1991,7 +1991,8 @@ A verifier MUST, for every entry where any of `envelope_b64`, `author_pubkey`,
 4. **ENV-VERIFY-SIGNATURE.** `author_sig` is a valid signature under `author_pubkey` over the octets
    **decoded from** `envelope_b64` — not over a re-encoding of the parsed
    envelope, and not over the base64 text;
-5. **ENV-VERIFY-AGREES.** for an entry whose `name_transition` is `applied`, the envelope's `name`,
+5. **ENV-VERIFY-AGREES.** for an entry whose transition is `applied` — DERIVED by
+   the verifier from journal history, never read from the entry — the envelope's `name`,
    `artifact`, and `parent` equal the entry's `name`, `hash`, and `prev`
    respectively, where an empty `prev` corresponds to `-`.
 
@@ -2018,7 +2019,31 @@ A verifier MUST, for every entry where any of `envelope_b64`, `author_pubkey`,
 > reasoning about the failure direction rather than the wording.
 
 Failing (5) means the store recorded a transition its author did not sign, which
-MUST be a hard failure rather than a warning. Entries with none of the three fields
+MUST be a hard failure rather than a warning.
+
+**ENV-VERIFY-DERIVED-TRANSITION.** A verifier MUST DERIVE the transition from the
+journal history preceding the entry (§8.6.2), and MUST NOT take it from the
+entry's `name_transition` member. Where a stored `name_transition` disagrees with
+the derived value, the entry MUST fail verification.
+
+> Offline verification derives facts; it does not consume them. `name_transition`
+> is not a publisher claim — it is a property of journal history, and it is
+> written by the store. Reading it inverts the trust model for exactly the field
+> that decides whether clause 5 runs at all: a store could label a transition
+> `unchanged`, attach a genuine signature over an unrelated envelope, and the
+> entry would pass every clause. Demonstrated by an independent implementation of
+> this section.
+>
+> The consequence is that entry verification is a WHOLE-JOURNAL operation, not a
+> per-entry one. That is not a new cost. Chain integrity, replay protection,
+> revision evolution and ownership history are already journal properties — an
+> isolated entry has never been independently meaningful, and `name_transition`
+> was the one field pretending otherwise.
+>
+> For entries recorded before the field existed, the transition is derived by
+> historical reconstruction under the KIND restriction of §8.6.2, and a verifier
+> SHOULD report it as reconstructed rather than as stated. History is not
+> rewritten; how it was interpreted is disclosed. Entries with none of the three fields
 impose no obligation and are conformant.
 
 A store accepting a publication MUST, **before** the name moves:
