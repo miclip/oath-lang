@@ -1,5 +1,10 @@
 # Deploying the Oath registry (GitHub Actions → GCP)
 
+> **Before any cutover, read `docs/deploy-delta.md`.** The live registry is many
+> commits behind, and the delta now includes journal-format and verification-
+> semantics changes rather than only new features. That document reviews the
+> cutover as a whole and states what it does NOT authorise.
+
 This ships the #14 registry as a single-instance v1: `oath serve` (HTTP MCP) on
 Cloud Run over a gcsfuse-mounted store bucket, with the proof worker as a
 scheduled Cloud Run Job. Auth to GCP is keyless (Workload Identity Federation) —
