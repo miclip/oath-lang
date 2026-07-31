@@ -18,7 +18,13 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
    decoder, and baseline.bin MUST decode. These are hostile OBJECT bytes — the
    canonicality rules are unreachable from source, since every object a kernel
    produces is canonical by construction.
-9. envelope/vectors.jsonl (SPEC §8.6): every "canonical" record's octets reproduce
+9. license/vectors.jsonl (DESIGN.md, "What belongs inside identity"): every
+   evaluation record's expected verdict per dimension must be reproduced, and every
+   identity record's evaluation digest must match. These witness a consumer-visible
+   DERIVED claim with legal consequence, so the direction that matters is FALSE
+   PERMISSION: any mutation turning an unknown or prohibited composition into YES must
+   be caught. A false UNSTATED is inconvenient; a false YES is harmful.
+10. envelope/vectors.jsonl (SPEC §8.6): every "canonical" record's octets reproduce
    EXACTLY, every "reject" record is refused, and every "signature" record verifies
    or fails as its verdict says. These octets are what a publication signature is
    computed over, so one differing byte makes signatures from that kernel
@@ -27,4 +33,4 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
 
 Files: hashes.txt, canonical/, encoding/, gate/, verify/, analyses/,
 prove/outcomes.json, campaign/vectors.txt, envelope/vectors.jsonl,
-gate/bytes/.
+gate/bytes/, license/vectors.jsonl.

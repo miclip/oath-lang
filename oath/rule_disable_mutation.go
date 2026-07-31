@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 )
 
 // disabledRules is the set of rules currently switched off. A SET rather than a
@@ -351,3 +352,64 @@ func init() {
 }
 
 var harnessCommands = map[string]func([]string){}
+
+func init() {
+	harnessCommands["license-score"] = func(rest []string) {
+		path := "fixtures/license/vectors.jsonl"
+		if len(rest) > 0 {
+			path = rest[0]
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			fail(err)
+		}
+		var vs []licenseVector
+		for _, line := range strings.Split(strings.TrimSuffix(string(b), "\n"), "\n") {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			var v licenseVector
+			if err := json.Unmarshal([]byte(line), &v); err != nil {
+				fail(err)
+			}
+			vs = append(vs, v)
+		}
+		if f := runLicenseVectors(vs); len(f) > 0 {
+			fmt.Printf("BASELINE FAILED — %d vector(s) fail with every rule enabled:\n", len(f))
+			for _, x := range f {
+				fmt.Printf("  %s\n", x)
+			}
+			fail(fmt.Errorf("cannot measure coverage against a failing baseline"))
+		}
+		rules := rulesInFamily(familyLicense)
+		witnessed := 0
+		type row struct {
+			r normativeRule
+			n int
+		}
+		var rows []row
+		for _, r := range rules {
+			var caught []string
+			withRulesDisabled([]string{r.ID}, func() { caught = runLicenseVectors(vs) })
+			if len(caught) > 0 {
+				witnessed++
+			}
+			rows = append(rows, row{r, len(caught)})
+		}
+		fmt.Printf("LICENSE EVALUATION CONFORMANCE: %d/%d obligations witnessed\n", witnessed, len(rules))
+		fmt.Printf("  suite license-evaluation · operator %s · runner %s\n", mutationOperator, kernelVersion)
+		fmt.Printf("  inventory %s…  fixtures %s…\n\n", ruleInventoryDigest(familyLicense)[:12], fileDigest(path)[:12])
+		for _, rw := range rows {
+			v := "UNWITNESSED"
+			if rw.n > 0 {
+				v = "witnessed"
+			}
+			fmt.Printf("  [%-11s] %-34s %s\n", v, rw.r.ID, rw.r.What)
+		}
+		if witnessed < len(rules) {
+			fmt.Printf("\n%d rule(s) unwitnessed: nothing in this family would notice their removal.\n", len(rules)-witnessed)
+		}
+	}
+}
+
+var _ = strings.TrimSpace

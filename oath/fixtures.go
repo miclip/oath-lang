@@ -209,6 +209,20 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		return "", err
 	}
 
+	// license/vectors.jsonl — LICENSE EVALUATION (DESIGN.md "What belongs inside
+	// identity"). These witness a consumer-visible DERIVED claim with legal
+	// consequence, so the priority is the dangerous direction: any mutation turning an
+	// unknown or prohibited composition into YES must be caught. A false UNSTATED is
+	// inconvenient; a false YES is harmful.
+	//
+	// Language-neutral by construction — a case is (policy, ordered assertions) and an
+	// expected verdict per dimension, so an independent evaluator can reproduce the
+	// three-valued combination, the model lookup, the canonical input ordering and the
+	// evaluation identity without reading this kernel.
+	if err := writeLicenseVectors(write); err != nil {
+		return "", err
+	}
+
 	// campaign/vectors.txt — canonical campaign descriptions and their digests
 	// (SPEC §11). These are the AUDIT vectors: a kernel reproduces the identity
 	// of a measurement without running one, and without consulting another
@@ -496,7 +510,13 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
    decoder, and baseline.bin MUST decode. These are hostile OBJECT bytes — the
    canonicality rules are unreachable from source, since every object a kernel
    produces is canonical by construction.
-9. envelope/vectors.jsonl (SPEC §8.6): every "canonical" record's octets reproduce
+9. license/vectors.jsonl (DESIGN.md, "What belongs inside identity"): every
+   evaluation record's expected verdict per dimension must be reproduced, and every
+   identity record's evaluation digest must match. These witness a consumer-visible
+   DERIVED claim with legal consequence, so the direction that matters is FALSE
+   PERMISSION: any mutation turning an unknown or prohibited composition into YES must
+   be caught. A false UNSTATED is inconvenient; a false YES is harmful.
+10. envelope/vectors.jsonl (SPEC §8.6): every "canonical" record's octets reproduce
    EXACTLY, every "reject" record is refused, and every "signature" record verifies
    or fails as its verdict says. These octets are what a publication signature is
    computed over, so one differing byte makes signatures from that kernel
@@ -505,7 +525,7 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
 
 Files: hashes.txt, canonical/, encoding/, gate/, verify/, analyses/,
 prove/outcomes.json, campaign/vectors.txt, envelope/vectors.jsonl,
-gate/bytes/.
+gate/bytes/, license/vectors.jsonl.
 `, kernelVersion)
 	if err := write("MANIFEST.md", []byte(manifest)); err != nil {
 		return "", err
@@ -943,4 +963,110 @@ func writeHostileBytes(write func(string, []byte) error) error {
 		fmt.Fprintf(&man, "%s.bin\t%s\t%s\n", c.name, c.witnesses, c.why)
 	}
 	return write(filepath.Join("gate", "bytes", "manifest.txt"), []byte(man.String()))
+}
+
+// writeLicenseVectors emits fixtures/license/vectors.jsonl.
+func writeLicenseVectors(write func(string, []byte) error) error {
+	var out strings.Builder
+	emit := func(v map[string]any) error {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		out.Write(b)
+		out.WriteByte('\n')
+		return nil
+	}
+
+	// Each case is a closure of asserted terms, root first.
+	type lcase struct {
+		label, witnesses string
+		inputs           []string
+		want             map[string]string
+	}
+	all := func(c, r, m, p, s string) map[string]string {
+		return map[string]string{"commercial": c, "redistribute": r, "modify": m,
+			"patent_grant": p, "share_alike": s}
+	}
+	cases := []lcase{
+		{"all modelled and permissive", "", []string{"MIT", "MIT", "BSD-3-Clause"},
+			all("YES", "YES", "YES", "UNSTATED", "NO")},
+		{"one ABSENT assertion among permissive dependencies", "license/unstated-contagion",
+			[]string{"MIT", "-", "MIT"}, all("UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED")},
+		{"one UNKNOWN identifier among permissive dependencies", "license/unknown-unstated",
+			[]string{"MIT", "NotARealLicense-1.0"}, all("UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED")},
+		{"compound expression is not resolved", "license/compound-unstated",
+			[]string{"MIT OR Apache-2.0"}, all("UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED", "UNSTATED")},
+		{"a share-alike obligation propagates to the root", "",
+			[]string{"MIT", "GPL-3.0-only"}, all("YES", "YES", "YES", "UNSTATED", "YES")},
+		{"a transitive dependency changes the root result", "",
+			[]string{"MIT", "MIT", "GPL-3.0-only"}, all("YES", "YES", "YES", "UNSTATED", "YES")},
+	}
+
+	for _, c := range cases {
+		if c.witnesses != "" && !ruleKnown(c.witnesses) {
+			return fmt.Errorf("license vector %q declares unknown rule %q", c.label, c.witnesses)
+		}
+		got := evalFromAssertions(c.inputs)
+		want := c.want
+		actual := map[string]string{"commercial": got.Commercial.String(), "redistribute": got.Redistribute.String(),
+			"modify": got.Modify.String(), "patent_grant": got.PatentGrant.String(), "share_alike": got.ShareAlike.String()}
+		for k, v := range want {
+			if actual[k] != v {
+				return fmt.Errorf("license vector %q expects %s=%s but this kernel derives %s — the fixture would assert a verdict the reference does not produce",
+					c.label, k, v, actual[k])
+			}
+		}
+		if err := emit(map[string]any{"kind": "evaluation", "label": c.label, "witnesses": c.witnesses,
+			"policy": "composition", "engine": licenseEngine, "model": licenseModelVersion,
+			"assertions": c.inputs, "expect": want}); err != nil {
+			return err
+		}
+	}
+
+	// IDENTITY vectors: the digest must bind method and inputs, and must not depend on
+	// order. Without these, changing the lattice next year would silently reinterpret
+	// every historical verdict.
+	baseInputs := []licenseInput{{Name: "a", License: "MIT"}, {Name: "b", License: "Apache-2.0"}}
+	base := licenseEvaluation{Policy: "composition", Engine: licenseEngine, Model: licenseModelVersion, Inputs: baseInputs}
+	baseDigest := evaluationDigest(base)
+	if err := emit(map[string]any{"kind": "identity", "label": "evaluation digest over method and sorted inputs",
+		"witnesses": "license/digest-binds-inputs", "policy": base.Policy, "engine": base.Engine,
+		"model": base.Model, "assertions": []string{"a=MIT", "b=Apache-2.0"}, "digest": baseDigest}); err != nil {
+		return err
+	}
+	rev := base
+	rev.Inputs = []licenseInput{baseInputs[1], baseInputs[0]}
+	if evaluationDigest(rev) != baseDigest {
+		return fmt.Errorf("input order changed the evaluation digest; the same evaluation would appear to be two")
+	}
+	if err := emit(map[string]any{"kind": "identity", "label": "input order does not change the digest",
+		"witnesses": "license/digest-order-invariant", "policy": base.Policy, "engine": base.Engine,
+		"model": base.Model, "assertions": []string{"b=Apache-2.0", "a=MIT"}, "digest": baseDigest}); err != nil {
+		return err
+	}
+
+	return write(filepath.Join("license", "vectors.jsonl"), []byte(out.String()))
+}
+
+// evalFromAssertions folds a list of asserted expressions the way evaluateLicensing
+// folds a closure, without needing a store. Kept separate so the vectors describe the
+// RULES rather than a particular corpus.
+func evalFromAssertions(exprs []string) grants {
+	var acc grants
+	for i, e := range exprs {
+		g, _ := modelLookup(e)
+		if i == 0 {
+			acc = g
+			continue
+		}
+		acc = grants{
+			Commercial:   combine(acc.Commercial, g.Commercial),
+			Redistribute: combine(acc.Redistribute, g.Redistribute),
+			Modify:       combine(acc.Modify, g.Modify),
+			PatentGrant:  combine(acc.PatentGrant, g.PatentGrant),
+			ShareAlike:   combineObligation(acc.ShareAlike, g.ShareAlike),
+		}
+	}
+	return acc
 }

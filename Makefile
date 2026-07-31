@@ -135,6 +135,12 @@ check-fixtures:
 check-doc-numbers:
 	@python3 scripts/check-doc-numbers.py
 
+# License evaluation coverage, measured the same way: disable each rule, re-run.
+.PHONY: license-score
+license-score:
+	@cd oath && go build -tags conformance_mutation -o oath-vector-score .
+	@./oath/oath-vector-score license-score
+
 .PHONY: mutation-boundary
 mutation-boundary:
 	@./scripts/verify-no-mutation-in-release.sh

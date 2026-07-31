@@ -102,26 +102,62 @@ func modelLookup(expr string) (grants, string) {
 	if g, ok := licenseModel[expr]; ok {
 		return g, ""
 	}
-	if strings.Contains(expr, " OR ") {
-		return grants{}, "compound expression: choosing a disjunct is the consumer's decision, not the registry's"
+	if ruleOn("license/compound-unstated") {
+		if strings.Contains(expr, " OR ") {
+			return grants{}, "compound expression: choosing a disjunct is the consumer's decision, not the registry's"
+		}
+		if strings.Contains(expr, " AND ") || strings.Contains(expr, " WITH ") {
+			return grants{}, "compound expression the model does not evaluate"
+		}
+	} else if i := strings.Index(expr, " OR "); i > 0 {
+		// MUTATION: resolve to the first disjunct. Plausible and wrong — it silently
+		// picks terms on the consumer's behalf.
+		if g, ok := licenseModel[expr[:i]]; ok {
+			return g, ""
+		}
 	}
-	if strings.Contains(expr, " AND ") || strings.Contains(expr, " WITH ") {
-		return grants{}, "compound expression the model does not evaluate"
+	if !ruleOn("license/unknown-unstated") {
+		// MUTATION: the dangerous direction. An unmodelled identifier becomes a full
+		// grant, so an unknown composition reads as permitted.
+		return grants{Commercial: triYes, Redistribute: triYes, Modify: triYes,
+			PatentGrant: triYes, ShareAlike: triNo}, ""
 	}
 	return grants{}, "identifier not in the model"
 }
 
-// combine folds a dependency's grant into a running result. UNSTATED wins over YES —
-// once any input is unknown the composition's answer is unknown, however many others
-// said yes. NO wins over everything, since a prohibition anywhere binds the whole.
+// combine folds a PERMISSION across a composition. UNSTATED wins over YES — once any
+// input is unknown the answer is unknown, however many others granted. NO wins over
+// everything, since a prohibition anywhere binds the whole.
+//
+// PERMISSIONS AND OBLIGATIONS HAVE OPPOSITE POLARITY, and conflating them was a real
+// bug this fixture family caught. "May I redistribute?" is a permission: one NO stops
+// the composition. "Must derivatives carry the same terms?" is an OBLIGATION: one YES
+// binds the composition. Folding an obligation with the permission rule produced
+// share_alike=NO for a closure containing an UNKNOWN licence — reporting "no reciprocal
+// obligation" about terms nobody had read, which is precisely the false-permission
+// direction that matters most here.
 func combine(acc, next tri) tri {
-	if acc == triNo || next == triNo {
+	if ruleOn("license/prohibition-dominates") && (acc == triNo || next == triNo) {
 		return triNo
 	}
-	if acc == triUnstated || next == triUnstated {
+	if ruleOn("license/unstated-contagion") && (acc == triUnstated || next == triUnstated) {
 		return triUnstated
 	}
 	return triYes
+}
+
+// combineObligation folds an OBLIGATION. YES dominates, because a reciprocal
+// requirement anywhere binds the whole composition. UNSTATED remains contagious over
+// NO: not knowing whether an obligation exists is not the same as knowing there is
+// none, and only the second is safe to report.
+func combineObligation(acc, next tri) tri {
+	if ruleOn("license/prohibition-dominates") && (acc == triYes || next == triYes) {
+		return triYes
+	}
+	if ruleOn("license/unstated-contagion") && (acc == triUnstated || next == triUnstated) {
+		return triUnstated
+	}
+	return triNo
 }
 
 type licenseInput struct {
@@ -164,7 +200,7 @@ func evaluateLicensing(st *Store, name string, deps []string) licenseEvaluation 
 			Redistribute: combine(ev.Result.Redistribute, g.Redistribute),
 			Modify:       combine(ev.Result.Modify, g.Modify),
 			PatentGrant:  combine(ev.Result.PatentGrant, g.PatentGrant),
-			ShareAlike:   combine(ev.Result.ShareAlike, g.ShareAlike),
+			ShareAlike:   combineObligation(ev.Result.ShareAlike, g.ShareAlike),
 		}
 	}
 
@@ -202,13 +238,19 @@ func nameOfHash(st *Store, h string) string {
 func evaluationDigest(ev licenseEvaluation) string {
 	var b strings.Builder
 	b.WriteString("oath-license-eval/1\n")
-	b.WriteString("engine=" + ev.Engine + "\n")
-	b.WriteString("model=" + ev.Model + "\n")
-	b.WriteString("policy=" + ev.Policy + "\n")
+	if ruleOn("license/digest-binds-method") {
+		b.WriteString("engine=" + ev.Engine + "\n")
+		b.WriteString("model=" + ev.Model + "\n")
+		b.WriteString("policy=" + ev.Policy + "\n")
+	}
 	in := append([]licenseInput(nil), ev.Inputs...)
-	sort.Slice(in, func(i, j int) bool { return in[i].Name < in[j].Name })
-	for _, i := range in {
-		b.WriteString("input=" + i.Name + "=" + i.License + "\n")
+	if ruleOn("license/digest-order-invariant") {
+		sort.Slice(in, func(i, j int) bool { return in[i].Name < in[j].Name })
+	}
+	if ruleOn("license/digest-binds-inputs") {
+		for _, i := range in {
+			b.WriteString("input=" + i.Name + "=" + i.License + "\n")
+		}
 	}
 	sum := sha256.Sum256([]byte(b.String()))
 	return hex.EncodeToString(sum[:])
@@ -250,4 +292,47 @@ func (ev licenseEvaluation) render() string {
 	fmt.Fprintf(&b, "  assertions listed above. The model is Oath's own and is fallible; SPDX supplies\n")
 	fmt.Fprintf(&b, "  identifiers, not semantics. It is not advice, and it is not a proof.\n")
 	return b.String()
+}
+
+// --- conformance surface (SPEC §10) ------------------------------------------------
+
+type licenseVector struct {
+	Kind       string            `json:"kind"`
+	Label      string            `json:"label"`
+	Witnesses  string            `json:"witnesses,omitempty"`
+	Policy     string            `json:"policy"`
+	Engine     string            `json:"engine"`
+	Model      string            `json:"model"`
+	Assertions []string          `json:"assertions"`
+	Expect     map[string]string `json:"expect,omitempty"`
+	Digest     string            `json:"digest,omitempty"`
+}
+
+// runLicenseVectors executes the family and returns each FAILURE. Empty means pass.
+func runLicenseVectors(vs []licenseVector) []string {
+	var fail []string
+	for _, v := range vs {
+		switch v.Kind {
+		case "evaluation":
+			g := evalFromAssertions(v.Assertions)
+			got := map[string]string{"commercial": g.Commercial.String(), "redistribute": g.Redistribute.String(),
+				"modify": g.Modify.String(), "patent_grant": g.PatentGrant.String(), "share_alike": g.ShareAlike.String()}
+			for k, want := range v.Expect {
+				if got[k] != want {
+					fail = append(fail, fmt.Sprintf("evaluation %q: %s = %s, want %s", v.Label, k, got[k], want))
+				}
+			}
+		case "identity":
+			in := make([]licenseInput, 0, len(v.Assertions))
+			for _, a := range v.Assertions {
+				n, l, _ := strings.Cut(a, "=")
+				in = append(in, licenseInput{Name: n, License: l})
+			}
+			ev := licenseEvaluation{Policy: v.Policy, Engine: v.Engine, Model: v.Model, Inputs: in}
+			if d := evaluationDigest(ev); d != v.Digest {
+				fail = append(fail, fmt.Sprintf("identity %q: digest %s, want %s", v.Label, shortHash(d), shortHash(v.Digest)))
+			}
+		}
+	}
+	return fail
 }

@@ -56,7 +56,8 @@ type normativeRule struct {
 }
 
 const (
-	familyEnvelope    = "envelope"    // reachable through vectors.jsonl
+	familyEnvelope    = "envelope"    // reachable through envelope/vectors.jsonl
+	familyLicense     = "license"     // reachable through license/vectors.jsonl
 	familyIntegration = "integration" // needs a journal or a live store; no fixture family yet
 )
 
@@ -84,6 +85,18 @@ var normativeRules = []normativeRule{
 	{"8.6.4/revision-current", "§8.6.4", "the signed revision must be current (ABA)", familyEnvelope},
 	{"8.6.4a/signature-valid", "§8.6.4a", "the signature must verify over the decoded octets", familyEnvelope},
 	{"8.6.4a/small-order", "§8.6.4a", "a small-order author key must be rejected", familyEnvelope},
+
+	// LICENSE EVALUATION (DESIGN.md "What belongs inside identity"). These govern a
+	// consumer-visible derived claim with legal consequence, so the dangerous direction
+	// is a FALSE PERMISSION: a mutation turning an unknown or prohibited composition
+	// into YES must be caught. A false UNSTATED is inconvenient; a false YES is harmful.
+	{"license/unstated-contagion", "DESIGN", "UNSTATED propagates: one unknown input makes the composition unknown", familyLicense},
+	{"license/prohibition-dominates", "DESIGN", "a known prohibition binds the whole composition", familyLicense},
+	{"license/unknown-unstated", "DESIGN", "an unmodelled identifier yields UNSTATED, never a grant", familyLicense},
+	{"license/compound-unstated", "DESIGN", "compound expressions are not resolved by the registry", familyLicense},
+	{"license/digest-binds-method", "DESIGN", "engine, model and policy are bound by the evaluation digest", familyLicense},
+	{"license/digest-binds-inputs", "DESIGN", "every consumed assertion is bound by the evaluation digest", familyLicense},
+	{"license/digest-order-invariant", "DESIGN", "input order does not change the evaluation digest", familyLicense},
 
 	// Reachable only with a journal or a live store. Listed so the inventory is
 	// complete and the gap is visible, but EXCLUDED from the envelope suite's
