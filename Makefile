@@ -171,6 +171,13 @@ check-implementability:
 # bound?" but "identity of WHAT?". §12.4 bound a method and a set of members with
 # no subject for months, and every field in it was correct — which is why
 # field-level review could not see it.
+# Verify a journal SNAPSHOT before/after a registry cutover. Not a CI gate — it
+# takes a live snapshot path. See docs/deploy-delta.md.
+#   make cutover-check SNAP=<file> [BASE=<file>]
+.PHONY: cutover-check
+cutover-check:
+	@python3 scripts/cutover-check.py $(SNAP) $(BASE)
+
 .PHONY: check-normative-source
 check-normative-source:
 	@python3 scripts/check-normative-source.py

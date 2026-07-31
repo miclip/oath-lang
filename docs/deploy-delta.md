@@ -62,9 +62,23 @@ audited with the new binary before the cutover is considered done.
    members will ignore them — including `author_sig`, so a signed entry would be
    silently reported as unsigned. Rolling back after any signed publication
    downgrades evidence rather than restoring a prior state.
-4. **The licence model is normative data now** (§13.1b). The deployed service
-   must ship `fixtures/license/model.json`, or every evaluation returns
-   all-`UNSTATED` for the wrong reason.
+4. **The licence model is normative data, and the image does not serve it.**
+   *Corrected from an earlier draft of this document, which claimed evaluations
+   would break without the file. They will not:* the kernel never reads
+   `fixtures/license/model.json` at runtime — `licenseModelBytes()` generates the
+   canonical bytes from the compiled-in table and `licenseModelDigest()` hashes
+   those, so the fixture is EMITTED by `oath fixtures`, never consumed. Verdicts
+   and digests are correct in an image containing no fixtures at all.
+
+   The real problem is one layer out. §12.3 LICENSE-MODEL-PUBLISHED requires the
+   model to be published, and §13.1b's IMPL-DATA-RETRIEVABLE requires normative
+   data to be retrievable from its declared path with the bytes verifiable against
+   the digest an identity binds. A deployed registry that serves no model leaves a
+   third party holding `model=spdx-lattice/1` and `model-digest=<hex>` with no way
+   to resolve them — so evaluations are reproducible only by someone who already
+   has the repository, which is the precise failure §13 exists to prevent. Not a
+   correctness bug; an auditability one, and it should be closed before the
+   registry publishes evaluations to anyone but us.
 
 ## Gates at the proposed cutover commit
 
@@ -79,6 +93,54 @@ audited with the new binary before the cutover is considered done.
 | licence conformance | 22/22 obligations witnessed |
 | envelope conformance | **8/20** — twelve unwitnessed, enumerated |
 | fixture integrity | 5 findings, all the known #95 `map`/`Map` case-fold baseline |
+
+## Cutover runbook
+
+Two phases with a hard gate between them. The distinction is not procedural
+caution — it is where reversibility actually ends.
+
+### Phase A — REVERSIBLE (deploy + read-only)
+
+1. **Snapshot** the live journal and current name pointers. This is the operational
+   custody step and everything below depends on it.
+2. **Verify the snapshot with the NEW binary** before deploying:
+   `python3 scripts/cutover-check.py <snapshot>` — requires every entry to
+   re-encode byte-identically, the chain intact, no partial signature set, and no
+   unsigned entry claiming a revision. Then `oath audit` against the same
+   snapshot: chain intact, zero signature mismatches, legacy revision state
+   reported UNAVAILABLE rather than fabricated.
+3. **Deploy the new binary. Publish nothing.**
+4. **Read-only smoke checks:** `explain` on existing names still reports unsigned
+   and licensing `UNSTATED`; ownership and revision counts unchanged; no existing
+   entry reinterpreted as signed; live journal audit still passes.
+5. **Re-run the cutover check with the pre-deploy snapshot as BASELINE:**
+   `cutover-check.py <post-deploy> <pre-deploy>` — existing entries must be
+   unchanged and nothing may have disappeared.
+
+**GO / NO-GO GATE.** Phase A completing cleanly is its own decision point. Do not
+proceed to B on the same authorisation.
+
+> **ROLLBACK ENDS HERE.** Everything above is reversible: an old binary can read
+> a journal it wrote and nothing has changed. Once step 6 runs, rollback becomes
+> an EVIDENCE DOWNGRADE — the old binary cannot represent `author_sig`,
+> `envelope_b64` or `parent_rev`, so it silently reports a signed publication as
+> unsigned. That is not a restored prior state; it is the same history with proof
+> removed.
+
+### Phase B — FORWARD-ONLY in evidentiary terms
+
+6. **Publish exactly ONE** deliberately chosen signed artifact with an explicit
+   licence assertion.
+7. **Verify immediately:** envelope bytes persisted exactly; author signature
+   verifies; `parent_rev` preserved; transition independently DERIVED and agreeing
+   with any stored value; the prior unsigned publication unchanged; licence
+   evaluation consuming the real assertion and reporting the expected model,
+   policy, inputs and digest.
+8. **Snapshot the post-pilot journal and verify from a CLEAN client** —
+   `cutover-check.py <post-pilot> <post-deploy>`, expecting exactly one added
+   entry.
+
+Only after 8 should broader signed adoption be considered.
 
 ## What this review does NOT authorise
 
