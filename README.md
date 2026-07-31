@@ -253,6 +253,28 @@ each same-signature definition and prove it, so commutativity written
 the layer that makes the commons real: pull proven code by property, rebuild
 nothing. Full rationale in [docs/discovery.md](docs/discovery.md).
 
+## Licensing
+
+Licensing is another evidence domain, split the same way as every verdict. A
+publisher ASSERTS terms inside the signed publication envelope; the registry
+DERIVES what a composition permits across the exact dependency closure:
+
+```
+oath publish --key mykey.key --license Apache-2.0 mydef.oath
+oath license mydef
+```
+
+Five dimensions — commercial use, redistribution, modification, patent grant, and
+the share-alike OBLIGATION, which combines with the opposite polarity to the
+four permissions. `UNSTATED` is **not** permission: it means no evidence, and it
+is contagious, so one unmodelled dependency makes the whole composition unknown.
+
+Every verdict carries an identity binding the engine, the model VERSION and its
+CONTENT digest, the policy, and each consumed triple — artifact hash, publication
+identity, asserted expression — so a verdict is re-derivable rather than
+authoritative. Not legal advice, and deliberately never `PROVEN`. Full model in
+[docs/licensing.md](docs/licensing.md).
+
 ## Compiling to executables
 
 `oath build <name> [-o out]` compiles a definition's dependency closure to

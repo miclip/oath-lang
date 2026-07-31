@@ -151,6 +151,10 @@ every ambiguity found this way.
 - `docs/floats.md` — the IEEE `Float` identity decision (bit-identity, `==` is
   Leibniz/SMT `=`, canonical NaN); `docs/native-containers.md` — `Set`/`Map`
   compiled to native Go maps, differential-gated (#13).
+- `docs/licensing.md` — licensing as an EVIDENCE DOMAIN: publisher asserts signed
+  terms in the envelope, registry derives what a composition permits under a
+  named versioned model. UNSTATED is never permission and is contagious.
+  `oath license <name>` / the `license` MCP tool.
 - `docs/discovery.md` — `oath find`: discovery by property content-hash, not
   name (spec-query, cross-type, proof-implication); the invariant that the
   discovery layer never touches identity; `docs/egraph.md` — semantic

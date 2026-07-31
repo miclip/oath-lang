@@ -79,7 +79,12 @@ export default function DocsOverview() {
         <Link href="/docs/guarantees">The guarantee ladder</Link> for how much a
         verdict actually means, or <Link href="/docs/architecture">Architecture</Link>{" "}
         for how the pieces fit together.
+      
       </p>
+      <p>
+        <Link href="/docs/licensing">Licensing</Link> for how publishers assert terms
+        and the registry derives what a composition permits — and why UNSTATED is
+        never permission.</p>
     </>
   );
 }
