@@ -48,6 +48,14 @@ type explainPkg struct {
 	Waivers      []explainWaiver `json:"waivers,omitempty"`
 	Provenance   explainProv     `json:"provenance"`
 	Dependencies []string        `json:"dependencies"`
+	// depHashes is the same closure as Dependencies but as RAW 64-hex artifact
+	// hashes. Dependencies is a DISPLAY form ("append #78d23e27" — name plus a
+	// SHORT hash) and passing it to a consumer that expects hashes silently
+	// produced garbage: licence evaluation resolved every dependency to an empty
+	// name, reported them all as unmodelled, and bound display strings into the
+	// §12.4 digest where the spec requires 64 lowercase hex. Unexported so it
+	// cannot leak into the JSON payload as a second, confusable dependency list.
+	depHashes []string
 	Limitations  []string        `json:"limitations"`
 }
 
@@ -271,6 +279,7 @@ func buildExplain(st *Store, name string) (*explainPkg, error) {
 	}
 
 	for dep := range collectDeps(d) {
+		pkg.depHashes = append(pkg.depHashes, dep)
 		if n := st.NameOf(dep); n != "" {
 			pkg.Dependencies = append(pkg.Dependencies, fmt.Sprintf("%s #%s", n, shortHash(dep)))
 		} else {
@@ -278,6 +287,7 @@ func buildExplain(st *Store, name string) (*explainPkg, error) {
 		}
 	}
 	sort.Strings(pkg.Dependencies)
+	sort.Strings(pkg.depHashes)
 
 	pkg.Limitations = explainLimitations(st, pkg, m)
 	return pkg, nil

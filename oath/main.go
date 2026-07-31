@@ -247,7 +247,7 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
-		fmt.Print(evaluateLicensing(st, args[1], pkg.Dependencies).render())
+		fmt.Print(evaluateLicensing(st, args[1], pkg.depHashes).render())
 	case "audit":
 		mode, ref := "", ""
 		rest := args[1:]

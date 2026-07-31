@@ -264,7 +264,7 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 		if err != nil {
 			return "", err
 		}
-		ev := evaluateLicensing(st, a.Name, pkg.Dependencies)
+		ev := evaluateLicensing(st, a.Name, pkg.depHashes)
 		// JSON, for the same reason explain is: the consumer is an agent deciding
 		// whether it may ship something, and the dimensions plus the evaluation
 		// identity are the decision — prose it has to parse is a decision it gets

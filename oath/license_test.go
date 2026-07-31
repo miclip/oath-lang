@@ -158,3 +158,37 @@ func TestUnchangedPublicationAssertsLicense(t *testing.T) {
 			"still asserts its author's terms", got)
 	}
 }
+
+// TestEvaluationConsumesRawHashes pins the defect the first real multi-dependency
+// evaluation exposed. explainPkg.Dependencies is a DISPLAY form ("append
+// #78d23e27" — name plus a SHORT hash); passing it to evaluateLicensing made
+// every dependency resolve to an empty name, report as unmodelled, and bind a
+// display string into the §12.4 digest where the spec requires 64 lowercase hex.
+// Single-dependency and dependency-free definitions hid it completely.
+func TestEvaluationConsumesRawHashes(t *testing.T) {
+	st := newMemStoreForTest(t)
+	display := []string{"append #78d23e27"}  // explainPkg.Dependencies form
+	raw := []string{strings.Repeat("7", 64)} // explainPkg.depHashes form
+
+	// The RAW form yields a well-formed §12.4 triple.
+	for _, in := range evaluateLicensing(st, "root", raw).Inputs {
+		if in.Artifact != "" && len(in.Artifact) != 64 {
+			t.Fatalf("raw hashes produced artifact %q, want 64 hex", in.Artifact)
+		}
+	}
+	// The DISPLAY form does not, and this is the assertion that matters: it
+	// documents WHY the two must not be confused. A display string binds into the
+	// evaluation digest where §12.4 requires a 64-hex artifact hash, and every
+	// dependency resolves to an empty name and reports as unmodelled — a verdict
+	// that looks like honest UNSTATED and is actually a lookup failure.
+	bad := false
+	for _, in := range evaluateLicensing(st, "root", display).Inputs {
+		if in.Artifact != "" && len(in.Artifact) != 64 {
+			bad = true
+		}
+	}
+	if !bad {
+		t.Fatal("display-form dependencies produced valid artifact hashes — the two forms " +
+			"are no longer distinguishable, so nothing stops a caller passing the wrong one")
+	}
+}
