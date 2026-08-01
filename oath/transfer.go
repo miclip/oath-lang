@@ -43,6 +43,7 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -65,6 +66,12 @@ type xferEnvelope struct {
 	FromAuthority string
 	ToAuthority   string
 	AuthorityRev  *big.Int
+	// Attempt is a 32-byte random nonce, lowercase hex, covered by BOTH
+	// signatures. It exists because Ed25519 is deterministic: without a fresh
+	// signed field, two parties re-signing the same logical transfer would
+	// produce byte-identical octets and signatures, so burning consumed bytes
+	// would make a legitimate retry impossible forever.
+	Attempt string
 }
 
 func xferEncode(e xferEnvelope) []byte {
@@ -77,6 +84,7 @@ func xferEncode(e xferEnvelope) []byte {
 		{"from_authority", e.FromAuthority},
 		{"to_authority", e.ToAuthority},
 		{"authority_rev", e.AuthorityRev.String()},
+		{"attempt", e.Attempt},
 	} {
 		b.WriteString(kv[0])
 		b.WriteByte('=')
@@ -106,16 +114,22 @@ func (e xferEnvelope) validate() error {
 	if err := validNamespacePattern(e.Namespace); err != nil {
 		return fmt.Errorf("namespace: %w", err)
 	}
+	if len(e.Attempt) != 64 || strings.ToLower(e.Attempt) != e.Attempt {
+		return fmt.Errorf("attempt must be 32 bytes as 64 lowercase hex characters")
+	}
+	if _, err := hex.DecodeString(e.Attempt); err != nil {
+		return fmt.Errorf("attempt is not hex: %w", err)
+	}
 	return nil
 }
 
 func parseTransferEnvelope(b []byte) (xferEnvelope, error) {
 	lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
-	if len(lines) != 6 || lines[0] != transferVersion {
+	if len(lines) != 7 || lines[0] != transferVersion {
 		return xferEnvelope{}, fmt.Errorf("not an %s envelope", transferVersion)
 	}
 	vals := map[string]string{}
-	for i, key := range []string{"op", "namespace", "from_authority", "to_authority", "authority_rev"} {
+	for i, key := range []string{"op", "namespace", "from_authority", "to_authority", "authority_rev", "attempt"} {
 		k, v, ok := strings.Cut(lines[i+1], "=")
 		if !ok || k != key {
 			return xferEnvelope{}, fmt.Errorf("line %d: want key %q, got %q", i+2, key, lines[i+1])
@@ -127,7 +141,7 @@ func parseTransferEnvelope(b []byte) (xferEnvelope, error) {
 		return xferEnvelope{}, fmt.Errorf("authority_rev %q is not a base-10 integer", vals["authority_rev"])
 	}
 	e := xferEnvelope{Op: vals["op"], Namespace: vals["namespace"], FromAuthority: vals["from_authority"],
-		ToAuthority: vals["to_authority"], AuthorityRev: rev}
+		ToAuthority: vals["to_authority"], AuthorityRev: rev, Attempt: vals["attempt"]}
 	if err := e.validate(); err != nil {
 		return xferEnvelope{}, err
 	}
@@ -223,6 +237,16 @@ func apiTransfer(st *Store, octets []byte, holderSig, recipientSig, principal st
 			AuthorPubkey: env.FromAuthority, AuthorSig: holderSig, RecipientSig: recipientSig,
 		})
 		return transferReport{}, rerr
+	}
+
+	// XFER-ATTEMPT-ONE-SHOT, checked BEFORE the refusal path and deliberately NOT
+	// journaled. The original attempt is already in the journal; recording every
+	// replay of it would let anyone holding a copy of the bytes grow the journal
+	// without bound, which is the same reason a relayed statement is not preserved.
+	if status, spent := consumedAttempts(st)[env.Attempt]; spent {
+		return transferReport{}, fmt.Errorf("transfer attempt %s… was already %s and is consumed: a signed attempt is SINGLE-USE, so a refusal cannot become effective later when its blocking condition disappears.\n"+
+			"  Both parties must sign a FRESH attempt (a new nonce) to try again",
+			env.Attempt[:12], status)
 	}
 
 	if isProtocolRoot(env.Namespace) {
@@ -328,8 +352,12 @@ func cmdTransfer(local *Store, endpoint, keyPath, kmsKey, recipientKeyPath, name
 			namespace, shortHash(holder), shortHash(fromHex)))
 	}
 
+	attempt, aerr2 := newAttempt()
+	if aerr2 != nil {
+		fail(aerr2)
+	}
 	env := xferEnvelope{Op: opTransfer, Namespace: namespace, FromAuthority: fromHex,
-		ToAuthority: toPub, AuthorityRev: rev}
+		ToAuthority: toPub, AuthorityRev: rev, Attempt: attempt}
 	octets := xferEncode(env)
 
 	fmt.Printf("EXACT BYTES BOTH PARTIES SIGN (one statement, two signatures):\n")
@@ -391,4 +419,44 @@ func cmdTransfer(local *Store, endpoint, keyPath, kmsKey, recipientKeyPath, name
 		fmt.Printf("  retained by its existing owner: %s\n", n)
 	}
 	_ = os.Stdout.Sync()
+}
+
+// consumedAttempts derives every transfer attempt already journaled, ACCEPTED OR
+// REFUSED (XFER-ATTEMPT-ONE-SHOT).
+//
+// Keyed on the nonce alone rather than on the full octets. Keying on the octets
+// would let a party change one field — a different authority_rev, say — and
+// resubmit under the same consent, which is the resurrection this closes.
+//
+// Only both parties can burn their own nonce: an entry is journaled only when
+// both signatures verify, so a third party cannot consume a nonce they did not
+// sign.
+func consumedAttempts(st *Store) map[string]string {
+	out := map[string]string{}
+	for _, e := range st.ReadLog() {
+		if e.EnvelopeB64 == "" {
+			continue
+		}
+		raw, err := base64.StdEncoding.DecodeString(e.EnvelopeB64)
+		if err != nil || authorStatementKind(raw) != "transfer" {
+			continue
+		}
+		xe, perr := parseTransferEnvelope(raw)
+		if perr != nil || xferVerify(xe, e.AuthorSig, e.RecipientSig) != nil {
+			continue
+		}
+		if _, seen := out[xe.Attempt]; !seen {
+			out[xe.Attempt] = e.Status
+		}
+	}
+	return out
+}
+
+// newAttempt returns a fresh 32-byte nonce.
+func newAttempt() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("could not generate a transfer attempt nonce: %w", err)
+	}
+	return hex.EncodeToString(b), nil
 }

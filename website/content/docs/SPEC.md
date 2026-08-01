@@ -2452,6 +2452,7 @@ namespace=<pattern>
 from_authority=<hex>
 to_authority=<hex>
 authority_rev=<decimal>
+attempt=<64 lowercase hex characters>
 ```
 
 **XFER-SCOPE.** `namespace` MUST be a prefix pattern, the same form a reservation
@@ -2519,6 +2520,35 @@ holder; carrying them across would give the recipient publishers it never
 authorised — authority by inheritance, which is what reservation exists to
 prevent. The revision advance is what stops a grant envelope written before the
 handover from being replayed after it.
+
+**XFER-ATTEMPT-ONE-SHOT.** A validly signed transfer attempt is SINGLE-USE. Once
+the registry preserves it — as accepted OR as refused — those signed bytes can
+never produce a later authority transition. A replay of a consumed attempt MUST be
+refused, and MUST NOT itself be journaled: the original is already recorded, and
+preserving every replay would let anyone holding the bytes grow the journal
+without bound.
+
+Consumption is keyed on `attempt`, not on the whole statement. Keying on the
+octets would let a party alter one field and resubmit under the same consent,
+which is the resurrection this closes. Only the two parties can consume their own
+nonce, since an entry is journaled only when both signatures verify.
+
+**XFER-FRESH-CONSENT.** A later attempt at the same transfer requires a DISTINCT
+`attempt`, covered by both signatures. The nonce is required because Ed25519 is
+deterministic: without a fresh signed field, two parties re-signing the same
+logical transfer would produce byte-identical octets and signatures, so consuming
+the bytes would make a legitimate retry impossible forever.
+
+Together these give a refusal the meaning it appeared to have when it was
+recorded — *that transaction did not happen* — rather than *it may happen
+automatically once its blocking condition disappears*. A transfer refused because
+the recipient was at their cap does not become effective a month later when the
+cap frees; both parties must sign again.
+
+The guarantee is deliberately narrow, and MUST NOT be described as revocable
+consent. It closes resurrection AFTER a submission. It does not let a recipient
+withdraw a countersignature the holder has never submitted — that would require a
+separate signed cancellation, or an expiry model, and this version has neither.
 
 **XFER-REFUSALS-ARE-PRESERVED.** Once both signatures verify and the caller is a
 party, a refusal is a statement real principals made: it is journaled and confers

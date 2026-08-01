@@ -8,12 +8,16 @@ import (
 	"testing"
 )
 
-func signXfer(t *testing.T, holder, recipient ed25519.PrivateKey, ns string, rev int64) ([]byte, string, string) {
+func signXfer(t *testing.T, holder, recipient ed25519.PrivateKey, ns string, rev int64, attempt ...string) ([]byte, string, string) {
 	t.Helper()
 	from := hex.EncodeToString(holder.Public().(ed25519.PublicKey))
 	to := hex.EncodeToString(recipient.Public().(ed25519.PublicKey))
+	a := strings.Repeat("a", 64)
+	if len(attempt) > 0 {
+		a = attempt[0]
+	}
 	env := xferEnvelope{Op: opTransfer, Namespace: ns, FromAuthority: from, ToAuthority: to,
-		AuthorityRev: big.NewInt(rev)}
+		AuthorityRev: big.NewInt(rev), Attempt: a}
 	oct := xferEncode(env)
 	return oct, hex.EncodeToString(ed25519.Sign(holder, oct)), hex.EncodeToString(ed25519.Sign(recipient, oct))
 }
@@ -201,7 +205,7 @@ func TestTransferRefusesIllegitimateScopes(t *testing.T) {
 	}
 	// Self-transfer is meaningless and must not advance the revision.
 	env := xferEnvelope{Op: opTransfer, Namespace: "co/*", FromAuthority: aHex, ToAuthority: aHex,
-		AuthorityRev: big.NewInt(1)}
+		AuthorityRev: big.NewInt(1), Attempt: strings.Repeat("b", 64)}
 	if err := env.validate(); err == nil {
 		t.Error("a self-transfer validated")
 	}
@@ -218,5 +222,84 @@ func TestTransferCannotBeRelayedByAThirdParty(t *testing.T) {
 	oct, hs, rs := signXfer(t, a, b, "co/*", 1)
 	if _, err := apiTransfer(st, oct, hs, rs, cHex); err == nil {
 		t.Error("a third party relayed a transfer between two other keys")
+	}
+}
+
+// XFER-ATTEMPT-ONE-SHOT / XFER-FRESH-CONSENT.
+//
+// The resurrection this closes: B countersigns, the submission is refused for a
+// transient reason, and a month later — with nothing re-signed — the same bytes
+// become effective. A refusal must mean "that transaction did not happen", not
+// "it may happen automatically once its blocking condition disappears".
+func TestRefusedTransferCannotBeResurrected(t *testing.T) {
+	st := newMemStoreForTest(t)
+	aHex, a := newKey(t)
+	bHex, b := newKey(t)
+	reserveFor(t, st, aHex, a, "co/*")
+	// Fill the recipient to the cap so the first attempt is refused for a
+	// TRANSIENT reason — the case where resurrection is tempting.
+	for i := 0; i < maxReservationsPerPrincipal; i++ {
+		reserveFor(t, st, bHex, b, string(rune('p'+i))+"cap/*")
+	}
+	n1 := strings.Repeat("1", 64)
+	oct, hs, rs := signXfer(t, a, b, "co/*", 1, n1)
+	if _, err := apiTransfer(st, oct, hs, rs, aHex); err == nil {
+		t.Fatal("the at-cap transfer was accepted")
+	}
+	if consumedAttempts(st)[n1] != "rejected" {
+		t.Fatal("the refused attempt was not journaled as consumed")
+	}
+
+	// The blocking condition disappears. In this kernel a namespace cannot be
+	// released, so simulate the general case directly: replay must be refused
+	// because the ATTEMPT is spent, not because the cap is still full.
+	_, err := apiTransfer(st, oct, hs, rs, aHex)
+	if err == nil {
+		t.Fatal("a refused transfer was resurrected by replaying the same bytes")
+	}
+	if !strings.Contains(err.Error(), "consumed") {
+		t.Errorf("refused for the wrong reason — resurrection would still be possible once the cap frees: %v", err)
+	}
+	// And the replay is NOT journaled: the original refusal is already recorded,
+	// so preserving every replay would let anyone holding the bytes grow the journal.
+	before := len(st.ReadLog())
+	_, _ = apiTransfer(st, oct, hs, rs, aHex)
+	if len(st.ReadLog()) != before {
+		t.Error("a replay of a consumed attempt was journaled — the journal is growable by anyone with the bytes")
+	}
+}
+
+// An ACCEPTED attempt is consumed too, so a transfer cannot be re-applied.
+func TestAcceptedAttemptIsAlsoConsumed(t *testing.T) {
+	st := newMemStoreForTest(t)
+	aHex, a := newKey(t)
+	_, b := newKey(t)
+	reserveFor(t, st, aHex, a, "co/*")
+	n := strings.Repeat("2", 64)
+	oct, hs, rs := signXfer(t, a, b, "co/*", 1, n)
+	if _, err := apiTransfer(st, oct, hs, rs, aHex); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := apiTransfer(st, oct, hs, rs, aHex); err == nil {
+		t.Error("an accepted transfer was re-applied from the same bytes")
+	}
+}
+
+// XFER-FRESH-CONSENT: a distinct nonce, signed by both, works.
+func TestFreshAttemptSucceedsAfterARefusal(t *testing.T) {
+	st := newMemStoreForTest(t)
+	aHex, a := newKey(t)
+	bHex, b := newKey(t)
+	reserveFor(t, st, aHex, a, "co/*")
+	stale, hs, rs := signXfer(t, a, b, "co/*", 0, strings.Repeat("3", 64)) // wrong rev
+	if _, err := apiTransfer(st, stale, hs, rs, aHex); err == nil {
+		t.Fatal("a stale transfer was accepted")
+	}
+	fresh, hs2, rs2 := signXfer(t, a, b, "co/*", 1, strings.Repeat("4", 64))
+	if _, err := apiTransfer(st, fresh, hs2, rs2, aHex); err != nil {
+		t.Fatalf("a freshly signed attempt was refused after an earlier refusal: %v", err)
+	}
+	if h, _ := reservationRev(st, "co/*"); h != bHex {
+		t.Error("the fresh attempt did not take effect")
 	}
 }

@@ -149,6 +149,17 @@ Use it to consolidate namespaces, move from a personal key to an organisation ke
 or complete a negotiated handover. **It is not recovery** — it needs the current
 holder's signature, so a lost key is still terminal.
 
+**Each signed attempt is single-use.** Every transfer carries a random `attempt`
+nonce covered by both signatures, and once the registry records the attempt —
+accepted or refused — those bytes are spent. A transfer refused because the
+recipient was at their namespace limit does not quietly become effective a month
+later when the limit frees; both parties sign again. Retrying is normal and costs
+nothing: `oath transfer` generates a fresh nonce every time.
+
+One limit worth stating: this stops a refused transfer coming back to life. It
+does not let you take back a countersignature the other party has not yet
+submitted.
+
 ## 5. Propose an addition to the standard library
 
 `oath/*` is the project namespace. Its contents are governed by
