@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
@@ -223,6 +224,41 @@ func main() {
 				"       --remote and --key may come from ~/.oath/config (see `oath config`, set up with `oath new`)"))
 		}
 		cmdPublish(st, endpoint, keyFile, file, license, dryRun, jsonOut, yes)
+	case "store-check":
+		// SPEC-adjacent, #100: every committed metadata record must be exactly what
+		// the CANONICAL encoder produces. Uses the kernel's own encodeMeta rather
+		// than a lookalike — Go escapes HTML in JSON strings and other encoders do
+		// not, so a check written in another language agrees only by luck.
+		//
+		// Artifact hashes protect SEMANTIC identity; this protects reproducibility
+		// and reviewability, which are different properties. A representation does
+		// not need to participate in identity to require canonical bytes.
+		files, _ := filepath.Glob(filepath.Join(st.Root, "meta", "*.json"))
+		bad := 0
+		for _, f := range files {
+			raw, err := os.ReadFile(f)
+			if err != nil {
+				fail(err)
+			}
+			var m Meta
+			if err := json.Unmarshal(raw, &m); err != nil {
+				fmt.Printf("  UNREADABLE %s: %v\n", filepath.Base(f), err)
+				bad++
+				continue
+			}
+			if got := encodeMeta(&m); !bytes.Equal(got, raw) {
+				fmt.Printf("  NON-CANONICAL %s (%d bytes committed, %d re-encoded)\n",
+					filepath.Base(f)[:12], len(raw), len(got))
+				bad++
+			}
+		}
+		fmt.Printf("STORE CANONICAL: %s — %d metadata record(s), %d non-canonical\n",
+			map[bool]string{true: "PASS", false: "FAIL"}[bad == 0], len(files), bad)
+		if bad > 0 {
+			fmt.Println("  A no-op update rewrites these, so the store cannot be reproduced")
+			fmt.Println("  by the kernel shipping with it and every touch produces a diff.")
+			os.Exit(1)
+		}
 	case "ownership":
 		// The pre-enforcement census (#84): what the registry believes about who
 		// controls every name, and what enabling enforcement would do.

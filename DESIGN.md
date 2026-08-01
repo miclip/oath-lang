@@ -907,6 +907,42 @@ what may be claimed, what counts as proof of it, and what counts as the same
 thing — which are the same three questions the protocol layers answer, arrived at
 from the opposite direction.
 
+## Canonical bytes without semantic identity (2026-08-01)
+
+> A representation does not need to participate in SEMANTIC IDENTITY to require
+> CANONICAL BYTES.
+
+Artifact hashes protect semantic identity. Canonical store bytes protect
+reproducibility, reviewability, and clean no-op behaviour — different properties,
+and the second set does not follow from the first.
+
+`codebase/meta/*.json` is the case. Metadata is not hashed into artifact
+identity, so a formatting difference changes nothing semantically. It still
+mattered: there was no single writer, the committed corpus held two encodings,
+and touching any object rewrote its record with identical content and different
+bytes. A no-op update produced a diff, and the store could not be reproduced by
+the kernel shipping with it. Now one `encodeMeta`, and `oath store-check` gates
+that every committed record is exactly what it produces.
+
+### The correction that got there
+
+The first diagnosis was backwards, and the process of getting it right is the
+reusable part.
+
+I sampled ONE metadata file, found it compact, and reported that the committed
+store was compact while the kernel emitted indented. A decision was taken on that
+basis — make compact canonical, avoid a 187-file migration. Counting instead of
+sampling gave the opposite picture: **174 indented, 23 compact**, with the kernel
+already matching the majority. Both encodings arrived in a SINGLE commit, a
+corpus rebuild that rewrote records for the objects it re-put and left the rest
+at their older encoding. The split was residue, not a decision, and the migration
+was 23 files rather than 187.
+
+The stated reasoning had been sound — minimise churn, preserve blame, prefer the
+established format — and applying those same criteria to the corrected facts
+reversed the conclusion. Which is the point: the reasoning survived, the premise
+did not, and only counting could tell them apart.
+
 ## The epistemic contracts (2026-07-31)
 
 Each layer has its own contract, and — the part that makes the taxonomy sharp —

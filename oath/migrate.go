@@ -112,7 +112,7 @@ func cmdMigrateEncoding(st *Store) {
 			}
 			mm.MutantsKilled, mm.MutantsTotal = 0, 0
 			mm.WaivedMutants = nil
-			nb, _ := json.MarshalIndent(&mm, "", "  ")
+			nb := encodeMeta(&mm)
 			if err := writeFileAtomic(filepath.Join(st.Root, "meta", nh+".json"), nb, 0o644); err != nil {
 				fail(err)
 			}

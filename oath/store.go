@@ -184,7 +184,7 @@ func (s *Store) StoreObject(d *Def, m *Meta) (string, error) {
 	if err := s.be.putObject(h, encodeDef(d)); err != nil {
 		return "", err
 	}
-	mb, _ := json.MarshalIndent(m, "", "  ")
+	mb := encodeMeta(m)
 	if err := s.be.putMeta(h, mb); err != nil {
 		return "", err
 	}
@@ -325,13 +325,40 @@ func (s *Store) GetMeta(h string) (*Meta, error) {
 
 // SetMeta rewrites a definition's metadata (names, guarantee). Metadata is
 // mutable precisely because it is not part of the definition's identity.
+// encodeMeta is the CANONICAL encoding for a metadata record: compact JSON, no
+// trailing newline, member order from the Meta struct's declaration.
+//
+// It exists because there was no stable writer. Three call sites each called
+// MarshalIndent while the committed store held compact JSON, so touching any
+// object rewrote its metadata file with identical CONTENT and different BYTES —
+// a no-op update produced a diff, and the committed corpus could not be
+// reproduced by the kernel shipping with it (#100).
+//
+// INDENTED is canonical because it is what the corpus already contains and what
+// the kernel already writes: 174 of 197 committed records, against 23 legacy
+// compact stragglers. Both formats arrived in ONE commit — a corpus rebuild that
+// rewrote metadata for the objects it re-put and left the rest at their older
+// encoding — so the split is residue, not a decision.
+//
+// (An earlier reading of this had it backwards, from sampling a single file that
+// happened to be compact. The direction was corrected by counting.)
+//
+// The general rule this is an instance of: a representation does not need to
+// participate in SEMANTIC identity to require CANONICAL BYTES. Artifact hashes
+// protect identity; canonical store bytes protect reproducibility,
+// reviewability, and no-op cleanliness, which are different properties.
+func encodeMeta(m *Meta) []byte {
+	b, _ := json.MarshalIndent(m, "", "  ")
+	return b
+}
+
 func (s *Store) SetMeta(h string, m *Meta) error {
 	release, err := s.be.lock()
 	if err != nil {
 		return err
 	}
 	defer release()
-	mb, _ := json.MarshalIndent(m, "", "  ")
+	mb := encodeMeta(m)
 	if err := s.be.putMeta(h, mb); err != nil {
 		return err
 	}

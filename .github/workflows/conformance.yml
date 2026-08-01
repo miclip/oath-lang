@@ -89,6 +89,13 @@ jobs:
       - name: identity constants are findable in the spec (SPEC §13)
         run: make check-normative-source
 
+      # The committed store must be reproducible by the kernel that ships with it.
+      # Metadata does not participate in artifact identity, but canonical bytes
+      # protect reproducibility and reviewability — different properties, both
+      # load-bearing for a store that is committed and reviewed as a diff.
+      - name: committed store is canonically encoded (#100)
+        run: make check-store
+
       - name: website proof ledger matches canonical fixtures (#30)
         # The site claims its numbers are read live from the machine's ledger.
         # Fail if website/lib/outcomes.json has drifted from fixtures/.

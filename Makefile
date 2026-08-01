@@ -178,6 +178,14 @@ check-implementability:
 cutover-check:
 	@python3 scripts/cutover-check.py $(SNAP) $(BASE)
 
+# #100: every committed metadata record must be exactly what the canonical
+# encoder produces, so a no-op update leaves no diff and the store is
+# reproducible by the kernel shipping with it. Uses the kernel's own encoder —
+# Go escapes HTML in JSON strings and a check written elsewhere agrees by luck.
+.PHONY: check-store
+check-store:
+	@./oath/oath store-check
+
 .PHONY: check-normative-source
 check-normative-source:
 	@python3 scripts/check-normative-source.py
