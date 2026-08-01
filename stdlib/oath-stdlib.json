@@ -103,6 +103,54 @@
       "note": "PROVEN involution; its closure is exactly List and append, which is why these three are the pilot"
     },
     {
+      "name": "Option",
+      "artifact": "895777a9ff55f95fafafd02a527f6fb513369d87fd05c73971da2700fc989397",
+      "membership": "referenced",
+      "publication": "1b3070e7ff75c0711382e3621965cc1ee2d1b09f84f7846b807d3cf5a430dd00",
+      "export": true,
+      "note": "selected from the publisher's own publication (65ea5701d92e\u2026), Apache-2.0"
+    },
+    {
+      "name": "is-some",
+      "artifact": "f3ac0cfaff55b6fa7d87a06b3555754280643773447445d7c7385d71b7d3e517",
+      "membership": "referenced",
+      "publication": "70734da4d6fe8fa363dd8622005537a34f01658ee8152e6d4dbdf0c458dfecfc",
+      "export": true,
+      "note": "selected from the publisher's own publication (65ea5701d92e\u2026), Apache-2.0"
+    },
+    {
+      "name": "is-none",
+      "artifact": "2ba7f9f256616ab855b5ebde66b5544feb26922287b3ac209e42516fd74cb9eb",
+      "membership": "referenced",
+      "publication": "c5399f52e9980b5e9701580d64bd772f1d2ca120ac979977ca5f7aa36c681dd9",
+      "export": true,
+      "note": "selected from the publisher's own publication (65ea5701d92e\u2026), Apache-2.0"
+    },
+    {
+      "name": "map-option",
+      "artifact": "c68fdd467a0a39dc9623a3a4426fcca2ae5a5c0732d131a501196fb6e5a39d4d",
+      "membership": "referenced",
+      "publication": "c9cb78d0e5a7a7bc8346de0fdeac613c881ab475652fe8b487422ad8d3edf6e8",
+      "export": true,
+      "note": "selected from the publisher's own publication (65ea5701d92e\u2026), Apache-2.0"
+    },
+    {
+      "name": "flat-map-option",
+      "artifact": "08cce2f0575fe5a00b064e418aceeb352b8b3257190018d6990f6d7d7654393e",
+      "membership": "referenced",
+      "publication": "291ec04a7e8673563654c257e20e6198270d49358d2c9b391d397997902f5b50",
+      "export": true,
+      "note": "selected from the publisher's own publication (65ea5701d92e\u2026), Apache-2.0"
+    },
+    {
+      "name": "or-else",
+      "artifact": "134cff6b69d5f3bb2599af1f8eb82206c37cefcb5b4ba29b6447b5b9dd0b3fbe",
+      "membership": "referenced",
+      "publication": "1edbc4f414ee63848910ab1b8b69c0732f81139f9f736b9befe1313cf6488df8",
+      "export": true,
+      "note": "selected from the publisher's own publication (65ea5701d92e\u2026), Apache-2.0"
+    },
+    {
       "name": "bad-reverse",
       "artifact": "af6b61e2180ad5ccdeb541b00c7f53d285aa3f3af997a5e00653954492cb25f1",
       "export": false,
