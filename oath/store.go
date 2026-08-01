@@ -780,7 +780,18 @@ func (s *Store) VerifyLog() error {
 			// later line — silently weakening tamper-evidence in the name of narrowing
 			// one clause, which is the trap the §8.6.4 clause-5 comment below already
 			// records having fallen into once.
-			if authorStatementKind(octets) == "reservation" {
+			if authorStatementKind(octets) == "delegation" {
+				del, perr := parseDelegateEnvelope(octets)
+				if perr != nil {
+					return fmt.Errorf("journal line %d has an unparseable delegation envelope: %w", line, perr)
+				}
+				if del.Pubkey != e.AuthorPubkey {
+					return fmt.Errorf("journal line %d: delegation names grantor %s but the entry records %s", line, del.Pubkey, e.AuthorPubkey)
+				}
+				if verr := delVerify(del, e.AuthorSig); verr != nil {
+					return fmt.Errorf("journal line %d: delegation signature does not verify: %w", line, verr)
+				}
+			} else if authorStatementKind(octets) == "reservation" {
 				res, perr := parseReserveEnvelope(octets)
 				if perr != nil {
 					return fmt.Errorf("journal line %d has an unparseable authority envelope: %w", line, perr)

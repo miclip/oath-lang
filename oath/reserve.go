@@ -437,6 +437,8 @@ func authorStatementKind(octets []byte) string {
 		return "publication"
 	case reserveVersion:
 		return "reservation"
+	case delegateVersion:
+		return "delegation"
 	}
 	return ""
 }

@@ -240,8 +240,13 @@ func evalPolicy(st *Store, pol *Policy, name, h string, def *Def, specAuthor, bo
 		// below; the reservation neither grants nor removes anything for that name.
 		owner, _ := nameOwner(st, name)
 		if owner == "" || owner == res.Pubkey {
-			if m.Author != res.Pubkey {
-				return false, fmt.Sprintf("policy: %q lies under namespace %q, reserved to key %s… by a signed authority record; submitter %q may not bind names there",
+			// The HOLDER or any CURRENT DELEGATE may bind. Delegation exists so
+			// automation never needs the namespace key itself, and it is checked
+			// here rather than at authentication because it is an authorization
+			// question: the delegate is fully authenticated and simply may or may
+			// not act under this prefix.
+			if !mayBindUnder(st, res, m.Author) {
+				return false, fmt.Sprintf("policy: %q lies under namespace %q, reserved to key %s… by a signed authority record; submitter %q is neither the holder nor a current delegate and may not bind names there",
 					name, res.Namespace, shortHash(res.Pubkey), m.Author)
 			}
 		}
