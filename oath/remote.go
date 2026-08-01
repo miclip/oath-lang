@@ -44,6 +44,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
@@ -266,8 +267,8 @@ func cmdRemotePut(endpoint, keyPath string, files []string, contextHash string) 
 }
 
 // remoteReserve submits a signed reservation to a registry.
-func remoteReserve(endpoint string, priv ed25519.PrivateKey, pubHex string, octets []byte, sig string) (string, error) {
-	return mcpCallSigned(endpoint, priv, pubHex, "reserve", map[string]any{
+func remoteReserve(ctx context.Context, endpoint string, s Signer, pubHex string, octets []byte, sig string) (string, error) {
+	return mcpCallSignedBy(ctx, endpoint, s, "reserve", map[string]any{
 		"envelope": encodeEnvelopeB64(octets), "signature": sig,
 	})
 }
@@ -278,8 +279,8 @@ func remoteReserve(endpoint string, priv ed25519.PrivateKey, pubHex string, octe
 // registry the claim is for. Deriving it locally would sign against a state the
 // target has never been in, and the swap would refuse it — correctly, and in a
 // way that reads like a bug rather than like a stale read.
-func remoteAuthority(endpoint string, priv ed25519.PrivateKey, pubHex, namespace string) (string, *big.Int, error) {
-	out, err := mcpCallSigned(endpoint, priv, pubHex, "authority", map[string]any{"name": namespace})
+func remoteAuthority(ctx context.Context, endpoint string, s Signer, namespace string) (string, *big.Int, error) {
+	out, err := mcpCallSignedBy(ctx, endpoint, s, "authority", map[string]any{"name": namespace})
 	if err != nil {
 		return "", nil, err
 	}
@@ -295,4 +296,68 @@ func remoteAuthority(endpoint string, priv ed25519.PrivateKey, pubHex, namespace
 		return "", nil, fmt.Errorf("registry returned a non-decimal authority revision %q", resp.Rev)
 	}
 	return resp.Authority, rev, nil
+}
+
+// mcpCallSignedBy is mcpCallSigned over a Signer rather than a raw private key,
+// so a remote call can be authenticated by a key this process does not hold.
+func mcpCallSignedBy(ctx context.Context, endpoint string, s Signer, tool string, args map[string]any) (string, error) {
+	body, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+		"params": map[string]any{"name": tool, "arguments": args},
+	})
+	if err != nil {
+		return "", err
+	}
+	pub, err := s.PublicKey(ctx)
+	if err != nil {
+		return "", err
+	}
+	// The REQUEST signature authenticates the caller; it is a different signature
+	// from the one over the envelope, and both must come from the same signer or
+	// the registry would authenticate one key while recording a statement by
+	// another.
+	sig, err := s.Sign(ctx, body)
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", strings.TrimSuffix(endpoint, "/")+"/mcp", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Oath-Pubkey", hex.EncodeToString(pub))
+	req.Header.Set("X-Oath-Signature", hex.EncodeToString(sig))
+	resp, err := (&http.Client{Timeout: 300 * time.Second}).Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if resp.StatusCode == http.StatusUnauthorized {
+		return "", fmt.Errorf("registry rejected the signature (401) on %s: %s", tool, strings.TrimSpace(string(raw)))
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("registry returned HTTP %d on %s: %s", resp.StatusCode, tool, strings.TrimSpace(string(raw)))
+	}
+	var rpc struct {
+		Result struct {
+			Content []struct{ Text string } `json:"content"`
+			IsError bool                    `json:"isError"`
+		} `json:"result"`
+		Error *struct{ Message string } `json:"error"`
+	}
+	if err := json.Unmarshal(raw, &rpc); err != nil {
+		return "", fmt.Errorf("registry returned unparseable JSON-RPC: %s", strings.TrimSpace(string(raw)))
+	}
+	if rpc.Error != nil {
+		return "", fmt.Errorf("registry: %s", rpc.Error.Message)
+	}
+	var b strings.Builder
+	for _, c := range rpc.Result.Content {
+		b.WriteString(c.Text)
+	}
+	if rpc.Result.IsError {
+		return b.String(), fmt.Errorf("%s", strings.TrimSpace(b.String()))
+	}
+	return b.String(), nil
 }

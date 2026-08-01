@@ -207,12 +207,16 @@ func main() {
 		endpoint := os.Getenv("OATH_REGISTRY")
 		keyFile := os.Getenv("OATH_KEY")
 		dryRun, yes := false, false
+		kmsKey := os.Getenv("OATH_KMS_KEY")
 		namespace := ""
 		rest := args[1:]
 		for i := 0; i < len(rest); i++ {
 			switch {
 			case rest[i] == "--remote" && i+1 < len(rest):
 				endpoint = rest[i+1]
+				i++
+			case rest[i] == "--kms-key" && i+1 < len(rest):
+				kmsKey = rest[i+1]
 				i++
 			case rest[i] == "--key" && i+1 < len(rest):
 				keyFile = rest[i+1]
@@ -234,7 +238,7 @@ func main() {
 				keyFile = cfg.Key
 			}
 		}
-		cmdReserve(st, endpoint, keyFile, namespace, dryRun, yes)
+		cmdReserve(st, endpoint, keyFile, kmsKey, namespace, dryRun, yes)
 	case "publish":
 		// Signed publication (#83): show the exact bytes, sign locally, send them
 		// unchanged, then confirm the registry persisted the same bytes.

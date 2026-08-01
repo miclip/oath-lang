@@ -34,6 +34,7 @@ package main
 // that can drift from the history it summarises.
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/hex"
@@ -572,17 +573,23 @@ func renderReserveReport(r reserveReport) string {
 // reservation is also permanent in a way a publication is not — this version has
 // no transfer, release or expiry — so the confirmation matters more here, not
 // less.
-func cmdReserve(local *Store, endpoint, keyPath, namespace string, dryRun, assumeYes bool) {
+func cmdReserve(local *Store, endpoint, keyPath, kmsKey, namespace string, dryRun, assumeYes bool) {
 	if namespace == "" {
 		fail(fmt.Errorf("usage: oath reserve <namespace>/* [--key <file>] [--remote <url>] [--dry-run] [-y]"))
 	}
 	if err := validNamespacePattern(namespace); err != nil {
 		fail(err)
 	}
-	if keyPath == "" {
-		fail(fmt.Errorf("reserve needs a signing key (--key or OATH_KEY): prefix authority is established BY a key, so there is nothing to record without one"))
+	signer, serr := resolveSigner(keyPath, kmsKey)
+	if serr != nil {
+		fail(fmt.Errorf("reserve needs a signing key — prefix authority is established BY a key, so there is nothing to record without one: %w", serr))
 	}
-	priv, pubHex := loadSigningKey(keyPath)
+	ctx := context.Background()
+	pubRaw, perr := signer.PublicKey(ctx)
+	if perr != nil {
+		fail(perr)
+	}
+	pubHex := hex.EncodeToString(pubRaw)
 
 	// The state being replaced must come from the registry the claim is FOR. A
 	// local reading would sign against a state the target has never had, and the
@@ -591,7 +598,7 @@ func cmdReserve(local *Store, endpoint, keyPath, namespace string, dryRun, assum
 	if endpoint == "" {
 		holder, rev = reservationRev(local, namespace)
 	} else {
-		h, r, err := remoteAuthority(endpoint, priv, pubHex, namespace)
+		h, r, err := remoteAuthority(ctx, endpoint, signer, namespace)
 		if err != nil {
 			fail(fmt.Errorf("reading current authority for %q from %s: %w", namespace, endpoint, err))
 		}
@@ -610,6 +617,7 @@ func cmdReserve(local *Store, endpoint, keyPath, namespace string, dryRun, assum
 		fmt.Printf("  | %s\n", line)
 	}
 	fmt.Printf("\nThis claims authority over %s in %s.\n", namespace, orWord(endpoint, "the local store"))
+	fmt.Printf("Signer: %s\n", signer.Description())
 	fmt.Printf("It is not identity, affiliation, or endorsement, and this version has no\n")
 	fmt.Printf("transfer, release or expiry — a prefix granted here cannot be given back.\n")
 	if dryRun {
@@ -620,7 +628,10 @@ func cmdReserve(local *Store, endpoint, keyPath, namespace string, dryRun, assum
 		fmt.Printf("aborted; nothing signed.\n")
 		return
 	}
-	sig := hex.EncodeToString(ed25519.Sign(priv, octets))
+	sig, sgerr := signStatement(ctx, signer, octets, pubHex, false)
+	if sgerr != nil {
+		fail(sgerr)
+	}
 
 	if endpoint == "" {
 		rep, err := apiReserve(local, octets, sig, pubHex)
@@ -630,7 +641,7 @@ func cmdReserve(local *Store, endpoint, keyPath, namespace string, dryRun, assum
 		fmt.Print("\n" + renderReserveReport(rep))
 		return
 	}
-	out, err := remoteReserve(endpoint, priv, pubHex, octets, sig)
+	out, err := remoteReserve(ctx, endpoint, signer, pubHex, octets, sig)
 	if err != nil {
 		fail(err)
 	}
