@@ -138,3 +138,55 @@ was unsigned, so history offers no key to derive. Each needs either an explicit
 `owner_pubkey` rule or a namespace under which a prefix rule can apply — and that
 is the naming decision, still open. Enforcement is deliberately NOT enabled for
 them: the census would report FAIL and the registry would freeze.
+
+## Rooted namespaces — the naming decision, 2026-08-01
+
+Bare names were acceptable while the registry was a corpus. They stop working
+once names carry durable authority, because authority then has to be assigned one
+artifact at a time: workable for seven names, untenable for 182.
+
+```
+michael/*                root authority
+michael/oath/*           project namespace
+michael/oath/reverse     artifact name
+```
+
+**Three claims stay separate.** Root owner (who is answerable for names under the
+prefix), publisher (which key signed this exact publication), artifact identity
+(which immutable hash the name points to). Namespace authority and authorship are
+independent: an agent key can sign publications beneath a prefix the root owns.
+
+### Verified end to end
+
+| check | result |
+|---|---|
+| root key authorizes the prefix | `michael/*` rule applies; scope shown in the census |
+| an authenticated non-owner is blocked | local, two authorized keys: seq 552 `blocked`, *"policy: name is owned by key 65ea…; submitter 831e…"* |
+| the root owner can publish beneath it | seq 553 `accepted` |
+| sibling and legacy names unaffected | bare `reverse` stays `admin` / `legacy-label` / no scope |
+| old bare names still resolve | yes, and remain honestly legacy-owned |
+| discovery does not conflate the two | see below |
+
+### One artifact, two names, two authority stories
+
+`michael/oath/reverse` and `reverse` resolve to the SAME artifact —
+`7bb6285884d0` — because the name is metadata and content addressing does not
+care what a thing is called. The registry keeps their provenance separate:
+
+| name | artifact | owner | source |
+|---|---|---|---|
+| `michael/oath/reverse` | `7bb6285884d0` | `65ea5701d92e…` | signed-first-publication |
+| `reverse` | `7bb6285884d0` | `admin` | legacy-label |
+
+That is what makes signed republishing the honest migration: no artifact is
+duplicated, no legacy entry is altered, and the new name carries cryptographic
+ownership derived from ITS OWN first publication — needing no configured rule at
+all.
+
+### What was deliberately not done
+
+**No blanket rule assigning the key to all 182 bare names.** It would satisfy
+enforcement mechanically while freezing an accidental global naming scheme into
+the protocol — using ownership policy to avoid the naming decision rather than
+make it. The bare names stay exactly as they are: honest, unsigned, legacy-owned
+history.
