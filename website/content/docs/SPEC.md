@@ -2251,6 +2251,32 @@ purposes of this section.
 2. that statement's signature verifies (RES-SIGNED);
 3. the registry recorded the entry with the status `accepted`.
 
+**AUTH-REFUSALS-ARE-PRESERVED.** An authority submission path MUST journal every
+AUTHENTICATED signed attempt, including refusals, before returning the refusal.
+
+The boundary is whether there is a trustworthy signed assertion to preserve:
+
+- MALFORMED bytes, or a signature that does not verify, MAY be refused before
+  journaling. They assert nothing, and recording them would let anyone write into
+  the journal by submitting garbage.
+- A statement relayed by someone other than its signer MAY be refused before
+  journaling. It is somebody else's assertion being replayed, and recording it
+  would let any observer of a valid envelope append at will.
+- A STRUCTURALLY VALID statement with a VERIFIED signature, submitted by its
+  signer, MUST be journaled with the refusal status and the reason, even when it
+  is refused.
+
+A refused entry MUST produce no authority transition and no revision change; the
+API MAY return an error after the append.
+
+This is the shape a blocked publication already has — the object is stored and the
+attempt journaled while the name does not move — and the inconsistency was real:
+an implementation refused authenticated delegations as API errors and discarded
+them, so "someone tried to delegate to this key and was refused" did not survive.
+That is precisely the record an incident review needs, and a discarding
+implementation destroys it while looking correct, because authority is right and
+only history is gone.
+
 **AUTH-ACCEPTANCE-IS-THE-BOUNDARY.** Protocol effects derive ONLY from accepted
 journal entries. A signed but unaccepted statement is EVIDENCE, NOT STATE.
 

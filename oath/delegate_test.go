@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"math/big"
+	"strings"
 	"testing"
 )
 
@@ -220,5 +221,137 @@ func TestRejectedSignedStatementIsAuthorityNeutral(t *testing.T) {
 	// And the journal is still intact with the refusal recorded in it.
 	if err := st.VerifyLog(); err != nil {
 		t.Fatalf("journal verification broke on a rejected delegation entry: %v", err)
+	}
+}
+
+// A refused delegation must be PRESERVED, not discarded. "The registry preserves
+// rejected signed intent while deriving no authority from it" is one claim with
+// two halves, and the first half was missing: apiDelegate returned an error and
+// appended nothing, so the fact that someone tried and was refused vanished.
+//
+// That is the record an incident review needs, and a discarding implementation
+// destroys it while looking correct — authority is right, history is gone.
+func TestRefusedDelegationIsPreservedInTheJournal(t *testing.T) {
+	st := newMemStoreForTest(t)
+	holderHex, holder := newKey(t)
+	ciHex, _ := newKey(t)
+
+	oct, sig := signRes(t, holder, "p1/*", noAuthority, 0)
+	if _, err := apiReserve(st, oct, sig, holderHex); err != nil {
+		t.Fatal(err)
+	}
+	doct, dsig := signDel(t, holder, opDelegate, "p1/*", ciHex, 1)
+	if _, err := apiDelegate(st, doct, dsig, holderHex); err != nil {
+		t.Fatal(err)
+	}
+	before := len(st.ReadLog())
+
+	// Re-granting an active delegate: a real refusal, on an authenticated statement.
+	if _, err := apiDelegate(st, doct, dsig, holderHex); err == nil {
+		t.Fatal("a duplicate grant was accepted")
+	}
+	entries := st.ReadLog()
+	if len(entries) != before+1 {
+		t.Fatalf("the refusal was DISCARDED: %d entries before, %d after", before, len(entries))
+	}
+	last := entries[len(entries)-1]
+	if last.Status != "rejected" || last.Kind != kindDelegate {
+		t.Errorf("refusal journalled as kind=%q status=%q", last.Kind, last.Status)
+	}
+	if last.EnvelopeB64 == "" || last.AuthorSig == "" {
+		t.Error("the refusal record does not carry the statement that was refused")
+	}
+	if last.Error == "" {
+		t.Error("the refusal record does not say why it was refused")
+	}
+	// And it grants nothing: the delegate set is unchanged, one entry only.
+	if n := len(delegates(st)["p1/*"]); n != 1 {
+		t.Errorf("delegate set is %d after a refused duplicate; the refusal affected authority", n)
+	}
+	if err := st.VerifyLog(); err != nil {
+		t.Fatalf("journal verification broke on a preserved refusal: %v", err)
+	}
+}
+
+// THE JOURNALING BOUNDARY, pinned in both directions.
+//
+// A refusal is preserved once there is a trustworthy signed assertion to
+// preserve, and not before. Malformed bytes and bad signatures assert nothing, so
+// journaling them would record noise as history and hand anyone a way to write
+// into the journal by submitting garbage.
+//
+// The relay case is subtler and is deliberately NOT journalled: the signature is
+// valid but the caller is not the signer, so it is somebody else's statement being
+// replayed. Recording it would let any observer of a valid envelope append to the
+// journal at will, and it is not the signer's attempt in any case.
+func TestDelegationJournalingBoundary(t *testing.T) {
+	mk := func(t *testing.T) (*Store, string, ed25519.PrivateKey, string) {
+		st := newMemStoreForTest(t)
+		hHex, h := newKey(t)
+		cHex, _ := newKey(t)
+		oct, sig := signRes(t, h, "b1/*", noAuthority, 0)
+		if _, err := apiReserve(st, oct, sig, hHex); err != nil {
+			t.Fatal(err)
+		}
+		return st, hHex, h, cHex
+	}
+	count := func(st *Store) int {
+		n := 0
+		for _, e := range st.ReadLog() {
+			if e.Kind == kindDelegate {
+				n++
+			}
+		}
+		return n
+	}
+
+	for _, c := range []struct {
+		name       string
+		journalled bool
+		run        func(st *Store, hHex string, h ed25519.PrivateKey, cHex string)
+	}{
+		{"valid signature + stale revision", true, func(st *Store, hHex string, h ed25519.PrivateKey, cHex string) {
+			o, s := signDel(t, h, opDelegate, "b1/*", cHex, 99)
+			_, _ = apiDelegate(st, o, s, hHex)
+		}},
+		{"valid signature + non-holder signer", true, func(st *Store, _ string, _ ed25519.PrivateKey, cHex string) {
+			oHex, o := newKey(t)
+			oct, sg := signDel(t, o, opDelegate, "b1/*", cHex, 1)
+			_, _ = apiDelegate(st, oct, sg, oHex)
+		}},
+		{"malformed envelope", false, func(st *Store, hHex string, _ ed25519.PrivateKey, _ string) {
+			_, _ = apiDelegate(st, []byte("not an envelope\n"), "00", hHex)
+		}},
+		{"invalid signature", false, func(st *Store, hHex string, h ed25519.PrivateKey, cHex string) {
+			o, _ := signDel(t, h, opDelegate, "b1/*", cHex, 1)
+			_, _ = apiDelegate(st, o, strings.Repeat("00", 64), hHex)
+		}},
+		{"relayed by someone other than the signer", false, func(st *Store, _ string, h ed25519.PrivateKey, cHex string) {
+			relayHex, _ := newKey(t)
+			o, s := signDel(t, h, opDelegate, "b1/*", cHex, 1)
+			_, _ = apiDelegate(st, o, s, relayHex)
+		}},
+		{"accepted delegation", true, func(st *Store, hHex string, h ed25519.PrivateKey, cHex string) {
+			o, s := signDel(t, h, opDelegate, "b1/*", cHex, 1)
+			if _, err := apiDelegate(st, o, s, hHex); err != nil {
+				t.Errorf("accepted case was refused: %v", err)
+			}
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			st, hHex, h, cHex := mk(t)
+			before := count(st)
+			c.run(st, hHex, h, cHex)
+			after := count(st)
+			if c.journalled && after != before+1 {
+				t.Errorf("expected the attempt to be PRESERVED; entries went %d → %d", before, after)
+			}
+			if !c.journalled && after != before {
+				t.Errorf("expected NO journal entry; entries went %d → %d", before, after)
+			}
+			if err := st.VerifyLog(); err != nil {
+				t.Errorf("journal verification broke: %v", err)
+			}
+		})
 	}
 }

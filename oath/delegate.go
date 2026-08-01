@@ -285,16 +285,37 @@ func apiDelegate(st *Store, octets []byte, sigHex, principal string) (delegateRe
 			shortHash(env.Pubkey), shortHash(principal))
 	}
 
+	// REFUSALS ARE PRESERVED, NOT DISCARDED. Past this point the statement is
+	// authenticated: the signature verifies and the caller holds the signing key.
+	// A refusal is therefore a real thing a real principal said, and the journal's
+	// job is to keep what was said — the same reason a blocked publication stores
+	// its object and journals `blocked` rather than vanishing.
+	//
+	// Preserving it costs nothing in authority, because replay counts only entries
+	// recorded as accepted (AUTH-ACCEPTANCE-IS-THE-BOUNDARY). What it buys is that
+	// "someone tried to delegate to this key and was refused" survives, which is
+	// exactly the record an incident review needs and exactly the record a
+	// discarding implementation destroys.
+	refuse := func(format string, a ...any) (delegateReport, error) {
+		err := fmt.Errorf(format, a...)
+		_ = st.AppendLog(&LogEntry{
+			Author: env.Pubkey, Name: env.Namespace, Kind: kindDelegate, Status: "rejected",
+			Error: err.Error(), EnvelopeB64: encodeEnvelopeB64(octets),
+			AuthorPubkey: env.Pubkey, AuthorSig: sigHex,
+		})
+		return delegateReport{}, err
+	}
+
 	holder, rev := reservationRev(st, env.Namespace)
 	if holder == noAuthority {
-		return delegateReport{}, fmt.Errorf("namespace %q is not reserved: there is no authority to delegate from", env.Namespace)
+		return refuse("namespace %q is not reserved: there is no authority to delegate from", env.Namespace)
 	}
 	if holder != env.Pubkey {
-		return delegateReport{}, fmt.Errorf("namespace %q is held by %s, not by the signer %s: only the current holder may grant or revoke",
+		return refuse("namespace %q is held by %s, not by the signer %s: only the current holder may grant or revoke",
 			env.Namespace, shortHash(holder), shortHash(env.Pubkey))
 	}
 	if env.Authority != holder || env.AuthorityRev.Cmp(rev) != 0 {
-		return delegateReport{}, fmt.Errorf("stale authority state: signed against authority=%s rev=%s, but %q is held by %s at rev=%s — re-read and sign again",
+		return refuse("stale authority state: signed against authority=%s rev=%s, but %q is held by %s at rev=%s — re-read and sign again",
 			shortHash(env.Authority), env.AuthorityRev, env.Namespace, shortHash(holder), rev)
 	}
 
@@ -302,7 +323,7 @@ func apiDelegate(st *Store, octets []byte, sigHex, principal string) (delegateRe
 	switch env.Op {
 	case opDelegate:
 		if active[env.Subject] {
-			return delegateReport{}, fmt.Errorf("%s is already a delegate of %q: re-granting would journal a record that changes nothing",
+			return refuse("%s is already a delegate of %q: re-granting would journal a record that changes nothing",
 				shortHash(env.Subject), env.Namespace)
 		}
 	case opRevoke:
@@ -311,7 +332,7 @@ func apiDelegate(st *Store, octets []byte, sigHex, principal string) (delegateRe
 			// succeed against a key that was never granted tells an operator they have
 			// removed access they never gave — which is exactly the wrong thing to
 			// believe during an incident.
-			return delegateReport{}, fmt.Errorf("%s is not a current delegate of %q: there is nothing to revoke",
+			return refuse("%s is not a current delegate of %q: there is nothing to revoke",
 				shortHash(env.Subject), env.Namespace)
 		}
 	}
