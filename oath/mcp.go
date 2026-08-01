@@ -176,7 +176,7 @@ func mcpTools() []map[string]any {
 // mcpCallTool dispatches one tool call. principal, when non-empty, is an
 // AUTHENTICATED identity (HTTP transport) and overrides any client-supplied
 // author; the stdio transport passes "" (local trust, self-reported author).
-func mcpCallTool(st *Store, name string, args json.RawMessage, principal string, canWrite, signed bool) (string, error) {
+func mcpCallTool(st *Store, name string, args json.RawMessage, principal string, canWrite, signed, hosted bool) (string, error) {
 	var a struct {
 		Names   []string `json:"names"`
 		Budget  int      `json:"budget"`
@@ -236,6 +236,28 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 				return "", fmt.Errorf("author statement is incomplete: both envelope and signature are required, since either alone attests to nothing")
 			}
 			auth = &pubAuth{Bytes: a.Envelope, Sig: a.Signature, Pubkey: principal}
+		}
+		// THE FREEZE (legacy.go). On a HOSTED registry, creating a name is creating
+		// permanent authority state, and it must begin with a verifiable authority
+		// event rather than a server-vouched label. `hosted` rather than `!signed`:
+		// local stdio serve is the invoking user's own store, where there is no
+		// principal to establish and nothing to spoof.
+		//
+		// Narrow on purpose. This refuses CREATION, not publication — an existing
+		// legacy name may still be updated under operator policy, which is what
+		// "preserve legacy ambiguity" means. A name that already has a cryptographic
+		// owner is governed by the ownership rules, not by this one.
+		if hosted && auth == nil {
+			for _, n := range sourceNames(a.Source) {
+				if !nameExists(st, n) {
+					return "", fmt.Errorf(bearerRefusal, n)
+				}
+				if !isLegacyUnowned(st, n) {
+					return "", fmt.Errorf("%q is not in the frozen legacy set, so an unsigned request may not "+
+						"repoint it: it was created by a signed publication and only a signed request from an "+
+						"authorized principal may move it", n)
+				}
+			}
 		}
 		results, err := apiPutSigned(st, a.Source, a.Author, a.Context, auth)
 		out := renderPutReports(results)
@@ -453,7 +475,7 @@ func cmdServe(st *Store) {
 		// of band. An agent session holding a stdio server open would otherwise
 		// keep reporting the guarantees it saw at startup.
 		st.RefreshMutable()
-		resp := handleRPC(st, &req, "", true, false) // local stdio: the invoking user owns the store
+		resp := handleRPC(st, &req, "", true, false, false) // local stdio: the invoking user owns the store, and hosted=false leaves the name-creation freeze to the hosted surface
 		reply(req.ID, resp.Result, resp.Error)
 	}
 }

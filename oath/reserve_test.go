@@ -376,11 +376,11 @@ func TestReserveRequiresASignedRequest(t *testing.T) {
 	})
 
 	// canWrite=true, signed=FALSE: a write-scoped bearer token.
-	if _, err := mcpCallTool(st, "reserve", args, pubHex, true, false); err == nil {
+	if _, err := mcpCallTool(st, "reserve", args, pubHex, true, false, false); err == nil {
 		t.Fatal("a bearer-authenticated caller reserved a namespace")
 	}
 	// The same call, signed, succeeds.
-	if _, err := mcpCallTool(st, "reserve", args, pubHex, true, true); err != nil {
+	if _, err := mcpCallTool(st, "reserve", args, pubHex, true, true, false); err != nil {
 		t.Fatalf("a signed reservation was refused: %v", err)
 	}
 	if holder, _ := reservationRev(st, "alice/*"); holder != pubHex {

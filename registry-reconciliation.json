@@ -13,7 +13,8 @@
     "required_absent": "fail",
     "hash_mismatch": "fail",
     "ambiguous": "fail",
-    "undeclared": "fail"
+    "undeclared": "fail",
+    "unowned_new": "fail"
   },
   "alias_prefixes": [
     {
@@ -42,5 +43,11 @@
       "name": "id-check",
       "reason": "Written directly against the registry by the operator key on 2026-07-29 (journal 823, re-proven at 824). A manual check that never entered the committed corpus."
     }
-  ]
+  ],
+  "legacy_unowned": {
+    "boundary_seq": 1266,
+    "derivation": "A name is legacy-unowned iff its FIRST accepted journal binding is at or before boundary_seq AND carried no signature. DERIVED from immutable history, never stored \u2014 and closed by construction, since entries after the boundary are not eligible whatever they look like.",
+    "reason": "Frozen 2026-08-01. These names are historically valid, owned only by an unverifiable label, protected operationally by policy.json, and superseded for real use by the owned michael/* mirrors. They are NOT adopted retroactively: a later signed republication proves authorship of that publication, not ownership of the original name.",
+    "expected_count": 181
+  }
 }

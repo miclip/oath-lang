@@ -89,13 +89,13 @@ func TestCapabilityGate(t *testing.T) {
 	st := newStore(t)
 	putArgs := []byte(`{"source":"(defn z [] [] Int 1)"}`)
 
-	if _, err := mcpCallTool(st, "put", putArgs, "alice", false, false); err == nil {
+	if _, err := mcpCallTool(st, "put", putArgs, "alice", false, false, false); err == nil {
 		t.Fatal("read-only principal was allowed to put")
 	}
-	if _, err := mcpCallTool(st, "ls", nil, "alice", false, false); err != nil {
+	if _, err := mcpCallTool(st, "ls", nil, "alice", false, false, false); err != nil {
 		t.Fatalf("read-only principal blocked from ls: %v", err)
 	}
-	if _, err := mcpCallTool(st, "put", putArgs, "bob", true, false); err != nil {
+	if _, err := mcpCallTool(st, "put", putArgs, "bob", true, false, false); err != nil {
 		t.Fatalf("write principal blocked from put: %v", err)
 	}
 	if h, ok := st.Resolve("z"); !ok || h == "" {

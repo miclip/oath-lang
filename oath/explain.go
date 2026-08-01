@@ -485,7 +485,9 @@ func ownerSourceMeaning(source string) string {
 	case ownerSignedAdoption:
 		return "authority adopted by a signed operation at a recorded point, not retroactive"
 	case ownerLegacyLabel:
-		return "historical but NOT cryptographic: a principal string the registry recorded on an unsigned entry"
+		return "historical but NOT cryptographic: a principal string the registry recorded on an unsigned " +
+			"entry, protected by operator policy rather than by a key. This name is in the CLOSED legacy set " +
+			"— it is preserved as it is, no ownership claim is upgraded, and no new name can be created this way"
 	case ownerConfiguredPolicy:
 		return "present configuration, NOT history: editable by whoever holds the store"
 	}

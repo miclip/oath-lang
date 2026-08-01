@@ -176,7 +176,7 @@ func cmdServeHTTP(st *Store, addr, tokensPath, authKeysPath string) {
 		// consistent snapshot, and the caching still pays for itself within a
 		// heavy call (a prove touches the same metadata many times).
 		st.RefreshMutable()
-		resp := handleRPC(st, &req, principal, canWrite, signed)
+		resp := handleRPC(st, &req, principal, canWrite, signed, true) // hosted: name creation requires a signed principal
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	})
@@ -225,7 +225,7 @@ func authenticatePrincipal(r *http.Request, body []byte, tokens map[string]token
 // handleRPC serves one JSON-RPC request. principal, when non-empty, is the
 // AUTHENTICATED identity and overrides any client-supplied author. canWrite
 // gates the state-changing tools (local stdio callers pass true — local trust).
-func handleRPC(st *Store, req *rpcRequest, principal string, canWrite, signed bool) rpcResponse {
+func handleRPC(st *Store, req *rpcRequest, principal string, canWrite, signed, hosted bool) rpcResponse {
 	resp := rpcResponse{Jsonrpc: "2.0", ID: req.ID}
 	switch req.Method {
 	case "initialize":
@@ -254,7 +254,7 @@ func handleRPC(st *Store, req *rpcRequest, principal string, canWrite, signed bo
 			resp.Error = &rpcError{Code: -32602, Message: "invalid params"}
 			return resp
 		}
-		text, err := mcpCallTool(st, p.Name, p.Arguments, principal, canWrite, signed)
+		text, err := mcpCallTool(st, p.Name, p.Arguments, principal, canWrite, signed, hosted)
 		isErr := err != nil
 		if isErr {
 			text = "error: " + err.Error()

@@ -119,6 +119,67 @@ and deliberately: it needs production store credentials, and a check that fails
 for want of credentials gets ignored, which is worse than not having it. The logic
 is gated; the live run is a deliberate act.
 
+## The freeze: legacy ambiguity is preserved, new ambiguity is not created
+
+181 names — the original bare corpus — were first bound by an **unsigned** entry
+under the label `admin`. Exact-name ownership is inferred from a name's first
+binding, so what they have is a label the registry recorded about itself: an
+observation, authoritative about the observer, checkable by nobody. What protects
+them is `policy.json` — operator configuration, and precisely what namespace
+reservation moved authority away from.
+
+They are **not adopted retroactively**. Assigning a key to a name first bound by a
+label would have the registry assert a signature that was never made, which is
+manufacturing evidence so a check passes. A later signed republication proves
+authorship *of that publication*, not ownership of the original name. So they stay
+what they are: historically valid, owned only by an unverifiable label, protected
+operationally, and superseded for real use by the owned `michael/*` mirrors.
+
+What changed is that the category is now **closed**:
+
+> No new name may enter the registry without cryptographic ownership established
+> at creation.
+
+A token-authenticated client can search, evaluate, prove, and prepare a
+publication. Creating a name requires a signed publication — directly, or through
+a key delegated to it under a reserved namespace. The refusal says so and says
+what to do:
+
+```
+new names require a signed principal. Bearer authorization grants SERVICE ACCESS,
+not NAME OWNERSHIP.
+  A token authorizes use of this registry; a key establishes who you are and what
+  you may govern.
+  To publish "x": generate a key (`oath keygen`) and publish with `--key`, or use
+  a key delegated to you under a reserved namespace (`oath delegate`). …
+```
+
+**Membership is derived from a pinned boundary**, not from a query. "Every name
+that is currently unowned" is a description that grows each time something unowned
+is admitted — a category expanding while calling itself frozen. Instead: a name is
+legacy-unowned iff its first accepted binding is at or before **journal sequence
+1266** and carried no signature. That is derived from immutable history and cannot
+grow, because entries after the boundary are not eligible whatever they look like.
+The set is closed by construction rather than by discipline.
+
+The check enforces both halves, and they are independent — declaring a name gets
+it past `undeclared` but not past the freeze:
+
+```
+✗ UNOWNED NEW NAME `agent-made-this` — first bound at journal 1300 by an UNSIGNED
+  entry labelled 'some-token-client', after the freeze at 1266. New names require
+  a signed principal … The legacy set is closed and may not grow
+```
+
+The cost is real: token-only clients can no longer create top-level names, and
+some MCP workflows need a signer wired in. That is the right cost. It converts the
+registry from *anyone with a writer token can create a permanently ambiguous name*
+to *every new name begins with a verifiable authority event*.
+
+Enforcement is at the **hosted** boundary only. Local development is untouched —
+`oath put` against your own store needs no key, because there is no principal to
+establish and nothing to spoof.
+
 ## Running it
 
 ```

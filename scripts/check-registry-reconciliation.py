@@ -77,8 +77,13 @@ def fetch(obj, dest):
         sys.exit(2)
 
 
-def load_journal(path):
-    """name -> (seq, time, author, signed) for its FIRST appearance."""
+def load_journal(path, raw=None):
+    """name -> (seq, time, author, signed) for its FIRST appearance.
+
+    `raw`, when given, is filled with the whole first-binding record, which the
+    freeze check needs — it must distinguish "unsigned" from "unsigned AND after
+    the boundary", and that is a fact about the entry rather than about the name.
+    """
     first = {}
     if not path:
         return first
@@ -94,6 +99,8 @@ def load_journal(path):
             continue
         first[n] = (e.get("seq"), (e.get("time") or "")[:19], e.get("author"),
                     bool(e.get("author_pubkey")))
+        if raw is not None:
+            raw[n] = e
     return first
 
 
@@ -128,7 +135,8 @@ def main():
         live = norm(json.loads(Path(argv[0]).read_text()))
 
     corpus = norm(json.loads((base / policy["corpus"]).read_text()))
-    first_seen = load_journal(journal_path)
+    first_raw = {}
+    first_seen = load_journal(journal_path, first_raw)
 
     manifest = json.loads((base / policy["stdlib_from_manifest"]).read_text())
     ns = manifest.get("namespace", "oath")
@@ -228,6 +236,36 @@ def main():
             reviews.append(f"registry-only artifact `{name}` — {regonly[name]}")
             tally("registry_only")
 
+    # ---- the freeze: no NEW unowned names ------------------------------------
+    # Legacy ambiguity is preserved; new ambiguity may not be created. A first
+    # binding after the pinned boundary that carries no signature is a name with no
+    # cryptographic principal behind it, created after the registry stopped
+    # allowing that — a hard failure, not a REVIEW line, because the whole point is
+    # that the category cannot grow.
+    lu = policy.get("legacy_unowned")
+    if lu and first_raw:
+        boundary = lu["boundary_seq"]
+        frozen = {n for n, r in first_raw.items()
+                  if (r.get("seq") or 0) <= boundary and not r.get("author_pubkey")}
+        if lu.get("expected_count") is not None and len(frozen) != lu["expected_count"]:
+            failures.append(f"the frozen legacy set derives to {len(frozen)} names but the policy "
+                            f"declares {lu['expected_count']}. The set is derived from immutable "
+                            f"history at a pinned boundary, so this number cannot move on its own — "
+                            f"either the boundary was changed or the journal is not the one this "
+                            f"policy was written against")
+            tally("unowned_new")
+        for name, r in sorted(first_raw.items()):
+            if (r.get("seq") or 0) <= boundary or r.get("author_pubkey"):
+                continue
+            if name not in live:
+                continue
+            failures.append(f"UNOWNED NEW NAME `{name}` — first bound at journal {r.get('seq')} "
+                            f"({(r.get('time') or '')[:19]}) by an UNSIGNED entry labelled "
+                            f"{r.get('author')!r}, after the freeze at {boundary}. New names require a "
+                            f"signed principal: bearer authorization grants service access, not name "
+                            f"ownership. The legacy set is closed and may not grow")
+            tally("unowned_new")
+
     # ---- required membership: every category member must be PRESENT -----------
     # This is the half a count cannot express. A vanished alias and a new
     # unexplained name cancel out in any total, and only an explicit presence
@@ -270,7 +308,8 @@ def main():
     print("BY CATEGORY (classification, not count — a total would let an arrival cancel a departure)")
     for cat in ("corpus_present_identical", "alias", "stdlib_publication",
                 "operational_probe", "registry_only", "corpus_absent_live",
-                "required_absent", "hash_mismatch", "ambiguous", "undeclared"):
+                "required_absent", "hash_mismatch", "ambiguous", "undeclared",
+                "unowned_new"):
         if counts.get(cat):
             verdict = policy["verdicts"].get(cat, "fail")
             print(f"  {cat:26} {counts[cat]:5}   {verdict}")
