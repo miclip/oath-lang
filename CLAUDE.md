@@ -100,31 +100,16 @@ order, Apache-2.0, KMS-signed. `docs/receipts/001-*` is a generated receipt whos
 eight checks all pass. A PR validation workflow (`stdlib-pr.yml`) exists and is
 deliberately incapable of publishing.
 
-**DELEGATION IS SPECIFIED AND ENFORCED BUT NOT USABLE.** Do not describe it as
-available and do not build on it. The kernel replays and enforces §8.7.7, but
-there is no command, no MCP tool, no acceptance path, and — most importantly — NO
-CONFORMANCE VECTOR. Unwitnessed authority rules can look complete while encoding
-the wrong protocol, which is more dangerous than a missing command because it is
-invisible.
+**DELEGATION IS BUILT AND USABLE.** `oath delegate <ns>/* --to <pubkey>` and
+`oath revoke <ns>/* --from <pubkey>`, plus the `delegate` MCP tool, all over ONE
+acceptance path (`apiDelegate`). Seven conformance vectors witness the rules
+(holder grants, revocation removes, non-holder cannot grant, a delegate cannot
+delegate onward, stale grant refused, bad signature refused, a registry-authored
+label creates nothing). `explain` renders holder and delegates distinctly — a
+delegate must NEVER appear as the namespace owner.
 
-Finish it in this order, and not another:
-
-1. **Acceptance path first** — an `apiDelegate` that parses the signed operation,
-   verifies the grantor is the CURRENT holder, checks the authority revision,
-   rejects stale or invalid grants explicitly, and journals both accepted and
-   refused attempts. Replay stays the verifier, never the submission interface.
-2. **Conformance vectors** — holder grants; non-holder cannot; delegate publishes
-   only in scope; revocation removes; stale grant/revoke refused; bad signature
-   refused; registry-authored labels cannot create delegation; replay derives the
-   same active set.
-3. **CLI and MCP** — `oath delegate` / `oath revoke`, then the remote tools, all
-   over the ONE acceptance path. No client gets its own semantics.
-4. **Authority reporting** — `explain` must render the chain distinctly: prefix
-   held by X, publication delegated to Y, active at revision N. A delegate must
-   NEVER be rendered as the namespace owner.
-5. **Only then wire CI.** Give CI a delegated publishing key, never the namespace
-   key. Revocation then becomes a signed act and a compromise no longer transfers
-   `oath/*` permanently.
+REMAINING: step 5 only — wire the post-merge publisher against a DELEGATED key,
+and grant that key KMS access. Not done, and it needs its own authorization.
 
 The post-merge publish workflow is NOT built, deliberately. Wiring it before the
 above would make CI depend on a protocol path nobody can invoke normally, inspect

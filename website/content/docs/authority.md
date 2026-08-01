@@ -202,9 +202,9 @@ the middle of exactly the flow that reservation exists to remove them from.
 
 - **Transfer.** A held prefix cannot change hands. A reservation naming a prefix
   another key holds is refused, not treated as a transfer.
-- **Delegation, as a usable operation.** The rules exist and a kernel enforces
-  them (SPEC §8.7.7), but there is no way to issue a grant through any client and
-  no conformance vector witnesses any of it. It is specified, not available.
+- **Transfer only.** Delegation now exists (SPEC §8.7.7): a holder may grant
+  another key permission to publish under their prefix, and withdraw it. What
+  remains absent is moving AUTHORITY itself.
 - **Release and expiry.** A prefix cannot be relinquished.
 
 These are omissions, not oversights, and the encoding anticipates them: a

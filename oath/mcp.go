@@ -71,6 +71,14 @@ func mcpTools() []map[string]any {
 			}, "envelope", "signature"),
 		},
 		{
+			"name":        "delegate",
+			"description": "Grant or withdraw permission to publish under a namespace you hold (SPEC §8.7.7). Submit the exact canonical octets of a signed oath-delegate/1 envelope, base64-encoded, plus its hex signature. This grants PERMISSION, never AUTHORITY: a delegate may bind names under the prefix and may not reserve, delegate onward, or revoke, and the holder may withdraw them at any time. Requires a signed request by the current holder.",
+			"inputSchema": obj(map[string]any{
+				"envelope":  str("base64 of the exact canonical delegation octets that were signed"),
+				"signature": str("hex Ed25519 signature over those octets"),
+			}, "envelope", "signature"),
+		},
+		{
 			"name":        "authority",
 			"description": "Read the CURRENT authority state of a namespace prefix, or of the prefix governing a name (SPEC §8.7). Structured JSON, because a signing client needs the exact (authority, authority_rev) pair to build a reservation that will be accepted — a claim signed against a stale state is refused by the compare-and-swap. Read-only.",
 			"inputSchema": obj(map[string]any{"name": str("a prefix pattern like \"alice/*\", or a definition name to resolve")}, "name"),
@@ -194,7 +202,7 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 	// and moves names; `cross --record` writes the journal. A read-only bearer
 	// token can still read, discover, and re-verify — just not author. Sign the
 	// request or use a write-scoped token. (#14)
-	if (name == "put" || name == "reserve" || (name == "cross" && a.Record)) && !canWrite {
+	if (name == "put" || name == "reserve" || name == "delegate" || (name == "cross" && a.Record)) && !canWrite {
 		// The remedy depends on HOW the caller authenticated, and getting this
 		// wrong wastes real time: telling someone who already signed to "sign the
 		// request" hides the actual cause. It cannot be inferred from the
@@ -251,6 +259,25 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 		}
 		b, _ := json.Marshal(resp)
 		return string(b), nil
+	case "delegate":
+		// Signed-only, for the same reason reserve is: RES/DEL rules require the
+		// authenticated principal to BE the holder, and a bearer principal is
+		// server-vouched rather than proved.
+		if !signed {
+			return "", fmt.Errorf("delegate requires a SIGNED request (X-Oath-Signature): only the key that holds a namespace may grant or revoke, and a bearer token's principal is vouched by the server rather than proved by a signature")
+		}
+		if a.Envelope == "" || a.Signature == "" {
+			return "", fmt.Errorf("delegate needs both `envelope` and `signature`")
+		}
+		doct, derr2 := decodeEnvelopeB64(a.Envelope)
+		if derr2 != nil {
+			return "", fmt.Errorf("envelope: %w", derr2)
+		}
+		drep, rerr2 := apiDelegate(st, doct, a.Signature, principal)
+		if rerr2 != nil {
+			return "", rerr2
+		}
+		return renderDelegateReport(drep), nil
 	case "reserve":
 		// A reservation MUST be signed, never bearer-authenticated. RES-SIGNED
 		// requires the authenticated principal to EQUAL the key named in the

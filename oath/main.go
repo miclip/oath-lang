@@ -239,6 +239,51 @@ func main() {
 			}
 		}
 		cmdReserve(st, endpoint, keyFile, kmsKey, namespace, dryRun, yes)
+	case "delegate", "revoke":
+		endpoint := os.Getenv("OATH_REGISTRY")
+		keyFile := os.Getenv("OATH_KEY")
+		kmsKey := os.Getenv("OATH_KMS_KEY")
+		dryRun, yes := false, false
+		namespace, subject := "", ""
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			switch {
+			case rest[i] == "--remote" && i+1 < len(rest):
+				endpoint = rest[i+1]
+				i++
+			case rest[i] == "--kms-key" && i+1 < len(rest):
+				kmsKey = rest[i+1]
+				i++
+			case rest[i] == "--key" && i+1 < len(rest):
+				keyFile = rest[i+1]
+				i++
+			case (rest[i] == "--to" || rest[i] == "--from") && i+1 < len(rest):
+				subject = rest[i+1]
+				i++
+			case rest[i] == "--dry-run":
+				dryRun = true
+			case rest[i] == "--yes" || rest[i] == "-y":
+				yes = true
+			default:
+				namespace = rest[i]
+			}
+		}
+		if cfg, _, cerr := loadClientConfig(); cerr == nil && cfg != nil {
+			if endpoint == "" {
+				endpoint = cfg.Registry
+			}
+			if keyFile == "" && kmsKey == "" {
+				keyFile = cfg.Key
+			}
+		}
+		if kmsKey != "" {
+			keyFile = ""
+		}
+		op := opDelegate
+		if args[0] == "revoke" {
+			op = opRevoke
+		}
+		cmdDelegate(st, endpoint, keyFile, kmsKey, namespace, subject, op, dryRun, yes)
 	case "publish":
 		// Signed publication (#83): show the exact bytes, sign locally, send them
 		// unchanged, then confirm the registry persisted the same bytes.
@@ -902,10 +947,12 @@ func cmdEval(st *Store, src string) {
 // be a deliberate edit here — a command silently gaining or losing the ability to
 // answer from elsewhere is exactly the drift #104 is about.
 var remoteCapable = map[string]bool{
-	"put":     true,
-	"publish": true,
-	"license": true,
-	"reserve": true,
+	"put":      true,
+	"publish":  true,
+	"license":  true,
+	"reserve":  true,
+	"delegate": true,
+	"revoke":   true,
 }
 
 func remoteCapableList() string {

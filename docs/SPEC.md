@@ -2406,15 +2406,6 @@ one registry, not a statement about who anyone is.
 
 #### 8.7.7 Delegation
 
-> **STATUS: SPECIFIED AND ENFORCED, NOT YET A USABLE PROTOCOL SURFACE.** A kernel
-> replays and enforces these rules, but no client can issue a grant: there is no
-> command, no tool, and no acceptance path that validates a submitted delegation
-> before journaling it. Nothing in this section is WITNESSED BY A CONFORMANCE
-> VECTOR, so a second implementation could satisfy every published byte and encode
-> a different protocol without any fixture disagreeing. Treat this section as
-> normative intent that has not yet been independently checked, and do not build
-> on it in production.
-
 A holder MAY grant another key permission to bind names under their prefix,
 WITHOUT granting authority over it. The grant and its withdrawal are signed acts
 recorded in the journal.
@@ -2441,6 +2432,20 @@ remove the holder's own rights.
 **DEL-REVOCABLE.** A withdrawal takes effect from the point it is recorded.
 Revocation is what makes delegation safe: a compromised delegate can publish
 until it is revoked, and can do nothing to prevent that revocation.
+
+**DEL-ACCEPTANCE.** A registry MUST validate a submitted delegation before
+journaling it: the signature verifies, the authenticated caller is the signer, the
+signer holds the prefix NOW, and `(authority, authority_rev)` match the derived
+state. A grant that would change nothing (re-granting a current delegate) and a
+withdrawal of a key that is not a delegate MUST both be refused rather than
+recorded — a revocation that appears to succeed against a key that was never
+granted tells an operator they removed access they never gave, which is the wrong
+thing to believe during an incident.
+
+Replay remains the verifier and MUST NOT rely on this having happened: it ignores
+any grant it cannot justify from the journal alone. The duplication is deliberate.
+A registry that only checked at submission would be trusting its own past
+acceptance; a verifier that only checked at replay could not explain a refusal.
 
 **DEL-DERIVED.** The current delegate set MUST be derived by replaying the
 journal, never read from a stored table. A stored permission table could be

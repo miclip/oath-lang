@@ -44,7 +44,9 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
    journal of entries with real signatures and an expected derived (authority,
    authority_rev). They exist because round 7 found nine normative rules with no
    witness at all, and every defect it found lived in that unwitnessed region —
-   encoding vectors constrain only what they mention.
+   encoding vectors constrain only what they mention. The "delegation" records
+   witness SPEC §8.7.7 the same way: each carries a journal and the delegate set
+   replay must derive from it.
    authority_rev is carried as a JSON STRING: the
    arbitrary-precision vector is 2^128+1, which a float64 JSON reader decodes off by
    one, and a witness defeated by its own carrier witnesses nothing.

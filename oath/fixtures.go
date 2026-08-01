@@ -604,7 +604,9 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
    journal of entries with real signatures and an expected derived (authority,
    authority_rev). They exist because round 7 found nine normative rules with no
    witness at all, and every defect it found lived in that unwitnessed region —
-   encoding vectors constrain only what they mention.
+   encoding vectors constrain only what they mention. The "delegation" records
+   witness SPEC §8.7.7 the same way: each carries a journal and the delegate set
+   replay must derive from it.
    authority_rev is carried as a JSON STRING: the
    arbitrary-precision vector is 2^128+1, which a float64 JSON reader decodes off by
    one, and a witness defeated by its own carrier witnesses nothing.
@@ -1812,6 +1814,106 @@ func writeReserveVectors(write func(string, []byte) error) error {
 	if err := stateCase("a reservation of a DIFFERENT prefix does not govern this one", "alice/*",
 		[]jentry{{"accepted", kindReserve, res("alice2/*", noAuthority, 0, pubOf(0xbb)), true, 0xbb}},
 		noAuthority, 0, "authority is per exact prefix string"); err != nil {
+		return err
+	}
+	// --- delegation: permission granted and withdrawn ---------------------------
+	//
+	// SPEC §8.7.7. Written because the rules were normative with NO witness at all,
+	// which is the shape round 7 found defects in: a second implementation could
+	// satisfy every published byte and encode a different protocol with nothing
+	// disagreeing. Each case is self-validated against this kernel's own
+	// acceptance path and replay.
+	delCase := func(label string, setup func(*Store, ed25519.PrivateKey, string), holderSeed byte,
+		ns string, expectActive []string, why string) error {
+		st, err := OpenStore(fixtureTempDir())
+		if err != nil {
+			return err
+		}
+		priv := seeded(holderSeed)
+		hpub := hex.EncodeToString(priv.Public().(ed25519.PublicKey))
+		roct := resEncode(resEnvelope{Op: opReserve, Namespace: ns, Authority: noAuthority,
+			AuthorityRev: big.NewInt(0), Pubkey: hpub})
+		if _, err := apiReserve(st, roct, hex.EncodeToString(ed25519.Sign(priv, roct)), hpub); err != nil {
+			return fmt.Errorf("delegation vector %q: setup reservation failed: %w", label, err)
+		}
+		setup(st, priv, hpub)
+		got := []string{}
+		for k := range delegates(st)[ns] {
+			got = append(got, k)
+		}
+		sort.Strings(got)
+		want := append([]string{}, expectActive...)
+		sort.Strings(want)
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			return fmt.Errorf("delegation vector %q: kernel derives %v, vector claims %v", label, got, want)
+		}
+		var js []map[string]any
+		for _, e := range st.ReadLog() {
+			if e.Kind == kindDelegate {
+				js = append(js, map[string]any{"status": e.Status, "kind": e.Kind,
+					"envelope_b64": e.EnvelopeB64, "pubkey": e.AuthorPubkey, "signature": e.AuthorSig})
+			}
+		}
+		return emit(map[string]any{"kind": "delegation", "label": label, "namespace": ns,
+			"holder": hpub, "journal": js, "expect_active_delegates": want, "why": why})
+	}
+	signDelFor := func(priv ed25519.PrivateKey, op, ns, subject string, rev int64) ([]byte, string) {
+		pub := hex.EncodeToString(priv.Public().(ed25519.PublicKey))
+		e := delEnvelope{Op: op, Namespace: ns, Subject: subject, Authority: pub,
+			AuthorityRev: big.NewInt(rev), Pubkey: pub}
+		oct := delEncode(e)
+		return oct, hex.EncodeToString(ed25519.Sign(priv, oct))
+	}
+	ci, other := pubOf(0x11), pubOf(0x22)
+
+	if err := delCase("holder grants", func(st *Store, priv ed25519.PrivateKey, h string) {
+		o, sg := signDelFor(priv, opDelegate, "d1/*", ci, 1)
+		_, _ = apiDelegate(st, o, sg, h)
+	}, 0x0a, "d1/*", []string{ci}, "the holder may grant publication rights"); err != nil {
+		return err
+	}
+	if err := delCase("revocation removes the delegate", func(st *Store, priv ed25519.PrivateKey, h string) {
+		o, sg := signDelFor(priv, opDelegate, "d2/*", ci, 1)
+		_, _ = apiDelegate(st, o, sg, h)
+		o, sg = signDelFor(priv, opRevoke, "d2/*", ci, 1)
+		_, _ = apiDelegate(st, o, sg, h)
+	}, 0x0b, "d2/*", []string{}, "DEL-REVOCABLE: withdrawal takes effect from the point it is recorded"); err != nil {
+		return err
+	}
+	if err := delCase("a NON-HOLDER cannot grant", func(st *Store, _ ed25519.PrivateKey, _ string) {
+		imp := seeded(0x33)
+		ipub := hex.EncodeToString(imp.Public().(ed25519.PublicKey))
+		o, sg := signDelFor(imp, opDelegate, "d3/*", ci, 1)
+		_, _ = apiDelegate(st, o, sg, ipub)
+	}, 0x0c, "d3/*", []string{}, "DEL-GRANTOR-IS-HOLDER: a grant by a key that does not hold the prefix confers nothing"); err != nil {
+		return err
+	}
+	if err := delCase("a DELEGATE cannot delegate onward", func(st *Store, priv ed25519.PrivateKey, h string) {
+		o, sg := signDelFor(priv, opDelegate, "d4/*", ci, 1)
+		_, _ = apiDelegate(st, o, sg, h)
+		d := seeded(0x11)
+		o, sg = signDelFor(d, opDelegate, "d4/*", other, 1)
+		_, _ = apiDelegate(st, o, sg, ci)
+	}, 0x0d, "d4/*", []string{ci}, "DEL-PERMISSION-NOT-AUTHORITY: permission never becomes authority"); err != nil {
+		return err
+	}
+	if err := delCase("a STALE grant is refused", func(st *Store, priv ed25519.PrivateKey, h string) {
+		o, sg := signDelFor(priv, opDelegate, "d5/*", ci, 7) // wrong authority revision
+		_, _ = apiDelegate(st, o, sg, h)
+	}, 0x0e, "d5/*", []string{}, "the compare-and-swap refuses a grant signed against an authority state the prefix has left"); err != nil {
+		return err
+	}
+	if err := delCase("an INVALID SIGNATURE is refused", func(st *Store, priv ed25519.PrivateKey, h string) {
+		o, _ := signDelFor(priv, opDelegate, "d6/*", ci, 1)
+		bad := hex.EncodeToString(ed25519.Sign(priv, append(o, ' ')))
+		_, _ = apiDelegate(st, o, bad, h)
+	}, 0x0f, "d6/*", []string{}, "a signature over different bytes confers nothing"); err != nil {
+		return err
+	}
+	if err := delCase("a REGISTRY-AUTHORED label cannot create delegation", func(st *Store, priv ed25519.PrivateKey, h string) {
+		// An entry the registry labelled `delegate` with no signed envelope behind it.
+		_ = st.AppendLog(&LogEntry{Author: h, Name: "d7/*", Kind: kindDelegate, Status: "accepted"})
+	}, 0x10, "d7/*", []string{}, "kind and status are written by the registry and covered by no signature; only a signed envelope grants"); err != nil {
 		return err
 	}
 	return write("reserve/vectors.jsonl", []byte(out.String()))

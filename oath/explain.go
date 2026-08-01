@@ -124,6 +124,10 @@ type explainProv struct {
 	// RES-NO-CAPTURE preserves.
 	Namespace       string `json:"namespace,omitempty"`
 	NamespaceHolder string `json:"namespace_holder,omitempty"`
+	// NamespaceDelegates are keys the HOLDER has permitted to publish under the
+	// prefix. They are listed separately from the holder and MUST NOT be rendered
+	// as owners: a delegate holds revocable permission, never authority.
+	NamespaceDelegates []string `json:"namespace_delegates,omitempty"`
 	// License is the terms the PUBLISHER asserted in the signed publication envelope.
 	// It is an assertion, never a derivation: the registry can later evaluate
 	// compatibility across a dependency closure, and reporting the two as one claim is
@@ -250,6 +254,10 @@ func buildExplain(st *Store, name string) (*explainPkg, error) {
 	pkg.Provenance.Owner, pkg.Provenance.OwnerSource = nameOwner(st, name)
 	if r, ok := governingReservation(st, name); ok {
 		pkg.Provenance.Namespace, pkg.Provenance.NamespaceHolder = r.Namespace, r.Pubkey
+		for k := range delegates(st)[r.Namespace] {
+			pkg.Provenance.NamespaceDelegates = append(pkg.Provenance.NamespaceDelegates, k)
+		}
+		sortStringsInPlace(pkg.Provenance.NamespaceDelegates)
 	}
 	pkg.Provenance.License = assertedLicense(st, name)
 
@@ -388,6 +396,14 @@ func explainLimitations(st *Store, p *explainPkg, m *Meta) []string {
 		p.Provenance.NamespaceHolder != p.Provenance.Owner {
 		out = append(out, fmt.Sprintf("this name sits under namespace %s, governed by key %s…, but the NAME itself is owned by %s — the namespace holder may not repoint it, and the owner may not create other names in that namespace",
 			p.Provenance.Namespace, shortHash(p.Provenance.NamespaceHolder), shortHash(p.Provenance.Owner)))
+	}
+	// The authority CHAIN, rendered so the two roles cannot be confused. Anyone
+	// reading a delegate as the namespace owner would conclude that revoking it
+	// changes who governs the prefix, which is exactly backwards.
+	if len(p.Provenance.NamespaceDelegates) > 0 {
+		out = append(out, fmt.Sprintf("namespace %s is HELD by key %s…; publication under it is also DELEGATED to %d key(s) (%s) — a delegate may bind names here and may not reserve, delegate onward, or revoke, and the holder may withdraw them at any time",
+			p.Provenance.Namespace, shortHash(p.Provenance.NamespaceHolder),
+			len(p.Provenance.NamespaceDelegates), shortHash(p.Provenance.NamespaceDelegates[0])))
 	}
 	// A separate axis from the ladder: is the attribution EVIDENCE, or the
 	// registry's word for it? An unsigned journal entry records a pubkey the
