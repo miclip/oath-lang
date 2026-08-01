@@ -78,6 +78,11 @@ jobs:
     needs: [oath, oathrs]
     runs-on: ubuntu-latest
     steps:
+      # The notes are read from the REPOSITORY, so the repository has to be here.
+      # This job built nothing and needed no checkout until the notes moved into
+      # docs/releases.md, and the omission could not surface until a tag was cut
+      # after that change — which is why it failed on its first real run.
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -106,7 +111,16 @@ jobs:
               sys.exit(f"no '## {tag}' section in docs/releases.md")
           print(m.group(0).strip())
           PYEOF
-          ) || { echo "::error::docs/releases.md has no section for ${GITHUB_REF_NAME}"; exit 1; }
+          ) || {
+            # Distinguish the two failures. The catch-all message sent a reader
+            # looking for a missing SECTION when the file itself was absent.
+            if [ ! -f docs/releases.md ]; then
+              echo "::error::docs/releases.md is not present — this job needs actions/checkout"
+            else
+              echo "::error::docs/releases.md has no section for ${GITHUB_REF_NAME}"
+            fi
+            exit 1
+          }
           printf '%s\n\n---\n\n_Checksums in `SHA256SUMS`._\n' "$NOTES" > /tmp/notes.md
           gh release create "${GITHUB_REF_NAME}" dist/* \
             --repo "${GITHUB_REPOSITORY}" \
