@@ -285,9 +285,17 @@ func main() {
 				keyFile = cfg.Key
 			}
 		}
-		if endpoint == "" || keyFile == "" || file == "" {
-			fail(fmt.Errorf("usage: oath publish [--remote <url>] [--key <file>] [--license <SPDX>] [--dry-run] [--json] [-y] <file.oath>\n" +
+		// A KMS key satisfies the signing requirement exactly as a file does; the
+		// guard must not privilege one signer over the other, or --kms-key would be
+		// accepted and then refused for the absence of the flag it replaces.
+		if endpoint == "" || (keyFile == "" && kmsKey == "") || file == "" {
+			fail(fmt.Errorf("usage: oath publish [--remote <url>] [--key <file> | --kms-key <resource/cryptoKeyVersions/N>] [--license <SPDX>] [--dry-run] [--json] [-y] <file.oath>\n" +
 				"       --remote and --key may come from ~/.oath/config (see `oath config`, set up with `oath new`)"))
+		}
+		// A config-file key must not silently join an explicit --kms-key and make the
+		// invocation ambiguous. Explicit beats configured.
+		if kmsKey != "" {
+			keyFile = ""
 		}
 		cmdPublish(st, endpoint, keyFile, kmsKey, file, license, dryRun, jsonOut, yes)
 	case "store-check":

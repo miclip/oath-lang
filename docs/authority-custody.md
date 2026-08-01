@@ -46,6 +46,42 @@ avoiding elsewhere.
    rather than through the tool that produced it.
 8. Destroyed the PKCS #8 conversion file and the local signature artifact.
 
+## Pre-destruction checks (reversible), performed
+
+| check | result |
+|---|---|
+| KMS dry-run: signer resource and version shown | `…/cryptoKeyVersions/1`, named in the plan |
+| public key equals the `oath/*` authority | `4ecd572d…` — match |
+| artifact equals the manifest entry | `fa452d59a235…` — match |
+| canonical envelope bytes fixed and displayed | 8 lines, `oath-publish/2` |
+| no request reached the registry | dry-run; journal unchanged |
+| **signer unreachable → publication fails** | aborted with a SIGNER error, not a registry error |
+| no fallback to file signing | error states no fallback is attempted |
+| no partial write | journal 1241 before and after |
+| plan unchanged across the permission test | byte-identical |
+
+The denial test used an unreachable key VERSION rather than an IAM removal. That
+is a real limitation and is recorded rather than glossed: the operating account
+holds project-owner rights, so removing `roles/cloudkms.signer` does not deny it —
+verified directly, signing still succeeded after the role was removed. The code
+path exercised is the same one an IAM denial would take (gcloud fails, `run`
+returns an error, no fallback, abort before submission), but the specific claim
+"IAM denial is enforced" has NOT been demonstrated and should not be reported as
+though it had.
+
+## Private-key inventory, before destruction
+
+Exactly one copy of the private half exists:
+
+- `~/.oath/keys/oath-project.key` (mode 0600, outside the repository)
+
+Checked and clear: no GitHub repository secret, no shell-history reference, no
+file tracked in git, no leftover signing temp files, no PKCS #8 conversion, no
+editor recovery file, no CI reference to a key path.
+
+**Must survive destruction** — public key `4ecd572dffebe8fc36b376fdee1cb358863a6d61fda2e37fb6c6e9c4ac1ffa6c`,
+fingerprint `934d7c3bbc02ef8ad3568ae02c2254267e338a0d7e66f09fa36fb6f76944d31b`.
+
 ## Outstanding
 
 **A local private copy still exists** at `~/.oath/keys/oath-project.key`, because

@@ -176,7 +176,11 @@ func cmdPublish(local *Store, endpoint, keyPath, kmsKey, file, license string, d
 		fmt.Println(plan.render())
 	}
 	if dryRun {
-		fmt.Println("--dry-run: nothing signed, nothing sent.")
+		// The signer is part of what a reviewer must see. A plan that shows WHAT
+		// would be signed but not WHO would sign it cannot be checked against the
+		// authority a namespace is bound to.
+		fmt.Printf("\nSIGNER: %s\n", signer.Description())
+		fmt.Println("\n--dry-run: nothing signed, nothing sent.")
 		return
 	}
 	if !assumeYes && !jsonOut {
