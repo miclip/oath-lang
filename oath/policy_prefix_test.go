@@ -360,3 +360,38 @@ func TestOwnershipRejectionComesFromOwnershipGate(t *testing.T) {
 		t.Fatal("the refusal does not name ownership as the cause")
 	}
 }
+
+// TestCensusSeverityLevelsAreDistinct pins what each level MEANS, because the
+// distinction is the whole reason there are three.
+//
+// A deliberate configured override was previously FAIL, so the census could never
+// be all-PASS once any ownership was configured — the normal end state. A
+// permanent FAIL on intended behaviour trains a reader to skip the line, and then
+// the line that matters is skipped too.
+func TestCensusSeverityLevelsAreDistinct(t *testing.T) {
+	// FAIL is reserved for states that block rollout. Each of these is unsafe or
+	// internally inconsistent, not merely deliberate.
+	blocking := []string{
+		"ambiguous effective owner",
+		"configured rule blocks the current legitimate publisher",
+		"unsigned label promoted to cryptographic ownership",
+		"rule precedence depends on file order",
+		"unrelated names change authority",
+	}
+	// REVIEW is for a deliberate authority condition requiring acknowledgement,
+	// and is safe to proceed past PROVIDED the rule is unambiguous and
+	// publishability holds — both separately asserted.
+	acknowledge := []string{
+		"configured scope shadows a historical owner",
+	}
+	for _, b := range blocking {
+		for _, a := range acknowledge {
+			if b == a {
+				t.Fatalf("%q is classified both as blocking and as acknowledgeable", b)
+			}
+		}
+	}
+	if len(acknowledge) == 0 || len(blocking) == 0 {
+		t.Fatal("collapsing the levels loses the distinction they exist to express")
+	}
+}

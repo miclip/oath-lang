@@ -211,19 +211,48 @@ func cmdOwnership(st *Store, verbose bool) {
 		fmt.Printf("  %5d  %s — %s\n", bySrc[k], k, ownerSourceMeaning(k))
 	}
 
-	// The four pre-enforcement assertions. Each prints its verdict either way: a
-	// silent pass is indistinguishable from a check that never ran.
+	// The pre-enforcement assertions. Each prints its verdict either way: a silent
+	// pass is indistinguishable from a check that never ran.
+	//
+	// THREE LEVELS, because two could not express the difference between "this is
+	// wrong" and "this is deliberate and must be acknowledged":
+	//
+	//   PASS    no action needed
+	//   REVIEW  a deliberate authority condition exists and must be acknowledged
+	//   FAIL    an unsafe or internally inconsistent state blocks rollout
+	//
+	// A configured override was previously FAIL, so the census could never be
+	// all-PASS once ANY ownership was configured — which is the normal end state.
+	// A permanent FAIL on intended behaviour trains the reader to skip the line,
+	// and then the one that matters is skipped too. That is the same cries-wolf
+	// failure the publish client had, where a policy refusal rendered as apparent
+	// tampering.
+	//
+	// FAIL is reserved for states that genuinely block rollout: an ambiguous
+	// effective owner, a rule that unexpectedly blocks the current legitimate
+	// publisher, an unsigned label silently promoted to cryptographic ownership,
+	// precedence depending on file order, or unrelated names changing authority.
 	fmt.Printf("\nPRE-ENFORCEMENT ASSERTIONS:\n")
-	assert := func(ok bool, label, detail string) {
-		mark := "PASS"
+	const (
+		lvlPass   = "PASS  "
+		lvlReview = "REVIEW"
+		lvlFail   = "FAIL  "
+	)
+	reviews := 0
+	assertAt := func(ok bool, level, label, detail string) {
+		mark := lvlPass
 		if !ok {
-			mark = "FAIL"
+			mark = level
+			if level == lvlReview {
+				reviews++
+			}
 		}
 		fmt.Printf("  [%s] %s\n", mark, label)
 		if detail != "" {
-			fmt.Printf("         %s\n", detail)
+			fmt.Printf("           %s\n", detail)
 		}
 	}
+	assert := func(ok bool, label, detail string) { assertAt(ok, lvlFail, label, detail) }
 	// 1. Unambiguous effective owners. LoadPolicy already refuses an ambiguous
 	//    policy, so reaching here means patterns resolve uniquely.
 	assert(true, "no ambiguous effective owners",
@@ -231,13 +260,23 @@ func cmdOwnership(st *Store, verbose bool) {
 	// 2. No silent promotion of a label to cryptographic ownership.
 	assert(true, fmt.Sprintf("no unsigned label promoted to cryptographic ownership (%d label-owned names)", labelOwned),
 		"label ownership is reported as legacy-label and ownerIsCryptographic() excludes it")
-	// 3. Configured prefixes shadowing signed owners must be intentional.
-	assert(shadowed == 0, fmt.Sprintf("no configured scope shadows a historical owner (%d shadowing)", shadowed),
+	// 3. Configured scopes shadowing historical owners: REVIEW, not FAIL. An
+	//    override is the POINT of configuring ownership; what it needs is
+	//    acknowledgement, not prevention. It is safe to proceed provided the rule
+	//    is explicit and unambiguous (assertion 1) and publishability holds
+	//    (assertion 4) — both of which are separately checked.
+	assertAt(shadowed == 0, lvlReview,
+		fmt.Sprintf("no configured scope shadows a historical owner (%d shadowing)", shadowed),
 		"an override is legitimate but must be deliberate — each is listed above with ↳ OVERRIDES")
 	// 4. Corpus synchronisation must survive enforcement.
 	assert(blocked == 0, fmt.Sprintf("every name remains publishable by its last publisher (%d would be blocked)", blocked),
 		"a blocked name cannot be re-synchronised; enabling enforcement would freeze it")
 
+	if reviews > 0 {
+		fmt.Printf("\n%d CONDITION(S) NEED ACKNOWLEDGEMENT before rollout. These are not\n", reviews)
+		fmt.Printf("defects — they are deliberate authority decisions that a reader must see\n")
+		fmt.Printf("rather than infer. Rollout is not blocked by them.\n")
+	}
 	if blocked > 0 {
 		fmt.Printf("\nENABLING ENFORCEMENT NOW WOULD FREEZE %d NAME(S).\n", blocked)
 		fmt.Printf("Adoption has to bind them to a key that can still authenticate first.\n")
