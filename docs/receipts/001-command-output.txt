@@ -1,0 +1,128 @@
+################ oath/List ################
+ABOUT TO SIGN
+  operation   put
+  name        oath/List
+  artifact    fa452d59a2358fadba69764616745354a1e34465079c2a63e5f4c5d56f2baf05
+  replacing   (none — first publication of this name)
+  revision    0
+  as          4ecd572dffebe8fc36b376fdee1cb358863a6d61fda2e37fb6c6e9c4ac1ffa6c
+  license     Apache-2.0  (your ASSERTION; nothing evaluates it)
+
+EXACT BYTES TO BE SIGNED (this is the statement, not a summary of it):
+  | oath-publish/2
+  | op=put
+  | name=oath/List
+  | artifact=fa452d59a2358fadba69764616745354a1e34465079c2a63e5f4c5d56f2baf05
+  | parent=-
+  | parent_rev=0
+  | author=4ecd572dffebe8fc36b376fdee1cb358863a6d61fda2e37fb6c6e9c4ac1ffa6c
+  | license=Apache-2.0
+
+
+SIGNER: google-kms via gcloud subprocess:
+    projects/oath-prod-503514/locations/us-central1/keyRings/oath-authority/cryptoKeys/oath-project/cryptoKeyVersions/1
+    (non-exportable; the private key never reaches this process)
+  public key:  4ecd572dffebe8fc36b376fdee1cb358863a6d61fda2e37fb6c6e9c4ac1ffa6c
+  fingerprint: 934d7c3bbc02ef8ad3568ae02c225426
+✓ oath/List        #fa452d59a235  data (2 constructors)
+
+verified: the registry persisted the exact 224 bytes that were signed.
+exit=0
+################ oath/length ################
+ABOUT TO SIGN
+  operation   put
+  name        oath/length
+  artifact    a8497c2fac2bb02484146299be78cecd5d6e296f4bc87f8d2e5eca76745a092e
+  replacing   (none — first publication of this name)
+  revision    0
+  as          4ecd572dffebe8fc36b376fdee1cb358863a6d61fda2e37fb6c6e9c4ac1ffa6c
+  license     Apache-2.0  (your ASSERTION; nothing evaluates it)
+
+EXACT BYTES TO BE SIGNED (this is the statement, not a summary of it):
+  | oath-publish/2
+  | op=put
+  | name=oath/length
+  | artifact=a8497c2fac2bb02484146299be78cecd5d6e296f4bc87f8d2e5eca76745a092e
+  | parent=-
+  | parent_rev=0
+  | author=4ecd572dffebe8fc36b376fdee1cb358863a6d61fda2e37fb6c6e9c4ac1ffa6c
+  | license=Apache-2.0
+
+
+SIGNER: google-kms via gcloud subprocess:
+    projects/oath-prod-503514/locations/us-central1/keyRings/oath-authority/cryptoKeys/oath-project/cryptoKeyVersions/1
+    (non-exportable; the private key never reaches this process)
+  public key:  4ecd572dffebe8fc36b376fdee1cb358863a6d61fda2e37fb6c6e9c4ac1ffa6c
+  fingerprint: 934d7c3bbc02ef8ad3568ae02c225426
+✓ oath/length      #a8497c2fac2b  PROVEN (all 3 properties, Z3 over unbounded ints) · total
+    prop non-negative             passed 200 cases
+    prop empty-is-zero            passed 200 cases
+    prop cons-adds-one            passed 200 cases
+
+verified: the registry persisted the exact 226 bytes that were signed.
+exit=0
+################ oath/append ################
+ABOUT TO SIGN
+  operation   put
+  name        oath/append
+  artifact    78d23e273a4858e3ad9b68ed5795a75a163e1b124a1a6b75229e9842a2ba64f3
+  replacing   (none — first publication of this name)
+  revision    0
+  as          4ecd572dffebe8fc36b376fdee1cb358863a6d61fda2e37fb6c6e9c4ac1ffa6c
+  license     Apache-2.0  (your ASSERTION; nothing evaluates it)
+
+EXACT BYTES TO BE SIGNED (this is the statement, not a summary of it):
+  | oath-publish/2
+  | op=put
+  | name=oath/append
+  | artifact=78d23e273a4858e3ad9b68ed5795a75a163e1b124a1a6b75229e9842a2ba64f3
+  | parent=-
+  | parent_rev=0
+  | author=4ecd572dffebe8fc36b376fdee1cb358863a6d61fda2e37fb6c6e9c4ac1ffa6c
+  | license=Apache-2.0
+
+
+SIGNER: google-kms via gcloud subprocess:
+    projects/oath-prod-503514/locations/us-central1/keyRings/oath-authority/cryptoKeys/oath-project/cryptoKeyVersions/1
+    (non-exportable; the private key never reaches this process)
+  public key:  4ecd572dffebe8fc36b376fdee1cb358863a6d61fda2e37fb6c6e9c4ac1ffa6c
+  fingerprint: 934d7c3bbc02ef8ad3568ae02c225426
+✓ oath/append      #78d23e273a48  PROVEN (all 3 properties, Z3 over unbounded ints) · total
+    prop length-adds              passed 200 cases
+    prop nil-right-identity       passed 200 cases
+    prop associative              passed 200 cases
+
+verified: the registry persisted the exact 226 bytes that were signed.
+exit=0
+################ oath/reverse ################
+ABOUT TO SIGN
+  operation   put
+  name        oath/reverse
+  artifact    7bb6285884d068b0a885094b4b4090b80e85054cdb36ce805ad1918ab1a94365
+  replacing   (none — first publication of this name)
+  revision    0
+  as          4ecd572dffebe8fc36b376fdee1cb358863a6d61fda2e37fb6c6e9c4ac1ffa6c
+  license     Apache-2.0  (your ASSERTION; nothing evaluates it)
+
+EXACT BYTES TO BE SIGNED (this is the statement, not a summary of it):
+  | oath-publish/2
+  | op=put
+  | name=oath/reverse
+  | artifact=7bb6285884d068b0a885094b4b4090b80e85054cdb36ce805ad1918ab1a94365
+  | parent=-
+  | parent_rev=0
+  | author=4ecd572dffebe8fc36b376fdee1cb358863a6d61fda2e37fb6c6e9c4ac1ffa6c
+  | license=Apache-2.0
+
+
+SIGNER: google-kms via gcloud subprocess:
+    projects/oath-prod-503514/locations/us-central1/keyRings/oath-authority/cryptoKeys/oath-project/cryptoKeyVersions/1
+    (non-exportable; the private key never reaches this process)
+  public key:  4ecd572dffebe8fc36b376fdee1cb358863a6d61fda2e37fb6c6e9c4ac1ffa6c
+  fingerprint: 934d7c3bbc02ef8ad3568ae02c225426
+✓ oath/reverse     #7bb6285884d0  PROVEN (all 2 properties, Z3 over unbounded ints) · total
+    prop involution               passed 200 cases
+    prop antidistributes-over-append passed 200 cases
+
+verified: the registry persisted the exact 227 bytes that were signed.
+exit=0
