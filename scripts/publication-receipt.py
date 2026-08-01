@@ -87,11 +87,33 @@ def main():
     check("repository manifest reproduced", r.returncode == 0,
           "" if r.returncode == 0 else r.stdout.strip().splitlines()[-1] if r.stdout.strip() else "checker failed")
 
-    # 2. every manifest name is live, and only those
+    # 2. every manifest export is live. NOT "and only those".
+    #
+    # LIBRARY MEMBERSHIP and NAMESPACE OCCUPANCY are different sets and must not
+    # be required to be equal. The manifest exports are what the project endorses
+    # as the library; the names bound under the prefix are what the registry
+    # historically holds. A name can leave the library — that is a manifest edit,
+    # reviewable and reversible — while its registry binding remains, because the
+    # journal is append-only and removing a member is not a retraction of history.
+    #
+    # The first version of this check demanded equality, which made curation
+    # impossible: dropping an entry would have turned the receipt permanently red,
+    # so the only way to keep it green would have been never to remove anything.
+    # A gate whose cheapest satisfaction is "never curate" is measuring the wrong
+    # thing.
     live = [n for n in pubs if n.startswith(ns + "/")]
-    check("published names match the manifest exactly",
-          sorted(live) == sorted(want),
-          f"live={sorted(live)} manifest={sorted(want)}" if sorted(live) != sorted(want) else "")
+    missing = sorted(set(want) - set(live))
+    nonmembers = sorted(set(live) - set(want))
+    check(f"all {len(want)} library members are live",
+          not missing,
+          f"declared but NOT live: {missing}" if missing else "")
+    # Exclusivity is opt-in. A manifest may claim the namespace holds nothing but
+    # the library; this one does not, and demanding it by default would conflate a
+    # curated view with the infrastructure it is a view over.
+    if man.get("exclusive_namespace"):
+        check("the namespace contains ONLY library members",
+              not nonmembers,
+              f"non-members present: {nonmembers}" if nonmembers else "")
 
     # 3. envelope bytes reproduce the artifact the manifest pins
     mismatched = []
@@ -173,9 +195,19 @@ def main():
     lines.append(f"- KMS key version: `{man.get('authority_kms','(not recorded in manifest)')}`")
     lines.append(f"- public key: `{authority}`")
     lines.append(f"- fingerprint: `{hashlib.sha256(authority.encode()).hexdigest()}`\n")
-    lines.append("## Published names\n")
+    lines.append("## Library members\n")
     for n in sorted(want):
-        lines.append(f"- `{n}`" + ("" if n in live else "  **(NOT LIVE)**"))
+        lines.append(f"- `{n}`" + ("" if n in live else "  **(DECLARED BUT NOT LIVE)**"))
+    lines.append("")
+    lines.append("## Non-members under the namespace\n")
+    if nonmembers:
+        lines.append("Bound under `%s/` and NOT part of the standard library. Listed, not" % ns)
+        lines.append("failed: the registry is append-only historical infrastructure and the")
+        lines.append("library is a curated view over it.\n")
+        for n in nonmembers:
+            lines.append(f"- `{n}`")
+    else:
+        lines.append("_none — every name under the namespace is a library member_")
     lines.append("")
     lines.append("## Verification\n")
     for label, passed, detail in checks:
