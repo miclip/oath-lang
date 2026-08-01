@@ -147,6 +147,46 @@ above would make CI depend on a protocol path nobody can invoke normally, inspec
 through the public surface, or reproduce from fixtures — turning hand-crafted
 state into production authority.
 
+## NAMING: names are permanent, so treat every one as a publication
+
+The journal is append-only and there is NO unbind operation. A name bound in a
+public namespace exists there forever, whatever the manifest later says about it.
+Repointing changes what it resolves to; nothing removes it.
+
+Two names under `oath/*` are already a mistake made this way —
+`oath/step8-probe-disposable` and `oath/step8-probe-second`, created by a security
+exercise and named after a step in a conversation. "step8" means nothing to
+anyone who was not in that conversation, and they sit in the namespace reserved
+for the standard library. They are recorded in the manifest as `export: false`
+with the reason, because documentation is the only correction available.
+
+**RULES, in the order they would have prevented that:**
+
+1. **NEVER publish test or exercise artifacts into `oath/*`.** Reserve a separate
+   prefix. An exercise needs *a* namespace with the right authority shape, not
+   *the* namespace holding the standard library. Conflating the two was the whole
+   error; the naming was downstream of it.
+2. **A name must be legible to a stranger with no context.** Not to you, not to
+   this session's transcript, not to a receipt it cross-references. Traceability
+   to an internal record is worth far less than being self-explanatory, because
+   the reader you are writing for has neither.
+3. **No references to process, steps, dates, tickets, or agents in a name.**
+   `step8`, `phase2`, `wip`, `tmp`, `claude-test` are all the same mistake.
+4. **Ask "would I want this in `git log --all` forever?"** and then remember that
+   a name is stronger than that — a bad commit can be reverted; a bound name
+   cannot.
+5. **The namespace and the standard library are DIFFERENT SETS.** `oath/*` is
+   what the project governs; the standard library is what
+   `stdlib/oath-stdlib.json` declares. Publishing into the namespace does not make
+   something library, and the manifest is what a consumer should be reading —
+   but everything under the prefix is what they will SEE.
+6. **A dry run costs nothing.** `--dry-run` prints the exact bytes. There is no
+   equivalent for un-publishing.
+
+The asymmetry is the point, and it is the one the protocol exists to make you
+feel: publishing is one command, and permanence is the guarantee. If a name is
+not worth defending in a year, do not bind it.
+
 ## Before adding anything to the protocol
 
 Ask which of four concerns a proposal belongs to — they now evolve

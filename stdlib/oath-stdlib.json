@@ -108,6 +108,20 @@
       "export": false,
       "reason": "adversarial fixture \u2014 a deliberately falsified definition kept as an honest exhibit, and never a member of the standard library",
       "membership": "excluded"
+    },
+    {
+      "name": "step8-probe-disposable",
+      "artifact": "da3614104f12533bdda9290f5a66ac665e09440f70f798adc092cd0d3f28cf81",
+      "membership": "excluded",
+      "export": false,
+      "reason": "NOT standard library. A disposable artifact created by the delegation security exercise recorded in docs/receipts/003-step8-passed.md, where it was published by the CI delegate, then repointed by the holder after revocation to prove control returns without altering authorship. It is listed here so a reader who finds it in the registry learns what it is from the repository. THE NAME IS A MISTAKE: 'step8' refers to a step in a conversation and means nothing to anyone else, and the exercise should have used a separate prefix rather than the project's canonical namespace. Names are permanent \u2014 the journal is append-only and there is no unbind operation \u2014 so this entry is the correction available."
+    },
+    {
+      "name": "step8-probe-second",
+      "artifact": "09e3b06fdbfab3527628477765cdd63219fadbcbe9edddaf2429c32c5c6c7435",
+      "membership": "excluded",
+      "export": false,
+      "reason": "NOT standard library. The second disposable artifact from the same exercise: creation was REFUSED while the delegation was revoked, then accepted after re-delegation, demonstrating that revocation blocks new names and re-delegation restores publication. Same naming mistake as its sibling."
     }
   ]
 }
