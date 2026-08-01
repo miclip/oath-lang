@@ -92,7 +92,15 @@ WITNESSES = SURFACES["12"][1]
 EXCLUDED = ["scripts/rule-matrix.py"]
 
 # Paths removed even though they sit inside an allowlisted tree.
-EXCLUDE_WITHIN = ["oathrs/DIVERGENCES.md", "oathrs/target"]
+EXCLUDE_WITHIN = ["oathrs/DIVERGENCES.md", "oathrs/target",
+                  # A HARNESS that already implements the rule under test is a
+                  # second statement of it inside the supplied surface. Round 6's
+                  # subject read conformance.sh to find write sites and met an awk
+                  # copy of §10.0a plus comments restating it — after writing its
+                  # derivation, but it correctly flagged that its confidence was
+                  # then partly corroborated rather than independent. The measured
+                  # surface must not contain the answer.
+                  "oathrs/conformance.sh"]
 
 ALLOW = PROSE + DATA + WITNESSES
 

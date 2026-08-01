@@ -246,12 +246,36 @@
         "examples/",
         "fixtures/MANIFEST.md"
       ],
-      "status": "DISPATCHED",
       "research_question": "Is normative text written THIS WEEK, by the same author as the reference implementation, and never independently read, implementable from prose alone? \u00a710.0a is small and self-contained, so a failure is diagnostic rather than ambiguous \u2014 it cannot hide behind protocol complexity.",
       "hypothesis": "\u00a710.0a is sufficient to implement CONF-FIXTURE-FILENAME without inference. Predicted PASS: the rule is three cases and a worked example. If it fails, the defect is in text short enough to read in a minute, which is the most useful possible failure.",
       "hypothesis_recorded": "before dispatch",
       "prediction": "If anything is under-determined it will be the DECODE direction or the treatment of characters the table does not mention \u2014 the encoding table states three cases and asserts bijectivity without demonstrating the inverse.",
-      "note": "Different shape from rounds 1-5: the subject REPAIRS an existing independent kernel rather than implementing from scratch, so oathrs/ is supplied and oath/ is forbidden. oathrs/DIVERGENCES.md is excluded \u2014 it records every ambiguity previous blind rounds found, which is coaching material."
+      "note": "Different shape from rounds 1-5: the subject REPAIRS an existing independent kernel rather than implementing from scratch, so oathrs/ is supplied and oath/ is forbidden. oathrs/DIVERGENCES.md is excluded \u2014 it records every ambiguity previous blind rounds found, which is coaching material.",
+      "verdict": "PASS-WITH-INFERENCE",
+      "vectors": "187/187 canonical",
+      "hypothesis_outcome": "DISPROVED",
+      "prediction_outcome": "CONFIRMED. The prediction was that the DECODE direction or unmentioned characters would be under-determined. Both were: decode is not stated at all, and the 'anything else unchanged' row is unconditional, which is what leaves non-ASCII case collisions unfixed.",
+      "inferred": [
+        "what 'an uppercase letter' means \u2014 ASCII A-Z or Unicode. Argued from inside the text (full Unicode case mapping is neither injective nor length-preserving, so the section's own bijection claim only survives under ASCII) but never stated",
+        "that the map is applied PER CHARACTER \u2014 implied by a table of single characters; all three worked examples have at most one escapable character",
+        "how to DECODE \u2014 asserted recoverable, never specified, and partial in fact",
+        "whether the .bin/.json/.txt suffix is inside or outside the encoding",
+        "scope: the sentence says 'every fixture named after a definition' while the MUST enumerates three directories and \u00a710 lists six name-bearing families"
+      ],
+      "findings": [
+        "'bijection' is FALSE \u2014 the encoding is an INJECTION; the image excludes uppercase and `_1`/`m_`, so the promised decode is partial and a decoder written to the claim has no rule for out-of-image input",
+        "THE RULE DOES NOT ACHIEVE ITS STATED PURPOSE: only ASCII A-Z are escaped, so `\u00c9lan`/`\u00e9lan` still collide with silent overwrite \u2014 the map/Map bug verbatim, in the fix for it. Reproduced on APFS",
+        "the check was UNFALSIFIABLE on macOS: `[ -f _Map.bin ]` succeeds when only `_map.bin` exists, and cmp then compares a file with itself. Measured 0/187 failures under lookup vs 15/187 under exact-name matching",
+        "the `_` -> `__` row is UNWITNESSED: no corpus name contains an underscore, so deleting that row leaves all 187 fixtures matching",
+        "CONF-COVERAGE-FROM-CORPUS as written is FALSE for verify/ \u2014 data declarations and property-free functions emit no verdict text, so 168 of 187, and the rule would demand 19 files that must not exist",
+        "'the CORPUS' was undefined \u2014 names.json, examples/, or hashes.txt"
+      ],
+      "contamination": [
+        "oathrs/conformance.sh already contained an awk implementation of \u00a710.0a and comments restating the rule \u2014 the harness had been updated for the new rule and the kernel had not. The subject read it to locate write sites, AFTER writing DERIVATION.md, and discloses that its post-hoc confidence in the ASCII reading is partly corroborated by it. A second statement of the rule inside the supplied surface is a harness defect: the export should have excluded or stubbed it",
+        "prior familiarity with the Oath project from outside the task, disclosed; no prior knowledge of the fixture-filename encoding, which is days old"
+      ],
+      "evidence": "docs/experiments/blind-license-evaluation.md",
+      "implementer_statement": "Yes for the core, with three gaps I had to fill by assumption. Nothing in the fixtures changed a decision I had made."
     }
   ]
 }

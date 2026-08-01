@@ -2191,36 +2191,81 @@ kernel predating the feature.
 
 ### 10.0a Fixture filenames
 
-A fixture derived from a definition NAME is stored under an ENCODED filename:
+A fixture derived from a definition NAME is stored under an ENCODED filename. The
+encoding is applied to EACH CHARACTER of the name in turn, and the results
+concatenated:
 
-| input | output |
+| character | output |
 |---|---|
 | `_` | `__` |
-| an uppercase letter `X` | `_x` (underscore, then the lowercase letter) |
+| an ASCII uppercase letter, `A`–`Z` | `_` followed by that letter's ASCII lowercase form |
 | anything else | unchanged |
 
-So `Map` becomes `_map`, `map` stays `map`, and `_map` becomes `__map`. The
-encoding is a bijection, so a name is recoverable from its filename.
+`Map` becomes `_map`, `map` stays `map`, `_map` becomes `__map`, and `KV`
+becomes `_k_v` — the per-character rule applied twice.
 
 **CONF-FIXTURE-FILENAME.** Implementations MUST use this encoding for every
-fixture named after a definition — `canonical/`, `analyses/`, `verify/`.
+fixture named after a definition — `canonical/`, `analyses/`, `verify/`. It does
+NOT apply to fixtures named after anything else: §1.5's golden encoding cases are
+case names, not definition names, and encoding them would rename `bool_bytes.bin`
+to `bool__bytes.bin`.
 
-Names that differ only by case would otherwise collide on a case-insensitive
-filesystem. They did: `map` and `Map` folded onto one inode, so a corpus of 187
-definitions shipped 186 canonical fixtures with one definition's bytes absent
-entirely — whichever was written second having silently overwritten the first.
-The same generator emitted 187 files on Linux and 186 on macOS, so the fixture
-tree was not reproducible across the platforms a cross-kernel suite most needs it
-to be.
+The encoding is an INJECTION, not a bijection. Distinct names always produce
+distinct filenames, so nothing collides — but the image is a proper subset of all
+strings, so DECODING IS PARTIAL. `Map`, `_1` and `m_` are not in the image and
+have no pre-image. A decoder MUST reject them rather than guess:
+
+- read left to right; a character other than `_` is itself;
+- `__` is `_`;
+- `_` followed by an ASCII lowercase letter is that letter's uppercase form;
+- `_` followed by anything else, or by nothing, is NOT a valid encoded filename.
+
+> Earlier text asserted "the encoding is a bijection, so a name is recoverable
+> from its filename". That is false, and load-bearing: recoverability is real but
+> partial, and a decoder written to the claim would have no rule for input outside
+> the image. Found by an independent implementation, which checked the property
+> rather than accepting the assertion.
+
+**KNOWN LIMITATION — the rule does not fully achieve its purpose.** Only ASCII
+`A`–`Z` are escaped, so names differing only by NON-ASCII case still collide on a
+case-insensitive filesystem: `Élan` and `élan` both encode to themselves, and one
+silently overwrites the other. This is the `map`/`Map` defect the encoding was
+introduced to fix, surviving for names outside ASCII.
+
+Extending the escape to full Unicode is not a drop-in repair — Unicode case
+mapping is not injective (U+212A KELVIN SIGN and `K` both lower-case to `k`) and
+is not one-to-one in length (U+0130 maps to two code points), so the encoding
+would stop being an injection at all. The current corpus is entirely ASCII, which
+is why the gap is latent rather than active. It is stated here rather than left
+for the next reader to rediscover.
 
 **CONF-COVERAGE-FROM-CORPUS.** A conformance check over a fixture family MUST
-enumerate the CORPUS and require a fixture for each definition. It MUST NOT
-enumerate the fixture directory.
+derive its work list from the CORPUS — the set of names bound in the store,
+enumerated in `hashes.txt` — and never from the fixture directory.
+
+Where a family emits a fixture for every definition (`canonical/`, `analyses/`),
+the check MUST require one per definition. Where a family is SPARSE by
+construction, it MUST instead require presence AGREEMENT: a fixture exists if and
+only if the definition emits one. `verify/` is sparse — a data declaration or a
+property-free function produces no verdict text, so the corpus of 187 yields 168
+verify fixtures, and demanding one per definition would require 19 files that
+must not exist.
 
 Directory enumeration defines coverage as "whatever files exist", so a missing
 fixture is not compared, not counted, and cannot fail. The check reported "186
 canonical/*.bin byte-identical" — true, and useless, because the number described
 the test rather than the thing tested.
+
+**CONF-FILENAME-EXACT.** A check comparing fixture filenames MUST match names
+EXACTLY, against a directory listing. It MUST NOT rely on filesystem lookup
+(`test -f`, `open`), because on a case-insensitive filesystem a lookup for
+`_Map.bin` succeeds when only `_map.bin` exists — and a byte comparison then
+compares a file with itself and passes.
+
+> This made CONF-FIXTURE-FILENAME unfalsifiable on macOS, the platform it was
+> written for. Measured: an implementation emitting `_X` instead of `_x` produced
+> 0 failures under lookup-based checking and 15 under exact-name matching. A rule
+> that cannot fail on the developer's own machine is not being tested there.
 
 ### 10.1 Signed-publication vectors
 

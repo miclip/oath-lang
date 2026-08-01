@@ -41,6 +41,8 @@ fi
 # uppercase letter X -> '_x'. Without it `map` and `Map` collide on a
 # case-insensitive filesystem and one definition's bytes vanish.
 cbad=0; cn=0; cmiss=0
+ls "$FIX/canonical" > "$TMP/fixlist"
+ls "$TMP/canon"     > "$TMP/genlist"
 while IFS="$(printf '\t')" read -r name _hash; do
   [ -n "$name" ] || continue
   enc="$(printf '%s' "$name" | awk '{
@@ -54,12 +56,19 @@ while IFS="$(printf '\t')" read -r name _hash; do
     print out
   }')"
   cn=$((cn+1))
-  f="$FIX/canonical/$enc.bin"
-  if [ ! -f "$f" ]; then
+  # SPEC §10.0a CONF-FILENAME-EXACT: match against a LISTING, not with `test -f`.
+  # On a case-insensitive filesystem `[ -f _Map.bin ]` is true when only
+  # `_map.bin` exists, and `cmp` then compares a file with itself and passes — so
+  # an implementation emitting `_X` instead of `_x` produced 0 failures on macOS
+  # and 15 under exact matching. The rule was unfalsifiable on the platform it was
+  # written for.
+  grep -qxF "$enc.bin" "$TMP/fixlist" || {
     echo "  FAIL: no canonical fixture for definition $name (expected $enc.bin)"
-    cmiss=$((cmiss+1)); fail=1; continue
-  fi
-  cmp -s "$f" "$TMP/canon/$enc.bin" || {
+    cmiss=$((cmiss+1)); fail=1; continue; }
+  grep -qxF "$enc.bin" "$TMP/genlist" || {
+    echo "  FAIL: kernel emitted no canonical file named $enc.bin for $name"
+    cbad=1; fail=1; continue; }
+  cmp -s "$FIX/canonical/$enc.bin" "$TMP/canon/$enc.bin" || {
     echo "  FAIL: canonical bytes differ for $name ($enc.bin)"; cbad=1; fail=1; }
 done < "$FIX/hashes.txt"
 if [ $cbad -eq 0 ] && [ $cmiss -eq 0 ]; then
