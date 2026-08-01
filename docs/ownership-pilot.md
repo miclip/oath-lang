@@ -40,6 +40,14 @@ statement is therefore:
 > end in the local two-authorized-principal environment; not exercised live,
 > because the registry has only one authorized principal.
 
+**Correction, 2026-08-01 — the record stands, its reason does not.** The registry
+runs no `--authorized-keys` allowlist (the container executes
+`oath serve --http … --tokens …` and nothing more), so `canWrite` is true for any
+signing key. There was only ever one principal in PRACTICE; nothing authorized it
+exclusively. The pilot's finding is unchanged — live non-owner rejection was not
+exercised — but the obstacle was the absence of a second party, not a permission
+setting. Anyone with a key could have supplied one.
+
 The local proof is recorded in `oath/policy_prefix_test.go`
 (`TestOwnershipRejectionComesFromOwnershipGate`) and in the phase-1 commit, which
 records the journal entry showing an authenticated non-owner blocked by policy
@@ -83,7 +91,7 @@ effective policy or enforcement.
 end in the local two-authorized-principal environment (phase 1: an authenticated,
 correctly signed non-owner was blocked by the ownership gate, journalled, and the
 name did not move). It was **not exercised live**, because the registry has only
-one authorized principal — a non-owner would be refused at authentication, which
+one principal in practice — a second party simply never appeared, which
 proves a different property.
 
 ### One thing the pilot surfaced

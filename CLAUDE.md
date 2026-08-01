@@ -66,15 +66,32 @@ That is the milestone worth aiming at, and it is what turns Oath from a system
 one person built into a system someone else can participate in. Every PIECE of it
 now exists — signed publication, licence assertion and evaluation, namespaces,
 cryptographic ownership, discovery, `explain`. What has never been tested is a
-SECOND PRINCIPAL: the registry has exactly one authorized key, so the
-cryptography, ownership model and licensing semantics are validated while the
-SOCIAL model is not.
+SECOND PRINCIPAL, so the cryptography, ownership model and licensing semantics
+are validated while the SOCIAL model is not.
 
-#66 (delegated token minting, authorized-key registration) is the gate. It does
-not remove a defect; it creates a new actor, and with one come questions that are
-product rather than protocol: can they reserve a namespace without operator
-intervention, can ownership change without registry edits, does `explain` read
-sensibly when the publisher is not you.
+**#66 IS NOT THE GATE — verify the deployment, not this file.** The live registry
+runs NO `--authorized-keys` allowlist (checked 2026-08-01 against the Cloud Run
+service: no such arg, and only `OATH_STORE`, `OATH_STORE_LOCK`,
+`OATH_TOKENS_FILE` in env). `authenticatePrincipal` computes
+`canWrite := authKeys == nil || authKeys[pubHex]`, so **any key that signs can
+already write.** An earlier version of this section claimed the registry had
+exactly one authorized key and that #66 blocked the milestone; that was never the
+deployed configuration.
+
+So the finish line is probably reachable TODAY with no operator action, and the
+next move is to RUN IT rather than to build the gate: a fresh key, `reserve`,
+`publish --key`, then independent `find` / `explain` / `license` / `verify`. Two
+cautions carried from this session — a reservation is PERMANENT, so the namespace
+name must satisfy the naming rules below; and the ownership freeze means creation
+requires a signed PUBLICATION envelope, so `oath publish --key` succeeds where a
+bare `put --remote --key` is refused.
+
+#66 remains real work (delegated token minting, authorized-key registration) but
+it is what an operator turns ON to CONSTRAIN onboarding, not what a stranger needs
+switched off. The open questions it raises are product rather than protocol: can a
+newcomer reserve a namespace without operator intervention, can ownership change
+without registry edits, does `explain` read sensibly when the publisher is not
+you. Those get answered by the walkthrough.
 
 ## Blind implementation is a DEFINITION OF DONE, not an activity
 
@@ -210,9 +227,9 @@ GitHub issues on miclip/oath-lang. Closed as of 2026-07: team store & policy,
 conformance + CI, O1 identity, prover fixpoint, stateful worlds, and #14 (the
 live registry above). Open research projects, each its own session: **#13**
 (compiler backend), **#65** (discovery roadmap), **#66** (delegated token minting
-+ authorized-key registration gate — the registry's onboarding, deferred while
-contribution is open). Read closed issues + commit messages for the design
-reasoning.
++ authorized-key registration — an opt-in CONSTRAINT on onboarding, not a
+prerequisite for it; the live registry has no allowlist and writes are open to any
+signing key). Read closed issues + commit messages for the design reasoning.
 
 ## Working in this repo
 
