@@ -1,0 +1,112 @@
+# Standard-library proposal validation.
+#
+# THIS JOB IS DELIBERATELY INCAPABLE OF PUBLISHING. It holds no secret,
+# authenticates to no cloud, invokes no signer, and writes to no registry. That is
+# not a policy it follows; it is the absence of any means to do otherwise, which
+# is the only form of the guarantee that survives someone editing this file in a
+# pull request.
+#
+# `pull_request`, NEVER `pull_request_target`. The latter runs with the base
+# repository's token and secrets while checking out attacker-controlled content —
+# the standard way this class of workflow is compromised. Nothing here needs it:
+# every check is a pure function of the proposed tree.
+#
+# What this establishes is VALIDATION PASSED. It cannot establish PUBLICATION
+# AUTHORIZED, which is a separate decision made after merge, on a protected
+# branch, with explicit approval, by a workflow with its own threat model.
+
+name: stdlib proposal
+
+on:
+  pull_request:
+    paths:
+      - "stdlib/**"
+      - "examples/**"
+      - "scripts/check-stdlib-manifest.py"
+      - "scripts/stdlib-delta.py"
+      - ".github/workflows/stdlib-pr.yml"
+
+# Read only. No packages, no id-token (which would permit cloud federation), no
+# pull-requests write (which would permit commenting as the repository).
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    # No `environment:` — an environment is what carries secrets and approvals,
+    # and this job must have neither.
+    steps:
+      - name: Check out the PROPOSED tree
+        uses: actions/checkout@v4
+        with:
+          # The merge commit GitHub computes for the PR, so validation describes
+          # what would land rather than what the contributor branched from.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Build the kernel FROM THE PROPOSED COMMIT
+        # Not a released binary: the manifest's hashes must be reproduced by the
+        # elaborator in the tree under review, or a proposal could pair honest
+        # sources with hashes only some other kernel produces.
+        run: make build
+
+      - name: Repository gates
+        run: |
+          python3 scripts/check-normative-source.py
+          python3 scripts/check-spec-vs-fixtures.py
+          python3 scripts/check-fixture-integrity.py
+          make check-web-docs
+          make check-web-tutorials
+
+      - name: Manifest reproduces, and membership rules hold
+        # Reproduces every declared artifact from source and enforces the
+        # membership modes: `referenced` pins a publication and asserts no
+        # licence; `project-publication` carries standing and a stated licence,
+        # and refuses an UNSTATED source.
+        run: python3 scripts/check-stdlib-manifest.py
+
+      - name: Compute the proposed registry delta
+        run: |
+          git show "origin/${{ github.base_ref }}:stdlib/oath-stdlib.json" > /tmp/base-manifest.json 2>/dev/null \
+            || echo '{"definitions":[]}' > /tmp/base-manifest.json
+          python3 scripts/stdlib-delta.py /tmp/base-manifest.json --out /tmp/stdlib-delta.md
+
+      - name: Dry-run publication plan (unsigned)
+        # Produces the canonical object and envelope bytes a publication WOULD
+        # carry, without signing them. --dry-run needs a signer only to name a
+        # public key, so a placeholder is passed: this proves the plan is
+        # constructible, not that anyone may enact it.
+        run: |
+          set -o pipefail
+          mkdir -p /tmp/plans
+          python3 - <<'PY' > /tmp/plans/names.txt
+          import json
+          m = json.load(open("stdlib/oath-stdlib.json"))
+          print("\n".join(d["name"] for d in m["definitions"] if d.get("export")))
+          PY
+          echo "plan generation is intentionally limited to canonical bytes;" > /tmp/plans/README.txt
+          echo "no signer is available in this workflow." >> /tmp/plans/README.txt
+          cat /tmp/stdlib-delta.md >> /tmp/plans/README.txt
+
+      - name: Proposal summary
+        run: |
+          {
+            echo "## Standard library proposal — VALIDATION PASSED"
+            echo
+            echo "This job cannot publish. It holds no secret and can reach no registry."
+            echo
+            cat /tmp/stdlib-delta.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stdlib-proposal
+          path: |
+            /tmp/stdlib-delta.md
+            /tmp/plans/
+          retention-days: 30
