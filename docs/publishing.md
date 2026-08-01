@@ -62,7 +62,15 @@ So `oath reserve 'key/*'` is refused because the protocol forbids it, and
 error says which.
 
 Everything else is available if nobody holds it. `oath authority '<prefix>/*'`
-tells you before you sign anything.
+tells you before you sign anything — and it answers from the registry you would
+be reserving on, not from your local store, because advice about a permanent act
+is worthless unless it comes from the state that act will be judged against.
+
+That means it needs the same `--remote` and `--key` you would publish with. If it
+cannot read the registry, it says so, shows the local view under a NOT
+AUTHORITATIVE banner, and gives no advice at all — a prefix you hold looks
+completely free from a local store, and "free" is exactly the answer that costs
+you a namespace.
 
 What a reservation gives you: only you may bind names under `alice/`. What it
 does not give you:

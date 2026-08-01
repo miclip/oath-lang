@@ -244,32 +244,41 @@ func main() {
 		// counterpart to `reserve` — a permanent, irreversible act deserves a way
 		// to check the ground first, and telling someone to verify without giving
 		// them a command is advice they cannot follow.
-		if len(args) != 2 {
-			fail(fmt.Errorf("usage: oath authority <prefix>/*  |  oath authority <name>"))
-		}
-		q := args[1]
-		if validNamespacePattern(q) == nil {
-			holder, rev := reservationRev(st, q)
-			if holder == noAuthority {
-				fmt.Printf("%s is UNCLAIMED (authority revision %s)\n", q, rev)
-				fmt.Printf("  `oath reserve '%s'` would claim it. This is PERMANENT:\n", q)
-				fmt.Printf("  there is no transfer, no release and no expiry.\n")
-				return
+		//
+		// The view is resolved EXACTLY as `reserve` resolves its target: same env,
+		// same flags, same config fallback. That is not tidiness, it is the whole
+		// correctness property (#104) — advice about an irreversible act must come
+		// from the state that act will be evaluated against, so the two resolutions
+		// must be the same resolution.
+		endpoint := os.Getenv("OATH_REGISTRY")
+		keyFile := os.Getenv("OATH_KEY")
+		kmsKey := os.Getenv("OATH_KMS_KEY")
+		query := ""
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			switch {
+			case rest[i] == "--remote" && i+1 < len(rest):
+				endpoint = rest[i+1]
+				i++
+			case rest[i] == "--kms-key" && i+1 < len(rest):
+				kmsKey = rest[i+1]
+				i++
+			case rest[i] == "--key" && i+1 < len(rest):
+				keyFile = rest[i+1]
+				i++
+			default:
+				query = rest[i]
 			}
-			fmt.Printf("%s is HELD by %s (authority revision %s)\n", q, holder, rev)
-			for k := range delegates(st)[q] {
-				fmt.Printf("  publication delegated to %s\n", k)
+		}
+		if cfg, _, err := loadClientConfig(); err == nil && cfg != nil {
+			if endpoint == "" {
+				endpoint = cfg.Registry
 			}
-			return
+			if keyFile == "" {
+				keyFile = cfg.Key
+			}
 		}
-		if r, ok := governingReservation(st, q); ok {
-			fmt.Printf("%s lies under %s, held by %s\n", q, r.Namespace, r.Pubkey)
-		} else {
-			fmt.Printf("%s is governed by no reservation\n", q)
-		}
-		if owner, src := nameOwner(st, q); owner != "" {
-			fmt.Printf("  the NAME itself is owned by %s (%s)\n", owner, src)
-		}
+		cmdAuthority(st, endpoint, keyFile, kmsKey, query)
 	case "delegate", "revoke":
 		endpoint := os.Getenv("OATH_REGISTRY")
 		keyFile := os.Getenv("OATH_KEY")

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -250,6 +251,16 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 			holder, rev := reservationRev(st, a.Name)
 			resp["namespace"], resp["authority"], resp["authority_rev"] = a.Name, holder, rev.String()
 			resp["delegation_rev"] = delegationRev(st, a.Name).String()
+			// The keys permitted to publish, not merely how many times that set
+			// has changed. A client asking who governs a prefix is asking about
+			// both, and a delegation revision without the delegates tells it
+			// something has changed while withholding what.
+			ds := []string{}
+			for k := range delegates(st)[a.Name] {
+				ds = append(ds, k)
+			}
+			sort.Strings(ds)
+			resp["delegates"] = ds
 		} else if r, ok := governingReservation(st, a.Name); ok {
 			resp["namespace"], resp["authority"], resp["authority_rev"] = r.Namespace, r.Pubkey, r.Rev.String()
 		} else {

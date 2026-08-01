@@ -382,3 +382,48 @@ func remoteDelegationRev(ctx context.Context, endpoint string, s Signer, namespa
 	}
 	return big.NewInt(0)
 }
+
+// authorityView is a prefix's governance as read from ONE store, together with
+// which store that was. The provenance travels WITH the data because the whole
+// point of #104 is that the same numbers mean different things depending on where
+// they came from — a local reading of a prefix held on a registry is not a stale
+// answer to the question asked, it is a confident answer to a different one.
+type authorityView struct {
+	Holder        string
+	Rev           *big.Int
+	DelegationRev *big.Int
+	Delegates     []string
+	Source        string // human-readable: the endpoint, or the local store path
+	Authoritative bool   // is this the state a reservation would be evaluated against?
+}
+
+// remoteAuthorityView reads the full governance record from the registry a
+// reservation would actually be submitted to.
+func remoteAuthorityView(ctx context.Context, endpoint string, s Signer, namespace string) (authorityView, error) {
+	out, err := mcpCallSignedBy(ctx, endpoint, s, "authority", map[string]any{"name": namespace})
+	if err != nil {
+		return authorityView{}, err
+	}
+	var resp struct {
+		Authority string   `json:"authority"`
+		Rev       string   `json:"authority_rev"`
+		DelRev    string   `json:"delegation_rev"`
+		Delegates []string `json:"delegates"`
+	}
+	if err := json.Unmarshal([]byte(out), &resp); err != nil {
+		return authorityView{}, fmt.Errorf("registry returned an unreadable authority record: %w", err)
+	}
+	rev, ok := new(big.Int).SetString(resp.Rev, 10)
+	if !ok {
+		return authorityView{}, fmt.Errorf("registry returned a non-decimal authority revision %q", resp.Rev)
+	}
+	drev, ok := new(big.Int).SetString(resp.DelRev, 10)
+	if !ok {
+		// An older registry predates delegation_rev. Absent is not zero-with-
+		// confidence, but the holder record is still authoritative and that is what
+		// reservation advice turns on.
+		drev = nil
+	}
+	return authorityView{Holder: resp.Authority, Rev: rev, DelegationRev: drev,
+		Delegates: resp.Delegates, Source: endpoint, Authoritative: true}, nil
+}

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"math/big"
+	"os"
 	"strings"
 	"testing"
 )
@@ -382,5 +385,74 @@ func TestReserveRequiresASignedRequest(t *testing.T) {
 	}
 	if holder, _ := reservationRev(st, "alice/*"); holder != pubHex {
 		t.Errorf("holder = %s, want %s", shortHash(holder), shortHash(pubHex))
+	}
+}
+
+// captureStdout runs f and returns what it printed.
+func captureStdout(t *testing.T, f func()) string {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	f()
+	w.Close()
+	os.Stdout = old
+	var b bytes.Buffer
+	if _, err := io.Copy(&b, r); err != nil {
+		t.Fatal(err)
+	}
+	return b.String()
+}
+
+// THE #104 CONTRACT. Reservation advice must never be rendered from a view that is
+// not the one a reservation would be evaluated against — because the failure is not
+// a stale answer but a confident wrong one, recommending the single irreversible
+// act in the protocol against a prefix somebody already holds.
+func TestNoReservationAdviceFromNonAuthoritativeView(t *testing.T) {
+	st := newMemStoreForTest(t)
+	unclaimed := authorityView{Holder: noAuthority, Rev: big.NewInt(0),
+		Source: "./codebase", Authoritative: false}
+
+	out := captureStdout(t, func() { renderAuthority(st, "oath/*", unclaimed, true) })
+	for _, forbidden := range []string{"would claim it", "oath reserve", "PERMANENT"} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("a NON-AUTHORITATIVE view offered reservation advice (%q):\n%s", forbidden, out)
+		}
+	}
+	if !strings.Contains(out, "NOT AUTHORITATIVE") {
+		t.Errorf("a non-authoritative view did not say so:\n%s", out)
+	}
+
+	// The same state, authoritatively read, SHOULD advise — the contract restricts
+	// where advice may come from, and must not suppress it where it is sound.
+	unclaimed.Authoritative = true
+	unclaimed.Source = "https://registry.example"
+	out = captureStdout(t, func() { renderAuthority(st, "oath/*", unclaimed, true) })
+	if !strings.Contains(out, "oath reserve") || !strings.Contains(out, "PERMANENT") {
+		t.Errorf("an AUTHORITATIVE view withheld sound advice:\n%s", out)
+	}
+	if strings.Contains(out, "NOT AUTHORITATIVE") {
+		t.Errorf("an authoritative view was labelled otherwise:\n%s", out)
+	}
+}
+
+// A held prefix reports its delegates and its delegation revision, so that the
+// value a grant must state is readable without parsing the journal by hand.
+func TestAuthorityRendersDelegationState(t *testing.T) {
+	st := newMemStoreForTest(t)
+	v := authorityView{Holder: "aa" + strings.Repeat("0", 62), Rev: big.NewInt(1),
+		DelegationRev: big.NewInt(5), Delegates: []string{"bb" + strings.Repeat("0", 62)},
+		Source: "https://registry.example", Authoritative: true}
+	out := captureStdout(t, func() { renderAuthority(st, "oath/*", v, true) })
+	for _, want := range []string{"is HELD by", "publication delegated to bb", "delegation revision 5"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "oath reserve") {
+		t.Errorf("a HELD prefix was advertised as reservable:\n%s", out)
 	}
 }

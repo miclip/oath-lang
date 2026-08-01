@@ -21,6 +21,36 @@ pointer*. There are only two shapes:
 These look like the same question and are not, and conflating them is the central
 mistake the model exists to avoid.
 
+## Advice about an irreversible act must come from the state that act will use
+
+Reservation is permanent: no transfer, no release, no expiry. So a tool that tells
+you whether a prefix is free is not an informational convenience — it is the last
+check before the one act nothing undoes.
+
+The rule that follows:
+
+> Reservation advice MUST NOT be given unless the authority state being reported
+> is the same authority state a subsequent reservation would be evaluated against.
+
+Not "should be fresh". The same state, resolved the same way — because a reading
+taken from somewhere else is not a stale answer to the question asked, it is a
+confident answer to a different one. A local store knows nothing of a registry's
+reservations, so it reports every prefix on that registry as unclaimed, including
+the ones somebody holds.
+
+Two consequences, and both are the point:
+
+- reading a non-authoritative view is allowed, but it must be **labelled** as one
+  and must offer **no** advice;
+- reading the authoritative view is what makes the advice mean anything, so the
+  check must consult the same registry the claim would be submitted to.
+
+This generalises past reservation. It is the same discipline that makes a receipt
+read the live registry rather than the publication plan, makes authority derive
+from the journal rather than cached state, and makes replay resistance count
+accepted history rather than current intent. Wherever an irreversible act is being
+advised, the advice and the act must consult one evidence base.
+
 ## Two questions, two mechanisms
 
 **Exact-name ownership is inferred.** The first principal to bind `alice/foo`

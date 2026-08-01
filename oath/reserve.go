@@ -40,6 +40,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"os"
 	"sort"
 	"strings"
 )
@@ -648,4 +649,125 @@ func cmdReserve(local *Store, endpoint, keyPath, kmsKey, namespace string, dryRu
 		fail(err)
 	}
 	fmt.Print("\n" + out)
+}
+
+// cmdAuthority answers "who governs this prefix, and may I claim it" — and it is
+// the command the documentation tells people to run BEFORE the one irreversible
+// act in the protocol.
+//
+// THE CONTRACT (#104). Reservation advice MUST NOT be given unless the authority
+// state being reported is the same authority state a subsequent reservation would
+// be evaluated against. `cmdReserve` reads local when no registry is configured
+// and the registry otherwise; this resolves the view identically, from the same
+// environment, flags and config, so the two cannot drift apart.
+//
+// It failed that contract completely. With a registry configured it read the
+// LOCAL store and printed
+//
+//	oath/* is UNCLAIMED (authority revision 0)
+//	  `oath reserve 'oath/*'` would claim it. This is PERMANENT: …
+//
+// about a prefix held on that registry at revision 1. Not stale — confidently
+// wrong about the only question it exists to answer, and then recommending the
+// permanent act. A stale `ls` wastes a moment; this spends a namespace.
+//
+// So when the authoritative state cannot be read, this reports the local view
+// under an explicit NOT AUTHORITATIVE banner, gives NO advice, and exits nonzero:
+// the question was not answered, and a script that reads a confident "UNCLAIMED"
+// out of a failure is precisely the accident being prevented.
+func cmdAuthority(local *Store, endpoint, keyPath, kmsKey, query string) {
+	if query == "" {
+		fail(fmt.Errorf("usage: oath authority <prefix>/* | <name>  [--remote <url>] [--key <file>|--kms-key <res>]"))
+	}
+	localSource := os.Getenv("OATH_STORE")
+	if localSource == "" {
+		localSource = "./codebase"
+	}
+	isPrefix := validNamespacePattern(query) == nil
+
+	localView := func() authorityView {
+		h, r := reservationRev(local, query)
+		ds := []string{}
+		for k := range delegates(local)[query] {
+			ds = append(ds, k)
+		}
+		sort.Strings(ds)
+		return authorityView{Holder: h, Rev: r, DelegationRev: delegationRev(local, query),
+			Delegates: ds, Source: localSource, Authoritative: endpoint == ""}
+	}
+
+	// No registry configured: a reservation would be recorded locally, so the local
+	// store IS the state it would be evaluated against. The view is authoritative
+	// for that act — which is a narrow claim, and the banner says which store.
+	if endpoint == "" {
+		renderAuthority(local, query, localView(), isPrefix)
+		return
+	}
+	signer, serr := resolveSigner(keyPath, kmsKey)
+	var view authorityView
+	var rerr error
+	if serr != nil {
+		rerr = fmt.Errorf("no signing key, and this registry authenticates reads: %w", serr)
+	} else if isPrefix {
+		view, rerr = remoteAuthorityView(context.Background(), endpoint, signer, query)
+	} else {
+		// An exact name: the registry's authority record covers the governing
+		// reservation, which is what the advice would turn on.
+		view, rerr = remoteAuthorityView(context.Background(), endpoint, signer, query)
+	}
+	if rerr != nil {
+		lv := localView()
+		lv.Authoritative = false
+		fmt.Printf("NOT ANSWERED: a registry is configured (%s) but its authority state\n", endpoint)
+		fmt.Printf("could not be read: %v\n\n", rerr)
+		fmt.Printf("Showing the LOCAL store only. It is NOT the state a reservation would be\n")
+		fmt.Printf("evaluated against, and it will report a prefix held on the registry as free:\n\n")
+		renderAuthority(local, query, lv, isPrefix)
+		fmt.Printf("\nNo reservation advice is given, because none can be given from this view.\n")
+		fmt.Printf("Pass --key <file> or --kms-key <resource> to read %s.\n", endpoint)
+		os.Exit(1)
+	}
+	renderAuthority(local, query, view, isPrefix)
+}
+
+// renderAuthority prints a governance record and, only when the view is
+// authoritative, the advice that depends on it.
+func renderAuthority(local *Store, query string, v authorityView, isPrefix bool) {
+	banner := func() {
+		if v.Authoritative {
+			fmt.Printf("  view: %s — this IS the state a reservation would be evaluated against\n", v.Source)
+			return
+		}
+		fmt.Printf("  view: %s — LOCAL STORE, NOT AUTHORITATIVE\n", v.Source)
+	}
+	if !isPrefix {
+		// Exact names: governed by a reservation, and possibly owned outright.
+		if v.Holder != noAuthority && v.Holder != "" {
+			fmt.Printf("%s is governed by a reservation held by %s\n", query, v.Holder)
+		} else {
+			fmt.Printf("%s is governed by no reservation\n", query)
+		}
+		if owner, src := nameOwner(local, query); owner != "" {
+			fmt.Printf("  the NAME itself is owned by %s (%s)\n", owner, src)
+		}
+		banner()
+		return
+	}
+	if v.Holder == noAuthority || v.Holder == "" {
+		fmt.Printf("%s is UNCLAIMED (authority revision %s)\n", query, v.Rev)
+		banner()
+		if v.Authoritative {
+			fmt.Printf("  `oath reserve '%s'` would claim it. This is PERMANENT:\n", query)
+			fmt.Printf("  there is no transfer, no release and no expiry.\n")
+		}
+		return
+	}
+	fmt.Printf("%s is HELD by %s (authority revision %s)\n", query, v.Holder, v.Rev)
+	for _, k := range v.Delegates {
+		fmt.Printf("  publication delegated to %s\n", k)
+	}
+	if v.DelegationRev != nil {
+		fmt.Printf("  delegation revision %s — a grant or revocation must state this value\n", v.DelegationRev)
+	}
+	banner()
 }
