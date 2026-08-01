@@ -100,3 +100,41 @@ audits it.
 
 The go/no-go check is #4 — *every name remains publishable by its last
 publisher* — and it passed with 0 names blocked, both before and after.
+
+## Extension — 7 names under enforcement, 2026-08-01
+
+The pilot's mechanism generalises without a namespace decision, because six names
+were ALREADY cryptographically owned: they were first published on the registry
+by the signed adoption campaign, so trust-on-first-publish derives their owner
+from history with no configuration at all.
+
+**What the census refused first.** Modelling `trust_on_first_publish` across
+`["*"]` returned:
+
+```
+[FAIL  ] every name remains publishable by its last publisher (177 would be blocked)
+ENABLING ENFORCEMENT NOW WOULD FREEZE 177 NAME(S).
+```
+
+183 legacy-label names derive their owner from an unsigned first publication —
+a LABEL, which no key can present — so enabling registry-wide enforcement would
+lock the current publisher out of 177 names. The stage-4 precondition exists
+exactly to catch this, and it did, before anything was written.
+
+**What is enforced now.** Scoped to the six names whose first publication was
+signed, plus `pow` by explicit adoption:
+
+| names | mechanism | source |
+|---|---|---|
+| `bad-reverse`, `check-config`, `config-has-key`, `config-key`, `config-missing`, `spin` | trust-on-first-publish | `signed-first-publication` |
+| `pow` | configured `owner_pubkey` + corroboration | `signed-adoption` |
+
+Census: **3 PASS, 1 REVIEW, 0 FAIL**, 0 names blocked. The positive path is
+verified live — the owner published `spin` under enforcement and the custody
+check passed against the prior baseline with history unchanged.
+
+**The 182 remaining names cannot be adopted this way.** Their first publication
+was unsigned, so history offers no key to derive. Each needs either an explicit
+`owner_pubkey` rule or a namespace under which a prefix rule can apply — and that
+is the naming decision, still open. Enforcement is deliberately NOT enabled for
+them: the census would report FAIL and the registry would freeze.
