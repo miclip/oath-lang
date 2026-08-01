@@ -64,12 +64,14 @@ jobs:
           python3 scripts/check-stdlib-manifest.py
 
       - name: Compute the registry delta and publication plan
+        id: delta
         run: |
           set -o pipefail
           git show "HEAD~1:stdlib/oath-stdlib.json" > /tmp/base-manifest.json 2>/dev/null \
             || echo '{"definitions":[]}' > /tmp/base-manifest.json
           python3 scripts/stdlib-delta.py /tmp/base-manifest.json --out /tmp/delta.md
           cat /tmp/delta.md
+          echo "changed=$(cat /tmp/delta-changed.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Authenticate to Google Cloud (keyless)
         uses: google-github-actions/auth@v2
@@ -104,6 +106,13 @@ jobs:
             exit 1
           fi
       - name: Publish in dependency order
+        # SKIPPED WHEN THERE IS NO DELTA. Republishing identical content is a valid
+        # recorded no-op, so doing it anyway would corrupt nothing — but it would
+        # SIGN and WRITE, and a run that changes nothing must do neither. It is also
+        # what makes a no-delta execution a safe test of the approval and credential
+        # plumbing: everything up to signing is exercised, and namespace state is
+        # untouched.
+        if: steps.delta.outputs.changed == 'yes' 
         # Each definition is elaborated into a LOCAL store first, because
         # publication resolves references against the local store — a dependent
         # cannot be published before the thing it depends on exists there. Then
@@ -145,6 +154,17 @@ jobs:
           exit $FAILED
         env:
           OATH_KMS_KEY: projects/oath-prod-503514/locations/us-central1/keyRings/oath-authority/cryptoKeys/oath-ci-publisher/cryptoKeyVersions/1
+
+      - name: Report that nothing needed publication
+        if: steps.delta.outputs.changed != 'yes'
+        run: |
+          {
+            echo "## No publication delta"
+            echo
+            echo "The manifest already describes what the registry holds. Approval,"
+            echo "credentials, gates, manifest reproduction and plan derivation all ran;"
+            echo "nothing was signed and nothing was written."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Receipt, generated from LIVE REGISTRY STATE
         # From the journal the registry actually holds, never from the plan. A

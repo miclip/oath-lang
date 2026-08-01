@@ -180,9 +180,21 @@ def main():
             lines.append(f"- ✗ {p}")
         lines.append("")
 
+    # A machine-readable verdict alongside the human one. Whether anything needs
+    # publishing is a DERIVED fact, and a workflow that re-derived it by grepping
+    # the report would be parsing prose that exists to be read by people.
+    changed = bool(added or removed or repointed or relicensed or remoded or repinned)
+    lines.append("## Verdict\n")
+    lines.append(f"- publication needed: **{'yes' if changed else 'no'}**")
+    if not changed:
+        lines.append("- nothing to sign and nothing to submit; the manifest already")
+        lines.append("  describes what the registry holds")
+    lines.append("")
+
     text = "\n".join(lines) + "\n"
     if out_path:
         out_path.write_text(text)
+        (out_path.parent / "delta-changed.txt").write_text("yes" if changed else "no")
         print(f"wrote {out_path}")
     print(text)
     return 1 if problems else 0
