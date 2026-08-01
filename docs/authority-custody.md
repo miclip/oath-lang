@@ -82,9 +82,48 @@ editor recovery file, no CI reference to a key path.
 **Must survive destruction** — public key `4ecd572dffebe8fc36b376fdee1cb358863a6d61fda2e37fb6c6e9c4ac1ffa6c`,
 fingerprint `934d7c3bbc02ef8ad3568ae02c2254267e338a0d7e66f09fa36fb6f76944d31b`.
 
+## Destruction, performed
+
+| check | result |
+|---|---|
+| `~/.oath/keys/oath-project.key` destroyed | overwritten and unlinked |
+| any other file deriving the `oath/*` public key | none |
+| alternate local signer configured (`OATH_KEY`, `~/.oath/config`, GitHub secrets, git-tracked keys) | none |
+| file signing via the destroyed path | fails — file absent |
+| file signing with a DIFFERENT local key | refused by the AUTHORITY GATE on identity |
+| `oath/*` names live after both attempts | NONE |
+| KMS public key after destruction | `4ecd572d…`, fingerprint `934d7c3b…` — match |
+| post-destruction KMS plan | byte-identical to the pre-destruction plan |
+| post-destruction KMS signature | produced and accepted by the kernel's own verifier |
+
+The second and third rows carry the real weight. Failure on the destroyed path
+proves only that ONE COPY is gone; the custody claim is about key material, so
+the check also confirmed no other usable copy exists and no alternative local
+signer is configured. The attempt with a different local key is the stronger
+evidence: it was refused because the submitter is not the namespace holder, which
+is an identity refusal rather than an absence.
+
+One nuance worth recording. The refused attempt DID append a journal entry —
+`blocked`, unsigned, name unmoved. That is designed behaviour: a blocked
+submission stores the object and journals the attempt. "No journal write" was
+therefore the wrong assertion for this test; the correct one is THE NAME DID NOT
+MOVE, and no `oath/*` name is live.
+
+## The custody claim, as it now stands
+
+> The `oath/*` key originated locally, was imported into Cloud KMS, and the only
+> inventoried local private copy was destroyed before the first standard-library
+> publication. Routine signing now works through KMS only.
+
+Kept separate, because it is a different claim and is NOT established:
+
+> The client fails closed on signer failure, but least-privilege IAM denial has
+> not yet been demonstrated, because the operating identity retains project-owner
+> authority.
+
 ## Outstanding
 
-**A local private copy still exists** at `~/.oath/keys/oath-project.key`, because
+**(historical — the local copy has since been destroyed; see above)** A local private copy still existed at `~/.oath/keys/oath-project.key`, because
 the CLI has no KMS signing path — `publish` and `reserve` take `--key <file>`.
 Deleting it today would leave no way to sign under `oath/*` at all.
 
