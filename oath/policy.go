@@ -220,6 +220,32 @@ func attributeAuthorship(st *Store, name string, newDef *Def, submitter string) 
 // engine (and record its score) when a rule demands a score the object
 // does not yet carry.
 func evalPolicy(st *Store, pol *Policy, name, h string, def *Def, specAuthor, bodyAuthor string) (bool, string) {
+	// NAMESPACE AUTHORITY (#66) is checked FIRST, and deliberately above the
+	// no-rule early return below.
+	//
+	// A reservation is journal-derived authority, so it must bind whether or not
+	// an operator has written a policy rule covering the prefix. Checking it after
+	// `rule == nil` would make a reserved namespace unenforced in exactly the case
+	// the whole operation exists for — a developer who reserved a namespace on a
+	// registry whose operator never edited anything on their behalf.
+	if res, ok := governingReservation(st, name); ok {
+		m, err := st.GetMeta(h)
+		if err != nil {
+			return false, "policy: metadata unavailable: " + err.Error()
+		}
+		// MOST-SPECIFIC WINS. An exact-name owner beneath the prefix is more
+		// specific than the prefix, so they keep their name — the retention promised
+		// by RES-NO-CAPTURE, enforced here rather than merely reported at
+		// reservation time. Falling through leaves them to the ordinary owner rules
+		// below; the reservation neither grants nor removes anything for that name.
+		owner, _ := nameOwner(st, name)
+		if owner == "" || owner == res.Pubkey {
+			if m.Author != res.Pubkey {
+				return false, fmt.Sprintf("policy: %q lies under namespace %q, reserved to key %s… by a signed authority record; submitter %q may not bind names there",
+					name, res.Namespace, shortHash(res.Pubkey), m.Author)
+			}
+		}
+	}
 	rule := pol.ruleFor(name)
 	if rule == nil {
 		return true, ""

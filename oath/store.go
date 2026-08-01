@@ -768,49 +768,77 @@ func (s *Store) VerifyLog() error {
 			if derr != nil {
 				return fmt.Errorf("journal line %d: %w", line, derr)
 			}
-			// Parse and verify over the RECOVERED OCTETS. The base64 text and the JSON
-			// string bytes are storage representations; neither is the statement.
-			env, perr := envelopeParse(octets)
-			if perr != nil {
-				return fmt.Errorf("journal line %d has an unparseable author envelope: %w", line, perr)
-			}
-			if env.Author != e.AuthorPubkey {
-				return fmt.Errorf("journal line %d: envelope names author %s but the entry records %s", line, env.Author, e.AuthorPubkey)
-			}
-			if verr := envelopeVerify(env, e.AuthorSig); verr != nil {
-				return fmt.Errorf("journal line %d: author signature does not verify: %w", line, verr)
-			}
-			// The duplicated fields are an INTERPRETATION of the signed bytes, so any
-			// disagreement means the registry recorded a transition the author did not
-			// sign. That is precisely the substitution this record exists to prevent,
-			// so it is a hard failure rather than a warning.
-			// Clause 5 (§8.6.4) applies ONLY to an entry that APPLIED a transition.
+			// An AUTHORITY statement (#66) is a different signed format in the same
+			// three fields. It is routed by its FORMAT LINE — which is inside the signed
+			// octets — and never by the entry's Kind, which the registry wrote and
+			// nobody signed. Verifying a statement under a format its author never used
+			// is indistinguishable, to a later reader, from verifying it.
 			//
-			// A refused attempt legitimately records the state that caused the refusal —
-			// a `prev` naming the current binding while the envelope names the stale one
-			// it was signed against — so checking it unscoped would make the honest
-			// record of a correct refusal fail the journal. A gate rejection is worse
-			// still: it carries no `hash`, while `artifact` must be 64 hex, so the clause
-			// could never hold.
-			//
-			// Scoped with an `if` rather than a `continue`: continuing would skip to the
-			// next entry and bypass this entry's CHAIN verification too, silently
-			// weakening tamper-evidence in the name of narrowing one clause.
-			if e.nameTransitionOf() == transitionApplied {
-				parent := e.Prev
-				if parent == "" {
-					parent = noParent
+			// An `else` rather than an early return, and the distinction is not
+			// stylistic: the chain verification for this line lives BELOW this block,
+			// inside the same loop. Returning here would skip it and abandon every
+			// later line — silently weakening tamper-evidence in the name of narrowing
+			// one clause, which is the trap the §8.6.4 clause-5 comment below already
+			// records having fallen into once.
+			if authorStatementKind(octets) == "reservation" {
+				res, perr := parseReserveEnvelope(octets)
+				if perr != nil {
+					return fmt.Errorf("journal line %d has an unparseable authority envelope: %w", line, perr)
 				}
-				for _, m := range []struct {
-					what, signed, recorded string
-				}{
-					{"name", env.Name, e.Name},
-					{"artifact", env.Artifact, e.Hash},
-					{"parent", env.Parent, parent},
-				} {
-					if m.signed != m.recorded {
-						return fmt.Errorf("journal line %d: the author signed %s=%q but the entry records %q — the registry recorded a transition its author did not sign",
-							line, m.what, m.signed, m.recorded)
+				if res.Pubkey != e.AuthorPubkey {
+					return fmt.Errorf("journal line %d: reservation names key %s but the entry records %s", line, res.Pubkey, e.AuthorPubkey)
+				}
+				if res.Namespace != e.Name {
+					return fmt.Errorf("journal line %d: reservation claims %q but the entry records name %q — the registry recorded a namespace the signer did not claim", line, res.Namespace, e.Name)
+				}
+				if verr := resVerify(res, e.AuthorSig); verr != nil {
+					return fmt.Errorf("journal line %d: authority signature does not verify: %w", line, verr)
+				}
+			} else {
+				// Parse and verify over the RECOVERED OCTETS. The base64 text and the JSON
+				// string bytes are storage representations; neither is the statement.
+				env, perr := envelopeParse(octets)
+				if perr != nil {
+					return fmt.Errorf("journal line %d has an unparseable author envelope: %w", line, perr)
+				}
+				if env.Author != e.AuthorPubkey {
+					return fmt.Errorf("journal line %d: envelope names author %s but the entry records %s", line, env.Author, e.AuthorPubkey)
+				}
+				if verr := envelopeVerify(env, e.AuthorSig); verr != nil {
+					return fmt.Errorf("journal line %d: author signature does not verify: %w", line, verr)
+				}
+				// The duplicated fields are an INTERPRETATION of the signed bytes, so any
+				// disagreement means the registry recorded a transition the author did not
+				// sign. That is precisely the substitution this record exists to prevent,
+				// so it is a hard failure rather than a warning.
+				// Clause 5 (§8.6.4) applies ONLY to an entry that APPLIED a transition.
+				//
+				// A refused attempt legitimately records the state that caused the refusal —
+				// a `prev` naming the current binding while the envelope names the stale one
+				// it was signed against — so checking it unscoped would make the honest
+				// record of a correct refusal fail the journal. A gate rejection is worse
+				// still: it carries no `hash`, while `artifact` must be 64 hex, so the clause
+				// could never hold.
+				//
+				// Scoped with an `if` rather than a `continue`: continuing would skip to the
+				// next entry and bypass this entry's CHAIN verification too, silently
+				// weakening tamper-evidence in the name of narrowing one clause.
+				if e.nameTransitionOf() == transitionApplied {
+					parent := e.Prev
+					if parent == "" {
+						parent = noParent
+					}
+					for _, m := range []struct {
+						what, signed, recorded string
+					}{
+						{"name", env.Name, e.Name},
+						{"artifact", env.Artifact, e.Hash},
+						{"parent", env.Parent, parent},
+					} {
+						if m.signed != m.recorded {
+							return fmt.Errorf("journal line %d: the author signed %s=%q but the entry records %q — the registry recorded a transition its author did not sign",
+								line, m.what, m.signed, m.recorded)
+						}
 					}
 				}
 			}
