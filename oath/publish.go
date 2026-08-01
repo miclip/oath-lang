@@ -22,6 +22,8 @@ package main
 // conflict stops, reports what moved, and requires a fresh signing action.
 
 import (
+	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -141,13 +143,26 @@ func elabForm(st *Store, f sx) (*Def, *Meta, error) {
 // dryRun stops after showing the plan, so an author (or a script) can inspect the
 // exact bytes without a key ever being used. jsonOut emits the plan
 // machine-readably for a caller that wants to check the bytes programmatically.
-func cmdPublish(local *Store, endpoint, keyPath, file, license string, dryRun, jsonOut, assumeYes bool) {
+func cmdPublish(local *Store, endpoint, keyPath, kmsKey, file, license string, dryRun, jsonOut, assumeYes bool) {
 	src, err := os.ReadFile(file)
 	if err != nil {
 		fail(err)
 	}
-	priv, pubHex := loadSigningKey(keyPath)
-	clientPriv, clientPub = priv, pubHex
+	// Signer selection happens HERE, in CLI parsing, and nowhere below. Publication
+	// never inspects the signer's type, never reads a key file, and has no fallback
+	// path — it asks the interface for a public key and for a signature over bytes
+	// it constructed once.
+	signer, serr := resolveSigner(keyPath, kmsKey)
+	if serr != nil {
+		fail(serr)
+	}
+	ctx := context.Background()
+	pubRaw, perr := signer.PublicKey(ctx)
+	if perr != nil {
+		fail(perr)
+	}
+	pubHex := hex.EncodeToString(pubRaw)
+	clientSigner, clientPub = signer, pubHex
 
 	plan, env, err := buildPublishPlan(local, endpoint, pubHex, string(src), license)
 	if err != nil {
@@ -170,10 +185,14 @@ func cmdPublish(local *Store, endpoint, keyPath, file, license string, dryRun, j
 		}
 	}
 
-	sig, err := envelopeSign(priv, env)
+	// The EXACT bytes in the plan are what gets signed and what gets sent. Signing
+	// `env` again here would re-encode, and a re-encoding that differed by one byte
+	// would produce a signature over something the registry never sees.
+	sig, err := signStatement(ctx, signer, []byte(plan.Bytes), pubHex, jsonOut)
 	if err != nil {
 		fail(err)
 	}
+	_ = env
 	// The bytes signed are the bytes sent: plan.Bytes, not a re-encoding of env.
 	out, err := remotePutSigned(endpoint, string(src), plan.Bytes, sig, pubHex)
 	if err != nil {

@@ -118,7 +118,7 @@ func mcpCallSigned(endpoint string, priv ed25519.PrivateKey, pubHex, tool string
 // clientKey is set by cmdPublish so the query helpers can sign. Held here rather
 // than threaded through every helper signature; the process publishes as one
 // identity per invocation.
-var clientPriv ed25519.PrivateKey
+var clientSigner Signer
 var clientPub string
 
 type headResp struct {
@@ -134,7 +134,7 @@ func remoteHead(endpoint, name, hash string) (headResp, error) {
 	if hash != "" {
 		args["hash"] = hash
 	}
-	out, err := mcpCallSigned(endpoint, clientPriv, clientPub, "head", args)
+	out, err := mcpCallSignedBy(context.Background(), endpoint, clientSigner, "head", args)
 	if err != nil {
 		return h, err
 	}
@@ -172,7 +172,7 @@ func remoteEnvelopeOf(endpoint, hash string) (string, error) {
 // remotePutSigned publishes source with an author statement. envBytes is sent
 // EXACTLY as signed.
 func remotePutSigned(endpoint, source, envBytes, sig, pubHex string) (string, error) {
-	return mcpCallSigned(endpoint, clientPriv, clientPub, "put", map[string]any{
+	return mcpCallSignedBy(context.Background(), endpoint, clientSigner, "put", map[string]any{
 		"source": source, "envelope": envBytes, "signature": sig,
 	})
 }

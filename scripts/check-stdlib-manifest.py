@@ -95,8 +95,42 @@ def main():
                             f"so a slash here would publish oath/{name} and mean something else")
         if not d.get("artifact"):
             failures.append(f"{name}: no artifact hash")
+        mode = d.get("membership")
         if d.get("export"):
             exported.append(d)
+            # MEMBERSHIP MODE decides what claim is being made, so it decides what
+            # must be proven. Defaulting it would let the stronger claim be made by
+            # omission, which is the whole failure this distinction prevents.
+            if mode not in ("referenced", "project-publication"):
+                failures.append(f"{name}: membership must be `referenced` (the library depends on an "
+                                f"existing publication and asserts nothing) or `project-publication` "
+                                f"(the project makes its own licence assertion). Got {mode!r}")
+            if not d.get("publication"):
+                failures.append(f"{name}: no `publication` — an entry must pin the EXACT signed "
+                                f"publication it relies on, by the sha256 of its canonical octets. "
+                                f"A name is mutable and an artifact may carry many conflicting "
+                                f"assertions, so neither identifies whose grant is being consumed")
+            if mode == "project-publication":
+                # The stronger claim: WE assert terms over this artifact.
+                if not d.get("license"):
+                    failures.append(f"{name}: project-publication with no `license` — the mode exists "
+                                    f"precisely to make an assertion, so it must say what is asserted")
+                st = d.get("standing") or {}
+                if not st.get("type") or not st.get("evidence"):
+                    failures.append(f"{name}: project-publication requires `standing` with a `type` and "
+                                    f"`evidence`. Cryptographic ownership of a registry name proves "
+                                    f"authority over the NAME, not copyright or the right to relicense — "
+                                    f"so ownership alone can never justify this mode")
+                src_lic = (st.get("source_publication_license") or "").strip()
+                if src_lic in ("", "-"):
+                    failures.append(f"{name}: the pinned source publication asserts no terms (UNSTATED). "
+                                    f"Absence of a prohibition is not a grant, and UNSTATED is contagious, "
+                                    f"so it cannot be adopted under project terms")
+            if mode == "referenced" and d.get("license"):
+                failures.append(f"{name}: `referenced` entries MUST NOT carry a licence — the mode means "
+                                f"the library asserts nothing and evaluation consumes the pinned "
+                                f"publication's own terms. A licence here would be a fresh assertion "
+                                f"wearing the weaker mode's label")
             if not d.get("source"):
                 failures.append(f"{name}: exported but has no `source` — its hash could not be reproduced, "
                                 f"so the manifest would be asserting an artifact nobody re-derived")

@@ -1,20 +1,41 @@
 {
   "format": "oath-stdlib/1",
   "_comment": [
-    "The canonical Oath standard library: a reviewed, versioned mapping from",
-    "project names under oath/* to immutable artifacts.",
+    "The canonical Oath standard library: a REVIEWED COLLECTION OF PINNED",
+    "PUBLICATION IDENTITIES. Membership means 'reviewed and selected for canonical",
+    "consumption'. It does NOT mean the Oath project owns the copyright or has",
+    "relicensed anything.",
     "",
-    "JSON rather than YAML deliberately. The Go kernel is zero-dependency in its",
-    "default build, and a manifest the kernel may one day need to read must not",
-    "require a parser it cannot have. PR diffs review identically.",
+    "TWO MEMBERSHIP MODES, because they make different claims:",
     "",
-    "THE ARTIFACT HASHES HERE ARE ASSERTIONS AND ARE NOT TRUSTED. CI recomputes",
-    "each one from the canonical object and fails if it disagrees; a manifest that",
-    "could assert a hash without reproducing it would let a review approve one",
-    "artifact while publishing another.",
+    "  referenced          the library DEPENDS ON an existing publication. Oath makes",
+    "                      NO new licence assertion; evaluation consumes that",
+    "                      publication's own signed terms. This is the DEFAULT for",
+    "                      third-party work.",
+    "  project-publication the project publishes the artifact under oath/* and makes",
+    "                      ITS OWN licence assertion. Requires separate STANDING",
+    "                      evidence that the project may make that grant.",
     "",
-    "Membership is governed by pull request. Authority over oath/* is governed by",
-    "the project key. Neither substitutes for the other."
+    "WHY THE DISTINCTION IS LOAD-BEARING. Terms attach to a PUBLICATION, not to an",
+    "artifact (SPEC \u00a712.3). So republishing someone else's artifact under oath/* with",
+    "our licence is a FRESH ASSERTION BY US, not an inheritance \u2014 and the registry",
+    "notarises assertions without auditing them, so a false one would be recorded",
+    "with full cryptographic ceremony and evaluated as fact.",
+    "",
+    "STANDING IS NOT NAME OWNERSHIP. Cryptographic ownership of a registry name",
+    "proves authority over the NAME. It does not establish copyright or the right to",
+    "relicense: Apache-2.0 permits redistribution subject to notice obligations and",
+    "does not make a downstream publisher the rights holder. project-publication",
+    "therefore requires evidence beyond ownership.",
+    "",
+    "EACH ENTRY PINS ONE SOURCE PUBLICATION, identified by the sha256 of its exact",
+    "canonical signed octets. Deliberately NOT a survey of every publication of the",
+    "artifact: one bogus UNSTATED publication must not poison a legitimate grant, and",
+    "one bogus permissive publication must not authorise adoption. Other publications",
+    "of the same artifact remain visible provenance, never automatic inputs.",
+    "",
+    "JSON rather than YAML: the Go kernel is zero-dependency by default and a",
+    "manifest it may one day read must not need a parser it cannot have."
   ],
   "namespace": "oath",
   "authority_pubkey": "4ecd572dffebe8fc36b376fdee1cb358863a6d61fda2e37fb6c6e9c4ac1ffa6c",
@@ -23,28 +44,60 @@
   "definitions": [
     {
       "name": "List",
-      "source": "examples/list.oath",
+      "membership": "project-publication",
       "artifact": "fa452d59a2358fadba69764616745354a1e34465079c2a63e5f4c5d56f2baf05",
+      "source": "examples/list.oath",
+      "publication": "e07120a5ae25212f98a02a5352b617fe60074d8cb4086f393949dd924109de2f",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored within this repository by the project maintainer and published by 65ea5701d92e\u2026; the source publication asserts Apache-2.0, and the project asserts the same terms as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
       "export": true,
       "note": "the list datatype the rest of the library is built on"
     },
     {
       "name": "length",
-      "source": "examples/list.oath",
+      "membership": "project-publication",
       "artifact": "a8497c2fac2bb02484146299be78cecd5d6e296f4bc87f8d2e5eca76745a092e",
+      "source": "examples/list.oath",
+      "publication": "9c2bdc03f34bab89fd8c7ebadb5a7aa29d777ab56bd282b8be58390ab0e3595c",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored within this repository by the project maintainer and published by 65ea5701d92e\u2026; the source publication asserts Apache-2.0, and the project asserts the same terms as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
       "export": true,
       "note": "in the closure because append needs it \u2014 added when the closure check refused the manifest without it"
     },
     {
       "name": "append",
-      "source": "examples/list.oath",
+      "membership": "project-publication",
       "artifact": "78d23e273a4858e3ad9b68ed5795a75a163e1b124a1a6b75229e9842a2ba64f3",
+      "source": "examples/list.oath",
+      "publication": "ea6a8217c1fbb56e91bf8cbc269ad0e0993bc677091e6160eedafb67ff2b7440",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored within this repository by the project maintainer and published by 65ea5701d92e\u2026; the source publication asserts Apache-2.0, and the project asserts the same terms as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
       "export": true
     },
     {
       "name": "reverse",
-      "source": "examples/list.oath",
+      "membership": "project-publication",
       "artifact": "7bb6285884d068b0a885094b4b4090b80e85054cdb36ce805ad1918ab1a94365",
+      "source": "examples/list.oath",
+      "publication": "bf658d584a40280c577b48e1bff8110a9bdbf186e848cffeb7690378cf9a7803",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored within this repository by the project maintainer and published by 65ea5701d92e\u2026; the source publication asserts Apache-2.0, and the project asserts the same terms as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
       "export": true,
       "note": "PROVEN involution; its closure is exactly List and append, which is why these three are the pilot"
     },
@@ -52,7 +105,8 @@
       "name": "bad-reverse",
       "artifact": "af6b61e2180ad5ccdeb541b00c7f53d285aa3f3af997a5e00653954492cb25f1",
       "export": false,
-      "reason": "adversarial fixture \u2014 a deliberately falsified definition kept as an honest exhibit, and never a member of the standard library"
+      "reason": "adversarial fixture \u2014 a deliberately falsified definition kept as an honest exhibit, and never a member of the standard library",
+      "membership": "excluded"
     }
   ]
 }
