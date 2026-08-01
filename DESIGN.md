@@ -42,6 +42,54 @@ Corollaries that fall out of these:
   to be rewritten wholesale and swapped in when the checks still pass —
   editing is a human workflow born from typing being expensive.
 
+## Evidence must never define itself (2026-08-01)
+
+One sentence, three levels:
+
+> **Identity** cannot derive its own subject.
+> **History** cannot trust facts it exists to verify.
+> **Witnesses** cannot define their own coverage.
+
+Nearly every defect found this month is a violation of it, across subsystems that
+share no code:
+
+| violation | where |
+|---|---|
+| a campaign validating itself | namespace migration: 8 sound publications of the wrong objects |
+| a conformance inventory defining its own denominator | rule scoring counted rules it knew about |
+| fixtures defining their own completeness | 186 files for 187 definitions, all checks green |
+| a stored transition defining the history it describes | `name_transition` read rather than derived |
+| an identity omitting the subject it identifies | §12.4 bound a method and members, never the artifact |
+| coverage measured from surviving files | conformance check 1 enumerated the directory |
+| client and server each elaborating, assuming agreement | #101, signed artifact ≠ stored artifact |
+
+They look like seven unrelated bugs. They are one structural mistake: **letting
+the thing being measured supply part of the measurement.**
+
+That framing is worth more than any individual repair, because it predicts where
+to look. Any place an artefact reports on itself is a candidate — a count derived
+from the writer rather than the result, a verdict trusted from the party being
+verified, a check whose scope comes from the material it is checking.
+
+### Why the discipline is now a tool rather than a subject
+
+The implementability methodology (§13) was worth building and is worth stopping
+work on. It generalised past the section it was developed against, produced a
+defect class nobody was looking for, and documented its own boundary — and it now
+yields protocol and implementation improvements rather than better methodology.
+That is the sign it has done its job. Use it when changing normative text; do not
+keep sharpening it.
+
+### The one thing to protect
+
+**The Rust kernel must stay genuinely blind.** It has found protocol defects,
+specification defects and witness defects, and #103 will test whether a normative
+encoding written this week is implementable from prose at all. Every time the
+temptation to "help" it by copying obvious logic was refused, the result was a
+lesson about the SPECIFICATION instead — which is the entire return on having a
+second implementation. Copying into `oathrs/` converts an independent oracle into
+an expensive mirror.
+
 ## What v0 is
 
 A working kernel (~2k lines of dependency-free Go):
