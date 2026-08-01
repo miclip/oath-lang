@@ -1,281 +1,288 @@
 {
-  "_comment": [
-    "Independent-implementability ledger (SPEC \u00a713). One record per blind",
-    "implementation attempt. This file is an ASSERTION about runs that happened;",
-    "scripts/check-implementability.py machine-checks the half that can be checked",
-    "\u2014 that each surface_digest is exactly what blind-export.py reproduces from the",
-    "recorded source \u2014 and enforces the structural rules \u00a713 states. The verdict",
-    "itself is attested by the implementer and cannot be re-derived by CI, which is",
-    "why it carries the evidence pointer rather than standing alone.",
-    "Rounds are append-only. A superseded verdict is never edited: it is a fact",
-    "about a surface that existed, and later repair does not make it untrue."
-  ],
-  "rounds": [
-    {
-      "round": 1,
-      "date": "2026-07-30",
-      "sections": [
-        "12"
-      ],
-      "source": "d736dac8f97a",
-      "surface_digest": null,
-      "surface_note": "NOT RECORDED. This run predates blind-export.py and ran in a git worktree, so the supplied surface was not pinned by a manifest and cannot be reconstructed exactly. Per \u00a713.3 the claim is therefore unbound, and is retained as history rather than as evidence.",
-      "verdict": "PASS-WITH-INFERENCE",
-      "vectors": "8/8",
-      "inferred": [
-        "the entire model lattice, reverse-engineered from vectors; the Apache-2.0 row was demonstrably free \u2014 all-UNSTATED, all-YES and all-NO each still passed 8/8",
-        "\u00a712.4 encoding details not stated in that section"
-      ],
-      "contamination": [
-        "two commit SUBJECT LINES reached the agent's terminal via `git checkout` and `git log --oneline -1`; isolation was instructional rather than structural",
-        "part of \u00a712 was repaired in 234e3ee between dispatch and return, so the run partly tested a document that no longer existed"
-      ],
-      "evidence": "docs/experiments/blind-license-evaluation.md",
-      "implementer_statement": "A reader with \u00a712 and no fixtures cannot produce a single verdict. The vectors are functioning as normative text here."
-    },
-    {
-      "round": 2,
-      "date": "2026-07-30",
-      "sections": [
-        "12"
-      ],
-      "source": "dda0b1a6ef883631acc7b3b15eef79bcde429384",
-      "surface_digest": "74200c755b89baafb7c4e09d0a34a60ebbaa91d284a758e2a046cb56c3eeab7f",
-      "verdict": "PASS-WITH-INFERENCE",
-      "vectors": "16/16",
-      "inferred": [
-        "`policy` \u2014 a required component of a normative identity with no vocabulary, default, semantics or stated source anywhere in the document; obtainable only by reading a fixture record, and BLOCKING: without the vectors no digest was producible at all",
-        "the source of `engine`",
-        "whether a member asserting nothing contributes an input pair",
-        "the tie-break when two pairs share a name",
-        "whether duplicate pairs are collapsed",
-        "the text encoding of the digest bytes, stated in \u00a711.2 and \u00a78.6.1 but not in \u00a712.4",
-        "identifier matching discipline \u2014 literal, case-folded, or trimmed",
-        "the vector records' own schema, documented nowhere"
-      ],
-      "contamination": [
-        "the subject disclosed recognising this project from context available to it outside the task, and stated it did not consult that context; unremovable by the harness and the reason its clean first-run score is discounted",
-        "the subject wrote one file to the parent directory by mistake, moved it back, and ran `ls` there, seeing only `scratchpad` and `tasks`; no project content was exposed"
-      ],
-      "evidence": "docs/experiments/blind-license-evaluation.md",
-      "implementer_statement": "The claim under test \u2014 reproducible without inference \u2014 does not hold, principally because the `policy` field is a required component of a normative digest with no definition anywhere in the document.",
-      "supplied": [
-        "docs/SPEC.md",
-        "fixtures/license/model.json",
-        "fixtures/license/vectors.jsonl",
-        "fixtures/MANIFEST.md",
-        "scripts/license-rule-matrix.py"
-      ]
-    },
-    {
-      "round": 3,
-      "date": "2026-07-30",
-      "sections": [
-        "12"
-      ],
-      "source": "7abe61650c82bd4b7857581f6790f0af9a873352",
-      "surface_digest": "1bb5f8fc08f7d85c8c3e04a63bbd5ccc07e4fb6022073b32862156f1d1107bee",
-      "verdict": "PASS-WITH-INFERENCE",
-      "vectors": "23/25",
-      "inferred": [
-        "`engine` \u2014 a required component of a normative identity with no vocabulary, default or stated source; the IDENTICAL defect repaired for `policy` one line above and not looked for in its sibling",
-        "sort DIRECTION \u2014 LICENSE-ORDER-INDEPENDENT names the sort keys and never says ascending; a descending implementation is prose-conformant and fixture-refuted",
-        "which key of model.json is the model version; the model file's SCHEMA is nowhere specified",
-        "a model row missing a dimension, or carrying a value outside {YES,NO,UNSTATED}",
-        "whether an unrecognised policy still computes a digest \u2014 resolved from a label in the non-normative matrix SCRIPT, disclosed as such by the subject",
-        "whether the character exclusion covers the header lines or only the triple",
-        "case sensitivity of the compound-operator test",
-        "whether uppercase hex in input-artifact/input-publication is rejected, case-folded, or encoded verbatim",
-        "how a `/1` envelope's no-assertion state joins to the `-` sentinel",
-        "the encoding for a member with no publication identity \u2014 NOT DETERMINED, and the reason two published vectors were irreproducible",
-        "the vector file's record schema"
-      ],
-      "contamination": [
-        "the subject's session context was injected with the project's CLAUDE.md and a memory index from outside the working directory; it did not seek them and could not decline them. It reports they contain no mention of licences, evaluation, grants, the lattice, or anything in \u00a712 \u2014 recorded as a fact rather than weighed as a judgement",
-        "the subject read scripts/license-rule-matrix.py before the vector boundary (it is a named input) and discloses that its EXPECTED label for LICENSE-POLICY-DEFINED influenced one pre-boundary assumption"
-      ],
-      "evidence": "docs/experiments/blind-license-evaluation.md",
-      "implementer_statement": "A working implementation exists and reproduces 23 of 25 vectors on its first run. But several encoding details were not determined by the prose, and two fixtures are not reproducible from the specification at all.",
-      "constructive": true,
-      "constructive_note": "On failing to reproduce two published fixtures the implementer searched over 160,000 candidate encodings, declined to infer the missing sentinel, and reported the fixtures as irreproducible rather than adjusting until they matched. 23/25 carrying that refusal is stronger evidence than 25/25 obtained by adaptation: it is the first round demonstrating resistance to teaching-to-the-test, and it is what exposed an undocumented constant in the reference.",
-      "supplied": [
-        "docs/SPEC.md",
-        "fixtures/license/model.json",
-        "fixtures/license/vectors.jsonl",
-        "fixtures/MANIFEST.md",
-        "scripts/license-rule-matrix.py"
-      ]
-    },
-    {
-      "round": 4,
-      "date": "2026-07-31",
-      "sections": [
-        "12",
-        "13"
-      ],
-      "source": "78700a5896f9d810d4c7c4c3878dcfffc7c71760",
-      "surface_digest": "e0ee5df50fda211fd44b6ad6d7f073b5e0765019d7901f0a472173bf71a4c300",
-      "supplied": [
-        "docs/SPEC.md",
-        "fixtures/license/model.json",
-        "fixtures/license/vectors.jsonl",
-        "fixtures/MANIFEST.md"
-      ],
-      "hypothesis": "The declared normative surface \u2014 this document plus the normative data \u00a713.1b incorporates \u2014 is now sufficient for an independent implementation of \u00a712 WITHOUT INFERENCE. Recorded BEFORE dispatch so it is falsifiable rather than narrated afterwards: if the round returns PASS-WITH-INFERENCE, this hypothesis is disproved and the inferred list says exactly where the surface is still incomplete.",
-      "hypothesis_recorded": "before dispatch",
-      "prediction": "If a defect is found it will most likely NOT be in licensing. \u00a713.1a/\u00a713.1b created a new abstraction \u2014 the prose/normative-data boundary \u2014 and this run is its first independent user, so the likeliest findings are that a declared schema constrains one thing and not another, that an artifact's interpretation is still implied rather than stated, or that the versioning rule is underspecified.",
-      "verdict": "PASS-WITH-INFERENCE",
-      "vectors": "27/30",
-      "hypothesis_outcome": "DISPROVED",
-      "constructive": true,
-      "constructive_note": "Three vectors turn on one undetermined clause \u2014 what to EMIT for an unrecognised policy. The implementer identified that both readings satisfy the stated rule, declined to adopt the fixtures' reading because doing so would be inference, and left the vectors failing. It also ran the alternative reading in a separate probe, confirmed all three reproduce exactly under it, and did not modify the implementation.",
-      "prediction_outcome": "PARTLY CONFIRMED. The prediction was that findings would fall at the prose/normative-data boundary. The implementer called that boundary 'the best-specified part of \u00a712' \u2014 so the prediction was wrong about where the WEAKNESS was \u2014 but it still yielded three real defects there: model retrieval unspecified, consumer behaviour on a malformed model undefined, and no obligation to RECOMPUTE model-digest. The largest findings were elsewhere: the identity never bound its subject.",
-      "inferred": [
-        "what to EMIT for an unrecognised policy \u2014 the rule named a prohibition and never defined the behaviour; cost three vectors",
-        "the calling convention for \u00a712: no signature, no input schema, no output schema, where \u00a711 supplies one",
-        "the vector file's own schema, described nowhere in the supplied surface",
-        "whether a producer must REJECT a value violating the character rule (\u00a711.2 and \u00a78.6.1 state it; \u00a712.4 stated only the exclusion)",
-        "whether the character rule binds header values or only triple values",
-        "whether uppercase hex is rejected, case-folded, or encoded verbatim",
-        "whether an empty closure has a digest at all",
-        "the empty-string expression, distinct from absent and from the sentinel",
-        "whether the compound operators include their surrounding spaces, and whether the test is case-sensitive",
-        "whether policy has a default when unsupplied",
-        "how to RETRIEVE the model bytes given a version and a content digest"
-      ],
-      "contamination": [
-        "the subject disclosed prior familiarity: its session context carried the project's CLAUDE.md and a memory index, unsought and undeclinable. It reports the \u00a712 material there is nil and licence evaluation is unmentioned, and assesses that it gave no rule but may have made \u00a78.2.2/\u00a79 cross-references quicker to place",
-        "it ran `wc -l` on the vector file during manifest verification before the boundary, so it knew the record COUNT (30) while writing its predictions; disclosed there at the time, no content seen",
-        "after the first run it probed an alternative policy reading against three fixtures; labelled post-hoc, and the implementation was not changed"
-      ],
-      "evidence": "docs/experiments/blind-license-evaluation.md",
-      "implementer_statement": "A working implementation came out of the prose plus model.json, but eleven things were not determined by them, and I left three vectors failing rather than tune to them."
-    },
-    {
-      "round": 5,
-      "date": "2026-07-31",
-      "sections": [
-        "8.6"
-      ],
-      "source": "1d7fcaf85d7c83bcc459d522f440201f94364672",
-      "surface_digest": "e7925143a82ee8998f5416103902d0b6a63948c0f3e5108f81142501a7fe2b33",
-      "supplied": [
-        "docs/SPEC.md",
-        "fixtures/envelope/vectors.jsonl",
-        "fixtures/MANIFEST.md"
-      ],
-      "research_question": "Does the implementability methodology GENERALISE across independently evolved sections? Four rounds matured \u00a712 and each found a new defect class, but the methodology was validated only on the section receiving all the attention. \u00a78.6 is the harder test: 8/18 obligations witnessed, one prior blind implementation, much older design decisions, and dense interaction with identity, signatures, journals and conformance. If the method depends on licensing it should visibly fail here.",
-      "hypothesis": "\u00a78.6, on this surface, is NOT yet independently implementable without inference \u2014 predicted from its lower witnessed coverage, not from any audit. The stronger claim under test is not about \u00a78.6 at all: it is that the METHOD produces the same quality of finding on a section it was not developed against.",
-      "hypothesis_recorded": "before dispatch",
-      "taxonomy_hypothesis": {
-        "claim": "Every finding will fall into one of the four defect classes \u00a712 produced. A FIFTH class would be the more valuable outcome: it would show the taxonomy is \u00a712-shaped rather than general.",
-        "classes": [
-          "1. MISSING MEANING \u2014 the document does not say enough to proceed honestly",
-          "2. HIDDEN NORMATIVE INPUTS \u2014 meaning exists but lives in fixtures or implementation, not the declared surface",
-          "3. INTERNAL INCONSISTENCY \u2014 enough is communicated to implement, but the document contradicts itself or leans on undocumented constants",
-          "4. INCOMPLETELY DEFINED OBJECTS \u2014 every field is correct and the encoding still does not say what it identifies"
-        ],
-        "method": "The taxonomy is deliberately WITHHELD from the dispatch brief. Supplying it would shape what the subject looks for and convert a test of the taxonomy into a confirmation of it. Findings are classified afterwards, by us, against the list recorded here."
-      },
-      "prediction": "Specific pre-registered guess, recorded so it can lose: \u00a78.6.4a requires rejecting a small-order public key and neither lists the encodings nor states how to derive them, so a blind implementation cannot obtain them from the surface. That would be class 2 (hidden normative inputs) \u2014 the same class round two found in \u00a712, appearing independently in a section developed years apart. Noted BEFORE dispatch and deliberately NOT repaired first, since pre-repairing is teaching to the test.",
-      "interpretation": {
-        "recorded": "before the outcome was known",
-        "why": "Deciding how to READ each possible outcome after seeing one is the same defect as writing a hypothesis after the result. Recorded here so no outcome can be reframed into a success, and so a clean result cannot be quietly discounted as a null one.",
-        "what_generalisation_requires": "NOT that the same defects recur. That is the weaker claim, and the recurrence prediction below tests only it. Generalisation requires the PROCESS to expose specification insufficiency on a section it was not developed against, without relying on licensing-specific machinery and without prior hints.",
-        "readings": {
-          "class 2 reproduces (small-order or otherwise)": "a defect class found in \u00a712 recurring in an independently evolved domain \u2014 evidence the taxonomy is general rather than \u00a712-shaped",
-          "all findings map onto the four classes": "the taxonomy holds on a section it was not derived from; stronger than any individual recurrence",
-          "a FIFTH class appears": "the most valuable outcome. The taxonomy was \u00a712-shaped and is now larger. Record the new class and re-examine \u00a712 for instances of it",
-          "genuinely inference-free PASS": "POSITIVE, not null. It would show the method can DISTINGUISH a mature section from an immature one rather than mechanically generating findings \u2014 which is the failure mode a process like this is most at risk of. Only counts if the derivation log holds up: expert knowledge filling a silent spec is inference, and a correct implementation built from undocumented prior knowledge is still evidence the specification was insufficient",
-          "the methodology itself breaks on \u00a78.6": "a real result, not a failed run. It would mean the method depends on properties \u00a712 happened to have \u2014 most likely a fixture family that cannot express what the section does, which \u00a712 already hit once at LICENSE-CLOSURE-EXCLUSIVE"
-        }
-      },
-      "verdict": "PASS-WITH-INFERENCE",
-      "vectors": "26/32",
-      "hypothesis_outcome": "DISPROVED",
-      "constructive": true,
-      "constructive_note": "Six canonical vectors could not be reproduced because the fixture's own structured half omits `license`. The implementer diagnosed the cause, refused to tune around it, and instead added an explicitly-labelled repair mode that supplies ONLY the missing field and still demands exact byte reproduction \u2014 reaching 32/32 under it, which proves the encoder byte-exact while leaving the reported score at 26/32.",
-      "prediction_outcome": "CONFIRMED, and broader than predicted. The guess was that \u00a78.6.4a's small-order encodings were unobtainable. The actual finding is larger: RFC 8032 was not in \u00a713.1b at all, so p, L, d, the base point, SHA-512 and the clamping rule were ALL outside the declared surface. Class 2 reproduced in a section developed years apart from \u00a712.",
-      "taxonomy_outcome": {
-        "result": "A FIFTH CLASS \u2014 the pre-registered most-valuable outcome",
-        "new_class": "5. DEFECTIVE WITNESS \u2014 the measurement apparatus is wrong in a way the specification is not. Classes 1-4 are all defects in the document; this one is a defect in the thing measuring it, and is invisible to drift checks because both halves of the fixture were equally wrong.",
-        "instances": [
-          "six canonical records carry oath-publish/1's six keys while their octets are /2 with seven lines \u2014 the record cannot produce its own bytes, while \u00a710.1 and MANIFEST.md both assert it can",
-          "the vector labelled 'arbitrary precision, not a machine word' carries 2^128+1 as a JSON NUMBER; a float64 reader decodes it OFF BY ONE, defeating the rule the vector witnesses",
-          "\u00a710.1's coverage paragraph \u2014 itself the product of an earlier round's correction \u2014 still overstates on 2 of 5 clauses",
-          "the vectors' `witnesses` vocabulary (8.6.1/field-count, \u2026) appears NOWHERE in the prose: 0 of 8 identifiers, against 39 in \u00a712/\u00a713"
-        ],
-        "retroactive": "Re-examining \u00a712 as pre-registered found four prior instances that had been classified inside the first four classes: a vector carrying the character-rule rejection obligation the prose omitted; `model_licenses` existing nowhere in the prose; MANIFEST citing DESIGN.md, outside the surface; the licence vector schema undocumented. The class was always there and lacked a name.",
-        "classes_1_to_4_also_recurred": true
-      },
-      "methodology_outcome": "GENERALISES. The process exposed insufficiency on a section it was not developed against, using no licensing-specific machinery: all four original classes recurred, 26 of 47 obligations were shown deletable with the suite passing, and the method produced a class the \u00a712 rounds never isolated. It did not mechanically generate findings \u2014 the Ed25519 core, the envelope grammar and the journal encoding were all reported as cleanly derived.",
-      "inferred": [
-        "whether oath-publish/1 is accepted or rejected \u2014 \u00a78.6.1 both requires reading it and requires rejecting any tag that is not /2, and NOTHING witnesses either reading",
-        "all Ed25519 parameters: p, L, d, the base point, SHA-512, clamping, point compression \u2014 RFC 8032 was not a declared normative input",
-        "the test for 'small-order A': the method is unspecified",
-        "whether a mixed-order (torsion-carrying, non-small-order) key is rejected",
-        "whether the store must require envelope author == authenticated principal \u2014 security-relevant",
-        "the case of the \\u00XX escape in \u00a78.2.1: written with capital X placeholders, and the two choices give different entry digests for the same entry",
-        "whether invalid UTF-8 must be rejected",
-        "whether uppercase hex in author_pubkey/author_sig must be rejected",
-        "whether clause 5 applies to a legacy entry via the derived transition",
-        "small-order or non-canonical R",
-        "journal member value types and seq rendering",
-        "the entire schema of fixtures/envelope/vectors.jsonl"
-      ],
-      "contamination": [
-        "the subject's session context carried the project's CLAUDE.md and a memory index, unsought and undeclinable. It reports no envelope format, field list, encoding detail, verification clause or constant appeared there, and classes the run 'mildly contaminated at the project-awareness level and uncontaminated at the rule level'",
-        "it ran `wc -l` over the vector file before the boundary and so knew the record count (32); disclosed in its predictions at the time"
-      ],
-      "evidence": "docs/experiments/blind-license-evaluation.md",
-      "implementer_statement": "A working implementation exists, but \u00a78.6 could not be built without inference, and the inference is not confined to cosmetics \u2014 one undetermined point is security-relevant and another is a live contradiction in the prose."
-    },
-    {
-      "round": 6,
-      "date": "2026-08-01",
-      "sections": [
-        "10.0a"
-      ],
-      "source": "b9efb2e10cd3b6812b565ba1fbc6bc9e03cdf494",
-      "surface_digest": "cf84f44f0064e89859bbe5a7f27efe15f16af496be6ef194871309102420051f",
-      "supplied": [
-        "docs/SPEC.md",
-        "oathrs/",
-        "fixtures/canonical/",
-        "fixtures/hashes.txt",
-        "examples/",
-        "fixtures/MANIFEST.md"
-      ],
-      "research_question": "Is normative text written THIS WEEK, by the same author as the reference implementation, and never independently read, implementable from prose alone? \u00a710.0a is small and self-contained, so a failure is diagnostic rather than ambiguous \u2014 it cannot hide behind protocol complexity.",
-      "hypothesis": "\u00a710.0a is sufficient to implement CONF-FIXTURE-FILENAME without inference. Predicted PASS: the rule is three cases and a worked example. If it fails, the defect is in text short enough to read in a minute, which is the most useful possible failure.",
-      "hypothesis_recorded": "before dispatch",
-      "prediction": "If anything is under-determined it will be the DECODE direction or the treatment of characters the table does not mention \u2014 the encoding table states three cases and asserts bijectivity without demonstrating the inverse.",
-      "note": "Different shape from rounds 1-5: the subject REPAIRS an existing independent kernel rather than implementing from scratch, so oathrs/ is supplied and oath/ is forbidden. oathrs/DIVERGENCES.md is excluded \u2014 it records every ambiguity previous blind rounds found, which is coaching material.",
-      "verdict": "PASS-WITH-INFERENCE",
-      "vectors": "187/187 canonical",
-      "hypothesis_outcome": "DISPROVED",
-      "prediction_outcome": "CONFIRMED. The prediction was that the DECODE direction or unmentioned characters would be under-determined. Both were: decode is not stated at all, and the 'anything else unchanged' row is unconditional, which is what leaves non-ASCII case collisions unfixed.",
-      "inferred": [
-        "what 'an uppercase letter' means \u2014 ASCII A-Z or Unicode. Argued from inside the text (full Unicode case mapping is neither injective nor length-preserving, so the section's own bijection claim only survives under ASCII) but never stated",
-        "that the map is applied PER CHARACTER \u2014 implied by a table of single characters; all three worked examples have at most one escapable character",
-        "how to DECODE \u2014 asserted recoverable, never specified, and partial in fact",
-        "whether the .bin/.json/.txt suffix is inside or outside the encoding",
-        "scope: the sentence says 'every fixture named after a definition' while the MUST enumerates three directories and \u00a710 lists six name-bearing families"
-      ],
-      "findings": [
-        "'bijection' is FALSE \u2014 the encoding is an INJECTION; the image excludes uppercase and `_1`/`m_`, so the promised decode is partial and a decoder written to the claim has no rule for out-of-image input",
-        "THE RULE DOES NOT ACHIEVE ITS STATED PURPOSE: only ASCII A-Z are escaped, so `\u00c9lan`/`\u00e9lan` still collide with silent overwrite \u2014 the map/Map bug verbatim, in the fix for it. Reproduced on APFS",
-        "the check was UNFALSIFIABLE on macOS: `[ -f _Map.bin ]` succeeds when only `_map.bin` exists, and cmp then compares a file with itself. Measured 0/187 failures under lookup vs 15/187 under exact-name matching",
-        "the `_` -> `__` row is UNWITNESSED: no corpus name contains an underscore, so deleting that row leaves all 187 fixtures matching",
-        "CONF-COVERAGE-FROM-CORPUS as written is FALSE for verify/ \u2014 data declarations and property-free functions emit no verdict text, so 168 of 187, and the rule would demand 19 files that must not exist",
-        "'the CORPUS' was undefined \u2014 names.json, examples/, or hashes.txt"
-      ],
-      "contamination": [
-        "oathrs/conformance.sh already contained an awk implementation of \u00a710.0a and comments restating the rule \u2014 the harness had been updated for the new rule and the kernel had not. The subject read it to locate write sites, AFTER writing DERIVATION.md, and discloses that its post-hoc confidence in the ASCII reading is partly corroborated by it. A second statement of the rule inside the supplied surface is a harness defect: the export should have excluded or stubbed it",
-        "prior familiarity with the Oath project from outside the task, disclosed; no prior knowledge of the fixture-filename encoding, which is days old"
-      ],
-      "evidence": "docs/experiments/blind-license-evaluation.md",
-      "implementer_statement": "Yes for the core, with three gaps I had to fill by assumption. Nothing in the fixtures changed a decision I had made."
+ "_comment": [
+  "Independent-implementability ledger (SPEC §13). One record per blind",
+  "implementation attempt. This file is an ASSERTION about runs that happened;",
+  "scripts/check-implementability.py machine-checks the half that can be checked",
+  "— that each surface_digest is exactly what blind-export.py reproduces from the",
+  "recorded source — and enforces the structural rules §13 states. The verdict",
+  "itself is attested by the implementer and cannot be re-derived by CI, which is",
+  "why it carries the evidence pointer rather than standing alone.",
+  "Rounds are append-only. A superseded verdict is never edited: it is a fact",
+  "about a surface that existed, and later repair does not make it untrue."
+ ],
+ "rounds": [
+  {
+   "round": 1,
+   "date": "2026-07-30",
+   "sections": [
+    "12"
+   ],
+   "source": "d736dac8f97a",
+   "surface_digest": null,
+   "surface_note": "NOT RECORDED. This run predates blind-export.py and ran in a git worktree, so the supplied surface was not pinned by a manifest and cannot be reconstructed exactly. Per §13.3 the claim is therefore unbound, and is retained as history rather than as evidence.",
+   "verdict": "PASS-WITH-INFERENCE",
+   "vectors": "8/8",
+   "inferred": [
+    "the entire model lattice, reverse-engineered from vectors; the Apache-2.0 row was demonstrably free — all-UNSTATED, all-YES and all-NO each still passed 8/8",
+    "§12.4 encoding details not stated in that section"
+   ],
+   "contamination": [
+    "two commit SUBJECT LINES reached the agent's terminal via `git checkout` and `git log --oneline -1`; isolation was instructional rather than structural",
+    "part of §12 was repaired in 234e3ee between dispatch and return, so the run partly tested a document that no longer existed"
+   ],
+   "evidence": "docs/experiments/blind-license-evaluation.md",
+   "implementer_statement": "A reader with §12 and no fixtures cannot produce a single verdict. The vectors are functioning as normative text here."
+  },
+  {
+   "round": 2,
+   "date": "2026-07-30",
+   "sections": [
+    "12"
+   ],
+   "source": "dda0b1a6ef883631acc7b3b15eef79bcde429384",
+   "exporter": "78700a5",
+   "surface_digest": "74200c755b89baafb7c4e09d0a34a60ebbaa91d284a758e2a046cb56c3eeab7f",
+   "verdict": "PASS-WITH-INFERENCE",
+   "vectors": "16/16",
+   "inferred": [
+    "`policy` — a required component of a normative identity with no vocabulary, default, semantics or stated source anywhere in the document; obtainable only by reading a fixture record, and BLOCKING: without the vectors no digest was producible at all",
+    "the source of `engine`",
+    "whether a member asserting nothing contributes an input pair",
+    "the tie-break when two pairs share a name",
+    "whether duplicate pairs are collapsed",
+    "the text encoding of the digest bytes, stated in §11.2 and §8.6.1 but not in §12.4",
+    "identifier matching discipline — literal, case-folded, or trimmed",
+    "the vector records' own schema, documented nowhere"
+   ],
+   "contamination": [
+    "the subject disclosed recognising this project from context available to it outside the task, and stated it did not consult that context; unremovable by the harness and the reason its clean first-run score is discounted",
+    "the subject wrote one file to the parent directory by mistake, moved it back, and ran `ls` there, seeing only `scratchpad` and `tasks`; no project content was exposed"
+   ],
+   "evidence": "docs/experiments/blind-license-evaluation.md",
+   "implementer_statement": "The claim under test — reproducible without inference — does not hold, principally because the `policy` field is a required component of a normative digest with no definition anywhere in the document.",
+   "supplied": [
+    "docs/SPEC.md",
+    "fixtures/license/model.json",
+    "fixtures/license/vectors.jsonl",
+    "fixtures/MANIFEST.md",
+    "scripts/license-rule-matrix.py"
+   ],
+   "exporter_note": "the exporter at this round's own recording commit predates the --paths flag, so it cannot be run with the `supplied` list this claim records; 78700a5 is the EARLIEST exporter that can express it. Not fitted to the answer: 78700a5, 262eefc and 4e7b8f5 all reproduce this digest identically, because the harness repair that changed round 6's surface only affected exports supplying oathrs/."
+  },
+  {
+   "round": 3,
+   "date": "2026-07-30",
+   "sections": [
+    "12"
+   ],
+   "source": "7abe61650c82bd4b7857581f6790f0af9a873352",
+   "exporter": "78700a5",
+   "surface_digest": "1bb5f8fc08f7d85c8c3e04a63bbd5ccc07e4fb6022073b32862156f1d1107bee",
+   "verdict": "PASS-WITH-INFERENCE",
+   "vectors": "23/25",
+   "inferred": [
+    "`engine` — a required component of a normative identity with no vocabulary, default or stated source; the IDENTICAL defect repaired for `policy` one line above and not looked for in its sibling",
+    "sort DIRECTION — LICENSE-ORDER-INDEPENDENT names the sort keys and never says ascending; a descending implementation is prose-conformant and fixture-refuted",
+    "which key of model.json is the model version; the model file's SCHEMA is nowhere specified",
+    "a model row missing a dimension, or carrying a value outside {YES,NO,UNSTATED}",
+    "whether an unrecognised policy still computes a digest — resolved from a label in the non-normative matrix SCRIPT, disclosed as such by the subject",
+    "whether the character exclusion covers the header lines or only the triple",
+    "case sensitivity of the compound-operator test",
+    "whether uppercase hex in input-artifact/input-publication is rejected, case-folded, or encoded verbatim",
+    "how a `/1` envelope's no-assertion state joins to the `-` sentinel",
+    "the encoding for a member with no publication identity — NOT DETERMINED, and the reason two published vectors were irreproducible",
+    "the vector file's record schema"
+   ],
+   "contamination": [
+    "the subject's session context was injected with the project's CLAUDE.md and a memory index from outside the working directory; it did not seek them and could not decline them. It reports they contain no mention of licences, evaluation, grants, the lattice, or anything in §12 — recorded as a fact rather than weighed as a judgement",
+    "the subject read scripts/license-rule-matrix.py before the vector boundary (it is a named input) and discloses that its EXPECTED label for LICENSE-POLICY-DEFINED influenced one pre-boundary assumption"
+   ],
+   "evidence": "docs/experiments/blind-license-evaluation.md",
+   "implementer_statement": "A working implementation exists and reproduces 23 of 25 vectors on its first run. But several encoding details were not determined by the prose, and two fixtures are not reproducible from the specification at all.",
+   "constructive": true,
+   "constructive_note": "On failing to reproduce two published fixtures the implementer searched over 160,000 candidate encodings, declined to infer the missing sentinel, and reported the fixtures as irreproducible rather than adjusting until they matched. 23/25 carrying that refusal is stronger evidence than 25/25 obtained by adaptation: it is the first round demonstrating resistance to teaching-to-the-test, and it is what exposed an undocumented constant in the reference.",
+   "supplied": [
+    "docs/SPEC.md",
+    "fixtures/license/model.json",
+    "fixtures/license/vectors.jsonl",
+    "fixtures/MANIFEST.md",
+    "scripts/license-rule-matrix.py"
+   ],
+   "exporter_note": "the exporter at this round's own recording commit predates the --paths flag, so it cannot be run with the `supplied` list this claim records; 78700a5 is the EARLIEST exporter that can express it. Not fitted to the answer: 78700a5, 262eefc and 4e7b8f5 all reproduce this digest identically, because the harness repair that changed round 6's surface only affected exports supplying oathrs/."
+  },
+  {
+   "round": 4,
+   "date": "2026-07-31",
+   "sections": [
+    "12",
+    "13"
+   ],
+   "source": "78700a5896f9d810d4c7c4c3878dcfffc7c71760",
+   "exporter": "27104ce",
+   "surface_digest": "e0ee5df50fda211fd44b6ad6d7f073b5e0765019d7901f0a472173bf71a4c300",
+   "supplied": [
+    "docs/SPEC.md",
+    "fixtures/license/model.json",
+    "fixtures/license/vectors.jsonl",
+    "fixtures/MANIFEST.md"
+   ],
+   "hypothesis": "The declared normative surface — this document plus the normative data §13.1b incorporates — is now sufficient for an independent implementation of §12 WITHOUT INFERENCE. Recorded BEFORE dispatch so it is falsifiable rather than narrated afterwards: if the round returns PASS-WITH-INFERENCE, this hypothesis is disproved and the inferred list says exactly where the surface is still incomplete.",
+   "hypothesis_recorded": "before dispatch",
+   "prediction": "If a defect is found it will most likely NOT be in licensing. §13.1a/§13.1b created a new abstraction — the prose/normative-data boundary — and this run is its first independent user, so the likeliest findings are that a declared schema constrains one thing and not another, that an artifact's interpretation is still implied rather than stated, or that the versioning rule is underspecified.",
+   "verdict": "PASS-WITH-INFERENCE",
+   "vectors": "27/30",
+   "hypothesis_outcome": "DISPROVED",
+   "constructive": true,
+   "constructive_note": "Three vectors turn on one undetermined clause — what to EMIT for an unrecognised policy. The implementer identified that both readings satisfy the stated rule, declined to adopt the fixtures' reading because doing so would be inference, and left the vectors failing. It also ran the alternative reading in a separate probe, confirmed all three reproduce exactly under it, and did not modify the implementation.",
+   "prediction_outcome": "PARTLY CONFIRMED. The prediction was that findings would fall at the prose/normative-data boundary. The implementer called that boundary 'the best-specified part of §12' — so the prediction was wrong about where the WEAKNESS was — but it still yielded three real defects there: model retrieval unspecified, consumer behaviour on a malformed model undefined, and no obligation to RECOMPUTE model-digest. The largest findings were elsewhere: the identity never bound its subject.",
+   "inferred": [
+    "what to EMIT for an unrecognised policy — the rule named a prohibition and never defined the behaviour; cost three vectors",
+    "the calling convention for §12: no signature, no input schema, no output schema, where §11 supplies one",
+    "the vector file's own schema, described nowhere in the supplied surface",
+    "whether a producer must REJECT a value violating the character rule (§11.2 and §8.6.1 state it; §12.4 stated only the exclusion)",
+    "whether the character rule binds header values or only triple values",
+    "whether uppercase hex is rejected, case-folded, or encoded verbatim",
+    "whether an empty closure has a digest at all",
+    "the empty-string expression, distinct from absent and from the sentinel",
+    "whether the compound operators include their surrounding spaces, and whether the test is case-sensitive",
+    "whether policy has a default when unsupplied",
+    "how to RETRIEVE the model bytes given a version and a content digest"
+   ],
+   "contamination": [
+    "the subject disclosed prior familiarity: its session context carried the project's CLAUDE.md and a memory index, unsought and undeclinable. It reports the §12 material there is nil and licence evaluation is unmentioned, and assesses that it gave no rule but may have made §8.2.2/§9 cross-references quicker to place",
+    "it ran `wc -l` on the vector file during manifest verification before the boundary, so it knew the record COUNT (30) while writing its predictions; disclosed there at the time, no content seen",
+    "after the first run it probed an alternative policy reading against three fixtures; labelled post-hoc, and the implementation was not changed"
+   ],
+   "evidence": "docs/experiments/blind-license-evaluation.md",
+   "implementer_statement": "A working implementation came out of the prose plus model.json, but eleven things were not determined by them, and I left three vectors failing rather than tune to them."
+  },
+  {
+   "round": 5,
+   "date": "2026-07-31",
+   "sections": [
+    "8.6"
+   ],
+   "source": "1d7fcaf85d7c83bcc459d522f440201f94364672",
+   "exporter": "9787c5a",
+   "surface_digest": "e7925143a82ee8998f5416103902d0b6a63948c0f3e5108f81142501a7fe2b33",
+   "supplied": [
+    "docs/SPEC.md",
+    "fixtures/envelope/vectors.jsonl",
+    "fixtures/MANIFEST.md"
+   ],
+   "research_question": "Does the implementability methodology GENERALISE across independently evolved sections? Four rounds matured §12 and each found a new defect class, but the methodology was validated only on the section receiving all the attention. §8.6 is the harder test: 8/18 obligations witnessed, one prior blind implementation, much older design decisions, and dense interaction with identity, signatures, journals and conformance. If the method depends on licensing it should visibly fail here.",
+   "hypothesis": "§8.6, on this surface, is NOT yet independently implementable without inference — predicted from its lower witnessed coverage, not from any audit. The stronger claim under test is not about §8.6 at all: it is that the METHOD produces the same quality of finding on a section it was not developed against.",
+   "hypothesis_recorded": "before dispatch",
+   "taxonomy_hypothesis": {
+    "claim": "Every finding will fall into one of the four defect classes §12 produced. A FIFTH class would be the more valuable outcome: it would show the taxonomy is §12-shaped rather than general.",
+    "classes": [
+     "1. MISSING MEANING — the document does not say enough to proceed honestly",
+     "2. HIDDEN NORMATIVE INPUTS — meaning exists but lives in fixtures or implementation, not the declared surface",
+     "3. INTERNAL INCONSISTENCY — enough is communicated to implement, but the document contradicts itself or leans on undocumented constants",
+     "4. INCOMPLETELY DEFINED OBJECTS — every field is correct and the encoding still does not say what it identifies"
+    ],
+    "method": "The taxonomy is deliberately WITHHELD from the dispatch brief. Supplying it would shape what the subject looks for and convert a test of the taxonomy into a confirmation of it. Findings are classified afterwards, by us, against the list recorded here."
+   },
+   "prediction": "Specific pre-registered guess, recorded so it can lose: §8.6.4a requires rejecting a small-order public key and neither lists the encodings nor states how to derive them, so a blind implementation cannot obtain them from the surface. That would be class 2 (hidden normative inputs) — the same class round two found in §12, appearing independently in a section developed years apart. Noted BEFORE dispatch and deliberately NOT repaired first, since pre-repairing is teaching to the test.",
+   "interpretation": {
+    "recorded": "before the outcome was known",
+    "why": "Deciding how to READ each possible outcome after seeing one is the same defect as writing a hypothesis after the result. Recorded here so no outcome can be reframed into a success, and so a clean result cannot be quietly discounted as a null one.",
+    "what_generalisation_requires": "NOT that the same defects recur. That is the weaker claim, and the recurrence prediction below tests only it. Generalisation requires the PROCESS to expose specification insufficiency on a section it was not developed against, without relying on licensing-specific machinery and without prior hints.",
+    "readings": {
+     "class 2 reproduces (small-order or otherwise)": "a defect class found in §12 recurring in an independently evolved domain — evidence the taxonomy is general rather than §12-shaped",
+     "all findings map onto the four classes": "the taxonomy holds on a section it was not derived from; stronger than any individual recurrence",
+     "a FIFTH class appears": "the most valuable outcome. The taxonomy was §12-shaped and is now larger. Record the new class and re-examine §12 for instances of it",
+     "genuinely inference-free PASS": "POSITIVE, not null. It would show the method can DISTINGUISH a mature section from an immature one rather than mechanically generating findings — which is the failure mode a process like this is most at risk of. Only counts if the derivation log holds up: expert knowledge filling a silent spec is inference, and a correct implementation built from undocumented prior knowledge is still evidence the specification was insufficient",
+     "the methodology itself breaks on §8.6": "a real result, not a failed run. It would mean the method depends on properties §12 happened to have — most likely a fixture family that cannot express what the section does, which §12 already hit once at LICENSE-CLOSURE-EXCLUSIVE"
     }
-  ]
+   },
+   "verdict": "PASS-WITH-INFERENCE",
+   "vectors": "26/32",
+   "hypothesis_outcome": "DISPROVED",
+   "constructive": true,
+   "constructive_note": "Six canonical vectors could not be reproduced because the fixture's own structured half omits `license`. The implementer diagnosed the cause, refused to tune around it, and instead added an explicitly-labelled repair mode that supplies ONLY the missing field and still demands exact byte reproduction — reaching 32/32 under it, which proves the encoder byte-exact while leaving the reported score at 26/32.",
+   "prediction_outcome": "CONFIRMED, and broader than predicted. The guess was that §8.6.4a's small-order encodings were unobtainable. The actual finding is larger: RFC 8032 was not in §13.1b at all, so p, L, d, the base point, SHA-512 and the clamping rule were ALL outside the declared surface. Class 2 reproduced in a section developed years apart from §12.",
+   "taxonomy_outcome": {
+    "result": "A FIFTH CLASS — the pre-registered most-valuable outcome",
+    "new_class": "5. DEFECTIVE WITNESS — the measurement apparatus is wrong in a way the specification is not. Classes 1-4 are all defects in the document; this one is a defect in the thing measuring it, and is invisible to drift checks because both halves of the fixture were equally wrong.",
+    "instances": [
+     "six canonical records carry oath-publish/1's six keys while their octets are /2 with seven lines — the record cannot produce its own bytes, while §10.1 and MANIFEST.md both assert it can",
+     "the vector labelled 'arbitrary precision, not a machine word' carries 2^128+1 as a JSON NUMBER; a float64 reader decodes it OFF BY ONE, defeating the rule the vector witnesses",
+     "§10.1's coverage paragraph — itself the product of an earlier round's correction — still overstates on 2 of 5 clauses",
+     "the vectors' `witnesses` vocabulary (8.6.1/field-count, …) appears NOWHERE in the prose: 0 of 8 identifiers, against 39 in §12/§13"
+    ],
+    "retroactive": "Re-examining §12 as pre-registered found four prior instances that had been classified inside the first four classes: a vector carrying the character-rule rejection obligation the prose omitted; `model_licenses` existing nowhere in the prose; MANIFEST citing DESIGN.md, outside the surface; the licence vector schema undocumented. The class was always there and lacked a name.",
+    "classes_1_to_4_also_recurred": true
+   },
+   "methodology_outcome": "GENERALISES. The process exposed insufficiency on a section it was not developed against, using no licensing-specific machinery: all four original classes recurred, 26 of 47 obligations were shown deletable with the suite passing, and the method produced a class the §12 rounds never isolated. It did not mechanically generate findings — the Ed25519 core, the envelope grammar and the journal encoding were all reported as cleanly derived.",
+   "inferred": [
+    "whether oath-publish/1 is accepted or rejected — §8.6.1 both requires reading it and requires rejecting any tag that is not /2, and NOTHING witnesses either reading",
+    "all Ed25519 parameters: p, L, d, the base point, SHA-512, clamping, point compression — RFC 8032 was not a declared normative input",
+    "the test for 'small-order A': the method is unspecified",
+    "whether a mixed-order (torsion-carrying, non-small-order) key is rejected",
+    "whether the store must require envelope author == authenticated principal — security-relevant",
+    "the case of the \\u00XX escape in §8.2.1: written with capital X placeholders, and the two choices give different entry digests for the same entry",
+    "whether invalid UTF-8 must be rejected",
+    "whether uppercase hex in author_pubkey/author_sig must be rejected",
+    "whether clause 5 applies to a legacy entry via the derived transition",
+    "small-order or non-canonical R",
+    "journal member value types and seq rendering",
+    "the entire schema of fixtures/envelope/vectors.jsonl"
+   ],
+   "contamination": [
+    "the subject's session context carried the project's CLAUDE.md and a memory index, unsought and undeclinable. It reports no envelope format, field list, encoding detail, verification clause or constant appeared there, and classes the run 'mildly contaminated at the project-awareness level and uncontaminated at the rule level'",
+    "it ran `wc -l` over the vector file before the boundary and so knew the record count (32); disclosed in its predictions at the time"
+   ],
+   "evidence": "docs/experiments/blind-license-evaluation.md",
+   "implementer_statement": "A working implementation exists, but §8.6 could not be built without inference, and the inference is not confined to cosmetics — one undetermined point is security-relevant and another is a live contradiction in the prose."
+  },
+  {
+   "round": 6,
+   "date": "2026-08-01",
+   "sections": [
+    "10.0a"
+   ],
+   "source": "b9efb2e10cd3b6812b565ba1fbc6bc9e03cdf494",
+   "exporter": "262eefc",
+   "surface_digest": "cf84f44f0064e89859bbe5a7f27efe15f16af496be6ef194871309102420051f",
+   "supplied": [
+    "docs/SPEC.md",
+    "oathrs/",
+    "fixtures/canonical/",
+    "fixtures/hashes.txt",
+    "examples/",
+    "fixtures/MANIFEST.md"
+   ],
+   "research_question": "Is normative text written THIS WEEK, by the same author as the reference implementation, and never independently read, implementable from prose alone? §10.0a is small and self-contained, so a failure is diagnostic rather than ambiguous — it cannot hide behind protocol complexity.",
+   "hypothesis": "§10.0a is sufficient to implement CONF-FIXTURE-FILENAME without inference. Predicted PASS: the rule is three cases and a worked example. If it fails, the defect is in text short enough to read in a minute, which is the most useful possible failure.",
+   "hypothesis_recorded": "before dispatch",
+   "prediction": "If anything is under-determined it will be the DECODE direction or the treatment of characters the table does not mention — the encoding table states three cases and asserts bijectivity without demonstrating the inverse.",
+   "note": "Different shape from rounds 1-5: the subject REPAIRS an existing independent kernel rather than implementing from scratch, so oathrs/ is supplied and oath/ is forbidden. oathrs/DIVERGENCES.md is excluded — it records every ambiguity previous blind rounds found, which is coaching material.",
+   "verdict": "PASS-WITH-INFERENCE",
+   "vectors": "187/187 canonical",
+   "hypothesis_outcome": "DISPROVED",
+   "prediction_outcome": "CONFIRMED. The prediction was that the DECODE direction or unmentioned characters would be under-determined. Both were: decode is not stated at all, and the 'anything else unchanged' row is unconditional, which is what leaves non-ASCII case collisions unfixed.",
+   "inferred": [
+    "what 'an uppercase letter' means — ASCII A-Z or Unicode. Argued from inside the text (full Unicode case mapping is neither injective nor length-preserving, so the section's own bijection claim only survives under ASCII) but never stated",
+    "that the map is applied PER CHARACTER — implied by a table of single characters; all three worked examples have at most one escapable character",
+    "how to DECODE — asserted recoverable, never specified, and partial in fact",
+    "whether the .bin/.json/.txt suffix is inside or outside the encoding",
+    "scope: the sentence says 'every fixture named after a definition' while the MUST enumerates three directories and §10 lists six name-bearing families"
+   ],
+   "findings": [
+    "'bijection' is FALSE — the encoding is an INJECTION; the image excludes uppercase and `_1`/`m_`, so the promised decode is partial and a decoder written to the claim has no rule for out-of-image input",
+    "THE RULE DOES NOT ACHIEVE ITS STATED PURPOSE: only ASCII A-Z are escaped, so `Élan`/`élan` still collide with silent overwrite — the map/Map bug verbatim, in the fix for it. Reproduced on APFS",
+    "the check was UNFALSIFIABLE on macOS: `[ -f _Map.bin ]` succeeds when only `_map.bin` exists, and cmp then compares a file with itself. Measured 0/187 failures under lookup vs 15/187 under exact-name matching",
+    "the `_` -> `__` row is UNWITNESSED: no corpus name contains an underscore, so deleting that row leaves all 187 fixtures matching",
+    "CONF-COVERAGE-FROM-CORPUS as written is FALSE for verify/ — data declarations and property-free functions emit no verdict text, so 168 of 187, and the rule would demand 19 files that must not exist",
+    "'the CORPUS' was undefined — names.json, examples/, or hashes.txt"
+   ],
+   "contamination": [
+    "oathrs/conformance.sh already contained an awk implementation of §10.0a and comments restating the rule — the harness had been updated for the new rule and the kernel had not. The subject read it to locate write sites, AFTER writing DERIVATION.md, and discloses that its post-hoc confidence in the ASCII reading is partly corroborated by it. A second statement of the rule inside the supplied surface is a harness defect: the export should have excluded or stubbed it",
+    "prior familiarity with the Oath project from outside the task, disclosed; no prior knowledge of the fixture-filename encoding, which is days old"
+   ],
+   "evidence": "docs/experiments/blind-license-evaluation.md",
+   "implementer_statement": "Yes for the core, with three gaps I had to fill by assumption. Nothing in the fixtures changed a decision I had made."
+  }
+ ]
 }

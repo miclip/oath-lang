@@ -282,7 +282,7 @@ func TestReservationRetainsPriorExactNameOwners(t *testing.T) {
 
 // RES-PROTOCOL-ROOT: the only prefixes that are not first-come.
 func TestProtocolRootsAreNotReservable(t *testing.T) {
-	for _, bad := range []string{"key/*", "sys/*", "oath/*", "key/sub/*"} {
+	for _, bad := range []string{"key/*", "sys/*", "key/sub/*"} {
 		if err := validNamespacePattern(bad); err == nil {
 			t.Errorf("%q was reservable; protocol roots must not be claimable", bad)
 		}
@@ -290,7 +290,9 @@ func TestProtocolRootsAreNotReservable(t *testing.T) {
 	// Compared on the FIRST SEGMENT, not by string prefix. "oathkeeper" is an
 	// ordinary name and must stay claimable, or the reserved list would silently
 	// consume every name that happens to start with the same letters.
-	for _, good := range []string{"oathkeeper/*", "keys/*", "system/*", "alice/*"} {
+	// `oath/*` is deliberately in this list: it is a first-come root the project
+	// reserves like any other publisher, NOT a kernel namespace.
+	for _, good := range []string{"oath/*", "oathkeeper/*", "keys/*", "system/*", "alice/*"} {
 		if err := validNamespacePattern(good); err != nil {
 			t.Errorf("%q must remain first-come, got: %v", good, err)
 		}

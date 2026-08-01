@@ -51,7 +51,7 @@ REQUIRED = ["round", "date", "sections", "source", "verdict", "inferred",
 REQUIRED_IF_BOUND = ["supplied"]
 
 
-def recompute_surface(source: str, supplied=None) -> str | None:
+def recompute_surface(source: str, supplied=None, exporter_rev=None) -> str | None:
     """Re-export the pinned commit and return its surface digest, or None.
 
     `supplied` is the file list the claim RECORDS. Reproducing with it rather than
@@ -59,10 +59,40 @@ def recompute_surface(source: str, supplied=None) -> str | None:
     checkable: the allowlist evolves — a measurement script was removed from it
     after round three — and re-exporting with today's list would silently compute
     a surface the experiment never used.
+
+    THE EXPORTER ITSELF IS PART OF THAT INSTRUMENT, and pinning only the allowlist
+    left the same bug one level down. A surface digest is a measurement, and a
+    measurement is only meaningful relative to the instrument that produced it —
+    so the exporter is run AS IT WAS AT `source`, not as it is now.
+
+    This is not hypothetical. Round 6 found that oathrs/conformance.sh restated
+    the rule under test inside the supplied surface; the fix changed
+    blind-export.py; and that change retroactively made round 6's own recorded
+    digest irreproducible. Acting on a round's findings must not invalidate the
+    round — otherwise the ledger punishes exactly the behaviour it exists to
+    provoke, and the only way to keep it green would be to leave findings unfixed.
+
+    A real surface change still fails, because the historical exporter is
+    deterministic: same exporter, same commit, same allowlist, same digest.
     """
     tmp = Path(tempfile.mkdtemp(prefix="oath-implcheck-"))
     try:
-        cmd = [sys.executable, str(ROOT / "scripts" / "blind-export.py")]
+        # The exporter as of the recorded commit. Falls back to the current one
+        # when the round predates the script, which is reported rather than
+        # silently assumed — a fallback that looked like a match would be the
+        # vacuous pass this whole gate exists to prevent.
+        # Written BESIDE the current exporter, not into the temp dir: it resolves
+        # the repository root from its own __file__, so a copy anywhere else
+        # silently computes against the wrong tree.
+        exporter = ROOT / "scripts" / "blind-export.py"
+        hist = subprocess.run(["git", "show", f"{exporter_rev or source}:scripts/blind-export.py"],
+                              capture_output=True, cwd=ROOT)
+        historical = None
+        if hist.returncode == 0 and hist.stdout.strip():
+            historical = ROOT / "scripts" / f".blind-export-at-{(exporter_rev or source)[:12]}.py"
+            historical.write_bytes(hist.stdout)
+            exporter = historical
+        cmd = [sys.executable, str(exporter)]
         if supplied:
             cmd += ["--paths", ",".join(supplied)]
         cmd += [source, str(tmp / "root")]
@@ -74,6 +104,8 @@ def recompute_surface(source: str, supplied=None) -> str | None:
                 return line.split()[-1]
         return None
     finally:
+        if 'historical' in dir() and historical is not None:
+            historical.unlink(missing_ok=True)
         shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -204,6 +236,11 @@ def main():
 
         # §13.3 IMPL-SURFACE-BOUND — the machine-checkable half.
         src, sd = r.get("source"), r.get("surface_digest")
+        if sd is not None and not r.get("exporter"):
+            failures.append(
+                f"round {n}: bound claim without `exporter` — a surface digest is a "
+                f"MEASUREMENT, and a measurement that does not name its instrument "
+                f"cannot be reproduced once the instrument is repaired (§13.3)")
         if sd is not None:
             for f in REQUIRED_IF_BOUND:
                 if not r.get(f):
@@ -218,7 +255,7 @@ def main():
                     f"must say WHY it is unbound (§13.3)")
             status = "UNBOUND (see surface_note)"
         else:
-            got = recompute_surface(src, r.get("supplied"))
+            got = recompute_surface(src, r.get("supplied"), r.get("exporter"))
             if got is None:
                 status = f"UNVERIFIABLE — cannot export {src[:12]} from this checkout"
                 failures.append(f"round {n}: surface_digest recorded but {src[:12]} could not be exported")

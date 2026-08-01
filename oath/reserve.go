@@ -163,11 +163,20 @@ func (e resEnvelope) validate() error {
 // list would reintroduce exactly the allocation power this operation removes.
 // Every OTHER prefix is first-come, first-served.
 //
-// These are protocol namespaces — room for kernel-defined names (key-derived
-// prefixes, system objects) that must not be claimable by whoever asks first.
-// Reserving the space now costs nothing; recovering it later would need a
-// transfer operation and a cooperative holder.
-var protocolRoots = []string{"key", "sys", "oath"}
+// The test is INTRINSIC TO THE PROTOCOL, not merely IMPORTANT TO IT. `key` and
+// `sys` are intrinsic: their meaning is assigned by the kernel, no publisher
+// should ever control them, and they need room for kernel-defined names
+// (key-derived prefixes, system objects).
+//
+// `oath` was here in the first draft and was WRONG. It is a publication
+// namespace for the Oath project and its standard library — which means it has a
+// governing party, a history, and eventually delegations. An unreservable root
+// can never have an owner, so reserving it would have permanently prevented the
+// protocol from representing who governs its own standard library. Being
+// important to the protocol is not the same as being part of it; `oath/*` is an
+// ordinary first-come root that the project simply reserves before open
+// admission, like any other publisher.
+var protocolRoots = []string{"key", "sys"}
 
 // WHY FIRST-COME EVERYWHERE ELSE, SQUATTING INCLUDED (settled 2026-08-01).
 //
