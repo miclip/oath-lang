@@ -2134,6 +2134,194 @@ authorship: one process holding both keys produces an identical record. Custody
 separation is a separate, stronger claim and is not established by any mechanism in
 this version.
 
+### 8.7 Namespace reservation (prefix authority)
+
+Two questions about a name look alike and are not the same:
+
+| question | answered by | established |
+|---|---|---|
+| who first bound `alice/foo`? | exact-name ownership | INFERRED from a publication |
+| who may govern `alice/*`? | prefix authority | DECLARED by a signed act |
+
+The first may be inferred, because binding a name IS the act. The second MUST NOT
+be: publishing one child would otherwise capture a whole namespace its publisher
+never reasoned about.
+
+**RES-NEVER-INFERRED.** An implementation MUST NOT derive prefix authority from
+any publication, however many names beneath the prefix a key has published.
+Prefix authority arises ONLY from a reservation recorded under this section.
+
+#### 8.7.1 What a reservation means
+
+A reservation establishes AUTHORITY OVER A PREFIX STRING in one registry. It is
+not identity, affiliation, endorsement, or authorship.
+
+**RES-NOT-ENDORSEMENT.** A reservation of `openai/*` establishes only that a key
+won this registry's first-come rule for the octets `openai`. An implementation
+MUST NOT present it as evidence of any relationship to an external organisation
+of that name, and MUST NOT treat it as authenticating the holder.
+
+This is a consequence of the model, not a caveat about it. Authorship remains
+what the publication envelope (§8.6) says; identity remains the artifact hash
+(§1). A reservation adds a governance fact and nothing else.
+
+#### 8.7.2 The reservation envelope
+
+The canonical signed octets, in this exact order and count:
+
+```
+oath-reserve/1
+op=reserve
+namespace=<prefix pattern>
+authority=<64 hex | ->
+authority_rev=<decimal>
+pubkey=<64 hex>
+```
+
+Terminated by LF; no trailing blank line. `-` in `authority` is the explicit
+sentinel for a prefix no key holds — distinct from an empty field, because "I
+checked and it was unclaimed" and "nobody populated this" are different facts.
+
+`pubkey` names the key making the claim and is INSIDE the signed octets. A
+detached signature would establish that some key signed these bytes; only this
+member makes the bytes say whose claim it is.
+
+`authority` and `authority_rev` are the authority state the reservation replaces
+— the direct analogue of `parent`/`parent_rev` in §8.6.1. A reservation is a
+REVISION OF AUTHORITY, not a standalone assertion; without this pair a later
+transfer could not state what it replaced.
+
+**RES-AUTHORITY-REV-DISTINCT.** `authority_rev` counts AUTHORITY transitions of
+the prefix. It is unrelated to, and MUST NOT be conflated with, the `parent_rev`
+of any name beneath that prefix. Publishing a thousand names under `alice/*`
+leaves its authority revision unchanged.
+
+`authority_rev` is an arbitrary-precision non-negative decimal in canonical form
+(no leading zeros, no sign). A verifier MUST NOT impose a machine-word bound.
+
+**RES-PARSE-STRICT.** A parser MUST reject any octet sequence that does not
+re-encode to itself under this encoding — reordered members, absent or extra
+members, non-canonical integers, or an unknown format line. Signatures cover
+bytes; a decoder accepting variant spellings would let two byte strings verify as
+one statement.
+
+#### 8.7.3 Acceptance rules
+
+A registry MUST refuse a reservation failing any of these.
+
+**RES-SIGNED.** The signature MUST verify against `pubkey` over the canonical
+octets, AND the authenticated principal MUST equal `pubkey`. Both halves are
+required: the first proves the key signed the statement, the second proves the
+submitter holds that key.
+
+**RES-PATTERN.** `namespace` MUST be of the form `<segments>/*` with a non-empty
+prefix and no other `*`. An exact name MUST be refused — exact-name ownership is
+established by publication, and a second, stronger path to it would give one name
+two answers. `*` MUST be refused: a claim to the whole registry is a takeover, not
+a reservation, and no first-come rule may grant it.
+
+**RES-AUTHORITY-CURRENT.** `authority` and `authority_rev` MUST equal the
+registry's currently derived state for the prefix (`-` and `0` when unheld). This
+is the replay and ABA defence: a revision never repeats even if a prefix returns
+to a key that held it before.
+
+**RES-FIRST-COME.** A reservation MUST be refused when a prefix held by a
+DIFFERENT key OVERLAPS it in either direction — that is, when either prefix is a
+segment-wise ancestor of the other. `alice/*` and `alice/sub/*` are one claim
+spelled two ways, not two independent claims.
+
+**RES-NO-CAPTURE.** Names already published beneath the prefix whose exact-name
+owner is another key MUST be RETAINED by that owner. The reservation MUST NOT be
+refused on their account, and MUST NOT transfer them.
+
+RES-NO-CAPTURE is the rule most likely to be implemented backwards, so its
+reasoning is normative context rather than commentary. Refusing a reservation
+because some name beneath it is already owned makes every namespace DENIABLE:
+anyone could publish one name into `alice/*` and permanently block Alice from
+reserving it. Retention has no such vector, preserves the historical fact instead
+of seizing it, and is simply most-specific-wins (§8.7.4) applied consistently — an
+exact name is more specific than a prefix, so its owner keeps it. A registry
+SHOULD report the retained names to the reserver at reservation time.
+
+**RES-PROSPECTIVE.** A reservation MUST NOT alter the authorship, ownership, or
+transition of any entry recorded before it. Authority changes what MAY happen
+next; it never rewrites what happened.
+
+#### 8.7.4 Authority replay and resolution
+
+**RES-DERIVED.** Authority state MUST be derived by replaying the journal. An
+implementation MUST NOT maintain a mutable ownership table as the authority: a
+stored summary can drift from the history it summarises, and the journal is what
+a third party actually holds. The current holder of a prefix is the `pubkey` of
+the accepted reservation with the highest authority revision for that exact
+prefix string.
+
+**RES-MOST-SPECIFIC.** Where several reservations cover a name, the one with the
+LONGEST prefix governs. Where a reservation and an exact-name owner both apply,
+the EXACT NAME governs (this is RES-NO-CAPTURE at resolution time).
+
+**RES-SEGMENT-MATCH.** A prefix `p/*` covers a name `n` if and only if `n` begins
+with `p` followed by the separator `/`. Matching is by SEGMENT, never by
+substring: `alice/*` covers `alice/foo` and `alice/sub/foo`, and does NOT cover
+`alice2/x` or the bare name `alice`. A namespace and a definition sharing leading
+characters are different things.
+
+#### 8.7.5 Protocol roots
+
+A small fixed set of first segments is not reservable. This version defines:
+
+```
+key
+sys
+```
+
+These are INTRINSIC to the protocol: their meaning is assigned by the kernel and
+no publisher governs them. A namespace that is merely important to the protocol —
+including one holding a standard library — is NOT intrinsic; it has a governing
+party and therefore MUST remain reservable, or the protocol could never represent
+who governs it.
+
+**RES-PROTOCOL-ROOT.** A reservation whose FIRST SEGMENT equals a protocol root
+MUST be refused. Compared on the first segment only: `oathkeeper/*` and `keys/*`
+are ordinary first-come prefixes.
+
+**RES-ROOT-CONSTRAINS-RESERVATION-ONLY.** A protocol root constrains RESERVATION
+and nothing else. A name such as `key/foo` that exists, or is later published,
+retains its exact-name ownership and its history unchanged; an implementation
+MUST NOT refuse, seize, or reinterpret it merely because its prefix cannot be
+reserved. Unreservable is not forbidden.
+
+**RES-ROOTS-NOT-CONFIGURABLE.** The protocol-root set MUST be fixed by the
+implementation. It MUST NOT be operator-configurable, since an editable reserved
+list reintroduces the allocation power reservation exists to remove.
+
+#### 8.7.6 Known limits
+
+These are properties of this version, not defects to be worked around.
+
+- **Squatting is permitted, deliberately.** Human-readable prefixes are
+  first-come. Holding a string confers no ability to impersonate anyone
+  (RES-NOT-ENDORSEMENT): every artifact is signed, every publication attributable,
+  every authority chain public. The alternative — allocating attractive names by
+  some other mechanism — would be registry configuration outside the protocol, and
+  would reintroduce the operator this section removes.
+- **No transfer or delegation.** `op` admits only `reserve` in this version. A
+  held prefix cannot change hands; a reservation naming a prefix another key holds
+  MUST be refused rather than treated as a transfer.
+- **First reservation is not atomic** where compare and append are separate
+  operations, exactly as §8.6.5 describes for publication. Two first reservations
+  of the same prefix can both verify. A registry claiming atomic first-come MUST
+  enforce the check and the append in one atomic operation.
+- **Authority is per-registry.** A reservation is a fact about one journal.
+  Nothing in this version relates reservations across registries.
+- **A protocol root is not a protected root.** Because it cannot be reserved, a
+  name beneath one is governed only by whatever exact-name ownership the registry
+  has enabled — whereas an ordinary prefix can be defended by a reservation with
+  no operator configuration at all. "Unreservable" therefore means LESS
+  registry-enforced protection, not more. This is acceptable only because protocol
+  roots exist to hold kernel-defined names; an implementation MUST NOT rely on
+  protocol-root status to protect a published name.
+
 ## 9. The hashed/metadata boundary
 
 Hashed (identity): the `Def` — structure, types, bodies, properties.

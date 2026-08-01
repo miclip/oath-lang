@@ -317,3 +317,39 @@ func TestAttractiveRootsAreFirstComeIncludingSquatting(t *testing.T) {
 		t.Error("a second key took a held root; first-come must be first-come")
 	}
 }
+
+// RES-ROOT-CONSTRAINS-RESERVATION-ONLY (§8.7.5). A protocol root blocks
+// RESERVATION and nothing else. A name beneath one is published, owned, and
+// governed exactly like any other — "unreservable" is not "forbidden".
+//
+// Worth a test because the instinct pulls the other way: a reserved prefix reads
+// like a closed prefix, and an implementation that refused key/foo would look
+// defensible while silently making existing history unpublishable.
+func TestProtocolRootsDoNotForbidPublication(t *testing.T) {
+	st := newMemStoreForTest(t)
+	aliceHex, _ := newKey(t)
+	bobHex, _ := newKey(t)
+
+	reps, err := apiPut(st, `(defn key/foo [] [] Int 1)`, aliceHex, "")
+	if err != nil || reps[0].Status != "accepted" {
+		t.Fatalf("publication under a protocol root was refused: %v %+v", err, reps[0])
+	}
+	// And it is owned normally: exact-name TOFU applies beneath a protocol root.
+	if owner, _ := nameOwner(st, "key/foo"); owner != aliceHex {
+		t.Errorf("key/foo owner = %s, want the first publisher", shortHash(owner))
+	}
+	// A second key CAN repoint it here, and that is correct: exact-name TOFU is
+	// opt-in per policy rule (#84), and this store has no policy.json. The
+	// asymmetry is worth pinning — a RESERVATION enforces with no policy at all,
+	// so a protocol root, being unreservable, is protected ONLY by operator
+	// policy. That is acceptable because protocol roots hold kernel-defined names,
+	// but it is the opposite of what "reserved" suggests.
+	reps, _ = apiPut(st, `(defn key/foo [] [] Int 2)`, bobHex, "")
+	if reps[0].Status != "accepted" {
+		t.Errorf("unexpected refusal: TOFU is opt-in, so with no policy this repoint is allowed (%s)", reps[0].Error)
+	}
+	// The PREFIX remains unreservable, which is the only thing the root controls.
+	if err := validNamespacePattern("key/*"); err == nil {
+		t.Error("key/* became reservable")
+	}
+}
