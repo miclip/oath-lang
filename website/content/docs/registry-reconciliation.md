@@ -180,6 +180,42 @@ Enforcement is at the **hosted** boundary only. Local development is untouched �
 `oath put` against your own store needs no key, because there is no principal to
 establish and nothing to spoof.
 
+### The worker is not an admission path
+
+`oath prove-worker` binds names — a `require_proven` put defers its repoint and
+the worker completes it once the proof lands — so it cannot be waved away as
+evidence-only. What makes that safe is that **admission already happened**:
+
+> Worker journal writes are the completion of an already-admitted put. The worker
+> is never itself an admission path, and its writes must never be routed through
+> the hosted publication API without a signed principal.
+
+The freeze is decided at put time, before anything is enqueued. A name defers
+because Z3 is too heavy to run inside a submission, not because the decision was
+postponed.
+
+Two plausible-looking cleanups would break it, which is why it is pinned by a test
+(`TestWorkerIsNotAnAdmissionPath`) rather than only a comment:
+
+- **routing the worker's writes through the hosted API** so it needs no store
+  access. Its entries are unsigned, so the hosted surface would refuse them, the
+  freeze would surface as an outage — and the tempting fix is to weaken the freeze.
+- **letting anything outside the put path enqueue a gate job**, which would make
+  the queue an admission channel that never ran an admission check.
+
+If the worker ever needs hosted writes it gets a dedicated signing principal, or a
+separate evidence-ingestion endpoint whose authority semantics cannot bind names.
+Not a loosened publication API.
+
+### Not yet exercised
+
+The hosted refusal has **not** been tested against the live registry with a real
+bearer token. The four admission cases are unit-tested, the boundary is deployed,
+and the ratchet confirms no new unowned binding has appeared — but no writer token
+has actually been refused in production. Minting a credential solely to prove a
+refusal is not worth it; this will be exercised naturally the next time an MCP or
+AI client uses one.
+
 ## Running it
 
 ```

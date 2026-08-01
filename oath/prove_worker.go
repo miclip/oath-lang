@@ -310,6 +310,36 @@ func processProofJob(st *Store, job *ProofJob, author string) {
 		return // upgrade job: the recorded verdict is the whole point
 	}
 
+	// TRANSPORT INVARIANT — read this before "simplifying" the worker's deployment.
+	//
+	// This binds a name, so the worker is NOT purely an evidence producer and the
+	// comfortable version of the invariant would be false. The precise one:
+	//
+	//	The worker COMPLETES a name-bind that was already ADMITTED. It is never
+	//	itself an admission path, and its journal writes must never be routed
+	//	through the hosted publication API without a signed principal.
+	//
+	// Admission — including the freeze on creating unowned names (legacy.go) — is
+	// decided at PUT time, before an object is ever enqueued. A `require_proven`
+	// name defers its repoint because Z3 is too heavy to run inside a submission,
+	// not because the decision was postponed. By the time a job exists, the
+	// question "may this principal create this name" has been answered.
+	//
+	// Two ways that could quietly break, both of which look like cleanups:
+	//
+	//   - routing the worker's writes through the hosted API to avoid giving it
+	//     store access. Its entries are unsigned, so the hosted surface would
+	//     refuse them and the freeze would surface as an outage — or, worse,
+	//     someone would relax the freeze to make the worker work again;
+	//   - letting anything enqueue a gate job outside the put path. That would
+	//     make the queue an admission channel that never ran an admission check.
+	//
+	// If the worker ever needs hosted writes it gets a dedicated SIGNING PRINCIPAL,
+	// or a separate evidence-ingestion endpoint whose authority semantics cannot
+	// bind names. Not a loosened publication API.
+	//
+	// Pinned by TestWorkerIsNotAnAdmissionPath.
+	//
 	// Gate job: decide the deferred name-bind against the CURRENT world.
 	if cur, ok := st.Resolve(job.Name); ok && cur == job.Hash {
 		return // already bound (idempotent re-run)
