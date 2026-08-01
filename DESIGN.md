@@ -83,6 +83,64 @@ their own text supplies the intended meaning for free — and in a specification
 they are the ones that matter most, because every downstream reader inherits the
 overclaim.
 
+## A specification must not claim a stronger property than its construction establishes (2026-08-01)
+
+The shortest form of what six blind rounds found, and the one to keep.
+
+| the claim | what was actually established |
+|---|---|
+| "the encoding is a bijection" | an injection; decode is partial |
+| "portable filenames on case-insensitive filesystems" | injectivity over ASCII case distinctions only |
+| "186 canonical fixtures byte-identical" | 186 of the files that survived generation agreed |
+| "the client derives byte-identical identity to the server" | it shared the elaboration and not the step after it |
+| an evaluation identity | bound a method and its members, never the subject |
+
+None of these is an implementation bug. Each is a place where the PROSE OUTRAN
+THE EVIDENCE — and each was invisible to the author, because reading your own
+text supplies the intended meaning for free.
+
+### The rounds changed what they were finding
+
+The progression is the maturation, and it is worth stating because it predicts
+what a later round is for:
+
+- **rounds 1–2** — the specification did not say enough
+- **rounds 3–4** — it said enough, but not consistently
+- **rounds 5–6** — it said MORE than it had established
+
+The target stopped being completeness and became CALIBRATION. Missing information
+is easy to find by trying to implement; excess confidence is not, because a
+complete implementation is compatible with an overclaiming specification. Round 6
+reached 187/187 and still disproved the hypothesis.
+
+### Why no round has reached PASS, and why that is the honest reading
+
+The ledger records six rounds and no PASS. That is not the methodology failing to
+converge — it is the bar staying fixed while the document improved. A PASS
+appearing in round two or three, while the specification was still changing this
+fast, would have been evidence the experiment had become accommodating.
+
+The PASS to expect is not "nothing more can be found". It is the point where
+findings stop changing what the specification MEANS and become editorial. We are
+not there, and the ledger says so.
+
+### The discipline that made it work: metrics were allowed to get worse
+
+Repeatedly, a number moved the wrong way because the measurement improved —
+witness coverage gaining a larger denominator, the envelope inventory growing
+while witnessed obligations stayed flat, the fixture matrix getting stricter,
+§10.0a now claiming less than it did. Optimising the score and optimising what
+the score MEANS are different objectives, and only the second survives contact
+with an independent reader.
+
+### What all of it reduces to
+
+**The project learned to distinguish evidence from explanation.** Every principle
+here follows from that one distinction: history stores evidence rather than
+derived facts; identities bind their subject rather than their intended meaning;
+witnesses do not define their own coverage; examples constrain but do not prove;
+and a specification claims only what its construction establishes.
+
 ## Evidence must never define itself (2026-08-01)
 
 One sentence, three levels:
