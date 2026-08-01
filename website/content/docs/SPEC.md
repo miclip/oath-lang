@@ -2454,11 +2454,23 @@ to_authority=<hex>
 authority_rev=<decimal>
 ```
 
+**XFER-SCOPE.** `namespace` MUST be a prefix pattern, the same form a reservation
+takes. An exact name is not transferable: exact-name ownership is inferred from a
+name's first binding, not held, so there is no authority record to move.
+`from_authority` MUST differ from `to_authority` — a self-transfer changes nothing
+while advancing both revisions and clearing every delegation, which would be a way
+to revoke wholesale without going through the delegation path.
+
 **XFER-SIGNED-BOTH.** A transfer carries TWO signatures over the SAME canonical
 octets: one by `from_authority`, one by `to_authority`. A verifier MUST check
 both. A separate acknowledgement MUST NOT be accepted in place of the second
 signature — a detached document can be replayed against a different transfer, and
 one statement with two signatures cannot.
+
+Neither signature is part of the signed octets; both are carried beside them. A
+verifier MUST match each signature against the key it is claimed for
+(`from_authority`, `to_authority`) rather than by position, so the order in which
+an implementation transmits or stores them carries no meaning.
 
 **XFER-RECIPIENT-CONSENTS.** Custody carries obligations: a reservation counts
 against the recipient's cap and confers duties over everything beneath the prefix.
@@ -2471,8 +2483,20 @@ holder.
 authority revision; a transfer signed against any other value MUST be refused.
 
 **XFER-RESERVATION-LIMIT.** A transfer that would take the recipient past a
-registry's reservation cap MUST be refused. Otherwise transfer is a way around the
-cap.
+registry's reservation cap MUST be refused at ADMISSION. Otherwise transfer is a
+way around the cap.
+
+A namespace held by transfer counts toward the recipient's cap exactly as a
+reserved one does, and stops counting toward the sender's — the cap counts what a
+key HOLDS, not how it came to hold it.
+
+REPLAY MUST NOT RE-VALIDATE THE CAP. The cap is registry-local configuration and
+its value MAY differ between registries; re-checking it during derivation would
+make a journal replay to a different holder depending on the verifier's
+configuration. Derivation trusts the recorded acceptance, which is what
+AUTH-ACCEPTANCE-IS-THE-BOUNDARY already requires. The consequence is stated rather
+than hidden: a third party cannot verify from the journal alone that a registry
+applied its own cap correctly.
 
 **XFER-NO-CAPTURE.** A transfer moves the PREFIX. Exact-name ownership beneath it
 is unchanged, and retained names MUST be reported. Acquiring ground must never be
@@ -2485,7 +2509,12 @@ revision by exactly one. A REFUSED transfer MUST NOT advance it.
 who WROTE anything. Journal authorship is untouched, as it is by revocation.
 
 **XFER-CLEARS-DELEGATIONS.** An accepted transfer revokes every delegation under
-the prefix, and advances the delegation revision. The grants were made by the OLD
+the prefix, and advances the delegation revision by EXACTLY ONE — unconditionally,
+including when the prefix had no delegations, and regardless of how many it had.
+Advancing per cleared delegation, or not advancing when the set was empty, would
+put two conformant implementations at different delegation revisions after the
+same transfer, so the next grant would be accepted by one and refused by the other
+under DEL-CAS. The grants were made by the OLD
 holder; carrying them across would give the recipient publishers it never
 authorised — authority by inheritance, which is what reservation exists to
 prevent. The revision advance is what stops a grant envelope written before the
@@ -2493,7 +2522,10 @@ handover from being replayed after it.
 
 **XFER-REFUSALS-ARE-PRESERVED.** Once both signatures verify and the caller is a
 party, a refusal is a statement real principals made: it is journaled and confers
-nothing. A transfer submitted by anyone other than the two parties MUST be
+nothing. When EITHER signature fails to verify, the statement is not authenticated
+and MUST NOT be journaled — a half-signed document attests to nothing, and
+preserving it would let anyone write into the journal by pairing a real signature
+with a forged one. A transfer submitted by anyone other than the two parties MUST be
 refused, and such a relay is not preserved.
 
 The net effect of an accepted transfer:
