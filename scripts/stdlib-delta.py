@@ -128,8 +128,17 @@ def main():
             out.append(f"  - project licensing assertion: `{d.get('license','(none)')}`")
             st = d.get("standing") or {}
             out.append(f"  - standing: `{st.get('type','(none)')}` — {st.get('evidence','(no evidence)')[:120]}")
+        # None means the lookup FAILED; [] means the definition genuinely depends on
+        # nothing — a datatype, typically. Reporting both as "not resolvable" tells
+        # a reviewer the closure is unknown when in fact it is empty and complete,
+        # which is the difference between "check this" and "nothing to check".
         c = closure(n)
-        out.append(f"  - closure: {', '.join(c) if c else '_not resolvable from the committed store_'}")
+        if c is None:
+            out.append("  - closure: _not resolvable from the committed store_")
+        elif not c:
+            out.append("  - closure: none — this definition depends on nothing")
+        else:
+            out.append(f"  - closure: {', '.join(c)}")
         return out
 
     def simple(n):
