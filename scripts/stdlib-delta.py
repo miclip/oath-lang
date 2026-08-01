@@ -111,14 +111,21 @@ def main():
 
     def add_render(n):
         d = h[n]
-        out = [f"- **`{ns}/{n}`**",
+        # A referenced member is shown as `stdlib/<name>` because no `oath/<name>`
+        # is created. Labelling it with the namespace prefix would assert exactly
+        # the binding the mode declines to make, in the report a reviewer reads to
+        # decide whether that binding is warranted.
+        label = f"stdlib/{n}" if d.get("membership") == "referenced" else f"{ns}/{n}"
+        out = [f"- **`{label}`**",
                f"  - artifact: `{d.get('artifact','')}`",
                f"  - membership: `{d.get('membership','?')}`"]
         if d.get("membership") == "referenced":
-            out.append(f"  - source publication: `{d.get('publication','(none)')}`")
-            out.append("  - licence: _asserted by the pinned publication, not by this project_")
+            out.append(f"  - selected publication: `{d.get('publication','(none)')}`")
+            out.append(f"  - registry publication under `{ns}/`: **none** — this member is selected, not republished")
+            out.append("  - project licensing assertion: **none** — terms are the publisher's own")
         else:
-            out.append(f"  - licence asserted by this project: `{d.get('license','(none)')}`")
+            out.append(f"  - registry publication under `{ns}/`: `{ns}/{n}` will be created")
+            out.append(f"  - project licensing assertion: `{d.get('license','(none)')}`")
             st = d.get("standing") or {}
             out.append(f"  - standing: `{st.get('type','(none)')}` — {st.get('evidence','(no evidence)')[:120]}")
         c = closure(n)

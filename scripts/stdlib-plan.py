@@ -29,7 +29,12 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     man = json.loads((ROOT / "stdlib" / "oath-stdlib.json").read_text())
     ns = man["namespace"]
-    exports = [d for d in man["definitions"] if d.get("export")]
+    # ONLY project-publication entries are planned. A `referenced` member is
+    # selected, not republished: the project creates no oath/<name> binding and
+    # makes no licence assertion, so there is nothing for a publisher to sign.
+    # Planning one would republish what the project claimed only to recommend.
+    exports = [d for d in man["definitions"]
+               if d.get("export") and d.get("membership") == "project-publication"]
     want = {d["name"] for d in exports}
 
     # Split every source file into top-level forms and keep the ones we export.

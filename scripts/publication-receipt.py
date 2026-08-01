@@ -53,6 +53,31 @@ def envelopes(rows):
     return out
 
 
+def by_digest(rows):
+    """sha256(canonical octets) -> (name, envelope kv, entry) for every publication.
+
+    A `referenced` member pins a PUBLICATION, not an artifact and not a name. The
+    artifact says which bytes; only the publication says whose grant, under what
+    terms, at what point. Two publications of one artifact can assert different
+    licences — that is how dual licensing works — so pinning the artifact would
+    select a set rather than a statement.
+    """
+    out = {}
+    for e in rows:
+        if not e.get("envelope_b64"):
+            continue
+        try:
+            oct_ = base64.b64decode(e["envelope_b64"], validate=True)
+            lines = oct_.decode().rstrip("\n").split("\n")
+        except Exception:
+            continue
+        if not lines[0].startswith("oath-publish/"):
+            continue
+        kv = dict(l.split("=", 1) for l in lines[1:] if "=" in l)
+        out[hashlib.sha256(oct_).hexdigest()] = (kv.get("name", ""), kv, e)
+    return out
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__.strip().rsplit("Usage:", 1)[-1].strip())
@@ -102,11 +127,44 @@ def main():
     # A gate whose cheapest satisfaction is "never curate" is measuring the wrong
     # thing.
     live = [n for n in pubs if n.startswith(ns + "/")]
+    # THE TWO MODES ARE VERIFIED DIFFERENTLY, because they claim different things.
+    republished = [d for d in exported if d.get("membership") == "project-publication"]
+    referenced = [d for d in exported if d.get("membership") == "referenced"]
+    want = [f"{ns}/{d['name']}" for d in republished]     # only these bind oath/<name>
     missing = sorted(set(want) - set(live))
     nonmembers = sorted(set(live) - set(want))
-    check(f"all {len(want)} library members are live",
+    check(f"all {len(republished)} project-published members are live under {ns}/",
           not missing,
           f"declared but NOT live: {missing}" if missing else "")
+
+    # A referenced member must NOT have created an oath/<name> binding. If one
+    # exists, the project published something it claimed only to select.
+    encroached = [d["name"] for d in referenced if f"{ns}/{d['name']}" in pubs]
+    if referenced:
+        check("no referenced member was republished under the namespace",
+              not encroached,
+              f"{encroached} exist under {ns}/ but are declared `referenced` — the project "
+              f"published what it claimed only to recommend" if encroached else "")
+
+    # Each referenced member's pinned publication must exist, be signed, and carry
+    # the declared artifact.
+    digests = by_digest(rows)
+    if referenced:
+        bad = []
+        for d in referenced:
+            pin = d.get("publication", "")
+            hit = digests.get(pin)
+            if hit is None:
+                bad.append(f"{d['name']}: pinned publication {pin[:12]}… not found in the journal")
+                continue
+            pname, kv, ent = hit
+            if kv.get("artifact") != d["artifact"]:
+                bad.append(f"{d['name']}: pinned publication carries artifact "
+                           f"{kv.get('artifact','')[:12]}…, manifest declares {d['artifact'][:12]}…")
+            if not ent.get("author_sig"):
+                bad.append(f"{d['name']}: pinned publication is unsigned")
+        check(f"all {len(referenced)} referenced members resolve to a signed pinned publication",
+              not bad, "; ".join(bad))
     # Exclusivity is opt-in. A manifest may claim the namespace holds nothing but
     # the library; this one does not, and demanding it by default would conflate a
     # curated view with the infrastructure it is a view over.

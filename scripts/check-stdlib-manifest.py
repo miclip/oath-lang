@@ -101,25 +101,7 @@ def main():
             # MEMBERSHIP MODE decides what claim is being made, so it decides what
             # must be proven. Defaulting it would let the stronger claim be made by
             # omission, which is the whole failure this distinction prevents.
-            # `referenced` is REJECTED until its mechanism exists. The manifest
-            # accepts a distinction the publish path erases: every export must be
-            # live as oath/<name>, and the workflow asserts the manifest's
-            # top-level licence for all of them — so a `referenced` entry would be
-            # republished under oath/* carrying a PROJECT assertion, which is
-            # exactly the laundering the mode exists to prevent.
-            #
-            # Refusing is the safe state. A mode that is a label with no mechanism
-            # behind it is worse than an absent mode, because a reviewer reading
-            # "referenced" would believe no project assertion was being made.
-            if mode == "referenced":
-                failures.append(
-                    f"{name}: `referenced` is not yet implemented and is REFUSED. Its mechanics "
-                    f"(no oath/<name> binding, no project licence assertion, resolution through "
-                    f"the pinned publication) do not exist, and the publish path would republish "
-                    f"it under oath/* with the project's licence — replacing the publisher's "
-                    f"assertion with one made by the curator. Use `project-publication` only "
-                    f"where the project genuinely has standing. See issue #107")
-            elif mode not in ("referenced", "project-publication"):
+            if mode not in ("referenced", "project-publication"):
                 failures.append(f"{name}: membership must be `referenced` (the library depends on an "
                                 f"existing publication and asserts nothing) or `project-publication` "
                                 f"(the project makes its own licence assertion). Got {mode!r}")
@@ -149,9 +131,20 @@ def main():
                                 f"the library asserts nothing and evaluation consumes the pinned "
                                 f"publication's own terms. A licence here would be a fresh assertion "
                                 f"wearing the weaker mode's label")
-            if not d.get("source"):
-                failures.append(f"{name}: exported but has no `source` — its hash could not be reproduced, "
-                                f"so the manifest would be asserting an artifact nobody re-derived")
+            # `source` is required only for project-publication, where the project
+            # republishes and must therefore reproduce the artifact itself. A
+            # `referenced` entry's artifact is established by the PINNED
+            # PUBLICATION — a signed statement by its author — and demanding local
+            # reproduction would require the project to hold the contributor's
+            # source, which is exactly the coupling the mode removes.
+            if mode == "project-publication" and not d.get("source"):
+                failures.append(f"{name}: project-publication with no `source` — the project republishes "
+                                f"this artifact, so it must be able to re-derive the hash rather than "
+                                f"assert one nobody reproduced")
+            if mode == "referenced" and d.get("source"):
+                failures.append(f"{name}: `referenced` must not carry a `source`. The artifact is "
+                                f"established by the pinned publication, and a source here would "
+                                f"suggest the project reproduces something it only selects")
         else:
             excluded.append(d)
             # An exclusion without a reason is indistinguishable from an accident.
@@ -167,13 +160,14 @@ def main():
         return 1
 
     # REPRODUCTION. This is the check that matters.
-    sources = {d["source"] for d in exported}
-    print(f"reproducing {len(exported)} exported artifact(s) from {len(sources)} source file(s)…")
+    republished = [d for d in exported if d.get("membership") == "project-publication"]
+    sources = {d["source"] for d in republished}
+    print(f"reproducing {len(republished)} republished artifact(s) from {len(sources)} source file(s)…")
     derived = reproduce_hashes(sources)
     if derived is None:
         return 1
 
-    for d in exported:
+    for d in republished:
         name, claimed = d["name"], d["artifact"]
         got = derived.get(name)
         if got is None:
