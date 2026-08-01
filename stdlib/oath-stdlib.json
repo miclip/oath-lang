@@ -39,6 +39,7 @@
   ],
   "namespace": "oath",
   "authority_pubkey": "4ecd572dffebe8fc36b376fdee1cb358863a6d61fda2e37fb6c6e9c4ac1ffa6c",
+  "authority_kms": "projects/oath-prod-503514/locations/us-central1/keyRings/oath-authority/cryptoKeys/oath-project/cryptoKeyVersions/1",
   "authority_note": "The project key that must hold oath/* and sign every publication under it. PUBLIC HALF ONLY \u2014 the private key is never in this repository. TEMPORARY LIMITATION: this version has no delegation, so this same key must both hold the namespace and perform CI publication. A compromised release secret would therefore control the namespace itself, not merely the right to publish into it. The intended end state is an offline authority key delegating publication to a revocable release key; until delegation exists this is recorded rather than hidden.",
   "license": "Apache-2.0",
   "definitions": [
