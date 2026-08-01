@@ -1,6 +1,7 @@
 use oathrs::analyze;
 use oathrs::check;
 use oathrs::elaborate::elaborate_corpus;
+use oathrs::fixture::encode_name;
 use oathrs::hash::sha256_hex;
 use oathrs::ir::*;
 use oathrs::verify;
@@ -71,7 +72,8 @@ fn cmd_canon(paths: &[String], out_dir: Option<&str>) -> i32 {
         }
         for (name, def) in &store.def_by_name {
             let bytes = canonical_bytes(def);
-            let path = format!("{}/{}.bin", dir, name);
+            // SPEC §10.0a CONF-FIXTURE-FILENAME: the name is ENCODED.
+            let path = format!("{}/{}.bin", dir, encode_name(name));
             if let Err(e) = fs::write(&path, &bytes) {
                 eprintln!("error: {}: {}", path, e);
                 return 1;
@@ -114,7 +116,8 @@ fn cmd_verify(paths: &[String], out_dir: Option<&str>) -> i32 {
         if let Some(text) = verify::verify_text(&store, name) {
             match out_dir {
                 Some(dir) => {
-                    let path = format!("{}/{}.txt", dir, name);
+                    // SPEC §10.0a CONF-FIXTURE-FILENAME: the name is ENCODED.
+                    let path = format!("{}/{}.txt", dir, encode_name(name));
                     if let Err(e) = fs::write(&path, text.as_bytes()) {
                         eprintln!("error: {}: {}", path, e);
                         return 1;
@@ -173,7 +176,8 @@ fn cmd_analyze(paths: &[String], out_dir: Option<&str>, proofs_path: Option<&str
         let json = analyze::to_json(&a);
         match out_dir {
             Some(dir) => {
-                let path = format!("{}/{}.json", dir, name);
+                // SPEC §10.0a CONF-FIXTURE-FILENAME: the name is ENCODED.
+                let path = format!("{}/{}.json", dir, encode_name(name));
                 if let Err(e) = fs::write(&path, json.as_bytes()) {
                     eprintln!("error: {}: {}", path, e);
                     return 1;
@@ -634,6 +638,10 @@ fn cmd_enctest(dir: &str) -> i32 {
     let mut ok = true;
     for (name, def) in &cases {
         let got = canonical_bytes(def);
+        // NOT §10.0a-encoded, deliberately: these are §1.5 golden-encoding CASE
+        // names (`bool_bytes`, `record_order`), not definition names, and §10.0a
+        // scopes the encoding to "a fixture derived from a definition NAME".
+        // Encoding them would rename `bool_bytes.bin` to `bool__bytes.bin`.
         let path = format!("{}/{}.bin", dir, name);
         let want = match fs::read(&path) {
             Ok(w) => w,

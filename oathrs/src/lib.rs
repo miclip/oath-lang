@@ -12,6 +12,7 @@ pub mod check;
 pub mod crypto;
 pub mod elaborate;
 pub mod eval;
+pub mod fixture;
 pub mod gen;
 pub mod hash;
 pub mod ir;
