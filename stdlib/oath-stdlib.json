@@ -151,6 +151,54 @@
       "note": "selected from the publisher's own publication (65ea5701d92e\u2026), Apache-2.0"
     },
     {
+      "name": "Result",
+      "artifact": "533302244706181df24e044f62eaf09e6da1abb7df016686389bb6a97f1a011d",
+      "membership": "referenced",
+      "publication": "f6c91dac58db13358667af0c0d678ffb1e5de162b34432da7e9e39437d9fa2c5",
+      "export": true,
+      "note": "selected from the publisher's own publication, Apache-2.0"
+    },
+    {
+      "name": "map-result",
+      "artifact": "e2805294c80994435e36372d509d8eeab5191860de88887aec46a2cc6f8cd465",
+      "membership": "referenced",
+      "publication": "1e6d57c53708c33db2877c7b4ca986f3f60fa23bbcee0456f3e196f3e4a6c337",
+      "export": true,
+      "note": "selected from the publisher's own publication, Apache-2.0"
+    },
+    {
+      "name": "map-err",
+      "artifact": "895fa0dbd9fbb14aa5af561a96771d500543f5f8ec88e47a5a00d12224d3ffe3",
+      "membership": "referenced",
+      "publication": "a3bd3df78cccc60bf7e1c0f23316993802bb68d48088ec259e368a00d52e6608",
+      "export": true,
+      "note": "selected from the publisher's own publication, Apache-2.0"
+    },
+    {
+      "name": "unwrap-or",
+      "artifact": "19d25f94f919f5fa214487f020fbf665989f7a75d0556222aad8c6c94b3f4e44",
+      "membership": "referenced",
+      "publication": "d70aa1eb9ac95741a3f190171d5631c20f796cc8bf14c6752adee3b731919efa",
+      "export": true,
+      "note": "selected from the publisher's own publication, Apache-2.0"
+    },
+    {
+      "name": "Pair",
+      "artifact": "3c3d94c1dc9ee15fca43062cec36eadb29780640d2dbba40e1aa77f4ff6ba7c6",
+      "membership": "referenced",
+      "publication": "44f97112aa9a2735d0ef6d708c6d638f7c235ac180faa2707c7ca9c8eb5a2bbf",
+      "export": true,
+      "note": "selected from the publisher's own publication, Apache-2.0"
+    },
+    {
+      "name": "swap",
+      "artifact": "b00e9f7d7c2d30c50f40005d5ec58a8c19fc7c667f1c3b598752285b16387fe3",
+      "membership": "referenced",
+      "publication": "54f39cd3a38037ce84951702e5c9ab01121fb5353c8cb32118fbcc0fe395b71e",
+      "export": true,
+      "note": "selected from the publisher's own publication, Apache-2.0"
+    },
+    {
       "name": "bad-reverse",
       "artifact": "af6b61e2180ad5ccdeb541b00c7f53d285aa3f3af997a5e00653954492cb25f1",
       "export": false,
