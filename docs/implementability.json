@@ -338,6 +338,28 @@
    ],
    "evidence": "docs/experiments/blind-license-evaluation.md",
    "implementer_statement": "Yes-with-inference, and the inference is concentrated in exactly the parts no vector witnesses. The encoding half is implementable from the text alone — 15/15 on first run with no change after opening the vectors. The authority half is not: two conformant implementations can hand the same journal to two different keys, and the corpus cannot see it."
+  },
+  {
+   "round": 8,
+   "date": "2026-08-01",
+   "status": "DISPATCHED",
+   "sections": [
+    "8.7"
+   ],
+   "source": "f49f980",
+   "surface_tool": "blind-kit.py",
+   "kit_section": "8.7",
+   "surface_digest": "d6603ab18837db6ea5c6891b2aab3446d9664cc22562b3f2367cf442e45f0487",
+   "supplied": [
+    "SPEC-excerpt.md (§8.2.1, §8.6.1, §8.6.5, §8.7 incl. the new §8.7.0)",
+    "fixtures/vectors.jsonl (23 vectors: 3 canonical, 7 reject, 5 covers, 8 state)",
+    "HARNESS.md"
+   ],
+   "research_question": "A VALIDATION round, not an open-ended search. Round 7 established that §8.7 used objects it never defined. Round 8 asks whether the new §8.7.0 definitions actually CARRY the rest of the section: can an independent reader derive the authority model and implement §8.7 without borrowing meaning from the reference kernel or from session context?",
+   "hypothesis": "§8.7.0 is sufficient. Predicted PASS — the ontology now defines authority, authority revision, order, ACCEPTED, and exact-name ownership before any rule uses them, and eight state vectors witness the replay rules that had no witness in round 7.",
+   "hypothesis_recorded": "before dispatch",
+   "prediction": "Six narrow failure modes, recorded before dispatch: (1) are authority and exact-name owner unambiguously PRINCIPALS rather than hashes or labels; (2) does authority_rev advance on every accepted authority transition and ONLY those; (3) is 'first' derived from the serialization of accepted transitions rather than physical journal position; (4) does replay accept only cryptographically verified reservation events; (5) can registry-authored kind, author_pubkey or status labels affect authority without being covered by signed bytes; (6) do retention and most-specific-wins remain derivable now that the ontology has been introduced around them. I expect (3) to be the weakest — the distinction between committed order and byte order is stated but has no vector that could distinguish them, since a single-writer journal makes them coincide.",
+   "note": "KNOWN VIOLATION OF IMPL-ISOLATED-SESSION, disclosed before dispatch rather than after. The harness cannot currently strip this project's CLAUDE.md and memory index from a dispatched session's system prompt, so the rule §13 gained today CANNOT BE SATISFIED by this harness. Round 8 therefore runs under the same contamination round 7 disclosed, mitigated only by explicit quarantine instructions and mandatory disclosure. Recording this in advance is the point: a rule whose first application is a violation is a rule about the harness, and the measurement must not be reported as though the environment were clean. Second kit round; DERIVATION.md is still required before the vectors are opened."
   }
  ]
 }

@@ -3351,6 +3351,26 @@ because both satisfy every stated rule.
 > Each was learned from a defect that field-level review did not catch, and each
 > is now enforced mechanically rather than by recollection.
 
+**IMPL-REPRODUCIBLE-INSTRUMENT.** Every artifact an implementability claim
+depends on — the exported surface, the tool that produced it, and the record that
+verifies it — MUST be reproducible from the historical commit that produced it. A
+claim whose surface can only be rebuilt from current sources is not bound to
+anything.
+
+This is measurement identity, not harness sophistication. A digest is a
+measurement, and a measurement is meaningless without its instrument; an
+instrument that has since been repaired cannot reproduce what it measured before.
+The failure is self-inflicted and recurring in a specific way: ACTING ON A
+ROUND'S FINDINGS IS WHAT BREAKS THE ROUND'S OWN EVIDENCE. A round finds the
+harness leaked, the harness is fixed, and the round's digest stops reproducing. A
+round finds a section under-defined, the section is repaired, and the kit built
+from it stops reproducing.
+
+A ledger that fails in those situations punishes exactly the behaviour it exists
+to provoke, and the only way to keep it green would be to leave findings unfixed.
+Three separate instruments needed this before it was stated as a rule rather than
+applied as three repairs.
+
 **IMPL-ISOLATED-SESSION.** An implementability claim MUST NOT be made from a run
 whose execution environment carried project-specific normative knowledge outside
 the exported surface. Where such knowledge was present, the run MUST disclose it

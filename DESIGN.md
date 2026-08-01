@@ -161,6 +161,35 @@ derived facts; identities bind their subject rather than their intended meaning;
 witnesses do not define their own coverage; examples constrain but do not prove;
 and a specification claims only what its construction establishes.
 
+## Acting on a finding must not destroy the finding
+
+Three instruments needed the same repair before the pattern was named: the blind
+exporter, the protocol kit, and the ledger that checks both. Each time the shape
+was identical, and each time it looked like a one-off.
+
+A round finds that the harness leaked; the harness is fixed; the round's recorded
+surface digest stops reproducing. A round finds a section used objects it never
+defined; the section is repaired; the kit built from that section stops
+reproducing. In both cases the evidence was invalidated BY THE ACT THE EVIDENCE
+EXISTED TO PROVOKE.
+
+A gate that fails in that situation is worse than no gate. It makes the cheapest
+way to stay green "do not fix what you found", which inverts the entire purpose,
+and it does so quietly — the failure looks like a integrity violation rather than
+like a design error in the check.
+
+The rule, now normative as IMPL-REPRODUCIBLE-INSTRUMENT: every experimental
+artifact must be reproducible from the historical commit that produced it. Not
+from current sources, and not from current tooling. The generalisation is that a
+digest is a measurement, and a measurement is only meaningful relative to its
+instrument — so pinning the surface is not enough if the thing that computes the
+surface can move.
+
+The practical form is small: every tool that produces evidence takes a commit,
+and every claim records which tool and which commit. The cost of adding that up
+front is minutes. The cost of discovering it three times is that two intervening
+rounds recorded evidence nobody could re-derive.
+
 ## A fifth defect class: objects with no ontology
 
 Round 7 found five defects in one section, and their value is not that there were
