@@ -282,6 +282,9 @@ every ambiguity found this way.
 - `docs/floats.md` — the IEEE `Float` identity decision (bit-identity, `==` is
   Leibniz/SMT `=`, canonical NaN); `docs/native-containers.md` — `Set`/`Map`
   compiled to native Go maps, differential-gated (#13).
+- `docs/publishing.md` — THE PRACTICAL GUIDE: keygen, reserve, publish, delegate,
+  and how to propose a standard-library addition (membership modes, the PR flow,
+  what gets accepted). The how; `authority.md` is the why.
 - `docs/authority.md` — THE AUTHORITY MODEL as protocol, not as history: why
   authority is a principal, why revisions version authority state, why reservation
   is explicit while exact-name ownership is inferred, why retention beats denial,

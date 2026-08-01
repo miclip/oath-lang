@@ -27,6 +27,14 @@ export const refdocs: RefDoc[] = [
     group: "Protocol",
   },
   {
+    slug: "publishing",
+    file: "publishing.md",
+    title: "Publishing",
+    blurb:
+      "The practical path: get a key, reserve a namespace, publish under it, delegate publication to CI, and propose an addition to the standard library.",
+    group: "Protocol",
+  },
+  {
     slug: "authority",
     file: "authority.md",
     title: "The authority model",

@@ -381,7 +381,14 @@ func renderDelegateReport(r delegateReport) string {
 // cmdDelegate grants or withdraws publication rights, locally or against a registry.
 func cmdDelegate(local *Store, endpoint, keyPath, kmsKey, namespace, subject, op string, dryRun, assumeYes bool) {
 	if namespace == "" || subject == "" {
-		fail(fmt.Errorf("usage: oath %s <namespace>/* --to <pubkey> [--key <file> | --kms-key <res>] [--remote <url>]", op))
+		// The flag differs by operation: you delegate TO a key and revoke FROM one.
+		// Both are accepted by the parser, but the usage message must name the one
+		// that reads correctly, or it teaches the wrong idiom for half its uses.
+		flag := "--to"
+		if op == opRevoke {
+			flag = "--from"
+		}
+		fail(fmt.Errorf("usage: oath %s <namespace>/* %s <pubkey> [--key <file> | --kms-key <res>] [--remote <url>]", op, flag))
 	}
 	if err := validNamespacePattern(namespace); err != nil {
 		fail(err)
