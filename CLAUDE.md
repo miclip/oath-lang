@@ -186,6 +186,12 @@ every ambiguity found this way.
 - `docs/floats.md` — the IEEE `Float` identity decision (bit-identity, `==` is
   Leibniz/SMT `=`, canonical NaN); `docs/native-containers.md` — `Set`/`Map`
   compiled to native Go maps, differential-gated (#13).
+- `docs/authority.md` — THE AUTHORITY MODEL as protocol, not as history: why
+  authority is a principal, why revisions version authority state, why reservation
+  is explicit while exact-name ownership is inferred, why retention beats denial,
+  why protocol roots are `key`/`sys` only, and what a third party can check from
+  the journal alone. Written for someone building a second registry; deliberately
+  contains no methodology. SPEC §8.7 is the normative text.
 - `docs/licensing.md` — licensing as an EVIDENCE DOMAIN: publisher asserts signed
   terms in the envelope, registry derives what a composition permits under a
   named versioned model. UNSTATED is never permission and is contagious.

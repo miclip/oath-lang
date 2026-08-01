@@ -3503,6 +3503,23 @@ as if they were UNWITNESSED — which suggested writing vectors for rules that d
 not yet have meanings. A vector cannot witness an undefined object; it can only
 freeze one implementer's guess about it.
 
+**RES-PINNED-RECOVERABLE** (prerequisite). A pinned choice MUST be recoverable
+from the protocol state. Otherwise it is not pinned — it is merely asserted.
+
+This separates two things that both look like "unobservable" and are not the same:
+
+- **CURRENTLY OBSERVATIONALLY EQUIVALENT** — every implementation the model
+  permits today behaves identically under either alternative, and the value is
+  still reconstructible from what the protocol records. Pinning it early is
+  correct and is what stops divergence when the distinction becomes visible.
+- **FUNDAMENTALLY UNREADABLE** — the chosen value cannot be reconstructed from
+  protocol state at all. This is not a pinned choice. It is an UNDEFINED OBJECT
+  wearing the vocabulary of a decision, and it must be repaired as one.
+
+Only the first qualifies. The failure is easy to make from inside, because both
+produce the same symptom — no vector distinguishes the alternatives — while only
+one of them is a specification a third party can implement.
+
 Such a rule MUST say which is the case. The present instance is §8.7.0's ORDER:
 committed serialization and physical journal position coincide for a
 single-writer append-only journal, so no fixture can separate them, and the

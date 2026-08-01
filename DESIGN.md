@@ -161,6 +161,28 @@ derived facts; identities bind their subject rather than their intended meaning;
 witnesses do not define their own coverage; examples constrain but do not prove;
 and a specification claims only what its construction establishes.
 
+## What eight rounds actually found, in order
+
+The findings changed KIND as the specification matured, and the progression is
+the clearest evidence that the rounds were measuring something real rather than
+generating work:
+
+| rounds | the defect class | what was wrong |
+|---|---|---|
+| 1-3 | OMISSION | the specification left information out |
+| 4-6 | OVERSTATEMENT | the specification claimed more than it established |
+| 7-8 | INCOMPLETE ONTOLOGY | every object was present; not every RELATIONSHIP was |
+
+By the end the work was not fixing wording. It was completing a conceptual model:
+round 7 found objects used but never defined, and round 8 found the last missing
+EDGE — authority was fully specified as a thing and never connected to the act it
+governs.
+
+That progression is also why stopping is correct. Not because a ninth round would
+find nothing; it almost certainly would. But the remaining work has shifted from
+DISCOVERING the protocol to BUILDING AROUND a protocol whose conceptual model is
+now stable, and those need different effort.
+
 ## Tests cannot define semantics
 
 The sharpest thing round 7 taught, stated so it survives outside the round record:
