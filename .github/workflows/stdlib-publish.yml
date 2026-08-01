@@ -101,7 +101,16 @@ jobs:
           cat /tmp/delta.md
           echo "changed=$(cat /tmp/delta-changed.txt)" >> "$GITHUB_OUTPUT"
 
+      # AUTHENTICATION AND SIGNING ONLY WHEN THERE IS SOMETHING TO PUBLISH.
+      # These ran unconditionally, so a merge that published nothing still
+      # demanded cloud credentials and failed without them — turning "nothing to
+      # do" into a red run, which is the state operators learn to ignore.
+      #
+      # It also acquired a signing capability for a job that was never going to
+      # sign, which is the wrong default for a workflow whose entire design is
+      # about not holding more authority than the task needs.
       - name: Authenticate to Google Cloud (keyless)
+        if: steps.delta.outputs.changed == 'yes'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
@@ -111,8 +120,10 @@ jobs:
           service_account: ${{ vars.GCP_PUBLISHER_SA }}
 
       - uses: google-github-actions/setup-gcloud@v2
+        if: steps.delta.outputs.changed == 'yes'
 
       - name: Confirm the signing key is the DELEGATE, not the namespace holder
+        if: steps.delta.outputs.changed == 'yes' 
         # A guard against the one misconfiguration that would silently undo the
         # entire point: pointing this workflow at the root key. It compares the
         # key this job can sign with against the namespace holder the live
@@ -195,6 +206,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Receipt, generated from LIVE REGISTRY STATE
+        if: steps.delta.outputs.changed == 'yes' 
         # From the journal the registry actually holds, never from the plan. A
         # receipt derived from what we intended would confirm our own intent; the
         # whole point is to confirm what happened.

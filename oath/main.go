@@ -239,6 +239,37 @@ func main() {
 			}
 		}
 		cmdReserve(st, endpoint, keyFile, kmsKey, namespace, dryRun, yes)
+	case "authority":
+		// Read-only: who holds a prefix, and who may publish under it. The
+		// counterpart to `reserve` — a permanent, irreversible act deserves a way
+		// to check the ground first, and telling someone to verify without giving
+		// them a command is advice they cannot follow.
+		if len(args) != 2 {
+			fail(fmt.Errorf("usage: oath authority <prefix>/*  |  oath authority <name>"))
+		}
+		q := args[1]
+		if validNamespacePattern(q) == nil {
+			holder, rev := reservationRev(st, q)
+			if holder == noAuthority {
+				fmt.Printf("%s is UNCLAIMED (authority revision %s)\n", q, rev)
+				fmt.Printf("  `oath reserve '%s'` would claim it. This is PERMANENT:\n", q)
+				fmt.Printf("  there is no transfer, no release and no expiry.\n")
+				return
+			}
+			fmt.Printf("%s is HELD by %s (authority revision %s)\n", q, holder, rev)
+			for k := range delegates(st)[q] {
+				fmt.Printf("  publication delegated to %s\n", k)
+			}
+			return
+		}
+		if r, ok := governingReservation(st, q); ok {
+			fmt.Printf("%s lies under %s, held by %s\n", q, r.Namespace, r.Pubkey)
+		} else {
+			fmt.Printf("%s is governed by no reservation\n", q)
+		}
+		if owner, src := nameOwner(st, q); owner != "" {
+			fmt.Printf("  the NAME itself is owned by %s (%s)\n", owner, src)
+		}
 	case "delegate", "revoke":
 		endpoint := os.Getenv("OATH_REGISTRY")
 		keyFile := os.Getenv("OATH_KEY")

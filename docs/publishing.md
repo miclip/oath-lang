@@ -49,8 +49,20 @@ oath reserve 'alice/*' --dry-run     # shows the exact bytes, sends nothing
 oath reserve 'alice/*'
 ```
 
-First come, first served. `key/*` and `sys/*` are reserved by the protocol and
-are not claimable; everything else is available if nobody holds it.
+First come, first served — and two different things are called "reserved" here,
+which is worth separating before you try one:
+
+| | |
+|---|---|
+| **protocol roots** — `key/*`, `sys/*` | unclaimable by anyone, ever. Their meaning is assigned by the kernel and no publisher governs them. |
+| **already held** — `oath/*`, and others | ordinary prefixes somebody claimed first. `oath/*` is the project namespace, holding the standard library; it was reserved like any other, by the project key. |
+
+So `oath reserve 'key/*'` is refused because the protocol forbids it, and
+`oath reserve 'oath/*'` is refused because it is taken. Different rules, and the
+error says which.
+
+Everything else is available if nobody holds it. `oath authority '<prefix>/*'`
+tells you before you sign anything.
 
 What a reservation gives you: only you may bind names under `alice/`. What it
 does not give you:
