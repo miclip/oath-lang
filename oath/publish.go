@@ -85,6 +85,22 @@ func buildPublishPlan(local *Store, endpoint, pubHex, src, license string) (publ
 	if err != nil {
 		return zero, pubEnvelope{}, err
 	}
+	// TYPECHECK BEFORE HASHING. checkDef MUTATES the definition — it resolves and
+	// normalises types in place — so identity is the hash of the TYPECHECKED AST,
+	// not the merely elaborated one. apiPut runs checkDef before storing, so a
+	// client that hashes first signs an artifact the server will never produce.
+	//
+	// That is #101: `singleton` hashed 4378f986b2dc before checkDef and
+	// 14b8a3dd9719 after, and the registry correctly refused the publication
+	// because the signed artifact did not describe the submitted content.
+	//
+	// The comment on elabForm claimed the client "derives byte-identical identity
+	// to the server for the same source". It shared the elaboration functions and
+	// not the step after them, and nothing compared the two — which is why this
+	// survived until a definition happened to be mutated by typechecking.
+	if err := checkDef(local, def); err != nil {
+		return zero, pubEnvelope{}, err
+	}
 	h := hashDef(def)
 
 	parent, rev, err := remoteNameRevision(endpoint, meta.Name)
