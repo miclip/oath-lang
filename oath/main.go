@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"bytes"
 	"crypto/ed25519"
 	"encoding/hex"
@@ -507,12 +508,68 @@ func main() {
 			}
 		}
 		cmdProveWorker(st, o)
-	case "log":
+	case "log", "ls":
+		// Read-only listings, and the SAME view discipline as `authority` (#104):
+		// a command must read the store the caller asked for, or say it cannot.
+		// These silently dropped --remote and listed the local store, which is
+		// undetectable from the output.
+		endpoint := os.Getenv("OATH_REGISTRY")
+		keyFile := os.Getenv("OATH_KEY")
+		kmsKey := os.Getenv("OATH_KMS_KEY")
+		forceLocal := false
 		filter := ""
-		if len(args) > 1 {
-			filter = args[1]
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			switch {
+			case rest[i] == "--remote" && i+1 < len(rest):
+				endpoint = rest[i+1]
+				i++
+			case rest[i] == "--kms-key" && i+1 < len(rest):
+				kmsKey = rest[i+1]
+				i++
+			case rest[i] == "--key" && i+1 < len(rest):
+				keyFile = rest[i+1]
+				i++
+			case rest[i] == "--local":
+				forceLocal = true
+			default:
+				filter = rest[i]
+			}
 		}
-		cmdLog(st, filter)
+		if cfg, _, cerr := loadClientConfig(); cerr == nil && cfg != nil {
+			if endpoint == "" {
+				endpoint = cfg.Registry
+			}
+			if keyFile == "" {
+				keyFile = cfg.Key
+			}
+		}
+		view, verr := resolveStoreView(endpoint, keyFile, kmsKey, forceLocal)
+		if verr != nil {
+			fail(verr)
+		}
+		if view.Endpoint != "" {
+			tool, toolArgs := "ls", map[string]any{}
+			if args[0] == "log" {
+				tool, toolArgs = "log", map[string]any{"name": filter}
+			}
+			out, rerr := remoteText(context.Background(), view.Endpoint, view.Signer, tool, toolArgs)
+			if rerr != nil {
+				fail(fmt.Errorf("reading %s from %s: %w", tool, view.Endpoint, rerr))
+			}
+			fmt.Print(out)
+			if !strings.HasSuffix(out, "\n") {
+				fmt.Println()
+			}
+			fmt.Printf("  view: %s\n", view.Label)
+			return
+		}
+		if args[0] == "log" {
+			cmdLog(st, filter)
+		} else {
+			cmdLs(st)
+		}
+		fmt.Printf("  view: %s\n", view.Label)
 	case "context":
 		budget := 0
 		var names []string
@@ -537,8 +594,6 @@ func main() {
 			fail(fmt.Errorf("usage: oath dependents <name>"))
 		}
 		cmdDependents(st, args[1])
-	case "ls":
-		cmdLs(st)
 	case "get":
 		if len(args) < 2 {
 			fail(fmt.Errorf("usage: oath get <name> | oath get stdlib/<member> [--where]"))
@@ -1044,6 +1099,13 @@ var remoteCapable = map[string]bool{
 	"reserve":  true,
 	"delegate": true,
 	"revoke":   true,
+	// Read commands that now genuinely reach a registry rather than being refused
+	// for lacking a path to one. The guard below and this table must always agree
+	// with reality: a command listed here without a remote path re-creates the
+	// exact defect the guard exists to prevent.
+	"ls":        true,
+	"log":       true,
+	"authority": true,
 }
 
 func remoteCapableList() string {

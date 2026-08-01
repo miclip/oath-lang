@@ -248,6 +248,26 @@ key.
   admissible while being wrong for a library. `export: false` with a `reason` is
   how the manifest records that.
 
+## Which store am I looking at?
+
+Every read command says. `oath ls`, `oath log` and `oath authority` print the
+view they answered from:
+
+```
+  view: https://registry.oath-lang.org
+  view: ./codebase
+```
+
+They read the registry when one is configured, and the local store when one is
+not. What they will never do is accept `--remote` and quietly answer from
+somewhere else — if the registry cannot be read, that is an error, not a silent
+fallback. `--local` asks for the local store on purpose.
+
+This matters more than it sounds. A local store and a registry hold genuinely
+different sets, and a plausible-looking listing from the wrong one reads as data
+loss: 187 names locally against 383 on the registry has already been mistaken for
+a failed migration.
+
 ## See also
 
 - `docs/authority.md` — why the model looks like this

@@ -427,3 +427,44 @@ func remoteAuthorityView(ctx context.Context, endpoint string, s Signer, namespa
 	return authorityView{Holder: resp.Authority, Rev: rev, DelegationRev: drev,
 		Delegates: resp.Delegates, Source: endpoint, Authoritative: true}, nil
 }
+
+// remoteText runs one read-only tool against the registry and returns its output
+// verbatim. `ls` and `log` render their own text, so there is nothing to reformat
+// and nothing that could drift from what the registry actually said.
+func remoteText(ctx context.Context, endpoint string, s Signer, tool string, args map[string]any) (string, error) {
+	return mcpCallSignedBy(ctx, endpoint, s, tool, args)
+}
+
+// storeView decides WHICH store a read-only command reads, and refuses to
+// substitute one for another (#104).
+//
+// The defect being fixed is not staleness. `oath ls --remote <url>` silently
+// dropped the flag and listed the local store — answering a different question
+// than the one asked, with no indication it had done so. A caller cannot detect
+// that from the output, which is what makes silence the bug.
+//
+// So: if a registry is in play, it is read; if it cannot be read, that is an
+// ERROR rather than a quiet fallback. `--local` is how you ask for the local store
+// on purpose. Every path says which store it read.
+type storeView struct {
+	Endpoint string // "" means the local store
+	Signer   Signer
+	Label    string
+}
+
+func resolveStoreView(endpoint, keyPath, kmsKey string, forceLocal bool) (storeView, error) {
+	localLabel := os.Getenv("OATH_STORE")
+	if localLabel == "" {
+		localLabel = "./codebase"
+	}
+	if forceLocal || endpoint == "" {
+		return storeView{Label: localLabel}, nil
+	}
+	s, err := resolveSigner(keyPath, kmsKey)
+	if err != nil {
+		return storeView{}, fmt.Errorf("a registry is configured (%s) but it authenticates every read and no signing key was given.\n"+
+			"Pass --key <file> or --kms-key <resource> to read it, or --local to read %s on purpose.\n"+
+			"Refusing to show you a different store than the one you asked for: %w", endpoint, localLabel, err)
+	}
+	return storeView{Endpoint: endpoint, Signer: s, Label: endpoint}, nil
+}
