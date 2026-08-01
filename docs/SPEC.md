@@ -2251,6 +2251,27 @@ purposes of this section.
 2. that statement's signature verifies (RES-SIGNED);
 3. the registry recorded the entry with the status `accepted`.
 
+**AUTH-VERSION-IS-SIGNED-DATA.** A statement's format version is part of the
+signed octets, not ambient information supplied by the verifying implementation.
+A verifier MUST dispatch from the version recorded in the parsed envelope,
+reproduce that version's canonical encoding when checking the signature, and
+recognise every statement kind it has ever accepted.
+
+Re-encoding a historical statement under the current emitter INVALIDATES CORRECT
+SIGNATURES rather than rejecting bad ones — the failure is silent in the
+dangerous direction, since a verifier that cannot read a statement reports the
+history as broken rather than reporting its own gap.
+
+Two instances, both from one format bump: verification re-encoded `/1`
+statements as `/2` before checking them, and the kind-dispatch matched only the
+CURRENT version constant, so older statements stopped being recognised as that
+kind at all.
+
+Both were caught against the LIVE journal and neither against the committed
+corpus, which held no statements of the affected kind. **A compatibility corpus
+must contain the history it exists to protect**; fixtures that predate a feature
+cannot defend it.
+
 **AUTH-REFUSALS-ARE-PRESERVED.** An authority submission path MUST journal every
 AUTHENTICATED signed attempt, including refusals, before returning the refusal.
 

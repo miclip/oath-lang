@@ -113,6 +113,12 @@ controls a name and never who wrote it.
 That asymmetry is the point. A stolen CI credential can publish under your
 namespace until you revoke it. A stolen namespace key is permanent.
 
+**Revocation is durable.** A grant states the delegation revision it replaces, so
+a grant signed before a revocation cannot be resubmitted after it — the old bytes
+are refused as stale, and the refusal is journaled rather than discarded. Without
+that, revoking would only last until someone re-ran a deploy holding an old
+envelope. `oath authority '<prefix>/*'` reports the current revision.
+
 ## 5. Propose an addition to the standard library
 
 `oath/*` is the project namespace. Its contents are governed by

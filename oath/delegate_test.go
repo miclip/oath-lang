@@ -415,3 +415,66 @@ func TestPreRevocationGrantIsNotReplayable(t *testing.T) {
 		t.Fatalf("journal verification broke: %v", err)
 	}
 }
+
+// signDelV1 writes a LEGACY /1 statement: no delegation_rev line at all. This is
+// the shape of every delegation on the live registry, so it is the shape whose
+// replay-safety actually has to be demonstrated rather than assumed.
+func signDelV1(t *testing.T, priv ed25519.PrivateKey, op, ns, subject string, rev int64) ([]byte, string) {
+	t.Helper()
+	pub := hex.EncodeToString(priv.Public().(ed25519.PublicKey))
+	env := delEnvelope{Op: op, Namespace: ns, Subject: subject, Authority: pub,
+		AuthorityRev: big.NewInt(rev), DelegationRev: big.NewInt(0), Pubkey: pub}
+	oct := delEncodeAs(env, delegateVersionV1)
+	return oct, hex.EncodeToString(ed25519.Sign(priv, oct))
+}
+
+// The migration property. A /1 grant carries no permission-state, so it reads as
+// state 0: acceptable as a prefix's FIRST delegation, where it is indistinguishable
+// from a correct /2 at 0, and stale forever after. That makes the legacy format
+// self-deprecating rather than specially refused — the refusal a replay meets is
+// "this is stale", which is true, and not "this is old", which would also refuse
+// the one case that is genuinely sound.
+func TestLegacyGrantIsNotReplayableAfterRevocation(t *testing.T) {
+	st := newMemStoreForTest(t)
+	hHex, h := newKey(t)
+	ciHex, _ := newKey(t)
+	oct, sig := signRes(t, h, "v1/*", noAuthority, 0)
+	if _, err := apiReserve(st, oct, sig, hHex); err != nil {
+		t.Fatal(err)
+	}
+	// A /1 grant is accepted as the first delegation — backward compatibility is
+	// real, not nominal.
+	goct, gsig := signDelV1(t, h, opDelegate, "v1/*", ciHex, 1)
+	if _, err := apiDelegate(st, goct, gsig, hHex); err != nil {
+		t.Fatalf("a legacy /1 grant was refused as a first delegation: %v", err)
+	}
+	if !delegates(st)["v1/*"][ciHex] {
+		t.Fatal("the legacy grant did not take effect")
+	}
+	roct, rsig := signDel(t, h, opRevoke, "v1/*", ciHex, 1, 1)
+	if _, err := apiDelegate(st, roct, rsig, hHex); err != nil {
+		t.Fatal(err)
+	}
+	// REPLAY the original /1 bytes — the live registry's exact exposure.
+	if _, err := apiDelegate(st, goct, gsig, hHex); err == nil {
+		t.Fatal("the legacy grant was accepted again after revocation — replay is live")
+	}
+	if delegates(st)["v1/*"][ciHex] {
+		t.Fatal("the replayed legacy grant re-activated the delegate")
+	}
+	last := st.ReadLog()[len(st.ReadLog())-1]
+	if last.Status != "rejected" || last.EnvelopeB64 == "" {
+		t.Errorf("the legacy replay was not preserved as a refusal: status=%q", last.Status)
+	}
+	// Authority is untouched by the refusal: the holder still holds, at the same
+	// revision, and the permission-state did not advance.
+	if holder, rev := reservationRev(st, "v1/*"); holder != hHex || rev.Int64() != 1 {
+		t.Errorf("a refused replay moved authority: holder=%s rev=%s", shortHash(holder), rev)
+	}
+	if d := delegationRev(st, "v1/*"); d.Int64() != 2 {
+		t.Errorf("a refused replay advanced the permission-state: delegation_rev=%s, want 2", d)
+	}
+	if err := st.VerifyLog(); err != nil {
+		t.Fatalf("journal verification broke: %v", err)
+	}
+}
