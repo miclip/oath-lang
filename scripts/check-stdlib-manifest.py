@@ -208,7 +208,16 @@ def main():
         return 1
 
     print(f"STDLIB MANIFEST: PASS")
-    print(f"  {len(exported)} exported, every artifact hash REPRODUCED from its source")
+    # SAY WHAT WAS ACTUALLY CHECKED. "every artifact hash reproduced" was true of
+    # the republished entries and false of the referenced ones, whose artifacts
+    # come from a pinned publication this job cannot read — it holds no credential
+    # and reaches no registry, by design. A summary that claims a stronger
+    # verification than was performed is worse than a quieter one, because the
+    # reader stops looking.
+    print(f"  {len(republished)} project-published: artifact hash REPRODUCED from source")
+    print(f"  {len(exported) - len(republished)} referenced: pin STRUCTURE checked only — the pinned "
+          f"publication's")
+    print(f"    existence and terms need the journal, which this job deliberately cannot reach")
     print(f"  {len(excluded)} excluded, every exclusion carries a reason")
     print(f"  dependency closure is complete: no export resolves outside the library")
     print(f"  namespace: {ns}/*   authority: {auth[:16]}…   licence: {m.get('license')}")

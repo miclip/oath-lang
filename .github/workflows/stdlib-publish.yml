@@ -37,6 +37,7 @@ permissions:
 
 jobs:
   publish:
+    name: standard-library publish (signed, approval-gated)
     if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.confirm == 'PUBLISH' }}
     runs-on: ubuntu-latest
     # The approval gate. Publication is irreversible in the sense that matters —

@@ -33,6 +33,11 @@ permissions:
 
 jobs:
   validate:
+    # A DESCRIPTIVE job name, because this is what appears in the PR check
+    # list — the workflow `name:` shows only in the Actions UI. It read
+    # "validate", which says nothing about what was validated or that it cannot
+    # publish, next to checks that name themselves precisely.
+    name: standard-library proposal (validation only — cannot publish)
     runs-on: ubuntu-latest
     # No `environment:` — an environment is what carries secrets and approvals,
     # and this job must have neither.
