@@ -44,7 +44,30 @@ type evaluator struct {
 // unproductive loop can exhaust the stack long before it exhausts fuel.
 // (Found the hard way: examples/nontotal.oath overflowed a 1GB goroutine
 // stack with plenty of fuel left.)
-const maxEvalDepth = 100_000
+//
+// THE LIMIT IS A MEMORY BUDGET, and it was previously calibrated to the wrong
+// machine. At 100_000 frames, verifying examples/nontotal.oath's `spin` peaked
+// at 869MB — chosen to sit just under a developer host's 1GB stack, and 1.7x
+// the registry container's 512Mi. The guard fired correctly and locally looked
+// instant, while on the real deployment the container was SIGKILLed by the OOM
+// killer before it could: publishing one non-terminating definition took the
+// whole single-instance service down (#99).
+//
+// A bound that permits most of a gigabyte of allocation before triggering is a
+// delay, not a bound. Measured cost is ~8.7KB of host stack per frame, so this
+// budget is stated in BYTES and the depth derived from it — the ceiling is now a
+// property of the evaluator rather than of whatever machine it happens to run
+// on, and re-deriving it after a frame-size change is arithmetic instead of
+// guesswork.
+const (
+	// evalStackBudget is the host stack the interpreter may borrow for Oath
+	// recursion. Sized to leave room for the rest of the process inside a 512Mi
+	// container, which is the smallest environment the kernel is deployed to.
+	evalStackBudget = 96 << 20 // 96 MiB
+	// evalFrameBytes is the measured host-stack cost of one eval frame.
+	evalFrameBytes = 8_700
+	maxEvalDepth   = evalStackBudget / evalFrameBytes // ~11,500 frames
+)
 
 func (e *evaluator) eval(env []Value, slf string, t *Term) (Value, error) {
 	e.depth++
