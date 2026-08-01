@@ -302,9 +302,42 @@
    "hypothesis_recorded": "before dispatch",
    "prediction": "Seven pre-registered failure points, recorded BEFORE dispatch so a hit cannot be claimed retrospectively: (1) substring vs first-segment prefix matching; (2) capture PREVENTION vs RETENTION when a prior exact-name owner sits beneath a newly reserved prefix; (3) first publication vs first reservation as the source of prefix authority; (4) authority revision vs name revision; (5) signed authority vs external identity/endorsement; (6) unreservable prefix vs forbidden publication; (7) whether 'protocol root' is read as unreservable, protected, or both — the correct derivation is deliberately unintuitive: it prevents reservation, does NOT itself protect exact-name publications, and leaves those to ordinary exact-name policy. (7) is the one I expect to be filled in from intuition, because writing the test for it corrected my own expectation.",
    "note": "First round dispatched as a PROTOCOL KIT rather than a repository export. No reference implementation is supplied at all — not oath/, not oathrs/, no tests, no conformance script. Round 6 found that a conformance harness inside the supplied surface restated the rule under test; a source checkout cannot avoid that for a task this small, so the kit is assembled from a normative surface instead of filtered down from a tree. The subject is given a neutral journal model and a signature-verification interface, so surrounding code cannot leak behaviour. DERIVATION.md must be written BEFORE the vectors are opened, preserving the distinction between deriving the rule and tuning to examples.",
-   "status": "DISPATCHED",
    "surface_tool": "blind-kit.py",
-   "kit_section": "8.7"
+   "kit_section": "8.7",
+   "verdict": "PASS-WITH-INFERENCE",
+   "vectors": "15/15",
+   "hypothesis_outcome": "DISPROVED",
+   "prediction_outcome": "LARGELY WRONG, informatively. Six of seven pre-registered points were DERIVED correctly from the text; (2) retention-vs-denial was singled out by the subject as the best-specified rule in the section, because its normative reasoning made it \"impossible to implement backwards\" — the decision to put the argument IN the normative text is vindicated. (7), the point I most expected to be filled in from intuition, was not a defect. The real failures were in the AUTHORITY STATE MACHINE, about which I pre-registered nothing: what `authority` contains, what revision an accepted reservation produces, and how a tie the spec itself says is reachable resolves. I predicted failures of INTERPRETATION and got failures of DEFINITION.",
+   "inferred": [
+    "what `authority` CONTAINS — a pubkey or a hash of the prior reservation. Both are 64 hex; the sentinel wording implies a key, the stated `parent` analogy implies a hash, and the section never picks",
+    "the successor relation for `authority_rev` — whether an accepted reservation yields rev+1 or leaves it unchanged. Both satisfy every published sentence",
+    "how a tie at revision 0 resolves, in the concurrent state §8.7.6 itself admits is reachable",
+    "which journal `kind` and `status` values count as an accepted reservation — neither §8.2.1 nor §8.7 enumerates one",
+    "how exact-name ownership is established, which RES-NO-CAPTURE and RES-MOST-SPECIFIC both depend on: envelope author, entry pubkey, or author_pubkey, and whether it moves on re-publication",
+    "whether hex is case-sensitive; §8.7.2 omits the lowercase rule §8.6.1 states",
+    "whether §8.6.1's value-character rule and trailing-LF rule apply to this envelope",
+    "check ORDER — no vector pins it, and first-come-before-signature leaks prefix occupancy to unauthenticated submitters while passing every vector"
+   ],
+   "contamination": [
+    "HARNESS DEFECT, disclosed by the subject: the dispatched session carried this project's CLAUDE.md and memory index in its system prompt, which the subject did not choose to load. The kit was clean; the SESSION was not. Concretely, the string \"blocked\" in the subject's status vocabulary came from that context rather than from the excerpt, which publishes no status value at all. The subject notes this does not change defect D4 — it IS D4, and being able to populate a plausible vocabulary from memory is exactly what would make a round look more successful than the text warrants",
+    "no prior knowledge of §8.7 itself: namespace reservation, prefix authority, protocol roots, oath-reserve/1 and the RES-* rules appear nowhere in the leaked context, and the subject had never seen the implementation"
+   ],
+   "findings": [
+    "D1 (severe): `authority`'s value space is never defined — the one member the compare-and-swap compares has no stated domain, and under the hash reading no hash function or pre-image is given",
+    "D2 (severe): the successor relation for `authority_rev` is never stated. The pair is defined as what a reservation REPLACES; nothing says what it PRODUCES",
+    "D3 (severe): §8.7.4's resolution is not total over a state §8.7.6 says is reachable — two first reservations tie at revision 0 with no tie-break, and one journal yields two different holders",
+    "D4 (severe): RES-DERIVED mandates replay over a vocabulary that is not published — no `kind` or `status` value is enumerated anywhere in the supplied surface. A blacklist reading FAILS OPEN",
+    "D5 (severe): exact-name ownership is load-bearing for RES-NO-CAPTURE and RES-MOST-SPECIFIC and is defined nowhere; §8.6.5 explicitly warns the candidate keys can differ",
+    "D6: the compare-and-swap pair is motivated by transfer, which §8.7.6 says does not exist in this version — so `authority` can only ever be non-`-` for a same-key re-reservation the text never says is permitted",
+    "D7: the ABA claim asserts a property about a prefix 'returning to a key that held it before', which no operation in this version can produce",
+    "D8: §8.7.2 copies §8.6.1's design but not its value constraints — no character rule, no lowercase rule, no statement that the trailing LF is inside the signed octets",
+    "D9 (§8.2.1): the `seq` parenthetical is dead text under one reading and operative under another, giving different chain hashes for entry 0",
+    "VECTOR COVERAGE (self-inflicted): 10 of 14 normative rules are unwitnessed. Every defect above lives in the unwitnessed region. The vectors carry no journal, no prior state and no acceptance verdict, so RES-SIGNED, RES-AUTHORITY-CURRENT, RES-FIRST-COME, RES-NO-CAPTURE, RES-DERIVED, RES-MOST-SPECIFIC, RES-NEVER-INFERRED, RES-PROSPECTIVE and RES-ROOT-CONSTRAINS-RESERVATION-ONLY have no witness at all — while the commit adding them claimed they were chosen to witness the derivations most likely to be got wrong",
+    "vectors 2 and 3 depict envelopes that can NEVER be accepted: under the only reading the text supports they describe a transfer, which MUST be refused",
+    "the reject vectors do not pin check ORDER — each fails exactly one rule, so an implementation checking first-come before signature passes all 15 while leaking occupancy"
+   ],
+   "evidence": "docs/experiments/blind-license-evaluation.md",
+   "implementer_statement": "Yes-with-inference, and the inference is concentrated in exactly the parts no vector witnesses. The encoding half is implementable from the text alone — 15/15 on first run with no change after opening the vectors. The authority half is not: two conformant implementations can hand the same journal to two different keys, and the corpus cannot see it."
   }
  ]
 }

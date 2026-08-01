@@ -282,7 +282,13 @@ def main():
                     f"must say WHY it is unbound (§13.3)")
             status = "UNBOUND (see surface_note)"
         else:
-            got = recompute_surface(src, r.get("supplied"), r.get("exporter"))
+            # A kit is recomputed by its own instrument here too, not only on the
+            # pre-registered path. Wiring it into one branch and not the other made
+            # a completed kit round unverifiable the moment it recorded an outcome.
+            if r.get("surface_tool") == "blind-kit.py":
+                got = recompute_kit(r.get("kit_section"))
+            else:
+                got = recompute_surface(src, r.get("supplied"), r.get("exporter"))
             if got is None:
                 status = f"UNVERIFIABLE — cannot export {src[:12]} from this checkout"
                 failures.append(f"round {n}: surface_digest recorded but {src[:12]} could not be exported")
