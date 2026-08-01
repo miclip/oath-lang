@@ -32,6 +32,57 @@ import (
 	"strings"
 )
 
+// fixtureFilename encodes a definition name into a filename that cannot collide
+// on a CASE-INSENSITIVE filesystem. macOS folds `map` and `Map` onto one inode,
+// so the corpus silently shipped 186 canonical fixtures for 187 definitions —
+// one definition's bytes absent entirely, whichever was written second having
+// overwritten the first — and nothing noticed, because coverage was defined by
+// what was in the DIRECTORY rather than by what was in the CORPUS (#95).
+//
+// The encoding is a bijection and stays readable:
+//
+//	'_'         -> "__"
+//	uppercase X -> "_x"
+//	otherwise   -> unchanged
+//
+// So `Map` -> `_map`, `map` -> `map`, `_map` -> `__map`. Names differing only by
+// case now differ by more than case, which is what a case-folding filesystem
+// needs. It also makes the tree reproducible across platforms: the same
+// generator emitted 186 files on macOS and 187 on Linux.
+// countFixtures counts what actually landed on disk, so the caller can compare it
+// against the corpus. Reading the FILESYSTEM rather than a counter is deliberate:
+// a counter increments once per write and cannot see one file overwriting
+// another, which is exactly how the collision stayed invisible.
+func countFixtures(outdir, sub, ext string) (int, error) {
+	ents, err := os.ReadDir(filepath.Join(outdir, sub))
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, e := range ents {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ext) {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func fixtureFilename(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r == '_':
+			b.WriteString("__")
+		case r >= 'A' && r <= 'Z':
+			b.WriteByte('_')
+			b.WriteRune(r + ('a' - 'A'))
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 func apiFixtures(st *Store, outdir string) (string, error) {
 	var log strings.Builder
 	write := func(rel string, data []byte) error {
@@ -58,12 +109,23 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("read object for %s: %w", name, err)
 		}
-		if err := write(filepath.Join("canonical", name+".bin"), b); err != nil {
+		if err := write(filepath.Join("canonical", fixtureFilename(name)+".bin"), b); err != nil {
 			return "", err
 		}
 	}
 	if err := write("hashes.txt", []byte(hashes.String())); err != nil {
 		return "", err
+	}
+	// COVERAGE IS ASSERTED AGAINST THE CORPUS, not counted from the directory.
+	// The old report said "186 definitions" and was true and useless: it described
+	// what had been written, so a definition whose fixture was overwritten by a
+	// case-colliding sibling could not be noticed, let alone fail (#95).
+	if n, err := countFixtures(outdir, "canonical", ".bin"); err != nil {
+		return "", err
+	} else if n != len(keys) {
+		return "", fmt.Errorf("canonical/: wrote %d fixtures for %d definitions — %d "+
+			"definition(s) have no canonical bytes in the corpus, so nothing would "+
+			"compare them", n, len(keys), len(keys)-n)
 	}
 	fmt.Fprintf(&log, "hashes.txt + canonical/: %d definitions\n", len(keys))
 
@@ -126,7 +188,7 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 			Level:            m.Guarantee.Level, Cases: m.Guarantee.Cases, Proven: m.Guarantee.Proven,
 		}
 		ab, _ := json.MarshalIndent(a, "", "  ")
-		if err := write(filepath.Join("analyses", name+".json"), ab); err != nil {
+		if err := write(filepath.Join("analyses", fixtureFilename(name)+".json"), ab); err != nil {
 			return "", err
 		}
 		if d.K != "func" || len(d.Props) == 0 {
@@ -138,7 +200,7 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if err := write(filepath.Join("verify", name+".txt"), []byte(renderVerifyReports(reports))); err != nil {
+		if err := write(filepath.Join("verify", fixtureFilename(name)+".txt"), []byte(renderVerifyReports(reports))); err != nil {
 			return "", err
 		}
 		verifyCount++

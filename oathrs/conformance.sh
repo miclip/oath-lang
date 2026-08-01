@@ -31,12 +31,40 @@ else
   echo "  FAIL:"; cat "$TMP/hash.diff"; fail=1
 fi
 "$BIN" canon --out "$TMP/canon" "$EX"/*.oath 2>/dev/null
-cbad=0; cn=0
-for f in "$FIX"/canonical/*.bin; do
-  cn=$((cn+1)); n="$(basename "$f")"
-  cmp -s "$f" "$TMP/canon/$n" || { echo "  FAIL: canonical bytes differ for $n"; cbad=1; fail=1; }
-done
-[ $cbad -eq 0 ] && echo "  PASS: $cn canonical/*.bin byte-identical (O1)"
+# SPEC §10.0a CONF-COVERAGE-FROM-CORPUS: enumerate the CORPUS, not the fixture
+# directory. Iterating the directory defined coverage as "whatever files exist",
+# so a definition whose fixture was missing was not compared, not counted, and
+# could not fail — the check reported "186 byte-identical" for a 187-definition
+# corpus and that was true and useless (#95).
+#
+# Filenames use §10.0a's encoding (CONF-FIXTURE-FILENAME): '_'->'__' and an
+# uppercase letter X -> '_x'. Without it `map` and `Map` collide on a
+# case-insensitive filesystem and one definition's bytes vanish.
+cbad=0; cn=0; cmiss=0
+while IFS="$(printf '\t')" read -r name _hash; do
+  [ -n "$name" ] || continue
+  enc="$(printf '%s' "$name" | awk '{
+    out=""
+    for (i = 1; i <= length($0); i++) {
+      c = substr($0, i, 1)
+      if (c == "_") out = out "__"
+      else if (c ~ /[A-Z]/) out = out "_" tolower(c)
+      else out = out c
+    }
+    print out
+  }')"
+  cn=$((cn+1))
+  f="$FIX/canonical/$enc.bin"
+  if [ ! -f "$f" ]; then
+    echo "  FAIL: no canonical fixture for definition $name (expected $enc.bin)"
+    cmiss=$((cmiss+1)); fail=1; continue
+  fi
+  cmp -s "$f" "$TMP/canon/$enc.bin" || {
+    echo "  FAIL: canonical bytes differ for $name ($enc.bin)"; cbad=1; fail=1; }
+done < "$FIX/hashes.txt"
+if [ $cbad -eq 0 ] && [ $cmiss -eq 0 ]; then
+  echo "  PASS: $cn/$cn corpus definitions have byte-identical canonical bytes (O1)"
+fi
 
 # ---------------------------------------------------------------------------
 # Check 2: golden encoding fixtures

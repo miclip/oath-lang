@@ -2189,6 +2189,39 @@ apply them to any other property. The field is absent when a property has no
 hints, so a hint-free corpus produces byte-identical fixtures to one from a
 kernel predating the feature.
 
+### 10.0a Fixture filenames
+
+A fixture derived from a definition NAME is stored under an ENCODED filename:
+
+| input | output |
+|---|---|
+| `_` | `__` |
+| an uppercase letter `X` | `_x` (underscore, then the lowercase letter) |
+| anything else | unchanged |
+
+So `Map` becomes `_map`, `map` stays `map`, and `_map` becomes `__map`. The
+encoding is a bijection, so a name is recoverable from its filename.
+
+**CONF-FIXTURE-FILENAME.** Implementations MUST use this encoding for every
+fixture named after a definition — `canonical/`, `analyses/`, `verify/`.
+
+Names that differ only by case would otherwise collide on a case-insensitive
+filesystem. They did: `map` and `Map` folded onto one inode, so a corpus of 187
+definitions shipped 186 canonical fixtures with one definition's bytes absent
+entirely — whichever was written second having silently overwritten the first.
+The same generator emitted 187 files on Linux and 186 on macOS, so the fixture
+tree was not reproducible across the platforms a cross-kernel suite most needs it
+to be.
+
+**CONF-COVERAGE-FROM-CORPUS.** A conformance check over a fixture family MUST
+enumerate the CORPUS and require a fixture for each definition. It MUST NOT
+enumerate the fixture directory.
+
+Directory enumeration defines coverage as "whatever files exist", so a missing
+fixture is not compared, not counted, and cannot fail. The check reported "186
+canonical/*.bin byte-identical" — true, and useless, because the number described
+the test rather than the thing tested.
+
 ### 10.1 Signed-publication vectors
 
 `fixtures/envelope/vectors.jsonl` is the conformance surface for §8.6. It is JSONL,
