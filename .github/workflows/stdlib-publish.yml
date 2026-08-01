@@ -47,6 +47,12 @@ jobs:
   decide:
     name: standard-library publish (decide whether anything must be signed)
     runs-on: ubuntu-latest
+    # Reads the live journal to see what is already published. Read-only: it
+    # authenticates but never touches a signing key, which stays behind the
+    # approval gate in the publish job.
+    permissions:
+      contents: read
+      id-token: write
     outputs:
       changed: ${{ steps.delta.outputs.changed }}
     steps:
@@ -64,7 +70,13 @@ jobs:
           python3 scripts/check-spec-vs-fixtures.py
           python3 scripts/check-fixture-integrity.py --skip-solver-dependent
           python3 scripts/check-stdlib-manifest.py
-      - name: Compute the registry delta
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_PUBLISHER_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Compute the registry delta and what is pending
         id: delta
         run: |
           set -o pipefail
@@ -78,7 +90,21 @@ jobs:
             fi
           fi
           python3 scripts/stdlib-delta.py /tmp/base-manifest.json --out /tmp/delta.md
-          echo "changed=$(cat /tmp/delta-changed.txt)" >> "$GITHUB_OUTPUT"
+          # THE DECISION IS REGISTRY-RELATIVE, not diff-relative. The delta above is
+          # for a human reviewing what a commit proposes; whether anything must be
+          # SIGNED is "what does the manifest declare that the registry lacks".
+          # A diff-relative decision reported "nothing to publish" after a failed
+          # publication, because the commit no longer differed while the work was
+          # still pending.
+          gcloud storage cp gs://oath-prod-503514-oath-store/log.jsonl /tmp/live.jsonl \
+            || { echo "::error::cannot read the live journal; refusing to guess what is published"; exit 1; }
+          PENDING=$(python3 scripts/stdlib-pending.py /tmp/live.jsonl)
+          if [ -n "$PENDING" ]; then
+            echo "changed=yes" >> "$GITHUB_OUTPUT"
+            echo "pending publication: $PENDING"
+          else
+            echo "changed=no" >> "$GITHUB_OUTPUT"
+          fi
           {
             echo "## Standard library merge"
             echo
