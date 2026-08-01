@@ -111,9 +111,14 @@ MOVE, and no `oath/*` name is live.
 
 ## The custody claim, as it now stands
 
-> The `oath/*` key originated locally, was imported into Cloud KMS, and the only
-> inventoried local private copy was destroyed before the first standard-library
-> publication. Routine signing now works through KMS only.
+> The `oath/*` authority key originated locally, was imported into Cloud KMS, and
+> its local private copy was destroyed before the first standard-library
+> publication. EVERY `oath/*` publication so far was signed using the
+> non-exportable KMS-held key version.
+
+The second sentence is stronger than it was before the pilot, and is now a
+statement about history rather than about configuration: four publications exist,
+all signed by key version 1, all made after the local copy was destroyed.
 
 Kept separate, because it is a different claim and is NOT established:
 

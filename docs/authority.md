@@ -215,6 +215,53 @@ configuration. The moment authority can change by an operator editing a file, th
 guarantee collapses to "trust this registry" — and every property above exists to
 avoid needing that.
 
+## Custody is a deployment choice, not a protocol requirement
+
+Nothing above says where a private key lives. The protocol requires that a
+statement be signed by the key it names; it is indifferent to whether that key
+sits in a file, a hardware token, or a managed signing service.
+
+That indifference is deliberate and worth stating, because the reference
+deployment made a specific choice and a reader should not mistake it for a rule.
+The `oath/*` authority key is held in a cloud KMS and is non-exportable; the
+client reaches it through a signer interface with a local-file implementation and
+a managed-service implementation behind it. A registry operator who keeps their
+key in a file is running the same protocol, and their signatures are neither
+weaker nor differently verified.
+
+What the protocol DOES fix is the shape of the evidence: canonical bytes, a
+signature over exactly those bytes, and a public key that a verifier can check
+without asking anyone. A custody arrangement can make a key harder to steal. It
+cannot make a signature mean more.
+
+## A worked example: the first standard-library slice
+
+`oath/*` is held by a project key, established by a signed reservation, and holds
+four names published in dependency order:
+
+```
+oath/List      oath/length      oath/append      oath/reverse
+```
+
+Every property this paper describes is observable in that slice:
+
+- **identity is unchanged by naming.** `oath/reverse` is artifact
+  `7bb6285884d0…` — the same artifact the bare name `reverse` has always had.
+  Publishing it under a new name created a new binding, not a new object,
+  because references are by hash.
+- **exact-name ownership and prefix authority agree**, and are separately
+  derivable: the first accepted publication of each name names the project key,
+  and the reservation of `oath/*` names the same key. Neither was inferred from
+  the other.
+- **the closure is complete.** `reverse` needs `append`, which needs `length`,
+  which needs `List`. Nothing in the slice resolves through an artifact outside
+  it.
+- **terms are asserted, not inherited.** Each publication carries `Apache-2.0`
+  because the publisher signed for it, not because the artifact carries a licence
+  — artifacts do not.
+- **a third party can re-derive all of it** from the journal, without trusting
+  the registry that served it.
+
 ## What a third party can check
 
 Given only the journal, and no trust in the registry that produced it:
