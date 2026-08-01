@@ -190,3 +190,51 @@ enforcement mechanically while freezing an accidental global naming scheme into
 the protocol — using ownership policy to avoid the naming decision rather than
 make it. The bare names stay exactly as they are: honest, unsigned, legacy-owned
 history.
+
+## Corpus republished under michael/oath/* — 2026-08-01
+
+184 namespaced names, every one hash-identical to its bare counterpart. Journal
+at 1,214 entries, 383 cryptographically signed, custody green throughout.
+
+Hash invariance holds for definitions WITH dependencies too — `michael/oath/sort`
+is `8ed4b7e956f3`, the same artifact as bare `sort`, because references are by
+hash and renaming a definition changes neither its identity nor its closure.
+
+### The rename bug worth recording
+
+Self-references were rewritten with a PAREN-anchored pattern, `\(name\b`. Two
+things went wrong, and only one of them announced itself.
+
+**It over-matched.** `-` is a non-word character, so `\bparse-nat\b` also matched
+`parse-nat-go` — renaming a call to a DIFFERENT definition. That failed loudly:
+publication elaborates against the LOCAL store, which holds only bare names, so
+`michael/oath/parse-nat-go` was unresolvable and the publish stopped. One name
+affected, caught immediately.
+
+**It under-matched, and this one was silent.** A NULLARY constant is referenced as
+a bare token, not a call:
+
+```
+(defn map-empty [] [] Map
+  (MkMap (Nil [(Pair Int Int)]))
+  (prop is-empty [(k Int)] (== (map-lookup k map-empty) (None [Int]))))
+```
+
+Requiring `(` missed every such self-reference, so the namespaced definition's
+property referenced the BARE definition instead of itself — turning a
+self-reference into an external dependency and changing the artifact. Eight names
+(`KV`, `Str`, `Tree`, `map-empty`, `set-empty`, `tenth-f`, `third-f`, `f-tenths`)
+published as artifacts that were *valid and not the ones intended*.
+
+Nothing failed. Every publication succeeded, every property passed, every
+signature verified. The defect was visible only by comparing each namespaced name
+against its bare counterpart's hash — 176/184 — which is why that comparison was
+worth running rather than assuming the campaign's zero failures meant zero
+defects.
+
+Fixed with token-anchored renaming and republished; now 184/184.
+
+**The general point:** a green campaign is not evidence of a faithful one. The
+publications were internally consistent and cryptographically sound; they simply
+described something slightly different from what was intended, and only an
+external invariant could tell.
