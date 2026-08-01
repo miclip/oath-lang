@@ -1916,5 +1916,23 @@ func writeReserveVectors(write func(string, []byte) error) error {
 	}, 0x10, "d7/*", []string{}, "kind and status are written by the registry and covered by no signature; only a signed envelope grants"); err != nil {
 		return err
 	}
+	// AUTH-ACCEPTANCE-IS-THE-BOUNDARY. A validly signed delegation that no registry
+	// accepted must be authority-neutral. This is the one case where the envelope is
+	// PERFECT — correct format, correct signer, correct authority state — and confers
+	// nothing, because it was never journaled as accepted. It is the difference
+	// between possessing a signed statement and that statement having taken effect,
+	// and it is the rule a second implementation is most likely to get wrong by
+	// treating a valid signature as sufficient.
+	if err := delCase("a validly signed grant that was never ACCEPTED confers nothing",
+		func(st *Store, priv ed25519.PrivateKey, h string) {
+			o, sg := signDelFor(priv, opDelegate, "d8/*", ci, 1)
+			// Journaled with a NON-accepting status, exactly as a registry records a
+			// refusal. The signature verifies; the entry is real; the grant is not.
+			_ = st.AppendLog(&LogEntry{Author: h, Name: "d8/*", Kind: kindDelegate,
+				Status: "rejected", EnvelopeB64: encodeEnvelopeB64(o), AuthorPubkey: h, AuthorSig: sg})
+		}, 0x12, "d8/*", []string{},
+		"the signature is valid and the statement is evidence of intent; only an ACCEPTED entry creates state"); err != nil {
+		return err
+	}
 	return write("reserve/vectors.jsonl", []byte(out.String()))
 }

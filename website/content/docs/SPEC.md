@@ -2251,6 +2251,34 @@ purposes of this section.
 2. that statement's signature verifies (RES-SIGNED);
 3. the registry recorded the entry with the status `accepted`.
 
+**AUTH-ACCEPTANCE-IS-THE-BOUNDARY.** Protocol effects derive ONLY from accepted
+journal entries. A signed but unaccepted statement is EVIDENCE, NOT STATE.
+
+Three things exist and are routinely conflated:
+
+| | what it is | what it creates |
+|---|---|---|
+| a signed statement | "I intend to reserve / delegate / revoke" | evidence of intent |
+| an accepted entry | a registry validated it against current authority and journaled it | history |
+| replay of accepted entries | derivation over that history | authority |
+
+Only the second creates history, and only the third creates authority. Holding a
+correctly signed envelope confers nothing, however valid its signature: a verifier
+MUST NOT grant authority on the strength of a statement no registry accepted, and
+an implementation MUST NOT treat possession of a signed statement as equivalent to
+its having taken effect.
+
+This governs every authority mutation — reservation, delegation, revocation, and
+any operation added later. It is stated here rather than per-operation because the
+per-operation reading is the one that goes wrong: each rule looks obviously
+correct in isolation while the boundary it shares with the others goes unstated.
+
+The failure is observable. A validly signed delegation submitted to a registry
+that refused it — for any real reason, an unknown operation, a stale revision, a
+rejected submission — grants nothing, appears in no replay, and leaves the subject
+unable to publish. The signature remains valid and remains evidence of what its
+signer intended; it is not state.
+
 **RES-ACCEPTED-CLOSED.** The status test is a WHITELIST. An entry whose status is
 absent, empty, unrecognised, or any value other than `accepted` MUST NOT be
 counted. An implementation that instead excludes a list of known rejection words
