@@ -180,3 +180,40 @@ kernel that knew the operation. The first attempt was refused with
 `unknown tool "delegate"` — the root key signed the envelope and it conferred
 nothing, because a delegation counts only when a registry accepts and journals
 it. Worth a conformance vector rather than an anecdote.
+
+
+## The personal namespaces (2026-08-01)
+
+`miclip/*` and `michael/*` are both reserved to the key that already owned every
+name beneath them.
+
+| | |
+|---|---|
+| public key | `65ea5701d92e420a5cd9eb4804bb8360768cbf54bf08ea9991649e61a5c69cc6` |
+| fingerprint | `151f771ce3bc69fcf15577e1cb41d502967c07f06c5e0de953c5a43e31e40175` |
+| holds | `miclip/*` and `michael/*`, both at authority revision 1 |
+| custody | LOCAL, `~/.oath/keys/michael.key`, mode 0600. Deliberately not KMS. |
+
+**Why local is the right answer here and not merely the convenient one.** A local
+key and a KMS-held key produce signatures with identical protocol meaning.
+Choosing the project key for `michael/*` because its custody is stronger would
+have collapsed project and personal authority back together — trading an
+authority-model property for an operational one, which is the wrong direction.
+The custody question is separable and stays open.
+
+**Why `michael/*` was reserved despite `miclip/*` being the preferred name.** Not
+squatting a common given name: 187 names were already published beneath it, so
+leaving it open would have let a stranger become namespace holder over a prefix
+containing them. Those names keep their exact-name ownership regardless
+(RES-NO-CAPTURE), but `explain` would truthfully have reported someone else as
+holder.
+
+The 187 existing names were NOT republished under `miclip/*`. There is no move or
+rename — a binding is permanent — so republishing would add 187 more names for
+the same artifacts and buy protection they already have. `miclip/*` is for names
+that do not exist yet, which is the thing `michael/*` could not offer.
+
+**Key location.** Previously `./michael.key` in the repository root: untracked,
+gitignored, never committed in any branch, so nothing leaked. Moved to
+`~/.oath/keys/` because a key governing two namespaces and 187 permanent names
+should not sit one `git add -f` away from publication.
