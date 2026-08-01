@@ -46,6 +46,11 @@ jobs:
     steps:
       - name: Check out the MERGED commit
         uses: actions/checkout@v4
+        with:
+          # The PARENT commit must be reachable: the delta is computed against
+          # HEAD~1, and a shallow clone makes that lookup fail. See the fallback
+          # below for why failing quietly there is dangerous.
+          fetch-depth: 2
 
       - uses: actions/setup-go@v5
         with:
@@ -72,8 +77,26 @@ jobs:
         id: delta
         run: |
           set -o pipefail
-          git show "HEAD~1:stdlib/oath-stdlib.json" > /tmp/base-manifest.json 2>/dev/null \
-            || echo '{"definitions":[]}' > /tmp/base-manifest.json
+          # NO SILENT FALLBACK TO AN EMPTY BASE. An unreadable parent used to
+          # produce `{"definitions":[]}`, which makes EVERY member look newly
+          # added — so a merge that changed nothing publishable computed
+          # "publication needed: yes" and would have republished the whole library
+          # as signing no-ops. That is precisely what happened on the first real
+          # merge, under a shallow checkout, and it looked like a delta rather
+          # than like a broken comparison.
+          #
+          # An empty base is only correct for a genuine first publication, which
+          # is not something to infer from a failed git command.
+          if ! git show "HEAD~1:stdlib/oath-stdlib.json" > /tmp/base-manifest.json 2>/dev/null; then
+            if git rev-parse HEAD~1 >/dev/null 2>&1; then
+              echo "::notice::no manifest at HEAD~1 — treating this as the first publication"
+              echo '{"definitions":[]}' > /tmp/base-manifest.json
+            else
+              echo "::error::HEAD~1 is unreachable, so the base manifest cannot be read."
+              echo "::error::Refusing rather than assuming an empty base, which would republish everything."
+              exit 1
+            fi
+          fi
           python3 scripts/stdlib-delta.py /tmp/base-manifest.json --out /tmp/delta.md
           cat /tmp/delta.md
           echo "changed=$(cat /tmp/delta-changed.txt)" >> "$GITHUB_OUTPUT"
