@@ -907,6 +907,49 @@ what may be claimed, what counts as proof of it, and what counts as the same
 thing — which are the same three questions the protocol layers answer, arrived at
 from the opposite direction.
 
+## A transformation campaign needs an EXTERNAL equivalence invariant (2026-08-01)
+
+> Internal success only proves the output is self-consistent.
+
+The namespace migration rewrote 187 definitions and published them signed. The
+campaign reported zero failures. Every publication succeeded, every property
+passed, every signature verified, every artifact satisfied its own specification.
+
+Eight of them were the wrong objects.
+
+A paren-anchored rename missed self-references to NULLARY constants, which are
+written as bare tokens rather than calls — `(== (map-lookup k map-empty) …)`. The
+namespaced definition's property therefore referenced the BARE definition instead
+of itself, turning a self-reference into an external dependency and changing the
+artifact. Sound publications of objects nobody intended.
+
+Nothing internal could detect this. The output was valid by construction: it
+elaborated, it verified, it was signed for. What caught it was an invariant
+checked from OUTSIDE the operation, derived from what the transformation CLAIMED
+to be:
+
+    hash(namespaced rewrite) == hash(bare original)
+
+because the transformation was name-only, and names are metadata. 176/184 proved
+the campaign unfaithful while every local check was green; 184/184 closed it.
+
+**The rule generalises to any mechanical rewrite.** State what the transformation
+preserves, express it as a comparison against something the transformation did
+not produce, and run it as a postcondition. A campaign that can only be checked
+by its own output can only tell you it did something consistently.
+
+Two secondary lessons:
+
+- **Text matching around `(` is brittle because reference position is
+  GRAMMATICAL, not textual.** The same regex over-matched (`parse-nat` also
+  matched `parse-nat-go`, renaming a different definition's call site) and
+  under-matched (missing bare-token references). An AST-level rewrite has neither
+  failure mode. The over-match failed loudly and was fixed in minutes; the
+  under-match was silent and survived to the registry.
+- **Loud failures are cheap; silent ones are the ones to design against.** The
+  campaign's one reported failure cost a retry. Its eight unreported ones cost a
+  full re-derivation of the invariant to find.
+
 ## Canonical bytes without semantic identity (2026-08-01)
 
 > A representation does not need to participate in SEMANTIC IDENTITY to require
