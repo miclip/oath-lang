@@ -27,6 +27,14 @@ export const refdocs: RefDoc[] = [
     group: "Protocol",
   },
   {
+    slug: "releases",
+    file: "releases.md",
+    title: "Releases",
+    blurb:
+      "Release notes for each version, stating identity stability first — whether artifact hashes moved is the only question that matters when upgrading a content-addressed system.",
+    group: "Protocol",
+  },
+  {
     slug: "publishing",
     file: "publishing.md",
     title: "Publishing",
