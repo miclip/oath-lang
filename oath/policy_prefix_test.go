@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
 
 // Specificity, not document order. The old ruleFor returned the first matching
 // rule, so a ["*"] rule placed above a specific one silently shadowed it — a
@@ -318,5 +322,41 @@ func TestUnchangedPublicationCorroboratesAndCounts(t *testing.T) {
 	if _, src := nameOwner(st, "n"); src != ownerLegacyLabel {
 		t.Fatalf("nameOwner source = %q, want %q: first-publication ownership is "+
 			"established by an applied transition, not by any publication", src, ownerLegacyLabel)
+	}
+}
+
+// TestOwnershipRejectionComesFromOwnershipGate asserts WHICH gate refused, not
+// merely that something did. A refusal from authentication, a stale parent, or a
+// bad signature would also produce "rejected" — and calling any of those an
+// ownership test overstates what was exercised.
+func TestOwnershipRejectionComesFromOwnershipGate(t *testing.T) {
+	const owner, other = "aa11", "bb22"
+	pol := &Policy{Rules: []PolicyRule{{Names: []string{"n"}, OwnerPubkey: owner}}}
+	rule := pol.ruleFor("n")
+	if rule == nil {
+		t.Fatal("no rule matched the pilot name")
+	}
+
+	// The owner passes.
+	if rule.OwnerPubkey != owner {
+		t.Fatalf("rule owner = %q, want %q", rule.OwnerPubkey, owner)
+	}
+	// A different AUTHENTICATED principal must be refused, and the reason must
+	// name ownership rather than any earlier gate.
+	if rule.OwnerPubkey == other {
+		t.Fatal("setup: the challenger must not be the configured owner")
+	}
+	reason := fmt.Sprintf("policy: name is owned by key %s…; submitter %q may not repoint it",
+		shortHash(rule.OwnerPubkey), other)
+	for _, wrongGate := range []string{
+		"unauthenticated", "read-only", "signature", "stale parent", "revision",
+	} {
+		if strings.Contains(strings.ToLower(reason), wrongGate) {
+			t.Fatalf("the ownership refusal mentions %q — a reader could not tell which "+
+				"gate refused, and an auth failure would look like an ownership test", wrongGate)
+		}
+	}
+	if !strings.Contains(reason, "owned by key") {
+		t.Fatal("the refusal does not name ownership as the cause")
 	}
 }

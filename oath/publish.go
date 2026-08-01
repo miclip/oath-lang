@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // publishPlan is everything about a publication that can be shown BEFORE a
@@ -176,6 +177,17 @@ func cmdPublish(local *Store, endpoint, keyPath, file, license string, dryRun, j
 		fail(err)
 	}
 	fmt.Print(out)
+
+	// A BLOCKED publication still stores the object and journals the refusal — the
+	// name simply does not move (docs/teamstore.md). So the persistence check below
+	// would fetch the envelope of whoever legitimately holds that artifact and
+	// report a mismatch, turning a clean policy refusal into what reads like
+	// tampering. Surface the refusal instead: the reason the server gave is the
+	// answer, and inventing an integrity alarm on top of it trains the reader to
+	// distrust the one check that matters.
+	if strings.Contains(out, "BLOCKED:") {
+		fail(fmt.Errorf("publication refused by the registry; the name was not moved"))
+	}
 
 	// Verify the registry persisted the exact bytes signed. Without this the client
 	// takes the registry's word that the record it accepted is the statement made.
