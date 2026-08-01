@@ -108,38 +108,36 @@ delegate onward, stale grant refused, bad signature refused, a registry-authored
 label creates nothing). `explain` renders holder and delegates distinctly — a
 delegate must NEVER appear as the namespace owner.
 
-DELEGATED CI PUBLISHING — where it actually stands:
+DELEGATED CI PUBLISHING — two separate milestones, do not let one block the other:
 
-- `oath/*` is reserved to the project key (KMS, local copy destroyed).
-- A separate CI key `26923b6580a2…` was GENERATED IN KMS and delegated publication
-  rights on the live registry. `oath-publisher@…` holds cloudkms.signer on that key
-  version alone and has no binding on the namespace key.
-- `stdlib-pr.yml` validates proposals and is incapable of publishing.
-- `stdlib-publish.yml` is written, approval-gated, signs with the DELEGATE, and
-  skips signing entirely when there is no delta.
+**PROTOCOL: operationally demonstrated.** Step 8 ran against the live registry
+with KMS-held keys (`docs/receipts/003-step8-passed.md`): accepted authority,
+refused authority with the rejected intent PRESERVED and verifiable, revocation,
+both post-revocation attempts blocked at the authority gate and preserved,
+authority recovery by the holder, authorship unchanged throughout, and
+re-delegation restoring publication. Journal 1247 → 1255, custody PASS.
 
-BLOCKED ON OPERATOR ACTIONS (not code): create the `stdlib-publish` GitHub
-Environment with required reviewers, and set
-`GCP_PUBLISHER_SA=oath-publisher@oath-prod-503514.iam.gserviceaccount.com`.
-An approval gate configured by the party it constrains is not an approval gate.
+The three authority outcomes now all have live end-to-end evidence:
 
-STEP 8 IS NOT BLOCKED BY THOSE. It needs the registry and the two KMS keys, all of
-which exist. The workflow automates publication; step 8 proves the PROTOCOL
-property, and they are independent. Run it as a separately recorded exercise:
-submit a validly signed delegation the registry refuses and confirm it is
-journalled, verifies, and grants nothing; revoke the CI delegation; confirm the CI
-key can neither repoint nor create under `oath/*`; confirm the holder can update a
-name CI created; confirm CI's historical authorship is unchanged; re-delegate and
-confirm publishing resumes.
+  statement   journal        authority     
+  accepted    preserved      changes       ✓
+  rejected    preserved      unchanged     ✓
+  invalid     not preserved  unchanged     ✓  (AUTH-REFUSALS-ARE-PRESERVED boundary)
 
-The claim it establishes, and the only one that closes this out:
+**DEPLOYMENT: implemented, approval-gated, not yet run.** `stdlib-publish.yml`
+awaits two OPERATOR actions — a `stdlib-publish` GitHub Environment with required
+reviewers, and `GCP_PUBLISHER_SA=oath-publisher@oath-prod-503514.iam.gserviceaccount.com`.
+Neither should be done by the party the gate constrains. Its first run should be a
+NO-DELTA execution proving approval, WIF, gates, manifest reproduction and plan
+derivation while signing nothing and writing nothing.
 
-> The live registry preserves rejected signed intent while deriving no authority
-> from it, and revocation removes delegated control without altering historical
-> authorship.
+That run can claim something ADDITIONAL rather than repeating step 8: the approved
+automation correctly uses the already-proven delegated authority path.
 
-Until then: the post-merge workflow is implemented and approval-gated; delegated
-publishing is NOT yet operationally proven.
+OPEN, from the exercise: #106 — authority_rev versions holder state, not
+delegation state, so replay resistance for delegation is deduplication rather than
+version progression. A design question, not a defect; surfaced by running the
+protocol, not by inspection.
 
 REMAINING: step 5 only — wire the post-merge publisher against a DELEGATED key,
 and grant that key KMS access. Not done, and it needs its own authorization.
