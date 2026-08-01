@@ -199,12 +199,27 @@ def main():
     # A machine-readable verdict alongside the human one. Whether anything needs
     # publishing is a DERIVED fact, and a workflow that re-derived it by grepping
     # the report would be parsing prose that exists to be read by people.
-    changed = bool(added or removed or repointed or relicensed or remoded or repinned)
+    # PUBLICATION is needed only when something PUBLISHABLE changed. Referenced
+    # members are selected, never republished — the planner skips them — so a
+    # referenced-only change must not trigger the publish step.
+    #
+    # Computing this over all exports would republish every project-published
+    # member as a signing no-op whenever anyone added a referenced one: a run that
+    # changes nothing publishable would still sign and write, which is exactly the
+    # property the no-delta gate exists to guarantee.
+    def publishable(names, side):
+        return [n for n in names if (side.get(n) or {}).get("membership") == "project-publication"]
+
+    changed = bool(publishable(added, h) or publishable(removed, b)
+                   or publishable(repointed, h) or publishable(relicensed, h)
+                   or publishable(remoded, h) or publishable(remoded, b)
+                   or publishable(repinned, h))
     lines.append("## Verdict\n")
     lines.append(f"- publication needed: **{'yes' if changed else 'no'}**")
     if not changed:
-        lines.append("- nothing to sign and nothing to submit; the manifest already")
-        lines.append("  describes what the registry holds")
+        lines.append("- nothing to sign and nothing to submit. Either the manifest already")
+        lines.append("  describes what the registry holds, or the change affects only")
+        lines.append("  `referenced` members, which are selected rather than republished")
     lines.append("")
 
     text = "\n".join(lines) + "\n"
