@@ -1857,25 +1857,25 @@ func writeReserveVectors(write func(string, []byte) error) error {
 		return emit(map[string]any{"kind": "delegation", "label": label, "namespace": ns,
 			"holder": hpub, "journal": js, "expect_active_delegates": want, "why": why})
 	}
-	signDelFor := func(priv ed25519.PrivateKey, op, ns, subject string, rev int64) ([]byte, string) {
+	signDelFor := func(priv ed25519.PrivateKey, op, ns, subject string, rev int64, drev int64) ([]byte, string) {
 		pub := hex.EncodeToString(priv.Public().(ed25519.PublicKey))
 		e := delEnvelope{Op: op, Namespace: ns, Subject: subject, Authority: pub,
-			AuthorityRev: big.NewInt(rev), Pubkey: pub}
+			AuthorityRev: big.NewInt(rev), DelegationRev: big.NewInt(drev), Pubkey: pub}
 		oct := delEncode(e)
 		return oct, hex.EncodeToString(ed25519.Sign(priv, oct))
 	}
 	ci, other := pubOf(0x11), pubOf(0x22)
 
 	if err := delCase("holder grants", func(st *Store, priv ed25519.PrivateKey, h string) {
-		o, sg := signDelFor(priv, opDelegate, "d1/*", ci, 1)
+		o, sg := signDelFor(priv, opDelegate, "d1/*", ci, 1, 0)
 		_, _ = apiDelegate(st, o, sg, h)
 	}, 0x0a, "d1/*", []string{ci}, "the holder may grant publication rights"); err != nil {
 		return err
 	}
 	if err := delCase("revocation removes the delegate", func(st *Store, priv ed25519.PrivateKey, h string) {
-		o, sg := signDelFor(priv, opDelegate, "d2/*", ci, 1)
+		o, sg := signDelFor(priv, opDelegate, "d2/*", ci, 1, 0)
 		_, _ = apiDelegate(st, o, sg, h)
-		o, sg = signDelFor(priv, opRevoke, "d2/*", ci, 1)
+		o, sg = signDelFor(priv, opRevoke, "d2/*", ci, 1, 1)
 		_, _ = apiDelegate(st, o, sg, h)
 	}, 0x0b, "d2/*", []string{}, "DEL-REVOCABLE: withdrawal takes effect from the point it is recorded"); err != nil {
 		return err
@@ -1883,28 +1883,28 @@ func writeReserveVectors(write func(string, []byte) error) error {
 	if err := delCase("a NON-HOLDER cannot grant", func(st *Store, _ ed25519.PrivateKey, _ string) {
 		imp := seeded(0x33)
 		ipub := hex.EncodeToString(imp.Public().(ed25519.PublicKey))
-		o, sg := signDelFor(imp, opDelegate, "d3/*", ci, 1)
+		o, sg := signDelFor(imp, opDelegate, "d3/*", ci, 1, 0)
 		_, _ = apiDelegate(st, o, sg, ipub)
 	}, 0x0c, "d3/*", []string{}, "DEL-GRANTOR-IS-HOLDER: a grant by a key that does not hold the prefix confers nothing"); err != nil {
 		return err
 	}
 	if err := delCase("a DELEGATE cannot delegate onward", func(st *Store, priv ed25519.PrivateKey, h string) {
-		o, sg := signDelFor(priv, opDelegate, "d4/*", ci, 1)
+		o, sg := signDelFor(priv, opDelegate, "d4/*", ci, 1, 0)
 		_, _ = apiDelegate(st, o, sg, h)
 		d := seeded(0x11)
-		o, sg = signDelFor(d, opDelegate, "d4/*", other, 1)
+		o, sg = signDelFor(d, opDelegate, "d4/*", other, 1, 0)
 		_, _ = apiDelegate(st, o, sg, ci)
 	}, 0x0d, "d4/*", []string{ci}, "DEL-PERMISSION-NOT-AUTHORITY: permission never becomes authority"); err != nil {
 		return err
 	}
 	if err := delCase("a STALE grant is refused", func(st *Store, priv ed25519.PrivateKey, h string) {
-		o, sg := signDelFor(priv, opDelegate, "d5/*", ci, 7) // wrong authority revision
+		o, sg := signDelFor(priv, opDelegate, "d5/*", ci, 7, 0) // wrong authority revision
 		_, _ = apiDelegate(st, o, sg, h)
 	}, 0x0e, "d5/*", []string{}, "the compare-and-swap refuses a grant signed against an authority state the prefix has left"); err != nil {
 		return err
 	}
 	if err := delCase("an INVALID SIGNATURE is refused", func(st *Store, priv ed25519.PrivateKey, h string) {
-		o, _ := signDelFor(priv, opDelegate, "d6/*", ci, 1)
+		o, _ := signDelFor(priv, opDelegate, "d6/*", ci, 1, 0)
 		bad := hex.EncodeToString(ed25519.Sign(priv, append(o, ' ')))
 		_, _ = apiDelegate(st, o, bad, h)
 	}, 0x0f, "d6/*", []string{}, "a signature over different bytes confers nothing"); err != nil {
@@ -1925,7 +1925,7 @@ func writeReserveVectors(write func(string, []byte) error) error {
 	// treating a valid signature as sufficient.
 	if err := delCase("a validly signed grant that was never ACCEPTED confers nothing",
 		func(st *Store, priv ed25519.PrivateKey, h string) {
-			o, sg := signDelFor(priv, opDelegate, "d8/*", ci, 1)
+			o, sg := signDelFor(priv, opDelegate, "d8/*", ci, 1, 0)
 			// Journaled with a NON-accepting status, exactly as a registry records a
 			// refusal. The signature verifies; the entry is real; the grant is not.
 			_ = st.AppendLog(&LogEntry{Author: h, Name: "d8/*", Kind: kindDelegate,

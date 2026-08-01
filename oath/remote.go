@@ -361,3 +361,24 @@ func mcpCallSignedBy(ctx context.Context, endpoint string, s Signer, tool string
 	}
 	return b.String(), nil
 }
+
+// remoteDelegationRev reads a prefix's current permission-state version from a
+// registry. Like the authority state, it must come from the registry the
+// statement is FOR: signing against a locally-derived value would produce a
+// compare-and-swap the target has never been in.
+func remoteDelegationRev(ctx context.Context, endpoint string, s Signer, namespace string) *big.Int {
+	out, err := mcpCallSignedBy(ctx, endpoint, s, "authority", map[string]any{"name": namespace})
+	if err != nil {
+		return big.NewInt(0)
+	}
+	var resp struct {
+		DelegationRev string `json:"delegation_rev"`
+	}
+	if json.Unmarshal([]byte(out), &resp) != nil || resp.DelegationRev == "" {
+		return big.NewInt(0)
+	}
+	if v, ok := new(big.Int).SetString(resp.DelegationRev, 10); ok {
+		return v
+	}
+	return big.NewInt(0)
+}

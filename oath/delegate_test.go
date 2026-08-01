@@ -8,11 +8,15 @@ import (
 	"testing"
 )
 
-func signDel(t *testing.T, priv ed25519.PrivateKey, op, ns, subject string, rev int64) ([]byte, string) {
+func signDel(t *testing.T, priv ed25519.PrivateKey, op, ns, subject string, rev int64, drev ...int64) ([]byte, string) {
 	t.Helper()
 	pub := hex.EncodeToString(priv.Public().(ed25519.PublicKey))
+	d := int64(0)
+	if len(drev) > 0 {
+		d = drev[0]
+	}
 	env := delEnvelope{Op: op, Namespace: ns, Subject: subject, Authority: pub,
-		AuthorityRev: big.NewInt(rev), Pubkey: pub}
+		AuthorityRev: big.NewInt(rev), DelegationRev: big.NewInt(d), Pubkey: pub}
 	oct := delEncode(env)
 	return oct, hex.EncodeToString(ed25519.Sign(priv, oct))
 }
@@ -102,11 +106,11 @@ func TestDelegationEnvelopeRules(t *testing.T) {
 	bobHex, _ := newKey(t)
 
 	if err := (delEnvelope{Op: opDelegate, Namespace: "alice/*", Subject: bobHex,
-		Authority: bobHex, AuthorityRev: big.NewInt(1), Pubkey: aliceHex}).validate(); err == nil {
+		Authority: bobHex, AuthorityRev: big.NewInt(1), DelegationRev: big.NewInt(0), Pubkey: aliceHex}).validate(); err == nil {
 		t.Error("accepted a grant whose authority is not the signer")
 	}
 	if err := (delEnvelope{Op: opDelegate, Namespace: "alice/*", Subject: aliceHex,
-		Authority: aliceHex, AuthorityRev: big.NewInt(1), Pubkey: aliceHex}).validate(); err == nil {
+		Authority: aliceHex, AuthorityRev: big.NewInt(1), DelegationRev: big.NewInt(0), Pubkey: aliceHex}).validate(); err == nil {
 		t.Error("accepted a self-delegation")
 	}
 	oct, _ := signDel(t, alice, opDelegate, "alice/*", bobHex, 1)
@@ -353,5 +357,61 @@ func TestDelegationJournalingBoundary(t *testing.T) {
 				t.Errorf("journal verification broke: %v", err)
 			}
 		})
+	}
+}
+
+// #106: a grant signed BEFORE a revocation must not be replayable after it.
+//
+// This failed before delegation_rev existed. Revocation removed the delegate,
+// and resubmitting the ORIGINAL GRANT BYTES — unchanged, validly signed, by the
+// holder — re-activated them. "Revocation removes delegated control" held only
+// until someone replayed a file they still had, and the realistic replayer is
+// not an attacker but a retry loop or a redeploy.
+func TestPreRevocationGrantIsNotReplayable(t *testing.T) {
+	st := newMemStoreForTest(t)
+	hHex, h := newKey(t)
+	ciHex, _ := newKey(t)
+	oct, sig := signRes(t, h, "r6/*", noAuthority, 0)
+	if _, err := apiReserve(st, oct, sig, hHex); err != nil {
+		t.Fatal(err)
+	}
+	// Grant at permission-state 0, keeping the bytes.
+	goct, gsig := signDel(t, h, opDelegate, "r6/*", ciHex, 1, 0)
+	if _, err := apiDelegate(st, goct, gsig, hHex); err != nil {
+		t.Fatal(err)
+	}
+	// Revoke at 1.
+	roct, rsig := signDel(t, h, opRevoke, "r6/*", ciHex, 1, 1)
+	if _, err := apiDelegate(st, roct, rsig, hHex); err != nil {
+		t.Fatal(err)
+	}
+	if delegates(st)["r6/*"][ciHex] {
+		t.Fatal("revocation did not take effect")
+	}
+
+	// REPLAY the original grant, byte for byte.
+	_, err := apiDelegate(st, goct, gsig, hHex)
+	if err == nil {
+		t.Fatal("the pre-revocation grant was ACCEPTED again — revocation is not durable")
+	}
+	if delegates(st)["r6/*"][ciHex] {
+		t.Fatal("the replayed grant re-activated the delegate")
+	}
+	// And the refusal is preserved, conferring nothing.
+	last := st.ReadLog()[len(st.ReadLog())-1]
+	if last.Status != "rejected" || last.EnvelopeB64 == "" {
+		t.Errorf("the replay was not preserved as a refusal: status=%q", last.Status)
+	}
+	// A FRESH grant at the current permission-state still works — the holder is
+	// not locked out, only the stale bytes are.
+	foct, fsig := signDel(t, h, opDelegate, "r6/*", ciHex, 1, delegationRev(st, "r6/*").Int64())
+	if _, err := apiDelegate(st, foct, fsig, hHex); err != nil {
+		t.Fatalf("a fresh grant at the current state was refused: %v", err)
+	}
+	if !delegates(st)["r6/*"][ciHex] {
+		t.Error("the fresh grant did not take effect")
+	}
+	if err := st.VerifyLog(); err != nil {
+		t.Fatalf("journal verification broke: %v", err)
 	}
 }

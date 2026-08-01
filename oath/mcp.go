@@ -249,6 +249,7 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 		if validNamespacePattern(a.Name) == nil {
 			holder, rev := reservationRev(st, a.Name)
 			resp["namespace"], resp["authority"], resp["authority_rev"] = a.Name, holder, rev.String()
+			resp["delegation_rev"] = delegationRev(st, a.Name).String()
 		} else if r, ok := governingReservation(st, a.Name); ok {
 			resp["namespace"], resp["authority"], resp["authority_rev"] = r.Namespace, r.Pubkey, r.Rev.String()
 		} else {

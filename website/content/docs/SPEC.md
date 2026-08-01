@@ -2483,6 +2483,26 @@ that outlive its authority.
 conveys nothing, and it would create a record whose revocation would appear to
 remove the holder's own rights.
 
+**DEL-REV-DISTINCT.** A prefix carries a DELEGATION REVISION versioning its
+delegated-permission state, separate from the authority revision versioning who
+HOLDS it. Every accepted grant or revocation advances it by exactly one; a
+REFUSED statement MUST NOT advance it.
+
+**DEL-CAS.** A grant or revocation MUST state the delegation revision it
+replaces, and MUST be refused when that value does not equal the registry's
+derived state.
+
+Without it, revocation is not durable: a grant signed BEFORE a revocation stays
+submittable AFTER it, because nothing in the envelope records which permission
+state it was written against — so resubmitting the original bytes silently
+re-activates a revoked delegate. That was demonstrated, not theorised, and the
+realistic replayer is not an attacker but a retry loop or a redeploy holding an
+old envelope.
+
+The two revisions MUST NOT be merged into one. They version different states, and
+sharing a counter would make every delegation event invalidate any pending
+statement signed against the prefix's authority.
+
 **DEL-REVOCABLE.** A withdrawal takes effect from the point it is recorded.
 
 **DEL-REVOCATION-RECOVERS.** After withdrawal, the former delegate MUST NOT be

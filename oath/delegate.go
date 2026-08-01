@@ -33,7 +33,15 @@ import (
 	"strings"
 )
 
-const delegateVersion = "oath-delegate/1"
+// delegateVersion is what this kernel EMITS. /1 is still READ: three accepted
+// delegations exist on the live registry under it, and a kernel that stopped
+// reading them would invalidate correct signatures rather than reject bad ones.
+const delegateVersion = "oath-delegate/2"
+
+// delegateVersionV1 predates delegation_rev. Its statements remain valid and are
+// counted by replay; what they cannot do is state which permission-state they
+// replace, which is exactly the gap /2 closes.
+const delegateVersionV1 = "oath-delegate/1"
 
 const (
 	opDelegate = "delegate"
@@ -55,24 +63,55 @@ type delEnvelope struct {
 	Subject      string
 	Authority    string   // the holder as of signing; must be Pubkey
 	AuthorityRev *big.Int // the prefix's authority revision at signing
-	Pubkey       string   // the holder making the grant
+	// DelegationRev versions the DELEGATED-PERMISSION state of this prefix,
+	// separately from AuthorityRev which versions who HOLDS it. They are different
+	// states and one counter cannot version both: giving delegation events the
+	// holder's counter would invalidate any statement signed against the prefix's
+	// authority every time a delegate changed.
+	//
+	// Every ACCEPTED grant or revocation advances it exactly once. Refused
+	// statements do NOT — they are preserved as history and confer nothing
+	// (AUTH-ACCEPTANCE-IS-THE-BOUNDARY), so advancing on refusal would let a
+	// rejected submission invalidate a valid pending one.
+	//
+	// This is what makes revocation DURABLE. Without it, a grant signed before a
+	// revocation stayed submittable after it — nothing in the envelope recorded
+	// which permission-state it was written against, so resubmitting the original
+	// bytes silently re-activated a revoked delegate. Demonstrated, not theorised.
+	DelegationRev *big.Int
+	Pubkey        string // the holder making the grant
+	// version is the format these bytes were WRITTEN in. Verification must use it
+	// rather than whatever this kernel currently emits: re-encoding a /1 statement
+	// as /2 and checking its signature against those bytes invalidates a correct
+	// signature instead of rejecting a bad one. Unexported — it is a property of
+	// the octets, never of the statement's content.
+	version string
 }
 
-func delEncode(e delEnvelope) []byte {
+func delEncode(e delEnvelope) []byte { return delEncodeAs(e, delegateVersion) }
+
+// delEncodeAs renders under a SPECIFIC format version, so a historical statement
+// can be reproduced for verification rather than only re-signed under the current
+// shape — the same discipline §8.6.1 requires of publication envelopes.
+func delEncodeAs(e delEnvelope, version string) []byte {
 	if err := e.validate(); err != nil {
 		panic("delEncode on an invalid envelope: " + err.Error())
 	}
 	var b strings.Builder
-	b.WriteString(delegateVersion)
+	b.WriteString(version)
 	b.WriteByte('\n')
-	for _, kv := range [][2]string{
+	kvs := [][2]string{
 		{"op", e.Op},
 		{"namespace", e.Namespace},
 		{"subject", e.Subject},
 		{"authority", e.Authority},
 		{"authority_rev", e.AuthorityRev.String()},
-		{"pubkey", e.Pubkey},
-	} {
+	}
+	if version != delegateVersionV1 {
+		kvs = append(kvs, [2]string{"delegation_rev", e.DelegationRev.String()})
+	}
+	kvs = append(kvs, [2]string{"pubkey", e.Pubkey})
+	for _, kv := range kvs {
 		b.WriteString(kv[0])
 		b.WriteByte('=')
 		b.WriteString(kv[1])
@@ -84,6 +123,9 @@ func delEncode(e delEnvelope) []byte {
 func (e delEnvelope) validate() error {
 	if e.AuthorityRev == nil || e.AuthorityRev.Sign() < 0 {
 		return fmt.Errorf("authority_rev is unset or negative")
+	}
+	if e.DelegationRev == nil || e.DelegationRev.Sign() < 0 {
+		return fmt.Errorf("delegation_rev is unset or negative")
 	}
 	for _, f := range []struct{ k, v string }{
 		{"op", e.Op}, {"namespace", e.Namespace}, {"subject", e.Subject},
@@ -129,13 +171,23 @@ func (e delEnvelope) validate() error {
 
 func parseDelegateEnvelope(b []byte) (delEnvelope, error) {
 	lines := strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
-	if len(lines) != 7 {
-		return delEnvelope{}, fmt.Errorf("delegation envelope has %d line(s), want 7", len(lines))
-	}
-	if lines[0] != delegateVersion {
+	// /1 is READ but never emitted: accepted delegations exist under it, and their
+	// signatures must keep verifying. A /1 statement has no delegation_rev — it
+	// could not state which permission-state it replaced, which is the gap /2
+	// closes — so replay counts it while nothing may be SUBMITTED under it.
+	var want []string
+	switch lines[0] {
+	case delegateVersion:
+		want = []string{"op", "namespace", "subject", "authority", "authority_rev", "delegation_rev", "pubkey"}
+	case delegateVersionV1:
+		want = []string{"op", "namespace", "subject", "authority", "authority_rev", "pubkey"}
+	default:
 		return delEnvelope{}, fmt.Errorf("unknown delegation format %q", lines[0])
 	}
-	want := []string{"op", "namespace", "subject", "authority", "authority_rev", "pubkey"}
+	if len(lines) != len(want)+1 {
+		return delEnvelope{}, fmt.Errorf("delegation envelope has %d line(s), want %d for %s",
+			len(lines), len(want)+1, lines[0])
+	}
 	vals := map[string]string{}
 	for i, key := range want {
 		k, v, ok := strings.Cut(lines[i+1], "=")
@@ -148,10 +200,24 @@ func parseDelegateEnvelope(b []byte) (delEnvelope, error) {
 	if !ok {
 		return delEnvelope{}, fmt.Errorf("authority_rev %q is not a base-10 integer", vals["authority_rev"])
 	}
+	drev := big.NewInt(0)
+	if v, present := vals["delegation_rev"]; present {
+		if drev, ok = new(big.Int).SetString(v, 10); !ok {
+			return delEnvelope{}, fmt.Errorf("delegation_rev %q is not a base-10 integer", v)
+		}
+	}
 	e := delEnvelope{Op: vals["op"], Namespace: vals["namespace"], Subject: vals["subject"],
-		Authority: vals["authority"], AuthorityRev: rev, Pubkey: vals["pubkey"]}
+		Authority: vals["authority"], AuthorityRev: rev, DelegationRev: drev,
+		Pubkey: vals["pubkey"], version: lines[0]}
 	if err := e.validate(); err != nil {
 		return delEnvelope{}, err
+	}
+	if lines[0] == delegateVersionV1 {
+		// Round-trip under /1's shape, since delEncode emits /2.
+		if string(delEncodeAs(e, delegateVersionV1)) != string(b) {
+			return delEnvelope{}, fmt.Errorf("delegation envelope does not re-encode to itself")
+		}
+		return e, nil
 	}
 	if string(delEncode(e)) != string(b) {
 		return delEnvelope{}, fmt.Errorf("delegation envelope does not re-encode to itself")
@@ -176,7 +242,13 @@ func delVerify(e delEnvelope, sigHex string) error {
 	if err != nil || len(sig) != ed25519.SignatureSize {
 		return fmt.Errorf("delegation signature is not a %d-byte hex signature", ed25519.SignatureSize)
 	}
-	if ruleOn("ENV-VERIFY-SIGNATURE") && !ed25519.Verify(ed25519.PublicKey(pub), delEncode(e), sig) {
+	// Verified against the format the statement was WRITTEN in (§8.6.1's rule for
+	// publication envelopes, and for the same reason).
+	ver := e.version
+	if ver == "" {
+		ver = delegateVersion
+	}
+	if ruleOn("ENV-VERIFY-SIGNATURE") && !ed25519.Verify(ed25519.PublicKey(pub), delEncodeAs(e, ver), sig) {
 		return fmt.Errorf("delegation signature does not verify")
 	}
 	return nil
@@ -234,6 +306,34 @@ func delegates(st *Store) map[string]map[string]bool {
 		}
 	}
 	return out
+}
+
+// delegationRev is the current permission-state version of a prefix: how many
+// ACCEPTED grants or revocations it has undergone.
+//
+// Derived by replay like everything else, and counted from ACCEPTED entries only.
+// A refused statement is preserved as history and confers nothing, so counting it
+// would let a rejected submission invalidate a valid pending one.
+func delegationRev(st *Store, namespace string) *big.Int {
+	n := big.NewInt(0)
+	for _, e := range st.ReadLog() {
+		if e.Status != "accepted" || e.EnvelopeB64 == "" {
+			continue
+		}
+		raw, err := base64.StdEncoding.DecodeString(e.EnvelopeB64)
+		if err != nil || authorStatementKind(raw) != "delegation" {
+			continue
+		}
+		env, perr := parseDelegateEnvelope(raw)
+		if perr != nil || env.Namespace != namespace {
+			continue
+		}
+		if delVerify(env, e.AuthorSig) != nil || e.AuthorPubkey != env.Pubkey {
+			continue
+		}
+		n.Add(n, big.NewInt(1))
+	}
+	return n
 }
 
 // mayBindUnder reports whether `key` may bind names under the reservation
@@ -317,6 +417,21 @@ func apiDelegate(st *Store, octets []byte, sigHex, principal string) (delegateRe
 	if env.Authority != holder || env.AuthorityRev.Cmp(rev) != 0 {
 		return refuse("stale authority state: signed against authority=%s rev=%s, but %q is held by %s at rev=%s — re-read and sign again",
 			shortHash(env.Authority), env.AuthorityRev, env.Namespace, shortHash(holder), rev)
+	}
+
+	// THE PERMISSION-STATE COMPARE-AND-SWAP. This is what makes revocation
+	// durable: a grant signed before a revocation names the permission-state it
+	// replaced, so resubmitting those bytes afterwards no longer matches.
+	//
+	// /1 statements carry no delegation_rev and are accepted only when the prefix
+	// has never had one — otherwise a historical envelope would be replayable by
+	// the very gap this closes.
+	curDRev := delegationRev(st, env.Namespace)
+	if env.DelegationRev.Cmp(curDRev) != 0 {
+		return refuse("stale delegation state: signed against delegation_rev=%s, but %q is at %s — "+
+			"a grant or revocation has happened since, so this statement describes a permission "+
+			"state that no longer exists. Re-read and sign again",
+			env.DelegationRev, env.Namespace, curDRev)
 	}
 
 	active := delegates(st)[env.Namespace]
@@ -422,8 +537,14 @@ func cmdDelegate(local *Store, endpoint, keyPath, kmsKey, namespace, subject, op
 			namespace, shortHash(holder), shortHash(pubHex)))
 	}
 
+	// The CURRENT permission-state, read from the same place the acceptance path
+	// will check it against.
+	drev := delegationRev(local, namespace)
+	if endpoint != "" {
+		drev = remoteDelegationRev(ctx, endpoint, signer, namespace)
+	}
 	env := delEnvelope{Op: op, Namespace: namespace, Subject: subject,
-		Authority: holder, AuthorityRev: rev, Pubkey: pubHex}
+		Authority: holder, AuthorityRev: rev, DelegationRev: drev, Pubkey: pubHex}
 	octets := delEncode(env)
 	fmt.Printf("EXACT BYTES TO BE SIGNED (this is the statement, not a summary of it):\n")
 	for _, line := range strings.Split(strings.TrimSuffix(string(octets), "\n"), "\n") {
