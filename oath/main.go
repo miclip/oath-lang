@@ -500,10 +500,61 @@ func main() {
 	case "ls":
 		cmdLs(st)
 	case "get":
-		if len(args) != 2 {
-			fail(fmt.Errorf("usage: oath get <name>"))
+		if len(args) < 2 {
+			fail(fmt.Errorf("usage: oath get <name> | oath get stdlib/<member> [--where]"))
 		}
-		cmdGet(st, args[1])
+		// stdlib/<member> is a CURATED reference, not a registry name. It resolves
+		// through the index to wherever the member actually lives, so a consumer
+		// never has to know whether it was republished by the project or selected
+		// from someone else's publication.
+		name := args[1]
+		if strings.HasPrefix(name, stdlibPrefix) {
+			r, rerr := resolveStdlibIn(st, name)
+			if rerr != nil {
+				fail(rerr)
+			}
+			if len(args) > 2 && args[2] == "--where" {
+				fmt.Print(renderResolution(r))
+				return
+			}
+			name = r.Target
+		}
+		cmdGet(st, name)
+	case "stdlib":
+		// The index as a consumer sees it: what the library offers and where each
+		// member lives. Membership is shown because it is a real difference in what
+		// the project is claiming — but it is shown, not required to be understood.
+		if len(args) > 1 && args[1] != "ls" {
+			r, rerr := resolveStdlibIn(st, stdlibPrefix+strings.TrimPrefix(args[1], stdlibPrefix))
+			if rerr != nil {
+				fail(rerr)
+			}
+			fmt.Print(renderResolution(r))
+			return
+		}
+		ix, path, ierr := loadStdlibIndex()
+		if ierr != nil {
+			fail(ierr)
+		}
+		fmt.Printf("THE OATH STANDARD LIBRARY  (index: %s)\n\n", path)
+		for _, d := range ix.Definitions {
+			if !d.Export {
+				continue
+			}
+			r, rerr := resolveStdlibIn(st, stdlibPrefix+d.Name)
+			where := r.Target
+			if rerr != nil {
+				where = "(unresolvable here)"
+			}
+			mode := "referenced"
+			if d.Membership == "project-publication" {
+				mode = "published"
+			}
+			fmt.Printf("  stdlib/%-22s %-10s → %s\n", d.Name, mode, where)
+		}
+		fmt.Printf("\n  `published` members carry the project's licence assertion.\n")
+		fmt.Printf("  `referenced` members are RECOMMENDED, not republished — their terms\n")
+		fmt.Printf("  are their publisher's. `oath stdlib <name>` shows the provenance.\n")
 	case "find":
 		if len(args) == 3 && args[1] == "--spec" {
 			cmdFindSpec(st, args[2])

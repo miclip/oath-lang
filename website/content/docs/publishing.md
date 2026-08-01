@@ -147,10 +147,25 @@ stdlib/
 behalf of the project, or code whose author has explicitly granted the project
 the right to republish under `oath/*`.
 
-**Using the library should not require caring which is which.** Resolution is
-transparent — `oath get stdlib/map` follows the pinned publication without you
-knowing whether it lives under `oath/` or `alice/`. The distinction matters for
-provenance, licensing and governance; it should not matter for consumption.
+**Using the library does not require caring which is which.**
+
+```
+oath stdlib                 # what the library offers, and where each member lives
+oath get stdlib/map         # follows the member wherever it is
+oath stdlib map             # the provenance, when you want it
+```
+
+`oath get stdlib/map` resolves through the index without you knowing whether the
+member lives under `oath/` or under its author's namespace. The distinction
+matters for provenance, licensing and governance; it does not matter for use.
+
+It stays visible on request rather than hidden — `oath stdlib <name>` reports what
+was followed, including that a referenced member's terms are its publisher's and
+not the project's.
+
+One honest limit: the index is a local file and is not itself signed or
+content-addressed, so resolving through it trusts whoever supplied it. Everything
+it resolves TO is signed and verifiable.
 
 That also makes the PR a much smaller ask. You are not requesting *"please
 publish my code under your namespace"* — you are requesting *"please include my
