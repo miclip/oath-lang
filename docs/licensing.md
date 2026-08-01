@@ -171,6 +171,19 @@ Recorded in the output rather than left implicit:
 - anything about jurisdictions, obligations outside the five dimensions, or
   compatibility questions the model does not represent.
 
+## The corpus asserts Apache-2.0
+
+Since 2026-08-01 the live registry's corpus carries signed licence assertions:
+184 names, `Apache-2.0`, each in a publication signed by the publisher's key. So
+a composition query returns a real verdict rather than the honest-but-empty
+`UNSTATED` a corpus with no assertions must produce.
+
+Apache-2.0 was chosen against the model rather than by reputation. It is the only
+row granting all four permissions with no share-alike obligation — MIT, ISC, BSD
+and Unlicense all leave `patent_grant` UNSTATED, and because UNSTATED is
+contagious, a corpus published under any of them would make the patent dimension
+unknown for every downstream composition.
+
 ## See also
 
 - SPEC §12 — normative licence evaluation

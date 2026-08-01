@@ -83,8 +83,8 @@ export default function Guarantees() {
         can&apos;t reason about it.
       </p>
 
-      <h2>Four dimensions, not one</h2>
-      <p>Alongside property proofs, every definition carries three more verdicts:</p>
+      <h2>Five dimensions, not one</h2>
+      <p>Alongside property proofs, every definition carries four more verdicts:</p>
       <ul>
         <li>
           <strong>Termination.</strong> A structural checker proves totality where
@@ -112,6 +112,20 @@ export default function Guarantees() {
           <strong>Provenance.</strong> Every put attempt — accepted, falsified, or
           rejected — is retained in an append-only journal with principal attribution,
           timestamp, and verifier version.
+        </li>
+              <li>
+          <strong>Licensing.</strong> What the composition permits, across the exact
+          dependency closure: commercial use, redistribution, modification, patent
+          grant, and the share-alike <em>obligation</em> — which combines with the
+          opposite polarity to the four permissions. Deliberately{" "}
+          <em>never</em> <code>PROVEN</code>: compatibility over a finite lattice is
+          decided by evaluation, not proved over unbounded inputs, and reusing that
+          word would overload the strongest claim the system makes. The publisher{" "}
+          <strong>asserts</strong> terms inside a signed publication envelope; the
+          registry <strong>derives</strong> the verdict and publishes a digest so it
+          can be re-derived rather than trusted. <code>UNSTATED</code> is not
+          permission — it means no evidence, and it is contagious.{" "}
+          <a href="/docs/licensing">Licensing →</a>
         </li>
       </ul>
 

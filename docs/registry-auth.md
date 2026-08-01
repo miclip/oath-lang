@@ -35,7 +35,27 @@ for the connection, never the source of provenance.**
 >
 > It also said "every journal entry is signed". That was a target, not a fact,
 > and the gap is now measured rather than asserted — `oath audit` reports signed
-> versus unsigned coverage, and the committed corpus is 531 unsigned entries.
+> versus unsigned coverage.
+
+**Measured, 2026-08-01.** The live registry carries 1,014 journal entries, of
+which **186 are cryptographically authored** across **184 distinct names**, every
+one asserting `Apache-2.0`. Before the signed corpus adoption it was 1 of 825.
+
+The remaining gap is stated rather than rounded off:
+
+- **5 live names have no signed publication** — `dbl`, `id-check`,
+  `one-two-three`, `singleton`, `swap`. The adoption campaign published from the
+  COMMITTED corpus (187 names) and the live registry has 189, so it carries
+  definitions from earlier sessions the campaign never saw.
+- **The 828 pre-adoption entries remain unsigned, permanently and correctly.**
+  Adoption published NEW signed assertions over existing artifact hashes; it did
+  not convert history. An entry written in July 2026 without a signature is
+  evidence of exactly that, and rewriting it would destroy the record the journal
+  exists to keep.
+- **Names are still owned by legacy labels.** Signing a publication proves who
+  published; it does not establish who may repoint the name. That is #84's
+  remaining stage and needs an operator decision about scope, not more
+  publications.
 
 ## Why (and why now)
 
