@@ -247,6 +247,9 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 	//   store      §8.6.4's store-side MUSTs: a STATE (what the store believes) plus a
 	//              REQUEST (signed octets, signature, authenticated principal, and the
 	//              artifact the store recomputed), with the expected verdict
+	if err := writeReserveVectors(write); err != nil {
+		return "", err
+	}
 	if err := writeEnvelopeVectors(write); err != nil {
 		return "", err
 	}
@@ -1172,7 +1175,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 	// a lookup-first implementation RESOLVES it, granting terms the consumer never
 	// chose between.
 	compoundModel := map[string]map[string]string{
-		"MIT":                {"commercial": "YES", "redistribute": "YES", "modify": "YES", "patent_grant": "UNSTATED", "share_alike": "NO"},
+		"MIT":                  {"commercial": "YES", "redistribute": "YES", "modify": "YES", "patent_grant": "UNSTATED", "share_alike": "NO"},
 		"MIT AND GPL-3.0-only": {"commercial": "YES", "redistribute": "YES", "modify": "YES", "patent_grant": "YES", "share_alike": "YES"},
 	}
 	cm := map[string]grants{}
@@ -1184,7 +1187,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		return fmt.Errorf("a compound key present in the model was RESOLVED (commercial=%s); the compound test must precede the lookup", g.Commercial)
 	}
 	if err := emit(map[string]any{"kind": "evaluation",
-		"label": "a compound present in the model is still not resolved",
+		"label":     "a compound present in the model is still not resolved",
 		"witnesses": "LICENSE-LOOKUP-PRECEDENCE", "policy": licensePolicyComposition,
 		"engine": licenseEngine, "model": licenseModelVersion,
 		"model_licenses": compoundModel, "assertions": []string{"MIT AND GPL-3.0-only"},
@@ -1210,7 +1213,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 			g.Commercial, g.ShareAlike)
 	}
 	if err := emit(map[string]any{"kind": "evaluation",
-		"label": "a malformed model row grants nothing",
+		"label":     "a malformed model row grants nothing",
 		"witnesses": "LICENSE-MODEL-SCHEMA", "policy": licensePolicyComposition,
 		"engine": licenseEngine, "model": licenseModelVersion,
 		"model_licenses": sloppyModel, "assertions": []string{"Sloppy-1.0"},
@@ -1295,10 +1298,10 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		return fmt.Errorf("the character rule did not refuse an assertion embedding LF (got digest %s); one assertion can forge another composition's identity", shortHash(d))
 	}
 	if err := emit(map[string]any{"kind": "identity",
-		"label": "an embedded newline cannot forge a two-input digest",
+		"label":     "an embedded newline cannot forge a two-input digest",
 		"witnesses": "LICENSE-IDENTITY-UNAMBIGUOUS", "policy": base.Policy, "engine": base.Engine,
 		"model": base.Model, "model_digest": base.ModelDigest, "subject": base.Subject, "assertions": []string{},
-		"pairs": []licensePair{{Artifact: artA, Publication: pubA, License: "MIT\ninput-artifact=" + artB + "\ninput-publication=" + pubB + "\ninput-license=Apache-2.0"}},
+		"pairs":           []licensePair{{Artifact: artA, Publication: pubA, License: "MIT\ninput-artifact=" + artB + "\ninput-publication=" + pubB + "\ninput-license=Apache-2.0"}},
 		"expect_rejected": true}); err != nil {
 		return err
 	}
@@ -1309,14 +1312,14 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 	// Both readings passed every vector until this one existed.
 	withNone := licenseEvaluation{Policy: base.Policy, Engine: base.Engine, Model: base.Model,
 		ModelDigest: base.ModelDigest, Subject: base.Subject,
-		Inputs:      []licenseInput{{Artifact: artA, Publication: pubA, License: "MIT"}, {Artifact: artB, Publication: pubB, License: "-"}}}
+		Inputs: []licenseInput{{Artifact: artA, Publication: pubA, License: "MIT"}, {Artifact: artB, Publication: pubB, License: "-"}}}
 	alone := withNone
 	alone.Inputs = []licenseInput{{Artifact: artA, Publication: pubA, License: "MIT"}}
 	if evaluationDigest(withNone) == evaluationDigest(alone) {
 		return fmt.Errorf("a member asserting nothing was dropped from the digest: {a:MIT, b:(none)} and {a:MIT} share an identity while their verdicts differ")
 	}
 	if err := emit(map[string]any{"kind": "identity",
-		"label": "a member asserting nothing still contributes an input pair",
+		"label":     "a member asserting nothing still contributes an input pair",
 		"witnesses": "LICENSE-INPUT-COMPLETE", "policy": base.Policy, "engine": base.Engine,
 		"model": base.Model, "model_digest": base.ModelDigest, "subject": base.Subject,
 		"assertions": []string{}, "pairs": []licensePair{{Artifact: artA, Publication: pubA, License: "MIT"}, {Artifact: artB, Publication: pubB, License: "-"}},
@@ -1332,7 +1335,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		return fmt.Errorf("an unrecognised policy produced the composition digest; a different selection rule would be reported as the same evaluation")
 	}
 	if err := emit(map[string]any{"kind": "identity",
-		"label": "an unrecognised policy is a different evaluation",
+		"label":     "an unrecognised policy is a different evaluation",
 		"witnesses": "LICENSE-POLICY-DEFINED", "policy": unk.Policy, "engine": base.Engine,
 		"model": base.Model, "model_digest": base.ModelDigest, "subject": base.Subject,
 		"pairs": []licensePair{{Artifact: artA, Publication: pubA, Name: "a", License: "MIT"}, {Artifact: artB, Publication: pubB, Name: "b", License: "Apache-2.0"}}, "assertions": []string{}, "digest": evaluationDigest(unk)}); err != nil {
@@ -1351,7 +1354,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		return fmt.Errorf("renaming a member changed the evaluation digest; identity is following the discovery path rather than the artifacts")
 	}
 	if err := emit(map[string]any{"kind": "identity",
-		"label": "renaming members does not change the evaluation",
+		"label":     "renaming members does not change the evaluation",
 		"witnesses": "LICENSE-IDENTITY-ARTIFACT", "policy": base.Policy, "engine": base.Engine,
 		"model": base.Model, "model_digest": base.ModelDigest, "subject": base.Subject, "assertions": []string{},
 		"pairs": []licensePair{
@@ -1372,7 +1375,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		return fmt.Errorf("the same terms asserted by a different publication produced the same digest; the evaluation cannot say whose grant it consumed")
 	}
 	if err := emit(map[string]any{"kind": "identity",
-		"label": "the same terms from a different publication is a different evaluation",
+		"label":     "the same terms from a different publication is a different evaluation",
 		"witnesses": "LICENSE-IDENTITY-PUBLICATION", "policy": base.Policy, "engine": base.Engine,
 		"model": base.Model, "model_digest": base.ModelDigest, "subject": base.Subject, "assertions": []string{},
 		"pairs": []licensePair{
@@ -1395,7 +1398,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		return fmt.Errorf("a member appearing twice was deduplicated; two different compositions share an identity")
 	}
 	if err := emit(map[string]any{"kind": "identity",
-		"label": "a member appearing twice contributes twice",
+		"label":     "a member appearing twice contributes twice",
 		"witnesses": "LICENSE-INPUT-COMPLETE", "policy": base.Policy, "engine": base.Engine,
 		"model": base.Model, "model_digest": base.ModelDigest, "subject": base.Subject, "assertions": []string{},
 		"pairs": []licensePair{{Artifact: artA, Publication: pubA, License: "MIT"},
@@ -1417,7 +1420,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		return fmt.Errorf("two publications of ONE artifact hashed differently by presentation order; sorting on artifact alone is not a total order")
 	}
 	if err := emit(map[string]any{"kind": "identity",
-		"label": "one artifact under two publications sorts deterministically",
+		"label":     "one artifact under two publications sorts deterministically",
 		"witnesses": "LICENSE-ORDER-INDEPENDENT", "policy": base.Policy, "engine": base.Engine,
 		"model": base.Model, "model_digest": base.ModelDigest, "subject": base.Subject, "assertions": []string{},
 		"pairs": []licensePair{{Artifact: artA, Publication: pubB, License: "Apache-2.0"},
@@ -1437,10 +1440,10 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		return fmt.Errorf("an absent publication did not encode as the sentinel; the encoding uses a value this specification does not define")
 	}
 	if err := emit(map[string]any{"kind": "identity",
-		"label": "an undeterminable publication encodes the sentinel",
+		"label":     "an undeterminable publication encodes the sentinel",
 		"witnesses": "LICENSE-PUBLICATION-SENTINEL", "policy": base.Policy, "engine": base.Engine,
 		"model": base.Model, "model_digest": base.ModelDigest, "subject": base.Subject, "assertions": []string{},
-		"pairs": []licensePair{{Artifact: artA, Publication: "-", License: "MIT"}},
+		"pairs":  []licensePair{{Artifact: artA, Publication: "-", License: "MIT"}},
 		"digest": evaluationDigest(nopub)}); err != nil {
 		return err
 	}
@@ -1455,11 +1458,11 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		return fmt.Errorf("U+2028 was accepted in an asserted expression; a Unicode-aware reader would see a multi-member composition carrying a grant nobody published")
 	}
 	if err := emit(map[string]any{"kind": "identity",
-		"label": "U+2028 cannot forge additional input lines",
+		"label":     "U+2028 cannot forge additional input lines",
 		"witnesses": "LICENSE-IDENTITY-UNAMBIGUOUS", "policy": base.Policy, "engine": base.Engine,
 		"model": base.Model, "model_digest": base.ModelDigest, "subject": base.Subject,
-		"assertions": []string{},
-		"pairs": []licensePair{{Artifact: artA, Publication: pubA, License: uniForge.Inputs[0].License}},
+		"assertions":      []string{},
+		"pairs":           []licensePair{{Artifact: artA, Publication: pubA, License: uniForge.Inputs[0].License}},
 		"expect_rejected": true}); err != nil {
 		return err
 	}
@@ -1473,7 +1476,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		return fmt.Errorf("changing the evaluated artifact did not change the digest; the identity does not name what it is an evaluation of")
 	}
 	if err := emit(map[string]any{"kind": "identity",
-		"label": "the same closure about a different artifact is a different evaluation",
+		"label":     "the same closure about a different artifact is a different evaluation",
 		"witnesses": "LICENSE-IDENTITY-SUBJECT", "policy": base.Policy, "engine": base.Engine,
 		"model": base.Model, "model_digest": base.ModelDigest, "subject": artB,
 		"assertions": []string{},
@@ -1492,7 +1495,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 		return fmt.Errorf("editing the lattice under a fixed version string left the digest unchanged; every historical evaluation would still verify while meaning the opposite")
 	}
 	if err := emit(map[string]any{"kind": "identity",
-		"label": "editing the lattice changes the digest even under a fixed version string",
+		"label":     "editing the lattice changes the digest even under a fixed version string",
 		"witnesses": "LICENSE-IDENTITY-MODEL-CONTENT", "policy": base.Policy, "engine": base.Engine,
 		"model": base.Model, "model_digest": swapped.ModelDigest, "subject": swapped.Subject,
 		"pairs": []licensePair{{Artifact: artA, Publication: pubA, Name: "a", License: "MIT"}, {Artifact: artB, Publication: pubB, Name: "b", License: "Apache-2.0"}}, "assertions": []string{}, "digest": evaluationDigest(swapped)}); err != nil {
@@ -1521,7 +1524,7 @@ func writeLicenseVectors(write func(string, []byte) error) error {
 	for _, a := range amb {
 		ev := licenseEvaluation{Policy: base.Policy, Engine: base.Engine, Model: base.Model,
 			ModelDigest: base.ModelDigest, Subject: base.Subject,
-			Inputs:      []licenseInput{{Artifact: a.pair.Artifact, License: a.pair.License}}}
+			Inputs: []licenseInput{{Artifact: a.pair.Artifact, License: a.pair.License}}}
 		d := evaluationDigest(ev)
 		ambDigests = append(ambDigests, d)
 		if err := emit(map[string]any{"kind": "identity", "label": a.label,
@@ -1571,4 +1574,109 @@ func evalFromAssertionsIn(model map[string]grants, exprs []string) grants {
 		}
 	}
 	return acc
+}
+
+// writeReserveVectors emits fixtures/reserve/vectors.jsonl — the §8.7 witnesses.
+//
+// SELF-VALIDATED like the envelope vectors: an accept case this kernel cannot
+// reproduce, or a reject case it accepts, fails generation rather than shipping a
+// false obligation to an implementer with no other source to check against.
+//
+// The set is chosen to witness the derivations a reader is most likely to get
+// wrong, not to cover the encoding evenly. Segment-vs-substring, retention-vs-
+// denial, authority-rev-vs-name-rev and unreservable-vs-forbidden each get a
+// vector whose EXPECTED VERDICT differs from the intuitive one.
+func writeReserveVectors(write func(string, []byte) error) error {
+	var out strings.Builder
+	emit := func(v map[string]any) error {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		out.Write(b)
+		out.WriteByte('\n')
+		return nil
+	}
+	resJSON := func(e resEnvelope) map[string]any {
+		// authority_rev as a STRING, for the reason the envelope vectors record:
+		// a float64 JSON reader decodes a large integer off by one, which would
+		// defeat the arbitrary-precision rule with its own carrier.
+		return map[string]any{"op": e.Op, "namespace": e.Namespace,
+			"authority": e.Authority, "authority_rev": e.AuthorityRev.String(), "pubkey": e.Pubkey}
+	}
+	key := func(b byte) string {
+		return strings.Repeat(string([]byte{"0123456789abcdef"[b>>4], "0123456789abcdef"[b&15]}), 32)
+	}
+
+	// --- canonical: structured envelope -> exact octets -------------------------
+	for _, c := range []struct {
+		label string
+		env   resEnvelope
+	}{
+		{"first reservation of an unclaimed prefix", resEnvelope{Op: opReserve, Namespace: "alice/*",
+			Authority: noAuthority, AuthorityRev: big.NewInt(0), Pubkey: key(0xaa)}},
+		{"nested prefix, later authority revision", resEnvelope{Op: opReserve, Namespace: "alice/sub/*",
+			Authority: key(0xbb), AuthorityRev: big.NewInt(7), Pubkey: key(0xcc)}},
+		{"authority_rev is arbitrary precision, not a machine word", resEnvelope{Op: opReserve,
+			Namespace: "deep/name/space/*", Authority: key(0xdd),
+			AuthorityRev: new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1)), Pubkey: key(0xee)}},
+	} {
+		octets := resEncode(c.env)
+		if _, err := parseReserveEnvelope(octets); err != nil {
+			return fmt.Errorf("reserve vector %q does not round-trip: %w", c.label, err)
+		}
+		if err := emit(map[string]any{"kind": "canonical", "label": c.label,
+			"envelope": resJSON(c.env), "octets_b64": encodeEnvelopeB64(octets)}); err != nil {
+			return err
+		}
+	}
+
+	// --- reject: bytes a conformant parser MUST refuse --------------------------
+	base := string(resEncode(resEnvelope{Op: opReserve, Namespace: "alice/*",
+		Authority: noAuthority, AuthorityRev: big.NewInt(0), Pubkey: key(0xaa)}))
+	for _, r := range []struct{ label, octets, reason string }{
+		{"reordered members", strings.Replace(base, "op=reserve\nnamespace=alice/*", "namespace=alice/*\nop=reserve", 1),
+			"fixed order, fixed count: the encoding does not re-encode to itself"},
+		{"non-canonical authority_rev", strings.Replace(base, "authority_rev=0", "authority_rev=00", 1),
+			"leading zeros are not canonical decimal"},
+		{"extra member", base + "extra=1\n", "fixed count; an unknown member is malformed, not ignorable"},
+		{"unknown format line", strings.Replace(base, reserveVersion, "oath-reserve/9", 1),
+			"the version is inside the signed bytes; an unknown one cannot be interpreted"},
+		{"exact name, not a prefix", strings.Replace(base, "namespace=alice/*", "namespace=alice", 1),
+			"RES-PATTERN: exact-name ownership comes from publication, never from reservation"},
+		{"whole-registry claim", strings.Replace(base, "namespace=alice/*", "namespace=*", 1),
+			"RES-PATTERN: a claim to everything is a takeover, not a reservation"},
+		{"protocol root", strings.Replace(base, "namespace=alice/*", "namespace=key/*", 1),
+			"RES-PROTOCOL-ROOT: first-segment match"},
+	} {
+		if _, err := parseReserveEnvelope([]byte(r.octets)); err == nil {
+			return fmt.Errorf("reserve reject vector %q was ACCEPTED by this kernel", r.label)
+		}
+		if err := emit(map[string]any{"kind": "reject", "label": r.label,
+			"octets_b64": encodeEnvelopeB64([]byte(r.octets)), "reason": r.reason}); err != nil {
+			return err
+		}
+	}
+
+	// --- coverage: prefix matching, where instinct pulls to substring ------------
+	for _, m := range []struct {
+		pattern, name string
+		covers        bool
+		why           string
+	}{
+		{"alice/*", "alice/foo", true, "direct child"},
+		{"alice/*", "alice/sub/foo", true, "descendant at any depth"},
+		{"alice/*", "alice2/x", false, "RES-SEGMENT-MATCH: a substring check would wrongly cover this"},
+		{"alice/*", "alice", false, "a namespace is not the bare name"},
+		{"alice/*", "bob/foo", false, "unrelated"},
+	} {
+		if got := namespaceCovers(m.pattern, m.name); got != m.covers {
+			return fmt.Errorf("reserve coverage vector %q/%q disagrees with this kernel", m.pattern, m.name)
+		}
+		if err := emit(map[string]any{"kind": "covers", "pattern": m.pattern,
+			"name": m.name, "covers": m.covers, "why": m.why}); err != nil {
+			return err
+		}
+	}
+	return write("reserve/vectors.jsonl", []byte(out.String()))
 }

@@ -109,6 +109,24 @@ def recompute_surface(source: str, supplied=None, exporter_rev=None) -> str | No
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def recompute_kit(section) -> str | None:
+    """Rebuild a protocol kit and return its surface digest, or None."""
+    if not section:
+        return None
+    tmp = Path(tempfile.mkdtemp(prefix="oath-kitcheck-")) / "kit"
+    try:
+        r = subprocess.run([sys.executable, str(ROOT / "scripts" / "blind-kit.py"), section, str(tmp)],
+                           capture_output=True, text=True, cwd=ROOT)
+        if r.returncode != 0:
+            return None
+        for line in r.stdout.splitlines():
+            if line.startswith("surface digest"):
+                return line.split()[-1]
+        return None
+    finally:
+        shutil.rmtree(tmp.parent, ignore_errors=True)
+
+
 def surface_declaration():
     """The NORMATIVE DATA §13.1b declares, and what blind-export actually ships.
 
@@ -187,7 +205,16 @@ def main():
                 failures.append(f"round {n}: DISPATCHED without a pre-registered hypothesis")
             print(f"  round {n}  DISPATCHED (pre-registered)      §{','.join(r.get('sections', []))}")
             sd_pending, src_pending = r.get("surface_digest"), r.get("source")
-            got = recompute_surface(src_pending, r.get("supplied")) if sd_pending else None
+            # A KIT is built by a different instrument, so it is recomputed by that
+            # instrument — the same rule as `exporter` for tree exports. A kit is
+            # assembled from the CURRENT normative text rather than a commit, which
+            # means editing the section under test invalidates a pre-registration.
+            # That is the correct behaviour: the surface a subject was dispatched
+            # against must still be the surface the claim names.
+            if r.get("surface_tool") == "blind-kit.py":
+                got = recompute_kit(r.get("kit_section")) if sd_pending else None
+            else:
+                got = recompute_surface(src_pending, r.get("supplied"), r.get("exporter")) if sd_pending else None
             ok = got == sd_pending
             if sd_pending and not ok:
                 failures.append(f"round {n}: pre-registered surface {sd_pending[:16]}… does not "
@@ -236,7 +263,7 @@ def main():
 
         # §13.3 IMPL-SURFACE-BOUND — the machine-checkable half.
         src, sd = r.get("source"), r.get("surface_digest")
-        if sd is not None and not r.get("exporter"):
+        if sd is not None and not r.get("exporter") and not r.get("surface_tool"):
             failures.append(
                 f"round {n}: bound claim without `exporter` — a surface digest is a "
                 f"MEASUREMENT, and a measurement that does not name its instrument "

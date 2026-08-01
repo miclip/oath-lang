@@ -283,6 +283,28 @@
    ],
    "evidence": "docs/experiments/blind-license-evaluation.md",
    "implementer_statement": "Yes for the core, with three gaps I had to fill by assumption. Nothing in the fixtures changed a decision I had made."
+  },
+  {
+   "round": 7,
+   "date": "2026-08-01",
+   "sections": [
+    "8.7"
+   ],
+   "source": "8414ea7",
+   "surface_digest": "121d7e6b1ee600bcc75e25bb8638e2f1abe38253f44c81c0f672239248586c66",
+   "supplied": [
+    "SPEC-excerpt.md (§8.2.1, §8.6.1, §8.6.5, §8.7)",
+    "fixtures/vectors.jsonl (15 reservation vectors)",
+    "HARNESS.md"
+   ],
+   "research_question": "Does an unseen reader derive the SAME authority model from §8.7 alone, in the places where a reasonable instinct pulls the other way? The section was written immediately after the implementation, by the implementation's author, and has never been independently read.",
+   "hypothesis": "§8.7 is sufficient to derive the authority model without inference. Predicted PASS on the encoding and the acceptance rules; the risk is concentrated in the four distinctions where the intuitive reading is wrong.",
+   "hypothesis_recorded": "before dispatch",
+   "prediction": "Seven pre-registered failure points, recorded BEFORE dispatch so a hit cannot be claimed retrospectively: (1) substring vs first-segment prefix matching; (2) capture PREVENTION vs RETENTION when a prior exact-name owner sits beneath a newly reserved prefix; (3) first publication vs first reservation as the source of prefix authority; (4) authority revision vs name revision; (5) signed authority vs external identity/endorsement; (6) unreservable prefix vs forbidden publication; (7) whether 'protocol root' is read as unreservable, protected, or both — the correct derivation is deliberately unintuitive: it prevents reservation, does NOT itself protect exact-name publications, and leaves those to ordinary exact-name policy. (7) is the one I expect to be filled in from intuition, because writing the test for it corrected my own expectation.",
+   "note": "First round dispatched as a PROTOCOL KIT rather than a repository export. No reference implementation is supplied at all — not oath/, not oathrs/, no tests, no conformance script. Round 6 found that a conformance harness inside the supplied surface restated the rule under test; a source checkout cannot avoid that for a task this small, so the kit is assembled from a normative surface instead of filtered down from a tree. The subject is given a neutral journal model and a signature-verification interface, so surrounding code cannot leak behaviour. DERIVATION.md must be written BEFORE the vectors are opened, preserving the distinction between deriving the rule and tuning to examples.",
+   "status": "DISPATCHED",
+   "surface_tool": "blind-kit.py",
+   "kit_section": "8.7"
   }
  ]
 }
