@@ -10,6 +10,139 @@ hashes move, everything published against the old version resolves differently.
 
 ---
 
+## v0.9.0 — durable revocation, honest views, and a frozen ownership boundary
+
+`v0.8.0` made publishing possible. This one makes the authority around it hold up
+under the things that actually go wrong: a replayed file, a stale local answer, a
+token creating a name nobody owns.
+
+**Identity is unchanged.** 187 definitions present in both releases, **zero hash
+changes**. Anything published against v0.8.0 resolves identically here.
+
+### Revocation is now durable (`oath-delegate/2`)
+
+Delegation revocation held only until someone resubmitted a grant they still had.
+Confirmed by test, not argued: delegate → revoke → replay the *original grant
+bytes*, unchanged and validly signed → the delegate was re-activated. The
+realistic replayer is a retry loop or a redeploy, not an attacker.
+
+A prefix now carries two revisions, because it has two states:
+
+| | |
+|---|---|
+| `authority_rev` | who **holds** the prefix |
+| `delegation_rev` | who may **publish** under it |
+
+Every accepted grant or revocation advances the delegation revision once; refused
+statements do not. A grant must state the revision it replaces and is refused when
+it does not match.
+
+**`oath-delegate/1` still verifies** and is still accepted as a prefix's *first*
+delegation, where it is indistinguishable from a correct `/2` at revision 0. After
+any delegation event it is stale — so the old format self-deprecates rather than
+being cut off, and a replay is refused for being *stale*, which is true, rather
+than for being *old*, which would also refuse the one sound case.
+
+**If you run a registry with existing delegations**, re-issue them: revoke and
+re-grant under `/2`. `docs/receipts/004-delegation-rev-migration.md` is the live
+migration, step by step.
+
+### Read commands answer from the store you asked for
+
+`oath authority` read the **local** store while a registry was configured, and
+reported a prefix held on that registry as `UNCLAIMED` — then recommended the one
+permanent, irreversible act in the protocol. Not stale; confidently wrong about
+the only question it exists to answer.
+
+> Reservation advice is not given unless the authority state being reported is the
+> same authority state a reservation would be evaluated against.
+
+| situation | behaviour |
+|---|---|
+| registry readable | authoritative → advise, labelled with the endpoint |
+| registry unreadable | local view under a **NOT AUTHORITATIVE** banner, no advice, **exit 1** |
+| no registry configured | local store is where a reservation would land → advise |
+
+**Behaviour change for scripts.** `oath authority` now exits 1 when it cannot
+reach authoritative state, so a caller can tell *no answer* from a *negative
+answer*. Exit 0 with a printed warning would let a script reserve anyway.
+
+`oath ls` and `oath log` now honour `--remote` instead of silently dropping it,
+and print the view they answered from. Both need `--key`/`--kms-key` when a
+registry is configured, since registries authenticate reads; `--local` asks for
+the local store on purpose. A silent substitution is no longer possible — the
+local/registry gap is real (187 names against 383) and was once read as the
+registry having lost a migration.
+
+### New names require a cryptographic principal
+
+A bearer token could create a permanent top-level name with no key behind it. It
+can no longer.
+
+> No new name may enter a hosted registry without cryptographic ownership
+> established at creation.
+
+A token still authorizes search, evaluation, proving, and preparing a publication.
+Creating a name needs a signed publication — directly, or through a key delegated
+under a reserved namespace. **Tokens authorize service access; keys establish
+identity and authority.** Refusals say exactly that, and how to proceed.
+
+Local, unhosted use is untouched: `oath put` against your own store needs no key.
+
+**Existing unowned names are preserved, not rewritten.** They stay historically
+valid, owned by an unverifiable label, protected by operator policy — and they are
+a *closed* set, derived from a pinned journal boundary rather than from "whatever
+is currently unowned", so the category cannot silently expand. They are not
+adopted retroactively: a later signed republication proves authorship of that
+publication, not ownership of the original name.
+
+### `oath plugin install`
+
+Wires a coding assistant to the substrate — MCP servers, a registry-first skill,
+and four subagents (search, properties, implement, adversary).
+
+```
+oath plugin install                 # Claude Code, current project
+oath plugin install --codex         # Codex: AGENTS.md + .codex/mcp.json
+oath plugin install --user          # all projects
+oath plugin install --dry-run       # print exactly what would be written
+```
+
+Existing MCP configuration is **merged, never clobbered**: unrelated keys survive,
+a server already configured under one of our names is left alone, and a malformed
+config is refused rather than replaced.
+
+The subagent split is a working discipline, not a checked property — the registry
+sees one authenticated principal per publication and cannot distinguish a
+specifier from an implementer within a session. The plugin says so.
+
+### Corpus and registry reconciliation
+
+The committed corpus and the live registry are different objects — a reproducible
+input set against append-only operational history — and forcing them equal would
+damage both. `registry-reconciliation.json` declares a policy;
+`scripts/check-registry-reconciliation.py` enforces it by **classification, not
+count**: every live name in exactly one declared category, every required member
+present. A total-equality check passes when one legitimate name vanishes as one
+unexplained name appears.
+
+### Specification
+
+- **`DEL-REV-DISTINCT` / `DEL-CAS`** — the delegation revision and its
+  compare-and-swap.
+- **`AUTH-VERSION-IS-SIGNED-DATA`** — a statement's format version is part of the
+  signed octets, not ambient information from the verifier. Dispatch from the
+  parsed envelope, reproduce *that* version's encoding, recognise every kind ever
+  accepted. Re-encoding history under the current emitter invalidates correct
+  signatures rather than rejecting bad ones.
+
+Its corollary is worth repeating: **a compatibility corpus must contain the
+history it exists to protect.** Both backward-compatibility breaks in this release
+were caught against the live journal and neither against the committed fixtures,
+which hold no delegations at all.
+
+---
+
 ## v0.8.0 — publishing, namespaces, and a standard library
 
 `v0.7.0` had no way to publish to a registry. This one does, and adds the
