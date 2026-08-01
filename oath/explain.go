@@ -55,8 +55,8 @@ type explainPkg struct {
 	// name, reported them all as unmodelled, and bound display strings into the
 	// §12.4 digest where the spec requires 64 lowercase hex. Unexported so it
 	// cannot leak into the JSON payload as a second, confusable dependency list.
-	depHashes []string
-	Limitations  []string        `json:"limitations"`
+	depHashes   []string
+	Limitations []string `json:"limitations"`
 }
 
 type specStrength struct {
@@ -116,6 +116,14 @@ type explainProv struct {
 	// must never read as historical cryptographic evidence.
 	Owner       string `json:"owner,omitempty"`
 	OwnerSource string `json:"owner_source,omitempty"`
+	// Namespace and NamespaceHolder record PREFIX AUTHORITY (§8.7), which is a
+	// different question from Owner: Owner says who may repoint THIS name,
+	// Namespace says who governs the prefix it sits under and may create names
+	// there. A consumer evaluating a dependency needs both — a name can be owned
+	// by one key inside a namespace governed by another, which is exactly what
+	// RES-NO-CAPTURE preserves.
+	Namespace       string `json:"namespace,omitempty"`
+	NamespaceHolder string `json:"namespace_holder,omitempty"`
 	// License is the terms the PUBLISHER asserted in the signed publication envelope.
 	// It is an assertion, never a derivation: the registry can later evaluate
 	// compatibility across a dependency closure, and reporting the two as one claim is
@@ -240,6 +248,9 @@ func buildExplain(st *Store, name string) (*explainPkg, error) {
 	}
 
 	pkg.Provenance.Owner, pkg.Provenance.OwnerSource = nameOwner(st, name)
+	if r, ok := governingReservation(st, name); ok {
+		pkg.Provenance.Namespace, pkg.Provenance.NamespaceHolder = r.Namespace, r.Pubkey
+	}
 	pkg.Provenance.License = assertedLicense(st, name)
 
 	for pi := range d.Props {
@@ -367,6 +378,16 @@ func explainLimitations(st *Store, p *explainPkg, m *Meta) []string {
 	if p.Provenance.Owner != "" && !ownerIsCryptographic(p.Provenance.OwnerSource) {
 		out = append(out, fmt.Sprintf("the name is owned by %q via %s — %s, so who may repoint this name is NOT independently checkable from the journal",
 			p.Provenance.Owner, p.Provenance.OwnerSource, ownerSourceMeaning(p.Provenance.OwnerSource)))
+	}
+	// PREFIX AUTHORITY, and specifically the case a consumer would otherwise have
+	// to work out for themselves: this name is governed by a namespace whose holder
+	// is NOT its owner. That is legitimate — the name predates the reservation and
+	// was retained by its owner — but "who controls this" then has two answers
+	// depending on which question is being asked, and only saying one is misleading.
+	if p.Provenance.NamespaceHolder != "" && p.Provenance.Owner != "" &&
+		p.Provenance.NamespaceHolder != p.Provenance.Owner {
+		out = append(out, fmt.Sprintf("this name sits under namespace %s, governed by key %s…, but the NAME itself is owned by %s — the namespace holder may not repoint it, and the owner may not create other names in that namespace",
+			p.Provenance.Namespace, shortHash(p.Provenance.NamespaceHolder), shortHash(p.Provenance.Owner)))
 	}
 	// A separate axis from the ladder: is the attribution EVIDENCE, or the
 	// registry's word for it? An unsigned journal entry records a pubkey the

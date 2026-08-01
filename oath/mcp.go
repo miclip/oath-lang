@@ -63,6 +63,19 @@ func mcpTools() []map[string]any {
 			}, "source"),
 		},
 		{
+			"name":        "reserve",
+			"description": "Claim a namespace prefix (SPEC §8.7). Submit the EXACT canonical octets of a signed oath-reserve/1 envelope, base64-encoded, plus its hex signature. Prefix authority is never inferred from publishing — this explicit signed act is the only way to obtain it. First-come: an unclaimed prefix goes to the first accepted claim. Returns the granted namespace, the new authority revision, and any names beneath the prefix that were already owned by somebody else and are RETAINED by them.",
+			"inputSchema": obj(map[string]any{
+				"envelope":  str("base64 of the exact canonical reservation octets that were signed"),
+				"signature": str("hex Ed25519 signature over those octets"),
+			}, "envelope", "signature"),
+		},
+		{
+			"name":        "authority",
+			"description": "Read the CURRENT authority state of a namespace prefix, or of the prefix governing a name (SPEC §8.7). Structured JSON, because a signing client needs the exact (authority, authority_rev) pair to build a reservation that will be accepted — a claim signed against a stale state is refused by the compare-and-swap. Read-only.",
+			"inputSchema": obj(map[string]any{"name": str("a prefix pattern like \"alice/*\", or a definition name to resolve")}, "name"),
+		},
+		{
 			"name":        "get",
 			"description": "Full human projection of one definition: body, properties, hash, guarantee, termination, confinement, deps.",
 			"inputSchema": obj(map[string]any{"name": str("definition name")}, "name"),
@@ -181,7 +194,7 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 	// and moves names; `cross --record` writes the journal. A read-only bearer
 	// token can still read, discover, and re-verify — just not author. Sign the
 	// request or use a write-scoped token. (#14)
-	if (name == "put" || (name == "cross" && a.Record)) && !canWrite {
+	if (name == "put" || name == "reserve" || (name == "cross" && a.Record)) && !canWrite {
 		// The remedy depends on HOW the caller authenticated, and getting this
 		// wrong wastes real time: telling someone who already signed to "sign the
 		// request" hides the actual cause. It cannot be inferred from the
@@ -221,6 +234,45 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 			return "", fmt.Errorf("%s%w", out, err)
 		}
 		return out, nil
+	case "authority":
+		// Structured on purpose: a client parsing prose would break on rewording,
+		// and this is the value a signature is computed against.
+		resp := map[string]any{"name": a.Name}
+		if validNamespacePattern(a.Name) == nil {
+			holder, rev := reservationRev(st, a.Name)
+			resp["namespace"], resp["authority"], resp["authority_rev"] = a.Name, holder, rev.String()
+		} else if r, ok := governingReservation(st, a.Name); ok {
+			resp["namespace"], resp["authority"], resp["authority_rev"] = r.Namespace, r.Pubkey, r.Rev.String()
+		} else {
+			resp["namespace"], resp["authority"], resp["authority_rev"] = "", noAuthority, "0"
+		}
+		if owner, src := nameOwner(st, a.Name); owner != "" {
+			resp["exact_name_owner"], resp["owner_source"] = owner, src
+		}
+		b, _ := json.Marshal(resp)
+		return string(b), nil
+	case "reserve":
+		// A reservation MUST be signed, never bearer-authenticated. RES-SIGNED
+		// requires the authenticated principal to EQUAL the key named in the
+		// envelope, and a bearer principal is server-vouched — it asserts who the
+		// registry believes you are, not which key you hold. Accepting one here
+		// would let the registry grant a namespace to a key that never signed for
+		// it, which is the one thing this operation exists to make impossible.
+		if !signed {
+			return "", fmt.Errorf("reserve requires a SIGNED request (X-Oath-Signature): the claim must be made by the key it names, and a bearer token's principal is vouched by the server rather than proved by a signature")
+		}
+		if a.Envelope == "" || a.Signature == "" {
+			return "", fmt.Errorf("reserve needs both `envelope` (base64 of the exact signed octets) and `signature`: either alone attests to nothing")
+		}
+		octets, derr := decodeEnvelopeB64(a.Envelope)
+		if derr != nil {
+			return "", fmt.Errorf("envelope: %w", derr)
+		}
+		rep, rerr := apiReserve(st, octets, a.Signature, principal)
+		if rerr != nil {
+			return "", rerr
+		}
+		return renderReserveReport(rep), nil
 	case "head":
 		// What a signing client needs before it can build an envelope: the parent it
 		// would replace, that name's revision, and (for verification after publishing)

@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/ed25519"
 	"encoding/hex"
+	"encoding/json"
 	"math/big"
 	"strings"
 	"testing"
@@ -351,5 +352,35 @@ func TestProtocolRootsDoNotForbidPublication(t *testing.T) {
 	// The PREFIX remains unreservable, which is the only thing the root controls.
 	if err := validNamespacePattern("key/*"); err == nil {
 		t.Error("key/* became reservable")
+	}
+}
+
+// A reservation must never be accepted from a bearer-authenticated caller.
+//
+// RES-SIGNED requires the authenticated principal to EQUAL the key named in the
+// envelope. A bearer principal is server-vouched — it says who the registry
+// believes you are, not which key you hold — so accepting one would let the
+// registry grant a namespace to a key that never signed for it. That is the one
+// thing this operation exists to make impossible, and it is a capability gap a
+// reader of mcpCallTool could easily not notice, since `reserve` is otherwise
+// shaped exactly like `put`.
+func TestReserveRequiresASignedRequest(t *testing.T) {
+	st := newMemStoreForTest(t)
+	pubHex, priv := newKey(t)
+	octets, sig := signRes(t, priv, "alice/*", noAuthority, 0)
+	args, _ := json.Marshal(map[string]any{
+		"envelope": encodeEnvelopeB64(octets), "signature": sig,
+	})
+
+	// canWrite=true, signed=FALSE: a write-scoped bearer token.
+	if _, err := mcpCallTool(st, "reserve", args, pubHex, true, false); err == nil {
+		t.Fatal("a bearer-authenticated caller reserved a namespace")
+	}
+	// The same call, signed, succeeds.
+	if _, err := mcpCallTool(st, "reserve", args, pubHex, true, true); err != nil {
+		t.Fatalf("a signed reservation was refused: %v", err)
+	}
+	if holder, _ := reservationRev(st, "alice/*"); holder != pubHex {
+		t.Errorf("holder = %s, want %s", shortHash(holder), shortHash(pubHex))
 	}
 }

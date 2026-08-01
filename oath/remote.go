@@ -49,6 +49,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"os"
 	"strings"
@@ -262,4 +263,36 @@ func cmdRemotePut(endpoint, keyPath string, files []string, contextHash string) 
 		}
 		fmt.Print(out)
 	}
+}
+
+// remoteReserve submits a signed reservation to a registry.
+func remoteReserve(endpoint string, priv ed25519.PrivateKey, pubHex string, octets []byte, sig string) (string, error) {
+	return mcpCallSigned(endpoint, priv, pubHex, "reserve", map[string]any{
+		"envelope": encodeEnvelopeB64(octets), "signature": sig,
+	})
+}
+
+// remoteAuthority reads a prefix's CURRENT authority state from a registry.
+//
+// A reservation is a compare-and-swap, so the state it names must come from the
+// registry the claim is for. Deriving it locally would sign against a state the
+// target has never been in, and the swap would refuse it — correctly, and in a
+// way that reads like a bug rather than like a stale read.
+func remoteAuthority(endpoint string, priv ed25519.PrivateKey, pubHex, namespace string) (string, *big.Int, error) {
+	out, err := mcpCallSigned(endpoint, priv, pubHex, "authority", map[string]any{"name": namespace})
+	if err != nil {
+		return "", nil, err
+	}
+	var resp struct {
+		Authority string `json:"authority"`
+		Rev       string `json:"authority_rev"`
+	}
+	if err := json.Unmarshal([]byte(out), &resp); err != nil {
+		return "", nil, fmt.Errorf("registry returned an unreadable authority record: %w", err)
+	}
+	rev, ok := new(big.Int).SetString(resp.Rev, 10)
+	if !ok {
+		return "", nil, fmt.Errorf("registry returned a non-decimal authority revision %q", resp.Rev)
+	}
+	return resp.Authority, rev, nil
 }

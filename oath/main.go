@@ -203,6 +203,38 @@ func main() {
 			prefix = filepath.Join(oathHome(), "keys", "default")
 		}
 		cmdKeygen(prefix)
+	case "reserve":
+		endpoint := os.Getenv("OATH_REGISTRY")
+		keyFile := os.Getenv("OATH_KEY")
+		dryRun, yes := false, false
+		namespace := ""
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			switch {
+			case rest[i] == "--remote" && i+1 < len(rest):
+				endpoint = rest[i+1]
+				i++
+			case rest[i] == "--key" && i+1 < len(rest):
+				keyFile = rest[i+1]
+				i++
+			case rest[i] == "--dry-run":
+				dryRun = true
+			case rest[i] == "--yes" || rest[i] == "-y":
+				yes = true
+			default:
+				namespace = rest[i]
+			}
+		}
+		// Same fallback publish uses, so `oath new` configures both.
+		if cfg, _, err := loadClientConfig(); err == nil && cfg != nil {
+			if endpoint == "" {
+				endpoint = cfg.Registry
+			}
+			if keyFile == "" {
+				keyFile = cfg.Key
+			}
+		}
+		cmdReserve(st, endpoint, keyFile, namespace, dryRun, yes)
 	case "publish":
 		// Signed publication (#83): show the exact bytes, sign locally, send them
 		// unchanged, then confirm the registry persisted the same bytes.
@@ -857,6 +889,7 @@ var remoteCapable = map[string]bool{
 	"put":     true,
 	"publish": true,
 	"license": true,
+	"reserve": true,
 }
 
 func remoteCapableList() string {

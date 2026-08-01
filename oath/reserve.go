@@ -538,3 +538,101 @@ func apiReserve(st *Store, octets []byte, sigHex, principal string) (reserveRepo
 	}
 	return reserveReport{Namespace: env.Namespace, Pubkey: env.Pubkey, Rev: next, Retained: retained}, nil
 }
+
+// renderReserveReport is what a successful reservation tells its holder.
+//
+// The RETAINED list is the part that must not be silently omitted. A reserver
+// who is not told which names beneath their prefix belong to somebody else will
+// discover it at their first refused publication, and will reasonably read that
+// refusal as a bug in the reservation they just paid for.
+func renderReserveReport(r reserveReport) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "RESERVED %s\n", r.Namespace)
+	fmt.Fprintf(&b, "  holder:   %s\n", r.Pubkey)
+	fmt.Fprintf(&b, "  revision: %s\n", r.Rev)
+	if len(r.Retained) == 0 {
+		fmt.Fprintf(&b, "\nNo name beneath this prefix was already owned by another key.\n")
+	} else {
+		fmt.Fprintf(&b, "\nRETAINED BY THEIR EXISTING OWNERS — these are NOT yours (§8.7 RES-NO-CAPTURE):\n")
+		for _, n := range r.Retained {
+			fmt.Fprintf(&b, "  %s\n", n)
+		}
+		fmt.Fprintf(&b, "\nThey were published before this reservation and keep their owners. You\n")
+		fmt.Fprintf(&b, "govern every OTHER name under %s, including names not yet published.\n", r.Namespace)
+	}
+	fmt.Fprintf(&b, "\nThis establishes authority over the prefix string in THIS registry. It is\n")
+	fmt.Fprintf(&b, "not identity, affiliation, or endorsement (§8.7.1).\n")
+	return b.String()
+}
+
+// cmdReserve claims a namespace prefix, locally or against a registry.
+//
+// It shows the EXACT BYTES before signing, for the reason `publish` does: the
+// octets are the statement, and a summary of them is not what gets signed. A
+// reservation is also permanent in a way a publication is not — this version has
+// no transfer, release or expiry — so the confirmation matters more here, not
+// less.
+func cmdReserve(local *Store, endpoint, keyPath, namespace string, dryRun, assumeYes bool) {
+	if namespace == "" {
+		fail(fmt.Errorf("usage: oath reserve <namespace>/* [--key <file>] [--remote <url>] [--dry-run] [-y]"))
+	}
+	if err := validNamespacePattern(namespace); err != nil {
+		fail(err)
+	}
+	if keyPath == "" {
+		fail(fmt.Errorf("reserve needs a signing key (--key or OATH_KEY): prefix authority is established BY a key, so there is nothing to record without one"))
+	}
+	priv, pubHex := loadSigningKey(keyPath)
+
+	// The state being replaced must come from the registry the claim is FOR. A
+	// local reading would sign against a state the target has never had, and the
+	// compare-and-swap would refuse it — correctly, and confusingly.
+	holder, rev := noAuthority, big.NewInt(0)
+	if endpoint == "" {
+		holder, rev = reservationRev(local, namespace)
+	} else {
+		h, r, err := remoteAuthority(endpoint, priv, pubHex, namespace)
+		if err != nil {
+			fail(fmt.Errorf("reading current authority for %q from %s: %w", namespace, endpoint, err))
+		}
+		holder, rev = h, r
+	}
+	if holder != noAuthority && holder != pubHex {
+		fail(fmt.Errorf("%q is already held by %s… at revision %s. Taking it would be a TRANSFER, which is signed by the CURRENT holder and is not implemented in this version", namespace, shortHash(holder), rev))
+	}
+
+	env := resEnvelope{Op: opReserve, Namespace: namespace, Authority: holder,
+		AuthorityRev: rev, Pubkey: pubHex}
+	octets := resEncode(env)
+
+	fmt.Printf("EXACT BYTES TO BE SIGNED (this is the statement, not a summary of it):\n")
+	for _, line := range strings.Split(strings.TrimSuffix(string(octets), "\n"), "\n") {
+		fmt.Printf("  | %s\n", line)
+	}
+	fmt.Printf("\nThis claims authority over %s in %s.\n", namespace, orWord(endpoint, "the local store"))
+	fmt.Printf("It is not identity, affiliation, or endorsement, and this version has no\n")
+	fmt.Printf("transfer, release or expiry — a prefix granted here cannot be given back.\n")
+	if dryRun {
+		fmt.Printf("\n--dry-run: nothing was signed and nothing was sent.\n")
+		return
+	}
+	if !assumeYes && !confirm("\nSign and submit this reservation?") {
+		fmt.Printf("aborted; nothing signed.\n")
+		return
+	}
+	sig := hex.EncodeToString(ed25519.Sign(priv, octets))
+
+	if endpoint == "" {
+		rep, err := apiReserve(local, octets, sig, pubHex)
+		if err != nil {
+			fail(err)
+		}
+		fmt.Print("\n" + renderReserveReport(rep))
+		return
+	}
+	out, err := remoteReserve(endpoint, priv, pubHex, octets, sig)
+	if err != nil {
+		fail(err)
+	}
+	fmt.Print("\n" + out)
+}
