@@ -42,6 +42,47 @@ Corollaries that fall out of these:
   to be rewritten wholesale and swapped in when the checks still pass —
   editing is a human workflow born from typing being expensive.
 
+## Examples are witnesses, not proofs (2026-08-01)
+
+> Examples CONSTRAIN. They do not CHARACTERISE.
+
+§10.0a defined a filename encoding and demonstrated it on `Map`, `map`, `_map`.
+Every example was correct. The rule still failed to achieve its stated goal,
+because the examples covered ASCII and the goal was stated over all names — so
+`Élan` and `élan` still collide, which is the exact defect the encoding was
+introduced to fix.
+
+The worked example is a witness of the rule on three inputs. It says nothing
+about the domain the prose claims. That is the same relationship as a fixture to
+a rule, a vector to a clause, or a campaign to an invariant: each demonstrates an
+instance and none establishes the property.
+
+### The sharper form: goal ≠ construction
+
+The section stated a GOAL — portable injective filenames on case-insensitive
+filesystems — and shipped a CONSTRUCTION that delivered something narrower:
+injectivity over ASCII case distinctions. Both were correct in isolation. Nothing
+compared them, because the examples matched the construction and the prose
+described the goal.
+
+**A specification that states a goal must say which construction achieves it and
+over what domain, or the reader will assume the construction reaches the goal.**
+The honest repair was not to solve Unicode — case folding is neither injective
+(U+212A and `K` both lower to `k`) nor length-preserving, and filesystems disagree
+about normalisation — but to state what is guaranteed, over which alphabet, and
+why the gap exists. A specification that says "injective for this alphabet" is
+stronger than one claiming universal portability it cannot deliver.
+
+### What this makes blind rounds for
+
+Round 6 reduced OVERCLAIM, not bugs. The implementation was complete and reached
+187/187; what it found was that a mathematical word ("bijection") was stronger
+than the construction justified, and that a stated purpose exceeded what the rule
+delivered. Those are the hardest defects to find from inside — an author reading
+their own text supplies the intended meaning for free — and in a specification
+they are the ones that matter most, because every downstream reader inherits the
+overclaim.
+
 ## Evidence must never define itself (2026-08-01)
 
 One sentence, three levels:
@@ -62,6 +103,7 @@ share no code:
 | an identity omitting the subject it identifies | §12.4 bound a method and members, never the artifact |
 | coverage measured from surviving files | conformance check 1 enumerated the directory |
 | client and server each elaborating, assuming agreement | #101, signed artifact ≠ stored artifact |
+| a test asking the filesystem the question it was testing | `[ -f _Map.bin ]` succeeds when only `_map.bin` exists |
 
 They look like seven unrelated bugs. They are one structural mistake: **letting
 the thing being measured supply part of the measurement.**
