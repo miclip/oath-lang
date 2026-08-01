@@ -276,7 +276,28 @@ func delegates(st *Store) map[string]map[string]bool {
 			continue
 		}
 		raw, err := base64.StdEncoding.DecodeString(e.EnvelopeB64)
-		if err != nil || authorStatementKind(raw) != "delegation" {
+		if err != nil {
+			continue
+		}
+		// A TRANSFER CLEARS EVERY DELEGATION UNDER THE PREFIX, explicitly rather
+		// than as a side effect. The grants were made by the OLD holder; carrying
+		// them across would hand the recipient publishers it never authorised —
+		// authority by inheritance, which is exactly what reservation exists to
+		// prevent.
+		//
+		// Stated here even though the holder test below would drop them anyway.
+		// That test compares against the FINAL derived holder, so the clearing
+		// would be a consequence of evaluation order rather than a rule, and a
+		// later refactor to a point-in-time holder check would silently restore
+		// the delegations without any test noticing.
+		if authorStatementKind(raw) == "transfer" {
+			xe, xerr := parseTransferEnvelope(raw)
+			if xerr == nil && xferVerify(xe, e.AuthorSig, e.RecipientSig) == nil {
+				delete(out, xe.Namespace)
+			}
+			continue
+		}
+		if authorStatementKind(raw) != "delegation" {
 			continue
 		}
 		env, perr := parseDelegateEnvelope(raw)
@@ -321,7 +342,21 @@ func delegationRev(st *Store, namespace string) *big.Int {
 			continue
 		}
 		raw, err := base64.StdEncoding.DecodeString(e.EnvelopeB64)
-		if err != nil || authorStatementKind(raw) != "delegation" {
+		if err != nil {
+			continue
+		}
+		// A TRANSFER ADVANCES THE PERMISSION STATE. It clears every delegation, so
+		// it changes exactly what this revision versions — and without the advance,
+		// a grant envelope written before the handover would still state the
+		// current value and could be replayed against the new holder's prefix.
+		if authorStatementKind(raw) == "transfer" {
+			xe, xerr := parseTransferEnvelope(raw)
+			if xerr == nil && xe.Namespace == namespace && xferVerify(xe, e.AuthorSig, e.RecipientSig) == nil {
+				n.Add(n, big.NewInt(1))
+			}
+			continue
+		}
+		if authorStatementKind(raw) != "delegation" {
 			continue
 		}
 		env, perr := parseDelegateEnvelope(raw)

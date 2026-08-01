@@ -73,7 +73,7 @@ func TestFrozenSetCannotExpandPastTheBoundary(t *testing.T) {
 	}
 	// With the boundary set BEFORE it: excluded, though nothing about the name changed.
 	if legacyUnownedAt(st, 0)["late"] {
-		t.Error("a name bound AFTER the boundary entered the frozen set — the freeze can expand, "+
+		t.Error("a name bound AFTER the boundary entered the frozen set — the freeze can expand, " +
 			"which makes it a description rather than a set")
 	}
 }

@@ -80,6 +80,15 @@ func mcpTools() []map[string]any {
 			}, "envelope", "signature"),
 		},
 		{
+			"name":        "transfer",
+			"description": "Transfer a reserved namespace to another key. Requires BOTH signatures over the same statement: the holder authorizes surrender, the recipient accepts custody. Clears all delegations; exact-name ownership and authorship are unchanged.",
+			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{
+				"envelope":            map[string]any{"type": "string", "description": "base64 of the canonical oath-transfer/1 octets"},
+				"signature":           map[string]any{"type": "string", "description": "hex signature by the current holder"},
+				"recipient_signature": map[string]any{"type": "string", "description": "hex signature by the receiving key over the SAME octets"},
+			}, "required": []string{"envelope", "signature", "recipient_signature"}},
+		},
+		{
 			"name":        "authority",
 			"description": "Read the CURRENT authority state of a namespace prefix, or of the prefix governing a name (SPEC §8.7). Structured JSON, because a signing client needs the exact (authority, authority_rev) pair to build a reservation that will be accepted — a claim signed against a stale state is refused by the compare-and-swap. Read-only.",
 			"inputSchema": obj(map[string]any{"name": str("a prefix pattern like \"alice/*\", or a definition name to resolve")}, "name"),
@@ -188,11 +197,14 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 		// re-encode or pretty-print them at any point on the way to the journal.
 		Envelope  string `json:"envelope"`
 		Signature string `json:"signature"`
-		Name      string `json:"name"`
-		Hash      string `json:"hash"`
-		NameB     string `json:"name_b"`
-		Record    bool   `json:"record"`
-		Expr      string `json:"expr"`
+		// RecipientSignature is transfer only: the SECOND signature over the SAME
+		// octets, carrying the receiving key's consent to custody.
+		RecipientSignature string `json:"recipient_signature"`
+		Name               string `json:"name"`
+		Hash               string `json:"hash"`
+		NameB              string `json:"name_b"`
+		Record             bool   `json:"record"`
+		Expr               string `json:"expr"`
 	}
 	if len(args) > 0 {
 		if err := json.Unmarshal(args, &a); err != nil {
@@ -265,6 +277,30 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 			return "", fmt.Errorf("%s%w", out, err)
 		}
 		return out, nil
+	case "transfer":
+		// Signed-only, as reserve and delegate are: the rules require the
+		// authenticated principal to be a PARTY, and a bearer principal is
+		// server-vouched rather than proved.
+		if !signed {
+			return "", fmt.Errorf("transfer requires a SIGNED request (X-Oath-Signature): it changes who governs a namespace, and a bearer token's principal is vouched by the server rather than proved by a signature")
+		}
+		if a.Envelope == "" || a.Signature == "" || a.RecipientSignature == "" {
+			return "", fmt.Errorf("transfer needs `envelope`, `signature` and `recipient_signature`: custody carries obligations, so a namespace cannot be pushed onto a key that did not countersign the same statement")
+		}
+		raw, derr := decodeEnvelopeB64(a.Envelope)
+		if derr != nil {
+			return "", fmt.Errorf("transfer envelope is not valid base64: %w", derr)
+		}
+		rep, terr := apiTransfer(st, raw, a.Signature, a.RecipientSignature, principal)
+		if terr != nil {
+			return "", terr
+		}
+		out, _ := json.Marshal(map[string]any{
+			"namespace": rep.Namespace, "from": rep.From, "to": rep.To,
+			"authority_rev":     rep.AuthorityRev.String(),
+			"delegates_cleared": rep.DelegatesCleared, "retained": rep.Retained,
+		})
+		return string(out), nil
 	case "authority":
 		// Structured on purpose: a client parsing prose would break on rewording,
 		// and this is the value a signature is computed against.

@@ -1,8 +1,8 @@
 package main
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
@@ -25,6 +25,7 @@ usage:
   oath keygen [--out <prefix>]        generate an Ed25519 signing keypair (<prefix>.key + <prefix>.pub)
   oath migrate-store                  copy the OATH_STORE filesystem store into the cloud backend
                                       (GCS objects + Postgres index; cloud build only; docs/store-drivers.md)
+  oath transfer <ns>/* --to <pubkey> --recipient-key <file> [--key <file>] [--remote <url>] [--dry-run]
   oath plugin install [--codex] [--user] [--dir <path>] [--registry <url>] [--dry-run]
   oath prove-worker [--scan] [--once] [--key <file>] [--interval D] [--lease D]
                                       drain the proof queue: SMT-prove queued objects out of band,
@@ -184,6 +185,50 @@ func main() {
 			}
 		}
 		cmdNew(ns, registry)
+	case "transfer":
+		// Bilateral: the holder authorizes surrender, the recipient accepts
+		// custody, both over the SAME bytes.
+		endpoint := os.Getenv("OATH_REGISTRY")
+		keyFile := os.Getenv("OATH_KEY")
+		kmsKey := os.Getenv("OATH_KMS_KEY")
+		recipientKey := ""
+		dryRun, yes := false, false
+		namespace, toPub := "", ""
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			switch {
+			case rest[i] == "--remote" && i+1 < len(rest):
+				endpoint = rest[i+1]
+				i++
+			case rest[i] == "--key" && i+1 < len(rest):
+				keyFile = rest[i+1]
+				i++
+			case rest[i] == "--kms-key" && i+1 < len(rest):
+				kmsKey = rest[i+1]
+				i++
+			case rest[i] == "--recipient-key" && i+1 < len(rest):
+				recipientKey = rest[i+1]
+				i++
+			case rest[i] == "--to" && i+1 < len(rest):
+				toPub = rest[i+1]
+				i++
+			case rest[i] == "--dry-run":
+				dryRun = true
+			case rest[i] == "--yes" || rest[i] == "-y":
+				yes = true
+			default:
+				namespace = rest[i]
+			}
+		}
+		if cfg, _, cerr := loadClientConfig(); cerr == nil && cfg != nil {
+			if endpoint == "" {
+				endpoint = cfg.Registry
+			}
+			if keyFile == "" {
+				keyFile = cfg.Key
+			}
+		}
+		cmdTransfer(st, endpoint, keyFile, kmsKey, recipientKey, namespace, toPub, dryRun, yes)
 	case "plugin":
 		// Wire a coding assistant to the substrate. The tools already existed; what
 		// did not was any way for an assistant to find them.

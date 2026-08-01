@@ -457,6 +457,12 @@ type LogEntry struct {
 	EnvelopeB64  string `json:"envelope_b64,omitempty"`
 	AuthorPubkey string `json:"author_pubkey,omitempty"` // hex Ed25519 key that signed the envelope
 	AuthorSig    string `json:"author_sig,omitempty"`    // hex signature over the DECODED envelope octets
+	// RecipientSig is the SECOND signature over the SAME octets, used only by
+	// transfer: custody carries obligations, so a prefix cannot be pushed onto a
+	// key that never accepted it. It is a separate field rather than a second
+	// entry because one statement with two signatures cannot be detached and
+	// replayed against a different transfer, and two documents can.
+	RecipientSig string `json:"recipient_sig,omitempty"`
 	// ParentRev is the revision the author SIGNED AGAINST — their own claim about
 	// what they were publishing over, preserved verbatim. Without it the author's
 	// statement disappears at admission and a verifier can only reconstruct the
@@ -790,6 +796,24 @@ func (s *Store) VerifyLog() error {
 				}
 				if verr := delVerify(del, e.AuthorSig); verr != nil {
 					return fmt.Errorf("journal line %d: delegation signature does not verify: %w", line, verr)
+				}
+			} else if authorStatementKind(octets) == "transfer" {
+				// TWO signatures over ONE statement. Verifying only the author's
+				// would let a transfer be recorded with a forged or absent
+				// recipient consent, which is the whole property the second
+				// signature exists to carry.
+				xe, perr := parseTransferEnvelope(octets)
+				if perr != nil {
+					return fmt.Errorf("journal line %d has an unparseable transfer envelope: %w", line, perr)
+				}
+				if xe.FromAuthority != e.AuthorPubkey {
+					return fmt.Errorf("journal line %d: transfer names holder %s but the entry records %s", line, xe.FromAuthority, e.AuthorPubkey)
+				}
+				if xe.Namespace != e.Name {
+					return fmt.Errorf("journal line %d: transfer names %q but the entry records name %q", line, xe.Namespace, e.Name)
+				}
+				if verr := xferVerify(xe, e.AuthorSig, e.RecipientSig); verr != nil {
+					return fmt.Errorf("journal line %d: transfer signatures do not verify: %w", line, verr)
 				}
 			} else if authorStatementKind(octets) == "reservation" {
 				res, perr := parseReserveEnvelope(octets)

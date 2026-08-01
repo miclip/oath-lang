@@ -130,6 +130,25 @@ are refused as stale, and the refusal is journaled rather than discarded. Withou
 that, revoking would only last until someone re-ran a deploy holding an old
 envelope. `oath authority '<prefix>/*'` reports the current revision.
 
+## 4b. Hand a namespace over
+
+```
+oath transfer 'alice/*' --to <pubkey> --recipient-key their.key --dry-run
+```
+
+Both parties sign the same statement — you authorize the handover, they accept
+custody. A namespace cannot be pushed onto a key that did not countersign, because
+custody carries obligations.
+
+An accepted transfer clears **every** delegation under the prefix: the recipient
+does not inherit publishers they never authorized, and must re-grant any that
+should continue. Names already bound beneath the prefix stay with their owners,
+and authorship never changes.
+
+Use it to consolidate namespaces, move from a personal key to an organisation key,
+or complete a negotiated handover. **It is not recovery** — it needs the current
+holder's signature, so a lost key is still terminal.
+
 ## 5. Propose an addition to the standard library
 
 `oath/*` is the project namespace. Its contents are governed by

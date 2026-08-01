@@ -282,6 +282,27 @@ func reservations(st *Store) map[string]reservation {
 		if e.Status != "accepted" {
 			continue
 		}
+		// TRANSFER is an authority transition too, and must be replayed IN
+		// JOURNAL ORDER with reservations — deriving holders from reservations
+		// alone would report the original holder forever, which is the state the
+		// transfer exists to change.
+		if raw, derr := base64.StdEncoding.DecodeString(e.EnvelopeB64); derr == nil && authorStatementKind(raw) == "transfer" {
+			xe, xerr := parseTransferEnvelope(raw)
+			if xerr != nil || xferVerify(xe, e.AuthorSig, e.RecipientSig) != nil {
+				continue
+			}
+			cur, held := out[xe.Namespace]
+			if !held || cur.Pubkey != xe.FromAuthority {
+				continue // the signer was not the holder at this point in history
+			}
+			next := new(big.Int).Add(xe.AuthorityRev, big.NewInt(1))
+			if next.Cmp(cur.Rev) <= 0 {
+				continue // stale or replayed
+			}
+			out[xe.Namespace] = reservation{Namespace: xe.Namespace, Pubkey: xe.ToAuthority,
+				Rev: next, Seq: cur.Seq}
+			continue
+		}
 		env, err := decodeReserveEnvelope(e.EnvelopeB64)
 		if err != nil {
 			// An entry that cannot be decoded is not authority. It is recorded
@@ -440,6 +461,8 @@ func authorStatementKind(octets []byte) string {
 		return "reservation"
 	case delegateVersion, delegateVersionV1:
 		return "delegation"
+	case transferVersion:
+		return "transfer"
 	}
 	return ""
 }
@@ -835,4 +858,19 @@ func ordinalSuffix(n int) string {
 		return "rd"
 	}
 	return "th"
+}
+
+// isProtocolRoot reports whether a pattern names a prefix no principal may hold —
+// and therefore none may receive by transfer either.
+func isProtocolRoot(pattern string) bool {
+	head := strings.TrimSuffix(pattern, "/*")
+	if i := strings.Index(head, "/"); i >= 0 {
+		head = head[:i]
+	}
+	for _, r := range protocolRoots {
+		if head == r {
+			return true
+		}
+	}
+	return false
 }

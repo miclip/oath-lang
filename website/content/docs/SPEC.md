@@ -2436,6 +2436,81 @@ DIFFERENT key OVERLAPS it in either direction — that is, when either prefix is
 segment-wise ancestor of the other. `alice/*` and `alice/sub/*` are one claim
 spelled two ways, not two independent claims.
 
+#### Transfer (`oath-transfer/1`)
+
+Two valid principals could agree on a change of authority and earlier versions
+could not express it. The rule forbidding transfer existed to stop a HOSTILE
+seizure and caught every CONSENSUAL handover with it; a design that refuses a
+transaction all parties want is wrong independently of any adversary.
+
+The statement is:
+
+```
+oath-transfer/1
+op=transfer
+namespace=<pattern>
+from_authority=<hex>
+to_authority=<hex>
+authority_rev=<decimal>
+```
+
+**XFER-SIGNED-BOTH.** A transfer carries TWO signatures over the SAME canonical
+octets: one by `from_authority`, one by `to_authority`. A verifier MUST check
+both. A separate acknowledgement MUST NOT be accepted in place of the second
+signature — a detached document can be replayed against a different transfer, and
+one statement with two signatures cannot.
+
+**XFER-RECIPIENT-CONSENTS.** Custody carries obligations: a reservation counts
+against the recipient's cap and confers duties over everything beneath the prefix.
+A namespace MUST NOT be pushed onto a key that did not countersign.
+
+**XFER-HOLDER-CURRENT.** The signer named by `from_authority` MUST be the current
+holder.
+
+**XFER-AUTHORITY-CURRENT.** `authority_rev` MUST equal the prefix's current
+authority revision; a transfer signed against any other value MUST be refused.
+
+**XFER-RESERVATION-LIMIT.** A transfer that would take the recipient past a
+registry's reservation cap MUST be refused. Otherwise transfer is a way around the
+cap.
+
+**XFER-NO-CAPTURE.** A transfer moves the PREFIX. Exact-name ownership beneath it
+is unchanged, and retained names MUST be reported. Acquiring ground must never be
+a way of acquiring other parties' names.
+
+**XFER-ADVANCES-AUTHORITY-REV.** An accepted transfer advances the authority
+revision by exactly one. A REFUSED transfer MUST NOT advance it.
+
+**XFER-AUTHORSHIP-UNCHANGED.** Transfer changes who CONTROLS a prefix and never
+who WROTE anything. Journal authorship is untouched, as it is by revocation.
+
+**XFER-CLEARS-DELEGATIONS.** An accepted transfer revokes every delegation under
+the prefix, and advances the delegation revision. The grants were made by the OLD
+holder; carrying them across would give the recipient publishers it never
+authorised — authority by inheritance, which is what reservation exists to
+prevent. The revision advance is what stops a grant envelope written before the
+handover from being replayed after it.
+
+**XFER-REFUSALS-ARE-PRESERVED.** Once both signatures verify and the caller is a
+party, a refusal is a statement real principals made: it is journaled and confers
+nothing. A transfer submitted by anyone other than the two parties MUST be
+refused, and such a relay is not preserved.
+
+The net effect of an accepted transfer:
+
+```
+holder             A → B
+authority_rev      n → n+1
+delegates          cleared
+delegation_rev     advances
+exact-name owners  unchanged
+authorship         unchanged
+```
+
+Transfer is NOT recovery. It requires the current holder's signature, so a lost
+key cannot be transferred and this version offers no mechanism that survives key
+loss.
+
 **RES-RESERVATION-LIMIT.** A registry MAY cap how many namespaces one principal
 holds; the reference registry caps it at five. Only ACCEPTED reservations count
 toward the cap — a refused statement confers nothing and so consumes nothing.
@@ -2642,8 +2717,9 @@ These are properties of this version, not defects to be worked around.
   every authority chain public. The alternative — allocating attractive names by
   some other mechanism — would be registry configuration outside the protocol, and
   would reintroduce the operator this section removes.
-- **No transfer.** A held prefix cannot change hands; a reservation naming a
-  prefix another key holds MUST be refused rather than treated as a transfer.
+- **Transfer is a distinct operation.** A reservation naming a prefix another key
+  holds MUST still be refused rather than treated as a transfer. Changing hands is
+  `oath-transfer/1`, below, and requires both parties' signatures.
   DELEGATION exists (§8.7.7) and is a different act: it grants permission to
   publish without granting authority.
 - **First reservation is not atomic** where compare and append are separate

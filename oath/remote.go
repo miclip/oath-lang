@@ -46,6 +46,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -467,4 +468,33 @@ func resolveStoreView(endpoint, keyPath, kmsKey string, forceLocal bool) (storeV
 			"Refusing to show you a different store than the one you asked for: %w", endpoint, localLabel, err)
 	}
 	return storeView{Endpoint: endpoint, Signer: s, Label: endpoint}, nil
+}
+
+// remoteTransfer submits a bilaterally-signed transfer to a registry.
+func remoteTransfer(ctx context.Context, endpoint string, s Signer, octets []byte, holderSig, recipientSig string) (transferReport, error) {
+	out, err := mcpCallSignedBy(ctx, endpoint, s, "transfer", map[string]any{
+		"envelope":            base64.StdEncoding.EncodeToString(octets),
+		"signature":           holderSig,
+		"recipient_signature": recipientSig,
+	})
+	if err != nil {
+		return transferReport{}, err
+	}
+	var resp struct {
+		Namespace        string   `json:"namespace"`
+		From             string   `json:"from"`
+		To               string   `json:"to"`
+		AuthorityRev     string   `json:"authority_rev"`
+		DelegatesCleared int      `json:"delegates_cleared"`
+		Retained         []string `json:"retained"`
+	}
+	if err := json.Unmarshal([]byte(out), &resp); err != nil {
+		return transferReport{}, fmt.Errorf("registry returned an unreadable transfer record: %w", err)
+	}
+	rev, _ := new(big.Int).SetString(resp.AuthorityRev, 10)
+	if rev == nil {
+		rev = big.NewInt(0)
+	}
+	return transferReport{Namespace: resp.Namespace, From: resp.From, To: resp.To,
+		AuthorityRev: rev, DelegatesCleared: resp.DelegatesCleared, Retained: resp.Retained}, nil
 }
