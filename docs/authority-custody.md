@@ -148,3 +148,35 @@ and no `--authorized-keys`, so any valid Ed25519 signature may write to the live
 registry. The allowlist is implemented in the kernel and has never been enabled
 in production. Every prefix other than `oath/*` is claimable first-come by anyone
 who reaches the registry.
+
+
+## The CI publishing delegation (2026-08-01)
+
+`oath/*` publication is delegated to a second key, so automation never needs the
+namespace key.
+
+| | |
+|---|---|
+| CI publisher public key | `26923b6580a21f8cb92430cd29a816b5a33ebeadb7afd531b6e2004b317a5c8c` |
+| KMS resource | `…/cryptoKeys/oath-ci-publisher/cryptoKeyVersions/1` |
+| origin | **GENERATED IN KMS** — unlike the root key, this one never existed outside the HSM boundary and was never imported |
+| may sign with it | `oath-publisher@oath-prod-503514.iam.gserviceaccount.com`, `roles/cloudkms.signer` on THAT KEY VERSION ONLY |
+| access to the root key | none — verified, no binding |
+| delegation | signed by the holder at authority revision 1, recorded in the live journal |
+
+A dedicated service account rather than the existing deployer: reusing
+`oath-deployer` would mean anyone who can trigger a deploy can also publish, and
+those are two capabilities that should not be one credential.
+
+**What a compromise of the CI credential now costs.** It can publish under
+`oath/*` until the delegation is revoked. It cannot reserve, cannot delegate
+onward, cannot revoke, cannot touch any other prefix, and — since
+DEL-REVOCATION-RECOVERS — retains nothing after revocation except the historical
+fact that it signed. Before delegation existed, the same compromise would have
+transferred the namespace permanently, because this version has no transfer.
+
+**Ordering note.** The delegation could not be issued until the registry ran a
+kernel that knew the operation. The first attempt was refused with
+`unknown tool "delegate"` — the root key signed the envelope and it conferred
+nothing, because a delegation counts only when a registry accepts and journals
+it. Worth a conformance vector rather than an anecdote.
