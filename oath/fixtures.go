@@ -595,9 +595,18 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
    unverifiable elsewhere. JSONL with base64 octets so reading the fixtures needs no
    knowledge of the reference language.
 
+11. reserve/vectors.jsonl (SPEC §8.7): every "canonical" record's octets reproduce
+   EXACTLY, every "reject" record is refused by a conformant parser, and every
+   "covers" record states whether a prefix governs a name. Chosen to witness the
+   derivations most likely to be got wrong rather than to cover the encoding evenly,
+   so the coverage records include the cases a substring check answers differently
+   from a segment check. authority_rev is carried as a JSON STRING: the
+   arbitrary-precision vector is 2^128+1, which a float64 JSON reader decodes off by
+   one, and a witness defeated by its own carrier witnesses nothing.
+
 Files: hashes.txt, canonical/, encoding/, gate/, verify/, analyses/,
 prove/outcomes.json, campaign/vectors.txt, envelope/vectors.jsonl,
-gate/bytes/, license/vectors.jsonl.
+gate/bytes/, license/vectors.jsonl, reserve/vectors.jsonl.
 `, kernelVersion)
 	if err := write("MANIFEST.md", []byte(manifest)); err != nil {
 		return "", err
