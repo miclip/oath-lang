@@ -199,6 +199,20 @@
       "note": "selected from the publisher's own publication, Apache-2.0"
     },
     {
+      "name": "abs",
+      "artifact": "f8552a9f06ee472b3b4d499b0b5eba688def8463e9e4703248fc1d158eb7ae4d",
+      "source": "examples/ints.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/ints.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true,
+      "note": "no dependencies \u2014 chosen so a failure in the publish path is unambiguously in the credential chain rather than in dependency ordering"
+    },
+    {
       "name": "bad-reverse",
       "artifact": "af6b61e2180ad5ccdeb541b00c7f53d285aa3f3af997a5e00653954492cb25f1",
       "export": false,

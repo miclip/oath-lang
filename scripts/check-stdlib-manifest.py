@@ -44,12 +44,35 @@ def reproduce_hashes(sources):
     out = {}
     with tempfile.TemporaryDirectory(prefix="oath-stdlib-") as tmp:
         env = {"OATH_STORE": tmp, "PATH": "/usr/bin:/bin:/usr/local/bin"}
-        for src in sorted(sources):
-            r = subprocess.run([str(ROOT / "oath" / "oath"), "put", str(ROOT / src)],
+        # ONE STORE, TO A FIXPOINT. Source files are not self-contained — a file
+        # can define a member while a LATER definition in the same file references
+        # something from another file, so elaborating each into its own fresh store
+        # fails on a dependency that is present in the corpus and absent from that
+        # file. Retrying until no further progress resolves any order.
+        # Every corpus file, not only the ones a member names. A member's source
+        # can depend on a definition in a file no member cites — `abs` lives in
+        # ints.oath, which needs `max2` from extras.oath — so restricting the set
+        # to cited sources makes reproduction fail on a dependency that is present
+        # in the corpus. What is being verified is that the manifest's hash is what
+        # THE SOURCE produces, and the source is the corpus.
+        # PROGRESS IS MEASURED BY WHAT LANDED IN THE STORE, NOT BY EXIT CODE.
+        # A FALSIFIED definition is elaborated, hashed and stored — `put` exits
+        # non-zero to report the verdict, not to report a failure to elaborate. The
+        # corpus deliberately contains such exhibits (bad-reverse, spin, a refuted
+        # float law), so treating a non-zero exit as "could not elaborate" makes
+        # reproduction impossible against the corpus that actually exists.
+        files = sorted(str(f.relative_to(ROOT)) for f in (ROOT / "examples").glob("*.oath"))
+        seen = -1
+        while True:
+            for src in files:
+                subprocess.run([str(ROOT / "oath" / "oath"), "put", str(ROOT / src)],
                                capture_output=True, text=True, env=env, cwd=str(ROOT))
-            if r.returncode != 0:
-                print(f"FAIL: could not elaborate {src}:\n{r.stdout}{r.stderr}")
-                return None
+            npath = Path(tmp) / "names.json"
+            count = len(json.loads(npath.read_text())) if npath.exists() else 0
+            if count == seen:
+                break
+            seen = count
+
         names = Path(tmp) / "names.json"
         if not names.exists():
             print("FAIL: elaboration produced no names.json — nothing was stored")
@@ -105,11 +128,32 @@ def main():
                 failures.append(f"{name}: membership must be `referenced` (the library depends on an "
                                 f"existing publication and asserts nothing) or `project-publication` "
                                 f"(the project makes its own licence assertion). Got {mode!r}")
-            if not d.get("publication"):
-                failures.append(f"{name}: no `publication` — an entry must pin the EXACT signed "
+            # A PIN IS AN INPUT FOR SOME MODES AND AN OUTPUT FOR OTHERS.
+            #
+            #   referenced                  ALWAYS pins: the whole entry is a
+            #                               selection of one signed statement, and
+            #                               without the pin it selects nothing.
+            #   project-publication +       pins the CONTRIBUTOR'S publication —
+            #     contributor-grant         the grant is tied to a specific one.
+            #   project-publication +       has nothing to pin BEFORE it is
+            #     project-authored          published. The publication is what the
+            #                               publisher creates; requiring it up front
+            #                               makes a first publication impossible.
+            #
+            # The last case is why this is not simply "every export pins": the gate
+            # demanded a pin for something that does not exist yet, so no new
+            # project-published member could ever be proposed.
+            st_type = ((d.get("standing") or {}).get("type") or "")
+            needs_pin = mode == "referenced" or st_type == "contributor-grant"
+            if needs_pin and not d.get("publication"):
+                failures.append(f"{name}: no `publication` — this entry must pin the EXACT signed "
                                 f"publication it relies on, by the sha256 of its canonical octets. "
                                 f"A name is mutable and an artifact may carry many conflicting "
                                 f"assertions, so neither identifies whose grant is being consumed")
+            if mode == "project-publication" and st_type == "project-authored" and d.get("publication"):
+                # Present after the fact is fine and is what the pilot entries carry;
+                # it just must not be REQUIRED before the publication exists.
+                pass
             if mode == "project-publication":
                 # The stronger claim: WE assert terms over this artifact.
                 if not d.get("license"):
