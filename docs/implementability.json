@@ -229,6 +229,29 @@
       ],
       "evidence": "docs/experiments/blind-license-evaluation.md",
       "implementer_statement": "A working implementation exists, but \u00a78.6 could not be built without inference, and the inference is not confined to cosmetics \u2014 one undetermined point is security-relevant and another is a live contradiction in the prose."
+    },
+    {
+      "round": 6,
+      "date": "2026-08-01",
+      "sections": [
+        "10.0a"
+      ],
+      "source": "b9efb2e10cd3b6812b565ba1fbc6bc9e03cdf494",
+      "surface_digest": "cf84f44f0064e89859bbe5a7f27efe15f16af496be6ef194871309102420051f",
+      "supplied": [
+        "docs/SPEC.md",
+        "oathrs/",
+        "fixtures/canonical/",
+        "fixtures/hashes.txt",
+        "examples/",
+        "fixtures/MANIFEST.md"
+      ],
+      "status": "DISPATCHED",
+      "research_question": "Is normative text written THIS WEEK, by the same author as the reference implementation, and never independently read, implementable from prose alone? \u00a710.0a is small and self-contained, so a failure is diagnostic rather than ambiguous \u2014 it cannot hide behind protocol complexity.",
+      "hypothesis": "\u00a710.0a is sufficient to implement CONF-FIXTURE-FILENAME without inference. Predicted PASS: the rule is three cases and a worked example. If it fails, the defect is in text short enough to read in a minute, which is the most useful possible failure.",
+      "hypothesis_recorded": "before dispatch",
+      "prediction": "If anything is under-determined it will be the DECODE direction or the treatment of characters the table does not mention \u2014 the encoding table states three cases and asserts bijectivity without demonstrating the inverse.",
+      "note": "Different shape from rounds 1-5: the subject REPAIRS an existing independent kernel rather than implementing from scratch, so oathrs/ is supplied and oath/ is forbidden. oathrs/DIVERGENCES.md is excluded \u2014 it records every ambiguity previous blind rounds found, which is coaching material."
     }
   ]
 }

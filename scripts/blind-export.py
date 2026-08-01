@@ -52,6 +52,15 @@ PROSE = ["docs/SPEC.md"]
 # licensing-shaped, so the harness takes a SECTION rather than assuming one.
 # Each entry is (normative data, conformance witnesses) for that section, and the
 # data list must match what §13.1b declares — check-implementability enforces it.
+# Per-section FORBIDDEN sets. Most blind tasks implement a section from scratch and
+# must not see EITHER kernel. A task that REPAIRS oathrs against new normative text
+# obviously needs oathrs/ — but must still not see oath/, which is where the
+# reference implementation of the same rule lives. Inverting the exclusion rather
+# than relaxing it keeps the N-version property intact.
+FORBIDDEN_BY_SECTION = {
+    "10.0a": ("oath/", "codebase/", "docs/experiments/", "website/"),
+}
+
 SURFACES = {
     "12": (["fixtures/license/model.json"],
            ["fixtures/license/vectors.jsonl", "fixtures/MANIFEST.md"]),
@@ -60,6 +69,10 @@ SURFACES = {
     # never declared, that is a finding for the round rather than something to
     # quietly supply here.
     "8.6": ([], ["fixtures/envelope/vectors.jsonl", "fixtures/MANIFEST.md"]),
+    # #103: repair oathrs against SPEC §10.0a. The Rust kernel and the fixture
+    # corpus it must reproduce; NOT oath/, which implements the same rule.
+    "10.0a": ([], ["oathrs/", "fixtures/canonical/", "fixtures/hashes.txt",
+                   "examples/", "fixtures/MANIFEST.md"]),
 }
 
 # NORMATIVE DATA: incorporated by reference, schema and interpretation defined in
@@ -77,6 +90,9 @@ WITNESSES = SURFACES["12"][1]
 # presence made the surface easier than the specification it was standing in for.
 # A rule taken from tooling is inferred, not derived (§13.1a).
 EXCLUDED = ["scripts/rule-matrix.py"]
+
+# Paths removed even though they sit inside an allowlisted tree.
+EXCLUDE_WITHIN = ["oathrs/DIVERGENCES.md", "oathrs/target"]
 
 ALLOW = PROSE + DATA + WITNESSES
 
@@ -106,7 +122,12 @@ def export(sha: str, dest: Path):
     # `git archive` writes a tree with no .git and no history by construction.
     # Extracting a tar is preferable to copying the working tree: an untracked or
     # dirty file cannot ride along, so the export is exactly the pinned commit.
-    ar = subprocess.run(["git", "archive", "--format=tar", sha, "--"] + ALLOW,
+    # Exclude coaching material that lives INSIDE an allowlisted tree.
+    # oathrs/DIVERGENCES.md is the record of every ambiguity previous blind rounds
+    # found — design history, and precisely what a fresh subject must not read.
+    # git pathspec magic does the removal at archive time, so it is never written.
+    excludes = [f":(exclude){e}" for e in EXCLUDE_WITHIN]
+    ar = subprocess.run(["git", "archive", "--format=tar", sha, "--"] + ALLOW + excludes,
                         capture_output=True, cwd=ROOT)
     if ar.returncode != 0:
         print("FAIL: git archive:", ar.stderr.decode()[:400])
@@ -140,10 +161,17 @@ def preflight(dest: Path, sha: str) -> list:
                        f"normative prose nor normative data (§13.1a)")
 
     allowed = set(ALLOW) | {"MANIFEST.sha256", "BRIEF.md"}
+    trees = tuple(a for a in ALLOW if a.endswith("/"))
     for rel in rels:
+        if rel.startswith(trees):
+            continue
         if rel not in allowed:
             bad.append(f"unlisted file in dispatch root: {rel}")
     for want in ALLOW:
+        if want.endswith("/"):
+            if not any(r.startswith(want) for r in rels):
+                bad.append(f"allowlisted tree exported empty: {want}")
+            continue
         if want not in rels:
             bad.append(f"allowlisted file missing from export: {want}")
 
@@ -183,6 +211,9 @@ def main():
             print(f"FAIL: no declared surface for §{sec}")
             return 1
         DATA, WITNESSES = SURFACES[sec]
+        global FORBIDDEN_PREFIXES
+        if sec in FORBIDDEN_BY_SECTION:
+            FORBIDDEN_PREFIXES = FORBIDDEN_BY_SECTION[sec]
         argv = argv[2:]
     if len(argv) >= 3 and argv[0] == "--paths":
         paths = [p for p in argv[1].split(",") if p]
@@ -242,6 +273,19 @@ def main():
         f"\nCONFORMANCE WITNESSES — check yourself against these, but do NOT read rules\n"
         f"out of them. A rule obtained from a fixture is inferred, not derived:\n"
         + "".join(f"- `{f}`\n" for f in WITNESSES) + "\n")
+
+    # REPRODUCTION IS NOT RE-VALIDATION. `--paths` replays a surface recorded in
+    # the ledger to check that its digest still derives from its source commit.
+    # Isolation was a property of the ORIGINAL dispatch and was verified then;
+    # re-running preflight here asks a different question and answers it wrongly,
+    # because the forbidden set is section-specific and has since changed. A
+    # historical surface would then read as unverifiable purely because today's
+    # rules differ from the ones it was exported under.
+    if paths is not None:
+        print(f"exported {len(files)} file(s) from {full[:12]} to {dest}")
+        print(f"  surface digest {surface}")
+        print("  (reproduction mode: isolation was verified at dispatch, not re-checked)")
+        return 0
 
     bad = preflight(dest, full)
     print(f"exported {len(files)} file(s) from {full[:12]} to {dest}")
