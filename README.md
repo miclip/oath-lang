@@ -357,6 +357,43 @@ a definition, and the store is public, re-verifiable bytes. See
 [docs/registry-auth.md](docs/registry-auth.md) and
 [docs/registry-verification.md](docs/registry-verification.md).
 
+## The one sentence
+
+Everything in this system — content addressing, the journal, ownership,
+licensing, proofs, signatures, namespaces, key custody — is in service of a
+single idea:
+
+> **Software isn't trusted because someone says what it is. It's trusted because
+> independent parties can reproduce the statements that matter.**
+
+Each mechanism exists because some statement was otherwise unreproducible.
+Hashes, so identity does not depend on a name. A journal, so history cannot be
+edited by the party it judges. Signatures, so authorship is evidence rather than
+a record someone kept. Reservations, so authority is declared rather than
+inferred. Licensing as an assertion, so terms are traceable to whoever signed for
+them. None of it is worth much alone; together it is the difference between being
+told and being able to check.
+
+## The first standard-library slice is small on purpose
+
+`oath/*` holds four definitions:
+
+```
+oath/List      oath/length      oath/append      oath/reverse
+```
+
+That is not a soft launch. It is the **minimum artifact set that is closed** —
+`reverse` needs `append`, which needs `length`, which needs `List`, and nothing
+reaches outside. A closed slice is one a stranger can reproduce end to end in an
+afternoon: elaborate the sources, check the hashes against the manifest, replay
+the journal, verify the signatures, derive the namespace authority, evaluate the
+licence over the closure, and confirm the live registry agrees.
+
+A hundred definitions would demonstrate less. Size shows that publishing works;
+closure shows that the *trust chain* works, and that is the harder claim. The
+whole point is that you do not have to take our word for any of it — so the first
+thing published should be small enough that you don't.
+
 ## Layout
 
 ```
