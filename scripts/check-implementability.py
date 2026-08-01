@@ -216,7 +216,13 @@ def main():
             # That is the correct behaviour: the surface a subject was dispatched
             # against must still be the surface the claim names.
             if r.get("surface_tool") == "blind-kit.py":
-                got = recompute_kit(r.get("kit_section")) if sd_pending else None
+                # `src_pending`, not omitted: a kit must rebuild at the commit it
+                # was dispatched from on BOTH paths. Wiring the revision into the
+                # completed branch only meant a pre-registered kit stopped
+                # reproducing the moment its section was repaired — which is the
+                # exact failure IMPL-REPRODUCIBLE-INSTRUMENT exists to prevent,
+                # reintroduced one branch away from its own fix.
+                got = recompute_kit(r.get("kit_section"), src_pending) if sd_pending else None
             else:
                 got = recompute_surface(src_pending, r.get("supplied"), r.get("exporter")) if sd_pending else None
             ok = got == sd_pending

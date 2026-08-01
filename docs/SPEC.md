@@ -2153,7 +2153,7 @@ Prefix authority arises ONLY from a reservation recorded under this section.
 
 #### 8.7.0 The objects
 
-This section reasons about four objects. Each is defined HERE, before any rule
+This section reasons about five objects. Each is defined HERE, before any rule
 uses it, because a rule that compares, orders, or replays an undefined object is
 an algorithm without an alphabet.
 
@@ -2171,9 +2171,17 @@ that rule would carry no additional meaning.
 **AUTHORITY REVISION.** The authority revision of a prefix is the VERSION OF ITS
 AUTHORITY STATE: a non-negative integer, `0` for a prefix no key has ever held.
 
-**RES-REV-SUCCESSOR.** An accepted reservation advances the prefix's authority
-revision by exactly one. A registry MUST NOT accept a reservation and leave the
-revision unchanged.
+**RES-REV-SUCCESSOR.** An accepted reservation carrying `authority_rev = n`
+advances the prefix's authority revision TO `n + 1`. It is stated as a
+destination rather than as an increment deliberately: under the concurrency
+§8.7.6 admits, two reservations may both be accepted carrying the same `n`, and
+an increment rule would then demand `n + 2` while the derived state is `n + 1`.
+
+The first draft said "advances by exactly one" and forbade accepting a
+reservation that left the revision unchanged — which the tie case violates, since
+the second acceptance moves nothing. A rule contradicted by a state the same
+section admits is reachable is a defect regardless of which reading an
+implementer takes.
 
 The successor relation is not an implementation detail; it is what gives the
 revision meaning. The pair `(authority, authority_rev)` is a compare-and-swap, and
@@ -2188,11 +2196,23 @@ prefix (§8.6.1). They count different things about different objects.
 SERIALIZATION OF ACCEPTED AUTHORITY TRANSITIONS — the order in which the registry
 committed the acceptances, as recorded in the journal.
 
-It deliberately does NOT mean physical position in a file. Today the two coincide
-for a single-writer append-only journal, and the specification MUST NOT require
-them to coincide forever: a registry may later replicate, shard, or run its journal
-transactionally, and in each case the meaningful order is the one it committed, not
-the one bytes happen to occupy.
+**RES-ORDER-RECORDED.** A verifier MUST read that serialization as THE ORDER OF
+ENTRIES IN THE JOURNAL. The journal is the registry's record of what it committed
+and in what sequence; it carries no separate member naming a commit order, so any
+other reading would make this rule unimplementable by a third party holding only
+the journal.
+
+The distinction between the two is therefore about what a registry MAY DO, not
+about what a verifier reads. A registry that replicates, shards, or runs its
+journal transactionally MUST record entries in the order it committed them — the
+constraint falls on the writer. A verifier never has to reconstruct a commit
+order; it reads the recorded one.
+
+The wording is deliberate. An earlier draft said the order "deliberately does NOT
+mean physical position in a file" and stopped there, which defined the operative
+term as the one thing no member carries: §8.2.1 has no commit-order member, so a
+verifier could not implement the rule that makes §8.7.4 total. Pinning a choice
+before it becomes observable is legitimate; defining it as unreadable is not.
 
 **RES-FIRST-DEFINED.** Where two accepted reservations of the same prefix carry the
 same authority revision — the concurrent state §8.7.6 admits is reachable — the
@@ -2216,6 +2236,12 @@ Three consequences the dependent rules need and could not otherwise obtain:
   cryptographic owner. An implementation MUST NOT synthesise one from an unsigned
   record; it may enforce an unsigned recorded principal, but MUST NOT report that
   as cryptographic ownership.
+
+An ACCEPTED PUBLICATION, for the purposes of this definition, is an entry whose
+signed statement parses as a publication envelope (§8.6.1), whose signature
+verifies against the key that envelope names as `author`, and which the registry
+recorded with the status `accepted`. The publication envelope has no `pubkey`
+member, so the key verified against is the one the statement itself names.
 
 **ACCEPTED.** Replay (RES-DERIVED) counts an entry as an accepted reservation if
 and only if ALL of the following hold. Anything else is not a reservation for the
@@ -2286,6 +2312,17 @@ leaves its authority revision unchanged.
 `authority_rev` is an arbitrary-precision non-negative decimal in canonical form
 (no leading zeros, no sign). A verifier MUST NOT impose a machine-word bound.
 
+**RES-HEX-LOWERCASE.** `authority` and `pubkey` MUST be lowercase hexadecimal.
+The reasoning §8.6.1 gives for the same rule applies with more force here: these
+values are compared as bytes against derived state in RES-AUTHORITY-CURRENT and
+identify principals during replay, so `ABAB…` and `abab…` would be two different
+statements about one key.
+
+**RES-AUTHORITY-CONSISTENT.** `authority = -` MUST be accompanied by
+`authority_rev = 0`, and a non-sentinel `authority` MUST NOT be. An unheld prefix
+at a non-zero revision, or a held one at revision zero, describes no state this
+section can produce.
+
 **RES-PARSE-STRICT.** A parser MUST reject any octet sequence that does not
 re-encode to itself under this encoding — reordered members, absent or extra
 members, non-canonical integers, or an unknown format line. Signatures cover
@@ -2309,8 +2346,15 @@ a reservation, and no first-come rule may grant it.
 
 **RES-AUTHORITY-CURRENT.** `authority` and `authority_rev` MUST equal the
 registry's currently derived state for the prefix (`-` and `0` when unheld). This
-is the replay and ABA defence: a revision never repeats even if a prefix returns
-to a key that held it before.
+is the replay defence: a reservation signed against a state the registry has
+since left cannot be applied later.
+
+It is deliberately NOT claimed as an ABA defence. An earlier draft asserted that
+"a revision never repeats even if a prefix returns to a key that held it before",
+and neither half holds in this version: no operation releases, transfers or
+expires a prefix, so a prefix cannot return to anyone, and under §8.7.6's
+concurrency two distinct accepted transitions can carry the same revision. A
+rationale must not defend against an attack the version cannot express.
 
 **RES-FIRST-COME.** A reservation MUST be refused when a prefix held by a
 DIFFERENT key OVERLAPS it in either direction — that is, when either prefix is a
@@ -2333,6 +2377,32 @@ SHOULD report the retained names to the reserver at reservation time.
 **RES-PROSPECTIVE.** A reservation MUST NOT alter the authorship, ownership, or
 transition of any entry recorded before it. Authority changes what MAY happen
 next; it never rewrites what happened.
+
+#### 8.7.3a What authority DOES
+
+The rules above say how authority is established. This says what it is FOR, and
+without it a conformant registry could accept every reservation, resolve every
+name, and let authority govern nothing.
+
+**RES-GOVERNS-BINDING.** Where a reservation governs a name (§8.7.4), a registry
+MUST refuse to bind that name to an artifact on behalf of any principal other
+than the prefix's current holder.
+
+**RES-EXACT-OWNER-PREVAILS.** Where the name additionally has an exact-name owner
+(§8.7.0) who is not the prefix holder, that owner MAY continue to bind it and the
+prefix holder MAY NOT. This is RES-NO-CAPTURE at binding time: the reservation
+promised not to seize the name, and a promise kept only at reservation time and
+broken at every subsequent publication is not kept.
+
+**RES-GOVERNS-INDEPENDENT-OF-CONFIGURATION.** This refusal MUST NOT depend on any
+operator configuration. A reservation is an authority record in the journal, and
+a registry that enforced it only when separately configured to would leave a
+publisher's namespace unprotected on exactly the registries where no operator has
+acted on their behalf — which is the case the operation exists for.
+
+Nothing here grants the holder authority OUTSIDE the prefix, and nothing changes
+what §8.7.1 says a reservation means: refusing a binding is an access decision by
+one registry, not a statement about who anyone is.
 
 #### 8.7.4 Authority replay and resolution
 

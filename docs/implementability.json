@@ -348,7 +348,6 @@
   {
    "round": 8,
    "date": "2026-08-01",
-   "status": "DISPATCHED",
    "sections": [
     "8.7"
    ],
@@ -366,7 +365,40 @@
    "hypothesis_recorded": "before dispatch",
    "prediction": "Six narrow failure modes, recorded before dispatch: (1) are authority and exact-name owner unambiguously PRINCIPALS rather than hashes or labels; (2) does authority_rev advance on every accepted authority transition and ONLY those; (3) is 'first' derived from the serialization of accepted transitions rather than physical journal position; (4) does replay accept only cryptographically verified reservation events; (5) can registry-authored kind, author_pubkey or status labels affect authority without being covered by signed bytes; (6) do retention and most-specific-wins remain derivable now that the ontology has been introduced around them. I expect (3) to be the weakest — the distinction between committed order and byte order is stated but has no vector that could distinguish them, since a single-writer journal makes them coincide.",
    "note": "KNOWN VIOLATION OF IMPL-ISOLATED-SESSION, disclosed before dispatch rather than after. The harness cannot currently strip this project's CLAUDE.md and memory index from a dispatched session's system prompt, so the rule §13 gained today CANNOT BE SATISFIED by this harness. Round 8 therefore runs under the same contamination round 7 disclosed, mitigated only by explicit quarantine instructions and mandatory disclosure. Recording this in advance is the point: a rule whose first application is a violation is a rule about the harness, and the measurement must not be reported as though the environment were clean. Second kit round; DERIVATION.md is still required before the vectors are opened.",
-   "reproducibility_class": "ENVIRONMENT-CONSTRAINED"
+   "reproducibility_class": "ENVIRONMENT-CONSTRAINED",
+   "verdict": "PASS-WITH-INFERENCE",
+   "vectors": "23/23",
+   "hypothesis_outcome": "PARTLY CONFIRMED. §8.7.0 carried the section: all five ontology questions were DERIVED, both fail-open traps were closed IN THE TEXT and independently witnessed, and the subject changed nothing after opening the vectors. But three live defects remain, so the ontology repair was necessary and not sufficient.",
+   "prediction_outcome": "(3) CONFIRMED, and sharper than predicted. I flagged ORDER as the weakest point because no vector could distinguish committed order from byte order. The real defect is worse: §8.2.1 carries NO commit-order member and the fixture journals have no seq at all, so the specification defined its operative term as the one thing a verifier cannot read. That is not unobservable-but-pinned; it is unimplementable, and my own IMPL-UNOBSERVABLE-PINNED rule would have mis-classified it as legitimate. (1),(4),(5),(6) derived correctly — vector 21 confirmed that a mislabelled kind changes nothing, and the subject records refusing to filter on kind from memory, which would have failed that vector. (2) failed in a way I did not predict: RES-REV-SUCCESSOR is contradicted by my own tie fixture.",
+   "inferred": [
+    "21 items in total; the load-bearing ones follow",
+    "derived revision = max(authority_rev)+1 rather than count(accepted reservations) — observably different under §8.7.6 concurrency, and only the vector distinguishes them",
+    "serialization = ascending seq rather than array order (defect C)",
+    "hex case: required lowercase, where the text as written permitted mixed (defect D)",
+    "no authority/authority_rev consistency check at parse, where §8.6.1's analogue rejects",
+    "what an 'accepted publication' is, for exact-name ownership — the term was used and never defined",
+    "check ORDER on refusal, and what status a registry records — neither is stated",
+    "§8.2.1: whether parent_rev:0 is emitted or omitted, member order inside nested objects, and number re-encoding — all byte-forking"
+   ],
+   "contamination": [
+    "ENVIRONMENT-CONSTRAINED, declared BEFORE dispatch: the harness cannot strip this project's CLAUDE.md and memory index from a dispatched session, so IMPL-ISOLATED-SESSION could not be satisfied. The subject additionally had live mcp__oath* tools that would have queried the real registry, and invoked none of them.",
+    "Isolation of the DISPATCH ROOT held: only the three kit files were read, no git, no web, no parent-directory search, no MCP call.",
+    "THE QUARANTINE INSTRUCTION WAS LOAD-BEARING AND THE SUBJECT LOGGED THREE MOMENTS. (i) `kind` — project context made `kind == \"reserve\"` feel natural as a replay filter; the subject refused on the ground that ACCEPTED is a closed iff, and vector 21 later proved the refusal correct. Filling it from memory would have FAILED that vector. (ii) a rejection status — the literal word `blocked` is in the leaked context and was not used. (iii) WHAT AUTHORITY DOES — the leaked context describes owner_pubkey gating publication, which would have let the subject 'complete' §8.7 by asserting the consequence the text omitted. The subject deliberately did not, and wrote that it implements the query and asserts nothing about its effect. That refusal is what surfaced defect F."
+   ],
+   "findings": [
+    "A (live contradiction, WITNESSED BY OUR OWN FIXTURE): RES-REV-SUCCESSOR said an accepted reservation advances the revision by exactly one and MUST NOT leave it unchanged — but the tie vector has TWO accepted reservations at revision 0 and a final revision of 1, so the second acceptance moves nothing. The rule is contradicted by a state §8.7.6 admits is reachable",
+    "B: the ABA rationale asserts a property this version does not establish — no operation releases, transfers or expires a prefix, so a prefix cannot return to a former holder, and revisions DO repeat under concurrency. Round 7 reported this as D7 and it was NOT repaired; round 8 found it again with a stronger argument",
+    "C: ORDER was defined as the registry's commit serialization and explicitly not physical position — but §8.2.1 carries no commit-order member and the fixture journals have no seq, so the operative term named the one thing a verifier cannot read",
+    "F (THE LARGEST): §8.7 defined authority, derivation and resolution, and never said what authority DOES. No rule refused a publication under a reserved prefix by a non-holder. A conformant registry could accept every reservation, resolve every name, and let authority govern nothing — the entire operative point of the feature was unspecified",
+    "D: §8.7.2 omitted the hex-lowercase rule §8.6.1 spends a paragraph justifying, and supplied no analogue of ENV-PARENT-CONSISTENT",
+    "E: no rejection vocabulary and no check precedence — and RES-ACCEPTED-CLOSED itself notes the status set is not closed, which means the status feeding the NEXT replay is undefined by the same text that makes status load-bearing",
+    "G: §8.2.1 is the section most insistent about byte agreement and the least sufficient to achieve it, with ZERO vectors — member JSON types, nested member order, and number re-encoding are all unstated",
+    "H: §8.7.0 said 'four objects' and defined five",
+    "I: 'accepted publication' was used by EXACT-NAME OWNERSHIP and defined nowhere",
+    "COVERAGE: two of the four deliverables the harness names — the acceptance decision against non-empty state, and name resolution — have no vectors at all. RES-FIRST-COME, RES-AUTHORITY-CURRENT, RES-NO-CAPTURE, RES-MOST-SPECIFIC, RES-PROSPECTIVE and RES-NEVER-INFERRED remain unwitnessed"
+   ],
+   "evidence": "docs/experiments/blind-license-evaluation.md",
+   "implementer_statement": "Yes-with-inference, and §8.7 is markedly better than what surrounds it. §8.7.0 is the reason: naming the objects before the rules that use them eliminated the class of ambiguity that normally dominates these rounds. The genuinely weak surface in the kit is elsewhere — §8.2.1, which is the most insistent about byte agreement and the least sufficient to achieve it, and which has no fixtures at all."
   }
  ]
 }

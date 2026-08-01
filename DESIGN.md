@@ -161,6 +161,28 @@ derived facts; identities bind their subject rather than their intended meaning;
 witnesses do not define their own coverage; examples constrain but do not prove;
 and a specification claims only what its construction establishes.
 
+## Tests cannot define semantics
+
+The sharpest thing round 7 taught, stated so it survives outside the round record:
+
+> **A vector cannot witness an undefined object. It can only freeze one
+> implementer's guess about it.**
+
+This is the specification analogue of a classic testing mistake. Tests constrain
+an already-defined semantic object; they cannot BE the definition. When a test
+becomes the first place a behaviour is decided, it stops being a witness and
+becomes executable prose — and executable prose is the worst kind, because it is
+read as evidence rather than as a claim.
+
+The practical consequence is an ordering rule. On finding a rule with no witness,
+the reflex is to write the vector. That is right only when the object the rule
+operates on is DEFINED. Where it is not, writing a vector actively harms the
+specification: it manufactures agreement between the reference implementation and
+a fixture generated from it, while the prose that a third party must read remains
+silent. Both then pass, and the gap is now invisible.
+
+Define the object, then witness the rule. Never the reverse.
+
 ## The methodology became subordinate to the protocol
 
 Early in the §8.7 work the blind rounds drove the project: the question being
