@@ -124,6 +124,26 @@ The PASS to expect is not "nothing more can be found". It is the point where
 findings stop changing what the specification MEANS and become editorial. We are
 not there, and the ledger says so.
 
+**But that is the wrong stopping criterion for the ROUNDS**, and it took an
+outside reading to see why: it can be satisfied by ever-finer wording, so it
+never terminates. The criterion that does:
+
+> **Blind rounds stop when they stop changing what users can do.**
+
+By that measure the last three rounds had already stopped. Round 4 found
+contradictions introduced by repairs; round 5 found a new defect class in
+witnesses; round 6 found overclaim in a rule written the same day. All real, all
+valuable — and all improvements to the METHODOLOGY rather than to what a
+publisher, verifier or registry operator can accomplish. The rounds had begun
+discovering their own unknowns rather than the project's, which is what it looks
+like when a research subject becomes infrastructure.
+
+Licensing becoming deployable, ownership becoming cryptographic, and the registry
+becoming signed rather than an unsigned catalogue are the changes that met the
+bar. §10.0a's calibration did not.
+
+
+
 ### The discipline that made it work: metrics were allowed to get worse
 
 Repeatedly, a number moved the wrong way because the measurement improved —

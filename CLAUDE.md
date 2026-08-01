@@ -56,6 +56,41 @@ custom domain + managed TLS; see `docs/deploy.md`). What it runs:
 - **Release pipeline** — `git tag vX` cuts a GitHub Release of both kernels for
   all platforms (`.github/workflows/release.yml`); deploy is manual (`deploy.yml`).
 
+## The finish line (2026-08-01)
+
+> A developer with no privileged access can install an Oath client, obtain
+> authorization, publish a licensed artifact into their own namespace, and
+> another developer can independently discover, verify, and consume it.
+
+That is the milestone worth aiming at, and it is what turns Oath from a system
+one person built into a system someone else can participate in. Every PIECE of it
+now exists — signed publication, licence assertion and evaluation, namespaces,
+cryptographic ownership, discovery, `explain`. What has never been tested is a
+SECOND PRINCIPAL: the registry has exactly one authorized key, so the
+cryptography, ownership model and licensing semantics are validated while the
+SOCIAL model is not.
+
+#66 (delegated token minting, authorized-key registration) is the gate. It does
+not remove a defect; it creates a new actor, and with one come questions that are
+product rather than protocol: can they reserve a namespace without operator
+intervention, can ownership change without registry edits, does `explain` read
+sensibly when the publisher is not you.
+
+## Blind implementation is a DEFINITION OF DONE, not an activity
+
+Run it when a change introduces new normative text, scoped to that text — then
+fix what matters and ship. Do NOT run rounds until they stop finding things: a
+good reviewer can always improve a specification, and the rounds will happily
+keep discovering their own unknowns.
+
+  build -> stabilise the design -> if it added normative text, blind-test that
+  text -> fix what matters -> ship -> move on
+
+The stopping rule for a round is not "nothing more can be found" but **does this
+change what a user can do**. By that measure rounds 4-6 had already stopped
+earning their cost, while still producing genuinely good findings — which is
+exactly how this becomes hard to notice from inside.
+
 ## Before adding anything to the protocol
 
 Ask which of four concerns a proposal belongs to — they now evolve
