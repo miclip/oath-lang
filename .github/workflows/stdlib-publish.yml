@@ -186,9 +186,19 @@ jobs:
         # registry reports, and refuses if they are the same.
         run: |
           set -o pipefail
-          CI_PUB=$(gcloud kms keys versions get-public-key 1 \
-            --location us-central1 --keyring oath-authority --key oath-ci-publisher \
-            2>/dev/null | openssl pkey -pubin -outform DER | tail -c 32 | xxd -p -c 64)
+          # NO 2>/dev/null. Hiding gcloud's stderr here cost a debugging cycle: the
+          # publisher lacked publicKeyViewer, gcloud said so, the message was
+          # discarded, and openssl reported "could not read key from <stdin>" — a
+          # true statement about a symptom, with the cause thrown away.
+          if ! gcloud kms keys versions get-public-key 1 \
+              --location us-central1 --keyring oath-authority --key oath-ci-publisher \
+              --output-file /tmp/ci.pem; then
+            echo "::error::could not read the CI key's public half — see the gcloud error above."
+            echo "::error::roles/cloudkms.signer grants useToSign and NOT viewPublicKey;"
+            echo "::error::the publisher also needs roles/cloudkms.publicKeyViewer on this key."
+            exit 1
+          fi
+          CI_PUB=$(openssl pkey -pubin -in /tmp/ci.pem -outform DER | tail -c 32 | xxd -p -c 64)
           echo "signing key: $CI_PUB"
           # The manifest records the namespace holder (authority_pubkey). Comparing
           # against it needs no extra command and no registry round-trip, and the
