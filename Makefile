@@ -190,6 +190,18 @@ check-store:
 check-normative-source:
 	@python3 scripts/check-normative-source.py
 
+# The corpus/registry reconciliation RATCHET, exercised against a synthetic tree.
+#
+# The live check (scripts/check-registry-reconciliation.py --fetch) needs read
+# access to the production store and so cannot be an ordinary gate — a check that
+# fails for want of credentials gets ignored, which is worse than not having it.
+# The LOGIC can be gated, and this is what does it: the decisive case is an
+# arrival that exactly cancels a departure, where the total is unchanged and a
+# count-based check sees nothing.
+.PHONY: check-reconciliation-ratchet
+check-reconciliation-ratchet:
+	@python3 scripts/test-reconciliation-ratchet.py
+
 # License evaluation coverage, measured the same way: disable each rule, re-run.
 # Rule-to-vector matrix: does every NORMATIVE rule have a witnessing vector? The
 # opposite check from license-score, which asks whether disabling an implementation

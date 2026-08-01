@@ -89,6 +89,12 @@ jobs:
       - name: identity constants are findable in the spec (SPEC §13)
         run: make check-normative-source
 
+      # Gates the reconciliation LOGIC, not the live registry. The live check
+      # needs production store credentials; this proves the ratchet classifies
+      # rather than counts, which is the part that could silently rot.
+      - name: corpus/registry reconciliation ratchet
+        run: make check-reconciliation-ratchet
+
       # The website renders the repository markdown verbatim. These gates fail if
       # a copy drifts from its source — without them the site can quietly show a
       # different specification from the one an implementer reads, which is the

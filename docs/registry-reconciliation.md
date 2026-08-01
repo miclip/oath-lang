@@ -22,9 +22,14 @@ every extra name is accounted for, and nothing is unaccounted.
 `registry-reconciliation.json` declares it; `scripts/check-registry-reconciliation.py`
 enforces it.
 
-> Every committed-corpus definition must be present live at an identical artifact
-> hash. Every live name that is not in the corpus must fall into a declared
-> category.
+> Every live name belongs to **exactly one** declared category, and every
+> **required** member of every category is present at the expected artifact
+> relationship.
+
+Both halves are load-bearing, and neither is a count. The first catches arrivals;
+the second catches disappearances. A total-equality check — "383 names, as
+expected" — passes when one legitimate name vanishes while one unexplained name
+appears, because the two errors cancel and the cancellation is invisible.
 
 | category | verdict | meaning |
 |---|---|---|
@@ -35,6 +40,8 @@ enforces it.
 | operational probe | review | declared and explained; depended on by nothing |
 | registry-only artifact | review | declared and explained; never entered the corpus |
 | **undeclared** | **fail** | nobody has said what this is |
+| **required member absent** | **fail** | a declared category lost a member |
+| **ambiguous** | **fail** | two categories claim the same name, so the accounting double-counts |
 
 ## Where the 383 goes
 
@@ -81,6 +88,37 @@ manual test, the next artifact nobody chose to publish.
 The difference between a policy and an amnesty is whether it constrains what
 happens next.
 
+An undeclared name fails with what it actually IS, not merely that it was
+unexpected — artifact, first publication, author, and whether that author is
+evidence or a label:
+
+```
+✗ UNDECLARED live name `dbl` — artifact 29e282863801…; first published at
+  journal 1 (2026-07-25T16:32:07); author admin [UNSIGNED — the author is a
+  recorded label, not evidence]. No category matched: …
+```
+
+## Proving the ratchet checks classification, not today's count
+
+`scripts/test-reconciliation-ratchet.py` runs the negative test against a fully
+synthetic tree — no credentials, no network:
+
+1. add one live name outside every declared category
+2. confirm the check **fails** and identifies that exact name
+3. add it to an explicit allowed category
+4. confirm the check **passes**
+5. remove the synthetic state and confirm the baseline is restored
+
+Plus the case that motivates the whole design: **one arrival and one departure at
+once**, leaving the total unchanged. A count sees nothing; the check fails and
+names both. It also covers a vanished required member alone, and a name claimed by
+two categories.
+
+This is a CI gate (`make check-reconciliation-ratchet`). The live check is not,
+and deliberately: it needs production store credentials, and a check that fails
+for want of credentials gets ignored, which is worse than not having it. The logic
+is gated; the live run is a deliberate act.
+
 ## Running it
 
 ```
@@ -88,7 +126,4 @@ python3 scripts/check-registry-reconciliation.py --fetch           # reads the l
 python3 scripts/check-registry-reconciliation.py names.json        # offline
 ```
 
-It is deliberately not wired into ordinary CI: it requires read access to the
-production store, and a check that cannot run without credentials is a check that
-fails for the wrong reason. Run it after publishing, and when the two sets look
-like they have drifted.
+Run it after publishing, and when the two sets look like they have drifted.

@@ -1,15 +1,18 @@
 {
   "policy_version": 1,
-  "statement": "codebase/ is a curated, reproducible INPUT SET. The live registry is append-only OPERATIONAL HISTORY. They are different objects and equality between them is not a goal. What must hold is that every corpus definition is present live at the identical artifact hash, and that every live name NOT in the corpus is accounted for by a declared category.",
+  "statement": "codebase/ is a curated, reproducible INPUT SET. The live registry is append-only OPERATIONAL HISTORY. They are different objects and equality between them is not a goal. The condition is CLASSIFICATION, not count: every live name must belong to exactly one declared category, and every required member of every category must be present at the expected artifact. A total-equality check would pass while one legitimate name vanished and one unexplained name appeared.",
   "corpus": "codebase/names.json",
   "registry": "https://registry.oath-lang.org",
   "verdicts": {
-    "corpus_absent_live": "fail",
-    "hash_mismatch": "fail",
+    "corpus_present_identical": "expected",
     "alias": "expected",
     "stdlib_publication": "expected",
     "operational_probe": "review",
     "registry_only": "review",
+    "corpus_absent_live": "fail",
+    "required_absent": "fail",
+    "hash_mismatch": "fail",
+    "ambiguous": "fail",
     "undeclared": "fail"
   },
   "alias_prefixes": [
@@ -33,7 +36,7 @@
   "registry_only": [
     {
       "name": "dbl",
-      "reason": "Journal sequence 1 — the registry's first entry, authored 'admin' on 2026-07-25. A bootstrap smoke test written directly against the store before the corpus was ever pushed. Kept because the journal is append-only; nothing depends on it."
+      "reason": "Journal sequence 1 \u2014 the registry's first entry, authored 'admin' on 2026-07-25. A bootstrap smoke test written directly against the store before the corpus was ever pushed. Kept because the journal is append-only; nothing depends on it."
     },
     {
       "name": "id-check",
