@@ -123,7 +123,41 @@ Add an entry and open a PR:
 }
 ```
 
-Two membership modes, because they make different claims:
+Two membership modes. `referenced` is the DEFAULT and the normal path — not a
+lesser form of membership.
+
+A contributor is saying *"I think this should be part of the Oath standard
+library"*, and the project is answering *"we agree, and we recommend this exact
+publication"*. That is a complete endorsement. It does not require the project to
+create a second publication or to make a licensing assertion it does not own.
+
+So the library says **"these are the functions we recommend"**, not "these are
+things we authored" — which is what lets it be an ecosystem rather than a
+monorepo with extra steps:
+
+```
+stdlib/
+  map       → referenced           → alice/map
+  queue     → referenced           → bob/queue
+  reverse   → project-publication  → oath/reverse
+  append    → project-publication  → oath/append
+```
+
+`project-publication` is the EXCEPTION: core kernel code, work by maintainers on
+behalf of the project, or code whose author has explicitly granted the project
+the right to republish under `oath/*`.
+
+**Using the library should not require caring which is which.** Resolution is
+transparent — `oath get stdlib/map` follows the pinned publication without you
+knowing whether it lives under `oath/` or `alice/`. The distinction matters for
+provenance, licensing and governance; it should not matter for consumption.
+
+That also makes the PR a much smaller ask. You are not requesting *"please
+publish my code under your namespace"* — you are requesting *"please include my
+publication in the curated standard library"*, and your publication, your key and
+your terms stay yours.
+
+The two modes in detail:
 
 | mode | meaning | requires |
 |---|---|---|
