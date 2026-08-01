@@ -3371,6 +3371,44 @@ to provoke, and the only way to keep it green would be to leave findings unfixed
 Three separate instruments needed this before it was stated as a rule rather than
 applied as three repairs.
 
+**IMPL-REPRODUCIBILITY-CLASS.** A claim MUST state which of two classes it
+belongs to, because they are not the same guarantee and reporting them together
+overstates the weaker one:
+
+- **FULLY REPRODUCIBLE** — the surface, the tool that produced it, and the record
+  that verifies it are all pinned to commits, so the measurement can be
+  re-derived exactly by anyone holding the repository. Nothing outside the
+  repository is depended on.
+- **ENVIRONMENT-CONSTRAINED** — reproduction additionally depends on properties
+  of the implementer's execution environment that the repository cannot pin or
+  verify, IMPL-ISOLATED-SESSION being the current instance.
+
+The distinction is not a caveat about rigour; it is a boundary on what the
+experiment can measure at all. An environment-constrained claim may be perfectly
+executed and still cannot be re-run identically by a third party, because the
+thing that differs is not in the artifact.
+
+Where a required property cannot be enforced by the available tooling, a round
+MUST declare that BEFORE it runs. A limitation discovered afterwards is
+indistinguishable, in the record, from one discovered because the result was
+disappointing.
+
+**IMPL-UNOBSERVABLE-PINNED.** A specification MAY normatively fix a distinction
+that no current implementation or vector can observe, and such a rule is NOT
+under-witnessed merely because nothing distinguishes its alternatives today.
+
+The two states are different and must not be conflated. A rule witnessed only by
+prose because nobody wrote the vector is a gap. A rule whose alternatives are
+OBSERVATIONALLY EQUIVALENT under every implementation the model currently permits
+is a choice that had to be made before the distinction became observable — and
+making it early is what stops two implementations diverging the moment it does.
+
+Such a rule MUST say which is the case. The present instance is §8.7.0's ORDER:
+committed serialization and physical journal position coincide for a
+single-writer append-only journal, so no fixture can separate them, and the
+specification still has to pick one because a replicated or transactional
+registry would separate them.
+
 **IMPL-ISOLATED-SESSION.** An implementability claim MUST NOT be made from a run
 whose execution environment carried project-specific normative knowledge outside
 the exported surface. Where such knowledge was present, the run MUST disclose it
