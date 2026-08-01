@@ -36,9 +36,68 @@ permissions:
   id-token: write # Workload Identity Federation only. No long-lived key exists.
 
 jobs:
+  # DECIDE first, without the environment. Approval is a request for a HUMAN
+  # DECISION, and asking for one when nothing will be signed trains people to
+  # approve without reading — which is how a gate stops being a gate.
+  #
+  # Third-party contributions arrive as `referenced` members, which publish
+  # nothing at all; their scrutiny belongs at PR review, where the membership
+  # decision actually is. Only `project-publication` entries ever sign, so only
+  # they need this.
+  decide:
+    name: standard-library publish (decide whether anything must be signed)
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.delta.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - run: make build
+      - name: Re-run the gates from scratch
+        run: |
+          set -o pipefail
+          python3 scripts/check-normative-source.py
+          python3 scripts/check-spec-vs-fixtures.py
+          python3 scripts/check-fixture-integrity.py --skip-solver-dependent
+          python3 scripts/check-stdlib-manifest.py
+      - name: Compute the registry delta
+        id: delta
+        run: |
+          set -o pipefail
+          if ! git show "HEAD~1:stdlib/oath-stdlib.json" > /tmp/base-manifest.json 2>/dev/null; then
+            if git rev-parse HEAD~1 >/dev/null 2>&1; then
+              echo "::notice::no manifest at HEAD~1 — treating this as the first publication"
+              echo '{"definitions":[]}' > /tmp/base-manifest.json
+            else
+              echo "::error::HEAD~1 unreachable; refusing rather than assuming an empty base."
+              exit 1
+            fi
+          fi
+          python3 scripts/stdlib-delta.py /tmp/base-manifest.json --out /tmp/delta.md
+          echo "changed=$(cat /tmp/delta-changed.txt)" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Standard library merge"
+            echo
+            cat /tmp/delta.md
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: publication-delta
+          path: /tmp/delta.md
+          retention-days: 365
+
   publish:
     name: standard-library publish (signed, approval-gated)
-    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.confirm == 'PUBLISH' }}
+    needs: decide
+    # ONLY when a signature will actually happen.
+    if: >-
+      needs.decide.outputs.changed == 'yes' &&
+      (github.event_name != 'workflow_dispatch' || github.event.inputs.confirm == 'PUBLISH')
     runs-on: ubuntu-latest
     # The approval gate. Publication is irreversible in the sense that matters —
     # the journal is append-only — so a human decides, every time.
@@ -73,7 +132,7 @@ jobs:
           python3 scripts/check-fixture-integrity.py --skip-solver-dependent
           python3 scripts/check-stdlib-manifest.py
 
-      - name: Compute the registry delta and publication plan
+      - name: Re-derive the plan from scratch
         id: delta
         run: |
           set -o pipefail
@@ -110,7 +169,6 @@ jobs:
       # sign, which is the wrong default for a workflow whose entire design is
       # about not holding more authority than the task needs.
       - name: Authenticate to Google Cloud (keyless)
-        if: steps.delta.outputs.changed == 'yes'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
@@ -120,10 +178,8 @@ jobs:
           service_account: ${{ vars.GCP_PUBLISHER_SA }}
 
       - uses: google-github-actions/setup-gcloud@v2
-        if: steps.delta.outputs.changed == 'yes'
 
       - name: Confirm the signing key is the DELEGATE, not the namespace holder
-        if: steps.delta.outputs.changed == 'yes' 
         # A guard against the one misconfiguration that would silently undo the
         # entire point: pointing this workflow at the root key. It compares the
         # key this job can sign with against the namespace holder the live
@@ -151,7 +207,6 @@ jobs:
         # what makes a no-delta execution a safe test of the approval and credential
         # plumbing: everything up to signing is exercised, and namespace state is
         # untouched.
-        if: steps.delta.outputs.changed == 'yes' 
         # Each definition is elaborated into a LOCAL store first, because
         # publication resolves references against the local store — a dependent
         # cannot be published before the thing it depends on exists there. Then
@@ -195,7 +250,7 @@ jobs:
           OATH_KMS_KEY: projects/oath-prod-503514/locations/us-central1/keyRings/oath-authority/cryptoKeys/oath-ci-publisher/cryptoKeyVersions/1
 
       - name: Report that nothing needed publication
-        if: steps.delta.outputs.changed != 'yes'
+        if: false  # unreachable: this job only runs when something must be signed
         run: |
           {
             echo "## No publication delta"
@@ -206,7 +261,6 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Receipt, generated from LIVE REGISTRY STATE
-        if: steps.delta.outputs.changed == 'yes' 
         # From the journal the registry actually holds, never from the plan. A
         # receipt derived from what we intended would confirm our own intent; the
         # whole point is to confirm what happened.
