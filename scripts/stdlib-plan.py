@@ -35,6 +35,36 @@ def main():
     # Planning one would republish what the project claimed only to recommend.
     exports = [d for d in man["definitions"]
                if d.get("export") and d.get("membership") == "project-publication"]
+
+    # PLAN ONLY WHAT IS PENDING, when a journal is supplied. Republishing an
+    # already-live member is a valid recorded no-op — and it SIGNS and WRITES, so
+    # every merge re-signed the entire library. The first automated publication
+    # added five journal entries for one new definition, and the cost grows with
+    # library size times merges.
+    #
+    # Without a journal the plan is the whole library, which is right for a first
+    # publication and for anyone reasoning about the library as a whole.
+    if "--pending-from" in sys.argv:
+        snap = Path(sys.argv[sys.argv.index("--pending-from") + 1])
+        live = set()
+        import base64
+        for line in snap.read_text().splitlines():
+            if not line.strip():
+                continue
+            e = json.loads(line)
+            if not e.get("envelope_b64") or e.get("status") != "accepted":
+                continue
+            try:
+                oct_ = base64.b64decode(e["envelope_b64"], validate=True).decode()
+            except Exception:
+                continue
+            if not oct_.startswith("oath-publish/"):
+                continue
+            kv = dict(l.split("=", 1) for l in oct_.rstrip("\n").split("\n")[1:] if "=" in l)
+            live.add(kv.get("name", ""))
+        before = len(exports)
+        exports = [d for d in exports if f"{ns}/{d['name']}" not in live]
+        print(f"pending: {len(exports)} of {before} project-published members are not yet live")
     want = {d["name"] for d in exports}
 
     # Split every source file into top-level forms and keep the ones we export.

@@ -253,7 +253,12 @@ jobs:
           set -o pipefail
           mkdir -p /tmp/pubstore && export OATH_STORE=/tmp/pubstore
           : > /tmp/publish-log.txt
-          python3 scripts/stdlib-plan.py --out /tmp/plan
+          # Only what the registry lacks. Republishing a live member is a valid
+          # no-op that still signs and writes — the first automated publication
+          # added five journal entries for one new definition.
+          gcloud storage cp gs://oath-prod-503514-oath-store/log.jsonl /tmp/live-plan.jsonl \
+            || { echo "::error::cannot read the live journal; refusing to plan blind"; exit 1; }
+          python3 scripts/stdlib-plan.py --out /tmp/plan --pending-from /tmp/live-plan.jsonl
           LIC=$(python3 -c "import json;print(json.load(open('stdlib/oath-stdlib.json'))['license'])")
           FAILED=0
           for f in $(cat /tmp/plan/order.txt); do
