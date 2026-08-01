@@ -2430,8 +2430,30 @@ conveys nothing, and it would create a record whose revocation would appear to
 remove the holder's own rights.
 
 **DEL-REVOCABLE.** A withdrawal takes effect from the point it is recorded.
-Revocation is what makes delegation safe: a compromised delegate can publish
-until it is revoked, and can do nothing to prevent that revocation.
+
+**DEL-REVOCATION-RECOVERS.** After withdrawal, the former delegate MUST NOT be
+able to bind or repoint any name it published under the prefix. Those names are
+governed by the holder again.
+
+This is the rule that makes "revocable" mean anything, and it does not follow
+from DEL-REVOCABLE alone. Exact-name ownership is established by first
+publication, so a delegate acquires ownership of everything it binds — and
+RES-EXACT-OWNER-PREVAILS would then protect that ownership FROM THE HOLDER. A
+revoked key would keep every name it had published and could go on repointing
+them, so revocation would stop new names and recover nothing.
+
+The resolution is that RES-NO-CAPTURE's retention is scoped to names that PREDATE
+the reservation, which is what it was always for: a reservation must not seize a
+name somebody already held. A name bound under the prefix afterwards belongs to
+the namespace, whoever signed the publication.
+
+AUTHORSHIP IS UNAFFECTED. The journal continues to record which key signed each
+publication, and revocation does not and must not alter that. What returns to the
+holder is CONTROL of the name, not credit for the work.
+
+A compromised delegate can therefore publish until it is revoked, can do nothing
+to prevent the revocation, and retains nothing afterwards but the historical fact
+that it signed.
 
 **DEL-ACCEPTANCE.** A registry MUST validate a submitted delegation before
 journaling it: the signature verifies, the authenticated caller is the signer, the

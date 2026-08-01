@@ -113,3 +113,50 @@ func TestDelegationEnvelopeRules(t *testing.T) {
 		t.Error("accepted an envelope with an extra member")
 	}
 }
+
+// REGRESSION: a revoked delegate must not keep the names it published.
+//
+// Shipped broken. Exact-name TOFU made the delegate the owner of everything it
+// bound, and RES-EXACT-OWNER-PREVAILS then protected that ownership from the
+// holder — so revocation stopped new names and recovered nothing, while the
+// revoked key went on repointing what it already had. "Revocable" cannot be
+// allowed to mean that.
+//
+// Retention is scoped to names that PREDATE the reservation, which is what
+// RES-NO-CAPTURE was always for.
+func TestRevokedDelegateLosesNamesItPublished(t *testing.T) {
+	st := newMemStoreForTest(t)
+	holderHex, holder := newKey(t)
+	ciHex, _ := newKey(t)
+	bobHex, _ := newKey(t)
+
+	// Bob binds a name BEFORE the reservation exists.
+	if reps, err := apiPut(st, `(defn zoo/pre [] [] Int 1)`, bobHex, ""); err != nil || reps[0].Status != "accepted" {
+		t.Fatalf("setup: %v %+v", err, reps[0])
+	}
+	oct, sig := signRes(t, holder, "zoo/*", noAuthority, 0)
+	if _, err := apiReserve(st, oct, sig, holderHex); err != nil {
+		t.Fatal(err)
+	}
+	appendDel(t, st, holder, opDelegate, "zoo/*", ciHex, 1)
+	if reps, err := apiPut(st, `(defn zoo/post [] [] Int 1)`, ciHex, ""); err != nil || reps[0].Status != "accepted" {
+		t.Fatalf("delegate could not publish: %v %+v", err, reps[0])
+	}
+	appendDel(t, st, holder, opRevoke, "zoo/*", ciHex, 1)
+
+	// The revoked key must not keep what it published under the reservation.
+	reps, _ := apiPut(st, `(defn zoo/post [] [] Int 2)`, ciHex, "")
+	if reps[0].Status != "blocked" {
+		t.Errorf("a REVOKED delegate repointed a name it had published — revocation recovered nothing")
+	}
+	// And the holder must be able to take it over.
+	reps, err := apiPut(st, `(defn zoo/post [] [] Int 3)`, holderHex, "")
+	if err != nil || reps[0].Status != "accepted" {
+		t.Errorf("the holder could not bind a name in their own namespace: %v %+v", err, reps[0])
+	}
+	// Retention still holds for the name that predates the reservation.
+	reps, err = apiPut(st, `(defn zoo/pre [] [] Int 2)`, bobHex, "")
+	if err != nil || reps[0].Status != "accepted" {
+		t.Errorf("RES-NO-CAPTURE broke: a name predating the reservation was seized: %v %+v", err, reps[0])
+	}
+}

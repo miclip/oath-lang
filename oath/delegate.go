@@ -18,7 +18,9 @@ package main
 //	signed act, and is REVOCABLE by the holder alone.
 //
 // A stolen release key can then publish until it is revoked. It can never reserve,
-// never delegate onward, and never stop the holder from revoking it.
+// never delegate onward, never stop the holder from revoking it, and — see
+// DEL-REVOCATION-RECOVERS — retains nothing afterwards except the historical fact
+// that it signed. That last property did not hold when this first shipped.
 
 import (
 	"context"

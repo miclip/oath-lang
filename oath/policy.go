@@ -233,13 +233,20 @@ func evalPolicy(st *Store, pol *Policy, name, h string, def *Def, specAuthor, bo
 		if err != nil {
 			return false, "policy: metadata unavailable: " + err.Error()
 		}
-		// MOST-SPECIFIC WINS. An exact-name owner beneath the prefix is more
-		// specific than the prefix, so they keep their name — the retention promised
-		// by RES-NO-CAPTURE, enforced here rather than merely reported at
-		// reservation time. Falling through leaves them to the ordinary owner rules
-		// below; the reservation neither grants nor removes anything for that name.
+		// RETENTION PROTECTS NAMES THAT PREDATE THE RESERVATION, and only those.
+		// That is what RES-NO-CAPTURE was for: a reservation must not seize a name
+		// somebody already held. It was never meant to cover a name created UNDER
+		// the reservation afterwards.
+		//
+		// The distinction is load-bearing once delegation exists. A delegate that
+		// publishes on the holder's behalf becomes the first binder, so without this
+		// it would acquire exact-name ownership the holder cannot displace — and a
+		// REVOKED delegate would keep every name it ever published and could go on
+		// repointing them. Revocation would stop new names and recover nothing,
+		// which is not what "revocable" can be allowed to mean.
 		owner, _ := nameOwner(st, name)
-		if owner == "" || owner == res.Pubkey {
+		predates := owner != "" && nameFirstBoundSeq(st, name) < res.Seq
+		if !predates || owner == res.Pubkey {
 			// The HOLDER or any CURRENT DELEGATE may bind. Delegation exists so
 			// automation never needs the namespace key itself, and it is checked
 			// here rather than at authentication because it is an authorization
@@ -515,4 +522,20 @@ func nameOwner(st *Store, name string) (owner, source string) {
 // names a key, but it is a present-tense operator statement, not history.
 func ownerIsCryptographic(source string) bool {
 	return source == ownerSignedFirstPublish || source == ownerSignedAdoption
+}
+
+// nameFirstBoundSeq is the journal position at which `name` was first bound, or
+// a value greater than any real sequence when it never was.
+//
+// Used to decide whether an exact-name owner PREDATES a reservation. Comparing
+// positions rather than timestamps is deliberate: `time` is an observation the
+// registry wrote and no verifier can check, while sequence is the order the
+// journal actually records.
+func nameFirstBoundSeq(st *Store, name string) int {
+	for _, e := range st.ReadLog() {
+		if e.Name == name && e.repointedName() {
+			return e.Seq
+		}
+	}
+	return int(^uint(0) >> 1)
 }
