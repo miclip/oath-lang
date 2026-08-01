@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -83,6 +84,31 @@ func main() {
 	if fn, ok := harnessCommands[args[0]]; ok {
 		fn(args[1:])
 		return
+	}
+	// A LOCATION FLAG THAT IS ACCEPTED AND IGNORED IS A QUERY-INTEGRITY BUG (#104).
+	//
+	// Only a few commands have a remote path. The rest parsed no --remote, read the
+	// LOCAL store, and exited 0 — so `oath ls --remote <registry>` printed a
+	// well-formed list of real definitions from a completely different store, with
+	// no warning.
+	//
+	// This is worse than a missing feature because the output is PLAUSIBLE. It was
+	// observed for real while checking which live names sat under newly reserved
+	// prefixes: the local store held 187 names and the registry held 376, and the
+	// local answer was read as the registry having LOST a migration. It had not.
+	//
+	// A CLI that accepts a flag it does not implement is asserting something false
+	// about where its answer came from. Refusing is the only honest behaviour until
+	// every read command can actually reach a registry.
+	if !remoteCapable[args[0]] {
+		for _, a := range args[1:] {
+			if a == "--remote" {
+				fail(fmt.Errorf("`oath %s` has no remote path: it can only read the LOCAL store, "+
+					"so --remote would be silently ignored and the answer would come from "+
+					"somewhere other than the registry you named. Use a command that supports "+
+					"--remote (%s), or drop the flag to query locally on purpose", args[0], remoteCapableList()))
+			}
+		}
 	}
 	switch args[0] {
 	case "put":
@@ -821,4 +847,23 @@ func cmdEval(st *Store, src string) {
 		fail(err)
 	}
 	fmt.Println(out)
+}
+
+// remoteCapable lists the commands that actually reach a registry. Maintained by
+// hand rather than discovered, because adding a remote path to a command should
+// be a deliberate edit here — a command silently gaining or losing the ability to
+// answer from elsewhere is exactly the drift #104 is about.
+var remoteCapable = map[string]bool{
+	"put":     true,
+	"publish": true,
+	"license": true,
+}
+
+func remoteCapableList() string {
+	names := make([]string, 0, len(remoteCapable))
+	for n := range remoteCapable {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
 }

@@ -290,7 +290,7 @@
    "sections": [
     "8.7"
    ],
-   "source": "8414ea7",
+   "source": "fe58b19",
    "surface_digest": "121d7e6b1ee600bcc75e25bb8638e2f1abe38253f44c81c0f672239248586c66",
    "supplied": [
     "SPEC-excerpt.md (§8.2.1, §8.6.1, §8.6.5, §8.7)",
