@@ -2151,6 +2151,87 @@ never reasoned about.
 any publication, however many names beneath the prefix a key has published.
 Prefix authority arises ONLY from a reservation recorded under this section.
 
+#### 8.7.0 The objects
+
+This section reasons about four objects. Each is defined HERE, before any rule
+uses it, because a rule that compares, orders, or replays an undefined object is
+an algorithm without an alphabet.
+
+**AUTHORITY.** The authority over a prefix is the PUBLIC KEY currently governing
+it, or the sentinel `-` when no key does. It is a principal, not a record and not
+a hash.
+
+This follows the division the rest of this specification already makes: FACTS are
+identified by hashes, CLAIMS AND AUTHORITY by principals. A reservation is an
+authority act BY a principal, so the value a reservation compares against is the
+principal it expects to find. Were it a hash, a further rule would immediately be
+needed to say WHICH hash, since one authority may issue many reservations, and
+that rule would carry no additional meaning.
+
+**AUTHORITY REVISION.** The authority revision of a prefix is the VERSION OF ITS
+AUTHORITY STATE: a non-negative integer, `0` for a prefix no key has ever held.
+
+**RES-REV-SUCCESSOR.** An accepted reservation advances the prefix's authority
+revision by exactly one. A registry MUST NOT accept a reservation and leave the
+revision unchanged.
+
+The successor relation is not an implementation detail; it is what gives the
+revision meaning. The pair `(authority, authority_rev)` is a compare-and-swap, and
+if acceptance did not advance the revision the pair could not distinguish the state
+before an accepted reservation from the state after it — which is the only thing it
+exists to do.
+
+An authority revision is unrelated to the `parent_rev` of any name beneath the
+prefix (§8.6.1). They count different things about different objects.
+
+**ORDER.** Where this section says FIRST, it means first in the registry's
+SERIALIZATION OF ACCEPTED AUTHORITY TRANSITIONS — the order in which the registry
+committed the acceptances, as recorded in the journal.
+
+It deliberately does NOT mean physical position in a file. Today the two coincide
+for a single-writer append-only journal, and the specification MUST NOT require
+them to coincide forever: a registry may later replicate, shard, or run its journal
+transactionally, and in each case the meaningful order is the one it committed, not
+the one bytes happen to occupy.
+
+**RES-FIRST-DEFINED.** Where two accepted reservations of the same prefix carry the
+same authority revision — the concurrent state §8.7.6 admits is reachable — the
+EARLIER one in that serialization governs. This makes §8.7.4's resolution total; a
+"highest revision" rule alone is not an order, because it ties.
+
+**EXACT-NAME OWNERSHIP.** The owner of an exact name is the principal named as
+`author` in the signed publication envelope (§8.6.1) of the FIRST accepted
+publication that bound that name, in the serialization defined above.
+
+Three consequences the dependent rules need and could not otherwise obtain:
+
+- It is the key named IN THE SIGNED STATEMENT, not the entry's recorded author
+  field. §8.6.4 already requires those to agree for an applied transition, so
+  where both exist they are the same key — but only one of them is signed, and a
+  rule about ownership must rest on the signed one.
+- It does NOT move on re-publication. A later publication by another key does not
+  become the owner, or ownership would be a moving target and the rules depending
+  on it would say nothing.
+- A name whose first binding publication carried NO signed envelope has no
+  cryptographic owner. An implementation MUST NOT synthesise one from an unsigned
+  record; it may enforce an unsigned recorded principal, but MUST NOT report that
+  as cryptographic ownership.
+
+**ACCEPTED.** Replay (RES-DERIVED) counts an entry as an accepted reservation if
+and only if ALL of the following hold. Anything else is not a reservation for the
+purposes of this section.
+
+1. its signed statement parses as a reservation envelope under §8.7.2;
+2. that statement's signature verifies (RES-SIGNED);
+3. the registry recorded the entry with the status `accepted`.
+
+**RES-ACCEPTED-CLOSED.** The status test is a WHITELIST. An entry whose status is
+absent, empty, unrecognised, or any value other than `accepted` MUST NOT be
+counted. An implementation that instead excludes a list of known rejection words
+and counts the remainder FAILS OPEN: a status it has never seen would grant
+authority, and the set of statuses a registry may record is not closed by this
+specification.
+
 #### 8.7.1 What a reservation means
 
 A reservation establishes AUTHORITY OVER A PREFIX STRING in one registry. It is
@@ -2186,10 +2267,16 @@ checked and it was unclaimed" and "nobody populated this" are different facts.
 detached signature would establish that some key signed these bytes; only this
 member makes the bytes say whose claim it is.
 
-`authority` and `authority_rev` are the authority state the reservation replaces
-— the direct analogue of `parent`/`parent_rev` in §8.6.1. A reservation is a
-REVISION OF AUTHORITY, not a standalone assertion; without this pair a later
-transfer could not state what it replaced.
+`authority` and `authority_rev` are the authority state the reservation replaces,
+as defined in §8.7.0: a PRINCIPAL and a version, not a record and not a hash.
+Together they form a compare-and-swap, so a reservation is a REVISION OF
+AUTHORITY rather than a standalone assertion.
+
+They are positionally analogous to `parent`/`parent_rev` in §8.6.1 and are NOT
+the same kind of value: `parent` identifies a fact and is a hash, `authority`
+identifies who governs and is a public key. Read as an analogy rather than as the
+definition in §8.7.0, this member has no determinable domain — which is the
+defect this paragraph now exists to prevent.
 
 **RES-AUTHORITY-REV-DISTINCT.** `authority_rev` counts AUTHORITY transitions of
 the prefix. It is unrelated to, and MUST NOT be conflated with, the `parent_rev`
@@ -2249,12 +2336,14 @@ next; it never rewrites what happened.
 
 #### 8.7.4 Authority replay and resolution
 
-**RES-DERIVED.** Authority state MUST be derived by replaying the journal. An
+**RES-DERIVED.** Authority state MUST be derived by replaying the journal,
+counting exactly the entries §8.7.0 defines as ACCEPTED. An
 implementation MUST NOT maintain a mutable ownership table as the authority: a
 stored summary can drift from the history it summarises, and the journal is what
 a third party actually holds. The current holder of a prefix is the `pubkey` of
 the accepted reservation with the highest authority revision for that exact
-prefix string.
+prefix string, and where revisions tie, the earlier one in the serialization
+(RES-FIRST-DEFINED). Highest-revision alone is not an order.
 
 **RES-MOST-SPECIFIC.** Where several reservations cover a name, the one with the
 LONGEST prefix governs. Where a reservation and an exact-name owner both apply,
@@ -3256,9 +3345,34 @@ because both satisfy every stated rule.
 > - **SUBJECT** — what is this identity a name FOR? (IMPL-IDENTITY-SUBJECT)
 > - **SURFACE** — is every normative input it depends on explicitly declared?
 >   (IMPL-SURFACE-DECLARED, §13.1a)
+> - **SESSION** — does the implementer's environment contribute knowledge the
+>   surface does not? (IMPL-ISOLATED-SESSION, below)
 >
 > Each was learned from a defect that field-level review did not catch, and each
 > is now enforced mechanically rather than by recollection.
+
+**IMPL-ISOLATED-SESSION.** An implementability claim MUST NOT be made from a run
+whose execution environment carried project-specific normative knowledge outside
+the exported surface. Where such knowledge was present, the run MUST disclose it
+and identify every value it may have supplied.
+
+An implementation is a function of `(surface, session)`, not of `surface` alone.
+A clean archive establishes only that the archive is clean; if the implementer's
+environment separately describes the system — project instructions, retained
+memory, a prior conversation — then the measured quantity is the surface PLUS
+that environment, and the claim overstates the surface by exactly the difference.
+
+This contamination is strictly harder to detect than an artefact leak, because it
+is INVISIBLE FROM THE EXPORTED BYTES. A preflight over the archive cannot see it
+by construction, and no digest of the surface changes when it is present.
+
+It was found by a run whose archive passed preflight and whose environment
+carried a project description the subject had not chosen to load. The subject
+disclosed it unprompted and identified the single value it supplied — a status
+token the excerpt never publishes. That disclosure did not weaken the round's
+finding; the finding WAS that the token is unspecified, and being able to supply
+one from memory is precisely what would have made the round look more successful
+than the text warranted.
 
 **IMPL-IDENTITY-SUBJECT.** Every normative identity MUST explicitly identify its
 SUBJECT — the object the identity is an identity OF. Binding the identity's

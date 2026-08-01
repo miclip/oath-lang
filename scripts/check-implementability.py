@@ -109,13 +109,17 @@ def recompute_surface(source: str, supplied=None, exporter_rev=None) -> str | No
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def recompute_kit(section) -> str | None:
-    """Rebuild a protocol kit and return its surface digest, or None."""
+def recompute_kit(section, rev=None) -> str | None:
+    """Rebuild a protocol kit AT `rev` and return its surface digest, or None."""
     if not section:
         return None
     tmp = Path(tempfile.mkdtemp(prefix="oath-kitcheck-")) / "kit"
     try:
-        r = subprocess.run([sys.executable, str(ROOT / "scripts" / "blind-kit.py"), section, str(tmp)],
+        cmd = [sys.executable, str(ROOT / "scripts" / "blind-kit.py")]
+        if rev:
+            cmd += ["--at", rev]
+        cmd += [section, str(tmp)]
+        r = subprocess.run(cmd,
                            capture_output=True, text=True, cwd=ROOT)
         if r.returncode != 0:
             return None
@@ -286,7 +290,7 @@ def main():
             # pre-registered path. Wiring it into one branch and not the other made
             # a completed kit round unverifiable the moment it recorded an outcome.
             if r.get("surface_tool") == "blind-kit.py":
-                got = recompute_kit(r.get("kit_section"))
+                got = recompute_kit(r.get("kit_section"), src)
             else:
                 got = recompute_surface(src, r.get("supplied"), r.get("exporter"))
             if got is None:

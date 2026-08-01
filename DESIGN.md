@@ -161,6 +161,49 @@ derived facts; identities bind their subject rather than their intended meaning;
 witnesses do not define their own coverage; examples constrain but do not prove;
 and a specification claims only what its construction establishes.
 
+## A fifth defect class: objects with no ontology
+
+Round 7 found five defects in one section, and their value is not that there were
+five. It is that every one is the same question:
+
+> **What IS this thing?**
+
+- what is AUTHORITY — a public key, a record, a publication, a hash? The
+  compare-and-swap compares it; nothing defined its domain.
+- what is an AUTHORITY REVISION — a counter, a journal position, a version, a
+  logical clock?
+- what is the ORDERING? "First reservation wins" is not a total order until
+  "first" is defined.
+- what is the state machine REPLAYING? The algorithm existed before the alphabet.
+- what is EXACT-NAME OWNERSHIP? Two rules depended on it; it was never an object.
+
+This is a distinct class, and it is not the one round 5 found. Round 5 asked
+whether an identifier had a SUBJECT — identity of what? Round 7 asks whether the
+subject EXISTS AT ALL. An identity with no subject names something unspecified; an
+object with no ontology is a term the specification uses fluently and never
+introduces.
+
+The failure mode is characteristic and is why field-level review misses it: the
+prose reads as complete. Every rule mentioning the object is well-formed, the
+rules are mutually consistent, and each sentence is individually checkable. What
+is missing is not a sentence but a DEFINITION, and prose does not have a hole
+where a definition should be — it simply proceeds.
+
+The structural fix is equally characteristic. Five scattered defects did not get
+five scattered patches; they got ONE new subsection that introduces the objects
+before any rule uses them. If repairing a defect of this class does not produce a
+definition, the repair has not addressed the class.
+
+Two diagnostics, both cheap:
+
+- **Can a reader enumerate the value space of every member an identity or a
+  comparison COMPARES?** If not, the comparison is undefined regardless of how
+  precisely the comparing is described.
+- **Does an algorithm mention a vocabulary the document never enumerates?** A
+  replay rule over unenumerated statuses is an algorithm without an alphabet, and
+  the safe reading is never the obvious one — excluding known failures and
+  counting the remainder FAILS OPEN.
+
 ## Evidence must never define itself (2026-08-01)
 
 One sentence, three levels:

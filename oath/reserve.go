@@ -267,7 +267,17 @@ type reservation struct {
 func reservations(st *Store) map[string]reservation {
 	out := map[string]reservation{}
 	for _, e := range st.ReadLog() {
-		if e.Kind != kindReserve || e.Status != "accepted" {
+		// SPEC §8.7.0 ACCEPTED, and RES-ACCEPTED-CLOSED. Three conditions, all
+		// required, and the status test is a WHITELIST: an entry whose status is
+		// absent, empty or unrecognised is NOT counted. Excluding known rejection
+		// words and counting the remainder FAILS OPEN — a status this kernel has
+		// never seen would grant authority.
+		//
+		// Deliberately NOT gated on e.Kind. Kind is a label the registry wrote and
+		// nobody signed; dispatching authority on it would let a mislabelled entry
+		// decide who governs a namespace. The signed envelope is what says this is a
+		// reservation — the same reasoning VerifyLog's format dispatch already uses.
+		if e.Status != "accepted" {
 			continue
 		}
 		env, err := decodeReserveEnvelope(e.EnvelopeB64)
@@ -275,6 +285,12 @@ func reservations(st *Store) map[string]reservation {
 			// An entry that cannot be decoded is not authority. It is recorded
 			// history that this kernel cannot interpret, and inventing an
 			// interpretation would manufacture authority from a parse failure.
+			continue
+		}
+		// The signature must verify HERE, not only in VerifyLog. Replay may be run
+		// against a journal this process did not verify, and authority derived from
+		// an unchecked statement is authority asserted by whoever held the file.
+		if resVerify(env, e.AuthorSig) != nil || e.AuthorPubkey != env.Pubkey {
 			continue
 		}
 		cur := out[env.Namespace]

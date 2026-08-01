@@ -21,7 +21,9 @@ verified the rules would be verifying an intention; the archive is what the
 subject actually reads. This is the same discipline blind-export.py adopted after
 its own preflight was found to be checking the allowlist rather than the export.
 
-Usage: blind-kit.py <section> <outdir>   e.g. blind-kit.py 8.7 /tmp/kit
+Usage: blind-kit.py [--at <commit>] <section> <outdir>
+       e.g. blind-kit.py 8.7 /tmp/kit
+            blind-kit.py --at fe58b19 8.7 /tmp/kit   (reproduce a past round)
 """
 
 import hashlib
@@ -75,13 +77,30 @@ CODE_SIGNS = [
 ]
 
 
-def spec_sections(wanted):
+def _at(path, rev):
+    """File content at `rev`, or from the working tree when rev is None.
+
+    A COMPLETED round's surface is a historical fact. A kit rebuilt from current
+    text can never reproduce it once the section under test is repaired — and
+    repairing it is the entire point of running the round. Pinning to a commit is
+    the same fix the exporter needed: reproduce the bytes the experiment used, not
+    the bytes current tooling would produce.
+    """
+    if rev is None:
+        return (ROOT / path).read_bytes()
+    r = subprocess.run(["git", "show", f"{rev}:{path}"], capture_output=True, cwd=ROOT)
+    if r.returncode != 0:
+        raise SystemExit(f"FAIL: cannot read {path} at {rev}")
+    return r.stdout
+
+
+def spec_sections(wanted, rev=None):
     """Extract the requested sections from docs/SPEC.md, in document order.
 
     A section runs from its heading to the next heading of the SAME OR SHALLOWER
     depth, so requesting 8.7 takes its subsections and stops at §9.
     """
-    text = (ROOT / "docs" / "SPEC.md").read_text()
+    text = _at("docs/SPEC.md", rev).decode()
     lines = text.split("\n")
     heads = []
     for i, ln in enumerate(lines):
@@ -199,10 +218,16 @@ def preflight(kit: Path, allowed_rule_files):
 
 
 def main():
-    if len(sys.argv) != 3:
+    rev = None
+    argv = sys.argv[1:]
+    if "--at" in argv:
+        i = argv.index("--at")
+        rev = argv[i + 1]
+        del argv[i:i + 2]
+    if len(argv) != 2:
         print(__doc__.strip().rsplit("Usage:", 1)[-1].strip())
         return 2
-    section, outdir = sys.argv[1], Path(sys.argv[2])
+    section, outdir = argv[0], Path(argv[1])
     kit_spec = KITS.get(section)
     if kit_spec is None:
         print(f"FAIL: no kit defined for section {section}; add one deliberately")
@@ -215,16 +240,15 @@ def main():
     parts = ["# Normative surface (excerpt)\n",
              "Extracted from a specification. Sections not listed here are not part of\n"
              "this task and are not supplied.\n"]
-    for name, body in spec_sections(kit_spec["sections"]):
+    for name, body in spec_sections(kit_spec["sections"], rev):
         parts.append(f"\n<!-- section {name} -->\n{body}\n")
     (outdir / "SPEC-excerpt.md").write_text("\n".join(parts))
 
     fx = outdir / "fixtures"
     fx.mkdir()
     for rel in kit_spec["fixtures"]:
-        src = ROOT / "fixtures" / rel
         dst = fx / Path(rel).name
-        dst.write_bytes(src.read_bytes())
+        dst.write_bytes(_at(f"fixtures/{rel}", rev))
 
     (outdir / "HARNESS.md").write_text(HARNESS)
 

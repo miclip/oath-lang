@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"testing"
@@ -182,13 +184,28 @@ func TestNameOwnerDerivation(t *testing.T) {
 // A signed first publication yields KEY ownership.
 func TestNameOwnerFromSignedEntry(t *testing.T) {
 	st := newMemStoreForTest(t)
-	if err := st.AppendLog(&LogEntry{Author: "abc", Name: "n", Status: "accepted", Hash: "h",
-		NameTransition: transitionApplied, EnvelopeB64: encodeEnvelopeB64([]byte("e")), AuthorPubkey: "abc", AuthorSig: "s"}); err != nil {
+	entry, pubHex := signedPublishEntry(t, "n", strings.Repeat("11", 32))
+	if err := st.AppendLog(entry); err != nil {
 		t.Fatal(err)
 	}
 	owner, source := nameOwner(st, "n")
-	if owner != "abc" || source != ownerSignedFirstPublish {
-		t.Fatalf("signed first publish: got (%q,%q), want (abc,signed-first-publication)", owner, source)
+	if owner != pubHex || source != ownerSignedFirstPublish {
+		t.Fatalf("signed first publish: got (%q,%q), want (%s,signed-first-publication)", owner, source, pubHex)
+	}
+}
+
+// An entry whose envelope cannot be READ attests to nothing, so it must report a
+// LABEL rather than cryptographic ownership. Returning the recorded key as though
+// it were signed would report a fact this kernel could not verify.
+func TestNameOwnerUnreadableEnvelopeIsNotCryptographic(t *testing.T) {
+	st := newMemStoreForTest(t)
+	if err := st.AppendLog(&LogEntry{Author: "abc", Name: "n", Status: "accepted", Hash: "h",
+		NameTransition: transitionApplied, EnvelopeB64: encodeEnvelopeB64([]byte("not an envelope")),
+		AuthorPubkey: "abc", AuthorSig: "s"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, source := nameOwner(st, "n"); source == ownerSignedFirstPublish {
+		t.Error("an unparseable envelope was reported as cryptographic ownership")
 	}
 }
 
@@ -239,12 +256,11 @@ func TestPolicyRejectsAmbiguity(t *testing.T) {
 // capture the namespace, or a single publication becomes a land grab.
 func TestTofuDoesNotCaptureNamespace(t *testing.T) {
 	st := newMemStoreForTest(t)
-	if err := st.AppendLog(&LogEntry{Author: "kk", Name: "michael/service1/foo",
-		Status: "accepted", Hash: "h", NameTransition: transitionApplied,
-		EnvelopeB64: encodeEnvelopeB64([]byte("e")), AuthorPubkey: "kk", AuthorSig: "s"}); err != nil {
+	entry, pubHex := signedPublishEntry(t, "michael/service1/foo", strings.Repeat("22", 32))
+	if err := st.AppendLog(entry); err != nil {
 		t.Fatal(err)
 	}
-	if owner, src := nameOwner(st, "michael/service1/foo"); owner != "kk" || src != ownerSignedFirstPublish {
+	if owner, src := nameOwner(st, "michael/service1/foo"); owner != pubHex || src != ownerSignedFirstPublish {
 		t.Fatalf("exact name not owned: (%q,%q)", owner, src)
 	}
 	// Nothing else in or above that namespace is owned by publishing one child.
@@ -394,4 +410,29 @@ func TestCensusSeverityLevelsAreDistinct(t *testing.T) {
 	if len(acknowledge) == 0 || len(blocking) == 0 {
 		t.Fatal("collapsing the levels loses the distinction they exist to express")
 	}
+}
+
+// signedPublishEntry builds a journal entry carrying a REAL signed publication
+// envelope for `name`, and returns the entry with the signer's hex key.
+//
+// Ownership rests on the key named in the SIGNED STATEMENT (SPEC §8.7.0), so a
+// test using a placeholder envelope would assert cryptographic ownership from
+// bytes no verifiable journal could contain — and would keep passing if the
+// implementation stopped reading the envelope at all.
+func signedPublishEntry(t *testing.T, name, hash string) (*LogEntry, string) {
+	t.Helper()
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubHex := hex.EncodeToString(pub)
+	env := pubEnvelope{Op: "put", Name: name, Artifact: hash, Parent: noParent,
+		ParentRev: firstRev(), Author: pubHex, License: noLicense}
+	sig, err := envelopeSign(priv, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &LogEntry{Author: pubHex, Name: name, Status: "accepted", Hash: hash,
+		NameTransition: transitionApplied, EnvelopeB64: encodeEnvelopeB64(envelopeEncode(env)),
+		AuthorPubkey: pubHex, AuthorSig: sig}, pubHex
 }

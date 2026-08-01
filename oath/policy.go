@@ -480,7 +480,22 @@ func nameOwner(st *Store, name string) (owner, source string) {
 			continue
 		}
 		if e.EnvelopeB64 != "" && e.AuthorPubkey != "" && e.AuthorSig != "" {
-			return e.AuthorPubkey, ownerSignedFirstPublish
+			// The key named in the SIGNED STATEMENT, not the entry's recorded field
+			// (SPEC §8.7.0, EXACT-NAME OWNERSHIP). §8.6.4 requires the two to agree
+			// for an applied transition, so in a journal that passes VerifyLog they
+			// are identical — but only one of them is signed, and a rule about
+			// ownership must rest on that one. Reading the recorded field would make
+			// ownership depend on a value the registry wrote, in exactly the way
+			// VerifyLog's format dispatch already refuses to.
+			if octets, err := decodeEnvelopeB64(e.EnvelopeB64); err == nil {
+				if env, perr := envelopeParse(octets); perr == nil && env.Author != "" {
+					return env.Author, ownerSignedFirstPublish
+				}
+			}
+			// An envelope that cannot be parsed attests to nothing. Falling through
+			// to the recorded label is honest — it reports a weaker claim — whereas
+			// returning the recorded key AS cryptographic ownership would report a
+			// signed fact this kernel could not read.
 		}
 		if e.Author != "" {
 			return e.Author, ownerLegacyLabel
