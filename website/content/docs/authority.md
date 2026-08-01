@@ -21,6 +21,20 @@ pointer*. There are only two shapes:
 These look like the same question and are not, and conflating them is the central
 mistake the model exists to avoid.
 
+## How many namespaces one key may hold
+
+Five.
+
+Namespaces nest — a prefix you hold covers everything beneath it, so
+`yours/calendar/*` needs no separate claim — which makes a sixth top-level
+reservation almost always a mistake rather than a need.
+
+**This is a mistake guard, not a squatting defence.** Keys are free, so a
+determined party generates more of them and the cap does nothing. It stops one key
+accumulating ground it will never use, and reservations being permanent is what
+makes that worth stopping. Anything stronger would have to make identity or
+reservation cost something, and no such mechanism exists here.
+
 ## Advice about an irreversible act must come from the state that act will use
 
 Reservation is permanent: no transfer, no release, no expiry. So a tool that tells

@@ -61,6 +61,9 @@ So `oath reserve 'key/*'` is refused because the protocol forbids it, and
 `oath reserve 'oath/*'` is refused because it is taken. Different rules, and the
 error says which.
 
+One key may hold **five** namespaces. Namespaces nest, so a prefix you already
+hold covers everything under it and a sixth claim is rarely what you want.
+
 Everything else is available if nobody holds it. `oath authority '<prefix>/*'`
 tells you before you sign anything — and it answers from the registry you would
 be reserving on, not from your local store, because advice about a permanent act

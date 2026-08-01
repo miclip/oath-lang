@@ -2436,6 +2436,14 @@ DIFFERENT key OVERLAPS it in either direction — that is, when either prefix is
 segment-wise ancestor of the other. `alice/*` and `alice/sub/*` are one claim
 spelled two ways, not two independent claims.
 
+**RES-RESERVATION-LIMIT.** A registry MAY cap how many namespaces one principal
+holds; the reference registry caps it at five. Only ACCEPTED reservations count
+toward the cap — a refused statement confers nothing and so consumes nothing.
+
+The cap is a mistake guard rather than a squatting defence: keys are free, so a
+determined party generates more of them. Namespaces nest, so a held prefix covers
+everything beneath it and additional top-level claims are rarely necessary.
+
 **RES-NO-CAPTURE.** Names already published beneath the prefix whose exact-name
 owner is another key MUST be RETAINED by that owner. The reservation MUST NOT be
 refused on their account, and MUST NOT transfer them.

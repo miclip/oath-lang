@@ -520,6 +520,29 @@ func apiReserve(st *Store, octets []byte, sigHex, principal string) (reserveRepo
 		}
 	}
 
+	// RES-RESERVATION-LIMIT. A mistake guard, not a squatting defence: keys are
+	// free, so a determined party generates more of them. It stops one key
+	// accumulating namespaces it does not need, and nothing beyond that.
+	//
+	// Counts only ACCEPTED reservations, for the same reason the delegation
+	// revision does — a refused statement confers nothing, so it must not consume
+	// anything either.
+	if holder != env.Pubkey {
+		held := 0
+		for _, r := range reservations(st) {
+			if r.Pubkey == env.Pubkey {
+				held++
+			}
+		}
+		if held >= maxReservationsPerPrincipal {
+			return reserveReport{}, fmt.Errorf("%s already holds %d namespaces, which is the limit (%d): reserving %q would be the %d%s.\n"+
+				"  Namespaces NEST — a prefix you already hold covers everything beneath it, so `%s/thing/*` needs no separate claim.\n"+
+				"  Reservations are permanent, so this limit exists to stop one key accumulating ground it will never use",
+				shortHash(env.Pubkey), held, maxReservationsPerPrincipal, env.Namespace, held+1, ordinalSuffix(held+1),
+				strings.TrimSuffix(firstNamespaceOf(st, env.Pubkey), "/*"))
+		}
+	}
+
 	// RES-NO-CAPTURE. Report, never seize.
 	var retained []string
 	for name := range st.Names() {
@@ -782,4 +805,34 @@ func renderAuthority(local *Store, query string, v authorityView, isPrefix bool)
 		fmt.Printf("  delegation revision %s — a grant or revocation must state this value\n", v.DelegationRev)
 	}
 	banner()
+}
+
+// maxReservationsPerPrincipal caps how many namespaces one key may hold.
+const maxReservationsPerPrincipal = 5
+
+// firstNamespaceOf returns a namespace this key already holds, for an error that
+// can point at the nesting they should be using instead. Falls back to a
+// placeholder when the key holds none.
+func firstNamespaceOf(st *Store, pubkey string) string {
+	for _, r := range reservations(st) {
+		if r.Pubkey == pubkey {
+			return r.Namespace
+		}
+	}
+	return "yours/*"
+}
+
+func ordinalSuffix(n int) string {
+	if n%100 >= 11 && n%100 <= 13 {
+		return "th"
+	}
+	switch n % 10 {
+	case 1:
+		return "st"
+	case 2:
+		return "nd"
+	case 3:
+		return "rd"
+	}
+	return "th"
 }
