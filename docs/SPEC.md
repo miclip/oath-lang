@@ -3371,6 +3371,27 @@ to provoke, and the only way to keep it green would be to leave findings unfixed
 Three separate instruments needed this before it was stated as a rule rather than
 applied as three repairs.
 
+**IMPL-FROZEN-APPARATUS.** Once a round is dispatched, three things are FROZEN
+until it returns and its outcome is recorded: the SURFACE that was supplied, the
+INSTRUMENT that produced it, and the PRE-REGISTRATION stating what was expected
+and how the result would be read. None may be edited, reinterpreted, or improved
+in flight, including in ways that would make the round easier to pass or its
+findings easier to accept.
+
+This is the append-only discipline the journal already has, applied to
+experimental evidence — and for the same reason. A record that can be revised
+after the fact by the party it judges is not evidence about that party.
+
+The prohibition covers changes that look like improvements. Repairing the section
+under test mid-round makes the subject's findings describe a document that no
+longer exists. Sharpening a prediction after seeing partial results converts a
+falsifiable claim into a narration. Fixing the harness invalidates the surface
+digest. Each is locally correct and destroys the round.
+
+The corollary is that a limitation, once declared, STAYS declared. It is not
+removed from the record when the tooling later improves; a subsequent round
+records that it was satisfied, and the earlier round keeps saying it was not.
+
 **IMPL-REPRODUCIBILITY-CLASS.** A claim MUST state which of two classes it
 belongs to, because they are not the same guarantee and reporting them together
 overstates the weaker one:
@@ -3397,11 +3418,20 @@ disappointing.
 that no current implementation or vector can observe, and such a rule is NOT
 under-witnessed merely because nothing distinguishes its alternatives today.
 
-The two states are different and must not be conflated. A rule witnessed only by
-prose because nobody wrote the vector is a gap. A rule whose alternatives are
-OBSERVATIONALLY EQUIVALENT under every implementation the model currently permits
-is a choice that had to be made before the distinction became observable — and
-making it early is what stops two implementations diverging the moment it does.
+THREE STATES, which a single word "unwitnessed" used to collapse into one. They
+have different remedies, and confusing them either manufactures defects or hides
+them:
+
+| state | the specification | a witness | remedy |
+|---|---|---|---|
+| UNWITNESSED | makes an observable claim | none constrains it | write the vector |
+| UNOBSERVABLE BUT PINNED | chooses one alternative | none CAN distinguish them under any currently permitted implementation | say so; the choice is the point |
+| UNDEFINED | chooses nothing | nothing to witness | define the object |
+
+Round 7 found several instances of UNDEFINED and, for a time, they were reported
+as if they were UNWITNESSED — which suggested writing vectors for rules that did
+not yet have meanings. A vector cannot witness an undefined object; it can only
+freeze one implementer's guess about it.
 
 Such a rule MUST say which is the case. The present instance is §8.7.0's ORDER:
 committed serialization and physical journal position coincide for a

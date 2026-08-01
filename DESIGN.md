@@ -161,6 +161,42 @@ derived facts; identities bind their subject rather than their intended meaning;
 witnesses do not define their own coverage; examples constrain but do not prove;
 and a specification claims only what its construction establishes.
 
+## The methodology became subordinate to the protocol
+
+Early in the §8.7 work the blind rounds drove the project: the question being
+answered was "what else can the methodology find?", and every answer generated
+more methodology. By the end of it the relationship had inverted, and the
+inversion is visible in a list of things that were REFUSED rather than a list of
+things that were built:
+
+- the section under test was not edited while a round was reading it;
+- the pre-registration was not edited once dispatched;
+- the prediction was not reinterpreted after partial results;
+- the supplied surface was not changed;
+- the harness was not improved in ways that would invalidate historical evidence;
+- a limitation that could not be fixed was DECLARED rather than worked around.
+
+Each refusal costs something concrete — a better document, a cleaner harness, a
+more favourable result — and each is the correct trade, because the alternative is
+a measurement that flatters whoever is holding the instrument.
+
+That is the stopping condition, arriving in a form that was not anticipated when
+it was written. The criterion recorded earlier was behavioural: rounds stop when
+they stop changing what users can do. The signal that actually appeared is
+POSTURAL: the methodology stopped seeking work for itself and started acting as a
+release gate — refusing to move, refusing to reinterpret, refusing to grade its
+own homework.
+
+A research programme asks what else it can discover. A gate asks whether this
+change is ready. The second question has an answer that can be reached, which is
+the entire difference.
+
+The intended use was written into CLAUDE.md long before it was achieved: blind
+implementation as a DEFINITION OF DONE for new normative text, not an activity.
+Round 8 is the first time it was actually used that way — one round, scoped to
+one section, against text written for a shipping feature, with the outcome
+deciding whether to wire it rather than whether to keep looking.
+
 ## Acting on a finding must not destroy the finding
 
 Three instruments needed the same repair before the pattern was named: the blind
