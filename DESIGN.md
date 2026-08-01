@@ -907,6 +907,41 @@ what may be claimed, what counts as proof of it, and what counts as the same
 thing — which are the same three questions the protocol layers answer, arrived at
 from the opposite direction.
 
+## The evidence does not define its own denominator (2026-08-01)
+
+> Coverage must be enumerated from the SUBJECT being covered, never from the
+> witnesses that happened to survive generation.
+
+The fixture corpus shipped 186 canonical files for 187 definitions, and every
+check passed. Two defects attacked one assumption from opposite sides — that the
+fixture DIRECTORY was the source of truth for what existed.
+
+**Representation.** `map` and `Map` folded onto one inode on a case-insensitive
+filesystem, so one definition's bytes were absent and the survivor had silently
+overwritten the other. Fixed by an encoding that is injective and reversible
+(§10.0a), so one logical name maps to one portable filename and Linux and macOS
+generate the same set.
+
+**Measurement.** Both the generator's report and conformance check 1 enumerated
+`canonical/*.bin`. A missing fixture was therefore not compared, not counted, and
+could not fail. "186 byte-identical" was true and useless: *all files present
+agree* had been allowed to masquerade as *all corpus objects are covered*.
+
+The second is the reusable half. A denominator taken from the witnesses can only
+ever report that the surviving witnesses agree. The corpus is the subject; the
+fixture tree is a derived representation, and it must prove it holds one distinct
+canonical file per corpus object.
+
+A related distinction the fix turns on: the generator now counts what LANDED ON
+DISK, not how many writes it issued. **A write counter measures operations; the
+question was about resulting state**, and one file overwriting another is
+invisible to the first and obvious to the second.
+
+This is the fixture analogue of the rest of the session's findings — a
+conformance score computed from its own rule inventory, a census that could never
+be all-PASS, a campaign checked only by its own output. In each, the artefact
+under test supplied the measure of its own completeness.
+
 ## A transformation campaign needs an EXTERNAL equivalence invariant (2026-08-01)
 
 > Internal success only proves the output is self-consistent.
