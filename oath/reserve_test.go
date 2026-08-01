@@ -279,3 +279,39 @@ func TestReservationRetainsPriorExactNameOwners(t *testing.T) {
 		t.Fatalf("bob lost a name he owned when alice reserved the prefix: %v %+v", err, reps[0])
 	}
 }
+
+// RES-PROTOCOL-ROOT: the only prefixes that are not first-come.
+func TestProtocolRootsAreNotReservable(t *testing.T) {
+	for _, bad := range []string{"key/*", "sys/*", "oath/*", "key/sub/*"} {
+		if err := validNamespacePattern(bad); err == nil {
+			t.Errorf("%q was reservable; protocol roots must not be claimable", bad)
+		}
+	}
+	// Compared on the FIRST SEGMENT, not by string prefix. "oathkeeper" is an
+	// ordinary name and must stay claimable, or the reserved list would silently
+	// consume every name that happens to start with the same letters.
+	for _, good := range []string{"oathkeeper/*", "keys/*", "system/*", "alice/*"} {
+		if err := validNamespacePattern(good); err != nil {
+			t.Errorf("%q must remain first-come, got: %v", good, err)
+		}
+	}
+}
+
+// The squatting decision, made explicit as a test so it cannot be reversed by
+// accident: an arbitrary key may take an attractive human-readable root, and the
+// SECOND key is refused. This is intended behaviour for v1 (see the rationale on
+// protocolRoots), not an oversight.
+func TestAttractiveRootsAreFirstComeIncludingSquatting(t *testing.T) {
+	st := newMemStoreForTest(t)
+	squatterHex, squatter := newKey(t)
+	realHex, real := newKey(t)
+
+	octets, sig := signRes(t, squatter, "openai/*", noAuthority, 0)
+	if _, err := apiReserve(st, octets, sig, squatterHex); err != nil {
+		t.Fatalf("first-come must grant the first signed claim: %v", err)
+	}
+	octets, sig = signRes(t, real, "openai/*", noAuthority, 0)
+	if _, err := apiReserve(st, octets, sig, realHex); err == nil {
+		t.Error("a second key took a held root; first-come must be first-come")
+	}
+}

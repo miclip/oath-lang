@@ -156,6 +156,42 @@ func (e resEnvelope) validate() error {
 	return nil
 }
 
+// protocolRoots are the only prefixes no key may reserve.
+//
+// They are a TINY IMMUTABLE LIST compiled into the kernel, deliberately not
+// policy.json: policy.json is operator state, and an operator-editable reserved
+// list would reintroduce exactly the allocation power this operation removes.
+// Every OTHER prefix is first-come, first-served.
+//
+// These are protocol namespaces — room for kernel-defined names (key-derived
+// prefixes, system objects) that must not be claimable by whoever asks first.
+// Reserving the space now costs nothing; recovering it later would need a
+// transfer operation and a cooperative holder.
+var protocolRoots = []string{"key", "sys", "oath"}
+
+// WHY FIRST-COME EVERYWHERE ELSE, SQUATTING INCLUDED (settled 2026-08-01).
+//
+// The alternative considered was key-derived roots — "key/<pubkey>/*" always
+// self-service, human-readable roots allocated separately. It was rejected, and
+// the reason is the load-bearing one: it leaks the CRYPTOGRAPHIC layer into the
+// DISCOVERY layer, in a system whose entire shape is that hashes are not names,
+// names are not identity, signatures establish authority, and authority is
+// derived from history. A new publisher's first artifact being
+// key/65ea5701.../reverse would contradict that on their first interaction.
+//
+// First-come keeps the invariant that matters: EVERY AUTHORITY CHANGE IS A
+// SIGNED JOURNAL OPERATION. No hidden registry state, no operator allocation, no
+// special bootstrap path. A second allocation mechanism for "good" names would
+// have been registry configuration wearing a protocol's clothes.
+//
+// Squatting is therefore permitted, and is judged acceptable for v1 because Oath
+// is not DNS. Holding the string "openai" does not let anyone impersonate
+// OpenAI: every artifact is signed, every publication is attributable, and every
+// authority chain is public. It is annoying, not a trust failure — the same
+// property github.com/<name> has. If it becomes a real problem, transfer and
+// delegation are signed protocol operations to be built, not a naming scheme to
+// be retrofitted.
+
 // validNamespacePattern accepts exactly the prefix form "<segments>/*".
 //
 // Reservation is deliberately NARROWER than the policy pattern language, which
@@ -175,6 +211,14 @@ func validNamespacePattern(p string) error {
 	}
 	if strings.Contains(prefix, "*") {
 		return fmt.Errorf("namespace %q: \"*\" is only meaningful as the trailing \"/*\" — it is not a glob", p)
+	}
+	// RES-PROTOCOL-ROOT. Compared on the FIRST SEGMENT, not by string prefix:
+	// "oath" is reserved but "oathkeeper" is an ordinary name somebody may claim.
+	root, _, _ := strings.Cut(prefix, "/")
+	for _, r := range protocolRoots {
+		if root == r {
+			return fmt.Errorf("namespace %q is under the protocol root %q, which is not reservable: these are kernel namespaces, and every other prefix is first-come", p, r+"/*")
+		}
 	}
 	return nil
 }
