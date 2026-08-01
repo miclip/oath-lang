@@ -2404,6 +2404,54 @@ Nothing here grants the holder authority OUTSIDE the prefix, and nothing changes
 what §8.7.1 says a reservation means: refusing a binding is an access decision by
 one registry, not a statement about who anyone is.
 
+#### 8.7.7 Delegation
+
+> **STATUS: SPECIFIED AND ENFORCED, NOT YET A USABLE PROTOCOL SURFACE.** A kernel
+> replays and enforces these rules, but no client can issue a grant: there is no
+> command, no tool, and no acceptance path that validates a submitted delegation
+> before journaling it. Nothing in this section is WITNESSED BY A CONFORMANCE
+> VECTOR, so a second implementation could satisfy every published byte and encode
+> a different protocol without any fixture disagreeing. Treat this section as
+> normative intent that has not yet been independently checked, and do not build
+> on it in production.
+
+A holder MAY grant another key permission to bind names under their prefix,
+WITHOUT granting authority over it. The grant and its withdrawal are signed acts
+recorded in the journal.
+
+This exists so that automating publication does not require handing over the
+namespace. Since this version has no transfer, release or expiry, a key that
+holds a prefix holds it permanently — so a deployment that gave its automation
+the holder's key would be choosing between never automating and accepting a risk
+it could never undo. Delegation makes that choice unnecessary.
+
+**DEL-PERMISSION-NOT-AUTHORITY.** A delegate MAY bind names under the prefix. A
+delegate MUST NOT reserve any prefix, MUST NOT delegate onward, and MUST NOT
+revoke. Only the holder may grant or withdraw, and authority never moves.
+
+**DEL-GRANTOR-IS-HOLDER.** A delegation is counted only if its `authority` equals
+its `pubkey` AND that key is the prefix's holder as derived from the entries
+preceding it. A key that briefly held a prefix MUST NOT leave behind delegations
+that outlive its authority.
+
+**DEL-NO-SELF.** A grant whose subject equals its grantor MUST be refused. It
+conveys nothing, and it would create a record whose revocation would appear to
+remove the holder's own rights.
+
+**DEL-REVOCABLE.** A withdrawal takes effect from the point it is recorded.
+Revocation is what makes delegation safe: a compromised delegate can publish
+until it is revoked, and can do nothing to prevent that revocation.
+
+**DEL-DERIVED.** The current delegate set MUST be derived by replaying the
+journal, never read from a stored table. A stored permission table could be
+edited to un-revoke a key; a replayed one cannot, because the withdrawal remains
+in the history.
+
+The envelope is `oath-delegate/1`, carrying `op` (`delegate` or `revoke`),
+`namespace`, `subject`, and the same `(authority, authority_rev)` compare-and-swap
+a reservation carries — a grant signed against an authority state the prefix has
+since left is a grant its signer would not make today.
+
 #### 8.7.4 Authority replay and resolution
 
 **RES-DERIVED.** Authority state MUST be derived by replaying the journal,
@@ -2464,9 +2512,10 @@ These are properties of this version, not defects to be worked around.
   every authority chain public. The alternative — allocating attractive names by
   some other mechanism — would be registry configuration outside the protocol, and
   would reintroduce the operator this section removes.
-- **No transfer or delegation.** `op` admits only `reserve` in this version. A
-  held prefix cannot change hands; a reservation naming a prefix another key holds
-  MUST be refused rather than treated as a transfer.
+- **No transfer.** A held prefix cannot change hands; a reservation naming a
+  prefix another key holds MUST be refused rather than treated as a transfer.
+  DELEGATION exists (§8.7.7) and is a different act: it grants permission to
+  publish without granting authority.
 - **First reservation is not atomic** where compare and append are separate
   operations, exactly as §8.6.5 describes for publication. Two first reservations
   of the same prefix can both verify. A registry claiming atomic first-come MUST

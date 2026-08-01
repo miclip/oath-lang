@@ -2406,6 +2406,15 @@ one registry, not a statement about who anyone is.
 
 #### 8.7.7 Delegation
 
+> **STATUS: SPECIFIED AND ENFORCED, NOT YET A USABLE PROTOCOL SURFACE.** A kernel
+> replays and enforces these rules, but no client can issue a grant: there is no
+> command, no tool, and no acceptance path that validates a submitted delegation
+> before journaling it. Nothing in this section is WITNESSED BY A CONFORMANCE
+> VECTOR, so a second implementation could satisfy every published byte and encode
+> a different protocol without any fixture disagreeing. Treat this section as
+> normative intent that has not yet been independently checked, and do not build
+> on it in production.
+
 A holder MAY grant another key permission to bind names under their prefix,
 WITHOUT granting authority over it. The grant and its withdrawal are signed acts
 recorded in the journal.

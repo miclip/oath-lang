@@ -91,6 +91,46 @@ change what a user can do**. By that measure rounds 4-6 had already stopped
 earning their cost, while still producing genuinely good findings — which is
 exactly how this becomes hard to notice from inside.
 
+## Where things actually stand (2026-08-01)
+
+**The standard-library milestone is FINISHED.** `oath/*` is reserved to a project
+key held in Cloud KMS (local copy destroyed before the first publication), and
+holds four names — `List`, `length`, `append`, `reverse` — published in dependency
+order, Apache-2.0, KMS-signed. `docs/receipts/001-*` is a generated receipt whose
+eight checks all pass. A PR validation workflow (`stdlib-pr.yml`) exists and is
+deliberately incapable of publishing.
+
+**DELEGATION IS SPECIFIED AND ENFORCED BUT NOT USABLE.** Do not describe it as
+available and do not build on it. The kernel replays and enforces §8.7.7, but
+there is no command, no MCP tool, no acceptance path, and — most importantly — NO
+CONFORMANCE VECTOR. Unwitnessed authority rules can look complete while encoding
+the wrong protocol, which is more dangerous than a missing command because it is
+invisible.
+
+Finish it in this order, and not another:
+
+1. **Acceptance path first** — an `apiDelegate` that parses the signed operation,
+   verifies the grantor is the CURRENT holder, checks the authority revision,
+   rejects stale or invalid grants explicitly, and journals both accepted and
+   refused attempts. Replay stays the verifier, never the submission interface.
+2. **Conformance vectors** — holder grants; non-holder cannot; delegate publishes
+   only in scope; revocation removes; stale grant/revoke refused; bad signature
+   refused; registry-authored labels cannot create delegation; replay derives the
+   same active set.
+3. **CLI and MCP** — `oath delegate` / `oath revoke`, then the remote tools, all
+   over the ONE acceptance path. No client gets its own semantics.
+4. **Authority reporting** — `explain` must render the chain distinctly: prefix
+   held by X, publication delegated to Y, active at revision N. A delegate must
+   NEVER be rendered as the namespace owner.
+5. **Only then wire CI.** Give CI a delegated publishing key, never the namespace
+   key. Revocation then becomes a signed act and a compromise no longer transfers
+   `oath/*` permanently.
+
+The post-merge publish workflow is NOT built, deliberately. Wiring it before the
+above would make CI depend on a protocol path nobody can invoke normally, inspect
+through the public surface, or reproduce from fixtures — turning hand-crafted
+state into production authority.
+
 ## Before adding anything to the protocol
 
 Ask which of four concerns a proposal belongs to — they now evolve
