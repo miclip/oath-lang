@@ -54,7 +54,7 @@ TESTED_ONLY = rle-expand rle-decode e-mod e-div rot
 OATH = ./oath/oath
 AUTHOR ?= claude-main
 
-.PHONY: build verify prove mutate check fixtures tutorials check-web-tutorials print-order
+.PHONY: build verify prove mutate check fixtures tutorials check-web-tutorials webdocs check-web-docs print-order
 
 build:
 	cd oath && go build -o oath .
@@ -240,6 +240,20 @@ check-web-ledger:
 # CI if the committed copies drift.
 tutorials:
 	@cp docs/tutorial/*.md website/content/tutorials/
+
+webdocs:
+	@mkdir -p website/content/docs
+	@python3 -c "import sys;sys.path.insert(0,'scripts')" 2>/dev/null || true
+	@for f in $$(python3 scripts/webdocs-list.py); do cp "docs/$$f" website/content/docs/; done
+	@echo "reference docs copied into website/content/docs/"
+
+check-web-docs:
+	@for f in $$(python3 scripts/webdocs-list.py); do \
+		diff -q "docs/$$f" "website/content/docs/$$f" >/dev/null || \
+		{ echo "ERROR: website/content/docs/$$f drifted from docs/$$f — run 'make webdocs'"; exit 1; }; \
+	done
+	@python3 scripts/webdocs-list.py --check
+	@echo "web reference docs in sync ✓"
 
 check-web-tutorials:
 	@for f in docs/tutorial/*.md; do \

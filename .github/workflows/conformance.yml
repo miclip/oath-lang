@@ -89,6 +89,17 @@ jobs:
       - name: identity constants are findable in the spec (SPEC §13)
         run: make check-normative-source
 
+      # The website renders the repository markdown verbatim. These gates fail if
+      # a copy drifts from its source — without them the site can quietly show a
+      # different specification from the one an implementer reads, which is the
+      # single worst failure a docs site can have. check-web-tutorials existed and
+      # had never been wired in.
+      - name: website docs match the repository markdown
+        run: make check-web-docs
+
+      - name: website tutorials match the repository markdown
+        run: make check-web-tutorials
+
       # The committed store must be reproducible by the kernel that ships with it.
       # Metadata does not participate in artifact identity, but canonical bytes
       # protect reproducibility and reviewability — different properties, both

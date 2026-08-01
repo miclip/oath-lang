@@ -1,0 +1,231 @@
+# Store drivers: lifting the single-instance cap (#14)
+
+The v1 registry is the filesystem store over gcsfuse, pinned to one writer
+(`docs/registry-verification.md`, `terraform/README.md`). This is the design for
+the backends that remove that cap: **GCS for the immutable objects, Postgres for
+the contended mutable state.** It is scoped so the implementation is a driver
+change behind a seam, not a kernel rewrite — the higher-level logic (hashing,
+JSON, the journal chain, metadata merge, the proof-queue lease) stays in `Store`;
+only the byte-level I/O moves behind an interface.
+
+## The seam
+
+Everything `Store` does to the filesystem reduces to a small byte-level surface.
+Extract it as an interface; the current code becomes the `fs` implementation.
+
+```go
+type backend interface {
+    // Content-addressed, immutable. Writing the same hash twice is idempotent
+    // (identical bytes), so writes need no coordination and never conflict.
+    GetObject(hash string) ([]byte, bool, error)
+    PutObject(hash string, b []byte) error
+    ListObjects() ([]string, error)
+
+    // Per-hash metadata (mutable, but keyed by hash — cross-hash writes never
+    // conflict; same-hash writes are serialized by the mutation lock).
+    GetMeta(hash string) ([]byte, bool, error)
+    PutMeta(hash string, b []byte) error
+
+    // The name index — the contended mutable state. ReadNames+WriteNames is a
+    // read-modify-write that MUST be atomic against concurrent repoints.
+    ReadNames() ([]byte, error)
+    WriteNames(b []byte) error
+
+    // The journal — append-only, the chain computed in-kernel. ReadJournal
+    // returns the exact bytes VerifyLog anchors its byte offsets on.
+    ReadJournal() ([]byte, error)
+    AppendJournal(line []byte) error
+
+    // The proof queue (lease semantics live here — the fs backend does it with
+    // rename+mtime; Postgres with FOR UPDATE SKIP LOCKED).
+    EnqueueProof(job []byte, hash string) error
+    ClaimProof(now time.Time, ttl time.Duration) ([]byte, bool, error)
+    CompleteProof(hash string) error
+    ProofDepth() (int, error)
+
+    // The mutation mutex (fs: an O_EXCL lock file; Postgres: pg_advisory_lock).
+    Lock() (unlock func(), err error)
+}
+```
+
+`Store` keeps `hashDef`, the metadata-merge in `StoreObject`, the chain math in
+`AppendLog`/`VerifyLog`, and the queue job shape — all backend-agnostic. The rest
+of the kernel already goes through `Store` methods, so **no call site outside the
+store layer changes.**
+
+## GCS object backend
+
+Objects and meta are content-addressed blobs — the easy, dumb, cheap part.
+
+- `objects/<hash>.bin`, `meta/<hash>.json` as GCS objects. Immutable → no
+  versioning, no locking, and an aggressive CDN in front of the read path (the
+  `cdn.tf` that v1 must keep off, because v1's bucket also holds mutable files —
+  here objects live in their own immutable bucket, so the CDN is finally sound).
+- `PutObject` uses `ifGenerationMatch=0` (write-once); a re-put of the same hash
+  is a harmless conflict swallowed to success (identical content).
+- `ListObjects` is a bucket list (only used by `AllHashes`/`dependents`; can be
+  index-backed later if it gets hot).
+- Reads need no trusted compute: a client re-verifies by hash, so a public
+  objects bucket is sound.
+
+## Postgres backend — the mutable, contended state
+
+One instance, three tables, real transactions.
+
+```sql
+create table names   (name text primary key, hash text not null, updated timestamptz);
+create table journal (seq bigserial primary key, entry jsonb not null, chain text not null);
+create table proofq  (hash text primary key, job jsonb not null, gate bool,
+                      leased_at timestamptz);   -- null = available
+```
+
+- **Repoint** is a transaction over `names` (`INSERT … ON CONFLICT … DO UPDATE`
+  under a row lock) — the read-modify-write the fs lock only *approximates* is
+  now genuinely atomic and serializable.
+- **AppendJournal**: the chain is still computed in-kernel (SPEC §8), but under a
+  transaction that reads the current tail and inserts the next row, so `seq` and
+  the chain never fork. `ReadJournal` reconstructs the byte stream in `seq`
+  order; VerifyLog is unchanged (it re-derives the chain from those bytes).
+- **Proof queue**: `ClaimProof` is `UPDATE proofq SET leased_at=now WHERE hash =
+  (SELECT hash FROM proofq WHERE leased_at IS NULL OR leased_at < now-ttl
+  ORDER BY gate DESC, seq LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING job` — real
+  single-dispatch, gate jobs prioritized, stale leases reclaimed, no busy-wait.
+- **Lock**: `pg_advisory_xact_lock` replaces the O_EXCL file for the same short
+  critical sections (or drop it entirely where a single SQL transaction already
+  gives atomicity — Repoint and AppendJournal no longer need a separate lock).
+
+### The cross-store commit
+
+GCS and Postgres aren't in one transaction, but content addressing removes the
+need. A put commits in two steps, ordered so a crash is always safe:
+
+1. `PutObject`/`PutMeta` to GCS (idempotent, content-addressed).
+2. One Postgres transaction: repoint the name + append the journal entry.
+
+A failure between them leaves an **orphan object** (addressable, unreferenced) —
+harmless and GC-able — but never a dangling name or a torn journal. The name only
+moves inside the transaction, which only runs after the bytes are durably stored.
+
+## Lifting the cap
+
+With the mutable state transactional, the serve service drops `min=max=1`:
+`min_instance_count = 0`, `max_instance_count = N`. The worker Job scales out the
+same way (the queue is now real single-dispatch). `OATH_STORE_LOCK` (the fs
+mutex) is unset — Postgres is the coordinator. This is exactly the
+`enable_database = true` path the Terraform already gates; wiring the serve
+container to the DB (the env the v1 config deliberately omits) is the last step.
+
+## Migration
+
+`oath migrate-store` reads an fs store and populates GCS + Postgres:
+
+1. Every `objects/*` and `meta/*` → GCS (idempotent; re-runnable).
+2. `names.json` → `names` rows.
+3. `log.jsonl` → `journal` rows **preserving bytes and order**, so the migrated
+   journal's chain still verifies end-to-end (the migration asserts
+   `VerifyLog` passes against the reconstructed stream before committing).
+4. `proofq/*` → `proofq` rows.
+
+Content addressing makes it safe to run repeatedly and to run READS against the
+old store while backfilling.
+
+## Conformance
+
+SPEC §8.1's filesystem layout stays the normative reference. A driver is
+conformant iff, for the same inputs, it yields byte-identical hashes, verdicts,
+and — crucially — a journal whose `VerifyLog` passes and whose chain values match
+the fs store's. That's a new conformance dimension: run the existing store tests
+(journal chain, tamper detection, put/repoint, proof-queue lifecycle) against
+each backend via the interface, plus a differential test fs-vs-driver.
+
+## Testing
+
+The seam makes this tractable without cloud dependencies:
+
+- An **in-memory backend** runs the entire existing store test suite backend-
+  agnostically (the fastest guard that the interface is faithful).
+- **fake-gcs-server** for the GCS backend; a **Postgres testcontainer** for the
+  SQL backend, exercised by the same interface tests.
+- A **differential test**: the same sequence of puts/proves/repoints against the
+  fs store and a driver must produce identical `oath log`, `names`, and hashes.
+
+## Status (what's built)
+
+- **Seam + fs + in-memory backends — shipped, tested** (`backend.go`). The whole
+  store suite runs backend-agnostic; a parity test proves fs and memory yield
+  byte-identical identity and a journal that verifies on both.
+- **GCS object backend — shipped, unit-tested** (`backend_cloud.go`, `-tags
+  cloud`). Immutable objects/meta over the GCS JSON REST API with metadata-server
+  auth; get/put/list round-trip tested against a fake GCS (httptest).
+- **Postgres index backend — shipped, compile-verified only.** Names, journal,
+  proof queue (`FOR UPDATE SKIP LOCKED`), and a cross-instance advisory lock, via
+  `database/sql`. **Not integration-tested against a live database in this repo**,
+  and it writes the non-regenerable journal — validate against a staging Postgres
+  before production. A known refinement: the seam's `readNames`/`writeNames` is a
+  whole-index replace, so the PG backend rewrites all names per repoint under the
+  advisory lock (correct, since the lock serializes cross-instance) rather than a
+  row-level transactional repoint; adding a `repointName` seam method is the
+  follow-on for finer concurrency.
+
+### Building and selecting it
+
+```sh
+go build -tags cloud -o oath .        # cloud driver compiled in (adds the pg driver dep)
+OATH_BACKEND=cloud \
+OATH_OBJECT_BUCKET=my-objects \
+OATH_DB_DSN='postgres://…' \
+OATH_DB_DRIVER=postgres \             # matches the registered database/sql driver
+  oath serve --http :8080
+```
+
+The default build (no `-tags cloud`) is unchanged and zero-dependency;
+`OATH_BACKEND=cloud` errors there rather than silently falling back. The
+deployment image adds a driver via a blank import in a `//go:build cloud` file it
+supplies, e.g. `import _ "github.com/lib/pq"` (kept out of this repo so the tree
+stays dependency-free; the driver name in `OATH_DB_DRIVER` must match).
+
+### Now built (beyond the seam)
+
+- **Postgres integration test — CI-green.** `backend_cloud_pg_test.go` (cloud-
+  tagged, gated on `OATH_TEST_PG_DSN`) round-trips the pg index and runs a full
+  Store over Postgres + in-memory objects; the hash-chained journal VERIFIES over
+  Postgres. CI's `cloud-backend` job stands up a real `postgres:15` and runs it.
+- **`oath migrate-store`** — copies the fs store into the cloud backend
+  (objects/meta to GCS, name index + journal to Postgres), byte-preserving the
+  journal so its chain still verifies, and refuses to finish unless the migrated
+  journal passes `VerifyLog`. Tested mem→mem in the default build.
+- **Deploy wiring** — the registry image builds `-tags cloud` (dormant unless
+  `OATH_BACKEND=cloud`), and the Terraform wires `OATH_BACKEND` /
+  `OATH_OBJECT_BUCKET` / `OATH_DB_DSN` + the Cloud SQL socket onto serve and the
+  worker, gated on `enable_database` — so the default (fs) deploy is untouched.
+
+### Cutover runbook
+
+The two gates are deliberately separate so the DB can be provisioned and migrated
+into while serve still runs on the filesystem store — `enable_database` provisions,
+`activate_cloud_backend` flips. Never flip before migrating (you would serve an
+empty registry); `cloud_active = activate && enable`, so a flip without the DB is
+a safe no-op.
+
+1. **Provision** — `terraform apply -var enable_database=true`. Stands up Cloud
+   SQL + the DSN secret; serve/worker keep using the fs store.
+2. **Migrate** — `OATH_STORE=<fs store> OATH_OBJECT_BUCKET=<bucket>
+   OATH_DB_DSN=<dsn> oath migrate-store` (a cloud-tagged binary; the DSN uses the
+   DB's public IP or the proxy since it runs outside Cloud Run). It copies the
+   store into GCS + Postgres and verifies the migrated journal before exiting.
+3. **Flip** — `terraform apply -var enable_database=true -var
+   activate_cloud_backend=true`. Now `OATH_BACKEND=cloud` + the DSN + Cloud SQL
+   socket are wired onto serve and the worker (the image already carries the
+   backend). Then drop `min_instance_count` to 0 and raise `max` — Postgres is the
+   coordinator, so the single-writer cap and `OATH_STORE_LOCK` are no longer
+   needed.
+
+## Still to do
+
+- The `repointName` transactional-seam refinement (finer-grained than the
+  whole-index `writeNames` the pg backend does under the advisory lock).
+- Run the full store test suite (journal chain, tamper, proof queue) through the
+  pg backend in CI, not just the round-trip smoke tests, and an fs-vs-pg
+  differential.
+- Execute the cutover itself — the one step that touches the live audit trail, so
+  it stays a deliberate operator action, not a workflow side effect.
