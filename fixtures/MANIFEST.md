@@ -40,7 +40,12 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
    "covers" record states whether a prefix governs a name. Chosen to witness the
    derivations most likely to be got wrong rather than to cover the encoding evenly,
    so the coverage records include the cases a substring check answers differently
-   from a segment check. authority_rev is carried as a JSON STRING: the
+   from a segment check. The "state" records witness JOURNAL REPLAY: each carries a
+   journal of entries with real signatures and an expected derived (authority,
+   authority_rev). They exist because round 7 found nine normative rules with no
+   witness at all, and every defect it found lived in that unwitnessed region —
+   encoding vectors constrain only what they mention.
+   authority_rev is carried as a JSON STRING: the
    arbitrary-precision vector is 2^128+1, which a float64 JSON reader decodes off by
    one, and a witness defeated by its own carrier witnesses nothing.
 

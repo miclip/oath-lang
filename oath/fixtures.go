@@ -600,7 +600,12 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
    "covers" record states whether a prefix governs a name. Chosen to witness the
    derivations most likely to be got wrong rather than to cover the encoding evenly,
    so the coverage records include the cases a substring check answers differently
-   from a segment check. authority_rev is carried as a JSON STRING: the
+   from a segment check. The "state" records witness JOURNAL REPLAY: each carries a
+   journal of entries with real signatures and an expected derived (authority,
+   authority_rev). They exist because round 7 found nine normative rules with no
+   witness at all, and every defect it found lived in that unwitnessed region —
+   encoding vectors constrain only what they mention.
+   authority_rev is carried as a JSON STRING: the
    arbitrary-precision vector is 2^128+1, which a float64 JSON reader decodes off by
    one, and a witness defeated by its own carrier witnesses nothing.
 
@@ -1595,6 +1600,16 @@ func evalFromAssertionsIn(model map[string]grants, exprs []string) grants {
 // wrong, not to cover the encoding evenly. Segment-vs-substring, retention-vs-
 // denial, authority-rev-vs-name-rev and unreservable-vs-forbidden each get a
 // vector whose EXPECTED VERDICT differs from the intuitive one.
+// fixtureTempDir gives a state vector its own empty journal, so a derived state is
+// attributable to the entries under test rather than to a shared prefix.
+func fixtureTempDir() string {
+	d, err := os.MkdirTemp("", "oath-fixture-state-")
+	if err != nil {
+		panic("fixtures: cannot create temp store: " + err.Error())
+	}
+	return d
+}
+
 func writeReserveVectors(write func(string, []byte) error) error {
 	var out strings.Builder
 	emit := func(v map[string]any) error {
@@ -1686,6 +1701,118 @@ func writeReserveVectors(write func(string, []byte) error) error {
 			"name": m.name, "covers": m.covers, "why": m.why}); err != nil {
 			return err
 		}
+	}
+	// --- state: journal replay -> derived authority ------------------------------
+	//
+	// Round 7's structural finding was that NINE normative rules had no witness at
+	// all, and every defect it found lived in that region. Encoding vectors
+	// constrain only what they mention; the authority half was pure prose. These
+	// witness the objects §8.7.0 defines — what authority IS, what a revision
+	// counts, and which order "first" means — so a derivation error becomes
+	// visible instead of silent.
+	//
+	// A journal here is a list of entries, each either an accepted reservation or
+	// something replay must NOT count. The expectation is the derived holder and
+	// revision, which is the whole state a reservation compares against.
+	type jentry struct {
+		Status string `json:"status"`
+		Kind   string `json:"kind"`
+		Env    resEnvelope
+		Sign   bool
+		Seed   byte
+	}
+	// REAL keys and REAL signatures, from a FIXED seed. A state vector labelling a
+	// signature "VALID" would be a witness nobody can check — and round 7's lesson
+	// is that an unwitnessed rule is where defects hide, so a fake witness is worse
+	// than an absent one. Deterministic so the fixture is reproducible.
+	seeded := func(b byte) ed25519.PrivateKey {
+		seed := make([]byte, ed25519.SeedSize)
+		for i := range seed {
+			seed[i] = b
+		}
+		return ed25519.NewKeyFromSeed(seed)
+	}
+	pubOf := func(b byte) string {
+		return hex.EncodeToString(seeded(b).Public().(ed25519.PublicKey))
+	}
+	stateCase := func(label, prefix string, entries []jentry, holder string, rev int64, why string) error {
+		st, err := OpenStore(fixtureTempDir())
+		if err != nil {
+			return err
+		}
+		var js []map[string]any
+		for _, e := range entries {
+			octets := resEncode(e.Env)
+			sig := hex.EncodeToString(ed25519.Sign(seeded(e.Seed), octets))
+			if !e.Sign {
+				// A syntactically well-formed signature over DIFFERENT bytes: the
+				// realistic failure, and one a verifier must reject rather than a
+				// value it can dismiss by shape.
+				sig = hex.EncodeToString(ed25519.Sign(seeded(e.Seed), append(octets, ' ')))
+			}
+			ent := &LogEntry{Status: e.Status, Kind: e.Kind, Name: e.Env.Namespace,
+				Author: e.Env.Pubkey, EnvelopeB64: encodeEnvelopeB64(octets),
+				AuthorPubkey: e.Env.Pubkey, AuthorSig: sig}
+			if err := st.AppendLog(ent); err != nil {
+				return err
+			}
+			js = append(js, map[string]any{"status": e.Status, "kind": e.Kind,
+				"envelope_b64": encodeEnvelopeB64(octets), "pubkey": e.Env.Pubkey, "signature": sig})
+		}
+		// SELF-VALIDATION: the expectation must be what this kernel derives, or the
+		// vector ships a false obligation to an implementer with no other source.
+		gotHolder, gotRev := reservationRev(st, prefix)
+		if gotHolder != holder || gotRev.Cmp(big.NewInt(rev)) != 0 {
+			return fmt.Errorf("reserve state vector %q: kernel derives (%s, %s), vector claims (%s, %d)",
+				label, shortHash(gotHolder), gotRev, shortHash(holder), rev)
+		}
+		return emit(map[string]any{"kind": "state", "label": label, "prefix": prefix,
+			"journal": js, "expect_authority": holder, "expect_authority_rev": fmt.Sprint(rev), "why": why})
+	}
+	res := func(ns, auth string, rev int64, pk string) resEnvelope {
+		return resEnvelope{Op: opReserve, Namespace: ns, Authority: auth, AuthorityRev: big.NewInt(rev), Pubkey: pk}
+	}
+	if err := stateCase("unclaimed prefix", "alice/*", nil, noAuthority, 0,
+		"a prefix no reservation mentions is unheld at revision 0 — the state a first reservation must claim"); err != nil {
+		return err
+	}
+	if err := stateCase("one accepted reservation advances the revision by one", "alice/*",
+		[]jentry{{"accepted", kindReserve, res("alice/*", noAuthority, 0, pubOf(0xaa)), true, 0xaa}},
+		pubOf(0xaa), 1, "RES-REV-SUCCESSOR: acceptance advances the version, or the compare-and-swap cannot tell before from after"); err != nil {
+		return err
+	}
+	if err := stateCase("a REJECTED entry is not authority", "alice/*",
+		[]jentry{{"rejected", kindReserve, res("alice/*", noAuthority, 0, pubOf(0xaa)), true, 0xaa}},
+		noAuthority, 0, "only entries recorded as accepted are counted"); err != nil {
+		return err
+	}
+	if err := stateCase("an UNKNOWN status is not authority", "alice/*",
+		[]jentry{{"quarantined", kindReserve, res("alice/*", noAuthority, 0, pubOf(0xaa)), true, 0xaa}},
+		noAuthority, 0, "RES-ACCEPTED-CLOSED: the status test is a whitelist — excluding known rejection words and counting the rest FAILS OPEN"); err != nil {
+		return err
+	}
+	if err := stateCase("an UNVERIFIED signature is not authority", "alice/*",
+		[]jentry{{"accepted", kindReserve, res("alice/*", noAuthority, 0, pubOf(0xaa)), false, 0xaa}},
+		noAuthority, 0, "replay counts only statements whose signature verifies"); err != nil {
+		return err
+	}
+	if err := stateCase("a mislabelled kind does not change authority", "alice/*",
+		[]jentry{{"accepted", "put", res("alice/*", noAuthority, 0, pubOf(0xaa)), true, 0xaa}},
+		pubOf(0xaa), 1, "kind is written by the registry and covered by no signature; the signed envelope is what says this is a reservation"); err != nil {
+		return err
+	}
+	if err := stateCase("tie at revision 0 resolves to the EARLIER accepted transition", "alice/*",
+		[]jentry{
+			{"accepted", kindReserve, res("alice/*", noAuthority, 0, pubOf(0xaa)), true, 0xaa},
+			{"accepted", kindReserve, res("alice/*", noAuthority, 0, pubOf(0xbb)), true, 0xbb},
+		}, pubOf(0xaa), 1,
+		"RES-FIRST-DEFINED: highest-revision alone is not an order, and this concurrent state is admitted as reachable"); err != nil {
+		return err
+	}
+	if err := stateCase("a reservation of a DIFFERENT prefix does not govern this one", "alice/*",
+		[]jentry{{"accepted", kindReserve, res("alice2/*", noAuthority, 0, pubOf(0xbb)), true, 0xbb}},
+		noAuthority, 0, "authority is per exact prefix string"); err != nil {
+		return err
 	}
 	return write("reserve/vectors.jsonl", []byte(out.String()))
 }
