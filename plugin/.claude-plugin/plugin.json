@@ -1,0 +1,10 @@
+{
+  "name": "oath",
+  "version": "0.1.0",
+  "description": "Ask the registry before writing code. Search hash-addressed definitions by behaviour, reuse proven artifacts, and publish with machine-checked evidence.",
+  "author": {"name": "Oath", "url": "https://oath-lang.org"},
+  "homepage": "https://oath-lang.org",
+  "repository": "https://github.com/miclip/oath-lang",
+  "license": "Apache-2.0",
+  "keywords": ["verification", "proofs", "content-addressed", "registry", "smt"]
+}

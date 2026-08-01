@@ -95,6 +95,9 @@ jobs:
       - name: corpus/registry reconciliation ratchet
         run: make check-reconciliation-ratchet
 
+      - name: plugin assets match plugin/ sources
+        run: make check-plugin-assets
+
       # The website renders the repository markdown verbatim. These gates fail if
       # a copy drifts from its source — without them the site can quietly show a
       # different specification from the one an implementer reads, which is the

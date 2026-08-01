@@ -25,6 +25,7 @@ usage:
   oath keygen [--out <prefix>]        generate an Ed25519 signing keypair (<prefix>.key + <prefix>.pub)
   oath migrate-store                  copy the OATH_STORE filesystem store into the cloud backend
                                       (GCS objects + Postgres index; cloud build only; docs/store-drivers.md)
+  oath plugin install [--codex] [--user] [--dir <path>] [--registry <url>] [--dry-run]
   oath prove-worker [--scan] [--once] [--key <file>] [--interval D] [--lease D]
                                       drain the proof queue: SMT-prove queued objects out of band,
                                       bind require_proven names once proven (#14). --scan seeds the
@@ -183,6 +184,13 @@ func main() {
 			}
 		}
 		cmdNew(ns, registry)
+	case "plugin":
+		// Wire a coding assistant to the substrate. The tools already existed; what
+		// did not was any way for an assistant to find them.
+		if len(args) < 2 || args[1] != "install" {
+			fail(fmt.Errorf("usage: oath plugin install [--codex] [--user] [--dir <path>] [--registry <url>] [--dry-run]"))
+		}
+		cmdPluginInstall(args[2:])
 	case "keygen":
 		// Default OUTSIDE the working directory. The previous default wrote ./oath.key,
 		// which is how a signing key ended up in a git repository — the ignore rule

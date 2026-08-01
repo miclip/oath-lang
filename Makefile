@@ -198,6 +198,16 @@ check-normative-source:
 # The LOGIC can be gated, and this is what does it: the decisive case is an
 # arrival that exactly cancels a departure, where the total is unchanged and a
 # count-based check sees nothing.
+# Plugin assets: plugin/ is the single source, oath/plugin_assets.go the compiled
+# copy. Same arrangement as the website docs, and gated the same way.
+.PHONY: plugin-assets
+plugin-assets:
+	@python3 scripts/gen-plugin-assets.py
+
+.PHONY: check-plugin-assets
+check-plugin-assets:
+	@python3 scripts/gen-plugin-assets.py --check
+
 .PHONY: check-reconciliation-ratchet
 check-reconciliation-ratchet:
 	@python3 scripts/test-reconciliation-ratchet.py
