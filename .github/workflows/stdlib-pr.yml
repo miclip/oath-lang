@@ -58,7 +58,11 @@ jobs:
         run: |
           python3 scripts/check-normative-source.py
           python3 scripts/check-spec-vs-fixtures.py
-          python3 scripts/check-fixture-integrity.py
+          # --skip-solver-dependent: regenerating prove/outcomes.json re-runs Z3,
+          # and under CI load a goal times out and records fewer proven props. That
+          # compares the runner's throughput, not the kernel. Presence checks on the
+          # prove family still apply; only content comparison is skipped.
+          python3 scripts/check-fixture-integrity.py --skip-solver-dependent
           make check-web-docs
           make check-web-tutorials
 

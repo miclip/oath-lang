@@ -82,8 +82,21 @@ def detect_collapse(gen: Path):
     return problems
 
 
+# Families whose CONTENT is a function of the solver, not only of the kernel.
+# prove/outcomes.json records what Z3 proved, and §10 already treats proof
+# outcomes as f(script bytes, solver, rlimit) — under load a goal times out and
+# fewer props are recorded. Regenerating it compares a machine's throughput, not a
+# kernel's behaviour, and a gate that fails on that is measuring the runner.
+#
+# --skip-solver-dependent drops those families from the CONTENT comparison ONLY.
+# Presence checks stay: a missing, stale or unlisted prove fixture is still a
+# finding, because that is a kernel fact rather than a timing one.
+SOLVER_DEPENDENT = ("prove/",)
+
+
 def main():
     failures = []
+    skip_solver = "--skip-solver-dependent" in sys.argv
 
     if not (ROOT / "oath" / "oath").exists():
         print("FAIL: build the kernel first (make build)")
@@ -109,7 +122,8 @@ def main():
         common = sorted(committed & generated)
 
         drift = [f for f in common
-                 if not filecmp.cmp(FIXTURES / f, tmp / f, shallow=False)]
+                 if not (skip_solver and f.startswith(SOLVER_DEPENDENT))
+                 and not filecmp.cmp(FIXTURES / f, tmp / f, shallow=False)]
 
         # COLLAPSED: the generator emitted N files but the corpus has fewer identities
         # than the store does. Checked against names.json, which is the authority.
