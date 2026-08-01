@@ -675,7 +675,18 @@ func cmdReserve(local *Store, endpoint, keyPath, kmsKey, namespace string, dryRu
 // under an explicit NOT AUTHORITATIVE banner, gives NO advice, and exits nonzero:
 // the question was not answered, and a script that reads a confident "UNCLAIMED"
 // out of a failure is precisely the accident being prevented.
-func cmdAuthority(local *Store, endpoint, keyPath, kmsKey, query string) {
+// Returns the process exit code. THE DISTINCTION IT ENCODES: a negative answer
+// and no answer are different results, and only one of them is an answer.
+//
+//	authoritative, held       0   the question was answered
+//	authoritative, unclaimed  0   the question was answered
+//	authoritative unavailable 1   the question was NOT answered
+//
+// Exit 0 with a printed warning would let a script treat "warning emitted" as
+// success and reserve anyway, which is the accident this command exists to
+// prevent. The exit code is returned rather than taken directly so the contract
+// is testable; main() is what exits.
+func cmdAuthority(local *Store, endpoint, keyPath, kmsKey, query string) int {
 	if query == "" {
 		fail(fmt.Errorf("usage: oath authority <prefix>/* | <name>  [--remote <url>] [--key <file>|--kms-key <res>]"))
 	}
@@ -701,7 +712,7 @@ func cmdAuthority(local *Store, endpoint, keyPath, kmsKey, query string) {
 	// for that act — which is a narrow claim, and the banner says which store.
 	if endpoint == "" {
 		renderAuthority(local, query, localView(), isPrefix)
-		return
+		return 0
 	}
 	signer, serr := resolveSigner(keyPath, kmsKey)
 	var view authorityView
@@ -725,9 +736,10 @@ func cmdAuthority(local *Store, endpoint, keyPath, kmsKey, query string) {
 		renderAuthority(local, query, lv, isPrefix)
 		fmt.Printf("\nNo reservation advice is given, because none can be given from this view.\n")
 		fmt.Printf("Pass --key <file> or --kms-key <resource> to read %s.\n", endpoint)
-		os.Exit(1)
+		return 1
 	}
 	renderAuthority(local, query, view, isPrefix)
+	return 0
 }
 
 // renderAuthority prints a governance record and, only when the view is

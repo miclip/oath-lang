@@ -1,0 +1,43 @@
+{
+  "policy_version": 1,
+  "statement": "codebase/ is a curated, reproducible INPUT SET. The live registry is append-only OPERATIONAL HISTORY. They are different objects and equality between them is not a goal. What must hold is that every corpus definition is present live at the identical artifact hash, and that every live name NOT in the corpus is accounted for by a declared category.",
+  "corpus": "codebase/names.json",
+  "registry": "https://registry.oath-lang.org",
+  "verdicts": {
+    "corpus_absent_live": "fail",
+    "hash_mismatch": "fail",
+    "alias": "expected",
+    "stdlib_publication": "expected",
+    "operational_probe": "review",
+    "registry_only": "review",
+    "undeclared": "fail"
+  },
+  "alias_prefixes": [
+    {
+      "prefix": "michael/oath/",
+      "mirrors": "corpus",
+      "reason": "A namespaced mirror of the committed corpus under the operator's reserved prefix, created when namespaces were introduced. Each name must resolve to the SAME artifact as the bare corpus name it mirrors; an alias that drifts is a hash mismatch, not an alias."
+    }
+  ],
+  "stdlib_from_manifest": "stdlib/oath-stdlib.json",
+  "operational_probes": [
+    {
+      "name": "oath/step8-probe-disposable",
+      "reason": "Created by an authority exercise validating delegated publication. Named after a step in a conversation, which is the naming mistake recorded in CLAUDE.md; the journal is append-only so documentation is the only correction available. Not standard library, not a definition anyone should depend on."
+    },
+    {
+      "name": "oath/step8-probe-second",
+      "reason": "Second artifact of the same authority exercise, same defect in the same way."
+    }
+  ],
+  "registry_only": [
+    {
+      "name": "dbl",
+      "reason": "Journal sequence 1 — the registry's first entry, authored 'admin' on 2026-07-25. A bootstrap smoke test written directly against the store before the corpus was ever pushed. Kept because the journal is append-only; nothing depends on it."
+    },
+    {
+      "name": "id-check",
+      "reason": "Written directly against the registry by the operator key on 2026-07-29 (journal 823, re-proven at 824). A manual check that never entered the committed corpus."
+    }
+  ]
+}

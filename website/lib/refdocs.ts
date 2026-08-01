@@ -152,6 +152,14 @@ export const refdocs: RefDoc[] = [
     group: "Operating a registry",
   },
   {
+    slug: "registry-reconciliation",
+    file: "registry-reconciliation.md",
+    title: "Corpus and registry",
+    blurb:
+      "Why the committed corpus and the live registry are different objects, and the declared policy that accounts for every name rather than forcing them equal.",
+    group: "Operating a registry",
+  },
+  {
     slug: "deploy",
     file: "deploy.md",
     title: "Deploying a registry",

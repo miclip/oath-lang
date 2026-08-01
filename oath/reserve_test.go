@@ -456,3 +456,45 @@ func TestAuthorityRendersDelegationState(t *testing.T) {
 		t.Errorf("a HELD prefix was advertised as reservable:\n%s", out)
 	}
 }
+
+// THE EXIT-CODE CONTRACT (#104). A negative answer and no answer are different
+// results, and a script must be able to tell them apart without parsing prose.
+//
+//	authoritative, held        → 0, no advice (there is nothing to claim)
+//	authoritative, unclaimed   → 0, advice given
+//	authoritative unavailable  → 1, NO advice
+//
+// Exit 0 on the third would let a caller read "warning printed" as success and
+// reserve anyway — reserving a prefix somebody already holds is exactly the
+// permanent mistake this command exists to prevent.
+func TestAuthorityExitCodeDistinguishesNoAnswerFromNegativeAnswer(t *testing.T) {
+	st := newMemStoreForTest(t)
+
+	// No registry configured: the local store IS where a reservation would land,
+	// so the question is answered.
+	var rc int
+	out := captureStdout(t, func() { rc = cmdAuthority(st, "", "", "", "free/*") })
+	if rc != 0 {
+		t.Errorf("an ANSWERED question exited %d, want 0", rc)
+	}
+	if !strings.Contains(out, "oath reserve") {
+		t.Errorf("an authoritative unclaimed view withheld advice:\n%s", out)
+	}
+
+	// A registry is configured but unreachable — no key, and the registry
+	// authenticates reads. The question is NOT answered.
+	out = captureStdout(t, func() {
+		rc = cmdAuthority(st, "https://registry.invalid", "", "", "free/*")
+	})
+	if rc != 1 {
+		t.Errorf("an UNANSWERED question exited %d, want 1 — a caller cannot distinguish it from a negative answer", rc)
+	}
+	for _, forbidden := range []string{"would claim it", "oath reserve '", "PERMANENT"} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("advice was given without authoritative state (%q):\n%s", forbidden, out)
+		}
+	}
+	if !strings.Contains(out, "NOT ANSWERED") {
+		t.Errorf("a failure to answer did not say so:\n%s", out)
+	}
+}

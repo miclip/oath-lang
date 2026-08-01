@@ -279,7 +279,9 @@ func main() {
 				keyFile = cfg.Key
 			}
 		}
-		cmdAuthority(st, endpoint, keyFile, kmsKey, query)
+		if rc := cmdAuthority(st, endpoint, keyFile, kmsKey, query); rc != 0 {
+			os.Exit(rc)
+		}
 	case "delegate", "revoke":
 		endpoint := os.Getenv("OATH_REGISTRY")
 		keyFile := os.Getenv("OATH_KEY")
