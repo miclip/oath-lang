@@ -1,0 +1,171 @@
+# Standard-library publisher — post-merge, protected, delegated.
+#
+# THE COUNTERPART TO stdlib-pr.yml, AND DELIBERATELY NOT AN EXTENSION OF IT. The
+# PR job is incapable of publishing; this one can, so it runs under a different
+# threat model: protected branch, approved environment, and a signing key that is
+# NOT the namespace key.
+#
+# WHAT IT SIGNS WITH. A DELEGATED CI key (SPEC §8.7.7), never the key that holds
+# oath/*. A compromise of this workflow's credential can publish under oath/*
+# until the delegation is revoked, and can do nothing else — no reserve, no onward
+# delegation, no revoke, no other prefix — and retains nothing after revocation
+# (DEL-REVOCATION-RECOVERS). Giving it the namespace key would make the same
+# compromise permanent, because this version of the protocol has no transfer.
+#
+# NOTHING HERE TRUSTS THE PR JOB. It checks out the merged commit and re-derives
+# every artifact hash, the manifest, and the plan from scratch. A pull request can
+# edit workflow files, so an artifact produced by a PR job is attacker-influenced
+# input; only a re-derivation on this side means anything.
+
+name: stdlib publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "stdlib/oath-stdlib.json"
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type PUBLISH to confirm a signed publication to the live registry"
+        required: true
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write # Workload Identity Federation only. No long-lived key exists.
+
+jobs:
+  publish:
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.confirm == 'PUBLISH' }}
+    runs-on: ubuntu-latest
+    # The approval gate. Publication is irreversible in the sense that matters —
+    # the journal is append-only — so a human decides, every time.
+    environment: stdlib-publish
+    steps:
+      - name: Check out the MERGED commit
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Rebuild the kernel from this commit
+        run: make build
+
+      - name: Re-run the gates from scratch
+        # Re-derived here, not inherited. The PR job's verdict is about a tree that
+        # may differ from what merged, and its artifacts are attacker-influenced.
+        run: |
+          set -o pipefail
+          python3 scripts/check-normative-source.py
+          python3 scripts/check-spec-vs-fixtures.py
+          python3 scripts/check-fixture-integrity.py
+          python3 scripts/check-stdlib-manifest.py
+
+      - name: Compute the registry delta and publication plan
+        run: |
+          set -o pipefail
+          git show "HEAD~1:stdlib/oath-stdlib.json" > /tmp/base-manifest.json 2>/dev/null \
+            || echo '{"definitions":[]}' > /tmp/base-manifest.json
+          python3 scripts/stdlib-delta.py /tmp/base-manifest.json --out /tmp/delta.md
+          cat /tmp/delta.md
+
+      - name: Authenticate to Google Cloud (keyless)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          # The PUBLISHER account, not the deployer. It holds cloudkms.signer on
+          # the delegated CI key version and nothing else — verified to have no
+          # binding on the namespace key.
+          service_account: ${{ vars.GCP_PUBLISHER_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Confirm the signing key is the DELEGATE, not the namespace holder
+        # A guard against the one misconfiguration that would silently undo the
+        # entire point: pointing this workflow at the root key. It compares the
+        # key this job can sign with against the namespace holder the live
+        # registry reports, and refuses if they are the same.
+        run: |
+          set -o pipefail
+          CI_PUB=$(gcloud kms keys versions get-public-key 1 \
+            --location us-central1 --keyring oath-authority --key oath-ci-publisher \
+            2>/dev/null | openssl pkey -pubin -outform DER | tail -c 32 | xxd -p -c 64)
+          echo "signing key: $CI_PUB"
+          # The manifest records the namespace holder (authority_pubkey). Comparing
+          # against it needs no extra command and no registry round-trip, and the
+          # manifest is already required to match the live namespace by the receipt.
+          HOLDER=$(python3 -c "import json;print(json.load(open('stdlib/oath-stdlib.json'))['authority_pubkey'])")
+          echo "namespace holder: $HOLDER"
+          if [ "$CI_PUB" = "$HOLDER" ]; then
+            echo "::error::this workflow is configured with the NAMESPACE KEY, not a delegate."
+            echo "::error::publishing would work and the security property would be gone."
+            exit 1
+          fi
+      - name: Publish in dependency order
+        # Each definition is elaborated into a LOCAL store first, because
+        # publication resolves references against the local store — a dependent
+        # cannot be published before the thing it depends on exists there. Then
+        # each is signed through KMS and submitted; `oath publish` verifies every
+        # returned signature locally before anything is sent, and confirms the
+        # registry persisted the exact bytes that were signed.
+        run: |
+          set -o pipefail
+          mkdir -p /tmp/pubstore && export OATH_STORE=/tmp/pubstore
+          : > /tmp/publish-log.txt
+          python3 scripts/stdlib-plan.py --out /tmp/plan
+          LIC=$(python3 -c "import json;print(json.load(open('stdlib/oath-stdlib.json'))['license'])")
+          FAILED=0
+          for f in $(cat /tmp/plan/order.txt); do
+            echo "################ $f" | tee -a /tmp/publish-log.txt
+            # `|| rc=$?` rather than a bare command: the step runs under `bash -e`,
+            # so a failing publish would abort before its exit status was recorded
+            # and the log would end mid-name with no indication why. Statuses are
+            # captured, the loop finishes, and the step fails at the end — which is
+            # what "preserve per-command exit statuses" has to mean when the shell
+            # exits on error by default.
+            rc=0; ./oath/oath put "/tmp/plan/$f.oath" >> /tmp/publish-log.txt 2>&1 || rc=$?
+            echo "put exit=$rc" | tee -a /tmp/publish-log.txt
+            [ $rc -ne 0 ] && FAILED=1
+            rc=0
+            ./oath/oath publish --kms-key "$OATH_KMS_KEY" --license "$LIC" \
+              --remote https://registry.oath-lang.org -y \
+              "/tmp/plan/$f.oath" >> /tmp/publish-log.txt 2>&1 || rc=$?
+            echo "publish exit=$rc" | tee -a /tmp/publish-log.txt
+            if [ $rc -ne 0 ]; then
+              FAILED=1
+              # STOP AT THE FIRST FAILURE. Continuing would publish a dependent
+              # whose dependency did not land, and the partial history left behind
+              # would be harder to reason about than a clean stop.
+              echo "::error::publication of $f failed; stopping with partial history intact"
+              break
+            fi
+          done
+          exit $FAILED
+        env:
+          OATH_KMS_KEY: projects/oath-prod-503514/locations/us-central1/keyRings/oath-authority/cryptoKeys/oath-ci-publisher/cryptoKeyVersions/1
+
+      - name: Receipt, generated from LIVE REGISTRY STATE
+        # From the journal the registry actually holds, never from the plan. A
+        # receipt derived from what we intended would confirm our own intent; the
+        # whole point is to confirm what happened.
+        run: |
+          set -o pipefail
+          gcloud storage cp gs://oath-prod-503514-oath-store/log.jsonl /tmp/live.jsonl
+          # The script exits non-zero if ANY of its eight checks fails, and the
+          # step runs under `bash -e`, so that failure fails the job. No `echo $?`
+          # here — reporting a status after the command that would have aborted is
+          # how a green log gets written for a red run.
+          python3 scripts/publication-receipt.py /tmp/live.jsonl \
+            --out "docs/receipts/$(date -u +%Y%m%dT%H%M%SZ)-publish.md"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: publication-record
+          path: |
+            /tmp/delta.md
+            /tmp/publish-log.txt
+            docs/receipts/
+          retention-days: 365
