@@ -101,9 +101,20 @@ func matchedPattern(rule *PolicyRule, name string) string {
 // lastPublisher is the principal on the most recent applied transition — the party
 // whose next publication would be refused if ownership is misassigned.
 func lastPublisher(st *Store, name string) string {
+	// Any ACCEPTED publication counts, not only one that MOVED the name. This
+	// feeds the enforcement preview, so an applied-only test is actively
+	// misleading: after signing an existing corpus every publication is
+	// `unchanged`, and the census would report the last publisher as some
+	// long-ago legacy label and warn that enabling correct enforcement would
+	// block the legitimate owner. That is a go/no-go signal pointing the wrong
+	// way — the worst place for this mistake, which is why it is worth naming as
+	// a class rather than a bug: an `unchanged` transition is still a publication.
+	//
+	// nameOwner deliberately KEEPS repointedName(): establishing who first BOUND a
+	// name does require a transition that applied, or a no-op would establish it.
 	who := ""
 	for _, e := range st.ReadLog() {
-		if e.Name == name && e.repointedName() {
+		if e.Name == name && e.nameTransitionOf() != transitionNone {
 			if e.AuthorPubkey != "" {
 				who = e.AuthorPubkey
 			} else {

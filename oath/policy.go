@@ -388,7 +388,22 @@ func signedPublicationBy(st *Store, name, pubkey string) bool {
 		return false
 	}
 	for _, e := range st.ReadLog() {
-		if e.Name != name || !e.repointedName() {
+		if e.Name != name {
+			continue
+		}
+		// Any ACCEPTED publication corroborates, not only one that MOVED the name.
+		// This deliberately does NOT use repointedName(), which is `applied`-only:
+		// re-publishing identical content signs an `unchanged` transition, and that
+		// is exactly what signing an existing corpus produces — so an
+		// applied-only test would make adoption impossible for the very campaign
+		// that creates the evidence.
+		//
+		// The question corroboration asks is "did this key publish this name?", not
+		// "did this key change what the name points at". Third instance of the same
+		// mistake in this codebase (see §8.6.4 clause 5 and
+		// LICENSE-ASSERTED-BY-PUBLICATION): an `unchanged` transition is still a
+		// publication.
+		if e.nameTransitionOf() == transitionNone {
 			continue
 		}
 		if e.AuthorPubkey == pubkey && e.EnvelopeB64 != "" && e.AuthorSig != "" {

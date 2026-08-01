@@ -277,3 +277,46 @@ func TestConfiguredPolicyIsNotCryptographicEvidence(t *testing.T) {
 		t.Fatal("a signed first publication IS re-verifiable from the journal")
 	}
 }
+
+// TestUnchangedPublicationCorroboratesAndCounts pins the third and fourth
+// instances of one mistake: treating an `unchanged` transition as though nothing
+// was published. Re-publishing identical content signs an `unchanged`
+// transition, which is exactly what signing an existing corpus produces — so an
+// applied-only test makes adoption impossible for the campaign that creates the
+// evidence, and makes the enforcement preview name a long-ago legacy label as
+// the current publisher.
+//
+// That second one is the dangerous one: it is a go/no-go signal, and it pointed
+// AWAY from enabling correct enforcement.
+func TestUnchangedPublicationCorroboratesAndCounts(t *testing.T) {
+	st := newMemStoreForTest(t)
+	const key = "kk"
+	// Legacy first publication, then a SIGNED re-publication of identical content.
+	for _, e := range []LogEntry{
+		{Author: "admin", Name: "n", Kind: "func", Status: "accepted", Hash: "hA"},
+		{Author: key, Name: "n", Kind: "func", Status: "accepted", Hash: "hA",
+			EnvelopeB64: encodeEnvelopeB64([]byte("x")), AuthorPubkey: key, AuthorSig: "s"},
+	} {
+		le := e
+		if err := st.AppendLog(&le); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if trs := nameTransitions(st.ReadLog(), "n"); trs[1].Transition != transitionUnchanged {
+		t.Fatalf("setup: second transition = %q, want unchanged", trs[1].Transition)
+	}
+	if !signedPublicationBy(st, "n", key) {
+		t.Fatal("an unchanged signed publication did not corroborate ownership — " +
+			"adoption would be impossible for a re-signed corpus")
+	}
+	if got := lastPublisher(st, "n"); got != key {
+		t.Fatalf("lastPublisher = %q, want %q — the enforcement preview would warn "+
+			"that enabling correct policy blocks the legitimate owner", got, key)
+	}
+	// nameOwner must still require a transition that APPLIED: a no-op does not
+	// establish a name, or ownership could be claimed without binding anything.
+	if _, src := nameOwner(st, "n"); src != ownerLegacyLabel {
+		t.Fatalf("nameOwner source = %q, want %q: first-publication ownership is "+
+			"established by an applied transition, not by any publication", src, ownerLegacyLabel)
+	}
+}
