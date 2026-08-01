@@ -130,10 +130,27 @@ Two membership modes, because they make different claims:
 | `referenced` | the library DEPENDS ON your existing publication. The project asserts no licence; evaluation consumes the terms you signed. **Use this for third-party work.** | a `publication` pinning the exact signed publication by digest, and no `license` field |
 | `project-publication` | the project republishes the artifact under `oath/*` under ITS OWN licence assertion | `standing` recording why the project may make that grant |
 
-`referenced` is almost certainly what you want. `project-publication` needs
-evidence of standing beyond owning the name — cryptographic ownership of a
-registry name proves authority over the *name*, not copyright or a right to
-relicense.
+`referenced` is intended to be the normal path for outside contributors, and is
+**not yet implemented — it is currently refused** (issue #107). Its mechanics do
+not exist: the publish path would republish the entry under `oath/*` carrying the
+project's licence, which is exactly the substitution the mode exists to prevent.
+
+The rule it will enforce, once built:
+
+> Curation may select another party's assertion; it must not silently replace
+> that assertion with one made by the curator.
+
+Accepting a `referenced` member will mean *"the project has reviewed and selected
+this exact signed publication"* — not *"the project owns it or may relicense
+it"*. No `oath/<name>` is created, no project licence is asserted, and you keep
+your publication and your authorship. Removal from the library is a manifest
+change, never a deletion of history.
+
+`project-publication` requires standing evidence beyond owning the name —
+cryptographic ownership of a registry name proves authority over the *name*, not
+copyright or a right to relicense. If you want your work published canonically
+under `oath/*`, that needs an explicit signed grant tied to the exact artifact,
+the target project and the permitted terms.
 
 Opening the PR runs a validation job that reproduces every declared artifact hash
 from source, checks the membership rules, and posts the exact registry delta your

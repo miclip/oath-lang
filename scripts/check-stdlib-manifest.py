@@ -101,7 +101,25 @@ def main():
             # MEMBERSHIP MODE decides what claim is being made, so it decides what
             # must be proven. Defaulting it would let the stronger claim be made by
             # omission, which is the whole failure this distinction prevents.
-            if mode not in ("referenced", "project-publication"):
+            # `referenced` is REJECTED until its mechanism exists. The manifest
+            # accepts a distinction the publish path erases: every export must be
+            # live as oath/<name>, and the workflow asserts the manifest's
+            # top-level licence for all of them — so a `referenced` entry would be
+            # republished under oath/* carrying a PROJECT assertion, which is
+            # exactly the laundering the mode exists to prevent.
+            #
+            # Refusing is the safe state. A mode that is a label with no mechanism
+            # behind it is worse than an absent mode, because a reviewer reading
+            # "referenced" would believe no project assertion was being made.
+            if mode == "referenced":
+                failures.append(
+                    f"{name}: `referenced` is not yet implemented and is REFUSED. Its mechanics "
+                    f"(no oath/<name> binding, no project licence assertion, resolution through "
+                    f"the pinned publication) do not exist, and the publish path would republish "
+                    f"it under oath/* with the project's licence — replacing the publisher's "
+                    f"assertion with one made by the curator. Use `project-publication` only "
+                    f"where the project genuinely has standing. See issue #107")
+            elif mode not in ("referenced", "project-publication"):
                 failures.append(f"{name}: membership must be `referenced` (the library depends on an "
                                 f"existing publication and asserts nothing) or `project-publication` "
                                 f"(the project makes its own licence assertion). Got {mode!r}")
