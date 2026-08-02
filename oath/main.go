@@ -56,7 +56,8 @@ usage:
   oath serve --http <addr> --tokens <file>
                                       team store: MCP over HTTP with authenticated principals;
                                       repoint policy in <store>/policy.json (docs/teamstore.md)
-  oath build <name> [-o out]          compile a verified definition to a native executable
+  oath build <name> [-o out] [--backend go|llvm]
+                                      compile a verified definition to a native executable
                                       (entry protocol: (-> (List Str) Str); refuses falsified names)
   oath provenance <file>              read what a compiled artifact was built from, WITHOUT running it
   oath export <name> [-o pkg]         bundle a definition + transitive closure for publication
@@ -905,21 +906,28 @@ func main() {
 			cmdServe(st)
 		}
 	case "build":
-		outPath := ""
+		outPath, backend := "", "go"
 		var names []string
 		rest := args[1:]
 		for i := 0; i < len(rest); i++ {
-			if rest[i] == "-o" && i+1 < len(rest) {
+			switch {
+			case rest[i] == "-o" && i+1 < len(rest):
 				outPath = rest[i+1]
 				i++
-			} else {
+			case rest[i] == "--backend" && i+1 < len(rest):
+				backend = rest[i+1]
+				i++
+			default:
 				names = append(names, rest[i])
 			}
 		}
 		if len(names) != 1 {
-			fail(fmt.Errorf("usage: oath build <name> [-o out]"))
+			fail(fmt.Errorf("usage: oath build <name> [-o out] [--backend go|llvm]"))
 		}
-		cmdBuild(st, names[0], outPath)
+		if backend != "go" && backend != "llvm" {
+			fail(fmt.Errorf("unknown backend %q (go, llvm)", backend))
+		}
+		cmdBuild(st, names[0], outPath, backend)
 	case "export":
 		outPath := ""
 		var names []string
@@ -1249,6 +1257,7 @@ var knownFlags = map[string]map[string]bool{
 	"ls":        set("--remote", "--key", "--kms-key", "--local"),
 	"log":       set("--remote", "--key", "--kms-key", "--local"),
 	"plugin":    set("--codex", "--claude-code", "--user", "--dir", "--registry", "--dry-run"),
+	"build":     set("--backend"),
 }
 
 func set(flags ...string) map[string]bool {

@@ -40,12 +40,23 @@ import (
 // recursion. Not fast-path native — but genuinely compiled, and the
 // differential gate (`compiled output == oath eval output`) keeps it honest.
 
-func cmdBuild(st *Store, name, out string) {
+func cmdBuild(st *Store, name, out, backend string) {
 	// The front half is backend-neutral: gates, entry classification, required
-	// authority, provenance. See program.go — nothing there knows Go exists.
+	// authority, provenance. See program.go — nothing there knows Go exists, and
+	// both backends below consume exactly this.
 	prog, err := planProgram(st, name)
 	if err != nil {
 		fail(err)
+	}
+	if out == "" {
+		out = name
+	}
+	if backend == "llvm" {
+		if err := llvmBuild(st, prog, out); err != nil {
+			fail(err)
+		}
+		reportBuild(prog, out)
+		return
 	}
 	src, err := emitProgram(st, prog)
 	if err != nil {
@@ -62,9 +73,6 @@ func cmdBuild(st *Store, name, out string) {
 	if err := os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module oathprog\n\ngo 1.25\n"), 0o644); err != nil {
 		fail(err)
 	}
-	if out == "" {
-		out = name
-	}
 	abs, err := filepath.Abs(out)
 	if err != nil {
 		fail(err)
@@ -74,9 +82,16 @@ func cmdBuild(st *Store, name, out string) {
 	if b, err := cmd.CombinedOutput(); err != nil {
 		fail(fmt.Errorf("go build failed:\n%s", string(b)))
 	}
+	reportBuild(prog, out)
+}
+
+// reportBuild says what was built and what authority it will demand. Shared by
+// both backends: the facts are properties of the artifact, so they must not read
+// differently depending on which lowering produced it.
+func reportBuild(prog *CompiledProgram, out string) {
 	p := prog.Provenance
-	fmt.Printf("built %s → %s  (entry %s : %s, guarantee: %s)\n",
-		name, out, name, p.EntryType, p.Guarantee)
+	fmt.Printf("built %s → %s  (entry %s : %s, guarantee: %s, backend: %s)\n",
+		prog.Entry, out, prog.Entry, p.EntryType, p.Guarantee, p.Backend)
 	// What authority this executable will demand, named neutrally. Printed even
 	// when empty: "requires: nothing" is the interesting answer for most programs,
 	// and silence would leave a reader unable to tell it from an unchecked build.
@@ -99,6 +114,10 @@ func cmdBuild(st *Store, name, out string) {
 	// executable exists and already carries the authoritative manifest, and
 	// reporting a successful build as failed over a convenience file would leave a
 	// caller believing it has no artifact when it has one.
+	abs, err := filepath.Abs(out)
+	if err != nil {
+		abs = out
+	}
 	sidecar := abs + ".provenance.json"
 	if err := os.WriteFile(sidecar, p.manifestJSON(), 0o644); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not write %s (%v)\n"+
@@ -1162,7 +1181,12 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 			}
 			fmt.Fprintf(&b, "\t\tcase %d:\n\t\t\tenv = append(append([]any{}, env...), scrut.fields...)\n\t\t\t_ = env\n\t\t\treturn %s\n", i, arm)
 		}
-		b.WriteString("\t\t}\n\t\tpanic(\"non-exhaustive\")\n\t})(" + s + ".(*ctorV), env)")
+		// any(...) first: the scrutinee expression may already have the CONCRETE
+		// type *ctorV — a directly-constructed value, as in (match (Box x) ...) —
+		// and Go forbids a type assertion on a non-interface. Found by the LLVM
+		// backend, which compiles such a program correctly; the Go backend refused
+		// to build it at all.
+		b.WriteString("\t\t}\n\t\tpanic(\"non-exhaustive\")\n\t})(any(" + s + ").(*ctorV), env)")
 		return b.String(), nil
 	case "record":
 		var parts []string

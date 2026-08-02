@@ -47,6 +47,7 @@ import (
 const (
 	neutralFile = "program.go"
 	backendFile = "compile.go"
+	llvmFile    = "llvm.go"
 )
 
 // resolvedUses type-checks the package as the Go build actually sees it (build
@@ -128,6 +129,34 @@ func TestNeutralLayerDoesNotDependOnTheGoBackend(t *testing.T) {
 		if decl == backendFile {
 			t.Errorf("%s references %q, which is declared in %s — "+
 				"the neutral layer is reaching into the Go backend", neutralFile, id.Name, backendFile)
+		}
+	}
+}
+
+// THE #115 QUESTION, answered on every test run: can a second backend be
+// implemented against the neutral program description alone?
+//
+// The LLVM backend has its own value representation, calling convention, runtime,
+// provider table, startup path and capability subset. If any of that needed the
+// Go emitter, the boundary would be a description of one backend rather than a
+// contract between two — and the honest answer would be that #114 was incomplete.
+func TestSecondBackendDoesNotDependOnTheFirst(t *testing.T) {
+	uses := resolvedUses(t, llvmFile)
+
+	sawNeutral := false
+	for id, decl := range uses {
+		if decl == neutralFile && id.Name == "CompiledProgram" {
+			sawNeutral = true
+		}
+	}
+	if !sawNeutral {
+		t.Fatal("llvm.go does not consume CompiledProgram; it is not targeting the neutral boundary")
+	}
+
+	for id, decl := range uses {
+		if decl == backendFile {
+			t.Errorf("%s references %q, which is declared in %s — the second backend "+
+				"is reaching into the first, so the boundary is not a contract", llvmFile, id.Name, backendFile)
 		}
 	}
 }
