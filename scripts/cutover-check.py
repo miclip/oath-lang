@@ -43,7 +43,7 @@ from pathlib import Path
 # a check that reads its expectation from the thing under test measures nothing.
 ORDER = ["seq", "time", "author", "verifier", "name", "kind", "status", "hash",
          "prev", "error", "guarantee", "termination", "context", "pubkey", "sig",
-         "envelope_b64", "author_pubkey", "author_sig", "parent_rev",
+         "envelope_b64", "author_pubkey", "author_sig", "recipient_sig", "parent_rev",
          "name_transition", "chain"]
 
 SIG_FIELDS = ("envelope_b64", "author_pubkey", "author_sig")

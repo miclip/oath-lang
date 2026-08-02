@@ -1442,7 +1442,8 @@ Append-only, one JSON object per line: `seq`, `time` (RFC3339 UTC),
 (`accepted`|`falsified`|`rejected`|`blocked` (repoint refused by store policy; object stored, name unchanged)|`pending` (repoint DEFERRED awaiting an out-of-band proof under a `require_proven` policy (§8.5); object stored, name unchanged until a verification worker resolves it to `accepted` or `blocked`)), `hash`, `prev` (previous binding; §8.2), `error`,
 `guarantee`, `termination`, `context`, `pubkey` (optional; §8.4), `sig`
 (optional; §8.4), `envelope_b64`, `author_pubkey`, `author_sig` (the author's
-publication statement; optional, all-or-none; §8.6.3), `name_transition`
+publication statement; optional, all-or-none; §8.6.3), `recipient_sig` (the
+SECOND signature over the same octets, transfer only; §8.7), `name_transition`
 (`applied`|`unchanged`|`none`; §8.6.2), `chain`.
 
 The exact member ORDER, the omission rule, and string escaping are normative — see
@@ -1590,7 +1591,8 @@ order:
 ```
 seq, time, author, verifier, name, kind, status, hash, prev, error,
 guarantee, termination, context, pubkey, sig,
-envelope_b64, author_pubkey, author_sig, parent_rev, name_transition, chain
+envelope_b64, author_pubkey, author_sig, recipient_sig, parent_rev,
+name_transition, chain
 ```
 
 Field order is NORMATIVE, not a formatting preference. `chain` (§8) and the
