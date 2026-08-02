@@ -261,7 +261,15 @@ jobs:
           python3 scripts/stdlib-plan.py --out /tmp/plan --pending-from /tmp/live-plan.jsonl
           LIC=$(python3 -c "import json;print(json.load(open('stdlib/oath-stdlib.json'))['license'])")
           FAILED=0
+          # Elaborate EVERY member into the local store first — including ones
+          # already live. Publication resolves references locally, so a member
+          # whose dependency is already published still needs it present here.
           for f in $(cat /tmp/plan/order.txt); do
+            ./oath/oath put "/tmp/plan/$f.oath" >> /tmp/publish-log.txt 2>&1 \
+              || { echo "::error::local elaboration of $f failed"; exit 1; }
+          done
+          # Sign and submit ONLY what the registry lacks.
+          for f in $(cat /tmp/plan/pending.txt); do
             echo "################ $f" | tee -a /tmp/publish-log.txt
             # `|| rc=$?` rather than a bare command: the step runs under `bash -e`,
             # so a failing publish would abort before its exit status was recorded
@@ -269,9 +277,6 @@ jobs:
             # captured, the loop finishes, and the step fails at the end — which is
             # what "preserve per-command exit statuses" has to mean when the shell
             # exits on error by default.
-            rc=0; ./oath/oath put "/tmp/plan/$f.oath" >> /tmp/publish-log.txt 2>&1 || rc=$?
-            echo "put exit=$rc" | tee -a /tmp/publish-log.txt
-            [ $rc -ne 0 ] && FAILED=1
             rc=0
             ./oath/oath publish --kms-key "$OATH_KMS_KEY" --license "$LIC" \
               --remote https://registry.oath-lang.org -y \

@@ -44,6 +44,7 @@ def main():
     #
     # Without a journal the plan is the whole library, which is right for a first
     # publication and for anyone reasoning about the library as a whole.
+    pending_names = None
     if "--pending-from" in sys.argv:
         snap = Path(sys.argv[sys.argv.index("--pending-from") + 1])
         live = set()
@@ -63,8 +64,8 @@ def main():
             kv = dict(l.split("=", 1) for l in oct_.rstrip("\n").split("\n")[1:] if "=" in l)
             live.add(kv.get("name", ""))
         before = len(exports)
-        exports = [d for d in exports if f"{ns}/{d['name']}" not in live]
-        print(f"pending: {len(exports)} of {before} project-published members are not yet live")
+        pending_names = {d["name"] for d in exports if f"{ns}/{d['name']}" not in live}
+        print(f"pending: {len(pending_names)} of {before} project-published members are not yet live")
     want = {d["name"] for d in exports}
 
     # Split every source file into top-level forms and keep the ones we export.
@@ -120,7 +121,20 @@ def main():
         for other in sorted(want, key=len, reverse=True):
             body = re.sub(r"(?<![\w/-])" + re.escape(other) + r"(?![\w-])", f"{ns}/{other}", body)
         (out / f"{n}.oath").write_text(body + "\n")
+    # ORDER.TXT IS EVERY MEMBER; PENDING.TXT IS WHAT MUST BE SIGNED.
+    #
+    # These are different questions and conflating them was a real defect. Local
+    # elaboration resolves references against the LOCAL store, so a member whose
+    # dependency is already live still needs that dependency PRESENT locally —
+    # emitting only the pending set produced `unknown type "List"` for the first
+    # member that had a dependency at all. (The first project publication was
+    # chosen dependency-free precisely so a failure would be unambiguously in the
+    # credential chain; that is why this surfaced only now.)
+    #
+    # So: put everything in dependency order, publish only what the registry lacks.
     (out / "order.txt").write_text("\n".join(order) + "\n")
+    pend = [n for n in order if n in pending_names] if pending_names is not None else list(order)
+    (out / "pending.txt").write_text("\n".join(pend) + "\n")
     print(f"plan: {len(order)} definition(s) in dependency order → {', '.join(order)}")
     return 0
 
