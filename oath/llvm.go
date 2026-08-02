@@ -209,9 +209,12 @@ func llvmCheckValueBindings(prog *CompiledProgram) error {
 func llvmUnsupported(what string) error {
 	return fmt.Errorf("the %s backend cannot lower %s\n"+
 		"  This is a first slice: it covers datatypes, matching, closures, records,\n"+
-		"  Str literals, Bool and the CLI entry protocol. Arithmetic, the numeric\n"+
-		"  tower, Set/Map, dynamic Str construction and the handler protocol are not\n"+
-		"  lowered yet. Build with the Go backend for full coverage.", llvmBackendVersion, what)
+		"  Str literals, Bool, Int literals and equality, and the CLI entry protocol.\n"+
+		"  Int is stored as int64 — a SUBSET of Oath's unbounded Int, and literals\n"+
+		"  outside it are refused rather than wrapped. Arithmetic, Rat and Float,\n"+
+		"  Set/Map, match on Str, dynamic Str construction and the handler protocol\n"+
+		"  are not lowered yet. Build with the Go backend for full coverage.",
+		llvmBackendVersion, what)
 }
 
 // strLiteral folds a Str constructor chain to a Go string.
@@ -451,10 +454,51 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 	case "self":
 		return e.defValue(self)
 
-	case "int", "rat", "float":
-		return "", llvmUnsupported("numeric literals (Int, Rat, Float)")
+	case "int":
+		// THE RANGE CHECK IS THE POINT. Oath's Int is ℤ; this runtime stores
+		// int64. A literal outside that is REFUSED at compile time rather than
+		// truncated, because a backend that silently wrapped would disagree
+		// with `oath eval` on an ordinary value and the differential gate would
+		// only notice if a test reached that magnitude.
+		if t.Int == nil {
+			return "", llvmUnsupported("an Int literal with no value")
+		}
+		if !t.Int.IsInt64() {
+			return "", llvmUnsupported(fmt.Sprintf(
+				"the Int literal %s — this backend stores Int as int64 and Oath's Int is unbounded, "+
+					"so values outside int64 are refused rather than wrapped", t.Int.String()))
+		}
+		v := e.next()
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_int(i64 %d)\n", v, t.Int.Int64())
+		return v, nil
+
+	case "rat", "float":
+		return "", llvmUnsupported("Rat and Float literals")
 
 	case "prim":
+		// `==` on two Ints is the first typed operation, and it is here to prove
+		// the representation carries through calls, closures and constructors —
+		// not as the start of an arithmetic library. Everything else stays
+		// refused by name.
+		if t.Op == "==" && len(t.Args) == 2 {
+			at, aerr := e.chk.synth(e.ctx, &t.Args[0])
+			bt, berr := e.chk.synth(e.ctx, &t.Args[1])
+			if aerr == nil && berr == nil && at != nil && bt != nil && at.K == "int" && bt.K == "int" {
+				a, err := e.expr(&t.Args[0], env, depth, self)
+				if err != nil {
+					return "", err
+				}
+				b, err := e.expr(&t.Args[1], env, depth, self)
+				if err != nil {
+					return "", err
+				}
+				r := e.next()
+				fmt.Fprintf(&e.b, "  %s = call i32 @o_int_eq(ptr %s, ptr %s)\n", r, a, b)
+				v := e.next()
+				fmt.Fprintf(&e.b, "  %s = call ptr @o_bool(i32 %s)\n", v, r)
+				return v, nil
+			}
+		}
 		return "", llvmUnsupported(fmt.Sprintf("the primitive operation %q", t.Op))
 	}
 	return "", llvmUnsupported(fmt.Sprintf("%q terms", t.K))
@@ -651,7 +695,7 @@ const llvmRuntimeC = `
 typedef struct OVal OVal;
 typedef OVal *(*OCode)(OVal **env, OVal *arg);
 
-enum { T_CTOR = 0, T_STR = 1, T_CLOS = 2, T_BOOL = 3 };
+enum { T_CTOR = 0, T_STR = 1, T_CLOS = 2, T_BOOL = 3, T_INT = 4 };
 
 /* The capability protocol's CALL-failure value: a capability that was provided,
    was invoked, and could not complete. Provision failure is not a value — see
@@ -664,6 +708,7 @@ struct OVal {
   int n;        /* field count */
   const char *s;
   int slen;     /* byte length: a Str may contain NUL, so strlen is not enough */
+  long long i;  /* T_INT storage — a SUBSET of Oath's unbounded Int, see o_int */
   OVal **f;
   OCode code;
   OVal **env;
@@ -682,6 +727,25 @@ OVal *o_strn(const char *s, int n) {
 /* For genuine C strings — getenv results, literals internal to the runtime. */
 OVal *o_str(const char *s) { return o_strn(s, s ? (int)strlen(s) : 0); }
 OVal *o_bool(int b) { OVal *v = val(T_BOOL); v->idx = b ? 1 : 0; return v; }
+
+/* AN OATH Int, and the range is the honest part.
+
+   Oath's Int is mathematically unbounded — ℤ, arbitrary precision, SPEC §1 and
+   the int term carries a big.Int. This runtime stores a fixed-width value, so
+   it implements a SUBSET, and a subset must say so rather than wrap. Two-s
+   complement wraparound would make the backend disagree with oath eval on a
+   value the language considers perfectly ordinary, and the three-way gate would
+   only catch it if a test happened to reach that magnitude.
+
+   So the compiler refuses a literal it cannot represent, and this is the
+   runtime's half of that contract. The i field is the storage; nothing here
+   promises it is all of Int. Arbitrary precision is the destination, not this commit. */
+OVal *o_int(long long n) { OVal *v = val(T_INT); v->i = n; return v; }
+long long o_int_val(OVal *v) {
+  if (!v || v->tag != T_INT) { fputs("oath: not an Int\n", stderr); exit(70); }
+  return v->i;
+}
+int o_int_eq(OVal *a, OVal *b) { return o_int_val(a) == o_int_val(b); }
 int o_truth(OVal *v) { return v && v->tag == T_BOOL && v->idx != 0; }
 int o_idx(OVal *v) { return v ? v->idx : -1; }
 const char *o_cstr(OVal *v) { return (v && v->tag == T_STR && v->s) ? v->s : ""; }
@@ -889,6 +953,8 @@ declare void @o_print(ptr)
 declare void @o_keep(ptr)
 declare ptr @o_require(ptr, ptr, ptr)
 declare ptr @o_require_value(ptr, ptr, ptr)
+declare ptr @o_int(i64)
+declare i32 @o_int_eq(ptr, ptr)
 declare ptr @o_cap_env(ptr)
 declare ptr @o_cap_readfile(ptr)
 declare ptr @o_cap_emit(ptr)

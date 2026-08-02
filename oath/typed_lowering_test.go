@@ -377,3 +377,43 @@ func TestStrElementsAreCodepointsNotEncodedBytes(t *testing.T) {
 			"a Str element is a codepoint, not an encoded byte", got, want)
 	}
 }
+
+// AN INT THE BACKEND CANNOT REPRESENT IS REFUSED, NEVER WRAPPED.
+//
+// Oath's Int is ℤ — unbounded, SPEC §1, and the `int` term carries a big.Int.
+// The LLVM runtime stores int64, so it implements a SUBSET, and the whole
+// question is what a subset does at its boundary. Two's-complement wraparound
+// would make the backend disagree with `oath eval` on a value the language
+// considers ordinary, and the three-way gate would only catch it if some test
+// happened to reach that magnitude.
+//
+// The CONTROL matters as much as the refusal: an in-range literal must still
+// lower, or "refuses out-of-range" would be satisfied by refusing everything.
+func TestOutOfRangeIntIsRefusedNotWrapped(t *testing.T) {
+	st := llvmStore(t)
+	put(t, st, `(defn big-lit [] [(args (List Str))] Str (if (== 99999999999999999999999999 0) "z" "n"))`)
+	markVerified(t, st, "big-lit")
+	prog, err := planProgram(st, "big-lit")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	_, err = emitLLVM(st, prog)
+	if err == nil {
+		t.Fatal("lowered an Int literal outside int64 — it must be refused, because wrapping it would " +
+			"silently disagree with the reference on an ordinary Oath value")
+	}
+	if !strings.Contains(err.Error(), "99999999999999999999999999") {
+		t.Errorf("refused but did not name the literal: %v", err)
+	}
+
+	// CONTROL: in range still lowers, so the refusal is a boundary and not a wall.
+	put(t, st, `(defn small-lit [] [(args (List Str))] Str (if (== 42 42) "y" "n"))`)
+	markVerified(t, st, "small-lit")
+	ok, err := planProgram(st, "small-lit")
+	if err != nil {
+		t.Fatalf("plan control: %v", err)
+	}
+	if _, err := emitLLVM(st, ok); err != nil {
+		t.Errorf("refused an in-range Int literal: %v", err)
+	}
+}
