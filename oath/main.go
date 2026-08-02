@@ -99,7 +99,20 @@ func main() {
 	// The general rule the earlier --remote guard was a special case of: a CLI that
 	// accepts a flag it does not implement is asserting something false about what
 	// it did.
+	// ONLY for commands whose flags are catalogued. An absent entry means "not yet
+	// listed", NOT "takes no flags", and conflating the two is how this guard broke
+	// `serve` on its first deploy: the entrypoint runs `oath serve --http … --tokens
+	// …`, no `serve` entry existed, every flag read as unknown, and the container
+	// exited before binding a port. Cloud Run refused to shift traffic and the
+	// registry stayed up, which is the only reason that was cheap.
+	//
+	// The failure mode to avoid is not "an uncatalogued command accepts a bad flag"
+	// — it is a guard that breaks working commands to enforce a table nobody has
+	// finished writing.
 	for _, a := range args[1:] {
+		if _, catalogued := knownFlags[args[0]]; !catalogued {
+			break
+		}
 		if !strings.HasPrefix(a, "--") || knownFlags[args[0]][a] || a == "--" {
 			continue
 		}

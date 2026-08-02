@@ -36,3 +36,32 @@ func TestKnownFlagsCoverWhatCommandsParse(t *testing.T) {
 		t.Error("publish reports no known flags; the refusal message would name no alternative")
 	}
 }
+
+// The guard must apply ONLY to catalogued commands. An absent entry means "not
+// yet listed", never "takes no flags".
+//
+// This is pinned because conflating the two shipped: `oath serve --http … --tokens
+// …` is what the container entrypoint runs, `serve` had no entry, every flag read
+// as unknown, and the deployed container exited before binding a port. Cloud Run
+// refused to shift traffic and the registry stayed up, which is the only reason it
+// was cheap. The earlier test checked the TABLE and not that commands still RUN.
+func TestUncataloguedCommandsAreNotFlagChecked(t *testing.T) {
+	// Commands invoked by the container entrypoint, CI, and the Makefile. If any
+	// gains an entry, every flag it accepts must be listed in the same edit.
+	for _, cmd := range []string{"serve", "prove-worker", "prove", "audit", "verify",
+		"find", "export", "import", "fixtures", "migrate-store", "store-check"} {
+		if flags, catalogued := knownFlags[cmd]; catalogued {
+			t.Errorf("%q is now flag-checked with %d known flags. That is fine ONLY if every "+
+				"flag it accepts is listed — `serve --http --tokens --authorized-keys` broke a "+
+				"production deploy this way. Verify the list is complete before removing this.",
+				cmd, len(flags))
+		}
+	}
+	// And a catalogued command still refuses the flag that caused a permanent name.
+	if knownFlags["publish"]["--name"] {
+		t.Error("publish would accept --name again")
+	}
+	if _, ok := knownFlags["publish"]; !ok {
+		t.Error("publish is no longer catalogued, so the guard that stops --name is inert")
+	}
+}
