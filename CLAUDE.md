@@ -41,7 +41,8 @@ output, compiled execution, and deployment under change.
   2. ~~**#117**~~ — its provisioning half shipped as **#126**; the rest is a
      type-system project and is now LAST. The order lives in the #126 section
      below, which is the one to read.
-  3. **#118**, **#122**, **#121**, then #117/#69. Mark is a person, not a step.
+  3. **#118**, **#122**, **#121**, then #117/#69. The first external
+     contributor is a person, not a step — see below.
 
 ### #120 IS DONE — read the friction log before choosing anything
 
@@ -92,7 +93,7 @@ closed — filed rather than fixed, because it changes the conformance corpus) a
 **#122** (the header model above).
 
 **Next, in order:** SUPERSEDED by the #126 section below — #118, #122, #121,
-Mark, then #117/#69. Do NOT start another protocol feature.
+then #117/#69. Do NOT start another protocol feature.
 
 ### #126 IS DONE, and #117 IS NOT NEXT — the order changed, deliberately
 
@@ -138,12 +139,12 @@ relaxation.** Do not delete it.
   3. **#121** — fix `hex-decode` globally. Same: bounded, and on a real path.
   4. **#117 / #69** — scoped authority (`http_client(host = ...)`).
 
-**MARK IS NOT A SCHEDULED STEP.** He is an actual person and he is currently
-unavailable, so he moves later on his own. **Do NOT substitute invented
-"external-user" work for an actual external user** — a simulated newcomer
-walkthrough would produce exactly the reassuring evidence the real thing exists
-to withhold, and this project has already learned that a witness which cannot
-disappoint you is not a witness.
+**THE FIRST EXTERNAL CONTRIBUTOR IS NOT A SCHEDULED STEP.** That milestone
+depends on a real person's availability, so it arrives when it arrives. **Do NOT
+substitute invented "external-user" work for an actual external user** — a
+simulated newcomer walkthrough would produce exactly the reassuring evidence the
+real thing exists to withhold, and this project has already learned that a
+witness which cannot disappoint you is not a witness.
 
 **#117 is no longer blocking anything.** It was urgent when it was the only way
 to close the webhook's fail-open; #126 closed that structurally, and what remains
@@ -293,7 +294,8 @@ deployed configuration.
 
 So the finish line is probably reachable TODAY with no operator action. NOTE: the
 "next move" below is SUPERSEDED — see the phase section at the top of this file;
-the walkthrough belongs to Mark, after the application. Recorded here as the
+the walkthrough belongs to the first external contributor, after the
+application. Recorded here as the
 method, not as the instruction: a fresh key, `reserve`, a fresh key, `reserve`,
 `publish --key`, then independent `find` / `explain` / `license` / `verify`. Two
 cautions carried from this session — a reservation is PERMANENT, so the namespace
