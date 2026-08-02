@@ -349,6 +349,7 @@ def type_names_of(entry):
 PRIMITIVE_TYPES = {"Int", "Bool", "Str", "Rat", "Float", "Set", "Map", "Unit"}
 
 _ctors = None
+_datatypes = set()
 
 
 # Constructor names are NOT type dependencies. `Cons` and `Nil` belong to `List`
@@ -359,11 +360,36 @@ def constructor_names():
     global _ctors
     if _ctors is None:
         _ctors = set()
+        _datatypes.clear()
         for f in sorted((ROOT / "examples").glob("*.oath")):
             text = f.read_text()
-            for m in re.finditer(r"\(data\s+[^\s\[]+[^\n]*\n((?:\s+\([^\n]*\n)*)", text):
-                for c in re.finditer(r"\(\s*([A-Z][A-Za-z0-9-]*)", m.group(1)):
-                    _ctors.add(c.group(1))
+            # Only CONSTRUCTOR HEADS — the first identifier of each direct child
+            # form, which sits at the start of an indented line. A nested match
+            # captured type references inside constructor arguments, so
+            # `(Node (List a))` registered `List` as a constructor, and every
+            # datatype that appears in another datatype vanished from type
+            # detection. That is what made `zip` extract nothing at all.
+            in_data = False
+            for ln in text.split("\n"):
+                stripped = ln.strip()
+                if stripped.startswith("(data "):
+                    in_data = True
+                    md = re.match(r"\(data\s+([A-Z][A-Za-z0-9-]*)", stripped)
+                    if md:
+                        _datatypes.add(md.group(1))
+                    continue
+                if in_data:
+                    if stripped and not ln.startswith((" ", "\t")):
+                        in_data = False
+                        continue
+                    m2 = re.match(r"\(([A-Z][A-Za-z0-9-]*)", stripped)
+                    if m2:
+                        _ctors.add(m2.group(1))
+        # A DATATYPE IS NEVER A CONSTRUCTOR, even when a constructor shares its
+        # name. `(data Pair [a b] (Pair a b))` is the common single-constructor
+        # shape, and filtering `Pair` as a constructor erased the very type
+        # dependency this check exists to find.
+        _ctors -= _datatypes
     return _ctors
 
 

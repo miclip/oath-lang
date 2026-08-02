@@ -95,6 +95,9 @@ jobs:
       - name: corpus/registry reconciliation ratchet
         run: make check-reconciliation-ratchet
 
+      - name: stdlib type-closure branch is demonstrated
+        run: make check-stdlib-type-closure
+
       - name: plugin assets match plugin/ sources
         run: make check-plugin-assets
 
