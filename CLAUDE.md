@@ -38,8 +38,10 @@ output, compiled execution, and deployment under change.
      constrains #118 rather than the other way round, and it did the thing that
      was meant to be guarded against in reverse: it did not redesign the
      language, and it produced a ranked demand list instead.
-  2. **#117**, then **#118** with the slice the application actually demanded.
-  3. **Mark** — the first external contributor.
+  2. ~~**#117**~~ — its provisioning half shipped as **#126**; the rest is a
+     type-system project and is now LAST. The order lives in the #126 section
+     below, which is the one to read.
+  3. **#118**, **#122**, **#121**, then #117/#69. Mark is a person, not a step.
 
 ### #120 IS DONE — read the friction log before choosing anything
 
@@ -89,11 +91,88 @@ so `examples/webhook.oath` accepts `<valid digest>zz` while claiming to fail
 closed — filed rather than fixed, because it changes the conformance corpus) and
 **#122** (the header model above).
 
-**Next, in order:** #117, then #118 with the slice above, then Mark. Do NOT start
-another protocol feature. #122 is real and is NOT next — it is a spec question
-that only becomes urgent when a second backend implements the handler protocol.
+**Next, in order:** SUPERSEDED by the #126 section below — #118, #122, #121,
+Mark, then #117/#69. Do NOT start another protocol feature.
 
-### #117 IS NEXT, and its scope is already narrowed — do not widen it
+### #126 IS DONE, and #117 IS NOT NEXT — the order changed, deliberately
+
+**Required values are structural and enforced. Callable authority exists but
+remains coarse. The next compiler question is typed byte/text lowering, not
+another capability lifecycle mechanism.**
+
+`#126` (merged) split the provisioning half out of #117. A capability-record
+field whose type is a VALUE rather than a function is a required value: the host
+must supply it before any Oath code runs, or the program does not start.
+
+    (defn gh-webhook [] [(caps {emit (-> Str Str) secret Str}) (r Request)] Response
+
+THE IDENTITY STATEMENT, worth preserving exactly:
+
+> Required launch data is tamper-evident because it is expressed in the
+> capability record's field types, and those types already participate in
+> artifact identity.
+
+No side manifest, no deploy-time assertion, no new identity mechanism.
+`{env}` hashes to #160db1993221 and `{env emit}` to #7db989101eeb; nothing had
+to be added for this to be tamper-evident.
+
+THE ARCHITECTURAL FINDING is the confinement repair, not the feature:
+
+> "Capability record" was accidentally modeled as "record whose fields are all
+> authority-bearing functions."
+
+Value fields exposed it — every use of one was reported as an escape and `oath
+build` refused to hand the program the real world. The repair distinguishes by
+TYPE: a projected function is authority and still subject to escape analysis; a
+projected non-function is data. **The surviving control — a bare function
+projection still ESCAPES — is what makes that a correction rather than a
+relaxation.** Do not delete it.
+
+### THE ORDER, and why #117 moved to last
+
+  1. **#118** — typed lowering, using the byte/text slice the application
+     actually demanded. Directly informed by #120, and the LLVM backend is still
+     small enough to reshape cheaply. That window closes as it grows.
+  2. **#122** — the handler protocol's header model. A bounded gap on a real
+     application path.
+  3. **#121** — fix `hex-decode` globally. Same: bounded, and on a real path.
+  4. **#117 / #69** — scoped authority (`http_client(host = ...)`).
+
+**MARK IS NOT A SCHEDULED STEP.** He is an actual person and he is currently
+unavailable, so he moves later on his own. **Do NOT substitute invented
+"external-user" work for an actual external user** — a simulated newcomer
+walkthrough would produce exactly the reassuring evidence the real thing exists
+to withhold, and this project has already learned that a witness which cannot
+disappoint you is not a witness.
+
+**#117 is no longer blocking anything.** It was urgent when it was the only way
+to close the webhook's fail-open; #126 closed that structurally, and what remains
+is a much larger type-system project. It is important and it is not next.
+
+**SCOPED AUTHORITY GOES LAST** because it risks becoming the next long
+infrastructure branch unless a real user or application demands a concrete scope
+first — the Phase 4 lesson arriving again, at the exact point where the backlog
+makes the wrong answer look like the plan.
+
+### WHAT THIS SESSION ACTUALLY IMPROVED — state it narrowly
+
+> Oath did not improve its own ability to detect mistaken confidence. The
+> project improved the PRACTICES used to detect it, and identified two concrete
+> mechanisms that could eventually make part of that detection automatic.
+
+The evidence for the narrow reading: across the application, **Oath's own
+instruments found ZERO of the twelve defects.** The properties were not lazy —
+they falsified four generated cases during authoring and forced a real fix — but
+every near-miss came from independent review. Formal instruments caught ordinary
+semantic failures; review caught shared mistaken boundaries, vacuity, and
+near-misses the properties had encoded ALONG WITH the implementation.
+
+So the two questions above are habits, and habits only fire if a session reads
+them. The two mechanisms that would make part of this automatic are #130, and
+they are deliberately NOT next: feedback tooling has no closing window, and
+#118's does.
+
+### #117's scope, for whenever it does start — do not widen it
 
 The question, settled with Michael and written on the issue:
 
@@ -388,6 +467,38 @@ undo the fix, watch it fail with the message you expect, restore. A test never
 observed failing is a hypothesis. Prefer extracting the claimed behaviour into a
 pure function and asserting every outcome, and assert the CONTROL so you know the
 measurement discriminates.
+
+**TWO QUESTIONS, AND THEY ATTACK DIFFERENT DIMENSIONS. Ask both.**
+
+  1. **What mutation makes this fail?**
+     — does the witness distinguish truth from falsehood?
+  2. **What defines the universe this claim quantifies over?**
+     — is it even looking at the right set?
+
+A witness can pass the first and fail the second completely: perfectly
+discriminating, over the wrong population. The principle underneath the second:
+
+> **A witness must derive its universe from the CLAIM, never from the
+> IMPLEMENTATION.** The implementation's boundaries are hypotheses. The claim's
+> boundaries are what you are trying to establish.
+
+Six instances in one session, in six unrelated layers, every one the same
+mistake — *measuring the implementation's decomposition instead of the
+property's*:
+
+  claim                       measured                     should have measured
+  ------------------------------------------------------------------------------
+  nothing is listening        the ports I expected         every `oath serve --http`
+  the corpus is verified      examples/                    what `oath fixtures` reads
+  backends match Oath         providers -> vocabulary      both directions
+  non-JSON is refused         the impl's own predicate     a longer type does not match
+  the failure path works      "FAIL" was printed           the suite reached its verdict
+  a tab cannot inject         an escaped `\t`              an actual 0x09 byte
+
+This is why `pgrep -f 'oath serve --http'` is right and a port list is not; why
+`capabilityKinds()` became one source of truth; why the three-way verdict became
+a PURE FUNCTION with every outcome asserted; and why the port-order test checks
+OBSERVABLE STARTUP rather than an exit code.
 
 **A FAILURE-PATH TEST IS INCOMPLETE UNTIL THE SUITE PROVES IT CONTINUED PAST THAT
 FAILURE.** Printing `FAIL` is not evidence. Under `set -e` a bare `kill` on an
