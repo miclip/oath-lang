@@ -33,7 +33,9 @@
 ; receiver that accepts values it says it rejects has a specification nobody
 ; can rely on. A GitHub signature is exactly 64 hex characters; anything else
 ; is not one. (The same latent hole is in `examples/webhook.oath`, whose
-; `invalid-fails-closed` property tests `"zz"` alone; filed, not fixed here.)
+; `invalid-fails-closed` property tests `"zz"` alone. #121, filed not fixed:
+; changing it changes the conformance corpus, and whether `hex-decode` should
+; return a prefix at all is a decision rather than a patch.)
 (defn gh-signature [] [(hs (List (Pair Str Str)))] (Option Str)
   (match (header-first hs "X-Hub-Signature-256")
     ((None) (None [Str]))

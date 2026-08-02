@@ -515,8 +515,10 @@ that will be satisfied by an empty string is as quiet as one that will not.
 - **#118's datatype slice should be byte lists and text**, not numerics. The
   application's numeric demand was one `show-nat`. Its text demand was ninety
   lines of scanning and one function that cannot be written correctly (entry 3).
-- **The handler protocol needs a header model** (entry 2) — separate from both,
-  and currently invisible because only one backend implements the protocol.
+- **The handler protocol needs a header model** — **#122**, filed from entry 2.
+  Separate from #117 and #118, and currently invisible because only one backend
+  implements the protocol, which makes now a good time to decide rather than a
+  reason to defer.
 - **Property generation has no reach into near-misses** (entry 9). Not a
   roadmap item so much as a boundary to state out loud: the ladder is strong
   where a random value is a good adversary and absent where the adversary is one

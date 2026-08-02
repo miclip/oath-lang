@@ -63,10 +63,10 @@ The top four, with what they actually cost:
      enough — it is loud about capability KINDS and silent about capability
      CONTENT. Six properties passed throughout. **This is #117 arriving as a
      security bug rather than a design preference, and it is the top item.**
-  2. **The handler protocol has no header model.** `X-GitHub-Event` — what GitHub
-     documents and sends — is not what an Oath handler sees; net/http
-     canonicalizes it to `X-Github-Event`. One backend's normalization is visible
-     in Oath source and nothing propagates it to the author.
+  2. **The handler protocol has no header model (#122, filed).** `X-GitHub-Event`
+     — what GitHub documents and sends — is not what an Oath handler sees;
+     net/http canonicalizes it to `X-Github-Event`. One backend's normalization
+     is visible in Oath source and nothing propagates it to the author.
      `apps/github-webhook/hdr-probe.oath` is the runnable witness.
   3. **No JSON, and no correct bytes→text.** `str-bytes` is PROVEN; its inverse
      cannot be written correctly, because `Str` is codepoints and a body is
@@ -84,8 +84,14 @@ strongest property vacuous while still reporting `passed 200 cases`; and a
 property whose guard restates the implementation's own predicate is not
 independent evidence — `application/jsonp` passed a `str-prefix` test in both.
 
+Also filed from the exercise: **#121** (`hex-decode` keeps the prefix it decoded,
+so `examples/webhook.oath` accepts `<valid digest>zz` while claiming to fail
+closed — filed rather than fixed, because it changes the conformance corpus) and
+**#122** (the header model above).
+
 **Next, in order:** #117, then #118 with the slice above, then Mark. Do NOT start
-another protocol feature.
+another protocol feature. #122 is real and is NOT next — it is a spec question
+that only becomes urgent when a second backend implements the handler protocol.
 
 
 ## State of the project
