@@ -389,6 +389,21 @@ observed failing is a hypothesis. Prefer extracting the claimed behaviour into a
 pure function and asserting every outcome, and assert the CONTROL so you know the
 measurement discriminates.
 
+**A FAILURE-PATH TEST IS INCOMPLETE UNTIL THE SUITE PROVES IT CONTINUED PAST THAT
+FAILURE.** Printing `FAIL` is not evidence. Under `set -e` a bare `kill` on an
+already-exited PID, a `wait` that returns non-zero, or a background timer holding
+an inherited pipe will each stop the harness before its own verdict — and the
+run then LOOKS like it stopped at the first problem rather than like it died.
+Four instances of this in one session, every one on a path that only runs when
+something is wrong, every one found by RUNNING that path rather than reading it:
+a bounded probe copied back into its unbounded form at two new call sites; a
+timeout branch that returned nothing because the killer had already exited; a
+timer subshell that made every SUCCESSFUL probe block for the full timeout; and a
+setup-failure branch that printed its FAIL and then took the remaining 28 checks
+with it, silently. So: assert the final summary line, count the checks that ran,
+and make the harness fail LOUDLY when its own setup did not work — a check that
+cannot tell its setup failed from the defect it hunts is worse than no check.
+
 **THE GATE IS THREE-WAY: `oath eval` is the reference.** Never compare one backend
 against the other alone — two identically wrong lowerings agree. Writing the second
 backend already found a real defect in the first (a type assertion on a concrete
