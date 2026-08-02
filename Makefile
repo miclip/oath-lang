@@ -208,6 +208,10 @@ plugin-assets:
 check-plugin-assets:
 	@python3 scripts/gen-plugin-assets.py --check
 
+.PHONY: check-stdlib-type-closure
+check-stdlib-type-closure:
+	@python3 scripts/test-stdlib-type-closure.py
+
 .PHONY: check-reconciliation-ratchet
 check-reconciliation-ratchet:
 	@python3 scripts/test-reconciliation-ratchet.py
