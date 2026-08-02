@@ -298,16 +298,45 @@ by inspecting them.
   Phase 3  Can the implementation be replaced?    Go backend, LLVM backend, the boundary
   Phase 4  Can someone build software and FORGET they are using Oath?   <- here
 
+PHASE 4 IS NOT ABOUT HIDING EVIDENCE. The target, stated precisely: **guarantees
+stay LOUD at trust boundaries and become QUIET during ordinary composition.** A
+developer should see them when choosing or importing an artifact, accepting a
+capability, publishing, compiling, crossing a policy boundary, or diagnosing a
+refusal — and should not have to restate or re-inspect them while composing pieces
+already admitted. So the question is not "how much can be hidden" but WHERE
+EVIDENCE IS DECISION-RELEVANT VERSUS MERELY REPETITIVE. The webhook application
+is a good instrument because it crosses several of those boundaries naturally:
+ingress, signature verification, capability injection, outbound action, structured
+output, compiled execution, and deployment under change.
+
 **The next work is to DEPEND on Oath, not to improve it.** The roadmap, in order:
 
-  1. **#118** — typed lowering. Answer the architectural question ("is the `Def`
-     closure still enough, or does typed lowering force a new semantic object?")
-     while the LLVM backend is still small enough to change cheaply.
-  2. **One real capability-based application**, end to end on the existing effects
-     model — the webhook shape: verify a request, call HTTP, write a structured
-     record, respond. Not a demo. The point is to find out whether the effects
-     model is PLEASANT.
-  3. **Mark** — the first external contributor.
+  1. **THE APPLICATION** and **#118** are INDEPENDENT PROBES OF THE SAME BOUNDARY,
+     not a parent and a child. #118 asks what typed lowering actually requires;
+     the application reveals which runtime and datatype features matter in
+     practice. Whichever runs first constrains the second. Two dangers, one on
+     each side: letting the application silently REDESIGN THE LANGUAGE, and
+     letting #118 OPTIMIZE A SLICE NOBODY NEEDS.
+  2. **Mark** — the first external contributor.
+
+### THE NEXT SESSION'S INSTRUCTION, concretely
+
+> Turn `examples/webhook.oath` into something another system actually CALLS.
+> Keep a friction log. Extend neither the language nor the protocol on the first
+> pass. Then review the friction log before choosing the datatype and numeric
+> slice for #118.
+
+Friction log lives at `docs/experiments/webhook-friction.md` (the repo's existing
+convention for this kind of record). Every time the application wants something
+Oath lacks: write down WHAT was wanted, WHAT the workaround was, and HOW MUCH it
+cost. That turns friction into evidence instead of backlog, and it produces a
+demand-RANKED list of missing capabilities, language features and tooling — a
+real deliverable even if the application itself turns out awkward.
+
+An EXAMPLE is not an APPLICATION: the difference is whether anything depends on
+it and whether it survives change. By the third modification you will know which
+Oath surfaces protect a decision and which just make the author rehearse facts the
+system already knows.
 
 **DO NOT start another protocol feature.** Namespace aliases, more authority
 operations, more receipt machinery, richer manifests, another workflow — these are
