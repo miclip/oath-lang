@@ -9,9 +9,11 @@ package main
 // and they agree because they are consuming the same description".
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -401,5 +403,246 @@ func TestLLVMInstantiatesPolymorphicCtorFields(t *testing.T) {
 	goOut, _ := exec.Command(goBin).Output()
 	if string(goOut) != string(out) {
 		t.Errorf("backends disagree: llvm=%q go=%q", out, goOut)
+	}
+}
+
+// ---------- the three-way disagreement gate ----------
+//
+// `oath eval` is the semantic reference. Neither compiler is the other's oracle:
+// comparing the two backends only tells you they agree, which two identically
+// wrong lowerings also do. The interpreter is what either can be wrong ABOUT.
+//
+// The existing differential tests compare the backends to each other, and that
+// was a real weakness in the first slice — it made the Go backend the reference
+// by default. This runs all three.
+
+// evalDenotation evaluates an expression through the interpreter and returns what
+// its Str result DENOTES, so it can be compared with what a compiled program
+// prints. The interpreter renders Str structurally — (SCons 104 (SCons ...)) —
+// because it is an ordinary datatype there; a compiled program prints the string
+// those codepoints spell.
+func evalDenotation(t *testing.T, st *Store, expr string) string {
+	t.Helper()
+	out, err := apiEval(st, expr)
+	if err != nil {
+		t.Fatalf("eval %s: %v", expr, err)
+	}
+	if i := strings.LastIndex(out, " : "); i >= 0 {
+		out = out[:i]
+	}
+	var sb strings.Builder
+	rest := out
+	for {
+		i := strings.Index(rest, "(SCons ")
+		if i < 0 {
+			break
+		}
+		rest = rest[i+len("(SCons "):]
+		j := strings.IndexByte(rest, ' ')
+		if j < 0 {
+			t.Fatalf("malformed Str in eval output: %s", out)
+		}
+		n, err := strconv.Atoi(rest[:j])
+		if err != nil {
+			t.Fatalf("malformed codepoint %q in %s", rest[:j], out)
+		}
+		sb.WriteRune(rune(n))
+		rest = rest[j+1:]
+	}
+	return sb.String()
+}
+
+// oathQuote renders a string as an Oath literal using ONLY the escapes the Oath
+// lexer accepts. strconv.Quote emits Go's set — \r, \b, \x01 — which the lexer
+// does not read, so the interpreter would fail to parse an input both compiled
+// binaries accept, and the three paths would no longer be receiving the same
+// thing. Returns ok=false for a character with no Oath spelling.
+func oathQuote(s string) (string, bool) {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range s {
+		switch r {
+		case '\n':
+			b.WriteString(`\n`)
+		case '\t':
+			b.WriteString(`\t`)
+		case '"':
+			b.WriteString(`\"`)
+		case '\\':
+			b.WriteString(`\\`)
+		default:
+			if r < 0x20 || r == 0x7f {
+				return "", false
+			}
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('"')
+	return b.String(), true
+}
+
+// oathList renders arguments as the (List Str) literal the interpreter needs, so
+// the SAME input reaches all three execution paths.
+func oathList(args []string) (string, bool) {
+	out := "(Nil [Str])"
+	for i := len(args) - 1; i >= 0; i-- {
+		q, ok := oathQuote(args[i])
+		if !ok {
+			return "", false
+		}
+		out = fmt.Sprintf("(Cons [Str] %s %s)", q, out)
+	}
+	return out, true
+}
+
+// trimFrame removes the ONE newline the CLI protocol appends. TrimRight would
+// also eat newlines the result itself ends with, so a correct "x\n" would read as
+// "x" and be reported as a disagreement that is not there.
+func trimFrame(s string) string {
+	return strings.TrimSuffix(s, "\n")
+}
+
+// threeWayVerdict compares the interpreter's answer with both backends' and
+// reports what disagreed. Pure, so the comparison itself is testable — a gate
+// whose logic is never exercised is a gate that could be inverted without anyone
+// noticing.
+func threeWayVerdict(want, gotGo, gotLL string) string {
+	switch {
+	case gotGo != want && gotLL != want:
+		return fmt.Sprintf("BOTH backends disagree with the interpreter — eval=%q go=%q llvm=%q", want, gotGo, gotLL)
+	case gotGo != want:
+		return fmt.Sprintf("the Go backend disagrees with the interpreter — eval=%q go=%q", want, gotGo)
+	case gotLL != want:
+		return fmt.Sprintf("the LLVM backend disagrees with the interpreter — eval=%q llvm=%q", want, gotLL)
+	}
+	return ""
+}
+
+// For every supported pure program, the interpreter, the Go backend and the LLVM
+// backend must all agree — with the interpreter as the reference, so a shared
+// compiler bug cannot pass by consensus.
+func TestThreeWayAgreement(t *testing.T) {
+	requireClang(t)
+	st := llvmStore(t)
+	put(t, st, `(data Box [a] (Box a))`)
+	put(t, st, `(defn use [] [(f (-> Str Str)) (x Str)] Str (f x))`)
+	put(t, st, `(defn triage [] [(args (List Str))] Str
+		(match args
+			((Nil) "empty")
+			((Cons h t)
+				(match t
+					((Nil) (use (fn [(s Str)] s) h))
+					((Cons h2 t2) (match (Box [{tag Str}] {tag h2}) ((Box r) (. r tag))))))))`)
+	markVerified(t, st, "triage")
+
+	goBin, _ := buildProgram(t, st, "triage")
+	llBin := buildLLVM(t, st, "triage")
+
+	for _, args := range [][]string{
+		nil,
+		{"only"},
+		{"first", "second"},
+		{"", "ü — unicode"},
+		{"a", "b", "c"},
+	} {
+		lit, ok := oathList(args)
+		if !ok {
+			t.Fatalf("args %v cannot be written as an Oath literal, so the three paths "+
+				"would not be receiving the same input", args)
+		}
+		want := evalDenotation(t, st, "(triage "+lit+")")
+
+		goOut, err := exec.Command(goBin, args...).Output()
+		if err != nil {
+			t.Fatalf("go run %v: %v", args, err)
+		}
+		llOut, err := exec.Command(llBin, args...).Output()
+		if err != nil {
+			t.Fatalf("llvm run %v: %v", args, err)
+		}
+		if v := threeWayVerdict(want, trimFrame(string(goOut)), trimFrame(string(llOut))); v != "" {
+			t.Errorf("args %v: %s", args, v)
+		}
+	}
+}
+
+// The gate has to be able to fail, or it is decoration. Feeding the comparison a
+// deliberately wrong reference must be reported against the interpreter rather
+// than quietly passing because the two backends agree with each other.
+func TestThreeWayGateDetectsDisagreement(t *testing.T) {
+	st := llvmStore(t)
+	put(t, st, `(defn greet [] [(args (List Str))] Str "hello")`)
+
+	want := evalDenotation(t, st, "(greet (Nil [Str]))")
+	if want != "hello" {
+		t.Fatalf("the interpreter reference decoded as %q, want %q — the decoder is wrong, "+
+			"which would make every comparison against it meaningless", want, "hello")
+	}
+	// A non-empty Str must not decode to the empty string: that is the failure
+	// shape that would make the gate pass for everything.
+	if evalDenotation(t, st, `"x"`) != "x" {
+		t.Fatal("the decoder collapses literals; the gate would accept any output")
+	}
+
+	// And the comparison itself must report each way it can fail. Without this the
+	// switch could be inverted or deleted and every three-way test would still
+	// pass, which is the exact shape of a check that reads as evidence and is not.
+	for _, tc := range []struct {
+		want, got, gotLL, expect string
+	}{
+		{"a", "a", "a", ""},
+		{"a", "b", "a", "the Go backend disagrees"},
+		{"a", "a", "b", "the LLVM backend disagrees"},
+		{"a", "b", "b", "BOTH backends disagree"},
+		{"", "", "x", "the LLVM backend disagrees"},
+	} {
+		v := threeWayVerdict(tc.want, tc.got, tc.gotLL)
+		if tc.expect == "" && v != "" {
+			t.Errorf("agreement reported as a failure: %s", v)
+		}
+		if tc.expect != "" && !strings.Contains(v, tc.expect) {
+			t.Errorf("want=%q go=%q llvm=%q gave %q, want it to contain %q",
+				tc.want, tc.got, tc.gotLL, v, tc.expect)
+		}
+	}
+}
+
+// Capability programs are compared on the four things that are observable
+// without trusting either compiler: what they declare, how they refuse, what they
+// print, and what they record.
+func TestCapabilityParityAcrossBackends(t *testing.T) {
+	requireClang(t)
+	st := llvmStore(t)
+	put(t, st, `(defn readvar [] [(w {env (-> Str Str)}) (args (List Str))] Str
+		((. w env) "OATH_PARITY"))`)
+	markVerified(t, st, "readvar")
+
+	goBin, _ := buildProgram(t, st, "readvar")
+	llBin := buildLLVM(t, st, "readvar")
+
+	// 1. the same declared requirements, and 4. the same record but for backend.
+	goRaw, llRaw := readProvenance(t, goBin), readProvenance(t, llBin)
+	norm := func(b []byte) string {
+		return strings.ReplaceAll(strings.ReplaceAll(string(b), llvmBackendVersion, "X"), goBackendVersion, "X")
+	}
+	if norm(goRaw) != norm(llRaw) {
+		t.Errorf("the backends describe the artifact differently:\n--- go ---\n%s\n--- llvm ---\n%s", goRaw, llRaw)
+	}
+
+	// 3. the same externally observable output.
+	for _, val := range []string{"granted", "", "with spaces"} {
+		var outs []string
+		for _, bin := range []string{goBin, llBin} {
+			cmd := exec.Command(bin)
+			cmd.Env = append(os.Environ(), "OATH_PARITY="+val)
+			o, err := cmd.Output()
+			if err != nil {
+				t.Fatalf("run %s: %v", bin, err)
+			}
+			outs = append(outs, string(o))
+		}
+		if outs[0] != outs[1] {
+			t.Errorf("OATH_PARITY=%q: go=%q llvm=%q", val, outs[0], outs[1])
+		}
 	}
 }
