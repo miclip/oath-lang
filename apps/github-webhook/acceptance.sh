@@ -28,8 +28,14 @@ url="http://127.0.0.1:$port/hook"
 secret="0123456789abcdef0123456789abcdef"
 pid=""
 
+holder=""
+probe=""
+killer=""
 cleanup() {
   [ -n "$pid" ] && kill "$pid" 2>/dev/null
+  [ -n "$holder" ] && kill "$holder" 2>/dev/null
+  [ -n "$probe" ] && kill "$probe" 2>/dev/null
+  [ -n "$killer" ] && kill "$killer" 2>/dev/null
   chmod -R u+rwx "$work" 2>/dev/null || true   # the launch probe leaves a 000 dir
   rm -rf "$work"
 }
@@ -74,24 +80,88 @@ fi
 # The launch gate, before anything is served: an unwritable sink must stop the
 # program starting, not make every write fail silently.
 #
-# BOUNDED, because the failure this probes is "the program started anyway": run
-# in the foreground, a regression means it binds the port and serves forever,
-# and the gate hangs until CI's job timeout instead of reporting the regression
-# it was written to report. A check that cannot fail FAST cannot fail usefully.
+# EVERY LAUNCH PROBE IS BOUNDED, and that is one function rather than three
+# copies of a loop. What these probe is "the program started anyway" — so on a
+# regression the process runs forever, and a foreground invocation hangs
+# `make check-app` until CI's job timeout instead of reporting the very
+# regression it was written to report. **A check that cannot fail FAST cannot
+# fail usefully.** The first probe was fixed for this; the two added later
+# reintroduced it, which is why the pattern is now a function.
+#
+# `&& code=0 || code=$?` rather than a bare `wait`: under `set -e` a wait
+# returning 70 aborts the script before the assignment, and the check reads
+# back an empty string.
+# It BLOCKS on wait and bounds it with a killer, rather than polling `kill -0`:
+# a poll only observes termination once the child is reaped, and whether an
+# unwaited child still answers `kill -0` is shell-dependent — bash reaps it,
+# dash (which is /bin/sh on the CI runner) need not. The polling version was
+# correct here and would have burned the full timeout per probe there, so
+# "bounded" would have meant "always waits the bound".
+launch_code() { # launch_code <env assignments...> -- prints exit code or still-running
+  env "$@" "$work/gh-webhookd" > /dev/null 2>&1 &
+  probe=$!
+  # `>/dev/null` ON THE TIMER, and it is not tidiness. launch_code is called
+  # inside a command substitution, so the timer subshell inherits that pipe —
+  # and killing the subshell leaves its `sleep` holding the write end open, so
+  # the substitution blocks for the full timeout waiting for EOF. Every
+  # SUCCESSFUL probe paid five seconds. Measured: 5.013s for a child that
+  # exited instantly, 0.01s once the timer's stdout is detached.
+  ( sleep 5; kill "$probe" 2>/dev/null ) >/dev/null 2>&1 &
+  killer=$!
+  wait "$probe" 2>/dev/null && lc=0 || lc=$?
+  # `|| true` on the KILL, not only on the wait. On the timeout path the killer
+  # has already fired and exited, so `kill` returns non-zero and `set -e` aborts
+  # the function before it can report — which broke the exact branch this exists
+  # for, silently, while the success path worked. Found by running a program
+  # that never exits and watching the probe print nothing.
+  kill "$killer" 2>/dev/null || true; wait "$killer" 2>/dev/null || true
+  probe=""; killer=""
+  # 143 is SIGTERM — the killer fired, so the program was still running. The
+  # artifact's own exits are 0, 1 and 70, so this cannot collide with one.
+  [ "$lc" = "143" ] && lc="still-running"
+  printf %s "$lc"
+}
+
 mkdir -p "$work/nodir" && chmod 000 "$work/nodir" 2>/dev/null || true
 if [ "$(id -u)" != "0" ]; then
-  GITHUB_WEBHOOK_SECRET="$secret" OATH_EMIT_PATH="$work/nodir/x.log" \
-    OATH_HTTP_ADDR=":$port" "$work/gh-webhookd" > /dev/null 2>&1 &
-  probe=$!
-  code=""
-  i=0; while [ $i -lt 50 ]; do
-    # `&& code=0 || code=$?` — a bare `wait` returning 70 under `set -e` aborts
-    # the script before the assignment, which is how this check first failed.
-    if ! kill -0 "$probe" 2>/dev/null; then wait "$probe" 2>/dev/null && code=0 || code=$?; break; fi
-    i=$((i + 1)); sleep 0.1
-  done
-  if [ -z "$code" ]; then kill "$probe" 2>/dev/null; wait "$probe" 2>/dev/null || true; code="still-running"; fi
-  check "unwritable sink refuses to launch" "70" "$code"
+  check "unwritable sink refuses to launch" "70" \
+        "$(launch_code GITHUB_WEBHOOK_SECRET="$secret" OATH_EMIT_PATH="$work/nodir/x.log" OATH_HTTP_ADDR=":$port")"
+
+  # AND IT REFUSES BEFORE BINDING, which the check above does NOT witness: a
+  # program that bound the port, then resolved capabilities, then exited 70
+  # would satisfy it exactly. Verified by emitting exactly that order — the
+  # check above still passed and this one failed with EADDRINUSE.
+  #
+  # So HOLD THE PORT and see which failure wins. Provisioning first is 70;
+  # binding first is 1. The second case is the CONTROL — without it, "70" could
+  # just mean the program never got as far as either.
+  python3 -c "
+import socket,time,sys
+s=socket.socket(); s.bind(('127.0.0.1',$((port+2)))); s.listen(1)
+sys.stderr.write('held\\n'); sys.stderr.flush(); time.sleep(30)" 2> "$work/held" &
+  holder=$!
+  i=0; while [ $i -lt 50 ] && ! grep -q held "$work/held" 2>/dev/null; do i=$((i+1)); sleep 0.1; done
+
+  # THE HOLDER MUST ACTUALLY HOLD THE PORT. If it never bound, both probes below
+  # would see a FREE port, the control would return 70 instead of 1, and the
+  # pair would read as a timing regression rather than a broken harness. A check
+  # that cannot tell its own setup failed from the defect it hunts is worse than
+  # no check.
+  if grep -q held "$work/held" 2>/dev/null; then
+    check "capabilities resolve BEFORE the port is bound" "70" \
+          "$(launch_code GITHUB_WEBHOOK_SECRET="$secret" OATH_EMIT_PATH="$work/nodir/x.log" OATH_HTTP_ADDR="127.0.0.1:$((port+2))")"
+    check "  ...control: a provisionable sink reaches bind" "1" \
+          "$(launch_code GITHUB_WEBHOOK_SECRET="$secret" OATH_EMIT_PATH="$work/held.log" OATH_HTTP_ADDR="127.0.0.1:$((port+2))")"
+  else
+    printf '  FAIL  %-46s could not hold 127.0.0.1:%s\n' "port-holder setup" "$((port+2))"
+    fail=$((fail + 1))
+  fi
+  # `|| true` on the kill as well as the wait — the same set -e trap as in
+  # launch_code, one branch over. When the holder FAILED to bind it has already
+  # exited, so this kill returns non-zero and aborts the suite before the
+  # remaining checks and the summary. The setup-failure branch printed its FAIL
+  # and then silently took the whole run with it.
+  kill "$holder" 2>/dev/null || true; wait "$holder" 2>/dev/null || true; holder=""
 fi
 chmod 755 "$work/nodir" 2>/dev/null || true
 
