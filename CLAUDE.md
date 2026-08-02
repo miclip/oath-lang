@@ -131,9 +131,9 @@ relaxation.** Do not delete it.
 
 ### THE ORDER, and why #117 moved to last
 
-  1. **#118** — typed lowering, using the byte/text slice the application
-     actually demanded. Directly informed by #120, and the LLVM backend is still
-     small enough to reshape cheaply. That window closes as it grows.
+  1. ~~**#118**~~ — DONE and closed, see below. Do NOT reopen it as "add
+     arithmetic": broadening the backend should require A NEW CONSUMER or a
+     separately stated compiler milestone, not momentum.
   2. **#122** — the handler protocol's header model. A bounded gap on a real
      application path.
   3. **#121** — fix `hex-decode` globally. Same: bounded, and on a real path.
@@ -172,6 +172,35 @@ So the two questions above are habits, and habits only fire if a session reads
 them. The two mechanisms that would make part of this automatic are #130, and
 they are deliberately NOT next: feedback tooling has no closing window, and
 #118's does.
+
+### #118 IS DONE — what the compiler can and cannot do now
+
+> The LLVM backend observes `Str` according to Oath's CODEPOINT semantics while
+> retaining PACKED UTF-8 as an internal representation.
+
+  Bool, Int, packed Str        faithful runtime representations
+  Str matching                 exposes codepoints as Int, exact remainder
+  int64 and scalar subsets     FAIL CLOSED — refused, never wrapped or replaced
+  the verified Def closure     REMAINED SUFFICIENT (4660/4660 subterm types
+                               recoverable; 286/286 polymorphic call sites carry
+                               instantiation in the RAW canonical bytes)
+  a typed lowering IR          NOT REQUIRED — #114's no-IR decision holds, and
+                               now holds against a corpus measurement
+  everything else              explicitly refused and named
+
+STILL REFUSED, deliberately: arithmetic, Rat and Float, Set/Map, dynamic Str
+construction, the handler protocol.
+
+**THE `Str` TAIL IS A VIEW**, and the condition that makes that sound is written
+at the line rather than assumed: immutable buffers with program lifetime permit
+views; shorter-lived storage requires copying. A future runtime change has a
+precise place where its old assumption becomes invalid — and it must change to a
+copy, not to a hope.
+
+Open from this work: **#133** (is Str defined only over Unicode scalar values —
+NORMATIVE, needs SPEC prose and a scoped blind round; the information-loss half
+is already fixed as a backend subset boundary) and **#134** (typed refusal
+reasons instead of prose).
 
 ### #117's scope, for whenever it does start — do not widen it
 
