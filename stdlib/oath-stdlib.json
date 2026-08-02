@@ -744,12 +744,12 @@
     {
       "name": "count-by",
       "artifact": "851d636b947699a11d6748a2c5fcaa1d8fed3f2c725317197813c07b9373c494",
-      "source": "examples/list.oath",
+      "source": "examples/generic.oath",
       "membership": "project-publication",
       "license": "Apache-2.0",
       "standing": {
         "type": "project-authored",
-        "evidence": "authored in this repository (examples/list.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "evidence": "authored in this repository (examples/generic.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
         "source_publication_license": "Apache-2.0"
       },
       "export": true
