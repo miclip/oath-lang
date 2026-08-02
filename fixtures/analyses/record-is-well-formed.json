@@ -1,0 +1,11 @@
+{
+  "name": "record-is-well-formed",
+  "hash": "68e180cd139d042d6242c74169d132be174eb336f9cc1ca96730fe0a84726c62",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

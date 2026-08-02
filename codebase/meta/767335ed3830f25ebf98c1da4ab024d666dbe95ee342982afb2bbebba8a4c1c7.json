@@ -1,0 +1,28 @@
+{
+  "name": "record-under",
+  "prop_names": [
+    "clean-values-are-well-formed",
+    "clean-values-reach-the-record",
+    "a-non-ascii-repository-is-marked-absent"
+  ],
+  "guarantee": {
+    "level": "falsified",
+    "falsified": [
+      "a-non-ascii-repository-is-marked-absent"
+    ]
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "delivery",
+    "event",
+    "repo"
+  ],
+  "confinement": [
+    "",
+    "",
+    ""
+  ]
+}

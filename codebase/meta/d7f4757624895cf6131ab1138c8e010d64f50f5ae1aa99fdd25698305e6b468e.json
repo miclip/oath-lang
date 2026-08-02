@@ -1,0 +1,23 @@
+{
+  "name": "record-field",
+  "prop_names": [
+    "printable-passes-through",
+    "a-tab-is-rejected",
+    "a-newline-is-rejected",
+    "never-contains-a-tab"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "s"
+  ],
+  "confinement": [
+    ""
+  ]
+}

@@ -1,0 +1,4 @@
+✓ prop five-clean-fields-are-well-formed passed 200 cases
+✓ prop six-fields-are-not       passed 200 cases
+✓ prop four-fields-are-not      passed 200 cases
+✓ prop a-newline-is-not         passed 200 cases

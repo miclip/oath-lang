@@ -1,0 +1,13 @@
+{
+  "name": "header-or",
+  "hash": "d585aa88cdfbd223092e4f4b401169667abf05305787c6f7ed4a67bf36c25331",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

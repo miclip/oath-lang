@@ -1,0 +1,15 @@
+{
+  "name": "gh-request",
+  "hash": "3ca7964826852befc657091dbe5fdfb8ac6716f6de63bdff00d28ebba593ba69",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    "",
+    "",
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

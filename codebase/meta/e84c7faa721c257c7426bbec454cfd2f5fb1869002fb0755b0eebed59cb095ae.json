@@ -1,0 +1,22 @@
+{
+  "name": "json-string-value",
+  "prop_names": [
+    "no-quote",
+    "no-tab",
+    "no-newline"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "bs"
+  ],
+  "confinement": [
+    ""
+  ]
+}

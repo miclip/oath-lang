@@ -9,6 +9,14 @@ ROOT="$(cd "$HERE/.." && pwd)"
 BIN="$HERE/target/release/oathrs"
 FIX="$ROOT/fixtures"
 EX="$ROOT/examples"
+# The corpus is not only examples/. `oath fixtures` derives fixtures from the
+# STORE, so anything put into codebase/ gets a fixture — while this script read
+# examples/*.oath alone. Adding the #120 application produced sixteen "verify
+# output differs" failures that were not divergences at all: the Rust kernel had
+# never been shown the source. Two scopes for one corpus, disagreeing silently.
+# SRC is the corpus as the fixture generator sees it; app sources come LAST
+# because they depend on the examples.
+SRC="$(ls "$EX"/*.oath) $(ls "$ROOT"/apps/*/*.oath 2>/dev/null)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -23,14 +31,14 @@ fail=0
 # Check 1: hashes + canonical bytes
 # ---------------------------------------------------------------------------
 echo "== Check 1: hashes + canonical bytes =="
-"$BIN" hash "$EX"/*.oath > "$TMP/hashes.txt" 2> "$TMP/hash.err" \
+"$BIN" hash $SRC > "$TMP/hashes.txt" 2> "$TMP/hash.err" \
   || { echo "  FAIL: hash command errored"; cat "$TMP/hash.err"; fail=1; }
 if diff <(sort "$TMP/hashes.txt") <(sort "$FIX/hashes.txt") > "$TMP/hash.diff"; then
   echo "  PASS: $(wc -l < "$TMP/hashes.txt" | tr -d ' ') definition hashes match"
 else
   echo "  FAIL:"; cat "$TMP/hash.diff"; fail=1
 fi
-"$BIN" canon --out "$TMP/canon" "$EX"/*.oath 2>/dev/null
+"$BIN" canon --out "$TMP/canon" $SRC 2>/dev/null
 # SPEC §10.0a CONF-COVERAGE-FROM-CORPUS: enumerate the CORPUS, not the fixture
 # directory. Iterating the directory defined coverage as "whatever files exist",
 # so a definition whose fixture was missing was not compared, not counted, and
@@ -89,9 +97,9 @@ fi
 # Check 3: the gate
 # ---------------------------------------------------------------------------
 echo "== Check 3: the gate =="
-"$BIN" hash "$EX"/*.oath > /dev/null 2>&1 \
-  && echo "  PASS: whole examples corpus accepted" \
-  || { echo "  FAIL: an example was rejected"; fail=1; }
+"$BIN" hash $SRC > /dev/null 2>&1 \
+  && echo "  PASS: whole corpus accepted" \
+  || { echo "  FAIL: a corpus definition was rejected"; fail=1; }
 rbad=0; rn=0
 for f in "$FIX"/gate/reject/*.oath; do
   rn=$((rn+1))
@@ -109,7 +117,7 @@ done
 # Check 4: verification output (verdicts + counterexamples) byte-for-byte
 # ---------------------------------------------------------------------------
 echo "== Check 4: verification (verify/*.txt) =="
-"$BIN" verify --out "$TMP/verify" "$EX"/*.oath 2>/dev/null
+"$BIN" verify --out "$TMP/verify" $SRC 2>/dev/null
 vbad=0; vn=0
 for f in "$FIX"/verify/*.txt; do
   vn=$((vn+1)); n="$(basename "$f")"
@@ -140,7 +148,7 @@ if [ "$MODE" = "oracle" ]; then
     echo "  FAIL: solver mismatch — fixtures were settled under \"$WANT_SOLVER\", this environment has \"$GOT_SOLVER\""
     fail=1
   fi
-  if "$BIN" scripts --outcomes "$FIX/prove/outcomes.json" "$EX"/*.oath > "$TMP/scripts.txt" 2>/dev/null \
+  if "$BIN" scripts --outcomes "$FIX/prove/outcomes.json" $SRC > "$TMP/scripts.txt" 2>/dev/null \
      && diff "$TMP/scripts.txt" "$FIX/prove/scripts.txt" > "$TMP/scripts.diff"; then
     n=$(( $(wc -l < "$TMP/scripts.txt" | tr -d ' ') - 1 ))
     echo "  PASS: $n direct-attempt scripts byte-identical to prove/scripts.txt"
@@ -207,7 +215,7 @@ echo "        sharding; until then this job may still exceed a CI time limit, an
 echo "        is a scheduling fact rather than a kernel divergence."
 
 _t0=$(date +%s)
-"$BIN" prove --hints "$FIX/prove/outcomes.json" "$EX"/*.oath > "$TMP/prove.txt" 2> "$TMP/prove.err"
+"$BIN" prove --hints "$FIX/prove/outcomes.json" $SRC > "$TMP/prove.txt" 2> "$TMP/prove.err"
 pstat=$?
 _elapsed=$(( $(date +%s) - _t0 ))
 echo "  proving wall time: ${_elapsed}s"
@@ -274,7 +282,7 @@ PY
 # guarantee upgrade (level "proven", proven counts) fed from the prove run.
 # ---------------------------------------------------------------------------
 echo "== Check 5: analyses (analyses/*.json) — full equality =="
-"$BIN" analyze --proofs "$TMP/prove.txt" --out "$TMP/analyze" "$EX"/*.oath 2>/dev/null
+"$BIN" analyze --proofs "$TMP/prove.txt" --out "$TMP/analyze" $SRC 2>/dev/null
 abad=0; an=0
 for f in "$FIX"/analyses/*.json; do
   an=$((an+1)); n="$(basename "$f")"

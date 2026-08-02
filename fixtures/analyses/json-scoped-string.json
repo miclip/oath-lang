@@ -1,0 +1,13 @@
+{
+  "name": "json-scoped-string",
+  "hash": "457b1fa82b61c8294edac51083a4103d0f2faf15c3c4dd89cc7306c3d6e79ad4",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

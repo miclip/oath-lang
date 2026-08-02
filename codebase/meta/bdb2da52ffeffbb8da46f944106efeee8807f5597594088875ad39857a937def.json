@@ -1,0 +1,25 @@
+{
+  "name": "record-under",
+  "prop_names": [
+    "clean-values-are-well-formed",
+    "clean-values-reach-the-record"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "delivery",
+    "event",
+    "repo"
+  ],
+  "confinement": [
+    "",
+    "",
+    ""
+  ]
+}

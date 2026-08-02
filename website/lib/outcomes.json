@@ -107,6 +107,23 @@
       ]
     },
     {
+      "name": "bytes-after",
+      "hash": "1d2158287a2cb49f9dea69c3a0f3f6ad5ad10c365d84304dccc1fe0fb773e044",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "missing-is-none",
+          "proven": false
+        },
+        {
+          "name": "finds-at-head",
+          "proven": false
+        }
+      ]
+    },
+    {
       "name": "bytes-ok",
       "hash": "d2406871baf1bde2e17ad756e82e61cdbcdfeea8d7b74a382306e894c7450e98",
       "level": "proven",
@@ -124,6 +141,61 @@
         {
           "name": "rejects-oversized",
           "proven": true
+        }
+      ]
+    },
+    {
+      "name": "bytes-prefix",
+      "hash": "6254197a78fe26dbe82e70ac0a07763a5360d89e2c95cf52176aad644e3b4ff4",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-prefix",
+          "proven": true
+        },
+        {
+          "name": "nothing-precedes-empty",
+          "proven": true
+        },
+        {
+          "name": "self",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "bytes-str",
+      "hash": "066e843a31cdadd45b1ad6aa0aaaf5e09cf6c33232c466361ec6dd96af50cfba",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-is-empty",
+          "proven": true
+        },
+        {
+          "name": "inverts-str-bytes",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "caps-with",
+      "hash": "848a38c1becdbfff2e84cd1ac0d1dd73c13d492208da766c05e936eda69d07be",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "env-returns-the-secret",
+          "proven": false
+        },
+        {
+          "name": "emit-is-the-sink",
+          "proven": false
         }
       ]
     },
@@ -715,6 +787,168 @@
       ]
     },
     {
+      "name": "gh-record",
+      "hash": "97190d3c6364408388a888800a4ca72716050ef24d5e589d5dff6a00376fee1c",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "has-five-fields",
+          "proven": false
+        },
+        {
+          "name": "declares-its-schema",
+          "proven": false
+        },
+        {
+          "name": "never-empty",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "gh-request",
+      "hash": "3ca7964826852befc657091dbe5fdfb8ac6716f6de63bdff00d28ebba593ba69",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "is-a-post",
+          "proven": false
+        },
+        {
+          "name": "keeps-the-path",
+          "proven": false
+        },
+        {
+          "name": "keeps-the-body",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "gh-sign",
+      "hash": "3e9a3fe48755432bc7b8e566727b4c64de08e26c654fce81a1aceb5ab96ccbac",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "carries-the-algorithm",
+          "proven": false
+        },
+        {
+          "name": "survives-gh-signature",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "gh-signature",
+      "hash": "15a1e2e8a48a809d83f88fb7a847ea054b5236bf2ae22c8dc42066427bd36af4",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "absent-header-is-none",
+          "proven": false
+        },
+        {
+          "name": "unprefixed-is-rejected",
+          "proven": false
+        },
+        {
+          "name": "strips-exactly-the-prefix",
+          "proven": false
+        },
+        {
+          "name": "wrong-length-is-rejected",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "gh-spec-secret",
+      "hash": "64468c9d46cc0bdd71f88d30d96a1b1dfa127a47533becbac35a96d680db4db7",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "is-usable",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "gh-webhook",
+      "hash": "5a436b2b49b3e553ce1e12b5f01e5fecb24ba9cd9f83c8e1b9a08e4ceeb5da39",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 14,
+      "props": [
+        {
+          "name": "status-is-one-of-seven",
+          "proven": false
+        },
+        {
+          "name": "never-leaks-a-body",
+          "proven": false
+        },
+        {
+          "name": "non-post-is-405",
+          "proven": false
+        },
+        {
+          "name": "unusable-secret-refuses-everything",
+          "proven": false
+        },
+        {
+          "name": "unusable-secret-refuses-a-valid-signature",
+          "proven": false
+        },
+        {
+          "name": "unsigned-is-401",
+          "proven": false
+        },
+        {
+          "name": "tampering-is-rejected",
+          "proven": false
+        },
+        {
+          "name": "unprefixed-signature-is-rejected",
+          "proven": false
+        },
+        {
+          "name": "trailing-junk-after-a-valid-digest-is-rejected",
+          "proven": false
+        },
+        {
+          "name": "wrong-path-is-404",
+          "proven": false
+        },
+        {
+          "name": "unreadable-content-type-is-415",
+          "proven": false
+        },
+        {
+          "name": "accepts-github-signed",
+          "proven": false
+        },
+        {
+          "name": "ping-does-not-record",
+          "proven": false
+        },
+        {
+          "name": "a-non-ping-does-record",
+          "proven": false
+        }
+      ]
+    },
+    {
       "name": "greet",
       "hash": "1b4fc08a4e93ad03945596accdaffa83d0b121c1defb2bc40f6ad717dd7b3436",
       "level": "proven",
@@ -753,6 +987,19 @@
       ]
     },
     {
+      "name": "hdr-probe",
+      "hash": "e92093daeacc7e82f11bc88fa0ece4f2070b8ef7ddc858951c0e5bb0ece046f9",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "always-200",
+          "proven": false
+        }
+      ]
+    },
+    {
       "name": "header-first",
       "hash": "f0a62a28b4b450de3b55eb9efba1b9bd864ed5355e3d4f8db0ffe249e8cffb13",
       "level": "proven",
@@ -770,6 +1017,23 @@
         {
           "name": "skips-mismatch",
           "proven": true
+        }
+      ]
+    },
+    {
+      "name": "header-or",
+      "hash": "d585aa88cdfbd223092e4f4b401169667abf05305787c6f7ed4a67bf36c25331",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "absent-yields-fallback",
+          "proven": false
+        },
+        {
+          "name": "present-yields-value",
+          "proven": false
         }
       ]
     },
@@ -1197,6 +1461,48 @@
       ]
     },
     {
+      "name": "json-scoped-string",
+      "hash": "457b1fa82b61c8294edac51083a4103d0f2faf15c3c4dd89cc7306c3d6e79ad4",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "absent-scope-is-marked",
+          "proven": false
+        },
+        {
+          "name": "value-has-no-quote",
+          "proven": false
+        },
+        {
+          "name": "value-has-no-tab",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "json-string-value",
+      "hash": "e84c7faa721c257c7426bbec454cfd2f5fb1869002fb0755b0eebed59cb095ae",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "no-quote",
+          "proven": false
+        },
+        {
+          "name": "no-tab",
+          "proven": false
+        },
+        {
+          "name": "no-newline",
+          "proven": false
+        }
+      ]
+    },
+    {
       "name": "kv-get",
       "hash": "3b157b005950ff71037e3610d6acb501a676d245f5cb1ffb5a30331bf2037bad",
       "level": "proven",
@@ -1588,6 +1894,27 @@
       ]
     },
     {
+      "name": "media-type-is",
+      "hash": "7fd44d4b3b950c8d03b872e2b09bc357c5f48bd563ab425291bf8ffa259aba84",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "exact-matches",
+          "proven": false
+        },
+        {
+          "name": "parameters-match",
+          "proven": false
+        },
+        {
+          "name": "a-longer-type-is-not-a-match",
+          "proven": false
+        }
+      ]
+    },
+    {
       "name": "merge",
       "hash": "be2f6d41596a747870fa0f1ff03ad164941e4bf1a42bcefa6861aea298e052dc",
       "level": "proven",
@@ -1712,6 +2039,31 @@
       ]
     },
     {
+      "name": "no-field-can-inject",
+      "hash": "c54653816be6bdb9b2c14058541190071fb73f87e67694f48dd8fd2ee97388d8",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "tab-cannot-inject",
+          "proven": false
+        },
+        {
+          "name": "newline-cannot-inject",
+          "proven": false
+        },
+        {
+          "name": "carriage-return-cannot-inject",
+          "proven": false
+        },
+        {
+          "name": "no-control-byte-can-inject",
+          "proven": false
+        }
+      ]
+    },
+    {
       "name": "one-two-three",
       "hash": "256d63e2e1c1a435d3715ef59b5181554b54e62ec37cb31717f07c8d1957c5ff",
       "level": "proven",
@@ -1772,6 +2124,27 @@
         {
           "name": "empty",
           "proven": true
+        }
+      ]
+    },
+    {
+      "name": "path-is",
+      "hash": "e5446da128922bb9aa4c5b06303e74ad8469934d1062f13675402d4db5fa4fe2",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "exact-matches",
+          "proven": false
+        },
+        {
+          "name": "query-matches",
+          "proven": false
+        },
+        {
+          "name": "prefix-alone-is-not-a-match",
+          "proven": false
         }
       ]
     },
@@ -2027,6 +2400,77 @@
         {
           "name": "is-identity",
           "proven": true
+        }
+      ]
+    },
+    {
+      "name": "record-field",
+      "hash": "d7f4757624895cf6131ab1138c8e010d64f50f5ae1aa99fdd25698305e6b468e",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "printable-passes-through",
+          "proven": false
+        },
+        {
+          "name": "a-tab-is-rejected",
+          "proven": false
+        },
+        {
+          "name": "a-newline-is-rejected",
+          "proven": false
+        },
+        {
+          "name": "never-contains-a-tab",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "record-is-well-formed",
+      "hash": "68e180cd139d042d6242c74169d132be174eb336f9cc1ca96730fe0a84726c62",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "five-clean-fields-are-well-formed",
+          "proven": false
+        },
+        {
+          "name": "six-fields-are-not",
+          "proven": false
+        },
+        {
+          "name": "four-fields-are-not",
+          "proven": false
+        },
+        {
+          "name": "a-newline-is-not",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "record-under",
+      "hash": "ab81e7a36326e7bd50d6affe99b1e3043a1600d6700ff01839776638d94712af",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "clean-values-are-well-formed",
+          "proven": false
+        },
+        {
+          "name": "clean-values-reach-the-record",
+          "proven": false
+        },
+        {
+          "name": "a-non-ascii-repository-is-marked-absent",
+          "proven": false
         }
       ]
     },
@@ -2457,6 +2901,35 @@
         {
           "name": "up-is-some",
           "proven": true
+        }
+      ]
+    },
+    {
+      "name": "secret-is-usable",
+      "hash": "5365b4a06be5318b3a497de3ff551947d6460883c99f6bb111ec753774425a5c",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "empty-is-not-usable",
+          "proven": false
+        },
+        {
+          "name": "short-is-not-usable",
+          "proven": false
+        },
+        {
+          "name": "non-ascii-is-not-usable",
+          "proven": false
+        },
+        {
+          "name": "latin1-is-not-usable",
+          "proven": false
+        },
+        {
+          "name": "usable-encodes",
+          "proven": false
         }
       ]
     },

@@ -1,0 +1,3 @@
+✓ prop clean-values-are-well-formed passed 200 cases
+✓ prop clean-values-reach-the-record passed 200 cases
+✓ prop a-non-ascii-repository-is-marked-absent passed 200 cases

@@ -1,0 +1,12 @@
+{
+  "name": "gh-webhook",
+  "hash": "5a436b2b49b3e553ce1e12b5f01e5fecb24ba9cd9f83c8e1b9a08e4ceeb5da39",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

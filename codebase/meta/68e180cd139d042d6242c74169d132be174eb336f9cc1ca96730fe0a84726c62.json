@@ -1,0 +1,23 @@
+{
+  "name": "record-is-well-formed",
+  "prop_names": [
+    "five-clean-fields-are-well-formed",
+    "six-fields-are-not",
+    "four-fields-are-not",
+    "a-newline-is-not"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "rec"
+  ],
+  "confinement": [
+    ""
+  ]
+}

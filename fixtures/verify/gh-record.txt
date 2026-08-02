@@ -1,0 +1,3 @@
+✓ prop has-five-fields          passed 200 cases
+✓ prop declares-its-schema      passed 200 cases
+✓ prop never-empty              passed 200 cases

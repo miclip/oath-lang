@@ -1,0 +1,12 @@
+{
+  "name": "caps-with",
+  "hash": "848a38c1becdbfff2e84cd1ac0d1dd73c13d492208da766c05e936eda69d07be",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "escapes",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

@@ -26,6 +26,14 @@ EXAMPLES = list str records arith inferred sort generic merge tree interval queu
 # EXAMPLES loop would fail the build. It is a dependency leaf, so running it last
 # with the other exhibits is safe.
 EXHIBITS = undertested nontotal bad_reverse float
+# THE APPLICATION (#120). It is a corpus member like any other — `oath fixtures`
+# derives fixtures from the STORE, so its definitions are hashed, verified,
+# analysed and cross-checked against the Rust kernel exactly as the examples are.
+# It must therefore be re-puttable from source: a from-scratch rebuild that
+# omitted it would produce a store the committed fixtures no longer describe,
+# which is precisely how rat/convert/circle rotted out of this list once before.
+# Listed AFTER the examples, whose definitions it depends on.
+APPS = apps/github-webhook/webhook.oath apps/github-webhook/hdr-probe.oath
 PROVABLE = length append sum count reverse map filter foldr foldl \
            reverse-onto flatten all any snoc find last init \
            product maximum minimum take-while drop-while count-matching zip zip-with \
@@ -65,6 +73,9 @@ verify: build
 	done
 	@for f in $(EXHIBITS); do \
 		OATH_AUTHOR=$(AUTHOR) $(OATH) put examples/$$f.oath || true; \
+	done
+	@for f in $(APPS); do \
+		OATH_AUTHOR=$(AUTHOR) $(OATH) put $$f || exit 1; \
 	done
 
 # Two passes: pass 2 lets a definition's own pass-1 proofs serve as lemmas
@@ -130,6 +141,19 @@ conformance-score:
 .PHONY: check-fixtures
 check-fixtures:
 	@python3 scripts/check-fixture-integrity.py
+
+# THE APPLICATION (#120). apps/github-webhook is a real dependent of the kernel:
+# it puts definitions, compiles a binary, runs it, and drives it over a socket
+# with an INDEPENDENT sender (openssl computes the HMAC, curl speaks HTTP). A
+# kernel change that breaks compilation, the capability launch gate, the handler
+# adapter or hmac-sha256 fails here rather than in a review.
+#
+# It runs against a COPY of codebase/ — `oath put` is the only way to check a
+# source file and it always appends to the journal, so a gate driven off the
+# committed store would dirty the thing it measures on every run.
+.PHONY: check-app
+check-app: build
+	@apps/github-webhook/acceptance.sh
 
 .PHONY: check-doc-numbers
 check-doc-numbers:

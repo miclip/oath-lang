@@ -1,0 +1,32 @@
+{
+  "name": "gh-webhook",
+  "prop_names": [
+    "unusable-secret-refuses-everything",
+    "unusable-secret-refuses-a-valid-signature",
+    "unsigned-is-401",
+    "status-is-one-of-three",
+    "accepts-github-signed",
+    "tampering-is-rejected",
+    "unprefixed-signature-is-rejected",
+    "never-leaks-a-body"
+  ],
+  "guarantee": {
+    "level": "falsified",
+    "falsified": [
+      "unusable-secret-refuses-everything",
+      "unusable-secret-refuses-a-valid-signature"
+    ]
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "caps",
+    "r"
+  ],
+  "confinement": [
+    "confined",
+    ""
+  ]
+}

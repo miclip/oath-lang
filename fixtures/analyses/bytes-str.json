@@ -1,0 +1,12 @@
+{
+  "name": "bytes-str",
+  "hash": "066e843a31cdadd45b1ad6aa0aaaf5e09cf6c33232c466361ec6dd96af50cfba",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

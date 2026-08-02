@@ -1,0 +1,13 @@
+{
+  "name": "record-under",
+  "hash": "ab81e7a36326e7bd50d6affe99b1e3043a1600d6700ff01839776638d94712af",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

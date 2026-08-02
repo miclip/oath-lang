@@ -31,8 +31,8 @@ and lexicographic induction reach recursion that shrinks a datatype;
 (`replicate`, `range`, `fib`, even a counter inside a datatype field), proving
 their measure laws like `length (replicate n x) == n`. Proven properties become
 a **lemma library**: they are asserted as axioms in later proofs, composing
-bottom-up through the hash graph like every other verdict. 123 definitions are
-fully proven (348 of 427 properties proven overall), including `reverse (reverse xs) == xs` (via the append laws
+bottom-up through the hash graph like every other verdict. 125 definitions are
+fully proven (353 of 498 properties proven overall), including `reverse (reverse xs) == xs` (via the append laws
 and its own antidistribution lemma), insertion sort's complete correctness —
 `output-is-sorted`, `preserves-counts` (the permutation oath), `idempotent`,
 and `reverse-invariant`, the last two through a four-lemma plan (insert

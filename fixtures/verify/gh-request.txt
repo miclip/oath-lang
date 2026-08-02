@@ -1,0 +1,3 @@
+✓ prop is-a-post                passed 200 cases
+✓ prop keeps-the-path           passed 200 cases
+✓ prop keeps-the-body           passed 200 cases

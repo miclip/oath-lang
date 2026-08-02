@@ -1,0 +1,24 @@
+{
+  "name": "path-is",
+  "prop_names": [
+    "exact-matches",
+    "query-matches",
+    "prefix-alone-is-not-a-match"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "want",
+    "got"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

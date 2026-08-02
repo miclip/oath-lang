@@ -1,0 +1,3 @@
+✓ prop no-quote                 passed 200 cases
+✓ prop no-tab                   passed 200 cases
+✓ prop no-newline               passed 200 cases

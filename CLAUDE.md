@@ -34,53 +34,102 @@ output, compiled execution, and deployment under change.
 
 **The next work is to DEPEND on Oath, not to improve it.** The roadmap, in order:
 
-  1. **THE APPLICATION** and **#118** are INDEPENDENT PROBES OF THE SAME BOUNDARY,
-     not a parent and a child. #118 asks what typed lowering actually requires;
-     the application reveals which runtime and datatype features matter in
-     practice. Whichever runs first constrains the second. Two dangers, one on
-     each side: letting the application silently REDESIGN THE LANGUAGE, and
-     letting #118 OPTIMIZE A SLICE NOBODY NEEDS.
-  2. **Mark** — the first external contributor.
+  1. ~~**THE APPLICATION**~~ — DONE, see below. It ran first, so it now
+     constrains #118 rather than the other way round, and it did the thing that
+     was meant to be guarded against in reverse: it did not redesign the
+     language, and it produced a ranked demand list instead.
+  2. **#117**, then **#118** with the slice the application actually demanded.
+  3. **Mark** — the first external contributor.
 
-### THE NEXT SESSION'S INSTRUCTION, concretely — **it is #120**
+### #120 IS DONE — read the friction log before choosing anything
 
-Filed as an issue deliberately. Everything else in the backlog is a legible unit
-of work and an application is not, so "what is next?" answered from the issue list
-would keep returning the wrong thing. #120 makes the right answer the legible one.
+`apps/github-webhook` is a GitHub webhook receiver that verifies
+`X-Hub-Signature-256`, scans the repository out of the signed body, and appends a
+self-describing record to a log `report.sh` consumes. `deliver.sh` signs with
+**openssl** and posts with **curl** — it shares no code with Oath, which makes
+every accepted delivery a real cross-implementation check of `hmac-sha256`. It is
+wired into `make check-app` and CI, and it runs against a COPY of `codebase/`
+because `oath put` is the only way to check a source file and it always writes.
 
-> Turn `examples/webhook.oath` into something another system actually CALLS.
-> Keep a friction log. Extend neither the language nor the protocol on the first
-> pass. Then review the friction log before choosing the datatype and numeric
-> slice for #118.
+The language and the protocol are UNCHANGED. `oath/`, `oathrs/`, `docs/SPEC.md`
+and `examples/` were not touched; the 21 new definitions are the application.
 
-Friction log lives at `docs/experiments/webhook-friction.md` (the repo's existing
-convention for this kind of record). Every time the application wants something
-Oath lacks: write down WHAT was wanted, WHAT the workaround was, and HOW MUCH it
-cost. That turns friction into evidence instead of backlog, and it produces a
-demand-RANKED list of missing capabilities, language features and tooling — a
-real deliverable even if the application itself turns out awkward.
+**`docs/experiments/webhook-friction.md` is the deliverable, and it is ranked.**
+The top four, with what they actually cost:
 
-An EXAMPLE is not an APPLICATION: the difference is whether anything depends on
-it and whether it survives change. By the third modification you will know which
-Oath surfaces protect a decision and which just make the author rehearse facts the
-system already knows.
+  1. **`process_env` grants the environment, not a variable.** Launched with the
+     secret unset, version 1 bound its port and ACCEPTED A DELIVERY FORGED UNDER
+     THE EMPTY KEY. The #114 launch gate did what it promises and it was not
+     enough — it is loud about capability KINDS and silent about capability
+     CONTENT. Six properties passed throughout. **This is #117 arriving as a
+     security bug rather than a design preference, and it is the top item.**
+  2. **The handler protocol has no header model (#122, filed).** `X-GitHub-Event`
+     — what GitHub documents and sends — is not what an Oath handler sees;
+     net/http canonicalizes it to `X-Github-Event`. One backend's normalization
+     is visible in Oath source and nothing propagates it to the author.
+     `apps/github-webhook/hdr-probe.oath` is the runnable witness.
+  3. **No JSON, and no correct bytes→text.** `str-bytes` is PROVEN; its inverse
+     cannot be written correctly, because `Str` is codepoints and a body is
+     bytes and both are the same shape. **#118's datatype slice should be byte
+     lists and text — the numeric demand was one `show-nat`.**
+  4. **The corpus has two scopes.** `oath fixtures` reads the STORE;
+     `oathrs/conformance.sh` and `make verify` read `examples/`. Adding
+     definitions anywhere else produced sixteen confident, wrong divergence
+     reports. Both now enumerate `examples/*.oath` plus `apps/*/*.oath`.
 
-**DO NOT start another protocol feature.** Namespace aliases, more authority
-operations, more receipt machinery, richer manifests, another workflow — these are
-not bad, they are now OPTIMIZATION, and they are what a session naturally reaches
-for because the backlog is full of them.
+Three findings about the INSTRUMENTS, which matter as much: a property passed 200
+generated cases and was false (a tab forging a column — the generator cannot
+reach adversarial byte sequences); strengthening the artifact silently made its
+strongest property vacuous while still reporting `passed 200 cases`; and a
+property whose guard restates the implementation's own predicate is not
+independent evidence — `application/jsonp` passed a `str-prefix` test in both.
 
-THE INSTRUCTION FOR THE APPLICATION, and it is the hard part: *build something you
-would have built in Go six months ago, and do not add infrastructure unless the
-application forces you to.* When the app needs something Oath lacks, WRITE IT DOWN
-AND WORK AROUND IT. The deliverable is partly a list of what an application
-actually demanded — which is worth far more than a language that quietly grew to
-fit one program. "The application forced me to" is a judgement this assistant has
-demonstrably made too generously.
+Also filed from the exercise: **#121** (`hex-decode` keeps the prefix it decoded,
+so `examples/webhook.oath` accepts `<valid digest>zz` while claiming to fail
+closed — filed rather than fixed, because it changes the conformance corpus) and
+**#122** (the header model above).
 
-Note that `examples/webhook.oath` already exists and runs. An EXAMPLE is not an
-APPLICATION: the difference is whether anything depends on it and whether it is
-maintained under change.
+**Next, in order:** #117, then #118 with the slice above, then Mark. Do NOT start
+another protocol feature. #122 is real and is NOT next — it is a spec question
+that only becomes urgent when a second backend implements the handler protocol.
+
+### #117 IS NEXT, and its scope is already narrowed — do not widen it
+
+The question, settled with Michael and written on the issue:
+
+> How does a compiled entry point declare not merely that it MAY read
+> configuration, but that specific configuration MUST exist and satisfy a
+> predicate before launch?
+
+NOT a configuration framework. One concrete requirement, from the application:
+`process_env key GITHUB_WEBHOOK_SECRET, required, non-empty`.
+
+Done means: missing or invalid required configuration prevents the process from
+binding or serving; the failure is a LAUNCH failure; no Oath body executes;
+optional environment access still works for programs that want it; and the
+requirement stays backend-neutral, with Go and LLVM implementing it separately.
+
+**THE MECHANISM ALREADY EXISTS IN BOTH BACKENDS — this is not new machinery.**
+Provision is already allowed to fail and both already exit 70 on it (Go:
+`func() (any, error)`; LLVM: `OVal *fn(char **err)` → `o_require`). `record_sink`
+already USES it — an unwritable `OATH_EMIT_PATH` stops the program starting, and
+`apps/github-webhook/acceptance.sh` demonstrates it. The gap is one line of C:
+
+    OVal *o_cap_env(char **err) { (void)err; return o_closure(cap_env_code, NULL); }
+
+The error channel is there and the provider DISCARDS it, because a `process_env`
+requirement carries no key and no predicate. #117 gives provision something to
+check; it does not invent a way to fail.
+
+**KEEP THE PREDICATE VOCABULARY MINIMAL, and this is the line:** `required` and
+`non-empty` are properties of whether the host supplied the authority the program
+DECLARED. "at least sixteen printable ASCII characters" is a property of what the
+program DOES with it, and admitting that is exactly how this becomes the
+framework it must not be. So #117 will NOT delete `secret-is-usable` from the
+webhook — it makes one class of misconfiguration unreachable rather than merely
+answered, and the length and charset checks stay in the handler. Expecting the
+application to get shorter is the wrong success criterion.
+
 
 ## State of the project
 
@@ -339,6 +388,21 @@ undo the fix, watch it fail with the message you expect, restore. A test never
 observed failing is a hypothesis. Prefer extracting the claimed behaviour into a
 pure function and asserting every outcome, and assert the CONTROL so you know the
 measurement discriminates.
+
+**A FAILURE-PATH TEST IS INCOMPLETE UNTIL THE SUITE PROVES IT CONTINUED PAST THAT
+FAILURE.** Printing `FAIL` is not evidence. Under `set -e` a bare `kill` on an
+already-exited PID, a `wait` that returns non-zero, or a background timer holding
+an inherited pipe will each stop the harness before its own verdict — and the
+run then LOOKS like it stopped at the first problem rather than like it died.
+Four instances of this in one session, every one on a path that only runs when
+something is wrong, every one found by RUNNING that path rather than reading it:
+a bounded probe copied back into its unbounded form at two new call sites; a
+timeout branch that returned nothing because the killer had already exited; a
+timer subshell that made every SUCCESSFUL probe block for the full timeout; and a
+setup-failure branch that printed its FAIL and then took the remaining 28 checks
+with it, silently. So: assert the final summary line, count the checks that ran,
+and make the harness fail LOUDLY when its own setup did not work — a check that
+cannot tell its setup failed from the defect it hunts is worse than no check.
 
 **THE GATE IS THREE-WAY: `oath eval` is the reference.** Never compare one backend
 against the other alone — two identically wrong lowerings agree. Writing the second

@@ -1,0 +1,12 @@
+{
+  "name": "bytes-after",
+  "hash": "1d2158287a2cb49f9dea69c3a0f3f6ad5ad10c365d84304dccc1fe0fb773e044",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

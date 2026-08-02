@@ -1,0 +1,12 @@
+{
+  "name": "path-is",
+  "hash": "e5446da128922bb9aa4c5b06303e74ad8469934d1062f13675402d4db5fa4fe2",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

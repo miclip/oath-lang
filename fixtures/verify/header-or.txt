@@ -1,0 +1,2 @@
+✓ prop absent-yields-fallback   passed 200 cases
+✓ prop present-yields-value     passed 200 cases

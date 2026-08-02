@@ -1,0 +1,12 @@
+{
+  "name": "media-type-is",
+  "hash": "7fd44d4b3b950c8d03b872e2b09bc357c5f48bd563ab425291bf8ffa259aba84",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

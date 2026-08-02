@@ -1,0 +1,3 @@
+✓ prop empty-is-prefix          passed 200 cases
+✓ prop nothing-precedes-empty   passed 200 cases
+✓ prop self                     passed 200 cases

@@ -1,0 +1,23 @@
+{
+  "name": "gh-sign",
+  "prop_names": [
+    "carries-the-algorithm",
+    "survives-gh-signature"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "secret",
+    "body"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}
