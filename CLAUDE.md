@@ -38,8 +38,10 @@ output, compiled execution, and deployment under change.
      constrains #118 rather than the other way round, and it did the thing that
      was meant to be guarded against in reverse: it did not redesign the
      language, and it produced a ranked demand list instead.
-  2. **#117**, then **#118** with the slice the application actually demanded.
-  3. **Mark** — the first external contributor.
+  2. ~~**#117**~~ — its provisioning half shipped as **#126**; the rest is a
+     type-system project and is now LAST. The order lives in the #126 section
+     below, which is the one to read.
+  3. **#118**, **#122**, **#121**, then **Mark**.
 
 ### #120 IS DONE — read the friction log before choosing anything
 
@@ -89,11 +91,64 @@ so `examples/webhook.oath` accepts `<valid digest>zz` while claiming to fail
 closed — filed rather than fixed, because it changes the conformance corpus) and
 **#122** (the header model above).
 
-**Next, in order:** #117, then #118 with the slice above, then Mark. Do NOT start
-another protocol feature. #122 is real and is NOT next — it is a spec question
-that only becomes urgent when a second backend implements the handler protocol.
+**Next, in order:** SUPERSEDED by the #126 section below — #118, #122, #121,
+Mark, then #117/#69. Do NOT start another protocol feature.
 
-### #117 IS NEXT, and its scope is already narrowed — do not widen it
+### #126 IS DONE, and #117 IS NOT NEXT — the order changed, deliberately
+
+**Required values are structural and enforced. Callable authority exists but
+remains coarse. The next compiler question is typed byte/text lowering, not
+another capability lifecycle mechanism.**
+
+`#126` (merged) split the provisioning half out of #117. A capability-record
+field whose type is a VALUE rather than a function is a required value: the host
+must supply it before any Oath code runs, or the program does not start.
+
+    (defn gh-webhook [] [(caps {emit (-> Str Str) secret Str}) (r Request)] Response
+
+THE IDENTITY STATEMENT, worth preserving exactly:
+
+> Required launch data is tamper-evident because it is expressed in the
+> capability record's field types, and those types already participate in
+> artifact identity.
+
+No side manifest, no deploy-time assertion, no new identity mechanism.
+`{env}` hashes to #160db1993221 and `{env emit}` to #7db989101eeb; nothing had
+to be added for this to be tamper-evident.
+
+THE ARCHITECTURAL FINDING is the confinement repair, not the feature:
+
+> "Capability record" was accidentally modeled as "record whose fields are all
+> authority-bearing functions."
+
+Value fields exposed it — every use of one was reported as an escape and `oath
+build` refused to hand the program the real world. The repair distinguishes by
+TYPE: a projected function is authority and still subject to escape analysis; a
+projected non-function is data. **The surviving control — a bare function
+projection still ESCAPES — is what makes that a correction rather than a
+relaxation.** Do not delete it.
+
+### THE ORDER, and why #117 moved to last
+
+  1. **#118** — typed lowering, using the byte/text slice the application
+     actually demanded. Directly informed by #120, and the LLVM backend is still
+     small enough to reshape cheaply. That window closes as it grows.
+  2. **#122** — the handler protocol's header model. A bounded gap on a real
+     application path.
+  3. **#121** — fix `hex-decode` globally. Same: bounded, and on a real path.
+  4. **Mark** — the first external contributor.
+  5. **#117 / #69** — scoped authority (`http_client(host = ...)`).
+
+**#117 is no longer blocking anything.** It was urgent when it was the only way
+to close the webhook's fail-open; #126 closed that structurally, and what remains
+is a much larger type-system project. It is important and it is not next.
+
+**MARK COMES BEFORE ANOTHER LARGE SEMANTIC EXPANSION.** Scoped authority risks
+becoming the next long infrastructure branch unless a real user or application
+demands a concrete scope first — which is the Phase 4 lesson arriving again, at
+the exact point where the backlog makes the wrong answer look like the plan.
+
+### #117's scope, for whenever it does start — do not widen it
 
 The question, settled with Michael and written on the issue:
 
