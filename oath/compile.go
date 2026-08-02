@@ -517,6 +517,41 @@ func emitProgram(st *Store, prog *CompiledProgram) (string, error) {
 // cannot supply is refused before any Oath code runs, so that case never reaches
 // this program as a value at all.
 const oathCapFailure = ""
+
+// oathStrCons packs one Str element, or REFUSES — it never substitutes.
+//
+// A backend subset boundary, NOT a claim that the value is illegal Oath (#133
+// asks that question and is open). This backend packs Str as UTF-8, and UTF-8
+// encodes exactly the Unicode scalar values. Everything outside them has no
+// injective encoding here.
+//
+// What it replaces was string(rune(n)), which silently yields U+FFFD for a
+// negative value, a surrogate, or anything above 0x10FFFF — so SCons -1 SNil,
+// SCons 55296 SNil and SCons 1114112 SNil all printed the same three bytes.
+// Three distinct values, one output, no constructor inverse. Both native
+// backends did it, so they agreed with each other and disagreed with the
+// reference, and the three-way gate stayed green.
+func oathStrCons(cp *big.Int, rest string) string {
+	if !cp.IsInt64() {
+		oathRefuseStrElement(cp.String())
+	}
+	n := cp.Int64()
+	switch {
+	case n < 0:
+		oathRefuseStrElement(cp.String() + " (negative)")
+	case n > 0x10FFFF:
+		oathRefuseStrElement(cp.String() + " (above the maximum scalar 0x10FFFF)")
+	case n >= 0xD800 && n <= 0xDFFF:
+		oathRefuseStrElement(cp.String() + " (a surrogate, 0xD800..0xDFFF)")
+	}
+	return string(rune(n)) + rest
+}
+
+func oathRefuseStrElement(what string) {
+	panic("oath: this backend cannot encode Str element " + what +
+		": Str is packed as UTF-8, which encodes only Unicode scalar values. " +
+		"Refusing rather than substituting U+FFFD, which would make distinct Str values identical.")
+}
 `)
 	e.b.WriteString(`
 // oBytes reads a (List Int) value as raw bytes; oList rebuilds one. Elements
@@ -1195,7 +1230,7 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 				return `any("")`, nil
 			}
 			// SCons Int Str: fields[0] = codepoint, fields[1] = rest (a Go string)
-			return fmt.Sprintf("any(string(rune(%s.(*big.Int).Int64())) + %s.(string))", parts[0], parts[1]), nil
+			return fmt.Sprintf("any(oathStrCons(%s.(*big.Int), %s.(string)))", parts[0], parts[1]), nil
 		}
 		// Set/Map values are native osets/omaps: the MkSet/MkMap constructor wraps
 		// a list, so build the native map from it (keeping the representation

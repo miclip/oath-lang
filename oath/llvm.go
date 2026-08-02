@@ -244,7 +244,39 @@ func (e *llvmEmitter) strLiteral(t *Term) (string, bool) {
 	if !t.Args[0].Int.IsInt64() {
 		return "", false
 	}
+	// A BACKEND SUBSET BOUNDARY, not a claim that the value is illegal Oath —
+	// #133 asks that question and is open. This backend packs Str as UTF-8,
+	// which encodes exactly the Unicode scalar values; outside them there is no
+	// injective encoding here, and the previous `string(rune(n))` silently
+	// produced U+FFFD, so three distinct Str values folded to identical bytes.
+	if !isUnicodeScalar(t.Args[0].Int.Int64()) {
+		return "", false
+	}
 	return string(rune(t.Args[0].Int.Int64())) + rest, true
+}
+
+// isUnicodeScalar reports whether n is encodable as UTF-8: 0..0x10FFFF, minus
+// the surrogate range, which UTF-8 does not encode.
+func isUnicodeScalar(n int64) bool {
+	return n >= 0 && n <= 0x10FFFF && !(n >= 0xD800 && n <= 0xDFFF)
+}
+
+// nonScalarStrElement returns the first Str element this backend cannot encode,
+// so the refusal can NAME it instead of reporting the generic non-constant
+// reason — two different repairs, and an operator should not have to guess.
+func nonScalarStrElement(t *Term, strHash string) (int64, bool) {
+	for t != nil && t.K == "ctor" && t.Hash == strHash && len(t.Args) == 2 {
+		if t.Args[0].K == "int" && t.Args[0].Int != nil {
+			if !t.Args[0].Int.IsInt64() {
+				return 0, false
+			}
+			if n := t.Args[0].Int.Int64(); !isUnicodeScalar(n) {
+				return n, true
+			}
+		}
+		t = &t.Args[1]
+	}
+	return 0, false
 }
 
 // resolveStrCtors records SNil/SCons for this store's Str and checks their shape,
@@ -383,6 +415,13 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 			return v, nil
 		}
 		if t.Hash == e.strHash && e.strHash != "" {
+			if n, bad := nonScalarStrElement(t, e.strHash); bad {
+				return "", llvmUnsupported(fmt.Sprintf(
+					"the Str element %d — this backend packs Str as UTF-8, which encodes only "+
+						"Unicode scalar values (0..0x10FFFF, excluding surrogates 0xD800..0xDFFF). "+
+						"Refusing rather than substituting U+FFFD, which would make distinct Str "+
+						"values identical", n))
+			}
 			return "", llvmUnsupported("a Str built from non-constant parts")
 		}
 		return e.build(t.Idx, t.Args, env, depth, self)

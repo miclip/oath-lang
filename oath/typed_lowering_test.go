@@ -417,3 +417,99 @@ func TestOutOfRangeIntIsRefusedNotWrapped(t *testing.T) {
 		t.Errorf("refused an in-range Int literal: %v", err)
 	}
 }
+
+// PACKING A Str ELEMENT IS INJECTIVE OR IT IS REFUSED — never substituted.
+//
+// This is a BACKEND SUBSET BOUNDARY, not a claim that the value is illegal
+// Oath. #133 asks the normative question — is Str defined only over Unicode
+// scalar values, or can it hold arbitrary integers under some non-UTF-8
+// canonical representation — and it is open. The interpreter remains the
+// semantic reference and is ALLOWED to disagree here, because the backend is
+// explicitly refusing an unsupported case rather than returning a wrong value.
+//
+// What was there before: `string(rune(n))`, which yields U+FFFD for a negative,
+// a surrogate, or anything above 0x10FFFF. So `SCons -1 SNil`, `SCons 55296
+// SNil` and `SCons 1114112 SNil` all printed `ef bf bd` — three distinct values,
+// one output, no constructor inverse. BOTH native backends did it, so they
+// agreed with each other and disagreed with the reference, and the three-way
+// gate stayed green throughout. Two identically wrong lowerings agree.
+//
+// Note these are INT-TO-Str CONSTRUCTION cases, not malformed UTF-8 input: no
+// malformed byte sequence exists yet, and the defect is in choosing how to
+// encode a mathematical Int.
+func TestStrElementIsPackedInjectivelyOrRefused(t *testing.T) {
+	st := llvmStore(t)
+
+	// Both directions. The accepted cases are the control: without them,
+	// "refuses non-scalars" would be satisfied by refusing everything.
+	for _, ok := range []struct {
+		name string
+		cp   string
+		want string
+	}{
+		{"sc-ascii", "65", "A"},          // 41
+		{"sc-latin", "195", "Ã"},    // c3 83 — U+00C3, NOT the byte 0xC3
+		{"sc-max", "1114111", "\U0010ffff"}, // the largest scalar, 0x10FFFF
+	} {
+		put(t, st, `(defn `+ok.name+` [] [(args (List Str))] Str (SCons `+ok.cp+` (SNil)))`)
+		markVerified(t, st, ok.name)
+		bin, _ := buildProgram(t, st, ok.name)
+		out, err := exec.Command(bin).Output()
+		if err != nil {
+			t.Fatalf("%s: run: %v", ok.name, err)
+		}
+		if got := strings.TrimRight(string(out), "\n"); got != ok.want {
+			t.Errorf("%s packed % x, want % x", ok.name, got, ok.want)
+		}
+		prog, err := planProgram(st, ok.name)
+		if err != nil {
+			t.Fatalf("%s: plan: %v", ok.name, err)
+		}
+		if _, err := emitLLVM(st, prog); err != nil {
+			t.Errorf("llvm-ir/1 refused the encodable Str element %s: %v", ok.cp, err)
+		}
+	}
+
+	// Each non-scalar CLASS refused, and refused BY NAME — so three refused
+	// inputs produce three distinguishable messages and cannot collapse to one
+	// output the way they previously collapsed to one string.
+	seen := map[string]string{}
+	for _, bad := range []struct{ name, cp, why string }{
+		{"sc-neg", "-1", "negative"},
+		{"sc-surrogate-lo", "55296", "0xD800"},
+		{"sc-surrogate-hi", "57343", "0xDFFF"},
+		{"sc-above-max", "1114112", "0x110000"},
+	} {
+		put(t, st, `(defn `+bad.name+` [] [(args (List Str))] Str (SCons `+bad.cp+` (SNil)))`)
+		markVerified(t, st, bad.name)
+		prog, err := planProgram(st, bad.name)
+		if err != nil {
+			t.Fatalf("%s: plan: %v", bad.name, err)
+		}
+		_, err = emitLLVM(st, prog)
+		if err == nil {
+			t.Errorf("llvm-ir/1 lowered the non-scalar Str element %s (%s) — it must refuse, "+
+				"because substituting U+FFFD makes distinct Str values identical", bad.cp, bad.why)
+			continue
+		}
+		if !strings.Contains(err.Error(), bad.cp) {
+			t.Errorf("%s: refused without naming the element: %v", bad.name, err)
+		}
+		if prev, dup := seen[err.Error()]; dup {
+			t.Errorf("%s and %s produce the SAME refusal message — the whole point is that "+
+				"distinct inputs stay distinguishable", prev, bad.name)
+		}
+		seen[err.Error()] = bad.name
+
+		// The Go backend encodes at RUNTIME, so its refusal is there. It must
+		// still be a refusal and not a substitution.
+		gbin, _ := buildProgram(t, st, bad.name)
+		out, _ := exec.Command(gbin).CombinedOutput()
+		if strings.Contains(string(out), "�") {
+			t.Errorf("%s: go-emit/2 substituted U+FFFD instead of refusing", bad.name)
+		}
+		if !strings.Contains(string(out), "cannot encode Str element") {
+			t.Errorf("%s: go-emit/2 did not refuse; output was %q", bad.name, string(out))
+		}
+	}
+}
