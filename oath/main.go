@@ -419,6 +419,12 @@ func main() {
 		keyFile := os.Getenv("OATH_KEY")
 		dryRun, jsonOut, yes := false, false, false
 		license := ""
+		// OATH_NAMESPACE, then --namespace, then the client config. The config has
+		// documented `namespace` as "a local DEFAULT for names this client
+		// publishes" since it was written, and nothing read it — a setting that
+		// silently does nothing is worse than an absent one, because it is
+		// indistinguishable from a setting that works.
+		namespace := os.Getenv("OATH_NAMESPACE")
 		kmsKey := os.Getenv("OATH_KMS_KEY")
 		var file string
 		rest := args[1:]
@@ -432,6 +438,9 @@ func main() {
 				i++
 			case rest[i] == "--kms-key" && i+1 < len(rest):
 				kmsKey = rest[i+1]
+				i++
+			case rest[i] == "--namespace" && i+1 < len(rest):
+				namespace = rest[i+1]
 				i++
 			case rest[i] == "--license" && i+1 < len(rest):
 				license = rest[i+1]
@@ -450,12 +459,15 @@ func main() {
 		// than decorative. Precedence is flag > env > config, and `oath config` reports
 		// which one won — a publication going somewhere unexpected is exactly when the
 		// SOURCE of a setting matters more than its value.
-		if cfg, _, cerr := loadClientConfig(); cerr == nil {
+		if cfg, _, cerr := loadClientConfig(); cerr == nil && cfg != nil {
 			if endpoint == "" {
 				endpoint = cfg.Registry
 			}
 			if keyFile == "" {
 				keyFile = cfg.Key
+			}
+			if namespace == "" {
+				namespace = cfg.Namespace
 			}
 		}
 		// A KMS key satisfies the signing requirement exactly as a file does; the
@@ -470,7 +482,7 @@ func main() {
 		if kmsKey != "" {
 			keyFile = ""
 		}
-		cmdPublish(st, endpoint, keyFile, kmsKey, file, license, dryRun, jsonOut, yes)
+		cmdPublish(st, endpoint, keyFile, kmsKey, file, license, namespace, dryRun, jsonOut, yes)
 	case "store-check":
 		// SPEC-adjacent, #100: every committed metadata record must be exactly what
 		// the CANONICAL encoder produces. Uses the kernel's own encodeMeta rather
@@ -1211,7 +1223,7 @@ func remoteCapableList() string {
 // parsers are hand-written switches, so there is nothing to introspect, and a
 // table plus a test is what makes gaining or losing a flag a deliberate edit.
 var knownFlags = map[string]map[string]bool{
-	"publish":   set("--remote", "--key", "--kms-key", "--license", "--dry-run", "--json", "--yes", "-y"),
+	"publish":   set("--remote", "--key", "--kms-key", "--license", "--namespace", "--dry-run", "--json", "--yes", "-y"),
 	"put":       set("--remote", "--key", "--author", "--context", "--json"),
 	"reserve":   set("--remote", "--key", "--kms-key", "--dry-run", "--yes", "-y"),
 	"delegate":  set("--remote", "--key", "--kms-key", "--to", "--dry-run", "--yes", "-y"),

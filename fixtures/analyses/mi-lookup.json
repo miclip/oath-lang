@@ -8,7 +8,6 @@
     ""
   ],
   "mutants_total": 5,
-  "level": "proven",
-  "cases": 200,
-  "proven": 1
+  "level": "tested",
+  "cases": 200
 }

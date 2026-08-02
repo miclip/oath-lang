@@ -9,7 +9,6 @@
   ],
   "mutants_killed": 84,
   "mutants_total": 176,
-  "mutation_campaign": "4c889f84314b18bd24b9e85616a5d4ae36ace0238480e75cffe62fafaad2b950",
   "level": "tested",
   "cases": 200
 }

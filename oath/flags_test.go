@@ -9,7 +9,7 @@ import "testing"
 func TestKnownFlagsCoverWhatCommandsParse(t *testing.T) {
 	// Flags that MUST be known, or a working invocation starts being refused.
 	for cmd, flags := range map[string][]string{
-		"publish":   {"--key", "--kms-key", "--license", "--remote", "--dry-run", "-y"},
+		"publish":   {"--key", "--kms-key", "--license", "--namespace", "--remote", "--dry-run", "-y"},
 		"reserve":   {"--key", "--dry-run", "-y"},
 		"transfer":  {"--to", "--recipient-key", "--key", "--dry-run", "-y"},
 		"authority": {"--remote", "--key", "--kms-key"},
@@ -23,7 +23,7 @@ func TestKnownFlagsCoverWhatCommandsParse(t *testing.T) {
 	}
 	// Flags that must NOT be known — each one was, or could be, mistaken for real.
 	for cmd, flags := range map[string][]string{
-		"publish": {"--name", "--namespace", "--author"},
+		"publish": {"--name", "--author"},
 		"reserve": {"--to"},
 	} {
 		for _, f := range flags {

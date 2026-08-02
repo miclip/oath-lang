@@ -6,9 +6,6 @@
   "confinement": [
     ""
   ],
-  "mutants_killed": 4,
-  "mutants_total": 4,
-  "mutation_campaign": "d55145698904db043bdc44272ee023509867fe2a56397875230c192640d7ea9f",
   "level": "proven",
   "cases": 200,
   "proven": 3

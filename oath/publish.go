@@ -71,10 +71,24 @@ func indentBytes(s string) string {
 	return out
 }
 
-// buildPublishPlan derives the envelope for publishing src under its own declared
-// name, resolving parent and revision from the REMOTE registry's journal (the
-// authority on what is currently bound) while hashing against the LOCAL store.
-func buildPublishPlan(local *Store, endpoint, pubHex, src, license string) (publishPlan, pubEnvelope, error) {
+// buildPublishPlan derives the envelope for publishing src, resolving parent and
+// revision from the REMOTE registry's journal (the authority on what is currently
+// bound) while hashing against the LOCAL store.
+//
+// NAMESPACE IS A PUBLICATION-TIME DECISION, applied as a PREFIX to the name the
+// source declares. `reverse` published under `alice` becomes `alice/reverse`, and
+// the source stays clean — a definition that had to declare its own prefix would
+// carry it through every self-reference, which is how writing
+// `(sandbox/transfer-example x)` inside its own property came about.
+//
+// A PREFIX RATHER THAN AN OVERRIDE. `--name` was the obvious flag and is the wrong
+// one: it creates two sources of truth for the name, the source saying one thing
+// and the flag another, with nothing to say which wins. A prefix COMPOSES — there
+// is exactly one declared name, and the namespace says where it goes.
+//
+// Identity is untouched either way: the name is metadata, and the artifact hash is
+// the same definition wherever it is bound.
+func buildPublishPlan(local *Store, endpoint, pubHex, src, license, namespace string) (publishPlan, pubEnvelope, error) {
 	var zero publishPlan
 	forms, err := parseForms(src)
 	if err != nil {
@@ -87,6 +101,12 @@ func buildPublishPlan(local *Store, endpoint, pubHex, src, license string) (publ
 	if err != nil {
 		return zero, pubEnvelope{}, err
 	}
+	qualified, nerr := applyNamespace(meta.Name, namespace)
+	if nerr != nil {
+		return zero, pubEnvelope{}, nerr
+	}
+	meta.Name = qualified
+
 	// TYPECHECK BEFORE HASHING. checkDef MUTATES the definition — it resolves and
 	// normalises types in place — so identity is the hash of the TYPECHECKED AST,
 	// not the merely elaborated one. apiPut runs checkDef before storing, so a
@@ -143,7 +163,7 @@ func elabForm(st *Store, f sx) (*Def, *Meta, error) {
 // dryRun stops after showing the plan, so an author (or a script) can inspect the
 // exact bytes without a key ever being used. jsonOut emits the plan
 // machine-readably for a caller that wants to check the bytes programmatically.
-func cmdPublish(local *Store, endpoint, keyPath, kmsKey, file, license string, dryRun, jsonOut, assumeYes bool) {
+func cmdPublish(local *Store, endpoint, keyPath, kmsKey, file, license, namespace string, dryRun, jsonOut, assumeYes bool) {
 	src, err := os.ReadFile(file)
 	if err != nil {
 		fail(err)
@@ -164,7 +184,7 @@ func cmdPublish(local *Store, endpoint, keyPath, kmsKey, file, license string, d
 	pubHex := hex.EncodeToString(pubRaw)
 	clientSigner, clientPub = signer, pubHex
 
-	plan, env, err := buildPublishPlan(local, endpoint, pubHex, string(src), license)
+	plan, env, err := buildPublishPlan(local, endpoint, pubHex, string(src), license, namespace)
 	if err != nil {
 		fail(err)
 	}
@@ -260,4 +280,30 @@ func confirm(prompt string) bool {
 		return false
 	}
 	return s == "y" || s == "Y" || s == "yes"
+}
+
+
+// applyNamespace prefixes a declared name with a publication-time namespace.
+//
+// Separated from buildPublishPlan so the rule is testable without a registry:
+// the plan resolves parent and revision remotely, so exercising it needs a live
+// endpoint, and a naming rule that can only be checked against production is a
+// rule nobody checks.
+//
+// `alice` and `alice/*` mean the same thing. People type the reservation spelling
+// from muscle memory, and two spellings that silently publish to different places
+// is the sort of difference that is only noticed after the name is permanent.
+func applyNamespace(declared, namespace string) (string, error) {
+	if namespace == "" {
+		return declared, nil
+	}
+	ns := strings.TrimSuffix(namespace, "/*")
+	if strings.Contains(declared, "/") {
+		return "", fmt.Errorf("the definition already declares a namespace (%q) and --namespace says %q: "+
+			"a name has ONE source of truth. Remove the prefix from the source, or drop --namespace", declared, ns)
+	}
+	if err := validNamespacePattern(ns + "/*"); err != nil {
+		return "", fmt.Errorf("--namespace %q: %w", ns, err)
+	}
+	return ns + "/" + declared, nil
 }

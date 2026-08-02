@@ -94,6 +94,20 @@ oath publish --license Apache-2.0 alice/sort.oath --dry-run
 oath publish --license Apache-2.0 alice/sort.oath
 ```
 
+Publish under a namespace without putting the prefix in your source:
+
+```
+oath config namespace=alice          # once
+oath publish --license Apache-2.0 sort.oath        # binds alice/sort
+oath publish --license Apache-2.0 --namespace team sort.oath   # binds team/sort
+```
+
+`--namespace` is a **prefix**, not a rename. The source declares one name and the
+namespace says where it goes, so a recursive definition never has to repeat the
+prefix inside its own body. `alice` and `alice/*` mean the same thing. If the
+source already declares a prefix AND you pass `--namespace`, publication is
+refused — a name has one source of truth.
+
 One definition per publication — a single signature must not cover several
 independent name transitions — and dependencies must be published before the
 things that use them.

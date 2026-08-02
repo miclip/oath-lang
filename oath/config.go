@@ -37,7 +37,11 @@ type clientConfig struct {
 	// config file is read by tooling, copied between machines, and pasted into bug
 	// reports, none of which a private key should survive.
 	Key string `json:"key,omitempty"`
-	// Namespace is the default prefix for names this client publishes. A LOCAL
+	// Namespace is the default prefix for names this client publishes, applied by
+	// `oath publish` and overridable per-invocation with --namespace. It was
+	// documented and unread for some time — a setting that silently does nothing
+	// is worse than an absent one, since it is indistinguishable from one that
+	// works. A LOCAL
 	// default only — it confers no ownership of that prefix anywhere.
 	Namespace string `json:"namespace,omitempty"`
 	// Author is an optional label for unsigned local puts. Ignored by a registry when
