@@ -237,7 +237,10 @@ THE MOMENT IT HAPPENED? (DESIGN.md, four categories)
 GitHub issues on miclip/oath-lang. Closed as of 2026-07: team store & policy,
 conformance + CI, O1 identity, prover fixpoint, stateful worlds, and #14 (the
 live registry above). Open research projects, each its own session: **#13**
-(compiler backend), **#65** (discovery roadmap), **#66** (delegated token minting
+(compiler backend — CLOSED, split into **#114** verified native entry points and
+**#115** native optimization backend; #114 first, and its architectural constraint
+is pinned on the issue: no language or capability semantics may be defined in Go
+terms), **#65** (discovery roadmap), **#66** (delegated token minting
 + authorized-key registration — an opt-in CONSTRAINT on onboarding, not a
 prerequisite for it; the live registry has no allowlist and writes are open to any
 signing key). Read closed issues + commit messages for the design reasoning.
