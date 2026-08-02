@@ -319,7 +319,11 @@ output, compiled execution, and deployment under change.
      letting #118 OPTIMIZE A SLICE NOBODY NEEDS.
   2. **Mark** — the first external contributor.
 
-### THE NEXT SESSION'S INSTRUCTION, concretely
+### THE NEXT SESSION'S INSTRUCTION, concretely — **it is #120**
+
+Filed as an issue deliberately. Everything else in the backlog is a legible unit
+of work and an application is not, so "what is next?" answered from the issue list
+would keep returning the wrong thing. #120 makes the right answer the legible one.
 
 > Turn `examples/webhook.oath` into something another system actually CALLS.
 > Keep a friction log. Extend neither the language nor the protocol on the first
