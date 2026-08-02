@@ -215,6 +215,31 @@ The asymmetry is the point, and it is the one the protocol exists to make you
 feel: publishing is one command, and permanence is the guarantee. If a name is
 not worth defending in a year, do not bind it.
 
+## The compiler boundary (#114, closed 2026-08-02)
+
+`oath/program.go` is BACKEND-NEUTRAL and `oath/compile.go` is the Go backend. The
+dependency runs one way — Oath semantics → neutral requirements → backend
+provider — and `oath/boundary_test.go` enforces it by resolving every identifier
+to its declaring file (bindings, not names: a backend METHOD on a shared type is a
+dependency; a same-spelled local is not).
+
+- A capability record field denotes a KIND (`http_request`, `process_env`,
+  `file_read`, `record_sink`). Backends supply kinds. **No new language or
+  capability semantics may be defined in terms of Go constructs** — when adding to
+  `compile.go`, ask whether you are describing Oath or describing Go.
+- There is deliberately NO expression IR: the neutral representation of a body is
+  the verified `Def` closure. Typed IR and monomorphisation are #115.
+- Every declared requirement resolves exactly once before launch or the program
+  exits 70; undeclared authority is ABSENT from the binary (imports are
+  requirement-driven), not merely unused.
+- `oath provenance <file>` reads an embedded canonical manifest without executing
+  the artifact and without opening a store. It is UNSIGNED — evidence about a
+  cooperative artifact, not attestation (#116).
+
+TWO KNOWN LIMITATIONS, carried forward so "backend-neutral" is not mistaken for
+"semantically complete": the capability vocabulary is global and name-based (#117),
+and the manifest is not bound to the bytes it describes (#116).
+
 ## Before adding anything to the protocol
 
 Ask which of four concerns a proposal belongs to — they now evolve
@@ -236,11 +261,12 @@ THE MOMENT IT HAPPENED? (DESIGN.md, four categories)
 
 GitHub issues on miclip/oath-lang. Closed as of 2026-07: team store & policy,
 conformance + CI, O1 identity, prover fixpoint, stateful worlds, and #14 (the
-live registry above). Open research projects, each its own session: **#13**
-(compiler backend — CLOSED, split into **#114** verified native entry points and
-**#115** native optimization backend; #114 first, and its architectural constraint
-is pinned on the issue: no language or capability semantics may be defined in Go
-terms), **#65** (discovery roadmap), **#66** (delegated token minting
+live registry above), and **#114** (verified native entry points — effects stage 4;
+see "The compiler boundary" below). Open research projects, each its own session:
+**#115** (native optimization backend: typed IR, monomorphisation, LLVM), **#117**
+(narrowed capability requirements — deliberately NOT part of #115, so a second
+backend is not hostage to an effects-language redesign), **#116** (signed
+provenance attestation), **#65** (discovery roadmap), **#66** (delegated token minting
 + authorized-key registration — an opt-in CONSTRAINT on onboarding, not a
 prerequisite for it; the live registry has no allowlist and writes are open to any
 signing key). Read closed issues + commit messages for the design reasoning.
