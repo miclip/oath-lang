@@ -19,7 +19,8 @@ by inspecting them.
   Phase 1  Can AI own software?                   registry, proofs, trust
   Phase 2  Can the trust model survive reality?   authority, delegation, CI, transfer
   Phase 3  Can the implementation be replaced?    Go backend, LLVM backend, the boundary
-  Phase 4  Can someone build software and FORGET they are using Oath?   <- here
+  Phase 4  Can someone build software and FORGET they are using Oath?
+  Phase 5  Can the compiler FAITHFULLY OBSERVE the language?             <- here
 
 PHASE 4 IS NOT ABOUT HIDING EVIDENCE. The target, stated precisely: **guarantees
 stay LOUD at trust boundaries and become QUIET during ordinary composition.** A
@@ -31,6 +32,52 @@ EVIDENCE IS DECISION-RELEVANT VERSUS MERELY REPETITIVE. The webhook application
 is a good instrument because it crosses several of those boundaries naturally:
 ingress, signature verification, capability injection, outbound action, structured
 output, compiled execution, and deployment under change.
+
+### PHASE 5 (2026-08-02) — the question changed, and it is a different project
+
+At the start of this session Oath's question was *can the infrastructure support
+trustworthy software?* By the end it had become:
+
+> **Can the compiler faithfully observe the language?**
+
+The milestones tell it: **#114** the backend-neutral boundary, **#115** a second
+backend, **#126** launch-provisioned values, **#118** faithful observation of
+`Str`. **NONE OF THEM ADDED EXPRESSIVE POWER.** Every one made semantics that
+already existed observable and independently implementable.
+
+That is exactly why #118 must not be reopened for arithmetic. It would change
+the question from *is the compiler faithful?* back to *how much language can we
+implement?* — and those are different goals with different evidence.
+
+The durable observation, worth more than any single milestone: **this is where
+the project stopped accumulating MECHANISMS and started accumulating EVIDENCE.**
+Most of the important commits were not new-feature commits; they narrowed a
+claim until it exactly matched what had been demonstrated. Continue that.
+
+### THE QUEUE, in three buckets — position is not priority
+
+**Compiler/runtime — the window is closing.** The backend is still small enough
+to reshape; that stops being true as it grows.
+
+  1. **#122** handler header model      unblocks real use
+  2. **#121** hex-decode                unblocks real use
+  3. **the first external contributor** — a person, not a step; see below
+  4. **#117 / #69** scoped authority    language design
+  5. **#133** scalar-only Str           language design, NORMATIVE
+
+**Feedback/tooling — the window is NOT closing.** Improves confidence in future
+work; nothing depends on it immediately.
+
+  6. **#130** vacuity signal, guard/subject overlap
+  7. **#134** typed refusal reasons
+
+**Documentation hygiene.**
+
+  8. **#128** — DEFERRED UNTIL AFTER THE NEXT EXTERNALLY-VISIBLE MILESTONE.
+     It has a TRIGGER, not a position. It changes no semantics, unblocks no
+     user, and closes no narrowing window — and it is small and easy, which is
+     precisely why it would interrupt architectural momentum if it sat in the
+     middle of the queue. **Do not let "it is open" become "it is next."**
 
 **The next work is to DEPEND on Oath, not to improve it.** The roadmap, in order:
 
