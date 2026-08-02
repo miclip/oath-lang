@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -312,69 +313,73 @@ func tyMentionsVar(t *Ty) bool {
 // them apart.
 func TestStrElementsAreCodepointsNotEncodedBytes(t *testing.T) {
 	st := llvmStore(t)
-	put(t, st, `(defn cp-count [] [(s Str)] Int
-		(match s ((SNil) 0) ((SCons c rest) (+ 1 (cp-count rest)))))`)
+	// EXACTLY two codepoints, by structure rather than by counting — arithmetic
+	// is still refused by the LLVM backend, and this is exact where a
+	// two-deep match that ignored the final tail was not: a three-BYTE view
+	// has a third element and fails here.
+	put(t, st, `(defn is-two [] [(s Str)] Bool
+		(match s
+			((SNil) false)
+			((SCons a r1)
+				(match r1
+					((SNil) false)
+					((SCons b r2) (match r2 ((SNil) true) ((SCons c r3) false)))))))`)
 	put(t, st, `(defn cp-head [] [(s Str)] Int
 		(match s ((SNil) -1) ((SCons c rest) c)))`)
 	// 233 is U+00E9, TWO bytes in UTF-8; 65 is 'A', one byte. A byte-indexing
 	// implementation reports head 195 and length 3.
-	// The entry returns a Str whose CODEPOINTS are the two answers, so the probe
-	// needs nothing from the standard library and the comparison is on raw
-	// bytes. Codepoints [233, 2] encode as `c3 a9 02`; a byte-indexing
-	// implementation would compute [195, 3] and print `c3 83 03`.
+	// The entry returns a LITERAL selected by the checks, because building a Str
+	// from computed parts is still refused by the LLVM backend and would make
+	// this skip for an unrelated reason.
 	put(t, st, `(defn cp-probe [] [(args (List Str))] Str
-		(SCons (cp-head (SCons 233 (SCons 65 (SNil))))
-		       (SCons (cp-count (SCons 233 (SCons 65 (SNil)))) (SNil))))`)
+		(if (== (cp-head (SCons 233 (SCons 65 (SNil)))) 233)
+		    (if (is-two (SCons 233 (SCons 65 (SNil)))) "head=233 len=2" "len-WRONG")
+		    "head-WRONG"))`)
 	markVerified(t, st, "cp-probe")
 
+	const want = "head=233 len=2"
 	ref, err := apiEval(st, `(cp-probe (Nil [Str]))`)
 	if err != nil {
 		t.Fatalf("reference: %v", err)
 	}
-	if want := "(SCons 233 (SCons 2 SNil))"; !strings.Contains(ref, want) {
-		t.Fatalf("the REFERENCE says %s, expected %s — the probe is not measuring what it claims", ref, want)
+	if !strings.Contains(ref, "104") { // 'h' — the reference really took the good branch
+		t.Fatalf("the REFERENCE produced %s, which is not %q; the probe is not measuring what it claims", ref, want)
 	}
 
-	bin, _ := buildProgram(t, st, "cp-probe")
-	out, err := exec.Command(bin).Output()
-	if err != nil {
-		t.Fatalf("run: %v", err)
-	}
-	want := "\u00e9\u0002"
-	if got := strings.TrimRight(string(out), "\n"); got != want {
-		t.Errorf("go-emit/2 printed % x, reference expects % x — "+
-			"a Str element is a codepoint, not an encoded byte", got, want)
-	}
-
-	// AND THE LLVM BACKEND, THE MOMENT IT CAN. It refuses match on Str today,
-	// so this attempts the build and skips on exactly that refusal — which
-	// means the constraint starts being ENFORCED as soon as the lowering lands,
-	// without anyone remembering to come back here. Claiming a test "will join
-	// that backend later" and leaving it to a future editor is how a regression
-	// test ends up guarding one implementation forever.
-	//
-	// A refusal for any OTHER reason is a real failure: it would mean the
-	// probe stopped exercising what it was built to exercise.
-	prog, err := planProgram(st, "cp-probe")
-	if err != nil {
-		t.Fatalf("plan: %v", err)
-	}
-	if _, err := emitLLVM(st, prog); err != nil {
-		if !strings.Contains(err.Error(), "match on Str") {
-			t.Fatalf("llvm-ir/1 refused cp-probe for an unexpected reason: %v", err)
+	for _, be := range []struct {
+		name  string
+		build func() (string, error)
+	}{
+		{"go-emit/2", func() (string, error) { b, _ := buildProgram(t, st, "cp-probe"); return b, nil }},
+		{"llvm-ir/1", func() (string, error) {
+			prog, err := planProgram(st, "cp-probe")
+			if err != nil {
+				return "", err
+			}
+			// Key on the emitter's REASON, not on a substring of the help text —
+			// that text lists unsupported features, so `strings.Contains(err,
+			// "match on Str")` matched it even after match on Str was
+			// implemented, and this skipped while claiming to be blocked.
+			if _, err := emitLLVM(st, prog); err != nil {
+				return "", err
+			}
+			requireClang(t)
+			return buildLLVM(t, st, "cp-probe"), nil
+		}},
+	} {
+		bin, err := be.build()
+		if err != nil {
+			t.Errorf("%s refused cp-probe: %v", be.name, err)
+			continue
 		}
-		t.Logf("llvm-ir/1 still refuses match on Str; this constraint applies to it the moment that changes")
-		return
-	}
-	requireClang(t)
-	llBin := buildLLVM(t, st, "cp-probe")
-	llOut, err := exec.Command(llBin).Output()
-	if err != nil {
-		t.Fatalf("run llvm: %v", err)
-	}
-	if got := strings.TrimRight(string(llOut), "\n"); got != want {
-		t.Errorf("llvm-ir/1 printed % x, reference expects % x — "+
-			"a Str element is a codepoint, not an encoded byte", got, want)
+		out, err := exec.Command(bin).Output()
+		if err != nil {
+			t.Fatalf("%s: run: %v", be.name, err)
+		}
+		if got := strings.TrimRight(string(out), "\n"); got != want {
+			t.Errorf("%s printed %q, reference expects %q — a Str element is a codepoint, not an encoded byte",
+				be.name, got, want)
+		}
 	}
 }
 
@@ -511,5 +516,121 @@ func TestStrElementIsPackedInjectivelyOrRefused(t *testing.T) {
 		if !strings.Contains(string(out), "cannot encode Str element") {
 			t.Errorf("%s: go-emit/2 did not refuse; output was %q", bad.name, string(out))
 		}
+	}
+}
+
+// MATCHING A Str OBSERVES CODEPOINTS AND PRESERVES THE PACKED REMAINDER.
+//
+// The tail must remain canonical packed UTF-8 for what is left, not a view that
+// begins mid-sequence. So each case walks the string one scalar at a time and
+// checks the whole sequence, which is what makes "the remainder is exact" a
+// claim rather than a hope: a decoder that advanced by the wrong number of
+// bytes would put the next match at a continuation byte and be caught here.
+func TestStrMatchWalksScalarsOfEveryWidth(t *testing.T) {
+	requireClang(t)
+	st := llvmStore(t)
+	put(t, st, `(defn s-head [] [(s Str) (d Int)] Int (match s ((SNil) d) ((SCons c r) c)))`)
+	put(t, st, `(defn s-tail [] [(s Str)] Str (match s ((SNil) (SNil)) ((SCons c r) r)))`)
+	put(t, st, `(defn s-empty [] [(s Str)] Bool (match s ((SNil) true) ((SCons c r) false)))`)
+
+	for _, tc := range []struct {
+		name string
+		lit  string // an Oath Str literal
+		want string // "ok" when every scalar and the final emptiness match
+	}{
+		// one, two, three and four byte scalars, each followed by ASCII so the
+		// remainder after the wide scalar is checked too.
+		{"w1", `(SCons 65 (SCons 66 (SNil)))`, "ok"},                      // A B
+		{"w2", `(SCons 233 (SCons 66 (SNil)))`, "ok"},                     // é B   c3 a9 42
+		{"w3", `(SCons 8364 (SCons 66 (SNil)))`, "ok"},                    // € B   e2 82 ac 42
+		{"w4", `(SCons 128512 (SCons 66 (SNil)))`, "ok"},                  // 😀 B  f0 9f 98 80 42
+		{"empty", `(SNil)`, "ok"},
+	} {
+		var body string
+		if tc.name == "empty" {
+			body = `(if (s-empty ` + tc.lit + `) "ok" "WRONG")`
+		} else {
+			first := "0"
+			switch tc.name {
+			case "w1":
+				first = "65"
+			case "w2":
+				first = "233"
+			case "w3":
+				first = "8364"
+			case "w4":
+				first = "128512"
+			}
+			// head is the scalar; the tail's head is 66; the tail's tail is empty.
+			body = `(if (== (s-head ` + tc.lit + ` 0) ` + first + `)
+				  (if (== (s-head (s-tail ` + tc.lit + `) 0) 66)
+				      (if (s-empty (s-tail (s-tail ` + tc.lit + `))) "ok" "REMAINDER-WRONG")
+				      "SECOND-WRONG")
+				  "FIRST-WRONG")`
+		}
+		name := "walk-" + tc.name
+		put(t, st, `(defn `+name+` [] [(args (List Str))] Str `+body+`)`)
+		markVerified(t, st, name)
+
+		gbin, _ := buildProgram(t, st, name)
+		gout, err := exec.Command(gbin).Output()
+		if err != nil {
+			t.Fatalf("%s: go run: %v", name, err)
+		}
+		if got := strings.TrimRight(string(gout), "\n"); got != tc.want {
+			t.Errorf("%s go-emit/2 = %q, want %q", name, got, tc.want)
+		}
+		lbin := buildLLVM(t, st, name)
+		lout, err := exec.Command(lbin).Output()
+		if err != nil {
+			t.Fatalf("%s: llvm run: %v", name, err)
+		}
+		if got := strings.TrimRight(string(lout), "\n"); got != tc.want {
+			t.Errorf("%s llvm-ir/1 = %q, want %q — the tail must be canonical packed UTF-8 "+
+				"for what remains, not a view starting mid-sequence", name, got, tc.want)
+		}
+	}
+}
+
+// MALFORMED PACKED STORAGE FAILS EXPLICITLY — it is not decoded by locale, not
+// replaced, and not exposed as pseudo-codepoints.
+//
+// It is reachable: a capability value arrives from getenv and is NOT validated
+// on the way in (#133 covers boundary validation). So the decoder meets bytes
+// the packing side would never have produced, and guessing would be exactly the
+// substitution this backend just stopped doing.
+func TestMalformedPackedStrFailsExplicitly(t *testing.T) {
+	requireClang(t)
+	st := llvmStore(t)
+	put(t, st, `(defn s-head2 [] [(s Str) (d Int)] Int (match s ((SNil) d) ((SCons c r) c)))`)
+	put(t, st, `(defn read-head [] [(w {env (-> Str Str)}) (args (List Str))] Str
+		(if (== (s-head2 ((. w env) "OATH_MALFORMED_TEST") 0) 65) "A" "other"))`)
+	markVerified(t, st, "read-head")
+	bin := buildLLVM(t, st, "read-head")
+
+	// A lone continuation byte: never produced by the packing side, and not
+	// valid UTF-8 from any source.
+	cmd := exec.Command(bin)
+	cmd.Env = append(os.Environ(), "OATH_MALFORMED_TEST=\x80")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("decoded malformed packed storage and printed %q instead of refusing", out)
+	}
+	if !strings.Contains(string(out), "not valid UTF-8") {
+		t.Errorf("failed without saying why: %q", out)
+	}
+	if strings.Contains(string(out), "�") {
+		t.Errorf("substituted U+FFFD instead of refusing: %q", out)
+	}
+
+	// CONTROL: valid input still decodes, so the check is a boundary and not a wall.
+	cmd = exec.Command(bin)
+	cmd.Env = append(os.Environ(), "OATH_MALFORMED_TEST=AB")
+	out, err = cmd.Output()
+	if err != nil {
+		t.Fatalf("control: %v", err)
+	}
+	if got := strings.TrimRight(string(out), "\n"); got != "A" {
+		t.Errorf("control printed %q, want %q", got, "A")
 	}
 }

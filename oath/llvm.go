@@ -209,11 +209,12 @@ func llvmCheckValueBindings(prog *CompiledProgram) error {
 func llvmUnsupported(what string) error {
 	return fmt.Errorf("the %s backend cannot lower %s\n"+
 		"  This is a first slice: it covers datatypes, matching, closures, records,\n"+
-		"  Str literals, Bool, Int literals and equality, and the CLI entry protocol.\n"+
+		"  Str literals and matching, Bool, Int literals and equality, and the CLI\n"+
+		"  entry protocol.\n"+
 		"  Int is stored as int64 — a SUBSET of Oath's unbounded Int, and literals\n"+
 		"  outside it are refused rather than wrapped. Arithmetic, Rat and Float,\n"+
-		"  Set/Map, match on Str, dynamic Str construction and the handler protocol\n"+
-		"  are not lowered yet. Build with the Go backend for full coverage.",
+		"  Set/Map, dynamic Str construction and the handler protocol are not\n"+
+		"  lowered yet. Build with the Go backend for full coverage.",
 		llvmBackendVersion, what)
 }
 
@@ -628,9 +629,74 @@ func (e *llvmEmitter) emitIf(t *Term, env string, depth int, self string) (strin
 	return v, nil
 }
 
+// emitStrMatch destructures a Str by CODEPOINT.
+//
+// Str is packed (bytes + length), not a cons chain, so there is no constructor
+// index to switch on and the generic o_field path does not apply: the runtime
+// decodes the next Unicode scalar and returns it with a view of the remainder.
+// The arms are still indexed by THIS store's SNil/SCons, which resolveStrCtors
+// has already pinned - the runtime reports 0 for empty and 1 for non-empty, and
+// those are mapped here rather than assumed to coincide.
+func (e *llvmEmitter) emitStrMatch(t *Term, env string, depth int, self string) (string, error) {
+	if len(t.Arms) != 2 || e.strNil < 0 || e.strCons < 0 {
+		return "", llvmUnsupported("a match on Str whose arms are not SNil and SCons")
+	}
+	s, err := e.expr(t.A, env, depth, self)
+	if err != nil {
+		return "", err
+	}
+	id := e.tmp
+	idx := e.next()
+	fmt.Fprintf(&e.b, "  %s = call i32 @o_str_idx(ptr %s)\n", idx, s)
+	nilL := fmt.Sprintf("snil%d", id)
+	consL := fmt.Sprintf("scons%d", id)
+	join := fmt.Sprintf("sjoin%d", id)
+	cmp := e.next()
+	fmt.Fprintf(&e.b, "  %s = icmp eq i32 %s, 0\n", cmp, idx)
+	fmt.Fprintf(&e.b, "  br i1 %s, label %%%s, label %%%s\n", cmp, nilL, consL)
+
+	// SNil: no binders.
+	e.label(nilL)
+	nv, err := e.expr(&t.Arms[e.strNil], env, depth, self)
+	if err != nil {
+		return "", err
+	}
+	nEnd := e.block
+	fmt.Fprintf(&e.b, "  br label %%%s\n", join)
+
+	// SCons: the scalar as an Oath Int, then the remaining Str, pushed in
+	// constructor field order so the arm's de Bruijn indices line up.
+	e.label(consL)
+	head := e.next()
+	fmt.Fprintf(&e.b, "  %s = call ptr @o_str_head(ptr %s)\n", head, s)
+	e1 := e.next()
+	fmt.Fprintf(&e.b, "  %s = call ptr @o_env_push(ptr %s, ptr %s)\n", e1, env, head)
+	tail := e.next()
+	fmt.Fprintf(&e.b, "  %s = call ptr @o_str_tail(ptr %s)\n", tail, s)
+	e2 := e.next()
+	fmt.Fprintf(&e.b, "  %s = call ptr @o_env_push(ptr %s, ptr %s)\n", e2, e1, tail)
+	e.ctx = append(e.ctx, intTy(), strTy(e.strHash))
+	cv, err := e.expr(&t.Arms[e.strCons], e2, depth+2, self)
+	e.ctx = e.ctx[:len(e.ctx)-2]
+	if err != nil {
+		return "", err
+	}
+	cEnd := e.block
+	fmt.Fprintf(&e.b, "  br label %%%s\n", join)
+
+	e.label(join)
+	v := e.next()
+	fmt.Fprintf(&e.b, "  %s = phi ptr [ %s, %%%s ], [ %s, %%%s ]\n", v, nv, nEnd, cv, cEnd)
+	return v, nil
+}
+
+func intTy() *Ty { return &Ty{K: "int"} }
+
+func strTy(hash string) *Ty { return &Ty{K: "data", Hash: hash} }
+
 func (e *llvmEmitter) emitMatch(t *Term, env string, depth int, self string) (string, error) {
 	if t.Hash == e.strHash && e.strHash != "" {
-		return "", llvmUnsupported("match on Str")
+		return e.emitStrMatch(t, env, depth, self)
 	}
 	d, err := e.st.GetDef(t.Hash)
 	if err != nil {
@@ -780,6 +846,80 @@ OVal *o_bool(int b) { OVal *v = val(T_BOOL); v->idx = b ? 1 : 0; return v; }
    runtime's half of that contract. The i field is the storage; nothing here
    promises it is all of Int. Arbitrary precision is the destination, not this commit. */
 OVal *o_int(long long n) { OVal *v = val(T_INT); v->i = n; return v; }
+
+/* MATCHING A Str OBSERVES CODEPOINTS, NOT BYTES.
+
+   The packed buffer is UTF-8; the language value is a sequence of Unicode
+   scalars. So SNil is an empty buffer, and SCons yields the next SCALAR as an
+   Oath Int plus the remaining buffer as a Str.
+
+   OWNERSHIP, stated rather than left to be discovered: the tail is a VIEW into
+   the parent buffer, not a copy. That is sound because every Str buffer in this
+   runtime is immutable and outlives the program - literals are IR constants,
+   and capability values come from getenv, which is stable for the process
+   lifetime. Nothing here frees, so a view cannot dangle. If a Str ever gains a
+   buffer with a shorter lifetime, this is the line that has to change, and it
+   must change to a copy rather than to a hope.
+
+   STRICT DECODING, done by hand: no locale, no mbrtowc, no replacement. It
+   rejects overlong encodings, surrogates and anything above 0x10FFFF, because
+   accepting them would let two distinct byte sequences denote one Str and undo
+   the injectivity the packing side now guarantees. A malformed buffer is a hard
+   failure: it can only arrive from OUTSIDE (a capability value is not validated
+   on the way in - see #133), and guessing would be exactly the substitution
+   this backend just stopped doing. */
+static int o_utf8_next(const unsigned char *p, int n, long long *cp) {
+  if (n <= 0) return 0;
+  unsigned c = p[0];
+  if (c < 0x80) { *cp = c; return 1; }
+  int len; long long v;
+  if ((c & 0xE0) == 0xC0) { len = 2; v = c & 0x1F; }
+  else if ((c & 0xF0) == 0xE0) { len = 3; v = c & 0x0F; }
+  else if ((c & 0xF8) == 0xF0) { len = 4; v = c & 0x07; }
+  else return 0;
+  if (n < len) return 0;
+  for (int i = 1; i < len; i++) {
+    if ((p[i] & 0xC0) != 0x80) return 0;
+    v = (v << 6) | (p[i] & 0x3F);
+  }
+  if (len == 2 && v < 0x80) return 0;      /* overlong */
+  if (len == 3 && v < 0x800) return 0;     /* overlong */
+  if (len == 4 && v < 0x10000) return 0;   /* overlong */
+  if (v > 0x10FFFF) return 0;
+  if (v >= 0xD800 && v <= 0xDFFF) return 0;
+  *cp = v;
+  return len;
+}
+
+static void o_str_malformed(void) {
+  fputs("oath: a Str holds bytes that are not valid UTF-8; this backend packs Str as UTF-8 "
+        "and refuses to decode malformed storage rather than replace or guess it\n", stderr);
+  exit(70);
+}
+
+static int o_str_step(OVal *v, long long *cp) {
+  if (!v || v->tag != T_STR) { fputs("oath: not a Str\n", stderr); exit(70); }
+  if (v->slen <= 0) return 0;
+  int n = o_utf8_next((const unsigned char *)v->s, v->slen, cp);
+  if (n == 0) o_str_malformed();
+  return n;
+}
+
+/* 0 selects the empty-string arm, 1 the cons arm. The emitter maps those onto
+   this store's SNil/SCons constructor indices, which are not assumed here. */
+int o_str_idx(OVal *v) { long long cp; return o_str_step(v, &cp) == 0 ? 0 : 1; }
+
+OVal *o_str_head(OVal *v) {
+  long long cp; int n = o_str_step(v, &cp);
+  if (n == 0) { fputs("oath: head of an empty Str\n", stderr); exit(70); }
+  return o_int(cp);
+}
+
+OVal *o_str_tail(OVal *v) {
+  long long cp; int n = o_str_step(v, &cp);
+  if (n == 0) { fputs("oath: tail of an empty Str\n", stderr); exit(70); }
+  return o_strn(v->s + n, v->slen - n);
+}
 long long o_int_val(OVal *v) {
   if (!v || v->tag != T_INT) { fputs("oath: not an Int\n", stderr); exit(70); }
   return v->i;
@@ -993,6 +1133,9 @@ declare void @o_keep(ptr)
 declare ptr @o_require(ptr, ptr, ptr)
 declare ptr @o_require_value(ptr, ptr, ptr)
 declare ptr @o_int(i64)
+declare i32 @o_str_idx(ptr)
+declare ptr @o_str_head(ptr)
+declare ptr @o_str_tail(ptr)
 declare i32 @o_int_eq(ptr, ptr)
 declare ptr @o_cap_env(ptr)
 declare ptr @o_cap_readfile(ptr)
