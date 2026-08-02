@@ -285,6 +285,47 @@ THE MOMENT IT HAPPENED? (DESIGN.md, four categories)
     verifier can check it (`time`, the authenticated principal).
   - it defines what counts as SAME → EQUIVALENCE. Pin it, explicitly, versioned.
 
+## THE PROJECT HAS CHANGED PHASES (2026-08-02) — READ THIS BEFORE PICKING WORK
+
+For months the bottleneck was "make the substrate trustworthy". It is now built
+AND exercised: registry, authority, delegation, transfer, receipts, CI, standard
+library, two native backends, proof-carrying compilation, and a backend-neutral
+compilation boundary. Nearly every defect in those was found by USING them, not
+by inspecting them.
+
+  Phase 1  Can AI own software?                   registry, proofs, trust
+  Phase 2  Can the trust model survive reality?   authority, delegation, CI, transfer
+  Phase 3  Can the implementation be replaced?    Go backend, LLVM backend, the boundary
+  Phase 4  Can someone build software and FORGET they are using Oath?   <- here
+
+**The next work is to DEPEND on Oath, not to improve it.** The roadmap, in order:
+
+  1. **#118** — typed lowering. Answer the architectural question ("is the `Def`
+     closure still enough, or does typed lowering force a new semantic object?")
+     while the LLVM backend is still small enough to change cheaply.
+  2. **One real capability-based application**, end to end on the existing effects
+     model — the webhook shape: verify a request, call HTTP, write a structured
+     record, respond. Not a demo. The point is to find out whether the effects
+     model is PLEASANT.
+  3. **Mark** — the first external contributor.
+
+**DO NOT start another protocol feature.** Namespace aliases, more authority
+operations, more receipt machinery, richer manifests, another workflow — these are
+not bad, they are now OPTIMIZATION, and they are what a session naturally reaches
+for because the backlog is full of them.
+
+THE INSTRUCTION FOR THE APPLICATION, and it is the hard part: *build something you
+would have built in Go six months ago, and do not add infrastructure unless the
+application forces you to.* When the app needs something Oath lacks, WRITE IT DOWN
+AND WORK AROUND IT. The deliverable is partly a list of what an application
+actually demanded — which is worth far more than a language that quietly grew to
+fit one program. "The application forced me to" is a judgement this assistant has
+demonstrably made too generously.
+
+Note that `examples/webhook.oath` already exists and runs. An EXAMPLE is not an
+APPLICATION: the difference is whether anything depends on it and whether it is
+maintained under change.
+
 ## Roadmap / backlog
 
 GitHub issues on miclip/oath-lang. Closed as of 2026-07: team store & policy,
