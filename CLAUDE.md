@@ -33,6 +33,17 @@ the substrate is the product.
   facts (seeds derive from hashes) — never carry them across identity
   changes; `oath migrate-encoding` drops them by design. A fixture is only
   evidence once you know it was regenerated under the current identity.
+- KEY OPERATIONAL FACT: **`oath fixtures` is NOT read-only.** It writes proof
+  verdicts back into `codebase/` (meta/*, log.jsonl), so the next regeneration
+  reads them and proves MORE. Counts climb run over run — 123 → 126 → 130 in one
+  session — and `check-doc-numbers` starts failing on prose that was correct when
+  written. Regenerating fixtures is therefore never a safe reflex when a gate is
+  red: it mutates the thing being measured. If `check-fixture-integrity` fails,
+  first check `git status codebase/`; if it is dirty, the drift is yours. Restore
+  with `git checkout codebase/ fixtures/` rather than regenerating again. When a
+  regeneration IS intended, commit `codebase/` and `fixtures/` together — a commit
+  with one and not the other leaves them disagreeing, which is exactly the drift
+  the gate exists to catch.
 
 ## The live registry (#14, closed)
 
