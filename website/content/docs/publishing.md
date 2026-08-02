@@ -253,17 +253,17 @@ The two modes in detail:
 | `referenced` | the library DEPENDS ON your existing publication. The project asserts no licence; evaluation consumes the terms you signed. **Use this for third-party work.** | a `publication` pinning the exact signed publication by digest, and no `license` field |
 | `project-publication` | the project republishes the artifact under `oath/*` under ITS OWN licence assertion | `standing` recording why the project may make that grant |
 
-`referenced` is intended to be the normal path for outside contributors, and is
-**not yet implemented — it is currently refused** (issue #107). Its mechanics do
-not exist: the publish path would republish the entry under `oath/*` carrying the
-project's licence, which is exactly the substitution the mode exists to prevent.
+`referenced` is the normal path for outside contributors, and it **works** — 12 of
+the library's members use it today. The publish path skips referenced entries
+entirely rather than republishing them under `oath/*`, which is the substitution
+the mode exists to prevent.
 
-The rule it will enforce, once built:
+The rule it enforces:
 
 > Curation may select another party's assertion; it must not silently replace
 > that assertion with one made by the curator.
 
-Accepting a `referenced` member will mean *"the project has reviewed and selected
+Accepting a `referenced` member means *"the project has reviewed and selected
 this exact signed publication"* — not *"the project owns it or may relicense
 it"*. No `oath/<name>` is created, no project licence is asserted, and you keep
 your publication and your authorship. Removal from the library is a manifest
