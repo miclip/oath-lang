@@ -444,6 +444,38 @@ observed failing is a hypothesis. Prefer extracting the claimed behaviour into a
 pure function and asserting every outcome, and assert the CONTROL so you know the
 measurement discriminates.
 
+**TWO QUESTIONS, AND THEY ATTACK DIFFERENT DIMENSIONS. Ask both.**
+
+  1. **What mutation makes this fail?**
+     — does the witness distinguish truth from falsehood?
+  2. **What defines the universe this claim quantifies over?**
+     — is it even looking at the right set?
+
+A witness can pass the first and fail the second completely: perfectly
+discriminating, over the wrong population. The principle underneath the second:
+
+> **A witness must derive its universe from the CLAIM, never from the
+> IMPLEMENTATION.** The implementation's boundaries are hypotheses. The claim's
+> boundaries are what you are trying to establish.
+
+Six instances in one session, in six unrelated layers, every one the same
+mistake — *measuring the implementation's decomposition instead of the
+property's*:
+
+  claim                       measured                     should have measured
+  ------------------------------------------------------------------------------
+  nothing is listening        the ports I expected         every `oath serve --http`
+  the corpus is verified      examples/                    what `oath fixtures` reads
+  backends match Oath         providers -> vocabulary      both directions
+  non-JSON is refused         the impl's own predicate     a longer type does not match
+  the failure path works      "FAIL" was printed           the suite reached its verdict
+  a tab cannot inject         an escaped `\t`              an actual 0x09 byte
+
+This is why `pgrep -f 'oath serve --http'` is right and a port list is not; why
+`capabilityKinds()` became one source of truth; why the three-way verdict became
+a PURE FUNCTION with every outcome asserted; and why the port-order test checks
+OBSERVABLE STARTUP rather than an exit code.
+
 **A FAILURE-PATH TEST IS INCOMPLETE UNTIL THE SUITE PROVES IT CONTINUED PAST THAT
 FAILURE.** Printing `FAIL` is not evidence. Under `set -e` a bare `kill` on an
 already-exited PID, a `wait` that returns non-zero, or a background timer holding
