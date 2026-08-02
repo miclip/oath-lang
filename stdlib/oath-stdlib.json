@@ -103,6 +103,20 @@
       "note": "PROVEN involution; its closure is exactly List and append, which is why these three are the pilot"
     },
     {
+      "name": "filter",
+      "artifact": "cc825b87e8885789ef9ebabd5c8f3591c0022aa1248ef0554ab5f0bfcb12b04b",
+      "source": "examples/list.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/list.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true,
+      "note": "a core list operation: PROVEN (2/2 properties), structural termination, 4/4 mutants caught. Depends only on List, which is already exported, so the addition is dependency-closed."
+    },
+    {
       "name": "Option",
       "artifact": "895777a9ff55f95fafafd02a527f6fb513369d87fd05c73971da2700fc989397",
       "membership": "referenced",
