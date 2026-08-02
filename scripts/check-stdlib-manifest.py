@@ -24,6 +24,7 @@ Usage:
 """
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -224,6 +225,7 @@ def main():
     # CLOSURE. Publishing an export whose dependency is not itself exported would
     # put a name into oath/* that resolves through an artifact nobody reviewed as
     # part of this library.
+    by_name = {e["name"]: e for e in exported}
     for d in exported:
         r = subprocess.run([str(ROOT / "oath" / "oath"), "explain", d["name"], "--json"],
                            capture_output=True, text=True,
@@ -243,6 +245,35 @@ def main():
                 failures.append(f"{d['name']}: depends on {dep_name}, which is not exported — "
                                 f"oath/{d['name']} would resolve through an artifact this library "
                                 f"never published")
+
+        # TYPE DEPENDENCIES, which `dependencies` does not report.
+        #
+        # A member that MENTIONS a datatype in its signature cannot elaborate
+        # without it, exactly as a member that CALLS a function cannot. Checking
+        # only the second passed a 39-definition batch whose types were missing:
+        # validation was green and local elaboration failed with `unknown type
+        # "Option"`. Had it been trusted, the publish run would have died partway
+        # through after signing twenty-odd definitions.
+        #
+        # A referenced type is worse than an absent one and is called out
+        # separately: it IS in the library, so the closure looks satisfied, but a
+        # referenced member is selected rather than republished under the
+        # namespace — so nothing resolves it in the publish store.
+        tnames = type_names_of(d)
+        if tnames is None:
+            failures.append(f"{d['name']}: declared source {d.get('source')!r} does not contain its "
+                            f"definition, so its type dependencies cannot be checked — a wrong source "
+                            f"reads as a member with no types at all")
+            tnames = set()
+        for t in sorted(tnames):
+            if t not in by_name:
+                failures.append(f"{d['name']}: mentions type {t}, which is not in the library — "
+                                f"oath/{d['name']} cannot elaborate without it")
+            elif by_name[t].get("membership") == "referenced" and d.get("membership") == "project-publication":
+                failures.append(f"{d['name']} is project-published but mentions type {t}, which is "
+                                f"REFERENCED. A referenced member is selected, never republished under "
+                                f"the namespace, so oath/{d['name']} has no oath/{t} to resolve against. "
+                                f"Publish {t} as a project-publication, or make {d['name']} referenced too")
 
     print()
     if failures:
@@ -272,6 +303,68 @@ def main():
     print("  about what is live — comparing the registry against this file is the")
     print("  publishing workflow's job, after merge, from a re-derivation of its own.")
     return 0
+
+
+# Type names a member mentions, read from its source form.
+#
+# Read from the SOURCE rather than from `explain`, because explain reports
+# value-level dependencies only — which is the gap this exists to close. Capitalised
+# leading identifiers are datatypes by the language's own convention; lowercase ones
+# are type variables and are not library members.
+def type_names_of(entry):
+    """Returns None when the form cannot be found — a silent empty set would make
+    a WRONG `source` look like a member with no type dependencies, which is a false
+    pass rather than a missed check."""
+    src = entry.get("source")
+    if not src:
+        return set()
+    path = ROOT / src
+    if not path.exists():
+        return None
+    text = path.read_text()
+    head = f"(defn {entry['name']} " if True else ""
+    i = text.find(head)
+    if i < 0:
+        i = text.find(f"(data {entry['name']} ")
+        if i < 0:
+            return None
+    # The signature is everything up to the body: cheap and sufficient, since a
+    # type mentioned anywhere in the form still has to resolve.
+    depth, j = 0, i
+    while j < len(text):
+        if text[j] == "(":
+            depth += 1
+        elif text[j] == ")":
+            depth -= 1
+            if depth == 0:
+                break
+        j += 1
+    # Comments are prose and full of capitalised words. Stripped before scanning,
+    # or the check reports "type NB" and "type Pinning" from a paragraph.
+    form = "\n".join(re.sub(r";.*$", "", ln) for ln in text[i:j + 1].split("\n"))
+    return {m for m in re.findall(r"\b([A-Z][A-Za-z0-9-]*)\b", form)
+            if m not in PRIMITIVE_TYPES and m not in constructor_names()}
+
+
+PRIMITIVE_TYPES = {"Int", "Bool", "Str", "Rat", "Float", "Set", "Map", "Unit"}
+
+_ctors = None
+
+
+# Constructor names are NOT type dependencies. `Cons` and `Nil` belong to `List`
+# and are published with it, so treating every capitalised identifier as a type
+# reports the datatype's own constructors as missing members. Collected once from
+# every `(data ...)` form in the corpus sources.
+def constructor_names():
+    global _ctors
+    if _ctors is None:
+        _ctors = set()
+        for f in sorted((ROOT / "examples").glob("*.oath")):
+            text = f.read_text()
+            for m in re.finditer(r"\(data\s+[^\s\[]+[^\n]*\n((?:\s+\([^\n]*\n)*)", text):
+                for c in re.finditer(r"\(\s*([A-Z][A-Za-z0-9-]*)", m.group(1)):
+                    _ctors.add(c.group(1))
+    return _ctors
 
 
 if __name__ == "__main__":
