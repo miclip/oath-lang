@@ -28,11 +28,7 @@ func TestCompileNativeStrDifferential(t *testing.T) {
 	put(t, st, `(defn greet2 [] [(args (List Str))] Str
 		(str-append "hi " (match args ((Nil) "world") ((Cons h t) h))))`)
 
-	h, ok := st.Resolve("greet2")
-	if !ok {
-		t.Fatal("greet2 not in store")
-	}
-	src, err := emitProgram(st, h, nil, entryCLI)
+	src, err := emitProgram(st, codegenPlan(t, st, "greet2"))
 	if err != nil {
 		t.Fatalf("emitProgram: %v", err)
 	}
@@ -86,11 +82,7 @@ func TestCompileRatExactDifferential(t *testing.T) {
 	put(t, st, `(defn exactp [] [(args (List Str))] Str
 		(if (== (+ 0.1 0.2) 3/10) "exact" "inexact"))`)
 
-	h, ok := st.Resolve("exactp")
-	if !ok {
-		t.Fatal("exactp not in store")
-	}
-	src, err := emitProgram(st, h, nil, entryCLI)
+	src, err := emitProgram(st, codegenPlan(t, st, "exactp"))
 	if err != nil {
 		t.Fatalf("emitProgram: %v", err)
 	}
@@ -131,11 +123,7 @@ func TestCompileFloatInexactDifferential(t *testing.T) {
 	put(t, st, `(defn finexactp [] [(args (List Str))] Str
 		(if (== (+ 0.1f 0.2f) 0.3f) "exact" "inexact"))`)
 
-	h, ok := st.Resolve("finexactp")
-	if !ok {
-		t.Fatal("finexactp not in store")
-	}
-	src, err := emitProgram(st, h, nil, entryCLI)
+	src, err := emitProgram(st, codegenPlan(t, st, "finexactp"))
 	if err != nil {
 		t.Fatalf("emitProgram: %v", err)
 	}
@@ -207,11 +195,7 @@ func TestCompileNativeSetDifferential(t *testing.T) {
 				"size3-min1" "min-wrong")
 			"size-wrong"))`)
 
-	h, ok := st.Resolve("setq")
-	if !ok {
-		t.Fatal("setq not in store")
-	}
-	src, err := emitProgram(st, h, nil, entryCLI)
+	src, err := emitProgram(st, codegenPlan(t, st, "setq"))
 	if err != nil {
 		t.Fatalf("emitProgram: %v", err)
 	}
@@ -240,8 +224,7 @@ func TestCompileNativeSetDifferential(t *testing.T) {
 	}
 
 	// Second entry: union dedup (size 3) and the sorted set-elems boundary (min 1).
-	h2, _ := st.Resolve("setq2")
-	src2, err := emitProgram(st, h2, nil, entryCLI)
+	src2, err := emitProgram(st, codegenPlan(t, st, "setq2"))
 	if err != nil {
 		t.Fatalf("emitProgram setq2: %v", err)
 	}
@@ -305,11 +288,7 @@ func TestCompileNativeMapDifferential(t *testing.T) {
 				(if (map-has 3 (map-insert 1 10 map-empty)) "wrong" "overwrote")
 				"stale"))))`)
 
-	h, ok := st.Resolve("mapq")
-	if !ok {
-		t.Fatal("mapq not in store")
-	}
-	src, err := emitProgram(st, h, nil, entryCLI)
+	src, err := emitProgram(st, codegenPlan(t, st, "mapq"))
 	if err != nil {
 		t.Fatalf("emitProgram: %v", err)
 	}
@@ -330,6 +309,57 @@ func TestCompileNativeMapDifferential(t *testing.T) {
 	// Interpreter: latest value for key 2 is 99, key 3 absent → "overwrote".
 	if got := strings.TrimRight(string(out), "\n"); got != "overwrote" {
 		t.Fatalf("compiled mapq = %q, want %q (native Map diverged from the structural model)", got, "overwrote")
+	}
+}
+
+// codegenPlan builds the backend-neutral program for a name WITHOUT the
+// guarantee gate.
+//
+// The differential tests above exercise CODEGEN — that a compiled program agrees
+// with the interpreter — using definitions that carry no properties and would
+// therefore be refused by `oath build`, correctly. The gates are facts about the
+// artifact rather than about lowering, and they are tested where they belong
+// (TestPlanProgramGates). Deliberately assembled here from the same neutral
+// pieces planProgram uses rather than adding a bypass flag to production code:
+// nothing a command can reach may skip the guarantee gate.
+func codegenPlan(t *testing.T, st *Store, name string) *CompiledProgram {
+	t.Helper()
+	h, ok := st.Resolve(name)
+	if !ok {
+		t.Fatalf("%s not in store", name)
+	}
+	d, err := st.GetDef(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capTy, kind, ok := entryShape(st, d.Ty)
+	if !ok {
+		t.Fatalf("%s is not an entry point: %s", name, debugTy(d.Ty))
+	}
+	reqs, err := entryRequirements(st, capTy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closure, err := programClosure(st, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := st.GetMeta(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Backend is left unset: only a backend may claim an artifact, and
+	// emitProgram stamps it. See TestProvenanceDigestIsStable.
+	return &CompiledProgram{
+		Entry: name, EntryHash: h, Protocol: kind, CapTy: capTy,
+		Requirements: reqs, Closure: closure,
+		Provenance: ProvenanceManifest{
+			Schema: provenanceSchema, Entry: name, EntryHash: h,
+			EntryType: printTy(st, d.Ty, m.TyVarNames),
+			Protocol:  entryProtocolName(kind), Guarantee: "asserted",
+			Requirements: reqs, Closure: closure,
+			Kernel: kernelVersion,
+		},
 	}
 }
 

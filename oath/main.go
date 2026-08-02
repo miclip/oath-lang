@@ -58,6 +58,7 @@ usage:
                                       repoint policy in <store>/policy.json (docs/teamstore.md)
   oath build <name> [-o out]          compile a verified definition to a native executable
                                       (entry protocol: (-> (List Str) Str); refuses falsified names)
+  oath provenance <file>              read what a compiled artifact was built from, WITHOUT running it
   oath export <name> [-o pkg]         bundle a definition + transitive closure for publication
   oath import <path|url> [--as name]  admit a bundle: hash-checked, gate-checked, RE-VERIFIED locally
   oath fixtures <dir>                 materialize the SPEC §10 conformance suite as byte fixtures
@@ -75,6 +76,21 @@ func main() {
 	if len(args) == 0 {
 		fmt.Println(usage)
 		os.Exit(1)
+	}
+	// `provenance` reads a FILE and consults no codebase, so it runs before the
+	// store is opened. Opening one would make inspecting an artifact depend on —
+	// and, by creating ./codebase, modify — the directory it is inspected from,
+	// which is wrong for the one command meant to answer "what is this thing?"
+	// about an artifact you have no context for and may not want to execute.
+	if args[0] == "provenance" {
+		// Dispatching early means this command never reaches the shared
+		// unknown-flag guard, so it makes the same check itself rather than
+		// silently reading a mistyped flag as a filename.
+		if len(args) != 2 || strings.HasPrefix(args[1], "--") {
+			fail(fmt.Errorf("usage: oath provenance <file>   (no flags)"))
+		}
+		cmdProvenance(args[1])
+		return
 	}
 	storeDir := os.Getenv("OATH_STORE")
 	if storeDir == "" {

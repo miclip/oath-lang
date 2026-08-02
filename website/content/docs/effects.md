@@ -92,17 +92,60 @@ demonstrates the pattern end to end.
    an unreliable wrapper, 9/9 properties proven for all worlds. What
    remains genuinely open at this stage: modeling time and interleaving
    (concurrency) — a world value serializes one history.
-4. **Entry-point wiring — SHIPPED.** `oath build` compiles capability-first
-   entry points ((-> {caps} (List Str) Str)) and wires GENUINE
-   implementations exactly once, at the program boundary: `fetch` becomes a
-   real HTTP GET, `env`/`readfile` real host access. Everything below the
-   boundary received authority as an ordinary argument and was verified
-   against all simulated worlds before the real one arrived. The compiler
-   refuses unwireable capability fields, refuses falsified or unverified
-   entries, and refuses a capability parameter the confinement checker
-   marks ESCAPES — a program that stores or returns its capability never
-   receives the real one. The corpus witness is `main-fetch`: PROVEN 3/3
-   over all worlds, then run against a live HTTP server.
+4. **Entry-point wiring — SHIPPED (#114).** `oath build` compiles
+   capability-first entry points ((-> {caps} (List Str) Str), and the handler
+   protocol) and resolves GENUINE implementations exactly once, at the program
+   boundary: `fetch` becomes a real HTTP GET, `env`/`readfile` real host access,
+   `emit` a real sink. Everything below the boundary received authority as an
+   ordinary argument and was verified against all simulated worlds before the
+   real one arrived. The compiler refuses falsified or unverified entries, and
+   refuses a capability parameter the confinement checker marks ESCAPES — a
+   program that stores or returns its capability never receives the real one.
+   The corpus witness is `main-fetch`: PROVEN 3/3 over all worlds, then run
+   against a live HTTP server.
+
+   **The invariant, and what earning it required.** *Every requirement declared
+   by the compiled entry point is resolved exactly once before launch, or the
+   executable does not start.* The first version of this stage wired capabilities
+   but did not hold that: an unrecognised capability field was simply never wired,
+   so a program whose host could not supply its authority ran anyway with every
+   call returning the empty string. "The call succeeded and the result was empty"
+   and "this host has no such authority" were the same observable state, which
+   makes a capability system a naming convention. Provision failure is now a
+   distinct channel that never becomes an Oath value: the program exits 70
+   (EX_UNAVAILABLE) naming the capability, and a handler refuses to bind its port
+   rather than accepting traffic it cannot serve.
+
+   **What a capability IS lives in the language, not the backend.** A capability
+   record field denotes a KIND — `http_request`, `process_env`, `file_read`,
+   `record_sink` — and a backend supplies kinds. The dependency runs one way,
+   *Oath semantics → neutral requirements → backend provider*, so no new language
+   or capability semantics are defined in terms of the emitter's host. The
+   requirement-driven consequence is the confinement claim: a program that does
+   not require `http_request` links no HTTP client, so undeclared authority is
+   absent from the artifact rather than merely unused by it.
+
+   **Provenance is data the artifact carries, not a mode it can be put into.**
+   `oath provenance <file>` reads the embedded manifest — entry hash, dependency
+   closure, guarantee, required kinds, kernel and backend versions — without
+   executing the binary, which is the right order for finding out what an unknown
+   artifact is. It is deliberately not a flag and not an environment variable:
+   argv IS a CLI entry point's input, and a program holding `env` is entitled to
+   read any variable name, so either channel would have had the compiler take
+   authority it had already granted to the program.
+
+   **What the manifest is NOT.** It is a self-description, and it is unsigned:
+   nothing binds it to the machine code around it, and an executable cannot carry
+   a hash of itself. Any binary can embed a copied manifest, and `oath provenance`
+   will report it faithfully — faithfully being the whole claim. The reader
+   detects a record that is malformed, ambiguous, self-contradictory, truncated,
+   or non-canonical; it does not detect a record that is simply someone else's.
+   So this is evidence about a COOPERATIVE artifact, not proof about an
+   ADVERSARIAL one. Binding the two needs a signature over (artifact digest,
+   manifest) by a principal — the model publication already uses (SPEC §8.4) —
+   and is separate work, because verifying a signature is a different act from
+   reading a record and conflating them would make the weaker look like the
+   stronger.
 
 ## What this deliberately does not claim
 

@@ -293,8 +293,33 @@ to build an executable from a broken oath
 Compiled programs shed fuel/depth bounds (those are verification
 semantics); what they keep is provenance — an executable is a
 proof-carrying artifact, or it isn't built. Differentially tested against
-`oath eval`. Capability entry points (real IO wired once at the program
-boundary) are the next rung.
+`oath eval`.
+
+Capability entry points get real IO wired once, at the program boundary, and
+the wiring is a guarantee rather than a convention: every capability the
+entry point's type declares is resolved *before* the program starts, or it
+does not start (exit 70, naming the capability). A program that does not
+declare a capability has no provider for it compiled in at all — a binary
+requiring only `env` links no HTTP client — so undeclared authority is absent
+from the artifact rather than merely unused by it.
+
+```
+$ oath build main-fetch -o fetch
+built main-fetch → fetch  (guarantee: PROVEN (all 3 properties, ...))
+  requires: fetch (http_request)
+  every one is resolved before the entry point runs, or the program exits 70.
+  provenance: ee6d43c1…  (oath provenance fetch)
+
+$ oath provenance fetch        # reads the artifact; never runs it
+{ "schema": "oath-provenance/1", "entry_hash": "8b9c09a6…",
+  "requirements": [{"field": "fetch", "kind": "http_request", "slot": 0}], … }
+```
+
+The manifest names capability KINDS, not the Go implementations that satisfy
+them, so it describes the artifact rather than one build of one backend. It is a
+self-description and is *unsigned* — it tells you what a build recorded, and it
+is not attestation that some other binary could not have copied. See
+[docs/effects.md](docs/effects.md).
 
 ## MCP server
 
