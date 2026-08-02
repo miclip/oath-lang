@@ -1,0 +1,3 @@
+✓ prop exact-matches            passed 200 cases
+✓ prop parameters-match         passed 200 cases
+✓ prop a-longer-type-is-not-a-match passed 200 cases

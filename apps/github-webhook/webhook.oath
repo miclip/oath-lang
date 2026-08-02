@@ -1,0 +1,744 @@
+; A GitHub webhook receiver, written to be CALLED BY GITHUB.
+;
+; This is an APPLICATION, not an example. The difference is that GitHub composes
+; the request, GitHub chooses the header names, GitHub decides what a signature
+; looks like, and none of those negotiate. `examples/webhook.oath` is the example
+; it grew out of and stays where it is — it is a conformance-corpus member and a
+; teaching artifact, and it invented its own wire format (`X-Signature`,
+; `X-Timestamp`) because nothing external was pushing back.
+;
+; Everything below that differs from the example differs because a real sender
+; forced it. Each of those is a line in docs/experiments/webhook-friction.md.
+
+; ---------------------------------------------------------------------------
+; The signature header.
+;
+; GitHub sends `X-Hub-Signature-256: sha256=<64 lowercase hex chars>` — the
+; algorithm name is IN the header value, and it is not decoration. A receiver
+; that ignores the prefix and hex-decodes the whole value would reject
+; everything (hex-decode fails closed on `s`), which looks like working
+; security; one that strips any prefix would accept a digest computed under a
+; scheme it never checked. So the prefix is REQUIRED and its absence is
+; indistinguishable from no signature at all.
+;
+; THE LENGTH CHECK IS NOT COSMETIC, and it was missing until review.
+; `hex-decode` decodes pair by pair and returns what it has when it meets a bad
+; pair, so a CORRECT digest followed by junk decodes to the correct 32 bytes:
+;
+;   (== (hex-decode "5bdc...3843zz") (hex-decode "5bdc...3843"))   =>  true
+;
+; The receiver would therefore have accepted `sha256=<valid digest>zz` while
+; this comment claimed to require GitHub's exact format. It is malleability
+; rather than a bypass — forging it still requires the right digest — but a
+; receiver that accepts values it says it rejects has a specification nobody
+; can rely on. A GitHub signature is exactly 64 hex characters; anything else
+; is not one. (The same latent hole is in `examples/webhook.oath`, whose
+; `invalid-fails-closed` property tests `"zz"` alone; filed, not fixed here.)
+(defn gh-signature [] [(hs (List (Pair Str Str)))] (Option Str)
+  (match (header-first hs "X-Hub-Signature-256")
+    ((None) (None [Str]))
+    ((Some v)
+      (if (str-prefix "sha256=" v)
+          (let (hexdigest Str (str-drop 7 v))
+            (if (== (str-len hexdigest) 64) (Some [Str] hexdigest) (None [Str])))
+          (None [Str]))))
+
+  (prop absent-header-is-none []
+    (== (gh-signature (Nil [(Pair Str Str)])) (None [Str])))
+
+  ; A bare hex digest with no algorithm prefix is NOT a signature. This is the
+  ; property that keeps the receiver honest about which scheme it verified.
+  (prop unprefixed-is-rejected [(hexdigest Str)]
+    (if (str-prefix "sha256=" hexdigest)
+        true
+        (== (gh-signature (Cons [(Pair Str Str)]
+                            (Pair [Str Str] "X-Hub-Signature-256" hexdigest)
+                            (Nil [(Pair Str Str)])))
+            (None [Str]))))
+
+  (prop strips-exactly-the-prefix [(hexdigest Str)]
+    (if (== (str-len hexdigest) 64)
+        (== (gh-signature (Cons [(Pair Str Str)]
+                            (Pair [Str Str] "X-Hub-Signature-256" (str-append "sha256=" hexdigest))
+                            (Nil [(Pair Str Str)])))
+            (Some [Str] hexdigest))
+        true))
+
+  ; A digest of any other length is not a SHA-256 signature — which is what
+  ; closes the trailing-junk hole, since `<64 valid chars>zz` is 66.
+  (prop wrong-length-is-rejected [(hexdigest Str)]
+    (if (== (str-len hexdigest) 64)
+        true
+        (== (gh-signature (Cons [(Pair Str Str)]
+                            (Pair [Str Str] "X-Hub-Signature-256" (str-append "sha256=" hexdigest))
+                            (Nil [(Pair Str Str)])))
+            (None [Str])))))
+
+; A header that is present is its value; a header that is absent is a stated
+; placeholder rather than a failure. GitHub always sends the delivery id and the
+; event name alongside a signature, so their absence means the caller is not
+; GitHub — but it is not a SECURITY question, and treating it as one would
+; conflate "malformed" with "unauthenticated".
+(defn header-or [] [(hs (List (Pair Str Str))) (name Str) (fallback Str)] Str
+  (match (header-first hs name) ((None) fallback) ((Some v) v))
+
+  (prop absent-yields-fallback [(name Str) (fallback Str)]
+    (== (header-or (Nil [(Pair Str Str)]) name fallback) fallback))
+  (prop present-yields-value [(name Str) (value Str) (fallback Str)]
+    (== (header-or (Cons [(Pair Str Str)] (Pair [Str Str] name value) (Nil [(Pair Str Str)]))
+                   name fallback)
+        value)))
+
+; ---------------------------------------------------------------------------
+; MODIFICATION 1 — the repository.
+;
+; The first log was operationally useless: it said an issue event happened but
+; not what it happened TO. The repository name lives in the JSON body, and Oath
+; has no JSON. In Go this is `json.Unmarshal` into a two-field struct and one
+; field access. Here it is the four definitions below, and they are a SCAN, not
+; a parse: they find a key's bytes and read the string that follows.
+;
+; What that costs, stated plainly so nobody mistakes it for parsing:
+;   - it cannot address a nested path, only search for a literal, so the search
+;     is scoped by hand (`"repository":{` first, then `"full_name":"` within);
+;   - it assumes the sender emits COMPACT JSON. `"repository": {` with a space
+;     — which is what a pretty-printer produces and what the first attempt at
+;     these fixtures produced — matches nothing and yields the absent marker;
+;   - it does not understand escapes, so a value containing `\"` truncates. Safe
+;     for a repository name, which cannot contain one; not safe in general;
+;   - if GitHub reorders its object keys, or nests another object literally
+;     spelled `"repository":{` earlier in the body, this reads the wrong one and
+;     says nothing about it.
+;
+; Every one of those is a property a parser would give for free.
+
+; Bytes back to text. `str-bytes` exists and is PROVEN; its inverse does not,
+; and this is NOT it — Str is a list of CODEPOINTS and a body is a list of
+; BYTES, so this reinterprets rather than decodes. For ASCII the two coincide.
+; For a UTF-8 repository name it produces mojibake, silently. The type system
+; cannot see the difference because both are the same shape.
+(defn bytes-str [] [(bs (List Int))] Str
+  (match bs ((Nil) (SNil)) ((Cons b rest) (SCons b (bytes-str rest))))
+
+  (prop empty-is-empty [] (== (bytes-str (Nil [Int])) (SNil)))
+  ; Round-trips against the direction that IS proven, which is the only
+  ; guarantee available here: it undoes str-bytes, and claims nothing else.
+  (prop inverts-str-bytes [(s Str)] (== (bytes-str (str-bytes s)) s)))
+
+(defn bytes-prefix [] [(p (List Int)) (bs (List Int))] Bool
+  (match p
+    ((Nil) true)
+    ((Cons x xs)
+      (match bs
+        ((Nil) false)
+        ((Cons y ys) (if (== x y) (bytes-prefix xs ys) false)))))
+
+  (prop empty-is-prefix [(bs (List Int))] (bytes-prefix (Nil [Int]) bs))
+  (prop nothing-precedes-empty [(x Int) (xs (List Int))]
+    (not (bytes-prefix (Cons [Int] x xs) (Nil [Int]))))
+  (prop self [(bs (List Int))] (bytes-prefix bs bs)))
+
+; The suffix following the first occurrence of `needle`, or None. The Option is
+; load-bearing: returning Nil for "not found" would be indistinguishable from
+; "found at the very end", and the difference is whether a field is absent or
+; empty — which is the difference between a bug and a value.
+(defn bytes-after [] [(needle (List Int)) (hay (List Int))] (Option (List Int))
+  (if (bytes-prefix needle hay)
+      (Some [(List Int)] (drop [Int] (length [Int] needle) hay))
+      (match hay
+        ((Nil) (None [(List Int)]))
+        ((Cons b rest) (bytes-after needle rest))))
+
+  (prop missing-is-none [(needle (List Int))]
+    (if (== needle (Nil [Int]))
+        true
+        (== (bytes-after needle (Nil [Int])) (None [(List Int)]))))
+  (prop finds-at-head [(needle (List Int)) (tail (List Int))]
+    (== (bytes-after needle (append [Int] needle tail)) (Some [(List Int)] tail))))
+
+; A JSON string value ends at the closing quote (34), and can never contain a
+; RAW control byte — JSON requires those escaped — so this stops at both.
+;
+; The control-byte half is not tidiness. Stopping only at the quote made
+; gh-record's `has-four-fields` FALSE while 200 generated cases passed it: a
+; repository name containing a literal tab forges a fifth column in a
+; tab-separated record. `oath eval` on a crafted body returned 5. The generator
+; will never assemble that byte sequence by chance, and no amount of running it
+; longer would have; what found it was asking what a value could contain.
+;
+; Stopping here makes the field count true BY CONSTRUCTION rather than by luck,
+; which is the difference between a property and a hope.
+;
+; (This uses `take-while` from the library. It replaced a `bytes-until` written
+; by hand ten minutes earlier — the name is bound in the store forever now,
+; unreferenced, because it was written before the library was searched.)
+(defn json-string-value [] [(bs (List Int))] (List Int)
+  (take-while [Int] (fn [(b Int)] (and (not (== b 34)) (<= 32 b))) bs)
+
+  (prop no-quote [(bs (List Int))] (not (contains 34 (json-string-value bs))))
+  (prop no-tab [(bs (List Int))] (not (contains 9 (json-string-value bs))))
+  (prop no-newline [(bs (List Int))] (not (contains 10 (json-string-value bs)))))
+
+; Read a JSON string field by literal key search, scoped to the first object
+; that opens at `scope`.
+(defn json-scoped-string [] [(scope Str) (key Str) (body (List Int))] Str
+  (match (bytes-after (str-bytes scope) body)
+    ((None) "-")
+    ((Some inner)
+      (match (bytes-after (str-bytes (str-append (str-append "\"" key) "\":\"")) inner)
+        ((None) "-")
+        ((Some v) (bytes-str (json-string-value v))))))
+
+  ; ABSENCE IS A VALUE, not an empty string. The record is tab-separated and a
+  ; sink failure is signalled by an empty string; an empty field would collide
+  ; with both. "-" is the marker, and it is never silently a name.
+  (prop absent-scope-is-marked [(scope Str) (key Str)]
+    (if (== scope (SNil)) true (== (json-scoped-string scope key (Nil [Int])) "-")))
+  ; A found value contains neither a quote nor a tab, so it cannot forge a
+  ; field boundary in the record — a repository named `a<TAB>b` cannot inject
+  ; a column. This is what has-four-fields rests on.
+  (prop value-has-no-quote [(scope Str) (key Str) (body (List Int))]
+    (not (contains 34 (str-bytes (json-scoped-string scope key body)))))
+  (prop value-has-no-tab [(scope Str) (key Str) (body (List Int))]
+    (not (contains 9 (str-bytes (json-scoped-string scope key body))))))
+
+; ---------------------------------------------------------------------------
+; MODIFICATION 4 — make the record say what it is.
+;
+; report.sh is the DEPENDENT, and it is what turns this from an example into an
+; application: something reads the log and breaks when the log changes. It broke
+; in modification 1, and the way it broke is the lesson. The record went from
+; three fields to four; every three-field line already in the log stayed there,
+; because a log is append-only; and the consumer read them all without
+; complaint, reporting an empty repository for each. NOTHING FAILED. A reader
+; would have concluded that the repository was unknown for those events rather
+; than that the format had changed underneath them.
+;
+; So the record carries its schema, and report.sh refuses a line it does not
+; recognize instead of interpreting one. `oath provenance` does exactly this for
+; a compiled artifact (#116) — a schema tag inside the thing rather than beside
+; it — and the same argument applies to anything an artifact writes out.
+;
+; THE FIELD ORDER IS DESIGN.md's RECORD MODEL, applied to an application's own
+; output — and applying it turned up a distinction the first version of this
+; comment got wrong. "Asserted" is not one tier here, because **GitHub's HMAC
+; covers the BODY ONLY**. The headers ride along unsigned.
+;
+;   oath-gh/1   EQUIVALENCE   what counts as the same record format
+;   delivery    UNSIGNED      GitHub's transport label. The dedup key, and the
+;                             best available one — but it is not authenticated,
+;                             so deduplication is a defence against GitHub's own
+;                             redelivery and NOT against anyone who captured a
+;                             valid body/signature pair. They can vary it freely.
+;   event       UNSIGNED      likewise a label, not a claim anyone signed
+;   repository  SIGNED        read out of the body the signature covers. The one
+;                             field an adversary cannot alter without the secret,
+;                             and therefore the only field worth a policy
+;                             decision.
+;   received-at OBSERVATION   true about this host and nothing else. No verifier
+;                             can check it, and it is the one field that differs
+;                             between two records of one delivery.
+;
+; This is NOT FIXABLE HERE and is not a defect in the receiver: nothing can bind
+; the delivery id to signed data when the signer did not sign it. It is recorded
+; because a consumer reading this log is entitled to know which of its columns
+; survived authentication and which merely arrived — and because the record
+; model's four categories were sharp enough to expose the difference the moment
+; the fields were laid out against them.
+;
+; NOTE the header spellings. GitHub documents `X-GitHub-Event` and
+; `X-GitHub-Delivery`; what arrives here is `X-Github-Event` and
+; `X-Github-Delivery`, because the Go backend's handler adapter runs requests
+; through net/http, which canonicalizes header keys. That is a BACKEND artifact
+; visible in Oath source, and it is the sharpest thing this application found.
+; `hdr-probe.oath` in this directory is the witness.
+; A value a tab-separated record can carry, or the absent marker.
+;
+; ENTRY 6 OF THE FRICTION LOG, TWICE MORE, AND I MISSED BOTH. A repository name
+; containing a tab forges a column; that was found, fixed in the JSON scan, and
+; written up prominently — while the two HEADER fields in the very same record
+; kept splicing their values in raw:
+;
+;   (length (str-split 9 (gh-record <request with a tab in X-Github-Delivery>)))
+;   => 6
+;
+; And these are WORSE than the one that was found, because GitHub's HMAC covers
+; the BODY ONLY. The headers are unsigned, so anyone who observes a valid
+; delivery can replay it with a tab spliced into the delivery id — no secret
+; required — and corrupt the log. With report.sh checking the field count, that
+; is a denial of service on the consumer through data nobody authenticated.
+;
+; Rejecting outright rather than truncating: truncation at the first bad byte
+; would collapse `abc<TAB>1` and `abc<TAB>2` to the same delivery id, which is
+; the one field a consumer is told it may treat as an identity. A value that
+; cannot be represented is reported as absent, which is what it is.
+(defn record-field [] [(s Str)] Str
+  (if (all [Int] (fn [(c Int)] (and (<= 32 c) (<= c 126))) (str-bytes s)) s "-")
+
+  (prop printable-passes-through [] (== (record-field "push") "push"))
+  (prop a-tab-is-rejected [(a Str) (b Str)]
+    (== (record-field (str-append a (str-append "\t" b))) "-"))
+  (prop a-newline-is-rejected [(a Str) (b Str)]
+    (== (record-field (str-append a (str-append "\n" b))) "-"))
+  ; The whole point, stated directly: whatever comes out can never split a
+  ; tab-separated record.
+  (prop never-contains-a-tab [(s Str)]
+    (not (contains 9 (str-bytes (record-field s))))))
+
+(defn gh-record [] [(r Request)] Str
+  (join-with "\t"
+    (Cons [Str] "oath-gh/1"
+      (Cons [Str] (record-field (header-or (req-headers r) "X-Github-Delivery" "-"))
+        (Cons [Str] (record-field (header-or (req-headers r) "X-Github-Event" "-"))
+          (Cons [Str] (record-field (json-scoped-string "\"repository\":{" "full_name" (req-body r)))
+            (Cons [Str] (show-nat (req-received-at r))
+              (Nil [Str])))))))
+
+  ; A record always has exactly the five fields, so a consumer can `cut -f4`
+  ; without checking. Four separators, whatever the request contains — which
+  ; holds because EVERY variable field goes through record-field, not because
+  ; the values happen to be well behaved. The version that sanitized only the
+  ; field read out of the body passed this property for 200 cases and was false.
+  (prop has-five-fields [(r Request)]
+    (== (length [Str] (str-split 9 (gh-record r))) 5))
+
+  ; A record ANNOUNCES ITS FORMAT, always and in the first field, so a consumer
+  ; that does not recognize it can refuse rather than misread it.
+  (prop declares-its-schema [(r Request)]
+    (str-prefix "oath-gh/1\t" (gh-record r)))
+
+  ; A record is never empty — the sink's failure value is the empty string, so
+  ; an empty record would be indistinguishable from a failed write in the log.
+  (prop never-empty [(r Request)]
+    (not (== (gh-record r) (SNil)))))
+
+; ---------------------------------------------------------------------------
+; MODIFICATION 2 — refuse to run without a secret.
+;
+; THE FAIL-OPEN THIS APPLICATION FOUND, and it was found by running the binary,
+; not by reading it.
+;
+; Launched with GITHUB_WEBHOOK_SECRET unset, version 1 bound its port, reported
+; nothing, and accepted a forged delivery signed with the EMPTY key:
+;
+;   $ env -u GITHUB_WEBHOOK_SECRET ./gh-webhookd &
+;   oath handler listening on :8897
+;   $ curl ... -H "X-Hub-Signature-256: sha256=$(hmac('', body))" ...
+;     HTTP 202
+;   $ cat events.log
+;   1785692887  push  forged-0001  miclip/oath-lang
+;
+; The #114 launch gate did exactly what it promises and it was not enough. It
+; resolves every DECLARED requirement before launch or exits 70 — and `env`
+; resolved, because `env` is the authority to read the environment, which the
+; host has whether or not any particular variable exists. The gate is loud
+; about capability KINDS and silent about capability CONTENT. That distinction
+; is invisible in the source, where `((. caps env) "GITHUB_WEBHOOK_SECRET")`
+; looks exactly like a value that must exist.
+;
+; This is #117 (narrowed capability requirements) arriving as a security bug
+; rather than as a design preference. `process_env(keys = ["GITHUB_WEBHOOK_
+; SECRET"])` would have made the missing variable a PROVISION failure and the
+; program would never have started.
+;
+; What is possible without extending anything is weaker, and the gap is the
+; cost: a handler is a pure function with no startup, so it cannot refuse to
+; LAUNCH — only to answer. The port still binds. Every request gets a 500 that
+; says "misconfigured" rather than a 401 that says "you are not authorized",
+; because the caller is not the one who is wrong.
+;
+; The minimum length is a judgement, not a protocol rule: GitHub recommends a
+; high-entropy secret, and verifying against a one-character key is verifying
+; almost nothing. Sixteen is the floor, and refusing below it is deliberate —
+; a receiver that accepts a weak key has the appearance of authentication.
+;
+; THE SECOND CONJUNCT IS THE CODEPOINT/BYTE CONFLATION BITING THE FILE THAT
+; DOCUMENTS IT. `str-bytes` maps a Str's CODEPOINTS to a (List Int); `hmac-sha256`
+; wants BYTES. A length check alone admitted a 32-character non-ASCII secret,
+; and the result was not a wrong digest — it was a crash:
+;
+;   $ GITHUB_WEBHOOK_SECRET=ключключключключключключключключ ./gh-webhookd &
+;   $ curl ... -H "X-Hub-Signature-256: sha256=<correct>" ...
+;   curl: (52) Empty reply from server
+;   http: panic serving 127.0.0.1: byte list element out of range 0..255
+;
+; The process survives — net/http recovers per connection — so it serves
+; dropped connections indefinitely while looking healthy. A Latin-1 secret is
+; worse than a crash: every codepoint is in byte range, nothing errors, and the
+; digest silently disagrees with GitHub's forever.
+;
+; This is friction entry 3 as a live defect rather than a note about types: the
+; general problem was written down at the top of this file and the specific
+; instance was left in it, because `Str` and `(List Int)` are the same shape and
+; nothing in the type of `secret` says which one it holds. Found by review.
+(defn secret-is-usable [] [(secret Str)] Bool
+  (and (<= 16 (str-len secret))
+       (all [Int] (fn [(c Int)] (and (<= 33 c) (<= c 126))) (str-bytes secret)))
+  ; PRINTABLE, NON-WHITESPACE ASCII — 33..126, excluding space. Narrowing the
+  ; contract rather than widening the check: a secret with a space in it is an
+  ; operator error waiting to be shell-quoted wrong, and `openssl rand -hex`
+  ; (what the README suggests) never produces one.
+
+  (prop empty-is-not-usable [] (not (secret-is-usable (SNil))))
+  (prop short-is-not-usable [(s Str)]
+    (if (< (str-len s) 16) (not (secret-is-usable s)) true))
+  ; A secret this receiver cannot encode as bytes is not usable, whatever its
+  ; length. `к` is U+043A.
+  (prop non-ascii-is-not-usable [(s Str)]
+    (not (secret-is-usable (str-append "ключключключключключключключключ" s))))
+  ; LATIN-1 IS THE HARDER HALF, and `bytes-ok` was not enough for it. `é` is
+  ; U+00E9: str-bytes yields [233], which IS in byte range, so nothing errors —
+  ; while GitHub and openssl sign the environment variable's UTF-8 bytes,
+  ; [195, 169]. The digests disagree, every legitimate delivery gets a 401, and
+  ; the operator debugs a signature mismatch that is really an encoding
+  ; mismatch. ASCII is the only range where `str-bytes` and UTF-8 agree, and it
+  ; is what the README promises, so it is what this enforces.
+  (prop latin1-is-not-usable [(s Str)]
+    (not (secret-is-usable (str-append "ééééééééééééééééééééééééééééééé" s))))
+
+  ; And the converse, so the check is not simply refusing everything: a usable
+  ; secret is exactly one that is long enough AND agrees with UTF-8.
+  (prop usable-encodes [(s Str)]
+    (if (secret-is-usable s) (bytes-ok (str-bytes s)) true)))
+
+; ---------------------------------------------------------------------------
+; MODIFICATION 3 — say no to requests this receiver cannot honestly serve.
+;
+; Version 2 answered 202 to three requests it should have refused, and the
+; damage in each case is that the OPERATOR never learns they misconfigured
+; something. All three were found by sending them, not by reading the handler.
+;
+;  1. A hook configured with GitHub's `application/x-www-form-urlencoded`
+;     content type — the other option in the same dropdown — delivers
+;     `payload=%7B%22zen%22...`. The signature verifies, because GitHub signs
+;     whatever body it sent, so the request is authentic and unreadable. The
+;     scan finds no `"repository":{` and the log fills with:
+;         1785693100  push  form-0001  -
+;     Authentic, accepted, and useless. 415 says so.
+;
+;  2. A signed POST to the WRONG PATH was accepted. A hook pointed at /hoook
+;     works silently forever, and the operator's evidence that the URL is right
+;     is that deliveries succeed — which they do either way. 404 breaks that.
+;
+;  3. A browser GET got 401. Nothing about a GET can be authorized: it carries
+;     no body to sign. Answering "you are not authorized" to a request that
+;     could never be is a misleading error, and misleading errors are what
+;     operators debug for an hour. 405.
+;
+; THE ORDER IS THE DESIGN, and each step earns its position:
+;   method    before authentication — a non-POST cannot carry a signature, so
+;             refusing it is not a security decision and 405 is the true answer;
+;   config    before authentication — an unusable secret means no signature can
+;             be evaluated at all, and the failure is ours, not the caller's;
+;   signature before routing — path and content type are facts about this
+;             deployment, and an unauthenticated caller should learn neither.
+;             Everything after this line is talking to GitHub.
+
+; A configured hook URL, allowing the query string net/http preserves.
+(defn path-is [] [(want Str) (got Str)] Bool
+  (or (== got want) (str-prefix (str-append want "?") got))
+
+  (prop exact-matches [(want Str)] (path-is want want))
+  (prop query-matches [(want Str) (q Str)]
+    (path-is want (str-append want (SCons 63 q))))
+  ; A LONGER path does not match: /hook must not accept /hookworm.
+  (prop prefix-alone-is-not-a-match [(want Str) (extra Str)]
+    (if (== extra (SNil))
+        true
+        (if (str-prefix (SCons 63 (SNil)) extra)
+            true
+            (not (path-is want (str-append want extra)))))))
+
+; ---- specification scaffolding ------------------------------------------
+;
+; The four definitions below exist so the PROPERTIES can build inputs the
+; generator cannot reach: a valid signature, a usable secret, a capability
+; world. They are part of the artifact and are bound as names like everything
+; else — there is no test scope, so a specification's scaffolding lives in the
+; same namespace as the thing it specifies, permanently.
+;
+; `gh-sign` shares `hmac-sha256` with the handler it specifies, which is
+; circular for exactly one step and is stated rather than hidden: what pins
+; hmac-sha256 itself is the RFC 4231 known-answer test in examples/webhook.oath,
+; and — for this application — the fact that openssl computes the same digest
+; over the wire in deliver.sh. Neither of those is inside this file.
+
+; A secret that satisfies secret-is-usable, for properties that need one.
+(defn gh-spec-secret [] [] Str
+  "0123456789abcdef0123456789abcdef"
+  (prop is-usable [] (secret-is-usable (gh-spec-secret))))
+
+; The header value GitHub sends, built the way GitHub builds it.
+(defn gh-sign [] [(secret Str) (body (List Int))] Str
+  (str-append "sha256=" (hex-encode (hmac-sha256 (str-bytes secret) body)))
+
+  ; Both guards are the SAME missing refinement, met for the fourth and fifth
+  ; time in this file: hmac-sha256 takes byte lists, `Str` and `(List Int)` can
+  ; carry anything, and the mismatch is a runtime error rather than a type
+  ; error. `{b : Int | 0 <= b <= 255}` (#69) would delete every one of them.
+  (prop carries-the-algorithm [(secret Str) (body (List Int))]
+    (if (and (bytes-ok (str-bytes secret)) (bytes-ok body))
+        (str-prefix "sha256=" (gh-sign secret body))
+        true))
+  ; Round-trips through the receiver's own reader — the digest that comes back
+  ; out of gh-signature is the one hex-encode put in.
+  (prop survives-gh-signature [(secret Str) (body (List Int))]
+    (if (and (bytes-ok (str-bytes secret)) (bytes-ok body))
+        (== (gh-signature (Cons [(Pair Str Str)]
+                            (Pair [Str Str] "X-Hub-Signature-256" (gh-sign secret body))
+                            (Nil [(Pair Str Str)])))
+            (Some [Str] (hex-encode (hmac-sha256 (str-bytes secret) body))))
+        true)))
+
+; A delivery shaped the way GitHub shapes one. The signature is a PARAMETER
+; rather than computed here, so a property can supply a wrong one, an
+; unprefixed one, or one computed over a different body.
+(defn gh-request [] [(sig Str) (event Str) (path Str) (ctype Str) (body (List Int))] Request
+  (Req "POST" path
+    (Cons [(Pair Str Str)] (Pair [Str Str] "X-Hub-Signature-256" sig)
+      (Cons [(Pair Str Str)] (Pair [Str Str] "Content-Type" ctype)
+        (Cons [(Pair Str Str)] (Pair [Str Str] "X-Github-Event" event)
+          (Cons [(Pair Str Str)] (Pair [Str Str] "X-Github-Delivery" "spec-delivery")
+            (Nil [(Pair Str Str)])))))
+    body 0)
+
+  (prop is-a-post [(sig Str) (event Str) (path Str) (ctype Str) (body (List Int))]
+    (== (req-method (gh-request sig event path ctype body)) "POST"))
+  (prop keeps-the-path [(sig Str) (event Str) (path Str) (ctype Str) (body (List Int))]
+    (== (req-path (gh-request sig event path ctype body)) path))
+  (prop keeps-the-body [(sig Str) (event Str) (path Str) (ctype Str) (body (List Int))]
+    (== (req-body (gh-request sig event path ctype body)) body)))
+
+; A media type, with the parameters RFC 9110 allows after it — `application/json`
+; and `application/json; charset=utf-8` are the same type.
+;
+; A bare `str-prefix` is WRONG here and was, until review caught it:
+; `application/jsonp` and `application/json-invalid` both start with
+; `application/json` and are not JSON. This receiver would have answered 202 to
+; a signed delivery it could not read, which is the exact defect modification 3
+; existed to remove — reintroduced one layer down by a prefix test.
+;
+; The same shape as `path-is`, and for the same reason: a prefix is a match only
+; when what follows it is a delimiter.
+(defn media-type-is [] [(want Str) (got Str)] Bool
+  (or (== got want) (str-prefix (str-append want ";") got))
+
+  (prop exact-matches [(want Str)] (media-type-is want want))
+  (prop parameters-match [(want Str) (params Str)]
+    (media-type-is want (str-append want (SCons 59 params))))
+  ; A LONGER type does not match: neither `application/jsonp` nor
+  ; `application/json payload`. An earlier version also accepted a SPACE as a
+  ; delimiter, on the theory that RFC 9110 allows whitespace before the `;` —
+  ; which let `application/json payload` through, a media type this receiver
+  ; cannot read reaching the 202 path. GitHub sends `application/json` with an
+  ; optional `; charset=utf-8` and never the whitespace form, so the strict
+  ; reading costs nothing and the permissive one cost a hole.
+  (prop a-longer-type-is-not-a-match [(want Str) (extra Str)]
+    (if (== extra (SNil))
+        true
+        (if (str-prefix (SCons 59 (SNil)) extra)
+            true
+            (not (media-type-is want (str-append want extra)))))))
+
+; A capability world with a chosen sink and a chosen secret. Used by the
+; properties to reach paths the generator cannot: it cannot invent a signature,
+; and — since modification 2 — it can barely invent a usable secret either.
+(defn caps-with [] [(sink (-> Str Str)) (secret Str)] {emit (-> Str Str) env (-> Str Str)}
+  {emit sink env (fn [(k Str)] secret)}
+
+  (prop env-returns-the-secret [(sink (-> Str Str)) (secret Str) (k Str)]
+    (== ((. (caps-with sink secret) env) k) secret))
+  (prop emit-is-the-sink [(sink (-> Str Str)) (secret Str) (s Str)]
+    (== ((. (caps-with sink secret) emit) s) (sink s))))
+
+; The handler.
+;
+; Capabilities: `env` for the shared secret, `emit` for the record sink. Nothing
+; else — in particular no outbound HTTP, which means the compiled binary does
+; not contain a client at all (#114: undeclared authority is absent from the
+; binary, not merely unused).
+(defn gh-webhook [] [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)] Response
+  (let (secret Str ((. caps env) "GITHUB_WEBHOOK_SECRET"))
+    (if (not (== (req-method r) "POST"))
+        (Resp 405 (Nil [(Pair Str Str)]) (Nil [Int]))
+        (if (not (secret-is-usable secret))
+            (Resp 500 (Nil [(Pair Str Str)]) (Nil [Int]))
+            (match (gh-signature (req-headers r))
+              ((None) (Resp 401 (Nil [(Pair Str Str)]) (Nil [Int])))
+              ((Some given)
+                (if (not (bytes-eq-ct (hex-decode given)
+                                      (hmac-sha256 (str-bytes secret) (req-body r))))
+                    (Resp 401 (Nil [(Pair Str Str)]) (Nil [Int]))
+                    ; Authenticated from here: the caller holds the secret.
+                    (if (not (path-is "/hook" (req-path r)))
+                        (Resp 404 (Nil [(Pair Str Str)]) (Nil [Int]))
+                        (if (not (media-type-is "application/json"
+                                                (header-or (req-headers r) "Content-Type" "")))
+                            (Resp 415 (Nil [(Pair Str Str)]) (Nil [Int]))
+                            ; A ping is the hook-installation handshake. GitHub
+                            ; needs a 2xx or it marks the hook failing; the log
+                            ; records what happened to the REPOSITORY, and a
+                            ; ping did not happen to the repository.
+                            (if (== (header-or (req-headers r) "X-Github-Event" "-") "ping")
+                                (Resp 200 (Nil [(Pair Str Str)]) (Nil [Int]))
+                                (match ((. caps emit) (gh-record r))
+                                  ((SNil) (Resp 500 (Nil [(Pair Str Str)]) (Nil [Int])))
+                                  ((SCons c rest) (Resp 202 (Nil [(Pair Str Str)]) (Nil [Int])))))))))))))
+
+  ; ---- what the caller is told -------------------------------------------
+  ;
+  ; Every status this receiver can return, so a reader of the log or of
+  ; GitHub's delivery UI can map a code to a cause without reading the body:
+  ;
+  ;   405  not a POST                      the caller is not a webhook sender
+  ;   500  no usable secret, or sink failed        THIS DEPLOYMENT is broken
+  ;   401  no signature, or a bad one                       not authenticated
+  ;   404  authenticated, wrong path             the hook URL is misconfigured
+  ;   415  authenticated, not JSON      the hook's content type is misconfigured
+  ;   200  authenticated ping                       handshake, nothing recorded
+  ;   202  authenticated event, recorded                              accepted
+  (prop status-is-one-of-seven [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)]
+    (let (code Int (match (gh-webhook caps r) ((Resp s h b) s)))
+      (or (== code 200) (or (== code 202) (or (== code 401) (or (== code 404)
+        (or (== code 405) (or (== code 415) (== code 500)))))))))
+
+  ; The response carries no body and no headers: a rejection tells the caller
+  ; nothing beyond the status.
+  (prop never-leaks-a-body [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)]
+    (== (match (gh-webhook caps r) ((Resp s h b) b)) (Nil [Int])))
+
+  ; A request that is not a POST cannot carry a signed body, so it is answered
+  ; before anything else and without reference to the secret. Quantified over
+  ; every capability world, including broken ones.
+  (prop non-post-is-405 [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)]
+    (if (== (req-method r) "POST")
+        true
+        (== (match (gh-webhook caps r) ((Resp s h b) s)) 405)))
+
+  ; ---- configuration ------------------------------------------------------
+  ;
+  ; THE PROPERTY THAT WOULD HAVE CAUGHT THE FAIL-OPEN, and the reason
+  ; modification 2 exists: with no usable secret, NOTHING is accepted — not a
+  ; forged request, not a genuine one, not any request the generator can build.
+  (prop unusable-secret-refuses-everything [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)]
+    (if (and (== (req-method r) "POST")
+             (not (secret-is-usable ((. caps env) "GITHUB_WEBHOOK_SECRET"))))
+        (== (match (gh-webhook caps r) ((Resp s h b) s)) 500)
+        true))
+
+  ; And the same claim reached through the ACCEPT path rather than around it: a
+  ; request signed CORRECTLY under an unusable secret is still refused. Without
+  ; this, the property above is satisfied by a receiver that rejects everything
+  ; the generator happens to produce, which is every request it produces anyway.
+  (prop unusable-secret-refuses-a-valid-signature [(sink (-> Str Str)) (body (List Int)) (weak Str)]
+    (if (and (bytes-ok body) (and (bytes-ok (str-bytes weak)) (not (secret-is-usable weak))))
+        (== (match (gh-webhook (caps-with sink weak)
+                     (gh-request (gh-sign weak body) "push" "/hook" "application/json" body))
+              ((Resp s h b) s))
+            500)
+        true))
+
+  ; ---- authentication -----------------------------------------------------
+  ;
+  ; An unsigned request is rejected without consulting the sink. Conditioned on
+  ; a POST with a usable secret, because the two failures above outrank it.
+  (prop unsigned-is-401 [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)]
+    (if (and (== (req-method r) "POST")
+             (and (secret-is-usable ((. caps env) "GITHUB_WEBHOOK_SECRET"))
+                  (== (gh-signature (req-headers r)) (None [Str]))))
+        (== (match (gh-webhook caps r) ((Resp s h b) s)) 401)
+        true))
+
+  ; A tampered body is not accepted under a signature computed for the original.
+  (prop tampering-is-rejected [(sink (-> Str Str)) (body (List Int))]
+    (if (bytes-ok body)
+        (== (match (gh-webhook (caps-with sink (gh-spec-secret))
+                     (gh-request (gh-sign (gh-spec-secret) body) "push" "/hook"
+                                 "application/json" (Cons [Int] 88 body)))
+              ((Resp s h b) s))
+            401)
+        true))
+
+  ; THE SIGNATURE SCHEME IS PART OF WHAT WAS VERIFIED. A digest that is correct
+  ; for the body but arrives without the `sha256=` prefix must NOT be accepted:
+  ; the prefix is the sender's claim about which algorithm produced it, and a
+  ; receiver that accepts an unlabelled digest has verified an assumption.
+  (prop unprefixed-signature-is-rejected [(sink (-> Str Str)) (body (List Int))]
+    (if (bytes-ok body)
+        (== (match (gh-webhook (caps-with sink (gh-spec-secret))
+                     (gh-request (hex-encode (hmac-sha256 (str-bytes (gh-spec-secret)) body))
+                                 "push" "/hook" "application/json" body))
+              ((Resp s h b) s))
+            401)
+        true))
+
+  ; ---- routing, which happens only after authentication -------------------
+  ;
+  ; A correctly signed delivery to the wrong path is a 404, so a hook pointed at
+  ; the wrong URL fails visibly in GitHub's delivery UI instead of succeeding.
+  (prop wrong-path-is-404 [(sink (-> Str Str)) (body (List Int)) (path Str)]
+    (if (and (bytes-ok body) (not (path-is "/hook" path)))
+        (== (match (gh-webhook (caps-with sink (gh-spec-secret))
+                     (gh-request (gh-sign (gh-spec-secret) body) "push" path
+                                 "application/json" body))
+              ((Resp s h b) s))
+            404)
+        true))
+
+  ; A correctly signed delivery this receiver cannot read is a 415 rather than
+  ; a 202 with an empty repository column. GitHub's form-encoded content type is
+  ; the case that produced it.
+  (prop unreadable-content-type-is-415 [(sink (-> Str Str)) (body (List Int)) (ctype Str)]
+    (if (and (bytes-ok body) (not (media-type-is "application/json" ctype)))
+        (== (match (gh-webhook (caps-with sink (gh-spec-secret))
+                     (gh-request (gh-sign (gh-spec-secret) body) "push" "/hook" ctype body))
+              ((Resp s h b) s))
+            415)
+        true))
+
+  ; ---- what is recorded ---------------------------------------------------
+  ;
+  ; THE ACCEPT PATH, constructed — the generator cannot invent a valid
+  ; signature, so without this the specification would constrain only
+  ; rejections. Sink and body stay quantified: every sink, every body.
+  ;
+  ; The SECRET IS CONSTRUCTED, and that changed in modification 2. Version 1
+  ; signed with whatever the generated `env` returned. Once an unusable secret
+  ; became a 500, that made this property vacuous — a generated Str reaches
+  ; sixteen codepoints almost never, so nearly every case would take the `true`
+  ; branch and the accept path would go unexercised while still reporting 200
+  ; passes. Strengthening the artifact silently weakened its specification, and
+  ; nothing in the report would have said so.
+  (prop accepts-github-signed [(sink (-> Str Str)) (body (List Int))]
+    (if (bytes-ok body)
+        (let (r Request (gh-request (gh-sign (gh-spec-secret) body) "push" "/hook"
+                                    "application/json" body))
+          (match (sink (gh-record r))
+            ((SNil) (== (match (gh-webhook (caps-with sink (gh-spec-secret)) r) ((Resp s h b) s)) 500))
+            ((SCons c rest) (== (match (gh-webhook (caps-with sink (gh-spec-secret)) r) ((Resp s h b) s)) 202))))
+        true))
+
+  ; A PING IS NOT RECORDED — and this witnesses the ABSENCE of an effect rather
+  ; than asserting it. The sink here always fails, so any path that reached it
+  ; would answer 500. A ping answers 200, which it can only do by not writing.
+  (prop ping-does-not-record [(body (List Int))]
+    (if (bytes-ok body)
+        (== (match (gh-webhook (caps-with (fn [(s Str)] (SNil)) (gh-spec-secret))
+                     (gh-request (gh-sign (gh-spec-secret) body) "ping" "/hook"
+                                 "application/json" body))
+              ((Resp s h b) s))
+            200)
+        true))
+
+  ; THE CONTROL for the property above, and without it that property proves
+  ; nothing: the same always-failing sink, the same secret, the same path, one
+  ; word of the event name changed. If this did not answer 500, "200 means the
+  ; sink was not touched" would be an unfounded reading of a status code.
+  (prop a-non-ping-does-record [(body (List Int))]
+    (if (bytes-ok body)
+        (== (match (gh-webhook (caps-with (fn [(s Str)] (SNil)) (gh-spec-secret))
+                     (gh-request (gh-sign (gh-spec-secret) body) "push" "/hook"
+                                 "application/json" body))
+              ((Resp s h b) s))
+            500)
+        true)))

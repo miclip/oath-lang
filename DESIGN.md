@@ -589,7 +589,7 @@ Phases 1–3 are COMPLETE, beyond the original ambitions:
   waivers, and an O1 binary identity encoding that inherits nothing from
   any host language (SPEC §1; store migrated wholesale, mappings journaled).
 - **Phase 2 ✓ (mostly)** — SMT proofs are real INCLUDING structural
-  induction with a relevance-filtered lemma library (§7.2): 123 definitions
+  induction with a relevance-filtered lemma library (§7.2): 125 definitions
   fully PROVEN, insertion sort 7/7. The Rust kernel exists — built BLIND
   from docs/SPEC.md + fixtures by an agent that never saw the Go source,
   conforming byte-for-byte on all six checks, wasm32-ready. Effects
@@ -679,9 +679,13 @@ proven.*
 
 ### Hard limits — the blocking gaps
 
-**Coverage.** 187 definitions, deep but narrow: list, sort, tree, queue,
-interval, map, set, string, rational, plus honest exhibits. Nothing corresponds
-to a task an agent is actually given.
+**Coverage.** 205 definitions, deep but narrow: list, sort, tree, queue,
+interval, map, set, string, rational, plus honest exhibits — and, since #120,
+one APPLICATION (`apps/github-webhook`) that a system outside the project
+actually calls. Those eighteen definitions are the first entries in this
+corpus that correspond to a task someone would be given rather than to a
+structure someone would teach, and what they cost is recorded in
+`docs/experiments/webhook-friction.md` rather than smoothed away.
 
 **Discovery.** `oath find` is spec-native, not intent-native. Its four modes all
 require the caller to already think in algebraic properties — powerful once you

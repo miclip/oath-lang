@@ -1,0 +1,2 @@
+✓ prop empty-is-empty           passed 200 cases
+✓ prop inverts-str-bytes        passed 200 cases

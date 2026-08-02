@@ -1,0 +1,2 @@
+✓ prop carries-the-algorithm    passed 200 cases
+✓ prop survives-gh-signature    passed 200 cases

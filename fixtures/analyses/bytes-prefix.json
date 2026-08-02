@@ -1,0 +1,13 @@
+{
+  "name": "bytes-prefix",
+  "hash": "6254197a78fe26dbe82e70ac0a07763a5360d89e2c95cf52176aad644e3b4ff4",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

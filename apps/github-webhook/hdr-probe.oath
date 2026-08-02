@@ -1,0 +1,38 @@
+; THE HEADER-CANONICALIZATION WITNESS.
+;
+; GitHub sends `X-GitHub-Event: push`. An Oath handler asking for the header by
+; the name GitHub documents gets NOTHING; asking for `X-Github-Event` gets the
+; value. The Go backend's handler adapter puts requests through net/http, which
+; canonicalizes header keys (each dash-separated token capitalized, the rest
+; lowercased — so `GitHub` becomes `Github`), and that transformation is
+; invisible in the Oath source, in the type, and in the guarantee.
+;
+; It fails SILENTLY and it fails OPEN in the shape that matters: a handler that
+; branched on `(== (header-or hs "X-GitHub-Event" "-") "ping")` would be
+; comparing against a header that never arrives, so the ping branch would be
+; dead and every ping would take the other path. Nothing in the artifact's
+; verdict would mention it.
+;
+; This exists so the fact is a RUNNABLE OBSERVATION rather than a comment:
+;
+;   oath put apps/github-webhook/hdr-probe.oath
+;   oath build hdr-probe -o /tmp/hdr-probe && OATH_HTTP_ADDR=:8898 /tmp/hdr-probe &
+;   curl -sS -X POST localhost:8898/ -H 'X-GitHub-Event: push' -d '{}'
+;   MISS-as-documented|push|MISS-lowercase
+;
+; The middle field is the one that hits. If a future backend, or a change to the
+; handler adapter, stops canonicalizing — or canonicalizes differently — this
+; prints something else and apps/github-webhook/webhook.oath is wrong in a way
+; no test of that file would catch.
+;
+; Recorded in docs/experiments/webhook-friction.md as the top-ranked TOOLING
+; finding: the handler protocol has no header model, so an application has to
+; encode one backend's normalization in its source.
+(defn hdr-probe [] [(r Request)] Response
+  (Resp 200 (Nil [(Pair Str Str)])
+    (str-bytes (join-with "|"
+      (Cons [Str] (header-or (req-headers r) "X-GitHub-Event" "MISS-as-documented")
+        (Cons [Str] (header-or (req-headers r) "X-Github-Event" "MISS-go-canonical")
+          (Cons [Str] (header-or (req-headers r) "x-github-event" "MISS-lowercase")
+            (Nil [Str])))))))
+  (prop always-200 [(r Request)] (== (match (hdr-probe r) ((Resp s h b) s)) 200)))

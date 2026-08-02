@@ -34,53 +34,59 @@ output, compiled execution, and deployment under change.
 
 **The next work is to DEPEND on Oath, not to improve it.** The roadmap, in order:
 
-  1. **THE APPLICATION** and **#118** are INDEPENDENT PROBES OF THE SAME BOUNDARY,
-     not a parent and a child. #118 asks what typed lowering actually requires;
-     the application reveals which runtime and datatype features matter in
-     practice. Whichever runs first constrains the second. Two dangers, one on
-     each side: letting the application silently REDESIGN THE LANGUAGE, and
-     letting #118 OPTIMIZE A SLICE NOBODY NEEDS.
-  2. **Mark** — the first external contributor.
+  1. ~~**THE APPLICATION**~~ — DONE, see below. It ran first, so it now
+     constrains #118 rather than the other way round, and it did the thing that
+     was meant to be guarded against in reverse: it did not redesign the
+     language, and it produced a ranked demand list instead.
+  2. **#117**, then **#118** with the slice the application actually demanded.
+  3. **Mark** — the first external contributor.
 
-### THE NEXT SESSION'S INSTRUCTION, concretely — **it is #120**
+### #120 IS DONE — read the friction log before choosing anything
 
-Filed as an issue deliberately. Everything else in the backlog is a legible unit
-of work and an application is not, so "what is next?" answered from the issue list
-would keep returning the wrong thing. #120 makes the right answer the legible one.
+`apps/github-webhook` is a GitHub webhook receiver that verifies
+`X-Hub-Signature-256`, scans the repository out of the signed body, and appends a
+self-describing record to a log `report.sh` consumes. `deliver.sh` signs with
+**openssl** and posts with **curl** — it shares no code with Oath, which makes
+every accepted delivery a real cross-implementation check of `hmac-sha256`. It is
+wired into `make check-app` and CI, and it runs against a COPY of `codebase/`
+because `oath put` is the only way to check a source file and it always writes.
 
-> Turn `examples/webhook.oath` into something another system actually CALLS.
-> Keep a friction log. Extend neither the language nor the protocol on the first
-> pass. Then review the friction log before choosing the datatype and numeric
-> slice for #118.
+The language and the protocol are UNCHANGED. `oath/`, `oathrs/`, `docs/SPEC.md`
+and `examples/` were not touched; the 18 new definitions are the application.
 
-Friction log lives at `docs/experiments/webhook-friction.md` (the repo's existing
-convention for this kind of record). Every time the application wants something
-Oath lacks: write down WHAT was wanted, WHAT the workaround was, and HOW MUCH it
-cost. That turns friction into evidence instead of backlog, and it produces a
-demand-RANKED list of missing capabilities, language features and tooling — a
-real deliverable even if the application itself turns out awkward.
+**`docs/experiments/webhook-friction.md` is the deliverable, and it is ranked.**
+The top four, with what they actually cost:
 
-An EXAMPLE is not an APPLICATION: the difference is whether anything depends on
-it and whether it survives change. By the third modification you will know which
-Oath surfaces protect a decision and which just make the author rehearse facts the
-system already knows.
+  1. **`process_env` grants the environment, not a variable.** Launched with the
+     secret unset, version 1 bound its port and ACCEPTED A DELIVERY FORGED UNDER
+     THE EMPTY KEY. The #114 launch gate did what it promises and it was not
+     enough — it is loud about capability KINDS and silent about capability
+     CONTENT. Six properties passed throughout. **This is #117 arriving as a
+     security bug rather than a design preference, and it is the top item.**
+  2. **The handler protocol has no header model.** `X-GitHub-Event` — what GitHub
+     documents and sends — is not what an Oath handler sees; net/http
+     canonicalizes it to `X-Github-Event`. One backend's normalization is visible
+     in Oath source and nothing propagates it to the author.
+     `apps/github-webhook/hdr-probe.oath` is the runnable witness.
+  3. **No JSON, and no correct bytes→text.** `str-bytes` is PROVEN; its inverse
+     cannot be written correctly, because `Str` is codepoints and a body is
+     bytes and both are the same shape. **#118's datatype slice should be byte
+     lists and text — the numeric demand was one `show-nat`.**
+  4. **The corpus has two scopes.** `oath fixtures` reads the STORE;
+     `oathrs/conformance.sh` and `make verify` read `examples/`. Adding
+     definitions anywhere else produced sixteen confident, wrong divergence
+     reports. Both now enumerate `examples/*.oath` plus `apps/*/*.oath`.
 
-**DO NOT start another protocol feature.** Namespace aliases, more authority
-operations, more receipt machinery, richer manifests, another workflow — these are
-not bad, they are now OPTIMIZATION, and they are what a session naturally reaches
-for because the backlog is full of them.
+Three findings about the INSTRUMENTS, which matter as much: a property passed 200
+generated cases and was false (a tab forging a column — the generator cannot
+reach adversarial byte sequences); strengthening the artifact silently made its
+strongest property vacuous while still reporting `passed 200 cases`; and a
+property whose guard restates the implementation's own predicate is not
+independent evidence — `application/jsonp` passed a `str-prefix` test in both.
 
-THE INSTRUCTION FOR THE APPLICATION, and it is the hard part: *build something you
-would have built in Go six months ago, and do not add infrastructure unless the
-application forces you to.* When the app needs something Oath lacks, WRITE IT DOWN
-AND WORK AROUND IT. The deliverable is partly a list of what an application
-actually demanded — which is worth far more than a language that quietly grew to
-fit one program. "The application forced me to" is a judgement this assistant has
-demonstrably made too generously.
+**Next, in order:** #117, then #118 with the slice above, then Mark. Do NOT start
+another protocol feature.
 
-Note that `examples/webhook.oath` already exists and runs. An EXAMPLE is not an
-APPLICATION: the difference is whether anything depends on it and whether it is
-maintained under change.
 
 ## State of the project
 

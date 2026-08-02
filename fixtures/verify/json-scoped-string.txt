@@ -1,0 +1,3 @@
+✓ prop absent-scope-is-marked   passed 200 cases
+✓ prop value-has-no-quote       passed 200 cases
+✓ prop value-has-no-tab         passed 200 cases

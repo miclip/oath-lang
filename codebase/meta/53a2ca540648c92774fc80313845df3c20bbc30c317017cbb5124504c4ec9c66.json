@@ -1,0 +1,30 @@
+{
+  "name": "gh-request",
+  "prop_names": [
+    "is-a-post",
+    "keeps-the-path",
+    "keeps-the-body"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "unattributed",
+  "author": "unattributed",
+  "param_names": [
+    "sig",
+    "event",
+    "path",
+    "ctype",
+    "body"
+  ],
+  "confinement": [
+    "",
+    "",
+    "",
+    "",
+    ""
+  ]
+}

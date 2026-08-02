@@ -119,6 +119,12 @@ jobs:
       - name: committed store is canonically encoded (#100)
         run: make check-store
 
+      # THE APPLICATION (#120). Something outside the kernel depends on the
+      # kernel, over a real socket, with a sender that shares no code with it.
+      # Every other gate here inspects Oath; this one USES it.
+      - name: the webhook application still works end to end (#120)
+        run: make check-app
+
       - name: website proof ledger matches canonical fixtures (#30)
         # The site claims its numbers are read live from the machine's ledger.
         # Fail if website/lib/outcomes.json has drifted from fixtures/.

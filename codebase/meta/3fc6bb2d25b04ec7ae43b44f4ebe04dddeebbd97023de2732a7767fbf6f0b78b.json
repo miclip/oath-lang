@@ -1,0 +1,21 @@
+{
+  "name": "secret-is-usable",
+  "prop_names": [
+    "empty-is-not-usable",
+    "short-is-not-usable"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "secret"
+  ],
+  "confinement": [
+    ""
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "gh-signature",
+  "hash": "15a1e2e8a48a809d83f88fb7a847ea054b5236bf2ae22c8dc42066427bd36af4",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

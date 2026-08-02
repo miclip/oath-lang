@@ -1,0 +1,11 @@
+{
+  "name": "record-field",
+  "hash": "d7f4757624895cf6131ab1138c8e010d64f50f5ae1aa99fdd25698305e6b468e",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

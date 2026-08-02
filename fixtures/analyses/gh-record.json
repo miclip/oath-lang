@@ -1,0 +1,11 @@
+{
+  "name": "gh-record",
+  "hash": "97190d3c6364408388a888800a4ca72716050ef24d5e589d5dff6a00376fee1c",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

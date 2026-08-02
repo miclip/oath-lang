@@ -1,0 +1,11 @@
+{
+  "name": "json-string-value",
+  "hash": "e84c7faa721c257c7426bbec454cfd2f5fb1869002fb0755b0eebed59cb095ae",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

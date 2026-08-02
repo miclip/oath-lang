@@ -1,0 +1,4 @@
+✓ prop printable-passes-through passed 200 cases
+✓ prop a-tab-is-rejected        passed 200 cases
+✓ prop a-newline-is-rejected    passed 200 cases
+✓ prop never-contains-a-tab     passed 200 cases

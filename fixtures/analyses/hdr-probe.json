@@ -1,0 +1,11 @@
+{
+  "name": "hdr-probe",
+  "hash": "e92093daeacc7e82f11bc88fa0ece4f2070b8ef7ddc858951c0e5bb0ece046f9",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

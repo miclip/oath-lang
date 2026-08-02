@@ -1,0 +1,25 @@
+{
+  "name": "header-or",
+  "prop_names": [
+    "absent-yields-fallback",
+    "present-yields-value"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "hs",
+    "name",
+    "fallback"
+  ],
+  "confinement": [
+    "",
+    "",
+    ""
+  ]
+}

@@ -1,0 +1,4 @@
+✓ prop absent-header-is-none    passed 200 cases
+✓ prop unprefixed-is-rejected   passed 200 cases
+✓ prop strips-exactly-the-prefix passed 200 cases
+✓ prop wrong-length-is-rejected passed 200 cases
