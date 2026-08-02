@@ -553,6 +553,94 @@
   (prop emit-is-the-sink [(sink (-> Str Str)) (secret Str) (s Str)]
     (== ((. (caps-with sink secret) emit) s) (sink s))))
 
+; ---------------------------------------------------------------------------
+; THE DELIMITER-INJECTION TABLE.
+;
+; `record-field` makes ONE function safe. It does not make the three CALL SITES
+; safe, and nothing witnessed that they were: with `record-field` deleted from
+; the event field, or from the repository field, every property still passed,
+; the whole acceptance suite still passed, and `oath put` said nothing. Only the
+; delivery id had a test. A fix present in the code and absent from the evidence
+; is one refactor away from being absent from both.
+;
+; So the harness below drives all three fields through `gh-record` with a chosen
+; value, and the properties feed each field every byte that could forge a record
+; boundary while the other two stay clean. Mutating ANY of the three call sites
+; now falsifies at least three properties.
+;
+; It checks record boundaries as well as field boundaries: a newline does not
+; split a tab-separated record, so a field-count assertion alone would have
+; missed it entirely while a single injected newline turns one record into two.
+; A record a consumer can read: exactly five tab-separated fields, and nothing
+; that ends the line early.
+(defn record-is-well-formed [] [(rec Str)] Bool
+  (and (== (length [Str] (str-split 9 rec)) 5)
+       (and (not (contains 10 (str-bytes rec)))
+            (not (contains 13 (str-bytes rec)))))
+
+  (prop five-clean-fields-are-well-formed []
+    (record-is-well-formed "a\tb\tc\td\te"))
+  (prop six-fields-are-not [] (not (record-is-well-formed "a\tb\tc\td\te\tf")))
+  (prop four-fields-are-not [] (not (record-is-well-formed "a\tb\tc\td")))
+  (prop a-newline-is-not [] (not (record-is-well-formed "a\tb\tc\td\te\nf"))))
+
+(defn record-under [] [(delivery Str) (event Str) (repo Str)] Str
+  (gh-record (Req "POST" "/hook"
+    (Cons [(Pair Str Str)] (Pair [Str Str] "X-Github-Delivery" delivery)
+      (Cons [(Pair Str Str)] (Pair [Str Str] "X-Github-Event" event)
+        (Nil [(Pair Str Str)])))
+    (str-bytes (str-append "{\"repository\":{\"full_name\":\"" (str-append repo "\"}}")))
+    0))
+
+  ; THE CONTROL, without which none of the injection properties discriminate:
+  ; clean values must produce a well-formed record and must actually REACH the
+  ; fields, or "no injection" would be satisfied by a harness that reads nothing.
+  (prop clean-values-are-well-formed []
+    (record-is-well-formed (record-under "d-1" "push" "miclip/oath-lang")))
+  (prop clean-values-reach-the-record []
+    (== (record-under "d-1" "push" "miclip/oath-lang")
+        "oath-gh/1\td-1\tpush\tmiclip/oath-lang\t0"))
+
+  ; THE REPOSITORY FIELD IS GUARDED TWICE, and the injection table cannot see it
+  ; because either guard alone suffices: `json-string-value` already stops the
+  ; JSON scan at any byte below 32, so deleting `record-field` from that call
+  ; site falsifies nothing above. That is defence in depth rather than a
+  ; redundancy — but an unwitnessed guard is one refactor from being deleted as
+  ; dead, so this pins what `record-field` uniquely contributes there.
+  ;
+  ; Byte 200 is not a boundary hazard; it is a UTF-8 continuation byte, which
+  ; `bytes-str` reinterprets as codepoint 200 and writes into the log as
+  ; mojibake. `record-field` marks the field absent instead. A repository name
+  ; the receiver cannot faithfully represent is reported as one it does not
+  ; have, which is true, rather than as a name that is subtly not the real one.
+  (prop a-non-ascii-repository-is-marked-absent []
+    (== (record-under "d-1" "push" (SCons 200 (SNil)))
+        "oath-gh/1\td-1\tpush\t-\t0")))
+
+; The table. Three fields x three bytes that would forge a boundary, each with
+; attacker-chosen text on both sides of the injected byte.
+;
+; THE DELIVERY ID AND THE EVENT ARE NOT COVERED BY THE SIGNATURE — GitHub's HMAC
+; is over the body alone — so these two are reachable by anyone who observed one
+; valid delivery, with no secret at all.
+(defn no-field-can-inject [] [(sep Int) (a Str) (b Str)] Bool
+  (let (bad Str (str-append a (SCons sep b)))
+    (and (record-is-well-formed (record-under bad "push" "miclip/oath-lang"))
+         (and (record-is-well-formed (record-under "d-1" bad "miclip/oath-lang"))
+              (record-is-well-formed (record-under "d-1" "push" bad)))))
+
+  ; 9 = TAB: forges a field boundary.
+  (prop tab-cannot-inject [(a Str) (b Str)] (no-field-can-inject 9 a b))
+  ; 10 = LF: forges a RECORD boundary — one delivery becomes two log lines.
+  (prop newline-cannot-inject [(a Str) (b Str)] (no-field-can-inject 10 a b))
+  ; 13 = CR: a record boundary for anything reading CRLF, and invisible in a
+  ; terminal, which is the reason to name it rather than trust the range check.
+  (prop carriage-return-cannot-inject [(a Str) (b Str)] (no-field-can-inject 13 a b))
+  ; And the whole class rather than three instances of it: ANY byte outside
+  ; printable ASCII, in any of the three fields, at an attacker-chosen offset.
+  (prop no-control-byte-can-inject [(sep Int) (a Str) (b Str)]
+    (if (or (< sep 32) (< 126 sep)) (no-field-can-inject sep a b) true)))
+
 ; The handler.
 ;
 ; Capabilities: `env` for the shared secret, `emit` for the record sink. Nothing
@@ -669,6 +757,27 @@
     (if (bytes-ok body)
         (== (match (gh-webhook (caps-with sink (gh-spec-secret))
                      (gh-request (hex-encode (hmac-sha256 (str-bytes (gh-spec-secret)) body))
+                                 "push" "/hook" "application/json" body))
+              ((Resp s h b) s))
+            401)
+        true))
+
+  ; #121 CLOSED AT THIS CALLER, stated where the security claim lives rather
+  ; than only where the parser does. `hex-decode` keeps the prefix it managed to
+  ; decode, so `<valid digest>zz` decodes to the same 32 bytes as the valid
+  ; digest — and this handler calls `hex-decode` directly, so the hole is ON the
+  ; path, not adjacent to it. The 64-character check in `gh-signature` closes it:
+  ; the appended junk makes the value 66 characters and it never becomes a
+  ; signature at all.
+  ;
+  ; `hex-decode`'s own contract is unchanged and `examples/webhook.oath` is still
+  ; exposed through it — that is #121, filed, and it is a corpus decision rather
+  ; than a patch. This property is what makes the boundary checkable: it holds
+  ; for THIS artifact whatever #121 decides.
+  (prop trailing-junk-after-a-valid-digest-is-rejected [(sink (-> Str Str)) (body (List Int)) (junk Str)]
+    (if (and (bytes-ok body) (not (== junk (SNil))))
+        (== (match (gh-webhook (caps-with sink (gh-spec-secret))
+                     (gh-request (str-append (gh-sign (gh-spec-secret) body) junk)
                                  "push" "/hook" "application/json" body))
               ((Resp s h b) s))
             401)

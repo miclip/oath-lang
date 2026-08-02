@@ -885,10 +885,10 @@
     },
     {
       "name": "gh-webhook",
-      "hash": "0c853ebd5db4acafc20df5f0dfe63e70e16ede911c42d729e770245c97c78213",
+      "hash": "5a436b2b49b3e553ce1e12b5f01e5fecb24ba9cd9f83c8e1b9a08e4ceeb5da39",
       "level": "tested",
       "proven_count": 0,
-      "prop_count": 13,
+      "prop_count": 14,
       "props": [
         {
           "name": "status-is-one-of-seven",
@@ -920,6 +920,10 @@
         },
         {
           "name": "unprefixed-signature-is-rejected",
+          "proven": false
+        },
+        {
+          "name": "trailing-junk-after-a-valid-digest-is-rejected",
           "proven": false
         },
         {
@@ -2035,6 +2039,31 @@
       ]
     },
     {
+      "name": "no-field-can-inject",
+      "hash": "c54653816be6bdb9b2c14058541190071fb73f87e67694f48dd8fd2ee97388d8",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "tab-cannot-inject",
+          "proven": false
+        },
+        {
+          "name": "newline-cannot-inject",
+          "proven": false
+        },
+        {
+          "name": "carriage-return-cannot-inject",
+          "proven": false
+        },
+        {
+          "name": "no-control-byte-can-inject",
+          "proven": false
+        }
+      ]
+    },
+    {
       "name": "one-two-three",
       "hash": "256d63e2e1c1a435d3715ef59b5181554b54e62ec37cb31717f07c8d1957c5ff",
       "level": "proven",
@@ -2395,6 +2424,52 @@
         },
         {
           "name": "never-contains-a-tab",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "record-is-well-formed",
+      "hash": "68e180cd139d042d6242c74169d132be174eb336f9cc1ca96730fe0a84726c62",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 4,
+      "props": [
+        {
+          "name": "five-clean-fields-are-well-formed",
+          "proven": false
+        },
+        {
+          "name": "six-fields-are-not",
+          "proven": false
+        },
+        {
+          "name": "four-fields-are-not",
+          "proven": false
+        },
+        {
+          "name": "a-newline-is-not",
+          "proven": false
+        }
+      ]
+    },
+    {
+      "name": "record-under",
+      "hash": "ab81e7a36326e7bd50d6affe99b1e3043a1600d6700ff01839776638d94712af",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "clean-values-are-well-formed",
+          "proven": false
+        },
+        {
+          "name": "clean-values-reach-the-record",
+          "proven": false
+        },
+        {
+          "name": "a-non-ascii-repository-is-marked-absent",
           "proven": false
         }
       ]

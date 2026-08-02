@@ -1,6 +1,6 @@
 {
   "name": "gh-webhook",
-  "hash": "0c853ebd5db4acafc20df5f0dfe63e70e16ede911c42d729e770245c97c78213",
+  "hash": "5a436b2b49b3e553ce1e12b5f01e5fecb24ba9cd9f83c8e1b9a08e4ceeb5da39",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

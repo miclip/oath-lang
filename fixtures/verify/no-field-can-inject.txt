@@ -1,0 +1,4 @@
+✓ prop tab-cannot-inject        passed 200 cases
+✓ prop newline-cannot-inject    passed 200 cases
+✓ prop carriage-return-cannot-inject passed 200 cases
+✓ prop no-control-byte-can-inject passed 200 cases

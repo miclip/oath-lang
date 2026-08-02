@@ -145,9 +145,31 @@ check "the record declares its schema" \
 # observes a valid delivery can replay it with a tab in the delivery id. Before
 # record-field, that forged a sixth column and (with the consumer's arity check)
 # took down the whole log.
-post "$url" application/json push "$(printf 'tab\tsplice')" "sha256=$sig" "$work/body.json" > /dev/null
-check "a tab in an unsigned header cannot forge a column" \
-      "5" "$(awk -F'\t' 'END { print NF }' "$work/events.log")"
+# The same table the properties drive, over a real socket, because these two
+# fields come from HEADERS and headers are what the adapter normalizes. A
+# property proves gh-record is safe on a Request VALUE; only this proves the
+# value the adapter builds is the one gh-record was proven safe on.
+# TAB ONLY, and the omission is deliberate rather than an oversight. Go's HTTP
+# parser permits HTAB inside a field value (RFC 9110) but a raw LF or CR ENDS
+# the header line, so neither is deliverable over HTTP at all — the properties
+# cover those, which is the right place for a hazard that depends on the
+# transport rather than on this one.
+#
+# The byte must be built by an escape-interpreting printf and substituted in.
+# `printf "ev%sil" '\t'` does NOT interpret the escape — %s takes its argument
+# literally — so an earlier version of this loop sent the two printable
+# characters backslash-t and asserted nothing. It passed, and it would have
+# passed with header sanitization removed.
+tab=$(printf '\t')
+inject_before=$(wc -l < "$work/events.log" | tr -d ' ')
+post "$url" application/json "ev${tab}il" d-inj-1 "sha256=$sig" "$work/body.json" > /dev/null
+post "$url" application/json push "de${tab}liv" "sha256=$sig" "$work/body.json" > /dev/null
+check "a tab in an unsigned header arrives as one byte" \
+      "1" "$(printf %s "$tab" | wc -c | tr -d ' ')"
+check "two injected deliveries make two records" \
+      "2" "$(( $(wc -l < "$work/events.log" | tr -d ' ') - inject_before ))"
+check "no record has anything but five fields" \
+      "5" "$(awk -F'\t' 'NF != 5 { print NF; exit } END { print 5 }' "$work/events.log" | head -1)"
 check "the ping wrote nothing" \
       "0" "$(cut -f2 "$work/events.log" | grep -c '^d-3$' || true)"
 # `&& echo 0 || echo 1` rather than `; echo $?`: under `set -e` a non-zero exit

@@ -294,15 +294,43 @@ values in raw, so a tab in `X-Github-Delivery` still produced six columns. Found
 by review, four rounds later — after the class had been identified, fixed once,
 and written up prominently in this file.
 
-Those two are worse than the one that was found, because **GitHub's HMAC covers
-the body only**. The headers are unsigned: anyone who observes a valid delivery
-can replay it with a tab spliced into the delivery id, with no secret, and
+Those are worse than the one that was found, because **GitHub's HMAC covers the
+body only**. The headers are unsigned: anyone who observed one valid delivery can
+replay it with a tab spliced into the delivery id, with no secret at all, and
 corrupt the log. Once `report.sh` checked the field count, that became a denial
 of service on the consumer through data nobody authenticated.
 
 *Real fix:* one `record-field`, applied to every variable field, with a property
 saying the output can never contain a tab. The field count is now true because
 of a function rather than because of a habit.
+
+**THE FIX WAS PRESENT AND THE EVIDENCE FOR IT WAS ONE-THIRD PRESENT**, which
+only came out by mutating each call site in turn. Deleting `record-field` from
+the event field passed every property, passed the whole acceptance suite, and
+`oath put` said nothing — one test covered the delivery id and nothing covered
+the other two. *A fix present in the code and absent from the evidence is one
+refactor away from being absent from both.*
+
+Mutating the third call site was the interesting one: **it changed nothing.**
+The repository field is already guarded by `json-string-value`, which stops the
+JSON scan at any byte below 32, so `record-field` there is defence in depth
+rather than the load-bearing guard — and my own "two siblings" account of this
+was wrong in both directions. There was ONE genuine sibling (the event header),
+one path already covered twice, and no way to tell which was which without
+running the mutations. `record-field` still earns that call site: it is what
+turns a UTF-8 continuation byte into the absent marker instead of mojibake, and
+there is now a property saying exactly that, so the guard cannot be deleted as
+dead.
+
+*What is there now:* `no-field-can-inject` drives all three fields through
+`gh-record` with attacker-chosen text on both sides of an injected byte — tab
+(field boundary), newline and carriage return (record boundary), and the whole
+class of bytes outside printable ASCII — plus a control asserting a clean record
+is well-formed and actually reaches the fields. The same table runs end to end in
+`acceptance.sh`, because a property proves `gh-record` is safe on a `Request`
+VALUE and only the socket proves the value the adapter builds is that one.
+Mutating any of the three call sites now falsifies at least one property, and
+the two that matter for injection falsify four.
 
 *What it cost:* ten minutes the first time and a near-miss the second. It is
 ranked this high because of what it says about the instrument: **the guarantee ladder's

@@ -10,11 +10,11 @@ body, and appends a self-describing record to a log that `report.sh` consumes.
 
 ```
 apps/github-webhook/
-  webhook.oath    the receiver: 17 definitions, 13 properties on the handler
+  webhook.oath    the receiver: 20 definitions, 14 properties on the handler
   hdr-probe.oath  a runnable witness for the header-canonicalization finding
   deliver.sh      an INDEPENDENT sender — openssl + curl, no Oath
   report.sh       the dependent: reads the log, dedups redeliveries
-  acceptance.sh   27 end-to-end checks; `make check-app`, and CI runs it
+  acceptance.sh   28 end-to-end checks; `make check-app`, and CI runs it
 ```
 
 The friction it produced is `docs/experiments/webhook-friction.md`. That log is

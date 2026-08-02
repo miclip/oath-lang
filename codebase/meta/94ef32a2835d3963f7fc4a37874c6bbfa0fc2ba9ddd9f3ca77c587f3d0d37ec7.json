@@ -1,0 +1,32 @@
+{
+  "name": "no-field-can-inject",
+  "prop_names": [
+    "tab-cannot-inject",
+    "newline-cannot-inject",
+    "carriage-return-cannot-inject",
+    "no-control-byte-can-inject"
+  ],
+  "guarantee": {
+    "level": "falsified",
+    "falsified": [
+      "tab-cannot-inject",
+      "newline-cannot-inject",
+      "carriage-return-cannot-inject",
+      "no-control-byte-can-inject"
+    ]
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "sep",
+    "a",
+    "b"
+  ],
+  "confinement": [
+    "",
+    "",
+    ""
+  ]
+}

@@ -52,7 +52,7 @@ wired into `make check-app` and CI, and it runs against a COPY of `codebase/`
 because `oath put` is the only way to check a source file and it always writes.
 
 The language and the protocol are UNCHANGED. `oath/`, `oathrs/`, `docs/SPEC.md`
-and `examples/` were not touched; the 18 new definitions are the application.
+and `examples/` were not touched; the 21 new definitions are the application.
 
 **`docs/experiments/webhook-friction.md` is the deliverable, and it is ranked.**
 The top four, with what they actually cost:

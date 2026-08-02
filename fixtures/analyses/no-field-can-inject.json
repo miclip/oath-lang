@@ -1,0 +1,13 @@
+{
+  "name": "no-field-can-inject",
+  "hash": "c54653816be6bdb9b2c14058541190071fb73f87e67694f48dd8fd2ee97388d8",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

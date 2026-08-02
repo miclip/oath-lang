@@ -679,10 +679,10 @@ proven.*
 
 ### Hard limits — the blocking gaps
 
-**Coverage.** 205 definitions, deep but narrow: list, sort, tree, queue,
+**Coverage.** 208 definitions, deep but narrow: list, sort, tree, queue,
 interval, map, set, string, rational, plus honest exhibits — and, since #120,
 one APPLICATION (`apps/github-webhook`) that a system outside the project
-actually calls. Those eighteen definitions are the first entries in this
+actually calls. Those twenty-one definitions are the first entries in this
 corpus that correspond to a task someone would be given rather than to a
 structure someone would teach, and what they cost is recorded in
 `docs/experiments/webhook-friction.md` rather than smoothed away.
