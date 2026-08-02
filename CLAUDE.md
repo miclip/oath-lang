@@ -240,6 +240,21 @@ TWO KNOWN LIMITATIONS, carried forward so "backend-neutral" is not mistaken for
 "semantically complete": the capability vocabulary is global and name-based (#117),
 and the manifest is not bound to the bytes it describes (#116).
 
+**THERE ARE NOW TWO BACKENDS.** `oath build --backend llvm` (`oath/llvm.go`) emits
+textual LLVM IR plus a C runtime and shells out to clang — no new dependencies,
+same pattern as emitting Go. It consumes `CompiledProgram` and references NOTHING
+in compile.go, which `boundary_test.go` checks by resolved bindings. It is narrow
+on purpose (datatypes, match, closures, records, Str literals, Bool, CLI entry)
+and REFUSES the rest by name; it also refuses `http_request`, which is the point —
+two backends may support different subsets of one vocabulary. #115's
+proof-of-concept milestone is closed; #118 is typed lowering.
+
+**THE GATE IS THREE-WAY: `oath eval` is the reference.** Never compare one backend
+against the other alone — two identically wrong lowerings agree. Writing the second
+backend already found a real defect in the first (a type assertion on a concrete
+type meant `match` on a directly-constructed value would not build at all), which
+is the oathrs N-version argument arriving in the compiler.
+
 ## Before adding anything to the protocol
 
 Ask which of four concerns a proposal belongs to — they now evolve
