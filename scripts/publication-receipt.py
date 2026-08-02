@@ -195,13 +195,45 @@ def main():
           "" if r.returncode == 0 else "cutover-check reported findings")
 
     # 5. every publication is signed BY THE AUTHORITY KEY
+    # A DELEGATE IS A CORRECT SIGNER, and this check used to say otherwise.
+    #
+    # It required every publication to be signed by the namespace HOLDER. But
+    # delegation exists precisely so automation never holds the namespace key —
+    # the CI publisher signs as a delegate, and the workflow refuses to run if it
+    # is ever configured with the holder key instead. So the check called the
+    # intended arrangement a failure, and would have done so for every publication
+    # made since delegation shipped.
+    #
+    # The correct question is not "did the holder sign it" but "was the signer
+    # entitled to". Derived from the journal: the holder, or any key granted under
+    # the prefix and not since revoked.
+    delegated = set()
+    for e in rows:
+        b = e.get("envelope_b64")
+        if not b or e.get("status") != "accepted":
+            continue
+        try:
+            oct_ = base64.b64decode(b, validate=True).decode()
+        except Exception:
+            continue
+        if not oct_.startswith("oath-delegate/"):
+            continue
+        kvd = dict(l.split("=", 1) for l in oct_.rstrip("\n").split("\n")[1:] if "=" in l)
+        if kvd.get("namespace") != f"{ns}/*":
+            continue
+        if kvd.get("op") == "delegate":
+            delegated.add(kvd.get("subject", ""))
+        elif kvd.get("op") == "revoke":
+            delegated.discard(kvd.get("subject", ""))
+    entitled = {authority} | delegated
+
     wrong_signer = []
     for n in want:
         for kv, e in pubs.get(n, []):
-            if kv.get("author") != authority or e.get("author_pubkey") != authority:
+            if kv.get("author") not in entitled or e.get("author_pubkey") not in entitled:
                 wrong_signer.append(n)
-    check("signatures are by the recorded authority key", not wrong_signer and bool(live),
-          f"not signed by {authority[:12]}…: {sorted(set(wrong_signer))}" if wrong_signer
+    check("signatures are by the holder or a current delegate", not wrong_signer and bool(live),
+          f"signed by a key that is neither the holder nor a current delegate: {sorted(set(wrong_signer))}" if wrong_signer
           else ("no publications found" if not live else ""))
 
     # 6. the namespace authority is what the manifest names
