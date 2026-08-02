@@ -8,6 +8,80 @@ from a "what would a language designed only for AI look like?" conversation.
 Positioning (settled after two external reviews): the syntax is disposable,
 the substrate is the product.
 
+## THE PROJECT HAS CHANGED PHASES (2026-08-02) — READ THIS BEFORE PICKING WORK
+
+For months the bottleneck was "make the substrate trustworthy". It is now built
+AND exercised: registry, authority, delegation, transfer, receipts, CI, standard
+library, two native backends, proof-carrying compilation, and a backend-neutral
+compilation boundary. Nearly every defect in those was found by USING them, not
+by inspecting them.
+
+  Phase 1  Can AI own software?                   registry, proofs, trust
+  Phase 2  Can the trust model survive reality?   authority, delegation, CI, transfer
+  Phase 3  Can the implementation be replaced?    Go backend, LLVM backend, the boundary
+  Phase 4  Can someone build software and FORGET they are using Oath?   <- here
+
+PHASE 4 IS NOT ABOUT HIDING EVIDENCE. The target, stated precisely: **guarantees
+stay LOUD at trust boundaries and become QUIET during ordinary composition.** A
+developer should see them when choosing or importing an artifact, accepting a
+capability, publishing, compiling, crossing a policy boundary, or diagnosing a
+refusal — and should not have to restate or re-inspect them while composing pieces
+already admitted. So the question is not "how much can be hidden" but WHERE
+EVIDENCE IS DECISION-RELEVANT VERSUS MERELY REPETITIVE. The webhook application
+is a good instrument because it crosses several of those boundaries naturally:
+ingress, signature verification, capability injection, outbound action, structured
+output, compiled execution, and deployment under change.
+
+**The next work is to DEPEND on Oath, not to improve it.** The roadmap, in order:
+
+  1. **THE APPLICATION** and **#118** are INDEPENDENT PROBES OF THE SAME BOUNDARY,
+     not a parent and a child. #118 asks what typed lowering actually requires;
+     the application reveals which runtime and datatype features matter in
+     practice. Whichever runs first constrains the second. Two dangers, one on
+     each side: letting the application silently REDESIGN THE LANGUAGE, and
+     letting #118 OPTIMIZE A SLICE NOBODY NEEDS.
+  2. **Mark** — the first external contributor.
+
+### THE NEXT SESSION'S INSTRUCTION, concretely — **it is #120**
+
+Filed as an issue deliberately. Everything else in the backlog is a legible unit
+of work and an application is not, so "what is next?" answered from the issue list
+would keep returning the wrong thing. #120 makes the right answer the legible one.
+
+> Turn `examples/webhook.oath` into something another system actually CALLS.
+> Keep a friction log. Extend neither the language nor the protocol on the first
+> pass. Then review the friction log before choosing the datatype and numeric
+> slice for #118.
+
+Friction log lives at `docs/experiments/webhook-friction.md` (the repo's existing
+convention for this kind of record). Every time the application wants something
+Oath lacks: write down WHAT was wanted, WHAT the workaround was, and HOW MUCH it
+cost. That turns friction into evidence instead of backlog, and it produces a
+demand-RANKED list of missing capabilities, language features and tooling — a
+real deliverable even if the application itself turns out awkward.
+
+An EXAMPLE is not an APPLICATION: the difference is whether anything depends on
+it and whether it survives change. By the third modification you will know which
+Oath surfaces protect a decision and which just make the author rehearse facts the
+system already knows.
+
+**DO NOT start another protocol feature.** Namespace aliases, more authority
+operations, more receipt machinery, richer manifests, another workflow — these are
+not bad, they are now OPTIMIZATION, and they are what a session naturally reaches
+for because the backlog is full of them.
+
+THE INSTRUCTION FOR THE APPLICATION, and it is the hard part: *build something you
+would have built in Go six months ago, and do not add infrastructure unless the
+application forces you to.* When the app needs something Oath lacks, WRITE IT DOWN
+AND WORK AROUND IT. The deliverable is partly a list of what an application
+actually demanded — which is worth far more than a language that quietly grew to
+fit one program. "The application forced me to" is a judgement this assistant has
+demonstrably made too generously.
+
+Note that `examples/webhook.oath` already exists and runs. An EXAMPLE is not an
+APPLICATION: the difference is whether anything depends on it and whether it is
+maintained under change.
+
 ## State of the project
 
 - Two kernels: `oath/` (Go reference, zero deps in the DEFAULT build — the
@@ -89,8 +163,10 @@ already write.** An earlier version of this section claimed the registry had
 exactly one authorized key and that #66 blocked the milestone; that was never the
 deployed configuration.
 
-So the finish line is probably reachable TODAY with no operator action, and the
-next move is to RUN IT rather than to build the gate: a fresh key, `reserve`,
+So the finish line is probably reachable TODAY with no operator action. NOTE: the
+"next move" below is SUPERSEDED — see the phase section at the top of this file;
+the walkthrough belongs to Mark, after the application. Recorded here as the
+method, not as the instruction: a fresh key, `reserve`, a fresh key, `reserve`,
 `publish --key`, then independent `find` / `explain` / `license` / `verify`. Two
 cautions carried from this session — a reservation is PERMANENT, so the namespace
 name must satisfy the naming rules below; and the ownership freeze means creation
@@ -169,6 +245,8 @@ protocol, not by inspection.
 
 REMAINING: step 5 only — wire the post-merge publisher against a DELEGATED key,
 and grant that key KMS access. Not done, and it needs its own authorization.
+NOT NEXT: this is protocol work, and the phase section at the top of this file
+defers it. Recorded so nobody re-derives it, not queued.
 
 The post-merge publish workflow is NOT built, deliberately. Wiring it before the
 above would make CI depend on a protocol path nobody can invoke normally, inspect
@@ -215,6 +293,59 @@ The asymmetry is the point, and it is the one the protocol exists to make you
 feel: publishing is one command, and permanence is the guarantee. If a name is
 not worth defending in a year, do not bind it.
 
+## The compiler boundary (#114, closed 2026-08-02)
+
+`oath/program.go` is BACKEND-NEUTRAL and `oath/compile.go` is the Go backend. The
+dependency runs one way — Oath semantics → neutral requirements → backend
+provider — and `oath/boundary_test.go` enforces it by resolving every identifier
+to its declaring file (bindings, not names: a backend METHOD on a shared type is a
+dependency; a same-spelled local is not).
+
+- A capability record field denotes a KIND (`http_request`, `process_env`,
+  `file_read`, `record_sink`). Backends supply kinds. **No new language or
+  capability semantics may be defined in terms of Go constructs** — when adding to
+  `compile.go`, ask whether you are describing Oath or describing Go.
+- There is deliberately NO expression IR: the neutral representation of a body is
+  the verified `Def` closure. Typed IR and monomorphisation are #115.
+- Every declared requirement resolves exactly once before launch or the program
+  exits 70; undeclared authority is ABSENT from the binary (imports are
+  requirement-driven), not merely unused.
+- `oath provenance <file>` reads an embedded canonical manifest without executing
+  the artifact and without opening a store. It is UNSIGNED — evidence about a
+  cooperative artifact, not attestation (#116).
+
+TWO KNOWN LIMITATIONS, carried forward so "backend-neutral" is not mistaken for
+"semantically complete": the capability vocabulary is global and name-based (#117),
+and the manifest is not bound to the bytes it describes (#116).
+
+**THERE ARE NOW TWO BACKENDS.** `oath build --backend llvm` (`oath/llvm.go`) emits
+textual LLVM IR plus a C runtime and shells out to clang — no new dependencies,
+same pattern as emitting Go. It consumes `CompiledProgram` and references NOTHING
+in compile.go, which `boundary_test.go` checks by resolved bindings. It is narrow
+on purpose (datatypes, match, closures, records, Str literals, Bool, CLI entry)
+and REFUSES the rest by name; it also refuses `http_request`, which is the point —
+two backends may support different subsets of one vocabulary. #115's
+proof-of-concept milestone is closed; #118 is typed lowering.
+
+**WRITING A GATE? ASK WHAT MUTATION MAKES IT FAIL.** This repo is mostly gates, and
+the recurring failure is a test that demonstrates the SETUP or one prerequisite and
+is then read as evidence for the claim. If the only mutation that breaks a test is
+in parsing, setup, or fixture generation, it is not witnessing its claim. Three
+examples from one session: a confinement test asserting the absence of a symbol Go
+never emits (passed for the control too); a "detects disagreement" test that
+exercised only the decoder; a boundary check matching names rather than resolved
+bindings, so a method on a shared type slipped through. VERIFY BY REVERTING —
+undo the fix, watch it fail with the message you expect, restore. A test never
+observed failing is a hypothesis. Prefer extracting the claimed behaviour into a
+pure function and asserting every outcome, and assert the CONTROL so you know the
+measurement discriminates.
+
+**THE GATE IS THREE-WAY: `oath eval` is the reference.** Never compare one backend
+against the other alone — two identically wrong lowerings agree. Writing the second
+backend already found a real defect in the first (a type assertion on a concrete
+type meant `match` on a directly-constructed value would not build at all), which
+is the oathrs N-version argument arriving in the compiler.
+
 ## Before adding anything to the protocol
 
 Ask which of four concerns a proposal belongs to — they now evolve
@@ -236,8 +367,12 @@ THE MOMENT IT HAPPENED? (DESIGN.md, four categories)
 
 GitHub issues on miclip/oath-lang. Closed as of 2026-07: team store & policy,
 conformance + CI, O1 identity, prover fixpoint, stateful worlds, and #14 (the
-live registry above). Open research projects, each its own session: **#13**
-(compiler backend), **#65** (discovery roadmap), **#66** (delegated token minting
+live registry above), and **#114** (verified native entry points — effects stage 4;
+see "The compiler boundary" below). Open research projects, each its own session:
+**#115** (native optimization backend: typed IR, monomorphisation, LLVM), **#117**
+(narrowed capability requirements — deliberately NOT part of #115, so a second
+backend is not hostage to an effects-language redesign), **#116** (signed
+provenance attestation), **#65** (discovery roadmap), **#66** (delegated token minting
 + authorized-key registration — an opt-in CONSTRAINT on onboarding, not a
 prerequisite for it; the live registry has no allowlist and writes are open to any
 signing key). Read closed issues + commit messages for the design reasoning.

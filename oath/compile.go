@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -21,10 +22,17 @@ import (
 // the gate (unstoreable anyway), was falsified, or was never verified — an
 // executable is a proof-carrying artifact, or it isn't built.
 //
-// Stage-1 entry protocol: main : (-> (List Str) Str). argv (after the
-// program name) becomes the list; the result is written to stdout with a
-// trailing newline. Exit code 0. Capability entry points (real IO wired at
-// the boundary — effects stage 4) are the next rung.
+// Entry protocol: main : (-> (List Str) Str). argv (after the program name)
+// becomes the list; the result is written to stdout with a trailing newline.
+// Exit code 0.
+//
+// THIS FILE IS THE GO BACKEND, AND ONLY THAT. What a capability is, which ones a
+// program requires, and what the provenance manifest records live in program.go
+// and name no Go construct; here they become imports, providers and emitted
+// source. The rule the split enforces (#114): no new language or capability
+// semantics may be defined in terms of Go constructs. When adding to this file,
+// ask whether you are describing Oath or describing Go — the first belongs next
+// door.
 //
 // Compilation model: type-erased. Values are Go `any` (int64, bool, string,
 // *closure, *ctorV); each Oath function becomes one Go function taking and
@@ -32,49 +40,25 @@ import (
 // recursion. Not fast-path native — but genuinely compiled, and the
 // differential gate (`compiled output == oath eval output`) keeps it honest.
 
-func cmdBuild(st *Store, name, out string) {
-	h, ok := st.Resolve(name)
-	if !ok {
-		fail(fmt.Errorf("no definition named %q", name))
-	}
-	d, err := st.GetDef(h)
+func cmdBuild(st *Store, name, out, backend string) {
+	// The front half is backend-neutral: gates, entry classification, required
+	// authority, provenance. See program.go — nothing there knows Go exists, and
+	// both backends below consume exactly this.
+	prog, err := planProgram(st, name)
 	if err != nil {
 		fail(err)
 	}
-	m, err := st.GetMeta(h)
-	if err != nil {
-		fail(err)
+	if out == "" {
+		out = name
 	}
-	if d.K != "func" {
-		fail(fmt.Errorf("%s is a data definition; entry points are functions", name))
-	}
-	// Provenance gate: executables are proof-carrying artifacts.
-	switch m.Guarantee.Level {
-	case "falsified":
-		fail(fmt.Errorf("%s is FALSIFIED (%s) — refusing to build an executable from a broken oath", name, strings.Join(m.Guarantee.Falsified, ", ")))
-	case "asserted":
-		fail(fmt.Errorf("%s has no verified properties — swear and verify an oath before building", name))
-	}
-	// Entry protocols: (-> (List Str) Str), or capability-first
-	// (-> {caps...} (-> (List Str) Str)) with every field wired (stage 2).
-	capTy, kind, ok := entryShape(st, d.Ty)
-	if !ok {
-		fail(fmt.Errorf("%s : %s — entry protocol requires (-> (List Str) Str), (-> Request Response), or either with a leading {caps} record of wireable capabilities", name, debugTy(d.Ty)))
-	}
-	if capTy != nil {
-		for i, n := range capTy.Names {
-			if _, ok := capWiring(st, n, &capTy.Args[i]); !ok {
-				fail(fmt.Errorf("no real-world wiring for capability field %s : %s (wireable: fetch, env, readfile, emit — all (-> Str Str))", n, debugTy(&capTy.Args[i])))
-			}
+	if backend == "llvm" {
+		if err := llvmBuild(st, prog, out); err != nil {
+			fail(err)
 		}
-		// Confinement gate: an entry point that STORES or RETURNS its
-		// capability has no business receiving the real one.
-		if len(m.Confinement) > 0 && m.Confinement[0] == "escapes" {
-			fail(fmt.Errorf("%s's capability parameter ESCAPES (stored or returned) — refusing to hand it the real world", name))
-		}
+		reportBuild(prog, out)
+		return
 	}
-
-	src, err := emitProgram(st, h, capTy, kind)
+	src, err := emitProgram(st, prog)
 	if err != nil {
 		fail(err)
 	}
@@ -89,9 +73,6 @@ func cmdBuild(st *Store, name, out string) {
 	if err := os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module oathprog\n\ngo 1.25\n"), 0o644); err != nil {
 		fail(err)
 	}
-	if out == "" {
-		out = name
-	}
 	abs, err := filepath.Abs(out)
 	if err != nil {
 		fail(err)
@@ -101,145 +82,207 @@ func cmdBuild(st *Store, name, out string) {
 	if b, err := cmd.CombinedOutput(); err != nil {
 		fail(fmt.Errorf("go build failed:\n%s", string(b)))
 	}
-	fmt.Printf("built %s → %s  (entry %s : %s, guarantee: %s)\n",
-		name, out, name, printTy(st, d.Ty, m.TyVarNames), guaranteeString(m.Guarantee))
+	reportBuild(prog, out)
 }
 
-// entryKind distinguishes the two entry PROTOCOLS. A CLI entry is invoked once
-// with argv and returns stdout; a HANDLER is invoked per request by the host and
-// returns a response (#78).
-//
-// Ingress is deliberately a protocol rather than a capability. A capability is
-// outbound authority the program HOLDS and may misuse — hence the confinement
-// checker. Being called is not authority: the host owns the socket, decides when
-// to invoke, and the artifact stays a pure function of the value it is handed.
-// So a handler needs no new capability, and inherits confinement checking,
-// verification against every generated request, and the refusal-to-wire gates
-// exactly as the CLI protocols do.
-type entryKind int
-
-const (
-	entryCLI entryKind = iota
-	entryHandler
-)
-
-// entryShape classifies an entry type, returning the capability record (nil if
-// the entry takes none), which protocol it speaks, and whether it is an entry at
-// all. Recognized:
-//
-//	(-> (List Str) Str)             CLI
-//	(-> {caps} (-> (List Str) Str)) CLI, capability-first
-//	(-> Request Response)           handler
-//	(-> {caps} (-> Request Response)) handler, capability-first
-func entryShape(st *Store, t *Ty) (*Ty, entryKind, bool) {
-	if isPureEntry(st, t) {
-		return nil, entryCLI, true
-	}
-	if isHandlerEntry(st, t) {
-		return nil, entryHandler, true
-	}
-	if t != nil && t.K == "fun" && t.A != nil && t.A.K == "record" {
-		if isPureEntry(st, t.B) {
-			return t.A, entryCLI, true
+// reportBuild says what was built and what authority it will demand. Shared by
+// both backends: the facts are properties of the artifact, so they must not read
+// differently depending on which lowering produced it.
+func reportBuild(prog *CompiledProgram, out string) {
+	p := prog.Provenance
+	fmt.Printf("built %s → %s  (entry %s : %s, guarantee: %s, backend: %s)\n",
+		prog.Entry, out, prog.Entry, p.EntryType, p.Guarantee, p.Backend)
+	// What authority this executable will demand, named neutrally. Printed even
+	// when empty: "requires: nothing" is the interesting answer for most programs,
+	// and silence would leave a reader unable to tell it from an unchecked build.
+	if len(prog.Requirements) == 0 {
+		fmt.Printf("  requires: no capabilities\n")
+	} else {
+		var rs []string
+		for _, r := range prog.Requirements {
+			rs = append(rs, fmt.Sprintf("%s (%s)", r.Field, r.Kind))
 		}
-		if isHandlerEntry(st, t.B) {
-			return t.A, entryHandler, true
+		fmt.Printf("  requires: %s\n", strings.Join(rs, ", "))
+		fmt.Printf("  every one is resolved before the entry point runs, or the program exits %d.\n", exitCapabilityUnavailable)
+	}
+	// The sidecar is a convenience for tooling that would rather read a file than
+	// scan a binary. It is NOT the record — the executable carries that, and a
+	// sidecar can be lost, edited, or paired with the wrong artifact. `oath
+	// provenance <binary>` reads what the artifact itself says.
+	//
+	// Which is why failing to write it is a warning, not a build failure: the
+	// executable exists and already carries the authoritative manifest, and
+	// reporting a successful build as failed over a convenience file would leave a
+	// caller believing it has no artifact when it has one.
+	abs, err := filepath.Abs(out)
+	if err != nil {
+		abs = out
+	}
+	sidecar := abs + ".provenance.json"
+	if err := os.WriteFile(sidecar, p.manifestJSON(), 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not write %s (%v)\n"+
+			"  The executable was built and carries its provenance; read it with `oath provenance %s`.\n",
+			sidecar, err, out)
+	}
+	fmt.Printf("  provenance: %s  (oath provenance %s)\n", p.digest(), out)
+}
+
+// cmdProvenance reads the manifest an artifact carries, WITHOUT executing it.
+// That ordering is the point: running an unknown binary to discover what it is
+// asks you to trust it before you have any grounds to.
+func cmdProvenance(path string) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		fail(err)
+	}
+	raw, err := extractProvenance(b)
+	if err != nil {
+		fail(fmt.Errorf("%s: %w", path, err))
+	}
+	// Say plainly when the record names authority this build cannot interpret.
+	// Printing it without comment would let a reader conclude they understood what
+	// the artifact holds when they only understood part of it.
+	var m ProvenanceManifest
+	if json.Unmarshal([]byte(raw), &m) == nil {
+		if unknown := m.unknownRequirements(); len(unknown) > 0 {
+			fmt.Fprintf(os.Stderr, "warning: this artifact requires capabilities %s does not define: %s\n"+
+				"  It was built by a newer compiler. The record is shown as found; this build\n"+
+				"  cannot tell you what that authority means.\n",
+				kernelVersion, strings.Join(unknown, ", "))
 		}
 	}
-	return nil, entryCLI, false
+	fmt.Println(raw)
 }
 
-// isHandlerEntry recognizes (-> Request Response), the types being those bound
-// to the names `Request` and `Response` in this store — the same by-convention
-// resolution `Str` and `List` already use.
-func isHandlerEntry(st *Store, t *Ty) bool {
-	if t == nil || t.K != "fun" {
-		return false
-	}
-	return isNamedData(st, "Request", t.A) && isNamedData(st, "Response", t.B)
+// ---------- the Go backend's capability providers ----------
+//
+// This is where authority becomes Go, and it is the ONLY place that is allowed
+// to. Everything above it — what a capability is, which ones a program requires,
+// what the manifest records — lives in program.go and names no Go construct.
+// The table is keyed by capabilityKind, not by field name: a backend answers
+// "how do I supply http_request", never "what does `fetch` mean".
+//
+// A later backend (#115) adds a different table against the same keys. That is
+// the entire purpose of the split, and the reason the key is a kind.
+
+// goBackendVersion identifies this backend in the provenance manifest, so an
+// artifact says which lowering produced it without the manifest describing Go.
+const goBackendVersion = "go-emit/2"
+
+// exitCapabilityUnavailable is the status a compiled program exits with when a
+// required capability cannot be provided. 70 is sysexits.h EX_UNAVAILABLE — "a
+// service the program needs is not available" — chosen so a supervisor can tell
+// a launch refusal from an ordinary program failure without parsing stderr.
+const exitCapabilityUnavailable = 70
+
+// goProvider is the Go backend's implementation of one capability kind.
+type goProvider struct {
+	// Provide is a Go expression of type func() (any, error). It runs ONCE, at
+	// launch, before any Oath code: it returns the capability value, or an error
+	// saying why THIS host cannot supply it.
+	//
+	// The (any, error) shape is the fix for the defect this pass exists to close.
+	// The old wiring returned a capability that answered "" forever when the host
+	// could not help, which made "the call succeeded and the result was empty"
+	// and "this host has no such authority" the same observable state. Provision
+	// failure is now a distinct channel that cannot be mistaken for a value —
+	// because it is not a value, and the program does not start.
+	Provide string
+	// Imports are the Go packages Provide needs beyond the always-present set.
+	// Requirement-driven imports are not tidiness: a program that does not
+	// require http_request must not LINK an HTTP client, which is the static half
+	// of the confinement claim.
+	Imports []string
 }
 
-func isNamedData(st *Store, name string, t *Ty) bool {
-	h, ok := st.Resolve(name)
-	return ok && t != nil && t.K == "data" && t.Hash == h && len(t.Args) == 0
-}
+var goProviders = map[capabilityKind]goProvider{
+	capProcessEnv: {
+		// Reading the environment cannot fail at provision time, and a missing
+		// variable is an ordinary empty result — the host has the authority
+		// whether or not the variable exists.
+		Provide: `func() (any, error) { return capFn(os.Getenv), nil }`,
+	},
 
-// strTypeHash is the hash of the `Str` datatype in this store (the string type
-// by convention), or "" if none is defined. isStrTy recognizes a type as that
-// datatype — the compiler represents such values as native Go strings.
-func strTypeHash(st *Store) string { h, _ := st.Resolve("Str"); return h }
+	capFileRead: {
+		// Provision is the authority to read files at all, which this host has.
+		// Whether one PATH exists is a call-time question and stays one.
+		Provide: `func() (any, error) {
+	return capFn(func(s string) string {
+		b, err := os.ReadFile(s)
+		if err != nil { return oathCapFailure }
+		return string(b)
+	}), nil
+}`,
+	},
 
-func isStrTy(strHash string, t *Ty) bool {
-	return strHash != "" && t != nil && t.K == "data" && t.Hash == strHash
-}
-
-func isPureEntry(st *Store, t *Ty) bool {
-	sh := strTypeHash(st)
-	if t == nil || t.K != "fun" || !isStrTy(sh, t.B) {
-		return false
-	}
-	a := t.A
-	if a == nil || a.K != "data" || len(a.Args) != 1 || !isStrTy(sh, &a.Args[0]) {
-		return false
-	}
-	if m, err := st.GetMeta(a.Hash); err == nil {
-		return m.Name == "List"
-	}
-	return false
-}
-
-// capWiring returns the Go expression for a capability field's REAL
-// implementation. This is effects stage 4: authority enters the program
-// exactly once, here, at the boundary — everything below received it as an
-// ordinary argument and was verified against all simulated worlds.
-func capWiring(st *Store, name string, t *Ty) (string, bool) {
-	sh := strTypeHash(st)
-	strToStr := t.K == "fun" && isStrTy(sh, t.A) && isStrTy(sh, t.B)
-	if !strToStr {
-		return "", false
-	}
-	switch name {
-	case "fetch":
-		return `capFn(func(s string) string {
+	capHTTPRequest: {
+		Provide: `func() (any, error) {
+	return capFn(func(s string) string {
 		resp, err := http.Get(s)
-		if err != nil { return "" }
+		if err != nil { return oathCapFailure }
 		defer resp.Body.Close()
 		b, err := io.ReadAll(resp.Body)
-		if err != nil { return "" }
+		if err != nil { return oathCapFailure }
 		return string(b)
-	})`, true
-	case "env":
-		return `capFn(os.Getenv)`, true
-	case "readfile":
-		return `capFn(func(s string) string {
-		b, err := os.ReadFile(s)
-		if err != nil { return "" }
-		return string(b)
-	})`, true
-	case "emit":
-		// #78 step 3: the minimum WRITE capability — append one record to a
-		// sink and say whether it landed. Deliberately not a storage
-		// abstraction: the webhook needs somewhere for a validated event to go,
-		// and a generic store would be vocabulary invented ahead of demand.
-		// Sink is OATH_EMIT_PATH, or stdout when unset.
+	}), nil
+}`,
+		Imports: []string{"io", "net/http"},
+	},
+
+	capRecordSink: {
+		// #78 step 3: the minimum WRITE capability — append one record to a sink
+		// and say whether it landed. Sink is OATH_EMIT_PATH, or stdout when unset.
 		//
-		// Returns "ok" on success and "" on failure, matching fetch/readfile's
-		// convention that the empty string is the failure value — so a handler
-		// can branch on delivery without an exception mechanism.
-		return `capFn(func(s string) string {
-		path := os.Getenv("OATH_EMIT_PATH")
-		if path == "" {
-			fmt.Println(s)
-			return "ok"
-		}
-		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-		if err != nil { return "" }
-		defer f.Close()
-		if _, err := f.WriteString(s + "\n"); err != nil { return "" }
-		return "ok"
-	})`, true
+		// This is the provider with a REAL precondition, and it is why the launch
+		// gate is not ceremony: a path the host cannot write is a provision
+		// failure and the program never starts. Previously an unwritable path
+		// meant every emit silently returned the failure value for the life of the
+		// process — a program reporting success while writing nowhere.
+		//
+		// PROVISION AND WRITING ARE SEPARATE, deliberately. The launch check opens
+		// the sink and closes it again; each emit reopens by PATH. Holding the
+		// descriptor would have been simpler and would have quietly changed what a
+		// sink means: a rotated log (renamed, replaced) leaves a held descriptor
+		// writing to the old inode forever, so records stop reaching the path the
+		// host configured while the program still reports success. Following the
+		// path on every write is the behaviour a sink is expected to have; the
+		// launch check exists to answer a different question, once.
+		Provide: `func() (any, error) {
+	path := os.Getenv("OATH_EMIT_PATH")
+	if path == "" {
+		return capFn(func(s string) string { fmt.Println(s); return "ok" }), nil
 	}
-	return "", false
+	probe, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return nil, fmt.Errorf("sink %s cannot be opened for append: %v", path, err)
+	}
+	probe.Close()
+	return capFn(func(s string) string {
+		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if err != nil { return oathCapFailure }
+		defer f.Close()
+		if _, err := f.WriteString(s + "\n"); err != nil { return oathCapFailure }
+		return "ok"
+	}), nil
+}`,
+	},
+}
+
+// goProviderFor resolves a requirement to this backend's implementation.
+//
+// A miss is a COMPILE failure, which is strictly stronger than the launch failure
+// #114 asks for: the requirement is known to Oath but this backend cannot lower
+// it, and no amount of runtime environment will change that. Unreachable while
+// every vocabulary kind has a provider — capabilityVocabularyIsProvidable in the
+// tests holds that — and kept because the failure it guards is a backend added
+// without one, which is a mistake a future contributor makes, not a user.
+func goProviderFor(r CapabilityRequirement) (goProvider, error) {
+	p, ok := goProviders[r.Kind]
+	if !ok {
+		return goProvider{}, fmt.Errorf("capability %s (%s) has no implementation in the %s backend",
+			r.Field, r.Kind, goBackendVersion)
+	}
+	return p, nil
 }
 
 // ---------- emitter ----------
@@ -301,41 +344,114 @@ func (e *emitter) resolveNativeContainers() {
 	}
 }
 
-func emitProgram(st *Store, entry string, capTy *Ty, kind entryKind) (string, error) {
-	e := &emitter{st: st, fname: map[string]string{}, seen: map[string]bool{}, strHash: strTypeHash(st)}
-	e.resolveNativeContainers()
-	if err := e.closure(entry); err != nil {
+// goImports computes the import set for one program: the fixed runtime support,
+// plus whatever the ingress protocol and the DECLARED REQUIREMENTS need.
+//
+// The requirement-driven part is load-bearing rather than cosmetic. #114's
+// acceptance test asks for a program verified to receive only capability A,
+// launched in a host that possesses A and B, that cannot observe or invoke B. The
+// strongest available answer is that B is not in the binary: a program requiring
+// only `env` links no HTTP client, so there is no reachable code path to an
+// outbound request, whatever the host is capable of. A fixed import list made that
+// claim untrue for every program ever built by this compiler.
+func goImports(prog *CompiledProgram) []string {
+	// Always present: the type-erased value representation and the numeric,
+	// string and container helpers every emitted program carries.
+	need := map[string]bool{
+		"fmt": true, "math": true, "math/big": true,
+		"crypto/hmac": true, "crypto/sha256": true, "crypto/subtle": true,
+		"os": true, "sort": true, "unicode/utf8": true,
+	}
+	if prog.Protocol == entryHandler {
+		// The host owns the socket: serving is the ingress protocol, not a
+		// capability the program holds. See entryKind.
+		need["net/http"], need["io"], need["time"] = true, true, true
+	}
+	for _, r := range prog.Requirements {
+		if p, ok := goProviders[r.Kind]; ok {
+			for _, imp := range p.Imports {
+				need[imp] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(need))
+	for imp := range need {
+		out = append(out, imp)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// goImportKeepalive names one symbol per ALWAYS-PRESENT import that the fixed
+// preamble might not otherwise reference, so an unused import never breaks the
+// build.
+//
+// The conditional imports — io, net/http, time — are deliberately absent, and
+// this is a confinement matter rather than tidiness. They are included only when
+// something emitted actually uses them (the handler adapter, or the http_request
+// provider), so they need no keepalive; and naming `http.Get` here would have
+// planted a reference to the OUTBOUND CLIENT in every handler, which links
+// net/http to serve. A server-only handler declares no http_request and must not
+// carry one: "the authority is absent from the artifact" has to survive contact
+// with the artifact's own import list.
+//
+// Every symbol below is arithmetic, sorting, hashing or text — never authority.
+var goImportKeepalive = map[string]string{
+	"unicode/utf8":  "utf8.DecodeRuneInString",
+	"math":          "math.Float64bits",
+	"sort":          "sort.Slice",
+	"crypto/subtle": "subtle.ConstantTimeCompare",
+	"crypto/hmac":   "hmac.New",
+	"crypto/sha256": "sha256.New",
+}
+
+func emitProgram(st *Store, prog *CompiledProgram) (string, error) {
+	// This backend claims the artifact. Done before anything is emitted so an
+	// incomplete record stops the build rather than reaching a binary.
+	if err := prog.stampBackend(goBackendVersion); err != nil {
 		return "", err
 	}
-	e.b.WriteString(`// Generated by oath build — do not edit.
-// Values: int64 | bool | string | *closure | *ctorV (type-erased).
-package main
+	e := &emitter{st: st, fname: map[string]string{}, seen: map[string]bool{}, strHash: strTypeHash(st)}
+	e.resolveNativeContainers()
+	if err := e.closure(prog.EntryHash); err != nil {
+		return "", err
+	}
+	// Resolve every requirement to a provider BEFORE emitting anything. A
+	// requirement this backend cannot lower must stop the build, not produce a
+	// program with a hole in it.
+	providers := make([]goProvider, len(prog.Requirements))
+	for i, r := range prog.Requirements {
+		p, err := goProviderFor(r)
+		if err != nil {
+			return "", err
+		}
+		providers[i] = p
+	}
 
-import (
-	"fmt"
-	"io"
-	"math"
-	"math/big"
-	"crypto/hmac"
-	"crypto/sha256"
-	"crypto/subtle"
-	"net/http"
-	"os"
-	"sort"
-	"time"
-	"unicode/utf8"
-)
-
-var _ = io.ReadAll
-var _ = http.Get
-var _ = utf8.DecodeRuneInString
-var _ = math.Float64bits
-var _ = sort.Slice
-var _ = time.Now
-var _ = subtle.ConstantTimeCompare
-var _ = hmac.New
-var _ = sha256.New
-
+	e.b.WriteString("// Generated by oath build — do not edit.\n")
+	e.b.WriteString("// Values: int64 | bool | string | *closure | *ctorV (type-erased).\n")
+	e.b.WriteString("package main\n\nimport (\n")
+	imports := goImports(prog)
+	for _, imp := range imports {
+		fmt.Fprintf(&e.b, "\t%q\n", imp)
+	}
+	e.b.WriteString(")\n\n")
+	for _, imp := range imports {
+		if sym, ok := goImportKeepalive[imp]; ok {
+			fmt.Fprintf(&e.b, "var _ = %s\n", sym)
+		}
+	}
+	e.b.WriteString(`
+// oathCapFailure is the CALL-failure value in Oath's capability protocol: a
+// capability that was provided, was invoked, and could not complete. It is an
+// ordinary Str the program may branch on.
+//
+// It is NOT how an unavailable capability is reported. A capability this host
+// cannot supply is refused before any Oath code runs, so that case never reaches
+// this program as a value at all.
+const oathCapFailure = ""
+`)
+	e.b.WriteString(`
 // oBytes reads a (List Int) value as raw bytes; oList rebuilds one. Elements
 // outside 0..255 PANIC rather than truncate: a digest over silently truncated
 // input would verify against a message nobody sent.
@@ -605,20 +721,109 @@ func omapFromList(l any) any {
 			return "", err
 		}
 	}
-	// main: argv → List Str; capability record (if any) wired with REAL
-	// implementations, applied first.
+	// The provenance manifest, embedded so the artifact describes itself. Quoted
+	// rather than written as a raw literal: the manifest carries type strings and
+	// names from the store, and a raw literal would be one backtick away from
+	// emitting a source file that does not compile.
+	//
+	// It is inert. The program has no provenance flag and reads no provenance
+	// environment variable — see the markers in program.go for why both would take
+	// authority over a channel already granted to the program. `oath provenance`
+	// reads it out of the file without running anything.
+	fmt.Fprintf(&e.b, `
+// oathProvenance is what this executable was built from, recorded at build time.
+// It names NEUTRAL capability kinds, never the Go implementations below: it
+// describes the artifact, and stays true when the backend changes.
+//
+// Read it with: oath provenance <this file>
+var oathProvenance = %s
+
+// oathProvenanceKeep exists only so the linker keeps the manifest. Go drops
+// string data nothing references, and an artifact that cannot say what it was
+// built from is not carrying provenance — so the reference has to be real. It is
+// placed in an init rather than on a path main could reach, because provenance
+// must never be able to change what the program does.
+var oathProvenanceKeep []string
+
+func init() { oathProvenanceKeep = append(oathProvenanceKeep, oathProvenance) }
+`, strconv.Quote(prog.Provenance.embeddedManifest()))
+
+	// The capability boundary. Authority enters the program exactly once, here —
+	// everything below received it as an ordinary argument and was verified
+	// against all simulated worlds before the real one arrived.
 	caps := ""
-	entryCall := fmt.Sprintf("%s(nil, args)", e.fname[entry])
-	if capTy != nil {
-		var fields []string
-		for i, n := range capTy.Names {
-			w, _ := capWiring(st, n, &capTy.Args[i])
-			fields = append(fields, w)
-		}
-		caps = fmt.Sprintf("\tvar realWorld any = &ctorV{idx: -1, fields: []any{%s}}\n", strings.Join(fields, ", "))
-		entryCall = fmt.Sprintf("apply(%s(nil, realWorld), args)", e.fname[entry])
+	entryArg := "args"
+	if prog.Protocol == entryHandler {
+		entryArg = "req"
 	}
-	if kind == entryHandler {
+	entryCall := fmt.Sprintf("%s(nil, %s)", e.fname[prog.EntryHash], entryArg)
+	// Keyed on the RECORD, not on the requirement count. An entry typed
+	// (-> {} (-> (List Str) Str)) requires nothing and still takes a capability
+	// argument: its arity comes from its type, and skipping the record would pass
+	// argv where the record belongs and hand the caller a closure to assert a
+	// string on. "Requires nothing" is a statement about authority; "takes no
+	// argument" is a statement about shape, and they are not the same statement.
+	if prog.CapTy != nil {
+		var slots []string
+		for i, r := range prog.Requirements {
+			slots = append(slots, fmt.Sprintf("\t{field: %q, kind: %q, provide: %s},",
+				r.Field, string(r.Kind), providers[i].Provide))
+		}
+		// THE INVARIANT, made executable: every declared requirement is resolved
+		// exactly once, before launch, or the process exits.
+		//
+		// Exactly once is structural — one slot per requirement, in the record's
+		// own field order, built once and applied once. "Or it does not start" is
+		// the loop below, and it is the difference between a capability system and
+		// a naming convention: an unprovidable capability is not handed to Oath
+		// code as an inert value that answers "" forever.
+		//
+		// Extra host authority is not rejected here because it cannot arrive
+		// here: the record has exactly len(oathRequired) fields, the emitted
+		// program reaches authority only by projecting that record, and a
+		// capability this program did not declare has no provider compiled in and
+		// often no import either.
+		fmt.Fprintf(&e.b, `
+// oathCapability is one required unit of authority and this host's means of
+// supplying it. The kind is Oath's word for the authority; the provider is Go's
+// answer to it, and nothing above this line depends on that answer.
+type oathCapability struct {
+	field   string
+	kind    string
+	provide func() (any, error)
+}
+
+// oathRequired is derived from the entry point's type — the same derivation
+// recorded in oathProvenance. Order is the capability record's field order,
+// because that is how the value is delivered.
+var oathRequired = []oathCapability{
+%s
+}
+
+// oathResolveCapabilities resolves every requirement before a line of Oath runs,
+// and refuses to launch if any cannot be met. A provision failure is not an Oath
+// value and never becomes one.
+func oathResolveCapabilities() any {
+	fields := make([]any, len(oathRequired))
+	for i, c := range oathRequired {
+		v, err := c.provide()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "oath: this host cannot provide required capability %%s (%%s): %%v\n", c.field, c.kind, err)
+			os.Exit(%d)
+		}
+		if v == nil {
+			fmt.Fprintf(os.Stderr, "oath: provider for required capability %%s (%%s) supplied nothing\n", c.field, c.kind)
+			os.Exit(%d)
+		}
+		fields[i] = v
+	}
+	return &ctorV{idx: -1, fields: fields}
+}
+`, strings.Join(slots, "\n"), exitCapabilityUnavailable, exitCapabilityUnavailable)
+		caps = "\tvar realWorld any = oathResolveCapabilities()\n"
+		entryCall = fmt.Sprintf("apply(%s(nil, realWorld), %s)", e.fname[prog.EntryHash], entryArg)
+	}
+	if prog.Protocol == entryHandler {
 		// HANDLER protocol (#78). The host owns the socket, TLS, routing and
 		// process lifecycle; the artifact is a pure function from a Request
 		// VALUE to a Response value. This adapter is the whole irreversible
@@ -634,10 +839,9 @@ func omapFromList(l any) any {
 		// Body bytes — what signature schemes actually sign — are exact.
 		// Recovering byte-exact header casing and interleaving needs a raw
 		// connection reader; see the limitation note on #78.
-		handlerCall := fmt.Sprintf("%s(nil, req)", e.fname[entry])
-		if capTy != nil {
-			handlerCall = fmt.Sprintf("apply(%s(nil, realWorld), req)", e.fname[entry])
-		}
+		// Capabilities are resolved before the listener binds, not per request:
+		// a host that cannot supply the program's authority must fail to launch,
+		// not accept traffic and fail each request individually.
 		fmt.Fprintf(&e.b, `
 func main() {
 	addr := os.Getenv("OATH_HTTP_ADDR")
@@ -712,7 +916,7 @@ func main() {
 		os.Exit(1)
 	}
 }
-`, caps, handlerCall)
+`, caps, entryCall)
 		return e.b.String(), nil
 	}
 	fmt.Fprintf(&e.b, `
@@ -977,7 +1181,12 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 			}
 			fmt.Fprintf(&b, "\t\tcase %d:\n\t\t\tenv = append(append([]any{}, env...), scrut.fields...)\n\t\t\t_ = env\n\t\t\treturn %s\n", i, arm)
 		}
-		b.WriteString("\t\t}\n\t\tpanic(\"non-exhaustive\")\n\t})(" + s + ".(*ctorV), env)")
+		// any(...) first: the scrutinee expression may already have the CONCRETE
+		// type *ctorV — a directly-constructed value, as in (match (Box x) ...) —
+		// and Go forbids a type assertion on a non-interface. Found by the LLVM
+		// backend, which compiles such a program correctly; the Go backend refused
+		// to build it at all.
+		b.WriteString("\t\t}\n\t\tpanic(\"non-exhaustive\")\n\t})(any(" + s + ").(*ctorV), env)")
 		return b.String(), nil
 	case "record":
 		var parts []string
