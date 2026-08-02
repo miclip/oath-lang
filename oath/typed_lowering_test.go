@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os/exec"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -283,4 +285,95 @@ func tyMentionsVar(t *Ty) bool {
 		}
 	}
 	return false
+}
+
+// A Str's elements are CODEPOINTS, and any typed lowering of `match` on Str
+// must produce codepoints — not the bytes of some encoding.
+//
+// This is pinned before the LLVM lowering exists, because the trap is already
+// laid: both backends PRINT a Str as UTF-8, so `(SCons 233 (SCons 65 SNil))`
+// writes `c3 a9 41` from either and they agree at the boundary. The LLVM
+// runtime stores a Str as exactly those packed bytes with a BYTE length, so a
+// lowering that indexed `s[0]` would report 195 where the reference reports
+// 233 — and the printed output would still match, so the existing three-way
+// gate would not notice.
+//
+// IT COMPARES A COMPILED PROGRAM AGAINST THE REFERENCE, not the reference
+// against itself. An earlier version called `apiEval` alone, which exercises
+// only the structural evaluator — it would have passed for any byte-indexing
+// backend, which is precisely the regression it exists to catch. The LLVM
+// backend still REFUSES match on Str, so today the compiled side is the Go
+// backend; when LLVM gains the lowering it joins here and the constraint is
+// already written down.
+//
+// The length probe COUNTS RECURSIVELY. An earlier version matched two
+// constructors deep and returned 2 without checking the tail was empty, so a
+// three-byte implementation produced 2 as well and the probe could not tell
+// them apart.
+func TestStrElementsAreCodepointsNotEncodedBytes(t *testing.T) {
+	st := llvmStore(t)
+	put(t, st, `(defn cp-count [] [(s Str)] Int
+		(match s ((SNil) 0) ((SCons c rest) (+ 1 (cp-count rest)))))`)
+	put(t, st, `(defn cp-head [] [(s Str)] Int
+		(match s ((SNil) -1) ((SCons c rest) c)))`)
+	// 233 is U+00E9, TWO bytes in UTF-8; 65 is 'A', one byte. A byte-indexing
+	// implementation reports head 195 and length 3.
+	// The entry returns a Str whose CODEPOINTS are the two answers, so the probe
+	// needs nothing from the standard library and the comparison is on raw
+	// bytes. Codepoints [233, 2] encode as `c3 a9 02`; a byte-indexing
+	// implementation would compute [195, 3] and print `c3 83 03`.
+	put(t, st, `(defn cp-probe [] [(args (List Str))] Str
+		(SCons (cp-head (SCons 233 (SCons 65 (SNil))))
+		       (SCons (cp-count (SCons 233 (SCons 65 (SNil)))) (SNil))))`)
+	markVerified(t, st, "cp-probe")
+
+	ref, err := apiEval(st, `(cp-probe (Nil [Str]))`)
+	if err != nil {
+		t.Fatalf("reference: %v", err)
+	}
+	if want := "(SCons 233 (SCons 2 SNil))"; !strings.Contains(ref, want) {
+		t.Fatalf("the REFERENCE says %s, expected %s — the probe is not measuring what it claims", ref, want)
+	}
+
+	bin, _ := buildProgram(t, st, "cp-probe")
+	out, err := exec.Command(bin).Output()
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	want := "\u00e9\u0002"
+	if got := strings.TrimRight(string(out), "\n"); got != want {
+		t.Errorf("go-emit/2 printed % x, reference expects % x — "+
+			"a Str element is a codepoint, not an encoded byte", got, want)
+	}
+
+	// AND THE LLVM BACKEND, THE MOMENT IT CAN. It refuses match on Str today,
+	// so this attempts the build and skips on exactly that refusal — which
+	// means the constraint starts being ENFORCED as soon as the lowering lands,
+	// without anyone remembering to come back here. Claiming a test "will join
+	// that backend later" and leaving it to a future editor is how a regression
+	// test ends up guarding one implementation forever.
+	//
+	// A refusal for any OTHER reason is a real failure: it would mean the
+	// probe stopped exercising what it was built to exercise.
+	prog, err := planProgram(st, "cp-probe")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if _, err := emitLLVM(st, prog); err != nil {
+		if !strings.Contains(err.Error(), "match on Str") {
+			t.Fatalf("llvm-ir/1 refused cp-probe for an unexpected reason: %v", err)
+		}
+		t.Logf("llvm-ir/1 still refuses match on Str; this constraint applies to it the moment that changes")
+		return
+	}
+	requireClang(t)
+	llBin := buildLLVM(t, st, "cp-probe")
+	llOut, err := exec.Command(llBin).Output()
+	if err != nil {
+		t.Fatalf("run llvm: %v", err)
+	}
+	if got := strings.TrimRight(string(llOut), "\n"); got != want {
+		t.Errorf("llvm-ir/1 printed % x, reference expects % x — "+
+			"a Str element is a codepoint, not an encoded byte", got, want)
+	}
 }
