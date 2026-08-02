@@ -246,6 +246,513 @@
       "membership": "excluded",
       "export": false,
       "reason": "NOT standard library. The second disposable artifact from the same exercise: creation was REFUSED while the delegation was revoked, then accepted after re-delegation, demonstrating that revocation blocks new names and re-delegation restores publication. Same naming mistake as its sibling."
+    },
+    {
+      "name": "map",
+      "artifact": "d82c082fdb53d245915215031f94d0c3c9b3c56c2db09a7911d9bd4abb22dddf",
+      "source": "examples/list.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/list.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "foldl",
+      "artifact": "987c33ad57706f7770afe3da1e4a54e038e4b813e8db4dee4c9827a0d2ec6952",
+      "source": "examples/list.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/list.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "foldr",
+      "artifact": "5b345e9d645f4488680668303ad5dfb0b938e9699473825767b4ba12fd5f032d",
+      "source": "examples/list.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/list.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "take",
+      "artifact": "1cca17c6d090a186ea837405687e938f7669f53b2be874e4aaded470a015577e",
+      "source": "examples/extras.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/extras.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "drop",
+      "artifact": "f1e861a8d7ed52ea1175126a2c0442dd82bac857254b00c72cc72deb02685672",
+      "source": "examples/extras.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/extras.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "take-while",
+      "artifact": "0160610e8287758f43ba2ab3e28000023fe591dd8d8114fac248843c55592764",
+      "source": "examples/list.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/list.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "drop-while",
+      "artifact": "cedba00b3ab797cde5f4b0d2dd591f24f8ccefd97c97b19a43ccdf9ca64a7020",
+      "source": "examples/list.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/list.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "all",
+      "artifact": "966495ef1b6fcf872f35e01913400fbc4ca82c96339d83acc90ac7a4c274088a",
+      "source": "examples/list.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/list.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "any",
+      "artifact": "dd0648da746668f84c85f64bd6969f4f0d5ed5d6fdb7cfaf6ae964a224ad6cfb",
+      "source": "examples/list.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/list.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "contains",
+      "artifact": "6221bec8324b02bf0e2e8f1706000ac24464d474689ddc61e1e4cbba6fc0df9b",
+      "source": "examples/extras.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/extras.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "flatten",
+      "artifact": "0497351b656c8a1a0718d1b998c5a32fb0f7f7888e8c91eb23af72f3331543db",
+      "source": "examples/list.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/list.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "init",
+      "artifact": "6ed53caa0ad21b7d739eaac8817b2fd1e0f983da3dc188d07f89ef1640d988bb",
+      "source": "examples/extras.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/extras.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "singleton",
+      "artifact": "14b8a3dd9719a29e458cb3ba2c884be6523f950216e7cb68373546a4fe60ea1a",
+      "source": "examples/inferred.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/inferred.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "snoc",
+      "artifact": "2248e151c30adcaa8c23ce5a9ba21fc8cd53f36454b1b5afe4762c96dfc8e9a6",
+      "source": "examples/extras.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/extras.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "replicate",
+      "artifact": "3fb40b27e9dc71b801b90b25a8dca147bc2e7e35ac9f7c6340972720c45377c4",
+      "source": "examples/extras.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/extras.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "count",
+      "artifact": "040c290d0c35556a58a58c7476ee27ff5c826c533ff4886f6f6ba5a2b9bd6c5b",
+      "source": "examples/sort.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/sort.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "is-sorted",
+      "artifact": "064d42c2395412835438f4a40910e4b26dd165cf85fc14d9ff7ada25431ba5d5",
+      "source": "examples/sort.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/sort.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "sort",
+      "artifact": "8ed4b7e956f376fb0f06f5a72f90e76be50ddb02da09045ea9bb8f8dafeb2760",
+      "source": "examples/sort.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/sort.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "sort-by",
+      "artifact": "5179ba32bb8df3c1b966c9f3b6c0c7c14a1de369b8fccc87e33fd4361eb168f3",
+      "source": "examples/generic.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/generic.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "insert",
+      "artifact": "07e9fddfeed3fe7d21e92fbdf80a16959a45faf540fc305fec89bc86bcab7e1b",
+      "source": "examples/sort.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/sort.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "insert-by",
+      "artifact": "87dec595a754bfa39d395a5ca4aee022b7cb5f68b23c54a1824c9fd798146484",
+      "source": "examples/generic.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/generic.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "merge",
+      "artifact": "be2f6d41596a747870fa0f1ff03ad164941e4bf1a42bcefa6861aea298e052dc",
+      "source": "examples/merge.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/merge.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "max-by",
+      "artifact": "4c8f05ccdd56be98ce3414dccb6470de6d6fa0e573937ef87bfc9efa889caa2f",
+      "source": "examples/generic.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/generic.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "min-by",
+      "artifact": "739f8efe0b4e0f61c4a0959933766a34ddd133dfd2040b889f3408fd3fb03012",
+      "source": "examples/generic.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/generic.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "sum",
+      "artifact": "25f8a4de0cc7ea04a1b0b5dcc02690e8ea8eef0d44af6604f9ce2923d6f7085a",
+      "source": "examples/list.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/list.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "product",
+      "artifact": "c074a26278a9bbf3e6b70214a21fc19be92efdb464d4fc3f84c19b85705ce897",
+      "source": "examples/list.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/list.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "minimum",
+      "artifact": "9ab35d2eaad189a0cb301a30616edd6040f2adcd608c658d4a53afea6b9a3e99",
+      "source": "examples/list.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/list.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "maximum",
+      "artifact": "6cce19284ea04f372310301feab95ac6c4bc771ec521413b93d40091ad5a026c",
+      "source": "examples/list.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/list.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "max2",
+      "artifact": "04416a62699b6875092c3ad0c232c69ece40a95bcc59d284e4d5639879a16b59",
+      "source": "examples/extras.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/extras.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "clamp",
+      "artifact": "9fa25283f279fb8302a5dfd5da227148bc5b0daac0ad6ef6d27b1b9acab76a00",
+      "source": "examples/ints.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/ints.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "sign",
+      "artifact": "7c0ff56ae894d5f8c7d8b3b92a2ba31a080e1feec71521aaec4e8e2b66fa5fcc",
+      "source": "examples/ints.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/ints.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "range",
+      "artifact": "d49edfaf7c34cb69b45f03d9604f602805624d2a4cbf58032f3e52daff186ca0",
+      "source": "examples/extras.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/extras.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "pow",
+      "artifact": "090cc5373e20d9b4f5f459b69ac63263b5d2f4d7d5c798591f8add8ac579076e",
+      "source": "examples/arith.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/arith.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "fib",
+      "artifact": "7ce4d64ce4a07b44940524ed1308df25801387ce4df6934943bc10562ed4c772",
+      "source": "examples/arith.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/arith.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "rat-add",
+      "artifact": "e04d7c974bd936affe6c045507dd4923d4bcbafd951314f01a4483cc74798061",
+      "source": "examples/rat.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/rat.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "rat-mul",
+      "artifact": "d09a0eb33a7bb8a49e87b6473b72159b0aa4042b9fd1468a178b48023a7cabd0",
+      "source": "examples/rat.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/rat.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "rat-floor",
+      "artifact": "d60f775729e4dc1b8a948e7bc7dee1394ea978fa2e5788f2d1db87b2d74df75d",
+      "source": "examples/convert.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/convert.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "rat-recover",
+      "artifact": "c5647f27f6693b674191800dbb4d74deda6eb6569eb88fc4e012b7a071b333cf",
+      "source": "examples/rat.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/rat.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "count-by",
+      "artifact": "851d636b947699a11d6748a2c5fcaa1d8fed3f2c725317197813c07b9373c494",
+      "source": "examples/list.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/list.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
     }
   ]
 }
