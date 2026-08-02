@@ -49,6 +49,98 @@ import (
 // this shape — so it is versioned like the other protocol envelopes.
 const provenanceSchema = "oath-provenance/1"
 
+// ---------- entry protocols (LANGUAGE-LEVEL) ----------
+//
+// What counts as an entry point, and which protocol it speaks, is a fact about
+// Oath types — it lives here rather than next to the emitter that consumes it.
+// These moved out of compile.go after #114: their CONTENT was already neutral
+// (they classify a *Ty and emit nothing), but a neutral layer reaching into the
+// file named "the Go backend" leaves the boundary true in substance and soft in
+// structure, which is exactly the shape a second backend would trip over.
+
+// entryKind distinguishes the two entry PROTOCOLS. A CLI entry is invoked once
+// with argv and returns stdout; a HANDLER is invoked per request by the host and
+// returns a response (#78).
+//
+// Ingress is deliberately a protocol rather than a capability. A capability is
+// outbound authority the program HOLDS and may misuse — hence the confinement
+// checker. Being called is not authority: the host owns the socket, decides when
+// to invoke, and the artifact stays a pure function of the value it is handed.
+// So a handler needs no new capability, and inherits confinement checking,
+// verification against every generated request, and the refusal-to-wire gates
+// exactly as the CLI protocols do.
+type entryKind int
+
+const (
+	entryCLI entryKind = iota
+	entryHandler
+)
+
+// entryShape classifies an entry type, returning the capability record (nil if
+// the entry takes none), which protocol it speaks, and whether it is an entry at
+// all. Recognized:
+//
+//	(-> (List Str) Str)             CLI
+//	(-> {caps} (-> (List Str) Str)) CLI, capability-first
+//	(-> Request Response)           handler
+//	(-> {caps} (-> Request Response)) handler, capability-first
+func entryShape(st *Store, t *Ty) (*Ty, entryKind, bool) {
+	if isPureEntry(st, t) {
+		return nil, entryCLI, true
+	}
+	if isHandlerEntry(st, t) {
+		return nil, entryHandler, true
+	}
+	if t != nil && t.K == "fun" && t.A != nil && t.A.K == "record" {
+		if isPureEntry(st, t.B) {
+			return t.A, entryCLI, true
+		}
+		if isHandlerEntry(st, t.B) {
+			return t.A, entryHandler, true
+		}
+	}
+	return nil, entryCLI, false
+}
+
+// isHandlerEntry recognizes (-> Request Response), the types being those bound
+// to the names `Request` and `Response` in this store — the same by-convention
+// resolution `Str` and `List` already use.
+func isHandlerEntry(st *Store, t *Ty) bool {
+	if t == nil || t.K != "fun" {
+		return false
+	}
+	return isNamedData(st, "Request", t.A) && isNamedData(st, "Response", t.B)
+}
+
+func isNamedData(st *Store, name string, t *Ty) bool {
+	h, ok := st.Resolve(name)
+	return ok && t != nil && t.K == "data" && t.Hash == h && len(t.Args) == 0
+}
+
+// strTypeHash is the hash of the `Str` datatype in this store (the string type
+// by convention), or "" if none is defined. isStrTy recognizes a type as that
+// datatype — the compiler represents such values as native Go strings.
+func strTypeHash(st *Store) string { h, _ := st.Resolve("Str"); return h }
+
+func isStrTy(strHash string, t *Ty) bool {
+	return strHash != "" && t != nil && t.K == "data" && t.Hash == strHash
+}
+
+func isPureEntry(st *Store, t *Ty) bool {
+	sh := strTypeHash(st)
+	if t == nil || t.K != "fun" || !isStrTy(sh, t.B) {
+		return false
+	}
+	a := t.A
+	if a == nil || a.K != "data" || len(a.Args) != 1 || !isStrTy(sh, &a.Args[0]) {
+		return false
+	}
+	if m, err := st.GetMeta(a.Hash); err == nil {
+		return m.Name == "List"
+	}
+	return false
+}
+
 // ---------- capability vocabulary (LANGUAGE-LEVEL) ----------
 
 // capabilityKind is Oath's own name for a unit of outbound authority.
