@@ -1,5 +1,22 @@
 # Standard Library Publication — oath/*
 
+> **Note added 2026-08-02.** This receipt records the check set as it stood at the
+> time, and remains accurate for that moment. Two things have changed since, so it
+> no longer reproduces verbatim:
+>
+> - the generator now runs **ten** checks rather than eight (referenced-member
+>   resolution and non-republication were added with `referenced` membership);
+> - **"signatures are by the recorded authority key"** is now **"signatures are by
+>   the holder or a current delegate"**. The old wording was correct here — this
+>   pilot predates delegation and the holder key signed directly — but it became
+>   wrong the moment CI began signing as a delegate, and stayed wrong until
+>   `docs/receipts/005` ran it for the first time since.
+>
+> Receipts are derived from live registry state, so a fresh one can always be
+> generated. This file is not regenerated: it is the record of what was checked
+> then, and rewriting it would destroy the thing it exists to preserve.
+
+
 ## Manifest
 
 - commit: `f4dab2b1fe78`
