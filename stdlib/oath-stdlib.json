@@ -119,10 +119,17 @@
     {
       "name": "Option",
       "artifact": "895777a9ff55f95fafafd02a527f6fb513369d87fd05c73971da2700fc989397",
-      "membership": "referenced",
-      "publication": "1b3070e7ff75c0711382e3621965cc1ee2d1b09f84f7846b807d3cf5a430dd00",
+      "membership": "project-publication",
       "export": true,
-      "note": "selected from the publisher's own publication (65ea5701d92e\u2026), Apache-2.0"
+      "note": "selected from the publisher's own publication (65ea5701d92e\u2026), Apache-2.0",
+      "source": "examples/records.oath",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/records.oath) by the project maintainer, and published by that same key as michael/oath/Option; republishing under oath/* asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "membership_change_reason": "converted from `referenced` because it is a TYPE. A referenced member is selected rather than republished, so a project publication mentioning it has no oath/<type> to resolve against \u2014 which blocked five real members. The rights concern `referenced` protects does not apply: the pinned publication is the project's own key under the same licence."
     },
     {
       "name": "is-some",
@@ -199,10 +206,17 @@
     {
       "name": "Pair",
       "artifact": "3c3d94c1dc9ee15fca43062cec36eadb29780640d2dbba40e1aa77f4ff6ba7c6",
-      "membership": "referenced",
-      "publication": "44f97112aa9a2735d0ef6d708c6d638f7c235ac180faa2707c7ca9c8eb5a2bbf",
+      "membership": "project-publication",
       "export": true,
-      "note": "selected from the publisher's own publication, Apache-2.0"
+      "note": "selected from the publisher's own publication, Apache-2.0",
+      "source": "examples/records.oath",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/records.oath) by the project maintainer, and published by that same key as michael/oath/Pair; republishing under oath/* asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "membership_change_reason": "converted from `referenced` because it is a TYPE. A referenced member is selected rather than republished, so a project publication mentioning it has no oath/<type> to resolve against \u2014 which blocked five real members. The rights concern `referenced` protects does not apply: the pinned publication is the project's own key under the same licence."
     },
     {
       "name": "swap",
@@ -750,6 +764,71 @@
       "standing": {
         "type": "project-authored",
         "evidence": "authored in this repository (examples/generic.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "find",
+      "artifact": "bce060be0e7feb0906edda51cb55ee2c8215c915dd8b414226279e7ac8e1c9bc",
+      "source": "examples/extras.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/extras.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "index-of",
+      "artifact": "d679d2e21f62e21e5a276478d81c57f37047fb1dbb38f6fa28629d31d340a042",
+      "source": "examples/extras.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/extras.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "last",
+      "artifact": "fb2a994de5224165a35ae418724c2f7bd971957959ee31a17f2f76c186311cd6",
+      "source": "examples/extras.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/extras.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "zip",
+      "artifact": "8994f7a68c09274971e798d47ccfe1bbe287b1b8c66a6fc0f4221f49f93cb6f5",
+      "source": "examples/extras.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/extras.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
+        "source_publication_license": "Apache-2.0"
+      },
+      "export": true
+    },
+    {
+      "name": "zip-with",
+      "artifact": "d55d85255312c199535c3ac5023f77b2b10f6aabdea2bd11cd4c530cf3c644ac",
+      "source": "examples/extras.oath",
+      "membership": "project-publication",
+      "license": "Apache-2.0",
+      "standing": {
+        "type": "project-authored",
+        "evidence": "authored in this repository (examples/extras.oath) by the project maintainer; the project asserts Apache-2.0 as author rather than as redistributor",
         "source_publication_license": "Apache-2.0"
       },
       "export": true
