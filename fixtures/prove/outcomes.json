@@ -607,13 +607,13 @@
     {
       "name": "first-or",
       "hash": "775f5b2a57d77658a10e23842f4e59acd16e7963c3b268ed7ddf775a9c2b79e5",
-      "level": "tested",
-      "proven_count": 0,
+      "level": "proven",
+      "proven_count": 1,
       "prop_count": 1,
       "props": [
         {
           "name": "empty",
-          "proven": false
+          "proven": true
         }
       ]
     },
@@ -801,21 +801,21 @@
     {
       "name": "hex-digit",
       "hash": "007871398c18f644e5e67228e3e06ea553d93716878dbb625c72034755a1586f",
-      "level": "tested",
-      "proven_count": 0,
+      "level": "proven",
+      "proven_count": 3,
       "prop_count": 3,
       "props": [
         {
           "name": "zero-is-char-0",
-          "proven": false
+          "proven": true
         },
         {
           "name": "ten-is-char-a",
-          "proven": false
+          "proven": true
         },
         {
           "name": "roundtrips",
-          "proven": false
+          "proven": true
         }
       ]
     },
@@ -1637,13 +1637,13 @@
     {
       "name": "mi-lookup",
       "hash": "a626e5d5b52741ca0b4d9cdc6c2af17d7f06b7b88cc741d34343c32b73c086b3",
-      "level": "tested",
-      "proven_count": 0,
+      "level": "proven",
+      "proven_count": 1,
       "prop_count": 1,
       "props": [
         {
           "name": "empty",
-          "proven": false
+          "proven": true
         }
       ]
     },

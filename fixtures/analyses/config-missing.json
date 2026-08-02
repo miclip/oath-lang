@@ -7,6 +7,9 @@
     "",
     ""
   ],
+  "mutants_killed": 3,
+  "mutants_total": 3,
+  "mutation_campaign": "9c65810f2caeeb012fcc9397c6896cfde59b7ab7b62cbe219c52ceb858c90552",
   "level": "tested",
   "cases": 200,
   "proven": 2
