@@ -93,6 +93,43 @@ closed — filed rather than fixed, because it changes the conformance corpus) a
 another protocol feature. #122 is real and is NOT next — it is a spec question
 that only becomes urgent when a second backend implements the handler protocol.
 
+### #117 IS NEXT, and its scope is already narrowed — do not widen it
+
+The question, settled with Michael and written on the issue:
+
+> How does a compiled entry point declare not merely that it MAY read
+> configuration, but that specific configuration MUST exist and satisfy a
+> predicate before launch?
+
+NOT a configuration framework. One concrete requirement, from the application:
+`process_env key GITHUB_WEBHOOK_SECRET, required, non-empty`.
+
+Done means: missing or invalid required configuration prevents the process from
+binding or serving; the failure is a LAUNCH failure; no Oath body executes;
+optional environment access still works for programs that want it; and the
+requirement stays backend-neutral, with Go and LLVM implementing it separately.
+
+**THE MECHANISM ALREADY EXISTS IN BOTH BACKENDS — this is not new machinery.**
+Provision is already allowed to fail and both already exit 70 on it (Go:
+`func() (any, error)`; LLVM: `OVal *fn(char **err)` → `o_require`). `record_sink`
+already USES it — an unwritable `OATH_EMIT_PATH` stops the program starting, and
+`apps/github-webhook/acceptance.sh` demonstrates it. The gap is one line of C:
+
+    OVal *o_cap_env(char **err) { (void)err; return o_closure(cap_env_code, NULL); }
+
+The error channel is there and the provider DISCARDS it, because a `process_env`
+requirement carries no key and no predicate. #117 gives provision something to
+check; it does not invent a way to fail.
+
+**KEEP THE PREDICATE VOCABULARY MINIMAL, and this is the line:** `required` and
+`non-empty` are properties of whether the host supplied the authority the program
+DECLARED. "at least sixteen printable ASCII characters" is a property of what the
+program DOES with it, and admitting that is exactly how this becomes the
+framework it must not be. So #117 will NOT delete `secret-is-usable` from the
+webhook — it makes one class of misconfiguration unreachable rather than merely
+answered, and the length and charset checks stay in the handler. Expecting the
+application to get shorter is the wrong success criterion.
+
 
 ## State of the project
 
