@@ -10,6 +10,78 @@ hashes move, everything published against the old version resolves differently.
 
 ---
 
+## v0.10.0 — signed namespace transfer
+
+Adds signed namespace transfer with bilateral consent, CAS-bound authority state,
+delegation clearing, reservation-limit enforcement, and one-shot transfer
+attempts. A refused submitted attempt cannot later become effective without fresh
+signatures from both parties.
+
+**Identity is unchanged.** 187 definitions, **zero hash changes** from v0.9.0.
+
+### Why it exists
+
+Two valid principals could agree on a change of authority and the protocol had no
+way to express it. The rule forbidding transfer was there to stop a hostile
+seizure, and it caught every consensual handover with it — consolidating
+namespaces, moving from a personal key to an organisation key, a squatter who had
+been persuaded. A design that refuses a transaction all parties want is wrong
+independently of any adversary.
+
+```
+oath transfer 'alice/*' --to <pubkey> --recipient-key their.key --dry-run
+```
+
+### What an accepted transfer does
+
+```
+holder             A → B
+authority_rev      n → n+1
+delegates          cleared
+delegation_rev     advances by one
+exact-name owners  unchanged
+authorship         unchanged
+```
+
+Both parties sign the **same** canonical statement: the holder authorises
+surrender, the recipient accepts custody. A namespace cannot be pushed onto a key
+that did not countersign, because custody carries obligations — it counts against
+the recipient's reservation cap and confers duties over everything beneath the
+prefix.
+
+Delegations do not survive. They were granted by the old holder, and carrying them
+across would give the recipient publishers it never authorised.
+
+### One-shot attempts
+
+Every transfer carries a random `attempt` nonce covered by both signatures, and
+once the registry records the attempt — accepted **or** refused — those bytes are
+spent. A transfer refused because the recipient was at their namespace limit does
+not quietly become effective a month later when the limit frees; both parties sign
+again. Retrying is normal and costs nothing.
+
+The guarantee is narrow and stated as such: it stops a refused transfer coming back
+to life. It does **not** let a recipient withdraw a countersignature the holder has
+not yet submitted.
+
+### Also in this release
+
+- **Reservation limit** — one key may hold five namespaces. A mistake guard, not a
+  squatting defence: keys are free.
+- **Unknown CLI flags are refused.** A flag a command does not implement was
+  absorbed as a positional argument, so `publish --name X` silently bound a
+  different name. Every command now refuses unrecognised flags and lists the ones
+  it knows.
+- **`sandbox/*`** — a public namespace for protocol demonstrations and
+  intentionally non-production artifacts. Not endorsement, not standard-library
+  membership.
+
+### Upgrading
+
+Nothing to migrate. Transfer is additive, and no existing operation changes shape.
+
+---
+
 ## v0.9.0 — durable revocation, honest views, and a frozen ownership boundary
 
 `v0.8.0` made publishing possible. This one makes the authority around it hold up
