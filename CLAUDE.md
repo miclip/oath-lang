@@ -249,6 +249,19 @@ and REFUSES the rest by name; it also refuses `http_request`, which is the point
 two backends may support different subsets of one vocabulary. #115's
 proof-of-concept milestone is closed; #118 is typed lowering.
 
+**WRITING A GATE? ASK WHAT MUTATION MAKES IT FAIL.** This repo is mostly gates, and
+the recurring failure is a test that demonstrates the SETUP or one prerequisite and
+is then read as evidence for the claim. If the only mutation that breaks a test is
+in parsing, setup, or fixture generation, it is not witnessing its claim. Three
+examples from one session: a confinement test asserting the absence of a symbol Go
+never emits (passed for the control too); a "detects disagreement" test that
+exercised only the decoder; a boundary check matching names rather than resolved
+bindings, so a method on a shared type slipped through. VERIFY BY REVERTING —
+undo the fix, watch it fail with the message you expect, restore. A test never
+observed failing is a hypothesis. Prefer extracting the claimed behaviour into a
+pure function and asserting every outcome, and assert the CONTROL so you know the
+measurement discriminates.
+
 **THE GATE IS THREE-WAY: `oath eval` is the reference.** Never compare one backend
 against the other alone — two identically wrong lowerings agree. Writing the second
 backend already found a real defect in the first (a type assertion on a concrete
