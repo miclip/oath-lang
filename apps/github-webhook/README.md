@@ -27,7 +27,8 @@ make -C ../.. build
 oath put apps/github-webhook/webhook.oath
 oath build gh-webhook -o /tmp/gh-webhookd
 
-export GITHUB_WEBHOOK_SECRET=$(openssl rand -hex 24)   # 16 chars minimum
+export OATH_VALUE_SECRET=$(openssl rand -hex 24)       # required: no value, no launch
+export GITHUB_WEBHOOK_SECRET=$OATH_VALUE_SECRET        # the SENDER's copy, for deliver.sh
 OATH_HTTP_ADDR=:8899 OATH_EMIT_PATH=/tmp/events.log /tmp/gh-webhookd &
 
 ./deliver.sh some-payload.json push
@@ -90,12 +91,12 @@ captured a valid body and signature and varies the id on each replay.
 
 | variable | |
 |---|---|
-| `GITHUB_WEBHOOK_SECRET` | the shared secret. **Minimum 16 characters, printable non-whitespace ASCII** (`!` through `~`); otherwise every request is answered `500`. Non-ASCII is rejected rather than mis-signed: `str-bytes` yields codepoints, and a codepoint above 255 crashed the request handler before this was checked. |
+| `OATH_VALUE_SECRET` | the shared secret, a **required value** (#126): absent or empty and the program does not start — exit `70`, before the port is bound. Beyond that, **minimum 16 characters, printable non-whitespace ASCII** (`!` through `~`) is application policy and answers `500` per request. Non-ASCII is rejected rather than mis-signed: `str-bytes` yields codepoints, and a codepoint above 255 crashed the request handler before this was checked. |
 | `OATH_EMIT_PATH` | the record sink. Checked at launch: an unwritable path means the program does not start. |
 | `OATH_HTTP_ADDR` | listen address, default `:8080`. |
 
-The compiled binary requires exactly `emit (record_sink)` and `env
-(process_env)`, and nothing else — no outbound HTTP client is present in it at
+The compiled binary requires exactly `emit (record_sink)` and `secret
+(required_value)`, and nothing else — no outbound HTTP client is present in it at
 all (#114). `oath provenance /tmp/gh-webhookd` reads that back without executing
 it.
 
@@ -105,9 +106,15 @@ it.
 GitHub documents them: `X-Github-Event`, not `X-GitHub-Event`. `hdr-probe.oath`
 is the runnable witness. Getting this wrong fails silently.
 
-**The receiver refuses to serve without a usable secret,** because it could not
-refuse to start. Launched with `GITHUB_WEBHOOK_SECRET` unset, an earlier version
-bound its port and accepted a delivery forged with the empty key. The launch
-gate resolved `env` correctly — `process_env` is the authority to read the
-environment, not a promise that any variable exists. See entry 1 of the friction
-log.
+**The receiver cannot start without a secret,** and that took two attempts.
+Launched with the secret unset, version 1 bound its port and accepted a delivery
+forged with the **empty key**; the launch gate had resolved `env` correctly,
+because `process_env` is the authority to *read the environment*, not a promise
+that any variable exists. Version 2 answered `500` to every request — better,
+and still a listening process a health check calls healthy.
+
+The secret is now a **required value**: the capability record declares
+`secret Str`, not `env (-> Str Str)`, so the host must supply it before any Oath
+code runs. There is no running program to forge a delivery against and no `""`
+for the handler to observe. That is #126, and this application is why it exists.
+Length and charset remain `secret-is-usable`'s job — provisioning is not policy.

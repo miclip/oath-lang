@@ -116,13 +116,28 @@ func TestCapabilityVocabularyIsProvidable(t *testing.T) {
 // the direction of the dependency (Oath semantics -> requirements -> provider) is
 // what forbids it. A backend does not get to invent capabilities.
 func TestNoProviderWithoutVocabulary(t *testing.T) {
-	declared := map[capabilityKind]bool{}
-	for _, decl := range capabilityVocabulary {
-		declared[decl.Kind] = true
-	}
+	declared := capabilityKinds()
 	for kind := range goProviders {
 		if !declared[kind] {
 			t.Errorf("backend provides kind %q, which no capability in Oath's vocabulary denotes", kind)
+		}
+	}
+
+	// AND THE CONVERSE, which is the half that would have gone missing: every
+	// kind Oath can denote must be providable by every backend. A kind
+	// recognized by SHAPE rather than by name has no entry in either provider
+	// table, so ranging over the tables alone would have said nothing about it
+	// — and a build would have failed at emit time instead of here.
+	for kind := range declared {
+		r := CapabilityRequirement{Field: "probe", Kind: kind, Slot: 0}
+		if _, err := goProviderFor(r); err != nil {
+			t.Errorf("the Go backend cannot provide %q, which Oath can denote: %v", kind, err)
+		}
+		// The LLVM backend refuses http_request deliberately — two backends may
+		// support different subsets of one vocabulary (#115) — so the claim
+		// there is that it either provides the kind or refuses it BY NAME.
+		if _, err := llvmProviderFor(r); err != nil && kind != capHTTPRequest {
+			t.Errorf("the LLVM backend cannot provide %q, which Oath can denote: %v", kind, err)
 		}
 	}
 }
@@ -885,5 +900,59 @@ func TestProvenanceDigestIsStable(t *testing.T) {
 	changed.Requirements = []CapabilityRequirement{{Field: "env", Kind: capProcessEnv}}
 	if changed.digest() == a.Provenance.digest() {
 		t.Fatal("changing the required authority did not change the provenance digest")
+	}
+}
+
+// A REQUIRED VALUE IS PROVISIONED BEFORE LAUNCH AND ITS BINDING MUST BE
+// UNAMBIGUOUS (#126).
+//
+// Both backends source a required value from an environment variable named
+// after the field, and that mapping is lossy: `api-key` and `api_key` both
+// become OATH_VALUE_API_KEY. Two requirements reading one variable receive the
+// same value and cannot be configured apart, so it is a BUILD failure — no
+// environment repairs it.
+//
+// The mutation that makes this fail is deleting either backend's
+// checkValueBindings; the CONTROL is the second half, which proves the check
+// discriminates rather than refusing every program with two values.
+func TestCollidingValueBindingsRefuseBuild(t *testing.T) {
+	st := capStore(t)
+	put(t, st, `(defn main-collide [] [(w {api-key Str api_key Str}) (args (List Str))] Str
+		(. w api-key))`)
+	markVerified(t, st, "main-collide")
+	prog, err := planProgram(st, "main-collide")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	for _, tc := range []struct {
+		backend string
+		emit    func() (string, error)
+	}{
+		{"go-emit/2", func() (string, error) { return emitProgram(st, prog) }},
+		{"llvm-ir/1", func() (string, error) { return emitLLVM(st, prog) }},
+	} {
+		_, err := tc.emit()
+		if err == nil {
+			t.Errorf("%s emitted a program whose two required values bind to one variable", tc.backend)
+			continue
+		}
+		if !strings.Contains(err.Error(), "OATH_VALUE_API_KEY") {
+			t.Errorf("%s refused but did not name the colliding binding: %v", tc.backend, err)
+		}
+	}
+
+	// CONTROL: distinct bindings must still build in both backends.
+	put(t, st, `(defn main-two [] [(w {api-key Str token Str}) (args (List Str))] Str
+		(. w token))`)
+	markVerified(t, st, "main-two")
+	ok, err := planProgram(st, "main-two")
+	if err != nil {
+		t.Fatalf("plan control: %v", err)
+	}
+	if _, err := emitProgram(st, ok); err != nil {
+		t.Errorf("go backend refused two distinctly-bound values: %v", err)
+	}
+	if _, err := emitLLVM(st, ok); err != nil {
+		t.Errorf("llvm backend refused two distinctly-bound values: %v", err)
 	}
 }

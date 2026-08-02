@@ -276,7 +276,39 @@ var goProviders = map[capabilityKind]goProvider{
 // every vocabulary kind has a provider — capabilityVocabularyIsProvidable in the
 // tests holds that — and kept because the failure it guards is a backend added
 // without one, which is a mistake a future contributor makes, not a user.
+// valueEnvVar is this backend's default binding from a capability field to a
+// host source: `secret` <- OATH_VALUE_SECRET. It is a Go-backend decision, not
+// an Oath one — the LLVM backend makes the same choice independently, and a
+// third backend could source values from somewhere else entirely without
+// changing any artifact.
+func valueEnvVar(field string) string {
+	out := make([]byte, 0, len("OATH_VALUE_")+len(field))
+	out = append(out, "OATH_VALUE_"...)
+	for i := 0; i < len(field); i++ {
+		c := field[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+			out = append(out, c-32)
+		case c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+			out = append(out, c)
+		default:
+			// `-` is legal in an Oath identifier and not in an environment
+			// variable name on most shells.
+			out = append(out, '_')
+		}
+	}
+	return string(out)
+}
+
 func goProviderFor(r CapabilityRequirement) (goProvider, error) {
+	if r.Kind == capRequiredValue {
+		// Both names are computed HERE, at compile time, and embedded as
+		// literals: the emitted program needs no string manipulation and no
+		// `strings` import to know what it is looking for.
+		return goProvider{Provide: fmt.Sprintf(
+			"func() (any, error) { return oathProvideValue(%q, %q) }",
+			r.Field, valueEnvVar(r.Field))}, nil
+	}
 	p, ok := goProviders[r.Kind]
 	if !ok {
 		return goProvider{}, fmt.Errorf("capability %s (%s) has no implementation in the %s backend",
@@ -354,6 +386,38 @@ func (e *emitter) resolveNativeContainers() {
 // only `env` links no HTTP client, so there is no reachable code path to an
 // outbound request, whatever the host is capable of. A fixed import list made that
 // claim untrue for every program ever built by this compiler.
+// checkValueBindings refuses a program whose required values would collide in
+// this backend's host bindings.
+//
+// The mapping is lossy — it uppercases letters and replaces everything else
+// with `_` — so `api-key` and `api_key` both become OATH_VALUE_API_KEY. Two
+// distinct requirements would then read one variable and silently receive the
+// same value, which is unconfigurable rather than merely surprising.
+//
+// It is a BUILD failure, not a launch failure: no environment can repair it,
+// and the program is asking for something this backend cannot express. A
+// backend keying a secret manager by exact field name would have no collision
+// and no need for this check, which is why it lives here and not in the
+// neutral layer.
+func checkValueBindings(prog *CompiledProgram) error {
+	seen := map[string]string{}
+	for _, r := range prog.Requirements {
+		if r.Kind != capRequiredValue {
+			continue
+		}
+		env := valueEnvVar(r.Field)
+		if prev, dup := seen[env]; dup {
+			return fmt.Errorf("required values %q and %q both bind to %s in the %s backend\n"+
+				"  This backend sources a required value from an environment variable named after\n"+
+				"  the field, and that mapping cannot tell these two apart — they would read one\n"+
+				"  variable and receive the same value. Rename one of them.",
+				prev, r.Field, env, goBackendVersion)
+		}
+		seen[env] = r.Field
+	}
+	return nil
+}
+
 func goImports(prog *CompiledProgram) []string {
 	// Always present: the type-erased value representation and the numeric,
 	// string and container helpers every emitted program carries.
@@ -406,6 +470,9 @@ var goImportKeepalive = map[string]string{
 }
 
 func emitProgram(st *Store, prog *CompiledProgram) (string, error) {
+	if err := checkValueBindings(prog); err != nil {
+		return "", err
+	}
 	// This backend claims the artifact. Done before anything is emitted so an
 	// incomplete record stops the build rather than reaching a binary.
 	if err := prog.stampBackend(goBackendVersion); err != nil {
@@ -803,6 +870,23 @@ var oathRequired = []oathCapability{
 // oathResolveCapabilities resolves every requirement before a line of Oath runs,
 // and refuses to launch if any cannot be met. A provision failure is not an Oath
 // value and never becomes one.
+// oathProvideValue supplies a REQUIRED VALUE, or reports why this host cannot.
+//
+// MISSING AND EMPTY ARE DISTINGUISHED, and both refuse to launch. They are
+// different operator mistakes — the variable was never set, versus it was set
+// to nothing — and collapsing them is the same defect as answering "" for an
+// absent capability: two distinguishable states presented identically.
+func oathProvideValue(field, envVar string) (any, error) {
+	v, ok := os.LookupEnv(envVar)
+	if !ok {
+		return nil, fmt.Errorf("required value %%s is not provided; set %%s", field, envVar)
+	}
+	if v == "" {
+		return nil, fmt.Errorf("required value %%s is provided but empty (%%s)", field, envVar)
+	}
+	return v, nil
+}
+
 func oathResolveCapabilities() any {
 	fields := make([]any, len(oathRequired))
 	for i, c := range oathRequired {

@@ -117,6 +117,27 @@ func (w *escapeWalker) confined(t *Term, idx int, inLam bool) bool {
 	case "var":
 		// A bare occurrence that no allowed pattern intercepted.
 		return t.Idx != idx
+	case "field":
+		// A PROJECTION OF A VALUE-TYPED FIELD IS DATA, not authority.
+		//
+		// "Projected without application escapes" is correct for a
+		// function-typed field: holding `fetch` unapplied IS holding the
+		// authority, and applying it is what bounds its lifetime to the call.
+		// That reasoning does not transfer to `(. caps secret) : Str`, which
+		// can never be applied and grants nothing to whoever holds it.
+		//
+		// Without this, EVERY use of a required value (#126) was reported as an
+		// escape and `oath build` refused to hand the program the real world —
+		// the analysis was modelling capability records as all-functions, which
+		// they were until a value-typed field existed.
+		//
+		// `!inLam` for the same reason project-and-apply requires it: a closure
+		// mentioning the field captures the whole RECORD, and the record still
+		// holds authorities.
+		if !inLam && t.A != nil && t.A.K == "var" && t.A.Idx == idx && !tyHasFun(w.fieldTy(t.Op)) {
+			return true
+		}
+		return w.confined(t.A, idx, inLam)
 	case "app":
 		head, args := unwindApp(t)
 		headOK := false
