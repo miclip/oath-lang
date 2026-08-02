@@ -55,6 +55,7 @@ which is worth separating before you try one:
 | | |
 |---|---|
 | **protocol roots** — `key/*`, `sys/*` | unclaimable by anyone, ever. Their meaning is assigned by the kernel and no publisher governs them. |
+| **`sandbox/*`** | a public namespace for protocol demonstrations, interoperability tests, and intentionally non-production artifacts. Holding or publishing beneath it is **not** endorsement and **not** standard-library membership. It exists so exercises have a correct home and never need a throwaway name. |
 | **already held** — `oath/*`, and others | ordinary prefixes somebody claimed first. `oath/*` is the project namespace, holding the standard library; it was reserved like any other, by the project key. |
 
 So `oath reserve 'key/*'` is refused because the protocol forbids it, and

@@ -14,7 +14,8 @@
     "hash_mismatch": "fail",
     "ambiguous": "fail",
     "undeclared": "fail",
-    "unowned_new": "fail"
+    "unowned_new": "fail",
+    "demonstration": "expected"
   },
   "alias_prefixes": [
     {
@@ -42,6 +43,10 @@
     {
       "name": "id-check",
       "reason": "Written directly against the registry by the operator key on 2026-07-29 (journal 823, re-proven at 824). A manual check that never entered the committed corpus."
+    },
+    {
+      "name": "transfer-example",
+      "reason": "A MISTAKE, recorded rather than tidied away. Intended as sandbox/transfer-example during the v0.10.0 transfer exercise; `oath publish` silently ignored an unknown --name flag and bound the definition's own bare name at the top level. Signed and owned, harmless, and permanently in the wrong place. The flag hole it exposed is fixed; the name cannot be."
     }
   ],
   "legacy_unowned": {
@@ -49,5 +54,11 @@
     "derivation": "A name is legacy-unowned iff its FIRST accepted journal binding is at or before boundary_seq AND carried no signature. DERIVED from immutable history, never stored \u2014 and closed by construction, since entries after the boundary are not eligible whatever they look like.",
     "reason": "Frozen 2026-08-01. These names are historically valid, owned only by an unverifiable label, protected operationally by policy.json, and superseded for real use by the owned michael/* mirrors. They are NOT adopted retroactively: a later signed republication proves authorship of that publication, not ownership of the original name.",
     "expected_count": 181
-  }
+  },
+  "demonstration_prefixes": [
+    {
+      "prefix": "sandbox/",
+      "reason": "sandbox/* is a public namespace for protocol demonstrations, interoperability tests, and intentionally non-production artifacts. Names beneath it are expected and are NOT endorsement or standard-library membership. It exists so exercises have a correct permanent home instead of inventing throwaway names that turn out not to be throwaway."
+    }
+  ]
 }

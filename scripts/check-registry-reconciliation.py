@@ -143,6 +143,7 @@ def main():
     published = {f"{ns}/{d['name']}": d["name"]
                  for d in manifest["definitions"]
                  if d.get("membership") == "project-publication" and d.get("export")}
+    demos = policy.get("demonstration_prefixes", [])
     probes = {p["name"]: p["reason"] for p in policy.get("operational_probes", [])}
     regonly = {p["name"]: p["reason"] for p in policy.get("registry_only", [])}
     aliases = policy.get("alias_prefixes", [])
@@ -160,6 +161,9 @@ def main():
         for a in aliases:
             if name.startswith(a["prefix"]):
                 cats.append(f"alias:{a['prefix']}")
+        for dm in demos:
+            if name.startswith(dm["prefix"]):
+                cats.append("demonstration")
         if name in published:
             cats.append("stdlib_publication")
         if name in probes:
@@ -229,6 +233,8 @@ def main():
                 tally("hash_mismatch")
             else:
                 tally("stdlib_publication")
+        elif cat == "demonstration":
+            tally("demonstration")
         elif cat == "operational_probe":
             reviews.append(f"operational probe `{name}` — {probes[name]}")
             tally("operational_probe")
@@ -307,7 +313,7 @@ def main():
     print()
     print("BY CATEGORY (classification, not count — a total would let an arrival cancel a departure)")
     for cat in ("corpus_present_identical", "alias", "stdlib_publication",
-                "operational_probe", "registry_only", "corpus_absent_live",
+                "demonstration", "operational_probe", "registry_only", "corpus_absent_live",
                 "required_absent", "hash_mismatch", "ambiguous", "undeclared",
                 "unowned_new"):
         if counts.get(cat):

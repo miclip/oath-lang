@@ -88,6 +88,25 @@ func main() {
 		fn(args[1:])
 		return
 	}
+	// AN UNKNOWN FLAG IS NEVER IGNORED. Every command below parses the flags it
+	// knows and treats anything else as a positional argument, so a mistyped or
+	// imagined flag is silently absorbed. That is not hypothetical: during the
+	// v0.10.0 transfer exercise `oath publish --license X --name sandbox/thing f.oath`
+	// was run against the LIVE registry. `publish` has no --name; the flag and its
+	// value were swallowed and the definition bound its own bare name at the top
+	// level of a public, append-only namespace. The name is permanent.
+	//
+	// The general rule the earlier --remote guard was a special case of: a CLI that
+	// accepts a flag it does not implement is asserting something false about what
+	// it did.
+	for _, a := range args[1:] {
+		if !strings.HasPrefix(a, "--") || knownFlags[args[0]][a] || a == "--" {
+			continue
+		}
+		fail(fmt.Errorf("`oath %s` has no flag %q, and silently ignoring it would let this command do "+
+			"something other than what you asked. Known flags for %s: %s",
+			args[0], a, args[0], knownFlagList(args[0])))
+	}
 	// A LOCATION FLAG THAT IS ACCEPTED AND IGNORED IS A QUERY-INTEGRITY BUG (#104).
 	//
 	// Only a few commands have a remote path. The rest parsed no --remote, read the
@@ -1170,4 +1189,44 @@ func remoteCapableList() string {
 	}
 	sort.Strings(names)
 	return strings.Join(names, ", ")
+}
+
+// knownFlags is what each command actually parses. An unknown flag is refused
+// rather than absorbed as a positional argument (see the guard in main).
+//
+// A TABLE RATHER THAN INTROSPECTION, for the same reason remoteCapable is one: the
+// parsers are hand-written switches, so there is nothing to introspect, and a
+// table plus a test is what makes gaining or losing a flag a deliberate edit.
+var knownFlags = map[string]map[string]bool{
+	"publish":   set("--remote", "--key", "--kms-key", "--license", "--dry-run", "--json", "--yes", "-y"),
+	"put":       set("--remote", "--key", "--author", "--context", "--json"),
+	"reserve":   set("--remote", "--key", "--kms-key", "--dry-run", "--yes", "-y"),
+	"delegate":  set("--remote", "--key", "--kms-key", "--to", "--dry-run", "--yes", "-y"),
+	"revoke":    set("--remote", "--key", "--kms-key", "--from", "--dry-run", "--yes", "-y"),
+	"transfer":  set("--remote", "--key", "--kms-key", "--recipient-key", "--to", "--dry-run", "--yes", "-y"),
+	"authority": set("--remote", "--key", "--kms-key"),
+	"ls":        set("--remote", "--key", "--kms-key", "--local"),
+	"log":       set("--remote", "--key", "--kms-key", "--local"),
+	"plugin":    set("--codex", "--claude-code", "--user", "--dir", "--registry", "--dry-run"),
+}
+
+func set(flags ...string) map[string]bool {
+	m := make(map[string]bool, len(flags))
+	for _, f := range flags {
+		m[f] = true
+	}
+	return m
+}
+
+func knownFlagList(cmd string) string {
+	fs := knownFlags[cmd]
+	if len(fs) == 0 {
+		return "(none)"
+	}
+	out := make([]string, 0, len(fs))
+	for f := range fs {
+		out = append(out, f)
+	}
+	sort.Strings(out)
+	return strings.Join(out, " ")
 }
