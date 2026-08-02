@@ -335,7 +335,7 @@
 ; resolved, because `env` is the authority to read the environment, which the
 ; host has whether or not any particular variable exists. The gate is loud
 ; about capability KINDS and silent about capability CONTENT. That distinction
-; is invisible in the source, where `((. caps env) "GITHUB_WEBHOOK_SECRET")`
+; is invisible in the source, where `(. caps secret)`
 ; looks exactly like a value that must exist.
 ;
 ; This is #117 (narrowed capability requirements) arriving as a security bug
@@ -545,11 +545,11 @@
 ; A capability world with a chosen sink and a chosen secret. Used by the
 ; properties to reach paths the generator cannot: it cannot invent a signature,
 ; and — since modification 2 — it can barely invent a usable secret either.
-(defn caps-with [] [(sink (-> Str Str)) (secret Str)] {emit (-> Str Str) env (-> Str Str)}
-  {emit sink env (fn [(k Str)] secret)}
+(defn caps-with [] [(sink (-> Str Str)) (secret Str)] {emit (-> Str Str) secret Str}
+  {emit sink secret secret}
 
-  (prop env-returns-the-secret [(sink (-> Str Str)) (secret Str) (k Str)]
-    (== ((. (caps-with sink secret) env) k) secret))
+  (prop provides-the-secret [(sink (-> Str Str)) (secret Str)]
+    (== (. (caps-with sink secret) secret) secret))
   (prop emit-is-the-sink [(sink (-> Str Str)) (secret Str) (s Str)]
     (== ((. (caps-with sink secret) emit) s) (sink s))))
 
@@ -647,8 +647,8 @@
 ; else — in particular no outbound HTTP, which means the compiled binary does
 ; not contain a client at all (#114: undeclared authority is absent from the
 ; binary, not merely unused).
-(defn gh-webhook [] [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)] Response
-  (let (secret Str ((. caps env) "GITHUB_WEBHOOK_SECRET"))
+(defn gh-webhook [] [(caps {emit (-> Str Str) secret Str}) (r Request)] Response
+  (let (secret Str (. caps secret))
     (if (not (== (req-method r) "POST"))
         (Resp 405 (Nil [(Pair Str Str)]) (Nil [Int]))
         (if (not (secret-is-usable secret))
@@ -687,20 +687,20 @@
   ;   415  authenticated, not JSON      the hook's content type is misconfigured
   ;   200  authenticated ping                       handshake, nothing recorded
   ;   202  authenticated event, recorded                              accepted
-  (prop status-is-one-of-seven [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)]
+  (prop status-is-one-of-seven [(caps {emit (-> Str Str) secret Str}) (r Request)]
     (let (code Int (match (gh-webhook caps r) ((Resp s h b) s)))
       (or (== code 200) (or (== code 202) (or (== code 401) (or (== code 404)
         (or (== code 405) (or (== code 415) (== code 500)))))))))
 
   ; The response carries no body and no headers: a rejection tells the caller
   ; nothing beyond the status.
-  (prop never-leaks-a-body [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)]
+  (prop never-leaks-a-body [(caps {emit (-> Str Str) secret Str}) (r Request)]
     (== (match (gh-webhook caps r) ((Resp s h b) b)) (Nil [Int])))
 
   ; A request that is not a POST cannot carry a signed body, so it is answered
   ; before anything else and without reference to the secret. Quantified over
   ; every capability world, including broken ones.
-  (prop non-post-is-405 [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)]
+  (prop non-post-is-405 [(caps {emit (-> Str Str) secret Str}) (r Request)]
     (if (== (req-method r) "POST")
         true
         (== (match (gh-webhook caps r) ((Resp s h b) s)) 405)))
@@ -710,9 +710,9 @@
   ; THE PROPERTY THAT WOULD HAVE CAUGHT THE FAIL-OPEN, and the reason
   ; modification 2 exists: with no usable secret, NOTHING is accepted — not a
   ; forged request, not a genuine one, not any request the generator can build.
-  (prop unusable-secret-refuses-everything [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)]
+  (prop unusable-secret-refuses-everything [(caps {emit (-> Str Str) secret Str}) (r Request)]
     (if (and (== (req-method r) "POST")
-             (not (secret-is-usable ((. caps env) "GITHUB_WEBHOOK_SECRET"))))
+             (not (secret-is-usable (. caps secret))))
         (== (match (gh-webhook caps r) ((Resp s h b) s)) 500)
         true))
 
@@ -732,9 +732,9 @@
   ;
   ; An unsigned request is rejected without consulting the sink. Conditioned on
   ; a POST with a usable secret, because the two failures above outrank it.
-  (prop unsigned-is-401 [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)]
+  (prop unsigned-is-401 [(caps {emit (-> Str Str) secret Str}) (r Request)]
     (if (and (== (req-method r) "POST")
-             (and (secret-is-usable ((. caps env) "GITHUB_WEBHOOK_SECRET"))
+             (and (secret-is-usable (. caps secret))
                   (== (gh-signature (req-headers r)) (None [Str]))))
         (== (match (gh-webhook caps r) ((Resp s h b) s)) 401)
         true))

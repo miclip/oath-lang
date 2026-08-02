@@ -78,6 +78,13 @@ var llvmProviders = map[capabilityKind]llvmProvider{
 }
 
 func llvmProviderFor(r CapabilityRequirement) (llvmProvider, error) {
+	// A required value is not provided through a provider FUNCTION POINTER: it
+	// needs to know WHICH field it is supplying, and the o_require signature
+	// carries no argument for that. It gets its own entry point instead, so the
+	// four authority providers keep their signature unchanged.
+	if r.Kind == capRequiredValue {
+		return llvmProvider{}, nil
+	}
 	p, ok := llvmProviders[r.Kind]
 	if !ok {
 		return llvmProvider{}, fmt.Errorf("capability %s (%s) has no implementation in the %s backend\n"+
@@ -152,6 +159,53 @@ func (e *llvmEmitter) strConst(s string) string {
 
 // llvmUnsupported is the refusal every unlowerable construct routes through, so
 // the message always says what was met and what the backend covers.
+// llvmValueEnvVar is THIS backend's binding from a capability field to a host
+// source. It is deliberately a separate function from the Go backend's
+// valueEnvVar: the two agree today, and a backend that sourced values from a
+// secret manager instead would change only its own. boundary_test.go would
+// fail if this called the Go emitter's version.
+func llvmValueEnvVar(field string) string {
+	out := make([]byte, 0, len("OATH_VALUE_")+len(field))
+	out = append(out, "OATH_VALUE_"...)
+	for i := 0; i < len(field); i++ {
+		c := field[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+			out = append(out, c-32)
+		case c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+			out = append(out, c)
+		default:
+			out = append(out, '_')
+		}
+	}
+	return string(out)
+}
+
+// llvmCheckValueBindings is the LLVM backend's own collision check. Same
+// reasoning as the Go backend's, computed from its own mapping: a lossy
+// field-to-variable mapping cannot tell `api-key` from `api_key`, and two
+// requirements reading one variable is unconfigurable. Duplicated rather than
+// shared because the two backends may bind values differently — boundary_test
+// enforces that neither reaches into the other.
+func llvmCheckValueBindings(prog *CompiledProgram) error {
+	seen := map[string]string{}
+	for _, r := range prog.Requirements {
+		if r.Kind != capRequiredValue {
+			continue
+		}
+		env := llvmValueEnvVar(r.Field)
+		if prev, dup := seen[env]; dup {
+			return fmt.Errorf("required values %q and %q both bind to %s in the %s backend\n"+
+				"  This backend sources a required value from an environment variable named after\n"+
+				"  the field, and that mapping cannot tell these two apart — they would read one\n"+
+				"  variable and receive the same value. Rename one of them.",
+				prev, r.Field, env, llvmBackendVersion)
+		}
+		seen[env] = r.Field
+	}
+	return nil
+}
+
 func llvmUnsupported(what string) error {
 	return fmt.Errorf("the %s backend cannot lower %s\n"+
 		"  This is a first slice: it covers datatypes, matching, closures, records,\n"+
@@ -778,6 +832,29 @@ OVal *o_cap_emit(char **err) {
 /* THE INVARIANT: every declared requirement is resolved exactly once before
    launch, or the executable does not start. 70 is EX_UNAVAILABLE, the same status
    the Go backend uses, so a supervisor reads both backends identically. */
+/* A REQUIRED VALUE (#126). Not an authority: it grants nothing, and the program
+   cannot observe its absence as a value because the program does not start.
+
+   MISSING AND EMPTY ARE DISTINGUISHED and both exit 70. They are different
+   operator mistakes — never set, versus set to nothing — and collapsing them is
+   the same defect as answering "" for an absent capability. */
+OVal *o_require_value(const char *field, const char *kind, const char *envvar) {
+  const char *v = getenv(envvar);
+  if (!v) {
+    fprintf(stderr, "oath: this host cannot provide required capability %s (%s): "
+                    "required value %s is not provided; set %s\n",
+            field, kind, field, envvar);
+    exit(70);
+  }
+  if (!*v) {
+    fprintf(stderr, "oath: this host cannot provide required capability %s (%s): "
+                    "required value %s is provided but empty (%s)\n",
+            field, kind, field, envvar);
+    exit(70);
+  }
+  return o_str(v);
+}
+
 OVal *o_require(OVal *(*provide)(char **), const char *field, const char *kind) {
   char *err = NULL;
   OVal *v = provide(&err);
@@ -811,6 +888,7 @@ declare ptr @o_argv(i32, ptr, i32, i32)
 declare void @o_print(ptr)
 declare void @o_keep(ptr)
 declare ptr @o_require(ptr, ptr, ptr)
+declare ptr @o_require_value(ptr, ptr, ptr)
 declare ptr @o_cap_env(ptr)
 declare ptr @o_cap_readfile(ptr)
 declare ptr @o_cap_emit(ptr)
@@ -893,6 +971,9 @@ func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 	if err := prog.stampBackend(llvmBackendVersion); err != nil {
 		return "", err
 	}
+	if err := llvmCheckValueBindings(prog); err != nil {
+		return "", err
+	}
 	providers := make([]llvmProvider, len(prog.Requirements))
 	for i, r := range prog.Requirements {
 		p, err := llvmProviderFor(r)
@@ -948,8 +1029,17 @@ func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 			fn := e.strConst(r.Field)
 			kn := e.strConst(string(r.Kind))
 			v := e.next()
-			fmt.Fprintf(&e.b, "  %s = call ptr @o_require(ptr @%s, ptr %s, ptr %s)\n",
-				v, providers[i].Fn, fn, kn)
+			if r.Kind == capRequiredValue {
+				// The host binding is computed HERE and passed as a literal —
+				// the C runtime does no string manipulation and cannot disagree
+				// with the Go backend about what it is looking for.
+				ev := e.strConst(llvmValueEnvVar(r.Field))
+				fmt.Fprintf(&e.b, "  %s = call ptr @o_require_value(ptr %s, ptr %s, ptr %s)\n",
+					v, fn, kn, ev)
+			} else {
+				fmt.Fprintf(&e.b, "  %s = call ptr @o_require(ptr @%s, ptr %s, ptr %s)\n",
+					v, providers[i].Fn, fn, kn)
+			}
 			fmt.Fprintf(&e.b, "  call void @o_set(ptr %s, i32 %d, ptr %s)\n", arr, i, v)
 		}
 		rec := e.next()

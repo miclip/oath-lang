@@ -1,2 +1,2 @@
-✓ prop env-returns-the-secret   passed 200 cases
+✓ prop provides-the-secret      passed 200 cases
 ✓ prop emit-is-the-sink         passed 200 cases

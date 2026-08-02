@@ -90,10 +90,22 @@ is **strictly weaker than what was wanted**. A handler is a pure function with
 no startup, so it cannot refuse to LAUNCH, only to answer. The port still binds.
 A monitoring system sees a healthy process serving 500s.
 
-*What would have fixed it:* `process_env(keys = ["GITHUB_WEBHOOK_SECRET"])` —
-**#117**, narrowed capability requirements. This is #117 arriving as a security
-bug rather than as a design preference, and it is the strongest evidence this
-exercise produced about what to build next.
+*What fixed it, and it was not #117:* the capability record now declares
+`secret Str` rather than `env (-> Str Str)`. A **required value** is provisioned
+by the host before any Oath code runs; absent or empty is a launch failure, exit
+70, before the port is bound. The program cannot observe "missing" as `""`
+because there is no call that could return it — **structural, not
+boundary-enforced**, which preserves the epistemic category #114 established.
+
+That is **#126**, split out of #117 once this entry made the distinction visible:
+*narrowing* asks what authority a program may exercise and must live in the type
+(#69, #117); a *provisioning precondition* asks whether the host supplied a value
+the program needs to start, restricts nothing, and needs no new type machinery —
+a capability record's field set and types are already in the artifact's identity.
+
+Conflating them would have meant either overbuilding #69 to fix a webhook, or
+putting a security property in manifest metadata a deployer could strip. This
+entry is what made the difference legible, which is what a friction log is for.
 
 ---
 

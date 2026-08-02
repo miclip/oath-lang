@@ -158,6 +158,17 @@ const (
 	capProcessEnv  capabilityKind = "process_env"
 	capFileRead    capabilityKind = "file_read"
 	capRecordSink  capabilityKind = "record_sink"
+
+	// capRequiredValue is NOT an authority. Every kind above answers "what may
+	// this program DO"; this one answers "what must the host have SUPPLIED for
+	// this program to start at all". It restricts nothing and grants nothing.
+	//
+	// It exists because #120 found that the two were being conflated: a program
+	// holding `env` may read the environment, which is true whether or not the
+	// variable it needs exists — so the launch gate reported success while the
+	// artifact accepted a delivery forged under an empty key. Narrowing the
+	// authority (#117) does not fix that and is a different, harder question.
+	capRequiredValue capabilityKind = "required_value"
 )
 
 // capabilityDecl binds one capability-record FIELD NAME to a kind and the Oath
@@ -257,6 +268,22 @@ type CapabilityRequirement struct {
 // `"requirements": []` rather than `null`. "This artifact requires no authority"
 // is a claim the record makes; `null` reads as a field nobody filled in, and the
 // difference between an answer and a gap is the whole value of the record.
+// capabilityKinds is every kind an Oath capability record can denote, and it is
+// the single source of truth for that set.
+//
+// THE VOCABULARY IS TWO-PART, which is why this cannot just range over
+// capabilityVocabulary: function-typed fields name AUTHORITIES from a closed,
+// name-keyed table, and value-typed fields name REQUIRED VALUES recognized by
+// shape, with the field name as the value's own identifier rather than a lookup.
+// A backend must implement all of these and nothing outside them.
+func capabilityKinds() map[capabilityKind]bool {
+	out := map[capabilityKind]bool{capRequiredValue: true}
+	for _, decl := range capabilityVocabulary {
+		out[decl.Kind] = true
+	}
+	return out
+}
+
 func entryRequirements(st *Store, capTy *Ty) ([]CapabilityRequirement, error) {
 	out := []CapabilityRequirement{}
 	if capTy == nil {
@@ -264,12 +291,42 @@ func entryRequirements(st *Store, capTy *Ty) ([]CapabilityRequirement, error) {
 	}
 	for i, name := range capTy.Names {
 		fieldTy := &capTy.Args[i]
+
+		// A VALUE-typed field is a required value, and the FIELD NAME is its
+		// identifier rather than a lookup into the authority vocabulary.
+		//
+		// The rule is by SHAPE, not by name: function-typed fields are named
+		// authorities from a closed vocabulary; value-typed fields are named
+		// requirements from an open one. That is why this needs no new type
+		// machinery — a record's field set and types are already part of the
+		// def's identity, so a program requiring a secret is a DIFFERENT
+		// ARTIFACT from one that does not, and no deployer can strip the
+		// requirement by editing metadata.
+		//
+		// The host's source for the value — an environment variable, a secret
+		// manager, a mounted file — is deployment configuration and is
+		// deliberately NOT in the type, exactly as `emit` does not name a path.
+		// The artifact declares WHAT it requires; the host decides WHERE it
+		// comes from, and two deployments sourcing it differently are the same
+		// artifact.
+		if isStrTy(strTypeHash(st), fieldTy) {
+			if _, clash := capabilityVocabulary[name]; clash {
+				return nil, fmt.Errorf("capability %q : Str reuses the name of an authority\n"+
+					"  %s names an authority and must be (-> Str Str). A required VALUE must not\n"+
+					"  reuse an authority's name, or a reader could not tell which one a record\n"+
+					"  field means without consulting its type.", name, name)
+			}
+			out = append(out, CapabilityRequirement{Field: name, Kind: capRequiredValue, Slot: i})
+			continue
+		}
+
 		decl, known := capabilityVocabulary[name]
 		if !known {
 			return nil, fmt.Errorf("unknown capability requirement %q : %s\n"+
 				"  Oath defines these capabilities: %s\n"+
-				"  A capability record field names the authority it wants; a name outside that\n"+
-				"  vocabulary has no meaning to give a host, so there is nothing to provide.",
+				"  A function-typed capability field names the AUTHORITY it wants, and a name\n"+
+				"  outside that vocabulary has no meaning to give a host. A field of type Str is\n"+
+				"  a REQUIRED VALUE instead, named by the field and provisioned before launch.",
 				name, debugTy(fieldTy), strings.Join(knownCapabilityFields(), ", "))
 		}
 		if !decl.Sig(st, fieldTy) {
@@ -491,6 +548,13 @@ func isDefHash(h string) bool {
 func (m ProvenanceManifest) unknownRequirements() []string {
 	var out []string
 	for _, r := range m.Requirements {
+		// A required value is known by its KIND, not by its name: the name is
+		// the program's own identifier for the value and is deliberately open,
+		// so looking it up in the authority vocabulary would report every one
+		// of them as unrecognized.
+		if r.Kind == capRequiredValue {
+			continue
+		}
 		if _, known := capabilityVocabulary[r.Field]; !known {
 			out = append(out, fmt.Sprintf("%s (%s)", r.Field, r.Kind))
 		}

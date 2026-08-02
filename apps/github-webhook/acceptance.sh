@@ -125,7 +125,7 @@ launch_code() { # launch_code <env assignments...> -- prints exit code or still-
 mkdir -p "$work/nodir" && chmod 000 "$work/nodir" 2>/dev/null || true
 if [ "$(id -u)" != "0" ]; then
   check "unwritable sink refuses to launch" "70" \
-        "$(launch_code GITHUB_WEBHOOK_SECRET="$secret" OATH_EMIT_PATH="$work/nodir/x.log" OATH_HTTP_ADDR=":$port")"
+        "$(launch_code OATH_VALUE_SECRET="$secret" OATH_EMIT_PATH="$work/nodir/x.log" OATH_HTTP_ADDR=":$port")"
 
   # AND IT REFUSES BEFORE BINDING, which the check above does NOT witness: a
   # program that bound the port, then resolved capabilities, then exited 70
@@ -149,9 +149,9 @@ sys.stderr.write('held\\n'); sys.stderr.flush(); time.sleep(30)" 2> "$work/held"
   # no check.
   if grep -q held "$work/held" 2>/dev/null; then
     check "capabilities resolve BEFORE the port is bound" "70" \
-          "$(launch_code GITHUB_WEBHOOK_SECRET="$secret" OATH_EMIT_PATH="$work/nodir/x.log" OATH_HTTP_ADDR="127.0.0.1:$((port+2))")"
+          "$(launch_code OATH_VALUE_SECRET="$secret" OATH_EMIT_PATH="$work/nodir/x.log" OATH_HTTP_ADDR="127.0.0.1:$((port+2))")"
     check "  ...control: a provisionable sink reaches bind" "1" \
-          "$(launch_code GITHUB_WEBHOOK_SECRET="$secret" OATH_EMIT_PATH="$work/held.log" OATH_HTTP_ADDR="127.0.0.1:$((port+2))")"
+          "$(launch_code OATH_VALUE_SECRET="$secret" OATH_EMIT_PATH="$work/held.log" OATH_HTTP_ADDR="127.0.0.1:$((port+2))")"
   else
     printf '  FAIL  %-46s could not hold 127.0.0.1:%s\n' "port-holder setup" "$((port+2))"
     fail=$((fail + 1))
@@ -165,7 +165,7 @@ sys.stderr.write('held\\n'); sys.stderr.flush(); time.sleep(30)" 2> "$work/held"
 fi
 chmod 755 "$work/nodir" 2>/dev/null || true
 
-GITHUB_WEBHOOK_SECRET="$secret" OATH_EMIT_PATH="$work/events.log" \
+OATH_VALUE_SECRET="$secret" OATH_EMIT_PATH="$work/events.log" \
   OATH_HTTP_ADDR=":$port" "$work/gh-webhookd" > "$work/out" 2> "$work/err" &
 pid=$!
 i=0; while [ $i -lt 50 ] && ! curl -sS -o /dev/null "http://127.0.0.1:$port/" 2>/dev/null; do i=$((i+1)); sleep 0.1; done
@@ -268,7 +268,7 @@ kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true; pid=""
 # so before secret-is-usable checked for it, a correctly signed delivery under a
 # 32-character Cyrillic secret PANICKED the request handler: empty reply, stack
 # trace, process still listening. 500 is the answer; a dropped connection is not.
-env GITHUB_WEBHOOK_SECRET="ключключключключключключключключ" OATH_EMIT_PATH="$work/utf8.log" \
+env OATH_VALUE_SECRET="ключключключключключключключключ" OATH_EMIT_PATH="$work/utf8.log" \
   OATH_HTTP_ADDR=":$port" "$work/gh-webhookd" > /dev/null 2>&1 &
 pid=$!
 i=0; while [ $i -lt 50 ] && ! curl -sS -o /dev/null "http://127.0.0.1:$port/" 2>/dev/null; do i=$((i+1)); sleep 0.1; done
@@ -282,30 +282,48 @@ kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true; pid=""
 # disagree and every legitimate delivery would 401 forever. 500 says the
 # configuration is wrong, which is what it is.
 latin1="ééééééééééééééééééééééééééééééé"
-env GITHUB_WEBHOOK_SECRET="$latin1" OATH_EMIT_PATH="$work/latin1.log" \
+env OATH_VALUE_SECRET="$latin1" OATH_EMIT_PATH="$work/latin1.log" \
   OATH_HTTP_ADDR=":$port" "$work/gh-webhookd" > /dev/null 2>&1 &
 pid=$!
 i=0; while [ $i -lt 50 ] && ! curl -sS -o /dev/null "http://127.0.0.1:$port/" 2>/dev/null; do i=$((i+1)); sleep 0.1; done
 check "a secret with a space is refused" \
-      "500" "$(env GITHUB_WEBHOOK_SECRET="0123456789 abcdef" OATH_EMIT_PATH="$work/sp.log" OATH_HTTP_ADDR=":$((port+1))" "$work/gh-webhookd" > /dev/null 2>&1 & sp=$!; i=0; while [ $i -lt 50 ] && ! curl -sS -o /dev/null "http://127.0.0.1:$((port+1))/" 2>/dev/null; do i=$((i+1)); sleep 0.1; done; c=$(post "http://127.0.0.1:$((port+1))/hook" application/json push sp "sha256=$(sign "0123456789 abcdef" "$work/body.json")" "$work/body.json"); kill $sp 2>/dev/null; wait $sp 2>/dev/null || true; echo "$c")"
+      "500" "$(env OATH_VALUE_SECRET="0123456789 abcdef" OATH_EMIT_PATH="$work/sp.log" OATH_HTTP_ADDR=":$((port+1))" "$work/gh-webhookd" > /dev/null 2>&1 & sp=$!; i=0; while [ $i -lt 50 ] && ! curl -sS -o /dev/null "http://127.0.0.1:$((port+1))/" 2>/dev/null; do i=$((i+1)); sleep 0.1; done; c=$(post "http://127.0.0.1:$((port+1))/hook" application/json push sp "sha256=$(sign "0123456789 abcdef" "$work/body.json")" "$work/body.json"); kill $sp 2>/dev/null; wait $sp 2>/dev/null || true; echo "$c")"
 check "a latin-1 secret is refused, not mis-signed" \
       "500" "$(post "$url" application/json push l1 "sha256=$(sign "$latin1" "$work/body.json")" "$work/body.json")"
 kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true; pid=""
 
-# THE FAIL-OPEN, as a standing regression check. With no secret in the
-# environment the receiver must refuse everything — including a delivery signed
-# correctly under the empty key, which an earlier version accepted with a 202.
-env -u GITHUB_WEBHOOK_SECRET OATH_EMIT_PATH="$work/forged.log" \
-  OATH_HTTP_ADDR=":$port" "$work/gh-webhookd" > /dev/null 2>&1 &
-pid=$!
-i=0; while [ $i -lt 50 ] && ! curl -sS -o /dev/null "http://127.0.0.1:$port/" 2>/dev/null; do i=$((i+1)); sleep 0.1; done
-empty=$(python3 -c "import hmac,hashlib;print(hmac.new(b'',open('$work/body.json','rb').read(),hashlib.sha256).hexdigest())")
-check "an empty-key forgery is refused when unset" \
-      "500" "$(post "$url" application/json push forged "sha256=$empty" "$work/body.json")"
-check "  ...and nothing was recorded" \
-      "0" "$(wc -l < "$work/forged.log" | tr -d ' ')"
-kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true; pid=""
+# THE FAIL-OPEN, and it is now closed STRUCTURALLY rather than answered.
+#
+# Version 1 launched with no secret and accepted a delivery forged under the
+# empty key. Version 2 launched and answered 500 to everything — better, and
+# still a listening process a health check calls healthy. With `secret Str`
+# (#126) the secret is a REQUIRED VALUE: the host must supply it before any Oath
+# code runs, so there is no running program to forge a delivery against and no
+# `""` for the handler to observe.
+# `env -u`, because the caller may already have OATH_VALUE_SECRET exported —
+# the README's own quickstart says to export it. Inheriting it would make this
+# probe launch successfully and block until its timeout, reporting
+# "still-running" or, worse, passing something that was never tested.
+check "no secret at all: refuses to launch" "70" \
+      "$(launch_code -u OATH_VALUE_SECRET OATH_EMIT_PATH="$work/forged.log" OATH_HTTP_ADDR=":$port")"
+check "an EMPTY secret: refuses to launch" "70" \
+      "$(launch_code OATH_VALUE_SECRET="" OATH_EMIT_PATH="$work/forged.log" OATH_HTTP_ADDR=":$port")"
+check "  ...and nothing was recorded" "0" "$(wc -l < "$work/forged.log" 2>/dev/null | tr -d ' ' || echo 0)"
 
+# MISSING AND EMPTY ARE DIFFERENT OPERATOR MISTAKES and say so. Collapsing them
+# is the same defect as answering "" for an absent capability.
+: > "$work/forged.log"
+env -u OATH_VALUE_SECRET OATH_EMIT_PATH="$work/forged.log" OATH_HTTP_ADDR=":$port" "$work/gh-webhookd" 2> "$work/m1" >/dev/null || true
+OATH_VALUE_SECRET="" OATH_EMIT_PATH="$work/forged.log" OATH_HTTP_ADDR=":$port" "$work/gh-webhookd" 2> "$work/m2" >/dev/null || true
+check "missing says 'is not provided'" \
+      "1" "$(grep -c 'is not provided' "$work/m1" || true)"
+check "empty says 'provided but empty'" \
+      "1" "$(grep -c 'provided but empty' "$work/m2" || true)"
+
+# AND APPLICATION POLICY STAYS IN OATH. A secret that is present and non-empty
+# satisfies PROVISIONING, so the program launches; `secret-is-usable`'s length
+# and printable-ASCII rules are the artifact's own and still answer 500. #126
+# makes one class of misconfiguration unreachable; it does not absorb policy.
 echo
 if [ "$fail" = "0" ]; then echo "webhook acceptance: all checks passed"; else echo "webhook acceptance: $fail FAILED"; fi
 exit "$fail"
