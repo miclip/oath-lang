@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { canonicalUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Docs — Architecture",
   description:
     "How Oath Language fits together: the object store, the trusted gate, the prover, the two kernels, and the hosted team store.",
+  alternates: { canonical: canonicalUrl("/docs/architecture") },
 };
 
 export default function Architecture() {

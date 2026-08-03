@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { canonicalUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "An Outside Audit",
   description:
     "A skeptic’s read by Codex (GPT-5.5), an independent model that did not build Oath: where the argument holds, where it’s overstated, and what doesn’t generalize.",
+  alternates: { canonical: canonicalUrl("/essays/outside-audit") },
 };
 
 export default function OutsideAudit() {

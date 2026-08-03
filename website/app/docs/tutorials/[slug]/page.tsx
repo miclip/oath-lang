@@ -4,6 +4,7 @@ import Link from "next/link";
 import fs from "node:fs";
 import path from "node:path";
 import ReactMarkdown from "react-markdown";
+import { canonicalUrl } from "@/lib/site";
 import { tutorials, tutorialBySlug } from "@/lib/tutorials";
 
 export function generateStaticParams() {
@@ -27,7 +28,11 @@ export async function generateMetadata({
   const { slug } = await params;
   const t = tutorialBySlug(slug);
   if (!t) return { title: "Tutorial not found" };
-  return { title: `Tutorial — ${t.title}`, description: t.blurb };
+  return {
+    title: `Tutorial — ${t.title}`,
+    description: t.blurb,
+    alternates: { canonical: canonicalUrl(`/docs/tutorials/${t.slug}`) },
+  };
 }
 
 export default async function TutorialPage({

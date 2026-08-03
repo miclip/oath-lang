@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { stats } from "@/lib/corpus";
+import { canonicalUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "What’s left of software when no one has to read the code",
   description:
     "It began as a shower thought: what would software look like if nobody ever had to read it again? The inversion that followed, and why the constraint that survives is trust.",
+  alternates: { canonical: canonicalUrl("/essays/what-remains") },
 };
 
 export default function WhatRemains() {

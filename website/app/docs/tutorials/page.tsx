@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { canonicalUrl } from "@/lib/site";
 import { tutorials } from "@/lib/tutorials";
 
 export const metadata: Metadata = {
   title: "Docs — Tutorials",
   description:
     "Learn Oath by doing: the guarantee ladder, exact numbers, content-addressed identity, authoring and proving a function, compiling a program, and finding proven code.",
+  alternates: { canonical: canonicalUrl("/docs/tutorials") },
 };
 
 export default function TutorialsIndex() {

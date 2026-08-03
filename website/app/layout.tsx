@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Cormorant, Inter, JetBrains_Mono } from "next/font/google";
+import { SITE_ORIGIN } from "@/lib/site";
 import "./globals.css";
 
 const serif = Cormorant({
@@ -27,8 +28,7 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  // Base for absolute OG / canonical URLs. Point this at the production domain.
-  metadataBase: new URL("https://oath-lang.org"),
+  metadataBase: new URL(SITE_ORIGIN),
   title: {
     default: "Oath Language — Verified code. Immutable truth.",
     template: "%s · Oath Language",

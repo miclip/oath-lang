@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { CodeBlock } from "@/components/CodeBlock";
 import { featured } from "@/lib/corpus";
+import { canonicalUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Docs — The guarantee ladder",
   description:
     "How much an Oath Language verdict actually means: asserted, tested, proven, falsified — and the four verdict dimensions.",
+  alternates: { canonical: canonicalUrl("/docs/guarantees") },
 };
 
 export default function Guarantees() {

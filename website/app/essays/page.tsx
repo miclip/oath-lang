@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { canonicalUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Essays",
   description:
     "Four records from the same build: why Oath exists, how its kernel earns a verdict, and where the audit still pushes back.",
+  alternates: { canonical: canonicalUrl("/essays") },
 };
 
 const ESSAYS = [

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Nav } from "@/components/Nav";
 import { Footer } from "@/components/Footer";
@@ -5,6 +6,11 @@ import { Pillars } from "@/components/Pillars";
 import { CodeBlock } from "@/components/CodeBlock";
 import { Logo } from "@/components/Logo";
 import { stats, featured } from "@/lib/corpus";
+import { canonicalUrl } from "@/lib/site";
+
+export const metadata: Metadata = {
+  alternates: { canonical: canonicalUrl("/") },
+};
 
 function Badge({ level, children }: { level: string; children: React.ReactNode }) {
   return <span className={`rung-mark v-${level}`}>{children}</span>;

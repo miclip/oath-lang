@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CodeBlock } from "@/components/CodeBlock";
 import { stats } from "@/lib/corpus";
+import { canonicalUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Building the referee",
   description:
     "How Oath’s kernel earns the right to say PROVEN — and the exact boundary where an honest scorecard can still describe the wrong function. An implementer’s field notes.",
+  alternates: { canonical: canonicalUrl("/essays/building-oath") },
 };
 
 export default function BuildingOath() {
