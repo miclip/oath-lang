@@ -4132,3 +4132,253 @@ determined only by fixtures.
 > a lattice that determined every verdict while living outside the normative
 > surface entirely. None of those is visible to a conformance suite, because a
 > conformance suite is written by someone who already knows the answers.
+
+## 14. The handler protocol: the Request model (normative, #122)
+
+### 14.0 What this section binds, and what it does not
+
+Sections 1–13 bind a KERNEL: identity, semantics, verdicts, the journal, and the
+evidence layers built on them. This section binds a BACKEND — an implementation
+that compiles an Oath handler entry point and connects it to a network. The
+distinction is load-bearing and is stated here rather than inferred:
+
+- A kernel that does not compile programs conforms to this specification without
+  implementing §14 at all. §10's five conformance points do not reach it.
+- A backend that compiles `(-> Request Response)` MUST implement §14. Two
+  backends satisfying it produce the SAME `Request` value from the same HTTP
+  request, and that is the entire obligation.
+
+A §14 claim is scoped exactly as §13.4 requires of any other: name the backend
+and the surface, never "this implementation is conformant" unqualified.
+
+### 14.1 The governing principle
+
+The prior rule was *normalize as little as possible*. It is withdrawn. It read as
+a prohibition on all transformation, and under it the reference backend both
+canonicalized header-name case and imposed an ordering — because the rule
+described a disposition rather than an obligation, and because part of what it
+demanded is not obtainable from the transport at all.
+
+**HDR-PRINCIPLE.** A backend PRESERVES every semantically meaningful distinction
+the transport supplies, and CANONICALIZES distinctions the transport does not
+define or explicitly declares insignificant.
+
+Both halves are obligations. Preserving is not permission to pass through
+whatever a host library happens to expose, and canonicalizing is not permission
+to discard information the transport carried.
+
+The classification is a matter of HTTP, not of taste:
+
+| distinction | HTTP's position | §14 |
+|---|---|---|
+| repeated field lines with one name | significant; order is meaningful (RFC 9110 §5.3) | PRESERVE |
+| the field value's octets | significant | PRESERVE |
+| method | case-sensitive (RFC 9110 §9.1) | PRESERVE |
+| request target, with query | significant, and signed schemes rely on the raw form | PRESERVE |
+| body octets | significant | PRESERVE |
+| field-name case | insignificant (RFC 9110 §5.1); HTTP/2 and HTTP/3 mandate lowercase on the wire (RFC 9113 §8.2.1), so the sender's case does not survive the transport | CANONICALIZE |
+| order ACROSS distinct field names | not significant (RFC 9110 §5.3) | CANONICALIZE |
+
+Field-name case is the decisive row. A rule that preserved it would be
+unsatisfiable over HTTP/2, where the case never arrives — so making it normative
+would make backend agreement depend on which transport a client negotiated.
+
+### 14.2 The Request value
+
+A backend constructs `(Req method path headers body received-at)` with the
+following obligations. The type is the one bound to the name `Request` in the
+store; §14 constrains its CONTENTS.
+
+**REQ-HEADER-NAMES-LOWERCASE.** Field names in `headers` are lowercase. The
+mapping is ASCII-only: the 26 octets `A`–`Z` (0x41–0x5A) map to `a`–`z`
+(0x61–0x7A); every other octet is unchanged. This is NOT Unicode case folding —
+a field name is an HTTP token and is ASCII by construction, and applying a
+locale- or Unicode-aware transformation would make the result depend on a table
+outside this specification.
+
+**REQ-HEADER-ORDER-LEXICOGRAPHIC.** Entries are ordered ascending by the
+lowercase field name, compared as a sequence of unsigned octets. Shorter names
+that are a prefix of a longer one sort first.
+
+**REQ-HEADER-REPEATS-PRESERVED.** Entries sharing a field name appear in the
+order the transport delivered them, and the sort of REQ-HEADER-ORDER-LEXICOGRAPHIC
+is stable with respect to that order. A backend MUST NOT reorder, deduplicate, or
+drop repeats.
+
+**REQ-HEADER-VALUES-NOT-JOINED.** Two field lines with the same name produce TWO
+entries. A backend MUST NOT combine them into one comma-separated value, even
+where RFC 9110 §5.3 would permit a recipient to do so. Combining is irreversible
+and destroys a repetition structure the adapter still holds; a handler verifying
+a signature or diagnosing a duplicated header can then no longer see what
+arrived.
+
+**REQ-HEADER-VALUE-OCTETS.** A field value crosses unchanged. The optional
+whitespace surrounding a field value is transport framing and is not part of the
+value (RFC 9110 §5.5); removing it is parsing, not normalization. A backend MUST
+NOT otherwise trim, decode, re-encode, or case-map a value, and MUST NOT deliver
+obsolete line folding as an embedded newline.
+
+**REQ-HEADER-OCTETS-ARE-ASCII, and a violation is REFUSED.** Field names and
+values are carried in `Str`, which is a sequence of CODEPOINTS. For the printable
+US-ASCII range that is exact — codepoint and octet coincide — and outside it the
+type cannot represent what arrived. RFC 9110 §5.5 still permits `obs-text`
+(0x80–0xFF) in a field value while deprecating it, so the case is rare and legal.
+
+A backend therefore MUST NOT deliver such a request. If any field name or value
+**that would appear in `headers`** contains an octet outside 0x20–0x7E, other
+than HTAB (0x09) which is permitted inside a value, the backend responds **400**
+and the handler is NOT invoked.
+
+**The exclusions of REQ-FRAMING-FIELDS-EXCLUDED are applied FIRST, and this
+ordering is normative** — without it two backends would disagree about a request
+carrying obs-text in a field that neither of them delivers. The check exists
+because `Str` cannot represent the octet, so it is a question about the value
+being constructed, not about the message: a field that never enters `headers`
+never enters `Str`, and refusing on its account would reject a request that
+could have been served faithfully.
+
+This is a REFUSAL, not a repair, and the distinction is the point. Transcoding
+the value would put a lie in the Oath value: the handler would verify a signature
+over bytes that are not the bytes that arrived, and no test of the artifact could
+detect it, because the artifact never sees the original. Refusing keeps
+REQ-HEADER-VALUE-OCTETS exactly true on every request that IS delivered, instead
+of true-in-general and quietly false at the edge.
+
+The underlying limit is the one #133 tracks — `Str` is defined over codepoints,
+and a wire protocol is defined over octets. §14 does not resolve it; it declines
+to hide it. A future model that carried header octets as `(List Int)`, as `body`
+already does, would replace this rule rather than relax it.
+
+**REQ-HOST-IS-A-HEADER.** The request authority appears in `headers` under the
+name `host`, ordered and compared like any other entry. Host libraries routinely
+lift it out of the header collection into a dedicated field — Go's `net/http`
+promotes it to `Request.Host` and REMOVES it from the header map — and a backend
+that passes its library's collection through unexamined therefore drops it. It is
+a header field, it is mandatory in HTTP/1.1, and a handler inspecting the
+authority must not have to know which backend compiled it.
+
+This also covers the HTTP/2 and HTTP/3 spelling: the authority arrives as the
+`:authority` pseudo-header rather than as a field line, and it appears here as
+`host` regardless. Pseudo-headers are otherwise NOT header entries — `:method`,
+`:path` and `:scheme` are the transport's encoding of information this section
+already places in `method` and `path`, and repeating them as entries would make
+the header list depend on the HTTP version. When the transport supplies no
+authority at all, no `host` entry appears; a backend MUST NOT synthesize one.
+
+**REQ-FRAMING-FIELDS-EXCLUDED.** These names do NOT appear in `headers`:
+
+    connection            keep-alive            proxy-authenticate
+    proxy-authorization   te                    trailer
+    transfer-encoding     upgrade               content-length
+
+Also excluded is every field name NOMINATED by the `connection` field: its value
+is a comma-separated list of field names that this connection alone made
+connection-specific (RFC 9110 §7.6.1), so `Connection: x-hop` excludes `x-hop`
+too. Nominated names are compared after the same ASCII lowercasing as any other.
+Without this, a handler would see a field when reached directly and not see it
+when reached through a conformant intermediary that stripped it — a difference in
+the Oath value produced by the network path rather than by the request.
+
+**Nomination reaches only fields this section does not otherwise govern.** It
+cannot remove `host`, which REQ-HOST-IS-A-HEADER requires unconditionally, and it
+cannot reinstate a name excluded above. `Connection: host` is not a request to
+drop the authority — it is a nonsensical or hostile nomination, and honouring it
+would let a client delete a mandatory field from the Oath value and change how a
+handler behaves. A backend MUST ignore such a nomination rather than refuse the
+request: the field is still delivered, so nothing is lost or misrepresented.
+
+They describe how this message was TRANSMITTED, not what was requested. Most are
+connection-specific and hop-by-hop (RFC 9110 §7.6.1) — meaningful only between
+one pair of endpoints, and meaningless to a handler that receives an already
+reassembled request. By the time `body` is a list of octets the framing has been
+consumed, so `transfer-encoding: chunked` describes an encoding that no longer
+exists in the value.
+
+`content-length` is excluded for a sharper reason: `body` is the authority on how
+many octets arrived, and a handler that trusted a header disagreeing with it
+would be reproducing the disagreement that request smuggling is built on. There
+is nothing a handler can soundly do with the field that inspecting `body` does
+not do better.
+
+Enumerating these is not tidiness — it is the difference between a model and a
+coincidence. Host libraries lift exactly these fields out of their header
+collections at unpredictable points (Go's `net/http` deletes `Transfer-Encoding`
+and `Trailer` into dedicated struct fields, and deduplicates repeated identical
+`Content-Length` lines), so a backend that simply forwarded its library's
+collection would agree with another backend only by luck. Excluding them by NAME
+means every backend produces the same list whether or not its library kept them.
+
+**REQ-METHOD-VERBATIM.** `method` is the request method as received, unchanged
+and case-sensitive.
+
+**REQ-PATH-IS-RAW.** `path` is the request target as received, including the
+query string when one is present, separated by `?`. It is NOT percent-decoded,
+NOT dot-segment-normalized, and NOT otherwise rewritten. When no query string is
+present the `?` is absent.
+
+**REQ-BODY-IS-OCTETS.** `body` is `(List Int)`, one element per octet of the
+request body, each in `0..255`, in order. It is not decoded as text. A body is
+signed as octets and may not be valid UTF-8; routing it through a codepoint type
+would place the corruption in the type rather than in the adapter.
+
+**REQ-TIME-IS-DATA.** `received-at` is the backend's observation of when the
+request was received, in seconds since the Unix epoch. It is an OBSERVATION in
+the sense of the journal's four categories: authoritative about the observer and
+checkable by nobody. It is a field rather than an ambient clock so that a handler
+stays a deterministic function of its argument.
+
+### 14.3 Worked vector
+
+A request arriving as:
+
+```
+POST /hook?attempt=2 HTTP/1.1
+X-GitHub-Event: push
+Accept: */*
+X-Example: first
+X-Example: second
+Content-Type: application/json
+```
+
+produces `method = "POST"`, `path = "/hook?attempt=2"`, and exactly this
+`headers` list:
+
+```
+[ ("accept",         "*/*")
+, ("content-type",   "application/json")
+, ("x-example",      "first")
+, ("x-example",      "second")
+, ("x-github-event", "push")
+]
+```
+
+Three obligations are jointly witnessed here and each fails a distinguishable
+way: `x-github-event` witnesses REQ-HEADER-NAMES-LOWERCASE; the ordering
+`accept` < `content-type` < `x-example` < `x-github-event` witnesses
+REQ-HEADER-ORDER-LEXICOGRAPHIC and is not the arrival order; and `first`
+preceding `second` under one repeated name witnesses both
+REQ-HEADER-REPEATS-PRESERVED and REQ-HEADER-VALUES-NOT-JOINED, which a
+comma-joining backend would collapse to a single `x-example` entry.
+
+### 14.4 What this makes true, and what it does not
+
+A handler may look a field up by its lowercase name and get the answer on every
+conformant backend and every HTTP version. Case-insensitive lookup is therefore
+unnecessary rather than merely inconvenient, and `header-first`'s case-sensitive
+comparison becomes correct by construction rather than a hazard the author must
+remember.
+
+This does NOT make a handler portable in any larger sense. It fixes the value a
+backend constructs; it says nothing about TLS termination, proxies that add or
+rewrite headers before the backend sees them, request smuggling, or limits on
+header count and size. A rewrite performed upstream of the backend is invisible
+to this section by construction — §14 binds the adapter, and the adapter's input
+is whatever reached it.
+
+**The RESPONSE is deliberately not constrained.** A `Response`'s header names are
+the handler's own choice, HTTP compares them case-insensitively, and a backend
+MAY transmit them in whatever case its library produces. The asymmetry is not an
+omission: inbound needs one canonical form because agreement BETWEEN BACKENDS
+about the same request depends on it, and nothing analogous is at stake on the
+way out. A handler that needs an exact outbound spelling is depending on
+something HTTP does not guarantee, from any implementation.

@@ -408,6 +408,12 @@ reasoning; `docs/milestones.md` for what each milestone established.
   embarrassments — never hide them.
 - The examples double as the conformance corpus (SPEC.md §10): treat
   hash changes in `codebase/names.json` as meaningful diffs.
+- **EDITED A FILE UNDER `docs/`? RUN `make webdocs` AND COMMIT THE RESULT.**
+  Several `docs/*.md` are mirrored verbatim into `website/content/docs/`
+  (`website/lib/refdocs.ts` lists them), and `make check-web-docs` fails CI on
+  any drift. It is a separate gate from `check-doc-numbers`, it is not part of
+  `make verify`, and nothing local reminds you — this landed on `main` red for
+  exactly that reason after SPEC §14 and `effects.md` were edited.
 - Run `codex review --uncommitted` before committing, and iterate until clean.
 
 ## The team store

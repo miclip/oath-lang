@@ -16,7 +16,7 @@ no service-account key ever touches GitHub.
 |---|---|---|
 | API | Cloud Run service (`oath serve`) | Bearer-token auth; **single instance** (see the constraint below) |
 | Store | GCS bucket, gcsfuse-mounted at `/store` | Whole filesystem store: objects, meta, `names.json`, `log.jsonl`, `proofq/`. Versioned. |
-| Proof worker | Cloud Run **Job** (`oath prove-worker`) | Ticked by Cloud Scheduler (default every 5 min); binds `require_proven` names once proven |
+| Proof worker | Cloud Run **Job** (`oath prove-worker`) | Ticked by Cloud Scheduler, **daily** (`0 6 * * *`); 12h task timeout; binds `require_proven` names once proven |
 | Tokens | Secret Manager | Terraform mints an initial `admin` token and outputs it |
 | Images | Artifact Registry | Built + pushed by CI |
 | Database | Cloud SQL (Postgres) | **Off by default** — v1 needs no DB; enable with the Postgres driver (#14) |
@@ -29,6 +29,63 @@ worker runs briefly out of band. This is a real, persistent, low-traffic
 registry — not a multi-instance one. Multi-instance needs the Postgres name-index
 + GCS object drivers (`enable_database` + #14); the infra here is built so that is
 a driver change, not a re-architecture.
+
+### The worker cadence is a CONSTRAINT, not a preference
+
+`worker_schedule` MUST stay longer than the Job's task timeout, and the timeout
+MUST fit a whole `--scan` pass. Both directions have already been violated in
+production, and neither failure is obvious from the outside:
+
+- **Ticking too often overlaps runs.** Two concurrent gcsfuse writers produce
+  stale handles; an overlapping scheduled tick plus a manual run wedged the
+  corpus at 73/105 for hours. This is the same single-safe-writer constraint
+  above, arriving through the scheduler instead of through serve.
+
+  **The cadence alone does NOT prevent this**, and the incident above is the
+  proof: it only spaces *scheduled* runs apart. A manual execution launched
+  during a scheduled pass reproduces the failure exactly. So before running the
+  Job by hand, check that nothing is already executing:
+
+  ```sh
+  cd terraform
+  JOB=$(terraform output -raw worker_job)   # never assume any of these three
+  PROJ=$(terraform output -raw project_id)
+  REG=$(terraform output -raw region)
+
+  gcloud run jobs executions list --job "$JOB" \
+    --project "$PROJ" --region "$REG" \
+    --format='table(name, createTime, completionTime, status.conditions[0].type)'
+  # ANY ROW WITH AN EMPTY completionTime IS STILL RUNNING — do not start another.
+  ```
+
+  Three details, each of which was wrong in an earlier draft of this paragraph
+  and each of which fails the check OPEN — reporting "idle" while a pass runs:
+
+  - **No `--filter`.** A filter on `completionTime` is easy to invert, and the
+    inverted form lists exactly the finished runs while hiding the active one.
+  - **No `--limit`.** A twelve-hour pass sits *below* any newer short executions,
+    so truncating the list can show five completed rows while the run that
+    matters is off the bottom.
+  - **No assumed names.** `REGION` is set inside the bootstrap script's own
+    process, not in your shell, and the job name comes from `name_prefix`. Guess
+    either and the command inspects nothing, or the wrong deployment, and prints
+    a reassuringly empty table.
+
+  A pass can take twelve hours, so "it was probably finished" is not a check.
+- **A timeout shorter than a pass never settles.** A pass that dies mid-tail
+  commits nothing, so the proof-state fingerprint never advances and the
+  non-theorems are re-attempted on every tick, forever. At a 2h timeout that
+  happened every time.
+
+Hence daily at `0 6 * * *` against a 12h timeout. An earlier version of this
+table said "every 5 min", which is not merely stale — it describes the first
+failure above. **Read `terraform/worker.tf` before changing either number**; its
+comments carry the incident history that produced them.
+
+Note the cadence only bites while the corpus is unsettled: once everything
+provable is proven, the fingerprint gate makes each scan a fast no-op. Issue #140
+proposes replacing the whole-corpus pass with a delta, which would make the
+timeout stop being load-bearing at all.
 
 ## One-time setup (do this async)
 

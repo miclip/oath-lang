@@ -92,7 +92,15 @@ demonstrates the pattern end to end.
    an unreliable wrapper, 9/9 properties proven for all worlds. What
    remains genuinely open at this stage: modeling time and interleaving
    (concurrency) — a world value serializes one history.
-4. **Entry-point wiring — SHIPPED (#114).** `oath build` compiles
+4. **Entry-point wiring — SHIPPED (#114); the handler's Request model is
+   SPEC §14 (#122).** What a backend PUTS in a `Request` was unspecified until
+   §14, and the reference backend was quietly deciding it: `net/http`
+   canonicalized header-name case, sorted cross-key order, hid the authority in
+   `Request.Host`, and percent-decoded the path. §14 makes those obligations
+   rather than accidents, so two backends build the same Oath value from the
+   same HTTP request. Read it before touching the adapter.
+
+   `oath build` compiles
    capability-first entry points ((-> {caps} (List Str) Str), and the handler
    protocol) and resolves GENUINE implementations exactly once, at the program
    boundary: `fetch` becomes a real HTTP GET, `env`/`readfile` real host access,

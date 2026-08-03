@@ -33,3 +33,18 @@ output "db_connection_name" {
   description = "Cloud SQL connection name, when enable_database = true. Empty otherwise."
   value       = var.enable_database ? google_sql_database_instance.index[0].connection_name : ""
 }
+
+# Needed by the pre-manual-run safety check in docs/deploy.md. An operator about
+# to execute the worker by hand must address the SAME deployment the scheduler
+# does; guessing the project or region prints an empty execution table, which
+# reads as "nothing is running" and is exactly the fail-open this check exists to
+# avoid. Emitting them removes the guess.
+output "project_id" {
+  description = "GCP project the deployment lives in."
+  value       = var.project_id
+}
+
+output "region" {
+  description = "Region the Cloud Run service and Job are deployed to."
+  value       = var.region
+}
