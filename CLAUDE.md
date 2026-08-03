@@ -26,6 +26,21 @@ prefer a POINTER to the issue over a description of it,
 because a pointer cannot go stale in this direction. A stale instruction is worse
 than a missing one: it is confidently followed.
 
+**WHEN SEVERAL ENTRY POINTS CAN LEGITIMATELY DISAGREE, REDUCE THEM TO ONE
+AUTHORITATIVE PATH AND DERIVE THE REST FROM IT.** The consolidations this project
+keeps arriving at are one move, not four: one transformation table instead of
+distributed prose; one authority for a fact instead of duplicated state; one
+`capabilityKinds()` instead of two lists; one startup sequence instead of
+competing "first" instructions. Each replaced a set of sources that were all
+correct in isolation and could drift apart — which is why the disagreement is
+never visible from inside any one of them.
+
+The test for whether you have this problem is not "is there duplication" but
+**could these two disagree without either being wrong at the time it was
+written**. If yes, one of them must become derived. This applies to code,
+specifications, tooling and guidance alike; the startup sequence is simply the
+instance where the artefact being consolidated is this file.
+
 **ASSERTING AN OBLIGATION CANNOT CREATE THE STRUCTURE NEEDED TO SATISFY IT.**
 This is the most general thing the project has learned, and it is broader than
 Oath. Whenever a requirement feels blocked, ask what STRUCTURE the obligation
@@ -164,7 +179,14 @@ That sentence explains nearly every significant correction of recent sessions:
 distinguishing launch failure from failure before OBSERVABLE STARTUP; separating
 provisioning from authority narrowing; refusing rather than replacing; a backend
 SUBSET versus language semantics; deriving a witness's universe from the CLAIM
-rather than the implementation; and evidence versus mechanism.
+rather than the implementation; and evidence versus mechanism. The same
+distinction keeps arriving in new clothes — *findings repaired* is not
+*inferences resolved*, *requested by the harness* is not *required by the
+protocol*, *not reached* is not *derived*, and **a completed milestone is not a
+completed issue** (#115's LLVM half shipped while the issue is the wider #13b).
+Each pair is one state being reported as a stronger neighbouring state, and each
+was found by asking what the state actually MEANS rather than whether it looked
+green.
 
 **THE THROUGH-LINE, across authority, transfer, the compiler boundary, the
 application, the blind rounds and §14: each step reduced where UNVERIFIED
@@ -243,6 +265,23 @@ work; nothing depends on it immediately.
      middle of the queue. **Do not let "it is open" become "it is next."**
 
 ### Standing instructions attached to the queue
+
+- **EVERY ARCHITECTURAL ISSUE MUST KEEP A CREDIBLE PATH TO "NO CHANGE
+  REQUIRED".** A backlog of architectural questions is evidence of a stable
+  foundation ONLY if those questions can still be answered no; otherwise
+  architecture becomes unfalsifiable and the work becomes research for its own
+  sake, which is indistinguishable from progress while you are doing it. So
+  before starting one, state what result would show the current design is
+  already correct — and prefer a falsifier that is MEASURABLE on the committed
+  corpus over one that is merely arguable.
+  Worked example, #140: the issue argued for a delta pass without stating its
+  own "no". The sharp form turned out not to be *delta vs corpus* but *heavy
+  tail outside the delta vs the whole tail*, because runtime is dominated by
+  properties that never prove. Measuring it half-fired — median change
+  re-attempts 0% of the tail, but a `List`-class change re-attempts 80% — which
+  left the core argument standing and WITHDREW one sentence of it. Note what
+  produced that: a falsifier stated precisely enough to be run. A vaguer one
+  ("is this worth it?") would have returned the answer the author already held.
 
 - **Do NOT reopen #118 as "add arithmetic".** Broadening the backend should
   require A NEW CONSUMER or a separately stated compiler milestone, not
