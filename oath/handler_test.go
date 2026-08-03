@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -73,7 +74,7 @@ func mustResolve(t *testing.T, st *Store, name string) string {
 // bytes itself: `X-GitHub-Event` in the case GitHub documents, arrival order
 // deliberately NOT lexicographic, and one name repeated.
 //
-// WHAT MUTATION MAKES IT FAIL. Ten were run against this test, and each fails
+// WHAT MUTATION MAKES IT FAIL. Eleven were run against this test, and each fails
 // distinguishably rather than merely failing:
 //
 //	drop the ASCII lowercasing      X-Github-Event returns
@@ -86,6 +87,7 @@ func mustResolve(t *testing.T, st *Store, name string) string {
 //	check ASCII BEFORE exclusions   400 on a request that could be served
 //	honour `Connection: host`       the authority disappears from the value
 //	trim Unicode space, not OWS     a real header is hidden by NBSP padding
+//	skip the method/path check      a raw 0xFF target answers 200 as U+FFFD
 //
 // The seventh is the one worth reading: the mangled byte in the failure output
 // IS the information loss the rule exists to prevent. An earlier attempt at that
@@ -298,6 +300,59 @@ func TestHandlerRequestModelIsCanonical(t *testing.T) {
 	if status != 200 || !strings.Contains(body, "host="+addr+"\n") {
 		t.Fatalf("`Connection: host` removed the authority: status %d body %q", status, body)
 	}
+
+	// SPEC §14.2 REQ-TEXT-OCTETS-ARE-ASCII reaches the request target, not just
+	// headers. A raw 0xFF in the target cannot be carried by Str.
+	status, body = send(t, "POST /caf\xff HTTP/1.1\r\n"+
+		"Host: "+addr+"\r\n"+
+		"Content-Length: 0\r\n"+
+		"Connection: close\r\n\r\n")
+	if status != 400 {
+		t.Fatalf("non-ASCII request target: status %d, want 400 (body %q)", status, body)
+	}
+
+	// PROTO-OBS-FOLD-IS-ONE-SPACE. Two leading spaces on the continuation line
+	// collapse to exactly one SP. This rule was written as a REFUSAL first and
+	// changed after measuring: Go's net/textproto unfolds during parsing, so the
+	// adapter never sees that a fold occurred and cannot refuse it. The rule now
+	// pins the count the RFC leaves open, which is the part that keeps two
+	// backends agreeing.
+	status, body = send(t, "POST /hook HTTP/1.1\r\n"+
+		"Host: "+addr+"\r\n"+
+		"X-Fold: one\r\n  two\r\n"+
+		"Content-Length: 0\r\n"+
+		"Connection: close\r\n\r\n")
+	if status != 200 || !strings.Contains(body, "x-fold=one two\n") {
+		t.Fatalf("obs-fold: status %d body %q, want 200 carrying `x-fold=one two`", status, body)
+	}
+
+	// PROTO-UNFRAMEABLE-IS-REFUSED: a body shorter than its declared length. The
+	// connection closes after 2 of the promised 10 octets, so io.ReadAll returns
+	// unexpected EOF — an error the adapter used to discard, handing the handler
+	// a message that was never fully sent.
+	func() {
+		c, err := net.DialTimeout("tcp", addr, 5*time.Second)
+		if err != nil {
+			t.Fatalf("dial: %v", err)
+		}
+		_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+		fmt.Fprintf(c, "POST /hook HTTP/1.1\r\nHost: %s\r\nContent-Length: 10\r\n"+
+			"Connection: close\r\n\r\nhi", addr)
+		if tc, ok := c.(*net.TCPConn); ok {
+			_ = tc.CloseWrite()
+		}
+		resp, err := http.ReadResponse(bufio.NewReader(c), nil)
+		if err != nil {
+			c.Close()
+			return // the server may simply drop it; that is also a refusal
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		c.Close()
+		if resp.StatusCode == 200 {
+			t.Fatalf("truncated body was DELIVERED: %q", b)
+		}
+	}()
 
 	// (c) A nomination that is not an HTTP token is IGNORED. HTTP OWS is SP and
 	// HTAB only, so NBSP around a name does not make it an option — but Go's

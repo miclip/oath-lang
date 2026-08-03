@@ -4252,11 +4252,65 @@ Field-name case is the decisive row. A rule that preserved it would be
 unsatisfiable over HTTP/2, where the case never arrives — so making it normative
 would make backend agreement depend on which transport a client negotiated.
 
+### 14.1a The protocol types (normative, round 9)
+
+§14 could not previously be implemented from §14. Blind round 9 established that
+its central obligation — *two backends produce the SAME `Request` value* — was
+not evaluable from the supplied surface, because §14 deferred the type itself:
+
+> The type is the one bound to the name `Request` in the store.
+
+No section declared it, and the gap was wider than one type: `List` and `Pair`
+were undeclared too, and they are the structure of the header list this section
+spends most of its text specifying. The subject implemented the transformation
+correctly and had to invent a pair constructor to hold the result — so two
+conformant backends could agree on every rule below and still build values of
+different types, with different identities and different printings.
+
+`Int` and `Str` are already normative (§3). The remaining four are declared here:
+
+```
+(data List [a]
+  (Nil)
+  (Cons a (List a)))
+
+(data Pair [a b]
+  (Pair a b))
+
+(data Request []
+  (Req Str Str (List (Pair Str Str)) (List Int) Int))
+
+(data Response []
+  (Resp Int (List (Pair Str Str)) (List Int)))
+```
+
+`Req`'s fields are, in order: `method`, `path`, `headers`, `body`, `received-at`.
+`Resp`'s are `status`, `headers`, `body`. §14.2 binds each obligation to one of
+them by name.
+
+**PROTO-TYPES-BY-IDENTITY.** An entry point is a handler because of the
+IDENTITY of its argument and result types, never because of the names a store
+binds them to. A store MAY bind these types to any name, or to none; a store that
+binds the name `Request` to some other type does not thereby acquire a handler
+protocol, and a backend MUST NOT recognize one by name.
+
+The identity is not pinned here as a digest, deliberately. It follows from the
+declarations above under §1's canonical encoding, exactly as every other identity
+in this specification does — so a kernel computes it rather than trusting a
+constant, and a constant could not stay correct across an encoding change that §1
+already says forks reality. What is normative is the STRUCTURE; the hash is its
+consequence.
+
+This is also what makes §14.0's obligation checkable at all. "The same `Request`
+value" is now a statement about a value of a determined type, and two backends
+disagreeing about that value can be shown to disagree.
+
 ### 14.2 The Request value
 
 A backend constructs `(Req method path headers body received-at)` with the
-following obligations. The type is the one bound to the name `Request` in the
-store; §14 constrains its CONTENTS.
+following obligations. The type is the one §14.1a declares — identified by its
+structure, never by the name a store binds it to — and the rules below constrain
+its CONTENTS.
 
 **REQ-HEADER-NAMES-LOWERCASE.** Field names in `headers` are lowercase. The
 mapping is ASCII-only: the 26 octets `A`–`Z` (0x41–0x5A) map to `a`–`z`
@@ -4287,35 +4341,59 @@ value (RFC 9110 §5.5); removing it is parsing, not normalization. A backend MUS
 NOT otherwise trim, decode, re-encode, or case-map a value, and MUST NOT deliver
 obsolete line folding as an embedded newline.
 
-**REQ-HEADER-OCTETS-ARE-ASCII, and a violation is REFUSED.** Field names and
-values are carried in `Str`, which is a sequence of CODEPOINTS. For the printable
-US-ASCII range that is exact — codepoint and octet coincide — and outside it the
-type cannot represent what arrived. RFC 9110 §5.5 still permits `obs-text`
-(0x80–0xFF) in a field value while deprecating it, so the case is rare and legal.
+**REQ-TEXT-OCTETS-ARE-ASCII, and a violation is REFUSED.** This rule governs
+EVERY `Str` a backend constructs from the request: `method`, `path`, each header
+field name, and each header field value. `Str` is a sequence of CODEPOINTS. For
+the printable US-ASCII range that is exact — codepoint and octet coincide — as it
+is for HTAB, whose codepoint 9 and octet 0x09 likewise coincide. Outside those
+the type cannot represent what arrived. (An earlier version argued only from "the
+printable US-ASCII range" and then admitted HTAB, which is outside it: the rule
+was sound and its stated reason did not cover the exemption it granted.)
 
-A backend therefore MUST NOT deliver such a request. If any field name or value
-**that would appear in `headers`** contains an octet outside 0x20–0x7E, other
-than HTAB (0x09) which is permitted inside a value, the backend responds **400**
-and the handler is NOT invoked.
+A backend MUST NOT deliver such a request. If any of those four contains an octet
+outside 0x20–0x7E — other than HTAB (0x09), which is permitted inside a header
+field VALUE and nowhere else — the backend responds **400** and the handler is
+NOT invoked.
 
-**The exclusions of REQ-FRAMING-FIELDS-EXCLUDED are applied FIRST, and this
-ordering is normative** — without it two backends would disagree about a request
-carrying obs-text in a field that neither of them delivers. The check exists
-because `Str` cannot represent the octet, so it is a question about the value
-being constructed, not about the message: a field that never enters `headers`
-never enters `Str`, and refusing on its account would reject a request that
-could have been served faithfully.
+**It covers all four because the hazard is identical in all four, and an earlier
+version of this rule covered only headers.** Blind round 9 found the asymmetry:
+the argument below was stated for field values, applied to field values, and left
+`method` and `path` — both `Str`, both built from request octets, both with no
+stated mapping and no refusal — to be resolved by whoever implemented them. The
+same request target then yields codepoint 226 under one reading, a different
+codepoint under another, and a refusal under a third, while REQ-PATH-IS-RAW
+justifies itself with *"signed schemes rely on the raw form"*. A rule that
+protects the signature over one field and not the neighbouring one protects
+nothing.
+
+The tightening is also what HTTP already requires: a method is a token and a
+request-target is ASCII (RFC 9112 §3), so a non-ASCII octet in either is
+malformed rather than exotic. `obs-text` (0x80–0xFF) in a field value is the one
+case that is both rare and LEGAL (RFC 9110 §5.5, deprecated but permitted), which
+is why the refusal is stated rather than assumed away.
+
+**For the HEADER half, the exclusions of REQ-FRAMING-FIELDS-EXCLUDED are applied
+FIRST, and this ordering is normative** — without it two backends would disagree
+about a request carrying obs-text in a field that neither of them delivers. The
+check exists because `Str` cannot represent the octet, so it is a question about
+the value being constructed, not about the message: a field that never enters
+`headers` never enters `Str`, and refusing on its account would reject a request
+that could have been served faithfully.
+
+`method` and `path` are subject to no exclusions, so the ordering does not arise
+for them: every octet of each enters a `Str`, and each is checked directly.
 
 This is a REFUSAL, not a repair, and the distinction is the point. Transcoding
 the value would put a lie in the Oath value: the handler would verify a signature
 over bytes that are not the bytes that arrived, and no test of the artifact could
 detect it, because the artifact never sees the original. Refusing keeps
-REQ-HEADER-VALUE-OCTETS exactly true on every request that IS delivered, instead
-of true-in-general and quietly false at the edge.
+REQ-HEADER-VALUE-OCTETS, REQ-METHOD-VERBATIM and REQ-PATH-IS-RAW exactly true on
+every request that IS delivered, instead of true-in-general and quietly false at
+the edge — which is the whole reason this rule reaches all four fields.
 
 The underlying limit is the one #133 tracks — `Str` is defined over codepoints,
 and a wire protocol is defined over octets. §14 does not resolve it; it declines
-to hide it. A future model that carried header octets as `(List Int)`, as `body`
+to hide it. A future model that carried this text as `(List Int)`, as `body`
 already does, would replace this rule rather than relax it.
 
 **REQ-HOST-IS-A-HEADER.** The request authority appears in `headers` under the
@@ -4340,21 +4418,44 @@ authority at all, no `host` entry appears; a backend MUST NOT synthesize one.
     proxy-authorization   te                    trailer
     transfer-encoding     upgrade               content-length
 
-Also excluded is every field name NOMINATED by the `connection` field: its value
-is a comma-separated list of field names that this connection alone made
-connection-specific (RFC 9110 §7.6.1), so `Connection: x-hop` excludes `x-hop`
-too. Nominated names are compared after the same ASCII lowercasing as any other.
+Also excluded is every field NOMINATED by the `connection` field. Its value is a
+comma-separated list of **connection options** (RFC 9110 §7.6.1) — not, as an
+earlier version of this section claimed, a list of field names. The two are not
+the same set and HTTP gives no syntactic way to tell them apart: `close` and
+`keep-alive` are control options, while `x-hop` in `Connection: x-hop` nominates
+the field `X-Hop` as connection-specific.
+
+**PROTO-NOMINATION-BY-PRESENCE.** An option nominates a field only if a field of
+that name is PRESENT in the request. Present, and it is excluded. Absent, and the
+option is a connection-control token with no effect on `headers`. Options are
+compared after the same ASCII lowercasing as any other name.
+
+This is the distinction and it costs nothing to draw, because the two readings
+are behaviourally identical — removing a field that is not there is a no-op. What
+differs is what the specification SAYS. Under the old wording a backend was
+required to treat `close` as a field name and exclude it, on essentially every
+HTTP/1.1 request; blind round 9 derived exactly that and implemented it. A
+conventional control token became a phantom header name, and a reader could not
+tell whether the section meant it. It did not.
+
+No registry of known options is needed or wanted. Presence is the test, it is
+decidable from the message alone, and it stays correct as new options are
+defined — a closed list in this document would not.
 Without this, a handler would see a field when reached directly and not see it
 when reached through a conformant intermediary that stripped it — a difference in
 the Oath value produced by the network path rather than by the request.
 
 **Nomination reaches only fields this section does not otherwise govern.** It
-cannot remove `host`, which REQ-HOST-IS-A-HEADER requires unconditionally, and it
-cannot reinstate a name excluded above. `Connection: host` is not a request to
-drop the authority — it is a nonsensical or hostile nomination, and honouring it
+cannot remove `host`, which REQ-HOST-IS-A-HEADER requires unconditionally.
+`Connection: host` is not a request to drop the authority — it is a nonsensical or hostile nomination, and honouring it
 would let a client delete a mandatory field from the Oath value and change how a
 handler behaves. A backend MUST ignore such a nomination rather than refuse the
 request: the field is still delivered, so nothing is lost or misrepresented.
+
+(An earlier version added "and it cannot reinstate a name excluded above". That
+clause was vacuous — nomination only ever removes, so there is no reading under
+which it could add an entry — and round 9 flagged it as reading like a
+bidirectional mechanism. Removed.)
 
 They describe how this message was TRANSMITTED, not what was requested. Most are
 connection-specific and hop-by-hop (RFC 9110 §7.6.1) — meaningful only between
@@ -4396,38 +4497,200 @@ the sense of the journal's four categories: authoritative about the observer and
 checkable by nobody. It is a field rather than an ambient clock so that a handler
 stays a deterministic function of its argument.
 
-### 14.3 Worked vector
+### 14.2a What the transport can produce (normative)
 
-A request arriving as:
+Every rule here answers a question blind round 9 had to decide for itself. Each
+was a place two conformant backends could diverge, so each is settled rather than
+left to judgement.
+
+**PROTO-PARSER-BOUNDARY.** §14 binds the adapter, and the adapter's input is the
+request AFTER field lines have been parsed: a sequence of (name, value) pairs in
+arrival order, with the optional whitespace surrounding each value already
+removed, plus the method, the raw request target, and the body octets. OWS
+removal is parsing (RFC 9110 §5.5), and stating where it happens is what stops
+two backends whose libraries strip it differently from both claiming conformance.
+Everything §14.2 requires is a transformation of that input; nothing in §14
+depends on how the octets were framed.
+
+**PROTO-TIME-IS-INTEGRAL.** `received-at` is an `Int`: whole seconds since the
+Unix epoch, truncated toward negative infinity. `Rat` is available and exact and
+is NOT used, because sub-second precision with no stated rounding rule would let
+two backends observing the same instant produce different values while both
+conforming — the same defect this section exists to remove, in the one field
+whose value no verifier can check.
+
+**PROTO-OBS-FOLD-IS-ONE-SPACE.** An obsolete line fold — CRLF followed by SP or
+HTAB inside a field value — is replaced by EXACTLY ONE SP, and the folding
+whitespace around it is consumed. Unfolding is part of reconstituting the field
+value from the wire, the same category as the OWS removal PROTO-PARSER-BOUNDARY
+already places before the adapter.
+
+RFC 9112 §5.2 permits a recipient either to reject such a message or to replace
+each fold with "one or more SP". **§14 takes the second branch and pins the
+count**, because the first is not implementable and the RFC's own latitude is not
+canonical:
+
+- **Rejection is undetectable on a mainstream stack.** An earlier version of this
+  rule required a 400. Measured against the reference backend, Go's
+  `net/textproto` unfolds during parsing and hands the adapter `one two` with no
+  trace that a fold occurred — so the adapter cannot refuse what it can no longer
+  see. A normative rule the reference implementation is structurally unable to
+  satisfy does not get obeyed; it gets quietly violated, which is precisely the
+  failure §13 recorded in this specification's own ledger.
+- **"One or more SP" would leave backends free to differ** on the same request,
+  which is the one thing §14.0 exists to prevent. Exactly one is arbitrary in the
+  same way lexicographic ordering is arbitrary, and canonical for the same
+  reason.
+
+**PROTO-NOMINATION-IS-A-UNION.** Where several `connection` field lines arrive,
+the nominations are the UNION of all of them. §14 forbids joining repeated field
+lines, so each line stands on its own, and nomination is a set operation over
+their options rather than a property of one line.
+
+**PROTO-AUTHORITY-MUST-AGREE.** This governs HTTP/2 and HTTP/3 ONLY: where an
+`:authority` pseudo-header and a `Host` field line disagree, the request is
+malformed and no `Request` is constructed. Exactly one `host` entry ever appears.
+
+It does NOT extend to an HTTP/1.1 absolute-form target that disagrees with a
+`Host` field. That case is not a conflict to detect but a precedence to apply —
+RFC 9112 §3.2.2 requires the server to IGNORE the `Host` field entirely and use
+the target's authority — and PROTO-AUTHORITY-SOURCE already states it. An earlier
+version of this rule reached that case too, which would have had a backend refuse
+a request the HTTP specification defines an answer for.
+
+This is stated as a property of the message rather than as an adapter check,
+because it is already the transport's job and an adapter is generally too late to
+perform it: RFC 9113 §8.3.1 makes an HTTP/2 request whose `:authority` and `Host`
+disagree malformed, and a conformant HTTP/2 implementation rejects it before any
+adapter runs. §14 records the requirement so a backend built on a stack that does
+NOT enforce it knows it must, and so no backend invents a precedence rule of its
+own to break the tie.
+
+**PROTO-TRAILERS-ARE-NOT-HEADERS.** Fields carried in a chunked message's trailer
+section do NOT appear in `headers`. `headers` is the header section; a trailer
+arrives after the body and exists only under one framing, so admitting trailers
+would make the Oath value depend on how the message was framed rather than on
+what was requested — the objection REQ-FRAMING-FIELDS-EXCLUDED already makes.
+
+**PROTO-AUTHORITY-SOURCE.** `host` carries the authority the transport supplied,
+by whichever route it supplied it, and there are three: an `:authority`
+pseudo-header, an absolute-form request target, or a `Host` field line — in that
+order of precedence. `path` is always the target as received, complete with
+scheme and authority when it came in absolute form, per REQ-PATH-IS-RAW.
+
+The absolute-form case is the one worth stating, because an earlier version of
+this rule got it backwards. It said the authority must NEVER be taken from the
+target, on the reasoning that lifting it would be the synthesis
+REQ-HOST-IS-A-HEADER forbids. **That contradicts RFC 9112 §3.2.2**, which
+requires an origin server receiving an absolute-form target to IGNORE the `Host`
+field and use the target's authority — so the earlier rule would have had a
+backend deliver an authority the HTTP specification says must be disregarded.
+
+It was also unimplementable for the same reason as the obs-fold refusal: Go's
+`net/http` populates `Request.Host` from the target authority when present and
+removes the wire `Host` field, so the distinction the rule depended on is gone
+before an adapter sees it. Two rules written in one sitting, both mandating a
+distinction the transport layer had already collapsed — which is the argument for
+measuring a rule against a real stack before making it normative, not after.
+
+**PROTO-UNFRAMEABLE-IS-REFUSED.** A message the backend cannot parse into the
+input PROTO-PARSER-BOUNDARY describes — no colon in a field line, a request line
+that is not `method SP target SP version`, a body shorter than its declared
+length — causes a **400** and no `Request` is constructed. This is stated for
+completeness rather than because §14 governs framing: what matters is that a
+backend refuses rather than constructing a partial value.
+
+### 14.3 Worked vectors
+
+Two, because one of the thirteen obligations is a REFUSAL and no single
+delivered request can witness it. Together they cover every rule in §14.2.
+
+#### 14.3.1 A delivered request
+
+A legal HTTP/1.1 request, arriving as these octets:
 
 ```
-POST /hook?attempt=2 HTTP/1.1
+POST /hook%2Fadmin?attempt=2 HTTP/1.1
+Host: example.test:8443
 X-GitHub-Event: push
-Accept: */*
+Accept:   text/html, */*
 X-Example: first
 X-Example: second
+X-Ab: two
+X-A: one
+X-Hop: connection-scoped
 Content-Type: application/json
+Content-Length: 2
+Connection: close, X-Hop
+
+hi
 ```
 
-produces `method = "POST"`, `path = "/hook?attempt=2"`, and exactly this
+produces `method = "POST"`, `path = "/hook%2Fadmin?attempt=2"`,
+`body = [104, 105]`, `received-at` as the backend observed it, and exactly this
 `headers` list:
 
 ```
-[ ("accept",         "*/*")
+[ ("accept",         "text/html, */*")
 , ("content-type",   "application/json")
+, ("host",           "example.test:8443")
+, ("x-a",            "one")
+, ("x-ab",           "two")
 , ("x-example",      "first")
 , ("x-example",      "second")
 , ("x-github-event", "push")
 ]
 ```
 
-Three obligations are jointly witnessed here and each fails a distinguishable
-way: `x-github-event` witnesses REQ-HEADER-NAMES-LOWERCASE; the ordering
-`accept` < `content-type` < `x-example` < `x-github-event` witnesses
-REQ-HEADER-ORDER-LEXICOGRAPHIC and is not the arrival order; and `first`
-preceding `second` under one repeated name witnesses both
-REQ-HEADER-REPEATS-PRESERVED and REQ-HEADER-VALUES-NOT-JOINED, which a
-comma-joining backend would collapse to a single `x-example` entry.
+#### 14.3.2 A refused request
+
+Notation, because this vector is normative and must be reproducible: every
+character below is a literal ASCII octet EXCEPT `<0xFF>`, which denotes the
+single octet 0xFF. Line endings are CRLF. Written as octets, the `X-Note` field
+line is `58 2D 4E 6F 74 65 3A 20 63 61 66 FF 0D 0A`.
+
+```
+POST /hook HTTP/1.1
+Host: example.test:8443
+X-Note: caf<0xFF>
+Content-Length: 0
+
+```
+
+produces **400**, and the handler is not invoked. `0xFF` is legal `obs-text` in a
+field value and `Str` cannot carry it, so the request is refused rather than
+transcoded.
+
+Now ADD a `Connection: close, X-Note` line while KEEPING `X-Note: caf<0xFF>`
+exactly as it is. The same request then **succeeds** with no `x-note` entry,
+because exclusion precedes the octet check and an excluded field never enters a
+`Str`. That pair is the witness: a backend validating every field value before
+applying exclusions refuses both, and fails the second.
+
+#### What each obligation is witnessed by
+
+| obligation | witnessed by |
+|---|---|
+| REQ-HEADER-NAMES-LOWERCASE | `X-GitHub-Event` arrives, `x-github-event` appears |
+| REQ-HEADER-ORDER-LEXICOGRAPHIC | output order is not arrival order; `x-a` precedes `x-ab`, the shorter prefix first |
+| REQ-HEADER-REPEATS-PRESERVED | `first` precedes `second` under one name |
+| REQ-HEADER-VALUES-NOT-JOINED | those two remain TWO entries, not one comma-joined value |
+| REQ-HEADER-VALUE-OCTETS | `Accept`'s surrounding OWS is stripped; its internal space and comma survive, so a comma inside one field line is not a separator |
+| REQ-TEXT-OCTETS-ARE-ASCII | §14.3.2, both the refusal and the exclusion-precedes-check case; the request target is covered by the same rule |
+| REQ-FRAMING-FIELDS-EXCLUDED | `content-length` and `connection` were sent and do not appear |
+| PROTO-NOMINATION-BY-PRESENCE | `x-hop` is nominated by `Connection` AND present, so it is excluded; `close` nominates no present field and removes nothing |
+| REQ-HOST-IS-A-HEADER | `Host` appears as an ordinary `host` entry, sorted among the rest |
+| REQ-METHOD-VERBATIM | `POST` crosses unchanged |
+| REQ-PATH-IS-RAW | `%2F` is NOT decoded to `/`, and the query is retained |
+| REQ-BODY-IS-OCTETS | `hi` becomes `[104, 105]`, not a `Str` |
+| REQ-TIME-IS-DATA | `received-at` comes from the backend's observation, not from the message |
+
+**The previous vector witnessed four of these thirteen and was not a legal
+request** — it
+carried no `Host`, which REQ-HOST-IS-A-HEADER calls mandatory in HTTP/1.1, so the
+section's only example was a message the section elsewhere described as
+impossible. It also miscounted, claiming three obligations while naming four rule
+identifiers. Both were blind round 9 findings.
 
 ### 14.4 What this makes true, and what it does not
 

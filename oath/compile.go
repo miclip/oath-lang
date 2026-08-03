@@ -1041,8 +1041,17 @@ func main() {
 		addr = ":8080"
 	}
 %s	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := io.ReadAll(r.Body)
+		// SPEC 14.2a PROTO-UNFRAMEABLE-IS-REFUSED. The error is NOT discarded: a
+		// connection that ends before its declared Content-Length yields
+		// unexpected EOF here, and constructing a Request from the partial body
+		// would hand the handler a message that was never fully sent — which a
+		// signature over that body would then verify against the wrong octets.
+		raw, rerr := io.ReadAll(r.Body)
 		r.Body.Close()
+		if rerr != nil {
+			http.Error(w, "request body could not be read in full (SPEC 14.2a)", 400)
+			return
+		}
 
 		// body: raw bytes, one Int per byte, built tail-first
 		var body any = &ctorV{idx: 0}
@@ -1131,7 +1140,7 @@ func main() {
 		}
 		sort.SliceStable(entries, func(a, b int) bool { return entries[a].name < entries[b].name })
 
-		// SPEC 14.2 REQ-HEADER-OCTETS-ARE-ASCII. Str is codepoints; for
+		// SPEC 14.2 REQ-TEXT-OCTETS-ARE-ASCII. Str is codepoints; for
 		// printable US-ASCII the codepoint IS the octet, and outside it the type
 		// cannot represent what arrived. RFC 9110 still permits obs-text in a
 		// value, so REFUSE rather than transcode: a repaired value would make
@@ -1166,6 +1175,17 @@ func main() {
 		// target into a real path separator — a different path, and a different
 		// signature input. RequestURI is the unmodified target as sent.
 		path := r.RequestURI
+
+		// SPEC 14.2 REQ-TEXT-OCTETS-ARE-ASCII reaches METHOD and PATH too, not
+		// just headers. Both are Str built from request octets, and an earlier
+		// version of the rule covered only headers — blind round 9 found the
+		// asymmetry. HTAB is permitted inside a header VALUE and nowhere else,
+		// so both are checked with isValue=false.
+		if !oathHdrASCII(r.Method, false) || !oathHdrASCII(path, false) {
+			http.Error(w, "method or request target is not US-ASCII (SPEC 14.2)", 400)
+			return
+		}
+
 		var req any = &ctorV{idx: 0, fields: []any{
 			r.Method, path, hs, body, big.NewInt(time.Now().Unix()),
 		}}
