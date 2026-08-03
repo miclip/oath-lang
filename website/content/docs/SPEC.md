@@ -4249,10 +4249,16 @@ described a disposition rather than an obligation, and because part of what it
 demanded is not obtainable from the transport at all.
 
 **HDR-PRINCIPLE.** A backend PRESERVES every semantically meaningful distinction
-the transport supplies, and CANONICALIZES distinctions the transport does not
-define or explicitly declares insignificant.
+the transport supplies, CANONICALIZES distinctions the transport does not define
+or explicitly declares insignificant, and DISCARDS what describes the
+transmission rather than the request.
 
-Both halves are obligations. Preserving is not permission to pass through
+All three are obligations. The third was missing from an earlier statement of
+this principle while §14 was already exercising it — REQ-FRAMING-FIELDS-EXCLUDED
+drops nine field names and everything `connection` nominates, which is neither
+preserving nor canonicalizing — so the governing rule excluded a category its own
+section used, and the classification table below had no row for it. Blind round
+10 found the omission. Preserving is not permission to pass through
 whatever a host library happens to expose, and canonicalizing is not permission
 to discard information the transport carried.
 
@@ -4267,6 +4273,8 @@ The classification is a matter of HTTP, not of taste:
 | body octets | significant | PRESERVE |
 | field-name case | insignificant (RFC 9110 §5.1); HTTP/2 and HTTP/3 mandate lowercase on the wire (RFC 9113 §8.2.1), so the sender's case does not survive the transport | CANONICALIZE |
 | order ACROSS distinct field names | not significant (RFC 9110 §5.3) | CANONICALIZE |
+| message framing (`content-length`, `transfer-encoding`, `trailer`, …) | describes the TRANSMISSION; discharged once the body is octets | DISCARD |
+| fields `connection` nominates | connection-specific to one hop (RFC 9110 §7.6.1) | DISCARD |
 
 Field-name case is the decisive row. A rule that preserved it would be
 unsatisfiable over HTTP/2, where the case never arrives — so making it normative
@@ -4367,8 +4375,13 @@ arrived.
 **REQ-HEADER-VALUE-OCTETS.** A field value crosses unchanged. The optional
 whitespace surrounding a field value is transport framing and is not part of the
 value (RFC 9110 §5.5); removing it is parsing, not normalization. A backend MUST
-NOT otherwise trim, decode, re-encode, or case-map a value, and MUST NOT deliver
-obsolete line folding as an embedded newline.
+NOT otherwise trim, decode, re-encode, or case-map a value.
+
+(This clause used to end "and MUST NOT deliver obsolete line folding as an
+embedded newline". Round 10 observed that §14 binds the adapter while
+PROTO-OBS-FOLD-IS-ONE-SPACE places unfolding BEFORE it — so as written the
+adapter could not violate the clause and the layer that could was out of scope.
+The obligation is real and now lives only where it can be discharged.)
 
 **REQ-TEXT-OCTETS-ARE-ASCII, and a violation is REFUSED.** This rule governs
 EVERY `Str` a backend constructs from the request: `method`, `path`, each header
@@ -4426,7 +4439,21 @@ to hide it. A future model that carried this text as `(List Int)`, as `body`
 already does, would replace this rule rather than relax it.
 
 **REQ-HOST-IS-A-HEADER.** The request authority appears in `headers` under the
-name `host`, ordered and compared like any other entry. Host libraries routinely
+name `host`, ordered and compared like any other entry, and **AT MOST ONE `host`
+entry ever appears — exactly one when the transport supplies an authority, and
+none when it does not.**
+
+That is not an exception to REQ-HEADER-REPEATS-PRESERVED, and two rules make it
+consistent rather than merely asserted:
+
+- **A `Host` field line is NOT one of the header-section field lines the adapter
+  receives.** PROTO-PARSER-BOUNDARY carries the authority as its own component,
+  so repeats-preserved never ranges over it — it ranges over the field lines, and
+  `Host` is not among them.
+- **More than one `Host` field line is MALFORMED**: the backend responds 400 and
+  no `Request` is constructed. RFC 9112 §3.2 already requires that of an
+  HTTP/1.1 recipient, so the case that would otherwise force a choice between one
+  entry and two does not reach the adapter at all. Host libraries routinely
 lift it out of the header collection into a dedicated field — Go's `net/http`
 promotes it to `Request.Host` and REMOVES it from the header map — and a backend
 that passes its library's collection through unexamined therefore drops it. It is
@@ -4540,7 +4567,7 @@ nothing else:
 | component | notes |
 |---|---|
 | header-section field lines | `(name, value)` in arrival order, with the optional whitespace surrounding each value removed |
-| the authority | absent, or present — and EITHER tagged by route (pseudo-header, absolute-form target, `Host` field line) OR already resolved by PROTO-AUTHORITY-SOURCE's precedence **with PROTO-AUTHORITY-MUST-AGREE already enforced** |
+| the authority | absent, or present — and EITHER tagged by route (pseudo-header, absolute-form target, `Host` field line) OR already resolved by PROTO-AUTHORITY-SOURCE's precedence **with PROTO-AUTHORITY-MUST-AGREE and REQ-HOST-IS-A-HEADER's duplicate-`Host` rejection already enforced** |
 | the method | as received |
 | the raw request target | as received |
 | the body octets | after any transfer coding is decoded |
@@ -4556,11 +4583,16 @@ discarded:
   alternative is permitted deliberately: a parser that has ALREADY applied this
   section's precedence has discharged the obligation, and requiring it to tag the
   route anyway would fail parsers that resolve correctly and then discard the
-  provenance — which is most of them. **The agreement check comes with it**, and
-  not as a courtesy: resolving precedence destroys the second candidate, so a
-  parser that resolved without comparing would satisfy this boundary while
-  delivering a request PROTO-AUTHORITY-MUST-AGREE calls malformed. Whichever form
-  a parser supplies, the two obligations travel together. What is normative is the authority that
+  provenance — which is most of them. **Two refusals come with it**, and not as a
+  courtesy: resolving precedence destroys the other candidates, so a parser that
+  resolved without comparing would satisfy this boundary while delivering a
+  request PROTO-AUTHORITY-MUST-AGREE calls malformed — and one that collapsed
+  repeated `Host` lines would do the same for the duplicate rejection
+  REQ-HOST-IS-A-HEADER requires. Both are undetectable downstream once the
+  authority is a single value, so whichever form a parser supplies, the
+  obligations travel with it. This is the enumeration's own principle applied to
+  itself: do not require a transport fact to be reconstructed after the parser
+  has erased it. What is normative is the authority that
   results, and that is observable in the `host` entry whichever way it was
   obtained.
 - **The receipt-time observation is part of the input.** REQ-TIME-IS-DATA makes
@@ -4622,7 +4654,13 @@ their options rather than a property of one line.
 
 **PROTO-AUTHORITY-MUST-AGREE.** This governs HTTP/2 and HTTP/3 ONLY: where an
 `:authority` pseudo-header and a `Host` field line disagree, the request is
-malformed and no `Request` is constructed. Exactly one `host` entry ever appears.
+malformed and no `Request` is constructed.
+
+("Exactly one `host` entry ever appears" used to close this paragraph. Blind
+round 10 could not tell whether it was scoped to this rule or global, and two
+independent readers split on it — under the global reading it contradicts
+REQ-HEADER-REPEATS-PRESERVED for two HTTP/1.1 `Host` lines. It is global, and it
+now lives in REQ-HOST-IS-A-HEADER where nothing scopes it.)
 
 It does NOT extend to an HTTP/1.1 absolute-form target that disagrees with a
 `Host` field. That case is not a conflict to detect but a precedence to apply —
