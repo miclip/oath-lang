@@ -74,8 +74,8 @@ func mustResolve(t *testing.T, st *Store, name string) string {
 // bytes itself: `X-GitHub-Event` in the case GitHub documents, arrival order
 // deliberately NOT lexicographic, and one name repeated.
 //
-// WHAT MUTATION MAKES IT FAIL. Eleven were run against this test, and each fails
-// distinguishably rather than merely failing:
+// WHAT MUTATION MAKES IT FAIL. Twelve, each failing distinguishably rather than
+// merely failing, and all re-run after #141 changed how a handler is recognized:
 //
 //	drop the ASCII lowercasing      X-Github-Event returns
 //	drop the sort                   arrival order returns
@@ -88,16 +88,19 @@ func mustResolve(t *testing.T, st *Store, name string) string {
 //	honour `Connection: host`       the authority disappears from the value
 //	trim Unicode space, not OWS     a real header is hidden by NBSP padding
 //	skip the method/path check      a raw 0xFF target answers 200 as U+FFFD
+//	discard the body read error     a truncated message is delivered as 200
 //
 // The seventh is the one worth reading: the mangled byte in the failure output
 // IS the information loss the rule exists to prevent. An earlier attempt at that
 // mutation deleted the check outright and broke the BUILD instead — which would
-// have witnessed the Go compiler, not §14, so it was redone semantically.
+// have witnessed the Go compiler, not the rule, so it was redone semantically.
 //
-// The last three came from review rather than from running the model, and none
-// is visible from any single obligation: two are RULE INTERACTIONS (the ordering
-// of two correct rules, and one rule's scope against another's), and the third
-// is a stdlib call whose contract is Unicode where the protocol is octets.
+// Four came from review rather than from running the model, and none is visible
+// from any single obligation: two are RULE INTERACTIONS (the ordering of two
+// correct rules, and one rule's scope against another's), one is a stdlib call
+// whose contract is Unicode where the protocol is octets, and one is an error
+// return that was being discarded.
+//
 func TestHandlerRequestModelIsCanonical(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go toolchain not available")

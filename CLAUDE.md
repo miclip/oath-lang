@@ -366,6 +366,25 @@ with it, silently. So: assert the final summary line, count the checks that ran,
 and make the harness fail LOUDLY when its own setup did not work — a check that
 cannot tell its setup failed from the defect it hunts is worse than no check.
 
+**DO NOT WRITE A SECOND STRUCTURAL-EQUIVALENCE ALGORITHM. CANONICAL IDENTITY
+ALREADY ANSWERS THE QUESTION.** In a content-addressed language, canonical
+structural equality IS hash equality: a definition's hash is the canonical
+encoding of its declaration, so two structurally identical declarations have one
+hash by construction. Any later code asking whether two Oath declarations are
+"the same shape" must first justify why hash equality is not the correct
+relation — and that justification is usually not available.
+
+The cost of ignoring this is not verbosity, it is INCOMPLETENESS. A hand-written
+matcher compares the fields its author thought to compare and silently accepts
+anything differing elsewhere; a hash compares every byte of the canonical form.
+Reconstructing the declaration and hashing it is also self-maintaining, because
+it stays aligned with artifact identity instead of drifting from it as a second,
+hand-maintained notion of "same type".
+
+Written after a structural walker was built, reviewed, found to compare a type
+constructor's tag while ignoring surplus fields that change its identity, and
+then deleted in favour of four lines that construct the declaration and hash it.
+
 **BEFORE REQUIRING A TRANSPORT DISTINCTION TO BE PRESERVED, ESTABLISH THAT EVERY
 SUPPORTED STACK CAN STILL OBSERVE IT AT THE ADAPTER BOUNDARY.** If the transport
 has already erased it, the specification must CANONICALIZE it, REFUSE the input,
