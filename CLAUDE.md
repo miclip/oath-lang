@@ -19,7 +19,8 @@ by inspecting them.
   Phase 1  Can AI own software?                   registry, proofs, trust
   Phase 2  Can the trust model survive reality?   authority, delegation, CI, transfer
   Phase 3  Can the implementation be replaced?    Go backend, LLVM backend, the boundary
-  Phase 4  Can someone build software and FORGET they are using Oath?   <- here
+  Phase 4  Can someone build software and FORGET they are using Oath?
+  Phase 5  Can the compiler FAITHFULLY OBSERVE the language?             <- here
 
 PHASE 4 IS NOT ABOUT HIDING EVIDENCE. The target, stated precisely: **guarantees
 stay LOUD at trust boundaries and become QUIET during ordinary composition.** A
@@ -31,6 +32,80 @@ EVIDENCE IS DECISION-RELEVANT VERSUS MERELY REPETITIVE. The webhook application
 is a good instrument because it crosses several of those boundaries naturally:
 ingress, signature verification, capability injection, outbound action, structured
 output, compiled execution, and deployment under change.
+
+### PHASE 5 (2026-08-02) — the question changed, and it is a different project
+
+At the start of this session Oath's question was *can the infrastructure support
+trustworthy software?* By the end it had become:
+
+> **Can the compiler faithfully observe the language?**
+
+Sharper: **Phase 5 is about reducing the semantic gap between specification and
+execution.**
+
+The milestones all fit that description, and none of them made Oath more
+expressive — they made existing semantics more faithfully realized:
+
+  #114  a backend-neutral semantic boundary
+  #115  independent observation through a second backend
+  #126  launch provisioning becomes STRUCTURAL, not deployment metadata
+  #118  Str is observed as CODEPOINTS, not storage bytes
+
+**IMPLEMENTATION IS NO LONGER THE LIMITING FACTOR; CALIBRATION OF CLAIMS IS.**
+That one sentence explains nearly every significant correction of this session:
+distinguishing launch failure from failure before OBSERVABLE STARTUP; separating
+provisioning from authority narrowing; refusing rather than replacing; a backend
+SUBSET versus language semantics; deriving a witness's universe from the CLAIM
+rather than the implementation; and evidence versus mechanism.
+
+**So the metric is not size.** The temptation over the next months will be to
+equate "the compiler is getting bigger" with "the compiler is getting better".
+The opposite is the measure: *the compiler gets better when its observable
+behaviour converges on the language semantics, regardless of how many features
+it implements.*
+
+That is exactly why #118 must not be reopened for arithmetic. It would change
+the question from *is the compiler faithful?* back to *how much language can we
+implement?* — and those are different goals with different evidence.
+
+The durable observation, worth more than any single milestone: **this is where
+the project stopped accumulating MECHANISMS and started accumulating EVIDENCE.**
+Most of the important commits were not new-feature commits; they narrowed a
+claim until it exactly matched what had been demonstrated. Continue that.
+
+### THE QUEUE, in three buckets — position is not priority
+
+The buckets encode DIFFERENT CLOCKS, not just different priorities — which is
+the part worth keeping:
+
+  some work gets MORE EXPENSIVE if delayed   #122, #117/#69, while the runtime
+                                             is still small enough to reshape
+  some work gets MORE VALUABLE if delayed    #130, #134, after more evidence has
+                                             accumulated to calibrate them
+  some work should WAIT FOR A TRIGGER        #128
+
+**Compiler/runtime — the window is closing.** The backend is still small enough
+to reshape; that stops being true as it grows.
+
+  1. **#122** handler header model      unblocks real use
+  2. **#121** hex-decode                unblocks real use
+  3. **the first external contributor** — a person, not a step; see below
+  4. **#117 / #69** scoped authority    language design
+  5. **#133** scalar-only Str           language design, NORMATIVE
+
+**Feedback/tooling — the window is NOT closing.** Improves confidence in future
+work; nothing depends on it immediately.
+
+  6. **#130** vacuity signal, guard/subject overlap
+  7. **#134** typed refusal reasons
+
+**Documentation hygiene.**
+
+  8. **#128** — DEFERRED UNTIL AFTER THE NEXT EXTERNALLY-VISIBLE MILESTONE.
+     It has a TRIGGER, not a position. It changes no semantics, unblocks no
+     user, and closes no narrowing window — and it is small and easy, which is
+     precisely why it would interrupt architectural momentum if it sat in the
+     middle of the queue. **Do not let "it is open" become "it is next."**
 
 **The next work is to DEPEND on Oath, not to improve it.** The roadmap, in order:
 
