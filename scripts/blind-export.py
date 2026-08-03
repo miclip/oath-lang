@@ -110,6 +110,16 @@ FORBIDDEN_NAMES = {".git", ".github"}
 FORBIDDEN_PREFIXES = ("oath/", "oathrs/", "codebase/", "docs/experiments/", "website/")
 FORBIDDEN_FILES = {"DESIGN.md", "CLAUDE.md", "README.md", "oathrs/DIVERGENCES.md"}
 
+# Coaching material is forbidden by BASENAME, at any depth, because the claim is
+# about the KIND of file rather than about one path. `FORBIDDEN_FILES` above
+# holds repo-relative paths, so a nested `oathrs/CLAUDE.md` matched none of them
+# — and the §10.0a surface deliberately lifts the `oathrs/` prefix ban in order
+# to ship the Rust, so such a file WOULD have been exported. A session-guidance
+# file is the purest form of the thing this export exists to withhold: it states
+# the reference implementation's conclusions in prose, which is exactly what a
+# blind subject is supposed to derive from the specification instead.
+FORBIDDEN_BASENAMES = {"CLAUDE.md", "AGENTS.md", "DESIGN.md"}
+
 # Strings that must not appear anywhere in the exported tree. The reference
 # implementation's own identifiers are the tell: if any of these survive, some
 # file is carrying kernel source or design history that the pathspec did not
@@ -162,6 +172,10 @@ def preflight(dest: Path, sha: str) -> list:
             bad.append(f"history leak: {rel} is present")
         if rel in FORBIDDEN_FILES or rel.startswith(FORBIDDEN_PREFIXES):
             bad.append(f"forbidden path exported: {rel}")
+        if p.is_file() and p.name in FORBIDDEN_BASENAMES:
+            bad.append(f"coaching material exported: {rel} — session guidance "
+                       f"states the reference implementation's conclusions, which "
+                       f"a blind subject must derive from the specification")
 
     for rel in rels:
         if rel in EXCLUDED and rel not in ALLOW:

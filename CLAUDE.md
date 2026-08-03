@@ -8,13 +8,11 @@ from a "what would a language designed only for AI look like?" conversation.
 Positioning (settled after two external reviews): the syntax is disposable,
 the substrate is the product.
 
-## THE PROJECT HAS CHANGED PHASES (2026-08-02) — READ THIS BEFORE PICKING WORK
+**This file is instructions. `docs/milestones.md` is history** — what each
+milestone established and why decisions went the way they did. If a paragraph
+here tells you what HAPPENED rather than what to DO, move it there.
 
-For months the bottleneck was "make the substrate trustworthy". It is now built
-AND exercised: registry, authority, delegation, transfer, receipts, CI, standard
-library, two native backends, proof-carrying compilation, and a backend-neutral
-compilation boundary. Nearly every defect in those was found by USING them, not
-by inspecting them.
+## PHASE 5 — READ THIS BEFORE PICKING WORK
 
   Phase 1  Can AI own software?                   registry, proofs, trust
   Phase 2  Can the trust model survive reality?   authority, delegation, CI, transfer
@@ -22,298 +20,80 @@ by inspecting them.
   Phase 4  Can someone build software and FORGET they are using Oath?
   Phase 5  Can the compiler FAITHFULLY OBSERVE the language?             <- here
 
-PHASE 4 IS NOT ABOUT HIDING EVIDENCE. The target, stated precisely: **guarantees
-stay LOUD at trust boundaries and become QUIET during ordinary composition.** A
-developer should see them when choosing or importing an artifact, accepting a
-capability, publishing, compiling, crossing a policy boundary, or diagnosing a
-refusal — and should not have to restate or re-inspect them while composing pieces
-already admitted. So the question is not "how much can be hidden" but WHERE
-EVIDENCE IS DECISION-RELEVANT VERSUS MERELY REPETITIVE. The webhook application
-is a good instrument because it crosses several of those boundaries naturally:
-ingress, signature verification, capability injection, outbound action, structured
-output, compiled execution, and deployment under change.
-
-### PHASE 5 (2026-08-02) — the question changed, and it is a different project
-
-At the start of this session Oath's question was *can the infrastructure support
-trustworthy software?* By the end it had become:
-
-> **Can the compiler faithfully observe the language?**
-
 Sharper: **Phase 5 is about reducing the semantic gap between specification and
-execution.**
-
-The milestones all fit that description, and none of them made Oath more
-expressive — they made existing semantics more faithfully realized:
-
-  #114  a backend-neutral semantic boundary
-  #115  independent observation through a second backend
-  #126  launch provisioning becomes STRUCTURAL, not deployment metadata
-  #118  Str is observed as CODEPOINTS, not storage bytes
+execution.** #114, #115, #126 and #118 all fit that description, and none of them
+made Oath more expressive — they made existing semantics more faithfully
+realized.
 
 **IMPLEMENTATION IS NO LONGER THE LIMITING FACTOR; CALIBRATION OF CLAIMS IS.**
-That one sentence explains nearly every significant correction of this session:
+That sentence explains nearly every significant correction of recent sessions:
 distinguishing launch failure from failure before OBSERVABLE STARTUP; separating
 provisioning from authority narrowing; refusing rather than replacing; a backend
 SUBSET versus language semantics; deriving a witness's universe from the CLAIM
 rather than the implementation; and evidence versus mechanism.
 
-**So the metric is not size.** The temptation over the next months will be to
-equate "the compiler is getting bigger" with "the compiler is getting better".
-The opposite is the measure: *the compiler gets better when its observable
-behaviour converges on the language semantics, regardless of how many features
-it implements.*
+**So the metric is not size.** The temptation is to equate "the compiler is
+getting bigger" with "the compiler is getting better". The opposite is the
+measure: *the compiler gets better when its observable behaviour converges on the
+language semantics, regardless of how many features it implements.* This is where
+the project stopped accumulating MECHANISMS and started accumulating EVIDENCE —
+most of the important commits were not new-feature commits; they narrowed a claim
+until it exactly matched what had been demonstrated. Continue that.
 
-That is exactly why #118 must not be reopened for arithmetic. It would change
-the question from *is the compiler faithful?* back to *how much language can we
-implement?* — and those are different goals with different evidence.
+### THE QUEUE — one ordering, in three buckets; position is not priority
 
-The durable observation, worth more than any single milestone: **this is where
-the project stopped accumulating MECHANISMS and started accumulating EVIDENCE.**
-Most of the important commits were not new-feature commits; they narrowed a
-claim until it exactly matched what had been demonstrated. Continue that.
+The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-### THE QUEUE, in three buckets — position is not priority
+  more EXPENSIVE if delayed   #122, #121, #117/#69, #133 — while the runtime
+                              is still small enough to reshape
+  more VALUABLE if delayed    #130, #134 — after more evidence has accumulated
+                              to calibrate them
+  waiting for a TRIGGER       #128
 
-The buckets encode DIFFERENT CLOCKS, not just different priorities — which is
-the part worth keeping:
-
-  some work gets MORE EXPENSIVE if delayed   #122, #117/#69, while the runtime
-                                             is still small enough to reshape
-  some work gets MORE VALUABLE if delayed    #130, #134, after more evidence has
-                                             accumulated to calibrate them
-  some work should WAIT FOR A TRIGGER        #128
-
-**Compiler/runtime — the window is closing.** The backend is still small enough
-to reshape; that stops being true as it grows.
+**Compiler/runtime — the window is closing.**
 
   1. **#122** handler header model      unblocks real use
   2. **#121** hex-decode                unblocks real use
-  3. **the first external contributor** — a person, not a step; see below
-  4. **#117 / #69** scoped authority    language design
-  5. **#133** scalar-only Str           language design, NORMATIVE
+  3. **#117 / #69** scoped authority    language design, and see below
+  4. **#133** scalar-only Str           language design, NORMATIVE
 
 **Feedback/tooling — the window is NOT closing.** Improves confidence in future
 work; nothing depends on it immediately.
 
-  6. **#130** vacuity signal, guard/subject overlap
-  7. **#134** typed refusal reasons
+  5. **#130** vacuity signal, guard/subject overlap
+  6. **#134** typed refusal reasons
 
 **Documentation hygiene.**
 
-  8. **#128** — DEFERRED UNTIL AFTER THE NEXT EXTERNALLY-VISIBLE MILESTONE.
-     It has a TRIGGER, not a position. It changes no semantics, unblocks no
-     user, and closes no narrowing window — and it is small and easy, which is
+  7. **#128** — DEFERRED UNTIL AFTER THE NEXT EXTERNALLY-VISIBLE MILESTONE. It
+     has a TRIGGER, not a position. It changes no semantics, unblocks no user,
+     and closes no narrowing window — and it is small and easy, which is
      precisely why it would interrupt architectural momentum if it sat in the
      middle of the queue. **Do not let "it is open" become "it is next."**
 
-**The next work is to DEPEND on Oath, not to improve it.** The roadmap, in order:
+### Standing instructions attached to the queue
 
-  1. ~~**THE APPLICATION**~~ — DONE, see below. It ran first, so it now
-     constrains #118 rather than the other way round, and it did the thing that
-     was meant to be guarded against in reverse: it did not redesign the
-     language, and it produced a ranked demand list instead.
-  2. ~~**#117**~~ — its provisioning half shipped as **#126**; the rest is a
-     type-system project and is now LAST. The order lives in the #126 section
-     below, which is the one to read.
-  3. **#118**, **#122**, **#121**, then #117/#69. The first external
-     contributor is a person, not a step — see below.
-
-### #120 IS DONE — read the friction log before choosing anything
-
-`apps/github-webhook` is a GitHub webhook receiver that verifies
-`X-Hub-Signature-256`, scans the repository out of the signed body, and appends a
-self-describing record to a log `report.sh` consumes. `deliver.sh` signs with
-**openssl** and posts with **curl** — it shares no code with Oath, which makes
-every accepted delivery a real cross-implementation check of `hmac-sha256`. It is
-wired into `make check-app` and CI, and it runs against a COPY of `codebase/`
-because `oath put` is the only way to check a source file and it always writes.
-
-The language and the protocol are UNCHANGED. `oath/`, `oathrs/`, `docs/SPEC.md`
-and `examples/` were not touched; the 21 new definitions are the application.
-
-**`docs/experiments/webhook-friction.md` is the deliverable, and it is ranked.**
-The top four, with what they actually cost:
-
-  1. **`process_env` grants the environment, not a variable.** Launched with the
-     secret unset, version 1 bound its port and ACCEPTED A DELIVERY FORGED UNDER
-     THE EMPTY KEY. The #114 launch gate did what it promises and it was not
-     enough — it is loud about capability KINDS and silent about capability
-     CONTENT. Six properties passed throughout. **This is #117 arriving as a
-     security bug rather than a design preference, and it is the top item.**
-  2. **The handler protocol has no header model (#122, filed).** `X-GitHub-Event`
-     — what GitHub documents and sends — is not what an Oath handler sees;
-     net/http canonicalizes it to `X-Github-Event`. One backend's normalization
-     is visible in Oath source and nothing propagates it to the author.
-     `apps/github-webhook/hdr-probe.oath` is the runnable witness.
-  3. **No JSON, and no correct bytes→text.** `str-bytes` is PROVEN; its inverse
-     cannot be written correctly, because `Str` is codepoints and a body is
-     bytes and both are the same shape. **#118's datatype slice should be byte
-     lists and text — the numeric demand was one `show-nat`.**
-  4. **The corpus has two scopes.** `oath fixtures` reads the STORE;
-     `oathrs/conformance.sh` and `make verify` read `examples/`. Adding
-     definitions anywhere else produced sixteen confident, wrong divergence
-     reports. Both now enumerate `examples/*.oath` plus `apps/*/*.oath`.
-
-Three findings about the INSTRUMENTS, which matter as much: a property passed 200
-generated cases and was false (a tab forging a column — the generator cannot
-reach adversarial byte sequences); strengthening the artifact silently made its
-strongest property vacuous while still reporting `passed 200 cases`; and a
-property whose guard restates the implementation's own predicate is not
-independent evidence — `application/jsonp` passed a `str-prefix` test in both.
-
-Also filed from the exercise: **#121** (`hex-decode` keeps the prefix it decoded,
-so `examples/webhook.oath` accepts `<valid digest>zz` while claiming to fail
-closed — filed rather than fixed, because it changes the conformance corpus) and
-**#122** (the header model above).
-
-**Next, in order:** SUPERSEDED by the #126 section below — #118, #122, #121,
-then #117/#69. Do NOT start another protocol feature.
-
-### #126 IS DONE, and #117 IS NOT NEXT — the order changed, deliberately
-
-**Required values are structural and enforced. Callable authority exists but
-remains coarse. The next compiler question is typed byte/text lowering, not
-another capability lifecycle mechanism.**
-
-`#126` (merged) split the provisioning half out of #117. A capability-record
-field whose type is a VALUE rather than a function is a required value: the host
-must supply it before any Oath code runs, or the program does not start.
-
-    (defn gh-webhook [] [(caps {emit (-> Str Str) secret Str}) (r Request)] Response
-
-THE IDENTITY STATEMENT, worth preserving exactly:
-
-> Required launch data is tamper-evident because it is expressed in the
-> capability record's field types, and those types already participate in
-> artifact identity.
-
-No side manifest, no deploy-time assertion, no new identity mechanism.
-`{env}` hashes to #160db1993221 and `{env emit}` to #7db989101eeb; nothing had
-to be added for this to be tamper-evident.
-
-THE ARCHITECTURAL FINDING is the confinement repair, not the feature:
-
-> "Capability record" was accidentally modeled as "record whose fields are all
-> authority-bearing functions."
-
-Value fields exposed it — every use of one was reported as an escape and `oath
-build` refused to hand the program the real world. The repair distinguishes by
-TYPE: a projected function is authority and still subject to escape analysis; a
-projected non-function is data. **The surviving control — a bare function
-projection still ESCAPES — is what makes that a correction rather than a
-relaxation.** Do not delete it.
-
-### THE ORDER, and why #117 moved to last
-
-  1. ~~**#118**~~ — DONE and closed, see below. Do NOT reopen it as "add
-     arithmetic": broadening the backend should require A NEW CONSUMER or a
-     separately stated compiler milestone, not momentum.
-  2. **#122** — the handler protocol's header model. A bounded gap on a real
-     application path.
-  3. **#121** — fix `hex-decode` globally. Same: bounded, and on a real path.
-  4. **#117 / #69** — scoped authority (`http_client(host = ...)`).
-
-**THE FIRST EXTERNAL CONTRIBUTOR IS NOT A SCHEDULED STEP.** That milestone
-depends on a real person's availability, so it arrives when it arrives. **Do NOT
-substitute invented "external-user" work for an actual external user** — a
-simulated newcomer walkthrough would produce exactly the reassuring evidence the
-real thing exists to withhold, and this project has already learned that a
-witness which cannot disappoint you is not a witness.
-
-**#117 is no longer blocking anything.** It was urgent when it was the only way
-to close the webhook's fail-open; #126 closed that structurally, and what remains
-is a much larger type-system project. It is important and it is not next.
-
-**SCOPED AUTHORITY GOES LAST** because it risks becoming the next long
-infrastructure branch unless a real user or application demands a concrete scope
-first — the Phase 4 lesson arriving again, at the exact point where the backlog
-makes the wrong answer look like the plan.
-
-### WHAT THIS SESSION ACTUALLY IMPROVED — state it narrowly
-
-> Oath did not improve its own ability to detect mistaken confidence. The
-> project improved the PRACTICES used to detect it, and identified two concrete
-> mechanisms that could eventually make part of that detection automatic.
-
-The evidence for the narrow reading: across the application, **Oath's own
-instruments found ZERO of the twelve defects.** The properties were not lazy —
-they falsified four generated cases during authoring and forced a real fix — but
-every near-miss came from independent review. Formal instruments caught ordinary
-semantic failures; review caught shared mistaken boundaries, vacuity, and
-near-misses the properties had encoded ALONG WITH the implementation.
-
-So the two questions above are habits, and habits only fire if a session reads
-them. The two mechanisms that would make part of this automatic are #130, and
-they are deliberately NOT next: feedback tooling has no closing window, and
-#118's does.
-
-### #118 IS DONE — what the compiler can and cannot do now
-
-> The LLVM backend observes `Str` according to Oath's CODEPOINT semantics while
-> retaining PACKED UTF-8 as an internal representation.
-
-  Bool, Int, packed Str        faithful runtime representations
-  Str matching                 exposes codepoints as Int, exact remainder
-  int64 and scalar subsets     FAIL CLOSED — refused, never wrapped or replaced
-  the verified Def closure     REMAINED SUFFICIENT (4660/4660 subterm types
-                               recoverable; 286/286 polymorphic call sites carry
-                               instantiation in the RAW canonical bytes)
-  a typed lowering IR          NOT REQUIRED — #114's no-IR decision holds, and
-                               now holds against a corpus measurement
-  everything else              explicitly refused and named
-
-STILL REFUSED, deliberately: arithmetic, Rat and Float, Set/Map, dynamic Str
-construction, the handler protocol.
-
-**THE `Str` TAIL IS A VIEW**, and the condition that makes that sound is written
-at the line rather than assumed: immutable buffers with program lifetime permit
-views; shorter-lived storage requires copying. A future runtime change has a
-precise place where its old assumption becomes invalid — and it must change to a
-copy, not to a hope.
-
-Open from this work: **#133** (is Str defined only over Unicode scalar values —
-NORMATIVE, needs SPEC prose and a scoped blind round; the information-loss half
-is already fixed as a backend subset boundary) and **#134** (typed refusal
-reasons instead of prose).
-
-### #117's scope, for whenever it does start — do not widen it
-
-The question, settled with Michael and written on the issue:
-
-> How does a compiled entry point declare not merely that it MAY read
-> configuration, but that specific configuration MUST exist and satisfy a
-> predicate before launch?
-
-NOT a configuration framework. One concrete requirement, from the application:
-`process_env key GITHUB_WEBHOOK_SECRET, required, non-empty`.
-
-Done means: missing or invalid required configuration prevents the process from
-binding or serving; the failure is a LAUNCH failure; no Oath body executes;
-optional environment access still works for programs that want it; and the
-requirement stays backend-neutral, with Go and LLVM implementing it separately.
-
-**THE MECHANISM ALREADY EXISTS IN BOTH BACKENDS — this is not new machinery.**
-Provision is already allowed to fail and both already exit 70 on it (Go:
-`func() (any, error)`; LLVM: `OVal *fn(char **err)` → `o_require`). `record_sink`
-already USES it — an unwritable `OATH_EMIT_PATH` stops the program starting, and
-`apps/github-webhook/acceptance.sh` demonstrates it. The gap is one line of C:
-
-    OVal *o_cap_env(char **err) { (void)err; return o_closure(cap_env_code, NULL); }
-
-The error channel is there and the provider DISCARDS it, because a `process_env`
-requirement carries no key and no predicate. #117 gives provision something to
-check; it does not invent a way to fail.
-
-**KEEP THE PREDICATE VOCABULARY MINIMAL, and this is the line:** `required` and
-`non-empty` are properties of whether the host supplied the authority the program
-DECLARED. "at least sixteen printable ASCII characters" is a property of what the
-program DOES with it, and admitting that is exactly how this becomes the
-framework it must not be. So #117 will NOT delete `secret-is-usable` from the
-webhook — it makes one class of misconfiguration unreachable rather than merely
-answered, and the length and charset checks stay in the handler. Expecting the
-application to get shorter is the wrong success criterion.
-
+- **Do NOT reopen #118 as "add arithmetic".** Broadening the backend should
+  require A NEW CONSUMER or a separately stated compiler milestone, not
+  momentum. It would change the question from *is the compiler faithful?* back
+  to *how much language can we implement?* — different goals, different
+  evidence.
+- **SCOPED AUTHORITY (#117) GOES LATE, and its scope must not widen.** It stopped
+  blocking anything when #126 closed the webhook's fail-open structurally; what
+  remains is a large type-system project. It risks becoming the next long
+  infrastructure branch unless a real user or application demands a concrete
+  scope first. The settled scope and the "keep the predicate vocabulary minimal"
+  line live **on the issue** — read it there rather than re-deriving it.
+- **THE FIRST EXTERNAL CONTRIBUTOR IS NOT A SCHEDULED STEP.** It depends on a
+  real person's availability, so it arrives when it arrives. **Do NOT substitute
+  invented "external-user" work for an actual external user** — a simulated
+  newcomer walkthrough would produce exactly the reassuring evidence the real
+  thing exists to withhold, and this project has already learned that a witness
+  which cannot disappoint you is not a witness.
+- **The next work is to DEPEND on Oath, not to improve it.** The application
+  (#120) ran first, so it now constrains the compiler rather than the other way
+  round: it did not redesign the language, it produced a ranked demand list.
+  `docs/experiments/webhook-friction.md` is that list — read it before choosing.
 
 ## State of the project
 
@@ -321,16 +101,16 @@ application to get shorter is the wrong success criterion.
   optional GCS+Postgres store backend adds a Postgres driver only under
   `-tags cloud`; conformance/wasm/default builds stay dependency-free) and
   `oathrs/` (independent Rust, built BLIND from the spec — see "The second
-  kernel"). `docs/SPEC.md` is NORMATIVE — any change affecting hashes, verdicts,
-  or semantics MUST update it; identity is the O1 binary encoding (§1), and
-  encoding changes fork reality.
+  kernel"). `docs/SPEC.md` is NORMATIVE — any change
+  affecting hashes, verdicts, or semantics MUST update it; identity is the O1
+  binary encoding (§1), and encoding changes fork reality.
 - Guarantee system, all real and CI-guarded: asserted → tested
   (deterministic, hash-seeded) → PROVEN (Z3, direct + structural induction,
   relevance-filtered lemma library per §7.2; `oath hint` admits a named proven
-  lemma the filter excluded — sound, identity-neutral, #67). Per-def verdicts: termination
-  (lexicographic), confinement (closure-tracking), spec strength (mutation
-  + justified waivers), provenance (append-only tamper-evident journal,
-  authenticated principals on the HTTP store).
+  lemma the filter excluded — sound, identity-neutral, #67). Per-def verdicts:
+  termination (lexicographic), confinement (closure-tracking), spec strength
+  (mutation + justified waivers), provenance (append-only tamper-evident
+  journal, authenticated principals on the HTTP store).
 - ~105 definitions fully PROVEN (insertion sort 7/7, reverse-involution, the
   KV world laws, native set/map laws, queue/tree/interval); honest exhibits
   remain deliberately: bad-reverse (falsified), spin (termination unproven),
@@ -374,45 +154,10 @@ custom domain + managed TLS; see `docs/deploy.md`). What it runs:
 - **Release pipeline** — `git tag vX` cuts a GitHub Release of both kernels for
   all platforms (`.github/workflows/release.yml`); deploy is manual (`deploy.yml`).
 
-## The finish line (2026-08-01)
-
-> A developer with no privileged access can install an Oath client, obtain
-> authorization, publish a licensed artifact into their own namespace, and
-> another developer can independently discover, verify, and consume it.
-
-That is the milestone worth aiming at, and it is what turns Oath from a system
-one person built into a system someone else can participate in. Every PIECE of it
-now exists — signed publication, licence assertion and evaluation, namespaces,
-cryptographic ownership, discovery, `explain`. What has never been tested is a
-SECOND PRINCIPAL, so the cryptography, ownership model and licensing semantics
-are validated while the SOCIAL model is not.
-
-**#66 IS NOT THE GATE — verify the deployment, not this file.** The live registry
-runs NO `--authorized-keys` allowlist (checked 2026-08-01 against the Cloud Run
-service: no such arg, and only `OATH_STORE`, `OATH_STORE_LOCK`,
-`OATH_TOKENS_FILE` in env). `authenticatePrincipal` computes
-`canWrite := authKeys == nil || authKeys[pubHex]`, so **any key that signs can
-already write.** An earlier version of this section claimed the registry had
-exactly one authorized key and that #66 blocked the milestone; that was never the
-deployed configuration.
-
-So the finish line is probably reachable TODAY with no operator action. NOTE: the
-"next move" below is SUPERSEDED — see the phase section at the top of this file;
-the walkthrough belongs to the first external contributor, after the
-application. Recorded here as the
-method, not as the instruction: a fresh key, `reserve`, a fresh key, `reserve`,
-`publish --key`, then independent `find` / `explain` / `license` / `verify`. Two
-cautions carried from this session — a reservation is PERMANENT, so the namespace
-name must satisfy the naming rules below; and the ownership freeze means creation
-requires a signed PUBLICATION envelope, so `oath publish --key` succeeds where a
-bare `put --remote --key` is refused.
-
-#66 remains real work (delegated token minting, authorized-key registration) but
-it is what an operator turns ON to CONSTRAIN onboarding, not what a stranger needs
-switched off. The open questions it raises are product rather than protocol: can a
-newcomer reserve a namespace without operator intervention, can ownership change
-without registry edits, does `explain` read sensibly when the publisher is not
-you. Those get answered by the walkthrough.
+The standard-library, delegation and finish-line state is in
+`docs/milestones.md`. The one live fact worth carrying here: **the registry has
+no authorized-key allowlist, so any key that signs can write** — verify the
+deployment, not a document, before claiming otherwise.
 
 ## Blind implementation is a DEFINITION OF DONE, not an activity
 
@@ -428,64 +173,6 @@ The stopping rule for a round is not "nothing more can be found" but **does this
 change what a user can do**. By that measure rounds 4-6 had already stopped
 earning their cost, while still producing genuinely good findings — which is
 exactly how this becomes hard to notice from inside.
-
-## Where things actually stand (2026-08-01)
-
-**The standard-library milestone is FINISHED.** `oath/*` is reserved to a project
-key held in Cloud KMS (local copy destroyed before the first publication), and
-holds four names — `List`, `length`, `append`, `reverse` — published in dependency
-order, Apache-2.0, KMS-signed. `docs/receipts/001-*` is a generated receipt whose
-eight checks all pass. A PR validation workflow (`stdlib-pr.yml`) exists and is
-deliberately incapable of publishing.
-
-**DELEGATION IS BUILT AND USABLE.** `oath delegate <ns>/* --to <pubkey>` and
-`oath revoke <ns>/* --from <pubkey>`, plus the `delegate` MCP tool, all over ONE
-acceptance path (`apiDelegate`). Seven conformance vectors witness the rules
-(holder grants, revocation removes, non-holder cannot grant, a delegate cannot
-delegate onward, stale grant refused, bad signature refused, a registry-authored
-label creates nothing). `explain` renders holder and delegates distinctly — a
-delegate must NEVER appear as the namespace owner.
-
-DELEGATED CI PUBLISHING — two separate milestones, do not let one block the other:
-
-**PROTOCOL: operationally demonstrated.** Step 8 ran against the live registry
-with KMS-held keys (`docs/receipts/003-step8-passed.md`): accepted authority,
-refused authority with the rejected intent PRESERVED and verifiable, revocation,
-both post-revocation attempts blocked at the authority gate and preserved,
-authority recovery by the holder, authorship unchanged throughout, and
-re-delegation restoring publication. Journal 1247 → 1255, custody PASS.
-
-The three authority outcomes now all have live end-to-end evidence:
-
-  statement   journal        authority     
-  accepted    preserved      changes       ✓
-  rejected    preserved      unchanged     ✓
-  invalid     not preserved  unchanged     ✓  (AUTH-REFUSALS-ARE-PRESERVED boundary)
-
-**DEPLOYMENT: implemented, approval-gated, not yet run.** `stdlib-publish.yml`
-awaits two OPERATOR actions — a `stdlib-publish` GitHub Environment with required
-reviewers, and `GCP_PUBLISHER_SA=oath-publisher@oath-prod-503514.iam.gserviceaccount.com`.
-Neither should be done by the party the gate constrains. Its first run should be a
-NO-DELTA execution proving approval, WIF, gates, manifest reproduction and plan
-derivation while signing nothing and writing nothing.
-
-That run can claim something ADDITIONAL rather than repeating step 8: the approved
-automation correctly uses the already-proven delegated authority path.
-
-OPEN, from the exercise: #106 — authority_rev versions holder state, not
-delegation state, so replay resistance for delegation is deduplication rather than
-version progression. A design question, not a defect; surfaced by running the
-protocol, not by inspection.
-
-REMAINING: step 5 only — wire the post-merge publisher against a DELEGATED key,
-and grant that key KMS access. Not done, and it needs its own authorization.
-NOT NEXT: this is protocol work, and the phase section at the top of this file
-defers it. Recorded so nobody re-derives it, not queued.
-
-The post-merge publish workflow is NOT built, deliberately. Wiring it before the
-above would make CI depend on a protocol path nobody can invoke normally, inspect
-through the public surface, or reproduce from fixtures — turning hand-crafted
-state into production authority.
 
 ## NAMING: names are permanent, so treat every one as a publication
 
@@ -540,7 +227,9 @@ dependency; a same-spelled local is not).
   capability semantics may be defined in terms of Go constructs** — when adding to
   `compile.go`, ask whether you are describing Oath or describing Go.
 - There is deliberately NO expression IR: the neutral representation of a body is
-  the verified `Def` closure. Typed IR and monomorphisation are #115.
+  the verified `Def` closure. #118 measured that decision against the corpus and
+  it held (4660/4660 subterm types recoverable, 286/286 polymorphic call sites
+  carrying instantiation in the raw canonical bytes).
 - Every declared requirement resolves exactly once before launch or the program
   exits 70; undeclared authority is ABSENT from the binary (imports are
   requirement-driven), not merely unused.
@@ -548,28 +237,38 @@ dependency; a same-spelled local is not).
   the artifact and without opening a store. It is UNSIGNED — evidence about a
   cooperative artifact, not attestation (#116).
 
-TWO KNOWN LIMITATIONS, carried forward so "backend-neutral" is not mistaken for
-"semantically complete": the capability vocabulary is global and name-based (#117),
-and the manifest is not bound to the bytes it describes (#116).
-
 **THERE ARE NOW TWO BACKENDS.** `oath build --backend llvm` (`oath/llvm.go`) emits
 textual LLVM IR plus a C runtime and shells out to clang — no new dependencies,
 same pattern as emitting Go. It consumes `CompiledProgram` and references NOTHING
-in compile.go, which `boundary_test.go` checks by resolved bindings. It is narrow
-on purpose (datatypes, match, closures, records, Str literals, Bool, CLI entry)
-and REFUSES the rest by name; it also refuses `http_request`, which is the point —
-two backends may support different subsets of one vocabulary. #115's
-proof-of-concept milestone is closed; #118 is typed lowering.
+in compile.go. It is narrow on purpose and REFUSES the rest by name; it also
+refuses `http_request`, which is the point — two backends may support different
+subsets of one vocabulary.
 
-**WRITING A GATE? ASK WHAT MUTATION MAKES IT FAIL.** This repo is mostly gates, and
-the recurring failure is a test that demonstrates the SETUP or one prerequisite and
-is then read as evidence for the claim. If the only mutation that breaks a test is
-in parsing, setup, or fixture generation, it is not witnessing its claim. Three
-examples from one session: a confinement test asserting the absence of a symbol Go
-never emits (passed for the control too); a "detects disagreement" test that
-exercised only the decoder; a boundary check matching names rather than resolved
-bindings, so a method on a shared type slipped through. VERIFY BY REVERTING —
-undo the fix, watch it fail with the message you expect, restore. A test never
+**THREE THINGS NOT TO DELETE**, each a control that makes a claim a correction
+rather than a relaxation:
+
+- **A bare function projection out of a capability record still ESCAPES.** #126
+  relaxed escape analysis for non-function fields; this is the boundary that
+  keeps that a repair of a modeling error rather than a loosening.
+- **The `Str` tail is a VIEW, and the condition is written at the line.**
+  Immutable buffers with program lifetime permit views; shorter-lived storage
+  requires copying. A future runtime change has a precise place where its old
+  assumption becomes invalid — and it must change to a copy, not to a hope.
+- **Unsupported constructs FAIL CLOSED** — refused and named, never wrapped,
+  replaced, or silently approximated. That is what makes "backend subset" an
+  honest claim instead of a semantic divergence.
+
+TWO KNOWN LIMITATIONS, carried forward so "backend-neutral" is not mistaken for
+"semantically complete": the capability vocabulary is global and name-based
+(#117), and the manifest is not bound to the bytes it describes (#116).
+
+## Writing a gate — the discipline that has found the most defects
+
+**ASK WHAT MUTATION MAKES IT FAIL.** This repo is mostly gates, and the recurring
+failure is a test that demonstrates the SETUP or one prerequisite and is then read
+as evidence for the claim. If the only mutation that breaks a test is in parsing,
+setup, or fixture generation, it is not witnessing its claim. VERIFY BY REVERTING
+— undo the fix, watch it fail with the message you expect, restore. A test never
 observed failing is a hypothesis. Prefer extracting the claimed behaviour into a
 pure function and asserting every outcome, and assert the CONTROL so you know the
 measurement discriminates.
@@ -627,6 +326,14 @@ backend already found a real defect in the first (a type assertion on a concrete
 type meant `match` on a directly-constructed value would not build at all), which
 is the oathrs N-version argument arriving in the compiler.
 
+**PROPERTIES AND REVIEW FIND DISJOINT DEFECT CLASSES.** Across the application,
+Oath's own instruments found ZERO of the twelve defects — properties caught
+ordinary semantic failures, review caught shared mistaken boundaries, vacuity,
+and near-misses the properties had encoded ALONG WITH the implementation. A
+property whose guard restates the implementation's own predicate is not
+independent evidence, and mutation scoring cannot see it either, because
+mutating the body mutates the guard with it.
+
 ## Before adding anything to the protocol
 
 Ask which of four concerns a proposal belongs to — they now evolve
@@ -647,16 +354,14 @@ THE MOMENT IT HAPPENED? (DESIGN.md, four categories)
 ## Roadmap / backlog
 
 GitHub issues on miclip/oath-lang. Closed as of 2026-07: team store & policy,
-conformance + CI, O1 identity, prover fixpoint, stateful worlds, and #14 (the
-live registry above), and **#114** (verified native entry points — effects stage 4;
-see "The compiler boundary" below). Open research projects, each its own session:
-**#115** (native optimization backend: typed IR, monomorphisation, LLVM), **#117**
-(narrowed capability requirements — deliberately NOT part of #115, so a second
-backend is not hostage to an effects-language redesign), **#116** (signed
-provenance attestation), **#65** (discovery roadmap), **#66** (delegated token minting
-+ authorized-key registration — an opt-in CONSTRAINT on onboarding, not a
-prerequisite for it; the live registry has no allowlist and writes are open to any
-signing key). Read closed issues + commit messages for the design reasoning.
+conformance + CI, O1 identity, prover fixpoint, stateful worlds, #14 (the live
+registry above), #114 (the compiler boundary), #115 (the second backend), #126
+(required values), #118 (typed Str lowering). Open research projects, each its
+own session: **#117** (narrowed capability requirements), **#116** (signed
+provenance attestation), **#65** (discovery roadmap), **#66** (delegated token
+minting + authorized-key registration — an opt-in CONSTRAINT on onboarding, not a
+prerequisite for it). Read closed issues + commit messages for the design
+reasoning; `docs/milestones.md` for what each milestone established.
 
 ## Working in this repo
 
@@ -664,6 +369,9 @@ signing key). Read closed issues + commit messages for the design reasoning.
 - `make verify` re-puts every example in dependency order; `make prove`
   is single-pass (apiProve reaches the §7.2 self-lemma fixpoint internally,
   with lemma-growth gating and relevance filtering).
+- **The corpus is `examples/*.oath` PLUS `apps/*/*.oath`.** `make verify`,
+  `oathrs/conformance.sh` and the `Makefile`'s `APPS` list must stay in step, or
+  divergence reports become confidently wrong.
 - The `codebase/` store IS COMMITTED (journal included — it's the audit
   trail and is not regenerable). Never edit it by hand; keep it in sync by
   committing after put/prove runs.
@@ -684,6 +392,7 @@ signing key). Read closed issues + commit messages for the design reasoning.
   embarrassments — never hide them.
 - The examples double as the conformance corpus (SPEC.md §10): treat
   hash changes in `codebase/names.json` as meaningful diffs.
+- Run `codex review --uncommitted` before committing, and iterate until clean.
 
 ## The team store
 
@@ -707,8 +416,20 @@ independence: never "fix" oathrs by copying from oath/ — fix the spec and
 let a blind agent fix the Rust. `oathrs/DIVERGENCES.md` is the record of
 every ambiguity found this way.
 
+**DO NOT PUT A `CLAUDE.md` (or any session guidance) INSIDE `oathrs/`.** The
+§10.0a blind surface deliberately lifts the `oathrs/` prefix ban in order to ship
+the Rust to a blind subject, so a nested guidance file gets EXPORTED — and
+session guidance is the purest form of what the export exists to withhold: it
+states the reference implementation's conclusions in prose, which is exactly what
+the subject is supposed to derive from the specification. `blind-export.py` now
+refuses these by BASENAME at any depth, but the cheaper rule is not to write one.
+The same caution applies to any new file under an allowlisted tree: ask what a
+blind subject would learn from it that the SPEC does not say.
+
 ## Doc map
 
+- `docs/milestones.md` — **what each milestone established, and what it
+  deliberately did not.** The history this file used to carry.
 - `README.md` — tour + quickstart. `DESIGN.md` — rationale, spec-strength
   problem, prior art, split-agent experiment writeup, roadmap phases.
 - `docs/SPEC.md` — normative kernel spec (conformance target).
@@ -765,6 +486,7 @@ every ambiguity found this way.
   `scripts/blind-export.py` builds the isolated dispatch root (preflight-verified,
   no `.git`); `docs/experiments/blind-license-evaluation.md` is the round record.
 - `docs/experiments/` — split-agent, rematch, and flywheel writeups.
+  `webhook-friction.md` is the ranked demand list from #120.
 - `oathrs/DIVERGENCES.md` — 60+ entries; the N-version findings record.
 - History of decisions lives in commit messages (deliberately detailed) and
   DESIGN.md; external review responses are summarized in DESIGN.md.
