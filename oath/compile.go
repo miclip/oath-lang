@@ -985,6 +985,46 @@ func oathResolveCapabilities() any {
 // construction, but net/http passes through a name it could not canonicalize,
 // and strings.ToLower would fold such a name under a Unicode table this program
 // must not depend on — a table that can also change the name's LENGTH.
+// oathIsToken reports whether s is a non-empty HTTP token (RFC 9110 5.6.2).
+func oathIsToken(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
+			continue
+		}
+		// tchar punctuation, in the order  ! # $ %% & ' * + - . ^ _ backtick | ~
+		// written as byte values because a percent sign, a quote and a backtick
+		// are each hazards inside the emitted template this function lives in.
+		switch c {
+		case 0x21, 0x23, 0x24, 0x25, 0x26, 0x27, 0x2A, 0x2B,
+			0x2D, 0x2E, 0x5E, 0x5F, 0x60, 0x7C, 0x7E:
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// oathHdrASCII reports whether every octet is one Str can carry exactly: the
+// printable US-ASCII range, plus HTAB inside a field VALUE only (RFC 9110 5.5
+// permits it there and nowhere in a field name).
+func oathHdrASCII(s string, isValue bool) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 0x20 && c <= 0x7E {
+			continue
+		}
+		if isValue && c == 0x09 {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func oathLowerASCII(s string) string {
 	b := []byte(s)
 	for i := 0; i < len(b); i++ {
@@ -1026,18 +1066,50 @@ func main() {
 		// and Go randomizes map iteration, so the stable sort below needs a
 		// deterministic input order to break that tie reproducibly.
 		sort.Strings(canon)
+		// SPEC 14.2 REQ-FRAMING-FIELDS-EXCLUDED — the names Connection NOMINATES
+		// are connection-specific for this connection only, so a conformant
+		// intermediary would have stripped them. Excluding them here is what
+		// stops the Oath value from depending on the network path taken.
+		// Parsed as OCTETS. HTTP OWS is SP and HTAB only, and each option must be
+		// a token (RFC 9110 5.6.2). strings.TrimSpace would strip UNICODE
+		// whitespace, so a value of NBSP + "X-Hop" + NBSP would yield the
+		// valid-looking nomination x-hop and SILENTLY SUPPRESS a real header the
+		// handler was meant to see — a way to hide a field behind a malformed
+		// Connection value. A non-token option is ignored, not honoured.
+		nominated := map[string]bool{}
+		for _, cv := range r.Header["Connection"] {
+			start := 0
+			for i := 0; i <= len(cv); i++ {
+				if i < len(cv) && cv[i] != ',' {
+					continue
+				}
+				tok := cv[start:i]
+				start = i + 1
+				for len(tok) > 0 && (tok[0] == ' ' || tok[0] == '\t') {
+					tok = tok[1:]
+				}
+				for len(tok) > 0 && (tok[len(tok)-1] == ' ' || tok[len(tok)-1] == '\t') {
+					tok = tok[:len(tok)-1]
+				}
+				if oathIsToken(tok) {
+					nominated[oathLowerASCII(tok)] = true
+				}
+			}
+		}
 		entries := make([]oathHdr, 0, len(canon)+1)
 		for _, k := range canon {
 			lk := oathLowerASCII(k)
-			// SPEC 14.2 REQ-FRAMING-FIELDS-EXCLUDED. Dropped by NAME, not by
-			// asking the library what it kept: net/http deletes some of these
-			// into dedicated struct fields and deduplicates others, so a
-			// backend forwarding its library's collection would agree with
-			// another backend only by luck.
+			// Dropped by NAME, not by asking the library what it kept: net/http
+			// deletes some of these into dedicated struct fields and
+			// deduplicates others, so a backend forwarding its library's
+			// collection would agree with another backend only by luck.
 			switch lk {
 			case "connection", "keep-alive", "proxy-authenticate",
 				"proxy-authorization", "te", "trailer", "transfer-encoding",
 				"upgrade", "content-length":
+				continue
+			}
+			if nominated[lk] {
 				continue
 			}
 			for _, v := range r.Header[k] {
@@ -1049,10 +1121,35 @@ func main() {
 		// mandatory header. Restoring it also gives HTTP/2 the same shape, where
 		// the authority arrives as :authority rather than as a field line. No
 		// entry is invented: no authority in, no host entry out.
+		//
+		// Deliberately NOT subject to the nomination filter. That rule is
+		// unconditional, and honouring a Connection nomination of host would let
+		// a client delete a mandatory field from the Oath value and change how
+		// the handler behaves. The nomination is ignored, not refused.
 		if r.Host != "" {
 			entries = append(entries, oathHdr{"host", r.Host})
 		}
 		sort.SliceStable(entries, func(a, b int) bool { return entries[a].name < entries[b].name })
+
+		// SPEC 14.2 REQ-HEADER-OCTETS-ARE-ASCII. Str is codepoints; for
+		// printable US-ASCII the codepoint IS the octet, and outside it the type
+		// cannot represent what arrived. RFC 9110 still permits obs-text in a
+		// value, so REFUSE rather than transcode: a repaired value would make
+		// the handler verify a signature over bytes that never arrived, and no
+		// test of the artifact could catch it because the artifact never sees
+		// the original.
+		//
+		// Checked AFTER the exclusions, which §14.2 makes normative: this is a
+		// question about the value being constructed, not about the message, so
+		// a field that never enters headers never enters Str and must not cause
+		// a refusal.
+		for _, e := range entries {
+			if !oathHdrASCII(e.name, false) || !oathHdrASCII(e.value, true) {
+				http.Error(w, "header field is not US-ASCII (SPEC 14.2)", 400)
+				return
+			}
+		}
+
 		var flatK, flatV []string
 		for _, e := range entries {
 			flatK = append(flatK, e.name)

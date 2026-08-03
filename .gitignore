@@ -23,3 +23,6 @@ tokens.json
 *.pub
 oath/oath-vector-score
 __pycache__/
+
+# git worktrees created for parallel work; never part of a commit
+.worktrees/

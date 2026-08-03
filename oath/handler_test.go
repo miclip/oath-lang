@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -72,11 +73,29 @@ func mustResolve(t *testing.T, st *Store, name string) string {
 // bytes itself: `X-GitHub-Event` in the case GitHub documents, arrival order
 // deliberately NOT lexicographic, and one name repeated.
 //
-// WHAT MUTATION MAKES IT FAIL. Dropping the lowercasing yields `X-GitHub-Event`;
-// dropping the sort yields arrival order (x-github-event first); comma-joining
-// collapses the two x-example lines to one; an unstable sort or reversed repeat
-// handling swaps first/second; percent-decoding or dropping the query breaks the
-// path line. Each is a distinguishable failure against the vector below.
+// WHAT MUTATION MAKES IT FAIL. Ten were run against this test, and each fails
+// distinguishably rather than merely failing:
+//
+//	drop the ASCII lowercasing      X-Github-Event returns
+//	drop the sort                   arrival order returns
+//	drop the host entry             host vanishes (net/http hides it in r.Host)
+//	build path from r.URL.Path      the escaped slash becomes a real separator
+//	drop the framing filter         connection/content-length reappear
+//	drop Connection-nomination      x-hop reappears
+//	make the ASCII check pass       obs-text answers 200 with 0xFF as U+FFFD
+//	check ASCII BEFORE exclusions   400 on a request that could be served
+//	honour `Connection: host`       the authority disappears from the value
+//	trim Unicode space, not OWS     a real header is hidden by NBSP padding
+//
+// The seventh is the one worth reading: the mangled byte in the failure output
+// IS the information loss the rule exists to prevent. An earlier attempt at that
+// mutation deleted the check outright and broke the BUILD instead — which would
+// have witnessed the Go compiler, not §14, so it was redone semantically.
+//
+// The last three came from review rather than from running the model, and none
+// is visible from any single obligation: two are RULE INTERACTIONS (the ordering
+// of two correct rules, and one rule's scope against another's), and the third
+// is a stdlib call whose contract is Unicode where the protocol is octets.
 func TestHandlerRequestModelIsCanonical(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go toolchain not available")
@@ -143,45 +162,61 @@ func TestHandlerRequestModelIsCanonical(t *testing.T) {
 		_, _ = cmd.Process.Wait()
 	}()
 
-	var conn net.Conn
-	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) {
-		if conn, err = net.DialTimeout("tcp", addr, time.Second); err == nil {
-			break
+	// One raw exchange per call: dial, write the bytes verbatim, read back.
+	// A fresh connection each time is what lets every case send its own
+	// `Connection` field without one case's framing affecting the next.
+	send := func(t *testing.T, wire string) (int, string) {
+		t.Helper()
+		var conn net.Conn
+		var derr error
+		deadline := time.Now().Add(15 * time.Second)
+		for time.Now().Before(deadline) {
+			if conn, derr = net.DialTimeout("tcp", addr, time.Second); derr == nil {
+				break
+			}
+			time.Sleep(25 * time.Millisecond)
 		}
-		time.Sleep(25 * time.Millisecond)
+		if conn == nil {
+			t.Fatalf("handler never accepted a connection on %s within 15s (%v)", addr, derr)
+		}
+		defer conn.Close()
+		_ = conn.SetDeadline(time.Now().Add(20 * time.Second))
+		if _, err := conn.Write([]byte(wire)); err != nil {
+			t.Fatalf("write request: %v", err)
+		}
+		resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+		if err != nil {
+			t.Fatalf("read response: %v", err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		return resp.StatusCode, string(body)
 	}
-	if conn == nil {
-		t.Fatalf("handler never accepted a connection on %s within 15s", addr)
-	}
-	defer conn.Close()
 
 	// SPEC §14.3's vector, byte for byte. Arrival order is deliberately not
 	// lexicographic and `X-GitHub-Event` carries the case GitHub documents.
 	// The target carries %2F: net/http's r.URL.Path would deliver it DECODED as
 	// `/hook/admin`, a different path and a different signature input, so this
 	// escape is what distinguishes REQ-PATH-IS-RAW from "close enough".
-	wire := "POST /hook%2Fadmin?attempt=2&x=%2f HTTP/1.1\r\n" +
-		"Host: " + addr + "\r\n" +
-		"X-GitHub-Event: push\r\n" +
-		"Accept: */*\r\n" +
-		"X-Example: first\r\n" +
-		"X-Example: second\r\n" +
-		"Content-Type: application/json\r\n" +
-		"Content-Length: 0\r\n" +
-		"Connection: close\r\n\r\n"
-	_ = conn.SetDeadline(time.Now().Add(20 * time.Second))
-	if _, err := conn.Write([]byte(wire)); err != nil {
-		t.Fatalf("write request: %v", err)
-	}
-	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
-	if err != nil {
-		t.Fatalf("read response: %v", err)
-	}
-	body, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		t.Fatalf("read body: %v", err)
+	//
+	// `X-Hop` is NOMINATED by Connection, so a conformant intermediary would
+	// have stripped it and §14 requires this backend to agree — its absence
+	// below is what witnesses that, and it is invisible without the nomination.
+	status, body := send(t, "POST /hook%2Fadmin?attempt=2&x=%2f HTTP/1.1\r\n"+
+		"Host: "+addr+"\r\n"+
+		"X-GitHub-Event: push\r\n"+
+		"Accept: */*\r\n"+
+		"X-Example: first\r\n"+
+		"X-Example: second\r\n"+
+		"X-Hop: dropped-by-nomination\r\n"+
+		"Content-Type: application/json\r\n"+
+		"Content-Length: 0\r\n"+
+		"Connection: close, X-Hop\r\n\r\n")
+	if status != 200 {
+		t.Fatalf("canonical vector: status %d, want 200 (body %q)", status, body)
 	}
 
 	// `host` is asserted rather than filtered out: it participates in the
@@ -196,7 +231,85 @@ func TestHandlerRequestModelIsCanonical(t *testing.T) {
 		"x-example=first\n" +
 		"x-example=second\n" +
 		"x-github-event=push\n"
-	if string(body) != want {
+	if body != want {
 		t.Fatalf("Request model diverges from SPEC §14.\n got:\n%s\nwant:\n%s", body, want)
+	}
+
+	// REQ-HEADER-OCTETS-ARE-ASCII. A raw 0xFF is legal obs-text (RFC 9110 §5.5)
+	// and Str cannot carry it: the codepoint that would come back out is not the
+	// octet that arrived. §14 requires a REFUSAL rather than a repair, because a
+	// transcoded value would have the handler verify a signature over bytes that
+	// never arrived — undetectable from inside the artifact.
+	//
+	// The 400 alone is weak evidence, since the handler could have produced it.
+	// This entry point answers 200 unconditionally, so a 400 can only come from
+	// the adapter; the empty body confirms the renderer never ran.
+	status, body = send(t, "POST /hook HTTP/1.1\r\n"+
+		"Host: "+addr+"\r\n"+
+		"X-Obs-Text: caf\xff\r\n"+
+		"Content-Length: 0\r\n"+
+		"Connection: close\r\n\r\n")
+	if status != 400 {
+		t.Fatalf("obs-text header: status %d, want 400 (body %q)", status, body)
+	}
+	if strings.Contains(body, "x-obs-text") {
+		t.Fatalf("obs-text header reached the handler: %q", body)
+	}
+
+	// The CONTROL for that refusal: the same shape with an ASCII value is
+	// delivered. Without it, a backend that refused every request would pass the
+	// check above — the measurement has to discriminate, not just fire.
+	status, body = send(t, "POST /hook HTTP/1.1\r\n"+
+		"Host: "+addr+"\r\n"+
+		"X-Obs-Text: cafe\r\n"+
+		"Content-Length: 0\r\n"+
+		"Connection: close\r\n\r\n")
+	if status != 200 || !strings.Contains(body, "x-obs-text=cafe\n") {
+		t.Fatalf("ASCII control: status %d body %q, want 200 carrying x-obs-text=cafe", status, body)
+	}
+
+	// The two rules INTERACT, and neither interaction is visible from the cases
+	// above. Both were found by review rather than by running the model.
+	//
+	// (a) Exclusion is applied BEFORE the ASCII check. obs-text inside a
+	// Connection-nominated field never enters `headers`, so it never enters Str
+	// and must not cause a refusal — checking first would reject a request that
+	// could have been served faithfully.
+	status, body = send(t, "POST /hook HTTP/1.1\r\n"+
+		"Host: "+addr+"\r\n"+
+		"X-Hop: caf\xff\r\n"+
+		"Content-Length: 0\r\n"+
+		"Connection: close, X-Hop\r\n\r\n")
+	if status != 200 {
+		t.Fatalf("obs-text in an EXCLUDED field: status %d, want 200 (body %q)", status, body)
+	}
+	if strings.Contains(body, "x-hop") {
+		t.Fatalf("nominated field was delivered: %q", body)
+	}
+
+	// (b) Nomination cannot delete `host`. REQ-HOST-IS-A-HEADER is
+	// unconditional, so `Connection: host` is ignored rather than honoured —
+	// otherwise a client could remove a mandatory field from the Oath value and
+	// change how the handler behaves.
+	status, body = send(t, "POST /hook HTTP/1.1\r\n"+
+		"Host: "+addr+"\r\n"+
+		"Content-Length: 0\r\n"+
+		"Connection: close, Host\r\n\r\n")
+	if status != 200 || !strings.Contains(body, "host="+addr+"\n") {
+		t.Fatalf("`Connection: host` removed the authority: status %d body %q", status, body)
+	}
+
+	// (c) A nomination that is not an HTTP token is IGNORED. HTTP OWS is SP and
+	// HTAB only, so NBSP around a name does not make it an option — but Go's
+	// strings.TrimSpace trims Unicode whitespace and would have turned this into
+	// a valid-looking `x-hop`, silently hiding a real header from the handler.
+	// The header must survive.
+	status, body = send(t, "POST /hook HTTP/1.1\r\n"+
+		"Host: "+addr+"\r\n"+
+		"X-Hop: visible\r\n"+
+		"Content-Length: 0\r\n"+
+		"Connection: close, \xc2\xa0X-Hop\xc2\xa0\r\n\r\n")
+	if status != 200 || !strings.Contains(body, "x-hop=visible\n") {
+		t.Fatalf("a non-token nomination suppressed a real header: status %d body %q", status, body)
 	}
 }

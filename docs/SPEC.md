@@ -4218,6 +4218,37 @@ value (RFC 9110 §5.5); removing it is parsing, not normalization. A backend MUS
 NOT otherwise trim, decode, re-encode, or case-map a value, and MUST NOT deliver
 obsolete line folding as an embedded newline.
 
+**REQ-HEADER-OCTETS-ARE-ASCII, and a violation is REFUSED.** Field names and
+values are carried in `Str`, which is a sequence of CODEPOINTS. For the printable
+US-ASCII range that is exact — codepoint and octet coincide — and outside it the
+type cannot represent what arrived. RFC 9110 §5.5 still permits `obs-text`
+(0x80–0xFF) in a field value while deprecating it, so the case is rare and legal.
+
+A backend therefore MUST NOT deliver such a request. If any field name or value
+**that would appear in `headers`** contains an octet outside 0x20–0x7E, other
+than HTAB (0x09) which is permitted inside a value, the backend responds **400**
+and the handler is NOT invoked.
+
+**The exclusions of REQ-FRAMING-FIELDS-EXCLUDED are applied FIRST, and this
+ordering is normative** — without it two backends would disagree about a request
+carrying obs-text in a field that neither of them delivers. The check exists
+because `Str` cannot represent the octet, so it is a question about the value
+being constructed, not about the message: a field that never enters `headers`
+never enters `Str`, and refusing on its account would reject a request that
+could have been served faithfully.
+
+This is a REFUSAL, not a repair, and the distinction is the point. Transcoding
+the value would put a lie in the Oath value: the handler would verify a signature
+over bytes that are not the bytes that arrived, and no test of the artifact could
+detect it, because the artifact never sees the original. Refusing keeps
+REQ-HEADER-VALUE-OCTETS exactly true on every request that IS delivered, instead
+of true-in-general and quietly false at the edge.
+
+The underlying limit is the one #133 tracks — `Str` is defined over codepoints,
+and a wire protocol is defined over octets. §14 does not resolve it; it declines
+to hide it. A future model that carried header octets as `(List Int)`, as `body`
+already does, would replace this rule rather than relax it.
+
 **REQ-HOST-IS-A-HEADER.** The request authority appears in `headers` under the
 name `host`, ordered and compared like any other entry. Host libraries routinely
 lift it out of the header collection into a dedicated field — Go's `net/http`
@@ -4239,6 +4270,22 @@ authority at all, no `host` entry appears; a backend MUST NOT synthesize one.
     connection            keep-alive            proxy-authenticate
     proxy-authorization   te                    trailer
     transfer-encoding     upgrade               content-length
+
+Also excluded is every field name NOMINATED by the `connection` field: its value
+is a comma-separated list of field names that this connection alone made
+connection-specific (RFC 9110 §7.6.1), so `Connection: x-hop` excludes `x-hop`
+too. Nominated names are compared after the same ASCII lowercasing as any other.
+Without this, a handler would see a field when reached directly and not see it
+when reached through a conformant intermediary that stripped it — a difference in
+the Oath value produced by the network path rather than by the request.
+
+**Nomination reaches only fields this section does not otherwise govern.** It
+cannot remove `host`, which REQ-HOST-IS-A-HEADER requires unconditionally, and it
+cannot reinstate a name excluded above. `Connection: host` is not a request to
+drop the authority — it is a nonsensical or hostile nomination, and honouring it
+would let a client delete a mandatory field from the Oath value and change how a
+handler behaves. A backend MUST ignore such a nomination rather than refuse the
+request: the field is still delivered, so nothing is lost or misrepresented.
 
 They describe how this message was TRANSMITTED, not what was requested. Most are
 connection-specific and hop-by-hop (RFC 9110 §7.6.1) — meaningful only between
