@@ -3845,10 +3845,20 @@ single-writer append-only journal, so no fixture can separate them, and the
 specification still has to pick one because a replicated or transactional
 registry would separate them.
 
-**IMPL-ISOLATED-SESSION.** An implementability claim MUST NOT be made from a run
-whose execution environment carried project-specific normative knowledge outside
-the exported surface. Where such knowledge was present, the run MUST disclose it
-and identify every value it may have supplied.
+**IMPL-ISOLATED-SESSION.** A SUFFICIENCY claim — a verdict of `PASS` — MUST NOT
+be made from a run whose execution environment carried project-specific normative
+knowledge outside the exported surface. Where such knowledge was present, the run
+MUST disclose it and identify every value it may have supplied, and what such a
+run MAY still record is governed by IMPL-CONTAMINATION-IS-NOT-A-MEASUREMENT
+below.
+
+This sentence originally forbade any claim at all. That was unworkable rather
+than merely strict: §13.3 requires a verdict of every completed round, so a
+disclosed-contaminated run that finished had nowhere to be recorded, and three
+consecutive rounds recorded one regardless. A prohibition the schema cannot
+express is a prohibition that will be violated silently, so it is narrowed here
+to the claim that is actually unsupportable — sufficiency — rather than left
+broad and disobeyed.
 
 An implementation is a function of `(surface, session)`, not of `surface` alone.
 A clean archive establishes only that the archive is clean; if the implementer's
@@ -3867,6 +3877,65 @@ token the excerpt never publishes. That disclosure did not weaken the round's
 finding; the finding WAS that the token is unspecified, and being able to supply
 one from memory is precisely what would have made the round look more successful
 than the text warranted.
+
+**IMPL-CONTAMINATION-IS-NOT-A-MEASUREMENT (normative).** A run that disclosed
+project-specific knowledge under IMPL-ISOLATED-SESSION MUST NOT record a verdict
+of `PASS`. It MAY record `FAIL` or `PASS-WITH-INFERENCE`, and such a verdict's
+INFERENCE COUNT is not a measurement of the surface in either direction. It MUST
+NOT be reported as a bound, a score, or a comparison against another round.
+
+Only the PASS prohibition is asymmetric, and it is the one that matters: a
+sufficiency claim is unsupportable from a contaminated run, because the
+environment is exactly the thing that may have supplied what the surface lacked.
+
+**The count is not a bound, and an earlier draft of this rule wrongly said it
+was.** That draft argued contamination can only REDUCE the inferences a subject
+needs — it can resolve an ambiguity silently, it cannot invent one — so the count
+would be a floor. The argument is false, and the round that produced this rule is
+its own counterexample. Contamination also INFLATES: prior knowledge primes a
+subject to consider alternatives a naive reader would not, to notice conflicts
+with an implementation it half-remembers, and to classify as an inference a
+reading it would otherwise have taken directly. Round 9's largest finding — that
+§14 defers its central type to a store outside the surface — was reported by a
+subject that said it *suspected such a store existed*. A clean subject might have
+declared a pair type of its own and never noticed the deferral at all.
+
+So what survives contamination is not the number but the EVIDENCE. An individual
+finding may be relied on exactly insofar as it is INDEPENDENTLY VERIFIABLE FROM
+THE SURFACE: "§14.2 defers to a type bound in a store, and no supplied file
+declares it" is checkable by reading §14.2, and does not require trusting
+anything about the subject's state. A finding that rests only on the subject's
+judgement does not survive, and neither does any arithmetic over the set.
+
+The record carries an explicit, REQUIRED isolation marker — recorded BEFORE
+dispatch, so its value cannot be chosen after the outcome is known — and separate
+from the reproducibility class: `true` (clean session), `false` (contamination
+disclosed), or `null` (unknown; the round predates this rule). **A `PASS`
+requires an affirmative `true`.** `false`, `null` and a missing field all forbid
+it, because absence of evidence of contamination is not evidence of isolation.
+Keying the prohibition on the reproducibility class alone would leave it
+bypassable by a contaminated round relabelled `FULLY REPRODUCIBLE`, and a rule
+that can be evaded by relabelling is a rule stated in prose only.
+
+Two further obligations follow from the marker being the thing a `PASS` rests on:
+
+- **It MUST be the value the round was DISPATCHED under**, and that is checkable
+  because the ledger is committed — git is the tamper-evident record of what the
+  pre-registration said. Reading only the final value would let the marker be
+  flipped in the same edit that records the outcome. The first `DISPATCHED`
+  revision governs; a `READY` one does not, because READY is editable by design.
+- **A `PASS` that discloses ANY contamination MUST state why none of it was
+  session-borne.** The disclosure list mixes kinds — an archive leak is not a
+  session leak — so the two are not automatically in conflict, but that is
+  precisely the shape in which an inadmissible `PASS` would pass unnoticed.
+
+This rule and its predecessor both exist because the ledger had been
+contradicting the prose. IMPL-ISOLATED-SESSION forbids a claim from a
+contaminated run, while §13.3 requires a verdict of every completed round — so a
+disclosed-contaminated run that finished had nowhere to be recorded, and three
+consecutive rounds recorded a verdict anyway. The schema and the prose
+disagreed, and the schema won silently: the same defect this section exists to
+catch, occurring in this section.
 
 **IMPL-IDENTITY-SUBJECT.** Every normative identity MUST explicitly identify its
 SUBJECT — the object the identity is an identity OF. Binding the identity's

@@ -31,7 +31,8 @@
     "part of §12 was repaired in 234e3ee between dispatch and return, so the run partly tested a document that no longer existed"
    ],
    "evidence": "docs/experiments/blind-license-evaluation.md",
-   "implementer_statement": "A reader with §12 and no fixtures cannot produce a single verdict. The vectors are functioning as normative text here."
+   "implementer_statement": "A reader with §12 and no fixtures cannot produce a single verdict. The vectors are functioning as normative text here.",
+   "session_isolated": null
   },
   {
    "round": 2,
@@ -68,7 +69,8 @@
     "scripts/license-rule-matrix.py"
    ],
    "exporter_note": "the exporter at this round's own recording commit predates the --paths flag, so it cannot be run with the `supplied` list this claim records; 78700a5 is the EARLIEST exporter that can express it. Not fitted to the answer: 78700a5, 262eefc and 4e7b8f5 all reproduce this digest identically, because the harness repair that changed round 6's surface only affected exports supplying oathrs/.",
-   "reproducibility_class": "FULLY REPRODUCIBLE"
+   "reproducibility_class": "FULLY REPRODUCIBLE",
+   "session_isolated": null
   },
   {
    "round": 3,
@@ -110,7 +112,8 @@
     "scripts/license-rule-matrix.py"
    ],
    "exporter_note": "the exporter at this round's own recording commit predates the --paths flag, so it cannot be run with the `supplied` list this claim records; 78700a5 is the EARLIEST exporter that can express it. Not fitted to the answer: 78700a5, 262eefc and 4e7b8f5 all reproduce this digest identically, because the harness repair that changed round 6's surface only affected exports supplying oathrs/.",
-   "reproducibility_class": "FULLY REPRODUCIBLE"
+   "reproducibility_class": "FULLY REPRODUCIBLE",
+   "session_isolated": null
   },
   {
    "round": 4,
@@ -157,7 +160,8 @@
    ],
    "evidence": "docs/experiments/blind-license-evaluation.md",
    "implementer_statement": "A working implementation came out of the prose plus model.json, but eleven things were not determined by them, and I left three vectors failing rather than tune to them.",
-   "reproducibility_class": "FULLY REPRODUCIBLE"
+   "reproducibility_class": "FULLY REPRODUCIBLE",
+   "session_isolated": null
   },
   {
    "round": 5,
@@ -238,7 +242,8 @@
    ],
    "evidence": "docs/experiments/blind-license-evaluation.md",
    "implementer_statement": "A working implementation exists, but §8.6 could not be built without inference, and the inference is not confined to cosmetics — one undetermined point is security-relevant and another is a live contradiction in the prose.",
-   "reproducibility_class": "FULLY REPRODUCIBLE"
+   "reproducibility_class": "FULLY REPRODUCIBLE",
+   "session_isolated": null
   },
   {
    "round": 6,
@@ -287,7 +292,8 @@
    ],
    "evidence": "docs/experiments/blind-license-evaluation.md",
    "implementer_statement": "Yes for the core, with three gaps I had to fill by assumption. Nothing in the fixtures changed a decision I had made.",
-   "reproducibility_class": "FULLY REPRODUCIBLE"
+   "reproducibility_class": "FULLY REPRODUCIBLE",
+   "session_isolated": null
   },
   {
    "round": 7,
@@ -343,7 +349,9 @@
    ],
    "evidence": "docs/experiments/blind-license-evaluation.md",
    "implementer_statement": "Yes-with-inference, and the inference is concentrated in exactly the parts no vector witnesses. The encoding half is implementable from the text alone — 15/15 on first run with no change after opening the vectors. The authority half is not: two conformant implementations can hand the same journal to two different keys, and the corpus cannot see it.",
-   "reproducibility_class": "ENVIRONMENT-CONSTRAINED"
+   "reproducibility_class": "ENVIRONMENT-CONSTRAINED",
+   "verdict_bound": "NOT A MEASUREMENT (§13 IMPL-CONTAMINATION-IS-NOT-A-MEASUREMENT, added after round 9). This run disclosed session contamination, so no PASS was ever admissible from it — that prohibition is sound and asymmetric. Its INFERENCE COUNT, however, is not a bound in either direction and must not be reported as a score or compared against another round. An earlier draft of the rule claimed the count was a LOWER bound, reasoning that contamination can only resolve ambiguities silently and never invent them. That was WRONG, and round 9 is its own counterexample: its largest finding — that §14 defers its central type to a store outside the surface — came from a subject that said it SUSPECTED such a store existed, which a clean subject would not have. Contamination inflates as well as deflates. What survives is the EVIDENCE, exactly insofar as each finding is independently verifiable from the surface itself.",
+   "session_isolated": false
   },
   {
    "round": 8,
@@ -398,12 +406,13 @@
     "COVERAGE: two of the four deliverables the harness names — the acceptance decision against non-empty state, and name resolution — have no vectors at all. RES-FIRST-COME, RES-AUTHORITY-CURRENT, RES-NO-CAPTURE, RES-MOST-SPECIFIC, RES-PROSPECTIVE and RES-NEVER-INFERRED remain unwitnessed"
    ],
    "evidence": "docs/experiments/blind-license-evaluation.md",
-   "implementer_statement": "Yes-with-inference, and §8.7 is markedly better than what surrounds it. §8.7.0 is the reason: naming the objects before the rules that use them eliminated the class of ambiguity that normally dominates these rounds. The genuinely weak surface in the kit is elsewhere — §8.2.1, which is the most insistent about byte agreement and the least sufficient to achieve it, and which has no fixtures at all."
+   "implementer_statement": "Yes-with-inference, and §8.7 is markedly better than what surrounds it. §8.7.0 is the reason: naming the objects before the rules that use them eliminated the class of ambiguity that normally dominates these rounds. The genuinely weak surface in the kit is elsewhere — §8.2.1, which is the most insistent about byte agreement and the least sufficient to achieve it, and which has no fixtures at all.",
+   "verdict_bound": "NOT A MEASUREMENT (§13 IMPL-CONTAMINATION-IS-NOT-A-MEASUREMENT, added after round 9). This run disclosed session contamination, so no PASS was ever admissible from it — that prohibition is sound and asymmetric. Its INFERENCE COUNT, however, is not a bound in either direction and must not be reported as a score or compared against another round. An earlier draft of the rule claimed the count was a LOWER bound, reasoning that contamination can only resolve ambiguities silently and never invent them. That was WRONG, and round 9 is its own counterexample: its largest finding — that §14 defers its central type to a store outside the surface — came from a subject that said it SUSPECTED such a store existed, which a clean subject would not have. Contamination inflates as well as deflates. What survives is the EVIDENCE, exactly insofar as each finding is independently verifiable from the surface itself.",
+   "session_isolated": false
   },
   {
    "round": 9,
    "date": "2026-08-02",
-   "status": "DISPATCHED",
    "sections": [
     "14"
    ],
@@ -418,9 +427,50 @@
    "hypothesis": "§14 is sufficient. Predicted PASS-WITH-INFERENCE rather than PASS. The section was written in one pass by the same author who wrote the adapter, and four of its seven obligations were added only after review found the prose claiming behaviour the code did not have or could not have. Text produced that way tends to be precise exactly where a defect was found and loose everywhere else, so I expect the surface to determine the rules it was corrected into and to leave at least one boundary the implementer must decide.",
    "hypothesis_recorded": "before dispatch",
    "prediction": "Seven INTERPRETATION questions, recorded before dispatch. These are deliberately not implementation-defect predictions: the round measures whether the prose DETERMINES a reading, so each is a place two honest readers could diverge and still both claim conformance. (1) Is host a header ENTRY or a separate Request field? (2) Does the raw path include the query string, and does it preserve percent-encoding? (3) Does cross-key sorting happen BEFORE or AFTER removal of framing and Connection-nominated fields — and does the answer change the result? (4) Are Connection option delimiters HTTP OWS (SP and HTAB) only, or whatever the implementer's language calls whitespace? (5) Are header values outside the representable byte domain REJECTED or lossily decoded? (6) Are framing fields a fixed normative SET, or inherited from whatever the host library chose to keep? (7) Do repeated values under one name remain separate and ordered, or may they be joined? I expect (3) to be the weakest, because the ordering was made normative only after review found the two rules interacting, and a reader who does not construct the interacting case may never notice the question exists.",
-   "claim_scope": "The export is PROSE-ONLY and carries no vectors, so a successful implementation demonstrates that THE TEXT COMMUNICATES THE MODEL. It does NOT demonstrate fixture coverage, and no §14 conformance vectors exist to be reproduced. §14.3's worked example is inside the prose and ships with it, which means a subject can check itself against one request — that is a property of the specification, not a supplied witness. Any verdict from this round must be phrased in those terms per IMPL-VERDICT-SCOPED.",
+   "claim_scope": "The export is PROSE-ONLY and carries no vectors, so a successful implementation demonstrates that THE TEXT COMMUNICATES THE MODEL. It does NOT demonstrate fixture coverage, and no §14 conformance vectors exist to be reproduced. §14.3's worked example is inside the prose and ships with it, which means a subject can check itself against one request — that is a property of the specification, not a supplied witness. Any verdict from this round must be phrased in those terms per IMPL-VERDICT-SCOPED. FURTHER NARROWED by IMPL-CONTAMINATION-IS-NOT-A-MEASUREMENT: this run disclosed contamination, so no PASS was ever admissible from it, and the count of ten is NOT a bound in either direction. Rely on the individual findings only where each is independently verifiable from the surface — I1, (a), (b), (c), (d), (e), (g) and (h) all are, by reading §14; the arithmetic over them is not.",
    "note": "CONTAMINATION, disclosed before dispatch. (a) The known IMPL-ISOLATED-SESSION violation from rounds 7 and 8 stands: the harness cannot strip this project's CLAUDE.md and memory index from a dispatched session's system prompt. (b) A SPECIFIC leak was found and closed while preparing this round — CLAUDE.md's queue entry had listed §14's rules verbatim (lowercased names, lexicographic order, host, raw target, framing excluded, non-ASCII refused), which would have handed the subject the entire model through the coaching channel rather than the export. That was removed before dispatch and CLAUDE.md now points at §14 without paraphrasing it; the other always-loaded channels were checked for the same leak. (c) Residual and unmitigated: the dispatched session still inherits the repository's working directory unless confined to the export root, and the repository contains the reference adapter, the corpus, and prose describing the model in examples/http.oath and apps/github-webhook/. Confinement to the export directory is therefore load-bearing for this round in a way it was not for §8.7, and a subject that reads outside it invalidates the result rather than merely weakening it.",
-   "dispatched": "2026-08-03; subject launched against the pinned export; apparatus frozen from this point"
+   "dispatched": "2026-08-03; subject launched against the pinned export; apparatus frozen from this point",
+   "verdict": "PASS-WITH-INFERENCE",
+   "vectors": "n/a — §14 declares no normative data and the surface carried no witnesses; §14.3's worked vector is inside the prose",
+   "reproducibility_class": "ENVIRONMENT-CONSTRAINED",
+   "hypothesis_outcome": "SPLIT — and the pre-registration was itself defective, which is recorded rather than tidied away. The hypothesis conflated two claims that its own wording contradicts: \"§14 is sufficient\" AND \"predicted PASS-WITH-INFERENCE rather than PASS\". Under §13.2 those cannot both hold — PASS-WITH-INFERENCE means precisely that the surface was NOT sufficient. Recorded honestly: (1) the SUFFICIENCY hypothesis is DISPROVED, by ten inferences, of which I1 shows the section cannot determine the value its own success criterion is stated over; (2) the VERDICT prediction was CORRECT, including its reasoning — text written in one pass by the adapter's own author is precise where a defect was found and loose elsewhere, and all four obligations added after review came back DERIVED. A pre-registration that asserts a hypothesis and simultaneously predicts its falsification cannot be scored as a single outcome; future rounds should state sufficiency and predicted verdict as separate fields.",
+   "prediction_outcome": "LARGELY WRONG, and wrong in the informative direction. Six of the seven pre-registered interpretation questions were DERIVED, not inferred: host as a header entry (D13/D14), raw path including the query and preserving percent-encoding (D16), the exclusion/ASCII ordering (D9), non-representable octets refused rather than decoded (D8), framing fields as a fixed normative set (D10), and repeats separate and ordered (D4/D5). Only Connection tokenization (I5) was inferred. The specifically-named weakest point — the sorting-versus-exclusion ordering — was derived from the sentence making it normative, and the subject reported it as the mutation that killed the most tests. Predicting WHERE a text is loose is evidently much harder than predicting THAT it is, and the pre-registration is what makes that visible instead of absorbable.",
+   "inferred": [
+    "I1 — the declaration of `Request` and of the header-pair constructor. §14.2 defers to \"the type bound to the name Request in the store\"; the store is not in the surface, and no other section declares it. THE CENTRAL ONE: §14.0 makes \"two backends produce the SAME Request value\" the entire obligation, and the surface does not determine what that value IS.",
+    "I2 — whether received-at is Int or Rat. \"seconds since the Unix epoch\" with no type; Rat is available and exact, and no rounding rule is given.",
+    "I3 — the octet→codepoint mapping for `method` and `path`. Both are Str; REQ-HEADER-OCTETS-ARE-ASCII is scoped to headers only, so a non-ASCII octet in a request target has no stated meaning and no refusal.",
+    "I4 — the replacement for obsolete line folding. The text forbids delivering it as an embedded newline and names no substitute.",
+    "I5 — how to tokenize the `connection` value. \"a comma-separated list of field names\" with no grammar.",
+    "I6 — several `connection` field lines. The text says \"the connection field\", singular, while §14 itself forbids joining repeats.",
+    "I7 — where an :authority-derived `host` entry sits in arrival order when a `host` field line is also present, which REQ-HEADER-REPEATS-PRESERVED makes significant.",
+    "I8 — whether trailer-section fields become header entries. Only the field NAME `trailer` is excluded.",
+    "I9 — the response to a message that cannot be de-framed at all.",
+    "I10 — an HTTP/1.1 absolute-form target, where the authority arrives by a third route the section does not name."
+   ],
+   "findings": [
+    "(a) `Connection: close` becomes a nomination. §14 calls the value \"a comma-separated list of field names\"; RFC 9110 §7.6.1 defines it as connection OPTIONS, of which `close` is the canonical example and is not a field name. Read literally — which is what DERIVED means — a backend must exclude a field named `close` on essentially every HTTP/1.1 request. The text gives no way to distinguish an option from a nominated name.",
+    "(b) §14.3's worked vector is not a legal HTTP/1.1 request — it carries no Host, while REQ-HOST-IS-A-HEADER calls Host mandatory in HTTP/1.1 — and it covers half the section. Counted exactly against §14's TWELVE REQ-* obligations: four are witnessed by claim (NAMES-LOWERCASE, ORDER-LEXICOGRAPHIC, REPEATS-PRESERVED, VALUES-NOT-JOINED); two incidentally (METHOD-VERBATIM, and PATH-IS-RAW only partly, since the target carries no percent-encoding so \"NOT percent-decoded\" is untested); and SIX not at all — VALUE-OCTETS, OCTETS-ARE-ASCII, FRAMING-FIELDS-EXCLUDED together with its nomination sub-rule and its normative precedence over the ASCII check, HOST-IS-A-HEADER, BODY-IS-OCTETS, TIME-IS-DATA. Those six are the ones carrying the security argument. Note this is precedence between exclusion and the ASCII check, NOT REQ-HEADER-ORDER-LEXICOGRAPHIC, which the vector does witness by producing an order different from arrival order.",
+    "(c) The Str/octet rationale is narrower than the rule it justifies: it argues from \"the printable US-ASCII range\" and then admits HTAB (0x09), which is outside it. The rule is sound; the stated reason does not cover the exemption granted in the same paragraph.",
+    "(d) \"it cannot reinstate a name excluded above\" is vacuous — nomination is a removal mechanism and has no reading under which it could add an entry.",
+    "(e) The parser/adapter boundary is never drawn, and REQ-HEADER-VALUE-OCTETS depends on it: a value \"crosses unchanged\" while OWS removal \"is parsing, not normalization\", and §14 defines the adapter's input as \"whatever reached it\". Two backends whose host libraries strip OWS differently can both claim conformance.",
+    "(f) MUTATION FINDING, in the specification's favour. Replacing ASCII lowering with a UNICODE-aware one is an EQUIVALENT mutant under §14 — every octet on which they disagree is outside 0x20–0x7E and refuses first. But a LOCALE-aware lowering is not equivalent: a Turkish-locale mapping sends ASCII `I` to U+0131, which no refusal catches. The clause \"locale- or Unicode-aware\" is doing real work in exactly one of its two halves, and the subject's first test set missed it.",
+    "(g) REQ-HEADER-OCTETS-ARE-ASCII's argument — a transcoded value makes the handler verify a signature over bytes that never arrived — applies verbatim to `path`, which REQ-PATH-IS-RAW justifies with \"signed schemes rely on the raw form\". The section identifies the hazard, states the reasoning, applies it to one of three Str fields, and is silent on the other two.",
+    "(h) §14.3 miscounts its own coverage: the prose says \"Three obligations are jointly witnessed here\" and then names FOUR rule identifiers, one clause covering REQ-HEADER-REPEATS-PRESERVED and REQ-HEADER-VALUES-NOT-JOINED together. Counted exactly, §14 states twelve REQ-* obligations; the vector witnesses four by claim, two incidentally (method, and path without any percent-encoding), and SIX not at all — including every rule carrying the security argument."
+   ],
+   "evidence": "docs/experiments/blind-request-model.md",
+   "contamination": [
+    "IMPL-ISOLATED-SESSION violated, as disclosed before dispatch: the harness cannot strip this project's CLAUDE.md and memory index from a dispatched session's system prompt.",
+    "The subject RECOGNISED the project and said so unprompted — the two-kernel structure, the registry, issue numbers #122/#133, and the phrase \"blind implementation\". It reported quarantining that knowledge, and that its prior context concerned phases and roadmap rather than §14's rules, so there was no concrete reference behaviour to leak.",
+    "The subject reported the moment it was most tempted: resolving I1 by going to look for the Request declaration in a store it suspected existed. It did not, and recorded the gap instead — which is the single most valuable finding of the round.",
+    "The subject reported reading nothing outside the dispatch root and its own work directory. That is an attestation, not a machine-checked fact; the harness cannot verify it.",
+    "MITIGATED BEFORE DISPATCH: CLAUDE.md's queue entry had paraphrased §14's rules verbatim and was reduced to a pointer, so the coaching channel did not carry the answer.",
+    "The subject was given no hint of the seven pre-registered interpretation questions, which is why the prediction outcome above is a measurement rather than a confirmation."
+   ],
+   "implementer_statement": "\"I implemented §14, but 10 rules had to be inferred rather than derived.\" Scoped as §13.4 requires: §14, on the exported normative surface 93294d60b71fa10d… (the manifest digest this round is bound to; the docs/SPEC.md file within it hashes to e68c305883e6…), was implemented with 10 inferences — of which I1 is not a matter of degree, because §14.0 makes \"two backends produce the SAME Request value\" the entire obligation of the section and the supplied surface does not determine what that value's type is.",
+   "reproducibility_note": "The surface, the exporter and the verifying record are all pinned to commits, so the SURFACE is fully reproducible. The MEASUREMENT is not: the dispatched session inherited this project's CLAUDE.md and memory index (the IMPL-ISOLATED-SESSION violation disclosed before dispatch), and the subject reported recognising the project from that context. Reproduction therefore depends on a property of the harness outside the repository. Classifying this FULLY REPRODUCIBLE would report the weaker guarantee as the stronger one.",
+   "verdict_bound": "NOT A MEASUREMENT (§13 IMPL-CONTAMINATION-IS-NOT-A-MEASUREMENT, added after round 9). This run disclosed session contamination, so no PASS was ever admissible from it — that prohibition is sound and asymmetric. Its INFERENCE COUNT, however, is not a bound in either direction and must not be reported as a score or compared against another round. An earlier draft of the rule claimed the count was a LOWER bound, reasoning that contamination can only resolve ambiguities silently and never invent them. That was WRONG, and round 9 is its own counterexample: its largest finding — that §14 defers its central type to a store outside the surface — came from a subject that said it SUSPECTED such a store existed, which a clean subject would not have. Contamination inflates as well as deflates. What survives is the EVIDENCE, exactly insofar as each finding is independently verifiable from the surface itself.",
+   "session_isolated": false,
+   "session_isolated_recorded": "AT OUTCOME TIME, not before dispatch. Round 9's dispatch commit did not carry this field: the rule requiring it (IMPL-ISOLATED-SESSION, as narrowed, plus IMPL-CONTAMINATION-IS-NOT-A-MEASUREMENT) was written as a CONSEQUENCE of this round. The value is nonetheless not in doubt — contamination was disclosed in the pre-registered `note` before dispatch, and the subject confirmed it unprompted on return. From round 10 the marker is enforced pre-dispatch; claiming retroactive pre-registration here would be exactly the overclaim §13 exists to catch."
   }
  ]
 }

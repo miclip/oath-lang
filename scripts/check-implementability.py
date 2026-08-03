@@ -44,6 +44,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 VERDICTS = {"PASS", "PASS-WITH-INFERENCE", "FAIL"}
+REPRO_CLASSES = {"FULLY REPRODUCIBLE", "ENVIRONMENT-CONSTRAINED"}
+# Round 7 is the run that DISCOVERED session contamination; every round from there
+# on must state its isolation explicitly. Rounds 1-6 genuinely do not know, and
+# `null` records that rather than pretending otherwise.
+ISOLATION_RULE_FROM_ROUND = 7
+# The marker became PRE-REGISTERED from round 10. Rounds 7-9 recorded it
+# retrospectively, at outcome time — round 9's own dispatch commit did not carry
+# it, because the rule requiring it was written as a consequence of round 9. The
+# pre-outcome branch enforces it for anything dispatched from now on; claiming
+# retroactive pre-registration for the three that predate the rule would be the
+# same overclaim this section exists to catch.
+MARKER_PREREGISTERED_FROM_ROUND = 10
 # PRE-OUTCOME STATES. A round carrying either has a hypothesis and no verdict.
 # The distinction between them is the MOMENT THE APPARATUS FREEZES, and it earns
 # a state of its own because the two are not the same claim:
@@ -61,10 +73,75 @@ VERDICTS = {"PASS", "PASS-WITH-INFERENCE", "FAIL"}
 # verdicts.
 PRE_OUTCOME = {"READY", "DISPATCHED"}
 REQUIRED = ["round", "date", "sections", "source", "verdict", "inferred",
-            "contamination", "evidence", "implementer_statement"]
+            "contamination", "evidence", "implementer_statement",
+            # §13 IMPL-ISOLATED-SESSION / IMPL-CONTAMINATION-IS-NOT-A-MEASUREMENT.
+            # An explicit, REQUIRED marker: true (clean), false (disclosed
+            # contamination), or null (unknown — predates the rule). It is a
+            # separate field from reproducibility_class on purpose. The class
+            # describes REPRODUCTION; this describes what the run may CLAIM, and
+            # keying the PASS ban on the class alone left it bypassable by a
+            # contaminated round labelled FULLY REPRODUCIBLE or omitting the
+            # field entirely.
+            "session_isolated"]
 # A bound claim must also record WHICH FILES were supplied. Without it the digest
 # can only be reproduced by whatever the exporter happens to ship today.
 REQUIRED_IF_BOUND = ["supplied"]
+
+
+_DISPATCH_MARKERS = None
+
+
+def _scan_dispatch_markers():
+    """Map round -> the session_isolated value at its FIRST committed DISPATCHED
+    state, by walking every revision of the ledger oldest-first, exactly once.
+
+    NO HISTORY LIMIT. An earlier version capped the walk at 300 revisions, which
+    is a time bomb rather than an optimisation: once that many commits touch the
+    ledger after a round's dispatch, its original DISPATCHED revision falls off
+    the end and the round either fails CI as unverifiable or — worse — validates
+    against a later, wrong marker. A claim must not become unverifiable because
+    the repository kept working.
+
+    Walking once and memoising costs a single pass however many rounds exist.
+    """
+    global _DISPATCH_MARKERS
+    if _DISPATCH_MARKERS is not None:
+        return _DISPATCH_MARKERS
+    found = {}
+    revs = subprocess.run(["git", "log", "--format=%H", "--", "docs/implementability.json"],
+                          capture_output=True, text=True, cwd=ROOT)
+    if revs.returncode == 0:
+        for rev in reversed(revs.stdout.split()):          # oldest-first
+            blob = subprocess.run(["git", "show", f"{rev}:docs/implementability.json"],
+                                  capture_output=True, text=True, cwd=ROOT)
+            if blob.returncode != 0:
+                continue
+            try:
+                old = json.loads(blob.stdout)
+            except json.JSONDecodeError:
+                continue
+            for orr in old.get("rounds", []):
+                rn = orr.get("round")
+                # DISPATCHED only, never READY: READY is editable by design, so a
+                # READY marker pre-registers nothing. First occurrence only, so a
+                # later DISPATCHED commit cannot revise what the subject ran under.
+                if rn not in found and orr.get("status") == "DISPATCHED":
+                    found[rn] = orr.get("session_isolated", "<missing>")
+    _DISPATCH_MARKERS = found
+    return found
+
+
+def preregistered_marker(round_no: int):
+    """The `session_isolated` value the round was DISPATCHED under: (value, found).
+
+    The ledger is committed, so git IS the tamper-evident record of what the
+    pre-registration said — no separate attestation is needed and none could be
+    trusted more. Without this the rule is unenforceable: an author can flip the
+    marker from false to true in the same edit that removes `status`, and a
+    checker reading only the final value admits the PASS.
+    """
+    m = _scan_dispatch_markers()
+    return (m[round_no], True) if round_no in m else (None, False)
 
 
 def recompute_surface(source: str, supplied=None, exporter_rev=None) -> str | None:
@@ -224,6 +301,20 @@ def main():
                                 f"remove `status` when recording the outcome")
             if not (r.get("hypothesis") or "").strip():
                 failures.append(f"round {n}: {st} without a pre-registered hypothesis")
+            # The isolation marker is PRE-REGISTERED like the hypothesis. These
+            # states skip REQUIRED, so without this a round could be dispatched
+            # with no marker and the value chosen after the outcome was known —
+            # which is the failure IMPL-PRE-REGISTERED exists to prevent, on the
+            # one field that decides whether a PASS is admissible at all.
+            # null means "unknown, predates this rule" and is admissible only for
+            # HISTORICAL rounds. A round being dispatched now must declare which
+            # it is, or the pre-registration decides nothing.
+            iso0 = r.get("session_isolated", "<missing>")
+            if not (iso0 is True or iso0 is False):
+                failures.append(f"round {n}: {st} without a pre-registered boolean "
+                                f"session_isolated marker (got {iso0!r}); a pending round "
+                                f"must declare true or false before the run — null is only "
+                                f"for rounds predating IMPL-ISOLATED-SESSION")
             label = "READY (not launched)" if st == "READY" else "DISPATCHED (apparatus frozen)"
             print(f"  round {n}  {label:<32} §{','.join(r.get('sections', []))}")
             sd_pending, src_pending = r.get("surface_digest"), r.get("source")
@@ -292,6 +383,99 @@ def main():
         if n in seen:
             failures.append(f"round {n}: duplicate round number")
         seen.add(n)
+
+        # §13 IMPL-CONTAMINATION-IS-NOT-A-MEASUREMENT. A disclosed-contaminated
+        # run may record FAIL or PASS-WITH-INFERENCE — never PASS, because a
+        # SUFFICIENCY claim is exactly what the environment may have supplied.
+        # The inference COUNT is not a bound in either direction and is not
+        # checked here: contamination inflates as well as deflates (prior
+        # knowledge primes a subject to flag readings it would otherwise take
+        # directly), so only the individual, independently-verifiable findings
+        # survive. An earlier draft of the rule claimed a lower bound; it was
+        # wrong and the specification now says so.
+        #
+        # ENVIRONMENT-CONSTRAINED is the marker. That class never waived
+        # IMPL-ISOLATED-SESSION, but the schema required a verdict of every
+        # completed round while the prose forbade the claim — so three rounds
+        # recorded one anyway. Enforcing it here is what stops the schema from
+        # quietly overruling the prose a fourth time.
+        # FAILS CLOSED ON UNKNOWN. A PASS requires an AFFIRMATIVE `session_isolated:
+        # true`; false, null and missing all forbid it. Absence of evidence of
+        # contamination is not evidence of isolation, and the historical rounds
+        # predating IMPL-ISOLATED-SESSION genuinely do not know (round 1 records
+        # its isolation as "instructional rather than structural").
+        iso = r.get("session_isolated")
+        # `null` means "unknown, predates IMPL-ISOLATED-SESSION" and is admissible
+        # ONLY for the rounds that actually predate it. Without this, a future
+        # completed round could use the historical value and never declare its
+        # isolation at all — the pre-outcome check is skipped once `status` is
+        # removed, and REQUIRED only tests that the key exists.
+        if iso is None and isinstance(n, int) and n >= ISOLATION_RULE_FROM_ROUND:
+            failures.append(
+                f"round {n}: session_isolated is null, which is reserved for rounds "
+                f"before {ISOLATION_RULE_FROM_ROUND} (predating IMPL-ISOLATED-SESSION). "
+                f"Declare true or false.")
+        # §13 IMPL-ISOLATED-SESSION requires the marker where contamination was
+        # disclosed to "identify every value it may have supplied". `false` with an
+        # empty contamination list asserts both that contamination occurred and
+        # that none did.
+        # `contamination` mixes KINDS — round 1's entries are an artifact leak
+        # (commit subject lines reaching the terminal), not a session. So
+        # `session_isolated: true` alongside disclosed contamination is not
+        # automatically contradictory, and rejecting it outright would refuse a
+        # legitimate archive-leak-only round. But it IS the shape that would
+        # bypass the PASS prohibition, so a PASS must say in words why none of
+        # what it disclosed was session-borne.
+        if v == "PASS" and (r.get("contamination") or []) and not (r.get("isolation_justification") or "").strip():
+            failures.append(
+                f"round {n}: verdict PASS with {len(r.get('contamination') or [])} contamination "
+                f"note(s) and no `isolation_justification` — a PASS must state why none of "
+                f"the disclosed contamination was session-borne (§13 IMPL-ISOLATED-SESSION)")
+        if iso is False and not (r.get("contamination") or []):
+            failures.append(
+                f"round {n}: session_isolated is false but contamination is empty — "
+                f"a contaminated run MUST identify what knowledge may have been supplied")
+        # The marker must be the one the round was DISPATCHED under. Enforced from
+        # MARKER_PREREGISTERED_FROM_ROUND; rounds 7-9 recorded it retrospectively
+        # because the rule was written as a consequence of round 9, and pretending
+        # otherwise would be the overclaim this section exists to catch.
+        # The round identifier must BE an integer. Using its type to opt out of the
+        # history lookup would let `"round": "10"` skip pre-registration entirely
+        # while every other check accepted it.
+        if not isinstance(n, int) or isinstance(n, bool):
+            failures.append(f"round {n!r}: round identifier must be an integer")
+        if isinstance(n, int) and not isinstance(n, bool) and n >= MARKER_PREREGISTERED_FROM_ROUND:
+            pre, found = preregistered_marker(n)
+            if not found:
+                failures.append(
+                    f"round {n}: no committed DISPATCHED revision carries a "
+                    f"session_isolated marker — it cannot be shown to predate the outcome")
+            elif pre is not iso:
+                failures.append(
+                    f"round {n}: session_isolated is {iso!r} but the round was dispatched "
+                    f"under {pre!r} — the isolation determination was changed after the "
+                    f"outcome was known")
+        if v == "PASS" and iso is not True:
+            failures.append(
+                f"round {n}: verdict PASS with session_isolated={iso!r} — "
+                f"IMPL-ISOLATED-SESSION forbids a claim from a contaminated run and "
+                f"IMPL-CONTAMINATION-IS-NOT-A-MEASUREMENT permits only FAIL or "
+                f"PASS-WITH-INFERENCE. A PASS requires session_isolated: true.")
+        # `is`, not `in`: Python treats 0 == False and 1 == True, so a membership
+        # test would accept the JSON numbers 0 and 1 as booleans.
+        if not (iso is True or iso is False or iso is None):
+            failures.append(f"round {n}: session_isolated must be true, false or null, not {iso!r}")
+        rc = r.get("reproducibility_class")
+        if rc is not None and rc not in REPRO_CLASSES:
+            failures.append(f"round {n}: reproducibility_class {rc!r} is not one of {sorted(REPRO_CLASSES)}")
+        # NO SECOND GUARD ON THE CLASS. An earlier version also refused a PASS from
+        # any ENVIRONMENT-CONSTRAINED round, as belt-and-braces. That was wrong and
+        # contradicted the specification: the class says REPRODUCTION depends on
+        # something outside the repository — a pinned solver, particular hardware —
+        # which is not the same as the session having carried project knowledge. A
+        # run can be perfectly isolated and still environment-constrained, and §13
+        # makes the affirmative marker sufficient. A redundant guard that rejects
+        # valid records is not redundancy; it is a second, disagreeing rule.
 
         # §13.2 IMPL-VERDICT-BY-SUBJECT: PASS requires the implementer's own
         # statement AND nothing inferred. An author cannot upgrade a verdict by
