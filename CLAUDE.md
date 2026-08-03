@@ -532,6 +532,30 @@ reconstruct the rule, and wrong the other when an implementer cannot obey it.
 Only measuring against a real stack distinguishes "strict" from "unsatisfiable" —
 reading cannot, and neither can taste.
 
+**BUT THE AXIS IS NOT THE WHOLE SPACE, AND WHAT IS OFF IT IS INTRODUCED BY THE
+REPAIR ITSELF.** One backed-out requirement produced three defects in three
+successive attempts, each found by the NEXT question rather than by re-reading:
+
+  required but unspecified          conformance demanded bytes no reader could
+                                    derive — the vocabulary lived only in the
+                                    reference implementation
+  locally repaired, globally        two normative sections assigned incompatible
+  contradictory                     obligations; each was fine alone
+  author uncertainty made           "WHETHER THIS IS REQUIRED IS UNDECIDED" was
+  normative                         written INTO the rule, handing every reader
+                                    the open question
+
+The parent: **a defect a repair introduces is invisible from the vantage point of
+the repair.** You cannot see the missing vocabulary because you know it, you
+cannot see the contradiction because you are reading one section, and your own
+uncertainty feels like honesty rather than like text. So three checks, each
+deliberately from OUTSIDE the edit: could a reader who knows only this document
+reconstruct it; does any OTHER section now disagree; and does the sentence
+transmit a decision or transmit that one is pending. **Never resolve the third by
+writing the uncertainty down** — a specification that records its author's open
+questions makes every implementation inherit them. Put the question on the issue
+and leave the text determinate, even if determinate means "not required".
+
 **THE GATE IS THREE-WAY: `oath eval` is the reference.** Never compare one backend
 against the other alone — two identically wrong lowerings agree. Writing the second
 backend already found a real defect in the first (a type assertion on a concrete

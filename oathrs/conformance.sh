@@ -187,10 +187,19 @@ if [ "$MODE" = "oracle" ]; then
   attempts_hdr="$(head -1 "$FIX/prove/attempts.txt")"
   "$BIN" scripts --attempts --outcomes "$FIX/prove/outcomes.json" $SRC > "$TMP/attempts.txt" 2>/dev/null || true
   if [ "$(head -1 "$TMP/attempts.txt" 2>/dev/null)" != "$attempts_hdr" ]; then
-    echo "  NOT WITNESSED: this kernel does not emit prove/attempts.txt, so $want_attempts"
-    echo "    scripts — every induction, lexicographic and recursion-induction subgoal —"
-    echo "    are compared against nothing here. Their bytes are normative (SPEC §7.2"
-    echo "    attempt-sequence stability); only the reference kernel currently pins them."
+    # ATTRIBUTION MATTERS HERE. An earlier wording said "this kernel does not
+    # emit prove/attempts.txt", which reads as the Rust being behind and points
+    # the next reader at patching it. It is not behind: §10 enumerates the
+    # conformance surface and this fixture is not among its points, so the
+    # protocol has never asked any kernel for it. Saying so is what keeps the
+    # remaining work a §10 DECISION rather than an implementation chore.
+    echo "  NOT WITNESSED: $want_attempts scripts — every induction, lexicographic and"
+    echo "    recursion-induction subgoal — are compared against nothing here. §7.2's"
+    echo "    rules DETERMINE their bytes, but prove/attempts.txt sits outside §10's"
+    echo "    conformance surface, so no CONFORMING kernel is required to emit it."
+    echo "    This harness asked (and would have failed a differing answer); not"
+    echo "    answering is permitted. Requiring it means first specifying labels,"
+    echo "    detail vocabulary, ordering and encoding as a wire format — #139."
     attempts_state="direct attempts only; the inductive subgoals are UNWITNESSED (#139)"
   elif diff "$TMP/attempts.txt" "$FIX/prove/attempts.txt" > "$TMP/attempts.diff"; then
     echo "  PASS: $want_attempts scripts byte-identical to prove/attempts.txt (full attempt sequence)"
