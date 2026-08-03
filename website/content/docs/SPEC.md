@@ -1396,6 +1396,38 @@ reproducibility (given the same solver):
   golden script texts for a curated structural sample (recursive axioms,
   uninterpreted callee, lemma-heavy interleaving, lexicographic-fragment
   recursion) so a hash divergence is debuggable byte-by-byte.
+  WHY THIS IS NORMATIVE AND NOT AN INTERNAL DETAIL: solver heuristics are
+  sensitive to both symbol names and assertion order, so without these
+  rules an unrelated prover change or a warm-versus-cold difference flips
+  borderline goals — nondeterminism that reads as regression. (The corpus
+  witness is q-drop.drop-back-only, which sat exactly at the budget edge
+  and flipped between warm and cold runs until the order was
+  canonicalized; it is now stably unproven at the normative budget.)
+- **Attempt-sequence stability (normative).** The rules above govern EVERY
+  script the strategy sequence emits, not only the direct attempt: the
+  lemma-free first attempt, each structural-induction constructor subgoal,
+  each lexicographic subgoal, and each recursion-induction base and step
+  obligation. `prove/scripts.txt` witnesses only the direct attempt — 447
+  of the 2904 scripts this corpus emits — so a kernel could reproduce it
+  exactly while emitting different bytes for every inductive subgoal.
+  `prove/attempts.txt` closes that gap: sha256 of every script the
+  sequence can emit FOR A GOAL UNDER THE RECORDED LEMMA STATE, in emission
+  order, keyed by (name, property, strategy, detail). A conforming kernel
+  MUST reproduce it. The pinned set is what the sequence can emit rather
+  than what one run did emit — a subgoal skipped because an earlier
+  strategy succeeded still determines the outcome on a corpus where that
+  strategy fails, and pinning only the executed subset would make the
+  fixture a function of the outcomes it exists to determine.
+  WHAT IT DOES NOT PIN, stated because the fixture is otherwise easy to
+  read as total: the lemma state is a PARAMETER of script identity (see
+  the previous rule), and both `scripts.txt` and `attempts.txt` fix it at
+  the recorded one. A cold fixpoint run attempts a goal under
+  intermediate, smaller lemma sets as sibling properties become proven,
+  and those scripts carry different assertions and different hashes. So
+  these fixtures close the STRATEGY dimension of the emitted set and leave
+  the LEMMA-STATE dimension open: they determine a goal's outcome given a
+  lemma state, not the path by which the fixpoint reaches one. Empirical
+  re-derivation remains the only check covering that path.
 - **Lexicographic induction (normative).** When single-binder induction
   fails, kernels MUST attempt lexicographic induction on each ordered pair
   (i, j) of distinct datatype-sorted binders, in ascending (i, j) order,
@@ -1410,19 +1442,6 @@ reproducibility (given the same solver):
   c(fresh) value, j := y, and remaining binders generalized. Sound by the
   lexicographic subterm order. (The corpus witness is merge, whose
   recursion shrinks either argument.)
-- **Script stability (normative).** A goal's emitted SMT script must be a
-  function of the goal and its admissible lemma SET only — independent of
-  attempt history and lemma acquisition history. Two rules deliver this:
-  fresh-variable numbering resets at each property attempt, and lemma
-  assertions are emitted in ascending (definition-hash, property-index)
-  order regardless of whether a lemma was loaded from prior-run metadata
-  or proven earlier in the same run. Solver heuristics are sensitive to
-  both names and assertion order: without these rules, unrelated prover
-  changes or warm-vs-cold differences flip borderline goals —
-  nondeterminism masquerading as regression. (The corpus witness is
-  q-drop.drop-back-only, which sat exactly at the budget edge and flipped
-  between warm and cold runs until the order was canonicalized; it is now
-  stably unproven at the normative budget.)
 - Kernels MAY gate fixpoint re-attempts on lemma-set growth: a goal whose
   available lemma set has not changed since its last failed attempt need
   not be re-attempted — with a deterministic solver and fixed budget the

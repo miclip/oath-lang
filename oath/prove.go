@@ -145,6 +145,90 @@ type smtCtx struct {
 	quantified bool
 	depth      int
 	intDivDefs bool // truncating-division bridge emitted? (SPEC §7.1, #71)
+
+	// ENUMERATION MODE (#139). When set, no solver runs: every script the
+	// strategy sequence builds is RECORDED and answered `unsat`, and each
+	// strategy's success return is bypassed, so the sequence walks to the end
+	// and yields every script it could emit rather than stopping at the first
+	// one that proves. This exists so `prove/attempts.txt` can pin the
+	// induction, lexicographic and recursion-induction scripts — which §7.2
+	// already makes normative (it names their constants `f<fi>`, `g<fi>`,
+	// `h<fj>` and specifies the lexicographic subgoal structure) but which no
+	// fixture witnessed. Only `prove/scripts.txt`'s direct attempt was pinned,
+	// while `conformance.sh` in oracle mode claimed outcomes were determined
+	// by pinned bytes — true only for goals that never reach induction.
+	//
+	// The recording seam is deliberately the SAME code path the prover runs, not
+	// a parallel enumerator: a second script builder would compare the bytes its
+	// author remembered to construct, and would drift from the emission it claims
+	// to pin. `enumerate` is set by scriptAttempts alone and never by proveOne.
+	enumerate bool
+	attempts  []scriptAttempt
+}
+
+// scriptAttempt is one script the strategy sequence can emit for a property.
+// `detail` locates it — which binder, which constructor, which ordered pair —
+// so a cross-kernel hash divergence names the subgoal that differs instead of
+// only the property.
+type scriptAttempt struct {
+	strategy string
+	detail   string
+	text     string
+}
+
+// solve runs one script, or — under enumeration — records it and answers
+// `unsat` so the sequence keeps building every remaining script.
+//
+// `unsat` is the correct enumeration answer at every site: within a strategy it
+// is what continues to the next constructor or subgoal, and the strategy's
+// success return is separately bypassed on c.enumerate, so the walk continues
+// into the strategies that follow. Answering `unknown` would stop each strategy
+// at its first constructor; answering `unsat` without bypassing the returns
+// would stop the walk at the first strategy.
+func (c *smtCtx) solve(strategy, detail, sc string, run func(string) (string, bool)) (string, bool) {
+	if c.enumerate {
+		c.attempts = append(c.attempts, scriptAttempt{strategy, detail, sc})
+		return "unsat", false
+	}
+	return run(sc)
+}
+
+// scriptAttempts returns every script the strategy sequence can emit for
+// property pi, in emission order, WITHOUT running a solver.
+//
+// The universe is the claim's, not the prover's: a script that a short-circuit
+// happens to skip on this corpus still determines the outcome on a corpus where
+// an earlier strategy fails, so enumeration reports what the sequence CAN emit
+// rather than what one run did emit. Pinning a superset is sound; pinning only
+// the executed subset would make the fixture depend on the very outcomes it
+// exists to determine.
+//
+// SCOPED TO ONE LEMMA STATE, and the boundary is the point. §7.2 makes a script
+// a pure function of (goal, RECORDED LEMMA STATE), and this walks the strategies
+// under the state loadLemmaLibrary reads — the settled one. A cold fixpoint run
+// attempts a goal under smaller intermediate sets as sibling properties become
+// proven, and those scripts have different bytes. So this closes the STRATEGY
+// dimension of the emitted set and leaves the LEMMA-STATE dimension open; the
+// residue is named in SPEC §7.2 and in conformance.sh rather than left for a
+// reader to discover, because the version of this comment that said "every
+// script the sequence can emit" was wrong in exactly the way #139 exists to fix.
+func scriptAttempts(st *Store, h string, pi int) ([]scriptAttempt, error) {
+	d, err := st.GetDef(h)
+	if err != nil {
+		return nil, err
+	}
+	m, err := st.GetMeta(h)
+	if err != nil {
+		return nil, err
+	}
+	if pi < 0 || pi >= len(d.Props) {
+		return nil, fmt.Errorf("no property %d", pi)
+	}
+	c := newSmtCtx(st, d, h)
+	c.enumerate = true
+	loadLemmaLibrary(c, st, d, h, m, pi)
+	c.proveOneInner(d, h, m, &d.Props[pi], pi)
+	return c.attempts, nil
 }
 
 // propMentions collects every definition hash a property references
@@ -1347,7 +1431,8 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 	// a fraction of one full attempt. Everything below is unchanged, so the
 	// recorded outcome is the UNION: anything provable before is still proven
 	// by a later strategy, plus the goals the library was strangling.
-	if lf, lfCap := runZ3Budget(buildScript(nil, nil, goal, !c.quantified, false), lemmaFreeRlimit()); !lfCap {
+	if lf, lfCap := c.solve("lemma-free", "", buildScript(nil, nil, goal, !c.quantified, false),
+		func(sc string) (string, bool) { return runZ3Budget(sc, lemmaFreeRlimit()) }); !lfCap {
 		if os.Getenv("OATH_PROVE_SPLIT") != "" {
 			pname := fmt.Sprintf("prop%d", pi)
 			if pi < len(m.PropNames) {
@@ -1362,7 +1447,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 			fmt.Fprintf(os.Stderr, "SPLIT\t%s.%s\tphase=lemma-free\tconsumed=%d\tverdict=%s\n",
 				m.Name, pname, calibLastConsumed.Load(), v)
 		}
-		if strings.HasPrefix(lf, "unsat") {
+		if strings.HasPrefix(lf, "unsat") && !c.enumerate {
 			return propOutcome{status: "proven", method: "direct (lemma-free)"}
 		}
 	}
@@ -1406,9 +1491,10 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 	var out string
 	var capHit bool
 	if inductionEligible {
-		out, capHit = runZ3Budget(directScript, directRlimit())
+		out, capHit = c.solve("direct", "", directScript,
+			func(sc string) (string, bool) { return runZ3Budget(sc, directRlimit()) })
 	} else {
-		out, capHit = runZ3(directScript)
+		out, capHit = c.solve("direct", "", directScript, runZ3)
 	}
 	if os.Getenv("OATH_PROVE_SPLIT") != "" {
 		pname := fmt.Sprintf("prop%d", pi)
@@ -1432,7 +1518,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 		out = ""
 	}
 	switch {
-	case strings.HasPrefix(out, "unsat"):
+	case strings.HasPrefix(out, "unsat") && !c.enumerate:
 		return propOutcome{status: "proven", method: "direct"}
 	case strings.HasPrefix(out, "sat") && !c.quantified:
 		return propOutcome{status: "refuted", detail: strings.TrimSpace(strings.TrimPrefix(out, "sat"))}
@@ -1481,7 +1567,8 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 				allUnsat = false
 				break
 			}
-			out, capHit := runZ3(script(extraDecls, extraAsserts, subgoal, false))
+			out, capHit := c.solve("induction", fmt.Sprintf("binder %d ctor %d", i, ci),
+				script(extraDecls, extraAsserts, subgoal, false), runZ3)
 			if capHit {
 				sawInvalid = true
 				allUnsat = false
@@ -1492,7 +1579,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 				break
 			}
 		}
-		if allUnsat {
+		if allUnsat && !c.enumerate {
 			bname := fmt.Sprintf("binder %d", i)
 			if i < len(m.ParamNames) { // best effort; prop binders are unnamed
 				bname = fmt.Sprintf("binder %d", i)
@@ -1549,7 +1636,9 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 						allUnsat = false
 						break
 					}
-					out, capHit := runZ3(script(declsI, nil, subgoal, false))
+					out, capHit := c.solve("lexicographic",
+						fmt.Sprintf("binders %d,%d ctor %d base", i, j, ci),
+						script(declsI, nil, subgoal, false), runZ3)
 					if capHit {
 						sawInvalid = true
 						allUnsat = false
@@ -1610,7 +1699,9 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 						allUnsat = false
 						break lexCtorI
 					}
-					out, capHit := runZ3(script(extraDecls, extraAsserts, subgoal, false))
+					out, capHit := c.solve("lexicographic",
+						fmt.Sprintf("binders %d,%d ctor %d,%d", i, j, ci, cj),
+						script(extraDecls, extraAsserts, subgoal, false), runZ3)
 					if capHit {
 						sawInvalid = true
 						allUnsat = false
@@ -1622,7 +1713,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 					}
 				}
 			}
-			if allUnsat {
+			if allUnsat && !c.enumerate {
 				return propOutcome{status: "proven", method: fmt.Sprintf("lexicographic induction on binders %d,%d", i, j)}
 			}
 		}
@@ -1723,8 +1814,10 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 					}
 					return "(and " + strings.Join(gs, " ") + ")"
 				}
-				discharge := func(extraAsserts []string, negated string) (bool, bool) {
-					out, cap := runZ3Budget(script(nil, extraAsserts, negated, false), directRlimit())
+				discharge := func(detail string, extraAsserts []string, negated string) (bool, bool) {
+					out, cap := c.solve("recursion-induction", detail,
+						script(nil, extraAsserts, negated, false),
+						func(sc string) (string, bool) { return runZ3Budget(sc, directRlimit()) })
 					return strings.HasPrefix(out, "unsat"), cap
 				}
 				// BASE: the goal off the recursive region.
@@ -1732,7 +1825,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 				for _, site := range w.sites {
 					baseAsserts = append(baseAsserts, "(assert (not "+guardConj(site.guards)+"))")
 				}
-				proved, capHit := discharge(baseAsserts, goal)
+				proved, capHit := discharge("base", baseAsserts, goal)
 				allOK := !capHit && proved
 				if capHit {
 					sawInvalid = true
@@ -1754,7 +1847,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 					}
 					groups[g] = append(groups[g], site)
 				}
-				for _, g := range order {
+				for gi, g := range order {
 					if !allOK {
 						break
 					}
@@ -1778,7 +1871,11 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 						allOK = false
 						break
 					}
-					sp, spCap := discharge(asserts, goal)
+					// The GUARD INDEX, not the guard text: `order` is the sites'
+					// first-touch order, which §7.2's structural naming already
+					// makes deterministic, and a guard expression is unbounded
+					// prose that would put solver syntax inside a fixture label.
+					sp, spCap := discharge(fmt.Sprintf("step %d", gi), asserts, goal)
 					if spCap {
 						sawInvalid = true
 						allOK = false
@@ -1789,7 +1886,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 						break
 					}
 				}
-				if allOK {
+				if allOK && !c.enumerate {
 					return propOutcome{status: "proven", method: "recursion induction on " + smtName(c.st.NameOf(h))}
 				}
 			}
@@ -1805,7 +1902,12 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 	// fast above. The script is byte-identical to the reduced attempt, so no
 	// new direct-attempt script hash is introduced (SPEC §7.2).
 	if inductionEligible {
-		fb, fbCap := runZ3(directScript)
+		// Recorded under its own label even though the bytes are the direct
+		// attempt's. §7.2 asserts in prose that the fallback introduces no new
+		// script hash; recording it makes that checkable rather than believed —
+		// TestFallbackReusesTheDirectScriptBytes reads the two attempts and
+		// compares them.
+		fb, fbCap := c.solve("direct-fallback", "", directScript, runZ3)
 		if os.Getenv("OATH_PROVE_SPLIT") != "" {
 			fmt.Fprintf(os.Stderr, "SPLIT\t%s\tphase=direct-fallback\tconsumed=%d\n", m.Name, calibLastConsumed.Load())
 		}
@@ -1813,7 +1915,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 			sawInvalid = true
 		} else {
 			switch {
-			case strings.HasPrefix(fb, "unsat"):
+			case strings.HasPrefix(fb, "unsat") && !c.enumerate:
 				return propOutcome{status: "proven", method: "direct"}
 			case strings.HasPrefix(fb, "sat") && !c.quantified:
 				return propOutcome{status: "refuted", detail: strings.TrimSpace(strings.TrimPrefix(fb, "sat"))}

@@ -375,6 +375,54 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 	}
 	fmt.Fprintf(&log, "prove/scripts.txt: %d direct-attempt script hashes\n", scriptCount)
 
+	// prove/attempts.txt — sha256 of EVERY script the strategy sequence can
+	// emit, not only the direct attempt (#139).
+	//
+	// WHY THIS EXISTS. scripts.txt pins the direct attempt alone, while
+	// conformance.sh's oracle mode concluded from it that "outcomes are
+	// determined: f(script bytes, solver, rlimit), all three pinned". That is
+	// true only for a goal that never reaches induction. On this corpus the
+	// direct attempt is 447 of 2904 emitted scripts, so the induction,
+	// lexicographic, recursion-induction and lemma-free scripts — every one of
+	// them normative under §7.2, which names their constants and specifies their
+	// subgoal structure — were byte-checked by nothing, and the oracle stood in
+	// for a full re-derivation it did not cover. An obligation with no witness
+	// is the gate reporting on a claim wider than it measures.
+	//
+	// The universe is the CLAIM's: every script the sequence can emit UNDER THE
+	// RECORDED LEMMA STATE, including those a short-circuit skips on this corpus.
+	// Recording only what one run executed would make the fixture a function of
+	// the outcomes it exists to determine, and would silently shrink whenever a
+	// goal started proving earlier. The lemma state is a deliberate parameter,
+	// not an oversight — see scriptAttempts and SPEC §7.2 for what that leaves
+	// unpinned and which check still covers it.
+	var attempts strings.Builder
+	attempts.WriteString("# name\tprop\tstrategy\tdetail\tsha256(script)\n")
+	attemptCount := 0
+	for _, name := range keys {
+		hh := names[name]
+		dd, err := st.GetDef(hh)
+		if err != nil || dd.K != "func" || len(dd.Props) == 0 {
+			continue
+		}
+		for pi := range dd.Props {
+			ats, err := scriptAttempts(st, hh, pi)
+			if err != nil {
+				continue // outside the provable fragment: no script exists
+			}
+			for _, a := range ats {
+				sum := sha256.Sum256([]byte(a.text))
+				fmt.Fprintf(&attempts, "%s\t%d\t%s\t%s\t%s\n",
+					name, pi, a.strategy, a.detail, hex.EncodeToString(sum[:]))
+				attemptCount++
+			}
+		}
+	}
+	if err := write(filepath.Join("prove", "attempts.txt"), []byte(attempts.String())); err != nil {
+		return "", err
+	}
+	fmt.Fprintf(&log, "prove/attempts.txt: %d script hashes across the full attempt sequence\n", attemptCount)
+
 	// prove/scripts/ — full golden script TEXTS for a curated set, one per
 	// structural feature of the translation. scripts.txt pins all 161 by
 	// hash; these make a divergence debuggable (a hash tells you THAT you

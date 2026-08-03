@@ -37,11 +37,22 @@ def derived():
     proven = sum(x["proven_count"] for x in d)
     full = sum(1 for x in d if x["prop_count"] and x["proven_count"] == x["prop_count"])
     names = json.loads((ROOT / "codebase/names.json").read_text())
+
+    # Script-pin coverage (#139). SPEC §7.2 states how much of the emitted set
+    # prove/scripts.txt actually witnesses, and that ratio is the reason
+    # attempts.txt exists — so it is exactly the kind of number that must be
+    # counted rather than written. Both files carry one `#` header line.
+    def rows(rel):
+        text = (ROOT / rel).read_text().splitlines()
+        return sum(1 for ln in text if ln.strip() and not ln.startswith("#"))
+
     return {
         "fully_proven": full,
         "proven_props": proven,
         "total_props": total,
         "corpus": len(names),
+        "direct_scripts": rows("fixtures/prove/scripts.txt"),
+        "total_attempts": rows("fixtures/prove/attempts.txt"),
     }
 
 
@@ -57,6 +68,10 @@ CLAIMS = [
      "DESIGN: definitions fully proven"),
     ("DESIGN.md", r"\*\*Coverage\.\*\* (\d+) definitions", "corpus",
      "DESIGN: corpus size"),
+    ("docs/SPEC.md", r"direct attempt — (\d+)\s*\n?\s*of the \d+ scripts this corpus emits",
+     "direct_scripts", "SPEC §7.2: direct-attempt scripts pinned"),
+    ("docs/SPEC.md", r"direct attempt — \d+\s*\n?\s*of the (\d+) scripts this corpus emits",
+     "total_attempts", "SPEC §7.2: scripts the attempt sequence emits"),
 ]
 
 

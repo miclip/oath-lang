@@ -130,12 +130,33 @@ done
 # proof outcome — z3 at the SPEC §7.2 rlimit budget, run-stability fixpoint
 # included. This is HOURS of solver time and is the definitive empirical
 # check. ORACLE (OATHRS_CONFORMANCE_PROVE=oracle): no solver runs; instead
-# the kernel must reproduce every direct-attempt script byte-for-byte
-# (fixtures/prove/scripts.txt) under the pinned solver version. Since an
-# outcome is a pure function of (script bytes, solver version, rlimit) —
-# SPEC §7.2, deterministic budget — byte-identical scripts under identical
-# pins DETERMINE identical outcomes. Per-push CI uses oracle mode; the full
-# mode runs on a schedule and on demand.
+# the kernel must reproduce the emitted scripts byte-for-byte under the pinned
+# solver version. Since an outcome is a pure function of (script bytes, solver
+# version, rlimit) — SPEC §7.2, deterministic budget — byte-identical scripts
+# under identical pins DETERMINE identical outcomes. Per-push CI uses oracle
+# mode; the full mode runs on a schedule and on demand.
+#
+# WHAT "THE EMITTED SCRIPTS" MEANS, and it is the whole soundness of this mode
+# (#139). The determinism argument quantifies over EVERY script the strategy
+# sequence runs, because any one of them can decide the outcome. This block used
+# to compare prove/scripts.txt — the DIRECT attempt only — and then print
+# "outcomes are determined: all three pinned". On this corpus the direct attempt
+# is 447 of 2904 emitted scripts, so for every goal that fell through to
+# induction the sentence asserted a determinism nothing had checked: two kernels
+# could agree on every direct script and still emit different inductive subgoals,
+# and oracle mode would report PASS. prove/attempts.txt pins the rest, and the
+# claim below is now stated over whichever of the two the kernel reproduced —
+# never over more.
+#
+# AND THE SAME CORRECTION APPLIES ONE LEVEL UP, which is why full mode is not
+# redundant. Both fixtures fix the RECORDED lemma state; §7.2 makes that state a
+# parameter of script identity. A cold fixpoint attempts a goal under smaller
+# intermediate lemma sets as siblings become proven, so those scripts differ in
+# bytes and are pinned by nothing. Oracle mode therefore determines a goal's
+# outcome GIVEN a lemma state; it does not determine the path the fixpoint takes
+# to reach one. That path is the residual value of the empirical re-derivation,
+# and naming it is what makes "scope the full run" (#139) a decidable question
+# rather than a preference.
 # ---------------------------------------------------------------------------
 MODE="${OATHRS_CONFORMANCE_PROVE:-full}"
 if [ "$MODE" = "oracle" ]; then
@@ -152,15 +173,40 @@ if [ "$MODE" = "oracle" ]; then
      && diff "$TMP/scripts.txt" "$FIX/prove/scripts.txt" > "$TMP/scripts.diff"; then
     n=$(( $(wc -l < "$TMP/scripts.txt" | tr -d ' ') - 1 ))
     echo "  PASS: $n direct-attempt scripts byte-identical to prove/scripts.txt"
-    echo "  outcomes are determined: f(script bytes, solver, rlimit), all three pinned."
-    echo "  (run without OATHRS_CONFORMANCE_PROVE=oracle for the empirical re-derivation)"
   else
     echo "  FAIL: script byte oracle diverged:"; head -20 "$TMP/scripts.diff" 2>/dev/null; fail=1
   fi
 
+  # The rest of the emitted set (#139). THREE outcomes, and each is stated
+  # separately, because collapsing "the kernel does not implement this" into
+  # either PASS or FAIL is how a gate ends up reporting on a claim it never
+  # measured. The kernel is judged to implement --attempts by whether it emits
+  # the fixture's HEADER — not by its exit status, which is also what an
+  # unknown-flag parser produces when it treats "--attempts" as a filename.
+  want_attempts=$(( $(wc -l < "$FIX/prove/attempts.txt" | tr -d ' ') - 1 ))
+  attempts_hdr="$(head -1 "$FIX/prove/attempts.txt")"
+  "$BIN" scripts --attempts --outcomes "$FIX/prove/outcomes.json" $SRC > "$TMP/attempts.txt" 2>/dev/null || true
+  if [ "$(head -1 "$TMP/attempts.txt" 2>/dev/null)" != "$attempts_hdr" ]; then
+    echo "  NOT WITNESSED: this kernel does not emit prove/attempts.txt, so $want_attempts"
+    echo "    scripts — every induction, lexicographic and recursion-induction subgoal —"
+    echo "    are compared against nothing here. Their bytes are normative (SPEC §7.2"
+    echo "    attempt-sequence stability); only the reference kernel currently pins them."
+    attempts_state="direct attempts only; the inductive subgoals are UNWITNESSED (#139)"
+  elif diff "$TMP/attempts.txt" "$FIX/prove/attempts.txt" > "$TMP/attempts.diff"; then
+    echo "  PASS: $want_attempts scripts byte-identical to prove/attempts.txt (full attempt sequence)"
+    attempts_state="the full attempt sequence"
+  else
+    echo "  FAIL: attempt-sequence byte oracle diverged:"; head -20 "$TMP/attempts.diff" 2>/dev/null; fail=1
+    attempts_state="DIVERGED"
+  fi
+  echo "  outcomes are determined by f(script bytes, solver, rlimit) over: $attempts_state,"
+  echo "  each GIVEN the recorded lemma state — which both fixtures fix. A cold fixpoint"
+  echo "  run also emits scripts under intermediate, smaller lemma sets, and those are"
+  echo "  pinned by nothing; re-deriving that path is what full mode still buys (#139)."
+
   echo
   if [ $fail -eq 0 ]; then
-    echo "CONFORMANCE: PASS (checks 1-4 + byte oracle; outcomes determined, not re-derived)"
+    echo "CONFORMANCE: PASS (checks 1-4 + byte oracle over $attempts_state)"
   else
     echo "CONFORMANCE: FAIL"
   fi

@@ -89,16 +89,16 @@ until it exactly matched what had been demonstrated. Continue that.
 
 ### THE QUEUE — one ordering, in three buckets; position is not priority
 
-**FIRST, AND DELIBERATELY NOT IN A BUCKET — #139's first half.** `oathrs/conformance.sh`
-in oracle mode prints *outcomes are determined: f(script bytes, solver, rlimit),
-all three pinned*, but `prove/scripts.txt` pins DIRECT-attempt scripts only. The
-structural, lexicographic and recursion-induction scripts are byte-checked by
-nothing, so the sentence is false for every goal that falls through to induction.
-This is not a scheduling question and does not belong in a clock bucket: the gate
-that decides whether a change is safe currently asserts more than it checks, and
-under **verify the measuring instrument before interpreting its output** that
-makes it the prerequisite for reading any oracle-mode PASS. It is also bounded
-and mechanical — pin the remaining strategies and the claim becomes exactly true.
+**FIRST, AND DELIBERATELY NOT IN A BUCKET — the rest of #139's first half.**
+Oracle mode is the gate that decides whether a change is safe, so under **verify
+the measuring instrument before interpreting its output** its own claim is the
+prerequisite for reading any PASS it prints, not an item competing with the
+others. The reference kernel now pins the full attempt sequence
+(`fixtures/prove/attempts.txt`, SPEC §7.2 attempt-sequence stability); the Rust
+kernel does not yet emit it, and oracle mode SAYS SO in its verdict rather than
+implying coverage it lacks. **Read #139 for what remains** — the Rust half is a
+blind task, and describing it here would state the reference implementation's
+conclusions in the one file a dispatched subject inherits.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
