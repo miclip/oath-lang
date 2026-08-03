@@ -18,9 +18,11 @@ correct as instructions, and silently becomes history the moment the work lands 
 no word has to change for it to start lying. That is how this file accumulated
 four superseded queue orderings, and it did it again the same day the rule above
 was written: sixty lines of *do #141, then round 10, #122 is NOT shipped* stayed
-in place after all three had landed. **So the first act of a session is to check
-the queue against `gh issue list`, not to read the queue** — and when writing
-about work in flight, prefer a POINTER to the issue over a description of it,
+in place after all three had landed. **So the queue is never read as fact — it is
+checked against GitHub by step 2 of the startup sequence below, which carries the
+exact command** (do not improvise one: the obvious `gh issue list` silently
+omits closed and paginated issues) — and when writing about work in flight,
+prefer a POINTER to the issue over a description of it,
 because a pointer cannot go stale in this direction. A stale instruction is worse
 than a missing one: it is confidently followed.
 
@@ -54,7 +56,7 @@ were written as if unrelated:
     what depends on external state   the authority to derive it from
     ------------------------------------------------------------------------
     prose figures                    fixtures/outcomes.json (check-doc-numbers)
-    the queue's class                gh issue list
+    the queue's class                each named issue's state (startup step 2)
     "are these the same?"            the canonical hash, not a walker (#141)
     "which scripts run?"             the prover's own solve seam (#139)
 
@@ -83,7 +85,64 @@ through deletion. **The signal to watch is not line count** — it is whether ne
 guidance starts EXPLAINING existing guidance instead of ORGANIZING it. A file
 that grows while repeatedly finding the parent rule is healthier than a shorter
 one carrying four versions of the same queue, which is what this file actually
-had. The one worked example so far: "verify the measuring instrument before
+had.
+
+**AND THE TEST IS BEHAVIOURAL, NOT DIMENSIONAL — THE COLD READ IS AN INSTRUMENT.
+IT IS THE STARTUP SEQUENCE, AND THERE IS ONLY ONE:**
+
+  1. **Read this file cold** and note what it tells you to do first. Do not act.
+  2. **Check the STATUS of every issue this file names.** Derive the list from
+     THIS FILE, so the check cannot miss what the file mentions:
+
+         ids=$(grep -o '#[0-9]\+' CLAUDE.md | tr -d '#' | sort -un)
+         got=$(printf '%s\n' "$ids" | while read -r n; do
+                 gh issue view "$n" --json number,state -q '"\(.number)\t\(.state)"'
+               done)
+         printf '%s\n' "$got"
+         if [ -z "$ids" ]; then echo "INCOMPLETE — no issue ids found; run from the repo root"
+         elif [ "$(printf '%s\n' "$ids" | wc -l)" = "$(printf '%s\n' "$got" | wc -l)" ]
+         then echo "COMPLETE"
+         else echo "INCOMPLETE — a lookup failed; this check did NOT run"; fi
+
+     Not `gh issue list`: its default page is open issues only and the first
+     thirty, and ANY fixed `--limit` silently truncates later — a check that
+     claims completeness must take its universe from the claim (the issues this
+     file names) rather than from a page of GitHub. The COUNT ASSERTION is not
+     decoration: without it a transient API failure drops one issue's line and
+     the output still looks like a clean report, which is this repo's most
+     familiar defect wearing a new costume. It has already caught one instrument
+     bug — an earlier `for n in $ids` did not word-split under zsh and the
+     assertion reported INCOMPLETE rather than silently checking nothing.
+     Status is the ONLY part of the queue with an external authority, and it is
+     the part that silently rots: an issue closes elsewhere and no word here
+     changes.
+  3. **If they disagree, the file is wrong — repair it before starting work.**
+     The disagreement IS the measurement; skipping the repair discards it and
+     leaves the next session to make the same discovery.
+
+**Step 2 CANNOT validate the ordering, the buckets, or the triggers**, and no
+command can: those are judgment recorded here, with no external authority to
+derive them from. Do not let a green status check read as a validated queue.
+What tests the judgment is step 1 — whether a fresh reader picks the right first
+task — which is exactly why the instrument is a cold READ and not a script.
+
+Ask throughout: can a fresh reader orient correctly, quickly, and without acting
+on stale guidance? Do NOT substitute a line budget or a token budget; size is
+neither good nor bad, and a number is easy to satisfy without changing what a
+reader does.
+
+It earned instrument status the way anything here does — by catching what nothing
+else could. CI was green, every gate passed, the issues were internally
+consistent and the tree was clean, and a reader starting from this file would
+still have begun the wrong work inside a minute, because sixty lines described
+work that had already shipped. **No other check in this repo measures startup
+correctness.** It is the same criterion as the conformance work, applied to
+prose: not *is the document short*, but *does it produce the intended behaviour
+in an independent reader* — which is why the cold read must be done at the START
+of a session, by the reader whose behaviour is being measured, and cannot be
+delegated to the author who already knows what the file meant to say.
+
+The one worked example of the parent rule so far: "verify the measuring instrument before
 interpreting its output" was placed ABOVE the gate advice it generates rather
 than beside it as another peer bullet.
 
@@ -96,9 +155,9 @@ than beside it as another peer bullet.
   Phase 5  Can the compiler FAITHFULLY OBSERVE the language?             <- here
 
 Sharper: **Phase 5 is about reducing the semantic gap between specification and
-execution.** #114, #115, #126 and #118 all fit that description, and none of them
-made Oath more expressive — they made existing semantics more faithfully
-realized.
+execution.** #114, #115's LLVM half, #126 and #118 all fit that description, and
+none of them made Oath more expressive — they made existing semantics more
+faithfully realized.
 
 **IMPLEMENTATION IS NO LONGER THE LIMITING FACTOR; CALIBRATION OF CLAIMS IS.**
 That sentence explains nearly every significant correction of recent sessions:
@@ -458,10 +517,33 @@ with it, silently. So: assert the final summary line, count the checks that ran,
 and make the harness fail LOUDLY when its own setup did not work — a check that
 cannot tell its setup failed from the defect it hunts is worse than no check.
 
-**WHEN A DESIGN KEEPS ACCUMULATING EXCEPTIONS, LOOK FOR THE MISSING
-TRANSFORMATION.** A static description often becomes simpler rewritten as a total
-transformation with named operations. Not an §14 lesson — the pattern the whole
-project arrived at independently, each time replacing FACTS with TRANSFORMATIONS:
+**TWO TRIGGERS SAY "AN ARTEFACT IS MISSING", AND THEY FIRE AT DIFFERENT TIMES.**
+A design that keeps ACCUMULATING EXCEPTIONS is the early one. The late one, worth
+more because it fires when you are already committed: **consecutive repairs to
+one issue failing for UNRELATED reasons.** Stop patching and ask what artefact
+would have made every failed repair unnecessary — the individual failures look
+independent precisely because each is routing around the same absent structure,
+and that is what makes the pattern hard to see from inside a repair.
+
+    issue          the repairs that failed              the missing artefact
+    -------------------------------------------------------------------------
+    §14            prose → deeper dependency →          a transformation table
+                   relocated ambiguity
+    attempts.txt   under-specification → §10            an interchange format
+                   contradiction → normative doubt
+    "same shape?"  structural-walker edge cases         the canonical hash
+    this file      move history → stale instructions    derivation from `gh`
+
+Note what the artefacts have in common: none is a rule, and no amount of rule-
+writing produces one. This is the same law as *asserting an obligation cannot
+create the structure needed to satisfy it*, met from the other end — there you
+notice the structure is presupposed, here you notice its absence only after
+several repairs have failed in different directions.
+
+**THE MISSING ARTEFACT IS OFTEN A TRANSFORMATION.** A static description usually
+becomes simpler rewritten as a total transformation with named operations — the
+pattern the whole project arrived at independently, each time replacing FACTS
+with TRANSFORMATIONS:
 
     authority              → journal transitions over (authority, authority_rev)
     transfer               → an authority-state transition
@@ -612,8 +694,12 @@ THE MOMENT IT HAPPENED? (DESIGN.md, four categories)
 
 GitHub issues on miclip/oath-lang. Closed as of 2026-07: team store & policy,
 conformance + CI, O1 identity, prover fixpoint, stateful worlds, #14 (the live
-registry above), #114 (the compiler boundary), #115 (the second backend), #126
-(required values), #118 (typed Str lowering). Open research projects, each its
+registry above), #114 (the compiler boundary), #126
+(required values), #118 (typed Str lowering). **#115 is still OPEN** — the LLVM
+backend landed and is described above, but the issue is the wider #13b (typed
+IR, monomorphisation, MLIR), and a shipped subset is not a closed issue. It was
+listed here as closed until the startup check compared this line against `gh`.
+Open research projects, each its
 own session: **#117** (narrowed capability requirements), **#116** (signed
 provenance attestation), **#65** (discovery roadmap), **#66** (delegated token
 minting + authorized-key registration — an opt-in CONSTRAINT on onboarding, not a
