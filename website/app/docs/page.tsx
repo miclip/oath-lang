@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { stats } from "@/lib/corpus";
+import { canonicalUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Docs — Overview",
   description:
     "What Oath Language is and why it exists: an AI-native verified-codebase kernel.",
+  alternates: { canonical: canonicalUrl("/docs") },
 };
 
 export default function DocsOverview() {

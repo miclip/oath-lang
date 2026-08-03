@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import ReactMarkdown from "react-markdown";
 import { refdocs, refdocBySlug } from "@/lib/refdocs";
+import { canonicalUrl } from "@/lib/site";
 
 export function generateStaticParams() {
   return refdocs.map((d) => ({ slug: d.slug }));
@@ -31,7 +32,11 @@ export async function generateMetadata({
   const { slug } = await params;
   const d = refdocBySlug(slug);
   if (!d) return { title: "Not found" };
-  return { title: `Docs — ${d.title}`, description: d.blurb };
+  return {
+    title: `Docs — ${d.title}`,
+    description: d.blurb,
+    alternates: { canonical: canonicalUrl(`/docs/reference/${d.slug}`) },
+  };
 }
 
 export default async function RefDocPage({

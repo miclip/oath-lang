@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { CodeBlock } from "@/components/CodeBlock";
+import { canonicalUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Docs — Quickstart",
   description: "Build the Oath Language kernel and put your first verified definition.",
+  alternates: { canonical: canonicalUrl("/docs/quickstart") },
 };
 
 function Sh({ code }: { code: string }) {

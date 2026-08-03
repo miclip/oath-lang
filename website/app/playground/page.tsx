@@ -4,11 +4,13 @@ import { Footer } from "@/components/Footer";
 import { CorpusExplorer } from "@/components/CorpusExplorer";
 import { PipelineDemo } from "@/components/PipelineDemo";
 import { stats } from "@/lib/corpus";
+import { canonicalUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Playground",
   description:
     "Explore Oath Language's real verified corpus: every definition with its actual content hash and Z3 verdict. Nothing mocked.",
+  alternates: { canonical: canonicalUrl("/playground") },
 };
 
 export default function PlaygroundPage() {

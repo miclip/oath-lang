@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { refdocs, refdocGroups } from "@/lib/refdocs";
+import { canonicalUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Docs — Reference",
   description:
     "The full reference set, rendered from the repository markdown: the normative specification, the authority model, licensing, the type and evaluation model, and how to operate a registry.",
+  alternates: { canonical: canonicalUrl("/docs/reference") },
 };
 
 export default function ReferenceIndex() {

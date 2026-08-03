@@ -1,8 +1,7 @@
 import type { MetadataRoute } from "next";
 import { refdocs } from "@/lib/refdocs";
+import { SITE_ORIGIN } from "@/lib/site";
 import { tutorials } from "@/lib/tutorials";
-
-const BASE = "https://oath-lang.org";
 
 // One entry per app-router page. Keep in sync when routes are added/removed.
 const ROUTES: Array<{
@@ -21,6 +20,7 @@ const ROUTES: Array<{
   { path: "/essays/building-oath", changeFrequency: "yearly", priority: 0.5 },
   { path: "/essays/outside-audit", changeFrequency: "yearly", priority: 0.5 },
   { path: "/essays/what-remains", changeFrequency: "yearly", priority: 0.5 },
+  { path: "/essays/nine-minute-gap", changeFrequency: "yearly", priority: 0.5 },
   // Reference docs and tutorials are DERIVED from their manifests rather than
   // listed by hand. The comment above says "keep in sync when routes are added",
   // which is an instruction a person forgets; these two families now cannot
@@ -41,10 +41,8 @@ const ROUTES: Array<{
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const lastModified = new Date();
   return ROUTES.map(({ path, changeFrequency, priority }) => ({
-    url: `${BASE}${path}`,
-    lastModified,
+    url: `${SITE_ORIGIN}${path}`,
     changeFrequency,
     priority,
   }));

@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { canonicalUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "What a registry is entitled to say",
   description:
     "At 12:22Z the registry called it tested. Less than an hour later it called it PROVEN. Nothing about the artifact changed — it was already proven on the author's machine. A recorded case study, including a correction to this essay's own original claim.",
+  alternates: { canonical: canonicalUrl("/essays/nine-minute-gap") },
 };
 
 export default function NineMinuteGap() {
