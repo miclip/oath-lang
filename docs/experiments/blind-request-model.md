@@ -475,3 +475,121 @@ manifest.
 Its prompt was identical to round 9's. No hint of the pre-registered claims or
 risks was given, which is why the scoring above is a measurement rather than a
 confirmation.
+
+---
+
+# Blind round 11 — do the repairs determine what round 10 had to infer?
+
+**Verdict: PASS-WITH-INFERENCE (9 inferences).** Surface `a1f9a71f233beba3…`,
+exported from `89413e1`. Python 3, stdlib only: 61 tests, 28 mutants, 26 killed
+and 2 surviving deliberately. Both §14.3 vectors reproduce exactly, including the
+refusal and its exclusion-precedes-check companion.
+
+The question was narrow and pre-registered per item: **all seven of round 10's
+findings were repaired — did that close the eight readings it had to infer?**
+
+## Answer: two closed, four open, two unmeasured
+
+| round 10 inference | outcome |
+|---|---|
+| several `Host` field lines | **closed** — derived from the new "more than one is MALFORMED: 400" |
+| the adapter's access to the HTTP version | **closed** — the subject reasoned it unprompted: an `:authority` route exists only under HTTP/2 and /3, so the route tag carries the scope |
+| status code when authorities disagree | **STILL OPEN.** First recorded closed, because the subject listed 400 under DERIVED — but the sentence it quoted says only that the request is "malformed and no `Request` is constructed", and §14 assigns 400 to the separate duplicate-`Host` case. The subject over-derived and I propagated it |
+| `connection` list grammar | **open** |
+| absolute-form target grammar | **open** |
+| is a lifted authority octet-checked? | **open** — split on the exact sentence the hypothesis quoted |
+| an empty `Host` value | **not reported** |
+| `:scheme` on HTTP/2 | **not reported** |
+
+That is **two** closed, four open and two unmeasured — the first draft of this
+table said three closed, before review noticed the third rested on a status code
+the text does not assign.
+
+**"Not reported" is its own state.** The subject was not asked about those two and
+did not reach them; a reading nobody had to make is not thereby determined.
+Recording them as closed would be the overclaim this whole exercise exists to
+prevent — so **#122 cannot close on this round.**
+
+The framing claim — that the repair targeted findings rather than inferences —
+holds only partly, and the correction is worth stating. **Two inferences DID close
+because of specific repairs**: multiple `Host` lines closed on the explicit "more
+than one is MALFORMED" rule added after round 10, and the version question closed
+on the new parser-boundary contract, which the pre-registration named as the
+candidate. What does not hold is any claim that the repairs closed the inferences
+generally — four of the six the subject reached remain open, and two were never
+reached.
+
+## The headline is a defect I introduced hours earlier
+
+`PROTO-PARSER-BOUNDARY` enumerates the authority as ONE component. But the same
+row requires the resolved form to arrive "with PROTO-AUTHORITY-MUST-AGREE and
+REQ-HOST-IS-A-HEADER's duplicate-`Host` rejection already enforced", and the
+prose adds that "whichever form a parser supplies, the obligations travel with
+it" — so under the **tagged** form the adapter must enforce them. It cannot:
+comparing `:authority` against a `Host` line needs two values, and rejecting a
+duplicate `Host` needs a list.
+
+The subject calls this "not merely ambiguous but *unsatisfiable as written*", and
+names why it stings:
+
+> it is a repeat of the failure mode PROTO-PARSER-BOUNDARY's own principle names:
+> "DO NOT REQUIRE A TRANSPORT FACT TO BE RECONSTRUCTED AFTER THE PARSER HAS
+> ERASED IT." The duplicate-`Host` fact is erased by a singular component.
+
+I wrote that principle, in that rule, in the same edit that made the component
+singular.
+
+## Five more findings, and two of them are repairs that reintroduced their own defect
+
+- **`HDR-PRINCIPLE` calls three dispositions exhaustive and §14 uses a fourth.**
+  I added DISCARD after round 10 found PRESERVE and CANONICALIZE insufficient.
+  §14's most-argued rule REFUSES a request carrying legal `obs-text` — neither
+  preserving, canonicalizing nor discarding it. Same omission, one repair later.
+- **The coverage table's "thirteen obligations" counts only §14.2's rows.** §14
+  states at least nine further normative rules — the parser boundary, integral
+  time, obs-fold, nomination union, authority agreement, trailers, authority
+  source, unframeable messages, types-by-identity — none with a witness row, and
+  several unexercised by the vectors. §14.3 already carries a note about having
+  miscounted once. This is the same error at larger scale, found immediately
+  after I repaired that table. The subject demonstrated the nine ARE testable by
+  writing coverage for them and killing every mutant.
+- **"It cannot remove `host`" is unreachable.** `Host` is never a header-section
+  field line, so `host` is never PRESENT, so nomination can never reach it.
+  Deleting the guard survives the entire suite. Dead code presented as a live
+  constraint — and its survival is one of the two deliberate mutants.
+- **§14.3.1 does not state its line endings** while §14.3.2 explicitly does.
+- **§14.3.1 does not say whether the blank line and body are part of "these
+  octets".**
+
+## The named risks: one hit, two near-misses at the right locations
+
+I pre-registered three places I expected new inference. The parser-boundary
+conditional was a **hit**, and the subject found something stronger than
+predicted. The other two landed at the right locations with different defects —
+I expected DISCARD's boundary against CANONICALIZE to be unstated and got the
+missing fourth disposition; I expected the duplicate-`Host` refusal to sit
+awkwardly inside a placement rule and got dead code instead. **Per the assessment
+discipline those are not scored as hits**, and the three unpredicted findings are
+not weaker for being unpredicted.
+
+## Contamination — and a scope gap in my own gate
+
+The subject named specific §14-adjacent content in its injected context. Checked
+against the actual channels, the disclosure is **part true and part overstated**:
+`X-GitHub-Event`, `hdr-probe`, "handler header model" and `#122` appear in
+**neither** `CLAUDE.md` nor the memory files. Adjacent vocabulary does — memory
+carries "codepoints" and one "net/http". No rule identifier appears in either.
+
+**The useful result is not adjudicating the disclosure; it is that checking it
+exposed a gap in the gate.** `check-coaching-leak` covered `CLAUDE.md` only. A
+dispatched session also inherits the **user-scoped memory directory**, which sits
+outside the repository and which CI cannot reach. The script now accepts extra
+paths for a by-hand pre-dispatch check, and its success line names what it did
+not cover — an earlier version reported "1 file" regardless of arguments, which
+would have made a 21-file check read as a 1-file one.
+
+Checked by hand after the fact: 21 always-loaded files name none of the 162 rule
+identifiers `docs/SPEC.md` defines. Witnessed by planting one in a memory file.
+
+CI enforces the repo half; a human must run the other. That is a procedure, not a
+gate, and the round's contamination note now records which was done.
