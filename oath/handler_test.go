@@ -368,3 +368,140 @@ func TestHandlerRequestModelIsCanonical(t *testing.T) {
 		t.Fatalf("a non-token nomination suppressed a real header: status %d body %q", status, body)
 	}
 }
+
+// SPEC §14.1a PROTO-TYPES-BY-IDENTITY (#141): an entry point is a handler because
+// of the IDENTITY of its argument and result types, never because of the names a
+// store binds them to.
+//
+// MUTATED ON BOTH SIDES OF THE REAL-WORLD BOUNDARY, deliberately. The easy half
+// is that a qualifying entry is still recognized. The dangerous half is the other
+// one: recognition is what decides whether `oath build` hands a program the real
+// world, so a near-match that slipped through would be compiled as a handler and
+// handed the adapter's five-field Request value it is not shaped to hold. A test
+// asserting only the positive direction would pass for a matcher that accepts
+// everything.
+func TestHandlerRecognizedByIdentityNotByName(t *testing.T) {
+	base := func() *Store {
+		st := newStore(t)
+		put(t, st, `(data List [a] (Nil) (Cons a (List a)))`)
+		put(t, st, `(data Str [] (SNil) (SCons Int Str))`)
+		put(t, st, `(data Pair [a b] (Pair a b))`)
+		return st
+	}
+	handler := func(st *Store, reqName, respName string) (*Ty, entryKind, bool) {
+		t.Helper()
+		req := Ty{K: "data", Hash: mustResolve(t, st, reqName)}
+		resp := Ty{K: "data", Hash: mustResolve(t, st, respName)}
+		return entryShape(st, &Ty{K: "fun", A: &req, B: &resp})
+	}
+
+	// POSITIVE — the canonical declarations under names §14 never mentions, and
+	// with constructors named nothing like `Req`/`Resp`. Constructor names are
+	// per-alias metadata rather than identity, so they must not matter.
+	t.Run("canonical types under foreign names", func(t *testing.T) {
+		st := base()
+		put(t, st, `(data Inbound [] (Envelope Str Str (List (Pair Str Str)) (List Int) Int))`)
+		put(t, st, `(data Outbound [] (Reply Int (List (Pair Str Str)) (List Int)))`)
+		if _, kind, ok := handler(st, "Inbound", "Outbound"); !ok || kind != entryHandler {
+			t.Fatalf("renamed canonical types were NOT recognized: kind=%v ok=%v", kind, ok)
+		}
+	})
+
+	// NEGATIVE — each is one field, one element type, one constructor or one type
+	// parameter away from the declaration, and each MUST be refused. A near-match
+	// that is accepted is strictly worse than one that is rejected loudly.
+	for _, tc := range []struct{ name, req, resp string }{
+		{"four fields, not five",
+			`(data R [] (X Str Str (List (Pair Str Str)) (List Int)))`,
+			`(data P [] (Y Int (List (Pair Str Str)) (List Int)))`},
+		{"SIX fields, not five — the extra one is silently ignorable",
+			`(data R [] (X Str Str (List (Pair Str Str)) (List Int) Int Int))`,
+			`(data P [] (Y Int (List (Pair Str Str)) (List Int)))`},
+		{"header values are Int, not Str",
+			`(data R [] (X Str Str (List (Pair Str Int)) (List Int) Int))`,
+			`(data P [] (Y Int (List (Pair Str Str)) (List Int)))`},
+		{"body is a list of Str, not octets",
+			`(data R [] (X Str Str (List (Pair Str Str)) (List Str) Int))`,
+			`(data P [] (Y Int (List (Pair Str Str)) (List Int)))`},
+		{"headers are a bare list, not of pairs",
+			`(data R [] (X Str Str (List Str) (List Int) Int))`,
+			`(data P [] (Y Int (List (Pair Str Str)) (List Int)))`},
+		{"fields transposed: path before method is fine, but Int leads",
+			`(data R [] (X Int Str (List (Pair Str Str)) (List Int) Str))`,
+			`(data P [] (Y Int (List (Pair Str Str)) (List Int)))`},
+		{"two constructors, not one",
+			`(data R [] (X Str Str (List (Pair Str Str)) (List Int) Int) (Z))`,
+			`(data P [] (Y Int (List (Pair Str Str)) (List Int)))`},
+		{"parameterized, so not the ground type",
+			`(data R [a] (X Str Str (List (Pair Str Str)) (List Int) Int))`,
+			`(data P [] (Y Int (List (Pair Str Str)) (List Int)))`},
+		{"response has four fields",
+			`(data R [] (X Str Str (List (Pair Str Str)) (List Int) Int))`,
+			`(data P [] (Y Int (List (Pair Str Str)) (List Int) Int))`},
+	} {
+		t.Run("near-match refused: "+tc.name, func(t *testing.T) {
+			st := base()
+			put(t, st, tc.req)
+			put(t, st, tc.resp)
+			if _, kind, ok := handler(st, "R", "P"); ok {
+				t.Fatalf("NEAR-MATCH ACCEPTED as %v — it would receive the real world", kind)
+			}
+		})
+	}
+
+	// THE NAME IS NOT THE THING. Binding the names §14 uses to a type that is not
+	// the declaration must not manufacture a handler — this is the direction the
+	// old by-name resolution got wrong, and the only one that hands capabilities
+	// to something unprepared for them.
+	t.Run("the names Request and Response bound to unrelated types", func(t *testing.T) {
+		st := base()
+		put(t, st, `(data Request [] (Req Str))`)
+		put(t, st, `(data Response [] (Resp Int))`)
+		if _, kind, ok := handler(st, "Request", "Response"); ok {
+			t.Fatalf("a type NAMED Request was accepted as %v — recognition is still name-based", kind)
+		}
+	})
+
+	// And the canonical declarations bound to NO name at all are still the
+	// protocol types: identity does not depend on a binding existing.
+	t.Run("canonical types with no name binding", func(t *testing.T) {
+		st := base()
+		put(t, st, `(data Inbound [] (Envelope Str Str (List (Pair Str Str)) (List Int) Int))`)
+		put(t, st, `(data Outbound [] (Reply Int (List (Pair Str Str)) (List Int)))`)
+		protoInit()
+		req := Ty{K: "data", Hash: mustResolve(t, st, "Inbound")}
+		if !isProtoData(&req, protoRequest) {
+			t.Fatal("the canonical Request declaration was not recognized by identity")
+		}
+	})
+}
+
+// The identities SPEC §14.1a's declarations denote, pinned against the committed
+// store. Computing them from constructed Defs is only sound if the declarations
+// in §14.1a are the ones the corpus actually contains — otherwise the compiler
+// would be recognizing a protocol nobody writes.
+//
+// This is also the alarm for an encoding change: §1 says encoding changes fork
+// reality, and if that happens these five move. The test then fails HERE, naming
+// the protocol, rather than the handler protocol quietly ceasing to match
+// anything.
+func TestProtocolTypeHashesMatchTheCorpus(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(data List [a] (Nil) (Cons a (List a)))`)
+	put(t, st, `(data Str [] (SNil) (SCons Int Str))`)
+	put(t, st, `(data Pair [a b] (Pair a b))`)
+	put(t, st, `(data Request [] (Req Str Str (List (Pair Str Str)) (List Int) Int))`)
+	put(t, st, `(data Response [] (Resp Int (List (Pair Str Str)) (List Int)))`)
+
+	protoInit()
+	for _, tc := range []struct{ name, computed string }{
+		{"Str", protoStr}, {"List", protoList}, {"Pair", protoPair},
+		{"Request", protoRequest}, {"Response", protoResponse},
+	} {
+		got := mustResolve(t, st, tc.name)
+		if got != tc.computed {
+			t.Errorf("%s: the store elaborates %s, §14.1a's declaration hashes to %s",
+				tc.name, got[:16], tc.computed[:16])
+		}
+	}
+}

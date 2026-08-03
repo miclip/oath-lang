@@ -42,6 +42,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // provenanceSchema versions the manifest embedded in every compiled artifact.
@@ -102,14 +103,21 @@ func entryShape(st *Store, t *Ty) (*Ty, entryKind, bool) {
 	return nil, entryCLI, false
 }
 
-// isHandlerEntry recognizes (-> Request Response), the types being those bound
-// to the names `Request` and `Response` in this store — the same by-convention
-// resolution `Str` and `List` already use.
+// isHandlerEntry recognizes (-> Request Response) by the STRUCTURE of the two
+// types, per SPEC §14.1a: a store may bind them to any name or to none, and
+// binding the name `Request` to an unrelated type must not produce a handler.
+//
+// This replaced a by-name resolution (`isNamedData(st, "Request", …)`), which
+// failed in both directions: a valid handler whose types were bound under other
+// names was refused, and an unrelated type bound to that name was compiled as a
+// handler and then handed the adapter's five-field Request value — with, through
+// `oath build`, the real world attached.
 func isHandlerEntry(st *Store, t *Ty) bool {
 	if t == nil || t.K != "fun" {
 		return false
 	}
-	return isNamedData(st, "Request", t.A) && isNamedData(st, "Response", t.B)
+	protoInit()
+	return isProtoData(t.A, protoRequest) && isProtoData(t.B, protoResponse)
 }
 
 func isNamedData(st *Store, name string, t *Ty) bool {
@@ -852,4 +860,65 @@ func (p *CompiledProgram) stampBackend(backend string) error {
 		return fmt.Errorf("refusing to build %s: the provenance record would be incomplete (%v)", p.Entry, err)
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// SPEC §14.1a — the handler protocol's types, recognized by IDENTITY.
+//
+// §14.1a declares `List`, `Pair`, `Request` and `Response`, and requires that an
+// entry point be a handler because of the IDENTITY of its argument and result
+// types, never because of the names a store binds them to.
+//
+// THE DECLARATIONS ARE CONSTRUCTED HERE AND HASHED, rather than resolved. That
+// is not a shortcut around structural matching — under content addressing the
+// two are the same thing: a datatype's hash IS the canonical encoding of its
+// declaration, so two structurally identical declarations have one hash by
+// construction. It is also STRICTER than walking the tree, because a walk
+// compares the fields it occurs to the author to compare, while a hash compares
+// every byte of the canonical form. An earlier structural walker was replaced
+// for exactly that reason: it tested `K == "int"` and would have accepted a
+// node carrying surplus serialized fields whose canonical identity differs.
+//
+// Constructor names are absent by the same mechanism: they are per-alias
+// metadata and not in the hashed `Def`, so `Req` and `Envelope` are vocabulary,
+// not identity.
+//
+// TestProtocolTypeHashesMatchTheCorpus pins these against the committed store —
+// if §1's encoding changes, they move with it and that test says so rather than
+// the protocol drifting in silence.
+
+var (
+	protoOnce                      sync.Once
+	protoStr, protoList, protoPair string
+	protoRequest, protoResponse    string
+)
+
+func protoInit() {
+	protoOnce.Do(func() {
+		// (data Str [] (SNil) (SCons Int Str))
+		protoStr = hashDef(&Def{K: "data", Ctors: [][]Ty{{}, {*tInt(), {K: "rec"}}}})
+		// (data List [a] (Nil) (Cons a (List a)))
+		protoList = hashDef(&Def{K: "data", TyVars: 1,
+			Ctors: [][]Ty{{}, {*tVar(0), {K: "rec", Args: []Ty{*tVar(0)}}}}})
+		// (data Pair [a b] (Pair a b))
+		protoPair = hashDef(&Def{K: "data", TyVars: 2, Ctors: [][]Ty{{*tVar(0), *tVar(1)}}})
+
+		str := Ty{K: "data", Hash: protoStr}
+		hdrs := Ty{K: "data", Hash: protoList,
+			Args: []Ty{{K: "data", Hash: protoPair, Args: []Ty{str, str}}}}
+		octets := Ty{K: "data", Hash: protoList, Args: []Ty{*tInt()}}
+		// (data Request [] (Req Str Str (List (Pair Str Str)) (List Int) Int))
+		protoRequest = hashDef(&Def{K: "data",
+			Ctors: [][]Ty{{str, str, hdrs, octets, *tInt()}}})
+		// (data Response [] (Resp Int (List (Pair Str Str)) (List Int)))
+		protoResponse = hashDef(&Def{K: "data",
+			Ctors: [][]Ty{{*tInt(), hdrs, octets}}})
+	})
+}
+
+// isProtoData reports whether t is exactly the ground datatype with that hash.
+// `len(t.Args) != 0` matters: the protocol types take no type arguments, and a
+// node carrying them is a different type however its hash reads.
+func isProtoData(t *Ty, hash string) bool {
+	return t != nil && t.K == "data" && t.Hash == hash && len(t.Args) == 0
 }
