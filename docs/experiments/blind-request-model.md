@@ -519,6 +519,39 @@ candidate. What does not hold is any claim that the repairs closed the inference
 generally — four of the six the subject reached remain open, and two were never
 reached.
 
+## The shape, classified
+
+| disposition | items |
+|---|---|
+| **DERIVED** | several `Host` lines; the adapter's need for the HTTP version |
+| **STILL INFERRED** | `connection` grammar; absolute-form grammar; lifted-authority octet check; status code on disagreement |
+| **NOT REACHED** | an empty `Host` value; `:scheme` on HTTP/2 |
+| **REPLACED** | the parser boundary; `HDR-PRINCIPLE`; the coverage table |
+| **CONTRADICTION** | the tagged authority component — singular by enumeration, plural by obligation |
+| **NEW INFERENCE** | obs-fold whitespace; unfold-vs-strip order; field-line splitting; "disagree"; truncation layer |
+| **PINNED / UNOBSERVABLE** | nomination-by-presence |
+
+**NOT REACHED is not a synonym for either neighbour.** The subject never had to
+make those two readings, so the surface is untested on them: calling them DERIVED
+would credit the text with determining something nobody consulted it about, and
+calling them STILL INFERRED would charge it with an ambiguity nobody hit.
+
+**REPLACED is the round's real shape, and there are three.** Each is a repair that
+closed round 10's defect and introduced another at the same boundary — a
+different result from "the repairs did not work", and a more uncomfortable one:
+
+| boundary | round 10 found | the repair | round 11 found |
+|---|---|---|---|
+| parser boundary | under-specified input | enumerated six components | the authority component is singular where the same paragraph needs a list |
+| `HDR-PRINCIPLE` | two dispositions, §14 used three | added DISCARD | the most-argued rule is a fourth, REFUSE |
+| coverage table | claimed witnesses it lacked | fixed the two rows | the count still ranges over §14.2's rows while §14 states nine more rules |
+
+One entry is worth noting for the opposite reason. **PINNED / UNOBSERVABLE was
+used as §13 intends, for the first time**: the subject built the mutant for the
+unpinned nomination reading, watched it survive, and reported that survival as
+*confirming* the section's claim rather than exposing a hole. Round 10's subject
+found the same fact and I first recorded it as a coverage defect.
+
 ## The headline is a defect I introduced hours earlier
 
 `PROTO-PARSER-BOUNDARY` enumerates the authority as ONE component. But the same
