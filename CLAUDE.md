@@ -432,6 +432,29 @@ independence: never "fix" oathrs by copying from oath/ — fix the spec and
 let a blind agent fix the Rust. `oathrs/DIVERGENCES.md` is the record of
 every ambiguity found this way.
 
+**RUN IT IN ORACLE MODE. The default is the nine-hour job.**
+
+    OATHRS_CONFORMANCE_PROVE=oracle ./oathrs/conformance.sh    # ~2 min
+
+This is the gate **every push runs in CI**, and it is the one that decides
+whether a change is safe. It checks 1-4 live and settles 5-6 by byte oracle: an
+outcome is a pure function of (script bytes, solver version, rlimit), so 447
+byte-identical direct-attempt scripts under a pinned z3 DETERMINE identical
+outcomes — including the ones that never prove.
+
+The bare `./oathrs/conformance.sh` defaults to `full`, the cold empirical
+re-derivation. CI runs that only on `schedule` / `workflow_dispatch` with a
+350-minute timeout. **It took over nine hours locally**, because ~145 properties
+do not prove and each burns the full 400M rlimit through every strategy,
+serially. The instruction above used to omit the mode, which sent a session
+straight into the scheduled job while believing it was running the push gate.
+
+**What full mode still buys, stated narrowly:** `scripts.txt` pins DIRECT-attempt
+scripts only, so the oracle does not byte-check the structural, lexicographic or
+recursion-induction scripts. Full mode is the only thing exercising that half of
+§7.2 — which is a reason to pin those scripts too, not a reason to re-derive an
+unchanged corpus. See the issue on scoping it.
+
 **DO NOT PUT A `CLAUDE.md` (or any session guidance) INSIDE `oathrs/`.** The
 §10.0a blind surface deliberately lifts the `oathrs/` prefix ban in order to ship
 the Rust to a blind subject, so a nested guidance file gets EXPORTED — and
