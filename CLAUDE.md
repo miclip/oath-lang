@@ -52,10 +52,20 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
 **Compiler/runtime — the window is closing.**
 
-  1. **#122** handler header model      unblocks real use
+  1. ~~**#122** handler header model~~  SHIPPED as SPEC §14 — see below
   2. **#121** hex-decode                unblocks real use
   3. **#117 / #69** scoped authority    language design, and see below
   4. **#133** scalar-only Str           language design, NORMATIVE
+
+**#122 SHIPPED, WITH ONE STEP OUTSTANDING.** SPEC §14 is the handler protocol's
+normative Request model: names ASCII-lowercased, entries lexicographic, repeats
+preserved and never joined, `host` present whatever the HTTP version called it,
+raw target, framing fields excluded by name, and non-ASCII field octets REFUSED
+rather than transcoded. It is new normative text, so this repo's definition of
+done requires a **blind round scoped to it, and that round has NOT been run.**
+`scripts/blind-export.py --section 14` is wired and preflights clean; the surface
+is deliberately prose-only, because a vector file would let a subject reproduce
+the answer without deriving the rules.
 
 **Feedback/tooling — the window is NOT closing.** Improves confidence in future
 work; nothing depends on it immediately.

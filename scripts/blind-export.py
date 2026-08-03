@@ -73,6 +73,19 @@ SURFACES = {
     # corpus it must reproduce; NOT oath/, which implements the same rule.
     "10.0a": ([], ["oathrs/", "fixtures/canonical/", "fixtures/hashes.txt",
                    "examples/", "fixtures/MANIFEST.md"]),
+    # §14 (#122): the handler protocol's Request model. NO normative data and NO
+    # witnesses — deliberately, and this is the strongest form of the test rather
+    # than a gap. The section's whole claim is that its PROSE determines one
+    # canonical Request value from an HTTP request; a subject given a vector file
+    # could reproduce the vector without ever deriving the rules, which is
+    # exactly the corroboration §13 exists to withhold. The worked example in
+    # §14.3 is inside the prose and ships with it.
+    #
+    # The subject's deliverable is an adapter, not a kernel: give it an HTTP
+    # request and it must produce the header list, method and path §14 requires.
+    # oath/ is forbidden by default here, which matters more than usual — the Go
+    # adapter IS the reference implementation of this section.
+    "14": ([], []),
 }
 
 # NORMATIVE DATA: incorporated by reference, schema and interpretation defined in
