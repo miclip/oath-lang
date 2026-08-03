@@ -45,6 +45,26 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 VERDICTS = {"PASS", "PASS-WITH-INFERENCE", "FAIL"}
 REPRO_CLASSES = {"FULLY REPRODUCIBLE", "ENVIRONMENT-CONSTRAINED"}
+# Per-item disposition states for a validation round. Seven, not six: NOT-REACHED
+# was added after round 11 showed the grid silently assumed every item would be
+# exercised. It is not a synonym for either neighbour — calling an unexercised
+# item DERIVED credits the text with determining something nobody consulted it
+# about, and calling it STILL-INFERRED charges it with an ambiguity nobody hit.
+# Both are wrong in opposite directions, so it gets its own name and is treated as
+# UNMEASURED: an open question counting neither for nor against closure.
+DISPOSITIONS = {"derived", "still-inferred", "replaced", "new-inference",
+                "contradiction", "pinned-unobservable", "not-reached"}
+# A not-reached item MUST say WHY, because the two causes have opposite meaning:
+# STRUCTURAL means the repair eliminated the path that forced the inference, which
+# is evidence the repair changed the reasoning landscape; INCIDENTAL means the
+# subject simply never hit it, which is only missing coverage. Left unannotated,
+# the flattering reading is the one a later reader will assume.
+NOT_REACHED_CAUSES = {"incidental", "structural"}
+# Required from the round that introduced the schema. Optional-by-default would
+# make the whole invariant skippable by deleting the field — a grid could then
+# carry unannotated not-reached items and the checker would pass, which is the
+# same fail-open shape as an absent isolation marker.
+DISPOSITIONS_FROM_ROUND = 11
 # Round 7 is the run that DISCOVERED session contamination; every round from there
 # on must state its isolation explicitly. Rounds 1-6 genuinely do not know, and
 # `null` records that rather than pretending otherwise.
@@ -552,6 +572,137 @@ def main():
         # higher one obtained by adaptation, and nothing else in the output says so.
         if r.get("constructive") and not (r.get("constructive_note") or "").strip():
             failures.append(f"round {n}: marked constructive with no note saying what was refused (§13.2)")
+
+        dsps = r.get("dispositions")
+        # SHAPE FIRST. Hand-edited ledger data must make this gate FAIL, not
+        # raise: a string or null element would otherwise reach .get() and kill
+        # the run with a traceback, which reads as a broken checker rather than a
+        # bad record.
+        if dsps is not None and not isinstance(dsps, list):
+            failures.append(f"round {n}: `dispositions` is not a list")
+            dsps = None
+        elif dsps and any(not isinstance(x, dict) for x in dsps):
+            failures.append(f"round {n}: `dispositions` contains a non-object entry")
+            dsps = [x for x in dsps if isinstance(x, dict)]
+        if isinstance(n, int) and not isinstance(n, bool) and n >= DISPOSITIONS_FROM_ROUND and not dsps:
+            failures.append(
+                f"round {n}: no `dispositions` — required from round "
+                f"{DISPOSITIONS_FROM_ROUND}. A validation round records its result per ITEM; "
+                f"omitting the field would make the not-reached cause requirement skippable")
+        # UNIQUENESS, and a completeness LOWER BOUND against the round being
+        # validated. Duplicate item names mask omissions, and a one-entry grid
+        # would otherwise satisfy "per item" while recording nothing about the
+        # rest. `validates_round` names the round whose inferences are under
+        # test, and a grid must carry at least as many entries as that round had.
+        #
+        # STATED LIMIT: this is a lower bound, not completeness. Matching the
+        # grid's free-text item names against the prior round's free-text
+        # `inferred` entries would be the real check and is not reliable; a grid
+        # can still cover the wrong items in the right number. It catches
+        # truncation and duplication, which is what was actually reachable.
+        seen_items = set()
+        for dsp in dsps or []:
+            raw = dsp.get("item")
+            # The type check further down never runs if this strips first, so the
+            # guard has to be here too — the earlier loop was the one crashing.
+            it = raw.strip() if isinstance(raw, str) else ""
+            if it and it in seen_items:
+                failures.append(f"round {n}: duplicate disposition item {it!r} — duplicates "
+                                f"mask omissions in a per-item grid")
+            seen_items.add(it)
+        vr = r.get("validates_round")
+        # Required wherever the disposition schema is, or deleting the field
+        # bypasses the completeness check entirely — one unrelated disposition
+        # would then satisfy a "per-item" grid. A round that genuinely validates
+        # nothing prior says so with `validates_round: null`, explicitly.
+        if isinstance(n, int) and not isinstance(n, bool) and n >= DISPOSITIONS_FROM_ROUND \
+                and "validates_round" not in r:
+            failures.append(
+                f"round {n}: no `validates_round` — required from round "
+                f"{DISPOSITIONS_FROM_ROUND}. Use null if the round validates no prior "
+                f"inferences; omitting it skips the completeness check")
+        if vr is not None:
+            # AN EXACT, NON-BOOLEAN INTEGER, checked before anything compares it.
+            # Python equality would otherwise let 11.0 match round 11 in the
+            # lookup while slipping past a `>= n` guard written for ints, and
+            # True == 1 for the same reason. The type check has to come first or
+            # the ordering rule below is decorative.
+            if not isinstance(vr, int) or isinstance(vr, bool):
+                failures.append(f"round {n}: validates_round {vr!r} is not an integer round number")
+                prior = None
+            else:
+                # STRICTLY EARLIER: a round cannot validate itself or one that has
+                # not run. Self-validation would pass whenever the tagged count
+                # happened to match the round's own inference count.
+                if isinstance(n, int) and vr >= n:
+                    failures.append(f"round {n}: validates_round {vr} is not an EARLIER round")
+                prior = next((x for x in rounds if x.get("round") == vr), None)
+            if prior is None:
+                # A typo would otherwise make `want` zero and disable the check
+                # silently — the failure mode being guarded against, one field over.
+                failures.append(f"round {n}: validates_round {vr!r} names no recorded round")
+            else:
+                # Count ONLY the dispositions TAGGED as validating that round. An
+                # earlier version counted the whole grid, which a validation round
+                # mixes with its own new findings — so deleting a validated item
+                # left the total above the threshold and the check passed while
+                # the thing it measured had gone.
+                # Same type constraint on the per-item tags, for the same reason:
+                # `"validates": 10.0` or `true` would otherwise compare equal.
+                tagged = [x for x in (dsps or [])
+                          if isinstance(x.get("validates"), int)
+                          and not isinstance(x.get("validates"), bool)
+                          and x.get("validates") == vr]
+                # DERIVED from the prior round, not declared here. An earlier
+                # version read the expected total from a field on THIS round,
+                # which a coordinated edit defeats: drop a tagged row, decrement
+                # the field, pass. Deriving it means defeating the check requires
+                # editing the round being validated as well — a different and far
+                # more visible act.
+                # The out-of-scope count LOWERS the required number of
+                # dispositions, so it is bounded and type-checked rather than
+                # coerced: a float slips through int(), a numeric string coerces
+                # silently, and "one" raises. All three would either weaken the
+                # completeness check or crash CI.
+                oos = prior.get("inferred_out_of_scope", 0)
+                n_inf = len(prior.get("inferred") or [])
+                if not isinstance(oos, int) or isinstance(oos, bool) or not (0 <= oos <= n_inf):
+                    failures.append(f"round {vr}: inferred_out_of_scope {oos!r} must be an integer "
+                                    f"in 0..{n_inf}; it reduces what round {n} must dispose of")
+                    oos = 0
+                want = n_inf - oos
+                if len(tagged) != want:
+                    failures.append(
+                        f"round {n}: {len(tagged)} disposition(s) tagged `validates: {vr}` "
+                        f"but validates_items says {want} — a per-item grid must dispose of "
+                        f"each item it claims to cover")
+
+        for i, dsp in enumerate(dsps or []):
+            # PER-ITEM means per item. Without this, `[{"state": "derived"}]`
+            # passes while recording no outcome for anything — the invariant is
+            # that each named reading got a disposition, not that some states
+            # were listed.
+            # Every field is type-checked BEFORE it is used. `.strip()` on a
+            # number raises AttributeError and set membership on a list raises
+            # TypeError — either would end the run with a traceback, which is the
+            # shape-first goal above defeated by the fields it was written for.
+            it_ = dsp.get("item")
+            if not isinstance(it_, str) or not it_.strip():
+                failures.append(f"round {n}: disposition {i} has no string `item` — a per-item "
+                                f"result must say which item")
+            st_ = dsp.get("state")
+            if not isinstance(st_, str):
+                failures.append(f"round {n}: disposition {i} state {st_!r} is not a string")
+                continue
+            if st_ not in DISPOSITIONS:
+                failures.append(f"round {n}: disposition {i} state {st_!r} is not one of {sorted(DISPOSITIONS)}")
+            cz_ = dsp.get("cause")
+            if st_ == "not-reached" and (not isinstance(cz_, str) or cz_ not in NOT_REACHED_CAUSES):
+                failures.append(
+                    f"round {n}: disposition {i} is not-reached without a cause in "
+                    f"{sorted(NOT_REACHED_CAUSES)} — structural means the repair removed the path "
+                    f"(evidence FOR it), incidental means the subject never hit it (missing coverage), "
+                    f"and the two must not be conflated")
 
         infn = len(r.get("inferred") or [])
         print(f"  round {n}  {v:<20} vectors {r.get('vectors','—'):<7} "
