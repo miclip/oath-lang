@@ -12,6 +12,18 @@ the substrate is the product.
 milestone established and why decisions went the way they did. If a paragraph
 here tells you what HAPPENED rather than what to DO, move it there.
 
+**THAT RULE IS NOT ENOUGH ON ITS OWN, BECAUSE A PARAGRAPH'S CLASS CHANGES WITHOUT
+ITS TEXT CHANGING.** Guidance about work IN FLIGHT is written as instructions, is
+correct as instructions, and silently becomes history the moment the work lands —
+no word has to change for it to start lying. That is how this file accumulated
+four superseded queue orderings, and it did it again the same day the rule above
+was written: sixty lines of *do #141, then round 10, #122 is NOT shipped* stayed
+in place after all three had landed. **So the first act of a session is to check
+the queue against `gh issue list`, not to read the queue** — and when writing
+about work in flight, prefer a POINTER to the issue over a description of it,
+because a pointer cannot go stale in this direction. A stale instruction is worse
+than a missing one: it is confidently followed.
+
 **AN ARTEFACT THAT MAKES ITS READER INFER WHAT IT COULD HAVE NAMED HAS DELEGATED
 ITS OWN WORK.** Two prospective checks fall out, the same pattern on different
 artefacts — each catching distributed meaning by READING, before any round or
@@ -77,76 +89,55 @@ until it exactly matched what had been demonstrated. Continue that.
 
 ### THE QUEUE — one ordering, in three buckets; position is not priority
 
+**FIRST, AND DELIBERATELY NOT IN A BUCKET — #139's first half.** `oathrs/conformance.sh`
+in oracle mode prints *outcomes are determined: f(script bytes, solver, rlimit),
+all three pinned*, but `prove/scripts.txt` pins DIRECT-attempt scripts only. The
+structural, lexicographic and recursion-induction scripts are byte-checked by
+nothing, so the sentence is false for every goal that falls through to induction.
+This is not a scheduling question and does not belong in a clock bucket: the gate
+that decides whether a change is safe currently asserts more than it checks, and
+under **verify the measuring instrument before interpreting its output** that
+makes it the prerequisite for reading any oracle-mode PASS. It is also bounded
+and mechanical — pin the remaining strategies and the claim becomes exactly true.
+
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   #122, #121, #117/#69, #133 — while the runtime
-                              is still small enough to reshape
-  more VALUABLE if delayed    #130, #134 — after more evidence has accumulated
-                              to calibrate them
+  more EXPENSIVE if delayed   #121, #117/#69, #133 — while the runtime is still
+                              small enough to reshape
+  more VALUABLE if delayed    #130, #134, #138 — after more evidence has
+                              accumulated to calibrate them
   waiting for a TRIGGER       #128
 
 **Compiler/runtime — the window is closing.**
 
-  1. **#141** then **round 10**         finishes #122 — see below, do not reorder
-  2. **#121** hex-decode                unblocks real use
-  3. **#117 / #69** scoped authority    language design, and see below
-  4. **#133** scalar-only Str           language design, NORMATIVE
-
-**#122 is NOT shipped.** SPEC §14 exists and is repaired, but the issue closes
-only when the adapter and the repaired prose have each survived their own check —
-#141 and round 10 respectively.
-
-**#122, CONTINUED — THE ORDER MATTERS.** SPEC **§14** is the handler
-protocol's normative Request model — read it there; this file deliberately does
-NOT restate its rules.
-
-Blind **round 9** ran against §14 and returned PASS-WITH-INFERENCE with ten
-inferences. §14 has since been repaired. **What the inferences were and what the
-repairs say is NOT recorded here** — round 10's subject inherits this file, so
-naming them would hand it the answers it exists to derive. The round record is
-`docs/experiments/blind-request-model.md`, which `blind-export.py` forbids
-(`docs/experiments/` is a FORBIDDEN_PREFIX), and the repairs are in §14 itself.
-
-**Next, in this order, and do NOT reorder it:**
-
-  1. **#141** — an adapter gap round 9 exposed. **Read the issue**, which carries
-     both the rule it must satisfy and how to mutate it. Neither is restated
-     here: round 10's subject inherits this file, and the identifier gate
-     (`make check-coaching-leak`) catches a rule NAMED in it but cannot catch a
-     rule DESCRIBED in it. That half is still discipline.
-  2. **round 10**, only once #141 changes no normative text. The adapter path is
-     still capable of exposing another specification mistake — three of §14's
-     rules were withdrawn the day they were written, all found by implementing
-     against a real stack. Running the round first risks testing prose you must
-     immediately amend.
-
-Round 10's claim is deliberately narrow: **whether round 9's identified
-ambiguities were closed.** It cannot establish §14's overall sufficiency, and
-under §13 no run on this harness can produce a valid PASS. The ledger now
-requires a pre-registered boolean `session_isolated` marker before dispatch and
-compares it against the first committed DISPATCHED revision.
-
-`scripts/blind-export.py --section 14` is wired and preflights clean; the surface
-is deliberately prose-only, because a vector file would let a subject reproduce
-the answer without deriving the rules.
-
-**THAT IS ALSO WHY THE RULES ARE NOT SUMMARIZED HERE.** A dispatched session
-inherits this file in its system prompt, so a summary of §14 would hand a "blind"
-subject the model without it ever opening the specification — the §13
-contamination problem arriving through the coaching channel rather than the
-export. The general rule, worth keeping past #122: **CLAUDE.md points at
-normative text and never paraphrases it.** A paraphrase can also drift from the
-SPEC, which is the same disease as the four superseded queue orderings.
+  1. **#121** hex-decode                unblocks real use
+  2. **#117 / #69** scoped authority    language design, and see below
+  3. **#133** scalar-only Str           language design, NORMATIVE
 
 **Feedback/tooling — the window is NOT closing.** Improves confidence in future
 work; nothing depends on it immediately.
 
-  5. **#130** vacuity signal, guard/subject overlap
-  6. **#134** typed refusal reasons
+  4. **#130** vacuity signal, guard/subject overlap
+  5. **#134** typed refusal reasons
+  6. **#139's second half** (scope the full re-derivation) **with #140**
+     (prove-worker delta) — one item, deliberately: both are *do not redo work
+     whose answer is already determined*, one for re-deriving and one for
+     proving, and neither can be judged without the other's answer. Doing them
+     apart means deciding twice what "unchanged" means. This half waits for the
+     first half because scoping a re-derivation you cannot yet fully byte-check
+     is scoping it on faith.
+
+**Research — needs runway, not a slot.**
+
+  7. **#138** ACL2 comparative review. It is a REGISTERED EXPERIMENT with a
+     falsifier, not a reading task, and its value depends on the reading not
+     being rushed: a hurried pass would find transformations everywhere, which
+     is the outcome the falsifier exists to prevent. Read the issue for the
+     falsifier and the method; neither is restated here.
 
 **Documentation hygiene.**
 
-  7. **#128** — DEFERRED UNTIL AFTER THE NEXT EXTERNALLY-VISIBLE MILESTONE. It
+  8. **#128** — DEFERRED UNTIL AFTER THE NEXT EXTERNALLY-VISIBLE MILESTONE. It
      has a TRIGGER, not a position. It changes no semantics, unblocks no user,
      and closes no narrowing window — and it is small and easy, which is
      precisely why it would interrupt architectural momentum if it sat in the
@@ -254,6 +245,16 @@ The stopping rule for a round is not "nothing more can be found" but **does this
 change what a user can do**. By that measure rounds 4-6 had already stopped
 earning their cost, while still producing genuinely good findings — which is
 exactly how this becomes hard to notice from inside.
+
+**A DISPATCHED SUBJECT INHERITS THIS FILE, SO: CLAUDE.md POINTS AT NORMATIVE TEXT
+AND NEVER PARAPHRASES IT.** A summary of a section under test hands a "blind"
+subject the model without it ever opening the specification — the contamination
+problem arriving through the coaching channel rather than through the export,
+where no preflight can see it. `make check-coaching-leak` catches a rule NAMED
+here; it cannot catch a rule DESCRIBED here, and that half is discipline. The
+rule outlives any particular round for a second reason: a paraphrase drifts from
+the SPEC, which is the same disease as the four superseded queue orderings this
+file used to carry.
 
 ## NAMING: names are permanent, so treat every one as a publication
 
