@@ -366,6 +366,36 @@ with it, silently. So: assert the final summary line, count the checks that ran,
 and make the harness fail LOUDLY when its own setup did not work — a check that
 cannot tell its setup failed from the defect it hunts is worse than no check.
 
+**WHEN REPEATED BLIND ROUNDS REPLACE ONE INFERENCE WITH ANOTHER, STOP REPAIRING
+PROSE LOCALLY.** Normalize the transformation until every input distinction has
+exactly one declared disposition owned by exactly one layer.
+
+The signal is specific and worth recognising early: a round closes the ambiguity
+you fixed and reports a NEW one at the boundary that fix touched. Three of those
+in a row means the object model is DISTRIBUTED, not that the prose is missing a
+sentence — a decision lives in one place and the rule applying it in another, and
+the gap between them is invisible from either. The tell that confirms it: the
+undetermined readings turn out to be cases whose DECISION was already agreed and
+whose APPLYING RULE was absent. Nothing was wrong; it was scattered.
+
+The descent this produced, each step reducing what a reader must combine mentally:
+
+    distributed prose -> localized rules -> foundational definitions
+                      -> a single transformation table
+
+Two things fall out that no amount of re-reading finds. Normalizing forces a
+missing OPERATION into the open — a verb the old vocabulary never had, because
+nothing in the scattered form had to name what kind of thing each rule did. And
+asking one question per row, *where does this fact enter?*, finds IMPLEMENTATION
+errors rather than wording ones: it caught a value stamped at the wrong moment
+and a behaviour no supported stack could produce.
+
+Close such an issue on a STRUCTURAL criterion, not an empirical one. "Every
+distinction has exactly one disposition" is checkable; "the last round found
+fewer problems" is a judgement that gets easier to make each time. A later round
+can still find a wrong disposition or a missing row — but it will no longer be
+finding *"I could not tell where this rule lives."*
+
 **DO NOT WRITE A SECOND STRUCTURAL-EQUIVALENCE ALGORITHM. CANONICAL IDENTITY
 ALREADY ANSWERS THE QUESTION.** In a content-addressed language, canonical
 structural equality IS hash equality: a definition's hash is the canonical

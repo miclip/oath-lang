@@ -92,6 +92,14 @@ jobs:
       - name: no coaching leak into always-loaded context
         run: make check-coaching-leak
 
+      # #122 closed on a STRUCTURAL criterion rather than on a blind round
+      # reporting fewer unresolved items: every transport distinction has exactly
+      # one disposition owned by exactly one layer. That is only the better
+      # criterion if it is checked — otherwise it is the same judgement call in a
+      # firmer voice.
+      - name: §14's transformation is a total single-valued mapping
+        run: make check-transformation-table
+
       # Every byte of a normative identity must have a normative source. A
       # constant living only in the reference makes the vectors containing it
       # irreproducible from the spec — indistinguishable, to a blind reader, from

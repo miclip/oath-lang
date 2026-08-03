@@ -182,6 +182,10 @@ blind-export:
 # agree with the vectors" but "could an independent implementer build this from the
 # published surface without hidden knowledge". Three blind runs have now passed the
 # vectors and independently reported they could not.
+.PHONY: check-transformation-table
+check-transformation-table:
+	@python3 scripts/check-transformation-table.py
+
 .PHONY: check-coaching-leak
 check-coaching-leak:
 	@python3 scripts/check-coaching-leak.py
