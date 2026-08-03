@@ -57,15 +57,21 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   3. **#117 / #69** scoped authority    language design, and see below
   4. **#133** scalar-only Str           language design, NORMATIVE
 
-**#122 SHIPPED, WITH ONE STEP OUTSTANDING.** SPEC §14 is the handler protocol's
-normative Request model: names ASCII-lowercased, entries lexicographic, repeats
-preserved and never joined, `host` present whatever the HTTP version called it,
-raw target, framing fields excluded by name, and non-ASCII field octets REFUSED
-rather than transcoded. It is new normative text, so this repo's definition of
+**#122 SHIPPED, WITH ONE STEP OUTSTANDING.** SPEC **§14** is the handler
+protocol's normative Request model — read it there; this file deliberately does
+NOT restate its rules. It is new normative text, so this repo's definition of
 done requires a **blind round scoped to it, and that round has NOT been run.**
 `scripts/blind-export.py --section 14` is wired and preflights clean; the surface
 is deliberately prose-only, because a vector file would let a subject reproduce
 the answer without deriving the rules.
+
+**THAT IS ALSO WHY THE RULES ARE NOT SUMMARIZED HERE.** A dispatched session
+inherits this file in its system prompt, so a summary of §14 would hand a "blind"
+subject the model without it ever opening the specification — the §13
+contamination problem arriving through the coaching channel rather than the
+export. The general rule, worth keeping past #122: **CLAUDE.md points at
+normative text and never paraphrases it.** A paraphrase can also drift from the
+SPEC, which is the same disease as the four superseded queue orderings.
 
 **Feedback/tooling — the window is NOT closing.** Improves confidence in future
 work; nothing depends on it immediately.
