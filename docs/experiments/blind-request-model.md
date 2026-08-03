@@ -440,19 +440,38 @@ what was already suspected, so what is absent from it is the more informative
 part. The coverage-table defect, the third disposition, and the misplaced
 obs-fold obligation were all unlisted.
 
-## Contamination, and evidence the mitigation worked
+## Contamination — and a retracted claim about it
 
 The IMPL-ISOLATED-SESSION violation stands: the harness cannot strip `CLAUDE.md`
-from a dispatched session. But the subject reported seeing project notes naming
-the system and the issue and stated that **nothing in them states any §14 rule** —
-which is exactly what `make check-coaching-leak` and moving the repair summary to
-`docs/milestones.md` were built to achieve. Round 9's subject could have read the
-rules there; round 10's could not.
+and the memory index from a dispatched session.
 
-It disclosed recognising HTTP and RFC 9110/9112, which §14 cites throughout, and
-recorded as INFERENCES the places where HTTP knowledge would have supplied an
-answer the specification does not — quoted-strings in a list, `CONNECT`
-authority-form — rather than deriving them.
+**RETRACTED.** A first version of this section claimed round 10 empirically
+validated the coaching-leak mitigation, because round 9's subject could have read
+the section's rules in `CLAUDE.md` and round 10's could not. That is false.
+Checked against git: at round 9's dispatch commit, `CLAUDE.md` already stated it
+did not restate the section's rules and named none — the leak was found and
+removed while PREPARING that round, which round 9's own contamination notes say.
+So `CLAUDE.md` named no rule of the section under test at either dispatch, and
+there is no before-and-after to compare.
 
-Its prompt was identical to round 9's. No hint of the claims or risks was given,
-which is why the scoring above is a measurement rather than a confirmation.
+That is narrower than "both channels were clean", which a second draft of this
+retraction also asserted and which the evidence does not reach either: the memory index was
+checked BY HAND while preparing round 9 — that round's notes record it — and a
+hand check is an attestation, not a mechanical one; the gate covers only
+`CLAUDE.md`, and only identifiers, so a paraphrase anywhere passes. What git
+establishes is one file's contents, not the state of the whole channel.
+
+What round 10's subject reported — seeing project notes and stating that nothing
+in them states any rule of the section under test — is **consistent with** that
+and is an attestation about available context. It is not proof.
+
+The subject also disclosed recognising HTTP and RFC 9110/9112, which §14 cites
+throughout, and recorded as INFERENCES the places where HTTP knowledge would have
+supplied an answer the specification does not — quoted-strings in a list,
+`CONNECT` authority-form — rather than deriving them. It reported reading nothing
+outside the dispatch root and verified the supplied `SPEC.md` against the
+manifest.
+
+Its prompt was identical to round 9's. No hint of the pre-registered claims or
+risks was given, which is why the scoring above is a measurement rather than a
+confirmation.

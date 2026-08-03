@@ -271,3 +271,54 @@ Oath code ran. Two of them were written in the same sitting as each other.
 recovered from a parsed representation rather than from the wire. If the host
 library normalized, joined, promoted, or deleted X during parsing, the rule is
 unsatisfiable no matter how carefully it is worded.
+
+---
+
+## The coaching leak: what the record actually supports
+
+`CLAUDE.md` carries the rule — coaching material may point at normative text and
+must not restate it — and `make check-coaching-leak` enforces the IDENTIFIER
+half of it: naming a rule fails CI, describing one in prose does not. Saying
+the gate enforces the rule, unqualified, was itself a version of the overclaim
+this section exists to correct. A first
+draft of this section claimed the two blind rounds of the handler model
+empirically validated that — round 9's subject could have read the rules in the
+coaching channel, round 10's could not. **That claim is false and is recorded
+here as false**, because the correction is the more useful artifact.
+
+Checked against git: at round 9's dispatch commit, `CLAUDE.md` already said
+*"this file deliberately does NOT restate its rules"* and named none. The leak
+was found and removed while PREPARING round 9, which that round's contamination
+notes say. So **`CLAUDE.md` named no rule of the section under test at either dispatch**,
+and there is no before-and-after to compare. The author of the comparison was the
+person who had made the fix and then forgotten it.
+
+That is deliberately narrower than "both channels were clean", which a second
+draft of this retraction asserted and which the evidence does not reach: the memory index was checked BY HAND while preparing round 9 and that
+check is an attestation rather than a mechanical one, and the gate covers only
+`CLAUDE.md` and only identifiers, so a paraphrase anywhere passes. Git establishes the contents of one file. **The
+retraction of an overclaim contained a fresh overclaim**, which is worth the line
+it costs to record.
+
+### What the record does support
+
+- The same file acquired the leak **four times in one session**, three of them
+  within ten minutes of the rule against it being written down. Every one was
+  caught by review rather than by the author.
+- The response that survives is therefore mechanical rather than attentive: a
+  gate that fails CI, so the fix does not depend on catching it by hand each
+  time. That is a claim about durability, not about either round.
+- Round 10's subject reported seeing project notes and stated that nothing in
+  them states any rule of the section under test. That is **consistent with** a
+  clean channel and is an attestation about available context — not proof, since
+  both rounds also inherited an unchecked memory index and the gate cannot detect
+  a paraphrase.
+
+### The distinction worth keeping
+
+*The mitigation exists* and *the mitigation changed what a subject could know*
+are different claims, and only the first is established. Asserting the second
+required a comparison that does not exist — which is the same overclaim habit
+this project keeps finding, committed in a section congratulating itself on
+having closed one.
+
