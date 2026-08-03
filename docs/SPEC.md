@@ -4533,13 +4533,57 @@ was a place two conformant backends could diverge, so each is settled rather tha
 left to judgement.
 
 **PROTO-PARSER-BOUNDARY.** §14 binds the adapter, and the adapter's input is the
-request AFTER field lines have been parsed: a sequence of (name, value) pairs in
-arrival order, with the optional whitespace surrounding each value already
-removed, plus the method, the raw request target, and the body octets. OWS
-removal is parsing (RFC 9110 §5.5), and stating where it happens is what stops
-two backends whose libraries strip it differently from both claiming conformance.
-Everything §14.2 requires is a transformation of that input; nothing in §14
-depends on how the octets were framed.
+request AFTER framing has been parsed. That input has SIX components, and it is
+enumerated exhaustively because §14's rules are a transformation of it and of
+nothing else:
+
+| component | notes |
+|---|---|
+| header-section field lines | `(name, value)` in arrival order, with the optional whitespace surrounding each value removed |
+| the authority | absent, or present — and EITHER tagged by route (pseudo-header, absolute-form target, `Host` field line) OR already resolved by PROTO-AUTHORITY-SOURCE's precedence **with PROTO-AUTHORITY-MUST-AGREE already enforced** |
+| the method | as received |
+| the raw request target | as received |
+| the body octets | after any transfer coding is decoded |
+| the receipt-time observation | whole seconds; see PROTO-TIME-IS-INTEGRAL |
+
+Three of those were missing from an earlier enumeration and blind round 10 found
+each one, because a rule downstream needed information the boundary had already
+discarded:
+
+- **The authority must arrive separately from the field lines**, because
+  PROTO-AUTHORITY-SOURCE assigns precedence by route and that is undecidable once
+  a pseudo-header is indistinguishable from a field of the same name. The
+  alternative is permitted deliberately: a parser that has ALREADY applied this
+  section's precedence has discharged the obligation, and requiring it to tag the
+  route anyway would fail parsers that resolve correctly and then discard the
+  provenance — which is most of them. **The agreement check comes with it**, and
+  not as a courtesy: resolving precedence destroys the second candidate, so a
+  parser that resolved without comparing would satisfy this boundary while
+  delivering a request PROTO-AUTHORITY-MUST-AGREE calls malformed. Whichever form
+  a parser supplies, the two obligations travel together. What is normative is the authority that
+  results, and that is observable in the `host` entry whichever way it was
+  obtained.
+- **The receipt-time observation is part of the input.** REQ-TIME-IS-DATA makes
+  it a field of the value, and a transformation cannot produce what it was not
+  given.
+- **Trailer-section fields are NOT header-section field lines.** The parser MUST
+  keep them out; PROTO-TRAILERS-ARE-NOT-HEADERS is otherwise unenforceable,
+  because once a trailer sits in the pair sequence no adapter can tell it apart.
+
+**THE PRINCIPLE, which is why this rule is enumerated rather than sketched: DO
+NOT REQUIRE A TRANSPORT FACT TO BE RECONSTRUCTED AFTER THE PARSER HAS ERASED IT.**
+Each of the three above was a rule written as though the adapter could still see
+something the boundary had thrown away — the same failure §14.2a diagnoses for
+the withdrawn obs-fold refusal ("the adapter cannot refuse what it can no longer
+see"), which had recurred inside the rules written to fix it. A rule needing a
+distinction the boundary does not carry is not a strict rule; it is an
+unsatisfiable one, and the repair belongs in this enumeration rather than in the
+rule.
+
+OWS removal is parsing (RFC 9110 §5.5), and stating where it happens is what
+stops two backends whose libraries strip it differently from both claiming
+conformance. Nothing in §14 depends on how the octets were framed beyond what
+this table carries.
 
 **PROTO-TIME-IS-INTEGRAL.** `received-at` is an `Int`: whole seconds since the
 Unix epoch, truncated toward negative infinity. `Rat` is available and exact and
@@ -4632,7 +4676,20 @@ backend refuses rather than constructing a partial value.
 ### 14.3 Worked vectors
 
 Two, because one of the thirteen obligations is a REFUSAL and no single
-delivered request can witness it. Together they cover every rule in §14.2.
+delivered request can witness it.
+
+**They witness twelve of the thirteen, and the thirteenth cannot be witnessed by
+anything.** That is not a coverage gap: PROTO-NOMINATION-BY-PRESENCE is §13's
+UNOBSERVABLE-BUT-PINNED state — the specification chooses between readings that
+produce identical `Request` values, and says so — so no vector can distinguish
+them and none should be claimed to.
+
+An earlier version of this table said the two vectors "cover every rule" and
+named a witness for that one. Blind round 10 disproved it by building the mutant
+for the unpinned reading and watching it survive the entire suite. The table was
+answering *"does every rule have a witness?"* while intending to answer *"is
+every rule covered?"* — and the first question has no affirmative answer for a
+deliberately unobservable choice.
 
 #### 14.3.1 A delivered request
 
@@ -4648,6 +4705,7 @@ X-Example: second
 X-Ab: two
 X-A: one
 X-Hop: connection-scoped
+Date: Wed, 01 Jan 2025 00:00:00 GMT
 Content-Type: application/json
 Content-Length: 2
 Connection: close, X-Hop
@@ -4655,13 +4713,15 @@ Connection: close, X-Hop
 hi
 ```
 
-produces `method = "POST"`, `path = "/hook%2Fadmin?attempt=2"`,
-`body = [104, 105]`, `received-at` as the backend observed it, and exactly this
-`headers` list:
+Suppose the backend observes receipt at Unix second **1750000000**. It produces
+`method = "POST"`, `path = "/hook%2Fadmin?attempt=2"`, `body = [104, 105]`,
+**`received-at = 1750000000`** — NOT 1735689600, which is what the `Date` field
+encodes — and exactly this `headers` list:
 
 ```
 [ ("accept",         "text/html, */*")
 , ("content-type",   "application/json")
+, ("date",           "Wed, 01 Jan 2025 00:00:00 GMT")
 , ("host",           "example.test:8443")
 , ("x-a",            "one")
 , ("x-ab",           "two")
@@ -4707,12 +4767,12 @@ applying exclusions refuses both, and fails the second.
 | REQ-HEADER-VALUE-OCTETS | `Accept`'s surrounding OWS is stripped; its internal space and comma survive, so a comma inside one field line is not a separator |
 | REQ-TEXT-OCTETS-ARE-ASCII | §14.3.2, both the refusal and the exclusion-precedes-check case; the request target is covered by the same rule |
 | REQ-FRAMING-FIELDS-EXCLUDED | `content-length` and `connection` were sent and do not appear |
-| PROTO-NOMINATION-BY-PRESENCE | `x-hop` is nominated by `Connection` AND present, so it is excluded; `close` nominates no present field and removes nothing |
+| PROTO-NOMINATION-BY-PRESENCE | **PINNED, AND NOT WITNESSABLE — by construction, not by omission.** §14.2 states that the presence and no-presence readings are behaviourally identical, so no `Request` value distinguishes them and no vector can. This is §13's UNOBSERVABLE-BUT-PINNED state: the specification chooses, says it chose, and a mutation cannot witness a distinction the model deliberately erased. The vector exercises the rule (`x-hop` is nominated and present, so it is excluded; `close` nominates no present field) without witnessing it. |
 | REQ-HOST-IS-A-HEADER | `Host` appears as an ordinary `host` entry, sorted among the rest |
 | REQ-METHOD-VERBATIM | `POST` crosses unchanged |
 | REQ-PATH-IS-RAW | `%2F` is NOT decoded to `/`, and the query is retained |
 | REQ-BODY-IS-OCTETS | `hi` becomes `[104, 105]`, not a `Str` |
-| REQ-TIME-IS-DATA | `received-at` comes from the backend's observation, not from the message |
+| REQ-TIME-IS-DATA | the request carries `Date: Wed, 01 Jan 2025 00:00:00 GMT` (Unix 1735689600) while `received-at` is 1750000000 — so a backend reading the time OUT OF THE MESSAGE produces a different value and is caught. The `Date` field itself still appears as an ordinary `date` entry, since §14 excludes only framing fields. |
 
 **The previous vector witnessed four of these thirteen and was not a legal
 request** — it

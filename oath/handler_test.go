@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -74,8 +75,9 @@ func mustResolve(t *testing.T, st *Store, name string) string {
 // bytes itself: `X-GitHub-Event` in the case GitHub documents, arrival order
 // deliberately NOT lexicographic, and one name repeated.
 //
-// WHAT MUTATION MAKES IT FAIL. Twelve, each failing distinguishably rather than
-// merely failing, and all re-run after #141 changed how a handler is recognized:
+// WHAT MUTATION MAKES IT FAIL. Thirteen, each failing distinguishably rather
+// than merely failing, all re-run after #141 changed how a handler is recognized
+// and again after §14.3's vector gained a date-bearing field:
 //
 //	drop the ASCII lowercasing      X-Github-Event returns
 //	drop the sort                   arrival order returns
@@ -89,6 +91,7 @@ func mustResolve(t *testing.T, st *Store, name string) string {
 //	trim Unicode space, not OWS     a real header is hidden by NBSP padding
 //	skip the method/path check      a raw 0xFF target answers 200 as U+FFFD
 //	discard the body read error     a truncated message is delivered as 200
+//	read the time from `Date`       received-at is the message's, not the observation
 //
 // The seventh is the one worth reading: the mangled byte in the failure output
 // IS the information loss the rule exists to prevent. An earlier attempt at that
@@ -100,7 +103,6 @@ func mustResolve(t *testing.T, st *Store, name string) string {
 // correct rules, and one rule's scope against another's), one is a stdlib call
 // whose contract is Unicode where the protocol is octets, and one is an error
 // return that was being discarded.
-//
 func TestHandlerRequestModelIsCanonical(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go toolchain not available")
@@ -126,11 +128,22 @@ func TestHandlerRequestModelIsCanonical(t *testing.T) {
 		      (hp-cat (hp-bytes k)
 		        (Cons [Int] 61 (hp-cat (hp-bytes v) (Cons [Int] 10 (hp-render rest))))))))))`)
 	// method SP path LF, then one `name=value` LF per header entry.
+	// Renders `received-at` as a decimal line after the headers, so the adapter
+	// has a witness for REQ-TIME-IS-DATA: a backend reading the time out of a
+	// Date field would produce a visibly different number.
+	put(t, st, `(defn hp-digits [] [(n Int)] (List Int)
+		(if (< n 10)
+		    (Cons [Int] (+ 48 n) (Nil [Int]))
+		    (hp-cat (hp-digits (/ n 10)) (Cons [Int] (+ 48 (% n 10)) (Nil [Int])))))`)
+	put(t, st, `(defn hp-line [] [(m Str) (p Str) (h (List (Pair Str Str))) (t Int)] (List Int)
+		(hp-cat (hp-bytes m)
+		  (Cons [Int] 32
+		    (hp-cat (hp-bytes p)
+		      (Cons [Int] 10
+		        (hp-cat (hp-render h) (hp-digits t)))))))`)
 	put(t, st, `(defn hp-entry [] [(r Request)] Response
 		(Resp 200 (Nil [(Pair Str Str)])
-		  (match r ((Req m p h b t)
-		    (hp-cat (hp-bytes m)
-		      (Cons [Int] 32 (hp-cat (hp-bytes p) (Cons [Int] 10 (hp-render h)))))))))`)
+		  (match r ((Req m p h b t) (hp-line m p h t)))))`)
 
 	src, err := emitProgram(st, codegenPlan(t, st, "hp-entry"))
 	if err != nil {
@@ -217,6 +230,7 @@ func TestHandlerRequestModelIsCanonical(t *testing.T) {
 		"X-Example: first\r\n"+
 		"X-Example: second\r\n"+
 		"X-Hop: dropped-by-nomination\r\n"+
+		"Date: Wed, 01 Jan 2025 00:00:00 GMT\r\n"+
 		"Content-Type: application/json\r\n"+
 		"Content-Length: 0\r\n"+
 		"Connection: close, X-Hop\r\n\r\n")
@@ -232,12 +246,32 @@ func TestHandlerRequestModelIsCanonical(t *testing.T) {
 	want := "POST /hook%2Fadmin?attempt=2&x=%2f\n" +
 		"accept=*/*\n" +
 		"content-type=application/json\n" +
+		"date=Wed, 01 Jan 2025 00:00:00 GMT\n" +
 		"host=" + addr + "\n" +
 		"x-example=first\n" +
 		"x-example=second\n" +
 		"x-github-event=push\n"
-	if body != want {
-		t.Fatalf("Request model diverges from SPEC §14.\n got:\n%s\nwant:\n%s", body, want)
+	// The body is the header rendering followed by received-at in decimal.
+	if !strings.HasPrefix(body, want) {
+		t.Fatalf("Request model diverges from SPEC §14.\n got:\n%s\nwant prefix:\n%s", body, want)
+	}
+
+	// REQ-TIME-IS-DATA, witnessed rather than assumed. The request carries
+	// `Date: Wed, 01 Jan 2025 00:00:00 GMT` = Unix 1735689600, so a backend
+	// reading the time OUT OF THE MESSAGE reports that number; the value must
+	// instead be the backend's own observation. Without a date-bearing field
+	// nothing distinguishes the two — which is why §14.3's vector now carries
+	// one, after blind round 10 found the obligation unwitnessed.
+	digits := strings.TrimPrefix(body, want)
+	got, perr := strconv.ParseInt(digits, 10, 64)
+	if perr != nil {
+		t.Fatalf("received-at did not render as digits: %q", digits)
+	}
+	if got == 1735689600 {
+		t.Fatal("received-at is the Date field's value — the time was read from the message")
+	}
+	if d := time.Since(time.Unix(got, 0)); d < -time.Minute || d > time.Minute {
+		t.Fatalf("received-at %d is %v away from now — not an observation of receipt", got, d)
 	}
 
 	// REQ-HEADER-OCTETS-ARE-ASCII. A raw 0xFF is legal obs-text (RFC 9110 §5.5)
