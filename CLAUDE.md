@@ -457,6 +457,14 @@ reasoning; `docs/milestones.md` for what each milestone established.
 - The `codebase/` store IS COMMITTED (journal included — it's the audit
   trail and is not regenerable). Never edit it by hand; keep it in sync by
   committing after put/prove runs.
+- **`make verify` APPENDS TO THE JOURNAL EVEN WHEN NOTHING CHANGES.** It re-puts
+  every example into the DEFAULT store, and a re-put at an unchanged hash is
+  still journalled `accepted` — so a documentation-only session that runs it
+  leaves ~208 entries republishing the corpus at its existing hashes, with no
+  object, meta or name moving. Check `git status codebase/` before committing,
+  and `git checkout -- codebase/log.jsonl` if the entries record nothing. The
+  journal is append-only and tamper-evident, which is exactly why it should not
+  advance for a change that did not touch identity.
 - Re-putting a definition MERGES metadata (the old wipe-wart is fixed):
   verdict fields (proofs, mutation score, waivers) are hash-keyed facts and
   survive; naming is per-alias — structurally identical defs are one object

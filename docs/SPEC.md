@@ -4248,12 +4248,26 @@ canonicalized header-name case and imposed an ordering — because the rule
 described a disposition rather than an obligation, and because part of what it
 demanded is not obtainable from the transport at all.
 
-**HDR-PRINCIPLE.** A backend PRESERVES every semantically meaningful distinction
-the transport supplies, CANONICALIZES distinctions the transport does not define
-or explicitly declares insignificant, and DISCARDS what describes the
-transmission rather than the request.
+**HDR-PRINCIPLE.** Every distinction the transport can supply receives EXACTLY
+ONE of five dispositions: **PRESERVE** what the transport means, **CANONICALIZE**
+what it does not define, **DISCARD** what describes the transmission rather than
+the request, **LIFT** what arrives by a route other than a field line, and
+**REFUSE** what this model cannot represent faithfully.
 
-All three are obligations. The third was missing from an earlier statement of
+§14.2's table is the enumeration, and it is normative. This principle states the
+vocabulary; the table assigns it.
+
+The count reached five by being wrong twice, which is worth recording because the
+same failure produced both. It began as two — preserve and canonicalize — while
+the section already discarded nine framing names; blind round 10 found that, and
+DISCARD was added. It was then three while the section's most-argued rule
+REFUSED a request outright; blind round 11 found that, in the repair that added
+DISCARD. LIFT was missing throughout, and nothing found it: the authority and the
+receipt time both arrive by routes that are not field lines, and neither
+preserving nor canonicalizing describes what happens to them.
+
+Two of the three misses were repairs of each other, which is the argument for
+enumerating dispositions in one table rather than describing them in prose. The third was missing from an earlier statement of
 this principle while §14 was already exercising it — REQ-FRAMING-FIELDS-EXCLUDED
 drops nine field names and everything `connection` nominates, which is neither
 preserving nor canonicalizing — so the governing rule excluded a category its own
@@ -4342,382 +4356,184 @@ now closes it. The rule belongs there because every section that builds on
 identity inherits it, and stating it here would have made this section the second
 place a reader had to consult and the second place it could drift.
 
-### 14.2 The Request value
+### 14.2 The transformation (normative)
 
-A backend constructs `(Req method path headers body received-at)` with the
-following obligations. The type is the one §14.1a declares — identified by its
-structure, never by the name a store binds it to — and the rules below constrain
-its CONTENTS.
+**§14 is ONE total transformation, and this table is its normative centre.** Every
+distinction the transport can supply appears exactly once, with exactly one
+disposition. A reader needs one row, not a clause from each of three subsections.
 
-**REQ-HEADER-NAMES-LOWERCASE.** Field names in `headers` are lowercase. The
-mapping is ASCII-only: the 26 octets `A`–`Z` (0x41–0x5A) map to `a`–`z`
-(0x61–0x7A); every other octet is unchanged. This is NOT Unicode case folding —
-a field name is an HTTP token and is ASCII by construction, and applying a
-locale- or Unicode-aware transformation would make the result depend on a table
-outside this specification.
+    wire request
+      → canonicalize names             (row 8, so rows 15-16 can match)
+      → discard transport-only facts   (rows 15-17: framing, nominations, trailers)
+      → refuse conflicting authority   (rows 22-23, while candidates still exist)
+      → lift what arrives elsewhere    (rows 3-5, 20: the authority, the receipt time)
+      → validate representability      (row 9: REFUSE what Str cannot carry)
+      → canonicalize the remainder     (rows 13-14: order, repeats)
+      → construct Request
 
-**REQ-HEADER-ORDER-LEXICOGRAPHIC.** Entries are ordered ascending by the
-lowercase field name, compared as a sequence of unsigned octets. Shorter names
-that are a prefix of a longer one sort first.
+**The order is normative.** Three constraints make it so, and each was got wrong
+in a draft of this very sketch:
 
-**REQ-HEADER-REPEATS-PRESERVED.** Entries sharing a field name appear in the
-order the transport delivered them, and the sort of REQ-HEADER-ORDER-LEXICOGRAPHIC
-is stable with respect to that order. A backend MUST NOT reorder, deduplicate, or
-drop repeats.
+- **Canonicalize names BEFORE discarding** (8 before 15-16), or those rows cannot
+  match a name whose case differs from the option or the excluded spelling.
+- **Discard BEFORE validating** (15-17 before 9), or an unrepresentable octet in
+  a field nobody delivers refuses a request that could have been served.
+- **Lift BEFORE validating** (3-5, 20 before 9), or row 9 cannot inspect the
+  lifted authority it is required to cover — an `:authority` carrying an
+  unrepresentable octet would reach the value unchecked.
+- **Refuse conflicts BEFORE lifting** (22-23 before 3-5), because lifting applies
+  row 4's precedence and precedence DESTROYS the losing candidates. A draft put
+  these refusals at construction, after resolution — by which point the duplicate
+  `Host` lines and the disagreeing `:authority` are gone. Row 24 is different: it
+  fails before any of this, since an unframeable message never becomes an input. A first draft of this sketch put validation first and
+contradicted row 9 — the same distributed-model failure the table exists to end,
+committed in the summary OF the table.
 
-**REQ-HEADER-VALUES-NOT-JOINED.** Two field lines with the same name produce TWO
-entries. A backend MUST NOT combine them into one comma-separated value, even
-where RFC 9110 §5.3 would permit a recipient to do so. Combining is irreversible
-and destroys a repetition structure the adapter still holds; a handler verifying
-a signature or diagnosing a duplicated header can then no longer see what
-arrived.
+**WHY A TABLE AND NOT MORE PROSE.** Three successive repairs to this section each
+fixed a real omission and introduced another at the boundary it touched — the
+parser input, the governing principle, the coverage claim. Blind rounds 10 and 11
+classified three of their findings as REPLACED for exactly that reason. The
+diagnosis is not that sentences were missing: it is that the model was
+DISTRIBUTED, so a disposition lived in one subsection and the rule applying it in
+another, and a gap between them was invisible from either. Six readings a subject
+could not determine all turned out to be rows whose disposition was already
+agreed and whose applying rule was absent. Consolidating is the repair; another
+corrective sentence would not have been.
 
-**REQ-HEADER-VALUE-OCTETS.** A field value crosses unchanged. The optional
-whitespace surrounding a field value is transport framing and is not part of the
-value (RFC 9110 §5.5); removing it is parsing, not normalization. A backend MUST
-NOT otherwise trim, decode, re-encode, or case-map a value.
+The five dispositions are exhaustive: **PRESERVE** what the transport means,
+**CANONICALIZE** what it does not define, **DISCARD** what describes transmission
+rather than request, **LIFT** what arrives by a route other than a field line,
+and **REFUSE** what this model cannot represent faithfully.
 
-(This clause used to end "and MUST NOT deliver obsolete line folding as an
-embedded newline". Round 10 observed that §14 binds the adapter while
-PROTO-OBS-FOLD-IS-ONE-SPACE places unfolding BEFORE it — so as written the
-adapter could not violate the clause and the layer that could was out of scope.
-The obligation is real and now lives only where it can be discharged.)
+| # | distinction | where | disposition | rule |
+|---|---|---|---|---|
+| 1 | method octets | adapter | PRESERVE | **REQ-METHOD-VERBATIM.** As received, case-sensitive. |
+| 2 | request-target octets | adapter | PRESERVE | **REQ-PATH-IS-RAW.** As received, query retained, NOT percent-decoded, NOT dot-segment-normalized, absolute form kept whole. |
+| 3 | authority inside an absolute-form target | adapter | LIFT | **PROTO-TARGET-AUTHORITY.** The octets after `://` up to the first `/`, `?`, `#`, or end of target, with any `userinfo@` prefix EXCLUDED. Userinfo is deprecated in `http`/`https` URIs and MUST NOT be sent (RFC 9110 §4.2.4), every mainstream parser separates it before an adapter sees the authority, and `path` retains the target verbatim under row 2 — so nothing is lost from the value, only from the `host` entry. A draft required it INCLUDED, which no stack that splits the URI can supply without reconstruction: the same failure as requiring a transport fact the parser has already separated. Asterisk-form (`*`) and authority-form (`CONNECT host:port`) lift nothing. |
+| 4 | `:authority` pseudo-header | adapter | LIFT | **PROTO-AUTHORITY-SOURCE.** Precedence: `:authority`, then absolute-form target, then `Host` field line. |
+| 5 | `Host` field line | adapter | LIFT | **REQ-HOST-IS-A-HEADER.** Becomes the `host` entry; never remains a field line. AT MOST ONE `host` entry — exactly one when an authority is supplied, none otherwise, never synthesized. |
+| 6 | `:method`, `:path` | parser | DISCARD | Already carried by rows 1 and 2. |
+| 7 | `:scheme` | **parser** | DISCARD, **with loss** | **PROTO-SCHEME-IS-NOT-CARRIED.** The `Request` type has no field for it and rows 1–2 do not carry it, so a handler CANNOT distinguish `http` from `https`. Stated as a loss rather than left implied: an earlier version claimed the pseudo-headers' information was "already placed in method and path", which is true of `:method` and `:path` and false of `:scheme`. Reconstructing an absolute-form `path` for HTTP/2 was rejected — it would make the same logical request yield different `path` values across versions, the divergence §14.0 exists to prevent. |
+| 8 | field-name case | adapter | CANONICALIZE | **REQ-HEADER-NAMES-LOWERCASE.** ASCII only: `A`–`Z` (0x41–0x5A) → `a`–`z` (0x61–0x7A); every other octet unchanged. NOT Unicode case folding. |
+| 9 | field-name and field-value octets, `method`, `path`, and any LIFTED authority | adapter | REFUSE if unrepresentable | **REQ-TEXT-OCTETS-ARE-ASCII.** Any octet outside 0x20–0x7E — other than HTAB (0x09), permitted inside a field VALUE and a lifted authority and nowhere else — gives **400**, handler not invoked. Applied AFTER rows 15–17, so a discarded field's octets never matter. A lifted authority is included by construction: it becomes a `Str` in the value, and this rule governs every `Str` built from the request. |
+| 10 | field-value octets | adapter | PRESERVE | **REQ-HEADER-VALUE-OCTETS.** Unchanged: no trimming, decoding, re-encoding or case-mapping beyond rows 11–12. |
+| 11 | OWS surrounding a field value | **parser** | DISCARD | Parsing, not normalization (RFC 9110 §5.5). Applied AFTER row 12, on the reconstituted value. |
+| 12 | obsolete line folding | **parser** | CANONICALIZE | **PROTO-OBS-FOLD-IS-ONE-SPACE.** Each fold — CRLF followed by SP/HTAB — becomes EXACTLY ONE SP; the whitespace consumed is the run on BOTH sides, the trailing run before the CRLF and the leading run after it. |
+| 13 | order across distinct names | adapter | CANONICALIZE | **REQ-HEADER-ORDER-LEXICOGRAPHIC.** Ascending by lowercase name as unsigned octets; a shorter name that is a prefix sorts first. |
+| 14 | repeats under one name | adapter | PRESERVE | **REQ-HEADER-REPEATS-PRESERVED** and **REQ-HEADER-VALUES-NOT-JOINED.** Arrival order, stable under row 13, never reordered, deduplicated, dropped, or comma-joined. |
+| 15 | `connection`, `keep-alive`, `proxy-authenticate`, `proxy-authorization`, `te`, `trailer`, `transfer-encoding`, `upgrade`, `content-length` | adapter | DISCARD | **REQ-FRAMING-FIELDS-EXCLUDED.** They describe the TRANSMISSION. `content-length` in particular: `body` is authoritative on how many octets arrived, and trusting a field that disagrees with it is what request smuggling is built on. |
+| 16 | fields nominated by `connection` | adapter | DISCARD | **PROTO-NOMINATION-BY-PRESENCE.** The value is a comma-separated list of connection OPTIONS. Each element: split on `,`, then strip SP and HTAB from both ends; an empty element is ignored; a remaining element that is not an RFC 9110 token is ignored. Options and field names are compared AFTER row 8's ASCII lowercasing, so `Connection: x-hop` nominates `X-Hop`. An option nominates a field only if a field of that name is PRESENT; absent, it is a control token with no effect. Union across several `connection` lines. Cannot reach `host` (row 5 is unconditional) — such a nomination is ignored, not refused. |
+| 17 | trailer-section fields | **parser** | DISCARD | **PROTO-TRAILERS-ARE-NOT-HEADERS.** They arrive after the body and exist only under one framing. |
+| 18 | body octets | parser | PRESERVE | **REQ-BODY-IS-OCTETS.** `(List Int)`, one element per octet, each `0..255`, in order, not decoded as text. |
+| 19 | transfer coding | **parser** | DISCARD | Discharged once `body` is octets. |
+| 20 | the receipt-time observation | **parser** | LIFT | **REQ-TIME-IS-DATA** and **PROTO-TIME-IS-INTEGRAL.** `Int`, whole seconds since the Unix epoch, truncated toward negative infinity, truncation performed at the parser. A field, never an ambient clock: the handler stays a deterministic function of its argument. |
+| 21 | HTTP version | parser | DISCARD | Not in the value, and not needed: row 4's route tag carries the only version-dependent distinction §14 makes. |
+| 22 | more than one `Host` field line | parser **or** adapter | REFUSE | **400** (RFC 9112 §3.2). Enforced at or before the boundary — see §14.2a. |
+| 23 | `:authority` disagreeing with a `Host` field line | parser **or** adapter | REFUSE | **PROTO-AUTHORITY-MUST-AGREE.** HTTP/2 and /3 only. Disagreement is OCTET inequality — no case folding, no default-port normalization. **400**. Does NOT extend to an HTTP/1.1 absolute-form target differing from a `Host` field: row 4's precedence answers that, per RFC 9112 §3.2.2. |
+| 24 | a message that cannot be framed | **parser** | REFUSE | **PROTO-UNFRAMEABLE-IS-REFUSED.** **400**, no `Request` constructed. Named instances, none of them separate distinctions: no colon in a field line; a malformed request line; a body shorter than its declared length; and SP or HTAB before a field line's colon, since a name ends at the colon and may not contain either (RFC 9112 §5.1), so `X-A : v` is malformed rather than a field named `x-a `. |
+| 27 | an HTTP/1.1 request with NO `Host` field | **parser** | REFUSE | **400**. `Host` is mandatory in HTTP/1.1 (RFC 9112 §3.2). Version-dependent, so it is discharged where the version is known — the same reason rows 22-23 sit there and row 21 can discard the version. Added after review found the exhaustive table had no row for it while §14.3 still called such a request illegal: two backends could then differ, one constructing a `Request` and one refusing. HTTP/2 and /3 carry the authority as `:authority`, so this row does not reach them. |
+| 26 | a present but EMPTY `Host` value | adapter | DISCARD | **NO authority is supplied and NO `host` entry appears** — an authority of zero length identifies nothing, so present-empty and absent are the same outcome. A draft said the opposite, producing `("host", "")`, and that is not implementable: mainstream parsers collapse the two before an adapter sees them (Go removes `Host` from the field lines and leaves an empty string either way), so the presence bit does not survive the boundary. Requiring it would be a rule no supported stack can satisfy. |
 
-**REQ-TEXT-OCTETS-ARE-ASCII, and a violation is REFUSED.** This rule governs
-EVERY `Str` a backend constructs from the request: `method`, `path`, each header
-field name, and each header field value. `Str` is a sequence of CODEPOINTS. For
-the printable US-ASCII range that is exact — codepoint and octet coincide — as it
-is for HTAB, whose codepoint 9 and octet 0x09 likewise coincide. Outside those
-the type cannot represent what arrived. (An earlier version argued only from "the
-printable US-ASCII range" and then admitted HTAB, which is outside it: the rule
-was sound and its stated reason did not cover the exemption it granted.)
+**Every row has exactly one disposition, and every distinction has exactly one
+row.** Row numbers are LABELS, not a sequence: 25 is retired, having been a
+restatement of row 24 rather than a distinction of its own, and reusing the
+number would silently repoint a reference. A rule that would need two rows is a sign the model is wrong, not that the
+table needs a footnote.
 
-A backend MUST NOT deliver such a request. If any of those four contains an octet
-outside 0x20–0x7E — other than HTAB (0x09), which is permitted inside a header
-field VALUE and nowhere else — the backend responds **400** and the handler is
-NOT invoked.
+**The `where` column is load-bearing.** A row marked **parser** is discharged
+BEFORE §14.2a's boundary and is therefore not observable to the transformation —
+it is stated here because the distinction must have a disposition SOMEWHERE, not
+because an adapter performs it.
 
-**It covers all four because the hazard is identical in all four, and an earlier
-version of this rule covered only headers.** Blind round 9 found the asymmetry:
-the argument below was stated for field values, applied to field values, and left
-`method` and `path` — both `Str`, both built from request octets, both with no
-stated mapping and no refusal — to be resolved by whoever implemented them. The
-same request target then yields codepoint 226 under one reading, a different
-codepoint under another, and a refusal under a third, while REQ-PATH-IS-RAW
-justifies itself with *"signed schemes rely on the raw form"*. A rule that
-protects the signature over one field and not the neighbouring one protects
-nothing.
+**Rows 22 and 23 say "parser or adapter" because §14.2a offers two boundary
+forms, and which layer can discharge them follows from which form is supplied.**
+Given the tagged COLLECTION, every candidate is visible and the adapter performs
+both refusals. Given a single resolved value, the losing candidates are gone and
+the parser must already have performed them — which is what §14.2a requires of
+that form. Marking these rows `parser` unconditionally, as a draft did,
+contradicted the collection form the same section explicitly permits. Round 11 found this exact confusion in the
+previous text, where an obligation was written as though the adapter could still
+see something the parser had already resolved. The column was in the design pass
+that produced this table and was omitted from the first draft of it, which
+reproduced the defect one more time.
 
-The tightening is also what HTTP already requires: a method is a token and a
-request-target is ASCII (RFC 9112 §3), so a non-ASCII octet in either is
-malformed rather than exotic. `obs-text` (0x80–0xFF) in a field value is the one
-case that is both rare and LEGAL (RFC 9110 §5.5, deprecated but permitted), which
-is why the refusal is stated rather than assumed away.
+### 14.2a The parser boundary (normative)
 
-**For the HEADER half, the exclusions of REQ-FRAMING-FIELDS-EXCLUDED are applied
-FIRST, and this ordering is normative** — without it two backends would disagree
-about a request carrying obs-text in a field that neither of them delivers. The
-check exists because `Str` cannot represent the octet, so it is a question about
-the value being constructed, not about the message: a field that never enters
-`headers` never enters `Str`, and refusing on its account would reject a request
-that could have been served faithfully.
-
-`method` and `path` are subject to no exclusions, so the ordering does not arise
-for them: every octet of each enters a `Str`, and each is checked directly.
-
-This is a REFUSAL, not a repair, and the distinction is the point. Transcoding
-the value would put a lie in the Oath value: the handler would verify a signature
-over bytes that are not the bytes that arrived, and no test of the artifact could
-detect it, because the artifact never sees the original. Refusing keeps
-REQ-HEADER-VALUE-OCTETS, REQ-METHOD-VERBATIM and REQ-PATH-IS-RAW exactly true on
-every request that IS delivered, instead of true-in-general and quietly false at
-the edge — which is the whole reason this rule reaches all four fields.
-
-The underlying limit is the one #133 tracks — `Str` is defined over codepoints,
-and a wire protocol is defined over octets. §14 does not resolve it; it declines
-to hide it. A future model that carried this text as `(List Int)`, as `body`
-already does, would replace this rule rather than relax it.
-
-**REQ-HOST-IS-A-HEADER.** The request authority appears in `headers` under the
-name `host`, ordered and compared like any other entry, and **AT MOST ONE `host`
-entry ever appears — exactly one when the transport supplies an authority, and
-none when it does not.**
-
-That is not an exception to REQ-HEADER-REPEATS-PRESERVED, and two rules make it
-consistent rather than merely asserted:
-
-- **A `Host` field line is NOT one of the header-section field lines the adapter
-  receives.** PROTO-PARSER-BOUNDARY carries the authority as its own component,
-  so repeats-preserved never ranges over it — it ranges over the field lines, and
-  `Host` is not among them.
-- **More than one `Host` field line is MALFORMED**: the backend responds 400 and
-  no `Request` is constructed. RFC 9112 §3.2 already requires that of an
-  HTTP/1.1 recipient, so the case that would otherwise force a choice between one
-  entry and two does not reach the adapter at all. Host libraries routinely
-lift it out of the header collection into a dedicated field — Go's `net/http`
-promotes it to `Request.Host` and REMOVES it from the header map — and a backend
-that passes its library's collection through unexamined therefore drops it. It is
-a header field, it is mandatory in HTTP/1.1, and a handler inspecting the
-authority must not have to know which backend compiled it.
-
-This also covers the HTTP/2 and HTTP/3 spelling: the authority arrives as the
-`:authority` pseudo-header rather than as a field line, and it appears here as
-`host` regardless. Pseudo-headers are otherwise NOT header entries — `:method`,
-`:path` and `:scheme` are the transport's encoding of information this section
-already places in `method` and `path`, and repeating them as entries would make
-the header list depend on the HTTP version. When the transport supplies no
-authority at all, no `host` entry appears; a backend MUST NOT synthesize one.
-
-**REQ-FRAMING-FIELDS-EXCLUDED.** These names do NOT appear in `headers`:
-
-    connection            keep-alive            proxy-authenticate
-    proxy-authorization   te                    trailer
-    transfer-encoding     upgrade               content-length
-
-Also excluded is every field NOMINATED by the `connection` field. Its value is a
-comma-separated list of **connection options** (RFC 9110 §7.6.1) — not, as an
-earlier version of this section claimed, a list of field names. The two are not
-the same set and HTTP gives no syntactic way to tell them apart: `close` and
-`keep-alive` are control options, while `x-hop` in `Connection: x-hop` nominates
-the field `X-Hop` as connection-specific.
-
-**PROTO-NOMINATION-BY-PRESENCE.** An option nominates a field only if a field of
-that name is PRESENT in the request. Present, and it is excluded. Absent, and the
-option is a connection-control token with no effect on `headers`. Options are
-compared after the same ASCII lowercasing as any other name.
-
-This is the distinction and it costs nothing to draw, because the two readings
-are behaviourally identical — removing a field that is not there is a no-op. What
-differs is what the specification SAYS. Under the old wording a backend was
-required to treat `close` as a field name and exclude it, on essentially every
-HTTP/1.1 request; blind round 9 derived exactly that and implemented it. A
-conventional control token became a phantom header name, and a reader could not
-tell whether the section meant it. It did not.
-
-No registry of known options is needed or wanted. Presence is the test, it is
-decidable from the message alone, and it stays correct as new options are
-defined — a closed list in this document would not.
-Without this, a handler would see a field when reached directly and not see it
-when reached through a conformant intermediary that stripped it — a difference in
-the Oath value produced by the network path rather than by the request.
-
-**Nomination reaches only fields this section does not otherwise govern.** It
-cannot remove `host`, which REQ-HOST-IS-A-HEADER requires unconditionally.
-`Connection: host` is not a request to drop the authority — it is a nonsensical or hostile nomination, and honouring it
-would let a client delete a mandatory field from the Oath value and change how a
-handler behaves. A backend MUST ignore such a nomination rather than refuse the
-request: the field is still delivered, so nothing is lost or misrepresented.
-
-(An earlier version added "and it cannot reinstate a name excluded above". That
-clause was vacuous — nomination only ever removes, so there is no reading under
-which it could add an entry — and round 9 flagged it as reading like a
-bidirectional mechanism. Removed.)
-
-They describe how this message was TRANSMITTED, not what was requested. Most are
-connection-specific and hop-by-hop (RFC 9110 §7.6.1) — meaningful only between
-one pair of endpoints, and meaningless to a handler that receives an already
-reassembled request. By the time `body` is a list of octets the framing has been
-consumed, so `transfer-encoding: chunked` describes an encoding that no longer
-exists in the value.
-
-`content-length` is excluded for a sharper reason: `body` is the authority on how
-many octets arrived, and a handler that trusted a header disagreeing with it
-would be reproducing the disagreement that request smuggling is built on. There
-is nothing a handler can soundly do with the field that inspecting `body` does
-not do better.
-
-Enumerating these is not tidiness — it is the difference between a model and a
-coincidence. Host libraries lift exactly these fields out of their header
-collections at unpredictable points (Go's `net/http` deletes `Transfer-Encoding`
-and `Trailer` into dedicated struct fields, and deduplicates repeated identical
-`Content-Length` lines), so a backend that simply forwarded its library's
-collection would agree with another backend only by luck. Excluding them by NAME
-means every backend produces the same list whether or not its library kept them.
-
-**REQ-METHOD-VERBATIM.** `method` is the request method as received, unchanged
-and case-sensitive.
-
-**REQ-PATH-IS-RAW.** `path` is the request target as received, including the
-query string when one is present, separated by `?`. It is NOT percent-decoded,
-NOT dot-segment-normalized, and NOT otherwise rewritten. When no query string is
-present the `?` is absent.
-
-**REQ-BODY-IS-OCTETS.** `body` is `(List Int)`, one element per octet of the
-request body, each in `0..255`, in order. It is not decoded as text. A body is
-signed as octets and may not be valid UTF-8; routing it through a codepoint type
-would place the corruption in the type rather than in the adapter.
-
-**REQ-TIME-IS-DATA.** `received-at` is the backend's observation of when the
-request was received, in seconds since the Unix epoch. It is an OBSERVATION in
-the sense of the journal's four categories: authoritative about the observer and
-checkable by nobody. It is a field rather than an ambient clock so that a handler
-stays a deterministic function of its argument.
-
-### 14.2a What the transport can produce (normative)
-
-Every rule here answers a question blind round 9 had to decide for itself. Each
-was a place two conformant backends could diverge, so each is settled rather than
-left to judgement.
-
-**PROTO-PARSER-BOUNDARY.** §14 binds the adapter, and the adapter's input is the
-request AFTER framing has been parsed. That input has SIX components, and it is
-enumerated exhaustively because §14's rules are a transformation of it and of
-nothing else:
+The table above is a transformation OF something. This is that something, and it
+is enumerated exhaustively because §14 is a function of it and of nothing else.
 
 | component | notes |
 |---|---|
-| header-section field lines | `(name, value)` in arrival order, with the optional whitespace surrounding each value removed |
-| the authority | absent, or present — and EITHER tagged by route (pseudo-header, absolute-form target, `Host` field line) OR already resolved by PROTO-AUTHORITY-SOURCE's precedence **with PROTO-AUTHORITY-MUST-AGREE and REQ-HOST-IS-A-HEADER's duplicate-`Host` rejection already enforced** |
+| header-section field lines | `(name, value)` in arrival order, folds already resolved per row 12, surrounding OWS already removed per row 11 |
+| the authority | absent, or ALL candidates that arrived, each tagged by route (pseudo-header, absolute-form target, `Host` field lines — plural) — OR a single resolved value, admissible only if the parser has already performed rows 22 and 23 |
 | the method | as received |
 | the raw request target | as received |
 | the body octets | after any transfer coding is decoded |
-| the receipt-time observation | whole seconds; see PROTO-TIME-IS-INTEGRAL |
+| the receipt-time observation | already integral, per row 20 |
 
-Three of those were missing from an earlier enumeration and blind round 10 found
-each one, because a rule downstream needed information the boundary had already
-discarded:
+**PROTO-PARSER-BOUNDARY.** §14 binds the adapter, and the adapter's input is
+exactly the six components above. **DO NOT REQUIRE A TRANSPORT FACT TO BE
+RECONSTRUCTED AFTER THE PARSER HAS ERASED IT** — that principle is why the list
+is closed rather than illustrative, and it has been violated three times in this
+section's history by rules needing something the boundary had discarded.
 
-- **The authority must arrive separately from the field lines**, because
-  PROTO-AUTHORITY-SOURCE assigns precedence by route and that is undecidable once
-  a pseudo-header is indistinguishable from a field of the same name. The
-  alternative is permitted deliberately: a parser that has ALREADY applied this
-  section's precedence has discharged the obligation, and requiring it to tag the
-  route anyway would fail parsers that resolve correctly and then discard the
-  provenance — which is most of them. **Two refusals come with it**, and not as a
-  courtesy: resolving precedence destroys the other candidates, so a parser that
-  resolved without comparing would satisfy this boundary while delivering a
-  request PROTO-AUTHORITY-MUST-AGREE calls malformed — and one that collapsed
-  repeated `Host` lines would do the same for the duplicate rejection
-  REQ-HOST-IS-A-HEADER requires. Both are undetectable downstream once the
-  authority is a single value, so whichever form a parser supplies, the
-  obligations travel with it. This is the enumeration's own principle applied to
-  itself: do not require a transport fact to be reconstructed after the parser
-  has erased it. What is normative is the authority that
-  results, and that is observable in the `host` entry whichever way it was
-  obtained.
-- **The receipt-time observation is part of the input.** REQ-TIME-IS-DATA makes
-  it a field of the value, and a transformation cannot produce what it was not
-  given.
-- **Trailer-section fields are NOT header-section field lines.** The parser MUST
-  keep them out; PROTO-TRAILERS-ARE-NOT-HEADERS is otherwise unenforceable,
-  because once a trailer sits in the pair sequence no adapter can tell it apart.
+**TWO REFUSALS TRAVEL WITH THE AUTHORITY, whichever form supplies it** — rows 22
+and 23. Resolving precedence destroys the losing candidates, so a parser that
+resolved without first comparing would satisfy this boundary while delivering a
+request row 23 calls malformed, and one that collapsed repeated `Host` lines
+would do the same for row 22. Both are undetectable downstream once the authority
+is a single value.
 
-**THE PRINCIPLE, which is why this rule is enumerated rather than sketched: DO
-NOT REQUIRE A TRANSPORT FACT TO BE RECONSTRUCTED AFTER THE PARSER HAS ERASED IT.**
-Each of the three above was a rule written as though the adapter could still see
-something the boundary had thrown away — the same failure §14.2a diagnoses for
-the withdrawn obs-fold refusal ("the adapter cannot refuse what it can no longer
-see"), which had recurred inside the rules written to fix it. A rule needing a
-distinction the boundary does not carry is not a strict rule; it is an
-unsatisfiable one, and the repair belongs in this enumeration rather than in the
-rule.
+That is the enumeration's own principle applied to itself, and blind round 11
+found it violated HERE first: the authority was enumerated as ONE component while
+the same paragraph required a duplicate-`Host` rejection that needs a LIST.
 
-OWS removal is parsing (RFC 9110 §5.5), and stating where it happens is what
-stops two backends whose libraries strip it differently from both claiming
-conformance. Nothing in §14 depends on how the octets were framed beyond what
-this table carries.
+**So the tagged form is a COLLECTION, not a winner.** It carries every candidate
+that arrived — including repeated `Host` lines, plural — because rows 22 and 23
+compare candidates and a selected winner has destroyed what they compare. The
+alternative remains available and is the same obligation stated the other way: a
+parser MAY supply one resolved value, but ONLY if it has already performed both
+refusals. What is forbidden is the middle: selecting a winner, discarding the
+losers, and leaving the refusals to a layer that can no longer see them.
 
-**PROTO-TIME-IS-INTEGRAL.** `received-at` is an `Int`: whole seconds since the
-Unix epoch, truncated toward negative infinity. `Rat` is available and exact and
-is NOT used, because sub-second precision with no stated rounding rule would let
-two backends observing the same instant produce different values while both
-conforming — the same defect this section exists to remove, in the one field
-whose value no verifier can check.
-
-**PROTO-OBS-FOLD-IS-ONE-SPACE.** An obsolete line fold — CRLF followed by SP or
-HTAB inside a field value — is replaced by EXACTLY ONE SP, and the folding
-whitespace around it is consumed. Unfolding is part of reconstituting the field
-value from the wire, the same category as the OWS removal PROTO-PARSER-BOUNDARY
-already places before the adapter.
-
-RFC 9112 §5.2 permits a recipient either to reject such a message or to replace
-each fold with "one or more SP". **§14 takes the second branch and pins the
-count**, because the first is not implementable and the RFC's own latitude is not
-canonical:
-
-- **Rejection is undetectable on a mainstream stack.** An earlier version of this
-  rule required a 400. Measured against the reference backend, Go's
-  `net/textproto` unfolds during parsing and hands the adapter `one two` with no
-  trace that a fold occurred — so the adapter cannot refuse what it can no longer
-  see. A normative rule the reference implementation is structurally unable to
-  satisfy does not get obeyed; it gets quietly violated, which is precisely the
-  failure §13 recorded in this specification's own ledger.
-- **"One or more SP" would leave backends free to differ** on the same request,
-  which is the one thing §14.0 exists to prevent. Exactly one is arbitrary in the
-  same way lexicographic ordering is arbitrary, and canonical for the same
-  reason.
-
-**PROTO-NOMINATION-IS-A-UNION.** Where several `connection` field lines arrive,
-the nominations are the UNION of all of them. §14 forbids joining repeated field
-lines, so each line stands on its own, and nomination is a set operation over
-their options rather than a property of one line.
-
-**PROTO-AUTHORITY-MUST-AGREE.** This governs HTTP/2 and HTTP/3 ONLY: where an
-`:authority` pseudo-header and a `Host` field line disagree, the request is
-malformed and no `Request` is constructed.
-
-("Exactly one `host` entry ever appears" used to close this paragraph. Blind
-round 10 could not tell whether it was scoped to this rule or global, and two
-independent readers split on it — under the global reading it contradicts
-REQ-HEADER-REPEATS-PRESERVED for two HTTP/1.1 `Host` lines. It is global, and it
-now lives in REQ-HOST-IS-A-HEADER where nothing scopes it.)
-
-It does NOT extend to an HTTP/1.1 absolute-form target that disagrees with a
-`Host` field. That case is not a conflict to detect but a precedence to apply —
-RFC 9112 §3.2.2 requires the server to IGNORE the `Host` field entirely and use
-the target's authority — and PROTO-AUTHORITY-SOURCE already states it. An earlier
-version of this rule reached that case too, which would have had a backend refuse
-a request the HTTP specification defines an answer for.
-
-This is stated as a property of the message rather than as an adapter check,
-because it is already the transport's job and an adapter is generally too late to
-perform it: RFC 9113 §8.3.1 makes an HTTP/2 request whose `:authority` and `Host`
-disagree malformed, and a conformant HTTP/2 implementation rejects it before any
-adapter runs. §14 records the requirement so a backend built on a stack that does
-NOT enforce it knows it must, and so no backend invents a precedence rule of its
-own to break the tie.
-
-**PROTO-TRAILERS-ARE-NOT-HEADERS.** Fields carried in a chunked message's trailer
-section do NOT appear in `headers`. `headers` is the header section; a trailer
-arrives after the body and exists only under one framing, so admitting trailers
-would make the Oath value depend on how the message was framed rather than on
-what was requested — the objection REQ-FRAMING-FIELDS-EXCLUDED already makes.
-
-**PROTO-AUTHORITY-SOURCE.** `host` carries the authority the transport supplied,
-by whichever route it supplied it, and there are three: an `:authority`
-pseudo-header, an absolute-form request target, or a `Host` field line — in that
-order of precedence. `path` is always the target as received, complete with
-scheme and authority when it came in absolute form, per REQ-PATH-IS-RAW.
-
-The absolute-form case is the one worth stating, because an earlier version of
-this rule got it backwards. It said the authority must NEVER be taken from the
-target, on the reasoning that lifting it would be the synthesis
-REQ-HOST-IS-A-HEADER forbids. **That contradicts RFC 9112 §3.2.2**, which
-requires an origin server receiving an absolute-form target to IGNORE the `Host`
-field and use the target's authority — so the earlier rule would have had a
-backend deliver an authority the HTTP specification says must be disregarded.
-
-It was also unimplementable for the same reason as the obs-fold refusal: Go's
-`net/http` populates `Request.Host` from the target authority when present and
-removes the wire `Host` field, so the distinction the rule depended on is gone
-before an adapter sees it. Two rules written in one sitting, both mandating a
-distinction the transport layer had already collapsed — which is the argument for
-measuring a rule against a real stack before making it normative, not after.
-
-**PROTO-UNFRAMEABLE-IS-REFUSED.** A message the backend cannot parse into the
-input PROTO-PARSER-BOUNDARY describes — no colon in a field line, a request line
-that is not `method SP target SP version`, a body shorter than its declared
-length — causes a **400** and no `Request` is constructed. This is stated for
-completeness rather than because §14 governs framing: what matters is that a
-backend refuses rather than constructing a partial value.
+A first draft of this section said "tagged by route (pseudo-header, absolute-form
+target, `Host` field line)" — singular, and therefore the same defect round 11
+had just reported, reintroduced in the paragraph acknowledging it.
 
 ### 14.3 Worked vectors
 
-Two, because one of the thirteen obligations is a REFUSAL and no single
-delivered request can witness it.
+Two, because §14.2's table contains FIVE refusal rows — 9, 22, 23, 24 and 27 — and
+no delivered request can witness a refusal.
 
-**They witness twelve of the thirteen, and the thirteenth cannot be witnessed by
-anything.** That is not a coverage gap: PROTO-NOMINATION-BY-PRESENCE is §13's
+A first version of this sentence said SIX, counting "the representability check"
+as distinct from row 9, which IS the representability check, and counting a row
+since retired as a restatement. **That is the third miscount recorded in this
+section** — the earlier two are noted below — and all three shared one shape: a
+number asserted about a set rather than counted from it.
+
+**COVERAGE IS STATED AGAINST THE TABLE, and it is partial.** The two vectors
+witness the delivered path and one refusal. They do NOT witness rows 22
+(duplicate `Host`), 23 (authority disagreement), 24 (unframeable), or 26 (an
+empty `Host` value yielding no entry) — and rows 7 and 21 can be
+witnessed by nothing, since neither the scheme nor the version reaches the value
+in any form.
+
+That is a coverage GAP for rows 22–24, 26 and 27 — observable, and unwitnessed.
+Remedy: write the vectors.
+
+**A `parser` row is NOT automatically unwitnessable, and a draft of this
+paragraph said it was.** These vectors are WIRE-LEVEL, so they reach the parser:
+row 11 is witnessed by `Accept`'s surrounding OWS being stripped while its
+interior space survives, and row 20 by the `Date` field differing from the stated
+observation. Only rows whose effect never reaches the value at all are beyond any
+vector — **row 7** (`:scheme`, discarded with loss) and **row 21** (the HTTP
+version). Everything else is either witnessed or a gap, and calling parser rows
+unreachable hid which ones actually need vectors. Stating which is which is the point: the
+previous version claimed the vectors "cover every rule", and blind rounds 10 and
+11 each found that false, the second time immediately after the first was
+repaired.
+
+One row remains witnessed by nothing BY CONSTRUCTION.** That is not a coverage gap: PROTO-NOMINATION-BY-PRESENCE is §13's
 UNOBSERVABLE-BUT-PINNED state — the specification chooses between readings that
 produce identical `Request` values, and says so — so no vector can distinguish
 them and none should be claimed to.

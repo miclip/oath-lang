@@ -1041,6 +1041,13 @@ func main() {
 		addr = ":8080"
 	}
 %s	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// SPEC 14.2 row 20: the receipt-time observation is taken BEFORE the body
+		// is consumed. Reading first and stamping after records body-COMPLETION
+		// time, which for a slow or large upload differs from receipt by seconds
+		// or more — and received-at is an observation about when the request
+		// arrived, not when the backend finished collecting it.
+		receivedAt := time.Now().Unix()
+
 		// SPEC 14.2a PROTO-UNFRAMEABLE-IS-REFUSED. The error is NOT discarded: a
 		// connection that ends before its declared Content-Length yields
 		// unexpected EOF here, and constructing a Request from the partial body
@@ -1187,7 +1194,7 @@ func main() {
 		}
 
 		var req any = &ctorV{idx: 0, fields: []any{
-			r.Method, path, hs, body, big.NewInt(time.Now().Unix()),
+			r.Method, path, hs, body, big.NewInt(receivedAt),
 		}}
 
 		resp, ok := (%s).(*ctorV)
