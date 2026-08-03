@@ -241,3 +241,33 @@ publish workflow is NOT built, deliberately: wiring it before the above would
 make CI depend on a protocol path nobody can invoke normally, inspect through the
 public surface, or reproduce from fixtures — turning hand-crafted state into
 production authority.
+
+---
+
+## SPEC §14's withdrawn rules — the instances behind the transport-distinction rule
+
+`CLAUDE.md` carries the principle and deliberately not these cases: round 10's
+subject inherits that file, and naming them would coach it on the §14 questions
+it exists to derive. This file is not in a dispatched session's context.
+
+Three normative rules were written and withdrawn the same day, each found by
+implementing against a real stack rather than by reading:
+
+- **Obsolete line folding.** The rule required a 400. Go's `net/textproto`
+  unfolds during parsing and hands the adapter the joined value with no trace a
+  fold occurred, so the adapter cannot refuse what it can no longer see. Replaced
+  by canonicalization: exactly one SP, pinning the count RFC 9112 leaves open.
+- **Absolute-form authority.** The rule said the authority must never be taken
+  from the request target. RFC 9112 §3.2.2 requires precisely that — an origin
+  server MUST ignore the `Host` field and use the target's authority — so the
+  rule contradicted HTTP, and Go was right.
+- **Authority agreement.** The rule was extended to HTTP/1.1 absolute form, which
+  has a precedence rule rather than a conflict to detect. Scoped to HTTP/2+.
+
+All three mandated a distinction the transport layer had collapsed before any
+Oath code ran. Two of them were written in the same sitting as each other.
+
+**The pattern to watch for:** a rule phrased as "MUST preserve X" where X is
+recovered from a parsed representation rather than from the wire. If the host
+library normalized, joined, promoted, or deleted X during parsing, the rule is
+unsatisfiable no matter how carefully it is worded.

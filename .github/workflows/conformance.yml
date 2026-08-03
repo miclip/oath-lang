@@ -82,6 +82,16 @@ jobs:
       - name: independent-implementability ledger (SPEC §13)
         run: make check-implementability
 
+      # A blind subject inherits CLAUDE.md in its system prompt — the
+      # IMPL-ISOLATED-SESSION violation §13 records and the harness cannot yet
+      # remove — so a rule NAMED there is a rule handed to a subject that should
+      # be deriving it. The export preflight cannot see this: it checks the
+      # archive, and the leak is not in the archive. Written after the same file
+      # acquired the leak four times in one session, three of them within ten
+      # minutes of the rule against it being written down.
+      - name: no coaching leak into always-loaded context
+        run: make check-coaching-leak
+
       # Every byte of a normative identity must have a normative source. A
       # constant living only in the reference makes the vectors containing it
       # irreproducible from the spec — indistinguishable, to a blind reader, from

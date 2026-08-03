@@ -52,15 +52,45 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
 **Compiler/runtime — the window is closing.**
 
-  1. ~~**#122** handler header model~~  SHIPPED as SPEC §14 — see below
+  1. **#141** then **round 10**         finishes #122 — see below, do not reorder
   2. **#121** hex-decode                unblocks real use
   3. **#117 / #69** scoped authority    language design, and see below
   4. **#133** scalar-only Str           language design, NORMATIVE
 
-**#122 SHIPPED, WITH ONE STEP OUTSTANDING.** SPEC **§14** is the handler
+**#122 is NOT shipped.** SPEC §14 exists and is repaired, but the issue closes
+only when the adapter and the repaired prose have each survived their own check —
+#141 and round 10 respectively.
+
+**#122, CONTINUED — THE ORDER MATTERS.** SPEC **§14** is the handler
 protocol's normative Request model — read it there; this file deliberately does
-NOT restate its rules. It is new normative text, so this repo's definition of
-done requires a **blind round scoped to it, and that round has NOT been run.**
+NOT restate its rules.
+
+Blind **round 9** ran against §14 and returned PASS-WITH-INFERENCE with ten
+inferences. §14 has since been repaired. **What the inferences were and what the
+repairs say is NOT recorded here** — round 10's subject inherits this file, so
+naming them would hand it the answers it exists to derive. The round record is
+`docs/experiments/blind-request-model.md`, which `blind-export.py` forbids
+(`docs/experiments/` is a FORBIDDEN_PREFIX), and the repairs are in §14 itself.
+
+**Next, in this order, and do NOT reorder it:**
+
+  1. **#141** — an adapter gap round 9 exposed. **Read the issue**, which carries
+     both the rule it must satisfy and how to mutate it. Neither is restated
+     here: round 10's subject inherits this file, and the identifier gate
+     (`make check-coaching-leak`) catches a rule NAMED in it but cannot catch a
+     rule DESCRIBED in it. That half is still discipline.
+  2. **round 10**, only once #141 changes no normative text. The adapter path is
+     still capable of exposing another specification mistake — three of §14's
+     rules were withdrawn the day they were written, all found by implementing
+     against a real stack. Running the round first risks testing prose you must
+     immediately amend.
+
+Round 10's claim is deliberately narrow: **whether round 9's identified
+ambiguities were closed.** It cannot establish §14's overall sufficiency, and
+under §13 no run on this harness can produce a valid PASS. The ledger now
+requires a pre-registered boolean `session_isolated` marker before dispatch and
+compares it against the first committed DISPATCHED revision.
+
 `scripts/blind-export.py --section 14` is wired and preflights clean; the surface
 is deliberately prose-only, because a vector file would let a subject reproduce
 the answer without deriving the rules.
@@ -335,6 +365,23 @@ setup-failure branch that printed its FAIL and then took the remaining 28 checks
 with it, silently. So: assert the final summary line, count the checks that ran,
 and make the harness fail LOUDLY when its own setup did not work — a check that
 cannot tell its setup failed from the defect it hunts is worse than no check.
+
+**BEFORE REQUIRING A TRANSPORT DISTINCTION TO BE PRESERVED, ESTABLISH THAT EVERY
+SUPPORTED STACK CAN STILL OBSERVE IT AT THE ADAPTER BOUNDARY.** If the transport
+has already erased it, the specification must CANONICALIZE it, REFUSE the input,
+or OMIT the rule. **It cannot mandate preservation of information no
+implementation receives.**
+
+Three rules written in one sitting failed this and were withdrawn the same day,
+each found by implementing against a real stack rather than by reading. The
+instances are in `docs/milestones.md`, deliberately not here.
+
+The two failure directions are the same axis and both are cheap to commit: a
+blind round finds obligations too LOOSE to derive; review finds obligations too
+STRONG to implement. A specification is wrong one way when a reader cannot
+reconstruct the rule, and wrong the other when an implementer cannot obey it.
+Only measuring against a real stack distinguishes "strict" from "unsatisfiable" —
+reading cannot, and neither can taste.
 
 **THE GATE IS THREE-WAY: `oath eval` is the reference.** Never compare one backend
 against the other alone — two identically wrong lowerings agree. Writing the second
