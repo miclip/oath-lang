@@ -399,6 +399,27 @@
    ],
    "evidence": "docs/experiments/blind-license-evaluation.md",
    "implementer_statement": "Yes-with-inference, and §8.7 is markedly better than what surrounds it. §8.7.0 is the reason: naming the objects before the rules that use them eliminated the class of ambiguity that normally dominates these rounds. The genuinely weak surface in the kit is elsewhere — §8.2.1, which is the most insistent about byte agreement and the least sufficient to achieve it, and which has no fixtures at all."
+  },
+  {
+   "round": 9,
+   "date": "2026-08-02",
+   "status": "DISPATCHED",
+   "sections": [
+    "14"
+   ],
+   "source": "7baef0e0a3f4",
+   "surface_tool": "blind-export.py",
+   "kit_section": "14",
+   "surface_digest": "93294d60b71fa10d8c3777267f15039b9f632202c24da739162158d084dadb23",
+   "supplied": [
+    "docs/SPEC.md"
+   ],
+   "research_question": "Can an independent implementer derive SPEC §14's Request model from the normative PROSE ALONE and build a conforming HTTP adapter? §14 was written because the handler protocol had no normative text at all: the only statement of the rule lived in a comment in examples/http.oath, and the reference backend violated it. The section therefore has three separable claims, and this round establishes only the third — the Go adapter conforms (evidenced by an end-to-end gate), the gate distinguishes each obligation (evidenced by ten mutations, each failing distinguishably), and THE TEXT COMMUNICATES THE MODEL (evidenced by nothing yet).",
+   "hypothesis": "§14 is sufficient. Predicted PASS-WITH-INFERENCE rather than PASS. The section was written in one pass by the same author who wrote the adapter, and four of its seven obligations were added only after review found the prose claiming behaviour the code did not have or could not have. Text produced that way tends to be precise exactly where a defect was found and loose everywhere else, so I expect the surface to determine the rules it was corrected into and to leave at least one boundary the implementer must decide.",
+   "hypothesis_recorded": "before dispatch",
+   "prediction": "Seven INTERPRETATION questions, recorded before dispatch. These are deliberately not implementation-defect predictions: the round measures whether the prose DETERMINES a reading, so each is a place two honest readers could diverge and still both claim conformance. (1) Is host a header ENTRY or a separate Request field? (2) Does the raw path include the query string, and does it preserve percent-encoding? (3) Does cross-key sorting happen BEFORE or AFTER removal of framing and Connection-nominated fields — and does the answer change the result? (4) Are Connection option delimiters HTTP OWS (SP and HTAB) only, or whatever the implementer's language calls whitespace? (5) Are header values outside the representable byte domain REJECTED or lossily decoded? (6) Are framing fields a fixed normative SET, or inherited from whatever the host library chose to keep? (7) Do repeated values under one name remain separate and ordered, or may they be joined? I expect (3) to be the weakest, because the ordering was made normative only after review found the two rules interacting, and a reader who does not construct the interacting case may never notice the question exists.",
+   "claim_scope": "The export is PROSE-ONLY and carries no vectors, so a successful implementation demonstrates that THE TEXT COMMUNICATES THE MODEL. It does NOT demonstrate fixture coverage, and no §14 conformance vectors exist to be reproduced. §14.3's worked example is inside the prose and ships with it, which means a subject can check itself against one request — that is a property of the specification, not a supplied witness. Any verdict from this round must be phrased in those terms per IMPL-VERDICT-SCOPED.",
+   "note": "CONTAMINATION, disclosed before dispatch. (a) The known IMPL-ISOLATED-SESSION violation from rounds 7 and 8 stands: the harness cannot strip this project's CLAUDE.md and memory index from a dispatched session's system prompt. (b) A SPECIFIC leak was found and closed while preparing this round — CLAUDE.md's queue entry had listed §14's rules verbatim (lowercased names, lexicographic order, host, raw target, framing excluded, non-ASCII refused), which would have handed the subject the entire model through the coaching channel rather than the export. That was removed before dispatch and CLAUDE.md now points at §14 without paraphrasing it; the other always-loaded channels were checked for the same leak. (c) Residual and unmitigated: the dispatched session still inherits the repository's working directory unless confined to the export root, and the repository contains the reference adapter, the corpus, and prose describing the model in examples/http.oath and apps/github-webhook/. Confinement to the export directory is therefore load-bearing for this round in a way it was not for §8.7, and a subject that reads outside it invalidates the result rather than merely weakening it."
   }
  ]
 }
