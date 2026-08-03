@@ -12,6 +12,16 @@ the substrate is the product.
 milestone established and why decisions went the way they did. If a paragraph
 here tells you what HAPPENED rather than what to DO, move it there.
 
+**WHEN ADDING GUIDANCE, PREFER REPLACING A COLLECTION OF SIBLING RULES WITH THE
+PARENT PRINCIPLE THAT GENERATES THEM.** Compression through abstraction, not
+through deletion. **The signal to watch is not line count** — it is whether new
+guidance starts EXPLAINING existing guidance instead of ORGANIZING it. A file
+that grows while repeatedly finding the parent rule is healthier than a shorter
+one carrying four versions of the same queue, which is what this file actually
+had. The one worked example so far: "verify the measuring instrument before
+interpreting its output" was placed ABOVE the gate advice it generates rather
+than beside it as another peer bullet.
+
 ## PHASE 5 — READ THIS BEFORE PICKING WORK
 
   Phase 1  Can AI own software?                   registry, proofs, trust
@@ -31,6 +41,14 @@ distinguishing launch failure from failure before OBSERVABLE STARTUP; separating
 provisioning from authority narrowing; refusing rather than replacing; a backend
 SUBSET versus language semantics; deriving a witness's universe from the CLAIM
 rather than the implementation; and evidence versus mechanism.
+
+**THE THROUGH-LINE, across authority, transfer, the compiler boundary, the
+application, the blind rounds and §14: each step reduced where UNVERIFIED
+ASSUMPTIONS could hide.** Different domains, one trajectory. It is the general
+form of "reducing the semantic gap" and it explains why the work keeps moving up
+a layer — each time one becomes reliable, the next becomes the weakest link and
+therefore visible. Note it is NOT that earlier layers stop having defects:
+finding the remaining ones needs the higher layers in place first.
 
 **So the metric is not size.** The temptation is to equate "the compiler is
 getting bigger" with "the compiler is getting better". The opposite is the

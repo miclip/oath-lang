@@ -322,3 +322,30 @@ required a comparison that does not exist — which is the same overclaim habit
 this project keeps finding, committed in a section congratulating itself on
 having closed one.
 
+
+---
+
+## Where the defects were found, session by layer
+
+Worth preserving because it looks discouraging and is not. Over one session,
+independent review stopped finding bugs in Oath and started finding bugs in the
+MEASUREMENTS about Oath:
+
+    bug in the implementation          adapter: method/path octets, body-read error
+    bug in the specification           §14's rules, three withdrawn the day written
+    bug in the blind-review apparatus  the export leaked coaching material by path
+    bug in the contamination controls  the gate covered one file, not the channel
+    bug in the disposition taxonomy    no state for "the subject never reached it"
+    bug in the gate validating that    twelve, each found on the previous fix
+    bug in the probe validating THAT   a crash read as a catch
+
+That is what a system pushing trust one layer deeper looks like. Each time a
+layer became reliable enough, the next became the weakest link and therefore
+visible.
+
+**It is not monotonic, and the exception matters.** The `received-at` bug is an
+IMPLEMENTATION bug and it surfaced last — the timestamp was taken after the body
+was read, recording completion rather than receipt. It was found by the
+transformation table's own question, *where does this fact enter?*, applied per
+row. Earlier layers do not retire as the weak link moves up; finding what remains
+in them requires the higher layers to exist first.
