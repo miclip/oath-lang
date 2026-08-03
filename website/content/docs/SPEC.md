@@ -1410,10 +1410,22 @@ reproducibility (given the same solver):
   obligation. `prove/scripts.txt` witnesses only the direct attempt — 447
   of the 2904 scripts this corpus emits — so a kernel could reproduce it
   exactly while emitting different bytes for every inductive subgoal.
-  `prove/attempts.txt` closes that gap: sha256 of every script the
-  sequence can emit FOR A GOAL UNDER THE RECORDED LEMMA STATE, in emission
-  order, keyed by (name, property, strategy, detail). A conforming kernel
-  MUST reproduce it. The pinned set is what the sequence can emit rather
+  Consequently the bytes of each such script are determined by the rules
+  above for a given (goal, lemma state, strategy, subgoal) — a consequence
+  of those rules, not a further obligation.
+  `prove/attempts.txt` is the reference kernel's serialization of that set:
+  sha256 of every script the sequence can emit FOR A GOAL UNDER THE
+  RECORDED LEMMA STATE, in emission order, keyed by (name, property,
+  strategy, detail). REPRODUCING IT IS NOT A CONFORMANCE REQUIREMENT — §10
+  enumerates the conformance surface and this fixture is not among its
+  points — and the file's shape is deliberately not specified here: the
+  strategy labels, the detail vocabulary and the column layout exist only
+  in the reference implementation, so requiring them would impose an
+  obligation no reader could reconstruct from this document. Note also
+  that §10 tolerates differing proof METHODS where multiple proofs exist;
+  enumerating what the sequence CAN emit rather than what one run DID emit
+  is what keeps this fixture independent of that tolerance. The pinned set
+  is what the sequence can emit rather
   than what one run did emit — a subgoal skipped because an earlier
   strategy succeeded still determines the outcome on a corpus where that
   strategy fails, and pinning only the executed subset would make the

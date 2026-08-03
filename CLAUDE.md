@@ -24,6 +24,29 @@ about work in flight, prefer a POINTER to the issue over a description of it,
 because a pointer cannot go stale in this direction. A stale instruction is worse
 than a missing one: it is confidently followed.
 
+**AND THE PARENT OF THAT: AN ARTEFACT THAT RESTATES WHAT ANOTHER ARTEFACT
+AUTHORITATIVELY DETERMINES MUST DERIVE IT, NOT DUPLICATE IT.** Whenever something
+here depends on external state — a work item's status, a count, whether two
+things are the same, which bytes a component emits — name the AUTHORITY for that
+state and read it, rather than writing down its answer. A duplicate is correct
+exactly once, and nothing announces when it stops being.
+
+This is not a new rule; it is the one already generating four mechanisms that
+were written as if unrelated:
+
+    what depends on external state   the authority to derive it from
+    ------------------------------------------------------------------------
+    prose figures                    fixtures/outcomes.json (check-doc-numbers)
+    the queue's class                gh issue list
+    "are these the same?"            the canonical hash, not a walker (#141)
+    "which scripts run?"             the prover's own solve seam (#139)
+
+The first two derive a CLAIM from the authoritative source; the last two reuse
+the authoritative MECHANISM instead of rebuilding it. Same rule, and recognising
+that is worth more than either half: a hand-written duplicate fails the same way
+in both cases, by comparing the fields its author remembered and silently
+accepting everything else.
+
 **AN ARTEFACT THAT MAKES ITS READER INFER WHAT IT COULD HAVE NAMED HAS DELEGATED
 ITS OWN WORK.** Two prospective checks fall out, the same pattern on different
 artefacts — each catching distributed meaning by READING, before any round or
@@ -472,7 +495,9 @@ can still find a wrong disposition or a missing row — but it will no longer be
 finding *"I could not tell where this rule lives."*
 
 **DO NOT WRITE A SECOND STRUCTURAL-EQUIVALENCE ALGORITHM. CANONICAL IDENTITY
-ALREADY ANSWERS THE QUESTION.** In a content-addressed language, canonical
+ALREADY ANSWERS THE QUESTION** — the sharpest instance of *derive, do not
+duplicate* above, kept in full because the cost it names is specific. In a
+content-addressed language, canonical
 structural equality IS hash equality: a definition's hash is the canonical
 encoding of its declaration, so two structurally identical declarations have one
 hash by construction. Any later code asking whether two Oath declarations are
