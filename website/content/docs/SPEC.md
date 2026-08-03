@@ -46,7 +46,7 @@ Canonical bytes begin with the 2-byte magic `0x4F 0x31` ("O1").
 | 0x01 | int | — |
 | 0x02 | bool | — |
 | 0x03 | *(reserved — was the `str` primitive type; strings are now the `Str` datatype)* |
-| 0x04 | var | `u32` index |
+| 0x04 | var | `u32` type-parameter POSITION — see §1.3, NOT a de Bruijn index |
 | 0x05 | fun | Ty domain, Ty codomain |
 | 0x06 | data | `hash`, `list<Ty>` args |
 | 0x07 | rec | `list<Ty>` args |
@@ -99,8 +99,28 @@ pre-migration entries retain v0 hashes.)
 
 Producers (elaborators) MUST emit, and checkers MUST enforce:
 
-- Variables are de Bruijn indices; binder names never appear in a `Def`.
-  Alpha-equivalent programs are byte-identical.
+- **TERM variables** (`Term` tag 0x10) are de Bruijn indices, 0 = innermost;
+  binder names never appear in a `Def`. Alpha-equivalent programs are
+  byte-identical.
+- **TYPE variables** (`Ty` tag 0x04) are NOT de Bruijn indices. The index is the
+  **0-based POSITION of the parameter in its declaring definition's parameter
+  list, left to right.** For `(data Pair [a b] (Pair a b))`, `a` is 0 and `b` is
+  1; for `(defn f [a b] …)`, the same. There is no shadowing to resolve: a
+  definition's type parameters are one flat list, introduced once, and no type
+  binder nests inside another.
+
+  This is stated separately because the two conventions genuinely differ and the
+  difference is invisible in the encoding — both are a `u32` under a tag named
+  `var`. Blind round 10 could not determine it: the sentence above previously
+  read "Variables are de Bruijn indices" without qualification, which is true of
+  term variables and FALSE of type ones, and a subject implementing §14 had to
+  choose. Under the other reading `(data Pair [a b] …)` numbers `b` as 0, which
+  changes `Pair`'s hash and therefore the hash of every type built from it.
+
+  Since identity IS the canonical encoding, an undefined numbering leaves every
+  PARAMETERIZED datatype without a determined identity, and every type mentioning
+  one inherits that. Sections that build on identity — the handler protocol's
+  types among them — inherit this rule rather than restating it.
 - Record fields (types and literals) sorted ascending by bytewise string
   comparison; duplicate names rejected.
 - Match arms in constructor-declaration order, exhaustive, with the ADT
@@ -4295,8 +4315,9 @@ binds the name `Request` to some other type does not thereby acquire a handler
 protocol, and a backend MUST NOT recognize one by name.
 
 The identity is not pinned here as a digest, deliberately. It follows from the
-declarations above under §1's canonical encoding, exactly as every other identity
-in this specification does — so a kernel computes it rather than trusting a
+declarations above under §1's canonical encoding — including §1.3's numbering of
+type parameters, which `List` and `Pair` depend on and which this section does
+NOT restate — exactly as every other identity in this specification does — so a kernel computes it rather than trusting a
 constant, and a constant could not stay correct across an encoding change that §1
 already says forks reality. What is normative is the STRUCTURE; the hash is its
 consequence.
@@ -4304,6 +4325,14 @@ consequence.
 This is also what makes §14.0's obligation checkable at all. "The same `Request`
 value" is now a statement about a value of a determined type, and two backends
 disagreeing about that value can be shown to disagree.
+
+That last sentence was FALSE when first written, and blind round 10 found it: the
+declarations fixed the type's shape while §1 left type-parameter numbering
+unstated, so `Pair`'s identity — and therefore `Request`'s — was undetermined,
+and the deferral this subsection removed had simply moved one level down. §1.3
+now closes it. The rule belongs there because every section that builds on
+identity inherits it, and stating it here would have made this section the second
+place a reader had to consult and the second place it could drift.
 
 ### 14.2 The Request value
 
