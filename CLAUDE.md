@@ -310,6 +310,22 @@ TWO KNOWN LIMITATIONS, carried forward so "backend-neutral" is not mistaken for
 
 ## Writing a gate — the discipline that has found the most defects
 
+**VERIFY THE MEASURING INSTRUMENT BEFORE INTERPRETING ITS OUTPUT.** That is the
+class; everything below is an instance of it. The same mistake has now appeared
+in five unrelated layers, each time as an instrument that reported success while
+measuring something other than its claim:
+
+  a property whose guard prevented ever reaching its conclusion
+  a timing test that never observed the ordering it asserted
+  a contamination check that proved only that identifiers were absent
+  a coverage table that proved only that rows existed
+  a gate probe that proved only that SOMETHING failed — while the gate was broken
+
+The last is the sharpest and the easiest to repeat: a probe asking "did it fail?"
+cannot distinguish a working gate from a crashing one. So a probe must check for
+a crash first, and **the gate must PASS on the real input before any probe of it
+means anything.**
+
 **ASK WHAT MUTATION MAKES IT FAIL.** This repo is mostly gates, and the recurring
 failure is a test that demonstrates the SETUP or one prerequisite and is then read
 as evidence for the claim. If the only mutation that breaks a test is in parsing,
@@ -382,6 +398,14 @@ The descent this produced, each step reducing what a reader must combine mentall
 
     distributed prose -> localized rules -> foundational definitions
                       -> a single transformation table
+
+**THE PROSPECTIVE TELL, which is worth more than the retrospective one:** a
+section that keeps saying what the RESULT should be without naming the OPERATION
+that produced it. Outcomes scattered across paragraphs are the distributed model
+before anyone has noticed. Look for verbs — preserve, canonicalize, discard,
+lift, refuse — and if a section has none, the operations exist but are unnamed,
+and a reader is inferring them. That is the shape #122 spent three rounds
+eliminating, and it is visible before any round is dispatched.
 
 Two things fall out that no amount of re-reading finds. Normalizing forces a
 missing OPERATION into the open — a verb the old vocabulary never had, because
