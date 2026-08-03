@@ -276,3 +276,183 @@ Per IMPL-VERDICT-SCOPED, and per the `claim_scope` recorded before dispatch:
 - It does **not** establish that the Go adapter conforms. That rests on a
   separate end-to-end gate and ten mutations.
 - It does **not** establish that every rule interaction has been exercised.
+
+---
+
+# Blind round 10 — the repaired §14
+
+**Verdict: PASS-WITH-INFERENCE (8 inferences, plus a ninth outside scope).**
+Surface `dd3447a666e91aca…`, exported from `303a0db` — `docs/SPEC.md` alone.
+Subject implemented in Python 3 (stdlib only): 82 tests, all passing; 28 mutants
+written, 27 killed. Both §14.3 vectors reproduce exactly.
+
+Round 9's gaps were the question. §14 was frozen from dispatch until this record.
+
+---
+
+## The headline: the repair moved the deferral down one level
+
+Round 9's structural finding was that §14 stated its whole obligation as *two
+backends produce the SAME `Request` value* while deferring that type to a store
+outside the surface. §14.1a was written to close it, and argues:
+
+> It follows from the declarations above under §1's canonical encoding, exactly
+> as every other identity in this specification does — so a kernel computes it
+> rather than trusting a constant.
+
+**§1 does not define how a `data` declaration's type variables are numbered.**
+The subject chose left-to-right from zero and recorded that the other reading
+changes `Pair`'s digest and therefore `Request`'s. So:
+
+- the value's SHAPE is now determined — the subject did **not** have to invent a
+  type to hold header entries, which is the half of round 9's finding that closed;
+- the value's IDENTITY is still not — and §14.0's obligation is stated over the
+  value, not its contents.
+
+In the subject's words: *"I can show two backends agree on the contents, and I
+cannot show they agree on the value."*
+
+The remedy for a deferral deferred one level down. That is the finding.
+
+## The coverage table overclaims twice, in two different ways
+
+§14.3 was rewritten specifically to answer round 9's complaint that the old
+vector witnessed four obligations of twelve. The new table claims all thirteen.
+Two of those claims are wrong — and **review had to separate them, because they
+are different defects with different remedies.**
+
+**`PROTO-NOMINATION-BY-PRESENCE` — the RULE is correct; the TABLE row is not.**
+The subject built the mutant that nominates WITHOUT the presence test and it
+**survives all 82 tests including both vectors.** That is true and it does not
+mean what the first draft of this record said. §13's `IMPL-UNOBSERVABLE-PINNED`
+gives three states, not one:
+
+| state | the specification | a witness | remedy |
+|---|---|---|---|
+| UNWITNESSED | makes an observable claim | none constrains it | write the vector |
+| UNOBSERVABLE BUT PINNED | chooses one alternative | none CAN distinguish them | say so; the choice is the point |
+| UNDEFINED | chooses nothing | nothing to witness | define the object |
+
+Nomination-by-presence is the middle row, and §14.2 already says so: *"the two
+readings are behaviourally identical — removing a field that is not there is a
+no-op. What differs is what the specification SAYS."* A pinned unobservable
+choice **is not under-witnessed** because nothing separates its alternatives.
+
+So the defect is narrower and still real: §14.3's table names a witness for it
+and counts it among thirteen covered, asserting an observable witness for
+something the same section admits is unobservable. **Fix the table row, not the
+rule.**
+
+**`REQ-TIME-IS-DATA` — genuinely unwitnessed, first row.** Receipt time IS
+observable, so a vector CAN separate a conformant backend from one reading the
+message. §14.3's vector fixes no time and carries no date-bearing field, and the
+subject had to invent a request carrying `Date:` to get a discriminating test.
+Remedy: write the vector.
+
+A coverage table written to fix a coverage complaint asserted coverage it did not
+have — once by miscategorising a pinned choice, once by simply not having it.
+
+## The parser boundary cannot support the rules built on it
+
+`PROTO-PARSER-BOUNDARY` was added to settle where parsing ends and §14 begins. It
+fixes the adapter's input as *(name, value) pairs in arrival order with OWS
+removed, plus the method, the raw request target, and the body octets.* Three of
+§14's own obligations cannot be discharged from exactly that:
+
+| rule | needs, and cannot get |
+|---|---|
+| `PROTO-AUTHORITY-SOURCE` | `:authority` distinguishable from an ordinary field line |
+| `REQ-TIME-IS-DATA` | an observation the tuple omits |
+
+The subject also listed `PROTO-AUTHORITY-MUST-AGREE` here, and **review removed
+it**: §14 states that rule as a property of the message enforced by the transport
+before an adapter runs, deliberately and in those words, so its absence from the
+adapter's input is by design rather than a gap.
+
+and `PROTO-TRAILERS-ARE-NOT-HEADERS` is unenforceable there: once trailers are in
+the pair sequence the adapter cannot tell them apart, so the rule silently binds
+the parser instead.
+
+The subject names this precisely: it is the same failure §14.2a itself diagnoses
+for the withdrawn obs-fold refusal — *"the adapter cannot refuse what it can no
+longer see"* — **recurring inside the rule written to fix it.**
+
+## The rest
+
+- **The scope of "Exactly one `host` entry ever appears" is unstated**, and two
+  independent readers split on it. It sits inside a paragraph opening *"This
+  governs HTTP/2 and HTTP/3 ONLY"*, so it reads either as part of that scoping or
+  as a global invariant — and under the global reading it contradicts
+  *"MUST NOT reorder, deduplicate, or drop repeats"* for two HTTP/1.1 `Host`
+  lines. The blind subject took it as possibly global and inferred a
+  collapse-or-refuse rule; review took it as strictly local, which delivers two
+  `host` entries instead. Neither reading is unreasonable, and the split IS the
+  evidence — recorded as a scope ambiguity rather than a self-contradiction,
+  because the first wording of this entry claimed more than that.
+- **The governing principle has two dispositions and §14 uses three.**
+  `HDR-PRINCIPLE` offers PRESERVE and CANONICALIZE; the nine framing names and
+  everything `connection` nominates are DISCARDED, which is neither, and the
+  §14.1 classification table has no row for it.
+- **`REQ-HEADER-VALUE-OCTETS` obligates a layer §14 says it does not bind** — it
+  forbids DELIVERING obs-fold as an embedded newline, while unfolding was placed
+  before the adapter and §14 binds the adapter.
+
+Eight inferences besides: repeated `Host` lines, `connection` list grammar, the
+status code for an authority mismatch, absolute-form target grammar, whether a
+lifted authority is octet-checked, an empty `Host` value, the adapter's access to
+the version, and `:scheme` on HTTP/2.
+
+## Round 9's gaps, dispositioned one at a time
+
+The research question was whether ROUND 9's specific gaps closed, so each gets an
+answer rather than being folded into a summary.
+
+| round 9 gap | disposition |
+|---|---|
+| octet rule covered headers only, not `method`/`path` | **closed** — derived, covering all four `Str` fields |
+| `Connection: close` read as a phantom field name | **closed** — derived correctly |
+| the vector was not a legal HTTP/1.1 request | **closed** — both new vectors reproduce exactly |
+| vacuous "cannot reinstate" clause; HTAB rationale | **closed** — removed and repaired; neither reported |
+| the seven inferences §14.2a settles | **closed** — all appear under DERIVED |
+| the `Request` type deferred outside the surface | **half** — shape closed, identity not |
+| the parser/adapter boundary undrawn | **replaced** — drawn, and the drawn boundary is insufficient |
+
+All but two closed; one half closed; one replaced by a new defect of the same
+kind. Stated per gap, not as a count.
+
+## Judged against the pre-registration, claim by claim
+
+Recorded before dispatch; each was allowed to lose on its own.
+
+| claim | outcome |
+|---|---|
+| **H1** structural gap closed | **HALF** — shape closed, identity not. Do not read the confirmed half as rescuing it. |
+| **H2** new inference in repair-added text | **CONFIRMED** — six of eight inferences and five of seven contradictions |
+| **H3** verdict PASS-WITH-INFERENCE | **CONFIRMED** |
+
+Of five named risks: two hit (notation, parser boundary — the second worse than
+predicted), one partial, one **right location wrong defect** (I predicted an
+unstated ordering at nomination; the subject found the rule inert and its
+coverage claim false), one missed.
+
+**The unpredicted findings are not weaker for being unpredicted** — the list is
+what was already suspected, so what is absent from it is the more informative
+part. The coverage-table defect, the third disposition, and the misplaced
+obs-fold obligation were all unlisted.
+
+## Contamination, and evidence the mitigation worked
+
+The IMPL-ISOLATED-SESSION violation stands: the harness cannot strip `CLAUDE.md`
+from a dispatched session. But the subject reported seeing project notes naming
+the system and the issue and stated that **nothing in them states any §14 rule** —
+which is exactly what `make check-coaching-leak` and moving the repair summary to
+`docs/milestones.md` were built to achieve. Round 9's subject could have read the
+rules there; round 10's could not.
+
+It disclosed recognising HTTP and RFC 9110/9112, which §14 cites throughout, and
+recorded as INFERENCES the places where HTTP knowledge would have supplied an
+answer the specification does not — quoted-strings in a list, `CONNECT`
+authority-form — rather than deriving them.
+
+Its prompt was identical to round 9's. No hint of the claims or risks was given,
+which is why the scoring above is a measurement rather than a confirmation.
