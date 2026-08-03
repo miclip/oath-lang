@@ -24,7 +24,24 @@ about work in flight, prefer a POINTER to the issue over a description of it,
 because a pointer cannot go stale in this direction. A stale instruction is worse
 than a missing one: it is confidently followed.
 
-**AND THE PARENT OF THAT: AN ARTEFACT THAT RESTATES WHAT ANOTHER ARTEFACT
+**ASSERTING AN OBLIGATION CANNOT CREATE THE STRUCTURE NEEDED TO SATISFY IT.**
+This is the most general thing the project has learned, and it is broader than
+Oath. Whenever a requirement feels blocked, ask what STRUCTURE the obligation
+presupposes, and whether it exists — because the failure never looks like a
+missing structure, it looks like a rule that needs stating more firmly. Five
+instances, each already elsewhere in this file, all the same mistake:
+
+    a `MUST reproduce` sentence   does not create a WIRE FORMAT
+    a coverage table              does not create WITNESSES
+    a gate                        does not create a MEASUREMENT
+    prose                         does not create a TRANSFORMATION
+    a requirement                 does not create an AUTHORITY
+
+In every case the missing structure had to be designed explicitly before the
+obligation meant anything, and in every case the tempting repair was to assert
+harder. **The wire format IS the decision** — the sentence demanding it is not.
+
+**AND ONE PARENT DOWN: AN ARTEFACT THAT RESTATES WHAT ANOTHER ARTEFACT
 AUTHORITATIVELY DETERMINES MUST DERIVE IT, NOT DUPLICATE IT.** Whenever something
 here depends on external state — a work item's status, a count, whether two
 things are the same, which bytes a component emits — name the AUTHORITY for that
@@ -545,13 +562,17 @@ successive attempts, each found by the NEXT question rather than by re-reading:
   normative                         written INTO the rule, handing every reader
                                     the open question
 
-The parent: **a defect a repair introduces is invisible from the vantage point of
-the repair.** You cannot see the missing vocabulary because you know it, you
-cannot see the contradiction because you are reading one section, and your own
-uncertainty feels like honesty rather than like text. So three checks, each
-deliberately from OUTSIDE the edit: could a reader who knows only this document
-reconstruct it; does any OTHER section now disagree; and does the sentence
-transmit a decision or transmit that one is pending. **Never resolve the third by
+The parent: **a repair cannot validate a property that requires stepping outside
+the repair's own perspective.** You cannot see the missing vocabulary because you
+know it, cannot see the contradiction because you are reading one section, and
+your own uncertainty feels like honesty rather than like text. So the three
+checks are not a review checklist — they are the three perspectives an edit
+cannot occupy, which is also why each already has an instrument here: another
+SECTION (contradiction), another IMPLEMENTATION or mechanism (missing
+vocabulary — what the second kernel and the blind rounds are for), another
+AUTHOR or round (unstated assumptions). Could a reader who knows only this
+document reconstruct it; does any OTHER section now disagree; and does the
+sentence transmit a decision or transmit that one is pending. **Never resolve the third by
 writing the uncertainty down** — a specification that records its author's open
 questions makes every implementation inherit them. Put the question on the issue
 and leave the text determinate, even if determinate means "not required".
