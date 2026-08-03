@@ -533,7 +533,7 @@
   {
    "round": 11,
    "date": "2026-08-03",
-   "status": "READY",
+   "status": "DISPATCHED",
    "sections": [
     "14"
    ],
@@ -551,7 +551,8 @@
    "hypothesis_recorded": "before dispatch",
    "prediction": "Beyond the eight, I expect NEW inference in the repaired text, because it has had no blind reading: PROTO-PARSER-BOUNDARY's six-component table now carries obligations INTO the parser (agreement and duplicate-Host rejection must be 'already enforced'), which is a conditional contract a subject must decide how to satisfy; HDR-PRINCIPLE's third disposition DISCARD is stated but its boundary against CANONICALIZE is not; and REQ-HOST-IS-A-HEADER now carries a refusal (duplicate Host) inside a rule that otherwise only describes placement. I name these because round 9 taught that predicting WHERE a text is loose is much harder than predicting THAT it is — six of seven named locations were wrong there — so these are recorded to be scored, not to be confirmed.",
    "claim_scope": "Establishes ONLY whether the eight readings round 10 had to infer are now determined by the surface a1f9a71f233beba3…, judged per item. Cannot establish §14's sufficiency: no PASS is admissible under IMPL-ISOLATED-SESSION, and IMPL-CONTAMINATION-IS-NOT-A-MEASUREMENT makes the inference count neither a bound nor a comparator against rounds 9 or 10. A NEW inference elsewhere is a real result; an old one that disappears is closed FOR THIS SURFACE AND APPARATUS, not in general.",
-   "note": "CONTAMINATION: the IMPL-ISOLATED-SESSION violation stands — the harness cannot strip this project's CLAUDE.md and memory index from a dispatched session. Mitigations unchanged since round 10 and still partial: CLAUDE.md names no normative rule identifier and `make check-coaching-leak` fails CI if it does, but that gate cannot detect a PARAPHRASE; the repair summaries live in docs/milestones.md, which a dispatched session does not inherit; confinement to the export root remains an attestation. The subject's prompt is IDENTICAL to rounds 9 and 10 — the eight items are this ledger's judging criteria, not the subject's task, and naming them would produce agreement instead of measurement."
+   "note": "CONTAMINATION: the IMPL-ISOLATED-SESSION violation stands — the harness cannot strip this project's CLAUDE.md and memory index from a dispatched session. Mitigations unchanged since round 10 and still partial: CLAUDE.md names no normative rule identifier and `make check-coaching-leak` fails CI if it does, but that gate cannot detect a PARAPHRASE; the repair summaries live in docs/milestones.md, which a dispatched session does not inherit; confinement to the export root remains an attestation. The subject's prompt is IDENTICAL to rounds 9 and 10 — the eight items are this ledger's judging criteria, not the subject's task, and naming them would produce agreement instead of measurement.",
+   "dispatched": "2026-08-03; subject launched against the pinned export; apparatus frozen from this point"
   }
  ]
 }
