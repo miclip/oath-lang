@@ -12,6 +12,19 @@ the substrate is the product.
 milestone established and why decisions went the way they did. If a paragraph
 here tells you what HAPPENED rather than what to DO, move it there.
 
+**AN ARTEFACT THAT MAKES ITS READER INFER WHAT IT COULD HAVE NAMED HAS DELEGATED
+ITS OWN WORK.** Two prospective checks fall out, the same pattern on different
+artefacts — each catching distributed meaning by READING, before any round or
+review is dispatched:
+
+- **In a specification:** if it describes RESULTS but never names the OPERATIONS
+  producing them, the operations have not disappeared — the reader is inferring
+  them. Look for verbs.
+- **In this file:** if new guidance cannot be expressed by organizing existing
+  guidance under a more general principle, it is accumulating advice rather than
+  understanding, and the reader is inferring which of several overlapping rules
+  governs.
+
 **WHEN ADDING GUIDANCE, PREFER REPLACING A COLLECTION OF SIBLING RULES WITH THE
 PARENT PRINCIPLE THAT GENERATES THEM.** Compression through abstraction, not
 through deletion. **The signal to watch is not line count** — it is whether new
@@ -44,11 +57,15 @@ rather than the implementation; and evidence versus mechanism.
 
 **THE THROUGH-LINE, across authority, transfer, the compiler boundary, the
 application, the blind rounds and §14: each step reduced where UNVERIFIED
-ASSUMPTIONS could hide.** Different domains, one trajectory. It is the general
-form of "reducing the semantic gap" and it explains why the work keeps moving up
-a layer — each time one becomes reliable, the next becomes the weakest link and
-therefore visible. Note it is NOT that earlier layers stop having defects:
-finding the remaining ones needs the higher layers in place first.
+ASSUMPTIONS could hide.** Different domains, one trajectory, and
+the general form of "reducing the semantic gap".
+
+**And it does NOT move defects upward — it makes previously hidden defects at
+EVERY layer observable.** That distinction is load-bearing: an implementation
+bug can legitimately surface late without contradicting architectural progress.
+The session's own example is `received-at`, taken after the body was read, found
+only once the specification was structured enough to ask the right question of
+each row.
 
 **So the metric is not size.** The temptation is to equate "the compiler is
 getting bigger" with "the compiler is getting better". The opposite is the
@@ -399,6 +416,21 @@ setup-failure branch that printed its FAIL and then took the remaining 28 checks
 with it, silently. So: assert the final summary line, count the checks that ran,
 and make the harness fail LOUDLY when its own setup did not work — a check that
 cannot tell its setup failed from the defect it hunts is worse than no check.
+
+**WHEN A DESIGN KEEPS ACCUMULATING EXCEPTIONS, LOOK FOR THE MISSING
+TRANSFORMATION.** A static description often becomes simpler rewritten as a total
+transformation with named operations. Not an §14 lesson — the pattern the whole
+project arrived at independently, each time replacing FACTS with TRANSFORMATIONS:
+
+    authority              → journal transitions over (authority, authority_rev)
+    transfer               → an authority-state transition
+    the compiler boundary  → Oath semantics → neutral requirements → backend
+    capability provision   → a launch transformation that may fail
+    the handler protocol   → transport → Request
+
+Each time the winning design stopped saying WHAT EXISTS and started saying HOW
+ONE STATE BECOMES ANOTHER. That is where the verbs come from, and a design with
+no verbs is one whose operations the reader is supplying.
 
 **WHEN REPEATED BLIND ROUNDS REPLACE ONE INFERENCE WITH ANOTHER, STOP REPAIRING
 PROSE LOCALLY.** Normalize the transformation until every input distinction has
