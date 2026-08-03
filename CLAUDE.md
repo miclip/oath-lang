@@ -40,10 +40,29 @@ trustworthy software?* By the end it had become:
 
 > **Can the compiler faithfully observe the language?**
 
-The milestones tell it: **#114** the backend-neutral boundary, **#115** a second
-backend, **#126** launch-provisioned values, **#118** faithful observation of
-`Str`. **NONE OF THEM ADDED EXPRESSIVE POWER.** Every one made semantics that
-already existed observable and independently implementable.
+Sharper: **Phase 5 is about reducing the semantic gap between specification and
+execution.**
+
+The milestones all fit that description, and none of them made Oath more
+expressive — they made existing semantics more faithfully realized:
+
+  #114  a backend-neutral semantic boundary
+  #115  independent observation through a second backend
+  #126  launch provisioning becomes STRUCTURAL, not deployment metadata
+  #118  Str is observed as CODEPOINTS, not storage bytes
+
+**IMPLEMENTATION IS NO LONGER THE LIMITING FACTOR; CALIBRATION OF CLAIMS IS.**
+That one sentence explains nearly every significant correction of this session:
+distinguishing launch failure from failure before OBSERVABLE STARTUP; separating
+provisioning from authority narrowing; refusing rather than replacing; a backend
+SUBSET versus language semantics; deriving a witness's universe from the CLAIM
+rather than the implementation; and evidence versus mechanism.
+
+**So the metric is not size.** The temptation over the next months will be to
+equate "the compiler is getting bigger" with "the compiler is getting better".
+The opposite is the measure: *the compiler gets better when its observable
+behaviour converges on the language semantics, regardless of how many features
+it implements.*
 
 That is exactly why #118 must not be reopened for arithmetic. It would change
 the question from *is the compiler faithful?* back to *how much language can we
@@ -55,6 +74,15 @@ Most of the important commits were not new-feature commits; they narrowed a
 claim until it exactly matched what had been demonstrated. Continue that.
 
 ### THE QUEUE, in three buckets — position is not priority
+
+The buckets encode DIFFERENT CLOCKS, not just different priorities — which is
+the part worth keeping:
+
+  some work gets MORE EXPENSIVE if delayed   #122, #117/#69, while the runtime
+                                             is still small enough to reshape
+  some work gets MORE VALUABLE if delayed    #130, #134, after more evidence has
+                                             accumulated to calibrate them
+  some work should WAIT FOR A TRIGGER        #128
 
 **Compiler/runtime — the window is closing.** The backend is still small enough
 to reshape; that stops being true as it grows.
