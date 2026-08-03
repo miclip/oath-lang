@@ -1,6 +1,6 @@
 {
   "name": "gh-request",
-  "hash": "3ca7964826852befc657091dbe5fdfb8ac6716f6de63bdff00d28ebba593ba69",
+  "hash": "dc9d0dd11c56dab7d9e8c20b6f100de76a4085469bd57f92a54ffbe69eab0bbe",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

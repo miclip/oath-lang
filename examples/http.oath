@@ -3,12 +3,29 @@
 ; value, and everything above that line is an ordinary pure function verified
 ; against every request the generator can produce.
 ;
-; The governing rule for the host adapter is NORMALIZE AS LITTLE AS POSSIBLE.
-; Method, path (with query, raw), headers (in order, repeats preserved), body
-; (raw bytes) and receipt time cross intact. Signature verification is precisely
-; where an innocent host-side rewrite — lower-casing a header, collapsing a
-; repeat, re-encoding a body — becomes a correctness bug that no test in the
-; artifact can catch, because the artifact never sees the original.
+; The governing rule for the host adapter is SPEC §14.1: PRESERVE every
+; semantically meaningful distinction the transport supplies, and CANONICALIZE
+; distinctions the transport does not define or declares insignificant. Both
+; halves are obligations.
+;
+; The earlier rule here was "normalize as little as possible", and it is
+; withdrawn because it produced a real defect (#122). It read as a prohibition
+; on all transformation, so when Go's net/http canonicalized header-name case
+; the adapter recorded that as an unavoidable wart rather than making a decision
+; — and an application ended up writing one backend's spelling, `X-Github-Event`,
+; into its Oath source. The old rule also demanded something no adapter can
+; supply: HTTP/2 mandates lowercase field names on the wire, so the sender's
+; casing does not survive the transport and cannot be preserved.
+;
+; So: header names arrive LOWERCASE, entries are ordered lexicographically by
+; name, and the authority appears as `host` whatever the HTTP version called it.
+; Repeats under one name keep their arrival order and are never comma-joined,
+; values cross unchanged, and method, raw path (with query) and body bytes are
+; verbatim. Signature verification is precisely where an innocent host-side
+; rewrite — collapsing a repeat, re-encoding a body — becomes a correctness bug
+; that no test in the artifact can catch, because the artifact never sees the
+; original; §14 exists so that what the artifact sees is the same on every
+; conformant backend instead of merely close.
 ;
 ; Body is `(List Int)`, one Int per BYTE, deliberately not `Str`. Str is
 ; `SCons Int Str` over CODEPOINTS and compiles to a native Go string; a payload
@@ -54,10 +71,16 @@
   (prop reads-received-at [(m Str) (p Str) (h (List (Pair Str Str))) (b (List Int)) (t Int)]
     (== (req-received-at (Req m p h b t)) t)))
 
-; Header lookup returns the FIRST match and is case-SENSITIVE. Both are
-; deliberate: the adapter is forbidden to canonicalize, so a handler that wants
-; case-insensitive lookup must say so, and a handler verifying a signature must
-; be able to see repeats rather than have one silently chosen for it.
+; Header lookup returns the FIRST match and is case-SENSITIVE. Under SPEC §14
+; that is correct BY CONSTRUCTION rather than a hazard the author must remember:
+; a Request carries exactly one spelling of a name, so a case-insensitive lookup
+; would have nothing extra to find. Look names up in lowercase — `x-github-event`,
+; not `X-GitHub-Event`, whatever the sender wrote or the vendor documents.
+;
+; Returning the FIRST match is the separate, still-deliberate half: repeats are
+; preserved as distinct entries (§14.2 REQ-HEADER-VALUES-NOT-JOINED), so a
+; handler verifying a signature can see that a name arrived twice rather than
+; have one of them silently chosen for it.
 (defn header-first [] [(hs (List (Pair Str Str))) (name Str)] (Option Str)
   (match hs
     ((Nil) (None [Str]))
@@ -82,6 +105,13 @@
 ; and run against a real HTTP client: a 4-byte binary body (00 01 FE FF) crosses
 ; intact in both directions, which is the property that matters and the one a
 ; codepoint-typed body would have destroyed.
+;
+; `X-Oath-Method` is spelled in mixed case ON PURPOSE, and it is not an exception
+; to §14: that section binds the REQUEST a backend constructs, not the response a
+; handler emits. Outbound header names are the handler's own choice, HTTP treats
+; them case-insensitively, and a host is free to transmit them in whatever case
+; its library prefers. The asymmetry is real — inbound has one canonical form
+; because agreement between backends depends on it; outbound does not.
 (defn echo-handler [] [(r Request)] Response
   (Resp 200
         (Cons [(Pair Str Str)] (Pair [Str Str] "X-Oath-Method" (req-method r)) (Nil [(Pair Str Str)]))

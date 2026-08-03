@@ -4,8 +4,8 @@
 ; the request, GitHub chooses the header names, GitHub decides what a signature
 ; looks like, and none of those negotiate. `examples/webhook.oath` is the example
 ; it grew out of and stays where it is — it is a conformance-corpus member and a
-; teaching artifact, and it invented its own wire format (`X-Signature`,
-; `X-Timestamp`) because nothing external was pushing back.
+; teaching artifact, and it invented its own wire format (`x-signature`,
+; `x-timestamp`) because nothing external was pushing back.
 ;
 ; Everything below that differs from the example differs because a real sender
 ; forced it. Each of those is a line in docs/experiments/webhook-friction.md.
@@ -37,7 +37,7 @@
 ; changing it changes the conformance corpus, and whether `hex-decode` should
 ; return a prefix at all is a decision rather than a patch.)
 (defn gh-signature [] [(hs (List (Pair Str Str)))] (Option Str)
-  (match (header-first hs "X-Hub-Signature-256")
+  (match (header-first hs "x-hub-signature-256")
     ((None) (None [Str]))
     ((Some v)
       (if (str-prefix "sha256=" v)
@@ -54,14 +54,14 @@
     (if (str-prefix "sha256=" hexdigest)
         true
         (== (gh-signature (Cons [(Pair Str Str)]
-                            (Pair [Str Str] "X-Hub-Signature-256" hexdigest)
+                            (Pair [Str Str] "x-hub-signature-256" hexdigest)
                             (Nil [(Pair Str Str)])))
             (None [Str]))))
 
   (prop strips-exactly-the-prefix [(hexdigest Str)]
     (if (== (str-len hexdigest) 64)
         (== (gh-signature (Cons [(Pair Str Str)]
-                            (Pair [Str Str] "X-Hub-Signature-256" (str-append "sha256=" hexdigest))
+                            (Pair [Str Str] "x-hub-signature-256" (str-append "sha256=" hexdigest))
                             (Nil [(Pair Str Str)])))
             (Some [Str] hexdigest))
         true))
@@ -72,7 +72,7 @@
     (if (== (str-len hexdigest) 64)
         true
         (== (gh-signature (Cons [(Pair Str Str)]
-                            (Pair [Str Str] "X-Hub-Signature-256" (str-append "sha256=" hexdigest))
+                            (Pair [Str Str] "x-hub-signature-256" (str-append "sha256=" hexdigest))
                             (Nil [(Pair Str Str)])))
             (None [Str])))))
 
@@ -248,12 +248,18 @@
 ; model's four categories were sharp enough to expose the difference the moment
 ; the fields were laid out against them.
 ;
-; NOTE the header spellings. GitHub documents `X-GitHub-Event` and
-; `X-GitHub-Delivery`; what arrives here is `X-Github-Event` and
-; `X-Github-Delivery`, because the Go backend's handler adapter runs requests
-; through net/http, which canonicalizes header keys. That is a BACKEND artifact
-; visible in Oath source, and it is the sharpest thing this application found.
-; `hdr-probe.oath` in this directory is the witness.
+; NOTE the header spellings, and note that they are no longer a backend artifact.
+; GitHub documents and sends `X-GitHub-Event`; what a handler sees is
+; `x-github-event`, because SPEC §14.2 requires every backend to deliver header
+; names ASCII-lowercased. Look names up in lowercase whatever the vendor's
+; documentation shows.
+;
+; This file used to say `X-Github-Event` — Go's net/http canonicalization,
+; written into Oath source because nothing propagated it to the author. That was
+; the sharpest thing this application found (#122), and it is now closed by a
+; normative model rather than by a comment: the spelling here is portable across
+; backends AND across HTTP versions, where the old one was neither.
+; `hdr-probe.oath` in this directory is the runnable witness.
 ; A value a tab-separated record can carry, or the absent marker.
 ;
 ; ENTRY 6 OF THE FRICTION LOG, TWICE MORE, AND I MISSED BOTH. A repository name
@@ -290,8 +296,8 @@
 (defn gh-record [] [(r Request)] Str
   (join-with "\t"
     (Cons [Str] "oath-gh/1"
-      (Cons [Str] (record-field (header-or (req-headers r) "X-Github-Delivery" "-"))
-        (Cons [Str] (record-field (header-or (req-headers r) "X-Github-Event" "-"))
+      (Cons [Str] (record-field (header-or (req-headers r) "x-github-delivery" "-"))
+        (Cons [Str] (record-field (header-or (req-headers r) "x-github-event" "-"))
           (Cons [Str] (record-field (json-scoped-string "\"repository\":{" "full_name" (req-body r)))
             (Cons [Str] (show-nat (req-received-at r))
               (Nil [Str])))))))
@@ -487,7 +493,7 @@
   (prop survives-gh-signature [(secret Str) (body (List Int))]
     (if (and (bytes-ok (str-bytes secret)) (bytes-ok body))
         (== (gh-signature (Cons [(Pair Str Str)]
-                            (Pair [Str Str] "X-Hub-Signature-256" (gh-sign secret body))
+                            (Pair [Str Str] "x-hub-signature-256" (gh-sign secret body))
                             (Nil [(Pair Str Str)])))
             (Some [Str] (hex-encode (hmac-sha256 (str-bytes secret) body))))
         true)))
@@ -497,10 +503,10 @@
 ; unprefixed one, or one computed over a different body.
 (defn gh-request [] [(sig Str) (event Str) (path Str) (ctype Str) (body (List Int))] Request
   (Req "POST" path
-    (Cons [(Pair Str Str)] (Pair [Str Str] "X-Hub-Signature-256" sig)
-      (Cons [(Pair Str Str)] (Pair [Str Str] "Content-Type" ctype)
-        (Cons [(Pair Str Str)] (Pair [Str Str] "X-Github-Event" event)
-          (Cons [(Pair Str Str)] (Pair [Str Str] "X-Github-Delivery" "spec-delivery")
+    (Cons [(Pair Str Str)] (Pair [Str Str] "x-hub-signature-256" sig)
+      (Cons [(Pair Str Str)] (Pair [Str Str] "content-type" ctype)
+        (Cons [(Pair Str Str)] (Pair [Str Str] "x-github-event" event)
+          (Cons [(Pair Str Str)] (Pair [Str Str] "x-github-delivery" "spec-delivery")
             (Nil [(Pair Str Str)])))))
     body 0)
 
@@ -586,8 +592,8 @@
 
 (defn record-under [] [(delivery Str) (event Str) (repo Str)] Str
   (gh-record (Req "POST" "/hook"
-    (Cons [(Pair Str Str)] (Pair [Str Str] "X-Github-Delivery" delivery)
-      (Cons [(Pair Str Str)] (Pair [Str Str] "X-Github-Event" event)
+    (Cons [(Pair Str Str)] (Pair [Str Str] "x-github-delivery" delivery)
+      (Cons [(Pair Str Str)] (Pair [Str Str] "x-github-event" event)
         (Nil [(Pair Str Str)])))
     (str-bytes (str-append "{\"repository\":{\"full_name\":\"" (str-append repo "\"}}")))
     0))
@@ -663,13 +669,13 @@
                     (if (not (path-is "/hook" (req-path r)))
                         (Resp 404 (Nil [(Pair Str Str)]) (Nil [Int]))
                         (if (not (media-type-is "application/json"
-                                                (header-or (req-headers r) "Content-Type" "")))
+                                                (header-or (req-headers r) "content-type" "")))
                             (Resp 415 (Nil [(Pair Str Str)]) (Nil [Int]))
                             ; A ping is the hook-installation handshake. GitHub
                             ; needs a 2xx or it marks the hook failing; the log
                             ; records what happened to the REPOSITORY, and a
                             ; ping did not happen to the repository.
-                            (if (== (header-or (req-headers r) "X-Github-Event" "-") "ping")
+                            (if (== (header-or (req-headers r) "x-github-event" "-") "ping")
                                 (Resp 200 (Nil [(Pair Str Str)]) (Nil [Int]))
                                 (match ((. caps emit) (gh-record r))
                                   ((SNil) (Resp 500 (Nil [(Pair Str Str)]) (Nil [Int])))

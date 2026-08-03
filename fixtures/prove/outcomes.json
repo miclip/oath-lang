@@ -788,7 +788,7 @@
     },
     {
       "name": "gh-record",
-      "hash": "97190d3c6364408388a888800a4ca72716050ef24d5e589d5dff6a00376fee1c",
+      "hash": "53219da891359a19a4c39e6261bddaceb9326f0f14f37c8ec45e9056e6f9f253",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 3,
@@ -809,7 +809,7 @@
     },
     {
       "name": "gh-request",
-      "hash": "3ca7964826852befc657091dbe5fdfb8ac6716f6de63bdff00d28ebba593ba69",
+      "hash": "dc9d0dd11c56dab7d9e8c20b6f100de76a4085469bd57f92a54ffbe69eab0bbe",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 3,
@@ -830,7 +830,7 @@
     },
     {
       "name": "gh-sign",
-      "hash": "3e9a3fe48755432bc7b8e566727b4c64de08e26c654fce81a1aceb5ab96ccbac",
+      "hash": "9a2abfb8acc4235ba8b64016f75135a989b5d020b178af9b4e61cacbecbf89a1",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 2,
@@ -847,7 +847,7 @@
     },
     {
       "name": "gh-signature",
-      "hash": "15a1e2e8a48a809d83f88fb7a847ea054b5236bf2ae22c8dc42066427bd36af4",
+      "hash": "4a5152b8c8eb7447fa8517d542fe2f7dfb0a74eac5bbf0e62c42f558b36188bd",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 4,
@@ -885,7 +885,7 @@
     },
     {
       "name": "gh-webhook",
-      "hash": "90d7bbd5451079893bb33c162e2f3c6456752c8a48447acb562859a0686fefbf",
+      "hash": "755ccbed43f4a024c939b4c66c5887dcea7399377c97b71ec1de52fc406aca71",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 14,
@@ -988,7 +988,7 @@
     },
     {
       "name": "hdr-probe",
-      "hash": "e92093daeacc7e82f11bc88fa0ece4f2070b8ef7ddc858951c0e5bb0ece046f9",
+      "hash": "f19d388b9584518722ad68b1d6db6aeb38d6c7d81e4a59e7d3a9687bb586259d",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 1,
@@ -2040,7 +2040,7 @@
     },
     {
       "name": "no-field-can-inject",
-      "hash": "c54653816be6bdb9b2c14058541190071fb73f87e67694f48dd8fd2ee97388d8",
+      "hash": "6da67355b5ae7f9960e41a1d85b1476485f1f1fc83af722f7a80e395734bccf0",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 4,
@@ -2455,7 +2455,7 @@
     },
     {
       "name": "record-under",
-      "hash": "ab81e7a36326e7bd50d6affe99b1e3043a1600d6700ff01839776638d94712af",
+      "hash": "2bed447f1a3e248f31d2c01b306712292a75e147a1d08e146818e23ff835721b",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 3,
@@ -3627,7 +3627,7 @@
     },
     {
       "name": "webhook",
-      "hash": "fc7d69f86d04728735dfee2ab7a693d5839ba10ae5342980162b8bbfbd88217c",
+      "hash": "cad325cf7b285d128fd07cf4dd4f443b304d1861f1643f41af3ac10197732371",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 5,

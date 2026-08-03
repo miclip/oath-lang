@@ -1,6 +1,6 @@
 {
   "name": "gh-signature",
-  "hash": "15a1e2e8a48a809d83f88fb7a847ea054b5236bf2ae22c8dc42066427bd36af4",
+  "hash": "4a5152b8c8eb7447fa8517d542fe2f7dfb0a74eac5bbf0e62c42f558b36188bd",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

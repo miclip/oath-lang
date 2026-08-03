@@ -1,6 +1,6 @@
 {
   "name": "gh-sign",
-  "hash": "3e9a3fe48755432bc7b8e566727b4c64de08e26c654fce81a1aceb5ab96ccbac",
+  "hash": "9a2abfb8acc4235ba8b64016f75135a989b5d020b178af9b4e61cacbecbf89a1",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

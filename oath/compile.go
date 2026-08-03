@@ -946,22 +946,55 @@ func oathResolveCapabilities() any {
 		// HANDLER protocol (#78). The host owns the socket, TLS, routing and
 		// process lifecycle; the artifact is a pure function from a Request
 		// VALUE to a Response value. This adapter is the whole irreversible
-		// translation, and it deliberately normalizes as little as it can:
-		// the body crosses as raw BYTES, the path keeps its query, and
-		// received-at is stamped once and handed over as data.
+		// translation, and SPEC §14 is what it must produce.
 		//
-		// One normalization is NOT avoidable at this layer and is therefore
-		// documented rather than hidden: Go's net/http canonicalizes header
-		// KEYS (content-type → Content-Type) and stores them in a map, so
-		// cross-key order is lost. Repeats within a key keep their order, and
-		// keys are emitted in sorted order so the value is deterministic.
-		// Body bytes — what signature schemes actually sign — are exact.
-		// Recovering byte-exact header casing and interleaving needs a raw
-		// connection reader; see the limitation note on #78.
+		// The governing rule is §14.1: PRESERVE every distinction the transport
+		// supplies, CANONICALIZE the ones it does not define. The earlier rule
+		// here was "normalize as little as possible", and it produced the defect
+		// #122 was filed about — it read as a prohibition on transformation, so
+		// net/http's key canonicalization was recorded as an unavoidable wart
+		// rather than as a decision, and an application ended up encoding one
+		// backend's spelling (`X-Github-Event`) in its Oath source.
+		//
+		// Field-name case is NOT information HTTP carries: names are
+		// case-insensitive (RFC 9110 §5.1) and HTTP/2 mandates lowercase on the
+		// wire (RFC 9113 §8.2.1), so a rule preserving the sender's case is
+		// unsatisfiable the moment a client negotiates h2. Lowercasing is
+		// therefore a canonicalization, not a loss. Cross-key order is likewise
+		// insignificant (§5.3) and already destroyed by net/http's map, so §14
+		// pins it lexicographically rather than leaving each backend to pick —
+		// "deterministic" alone would let two conformant backends build
+		// different Oath values from the same request.
+		//
+		// What IS preserved, because HTTP means it: repeats under one name, in
+		// arrival order and never comma-joined; the value octets; the method;
+		// the raw path with its query; and the body bytes, which is what
+		// signature schemes actually sign.
+		//
+		// This is the ONLY implementation of the model — there is deliberately
+		// no second copy in the neutral layer for tests to check against, since
+		// a model nothing runs is not evidence about the adapter. The gate is
+		// end-to-end: TestHandlerRequestModelIsCanonical builds this program,
+		// sends §14.3's vector, and asserts the resulting list exactly.
 		// Capabilities are resolved before the listener binds, not per request:
 		// a host that cannot supply the program's authority must fail to launch,
 		// not accept traffic and fail each request individually.
 		fmt.Fprintf(&e.b, `
+// oathLowerASCII implements SPEC 14.2 REQ-HEADER-NAMES-LOWERCASE: ASCII only,
+// never Unicode case folding. A field name is an HTTP token and so is ASCII by
+// construction, but net/http passes through a name it could not canonicalize,
+// and strings.ToLower would fold such a name under a Unicode table this program
+// must not depend on — a table that can also change the name's LENGTH.
+func oathLowerASCII(s string) string {
+	b := []byte(s)
+	for i := 0; i < len(b); i++ {
+		if b[i] >= 'A' && b[i] <= 'Z' {
+			b[i] += 'a' - 'A'
+		}
+	}
+	return string(b)
+}
+
 func main() {
 	addr := os.Getenv("OATH_HTTP_ADDR")
 	if addr == "" {
@@ -977,18 +1010,53 @@ func main() {
 			body = &ctorV{idx: 1, fields: []any{big.NewInt(int64(raw[i])), body}}
 		}
 
-		// headers: (List (Pair Str Str)), sorted by key, repeats in order
-		keys := make([]string, 0, len(r.Header))
+		// headers: (List (Pair Str Str)) per SPEC 14.2 — names ASCII-lowercased,
+		// entries ordered lexicographically by the lowered name, repeats kept in
+		// arrival order and never comma-joined.
+		// Built from a COPY rather than by editing r.Header: the host entry below
+		// is one net/http deliberately removed, and writing it back would be a
+		// visible side effect on a value the server still owns.
+		type oathHdr struct{ name, value string }
+		canon := make([]string, 0, len(r.Header))
 		for k := range r.Header {
-			keys = append(keys, k)
+			canon = append(canon, k)
 		}
-		sort.Strings(keys)
-		var flatK, flatV []string
-		for _, k := range keys {
-			for _, v := range r.Header[k] {
-				flatK = append(flatK, k)
-				flatV = append(flatV, v)
+		// Sort the canonical keys BEFORE lowering. Two distinct map keys can
+		// lower to the same name (net/http leaves a non-token name untouched),
+		// and Go randomizes map iteration, so the stable sort below needs a
+		// deterministic input order to break that tie reproducibly.
+		sort.Strings(canon)
+		entries := make([]oathHdr, 0, len(canon)+1)
+		for _, k := range canon {
+			lk := oathLowerASCII(k)
+			// SPEC 14.2 REQ-FRAMING-FIELDS-EXCLUDED. Dropped by NAME, not by
+			// asking the library what it kept: net/http deletes some of these
+			// into dedicated struct fields and deduplicates others, so a
+			// backend forwarding its library's collection would agree with
+			// another backend only by luck.
+			switch lk {
+			case "connection", "keep-alive", "proxy-authenticate",
+				"proxy-authorization", "te", "trailer", "transfer-encoding",
+				"upgrade", "content-length":
+				continue
 			}
+			for _, v := range r.Header[k] {
+				entries = append(entries, oathHdr{lk, v})
+			}
+		}
+		// SPEC 14.2 REQ-HOST-IS-A-HEADER. net/http promotes the Host field to
+		// r.Host and REMOVES it from the map, so passing the map through drops a
+		// mandatory header. Restoring it also gives HTTP/2 the same shape, where
+		// the authority arrives as :authority rather than as a field line. No
+		// entry is invented: no authority in, no host entry out.
+		if r.Host != "" {
+			entries = append(entries, oathHdr{"host", r.Host})
+		}
+		sort.SliceStable(entries, func(a, b int) bool { return entries[a].name < entries[b].name })
+		var flatK, flatV []string
+		for _, e := range entries {
+			flatK = append(flatK, e.name)
+			flatV = append(flatV, e.value)
 		}
 		var hs any = &ctorV{idx: 0}
 		for i := len(flatK) - 1; i >= 0; i-- {
@@ -996,10 +1064,11 @@ func main() {
 			hs = &ctorV{idx: 1, fields: []any{pair, hs}}
 		}
 
-		path := r.URL.Path
-		if r.URL.RawQuery != "" {
-			path = path + "?" + r.URL.RawQuery
-		}
+		// SPEC 14.2 REQ-PATH-IS-RAW. r.URL.Path is already PERCENT-DECODED by
+		// net/http, so building from it turns an escaped slash in the request
+		// target into a real path separator — a different path, and a different
+		// signature input. RequestURI is the unmodified target as sent.
+		path := r.RequestURI
 		var req any = &ctorV{idx: 0, fields: []any{
 			r.Method, path, hs, body, big.NewInt(time.Now().Unix()),
 		}}

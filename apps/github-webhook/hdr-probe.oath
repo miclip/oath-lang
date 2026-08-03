@@ -1,38 +1,49 @@
-; THE HEADER-CANONICALIZATION WITNESS.
+; THE HEADER-MODEL WITNESS (SPEC §14).
 ;
-; GitHub sends `X-GitHub-Event: push`. An Oath handler asking for the header by
-; the name GitHub documents gets NOTHING; asking for `X-Github-Event` gets the
-; value. The Go backend's handler adapter puts requests through net/http, which
-; canonicalizes header keys (each dash-separated token capitalized, the rest
-; lowercased — so `GitHub` becomes `Github`), and that transformation is
-; invisible in the Oath source, in the type, and in the guarantee.
+; This probe was written to expose a defect and now witnesses the rule that
+; closed it. Both readings matter, so both are recorded.
 ;
-; It fails SILENTLY and it fails OPEN in the shape that matters: a handler that
-; branched on `(== (header-or hs "X-GitHub-Event" "-") "ping")` would be
-; comparing against a header that never arrives, so the ping branch would be
-; dead and every ping would take the other path. Nothing in the artifact's
-; verdict would mention it.
+; WHAT IT FOUND (#122). GitHub sends `X-GitHub-Event: push`. An Oath handler
+; asking for the header by the name GitHub documents got NOTHING; asking for
+; `X-Github-Event` got the value, because the Go backend's adapter ran requests
+; through net/http, which canonicalizes header keys. That transformation was
+; invisible in the Oath source, in the type, and in the guarantee — and it failed
+; OPEN in the shape that matters: a handler branching on
+; `(== (header-or hs "X-GitHub-Event" "-") "ping")` compared against a header
+; that never arrived, so the ping branch was dead and every ping took the other
+; path. Nothing in the artifact's verdict would have mentioned it.
 ;
-; This exists so the fact is a RUNNABLE OBSERVATION rather than a comment:
+; WHAT IT WITNESSES NOW. SPEC §14.2 requires every backend to deliver header
+; names ASCII-lowercased, ordered lexicographically, with repeats preserved and
+; the authority present as `host` whatever the HTTP version called it. So the
+; answer below is fixed by the specification rather than by one backend's
+; library, and it is the same answer on any conformant backend and any HTTP
+; version:
 ;
 ;   oath put apps/github-webhook/hdr-probe.oath
 ;   oath build hdr-probe -o /tmp/hdr-probe && OATH_HTTP_ADDR=:8898 /tmp/hdr-probe &
 ;   curl -sS -X POST localhost:8898/ -H 'X-GitHub-Event: push' -d '{}'
-;   MISS-as-documented|push|MISS-lowercase
+;   MISS-as-documented|MISS-go-canonical|push|localhost:8898
 ;
-; The middle field is the one that hits. If a future backend, or a change to the
-; handler adapter, stops canonicalizing — or canonicalizes differently — this
-; prints something else and apps/github-webhook/webhook.oath is wrong in a way
-; no test of that file would catch.
+; The THIRD field is the one that hits, and that is the whole point: neither the
+; spelling the vendor documents nor the spelling a Go library produces is what an
+; Oath handler sees. Look header names up in lowercase, always.
 ;
-; Recorded in docs/experiments/webhook-friction.md as the top-ranked TOOLING
-; finding: the handler protocol has no header model, so an application has to
-; encode one backend's normalization in its source.
+; The FOURTH field is the second defect this probe found, which the issue had not
+; named. net/http promotes `Host` out of the header map into `Request.Host` and
+; removes it, so a backend passing its library's collection through unexamined
+; drops a mandatory header — and a backend that did not would disagree with it.
+; §14.2 REQ-HOST-IS-A-HEADER settles that: it is a header entry, spelled `host`.
+;
+; If a future backend, or a change to the handler adapter, stops satisfying §14,
+; this prints something else and it is the BACKEND that is wrong — which is the
+; difference between a specification and a comment describing an accident.
 (defn hdr-probe [] [(r Request)] Response
   (Resp 200 (Nil [(Pair Str Str)])
     (str-bytes (join-with "|"
       (Cons [Str] (header-or (req-headers r) "X-GitHub-Event" "MISS-as-documented")
         (Cons [Str] (header-or (req-headers r) "X-Github-Event" "MISS-go-canonical")
           (Cons [Str] (header-or (req-headers r) "x-github-event" "MISS-lowercase")
-            (Nil [Str])))))))
+            (Cons [Str] (header-or (req-headers r) "host" "MISS-host")
+              (Nil [Str]))))))))
   (prop always-200 [(r Request)] (== (match (hdr-probe r) ((Resp s h b) s)) 200)))

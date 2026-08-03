@@ -89,13 +89,19 @@
 ; The handler. Capabilities are `env` (the shared secret and the window) and
 ; `emit` (where a validated event goes). Both are ordinary (-> Str Str) — the
 ; existing shape — because that is all this artifact needs.
+;
+; Header names are LOWERCASE because SPEC §14.2 requires a backend to deliver
+; them that way. This file invents its own wire format, so it could have spelled
+; them however it liked — but an example that looked up `X-Signature` would be
+; teaching a handler that authenticates nothing, since that name never arrives.
+; #122 is where that stopped being hypothetical.
 (defn webhook [] [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)] Response
-  (match (header-first (req-headers r) "X-Signature")
+  (match (header-first (req-headers r) "x-signature")
     ((None) (Resp 401 (Nil [(Pair Str Str)]) (Nil [Int])))
     ((Some given)
       (if (bytes-eq-ct (hex-decode given)
                        (hmac-sha256 (str-bytes ((. caps env) "WEBHOOK_SECRET")) (req-body r)))
-          (match (header-first (req-headers r) "X-Timestamp")
+          (match (header-first (req-headers r) "x-timestamp")
             ((None) (Resp 400 (Nil [(Pair Str Str)]) (Nil [Int])))
             ((Some ts)
               (if (within-window (req-received-at r) (parse-nat ts)
@@ -109,7 +115,7 @@
   ; An unsigned request is rejected without consulting the secret, the clock, or
   ; the sink. Proven for ALL capability worlds the generator can build.
   (prop unsigned-is-401 [(caps {emit (-> Str Str) env (-> Str Str)}) (r Request)]
-    (if (== (header-first (req-headers r) "X-Signature") (None [Str]))
+    (if (== (header-first (req-headers r) "x-signature") (None [Str]))
         (== (match (webhook caps r) ((Resp s h b) s)) 401)
         true))
 
@@ -144,8 +150,8 @@
              (and (<= 0 now) (and (bytes-ok body) (bytes-ok (str-bytes ((. caps env) "WEBHOOK_SECRET"))))))
         (let (sig Str (hex-encode (hmac-sha256 (str-bytes ((. caps env) "WEBHOOK_SECRET")) body)))
           (let (r Request (Req "POST" "/hook"
-                               (Cons [(Pair Str Str)] (Pair [Str Str] "X-Signature" sig)
-                                 (Cons [(Pair Str Str)] (Pair [Str Str] "X-Timestamp" (show-nat now))
+                               (Cons [(Pair Str Str)] (Pair [Str Str] "x-signature" sig)
+                                 (Cons [(Pair Str Str)] (Pair [Str Str] "x-timestamp" (show-nat now))
                                    (Nil [(Pair Str Str)])))
                                body now))
             (match ((. caps emit) "/hook")
@@ -160,8 +166,8 @@
         (let (sig Str (hex-encode (hmac-sha256 (str-bytes ((. caps env) "WEBHOOK_SECRET")) body)))
           (let (tampered (List Int) (Cons [Int] 88 body))
             (let (r Request (Req "POST" "/hook"
-                                 (Cons [(Pair Str Str)] (Pair [Str Str] "X-Signature" sig)
-                                   (Cons [(Pair Str Str)] (Pair [Str Str] "X-Timestamp" (show-nat now))
+                                 (Cons [(Pair Str Str)] (Pair [Str Str] "x-signature" sig)
+                                   (Cons [(Pair Str Str)] (Pair [Str Str] "x-timestamp" (show-nat now))
                                      (Nil [(Pair Str Str)])))
                                  tampered now))
               (== (match (webhook caps r) ((Resp s h b) s)) 401))))
@@ -176,7 +182,7 @@
 ;
 ; Without this, NOTHING in the corpus observes a digest: webhook's generated
 ; cases all take the 401 path (the generator never invents the literal header
-; "X-Signature"), so byte order, argument order, and even the construction were
+; "x-signature"), so byte order, argument order, and even the construction were
 ; unpinned. A kernel computing sha256(key ++ msg), or returning the digest
 ; reversed, or swapping key and msg, passed conformance. The blind Rust kernel
 ; found this while implementing from the spec — the spec fixed the DESIGN
