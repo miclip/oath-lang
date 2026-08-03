@@ -403,7 +403,7 @@
   {
    "round": 9,
    "date": "2026-08-02",
-   "status": "DISPATCHED",
+   "status": "READY",
    "sections": [
     "14"
    ],

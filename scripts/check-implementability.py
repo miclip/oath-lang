@@ -44,6 +44,22 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 VERDICTS = {"PASS", "PASS-WITH-INFERENCE", "FAIL"}
+# PRE-OUTCOME STATES. A round carrying either has a hypothesis and no verdict.
+# The distinction between them is the MOMENT THE APPARATUS FREEZES, and it earns
+# a state of its own because the two are not the same claim:
+#
+#   READY       the pre-registration is written and its surface reproduces, but
+#               no subject has been launched. The apparatus MAY still be edited,
+#               and any edit that moves the surface must move the digest with it
+#               — which is CHECKED below against HEAD, not merely promised here.
+#   DISPATCHED  a subject has been launched against that surface. The apparatus
+#               is FROZEN: editing the section under test from here on means the
+#               claim names a surface the subject never saw.
+#
+# Conflating them lets a record assert that an experiment is running when only
+# its paperwork exists, which is the same species of overclaim §13.4 forbids of
+# verdicts.
+PRE_OUTCOME = {"READY", "DISPATCHED"}
 REQUIRED = ["round", "date", "sections", "source", "verdict", "inferred",
             "contamination", "evidence", "implementer_statement"]
 # A bound claim must also record WHICH FILES were supplied. Without it the digest
@@ -192,7 +208,7 @@ def main():
         # Outcome fields are required of a COMPLETED round. A pre-registered one
         # has no outcome yet, and demanding one would make pre-registration
         # impossible — which is the point of separating the two states.
-        if r.get("status") != "DISPATCHED":
+        if r.get("status") not in PRE_OUTCOME:
             for f in REQUIRED:
                 if f not in r:
                     failures.append(f"round {n}: missing required field `{f}` (§13.3)")
@@ -201,13 +217,15 @@ def main():
         # first is what makes it falsifiable: a hypothesis written after the
         # result is a narration of the result, and would quietly convert every
         # round into a confirmation.
-        if r.get("status") == "DISPATCHED":
+        if r.get("status") in PRE_OUTCOME:
+            st = r["status"]
             if r.get("verdict"):
-                failures.append(f"round {n}: DISPATCHED but already carries a verdict — "
+                failures.append(f"round {n}: {st} but already carries a verdict — "
                                 f"remove `status` when recording the outcome")
             if not (r.get("hypothesis") or "").strip():
-                failures.append(f"round {n}: DISPATCHED without a pre-registered hypothesis")
-            print(f"  round {n}  DISPATCHED (pre-registered)      §{','.join(r.get('sections', []))}")
+                failures.append(f"round {n}: {st} without a pre-registered hypothesis")
+            label = "READY (not launched)" if st == "READY" else "DISPATCHED (apparatus frozen)"
+            print(f"  round {n}  {label:<32} §{','.join(r.get('sections', []))}")
             sd_pending, src_pending = r.get("surface_digest"), r.get("source")
             # A KIT is built by a different instrument, so it is recomputed by that
             # instrument — the same rule as `exporter` for tree exports. A kit is
@@ -230,9 +248,42 @@ def main():
                 failures.append(f"round {n}: pre-registered surface {sd_pending[:16]}… does not "
                                 f"reproduce from {src_pending[:12]}")
             print(f"    surface: {'verified ' + sd_pending[:16] + '…' if ok else 'UNVERIFIED'}")
+
+            # READY IS CHECKED AGAINST THE APPARATUS THAT WOULD ACTUALLY BE
+            # DISPATCHED, which is HEAD — not against the commit the paperwork
+            # names. The check above reproduces the RECORDED surface, and for a
+            # DISPATCHED round that is the whole question: the subject saw those
+            # bytes and nothing may move afterwards. For a READY round it is not
+            # sufficient, and leaving it out was the exact defect this ledger
+            # exists to catch, committed one level up — PRE_OUTCOME promises that
+            # an edit moving the surface moves the digest, and without this the
+            # promise lived only in a comment.
+            #
+            # So: edit the section after pre-registering it and the round goes
+            # UNVERIFIED until it is re-exported and re-pinned. Launching a
+            # subject against a surface the paperwork misnames is precisely what
+            # freezing exists to prevent.
+            #
+            # LIMIT, stated rather than assumed: this compares COMMITTED state.
+            # An uncommitted edit is invisible here, so a round must not be
+            # dispatched from a dirty tree.
+            if sd_pending and st == "READY" and r.get("surface_tool") != "blind-kit.py":
+                head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
+                                      text=True, cwd=ROOT).stdout.strip()
+                if head and head[:12] != (src_pending or "")[:12]:
+                    now = recompute_surface(head, r.get("supplied"), head)
+                    if now != sd_pending:
+                        failures.append(
+                            f"round {n}: READY, but the surface at HEAD ({(now or 'unexportable')[:16]}…) "
+                            f"is no longer the pre-registered {sd_pending[:16]}… — the apparatus moved "
+                            f"after pre-registration; re-export and re-pin `source`/`surface_digest` "
+                            f"before dispatching")
+                    else:
+                        print("    apparatus at HEAD still reproduces it")
             if ok:
                 verified += 1
-            print(f"    hypothesis on record; outcome not yet known")
+            print("    hypothesis on record; outcome not yet known"
+                  + ("; no subject launched" if st == "READY" else ""))
             continue
 
         v = r.get("verdict")
