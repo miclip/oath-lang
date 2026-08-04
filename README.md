@@ -161,8 +161,11 @@ queries and transactions instead of files:
 ./oath/oath put --json examples/sort.oath      # machine-readable verdicts: accepted /
                                                # rejected / falsified + counterexamples
 ./oath/oath dependents append                  # reverse dependency query
-./oath/oath mutate length                      # spec strength: do the properties
-                                               # notice mutations of the body?
+./oath/oath mutate length                      # generated mutation score: do the
+                                               # properties notice mutations of the
+                                               # body, on generated cases?
+./oath/oath mutate --prove length              # ...and sort the survivors the
+                                               # generator missed against the proofs
 ./oath/oath cross sabs sumsq                   # N-version: run each spec against
                                                # the other's body — AGREE / DISAGREE
 ```

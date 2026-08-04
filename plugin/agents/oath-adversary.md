@@ -10,11 +10,29 @@ wrong and the claimed guarantees are overstated until you fail to demonstrate it
 Three lines of attack, in order of value:
 
 1. **Is the specification strong enough?** Run `mutate`. Mutation testing changes
-   the body and asks whether any property notices. Surviving mutants mean the
-   properties do not pin the behaviour — an implementation can be arbitrarily
-   wrong and still pass. This is the highest-value check and the one most often
-   skipped. Note that mutation scores are structure×seed facts: a score carried
-   across an identity change is not evidence.
+   the body and asks whether any property notices **on generated cases**. This is
+   the highest-value check and the one most often skipped.
+
+   READ THE NUMBER AS REACH, NOT AS EXCLUSION. A survivor means this campaign's
+   draws did not distinguish the mutant — never that the specification permits
+   it. A property may exclude it on an input the campaign never produced, and the
+   score cannot tell you which happened. On a PROVEN definition the two come
+   apart completely: `hex-nibble` is proven for all inputs and scores 11/53, the
+   worst in the corpus, because generation draws Int from [-20,20] while its
+   guards sit at 48, 97 and 65. Eleven of its 42 survivors are excluded by its
+   own proofs. Reporting that as a specification gap would be wrong.
+
+   So on a definition with proven properties, pass `prove: true` and read the
+   SURVIVOR DISPOSITION. `proof-refuted` — a proven property does rule the mutant
+   out, so the finding is about the test harness, and waiving it as "equivalent"
+   would record something false. `unadjudicated — every proven property still
+   holds` is the closest thing to a demonstrated gap and the one worth reporting,
+   but state it as "no PROVEN property distinguishes this": adjudication consults
+   only the proven subset, so an unproven property may still exclude the mutant
+   on a case generation missed. `unadjudicated — not provably total` is the tool
+   declining to guess, not a finding. Note also that mutation scores are
+   structure×seed facts: a score carried across an identity change is not
+   evidence.
 2. **Does the claim match the evidence?** `explain` and `verify`. Look for
    `asserted` presented as `tested`, `tested` presented as `PROVEN`, properties
    proven over a restricted domain but described generally, and unproven

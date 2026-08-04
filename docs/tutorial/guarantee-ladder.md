@@ -66,13 +66,39 @@ properties notice?
 
 ```console
 $ oath mutate rat-recover
-spec strength: 4/4 mutants killed
+generated mutation score: 4/4 mutants killed
 ```
 
-`4/4 killed` means every mutant of the body was caught by some property — a tight
-spec. A *survivor* is a mutation the spec didn't notice, i.e. a hole in the
-specification, and it's reported with its body so you can fix it (or `oath waive`
-it with a justification if the mutant is genuinely equivalent).
+`4/4 killed` means every mutant in this catalogue was caught by some property on
+generated cases. That is the strongest thing a mutation run can say, and it is
+still narrower than "the spec is tight": the catalogue is a finite set of
+single-node edits, and the cases are a finite draw.
+
+A *survivor* is a mutation the properties didn't notice **on generated cases**,
+which is not the same as a hole in the specification. Surviving says only that
+this campaign's draws didn't distinguish it — a property may still exclude the
+mutant on an input the campaign never produced, whether because the value lies
+outside the draw range or simply because a finite run didn't reach it. Nothing
+about the score tells you which. On a `PROVEN` definition the two come apart
+sharply: the corpus's worst score belongs to a definition proven for every
+input.
+
+Survivors are reported with their bodies, and `oath mutate --prove <name>` sorts
+them against the definition's proven properties: `proof-refuted` (the spec does
+exclude it — a finding about the tests), `equivalent` (waived, with a
+justification), or `unadjudicated` (nothing settled it — including the case where
+every proven property still holds, which is the closest thing to a demonstrated
+gap: no PROVEN property distinguishes the mutant).
+
+The repair differs by disposition, and reaching for the wrong one is easy.
+`proof-refuted` needs no change to the specification at all — a property already
+excludes the mutant, and waiving it as "equivalent" would be recording something
+false; what fell short is the generated campaign. `unadjudicated — every proven
+property still holds` is where strengthening a property is the answer — bearing
+in mind that adjudication consults only the PROVEN properties, so an unproven one
+may still exclude the mutant on a case generation missed. And `oath waive`, with
+a justification on record, is for a mutant that genuinely cannot be distinguished
+by any property.
 
 ## Four dimensions, not one
 

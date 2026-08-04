@@ -11,6 +11,7 @@
   },
   "mutants_killed": 3,
   "mutants_total": 4,
+  "mutation_campaign": "1d3d03f1b64f3072d84bb5826c4992385fd997b39b1cdb852c0ce6ae4ac0a166",
   "termination": "structural",
   "spec_author": "claude-main",
   "body_author": "claude-main",

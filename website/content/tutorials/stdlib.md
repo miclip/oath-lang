@@ -58,18 +58,54 @@ one Z3's sequence theory can't reach directly — which is exactly why strings a
 
 `PROVEN` says the laws hold; **mutation** asks whether the laws actually pin the
 implementation down. `spec strength 3/4 mutants killed` (above) means one
-type-preserving mutant of the body slipped past the properties — a hint that the
-spec could be tighter:
+type-preserving mutant of the body slipped past the properties:
 
 ```console
 $ oath mutate str-append
-spec strength: 3/4 mutants killed
+generated mutation score: 3/4 mutants killed
+1 survivor:
+    0 equivalent (waived, justification on record)
+    1 unadjudicated — run `oath mutate <name> --prove` to classify against proven properties
 # the surviving mutant is printed with its body — either strengthen a property to
 # catch it, or `oath waive` it with a justification if it's genuinely equivalent.
 ```
 
-That honesty is the point: a proof tells you the stated laws hold; the mutation
-score tells you how much the stated laws are *worth*.
+**Read the number as *reach*, not as *exclusion*.** It says the properties didn't
+distinguish the mutant on the cases this campaign drew — never that the
+specification permits it. A property may exclude the mutant on an input the
+campaign never produced, and the score cannot tell you whether that happened. On
+a `PROVEN` definition the two come apart completely: the corpus's worst score,
+`hex-nibble` at 11/53, belongs to a definition proven for every input, and 11 of
+its 42 survivors turn out to be excluded by its own proofs.
+
+So on anything with proven properties, ask the prover to sort the survivors:
+
+```console
+$ oath mutate --prove str-append
+generated mutation score: 3/4 mutants killed
+1 survivor:
+    1 unadjudicated
+    ? swapped call arguments  mutant is not provably total (unknown), so its defining
+                              equation cannot be asserted — any refutation would be
+                              against an uninterpreted function
+```
+
+Three dispositions, and they mean different things. **`proof-refuted`** — a
+proven property *does* rule the mutant out, so the finding is about the test
+harness rather than the specification. **`equivalent`** — waived, with a
+justification on record. **`unadjudicated`** — nothing settled it, and the reason
+says which case you are in: every proven property still holding on the mutant is
+the closest thing to a demonstrated gap — though adjudication consults only the
+PROVEN properties, so an unproven one may still exclude it on a case generation
+missed. The refusal above is a different thing again: the tool declining to
+guess. Swapping `str-append`'s call arguments destroys the recursion
+that made it total, and the prover only asserts a function's defining equation
+once it is known total — so any "refutation" there would be about an arbitrary
+function rather than about this body. Reporting nothing is the honest answer.
+
+That honesty is the point: a proof tells you the stated laws hold, the mutation
+score tells you what *generated executions* could distinguish, and the two are
+kept separate rather than averaged into one number.
 
 ## From here
 
