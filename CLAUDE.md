@@ -249,10 +249,12 @@ under a closing window contradicted the same file's own instruction.
 does not stay here by inertia.** The window was stated precisely when it was
 added — not that the drift grows, but that it **accrued per visitor and did not
 stop**, `/try` being the front door for the audience most likely to test that
-the hash IS the identity. Serving the right hashes discharges exactly that. What
-remains is wasm freshness, which has no such clock and needs a scoping decision
-first; read the issue, where a cheap signal and the reason not to reflex into
-building it are both recorded.
+the hash IS the identity. Serving the right hashes discharges exactly that.
+**#145 stays OPEN and what is left is on the issue** — deliberately not
+summarised here, one paragraph after the sentence explaining why summaries of
+remaining work decay. What belongs here is only the part the issue cannot
+carry: whatever remains has no per-visitor clock, so it does not inherit this
+bucket.
 
 **Retiring an item from this bucket is the same act as admitting one**, and the
 easier one to skip: a stated window that is not re-read when the work lands
