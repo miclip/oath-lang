@@ -279,6 +279,12 @@ work; nothing depends on it immediately.
      instance on the committed corpus (a property whose guard the generator
      can never satisfy, scoring the corpus's worst 11/53). It is on the issue;
      do not re-derive it.
+     **The obvious repair is the wrong one, and it has been measured: #144 is
+     CLOSED because widening generation moved the corpus +2 of 1203 and made
+     three definitions WORSE.** Reaching the guard is not the fix — the
+     surviving mutants are in branches no property observes at all. Read #144
+     before proposing generator work; a fixed case budget means a better draw
+     REALLOCATES it rather than adding to it.
   2. **#134** typed refusal reasons
   3. **#139 SCOPING THE RE-DERIVATION with #140** (prove-worker delta) — one
      item, deliberately: both are *do not redo work whose answer is already
