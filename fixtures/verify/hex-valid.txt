@@ -1,0 +1,7 @@
+✓ prop empty-is-valid           passed 200 cases
+✓ prop pair-is-valid            passed 200 cases
+✓ prop odd-length-is-invalid    passed 200 cases
+✓ prop trailing-junk-is-invalid passed 200 cases
+✓ prop zero-pair-is-valid       passed 200 cases
+✓ prop a-bad-high-nibble-is-invalid passed 200 cases
+✓ prop a-bad-low-nibble-is-invalid passed 200 cases

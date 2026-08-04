@@ -1,0 +1,39 @@
+{
+  "name": "hex-decode",
+  "prop_names": [
+    "empty-decodes-empty",
+    "decodes-ff",
+    "decodes-00",
+    "invalid-fails-closed",
+    "trailing-junk-fails-closed",
+    "a-bad-high-nibble-fails-closed",
+    "a-bad-low-nibble-fails-closed"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 7
+  },
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "mutation_campaign": "e5d67b82ddc879a8091af318afe0d61ae24d871eb5967ed90a9586f07177f2d0",
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "s"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ]
+}

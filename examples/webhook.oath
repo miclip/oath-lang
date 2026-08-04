@@ -26,9 +26,6 @@
 ; can never match — it rejects everything, including valid requests, which is a
 ; failure mode that looks exactly like working security. Found by running real
 ; signed traffic against the built binary rather than by reading the code.
-;
-; Invalid hex decodes to the empty list, which cannot equal a 32-byte digest, so
-; malformed input fails closed.
 (defn hex-nibble [] [(c Int)] Int
   (if (and (<= 48 c) (<= c 57)) (- c 48)
       (if (and (<= 97 c) (<= c 102)) (- c 87)
@@ -36,20 +33,99 @@
   (prop digits [(c Int)] (if (and (<= 48 c) (<= c 57)) (== (hex-nibble c) (- c 48)) true))
   (prop rejects-non-hex [] (== (hex-nibble 122) -1)))
 
-(defn hex-decode [] [(s Str)] (List Int)
+; Invalid hex decodes to the empty list, which cannot equal a 32-byte digest, so
+; malformed input fails closed — for EVERY malformed string. That is a stronger
+; claim than it looks, and it was FALSE until #121.
+;
+; The decoder cannot report failure in its own return type: `(List Int)` has one
+; empty value, so `Nil` has to mean exactly one thing. Deciding validity FIRST is
+; what makes it mean it. Left to itself the natural pair-by-pair recursion returns
+; the prefix it managed to decode, so `<correct digest>zz` decoded to the correct
+; digest and the handler below accepted a value this comment said it rejected.
+;
+; Validity is therefore a SEPARATE definition rather than a flag threaded through
+; the decode, because it is what the property has to quantify over: the claim is
+; about every invalid string, and there was no name for that set.
+;
+; It is also separate for a reason that has nothing to do with specification, and
+; that the first attempt at this fix got wrong: the decoder must decide validity
+; ONCE, not once per pair. Checking the remaining tail inside the recursion is
+; quadratic, and a valid 1024-character digest then exhausted the evaluator's fuel
+; where the old linear decoder handled 4096. The three-definition shape below is
+; what makes the check linear — decide, then decode something already decided.
+(defn hex-valid [] [(s Str)] Bool
+  (match s
+    ((SNil) true)
+    ((SCons hi rest)
+      (match rest
+        ((SNil) false)
+        ((SCons lo more)
+          (if (or (< (hex-nibble hi) 0) (< (hex-nibble lo) 0))
+              false
+              (hex-valid more))))))
+  (prop empty-is-valid [] (hex-valid (SNil)))
+  (prop pair-is-valid [] (hex-valid "ff"))
+  (prop odd-length-is-invalid [] (not (hex-valid "abc")))
+  (prop trailing-junk-is-invalid [] (not (hex-valid "ffzz")))
+  ; The three below exist because mutation scoring asked for them, and each names
+  ; a boundary the others cannot reach. "00" is the only witness that distinguishes
+  ; `< 0` from `<= 0` on the nibble sentinel — every other case here has a nonzero
+  ; nibble. "zf" and "fz" are the only witnesses that reach a HALF-invalid pair,
+  ; where one nibble decodes and the other does not; without them `or` reads the
+  ; same as `and` and the -1 sentinel can move without any property noticing.
+  (prop zero-pair-is-valid [] (hex-valid "00"))
+  (prop a-bad-high-nibble-is-invalid [] (not (hex-valid "zf")))
+  (prop a-bad-low-nibble-is-invalid [] (not (hex-valid "fz"))))
+
+; The bytes of a string ALREADY KNOWN to be valid hex. The name carries its own
+; precondition because nothing in the type does: on anything else it returns the
+; prefix it could decode, which is exactly the behaviour #121 was filed about. It
+; is safe here because `hex-decode` below is the only way in, and it decides.
+;
+; Note what is ABSENT: there is no nibble check. Re-testing what the caller has
+; established would be the quadratic mistake in a cheaper disguise, and it would
+; also leave mutants no property could kill — a mutated check on input the
+; contract excludes changes nothing observable, so the score would have to be
+; waived rather than earned.
+(defn hex-decode-unchecked [] [(s Str)] (List Int)
   (match s
     ((SNil) (Nil [Int]))
     ((SCons hi rest)
       (match rest
         ((SNil) (Nil [Int]))
         ((SCons lo more)
-          (if (or (< (hex-nibble hi) 0) (< (hex-nibble lo) 0))
-              (Nil [Int])
-              (Cons [Int] (+ (* 16 (hex-nibble hi)) (hex-nibble lo)) (hex-decode more)))))))
+          (Cons [Int] (+ (* 16 (hex-nibble hi)) (hex-nibble lo))
+                (hex-decode-unchecked more))))))
+  (prop empty-decodes-empty [] (== (hex-decode-unchecked (SNil)) (Nil [Int])))
+  (prop decodes-ff [] (== (hex-decode-unchecked "ff") (Cons [Int] 255 (Nil [Int]))))
+  (prop decodes-00 [] (== (hex-decode-unchecked "00") (Cons [Int] 0 (Nil [Int]))))
+  (prop decodes-both-nibbles [] (== (hex-decode-unchecked "10") (Cons [Int] 16 (Nil [Int]))))
+  (prop decodes-a-pair-of-pairs []
+    (== (hex-decode-unchecked "0aff") (Cons [Int] 10 (Cons [Int] 255 (Nil [Int]))))))
+
+(defn hex-decode [] [(s Str)] (List Int)
+  (if (hex-valid s) (hex-decode-unchecked s) (Nil [Int]))
   (prop empty-decodes-empty [] (== (hex-decode (SNil)) (Nil [Int])))
   (prop decodes-ff [] (== (hex-decode "ff") (Cons [Int] 255 (Nil [Int]))))
   (prop decodes-00 [] (== (hex-decode "00") (Cons [Int] 0 (Nil [Int]))))
-  (prop invalid-fails-closed [] (== (hex-decode "zz") (Nil [Int]))))
+  ; This property used to read `(== (hex-decode "zz") (Nil [Int]))`. It was PROVEN,
+  ; and it was true of a decoder that failed closed only when the FIRST pair was
+  ; bad — its universe came from the implementation's easy case. This one comes
+  ; from the claim.
+  (prop invalid-fails-closed [(s Str)]
+    (if (not (hex-valid s)) (== (hex-decode s) (Nil [Int])) true))
+  ; The concrete witness that DISTINGUISHES this decoder from the old one, kept
+  ; alongside the general property so the regression has a name: a correct digest
+  ; followed by junk is not a correct digest.
+  (prop trailing-junk-fails-closed [] (== (hex-decode "ffzz") (Nil [Int])))
+  ; The general property above is PROVEN over every `Str`, and these two are still
+  ; not redundant — proof and spec-strength read a property through different
+  ; instruments. Mutation scoring EXECUTES a property on generated inputs, and the
+  ; generator does not produce HALF-invalid pairs (one nibble decodes, the other
+  ; does not), so a mutant that only misbehaves there survived a property that
+  ; logically excludes it. A literal witness is what makes the score honest.
+  (prop a-bad-high-nibble-fails-closed [] (== (hex-decode "zf") (Nil [Int])))
+  (prop a-bad-low-nibble-fails-closed [] (== (hex-decode "fz") (Nil [Int]))))
 
 (defn within-window [] [(now Int) (stamp Int) (window Int)] Bool
   (if (< now stamp)

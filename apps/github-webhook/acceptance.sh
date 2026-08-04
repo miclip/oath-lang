@@ -183,8 +183,11 @@ check "a wrong signature is refused" \
       "401" "$(post "$url" application/json push d-4 "sha256=$(sign wrong-secret-but-long-enough "$work/body.json")" "$work/body.json")"
 check "an unprefixed digest is not a signature" \
       "401" "$(post "$url" application/json push d-5 "$sig" "$work/body.json")"
-# hex-decode keeps the prefix it managed to decode, so `<valid digest>zz`
-# decodes to the same 32 bytes as the valid digest. Only a length check closes it.
+# `hex-decode` USED to keep the prefix it managed to decode, so `<valid digest>zz`
+# decoded to the same 32 bytes as the valid digest; the length check in
+# `gh-signature` closed it here, and #121 later closed it in the decoder too. This
+# check therefore now passes for two independent reasons — which is the point of
+# keeping it: it fails the moment either one stops holding.
 check "a valid digest with trailing junk is refused" \
       "401" "$(post "$url" application/json push d-5b "sha256=${sig}zz" "$work/body.json")"
 check "an unsigned request is refused" \

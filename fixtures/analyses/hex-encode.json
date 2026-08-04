@@ -1,6 +1,6 @@
 {
   "name": "hex-encode",
-  "hash": "b92f77d92e174822bbf18d2d8158d15dd4dec4c43d8595dff2ba081f4ee523f0",
+  "hash": "85e837e0fa9b3a827f2c031a2d19dc71d3f12e66fa36fc715b52d5c4b279a8e9",
   "kind": "func",
   "termination": "structural",
   "confinement": [
@@ -8,6 +8,7 @@
   ],
   "mutants_killed": 11,
   "mutants_total": 11,
+  "mutation_campaign": "21dde94dc20d5f0e31b4208db93829710f6ae4f1b89ac358968e17ed042e751d",
   "level": "tested",
   "cases": 200
 }

@@ -143,9 +143,12 @@ done
 #
 # WHAT THIS MODE ESTABLISHES, stated narrowly because it once claimed more. It
 # used to print "outcomes are determined: f(script bytes, solver, rlimit), all
-# three pinned" after comparing the DIRECT attempt alone — 447 of the 2904
-# scripts this corpus emits — so for every goal that fell through to induction
-# the sentence asserted a determinism nothing had checked (#139).
+# three pinned" after comparing the DIRECT attempt alone — a small fraction of
+# the scripts this corpus emits — so for every goal that fell through to
+# induction the sentence asserted a determinism nothing had checked (#139).
+# (The two counts are deliberately NOT written here. They move whenever the
+# corpus does, no gate reads this comment, and the harness already prints both
+# from the fixtures below.)
 #
 # §10 has since decided that candidate-script exposure is NOT part of the
 # conformance surface, because it tolerates differing proof methods and

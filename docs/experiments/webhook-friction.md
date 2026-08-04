@@ -404,7 +404,7 @@ cases during authoring and forced a real fix (entry 6).
 | `application/json payload` | a space accepted as a parameter delimiter |
 | non-ASCII secret | **panicked the request handler**, empty reply, per-connection |
 | Latin-1 secret | no error, wrong digest, every delivery 401 forever |
-| `sha256=<valid digest>zz` | `hex-decode` keeps the prefix it decoded (#121) |
+| `sha256=<valid digest>zz` | `hex-decode` kept the prefix it decoded — fixed in #121 |
 | the launch probe in `acceptance.sh` | hangs forever on the regression it tests |
 | the report's columns | heading said repository-then-event, output was the reverse |
 | `make check-app` | worked only if another target had built `oath/oath` first |

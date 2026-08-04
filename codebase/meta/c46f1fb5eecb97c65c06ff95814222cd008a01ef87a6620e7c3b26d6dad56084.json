@@ -1,0 +1,35 @@
+{
+  "name": "hex-decode-unchecked",
+  "prop_names": [
+    "empty-decodes-empty",
+    "decodes-ff",
+    "decodes-00",
+    "decodes-both-nibbles",
+    "decodes-a-pair-of-pairs"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 5
+  },
+  "mutants_killed": 7,
+  "mutants_total": 7,
+  "mutation_campaign": "7b815f507c7ca4fd6fad699e206f6ce92bd69e9c64c053d2e73605467f6d2685",
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "s"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ]
+}

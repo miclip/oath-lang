@@ -2,3 +2,6 @@
 ✓ prop decodes-ff               passed 200 cases
 ✓ prop decodes-00               passed 200 cases
 ✓ prop invalid-fails-closed     passed 200 cases
+✓ prop trailing-junk-fails-closed passed 200 cases
+✓ prop a-bad-high-nibble-fails-closed passed 200 cases
+✓ prop a-bad-low-nibble-fails-closed passed 200 cases

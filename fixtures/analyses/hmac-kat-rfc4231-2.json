@@ -1,10 +1,11 @@
 {
   "name": "hmac-kat-rfc4231-2",
-  "hash": "6630325f00529070866bb8c5d05832bd7ef1d3e98728ab44da293b9a3cf0cb0c",
+  "hash": "d497b8473178141fe85ad3b182863c7248b2e7952678c11579841f1676d9e64f",
   "kind": "func",
   "termination": "nonrecursive",
   "mutants_killed": 288,
   "mutants_total": 288,
+  "mutation_campaign": "fadb947559cba3d9e859bccebc215eb4627864a56c28f8d307e60a687f026b2e",
   "level": "tested",
   "cases": 200
 }

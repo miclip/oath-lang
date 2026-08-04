@@ -1,0 +1,19 @@
+{
+  "name": "hmac-kat-rfc4231-2",
+  "prop_names": [
+    "matches-published-vector",
+    "arguments-are-not-symmetric",
+    "length-mismatch-is-not-equal"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "mutants_killed": 288,
+  "mutants_total": 288,
+  "mutation_campaign": "fadb947559cba3d9e859bccebc215eb4627864a56c28f8d307e60a687f026b2e",
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main"
+}

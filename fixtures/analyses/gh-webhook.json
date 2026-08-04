@@ -1,12 +1,15 @@
 {
   "name": "gh-webhook",
-  "hash": "755ccbed43f4a024c939b4c66c5887dcea7399377c97b71ec1de52fc406aca71",
+  "hash": "552ec5bd9d1893e035bfec422a94a2a57b1c027a2822bfa30a433feff3ed3711",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
     "confined",
     ""
   ],
+  "mutants_killed": 203,
+  "mutants_total": 208,
+  "mutation_campaign": "f399c942d467d80de9382d8810b706036527487fb77f3d349c725fe0530d8e1e",
   "level": "tested",
   "cases": 200
 }

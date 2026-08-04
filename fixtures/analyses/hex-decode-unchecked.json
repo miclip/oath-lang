@@ -1,0 +1,15 @@
+{
+  "name": "hex-decode-unchecked",
+  "hash": "c46f1fb5eecb97c65c06ff95814222cd008a01ef87a6620e7c3b26d6dad56084",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 7,
+  "mutants_total": 7,
+  "mutation_campaign": "7b815f507c7ca4fd6fad699e206f6ce92bd69e9c64c053d2e73605467f6d2685",
+  "level": "proven",
+  "cases": 200,
+  "proven": 5
+}

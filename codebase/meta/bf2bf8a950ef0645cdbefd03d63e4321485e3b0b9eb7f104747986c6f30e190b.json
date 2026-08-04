@@ -1,0 +1,26 @@
+{
+  "name": "gh-sign",
+  "prop_names": [
+    "carries-the-algorithm",
+    "survives-gh-signature"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "mutants_killed": 22,
+  "mutants_total": 22,
+  "mutation_campaign": "07168cf452fdcb457a8e09408e5f17b6a862b2b7c82e9cbe74bf8f50ead73b8b",
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "secret",
+    "body"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

@@ -71,9 +71,11 @@ strongest property vacuous while still reporting `passed 200 cases`; and a
 property whose guard restates the implementation's own predicate is not
 independent evidence — `application/jsonp` passed a `str-prefix` test in both.
 
-Also filed from the exercise: **#121** (`hex-decode` keeps the prefix it decoded,
-so `examples/webhook.oath` accepts `<valid digest>zz` while claiming to fail
-closed — filed rather than fixed, because it changes the conformance corpus).
+Also filed from the exercise: **#121** (`hex-decode` kept the prefix it decoded,
+so `examples/webhook.oath` accepted `<valid digest>zz` while claiming to fail
+closed — filed rather than fixed at the time, because it changes the conformance
+corpus; fixed later with total-failure semantics and a validity predicate the
+strengthened property could quantify over).
 
 ### What the exercise improved, stated narrowly
 

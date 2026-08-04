@@ -1,0 +1,5 @@
+✓ prop empty-decodes-empty      passed 200 cases
+✓ prop decodes-ff               passed 200 cases
+✓ prop decodes-00               passed 200 cases
+✓ prop decodes-both-nibbles     passed 200 cases
+✓ prop decodes-a-pair-of-pairs  passed 200 cases

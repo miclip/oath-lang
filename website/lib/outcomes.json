@@ -830,7 +830,7 @@
     },
     {
       "name": "gh-sign",
-      "hash": "9a2abfb8acc4235ba8b64016f75135a989b5d020b178af9b4e61cacbecbf89a1",
+      "hash": "bf2bf8a950ef0645cdbefd03d63e4321485e3b0b9eb7f104747986c6f30e190b",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 2,
@@ -885,7 +885,7 @@
     },
     {
       "name": "gh-webhook",
-      "hash": "755ccbed43f4a024c939b4c66c5887dcea7399377c97b71ec1de52fc406aca71",
+      "hash": "552ec5bd9d1893e035bfec422a94a2a57b1c027a2822bfa30a433feff3ed3711",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 14,
@@ -1039,10 +1039,10 @@
     },
     {
       "name": "hex-decode",
-      "hash": "f1b7643322d196512e7f455e3ce27fd8ad26d3311dd79ad1146a113d3cc49e43",
+      "hash": "e98335ea6c143aa21df80b61165c9b3ddf19207a1b0d0f9a8f5d813f2977c6f9",
       "level": "proven",
-      "proven_count": 4,
-      "prop_count": 4,
+      "proven_count": 7,
+      "prop_count": 7,
       "props": [
         {
           "name": "empty-decodes-empty",
@@ -1058,6 +1058,47 @@
         },
         {
           "name": "invalid-fails-closed",
+          "proven": true
+        },
+        {
+          "name": "trailing-junk-fails-closed",
+          "proven": true
+        },
+        {
+          "name": "a-bad-high-nibble-fails-closed",
+          "proven": true
+        },
+        {
+          "name": "a-bad-low-nibble-fails-closed",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "hex-decode-unchecked",
+      "hash": "c46f1fb5eecb97c65c06ff95814222cd008a01ef87a6620e7c3b26d6dad56084",
+      "level": "proven",
+      "proven_count": 5,
+      "prop_count": 5,
+      "props": [
+        {
+          "name": "empty-decodes-empty",
+          "proven": true
+        },
+        {
+          "name": "decodes-ff",
+          "proven": true
+        },
+        {
+          "name": "decodes-00",
+          "proven": true
+        },
+        {
+          "name": "decodes-both-nibbles",
+          "proven": true
+        },
+        {
+          "name": "decodes-a-pair-of-pairs",
           "proven": true
         }
       ]
@@ -1085,7 +1126,7 @@
     },
     {
       "name": "hex-encode",
-      "hash": "b92f77d92e174822bbf18d2d8158d15dd4dec4c43d8595dff2ba081f4ee523f0",
+      "hash": "85e837e0fa9b3a827f2c031a2d19dc71d3f12e66fa36fc715b52d5c4b279a8e9",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 3,
@@ -1122,8 +1163,45 @@
       ]
     },
     {
+      "name": "hex-valid",
+      "hash": "954c1887f94a3097f07098df42db08f0344e92e82ba7691303c7d79137909e09",
+      "level": "proven",
+      "proven_count": 7,
+      "prop_count": 7,
+      "props": [
+        {
+          "name": "empty-is-valid",
+          "proven": true
+        },
+        {
+          "name": "pair-is-valid",
+          "proven": true
+        },
+        {
+          "name": "odd-length-is-invalid",
+          "proven": true
+        },
+        {
+          "name": "trailing-junk-is-invalid",
+          "proven": true
+        },
+        {
+          "name": "zero-pair-is-valid",
+          "proven": true
+        },
+        {
+          "name": "a-bad-high-nibble-is-invalid",
+          "proven": true
+        },
+        {
+          "name": "a-bad-low-nibble-is-invalid",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "hmac-kat-rfc4231-2",
-      "hash": "6630325f00529070866bb8c5d05832bd7ef1d3e98728ab44da293b9a3cf0cb0c",
+      "hash": "d497b8473178141fe85ad3b182863c7248b2e7952678c11579841f1676d9e64f",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 3,
@@ -3627,7 +3705,7 @@
     },
     {
       "name": "webhook",
-      "hash": "cad325cf7b285d128fd07cf4dd4f443b304d1861f1643f41af3ac10197732371",
+      "hash": "04241aba6e93a75091d40ffd20412ad6f0b91439b9fa1e547f85eec9101ffbdb",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 5,

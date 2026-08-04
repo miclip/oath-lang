@@ -1,14 +1,15 @@
 {
   "name": "hex-decode",
-  "hash": "f1b7643322d196512e7f455e3ce27fd8ad26d3311dd79ad1146a113d3cc49e43",
+  "hash": "e98335ea6c143aa21df80b61165c9b3ddf19207a1b0d0f9a8f5d813f2977c6f9",
   "kind": "func",
-  "termination": "structural",
+  "termination": "nonrecursive",
   "confinement": [
     ""
   ],
-  "mutants_killed": 14,
-  "mutants_total": 17,
+  "mutants_killed": 1,
+  "mutants_total": 1,
+  "mutation_campaign": "e5d67b82ddc879a8091af318afe0d61ae24d871eb5967ed90a9586f07177f2d0",
   "level": "proven",
   "cases": 200,
-  "proven": 4
+  "proven": 7
 }

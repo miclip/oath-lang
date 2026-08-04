@@ -1,0 +1,15 @@
+{
+  "name": "hex-valid",
+  "hash": "954c1887f94a3097f07098df42db08f0344e92e82ba7691303c7d79137909e09",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "mutants_killed": 12,
+  "mutants_total": 12,
+  "mutation_campaign": "ca607a6e2d8ac5a9865dc262d33e0ca384d12b50d2e184d948c37983edc4dae0",
+  "level": "proven",
+  "cases": 200,
+  "proven": 7
+}

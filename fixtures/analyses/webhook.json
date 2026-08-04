@@ -1,12 +1,15 @@
 {
   "name": "webhook",
-  "hash": "cad325cf7b285d128fd07cf4dd4f443b304d1861f1643f41af3ac10197732371",
+  "hash": "04241aba6e93a75091d40ffd20412ad6f0b91439b9fa1e547f85eec9101ffbdb",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
     "confined",
     ""
   ],
+  "mutants_killed": 84,
+  "mutants_total": 176,
+  "mutation_campaign": "bb000a6b7c0e0be7708a32bf754c79c49f71abb20d7ae83bbc9cdfd36d11553c",
   "level": "tested",
   "cases": 200
 }

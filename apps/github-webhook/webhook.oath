@@ -22,8 +22,8 @@
 ; indistinguishable from no signature at all.
 ;
 ; THE LENGTH CHECK IS NOT COSMETIC, and it was missing until review.
-; `hex-decode` decodes pair by pair and returns what it has when it meets a bad
-; pair, so a CORRECT digest followed by junk decodes to the correct 32 bytes:
+; `hex-decode` USED TO decode pair by pair and return what it had when it met a
+; bad pair, so a CORRECT digest followed by junk decoded to the correct 32 bytes:
 ;
 ;   (== (hex-decode "5bdc...3843zz") (hex-decode "5bdc...3843"))   =>  true
 ;
@@ -32,10 +32,13 @@
 ; rather than a bypass — forging it still requires the right digest — but a
 ; receiver that accepts values it says it rejects has a specification nobody
 ; can rely on. A GitHub signature is exactly 64 hex characters; anything else
-; is not one. (The same latent hole is in `examples/webhook.oath`, whose
-; `invalid-fails-closed` property tests `"zz"` alone. #121, filed not fixed:
-; changing it changes the conformance corpus, and whether `hex-decode` should
-; return a prefix at all is a decision rather than a patch.)
+; is not one.
+;
+; #121 has since fixed `hex-decode` itself: an invalid string now decodes to the
+; empty list WHOLE, not to its valid prefix, and `invalid-fails-closed` is proven
+; over every invalid string rather than over one literal. This check therefore no
+; longer carries the security claim alone — but it still carries the FORMAT one,
+; which is a different obligation and is why it stays.
 (defn gh-signature [] [(hs (List (Pair Str Str)))] (Option Str)
   (match (header-first hs "x-hub-signature-256")
     ((None) (None [Str]))
@@ -768,18 +771,21 @@
             401)
         true))
 
-  ; #121 CLOSED AT THIS CALLER, stated where the security claim lives rather
-  ; than only where the parser does. `hex-decode` keeps the prefix it managed to
-  ; decode, so `<valid digest>zz` decodes to the same 32 bytes as the valid
-  ; digest — and this handler calls `hex-decode` directly, so the hole is ON the
-  ; path, not adjacent to it. The 64-character check in `gh-signature` closes it:
-  ; the appended junk makes the value 66 characters and it never becomes a
-  ; signature at all.
+  ; #121 IS NOW CLOSED TWICE OVER, and this property is why that is checkable
+  ; rather than merely believed. `hex-decode` used to keep the prefix it managed
+  ; to decode, so `<valid digest>zz` decoded to the same 32 bytes as the valid
+  ; digest — and this handler calls `hex-decode` directly, so the hole was ON the
+  ; path, not adjacent to it. The 64-character check in `gh-signature` closed it
+  ; HERE first: the appended junk makes the value 66 characters and it never
+  ; becomes a signature at all.
   ;
-  ; `hex-decode`'s own contract is unchanged and `examples/webhook.oath` is still
-  ; exposed through it — that is #121, filed, and it is a corpus decision rather
-  ; than a patch. This property is what makes the boundary checkable: it holds
-  ; for THIS artifact whatever #121 decides.
+  ; `hex-decode` has since been given total-failure semantics, so the junk would
+  ; now be rejected even with no length check. THE LENGTH CHECK STAYS: it is not
+  ; the same claim. GitHub's signature is exactly 64 hex characters, and this
+  ; artifact rejects anything that is not one — a format obligation, which would
+  ; survive a decoder that failed differently. Keeping a caller's check alive
+  ; after the callee was fixed is deliberate; the two would have to be wrong
+  ; together for the junk to reach `bytes-eq-ct`.
   (prop trailing-junk-after-a-valid-digest-is-rejected [(sink (-> Str Str)) (body (List Int)) (junk Str)]
     (if (and (bytes-ok body) (not (== junk (SNil))))
         (== (match (gh-webhook (caps-with sink (gh-spec-secret))

@@ -1,0 +1,39 @@
+{
+  "name": "hex-valid",
+  "prop_names": [
+    "empty-is-valid",
+    "pair-is-valid",
+    "odd-length-is-invalid",
+    "trailing-junk-is-invalid",
+    "zero-pair-is-valid",
+    "a-bad-high-nibble-is-invalid",
+    "a-bad-low-nibble-is-invalid"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 7
+  },
+  "mutants_killed": 12,
+  "mutants_total": 12,
+  "mutation_campaign": "ca607a6e2d8ac5a9865dc262d33e0ca384d12b50d2e184d948c37983edc4dae0",
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "s"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ]
+}
