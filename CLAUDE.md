@@ -834,6 +834,18 @@ asking one question per row, *where does this fact enter?*, finds IMPLEMENTATION
 errors rather than wording ones: it caught a value stamped at the wrong moment
 and a behaviour no supported stack could produce.
 
+**AND THAT EFFECT IS NOT RESERVED FOR NORMATIVE TEXT OR FOR THE END OF A
+NORMALIZATION ARC — WHICH IS THE READING THIS PARAGRAPH INVITES, AND IT IS TOO
+NARROW.** The mechanism is only that a table forces every local statement to
+become one row of a single model, and contradictions that hide easily across
+paragraphs cannot hide across rows. So it works as a CHEAP AUDIT on ordinary
+prose, applied deliberately, with no rounds and nothing under revision. Worked
+example: a tutorial table of five survivor dispositions, written purely to
+communicate, immediately exposed three stale facts in the surrounding
+explanations — two of them claims already corrected elsewhere whose copies had
+not been retired, and one an overstatement no one had re-read closely enough to
+notice. None was found by re-reading; each was found by the row next to it.
+
 Close such an issue on a STRUCTURAL criterion, not an empirical one. "Every
 distinction has exactly one disposition" is checkable; "the last round found
 fewer problems" is a judgement that gets easier to make each time. A later round
