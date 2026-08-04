@@ -273,7 +273,7 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   more EXPENSIVE if delayed   (EMPTY — #147 shipped; see below)
   more VALUABLE if delayed    #146, #134, #138 — after more evidence has
                               accumulated to calibrate them
-  waiting for a TRIGGER       #117/#69, #128
+  waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
 
 **Compiler/runtime — one item, and it is DEBT rather than a feature.** #117/#69
 turns out never to have belonged here: the standing instruction below already
@@ -322,6 +322,17 @@ is added for a new target, the question is not "does this guard the path I
 found" but "what is the SET of unbounded recursions on this target" — a
 question a passing regression witness cannot answer, because it only ever
 witnesses the door already known about.
+
+**#148 IS BLOCKED ON OPERATOR PROVISIONING, NOT ON ENGINEERING**, and the
+distinction decides what a session should do with it: nothing. Its design is
+settled and the halves that can be RUN have landed (5db823c) — the manifest
+producer and the digest verifier, with the upload between them deliberately not
+stubbed. What remains needs a bucket, a public-read-no-list policy and a
+create-only WIF binding to exist; writing the workflow first would ship an
+"implemented but unproven" surface, which is the exact class #148 exists to
+remove. **Do not treat "the design is decided" as "the work is available."**
+The provisioning criteria and the one-shot end-to-end proof that follows them
+are on the issue.
 
 **Retiring an item from this bucket is the same act as admitting one**, and the
 easier one to skip: a stated window that is not re-read when the work lands
@@ -1120,8 +1131,13 @@ reasoning; `docs/milestones.md` for what each milestone established.
   `make verify`, and nothing local reminds you — this landed on `main` red for
   exactly that reason after SPEC §14 and `effects.md` were edited.
 - Run `codex review --uncommitted` before committing, and iterate until clean.
-  **WHEN IT IS UNAVAILABLE — rate limit, outage — SAY SO IN THE COMMIT AND KEEP
-  THE DEBT BOUNDED TO THOSE COMMITS.** Tests and mutation controls are strong
+  **THERE IS OPEN REVIEW DEBT — see #150, which is the authority for its own
+  state rather than a list repeated here.** Discharge it in RISK order, kernel
+  bounds first, because a deployment pipeline distributes whatever runtime
+  behaviour those commits contain, faithfully and quickly; a wrong bound is
+  already in users' hands while automation is still a plan.
+  **WHEN REVIEW IS UNAVAILABLE — rate limit, outage — SAY SO IN THE COMMIT AND
+  KEEP THE DEBT BOUNDED TO THOSE COMMITS.** Tests and mutation controls are strong
   evidence and they are not a substitute: what this review catches is a
   different class — plausible claims, and instruments that test something
   adjacent to what they assert. Both are invisible to a green suite by
