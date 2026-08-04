@@ -234,7 +234,7 @@ missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   #133's last boundary — VERIFICATION DEBT, see below
+  more EXPENSIVE if delayed   #145 — the public site resolves names to old objects
   more VALUABLE if delayed    #130, #134, #138 — after more evidence has
                               accumulated to calibrate them
   waiting for a TRIGGER       #117/#69, #128
@@ -245,30 +245,44 @@ says it stopped blocking anything when #126 closed and must wait for a real
 consumer to fix its scope. So it has a TRIGGER, not a position, and listing it
 under a closing window contradicted the same file's own instruction.
 
-What IS here is **#133's wasm ingestion path — the one boundary recorded as read
-rather than RUN.** State the window precisely, because "expensive if delayed" is
-easy to assert and this bucket is worthless if anything can be argued into it:
-SPEC §1.4 and §3 are ALREADY SHIPPED and already say what ADMIT must do at every
-boundary. So the claim is in normative text while one of its boundaries is
-unmeasured, and the cost of delay is not that the defect grows — the playground
-publishes nothing — but that **the gap between a shipped claim and its evidence
-widens as more work cites the claim.** That is the only kind of window this
-bucket should accept. Anything parked here that is not narrowing a claim makes
-every other item look less urgent than it is.
+What IS here is **#145 — BOTH of `/try`'s derived assets, the wasm kernel and
+the corpus snapshot, have been stale since `8bcc1bb` (2026-07-23).** Read the
+issue for what drifted and by how much; it is deliberately not restated here,
+and this paragraph is the worked example of why. Two drafts of it were wrong in
+two different directions before this one: the first said the stale hashes "exist
+nowhere in the real store" (they all do — the store is immutable, so a repoint
+supersedes a BINDING and deletes nothing) and quoted a commit distance that was
+already off by a factor of two. Both were caught by review, and one of them
+survived my own re-check because the re-check had a broken path join and
+returned the answer I expected. **A description here has to be re-verified every
+time anything lands; a pointer does not.**
+
+State the window precisely, because "expensive if delayed" is easy to assert and
+this bucket is worthless if anything can be argued into it: the cost is not that
+the drift grows, it is that **it accrues per visitor and does not stop.** `/try`
+is the front door for the audience most likely to test the claim that the hash
+IS the identity. That is the only kind of window this bucket should accept.
+Anything parked here that is not narrowing a claim makes every other item look
+less urgent than it is.
+
+Read the issue for the falsifier — it is real: if the snapshot is a DELIBERATE
+pin rather than a mirror, the repair is a label and a gate on the pin, not a
+regeneration.
 
 If the next piece of work seems to belong here, say what makes it cheaper NOW
 than later before adding it.
 
-  **#133's compiler half SHIPPED** (4337bf5) and its slot is gone rather than
-  renumbered around. **#133 IS STILL OPEN, and this file said otherwise for one
-  session** — it read *"what remains is not a task"*, which was written the same
-  day the issue itself recorded an open one: the wasm ingestion path, the single
-  boundary I closed on paper but never ran. Step 2 cannot catch this class,
-  because the issue's STATUS never changed; only reading the issue against the
-  paragraph does. Prefer a POINTER for exactly this reason — a sentence
-  summarising an issue's remaining work goes stale while the issue does not.
+  **#133 IS CLOSED** (4337bf5, cd50e03) — all six ADMIT boundaries discharged,
+  the last one measured rather than reasoned about: four distinct playground
+  sources content-addressed to ONE definition, `accepted`, on the deployed
+  binary. What is worth carrying forward is not the fix but the shape of the
+  miss. This file said of #133 *"what remains is not a task"* on the same day
+  the issue recorded an open one, and **step 2 cannot catch that class** — the
+  status never changed; only reading the issue against the paragraph does.
+  Prefer a POINTER for exactly this reason: a sentence summarising an issue's
+  REMAINING WORK decays silently, while the issue does not.
 
-  What remains BEYOND that is a CATEGORY MOVE that
+  What remained BEYOND that is a CATEGORY MOVE that
   #69 already owns: `Str`'s scalar range is enforced today by HOST DISCIPLINE at
   the boundaries octets cross, and refinement types would move it into ARTIFACT
   IDENTITY. Those are different classes of guarantee, not different amounts of
