@@ -688,6 +688,26 @@ corpus OFFERS is per-NAME, and must be built by resolving every name and keeping
 duplicate resolutions: names alias (`Interval`/`Run`, `rot`/`rot-f` each share
 one object today), so a set intersection silently collapses them.
 
+**THE SAME ERROR RECURS ONE LEVEL UP, WHERE THE MISTAKEN UNIVERSE IS THE CORPUS
+ITSELF.** Everything above concerns getting the corpus right. This concerns
+mistaking the corpus for the phenomenon. **A corpus is an IMPLEMENTATION CHOICE
+FOR A MEASUREMENT; the phenomenon is the CLAIM** — and `examples/` is not a
+neutral sample of programs, it is the exhibits this project chose, weighted
+toward provable arithmetic and structural recursion because that is what the
+prover reaches. So a count over it supports
+
+    "in the current Oath corpus, N definitions exhibit X"
+
+and never
+
+    "X is rare"
+
+which quantifies over programs the corpus never claimed to represent. The
+guarded instance is live: #130's prevalence question has one witness, and the
+tempting sentence when a number arrives is the second one. Saying which
+population a figure describes is not hedging — it is the difference between a
+result and an extrapolation, and only one of them survives a different corpus.
+
 **AND WHEN THE CLAIM'S UNIVERSE HAS NO NAME, NAMING IT IS THE WORK** — the
 property-shaped instance of *a new abstraction earns its place when it makes a
 previously unaskable question expressible*, which is stated with its evidence
