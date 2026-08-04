@@ -13,10 +13,16 @@ import (
 //	generated mutation score  did generated executions distinguish the mutant?
 //	survivor adjudication     is a surviving mutant incompatible with a PROVEN property?
 //
-// The defect this repairs is not the score, it is the CLAIM attached to it.
-// `oath mutate` asks "do the properties notice mutations?" and answers "does the
-// GENERATOR notice?" — which are the same question only when the generator can
-// reach the distinguishing input. Measured on the committed corpus: 112 of 148
+// The defect this repairs is not the score, and it is not the measurement — it is
+// the CLAIM attached to the measurement. `oath mutate` faithfully measures
+// whether GENERATED EXECUTIONS witness a property distinguishing the mutant.
+// That is a real and useful quantity; what over-scoped was reporting it as
+// "spec strength", which is a claim about what the SPECIFICATION excludes. The
+// two coincide only when the harness can exhibit the distinction.
+//
+// Stating it as "the tool answers a different question than it asks" would point
+// the next repair at the wrong place — at the generator, or the case budget.
+// Nothing about execution needed fixing. Measured on the committed corpus: 112 of 148
 // scored definitions are `proven`, 15 of those score below 50%, and eight kill
 // zero mutants while carrying proofs over all inputs. 220 of the corpus's 616
 // survivors sit on proven definitions.
