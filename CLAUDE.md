@@ -270,7 +270,7 @@ missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   #147 — /try crashes on non-terminating input
+  more EXPENSIVE if delayed   (EMPTY — #147 shipped; see below)
   more VALUABLE if delayed    #146, #134, #138 — after more evidence has
                               accumulated to calibrate them
   waiting for a TRIGGER       #117/#69, #128
@@ -298,20 +298,20 @@ structural fix is to stop versioning the artifact rather than to watch it.
 **And the behavioural gate must never be read as discharging #148** — it is
 green over a stale-but-agreeing binary by construction.
 
-**#147 IS IN THIS BUCKET, and here is the justification the bucket demands.**
-What makes it more expensive later is not that the FIX gets harder — it does
-not. It is that the harm ACCRUES PER VISITOR and does not stop, the same clock
-the corpus half ran on: `/try` is the front door, and *"what happens if I write
-an infinite loop?"* is among the first things anyone tries. They do not get the
-honest FALSIFIED verdict the language promises; they get a dead kernel and a
-page that needs reloading. Every visitor who tries it is a cost already paid.
+**#147 IS RETIRED FROM THIS BUCKET BECAUSE IT SHIPPED** (43ed4a1), on the
+condition stated when it was admitted: the depth guard now fires on wasm instead
+of the stack overflowing. Retiring is the same act as admitting, and the easier
+one to skip.
 
-**It stops belonging the moment the depth guard fires on wasm instead of the
-stack overflowing** — an honest error, not a crash. Read #147 before touching
-`evalStackBudget`: the arithmetic explanation is UNCONFIRMED, the `RangeError`
-arriving before `mcall on m->g0` is weak evidence for the JS side rather than
-the Go stack, and the issue says diagnose before lowering. Lowering it globally
-would also change which definitions falsify, which is a verdict change.
+The durable part is not the fix but WHY the bound was wrong. `maxEvalDepth` was
+one constant derived as a MEMORY budget — correct natively, and meaningless on
+wasm, where the binding constraint is the JS HOST STACK Go's runtime borrows.
+It is now per-target (`eval_depth_native.go`, `eval_depth_wasm.go`), and the
+wasm value is deliberately far beneath the lowest measured ceiling because a
+browser tab's is not knowable from node. **The general form: a bound derived for
+one deployment environment, silently inherited by a second, with the justifying
+comment still reading correctly.** Adding a target is the moment to re-derive
+every constant whose comment names an environment.
 
 **Retiring an item from this bucket is the same act as admitting one**, and the
 easier one to skip: a stated window that is not re-read when the work lands
