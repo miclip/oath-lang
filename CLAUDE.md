@@ -312,16 +312,23 @@ question was settled by reading before any work started. Do not reopen it.
 **Feedback/tooling — the window is NOT closing.** Improves confidence in future
 work; nothing depends on it immediately.
 
-  1. **#130** vacuity signal, guard/subject overlap — now has a MEASURED
-     instance on the committed corpus (a property whose guard the generator
-     can never satisfy, scoring the corpus's worst 11/53). It is on the issue;
-     do not re-derive it.
-     **The obvious repair is the wrong one, and it has been measured: #144 is
-     CLOSED because widening generation moved the corpus +2 of 1203 and made
-     three definitions WORSE.** Reaching the guard is not the fix — the
-     surviving mutants are in branches no property observes at all. Read #144
-     before proposing generator work; a fixed case budget means a better draw
-     REALLOCATES it rather than adding to it.
+  1. **#130** vacuity signal, guard/subject overlap — **BOTH HALVES ARE NOW
+     KNOWN TO MISFIRE ON THE ISSUE'S OWN FLAGSHIP INSTANCE, so do not build
+     either from the issue body alone.** Its prior test ran (f6ea8d6): the
+     corpus's worst-scoring definition turned out to be PROVEN for all inputs,
+     which made it a false positive for the vacuity signal AND for the overlap
+     warning. What that measurement produced instead is shipped — survivor
+     adjudication, `oath mutate --prove`. The remaining question is what, if
+     anything, the two original ideas are still for. **The answer is on the
+     issue; this line deliberately does not summarise it**, having been the
+     entry that decayed once already by describing state instead of pointing
+     at it.
+     **And one standing result that is NOT superseded: the obvious repair is
+     the wrong one. #144 is CLOSED because widening generation moved the corpus
+     +2 of 1203 and made three definitions WORSE.** Reaching the guard is not
+     the fix — the surviving mutants are in branches no property observes at
+     all. Read #144 before proposing generator work; a fixed case budget means
+     a better draw REALLOCATES it rather than adding to it.
   2. **#134** typed refusal reasons
   3. **#139 SCOPING THE RE-DERIVATION with #140** (prove-worker delta) — one
      item, deliberately: both are *do not redo work whose answer is already
@@ -582,11 +589,29 @@ measuring something other than its claim:
   a contamination check that proved only that identifiers were absent
   a coverage table that proved only that rows existed
   a gate probe that proved only that SOMETHING failed — while the gate was broken
+  a mutation score that measured the GENERATOR'S REACH while claiming the
+    SPECIFICATION'S STRENGTH — in this repo's own tooling, demonstrated where a
+    PROVEN definition scored worst in the corpus
 
 The last is the sharpest and the easiest to repeat: a probe asking "did it fail?"
 cannot distinguish a working gate from a crashing one. So a probe must check for
 a crash first, and **the gate must PASS on the real input before any probe of it
 means anything.**
+
+**AND THE COMPANION QUESTION TO "WHAT MUTATION MAKES IT FAIL?" IS "WHAT MAKES IT
+FIRE?" — BECAUSE A MISSING CONSTRAINT PRESENTS AS EXTRA SENSITIVITY.** An
+instrument that knows LESS about its subject usually reports MORE, and more
+findings is the feeling of a better instrument. Worked example, f6ea8d6: a
+mutant reaching the prover without its termination classification is left an
+UNINTERPRETED function, so z3 "refutes" properties using arbitrary values for it
+— `str-take` produced 6 refutations that way and all 6 were false. Supplying the
+metadata took it to 0, and the prediction going in (mine and the reviewer's) was
+that the fix would ADD refutations. **The direction of the error was backwards,
+and only checking the findings BY HAND settled it** — each of the 6 was refuted
+in one line of arithmetic, no solver involved. So when a change makes a
+measurement more productive, verify a sample of the new findings independently
+before believing the change was an improvement; a fabricating instrument and a
+sensitive one look identical from the summary line.
 
 **ASK WHAT MUTATION MAKES IT FAIL.** This repo is mostly gates, and the recurring
 failure is a test that demonstrates the SETUP or one prerequisite and is then read
