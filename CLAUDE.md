@@ -313,15 +313,10 @@ one deployment environment, silently inherited by a second, with the justifying
 comment still reading correctly.** Adding a target is the moment to re-derive
 every constant whose comment names an environment.
 
-**AND THE CLOSE WAS PREMATURE, WHICH IS THE MORE USEFUL HALF.** #147 fixed the
-EVALUATOR; #149 is the same crash reached through the PARSER, which recurses
-before evaluation and no bound covers. The fix was correct and its universe was
-not: the claim quantifies over *every recursive descent over attacker-controlled
-input reachable from `oathCheck`*, and only one had been found. So when a bound
-is added for a new target, the question is not "does this guard the path I
-found" but "what is the SET of unbounded recursions on this target" — a
-question a passing regression witness cannot answer, because it only ever
-witnesses the door already known about.
+**AND THE CLOSE WAS PREMATURE**, which produced the session's most transferable
+rule — recorded with the witness discipline it belongs to rather than here,
+since the queue holds work state and that is a principle. #149 is the same crash
+reached through the PARSER.
 
 **#148 IS BLOCKED ON OPERATOR PROVISIONING, NOT ON ENGINEERING**, and the
 distinction decides what a session should do with it: nothing. Its design is
@@ -717,6 +712,32 @@ discriminating, over the wrong population. The principle underneath the second:
 > **A witness must derive its universe from the CLAIM, never from the
 > IMPLEMENTATION.** The implementation's boundaries are hypotheses. The claim's
 > boundaries are what you are trying to establish.
+
+**AND ITS CONSEQUENCE FOR REPAIRS, WHICH IS EASY TO MISS BECAUSE THE EVIDENCE
+LOOKS SO GOOD:**
+
+> **A REGRESSION WITNESS PROVES THE REPAIRED DOOR. CLOSING THE CLASS REQUIRES
+> DERIVING AND CHECKING THE FULL SET OF DOORS FROM THE CLAIM.**
+
+A green witness over the path you just fixed is exactly as convincing as a green
+witness over the whole class, and means far less. Two unlike instances, which is
+why this is stated as a parent rather than as a note on either:
+
+    #147/#149  the claim is EVERY attacker-controlled recursive descent
+               reachable from `oathCheck` — not the evaluator path that
+               happened to crash first. `spin` passing said nothing about the
+               parser, and the parser was unguarded.
+    #148       the claim is the artifact actually FETCHED AND SERVED — not a
+               locally rebuilt equivalent, and not a pipeline that merely
+               completed successfully.
+
+The second shows the rule is not about recursion or about bounds. It is why
+#148's proof runs the corpus sweep and the survival probe on the FETCHED bytes:
+that binds three facts which otherwise drift independently — the published
+digest names the downloaded bytes, those bytes reproduce the corpus identities,
+and those same bytes survive the runtime probe. Without the chain a pipeline can
+be fresh, correctly authenticated, and faithfully delivering the wrong
+artifact.
 
 Six instances in one session, in six unrelated layers, every one the same
 mistake — *measuring the implementation's decomposition instead of the
