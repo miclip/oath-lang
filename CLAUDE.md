@@ -648,11 +648,34 @@ property's*:
   non-JSON is refused         the impl's own predicate     a longer type does not match
   the failure path works      "FAIL" was printed           the suite reached its verdict
   a tab cannot inject         an escaped `\t`              an actual 0x09 byte
+  the corpus scores X         every meta/*.json            objects a live name reaches
 
 This is why `pgrep -f 'oath serve --http'` is right and a port list is not; why
 `capabilityKinds()` became one source of truth; why the three-way verdict became
 a PURE FUNCTION with every outcome asserted; and why the port-order test checks
 OBSERVABLE STARTUP rather than an exit code.
+
+**THE LAST ROW IS THE CHEAPEST TO REPEAT, BECAUSE THE WRONG UNIVERSE IS THE ONE
+ON DISK.** OBJECTS are immutable and repointing deletes nothing, so `meta/`
+accumulates a record for every object ever stored — superseded ones included,
+each still carrying the verdicts it held when a name last pointed at it. (The
+store as a whole is NOT immutable: `names.json` and the journal both move, and
+`SetMeta` overwrites metadata under an existing hash, because verdict fields are
+facts about the hash that are meant to be updated.) A directory walk therefore
+answers a question about the STORE'S HISTORY while looking exactly like a
+question about the CORPUS. Measured cost of skipping that: a distribution
+published in an issue AND in a commit message overstated the scored population by
+ten definitions and listed two names as weak scorers whose live objects score
+100% — their low numbers belonged to objects nothing resolves to. Written in the
+same session as this rule, by someone reciting it.
+
+**AND SAY WHETHER THE STATISTIC IS PER-OBJECT OR PER-NAME BEFORE JOINING**, since
+the two differ in both directions and the join differs with them. A verdict is a
+fact about the HASH — so a distribution of mutation scores is per-OBJECT, and the
+right universe is the objects some live name reaches. A statistic about what the
+corpus OFFERS is per-NAME, and must be built by resolving every name and keeping
+duplicate resolutions: names alias (`Interval`/`Run`, `rot`/`rot-f` each share
+one object today), so a set intersection silently collapses them.
 
 **AND WHEN THE CLAIM'S UNIVERSE HAS NO NAME, NAMING IT IS THE WORK** — the
 property-shaped instance of *a new abstraction earns its place when it makes a
