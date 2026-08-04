@@ -6,10 +6,16 @@
 # Proof outcomes (checks 5-6) run in two modes since the deterministic
 # rlimit budget (#17): per-push CI uses the BYTE ORACLE — the Rust kernel
 # must reproduce every direct-attempt script byte-for-byte under the pinned
-# solver, which determines the outcomes (outcome = f(script bytes, solver
-# version, rlimit), SPEC §7.2) without hours of z3. The FULL empirical
+# solver, which determines THOSE SCRIPTS' results (result = f(script bytes,
+# solver version, rlimit), SPEC §7.2) without hours of z3. The FULL empirical
 # re-derivation (cold prove of the whole corpus, run-stability fixpoint
 # included) runs weekly and on demand.
+#
+# THE PER-PUSH JOB DOES NOT COVER CHECK 6 FOR GOALS THAT PROVE BY INDUCTION.
+# Their verdicts rest on subgoal scripts the oracle never compares — candidate-
+# script exposure is outside §10's conformance surface by decision (#139), not
+# pending — so the weekly full run is what re-derives them. Treat a green push
+# as a strong gate, not a complete one.
 name: conformance
 on:
   push:

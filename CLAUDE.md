@@ -210,21 +210,15 @@ until it exactly matched what had been demonstrated. Continue that.
 
 ### THE QUEUE — one ordering, in three buckets; position is not priority
 
-**FIRST, AND DELIBERATELY NOT IN A BUCKET — #139 THE §10 DECISION.** It
-is not the largest item; it is the UNBLOCKING one. The reference kernel now pins
-the full attempt sequence (`fixtures/prove/attempts.txt`) and oracle mode states
-what it does and does not witness. What remains cannot start until §10 decides
-whether candidate-script exposure belongs on the conformance surface: a *yes*
-requires designing an interchange format FIRST, and a *no* changes what the
-harness should say. Dispatching the Rust half before that would be asking a blind
-subject to reproduce a format nobody has specified.
-
-It is also cheap — a decision plus a record, not an implementation — and **the
-record's required shape is on the issue**, including why a *no* must change
-`conformance.sh`'s wording rather than leaving output that reads as pending.
-Read #139 rather than this paragraph; the remaining work is a blind task and
-describing it here would hand a dispatched subject the reference
-implementation's conclusions.
+**SETTLED, so that it is not reopened as a gap: candidate-script exposure is
+OUTSIDE §10's conformance surface** — decided, recorded on #139, and reflected in
+SPEC §7.2 and in `conformance.sh`'s output. `prove/attempts.txt` is a
+reference-kernel diagnostic guarded by the Go suite; a kernel that does not emit
+it is not deficient. The bytes remain DETERMINED by §7.2 for every kernel, so
+what was declined is the cross-kernel witness, not the obligation. **Do not
+re-derive this from the harness output** — the reasoning is on the issue,
+because a later reader meeting only the absence would reasonably read it as
+missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 

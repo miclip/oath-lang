@@ -129,34 +129,42 @@ done
 # Checks 5-6 come in two modes. FULL (default): cold re-derivation of every
 # proof outcome — z3 at the SPEC §7.2 rlimit budget, run-stability fixpoint
 # included. This is HOURS of solver time and is the definitive empirical
-# check. ORACLE (OATHRS_CONFORMANCE_PROVE=oracle): no solver runs; instead
-# the kernel must reproduce the emitted scripts byte-for-byte under the pinned
-# solver version. Since an outcome is a pure function of (script bytes, solver
-# version, rlimit) — SPEC §7.2, deterministic budget — byte-identical scripts
-# under identical pins DETERMINE identical outcomes. Per-push CI uses oracle
-# mode; the full mode runs on a schedule and on demand.
+# check. ORACLE (OATHRS_CONFORMANCE_PROVE=oracle): no solver runs; instead the
+# kernel must reproduce the DIRECT-ATTEMPT scripts byte-for-byte under the pinned
+# solver version. Since a script's result is a pure function of (script bytes,
+# solver version, rlimit) — SPEC §7.2, deterministic budget — byte-identical
+# scripts under identical pins DETERMINE identical results FOR THOSE SCRIPTS.
+# Per-push CI uses oracle mode; the full mode runs on a schedule and on demand.
 #
-# WHAT "THE EMITTED SCRIPTS" MEANS, and it is the whole soundness of this mode
-# (#139). The determinism argument quantifies over EVERY script the strategy
-# sequence runs, because any one of them can decide the outcome. This block used
-# to compare prove/scripts.txt — the DIRECT attempt only — and then print
-# "outcomes are determined: all three pinned". On this corpus the direct attempt
-# is 447 of 2904 emitted scripts, so for every goal that fell through to
-# induction the sentence asserted a determinism nothing had checked: two kernels
-# could agree on every direct script and still emit different inductive subgoals,
-# and oracle mode would report PASS. prove/attempts.txt pins the rest, and the
-# claim below is now stated over whichever of the two the kernel reproduced —
-# never over more.
+# READ THAT SCOPE LITERALLY: oracle mode does NOT cover check 6 for a goal that
+# proves by induction. Its verdict rests on subgoal scripts this mode never
+# compares, and only the scheduled full run re-derives them. The per-push job is
+# a strong gate, not a complete one.
 #
-# AND THE SAME CORRECTION APPLIES ONE LEVEL UP, which is why full mode is not
-# redundant. Both fixtures fix the RECORDED lemma state; §7.2 makes that state a
-# parameter of script identity. A cold fixpoint attempts a goal under smaller
-# intermediate lemma sets as siblings become proven, so those scripts differ in
-# bytes and are pinned by nothing. Oracle mode therefore determines a goal's
-# outcome GIVEN a lemma state; it does not determine the path the fixpoint takes
-# to reach one. That path is the residual value of the empirical re-derivation,
-# and naming it is what makes "scope the full run" (#139) a decidable question
-# rather than a preference.
+# WHAT THIS MODE ESTABLISHES, stated narrowly because it once claimed more. It
+# used to print "outcomes are determined: f(script bytes, solver, rlimit), all
+# three pinned" after comparing the DIRECT attempt alone — 447 of the 2904
+# scripts this corpus emits — so for every goal that fell through to induction
+# the sentence asserted a determinism nothing had checked (#139).
+#
+# §10 has since decided that candidate-script exposure is NOT part of the
+# conformance surface, because it tolerates differing proof methods and
+# comparing candidate sets would standardize search instrumentation rather than
+# observable semantics. So the cross-kernel byte oracle covers the direct
+# attempts, permanently and by decision. The inductive scripts' bytes are still
+# DETERMINED by §7.2's naming and subgoal rules — the obligation exists for every
+# kernel; it simply has no cross-kernel witness, and is not supposed to.
+#
+# TWO RESIDUES remain, and full mode is what covers them. Both fixtures fix the
+# RECORDED lemma state, which §7.2 makes a parameter of script identity: a cold
+# fixpoint attempts a goal under smaller intermediate lemma sets as siblings
+# become proven, and those scripts differ in bytes. And the inductive subgoals
+# are compared across kernels by nothing. So oracle mode determines the
+# DIRECT-ATTEMPT outcome under the recorded lemma state — not the goal's verdict:
+# a goal whose direct attempt is inconclusive and whose induction succeeds has a
+# verdict resting on scripts this mode never compared. Empirical re-derivation is
+# what checks those. Naming both residues is what makes "scope the full run"
+# (#139) a decidable question rather than a preference.
 # ---------------------------------------------------------------------------
 MODE="${OATHRS_CONFORMANCE_PROVE:-full}"
 if [ "$MODE" = "oracle" ]; then
@@ -177,45 +185,38 @@ if [ "$MODE" = "oracle" ]; then
     echo "  FAIL: script byte oracle diverged:"; head -20 "$TMP/scripts.diff" 2>/dev/null; fail=1
   fi
 
-  # The rest of the emitted set (#139). THREE outcomes, and each is stated
-  # separately, because collapsing "the kernel does not implement this" into
-  # either PASS or FAIL is how a gate ends up reporting on a claim it never
-  # measured. The kernel is judged to implement --attempts by whether it emits
-  # the fixture's HEADER — not by its exit status, which is also what an
-  # unknown-flag parser produces when it treats "--attempts" as a filename.
+  # CANDIDATE SCRIPTS: DECIDED OUT (#139). This block used to invoke
+  # `scripts --attempts`, compare the whole candidate set, and FAIL a kernel
+  # whose bytes differed. §10 decided that exposure is not part of the
+  # conformance surface, so all of that is gone — asking and enforcing would be
+  # the harness requiring what the protocol does not, which is the exact
+  # requested-versus-required conflation this file corrected once already.
+  #
+  # The reason is §10 point 5: proof METHODS may differ where multiple proofs
+  # exist. Comparing candidate sets would standardize proof-search
+  # instrumentation rather than observable proof semantics, constraining every
+  # future kernel's search.
+  #
+  # WHAT THE DECISION COSTS, since pretending it costs nothing is the easiest way
+  # to have it reversed later by someone who notices: the comparison WOULD have
+  # determined the verdict of a goal whose direct attempt is inconclusive and
+  # whose induction succeeds. That guarantee is deliberately declined, not
+  # absent — it is recoverable by empirical re-derivation, whereas a standardized
+  # instrumentation format would not be recoverable from. Nothing here reads as
+  # pending, because nothing is.
   want_attempts=$(( $(wc -l < "$FIX/prove/attempts.txt" | tr -d ' ') - 1 ))
-  attempts_hdr="$(head -1 "$FIX/prove/attempts.txt")"
-  "$BIN" scripts --attempts --outcomes "$FIX/prove/outcomes.json" $SRC > "$TMP/attempts.txt" 2>/dev/null || true
-  if [ "$(head -1 "$TMP/attempts.txt" 2>/dev/null)" != "$attempts_hdr" ]; then
-    # ATTRIBUTION MATTERS HERE. An earlier wording said "this kernel does not
-    # emit prove/attempts.txt", which reads as the Rust being behind and points
-    # the next reader at patching it. It is not behind: §10 enumerates the
-    # conformance surface and this fixture is not among its points, so the
-    # protocol has never asked any kernel for it. Saying so is what keeps the
-    # remaining work a §10 DECISION rather than an implementation chore.
-    echo "  NOT WITNESSED: $want_attempts scripts — every induction, lexicographic and"
-    echo "    recursion-induction subgoal — are compared against nothing here. §7.2's"
-    echo "    rules DETERMINE their bytes, but prove/attempts.txt sits outside §10's"
-    echo "    conformance surface, so no CONFORMING kernel is required to emit it."
-    echo "    This harness asked (and would have failed a differing answer); not"
-    echo "    answering is permitted. Requiring it means first specifying labels,"
-    echo "    detail vocabulary, ordering and encoding as a wire format — #139."
-    attempts_state="direct attempts only; the inductive subgoals are UNWITNESSED (#139)"
-  elif diff "$TMP/attempts.txt" "$FIX/prove/attempts.txt" > "$TMP/attempts.diff"; then
-    echo "  PASS: $want_attempts scripts byte-identical to prove/attempts.txt (full attempt sequence)"
-    attempts_state="the full attempt sequence"
-  else
-    echo "  FAIL: attempt-sequence byte oracle diverged:"; head -20 "$TMP/attempts.diff" 2>/dev/null; fail=1
-    attempts_state="DIVERGED"
-  fi
-  echo "  outcomes are determined by f(script bytes, solver, rlimit) over: $attempts_state,"
-  echo "  each GIVEN the recorded lemma state — which both fixtures fix. A cold fixpoint"
-  echo "  run also emits scripts under intermediate, smaller lemma sets, and those are"
-  echo "  pinned by nothing; re-deriving that path is what full mode still buys (#139)."
+  echo "  CANDIDATE SCRIPT COMPARISON: OUTSIDE THE CONFORMANCE SURFACE (#139)"
+  echo "    prove/attempts.txt pins $want_attempts candidate scripts for the reference kernel"
+  echo "    and is guarded by its Go test suite. §7.2's rules DETERMINE these bytes for"
+  echo "    any kernel; §10 does not require exposing them, so this harness does not ask."
+  echo "  f(script bytes, solver, rlimit) determines the DIRECT-ATTEMPT outcome under the"
+  echo "  recorded lemma state — not every goal's verdict: one proved by induction rests"
+  echo "  on scripts compared by nothing here, and a cold fixpoint emits further scripts"
+  echo "  under smaller intermediate lemma sets. Re-deriving those is what full mode buys."
 
   echo
   if [ $fail -eq 0 ]; then
-    echo "CONFORMANCE: PASS (checks 1-4 + byte oracle over $attempts_state)"
+    echo "CONFORMANCE: PASS (checks 1-4 + byte oracle over the direct attempts)"
   else
     echo "CONFORMANCE: FAIL"
   fi

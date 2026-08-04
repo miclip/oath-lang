@@ -1416,16 +1416,37 @@ reproducibility (given the same solver):
   `prove/attempts.txt` is the reference kernel's serialization of that set:
   sha256 of every script the sequence can emit FOR A GOAL UNDER THE
   RECORDED LEMMA STATE, in emission order, keyed by (name, property,
-  strategy, detail). REPRODUCING IT IS NOT A CONFORMANCE REQUIREMENT — §10
-  enumerates the conformance surface and this fixture is not among its
-  points — and the file's shape is deliberately not specified here: the
-  strategy labels, the detail vocabulary and the column layout exist only
-  in the reference implementation, so requiring them would impose an
-  obligation no reader could reconstruct from this document. Note also
-  that §10 tolerates differing proof METHODS where multiple proofs exist;
-  enumerating what the sequence CAN emit rather than what one run DID emit
-  is what keeps this fixture independent of that tolerance. The pinned set
-  is what the sequence can emit rather
+  strategy, detail). **REPRODUCING IT IS NOT A CONFORMANCE REQUIREMENT, BY
+  DECISION AND NOT BY OMISSION.** §10 enumerates the conformance surface
+  and this fixture is deliberately outside it: §10 tolerates differing
+  proof METHODS where multiple proofs exist, so requiring a common
+  candidate-script format would standardize proof-search INSTRUMENTATION
+  rather than observable proof SEMANTICS, constraining legitimate
+  implementation diversity. It would also mean designing labels, a detail
+  vocabulary, ordering and an encoding as an interchange format; the
+  shapes used here exist only in the reference implementation and are
+  deliberately unspecified, since an obligation no reader could
+  reconstruct from this document is worse than none.
+  **THE DECISION HAS A COST, AND IT IS STATED RATHER THAN ARGUED AWAY.**
+  Matching candidate hashes under a pinned solver and rlimit WOULD
+  determine a goal's verdict for the recorded lemma state — that is
+  precisely what makes the fixture valuable within one kernel. Declining
+  the interchange format therefore gives up cross-kernel verdict
+  determination for goals that reach induction; those are covered by
+  empirical re-derivation instead. The exchange is deliberate: the
+  guarantee is recoverable by other means, whereas a standardized
+  search-instrumentation format would constrain every future kernel.
+  **A kernel that does not emit this fixture is NOT deficient.**
+  What stays binding is the paragraph above, and its scope is exactly the
+  attempts a kernel actually makes: WHEN a kernel emits a script for a
+  given (strategy, subgoal) under a given goal and lemma state, the naming
+  and subgoal rules DETERMINE its bytes. A kernel exercising a different
+  permitted method may never emit some of these attempts at all, and owes
+  nothing for the ones it does not make. The obligation is real and
+  conditional; only the cross-kernel witness is declined. And enumerating what
+  the sequence CAN emit rather than what one run DID emit is what keeps
+  the fixture independent of that method tolerance to begin with. The
+  pinned set is what the sequence can emit rather
   than what one run did emit — a subgoal skipped because an earlier
   strategy succeeded still determines the outcome on a corpus where that
   strategy fails, and pinning only the executed subset would make the
