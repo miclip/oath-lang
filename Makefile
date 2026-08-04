@@ -62,7 +62,7 @@ TESTED_ONLY = rle-expand rle-decode e-mod e-div rot
 OATH = ./oath/oath
 AUTHOR ?= claude-main
 
-.PHONY: build verify prove mutate check fixtures tutorials check-web-tutorials webdocs check-web-docs check-playground-guard check-playground-snapshot print-order
+.PHONY: build verify prove mutate check fixtures tutorials check-web-tutorials webdocs check-web-docs check-playground-guard check-playground-snapshot check-playground-wasm print-order
 
 build:
 	cd oath && go build -o oath .
@@ -310,6 +310,16 @@ webdocs:
 # `make playground-assets` and is therefore a local gate rather than a CI one.
 check-playground-guard:
 	@node scripts/check-playground-guard.mjs
+
+# BEHAVIOURAL conformance for the served wasm — deliberately NOT a freshness
+# check, and the distinction is the whole point (#145). It boots the artifact the
+# browser downloads and re-elaborates the corpus through it, catching a
+# divergence class nothing else covers: the wasm is a THIRD compilation of the
+# kernel, with its own build tags and syscall/js boundary, and oathrs's
+# cross-kernel gate says nothing about it. It is GREEN over a stale-but-agreeing
+# binary; artifact freshness is tracked separately.
+check-playground-wasm:
+	@node scripts/check-playground-wasm.mjs
 
 # The served corpus must BE the committed store (#145). It sat 2026-07-23 stale
 # for months because `playground-assets` is manual and nothing checked it, and a

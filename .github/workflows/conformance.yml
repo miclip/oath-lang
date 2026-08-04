@@ -166,6 +166,15 @@ jobs:
       - name: playground refuses lossy source at the JS boundary (#133)
         run: make check-playground-guard
 
+      # The wasm is a THIRD compilation of the kernel — its own build tags, its
+      # own syscall/js boundary — and the Go-vs-Rust conformance gate says
+      # nothing about it. This boots the artifact the browser downloads and
+      # re-elaborates the corpus through it. It is BEHAVIOURAL agreement only:
+      # green over a stale-but-agreeing binary, so it must never be read as a
+      # freshness check (#145).
+      - name: served playground wasm reproduces corpus identities (#145)
+        run: make check-playground-wasm
+
       # The committed store must be reproducible by the kernel that ships with it.
       # Metadata does not participate in artifact identity, but canonical bytes
       # protect reproducibility and reviewability — different properties, both
