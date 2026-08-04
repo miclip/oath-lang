@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import fs from "node:fs";
 import path from "node:path";
-import ReactMarkdown from "react-markdown";
+import { Markdown } from "@/components/Markdown";
 import { canonicalUrl } from "@/lib/site";
 import { tutorials, tutorialBySlug } from "@/lib/tutorials";
 
@@ -52,7 +52,7 @@ export default async function TutorialPage({
       <p style={{ marginBottom: "1.5rem" }}>
         <Link href="/docs/tutorials">← All tutorials</Link>
       </p>
-      <ReactMarkdown>{md}</ReactMarkdown>
+      <Markdown>{md}</Markdown>
     </>
   );
 }

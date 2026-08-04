@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import fs from "node:fs";
 import path from "node:path";
-import ReactMarkdown from "react-markdown";
+import { Markdown } from "@/components/Markdown";
 import { refdocs, refdocBySlug } from "@/lib/refdocs";
 import { canonicalUrl } from "@/lib/site";
 
@@ -54,7 +54,7 @@ export default async function RefDocPage({
       <p style={{ marginBottom: "1.5rem" }}>
         <Link href="/docs/reference">← All reference docs</Link>
       </p>
-      <ReactMarkdown>{md}</ReactMarkdown>
+      <Markdown>{md}</Markdown>
       <hr style={{ margin: "3rem 0 1.5rem" }} />
       <p style={{ fontSize: "0.9rem", opacity: 0.75 }}>
         Rendered verbatim from <code>docs/{d.file}</code> in the repository. The

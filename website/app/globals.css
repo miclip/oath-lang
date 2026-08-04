@@ -1311,3 +1311,63 @@ pre,
     padding: 9px 10px 9px 0;
   }
 }
+
+/* MARKDOWN TABLES in docs/ and tutorials, rendered through components/Markdown.
+
+   EVERY RULE IS SCOPED UNDER .table-scroll, which only that component emits.
+   The first draft scoped them to `.prose table` instead, and review caught what
+   the comment had already claimed was not happening: `.prose th` and
+   `.evidence th` have equal specificity, so appearing later in this file
+   silently restyled the hand-authored evidence table on /essays/nine-minute-gap
+   — font size, padding, colours and header casing. Saying "separate from
+   .evidence" in a comment did not make it separate.
+
+   Two problems had to be fixed together and only one was visible. The tables
+   were not being PARSED (react-markdown is CommonMark; tables are GFM), and
+   there were also no styles for them — so adding remark-gfm alone would have
+   turned literal pipes into an unstyled borderless grid and looked like the bug
+   was still there. */
+.prose .table-scroll {
+  overflow-x: auto;
+  margin: 24px 0;
+  /* A faint edge so a table that scrolls is distinguishable from one that
+     merely ends at the column boundary. */
+  border-bottom: 1px solid var(--line);
+}
+.prose .table-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+  /* SPEC §14's rows are prose, so let content set the width and let the
+     container scroll rather than crushing five columns into 720px. */
+  min-width: 100%;
+}
+.prose .table-scroll th,
+.prose .table-scroll td {
+  text-align: left;
+  vertical-align: top;
+  padding: 10px 18px 10px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--cream-dim);
+  font-size: 0.9rem;
+}
+.prose .table-scroll thead th {
+  color: var(--cream);
+  font-weight: 500;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border-bottom-color: var(--line-2);
+}
+.prose .table-scroll tbody tr:last-child th,
+.prose .table-scroll tbody tr:last-child td {
+  border-bottom: none;
+}
+/* Inline code is common in these tables (rule names, field names, octet
+   ranges); the default padding makes cells ragged at this size. */
+.prose .table-scroll td code,
+.prose .table-scroll th code {
+  font-size: 0.82rem;
+  padding: 0 4px;
+  white-space: nowrap;
+}
