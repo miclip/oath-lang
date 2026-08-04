@@ -98,10 +98,12 @@ says which case you are in: every proven property still holding on the mutant is
 the closest thing to a demonstrated gap — though adjudication consults only the
 PROVEN properties, so an unproven one may still exclude it on a case generation
 missed. The refusal above is a different thing again: the tool declining to
-guess. Swapping `str-append`'s call arguments destroys the recursion
-that made it total, and the prover only asserts a function's defining equation
-once it is known total — so any "refutation" there would be about an arbitrary
-function rather than about this body. Reporting nothing is the honest answer.
+guess. Swapping `str-append`'s call arguments leaves a body the
+termination analysis cannot prove total — `unknown`, which is a failure to prove
+rather than a proof of divergence — and the prover asserts a function's defining
+equation only once totality IS proved. So any "refutation" there would be about
+an arbitrary function rather than about this body. Reporting nothing is the
+honest answer.
 
 That honesty is the point: a proof tells you the stated laws hold, the mutation
 score tells you what *generated executions* could distinguish, and the two are

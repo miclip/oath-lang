@@ -90,15 +90,35 @@ justification), or `unadjudicated` (nothing settled it — including the case wh
 every proven property still holds, which is the closest thing to a demonstrated
 gap: no PROVEN property distinguishes the mutant).
 
-The repair differs by disposition, and reaching for the wrong one is easy.
-`proof-refuted` needs no change to the specification at all — a property already
-excludes the mutant, and waiving it as "equivalent" would be recording something
-false; what fell short is the generated campaign. `unadjudicated — every proven
-property still holds` is where strengthening a property is the answer — bearing
-in mind that adjudication consults only the PROVEN properties, so an unproven one
-may still exclude the mutant on a case generation missed. And `oath waive`, with
-a justification on record, is for a mutant that genuinely cannot be distinguished
-by any property.
+**Read the dispositions as a work queue, not as a taxonomy.** Each says something
+different about what to do next, and two of them say *nothing* — which is the
+point, because a survivor list that implies work everywhere manufactures it where
+the evidence already says there is none:
+
+| disposition | what it establishes | next action |
+|---|---|---|
+| `proof-refuted` | a proven property excludes the mutant; the campaign missed it | improve execution reach |
+| `unadjudicated — every proven property still holds` | no PROVEN property distinguishes it | **inspect** — prove an existing property, write a new one, or waive |
+| `unadjudicated — did not reach a verdict` | the proof attempt was inconclusive — timeout, resource cap, or untranslatable | improve proof support |
+| `unadjudicated — not provably total` | totality was not PROVED, so the body cannot be asserted | none — a refusal, not a finding |
+| `equivalent` | a human judged it indistinguishable, with justification on record | none — already adjudicated |
+
+The last two rows are easy to misread as weak findings. They are not findings at
+all: one is the tool declining to answer rather than guessing, the other is an
+answer that has already been given.
+
+The first two are opposite in a way worth being explicit about, since both can
+sound like "the spec doesn't catch it". `proof-refuted` needs **no change to the
+specification** — a property already excludes the mutant, and waiving it as
+"equivalent" would record something false.
+
+`every proven property still holds` is the row that needs looking at rather than
+acting on, because it covers three different situations. Adjudication consults
+only the PROVEN properties, so an existing UNPROVEN one may already exclude the
+mutant — there the work is to prove it, not to write anything. If no property
+does, a new one belongs. And if the mutant is genuinely indistinguishable, the
+answer is `oath waive` with a justification, which is what makes the `equivalent`
+row exist at all.
 
 ## Four dimensions, not one
 

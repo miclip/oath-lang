@@ -22,9 +22,11 @@ import (
 //
 // Stating it as "the tool answers a different question than it asks" would point
 // the next repair at the wrong place — at the generator, or the case budget.
-// Nothing about execution needed fixing. Measured on the committed corpus: 112 of 148
-// scored definitions are `proven`, 15 of those score below 50%, and eight kill
-// zero mutants while carrying proofs over all inputs. 220 of the corpus's 616
+// Nothing about execution needed fixing. Measured over the objects a live name
+// reaches (NOT every meta/*.json — the store keeps superseded records, and
+// counting those overstated this by ten definitions): 106 of 138 scored
+// definitions are `proven`, 13 of those score below 50%, and eight kill zero
+// mutants while carrying proofs over all inputs. 209 of the corpus's 340
 // survivors sit on proven definitions.
 //
 // The worked instance: `hex-nibble` is PROVEN, scores 11/53 (worst in the
@@ -86,12 +88,17 @@ func adjudicateSurvivorErr(st *Store, origMeta *Meta, mutHash string, mutDef *De
 	// FAILS CLOSED ON NON-TOTAL MUTANTS, and this is the second half of the
 	// uninterpreted-function hazard rather than a separate concern. Supplying the
 	// classification is not enough: prove.go asserts a defining equation only for
-	// a function classified TOTAL, so a mutant that DESTROYS termination is still
+	// a function classified TOTAL, so a mutant whose totality is NOT PROVED is still
 	// left uninterpreted — and z3 may then "refute" a property using arbitrary
-	// values for it. The case is real and present: `str-take` recurses on
-	// `(- n 1)`, and the catalogue's `- → +` mutant recurses on `(+ n 1)`, which
-	// does not terminate. It survives generation (the divergence is outside the
-	// draw) and was reported proof-refuted.
+	// values for it. The case is real and present: `show-nat` recurses on
+	// `(/ n 10)`, whose `/ → *` and `literal 10 → 0` mutants the termination
+	// analysis cannot prove total, and both survive generation.
+	//
+	// Note it must be a MEASURE recursion. A structural one does not exercise
+	// this: `str-take` recurses on `(- n 1)` but descends on the STRING, so its
+	// `- → +` mutant stays total. (`str-take` is still where the sibling
+	// metadata hazard was measured — 6 false refutations — but by the other
+	// route, and conflating the two costs a reader the distinction.)
 	//
 	// There is no weaker honest answer here. A countermodel over an uninterpreted
 	// function is not evidence about this mutant, so the only truthful verdict is
