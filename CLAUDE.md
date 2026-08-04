@@ -706,6 +706,28 @@ measurement discriminates.
   2. **What defines the universe this claim quantifies over?**
      — is it even looking at the right set?
 
+**THEY ARE STEPS 3 AND 2 OF A PROCEDURE, AND WRITING THE WHOLE PROCEDURE DOWN
+MATTERS BECAUSE ITS LAST STEP IS THE ONE THIS FILE KEPT OMITTING:**
+
+    1. state the CLAIM
+    2. derive the UNIVERSE from the claim
+    3. verify the INSTRUMENT measures that universe
+    4. repair EITHER the instrument OR the claim until they coincide
+
+**Step 4's "either" is the missing degree of freedom.** Everything above is
+written as though a mismatch means the instrument is broken, and often it is —
+but the sharpest result this project has produced went the other way. `oath
+mutate` was measuring correctly and its LABEL was wrong: every number it had
+ever produced was a true statement about generated executions, reported as
+"spec strength", a claim about what the specification excludes. Nothing about
+the measurement needed fixing. Reaching for the instrument there would have led
+straight to the generator, which #144 had already measured as the wrong repair.
+
+Declining a claim is also a repair, and a real answer: §10 DECLINED the
+candidate-script obligation, and #145 DECLINED freshness rather than closing it
+on a check that could not discharge it. A narrowed claim that is exactly
+supported beats a broad one that is nearly.
+
 A witness can pass the first and fail the second completely: perfectly
 discriminating, over the wrong population. The principle underneath the second:
 
