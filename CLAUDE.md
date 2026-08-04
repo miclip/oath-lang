@@ -210,16 +210,21 @@ until it exactly matched what had been demonstrated. Continue that.
 
 ### THE QUEUE — one ordering, in three buckets; position is not priority
 
-**FIRST, AND DELIBERATELY NOT IN A BUCKET — the rest of #139's first half.**
-Oracle mode is the gate that decides whether a change is safe, so under **verify
-the measuring instrument before interpreting its output** its own claim is the
-prerequisite for reading any PASS it prints, not an item competing with the
-others. The reference kernel now pins the full attempt sequence
-(`fixtures/prove/attempts.txt`, SPEC §7.2 attempt-sequence stability); the Rust
-kernel does not yet emit it, and oracle mode SAYS SO in its verdict rather than
-implying coverage it lacks. **Read #139 for what remains** — the Rust half is a
-blind task, and describing it here would state the reference implementation's
-conclusions in the one file a dispatched subject inherits.
+**FIRST, AND DELIBERATELY NOT IN A BUCKET — #139 THE §10 DECISION.** It
+is not the largest item; it is the UNBLOCKING one. The reference kernel now pins
+the full attempt sequence (`fixtures/prove/attempts.txt`) and oracle mode states
+what it does and does not witness. What remains cannot start until §10 decides
+whether candidate-script exposure belongs on the conformance surface: a *yes*
+requires designing an interchange format FIRST, and a *no* changes what the
+harness should say. Dispatching the Rust half before that would be asking a blind
+subject to reproduce a format nobody has specified.
+
+It is also cheap — a decision plus a record, not an implementation — and **the
+record's required shape is on the issue**, including why a *no* must change
+`conformance.sh`'s wording rather than leaving output that reads as pending.
+Read #139 rather than this paragraph; the remaining work is a blind task and
+describing it here would hand a dispatched subject the reference
+implementation's conclusions.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
@@ -240,13 +245,18 @@ work; nothing depends on it immediately.
 
   4. **#130** vacuity signal, guard/subject overlap
   5. **#134** typed refusal reasons
-  6. **#139's second half** (scope the full re-derivation) **with #140**
-     (prove-worker delta) — one item, deliberately: both are *do not redo work
-     whose answer is already determined*, one for re-deriving and one for
-     proving, and neither can be judged without the other's answer. Doing them
-     apart means deciding twice what "unchanged" means. This half waits for the
-     first half because scoping a re-derivation you cannot yet fully byte-check
-     is scoping it on faith.
+  6. **#139 SCOPING THE RE-DERIVATION with #140** (prove-worker delta) — one
+     item, deliberately: both are *do not redo work whose answer is already
+     determined*, one for re-deriving and one for proving, and neither can be
+     judged without the other's answer. Doing them apart means deciding twice
+     what "unchanged" means.
+     **NOT the same work as #139's §10 DECISION above** — that one asks whether
+     candidate-script exposure belongs in conformance; this one asks how much
+     empirical re-derivation the LEMMA-STATE path still needs, which the
+     fixtures deliberately do not pin. Both are "#139", which is why neither is
+     called a half or a part: an ordering whose items share a name is not an
+     ordering. This one goes late because scoping a re-derivation you cannot yet
+     byte-check is scoping it on faith.
 
 **Research — needs runway, not a slot.**
 
