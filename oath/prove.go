@@ -146,6 +146,17 @@ type smtCtx struct {
 	depth      int
 	intDivDefs bool // truncating-division bridge emitted? (SPEC §7.1, #71)
 
+	// metaOverride supplies metadata for objects the STORE does not hold.
+	// Survivor adjudication (#130) proves against MUTANTS, which are cached
+	// definitions with no metadata — and `GetMeta` failing there means the
+	// defining-equation gate below sees no termination classification and
+	// leaves the function UNINTERPRETED. That is not a weaker proof, it is a
+	// corrupt one: an unconstrained function makes almost any property
+	// "refutable". Supplied per-context rather than written into the store's
+	// cache, so a candidate under interrogation can never be mistaken for a
+	// store member by anything else running in this process.
+	metaOverride map[string]*Meta
+
 	// ENUMERATION MODE (#139). When set, no solver runs: every script the
 	// strategy sequence builds is RECORDED and answered `unsat`, and each
 	// strategy's success return is bypassed, so the sequence walks to the end
@@ -339,6 +350,18 @@ func (c *smtCtx) ensureIntDivDefs() {
 func newSmtCtx(st *Store, d *Def, h string) *smtCtx {
 	return &smtCtx{st: st, selfDef: d, selfHash: h,
 		dts: map[string]*dtInfo{}, dtBySort: map[string]*dtInfo{}, fns: map[string]smtVal{}}
+}
+
+// metaOf is the ONLY way this file should read metadata: every consumer must see
+// an overridden object identically to a stored one, or the override is a second
+// source of truth that disagrees with the first. Returns nil when nothing knows
+// the object — the caller's existing nil handling then applies unchanged.
+func (c *smtCtx) metaOf(h string) *Meta {
+	if m, ok := c.metaOverride[h]; ok {
+		return m
+	}
+	m, _ := c.st.GetMeta(h)
+	return m
 }
 
 func tyKey(h string, args []Ty) string {
@@ -540,7 +563,7 @@ func (c *smtCtx) ensureFn(h string, d *Def, args []Ty) (smtVal, error) {
 	// lemma library. The soundness of the top rung depends on this gate.
 	// A non-total callee is left uninterpreted (declared, no equation): sound,
 	// merely weaker (proofs that needed its definition come back `unknown`).
-	tm, _ := c.st.GetMeta(h)
+	tm := c.metaOf(h)
 	if tm != nil && isTotal(tm.Termination) {
 		app := name
 		if len(env) > 0 {
@@ -1743,7 +1766,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 	// at a point whose smaller-measure hypothesis holds). Obligations run at the
 	// reduced induction budget — a legitimate case discharges quickly, and a
 	// non-inductive goal fails fast instead of burning the full budget.
-	if dm, _ := c.st.GetMeta(h); dm != nil && dm.Termination == "measure" {
+	if dm := c.metaOf(h); dm != nil && dm.Termination == "measure" {
 		dParams := 0
 		bodyCur := d.Body
 		var param0Ty *Ty

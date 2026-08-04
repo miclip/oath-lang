@@ -347,6 +347,19 @@ func explainLimitations(st *Store, p *explainPkg, m *Meta) []string {
 	case p.SpecStrength.State == "STALE":
 		out = append(out, fmt.Sprintf("spec strength is STALE — %d/%d was measured by campaign %q, superseded by %q; the mutant set it describes no longer exists",
 			p.SpecStrength.Killed, p.SpecStrength.Total, shortHash(orNone(p.SpecStrength.Campaign)), shortHash(p.SpecStrength.CurrentCampaign)))
+	case p.SpecStrength.Score < 0.5 && len(m.ProvenProps) > 0:
+		// The old text said "the properties pass but constrain little, so passing
+		// them is weak evidence". On a PROVEN definition that is false: the
+		// properties do not merely pass, they hold for every input. A low score
+		// there measures the GENERATOR's reach, not the specification's strength
+		// — mutation scoring evaluates properties on generated cases and never
+		// consults the prover. Measured: 15 of the corpus's 112 proven
+		// definitions score under 50%, eight of them at zero, and 11 of
+		// `hex-nibble`'s 42 survivors are refuted outright by its proven
+		// properties. Stating the limitation this way keeps the number honest
+		// without letting it libel the specification. (#130)
+		out = append(out, fmt.Sprintf("generated mutation score is LOW (%d/%d mutants caught) but %d propert%s PROVEN for all inputs: the score measures which mutants generated executions distinguished, not which the specification excludes — run `oath mutate --prove %s` to classify the survivors",
+			p.SpecStrength.Killed, p.SpecStrength.Total, len(m.ProvenProps), pluralize(len(m.ProvenProps), "y is", "ies are"), m.Name))
 	case p.SpecStrength.Score < 0.5:
 		out = append(out, fmt.Sprintf("spec strength is LOW (%d/%d mutants caught): the properties pass but constrain little, so passing them is weak evidence",
 			p.SpecStrength.Killed, p.SpecStrength.Total))

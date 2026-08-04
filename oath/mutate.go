@@ -20,6 +20,16 @@ import (
 // spot is visible. The score (killed/total) is recorded in metadata next to
 // the guarantee: "tested" tells you the promises held; spec strength tells
 // you whether the promises say anything.
+//
+// WITH ONE PRECISION THE ABOVE LACKED, and it is not a caveat but a different
+// question (#130): the check runs GENERATED EXECUTIONS. "Do the properties
+// notice?" and "did the generator reach an input where they notice?" coincide
+// only when the draw can reach the distinguishing input, and on this corpus they
+// often do not — `hex-nibble` is PROVEN for all inputs and scores 11/53, because
+// `genValue` draws Int from [-20,20] and its guards sit at 48/97/65. So the
+// score answers REACH, and adjudicate.go answers EXCLUSION separately. The two
+// are reported side by side and never averaged: a proof-refuted survivor is
+// still a real survivor, and it is real evidence — about the harness.
 
 const mutantCases = 60
 const mutantFuel = 500_000
@@ -186,6 +196,15 @@ func genMutants(st *Store, d *Def) []mutantDef {
 	return out
 }
 
+// mutantSeed derives a mutant's case seed from its hash. Extracted so a test
+// asking "is this mutant a survivor?" runs the ENGINE's derivation rather than
+// a second copy of it — a hand-repeated seed would drift and the test would
+// then measure a different draw than the score it is checking.
+func mutantSeed(hash string) uint64 {
+	seedB, _ := hex.DecodeString(hash[:16])
+	return binary.BigEndian.Uint64(seedB)
+}
+
 func metaPropName(m *Meta, pi int) string {
 	if pi < len(m.PropNames) {
 		return m.PropNames[pi]
@@ -193,26 +212,34 @@ func metaPropName(m *Meta, pi int) string {
 	return fmt.Sprintf("prop%d", pi)
 }
 
-func cmdMutate(st *Store, name string) {
-	out, err := apiMutate(st, name)
+func cmdMutate(st *Store, name string, adjudicate bool) {
+	out, err := apiMutateOpt(st, name, adjudicate)
 	if err != nil {
 		fail(err)
 	}
 	fmt.Print(out)
 }
 
-func apiMutate(st *Store, name string) (string, error) {
+func apiMutate(st *Store, name string) (string, error) { return apiMutateOpt(st, name, false) }
+
+func apiMutateOpt(st *Store, name string, adjudicate bool) (string, error) {
 	h, ok := st.Resolve(name)
 	if !ok {
 		return "", fmt.Errorf("no definition named %q", name)
 	}
-	return apiMutateHash(st, h)
+	return apiMutateHashOpt(st, h, adjudicate)
 }
 
 // apiMutateHash mutation-scores an object directly by hash — used by the
 // repoint policy, which must be able to score a candidate BEFORE any name
 // points at it.
-func apiMutateHash(st *Store, h string) (string, error) {
+// apiMutateHash scores without survivor adjudication. The repoint policy calls
+// this path, and it must stay prover-free: a policy decision that shells out to
+// z3 would make admission latency depend on solver search, and `min_mutation_score`
+// is defined over the generated score (SPEC §6.3), not over adjudicated survivors.
+func apiMutateHash(st *Store, h string) (string, error) { return apiMutateHashOpt(st, h, false) }
+
+func apiMutateHashOpt(st *Store, h string, adjudicate bool) (string, error) {
 	name := st.NameOf(h)
 	d, err := st.GetDef(h)
 	if err != nil {
@@ -238,12 +265,18 @@ func apiMutateHash(st *Store, h string) (string, error) {
 	}
 	var b strings.Builder
 	killed, waivedSeen := 0, 0
+	// Survivors are collected rather than only printed, so their DISPOSITION can
+	// be reported beneath the score (#130). A survivor is any mutant generated
+	// execution failed to distinguish — waived ones included, since a waiver is
+	// a judgement recorded ABOUT a survivor, not a different outcome.
+	var survivors []mutantDef
+	var survivorDescs []string
+	var survivorVerdicts []survivorVerdict
 	for _, mu := range muts {
 		// Mutants are evaluated from the in-memory cache only — they are
 		// candidates under interrogation, never admitted to the codebase.
 		st.CacheDef(mu.hash, mu.def)
-		seedB, _ := hex.DecodeString(mu.hash[:16])
-		base := binary.BigEndian.Uint64(seedB)
+		base := mutantSeed(mu.hash)
 		killer := ""
 		for pi := range mu.def.Props {
 			rep := runProp(st, mu.hash, &mu.def.Props[pi], metaPropName(m, pi), base, pi, mutantCases, mutantFuel)
@@ -262,17 +295,52 @@ func apiMutateHash(st *Store, h string) (string, error) {
 			waivedSeen++
 			w := waived[mu.hash]
 			fmt.Fprintf(&b, "○ waived    %-22s — %s (by %s)\n", mu.desc, w.Reason, w.By)
+			survivors = append(survivors, mu)
+			survivorDescs = append(survivorDescs, mu.desc)
+			survivorVerdicts = append(survivorVerdicts, survivorVerdict{kind: "equivalent", reason: w.Reason})
 		default:
 			pr := &printer{st: st, tvs: m.TyVarNames}
-			fmt.Fprintf(&b, "✗ SURVIVED  %-22s — no property notices this change\n", mu.desc)
+			fmt.Fprintf(&b, "✗ SURVIVED  %-22s — generated cases did not distinguish this change\n", mu.desc)
 			fmt.Fprintf(&b, "    mutant: %s  (waive with: oath waive %s %s \"reason\")\n", pr.term(mu.def.Body, m.Name), name, shortHash(mu.hash))
+			survivors = append(survivors, mu)
+			survivorDescs = append(survivorDescs, mu.desc)
+			survivorVerdicts = append(survivorVerdicts, survivorVerdict{kind: "unadjudicated", reason: "not adjudicated against proven properties"})
 		}
 	}
-	fmt.Fprintf(&b, "spec strength: %d/%d mutants killed", killed, len(muts))
+	// "generated mutation score", not "spec strength". The old label invited the
+	// reading "the specification rules this mutant out", which is a claim about
+	// the SPEC; the number is a claim about what generated executions REACHED.
+	// On `hex-nibble` those diverge completely — 11/53 on a definition proven for
+	// all inputs. The score is unchanged and still correct; only the claim
+	// attached to it was wrong. (#130)
+	fmt.Fprintf(&b, "generated mutation score: %d/%d mutants killed", killed, len(muts))
 	if waivedSeen > 0 {
 		fmt.Fprintf(&b, " (+%d waived as equivalent, justification on record)", waivedSeen)
 	}
 	b.WriteString("\n")
+	if adjudicate {
+		for i := range survivors {
+			// The solver requirement is decided inside, at the point one is
+			// actually run: a survivor that is non-total, or a definition with
+			// nothing proven, is dispositioned without z3 at all.
+			v, err := adjudicateSurvivorErr(st, m, survivors[i].hash, survivors[i].def)
+			if err != nil {
+				return "", err
+			}
+			// A waiver asserts the mutant is equivalent. A refutation proves it
+			// is not. That contradiction is surfaced loudly rather than resolved
+			// silently in either direction: the waiver stays on record, and the
+			// proof that contradicts it is stated next to it.
+			if survivorVerdicts[i].kind == "equivalent" && v.kind == "proof-refuted" {
+				fmt.Fprintf(&b, "⚠ WAIVER CONTRADICTED  %s — waived as equivalent, but proven property %s refutes it\n",
+					survivorDescs[i], v.prop)
+			}
+			if survivorVerdicts[i].kind != "equivalent" {
+				survivorVerdicts[i] = v
+			}
+		}
+	}
+	renderAdjudication(&b, survivorVerdicts, survivorDescs, adjudicate)
 	m.MutantsKilled, m.MutantsTotal = killed, len(muts)
 	m.MutationCampaign = campaignHash(h, m.WaivedMutants)
 	if err := st.SetMeta(h, m); err != nil {

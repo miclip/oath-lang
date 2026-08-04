@@ -42,7 +42,10 @@ usage:
   oath context <name...> [--budget N] spec-only slice of the named defs + transitive deps (no bodies)
   oath dependents <name>              list definitions that reference a definition
   oath verify <name>                  re-run a definition's properties
-  oath mutate <name>                  score spec strength: do the properties notice mutations?
+  oath mutate [--prove] <name>        generated mutation score: do generated executions notice
+                                      mutations? --prove additionally classifies SURVIVORS against
+                                      the definition's proven properties (execution measures reach,
+                                      proof measures exclusion; never averaged into one number)
   oath scorable                       list every definition the mutation engine can score
   oath demand [--all]                 coverage requests: spec shapes agents sought and did not find
   oath explain <name> [--json]        decision package: spec, evidence, provenance, deps, LIMITATIONS
@@ -813,10 +816,26 @@ func main() {
 		// be kept in sync with content by discipline eventually will not be.
 		cmdScorable(st)
 	case "mutate":
-		if len(args) != 2 {
-			fail(fmt.Errorf("usage: oath mutate <name>"))
+		adjudicate := false
+		var names []string
+		for _, a := range args[1:] {
+			switch {
+			case a == "--prove":
+				adjudicate = true
+			case strings.HasPrefix(a, "-"):
+				// An unknown flag must not be silently accepted as a definition
+				// name: `oath mutate --prov x` would otherwise score whichever
+				// argument landed last and report success for a run the user did
+				// not ask for.
+				fail(fmt.Errorf("unknown option %q; usage: oath mutate [--prove] <name>", a))
+			default:
+				names = append(names, a)
+			}
 		}
-		cmdMutate(st, args[1])
+		if len(names) != 1 {
+			fail(fmt.Errorf("usage: oath mutate [--prove] <name>"))
+		}
+		cmdMutate(st, names[0], adjudicate)
 	case "cross":
 		record := false
 		rest := args[1:]

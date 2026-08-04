@@ -135,8 +135,8 @@ func mcpTools() []map[string]any {
 		},
 		{
 			"name":        "mutate",
-			"description": "Score spec strength: generate type-preserving mutants of the body and check whether the properties notice. Survivors are printed with their bodies.",
-			"inputSchema": obj(map[string]any{"name": str("definition name")}, "name"),
+			"description": "Generated mutation score: generate type-preserving mutants of the body and check whether the properties notice ON GENERATED CASES. Survivors are printed with their bodies. Read the number as REACH, not as exclusion — a low score on a PROVEN definition usually means the generator could not draw the distinguishing input, not that the specification permits the mutant. Survivors are dispositioned separately (proof-refuted / equivalent / unadjudicated); the two are never averaged.",
+			"inputSchema": obj(map[string]any{"name": str("definition name"), "prove": map[string]any{"type": "boolean", "description": "also classify SURVIVORS against the definition's proven properties (proof-refuted / equivalent / unadjudicated). Costs one solver attempt per survivor per proven property; the score itself never changes."}}, "name"),
 		},
 		{
 			"name": "license",
@@ -204,6 +204,7 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 		Hash               string `json:"hash"`
 		NameB              string `json:"name_b"`
 		Record             bool   `json:"record"`
+		Prove              bool   `json:"prove"`
 		Expr               string `json:"expr"`
 	}
 	if len(args) > 0 {
@@ -425,7 +426,7 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 	case "verify":
 		return apiVerify(st, a.Name)
 	case "mutate":
-		return apiMutate(st, a.Name)
+		return apiMutateOpt(st, a.Name, a.Prove)
 	case "license":
 		pkg, err := buildExplain(st, a.Name)
 		if err != nil {
