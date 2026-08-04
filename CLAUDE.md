@@ -200,6 +200,17 @@ Each pair is one state being reported as a stronger neighbouring state, and each
 was found by asking what the state actually MEANS rather than whether it looked
 green.
 
+**AND THE COMMONEST FORM HAS A NAME, WHICH MAKES IT CHECKABLE: AN IMPLEMENTATION
+LIMIT REPORTED AS A SEMANTIC FACT.** *No proof* is not *disproof*, *unknown* is
+not *different*, *timeout* is not *counterexample*, *not witnessed* is not
+*false*, and — the instance that produced this line — *termination not PROVED* is
+not *diverges*. `terminationOf` is conservative and answers `unknown` for any
+shape it cannot handle, so a comment saying a mutant "destroys termination"
+promoted the analyser's blind spot into a claim about the program.
+So the diagnostic, askable of any verdict before it is written down:
+**is this sentence about the WORLD, or about my TOOL?** The two read identically
+in a status line, and only one of them stays true when the tool improves.
+
 **THE THROUGH-LINE, across authority, transfer, the compiler boundary, the
 application, the blind rounds and §14: each step reduced where UNVERIFIED
 ASSUMPTIONS could hide.** Different domains, one trajectory, and
