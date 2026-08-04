@@ -169,6 +169,31 @@ in an independent reader* — which is why the cold read must be done at the STA
 of a session, by the reader whose behaviour is being measured, and cannot be
 delegated to the author who already knows what the file meant to say.
 
+**BUT IT IS NOT CURRENTLY A CHECK THAT HAPPENS, AND READING IT AS ONE IS THE
+MISTAKE THIS FILE KEEPS WARNING ABOUT.** Its honest status is *desired
+instrument; unavailable under normal session continuity.* Step 1 has been VOID
+four consecutive sessions — every time self-inflicted, and every time by
+something written to be helpful: a handoff prompt naming the next task, a
+compaction summary carrying the queue, my own prediction of where a reader would
+land. `/compact` is the one that settles it, because it is automatic and a long
+session will always reach it. So a session that could run this instrument is one
+that starts fresh AND finishes before compacting, which is not the common case.
+
+**Its own falsifier, so it is held to the standard everything else here is:**
+
+- If the next THREE sessions also begin carrying prior-session context, RETIRE
+  step 1 or redefine it around the first genuinely unseen artefact — the file
+  would then be promising an observation reality does not produce, which is
+  worse than not promising it.
+- If a genuinely cold session occurs first and the read runs, keep it, and
+  record what it found.
+
+Four void runs is not evidence the idea is wrong; it is evidence about
+OPERATING CONDITIONS. An instrument earns its place by working under the
+conditions it is meant to measure, and that is the same bar applied to the
+gates, the properties and the conformance harness — no reason for this one to
+be exempt because it measures prose.
+
 The one worked example of the parent rule so far: "verify the measuring instrument before
 interpreting its output" was placed ABOVE the gate advice it generates rather
 than beside it as another peer bullet.
@@ -246,7 +271,7 @@ missing coverage.
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
   more EXPENSIVE if delayed   (EMPTY — #145's corpus half shipped; see below)
-  more VALUABLE if delayed    #130, #134, #138 — after more evidence has
+  more VALUABLE if delayed    #146, #134, #138 — after more evidence has
                               accumulated to calibrate them
   waiting for a TRIGGER       #117/#69, #128
 
@@ -323,17 +348,21 @@ question was settled by reading before any work started. Do not reopen it.
 **Feedback/tooling — the window is NOT closing.** Improves confidence in future
 work; nothing depends on it immediately.
 
-  1. **#130** vacuity signal, guard/subject overlap — **BOTH HALVES ARE NOW
-     KNOWN TO MISFIRE ON THE ISSUE'S OWN FLAGSHIP INSTANCE, so do not build
-     either from the issue body alone.** Its prior test ran (f6ea8d6): the
-     corpus's worst-scoring definition turned out to be PROVEN for all inputs,
-     which made it a false positive for the vacuity signal AND for the overlap
-     warning. What that measurement produced instead is shipped — survivor
-     adjudication, `oath mutate --prove`. The remaining question is what, if
-     anything, the two original ideas are still for. **The answer is on the
-     issue; this line deliberately does not summarise it**, having been the
-     entry that decayed once already by describing state instead of pointing
-     at it.
+  1. **#146** how often reach and exclusion diverge — a MEASUREMENT question,
+     deliberately not a tooling one, and its numbering is new because **#130 is
+     CLOSED** rather than repurposed. #130 proposed two instruments; neither was
+     built, both were measured as misfiring on its own flagship instance, and
+     the work that emerged instead (survivor adjudication) shipped. Keeping the
+     leftover question under that title would have recreated the exact queue
+     pathology this file exists to prevent — title, motivation and remaining
+     work describing three different things. **When an issue's remaining
+     question is no longer the one it was opened to answer, close it or split
+     it.** Preserving issue IDENTITY is what keeps a backlog readable; history
+     accumulating under an old title is what does not.
+     **The falsifier is on #146 and it can win: 1 of 106 would be a complete
+     result**, arguing to leave `--prove` exactly as it is. Read the population
+     limit there before reporting any number — the corpus is not a neutral
+     sample, so it can say "N of 106 in this corpus" and never "X is rare".
      **And one standing result that is NOT superseded: the obvious repair is
      the wrong one. #144 is CLOSED because widening generation moved the corpus
      +2 of 1203 and made three definitions WORSE.** Reaching the guard is not
@@ -703,7 +732,7 @@ and never
     "X is rare"
 
 which quantifies over programs the corpus never claimed to represent. The
-guarded instance is live: #130's prevalence question has one witness, and the
+guarded instance is live: #146's prevalence question has one witness, and the
 tempting sentence when a number arrives is the second one. Saying which
 population a figure describes is not hedging — it is the difference between a
 result and an extrapolation, and only one of them survives a different corpus.
