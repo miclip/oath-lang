@@ -8,6 +8,7 @@
 // only in the Worker/global plumbing.
 import { parentPort, Worker } from "node:worker_threads";
 import { MemFS } from "./memfs.js";
+import { guardKernelExports } from "./lossless.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,6 +42,7 @@ const execSrc = fs.readFileSync(path.join(PUB, "wasm_exec.js"), "utf8");
 const go = new globalThis.Go();
 const { instance } = await WebAssembly.instantiate(fs.readFileSync(path.join(PUB, "oath.wasm")), go.importObject);
 go.run(instance);
+guardKernelExports(globalThis); // #133: the last ADMIT boundary, see lossless.js
 
 parentPort.on("message", ({ source, name }) => {
   const checked = JSON.parse(globalThis.oathCheck(snap.root, source));

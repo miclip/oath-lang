@@ -7,6 +7,7 @@
 // This is the browser (module worker) form of lib/playground/kernel-worker.mjs,
 // which the Node bridge test exercises with identical wasm, MemFS, and z3-solver.
 import { MemFS } from "./memfs.js";
+import { guardKernelExports } from "./lossless.js";
 
 // Minimal browser shim for the two globals Go's js/wasm fs layer expects
 // (same as the main-thread loader in kernel.js).
@@ -53,6 +54,7 @@ async function bootKernel() {
   const bytes = await (await fetch("/pgrt/oath.wasm")).arrayBuffer();
   const { instance } = await WebAssembly.instantiate(bytes, go.importObject);
   go.run(instance); // init() registers oathCheck/oathProve; main() parks
+  guardKernelExports(globalThis); // #133: the last ADMIT boundary, see lossless.js
 }
 
 // Stage 2: the z3 bridge — spawn the Z3 worker and expose globalThis.oathZ3 as a

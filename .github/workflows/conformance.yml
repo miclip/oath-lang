@@ -41,6 +41,16 @@ jobs:
         with:
           go-version: "1.25"
           cache-dependency-path: oath/go.mod
+      # The playground's shared JS modules are ESM in `.js` files inside a
+      # package with no "type" field, so they load only on a Node with unflagged
+      # module-type detection (22.7+). The repo already depended on that locally
+      # — kernel-worker.mjs imports ./memfs.js — but nothing in CI ran node, so
+      # the runner image's default version was never a constraint until now.
+      # Pin it rather than inherit it: a gate that breaks on an image bump is
+      # worse than no gate, because the failure looks like the defect it hunts.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - name: build
         run: cd oath && go build ./...
       - name: build cloud driver (compile guard; stays dependency-free)
@@ -135,6 +145,15 @@ jobs:
 
       - name: website tutorials match the repository markdown
         run: make check-web-tutorials
+
+      # The playground is the ONE place source bytes reach the kernel without
+      # the kernel being able to check them: syscall/js substitutes U+FFFD for
+      # unpaired surrogates before any Go code runs, so `lex`'s UTF-8 guard sees
+      # already-valid bytes. Measured: four distinct sources produced one hash,
+      # all `accepted`. The guard is JS-side because that is the last point the
+      # original UTF-16 exists (#133).
+      - name: playground refuses lossy source at the JS boundary (#133)
+        run: make check-playground-guard
 
       # The committed store must be reproducible by the kernel that ships with it.
       # Metadata does not participate in artifact identity, but canonical bytes

@@ -4,6 +4,7 @@
 // (oath.wasm, corpus-snapshot.json) — run `make playground-assets` first.
 //   node website/lib/playground/kernel.test.mjs
 import { MemFS } from "./memfs.js";
+import { guardKernelExports, firstUnpairedSurrogate } from "./lossless.js";
 import fs from "fs"; import path from "path";
 import { readFileSync } from "fs";
 
@@ -27,6 +28,8 @@ if (!globalThis.Go) { const src = readFileSync(path.join(PUB, "wasm_exec.js"), "
 const go = new globalThis.Go();
 const { instance } = await WebAssembly.instantiate(readFileSync(path.join(PUB, "oath.wasm")), go.importObject);
 go.run(instance);
+const rawCheck = globalThis.oathCheck; // kept UNGUARDED: the control below needs it
+guardKernelExports(globalThis); // #133: the last ADMIT boundary, see lossless.js
 const check = (src) => JSON.parse(globalThis.oathCheck(snap.root, src));
 
 let fail = 0;
@@ -54,6 +57,44 @@ expect("novel valid def → tested, total, ok",
 
 const wrongRes = check("(defn d [] [(x Int)] Int (+ x x) (prop bad [(x Int)] (== (d x) x)))"); const wrong = wrongRes.reports[0];
 expect("false prop → falsified, ok=false, counterexample", wrongRes.ok === false && wrong.status === "falsified" && !!(wrong.props || []).find(p => p.failed)?.counterexample, JSON.stringify([wrongRes.ok, wrong.status]));
+
+// ---- #133: the JS-side ADMIT boundary -------------------------------------
+//
+// The CONTROL runs first and deliberately uses the UNGUARDED export, because a
+// test that only shows the guard refusing cannot tell a working guard from a
+// kernel that rejects those sources for some other reason. It must be shown
+// that without the guard these four sources really do become ONE definition.
+const probe = (lit) => `(defn wasm-admit-probe [] [] Str "A${lit}B")`;
+const collapsing = ["\ud800", "\udc00", "\ud801", "�"];
+const rawHashes = new Set(
+  collapsing.map((lit) => (JSON.parse(rawCheck(snap.root, probe(lit))).reports || [])[0]?.hash)
+);
+expect("CONTROL: unguarded, 4 distinct sources collapse to 1 hash", rawHashes.size === 1, [...rawHashes].join(","));
+
+const distinct = new Set(
+  ["X", "\u{10000}", "Ã"].map((lit) => (JSON.parse(rawCheck(snap.root, probe(lit))).reports || [])[0]?.hash)
+);
+expect("CONTROL: lossless sources stay distinct (the probe discriminates)", distinct.size === 3, [...distinct].join(","));
+
+// Now the guard. Each unpaired surrogate is refused as DATA, not thrown.
+for (const [label, lit] of [["lone high U+D800", "\ud800"], ["lone low U+DC00", "\udc00"], ["other high U+D801", "\ud801"]]) {
+  const r = JSON.parse(globalThis.oathCheck(snap.root, probe(lit)));
+  expect(`guard refuses ${label}`, r.ok === false && /unpaired surrogate/.test(r.error || ""), JSON.stringify(r).slice(0, 120));
+}
+
+// THE DISCRIMINATOR. A guard that refused anything resembling U+FFFD would pass
+// every check above while being wrong: U+FFFD is an ordinary character and a
+// source containing one must still compile. This is the only assertion that
+// separates "refuses unpaired surrogates" from "refuses the replacement char".
+const fffd = JSON.parse(globalThis.oathCheck(snap.root, probe("�")));
+expect("guard ALLOWS a genuine U+FFFD (not a surrogate)", fffd.ok === true && fffd.reports?.[0]?.status === "accepted", JSON.stringify(fffd).slice(0, 120));
+
+const pair = JSON.parse(globalThis.oathCheck(snap.root, probe("\u{10000}")));
+expect("guard allows a valid surrogate PAIR", pair.ok === true && pair.reports?.[0]?.status === "accepted", JSON.stringify(pair).slice(0, 120));
+
+// The name argument crosses the same way, so it is guarded the same way.
+const namedBad = JSON.parse(globalThis.oathProve(snap.root, "sort\ud800"));
+expect("guard covers oathProve's name argument", namedBad.ok === false && /unpaired surrogate/.test(namedBad.error || ""), JSON.stringify(namedBad).slice(0, 120));
 
 console.log(fail ? `\n${fail} FAILED` : "\nall playground engine checks passed");
 process.exit(fail ? 1 : 0);

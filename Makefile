@@ -62,7 +62,7 @@ TESTED_ONLY = rle-expand rle-decode e-mod e-div rot
 OATH = ./oath/oath
 AUTHOR ?= claude-main
 
-.PHONY: build verify prove mutate check fixtures tutorials check-web-tutorials webdocs check-web-docs print-order
+.PHONY: build verify prove mutate check fixtures tutorials check-web-tutorials webdocs check-web-docs check-playground-guard print-order
 
 build:
 	cd oath && go build -o oath .
@@ -305,6 +305,12 @@ webdocs:
 	@for f in $$(python3 scripts/webdocs-list.py); do cp "docs/$$f" website/content/docs/; done
 	@echo "reference docs copied into website/content/docs/"
 
+# The JS half of ADMIT (#133). Needs no build artifacts, unlike the end-to-end
+# witness in website/lib/playground/kernel.test.mjs, which requires
+# `make playground-assets` and is therefore a local gate rather than a CI one.
+check-playground-guard:
+	@node scripts/check-playground-guard.mjs
+
 check-web-docs:
 	@for f in $$(python3 scripts/webdocs-list.py); do \
 		diff -q "docs/$$f" "website/content/docs/$$f" >/dev/null || \
@@ -328,6 +334,7 @@ playground-assets: build
 	@GOOS=js GOARCH=wasm go -C oath build -o ../website/public/pgrt/oath.wasm .
 	@cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" website/public/pgrt/wasm_exec.js
 	@cp website/lib/playground/memfs.js website/public/pgrt/memfs.js
+	@cp website/lib/playground/lossless.js website/public/pgrt/lossless.js
 	@node website/lib/playground/gen-snapshot.mjs .
 	@echo "playground assets assembled in website/public/pgrt/"
 # The corpus in dependency order, one source of truth for both `make verify` and
