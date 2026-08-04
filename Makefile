@@ -347,9 +347,17 @@ check-web-tutorials:
 # Playground compute engine (#34): compile the kernel to browser wasm, ship
 # Go's loader, and snapshot the committed store — the three derived assets the
 # web playground serves. Regenerate after any kernel or corpus change.
+#
+# `-buildvcs=false -trimpath` is not cosmetic (#148). Without them the shipped
+# 15MB public download embedded the BUILDER'S HOME DIRECTORY 54 times and the
+# GOROOT path 640, plus a `vcs.modified=true` stamp — a build-provenance claim
+# that is unsound by its own admission, since it says the tree was dirty and
+# therefore cannot identify the source that produced the binary. Stripping them
+# also makes the build BYTE-REPRODUCIBLE, which is the prerequisite for
+# delivering this artifact by content digest instead of versioning it in Git.
 playground-assets: build
 	@mkdir -p website/public/pgrt
-	@GOOS=js GOARCH=wasm go -C oath build -o ../website/public/pgrt/oath.wasm .
+	@GOOS=js GOARCH=wasm go -C oath build -buildvcs=false -trimpath -o ../website/public/pgrt/oath.wasm .
 	@cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" website/public/pgrt/wasm_exec.js
 	@cp website/lib/playground/memfs.js website/public/pgrt/memfs.js
 	@cp website/lib/playground/lossless.js website/public/pgrt/lossless.js
