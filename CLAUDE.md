@@ -553,6 +553,24 @@ This is why `pgrep -f 'oath serve --http'` is right and a port list is not; why
 a PURE FUNCTION with every outcome asserted; and why the port-order test checks
 OBSERVABLE STARTUP rather than an exit code.
 
+**AND WHEN THE CLAIM'S UNIVERSE HAS NO NAME, NAMING IT IS THE WORK** — the
+property-shaped instance of *a new abstraction earns its place when it makes a
+previously unaskable question expressible*, which is stated with its evidence
+under the missing-artefact triggers below. Here it has a PROSPECTIVE test,
+askable of any universal property before anything is run:
+
+> *Could I write this property's guard without mentioning how the body works?*
+
+If not, the set it quantifies over has no name yet, and the property is measuring
+the implementation while looking like it measures the language. A property that
+cannot SAY "every invalid input" will silently say "every input the
+implementation rejects first" instead — not through carelessness, but because the
+implementation's vocabulary is the only one in scope. The repair is never a
+stronger sentence; it is a new definition whose entire job is to BE the set.
+`hex-valid` is seven lines carrying no logic the decoder did not already have,
+and the property was unwritable without it. **Cost is not the signal — EXISTENCE
+is.**
+
 **A FAILURE-PATH TEST IS INCOMPLETE UNTIL THE SUITE PROVES IT CONTINUED PAST THAT
 FAILURE.** Printing `FAIL` is not evidence. Under `set -e` a bare `kill` on an
 already-exited PID, a `wait` that returns non-zero, or a background timer holding
@@ -590,6 +608,49 @@ writing produces one. This is the same law as *asserting an obligation cannot
 create the structure needed to satisfy it*, met from the other end — there you
 notice the structure is presupposed, here you notice its absence only after
 several repairs have failed in different directions.
+
+**BOTH TRIGGERS SAY AN ARTEFACT IS MISSING. NEITHER SAYS WHICH ONE, AND THIS
+DOES:**
+
+> **A NEW ABSTRACTION EARNS ITS PLACE WHEN IT MAKES A PREVIOUSLY UNASKABLE
+> QUESTION EXPRESSIBLE.**
+
+Not when it removes duplication, not when it shortens the code, not when it feels
+cleaner — those are all satisfiable by an abstraction that changes nothing about
+what can be said. Three instances, in three different LAYERS, which is why this
+is a parent and not an observation about one issue:
+
+    layer          the question that could not be asked      the artefact
+    ---------------------------------------------------------------------------
+    specification  "what OPERATION produced this outcome?"   §14's table
+    language       "does EVERY invalid string fail closed?"  `hex-valid`
+    protocol       "should attempts.txt be NORMATIVE?"       an interchange format
+
+In each case the intuition existed first and had nowhere to land. §14's readers
+could describe results but not name the operation behind one; the old property
+could only talk about the decoder's recursion, never about the set of invalid
+strings; and #139 was undecidable as posed until the thing under discussion —
+representation, as distinct from semantics — had a name.
+
+**AND THE CAVEAT IS HALF THE PRINCIPLE, because the reverse is the tempting
+misreading: naming the abstraction makes the question EXPRESSIBLE; it does not
+ANSWER it.** `hex-valid` did not prove the decoder wrong. The transformation
+table did not repair §14. The interchange format did not decide §10 — the
+decision there was to DECLINE the obligation, which is an answer the artefact
+made available rather than one it supplied. Each abstraction's whole value was
+turning an intuition into a question an instrument could then answer.
+
+Which fixes a causal chain that is easy to report backwards. Not
+*property → prover → bug*, but:
+
+    named domain → a meaningful property → one evaluation exposes the defect
+                 → the prover confirms the REPAIR
+
+On #121 the prover never adjudicated the broken decoder at all; it was still
+searching when it was killed, and a single `eval` against the named domain
+settled it immediately. Attributing that discovery to proof credits the
+instrument instead of the abstraction that let the instrument be pointed
+somewhere. **Proof confirmed the repair. It did not find the defect.**
 
 **THE MISSING ARTEFACT IS OFTEN A TRANSFORMATION.** A static description usually
 becomes simpler rewritten as a total transformation with named operations — the
@@ -774,9 +835,33 @@ reasoning; `docs/milestones.md` for what each milestone established.
   still journalled `accepted` — so a documentation-only session that runs it
   leaves ~208 entries republishing the corpus at its existing hashes, with no
   object, meta or name moving. Check `git status codebase/` before committing,
-  and `git checkout -- codebase/log.jsonl` if the entries record nothing. The
+  and `git checkout HEAD -- codebase/log.jsonl` if the entries record nothing
+  (`HEAD` deliberately — see the index caveat below, which this line had wrong
+  until review read the two together). The
   journal is append-only and tamper-evident, which is exactly why it should not
   advance for a change that did not touch identity.
+  **THE INVERSE COSTS MORE AND HAS NO WARNING SIGN:** iterating on a definition
+  re-puts it at each intermediate hash, and every draft is journalled `accepted`
+  — the evidence layer asserting a publication that was never intended. The
+  abandoned OBJECTS are inert (unnamed, reachable only by hash); the ENTRIES are
+  not. So when a change lands over several attempts, rebuild in ONE pass before
+  committing. The naming rules cover this hazard for names only, and a repointed
+  name leaves no trace of the drafts it passed through.
+  **TWO THINGS MAKE THE OBVIOUS RESET WRONG, and both were found by review after
+  one of them had already bitten:**
+    - `git checkout -- <path>` restores from the INDEX, not HEAD. After any
+      `git add`, it silently restores the drafts it was meant to discard. Use
+      `git checkout HEAD -- codebase/ fixtures/`, which resets both.
+    - NOT EVERYTHING UNDER `codebase/` IS REGENERABLE. `oath waive` records a
+      hand-written justification into meta; a blanket reset destroys it and a
+      rebuild cannot bring it back. So READ `git diff HEAD -- codebase/` first
+      and confirm every change is a re-put you made — if any is authored, save
+      it before resetting or do not reset at all.
+  Note that the SAME blindness appears in both commands, which is why the second
+  bullet was written wrong first: plain `git diff` compares against the INDEX, so
+  once anything is staged the inspection reports a clean tree and certifies the
+  destructive reset as safe. `git diff HEAD` is the one that answers the question
+  being asked. An instrument guarding a hazard can share the hazard's blind spot.
 - Re-putting a definition MERGES metadata (the old wipe-wart is fixed):
   verdict fields (proofs, mutation score, waivers) are hash-keyed facts and
   survive; naming is per-alias — structurally identical defs are one object
