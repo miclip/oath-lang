@@ -200,7 +200,11 @@ var goProviders = map[capabilityKind]goProvider{
 		// Reading the environment cannot fail at provision time, and a missing
 		// variable is an ordinary empty result — the host has the authority
 		// whether or not the variable exists.
-		Provide: `func() (any, error) { return capFn(os.Getenv), nil }`,
+		Provide: `func() (any, error) {
+	return capFn(func(k string) string {
+		return oathStrFromHost("environment variable "+k, os.Getenv(k))
+	}), nil
+}`,
 	},
 
 	capFileRead: {
@@ -210,7 +214,7 @@ var goProviders = map[capabilityKind]goProvider{
 	return capFn(func(s string) string {
 		b, err := os.ReadFile(s)
 		if err != nil { return oathCapFailure }
-		return string(b)
+		return oathStrFromHost("the contents of "+s, string(b))
 	}), nil
 }`,
 	},
@@ -223,7 +227,7 @@ var goProviders = map[capabilityKind]goProvider{
 		defer resp.Body.Close()
 		b, err := io.ReadAll(resp.Body)
 		if err != nil { return oathCapFailure }
-		return string(b)
+		return oathStrFromHost("the response body from "+s, string(b))
 	}), nil
 }`,
 		Imports: []string{"io", "net/http"},
@@ -551,6 +555,56 @@ func oathRefuseStrElement(what string) {
 	panic("oath: this backend cannot encode Str element " + what +
 		": Str is packed as UTF-8, which encodes only Unicode scalar values. " +
 		"Refusing rather than substituting U+FFFD, which would make distinct Str values identical.")
+}
+
+// oathStrFromHost admits bytes from OUTSIDE the language as a Str, or refuses.
+//
+// This is the boundary where the property first becomes observable, and so the
+// only place it can honestly be enforced: the kernel never sees "bytes
+// pretending to be text", it only sees a Str. Once these gates hold, malformed
+// storage cannot reach oathStrHead through a capability at all — that refusal
+// stays as the backstop for a path this list forgot, which is exactly the kind
+// of list that acquires a new entry later.
+//
+// Refusal is exit 70, NOT oathCapFailure. The failure value is "" (see above),
+// so routing malformed bytes there would make invalid input indistinguishable
+// from an unset variable or an empty file — the same collapse of distinct inputs
+// this is removing, relocated one layer up. And 70 is already what both backends
+// use when the host cannot supply what the program requires; a supervisor should
+// not need to know which backend compiled the artifact.
+//
+// The per-request HTTP boundary is deliberately NOT here: SPEC 14.2 row 9
+// (REQ-TEXT-OCTETS-ARE-ASCII) governs every Str built from a request and answers
+// 400 with the handler not invoked. A remote party must never be able to end the
+// process, so that disposition is a response, not an exit.
+func oathStrFromHost(what, s string) string {
+	if !utf8.ValidString(s) {
+		fmt.Fprintf(os.Stderr, "oath: %s is not valid UTF-8, so it has no Str value; "+
+			"refusing rather than substituting U+FFFD, which would make distinct inputs identical. "+
+			"Arbitrary octets need a bytes-typed channel, not Str.\n", what)
+		os.Exit(70)
+	}
+	return s
+}
+
+// oathStrHead is oathStrCons's inverse, and refuses on the SAME principle.
+//
+// utf8.DecodeRuneInString answers (RuneError, 1) for malformed storage, which
+// is a SUBSTITUTION: it invents a codepoint the bytes do not denote, and two
+// different malformed buffers then decode to the same Str. Packing stopped
+// doing that in #132; decoding kept doing it, so the two native backends
+// disagreed on the same program — llvm-ir/1 refused the buffer while go-emit/2
+// printed a value.
+//
+// The size test is the whole check: a VALID U+FFFD decodes with size 3, so
+// comparing the rune alone would refuse legitimate text.
+func oathStrHead(s string) (rune, int) {
+	r, sz := utf8.DecodeRuneInString(s)
+	if r == utf8.RuneError && sz <= 1 {
+		panic("oath: a Str holds bytes that are not valid UTF-8; this backend packs Str as UTF-8 " +
+			"and refuses to decode malformed storage rather than replace or guess it")
+	}
+	return r, sz
 }
 `)
 	e.b.WriteString(`
@@ -919,6 +973,16 @@ func oathProvideValue(field, envVar string) (any, error) {
 	if v == "" {
 		return nil, fmt.Errorf("required value %%s is provided but empty (%%s)", field, envVar)
 	}
+	// A required value is ADMITted like any other external octets (#133). It
+	// refuses through the PROVISION channel rather than through oathStrFromHost,
+	// because that channel is strictly better here: this runs before the entry
+	// point, so the program never starts, and the operator gets the same
+	// "this host cannot provide" framing as a missing or empty value — which is
+	// what a malformed one is, a third way for the host to fail to supply it.
+	if !utf8.ValidString(v) {
+		return nil, fmt.Errorf("required value %%s is not valid UTF-8, so it has no Str value (%%s); "+
+			"refusing rather than substituting U+FFFD", field, envVar)
+	}
 	return v, nil
 }
 
@@ -1235,7 +1299,8 @@ func main() {
 func main() {
 	var args any = &ctorV{idx: 0} // Nil
 	for i := len(os.Args) - 1; i >= 1; i-- {
-		args = &ctorV{idx: 1, fields: []any{os.Args[i], args}} // Cons
+		args = &ctorV{idx: 1, fields: []any{
+			oathStrFromHost(fmt.Sprintf("command-line argument %%d", i), os.Args[i]), args}} // Cons
 	}
 %s	out := %s
 	fmt.Println(out.(string))
@@ -1556,7 +1621,7 @@ func (e *emitter) matchStr(t *Term, s string, depth int, self string) (string, e
 	}
 	return fmt.Sprintf(`(func(scrut string, env []any) any {
 		if scrut == "" { return %s }
-		r, sz := utf8.DecodeRuneInString(scrut)
+		r, sz := oathStrHead(scrut)
 		env = append(append([]any{}, env...), any(big.NewInt(int64(r))), any(scrut[sz:]))
 		_ = env
 		return %s

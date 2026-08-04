@@ -207,6 +207,24 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 		Expr               string `json:"expr"`
 	}
 	if len(args) > 0 {
+		// BEFORE decoding, not after (#133). encoding/json is a LOSSY reader:
+		// malformed UTF-8 and unpaired surrogate escapes both become U+FFFD, and
+		// the result is valid UTF-8, so the check in `lex` sees a well-formed
+		// source and cannot tell that a substitution happened. Four distinct
+		// request bodies — two carrying different raw bad bytes, two carrying
+		// \ud800 versus \ud801 — decode to one string and publish one definition.
+		//
+		// This is why the parser check is necessary but not sufficient: `lex` is
+		// the single entry to the LANGUAGE, but not the single entry to SOURCE
+		// BYTES, and the substitution happens upstream of it.
+		//
+		// Checked over the whole arguments object rather than the source field,
+		// because `envelope` matters more: it carries the EXACT octets a key
+		// signed, and a silently repaired byte there would be checked against a
+		// statement nobody made.
+		if err := rejectLossyJSON(args); err != nil {
+			return "", err
+		}
 		if err := json.Unmarshal(args, &a); err != nil {
 			return "", fmt.Errorf("bad arguments: %w", err)
 		}

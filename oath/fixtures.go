@@ -524,6 +524,16 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 			"(data W [a] (Wrap a))\n(data D [] (C (-> (W D) Int)))"},
 		{"eq_on_record_with_function", "== rejected when a function hides inside a record type",
 			"(defn bad [] [(r {f (-> Int Int)})] Bool (== r r))"},
+		// SPEC §1.4: source must be valid UTF-8 (#133). The literal below carries a
+		// bare 0xFF, which cannot begin any UTF-8 sequence. This vector is here
+		// because the two kernels DISAGREED on it and nothing could see that: the
+		// reference decoded it to U+FFFD and published a definition, oathrs refused
+		// to read the file at all, and the corpus is valid UTF-8 throughout so no
+		// existing fixture exercised the case. It is a reject rather than an
+		// encoding fixture because the substitution reached IDENTITY — sources
+		// differing only in which malformed octet they carry hashed to one object.
+		{"malformed_utf8_source", "source is not valid UTF-8; substituting U+FFFD would collapse distinct sources onto one hash",
+			"(defn bad [] [(x Int)] Str \"A\xffB\")"},
 	}
 	sort.Slice(rejects, func(i, j int) bool { return rejects[i].name < rejects[j].name })
 	var expected strings.Builder

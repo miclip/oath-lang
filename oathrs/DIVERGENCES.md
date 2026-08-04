@@ -2527,3 +2527,61 @@ per-field identity-bearing check that every one of the seven fields moves the
 digest, bare-decimal integer rendering, and a check that `campaign_hash` equals
 a hand-computed SHA-256 of the fixture's own encoding bytes — which is the
 "thin wrapper" property stated as a test rather than as a comment.
+
+## 86. Source encoding was unspecified, and the two kernels already disagreed — the reference substituted U+FFFD INTO THE HASH (#133, §1.4)
+
+Found from the Go side while implementing #133's boundary rule, not by a blind
+round — which is why it is worth recording here: this is the first entry where
+the REFERENCE was the divergent kernel and `oathrs` was already right.
+
+`docs/SPEC.md` §1.4 said nothing about the encoding of source text. Both kernels
+therefore inherited their host's default, and the hosts differ:
+
+```
+(defn bad [] [(x Int)] Str "A\xffB")      <- a bare 0xFF, no valid UTF-8 sequence
+
+go     ✓ bad  #af78b48ff413  tested (200 cases per property) · total
+rust   error: stream did not contain valid UTF-8
+```
+
+Rust's reader is typed to UTF-8, so `oathrs` refused the file without anyone
+deciding it should. Go's `[]rune(s)` conversion substitutes U+FFFD per malformed
+byte, so the reference ACCEPTED the file and elaborated the literal to
+`(SCons 65 (SCons 65533 (SCons 66 SNil)))`.
+
+**The substitution reached identity.** That codepoint is in the canonical
+encoding, so it is in the hash, so four sources differing only in which
+malformed octet they carry content-addressed to one object:
+
+```
+0xff -> af78b48ff413    0xc0 -> af78b48ff413
+0xfe -> af78b48ff413    0x80 -> af78b48ff413
+```
+
+Non-injective, at the one layer that must be injective, with names, journal
+entries and signatures all referencing that hash and publication permanent.
+
+### Why nothing caught it
+
+Not a gap in the checks so much as a gap in the CORPUS the checks quantify over.
+Every `examples/*.oath` and `apps/*/*.oath` file is valid UTF-8, so the two
+readers never met an input on which they disagree. Conformance compared 210
+hashes and 191 verify transcripts and all of them matched — correctly. The
+divergence lived entirely outside the population being sampled, which is the
+familiar failure of deriving a witness's universe from the implementation
+(here, from the corpus) rather than from the claim.
+
+### The change
+
+§1.4 now REQUIRES source text to be valid UTF-8 and requires an elaborator to
+refuse anything else; §3 states the general rule this is one instance of, naming
+ADMIT and PACK as the two transformations that carry `Str`'s meaning across a
+boundary. The Go kernel validates in `lex`, the single entry to the parser, so
+`put`, `eval`, the `--json` paths and MCP all inherit it rather than each call
+site being patched.
+
+`oathrs` needs NO change — it already had this behaviour. What it lacked was a
+specification saying so, and a fixture proving the agreement is intentional
+rather than coincidental: `gate/reject/malformed_utf8_source.oath` is now the
+8th reject vector, so both kernels are pinned to refuse, and a future kernel
+that quietly substitutes fails the gate instead of publishing a merged artifact.

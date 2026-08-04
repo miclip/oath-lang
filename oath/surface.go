@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // parseFloatLit recognizes an IEEE Float literal: a token ending in `f` whose
@@ -76,7 +77,29 @@ type token struct {
 	line int
 }
 
+// SOURCE IS TEXT, AND THAT IS AN IDENTITY OBLIGATION, NOT A CONVENIENCE.
+//
+// A string literal elaborates through []rune, and Go's []rune conversion
+// substitutes U+FFFD for every byte that is not valid UTF-8. That codepoint
+// lands in the SCons chain, so it lands in the canonical encoding, so it lands
+// in the HASH — and four source files differing only in which malformed byte
+// they carry content-address to one object. In a language where the hash IS the
+// identity, and where names, journal entries and signatures are permanent, a
+// non-injective front end is the one substitution that cannot be tolerated
+// anywhere (#133).
+//
+// So the refusal is here, at the single entry to the parser, rather than at each
+// call site that happens to read a file: `oath put`, `oath eval`, the --json
+// paths and the MCP surface all reach the language through lex, and a check per
+// caller is a check that a later caller will miss. oathrs already refuses these
+// bytes — its reader is typed to UTF-8 — so this also closes a live cross-kernel
+// divergence that no fixture could catch, the corpus being valid UTF-8
+// throughout.
 func lex(src string) ([]token, error) {
+	if !utf8.ValidString(src) {
+		return nil, fmt.Errorf("source is not valid UTF-8: a string literal cannot hold arbitrary bytes, " +
+			"and substituting U+FFFD would make distinct sources content-address to one definition")
+	}
 	var toks []token
 	line := 1
 	i := 0

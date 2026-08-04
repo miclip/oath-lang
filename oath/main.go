@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const usage = `oath — a content-addressed, spec-carrying language kernel
@@ -1019,12 +1020,34 @@ type propJSON struct {
 	Error          string `json:"error,omitempty"`
 }
 
-func cmdPut(st *Store, path string, jsonMode bool, author string, ctxHash string) {
-	src, err := os.ReadFile(path)
+// readSourceFile reads a .oath file and REFUSES bytes that are not valid UTF-8
+// (SPEC §1.4, #133).
+//
+// The validation is here, and not only in `lex`, because not every reader
+// elaborates locally: `put --remote` ships the source to a registry, and
+// json.Marshal substitutes U+FFFD on the way OUT — so the server receives
+// well-formed JSON and no downstream check can see that anything was replaced.
+// The lossy step is `[]byte -> string`, which is why the guard belongs at the
+// read rather than at any one consumer.
+//
+// Stated as the thing that kept being wrong: `lex` is the single entry to the
+// LANGUAGE, but this is the single entry to a source FILE, and they are not the
+// same boundary. Three separate paths reached identity through the second one.
+func readSourceFile(path string) string {
+	b, err := os.ReadFile(path)
 	if err != nil {
 		fail(err)
 	}
-	results, perr := apiPut(st, string(src), author, ctxHash)
+	if !utf8.Valid(b) {
+		fail(fmt.Errorf("%s is not valid UTF-8: a string literal cannot hold arbitrary bytes, "+
+			"and substituting U+FFFD would make distinct sources publish as one definition", path))
+	}
+	return string(b)
+}
+
+func cmdPut(st *Store, path string, jsonMode bool, author string, ctxHash string) {
+	src := readSourceFile(path)
+	results, perr := apiPut(st, src, author, ctxHash)
 	if jsonMode {
 		b, _ := json.MarshalIndent(results, "", "  ")
 		fmt.Println(string(b))
@@ -1164,11 +1187,8 @@ func cmdFind(st *Store, name string) {
 }
 
 func cmdFindSpec(st *Store, path string) {
-	src, err := os.ReadFile(path)
-	if err != nil {
-		fail(err)
-	}
-	out, err := apiFindSpec(st, string(src))
+	src := readSourceFile(path)
+	out, err := apiFindSpec(st, src)
 	if err != nil {
 		fail(err)
 	}
@@ -1176,11 +1196,8 @@ func cmdFindSpec(st *Store, path string) {
 }
 
 func cmdFindImplies(st *Store, path string) {
-	src, err := os.ReadFile(path)
-	if err != nil {
-		fail(err)
-	}
-	out, err := apiFindImplies(st, string(src))
+	src := readSourceFile(path)
+	out, err := apiFindImplies(st, src)
 	if err != nil {
 		fail(err)
 	}

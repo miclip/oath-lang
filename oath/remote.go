@@ -255,11 +255,8 @@ func cmdRemotePut(endpoint, keyPath string, files []string, contextHash string) 
 		fail(fmt.Errorf("--remote requires --key: publishing to a registry unsigned would fall back to a shared bearer token, which is the mechanism this replaces"))
 	}
 	for _, f := range files {
-		src, err := os.ReadFile(f)
-		if err != nil {
-			fail(err)
-		}
-		out, err := remotePut(endpoint, keyPath, string(src), contextHash)
+		src := readSourceFile(f)
+		out, err := remotePut(endpoint, keyPath, src, contextHash)
 		if err != nil {
 			fail(fmt.Errorf("%s: %w", f, err))
 		}

@@ -179,6 +179,16 @@ Producers (elaborators) MUST emit, and checkers MUST enforce:
 The surface syntax is not identity, but the examples corpus is a conformance
 input. A conforming surface elaborator MUST therefore match these rules:
 
+- **Source text MUST be valid UTF-8, and an elaborator MUST REFUSE input that
+  is not.** This is an identity obligation rather than a convenience. A `"…"`
+  literal elaborates to a codepoint chain (below), so any octet the reader
+  turns into U+FFFD becomes a codepoint in the canonical encoding, and therefore
+  in the HASH — and source files differing only in *which* malformed octet they
+  carry then content-address to one definition. Decoding malformed input with a
+  replacement character is the one substitution a content-addressed language
+  cannot make: names, journal entries and signatures all reference that hash,
+  and publication is permanent (§8). Refusal is the only disposition; there is
+  no lossy-decoding mode.
 - Whitespace is space, tab, carriage return, newline. `;` starts a comment
   through the next newline. Delimiters are `()`, `[]`, and `{}`.
 - Atoms are integer literals, float literals, rational literals, string
@@ -430,9 +440,50 @@ Detailed synthesis obligations:
   fields) exactly like any other datatype; there are no string operators.
   Every string operation (length, concatenation, prefix test, substring,
   split, …) is a definition over `Str`, proven like any other. A `"…"` literal
-  is surface sugar for the corresponding `SCons` codepoint chain (§1.4). The
-  codepoint convention is: `SCons` carries a Unicode scalar value; enforcing
-  its range is a future refinement, not part of this datatype.
+  is surface sugar for the corresponding `SCons` codepoint chain (§1.4).
+
+  **`Str` DENOTES TEXT: a sequence of Unicode scalar values** — `0..0x10FFFF`,
+  excluding the surrogate range `0xD800..0xDFFF`. Two transformations carry that
+  meaning, and both are total by REFUSING rather than by substituting:
+
+  - **ADMIT** — octets from outside the language become a `Str`: source text
+    (§1.4), a capability result, a command-line argument, a request field
+    (§14.2). An implementation MUST decode the octets as UTF-8 and MUST REFUSE
+    input that is not, naming what it refused. It MUST NOT substitute U+FFFD,
+    MUST NOT expose malformed octets as pseudo-codepoints, and MUST NOT report
+    malformed input through a value the program could also obtain from
+    well-formed input — a failure indistinguishable from success on other input
+    is the same collapse of distinct inputs, relocated.
+  - **PACK** — a `Str` becomes octets. An implementation MUST encode each
+    element injectively or REFUSE that element by name. Substituting U+FFFD
+    would give three distinct `Str` values one encoding and leave the
+    transformation with no inverse.
+
+  Where the refusal is reported is the boundary's own question, not this rule's:
+  §14.2 answers **400** for a request field, because a remote party must not be
+  able to halt a host.
+
+  **CONSTRUCTION IS UNCHECKED, and a KERNEL MUST NOT reject a non-scalar element
+  at construction.** `(SCons -1 (SNil))` is an ordinary value of the semantics in
+  this section. Types are structural (§1): `Str` is the canonical form
+  `(data _ [] (_) (_ Int rec))` and nothing distinguishes it from any other
+  datatype of that shape, so a rule attached to `SCons` would bind every
+  `(data T [] (A) (B Int T))` — an integer stack, a run-length chain — and give
+  Unicode semantics to types that carry no text. The scalar range is therefore a
+  property of the boundaries a `Str` CROSSES, not of the datatype, and the two
+  classes of guarantee are different in kind: this one is enforced by hosts, not
+  by identity. Expressing it in identity instead needs refinement types, whose
+  identity is syntactic and would give a refined `Str` a hash of its own.
+
+  **That obligation binds kernels, not compiled backends.** A backend is free to
+  represent a `Str` however it likes, and one that stores it as packed UTF-8
+  performs PACK at the moment of construction — so refusing `(SCons -1 …)` there
+  is the PACK obligation discharged early, not a second semantics. Both native
+  backends do exactly this, one at compile time and one at run time. What a
+  backend MUST NOT do is substitute: refusing a value this section calls
+  ordinary is an honest subset boundary, and silently encoding it as U+FFFD is
+  not. A verdict from such a backend is therefore never evidence that a value is
+  illegal — only that this backend does not carry it.
 - **Structural equality** (`==`) on data and records compares constructor
   index and fields recursively; applying it to function values is a runtime
   error (statically prevented).

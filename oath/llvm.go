@@ -897,6 +897,54 @@ static void o_str_malformed(void) {
   exit(70);
 }
 
+/* ADMITTING EXTERNAL BYTES AS A Str.
+
+   The comment on o_utf8_next used to end "a capability value is not validated on
+   the way in - see #133". This is that validation, and it moves the refusal from
+   DECODE to INGESTION - the boundary where the property first becomes
+   observable. Deciding once, at the edge, is also what lets everything inside
+   the language treat a Str as text without re-asking (#121's shape).
+
+   Failing at decode was not wrong, just late: the diagnostic named a buffer with
+   no indication of which getenv or which argument produced it, and a program
+   that never matched on the value would run to completion carrying bytes that
+   are not text.
+
+   The per-request HTTP boundary is not reached from here: SPEC 14.2 row 9
+   governs every Str built from a request and answers 400 without invoking the
+   handler, because a remote party must not be able to end the process. */
+static void o_str_host_refuse(const char *what) {
+  fprintf(stderr, "oath: %s is not valid UTF-8, so it has no Str value; refusing rather than "
+                  "substituting U+FFFD, which would make distinct inputs identical. "
+                  "Arbitrary octets need a bytes-typed channel, not Str.\n", what);
+  exit(70);
+}
+
+/* One scan, and the length is taken ONCE: computing it per codepoint makes
+   validation quadratic in the input, which for a launch-time check on a large
+   value is a startup stall rather than a slow function. */
+static int o_utf8_valid(const char *s, int n) {
+  const unsigned char *p = (const unsigned char *)s;
+  for (int i = 0; i < n; ) {
+    long long cp;
+    int k = o_utf8_next(p + i, n - i, &cp);
+    if (k == 0) return 0;
+    i += k;
+  }
+  return 1;
+}
+
+static OVal *o_strn_host(const char *s, int n, const char *what) {
+  if (!o_utf8_valid(s, n)) o_str_host_refuse(what);
+  return o_strn(s ? s : "", n);
+}
+
+/* NUL is U+0000, an ordinary scalar, so file contents carrying one validate
+   normally; only the C-string form has to stop at it. */
+static OVal *o_str_host(const char *s, const char *what) {
+  return o_strn_host(s, s ? (int)strlen(s) : 0, what);
+}
+
 static int o_str_step(OVal *v, long long *cp) {
   if (!v || v->tag != T_STR) { fputs("oath: not a Str\n", stderr); exit(70); }
   if (v->slen <= 0) return 0;
@@ -983,7 +1031,9 @@ OVal *o_argv(int argc, char **argv, int nil_idx, int cons_idx) {
   OVal *acc = o_ctor(nil_idx, 0, o_fields(0));
   for (int i = argc - 1; i >= 1; i--) {
     OVal **f = o_fields(2);
-    f[0] = o_str(argv[i]);
+    char what[64];
+    snprintf(what, sizeof what, "command-line argument %d", i);
+    f[0] = o_str_host(argv[i], what);
     f[1] = acc;
     acc = o_ctor(cons_idx, 2, f);
   }
@@ -1011,8 +1061,12 @@ void o_keep(const char *p) { o_kept = p; }
 static OVal *cap_env_code(OVal **env, OVal *arg) {
   (void)env;
   if (o_has_nul(arg)) return o_str(CAP_FAIL);
-  const char *v = getenv(o_cstr(arg));
-  return o_str(v ? v : CAP_FAIL);
+  const char *k = o_cstr(arg);
+  const char *v = getenv(k);
+  if (!v) return o_str(CAP_FAIL);
+  char what[160];
+  snprintf(what, sizeof what, "environment variable %.120s", k);
+  return o_str_host(v, what);
 }
 OVal *o_cap_env(char **err) { (void)err; return o_closure(cap_env_code, NULL); }
 
@@ -1035,7 +1089,9 @@ static OVal *cap_readfile_code(OVal **env, OVal *arg) {
   fclose(f);
   if (bad) return o_str(CAP_FAIL);
   buf[len] = 0;
-  return o_strn(buf, (int)len);
+  char what[160];
+  snprintf(what, sizeof what, "the contents of %.120s", o_cstr(arg));
+  return o_strn_host(buf, (int)len, what);
 }
 OVal *o_cap_readfile(char **err) { (void)err; return o_closure(cap_readfile_code, NULL); }
 
@@ -1092,6 +1148,18 @@ OVal *o_require_value(const char *field, const char *kind, const char *envvar) {
   if (!*v) {
     fprintf(stderr, "oath: this host cannot provide required capability %s (%s): "
                     "required value %s is provided but empty (%s)\n",
+            field, kind, field, envvar);
+    exit(70);
+  }
+  /* A required value is ADMITted like any other external octets (#133), and
+     refuses through the PROVISION channel: this runs before the entry point, so
+     a malformed value stops the program from starting rather than aborting it
+     later. Missing, empty and malformed are three ways the host failed to supply
+     it, and they read the same way to an operator. */
+  if (!o_utf8_valid(v, (int)strlen(v))) {
+    fprintf(stderr, "oath: this host cannot provide required capability %s (%s): "
+                    "required value %s is not valid UTF-8, so it has no Str value (%s); "
+                    "refusing rather than substituting U+FFFD\n",
             field, kind, field, envvar);
     exit(70);
   }
