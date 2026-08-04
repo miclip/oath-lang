@@ -62,7 +62,7 @@ TESTED_ONLY = rle-expand rle-decode e-mod e-div rot
 OATH = ./oath/oath
 AUTHOR ?= claude-main
 
-.PHONY: build verify prove mutate check fixtures tutorials check-web-tutorials webdocs check-web-docs check-playground-guard check-playground-snapshot check-playground-wasm print-order
+.PHONY: build verify prove mutate check fixtures tutorials check-web-tutorials webdocs check-web-docs check-playground-guard check-playground-snapshot check-playground-wasm playground-manifest verify-playground-artifact print-order
 
 build:
 	cd oath && go build -o oath .
@@ -320,6 +320,15 @@ check-playground-guard:
 # binary; artifact freshness is tracked separately.
 check-playground-wasm:
 	@node scripts/check-playground-wasm.mjs
+
+# #148: emit the immutable commit manifest for the built artifact, and verify a
+# downloaded one against it. The UPLOAD between them is CI's job and is not
+# stubbed here — a stub would look like coverage for a path nothing has run.
+playground-manifest:
+	@node scripts/playground-artifact.mjs manifest
+
+verify-playground-artifact:
+	@node scripts/playground-artifact.mjs verify $(MANIFEST) $(ARTIFACT)
 
 # The served corpus must BE the committed store (#145). It sat 2026-07-23 stale
 # for months because `playground-assets` is manual and nothing checked it, and a
