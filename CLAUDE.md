@@ -222,7 +222,7 @@ missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   #121, #117/#69, #133 — while the runtime is still
+  more EXPENSIVE if delayed   #117/#69, #133 — while the runtime is still
                               small enough to reshape
   more VALUABLE if delayed    #130, #134, #138 — after more evidence has
                               accumulated to calibrate them
@@ -230,16 +230,24 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
 **Compiler/runtime — the window is closing.**
 
-  1. **#121** hex-decode                unblocks real use
+  1. **#133** scalar-only Str           language design, NORMATIVE
   2. **#117 / #69** scoped authority    language design, and see below
-  3. **#133** scalar-only Str           language design, NORMATIVE
+
+  **#121 is CLOSED** (604c546) and its numbering is gone rather than struck
+  through, because a queue that carries its own history is the thing step 2 of
+  the startup sequence keeps catching. What is worth carrying forward is not the
+  fix but one measurement it produced: the broken decoder carrying the CORRECT
+  general property scored `tested · passed 200 cases`. The generator could not
+  reach the input that falsifies it. Proof caught what testing could not, and
+  mutation scoring still needed literal witnesses afterwards — three instruments,
+  three different blind spots, on one seven-line definition.
 
 **Feedback/tooling — the window is NOT closing.** Improves confidence in future
 work; nothing depends on it immediately.
 
-  4. **#130** vacuity signal, guard/subject overlap
-  5. **#134** typed refusal reasons
-  6. **#139 SCOPING THE RE-DERIVATION with #140** (prove-worker delta) — one
+  3. **#130** vacuity signal, guard/subject overlap
+  4. **#134** typed refusal reasons
+  5. **#139 SCOPING THE RE-DERIVATION with #140** (prove-worker delta) — one
      item, deliberately: both are *do not redo work whose answer is already
      determined*, one for re-deriving and one for proving, and neither can be
      judged without the other's answer. Doing them apart means deciding twice
@@ -254,7 +262,7 @@ work; nothing depends on it immediately.
 
 **Research — needs runway, not a slot.**
 
-  7. **#138** ACL2 comparative review. It is a REGISTERED EXPERIMENT with a
+  6. **#138** ACL2 comparative review. It is a REGISTERED EXPERIMENT with a
      falsifier, not a reading task, and its value depends on the reading not
      being rushed: a hurried pass would find transformations everywhere, which
      is the outcome the falsifier exists to prevent. Read the issue for the
@@ -262,7 +270,7 @@ work; nothing depends on it immediately.
 
 **Documentation hygiene.**
 
-  8. **#128** — DEFERRED UNTIL AFTER THE NEXT EXTERNALLY-VISIBLE MILESTONE. It
+  7. **#128** — DEFERRED UNTIL AFTER THE NEXT EXTERNALLY-VISIBLE MILESTONE. It
      has a TRIGGER, not a position. It changes no semantics, unblocks no user,
      and closes no narrowing window — and it is small and easy, which is
      precisely why it would interrupt architectural momentum if it sat in the
