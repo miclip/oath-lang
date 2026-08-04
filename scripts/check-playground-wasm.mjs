@@ -75,12 +75,13 @@ const allSources = [
 // printed on every run so the hole cannot pass for coverage. See #147.
 // Each entry names the definitions it removes from reach, so the exact contract
 // below stays derivable rather than hand-maintained.
-const EXCLUDED = new Map([
-  ["examples/nontotal.oath", {
-    why: "kernel crashes on non-terminating input (#147) — it kills the Go runtime, so every later file would be unmeasurable",
-    names: ["spin"],
-  }],
-]);
+//
+// EMPTY, and it should stay that way. Its one entry was `examples/nontotal.oath`,
+// excluded because the wasm build CRASHED on non-terminating input rather than
+// falsifying it — the defect this gate found on its first run. #147 fixed that
+// (the depth guard now fires on wasm), so the exclusion was retired with it. An
+// exclusion that outlives its cause is a permanent hole wearing a reason.
+const EXCLUDED = new Map([]);
 const sources = allSources.filter((s) => !EXCLUDED.has(s));
 
 const expected = JSON.parse(fs.readFileSync(path.join(ROOT, "codebase/names.json"), "utf8"));
@@ -125,8 +126,37 @@ const excludedNames = new Set([...EXCLUDED.values()].flatMap((e) => e.names));
 const mustReach = Object.keys(expected).filter((n) => !excludedNames.has(n));
 const missing = mustReach.filter((n) => !reached.has(n));
 
+// THE #147 REGRESSION WITNESS, asserted by name. Non-terminating input must
+// reach the depth guard and FALSIFY — the outcome examples/nontotal.oath's own
+// comment promises — rather than exhausting the JS host stack and killing the
+// runtime. The corpus sweep above would also catch a regression here, but only
+// as an anonymous "threw while elaborating"; naming it means the next person
+// who raises maxEvalDepth for GOOS=js learns why they cannot.
+let spinVerdict = "kernel did not survive", spinAlive = false;
+try {
+  const r = JSON.parse(globalThis.oathCheck(snap.root,
+    "(defn spin147 [] [(x Int)] Int (spin147 x) (prop claims-zero [(x Int)] (== (spin147 x) 0)))"));
+  spinVerdict = r.reports?.[0]?.status ?? "no report";
+  // Alive-after is the half that matters: a crash kills every LATER call, so a
+  // verdict alone does not establish the runtime survived producing it.
+  const after = JSON.parse(globalThis.oathCheck(snap.root,
+    "(defn alive147 [] [(x Int)] Int (+ x x) (prop d [(x Int)] (== (alive147 x) (* 2 x))))"));
+  spinAlive = after.reports?.[0]?.status === "accepted";
+} catch (e) {
+  spinVerdict = `THREW ${String(e).split("\n")[0]}`;
+}
+if (spinVerdict !== "falsified" || !spinAlive) {
+  console.error("ERROR: non-terminating input did not falsify cleanly (#147 regression)");
+  console.error(`  verdict: ${spinVerdict}   kernel alive afterwards: ${spinAlive}`);
+  console.error("  The wasm depth guard must fire BEFORE the JS host stack is exhausted.");
+  console.error("  maxEvalDepth for GOOS=js lives in oath/eval_depth_wasm.go and is bounded");
+  console.error("  by the embedder's stack, not by Go memory — see #147 before raising it.");
+  process.exit(1);
+}
+
 if (changed.length === 0 && unknown.length === 0 && errored.length === 0 && missing.length === 0) {
   console.log(`served wasm reproduces corpus identities ✓ (${reached.size}/${mustReach.length} required names from ${sources.length} files)`);
+  console.log("  non-terminating input falsifies and the kernel survives ✓ (#147)");
   for (const [f, e] of EXCLUDED) console.log(`  EXCLUDED ${f} (${e.names.join(", ")}) — ${e.why}`);
   console.log("  NOTE: this is behavioural agreement on what the corpus exercises. It says NOTHING about whether the artifact is current.");
   process.exit(0);

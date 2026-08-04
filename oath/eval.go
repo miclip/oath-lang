@@ -59,15 +59,16 @@ type evaluator struct {
 // property of the evaluator rather than of whatever machine it happens to run
 // on, and re-deriving it after a frame-size change is arithmetic instead of
 // guesswork.
-const (
-	// evalStackBudget is the host stack the interpreter may borrow for Oath
-	// recursion. Sized to leave room for the rest of the process inside a 512Mi
-	// container, which is the smallest environment the kernel is deployed to.
-	evalStackBudget = 96 << 20 // 96 MiB
-	// evalFrameBytes is the measured host-stack cost of one eval frame.
-	evalFrameBytes = 8_700
-	maxEvalDepth   = evalStackBudget / evalFrameBytes // ~11,500 frames
-)
+// maxEvalDepth is PER-TARGET, in eval_depth_native.go and eval_depth_wasm.go.
+// It used to be one constant derived for "a 512Mi container, which is the
+// smallest environment the kernel is deployed to" — a sentence that stopped
+// being true the day the playground shipped, without a word changing. On wasm
+// the ceiling is set by the JS HOST STACK, not by Go's memory: measured, the
+// browser build dies between 1000 and 1200 frames under node's default stack
+// and survives past 1800 with `--stack-size=4000`. A guard at ~11,500 is
+// therefore unreachable there, and the stack overflows first — taking the Go
+// runtime with it instead of producing the honest FALSIFIED verdict the depth
+// guard exists to produce (#147).
 
 func (e *evaluator) eval(env []Value, slf string, t *Term) (Value, error) {
 	e.depth++
