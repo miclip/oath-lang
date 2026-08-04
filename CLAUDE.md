@@ -234,7 +234,7 @@ missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   #145 — the public site resolves names to old objects
+  more EXPENSIVE if delayed   (EMPTY — #145's corpus half shipped; see below)
   more VALUABLE if delayed    #130, #134, #138 — after more evidence has
                               accumulated to calibrate them
   waiting for a TRIGGER       #117/#69, #128
@@ -245,32 +245,38 @@ says it stopped blocking anything when #126 closed and must wait for a real
 consumer to fix its scope. So it has a TRIGGER, not a position, and listing it
 under a closing window contradicted the same file's own instruction.
 
-What IS here is **#145 — BOTH of `/try`'s derived assets, the wasm kernel and
-the corpus snapshot, have been stale since `8bcc1bb` (2026-07-23).** Read the
-issue for what drifted and by how much; it is deliberately not restated here,
-and this paragraph is the worked example of why. Two drafts of it were wrong in
-two different directions before this one: the first said the stale hashes "exist
-nowhere in the real store" (they all do — the store is immutable, so a repoint
-supersedes a BINDING and deletes nothing) and quoted a commit distance that was
-already off by a factor of two. Both were caught by review, and one of them
-survived my own re-check because the re-check had a broken path join and
-returned the answer I expected. **A description here has to be re-verified every
-time anything lands; a pointer does not.**
+**#145's CORPUS half shipped** (c7a18be) and **its window closed with it, so it
+does not stay here by inertia.** The window was stated precisely when it was
+added — not that the drift grows, but that it **accrued per visitor and did not
+stop**, `/try` being the front door for the audience most likely to test that
+the hash IS the identity. Serving the right hashes discharges exactly that. What
+remains is wasm freshness, which has no such clock and needs a scoping decision
+first; read the issue, where a cheap signal and the reason not to reflex into
+building it are both recorded.
 
-State the window precisely, because "expensive if delayed" is easy to assert and
-this bucket is worthless if anything can be argued into it: the cost is not that
-the drift grows, it is that **it accrues per visitor and does not stop.** `/try`
-is the front door for the audience most likely to test the claim that the hash
-IS the identity. That is the only kind of window this bucket should accept.
-Anything parked here that is not narrowing a claim makes every other item look
-less urgent than it is.
+**Retiring an item from this bucket is the same act as admitting one**, and the
+easier one to skip: a stated window that is not re-read when the work lands
+leaves the queue looking urgent about something already done. That is how the
+bucket loses its meaning — not by admitting a weak item, but by keeping a spent
+one.
 
-Read the issue for the falsifier — it is real: if the snapshot is a DELIBERATE
-pin rather than a mirror, the repair is a label and a gate on the pin, not a
-regeneration.
+Two drafts of the entry that used to sit here were wrong in two directions
+before the third: one said the stale hashes "exist nowhere in the real store"
+(they all do — the store is immutable, so a repoint supersedes a BINDING and
+deletes nothing), and quoted a commit distance already off by a factor of two.
+Both were caught by review; one survived my own re-check, because the re-check
+had a broken path join and returned the answer I expected. **A description here
+must be re-verified every time anything lands. A pointer must not.**
 
-If the next piece of work seems to belong here, say what makes it cheaper NOW
-than later before adding it.
+**Nothing is currently expensive-if-delayed.** If the next piece of work seems
+to belong here, say what makes it cheaper NOW than later before adding it —
+and, per the paragraph above, say what will make it stop belonging.
+
+That falsifier, for the record, LOST rather than went unused: #145 asked whether
+`/try`'s corpus might be a deliberate PIN, in which case the repair would have
+been a label rather than a regeneration. The answer was already in the tree —
+`playground-assets` says "Regenerate after any kernel or corpus change" — so the
+question was settled by reading before any work started. Do not reopen it.
 
   **#133 IS CLOSED** (4337bf5, cd50e03) — all six ADMIT boundaries discharged,
   the last one measured rather than reasoned about: four distinct playground
