@@ -313,6 +313,16 @@ one deployment environment, silently inherited by a second, with the justifying
 comment still reading correctly.** Adding a target is the moment to re-derive
 every constant whose comment names an environment.
 
+**AND THE CLOSE WAS PREMATURE, WHICH IS THE MORE USEFUL HALF.** #147 fixed the
+EVALUATOR; #149 is the same crash reached through the PARSER, which recurses
+before evaluation and no bound covers. The fix was correct and its universe was
+not: the claim quantifies over *every recursive descent over attacker-controlled
+input reachable from `oathCheck`*, and only one had been found. So when a bound
+is added for a new target, the question is not "does this guard the path I
+found" but "what is the SET of unbounded recursions on this target" — a
+question a passing regression witness cannot answer, because it only ever
+witnesses the door already known about.
+
 **Retiring an item from this bucket is the same act as admitting one**, and the
 easier one to skip: a stated window that is not re-read when the work lands
 leaves the queue looking urgent about something already done. That is how the
