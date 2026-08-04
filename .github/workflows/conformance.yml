@@ -57,6 +57,17 @@ jobs:
         run: cd oath && go build -tags cloud ./...
       - name: unit tests
         run: cd oath && go test ./... && go test -tags cloud -run 'TestGCSObjectsRoundTrip' ./...
+      # BEFORE `make verify`, and that ordering is load-bearing. The playground's
+      # corpus is a MIRROR of codebase/, not a pin — the playground-assets target
+      # says so — and the snapshot embeds log.jsonl. `make verify` re-puts every
+      # example and journals each one `accepted` even when no hash moves, so
+      # running this afterwards would compare the committed snapshot against an
+      # already-dirtied journal and fail every clean run, for a reason that has
+      # nothing to do with what it claims to check. The script also detects that
+      # case by name, so a future reordering fails comprehensibly.
+      - name: playground corpus mirrors the committed store (#145)
+        run: make check-playground-snapshot
+
       - name: re-verify examples against committed store
         # make verify re-puts every example; on a checkout this must
         # reproduce the committed hashes (names.json diff = identity drift).

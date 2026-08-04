@@ -62,7 +62,7 @@ TESTED_ONLY = rle-expand rle-decode e-mod e-div rot
 OATH = ./oath/oath
 AUTHOR ?= claude-main
 
-.PHONY: build verify prove mutate check fixtures tutorials check-web-tutorials webdocs check-web-docs check-playground-guard print-order
+.PHONY: build verify prove mutate check fixtures tutorials check-web-tutorials webdocs check-web-docs check-playground-guard check-playground-snapshot print-order
 
 build:
 	cd oath && go build -o oath .
@@ -310,6 +310,14 @@ webdocs:
 # `make playground-assets` and is therefore a local gate rather than a CI one.
 check-playground-guard:
 	@node scripts/check-playground-guard.mjs
+
+# The served corpus must BE the committed store (#145). It sat 2026-07-23 stale
+# for months because `playground-assets` is manual and nothing checked it, and a
+# stale corpus still works — so nobody notices. Regenerating the snapshot also
+# rebuilds oath.wasm, so this transitively keeps the served kernel fresh
+# whenever the corpus moves; a kernel-only change still needs a manual rebuild.
+check-playground-snapshot:
+	@node scripts/check-playground-snapshot.mjs
 
 check-web-docs:
 	@for f in $$(python3 scripts/webdocs-list.py); do \
