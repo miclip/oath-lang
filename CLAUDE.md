@@ -270,7 +270,7 @@ missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   (EMPTY — #145's corpus half shipped; see below)
+  more EXPENSIVE if delayed   #147 — /try crashes on non-terminating input
   more VALUABLE if delayed    #146, #134, #138 — after more evidence has
                               accumulated to calibrate them
   waiting for a TRIGGER       #117/#69, #128
@@ -281,16 +281,37 @@ says it stopped blocking anything when #126 closed and must wait for a real
 consumer to fix its scope. So it has a TRIGGER, not a position, and listing it
 under a closing window contradicted the same file's own instruction.
 
-**#145's CORPUS half shipped** (c7a18be) and **its window closed with it, so it
-does not stay here by inertia.** The window was stated precisely when it was
-added — not that the drift grows, but that it **accrued per visitor and did not
-stop**, `/try` being the front door for the audience most likely to test that
-the hash IS the identity. Serving the right hashes discharges exactly that.
-**#145 stays OPEN and what is left is on the issue** — deliberately not
-summarised here, one paragraph after the sentence explaining why summaries of
-remaining work decay. What belongs here is only the part the issue cannot
-carry: whatever remains has no per-visitor clock, so it does not inherit this
-bucket.
+**#145 IS CLOSED, and its window closed with it.** The window was stated
+precisely when it was added — not that the drift grows, but that it **accrued
+per visitor and did not stop**, `/try` being the front door for the audience
+most likely to test that the hash IS the identity. Serving the right hashes
+discharged exactly that (c7a18be), and behavioural conformance for the served
+kernel followed (df442f3).
+
+**It closed by SPLITTING, not by finishing**, which is the same move #130 made
+in the same session: an issue whose remaining question is no longer the one it
+was opened to answer gets closed or split, never repurposed. What was left —
+artifact freshness — is **#148**, and it is DEPLOYMENT work with no per-visitor
+clock, so it does not inherit this bucket. The measurement that sent it there is
+on the issue: a freshness gate fires on 36% of commits at 15 MB a time, so the
+structural fix is to stop versioning the artifact rather than to watch it.
+**And the behavioural gate must never be read as discharging #148** — it is
+green over a stale-but-agreeing binary by construction.
+
+**#147 IS IN THIS BUCKET, and here is the justification the bucket demands.**
+What makes it more expensive later is not that the FIX gets harder — it does
+not. It is that the harm ACCRUES PER VISITOR and does not stop, the same clock
+the corpus half ran on: `/try` is the front door, and *"what happens if I write
+an infinite loop?"* is among the first things anyone tries. They do not get the
+honest FALSIFIED verdict the language promises; they get a dead kernel and a
+page that needs reloading. Every visitor who tries it is a cost already paid.
+
+**It stops belonging the moment the depth guard fires on wasm instead of the
+stack overflowing** — an honest error, not a crash. Read #147 before touching
+`evalStackBudget`: the arithmetic explanation is UNCONFIRMED, the `RangeError`
+arriving before `mcall on m->g0` is weak evidence for the JS side rather than
+the Go stack, and the issue says diagnose before lowering. Lowering it globally
+would also change which definitions falsify, which is a verdict change.
 
 **Retiring an item from this bucket is the same act as admitting one**, and the
 easier one to skip: a stated window that is not re-read when the work lands
