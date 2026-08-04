@@ -1094,6 +1094,13 @@ reasoning; `docs/milestones.md` for what each milestone established.
 - Commit style: explain the design decision, not just the change; honest
   about limitations. Falsified/unproven results are features, not
   embarrassments — never hide them.
+- **KEEP GITHUB'S CLOSING VERBS OUT OF THE BODY.** The parser is LEXICAL, not
+  semantic: a commit message containing "would close #145 falsely" — inside a
+  sentence arguing AGAINST closing it — closed #145. This repo writes long
+  messages that discuss issues constantly, so the exposure is routine rather
+  than exotic. Refer to issues as a bare `#N` in prose, and reserve
+  `closes/fixes/resolves #N` for a dedicated final line when that is actually
+  the intent. Narrow operational fact, earned once, at cost.
 - The examples double as the conformance corpus (SPEC.md §10): treat
   hash changes in `codebase/names.json` as meaningful diffs.
 - **EDITED A FILE UNDER `docs/`? RUN `make webdocs` AND COMMIT THE RESULT.**
@@ -1103,6 +1110,14 @@ reasoning; `docs/milestones.md` for what each milestone established.
   `make verify`, and nothing local reminds you — this landed on `main` red for
   exactly that reason after SPEC §14 and `effects.md` were edited.
 - Run `codex review --uncommitted` before committing, and iterate until clean.
+  **WHEN IT IS UNAVAILABLE — rate limit, outage — SAY SO IN THE COMMIT AND KEEP
+  THE DEBT BOUNDED TO THOSE COMMITS.** Tests and mutation controls are strong
+  evidence and they are not a substitute: what this review catches is a
+  different class — plausible claims, and instruments that test something
+  adjacent to what they assert. Both are invisible to a green suite by
+  construction. So the honest move is to name the specific commits carrying no
+  external review, not to let "the tests passed" quietly stand in for it, and to
+  re-review them when it returns.
 
 ## The team store
 
