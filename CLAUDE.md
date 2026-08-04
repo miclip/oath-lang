@@ -234,26 +234,41 @@ missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   (EMPTY — see below)
+  more EXPENSIVE if delayed   #133's last boundary — VERIFICATION DEBT, see below
   more VALUABLE if delayed    #130, #134, #138 — after more evidence has
                               accumulated to calibrate them
   waiting for a TRIGGER       #117/#69, #128
 
-**Compiler/runtime — THE BUCKET IS EMPTY, and that is a finding rather than an
-omission.** It held two items. #133 shipped, and #117/#69 turns out never to
-have belonged here: the standing instruction below already says it stopped
-blocking anything when #126 closed and must wait for a real consumer to fix its
-scope. So it has a TRIGGER, not a position, and listing it under a closing
-window contradicted the same file's own instruction — which is exactly what a
-cold reader would have acted on, since removing #133 silently promoted it to
-first. **Nothing is currently expensive-if-delayed.** If the next piece of work
-seems to belong here, say what makes it cheaper NOW than later before adding it;
-the bucket's whole meaning is that its window is closing, and an item parked
-here that is not narrowing anything makes every other item look less urgent
-than it is.
+**Compiler/runtime — one item, and it is DEBT rather than a feature.** #117/#69
+turns out never to have belonged here: the standing instruction below already
+says it stopped blocking anything when #126 closed and must wait for a real
+consumer to fix its scope. So it has a TRIGGER, not a position, and listing it
+under a closing window contradicted the same file's own instruction.
 
-  **#133's actionable half SHIPPED** (4337bf5) and its slot is gone rather than
-  renumbered around. What remains of it is not a task but a CATEGORY MOVE that
+What IS here is **#133's wasm ingestion path — the one boundary recorded as read
+rather than RUN.** State the window precisely, because "expensive if delayed" is
+easy to assert and this bucket is worthless if anything can be argued into it:
+SPEC §1.4 and §3 are ALREADY SHIPPED and already say what ADMIT must do at every
+boundary. So the claim is in normative text while one of its boundaries is
+unmeasured, and the cost of delay is not that the defect grows — the playground
+publishes nothing — but that **the gap between a shipped claim and its evidence
+widens as more work cites the claim.** That is the only kind of window this
+bucket should accept. Anything parked here that is not narrowing a claim makes
+every other item look less urgent than it is.
+
+If the next piece of work seems to belong here, say what makes it cheaper NOW
+than later before adding it.
+
+  **#133's compiler half SHIPPED** (4337bf5) and its slot is gone rather than
+  renumbered around. **#133 IS STILL OPEN, and this file said otherwise for one
+  session** — it read *"what remains is not a task"*, which was written the same
+  day the issue itself recorded an open one: the wasm ingestion path, the single
+  boundary I closed on paper but never ran. Step 2 cannot catch this class,
+  because the issue's STATUS never changed; only reading the issue against the
+  paragraph does. Prefer a POINTER for exactly this reason — a sentence
+  summarising an issue's remaining work goes stale while the issue does not.
+
+  What remains BEYOND that is a CATEGORY MOVE that
   #69 already owns: `Str`'s scalar range is enforced today by HOST DISCIPLINE at
   the boundaries octets cross, and refinement types would move it into ARTIFACT
   IDENTITY. Those are different classes of guarantee, not different amounts of
