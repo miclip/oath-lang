@@ -18,10 +18,27 @@ import (
 	"testing"
 )
 
+// requireClang skips locally and FAILS in CI.
+//
+// Every test in this file that actually exercises the backend needs clang, so a
+// plain skip means one absent tool silently removes the entire second backend —
+// the differential gate included — while the run stays green. That is the
+// failure shape this repo keeps finding: a check that cannot distinguish "my
+// setup is broken" from "the thing I hunt is absent". `ubuntu-latest` ships
+// clang today, which is exactly why nobody would notice the day it stopped.
+//
+// Skipping is still right for a contributor without clang; it is never right for
+// the gate. CI is the only place that must be able to tell the difference, so CI
+// is where the skip becomes a failure.
 func requireClang(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("clang"); err != nil {
-		t.Skip("clang not available")
+		if os.Getenv("CI") != "" {
+			t.Fatal("clang is absent, so the LLVM backend and the three-way " +
+				"differential gate did not run. In CI that is a failure, not a " +
+				"skip: a green run would otherwise mean this backend is unchecked.")
+		}
+		t.Skip("clang not available (local); this is a hard failure under CI=1")
 	}
 }
 
