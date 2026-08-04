@@ -41,6 +41,18 @@ written**. If yes, one of them must become derived. This applies to code,
 specifications, tooling and guidance alike; the startup sequence is simply the
 instance where the artefact being consolidated is this file.
 
+**AND THE RULE BELOW ABOUT WITNESSES GOVERNS THIS ONE: DERIVE THE PATH YOU
+CONSOLIDATE ONTO FROM THE CLAIM, NOT FROM THE IMPLEMENTATION'S DECOMPOSITION.**
+You can consolidate correctly and still be wrong, because two different
+boundaries can each look like *the* single entry point, and succeeding at the
+wrong one FEELS finished — there is one path now, and the duplication is gone.
+Worked example, #133: source validation was consolidated into `lex`, genuinely
+the single entry to the LANGUAGE, and three more substitutions were then found
+one layer out each time — because the claim was about source BYTES, whose single
+entry is a different function. Ask what the CLAIM quantifies over, then find that
+set's entry point. A list of call sites read off the code answers a different
+question, and answers it completely.
+
 **ASSERTING AN OBLIGATION CANNOT CREATE THE STRUCTURE NEEDED TO SATISFY IT.**
 This is the most general thing the project has learned, and it is broader than
 Oath. Whenever a requirement feels blocked, ask what STRUCTURE the obligation
@@ -222,16 +234,34 @@ missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   #117/#69, #133 — while the runtime is still
-                              small enough to reshape
+  more EXPENSIVE if delayed   (EMPTY — see below)
   more VALUABLE if delayed    #130, #134, #138 — after more evidence has
                               accumulated to calibrate them
-  waiting for a TRIGGER       #128
+  waiting for a TRIGGER       #117/#69, #128
 
-**Compiler/runtime — the window is closing.**
+**Compiler/runtime — THE BUCKET IS EMPTY, and that is a finding rather than an
+omission.** It held two items. #133 shipped, and #117/#69 turns out never to
+have belonged here: the standing instruction below already says it stopped
+blocking anything when #126 closed and must wait for a real consumer to fix its
+scope. So it has a TRIGGER, not a position, and listing it under a closing
+window contradicted the same file's own instruction — which is exactly what a
+cold reader would have acted on, since removing #133 silently promoted it to
+first. **Nothing is currently expensive-if-delayed.** If the next piece of work
+seems to belong here, say what makes it cheaper NOW than later before adding it;
+the bucket's whole meaning is that its window is closing, and an item parked
+here that is not narrowing anything makes every other item look less urgent
+than it is.
 
-  1. **#133** scalar-only Str           language design, NORMATIVE
-  2. **#117 / #69** scoped authority    language design, and see below
+  **#133's actionable half SHIPPED** (4337bf5) and its slot is gone rather than
+  renumbered around. What remains of it is not a task but a CATEGORY MOVE that
+  #69 already owns: `Str`'s scalar range is enforced today by HOST DISCIPLINE at
+  the boundaries octets cross, and refinement types would move it into ARTIFACT
+  IDENTITY. Those are different classes of guarantee, not different amounts of
+  one — and the reason the invariant cannot live in identity now is that `Str`
+  has none of its own: `(data IntStack [] (Empty) (Push Int IntStack))` hashes to
+  exactly `Str`'s hash, so a rule attached to `SCons` would give Unicode
+  semantics to an integer stack. Do NOT re-file this as "add a check at
+  construction" — SPEC §3 settles what a kernel does here; read it there.
 
   **#121 is CLOSED** (604c546) and its numbering is gone rather than struck
   through, because a queue that carries its own history is the thing step 2 of
@@ -245,9 +275,12 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
 **Feedback/tooling — the window is NOT closing.** Improves confidence in future
 work; nothing depends on it immediately.
 
-  3. **#130** vacuity signal, guard/subject overlap
-  4. **#134** typed refusal reasons
-  5. **#139 SCOPING THE RE-DERIVATION with #140** (prove-worker delta) — one
+  1. **#130** vacuity signal, guard/subject overlap — now has a MEASURED
+     instance on the committed corpus (a property whose guard the generator
+     can never satisfy, scoring the corpus's worst 11/53). It is on the issue;
+     do not re-derive it.
+  2. **#134** typed refusal reasons
+  3. **#139 SCOPING THE RE-DERIVATION with #140** (prove-worker delta) — one
      item, deliberately: both are *do not redo work whose answer is already
      determined*, one for re-deriving and one for proving, and neither can be
      judged without the other's answer. Doing them apart means deciding twice
@@ -262,7 +295,7 @@ work; nothing depends on it immediately.
 
 **Research — needs runway, not a slot.**
 
-  6. **#138** ACL2 comparative review. It is a REGISTERED EXPERIMENT with a
+  4. **#138** ACL2 comparative review. It is a REGISTERED EXPERIMENT with a
      falsifier, not a reading task, and its value depends on the reading not
      being rushed: a hurried pass would find transformations everywhere, which
      is the outcome the falsifier exists to prevent. Read the issue for the
@@ -270,7 +303,7 @@ work; nothing depends on it immediately.
 
 **Documentation hygiene.**
 
-  7. **#128** — DEFERRED UNTIL AFTER THE NEXT EXTERNALLY-VISIBLE MILESTONE. It
+  5. **#128** — DEFERRED UNTIL AFTER THE NEXT EXTERNALLY-VISIBLE MILESTONE. It
      has a TRIGGER, not a position. It changes no semantics, unblocks no user,
      and closes no narrowing window — and it is small and easy, which is
      precisely why it would interrupt architectural momentum if it sat in the
