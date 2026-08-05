@@ -114,10 +114,21 @@ that grows while repeatedly finding the parent rule is healthier than a shorter
 one carrying four versions of the same queue, which is what this file actually
 had.
 
-**AND THE TEST IS BEHAVIOURAL, NOT DIMENSIONAL — THE COLD READ IS AN INSTRUMENT.
-IT IS THE STARTUP SEQUENCE, AND THERE IS ONLY ONE:**
+**AND THE TEST IS BEHAVIOURAL, NOT DIMENSIONAL — THE STATELESS READ IS AN
+INSTRUMENT. IT IS THE STARTUP SEQUENCE, AND THERE IS ONLY ONE:**
 
-  1. **Read this file cold** and note what it tells you to do first. Do not act.
+  1. **Have a reader with no session state read this file and say what it tells
+     them to do first.** Three questions, in this order — the third is where the
+     yield is, and omitting it collects a verdict without the reasons:
+
+         1. what context did you receive BEFORE reading anything?
+         2. what does this file tell you to do first, and what led you there?
+         3. was that easy or hard? name every competing candidate, anything that
+            read as stale, and anything describing already-finished work.
+
+     Question 1 verifies the instrument: an answer naming an issue means the
+     reader was not stateless and the run is VOID. **YOU CANNOT BE THAT READER** —
+     structural, not a discipline problem; see below. Do not act on the answer yet.
   2. **Check the STATUS of every issue this file names.** Derive the list from
      THIS FILE, so the check cannot miss what the file mentions:
 
@@ -140,18 +151,76 @@ IT IS THE STARTUP SEQUENCE, AND THERE IS ONLY ONE:**
      familiar defect wearing a new costume. It has already caught one instrument
      bug — an earlier `for n in $ids` did not word-split under zsh and the
      assertion reported INCOMPLETE rather than silently checking nothing.
-     Status is the ONLY part of the queue with an external authority, and it is
-     the part that silently rots: an issue closes elsewhere and no word here
+     Status is not the only part of the queue with an external authority, but it
+     is the part that silently rots: an issue closes elsewhere and no word here
      changes.
-  3. **If they disagree, the file is wrong — repair it before starting work.**
-     The disagreement IS the measurement; skipping the repair discards it and
-     leaves the next session to make the same discovery.
 
-**Step 2 CANNOT validate the ordering, the buckets, or the triggers**, and no
-command can: those are judgment recorded here, with no external authority to
-derive them from. Do not let a green status check read as a validated queue.
-What tests the judgment is step 1 — whether a fresh reader picks the right first
-task — which is exactly why the instrument is a cold READ and not a script.
+     **Then check BUCKET COVERAGE — a DIFFERENT claim from status.** Save as a
+     file and run it; it is POSIX `sh`, and it must be run rather than skimmed:
+
+         cd "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null
+         [ -f CLAUDE.md ] || { echo "VOID — not at the repo root"; exit 1; }
+         t=$(mktemp -d) || exit 1
+         ids() { grep -oE '#[0-9]+[a-zA-Z]*' "$1" | grep -vE '[a-zA-Z]$' | tr -d '#' | sort -u; }
+         sed -n '/^The buckets encode DIFFERENT CLOCKS/,/^\*\*THE TABLE ABOVE/p' CLAUDE.md > "$t/tbl"
+         ids "$t/tbl" > "$t/bucketed"; ids CLAUDE.md > "$t/named"; : > "$t/open"
+         while read -r n; do
+           s=$(gh issue view "$n" --json state -q .state) || { echo FAIL > "$t/failed"; break; }
+           [ "$s" = OPEN ] && echo "$n" >> "$t/open"
+         done < "$t/named"
+         if [ ! -s "$t/bucketed" ]; then echo "VOID — table anchors did not match; this check did NOT run"
+         elif [ -f "$t/failed" ]; then echo "VOID — a gh lookup failed; this check did NOT run"
+         else
+           echo "named+open but UNBUCKETED : $(grep -vxF -f "$t/bucketed" "$t/open" | tr '\n' ' ')"
+           echo "bucketed but CLOSED       : $(grep -vxF -f "$t/open" "$t/bucketed" | tr '\n' ' ')"
+         fi
+         rm -rf "$t"
+
+     Both lines must be empty and neither VOID branch may fire. **An empty pair
+     is only meaningful if the VOID branches can fire**, so when editing this,
+     re-run the four controls: wrong repo, drifted anchor, failing `gh`, and a
+     deleted bucket row (which must name the dropped ids).
+
+     **ITS UNIVERSE IS THE ISSUES THIS FILE NAMES, NOT THE REPOSITORY'S OPEN
+     SET.** `gh` carries far more open issues than the table holds. So this
+     catches NAMED-BUT-UNBUCKETED and is structurally blind to an open issue this
+     file has never mentioned — it can only prove the file agrees with itself. Do
+     not restate it as coverage of open work.
+
+     Two live traps, both verified rather than reasoned about: `#13b` yields a
+     phantom `13` unless suffixed ids are filtered (they are, above), and feeding
+     `comm` NUMERICALLY sorted input makes it report ids present in both streams
+     as missing. `sort -u` is lexicographic and `comm` is fine with it; `sort -un`
+     is the hazard, and step 2's status snippet above uses it — so the two
+     snippets differ in collation, and unifying them needs re-testing.
+  3. **NOW READ STEP 1'S ANSWER, and repair before starting work.** There are
+     two disagreements to look for and they indict different things:
+
+         file vs `gh`         a status or coverage mismatch — the file is stale
+         reader vs the queue  the reader named something other than what the
+                              queue's top-down rule selects — the file MISLEADS
+
+     The second is the whole point of step 1 and the easier to discard, because a
+     reader who lands somewhere plausible is easy to wave through. It is not a
+     vote on what to work on: the queue decides that. It is evidence about what
+     this file COMMUNICATES, and a mismatch means the prose, not the reader, is
+     wrong. Skipping either repair discards the measurement and leaves the next
+     session to rediscover it.
+  4. **Then start what the queue's top-down rule selects.** This step exists
+     because "what is first" is otherwise two-valued — the SEQUENCE is first for
+     the session, the QUEUE's item is first for the work — and a sequence that
+     ends without handing off to the work is not finished. (`## PHASE 5` below
+     says READ THIS BEFORE PICKING WORK; it frames the phase, it does not compete
+     for the first slot.)
+
+**Step 2 validates MEMBERSHIP but not ASSIGNMENT.** It derives the two facts with
+an external authority — every named issue's state, and that the buckets cover
+every issue this file names and leaves open — but the ORDERING, the CHOICE of
+bucket, and the TRIGGERS are judgment recorded here, and no command can check
+them. An issue can be correctly listed, correctly open, and in the wrong bucket,
+and step 2 will be green. Do not let it read as a validated queue.
+What tests the judgment is step 1 — whether a stateless reader picks the right
+first task — which is exactly why the instrument is a READ and not a script.
 
 Ask throughout: can a fresh reader orient correctly, quickly, and without acting
 on stale guidance? Do NOT substitute a line budget or a token budget; size is
@@ -165,34 +234,84 @@ still have begun the wrong work inside a minute, because sixty lines described
 work that had already shipped. **No other check in this repo measures startup
 correctness.** It is the same criterion as the conformance work, applied to
 prose: not *is the document short*, but *does it produce the intended behaviour
-in an independent reader* — which is why the cold read must be done at the START
-of a session, by the reader whose behaviour is being measured, and cannot be
-delegated to the author who already knows what the file meant to say.
+in an independent reader* — which is why it must be run by the reader whose
+behaviour is being measured and never by the author, who already knows what the
+file meant to say. **The prohibition is on the AUTHOR, not on delegation**, and
+the first version of this paragraph conflated the two — it said the read "cannot
+be delegated", which ruled out the only subject that can actually run it.
 
-**BUT IT IS NOT CURRENTLY A CHECK THAT HAPPENS, AND READING IT AS ONE IS THE
-MISTAKE THIS FILE KEEPS WARNING ABOUT.** Its honest status is *desired
-instrument; unavailable under normal session continuity.* Step 1 has been VOID
-four consecutive sessions — every time self-inflicted, and every time by
-something written to be helpful: a handoff prompt naming the next task, a
-compaction summary carrying the queue, my own prediction of where a reader would
-land. `/compact` is the one that settles it, because it is automatic and a long
-session will always reach it. So a session that could run this instrument is one
-that starts fresh AND finishes before compacting, which is not the common case.
+**THE FALSIFIER FIRED, AND STEP 1 WAS REDEFINED RATHER THAN RETIRED. WHAT WAS
+WRONG WAS THE SUBJECT, NOT THE MEASUREMENT.** The falsifier's letter offered
+retirement or redefinition "around the first genuinely unseen artefact"; what was
+done instead was to redefine around an unseen READER, which is a wider move than
+the text licensed — recorded here rather than smoothed over, because the next
+person to stretch a falsifier should see one stretched. The read had been VOID
+for several consecutive sessions and the diagnosis on record blamed session
+continuity — a handoff prompt naming the next task, a compaction summary carrying
+the queue, `/compact` being automatic on any long session. That made it sound
+like a discipline problem with a lucky-session cure. **It is structural: THE
+SESSION'S OWN FIRST ACT IS NOT IN THE CLAIM'S UNIVERSE AND CANNOT BE PUT
+THERE.** Three
+independent injections land before step 1 can run, none of them under a
+session's control:
 
-**Its own falsifier, so it is held to the standard everything else here is:**
+    a SessionStart hook digest   named the exact issue last looked at
+    user memory (MEMORY.md)      loaded every session by construction
+    this file itself             in context before step 1 says to read it
 
-- If the next THREE sessions also begin carrying prior-session context, RETIRE
-  step 1 or redefine it around the first genuinely unseen artefact — the file
-  would then be promising an observation reality does not produce, which is
-  worse than not promising it.
-- If a genuinely cold session occurs first and the read runs, keep it, and
-  record what it found.
+So the instrument was asking the session to occupy a perspective the harness
+makes unreachable — this file's own rule about repairs that require stepping
+outside their own perspective, arriving at its own startup check.
 
-Four void runs is not evidence the idea is wrong; it is evidence about
-OPERATING CONDITIONS. An instrument earns its place by working under the
-conditions it is meant to measure, and that is the same bar applied to the
-gates, the properties and the conformance harness — no reason for this one to
-be exempt because it measures prose.
+**The repair follows the universe discipline, not a weaker version of the old
+check.** The CLAIM is *a reader whose only context is this file orients onto the
+right first task*. That universe is readers with no session state; it never
+contained the session's first act, and no amount of starting-fresh puts it there.
+A dispatched subagent IS in it — fresh context, no compaction summary, no hook
+digest — so the instrument is now pointed at one.
+
+**Its own falsifier, restated for the new subject, so it stays held to the
+standard everything else here is:**
+
+- If a dispatched reader's context answer keeps showing it was NOT stateless,
+  retire the check outright — the substitute would be void for the same reason
+  the original was, and a second void instrument is worse than none.
+- If it reports the first task correctly while this file is known-stale, retire
+  it too: it would be agreeing with the author rather than reading.
+
+**And the honest limit, because a substitute witness must be calibrated, not
+just adopted.** A dispatched reader shares this one's model and priors, so it
+CANNOT witness "this file assumes knowledge only a Claude session has" — that
+needs a genuinely different reader. It CAN witness the thing the instrument was
+built to catch: prose describing work that already shipped, which is what a
+stale queue looks like from outside.
+
+**This is NOT the banned simulated newcomer**, and the distinction is worth
+having explicitly, because the two look alike and the rule against the other one
+is a few sections down. That rule forbids inventing a reader with different
+KNOWLEDGE — a newcomer to Oath — which no session can simulate, because it
+cannot un-know the language. This substitutes a reader with different CONTEXT,
+which is real and removable. Context can be withheld; knowledge cannot.
+
+**NEVER RECORD A RUN'S FINDINGS IN THIS FILE — not the findings, not their
+provenance, not "a reader reported X". They go to `docs/milestones.md`.** This is
+not the ordinary history/instructions split; it is a HARD requirement of the
+instrument, learned by breaking it in the same session the instrument was fixed.
+
+> **AN INSTRUMENT'S RESULTS MUST NOT BE STORED WHERE ITS FUTURE SUBJECTS READ.**
+
+Same failure as the coaching leak, arriving the same way — through the guidance
+channel rather than the export, where no preflight can see it. The difference,
+and the reason it is a rule rather than a caution: the contaminating text was
+written BY the repair. Nothing about recording a finding feels like leaking one.
+
+**AND THE LEAK HAS A SECOND FORM THAT SURVIVES DELETING THE RECORD.** Writing up
+a run elsewhere is not enough if its conclusions are then PARAPHRASED into the
+prose — *"a stateless reader found this section confusing"* is the finding, minus
+the citation, still sitting in the artefact under test. Six such sentences had to
+be removed after the block-quoted rule above was already written. When repairing
+something a run found, state the RULE and delete the discovery: the next reader
+must meet the repaired file, not the story of its repair.
 
 The one worked example of the parent rule so far: "verify the measuring instrument before
 interpreting its output" was placed ABOVE the gate advice it generates rather
@@ -256,7 +375,20 @@ the project stopped accumulating MECHANISMS and started accumulating EVIDENCE �
 most of the important commits were not new-feature commits; they narrowed a claim
 until it exactly matched what had been demonstrated. Continue that.
 
-### THE QUEUE — one ordering, in three buckets; position is not priority
+### THE QUEUE — one ordering, in four buckets; position is not priority
+
+**SKIM RULE, because most of this section is not work state.** The bucket table
+below is the queue. The prose after it is mostly CLOSED-ISSUE RETROSPECTIVES,
+kept because each carries a lesson that outlived its issue — but a reader looking
+for what to do next should read the table, the entry for the item they pick, and
+then SKIP the closed-issue retrospectives — but **read to the end of the section,
+because the standing instructions after the entries are live and several apply to
+work in progress.** Stated as skip-what, not stop-where: an earlier version said
+"and stop", which sends a reader past the table and out of the section before the
+standing instructions, and a walk-back sentence does not undo an imperative.
+Closed-issue write-ups are kept because each carries a lesson that outlived its
+issue; they are the skippable part, and they are not the majority — most of what
+follows the table is open-issue guidance.
 
 **SETTLED, so that it is not reopened as a gap: candidate-script exposure is
 OUTSIDE §10's conformance surface** — decided, recorded on #139, and reflected in
@@ -270,10 +402,39 @@ missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   (EMPTY — #147 shipped; see below)
-  more VALUABLE if delayed    #146, #134, #138 — after more evidence has
-                              accumulated to calibrate them
-  waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
+  more EXPENSIVE if delayed   #149 — unguarded attacker-reachable recursion in
+                              a DEPLOYED kernel
+  more VALUABLE if delayed    #146, #134, #139/#140, #138 — after more evidence
+                              has accumulated to calibrate them
+  waiting for a TRIGGER       #150 (external reviewer capped — CHECK THE ISSUE
+                              for the return date before assuming either way),
+                              #148 (operator provisioning), #117/#69, #128
+  no CLOCK at all             #115, #116, #65, #66 — open, unscheduled, and
+                              neither cheaper nor dearer for waiting
+
+**THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
+below may ELABORATE a row; nothing may add an issue the table does not hold.**
+That is the checkable form, and the looser "nowhere else may list issues by
+number" was written first and is simply false — the entries below are numbered
+and cite issues, legitimately, because each expands a row rather than competing
+with it. Note also TRIAGED, not open: `gh` carries far more open issues than this
+table holds, and claiming otherwise asserts what step 2's coverage check cannot
+establish. The fourth bucket exists so *named* and *bucketed* are the same set.
+
+**READ THE TABLE TOP-DOWN AND START FROM THE HIGHEST NON-EMPTY BUCKET. If that
+bucket is `more EXPENSIVE if delayed`, its contents are what to start; if it is
+empty, nothing is forced and the choice is deliberate.** That is the queue's
+conclusion stated as a RULE, and the distinction from stating the ANSWER is
+load-bearing rather than stylistic: a named winner ("start #N") would make the
+sequence's step 1 unfalsifiable, because a reader asked what to do first would
+transcribe the sentence instead of orienting, and the context audit cannot catch
+contamination living inside the artefact under test. A draft of this paragraph
+did name the issue and had to be pulled for exactly that.
+
+The rule survives the table changing; the answer would not. Every deferral in
+the entries below is stated LOCALLY, and their sum never is — so a reader who
+takes them one at a time can finish the section having started nothing, which is
+the failure this paragraph exists to prevent.
 
 **Compiler/runtime — one item, and it is DEBT rather than a feature.** #117/#69
 turns out never to have belonged here: the standing instruction below already
@@ -298,12 +459,14 @@ structural fix is to stop versioning the artifact rather than to watch it.
 **And the behavioural gate must never be read as discharging #148** — it is
 green over a stale-but-agreeing binary by construction.
 
-**#147 IS RETIRED FROM THIS BUCKET BECAUSE IT SHIPPED** (43ed4a1), on the
-condition stated when it was admitted: the depth guard now fires on wasm instead
-of the stack overflowing. Retiring is the same act as admitting, and the easier
-one to skip.
+**#147 SHIPPED AND #149 REPLACED IT — the bucket never emptied.** Both halves in
+one sentence, deliberately, because they were previously two paragraphs fifteen
+lines apart with only the first formatted as queue state: a reader following the
+SKIM RULE above met the retirement and could stop before the retraction. The fix
+for that is ORDERING, not a third paragraph explaining the hazard. Detail below;
+the succession is the queue-state fact and it comes first.
 
-The durable part is not the fix but WHY the bound was wrong. `maxEvalDepth` was
+The durable part of #147 is not the fix but WHY the bound was wrong. `maxEvalDepth` was
 one constant derived as a MEMORY budget — correct natively, and meaningless on
 wasm, where the binding constraint is the JS HOST STACK Go's runtime borrows.
 It is now per-target (`eval_depth_native.go`, `eval_depth_wasm.go`), and the
@@ -313,10 +476,23 @@ one deployment environment, silently inherited by a second, with the justifying
 comment still reading correctly.** Adding a target is the moment to re-derive
 every constant whose comment names an environment.
 
-**AND THE CLOSE WAS PREMATURE**, which produced the session's most transferable
-rule — recorded with the witness discipline it belongs to rather than here,
-since the queue holds work state and that is a principle. #149 is the same crash
-reached through the PARSER.
+**Why the succession happened:** #147's close was PREMATURE. Its depth guard
+fires on the EVALUATOR path, and the same crash is reachable through the PARSER,
+which was unguarded. The claim was not discharged; it moved to the door still
+open. Reading "#147 shipped" as "this class is closed" is exactly the mistake the
+witness discipline records as a principle — a regression witness proves the
+repaired door, not the class.
+
+**#149 is EXPENSIVE-IF-DELAYED for a reason that is not urgency-flavoured
+prose.** The playground serves this kernel to anyone who visits, so delay does
+not make the FIX dearer — it makes the EXPOSURE longer, which is the same
+per-visitor clock #145 ran on.
+
+**Start with the INVENTORY, not with a bound.** Enumerate every recursive descent
+reachable from `oathCheck`, classify each guarded or unguarded, and only then
+choose the repair shape. The claim quantifies over attacker-reachable descents,
+so a second hand-placed constant would be the third copy of a bound whose comment
+names an environment — the defect #147 itself was.
 
 **#148 IS BLOCKED ON OPERATOR PROVISIONING, NOT ON ENGINEERING**, and the
 distinction decides what a session should do with it: nothing. Its design is
@@ -343,9 +519,14 @@ Both were caught by review; one survived my own re-check, because the re-check
 had a broken path join and returned the answer I expected. **A description here
 must be re-verified every time anything lands. A pointer must not.**
 
-**Nothing is currently expensive-if-delayed.** If the next piece of work seems
-to belong here, say what makes it cheaper NOW than later before adding it —
-and, per the paragraph above, say what will make it stop belonging.
+**One item is expensive-if-delayed (#149), and it got there by SUCCESSION rather
+than by admission** — which is the case this discipline was weakest at, because
+nobody performs an admission when a bucket merely fails to empty. If the next
+piece of work seems to belong here, say what makes it cheaper NOW than later
+before adding it — and, per the paragraph above, say what will make it stop
+belonging. **The sentence "nothing is currently expensive-if-delayed" sat here
+while #149 was open and known**, because retiring #147 was written up as an event
+and its successor was left in a passing clause.
 
 That falsifier, for the record, LOST rather than went unused: #145 asked whether
 `/try`'s corpus might be a deliberate PIN, in which case the repair would have
@@ -472,10 +653,14 @@ work; nothing depends on it immediately.
   newcomer walkthrough would produce exactly the reassuring evidence the real
   thing exists to withhold, and this project has already learned that a witness
   which cannot disappoint you is not a witness.
-- **The next work is to DEPEND on Oath, not to improve it.** The application
-  (#120) ran first, so it now constrains the compiler rather than the other way
-  round: it did not redesign the language, it produced a ranked demand list.
-  `docs/experiments/webhook-friction.md` is that list — read it before choosing.
+- **When CHOOSING NEW work, prefer DEPENDING on Oath to improving it** — but this
+  ranks candidates, it does NOT outrank the queue, and it was phrased as "the next
+  work is…", which reads as a fourth competing answer to *what do I do first*.
+  The application (#120) ran first, so it now constrains the
+  compiler rather than the other way round: it did not redesign the language, it
+  produced a ranked demand list. `docs/experiments/webhook-friction.md` is that
+  list — read it before adding something new, not before starting something the
+  queue already holds.
 
 ## State of the project
 
@@ -1092,12 +1277,18 @@ registry above), #114 (the compiler boundary), #126
 backend landed and is described above, but the issue is the wider #13b (typed
 IR, monomorphisation, MLIR), and a shipped subset is not a closed issue. It was
 listed here as closed until the startup check compared this line against `gh`.
-Open research projects, each its
-own session: **#117** (narrowed capability requirements), **#116** (signed
-provenance attestation), **#65** (discovery roadmap), **#66** (delegated token
-minting + authorized-key registration — an opt-in CONSTRAINT on onboarding, not a
-prerequisite for it). Read closed issues + commit messages for the design
-reasoning; `docs/milestones.md` for what each milestone established.
+
+**THE LIST OF OPEN RESEARCH PROJECTS THAT USED TO SIT HERE IS GONE — read the
+queue's bucket table instead.** It named four issues with one-line descriptions,
+outside any bucket, under the heading "open research projects, each its own
+session", which reads as an invitation to start one. Two failures at once: a
+second enumeration of work competing with the queue, and DESCRIPTIONS where the
+pointer rule demands pointers. Relabelling it a glossary was tried and does not
+help — a reader still meets numbered open issues outside the table, and the
+descriptions still need re-verifying on every landing.
+
+Read closed issues + commit messages for the design reasoning;
+`docs/milestones.md` for what each milestone established.
 
 ## Working in this repo
 
@@ -1179,6 +1370,14 @@ reasoning; `docs/milestones.md` for what each milestone established.
   bounds first, because a deployment pipeline distributes whatever runtime
   behaviour those commits contain, faithfully and quickly; a wrong bound is
   already in users' hands while automation is still a plan.
+  **BUT #150 MAY NOT BE STARTABLE — the external reviewer has a usage cap, and
+  the issue carries the current return date.** Check it before planning around
+  this paragraph; the queue files #150 under a TRIGGER for that reason. **An
+  availability constraint stated only where the WORK is described will be missed
+  by anyone reading where the PRIORITY is argued** — which is why the pointer is
+  here, and why the DATE is not: a date copied to two places in this file goes
+  quietly false on the day it passes, while #150 stays open and every check
+  stays green.
   **WHEN REVIEW IS UNAVAILABLE — rate limit, outage — SAY SO IN THE COMMIT AND
   KEEP THE DEBT BOUNDED TO THOSE COMMITS.** Tests and mutation controls are strong
   evidence and they are not a substitute: what this review catches is a

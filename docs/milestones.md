@@ -351,3 +351,84 @@ was read, recording completion rather than receipt. It was found by the
 transformation table's own question, *where does this fact enter?*, applied per
 row. Earlier layers do not retire as the weak link moves up; finding what remains
 in them requires the higher layers to exist first.
+
+## The startup instrument — why it was void for four sessions, and what its first two runs found
+
+**The check.** `CLAUDE.md`'s startup sequence step 1 asks a reader with no session
+state what the file tells them to do first. It measures ORDERING, bucket
+ASSIGNMENT and PLACEMENT — the queue's judgment, as distinct from its membership.
+(Bucket MEMBERSHIP did gain an authority in the same session, via the coverage
+check added to step 2; assignment did not, and cannot.)
+
+**Why it was void.** It did not run for four consecutive sessions on the record
+in `CLAUDE.md` at the time, and did not run in the session that repaired it
+either — that session ran the REDEFINED instrument instead, which is a different
+thing and is why it is not counted as a fifth void run. The diagnosis on record
+blamed session continuity: handoff prompts, compaction summaries, `/compact`
+being automatic on any long session. That framing made it sound like a discipline
+problem with a lucky-session cure. It was structural. A
+session cannot be its own stateless reader, because three injections land before step 1
+can execute — a SessionStart hook digest (which in the observed case named the
+exact issue last looked at), user memory loaded every session, and `CLAUDE.md`
+itself, in context before the step that says to read it. The claim's universe is
+*readers with no session state*; the session's own first act was never in it.
+
+**The repair** was to point the instrument at a subject that could occupy that
+universe — a dispatched subagent, which has fresh context, no compaction summary
+and no hook digest — rather than to retire the check. Calibration matters: such a
+reader shares the author's model and priors, so it cannot witness "this file
+assumes knowledge only a Claude session has", but it can witness prose describing
+work that already shipped. It is not the banned simulated newcomer: that rule
+forbids inventing a reader with different KNOWLEDGE, which cannot be un-known;
+this substitutes different CONTEXT, which can be withheld.
+
+**Run 1 (2026-08-04) — valid, seven findings.** Context audit clean. It reported:
+every numbered queue item was individually deferred and the section never stated
+that sum, so a reader obeying it starts nothing; the one actionable instruction
+(#150) sat ~900 lines away, outside all buckets, under commit hygiene; #150's
+urgency argument carried no availability note, so the reader picked a task blocked
+until 2026-08-09; "nothing is currently expensive-if-delayed" was live while #149
+was open; #149 — an unguarded attacker-reachable crash — had no bucket at all;
+#147's retirement notice sat fifteen lines above its own retraction with only the
+retirement formatted as queue state; and three sections enumerated open work and
+disagreed on the set.
+
+**What the status check could not see: all of it.** Step 2 as it stood was
+COMPLETE throughout — every issue's state was recorded correctly. What was wrong
+was judgment, which no command validates.
+
+Two of the seven were the exception that proved worth automating: an open issue
+sitting in no bucket, and a bucket row for a closed one, are MEMBERSHIP facts
+with an external authority. Step 2 gained a coverage check for exactly those in
+the same session, so a rerun of run 1 today would find five, not seven. The other
+five — ordering, placement, an urgency claim contradicting a bucket, an
+availability constraint stated in the wrong section — remain judgment and remain
+invisible to any command.
+
+**Run 2 — VOID, and it diagnosed its own voidness.** A second stateless reader
+landed on the right item in one pass and reported that the previously-misdirecting
+passages now carry explicit demotions. That looks like verification and is not:
+run 1's findings had been written into `CLAUDE.md` itself, ahead of the queue, so
+the reader met the previous run's conclusions before reaching the section under
+test. It said so unprompted. By step 1's own rule the run is VOID, and the
+honest state after both runs is **one valid run, one void run, repair
+unverified.**
+
+**And a third run would ALSO be void as things stand.** A second adversarial pass
+found that stripping the run record from `CLAUDE.md` did not strip its
+CONCLUSIONS: six of run 1's seven findings survive there as paraphrases in the
+repaired prose, each attached to the rule it motivated. That is the same leak in
+its second form, and every repair added a fresh instance, because the natural way
+to record a fix is to say what it fixed. Removing them is a larger edit to
+`CLAUDE.md`'s established style than one session should make unilaterally, so it
+is a decision left open rather than a defect quietly carried.
+
+Recording it as "the repair verified" was the first draft here, and it is the
+error the runs exist to catch: a result treated as evidence for the claim
+adjacent to the one it supports.
+
+**The durable rule, which is why this is a milestone and not a note:** an
+instrument's results must not be stored where its future subjects read. It is the
+same failure as the coaching leak recorded above — a summary reaching the subject
+through the guidance channel rather than the export, where no preflight can see
+it — arriving this time through a repair written in good faith.
