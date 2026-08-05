@@ -224,11 +224,27 @@ type appArgFrame struct { // application: head done, argument pending
 
 func (f *appArgFrame) describe() string { return "app:arg" }
 
-type ifBranchFrame struct { // if: condition or a branch done
-	ctx  []*Ty
-	term *Term
-	exp  *Ty
-	part string // cond | then | else
+// ifBranchFrame sequences an `if`: condition, then-branch, else-branch, in that
+// order. One frame advances through the three parts rather than three frame
+// types, because the ORDER is the invariant and splitting it across types would
+// let a later edit reorder them without anything reading as wrong.
+//
+// The two modes differ in a way that is easy to collapse and must not be:
+//
+//	synth   cond must be Bool; SYNTHESIZE both branches; they must agree; the
+//	        type is the then-branch's.
+//	check   cond must be Bool; CHECK BOTH BRANCHES AGAINST exp — never the
+//	        else-branch against the then-branch's inferred type.
+//
+// A machine that checks the else against the then's type accepts programs this
+// checker rejects: `(if c 1 2)` against Bool fails on the then-branch today,
+// but would pass if the else were merely made to agree with the then.
+type ifBranchFrame struct {
+	ctx    []*Ty
+	term   *Term
+	exp    *Ty    // nil in synth mode
+	part   string // cond | then | else
+	thenTy *Ty    // synth mode only: carried from the then-branch to the else
 }
 
 func (f *ifBranchFrame) describe() string { return "if:" + f.part }
@@ -297,9 +313,6 @@ func (f *ctorValidateFrame) resume(*checkerMachine, checkResult) (frameOutcome, 
 	return notPorted(f)
 }
 func (f *appArgFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) { return notPorted(f) }
-func (f *ifBranchFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
-	return notPorted(f)
-}
 func (f *letBodyFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
 	return notPorted(f)
 }
@@ -362,21 +375,32 @@ func (f *checkCompareFrame) resume(m *checkerMachine, r checkResult) (frameOutco
 	return frameOutcome{done: &checkResult{}}, nil
 }
 
-// leaf produces a result for a step that needs no children, or reports that the
-// step is not yet portable. ok=false with a nil error means "this step has
-// children" — which no ported family reaches yet.
-func (m *checkerMachine) leaf(s checkerStep) (checkResult, bool, error) {
+// dispatch decides what happens to the current step. Exactly one of three
+// things: it produces a RESULT (the step was a leaf), it pushes a frame and
+// rewrites *s to the first child (the step has sub-judgements), or it refuses
+// because the family is not ported.
+//
+// The check/synth split lives here rather than in the run loop because the two
+// modes DIVERGE PER FAMILY. Most forms are checked by synthesize-then-compare,
+// but `if` consumes the expected type directly and pushes both branches against
+// it — collapsing that into one path would silently change which programs
+// typecheck.
+func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 	if s.term == nil {
 		return checkResult{err: fmt.Errorf("missing term")}, true, nil
 	}
 	if s.mode == modeCheck {
-		// Only the DEFAULT path is ported. Forms that consume an expected type
-		// directly (ctor, lam, if, let, match, app-with-inference) are not, and
-		// must not be approximated by synthesize-then-compare — that would
-		// change which programs typecheck, not merely how.
 		switch s.term.K {
+		case "if":
+			// CHECK MODE: the expected type flows into BOTH branches.
+			m.stack = append(m.stack, &ifBranchFrame{ctx: s.ctx, term: s.term, exp: s.exp, part: "cond"})
+			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
+			return checkResult{}, false, nil
 		case "var", "int", "rat", "float", "bool":
-			return checkResult{}, false, nil // handled by the caller pushing a compare frame
+			// The DEFAULT path: synthesize, then compare.
+			m.stack = append(m.stack, &checkCompareFrame{exp: s.exp})
+			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term}
+			return checkResult{}, false, nil
 		default:
 			return checkResult{}, false, errFamilyNotPorted{s.term.K, modeCheck}
 		}
@@ -395,6 +419,11 @@ func (m *checkerMachine) leaf(s checkerStep) (checkResult, bool, error) {
 		return checkResult{ty: tFloat()}, true, nil
 	case "bool":
 		return checkResult{ty: tBool()}, true, nil
+	case "if":
+		// SYNTH MODE: both branches are synthesized and must agree.
+		m.stack = append(m.stack, &ifBranchFrame{ctx: s.ctx, term: s.term, part: "cond"})
+		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
+		return checkResult{}, false, nil
 	}
 	return checkResult{}, false, errFamilyNotPorted{s.term.K, modeSynth}
 }
@@ -405,25 +434,17 @@ func (m *checkerMachine) leaf(s checkerStep) (checkResult, bool, error) {
 func (m *checkerMachine) run(start checkerStep) (*Ty, error) {
 	s := start
 	for {
-		// A check of a ported leaf becomes: synth it, then compare.
-		if s.mode == modeCheck {
-			if _, _, err := m.leaf(s); err != nil {
-				return nil, err
-			}
-			m.stack = append(m.stack, &checkCompareFrame{exp: s.exp})
-			s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term}
-			continue
-		}
-		r, done, err := m.leaf(s)
+		r, produced, err := m.dispatch(&s)
 		if err != nil {
 			return nil, err
 		}
-		if !done {
-			return nil, errFamilyNotPorted{s.term.K, s.mode}
+		if !produced {
+			continue // a frame was pushed; s now names its first child
 		}
 		// Unwind: hand the result to each waiting frame until one asks for
 		// another child or the stack empties.
-		for {
+		descend := false
+		for !descend {
 			if len(m.stack) == 0 {
 				return r.ty, r.err
 			}
@@ -436,9 +457,53 @@ func (m *checkerMachine) run(start checkerStep) (*Ty, error) {
 			if out.next != nil {
 				m.stack = append(m.stack, f) // the frame is not finished
 				s = *out.next
+				descend = true
 				break
 			}
 			r = *out.done
 		}
+	}
+}
+
+// resume advances the if through its three parts. Errors propagate immediately
+// in every part: unlike the constructor inference pass, nothing here is
+// suppressed, and the FIRST failure is the one reported.
+func (f *ifBranchFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, error) {
+	if r.err != nil {
+		return frameOutcome{done: &checkResult{err: r.err}}, nil
+	}
+	synthMode := f.exp == nil
+	switch f.part {
+	case "cond":
+		if r.ty == nil || r.ty.K != "bool" {
+			return frameOutcome{done: &checkResult{
+				err: fmt.Errorf("if condition must be Bool, got %s", debugTy(r.ty))}}, nil
+		}
+		f.part = "then"
+		next := checkerStep{mode: modeSynth, ctx: f.ctx, term: f.term.B}
+		if !synthMode {
+			next = checkerStep{mode: modeCheck, ctx: f.ctx, term: f.term.B, exp: f.exp}
+		}
+		return frameOutcome{next: &next}, nil
+	case "then":
+		f.part = "else"
+		if synthMode {
+			f.thenTy = r.ty
+			next := checkerStep{mode: modeSynth, ctx: f.ctx, term: f.term.C}
+			return frameOutcome{next: &next}, nil
+		}
+		// CHECK MODE: the else-branch is checked against exp, NOT against
+		// whatever the then-branch turned out to be.
+		next := checkerStep{mode: modeCheck, ctx: f.ctx, term: f.term.C, exp: f.exp}
+		return frameOutcome{next: &next}, nil
+	default: // else
+		if !synthMode {
+			return frameOutcome{done: &checkResult{}}, nil
+		}
+		if !tyEq(f.thenTy, r.ty) {
+			return frameOutcome{done: &checkResult{
+				err: fmt.Errorf("if branches disagree: %s vs %s", debugTy(f.thenTy), debugTy(r.ty))}}, nil
+		}
+		return frameOutcome{done: &checkResult{ty: f.thenTy}}, nil
 	}
 }

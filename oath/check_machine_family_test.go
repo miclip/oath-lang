@@ -23,8 +23,9 @@ type familyCase struct {
 	exp  *Ty // nil = synth mode
 }
 
+func i(n int64) *Term { return &Term{K: "int", Int: big.NewInt(n)} }
+
 func portedFamilyCases() []familyCase {
-	i := func(n int64) *Term { return &Term{K: "int", Int: big.NewInt(n)} }
 	return []familyCase{
 		// synth of every ported leaf
 		{"synth-int", nil, i(7), nil},
@@ -52,8 +53,42 @@ func portedFamilyCases() []familyCase {
 
 		// missing term: both must refuse rather than fault
 		{"synth-nil-term", nil, nil, nil},
+
+		// --- `if`: SEQUENCING is the invariant, not just the answer ---------
+		// Symmetric branches would let a machine that reordered or skipped a
+		// branch agree by coincidence, so every case below is asymmetric.
+		{"if-synth-agree", nil, mkIf(bt(true), i(1), i(2)), nil},
+		{"if-synth-disagree-bool-int", nil, mkIf(bt(true), bt(true), i(1)), nil},
+		{"if-synth-disagree-int-bool", nil, mkIf(bt(true), i(1), bt(true)), nil},
+		{"if-synth-bad-cond", nil, mkIf(i(1), i(1), i(2)), nil},
+		// The condition must be diagnosed BEFORE the branches, even when the
+		// branches also disagree — otherwise a reordered machine reports a
+		// different (and still plausible) error.
+		{"if-synth-cond-beats-branches", nil, mkIf(i(1), bt(true), i(2)), nil},
+		{"if-synth-nested", nil, mkIf(bt(true), mkIf(bt(false), i(1), i(2)), i(3)), nil},
+
+		// CHECK MODE: both branches go against exp. A machine that checked the
+		// else-branch against the THEN-branch's inferred type would accept
+		// if-check-both-wrong, which the real checker rejects.
+		{"if-check-ok", nil, mkIf(bt(true), i(1), i(2)), tInt()},
+		{"if-check-both-wrong", nil, mkIf(bt(true), i(1), i(2)), tBool()},
+		{"if-check-else-wrong", nil, mkIf(bt(true), i(1), bt(true)), tInt()},
+		// then fails first: a machine checking the else first reports the other
+		// branch's message.
+		{"if-check-then-wrong", nil, mkIf(bt(true), bt(true), i(1)), tInt()},
+		{"if-check-bad-cond", nil, mkIf(i(1), bt(true), bt(false)), tBool()},
+		// BOTH branches wrong, with DIFFERENT messages: the only shape in which
+		// branch ORDER is observable. if-check-both-wrong cannot see it, because
+		// two Int branches against Bool produce the same text twice.
+		{"if-check-both-wrong-differently", nil, mkIf(bt(true), bt(true), &Term{K: "rat", Rat: big.NewRat(3, 2)}), tInt()},
+		{"if-synth-both-wrong-differently", nil, mkIf(bt(true), bt(true), &Term{K: "rat", Rat: big.NewRat(3, 2)}), nil},
+		{"if-check-nested", nil, mkIf(bt(true), mkIf(bt(false), i(1), i(2)), i(3)), tInt()},
+		{"if-check-var-branch", []*Ty{tInt()}, mkIf(bt(true), &Term{K: "var", Idx: 0}, i(2)), tInt()},
 	}
 }
+
+func bt(b bool) *Term          { return &Term{K: "bool", Bool: b} }
+func mkIf(a, b, c *Term) *Term { return &Term{K: "if", A: a, B: b, C: c} }
 
 // TestPortedFamilyMatchesRecursiveChecker is obligations 1-3: same outcome, same
 // diagnostic, no surviving mutation, unchanged inference accounting.
@@ -137,7 +172,7 @@ func TestUnportedFamiliesRefuse(t *testing.T) {
 	st := canonicalStore(t)
 	unported := []*Term{
 		{K: "ctor"}, {K: "app"}, {K: "lam"}, {K: "let"},
-		{K: "if"}, {K: "match"}, {K: "prim"}, {K: "record"},
+		{K: "match"}, {K: "prim"}, {K: "record"},
 		{K: "field"}, {K: "ref"}, {K: "self"}, {K: "str"},
 	}
 	for _, term := range unported {
