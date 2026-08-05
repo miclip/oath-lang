@@ -180,51 +180,98 @@ type reader struct {
 	pos  int
 }
 
+// readFrame is one open delimiter awaiting its closer. Frames live on an
+// explicit slice, NOT on the host call stack — see read().
+type readFrame struct {
+	kind   string // the sx kind to emit: list | brack | brace
+	open   string // the opening token, for the "unclosed" message
+	closer string
+	line   int
+	kids   []sx
+}
+
+// read consumes one form. It is ITERATIVE BY CONSTRUCTION, and that is a
+// correctness property of the language rather than an optimisation (#149).
+//
+// The recursive version descended one host frame per open delimiter, so nesting
+// depth in the SOURCE became depth on the host call stack. On wasm that stack is
+// the embedder's, and it is exhausted at a depth Go cannot observe or grow —
+// which made a purely syntactic property of a paste (how many "(" it contains)
+// decide whether the kernel returned an Oath error or terminated outside Oath's
+// error channel entirely. Measured before this change: ~20,000 delimiters threw
+// a host RangeError out through oathCheck.
+//
+// THE INVARIANT THIS PROTECTS IS BACKEND INDEPENDENCE. Oath's accepted
+// structural domain must not vary with an embedder's stack: the same artifact
+// cannot be a program natively and a syntax error in the playground because the
+// two borrow different stacks. An implementation may refuse for an explicit,
+// documented resource limit — that is a language/runtime policy decision — but a
+// limit must never emerge accidentally from host call-stack depth. #147 made the
+// same correction one layer down, for a bound derived in one deployment
+// environment and silently inherited by another.
+//
+// Frames are heap-allocated and bounded by the token count, so depth costs
+// memory linear in the input rather than an unobservable host resource.
 func (r *reader) read() (sx, error) {
-	if r.pos >= len(r.toks) {
-		return sx{}, fmt.Errorf("unexpected end of input")
+	var stack []readFrame
+	for {
+		if r.pos >= len(r.toks) {
+			// Report the INNERMOST unclosed delimiter, matching the recursive
+			// version: it hit end-of-input inside the deepest active frame.
+			if n := len(stack); n > 0 {
+				return sx{}, fmt.Errorf("line %d: unclosed %q", stack[n-1].line, stack[n-1].open)
+			}
+			return sx{}, fmt.Errorf("unexpected end of input")
+		}
+		t := r.toks[r.pos]
+
+		// A closer for the innermost frame completes it. Checked before the
+		// switch because closers are not values and have no case there.
+		if n := len(stack); n > 0 && t.kind == stack[n-1].closer {
+			r.pos++
+			f := stack[n-1]
+			stack = stack[:n-1]
+			done := sx{K: f.kind, Kids: f.kids, Line: f.line}
+			if len(stack) == 0 {
+				return done, nil
+			}
+			stack[len(stack)-1].kids = append(stack[len(stack)-1].kids, done)
+			continue
+		}
+
+		r.pos++
+		var val sx
+		switch t.kind {
+		case "int":
+			val = sx{K: "int", Int: t.i, Line: t.line}
+		case "rat":
+			val = sx{K: "rat", Rat: t.r, Line: t.line}
+		case "float":
+			val = sx{K: "float", Float: t.f, Line: t.line}
+		case "str":
+			val = sx{K: "str", Str: t.s, Line: t.line}
+		case "sym":
+			val = sx{K: "sym", Sym: t.sym, Line: t.line}
+		case "(", "[", "{":
+			f := readFrame{kind: "list", open: t.kind, closer: ")", line: t.line}
+			switch t.kind {
+			case "[":
+				f.kind, f.closer = "brack", "]"
+			case "{":
+				f.kind, f.closer = "brace", "}"
+			}
+			stack = append(stack, f)
+			continue
+		default:
+			// A mismatched or stray closer lands here, exactly as it did when
+			// the recursive reader called itself on a non-value token.
+			return sx{}, fmt.Errorf("line %d: unexpected %q", t.line, t.kind)
+		}
+		if len(stack) == 0 {
+			return val, nil
+		}
+		stack[len(stack)-1].kids = append(stack[len(stack)-1].kids, val)
 	}
-	t := r.toks[r.pos]
-	r.pos++
-	switch t.kind {
-	case "int":
-		return sx{K: "int", Int: t.i, Line: t.line}, nil
-	case "rat":
-		return sx{K: "rat", Rat: t.r, Line: t.line}, nil
-	case "float":
-		return sx{K: "float", Float: t.f, Line: t.line}, nil
-	case "str":
-		return sx{K: "str", Str: t.s, Line: t.line}, nil
-	case "sym":
-		return sx{K: "sym", Sym: t.sym, Line: t.line}, nil
-	case "(", "[", "{":
-		closer := ")"
-		kind := "list"
-		if t.kind == "[" {
-			closer = "]"
-			kind = "brack"
-		}
-		if t.kind == "{" {
-			closer = "}"
-			kind = "brace"
-		}
-		var kids []sx
-		for {
-			if r.pos >= len(r.toks) {
-				return sx{}, fmt.Errorf("line %d: unclosed %q", t.line, t.kind)
-			}
-			if r.toks[r.pos].kind == closer {
-				r.pos++
-				return sx{K: kind, Kids: kids, Line: t.line}, nil
-			}
-			k, err := r.read()
-			if err != nil {
-				return sx{}, err
-			}
-			kids = append(kids, k)
-		}
-	}
-	return sx{}, fmt.Errorf("line %d: unexpected %q", t.line, t.kind)
 }
 
 // parseForms reads all top-level forms from source text.
