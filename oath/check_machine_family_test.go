@@ -22,6 +22,12 @@ type familyCase struct {
 	ctx  []*Ty
 	term *Term
 	exp  *Ty // nil = synth mode
+
+	// selfTy/selfTyVars stand in for the enclosing definition, which `self`
+	// resolves against. Zero values mean "outside a function definition",
+	// which is itself a case.
+	selfTy     *Ty
+	selfTyVars int
 }
 
 func i(n int64) *Term { return &Term{K: "int", Int: big.NewInt(n)} }
@@ -29,276 +35,258 @@ func i(n int64) *Term { return &Term{K: "int", Int: big.NewInt(n)} }
 func portedFamilyCases() []familyCase {
 	return []familyCase{
 		// synth of every ported leaf
-		{"synth-int", nil, i(7), nil},
-		{"synth-bool", nil, &Term{K: "bool", Bool: true}, nil},
-		{"synth-rat", nil, &Term{K: "rat", Rat: big.NewRat(1, 2)}, nil},
-		{"synth-float", nil, &Term{K: "float", Float: 1.5}, nil},
-		{"synth-var-0", []*Ty{tInt()}, &Term{K: "var", Idx: 0}, nil},
-		{"synth-var-1", []*Ty{tBool(), tInt()}, &Term{K: "var", Idx: 1}, nil},
+		{name: "synth-int", ctx: nil, term: i(7), exp: nil},
+		{name: "synth-bool", ctx: nil, term: &Term{K: "bool", Bool: true}, exp: nil},
+		{name: "synth-rat", ctx: nil, term: &Term{K: "rat", Rat: big.NewRat(1, 2)}, exp: nil},
+		{name: "synth-float", ctx: nil, term: &Term{K: "float", Float: 1.5}, exp: nil},
+		{name: "synth-var-0", ctx: []*Ty{tInt()}, term: &Term{K: "var", Idx: 0}, exp: nil},
+		{name: "synth-var-1", ctx: []*Ty{tBool(), tInt()}, term: &Term{K: "var", Idx: 1}, exp: nil},
 
 		// de Bruijn edges: the index must be read from the RIGHT end
-		{"synth-var-innermost", []*Ty{tBool(), tInt()}, &Term{K: "var", Idx: 0}, nil},
-		{"synth-var-out-of-scope", []*Ty{tInt()}, &Term{K: "var", Idx: 3}, nil},
-		{"synth-var-negative", []*Ty{tInt()}, &Term{K: "var", Idx: -1}, nil},
-		{"synth-var-empty-ctx", nil, &Term{K: "var", Idx: 0}, nil},
+		{name: "synth-var-innermost", ctx: []*Ty{tBool(), tInt()}, term: &Term{K: "var", Idx: 0}, exp: nil},
+		{name: "synth-var-out-of-scope", ctx: []*Ty{tInt()}, term: &Term{K: "var", Idx: 3}, exp: nil},
+		{name: "synth-var-negative", ctx: []*Ty{tInt()}, term: &Term{K: "var", Idx: -1}, exp: nil},
+		{name: "synth-var-empty-ctx", ctx: nil, term: &Term{K: "var", Idx: 0}, exp: nil},
 
 		// check via the default path: agreeing and disagreeing
-		{"check-int-ok", nil, i(1), tInt()},
-		{"check-int-vs-bool", nil, i(1), tBool()},
-		{"check-bool-ok", nil, &Term{K: "bool"}, tBool()},
-		{"check-rat-vs-int", nil, &Term{K: "rat", Rat: big.NewRat(1, 2)}, tInt()},
-		{"check-float-ok", nil, &Term{K: "float", Float: 0}, tFloat()},
-		{"check-var-ok", []*Ty{tInt()}, &Term{K: "var", Idx: 0}, tInt()},
-		{"check-var-mismatch", []*Ty{tBool()}, &Term{K: "var", Idx: 0}, tInt()},
-		{"check-var-out-of-scope", nil, &Term{K: "var", Idx: 0}, tInt()},
+		{name: "check-int-ok", ctx: nil, term: i(1), exp: tInt()},
+		{name: "check-int-vs-bool", ctx: nil, term: i(1), exp: tBool()},
+		{name: "check-bool-ok", ctx: nil, term: &Term{K: "bool"}, exp: tBool()},
+		{name: "check-rat-vs-int", ctx: nil, term: &Term{K: "rat", Rat: big.NewRat(1, 2)}, exp: tInt()},
+		{name: "check-float-ok", ctx: nil, term: &Term{K: "float", Float: 0}, exp: tFloat()},
+		{name: "check-var-ok", ctx: []*Ty{tInt()}, term: &Term{K: "var", Idx: 0}, exp: tInt()},
+		{name: "check-var-mismatch", ctx: []*Ty{tBool()}, term: &Term{K: "var", Idx: 0}, exp: tInt()},
+		{name: "check-var-out-of-scope", ctx: nil, term: &Term{K: "var", Idx: 0}, exp: tInt()},
 
 		// missing term: both must refuse rather than fault
-		{"synth-nil-term", nil, nil, nil},
+		{name: "synth-nil-term", ctx: nil, term: nil, exp: nil},
 
 		// --- `if`: SEQUENCING is the invariant, not just the answer ---------
 		// Symmetric branches would let a machine that reordered or skipped a
 		// branch agree by coincidence, so every case below is asymmetric.
-		{"if-synth-agree", nil, mkIf(bt(true), i(1), i(2)), nil},
-		{"if-synth-disagree-bool-int", nil, mkIf(bt(true), bt(true), i(1)), nil},
-		{"if-synth-disagree-int-bool", nil, mkIf(bt(true), i(1), bt(true)), nil},
-		{"if-synth-bad-cond", nil, mkIf(i(1), i(1), i(2)), nil},
+		{name: "if-synth-agree", ctx: nil, term: mkIf(bt(true), i(1), i(2)), exp: nil},
+		{name: "if-synth-disagree-bool-int", ctx: nil, term: mkIf(bt(true), bt(true), i(1)), exp: nil},
+		{name: "if-synth-disagree-int-bool", ctx: nil, term: mkIf(bt(true), i(1), bt(true)), exp: nil},
+		{name: "if-synth-bad-cond", ctx: nil, term: mkIf(i(1), i(1), i(2)), exp: nil},
 		// The condition must be diagnosed BEFORE the branches, even when the
 		// branches also disagree — otherwise a reordered machine reports a
 		// different (and still plausible) error.
-		{"if-synth-cond-beats-branches", nil, mkIf(i(1), bt(true), i(2)), nil},
-		{"if-synth-nested", nil, mkIf(bt(true), mkIf(bt(false), i(1), i(2)), i(3)), nil},
+		{name: "if-synth-cond-beats-branches", ctx: nil, term: mkIf(i(1), bt(true), i(2)), exp: nil},
+		{name: "if-synth-nested", ctx: nil, term: mkIf(bt(true), mkIf(bt(false), i(1), i(2)), i(3)), exp: nil},
 
 		// CHECK MODE: both branches go against exp. A machine that checked the
 		// else-branch against the THEN-branch's inferred type would accept
 		// if-check-both-wrong, which the real checker rejects.
-		{"if-check-ok", nil, mkIf(bt(true), i(1), i(2)), tInt()},
-		{"if-check-both-wrong", nil, mkIf(bt(true), i(1), i(2)), tBool()},
-		{"if-check-else-wrong", nil, mkIf(bt(true), i(1), bt(true)), tInt()},
+		{name: "if-check-ok", ctx: nil, term: mkIf(bt(true), i(1), i(2)), exp: tInt()},
+		{name: "if-check-both-wrong", ctx: nil, term: mkIf(bt(true), i(1), i(2)), exp: tBool()},
+		{name: "if-check-else-wrong", ctx: nil, term: mkIf(bt(true), i(1), bt(true)), exp: tInt()},
 		// then fails first: a machine checking the else first reports the other
 		// branch's message.
-		{"if-check-then-wrong", nil, mkIf(bt(true), bt(true), i(1)), tInt()},
-		{"if-check-bad-cond", nil, mkIf(i(1), bt(true), bt(false)), tBool()},
+		{name: "if-check-then-wrong", ctx: nil, term: mkIf(bt(true), bt(true), i(1)), exp: tInt()},
+		{name: "if-check-bad-cond", ctx: nil, term: mkIf(i(1), bt(true), bt(false)), exp: tBool()},
 		// BOTH branches wrong, with DIFFERENT messages: the only shape in which
 		// branch ORDER is observable. if-check-both-wrong cannot see it, because
 		// two Int branches against Bool produce the same text twice.
-		{"if-check-both-wrong-differently", nil, mkIf(bt(true), bt(true), &Term{K: "rat", Rat: big.NewRat(3, 2)}), tInt()},
-		{"if-synth-both-wrong-differently", nil, mkIf(bt(true), bt(true), &Term{K: "rat", Rat: big.NewRat(3, 2)}), nil},
-		{"if-check-nested", nil, mkIf(bt(true), mkIf(bt(false), i(1), i(2)), i(3)), tInt()},
-		{"if-check-var-branch", []*Ty{tInt()}, mkIf(bt(true), &Term{K: "var", Idx: 0}, i(2)), tInt()},
+		{name: "if-check-both-wrong-differently", ctx: nil, term: mkIf(bt(true), bt(true), &Term{K: "rat", Rat: big.NewRat(3, 2)}), exp: tInt()},
+		{name: "if-synth-both-wrong-differently", ctx: nil, term: mkIf(bt(true), bt(true), &Term{K: "rat", Rat: big.NewRat(3, 2)}), exp: nil},
+		{name: "if-check-nested", ctx: nil, term: mkIf(bt(true), mkIf(bt(false), i(1), i(2)), i(3)), exp: tInt()},
+		{name: "if-check-var-branch", ctx: []*Ty{tInt()}, term: mkIf(bt(true), &Term{K: "var", Idx: 0}, i(2)), exp: tInt()},
 
 		// --- `let`: the invariant is CONTEXT SCOPE, not the answer ----------
-		{"let-synth-basic", nil, mkLet(tBool(), bt(true), v(0)), nil},
-		{"let-synth-annotation-mismatch", nil, mkLet(tBool(), i(1), v(0)), nil},
-		{"let-check-basic", nil, mkLet(tBool(), bt(true), v(0)), tBool()},
+		{name: "let-synth-basic", ctx: nil, term: mkLet(tBool(), bt(true), v(0)), exp: nil},
+		{name: "let-synth-annotation-mismatch", ctx: nil, term: mkLet(tBool(), i(1), v(0)), exp: nil},
+		{name: "let-check-basic", ctx: nil, term: mkLet(tBool(), bt(true), v(0)), exp: tBool()},
 		// synth says "let annotation mismatch"; check says "expected ... got".
 		// Same broken program, two different diagnostics, both preserved.
-		{"let-check-annotation-mismatch", nil, mkLet(tBool(), i(1), v(0)), tBool()},
-		{"let-check-body-mismatch", nil, mkLet(tBool(), bt(true), v(0)), tInt()},
+		{name: "let-check-annotation-mismatch", ctx: nil, term: mkLet(tBool(), i(1), v(0)), exp: tBool()},
+		{name: "let-check-body-mismatch", ctx: nil, term: mkLet(tBool(), bt(true), v(0)), exp: tInt()},
 
 		// The bound value is evaluated in the ORIGINAL context: Var 0 here is
 		// the OUTER binding, not the one being introduced.
-		{"let-bound-uses-outer-ctx", []*Ty{tInt()}, mkLet(tInt(), v(0), v(0)), nil},
-		{"let-bound-sees-no-self", nil, mkLet(tInt(), v(0), v(0)), nil},
+		{name: "let-bound-uses-outer-ctx", ctx: []*Ty{tInt()}, term: mkLet(tInt(), v(0), v(0)), exp: nil},
+		{name: "let-bound-sees-no-self", ctx: nil, term: mkLet(tInt(), v(0), v(0)), exp: nil},
 
 		// de Bruijn ordering under nesting: Var 0 is the innermost let, Var 1
 		// the outer one, Var 2 the pre-existing binding.
-		{"let-nested-inner", nil, mkLet(tBool(), bt(true), mkLet(tInt(), i(1), v(0))), nil},
-		{"let-nested-outer", nil, mkLet(tBool(), bt(true), mkLet(tInt(), i(1), v(1))), nil},
-		{"let-nested-preexisting", []*Ty{tFloat()}, mkLet(tBool(), bt(true), mkLet(tInt(), i(1), v(2))), nil},
-		{"let-nested-out-of-scope", nil, mkLet(tBool(), bt(true), mkLet(tInt(), i(1), v(2))), nil},
+		{name: "let-nested-inner", ctx: nil, term: mkLet(tBool(), bt(true), mkLet(tInt(), i(1), v(0))), exp: nil},
+		{name: "let-nested-outer", ctx: nil, term: mkLet(tBool(), bt(true), mkLet(tInt(), i(1), v(1))), exp: nil},
+		{name: "let-nested-preexisting", ctx: []*Ty{tFloat()}, term: mkLet(tBool(), bt(true), mkLet(tInt(), i(1), v(2))), exp: nil},
+		{name: "let-nested-out-of-scope", ctx: nil, term: mkLet(tBool(), bt(true), mkLet(tInt(), i(1), v(2))), exp: nil},
 
 		// THE LEAKAGE WITNESS. Var 0 resolves to Int outside and to Bool inside
 		// the let, so if the let's extended context survived into the SIBLING
 		// else-branch the two branches would agree and this would be accepted.
 		// "Forget to pop" is invisible without a sibling to leak into.
-		{"let-no-leak-to-sibling", []*Ty{tInt()},
-			mkIf(bt(true), mkLet(tBool(), bt(true), v(0)), v(0)), nil},
+		{name: "let-no-leak-to-sibling", ctx: []*Ty{tInt()}, term: mkIf(bt(true), mkLet(tBool(), bt(true), v(0)), v(0)), exp: nil},
 		// Same shape in check mode: the else-branch must still see Int.
-		{"let-no-leak-to-sibling-check", []*Ty{tInt()},
-			mkIf(bt(true), mkLet(tInt(), i(9), v(0)), v(0)), tInt()},
+		{name: "let-no-leak-to-sibling-check", ctx: []*Ty{tInt()}, term: mkIf(bt(true), mkLet(tInt(), i(9), v(0)), v(0)), exp: tInt()},
 		// A FAILING body must not leak the extended context either: the else
 		// branch is evaluated after the then-branch has unwound with an error.
-		{"let-no-leak-after-failure", []*Ty{tInt()},
-			mkIf(bt(true), mkLet(tBool(), i(1), v(0)), v(0)), nil},
+		{name: "let-no-leak-after-failure", ctx: []*Ty{tInt()}, term: mkIf(bt(true), mkLet(tBool(), i(1), v(0)), v(0)), exp: nil},
 		// let inside a let's BOUND position, so the context grows and shrinks
 		// on the way to a sibling rather than only on the way down.
-		{"let-in-bound-position", []*Ty{tInt()},
-			mkLet(tBool(), mkLet(tFloat(), &Term{K: "float"}, bt(true)), v(1)), nil},
+		{name: "let-in-bound-position", ctx: []*Ty{tInt()}, term: mkLet(tBool(), mkLet(tFloat(), &Term{K: "float"}, bt(true)), v(1)), exp: nil},
 
 		// --- `prim`: the invariant is INDEXED TRAVERSAL --------------------
-		{"prim-add-ok", nil, mkPrim("+", i(1), i(2)), nil},
-		{"prim-unary-neg", nil, mkPrim("neg", i(1)), nil},
-		{"prim-unary-not", nil, mkPrim("not", bt(true)), nil},
-		{"prim-and", nil, mkPrim("and", bt(true), bt(false)), nil},
+		{name: "prim-add-ok", ctx: nil, term: mkPrim("+", i(1), i(2)), exp: nil},
+		{name: "prim-unary-neg", ctx: nil, term: mkPrim("neg", i(1)), exp: nil},
+		{name: "prim-unary-not", ctx: nil, term: mkPrim("not", bt(true)), exp: nil},
+		{name: "prim-and", ctx: nil, term: mkPrim("and", bt(true), bt(false)), exp: nil},
 
 		// BOUNDARIES: loop machinery usually gets many-argument right and the
 		// edges wrong.
-		{"prim-zero-args", nil, mkPrim("+"), nil},
-		{"prim-zero-args-not", nil, mkPrim("not"), nil},
-		{"prim-one-arg-to-binary", nil, mkPrim("+", i(1)), nil},
-		{"prim-three-args-to-binary", nil, mkPrim("+", i(1), i(2), i(3)), nil},
+		{name: "prim-zero-args", ctx: nil, term: mkPrim("+"), exp: nil},
+		{name: "prim-zero-args-not", ctx: nil, term: mkPrim("not"), exp: nil},
+		{name: "prim-one-arg-to-binary", ctx: nil, term: mkPrim("+", i(1)), exp: nil},
+		{name: "prim-three-args-to-binary", ctx: nil, term: mkPrim("+", i(1), i(2), i(3)), exp: nil},
 
 		// ASYMMETRIC per-position failures. Identical arguments cannot witness
 		// traversal order; these fail DIFFERENTLY per position, so skipping,
 		// reordering, or double-visiting produces a distinguishable diagnostic.
-		{"prim-arg0-fails", nil, mkPrim("+", v(5), i(2)), nil},
-		{"prim-arg1-fails", nil, mkPrim("+", i(1), v(7)), nil},
+		{name: "prim-arg0-fails", ctx: nil, term: mkPrim("+", v(5), i(2)), exp: nil},
+		{name: "prim-arg1-fails", ctx: nil, term: mkPrim("+", i(1), v(7)), exp: nil},
 		// LEFTMOST wins: a machine that visits right-to-left reports index 7.
-		{"prim-both-fail-differently", nil, mkPrim("+", v(5), v(7)), nil},
-		{"prim-arg2-fails-of-three", nil, mkPrim("+", i(1), i(2), v(9)), nil},
+		{name: "prim-both-fail-differently", ctx: nil, term: mkPrim("+", v(5), v(7)), exp: nil},
+		{name: "prim-arg2-fails-of-three", ctx: nil, term: mkPrim("+", i(1), i(2), v(9)), exp: nil},
 
 		// Off-by-one in the accumulator shows up as the OPERATOR's diagnostic,
 		// because the wrong types reach primResultTy.
-		{"prim-mixed-numeric", nil, mkPrim("+", i(1), &Term{K: "rat", Rat: big.NewRat(1, 2)}), nil},
-		{"prim-bool-into-arith", nil, mkPrim("+", i(1), bt(true)), nil},
-		{"prim-int-into-bool-op", nil, mkPrim("and", bt(true), i(1)), nil},
-		{"prim-order-matters", nil, mkPrim("+", bt(true), i(1)), nil},
+		{name: "prim-mixed-numeric", ctx: nil, term: mkPrim("+", i(1), &Term{K: "rat", Rat: big.NewRat(1, 2)}), exp: nil},
+		{name: "prim-bool-into-arith", ctx: nil, term: mkPrim("+", i(1), bt(true)), exp: nil},
+		{name: "prim-int-into-bool-op", ctx: nil, term: mkPrim("and", bt(true), i(1)), exp: nil},
+		{name: "prim-order-matters", ctx: nil, term: mkPrim("+", bt(true), i(1)), exp: nil},
 
-		{"prim-nested", nil, mkPrim("+", mkPrim("+", i(1), i(2)), i(3)), nil},
-		{"prim-nested-inner-fails", nil, mkPrim("+", mkPrim("+", i(1), v(4)), i(3)), nil},
-		{"prim-in-if", nil, mkIf(mkPrim("not", bt(true)), i(1), i(2)), nil},
-		{"prim-in-let-body", nil, mkLet(tInt(), i(1), mkPrim("+", v(0), i(2))), nil},
+		{name: "prim-nested", ctx: nil, term: mkPrim("+", mkPrim("+", i(1), i(2)), i(3)), exp: nil},
+		{name: "prim-nested-inner-fails", ctx: nil, term: mkPrim("+", mkPrim("+", i(1), v(4)), i(3)), exp: nil},
+		{name: "prim-in-if", ctx: nil, term: mkIf(mkPrim("not", bt(true)), i(1), i(2)), exp: nil},
+		{name: "prim-in-let-body", ctx: nil, term: mkLet(tInt(), i(1), mkPrim("+", v(0), i(2))), exp: nil},
 
 		// check mode falls through to synthesize-then-compare, as check.go does.
-		{"prim-check-ok", nil, mkPrim("+", i(1), i(2)), tInt()},
-		{"prim-check-mismatch", nil, mkPrim("+", i(1), i(2)), tBool()},
-		{"prim-check-arg-fails", nil, mkPrim("+", v(5), i(2)), tInt()},
+		{name: "prim-check-ok", ctx: nil, term: mkPrim("+", i(1), i(2)), exp: tInt()},
+		{name: "prim-check-mismatch", ctx: nil, term: mkPrim("+", i(1), i(2)), exp: tBool()},
+		{name: "prim-check-arg-fails", ctx: nil, term: mkPrim("+", v(5), i(2)), exp: tInt()},
 
 		// --- `==`: the invariant is RECOVERY, not traversal -----------------
 		// Path 1: left synthesizes, right is CHECKED against its type.
-		{"eq-left-synths", nil, mkPrim("==", i(1), i(2)), nil},
-		{"eq-left-synths-mismatch", nil, mkPrim("==", i(1), bt(true)), nil},
-		{"eq-bools", nil, mkPrim("==", bt(true), bt(false)), nil},
-		{"eq-nested", nil, mkPrim("==", mkPrim("==", i(1), i(1)), bt(true)), nil},
+		{name: "eq-left-synths", ctx: nil, term: mkPrim("==", i(1), i(2)), exp: nil},
+		{name: "eq-left-synths-mismatch", ctx: nil, term: mkPrim("==", i(1), bt(true)), exp: nil},
+		{name: "eq-bools", ctx: nil, term: mkPrim("==", bt(true), bt(false)), exp: nil},
+		{name: "eq-nested", ctx: nil, term: mkPrim("==", mkPrim("==", i(1), i(1)), bt(true)), exp: nil},
 
 		// Path 3: BOTH operands fail synthesis. check.go discards both original
 		// errors for a fixed message, so a machine that propagates the first
 		// one — which looks more informative — is observably different.
-		{"eq-both-fail", nil, mkPrim("==", v(5), v(7)), nil},
-		{"eq-both-fail-same", nil, mkPrim("==", v(9), v(9)), nil},
+		{name: "eq-both-fail", ctx: nil, term: mkPrim("==", v(5), v(7)), exp: nil},
+		{name: "eq-both-fail-same", ctx: nil, term: mkPrim("==", v(9), v(9)), exp: nil},
 
 		// Arity is checked before either operand runs.
-		{"eq-arity-one", nil, mkPrim("==", i(1)), nil},
-		{"eq-arity-three", nil, mkPrim("==", i(1), i(2), i(3)), nil},
-		{"eq-arity-zero", nil, mkPrim("=="), nil},
+		{name: "eq-arity-one", ctx: nil, term: mkPrim("==", i(1)), exp: nil},
+		{name: "eq-arity-three", ctx: nil, term: mkPrim("==", i(1), i(2), i(3)), exp: nil},
+		{name: "eq-arity-zero", ctx: nil, term: mkPrim("=="), exp: nil},
 
 		// Left fails, right succeeds: the RECOVERY path. Witnessed here only
 		// for its failure tail — see TestEqRecoveryPathLacksAWitness.
-		{"eq-left-fails-right-int", nil, mkPrim("==", v(5), i(2)), nil},
-		{"eq-left-fails-right-bool", nil, mkPrim("==", v(5), bt(true)), nil},
-		{"eq-in-if-cond", nil, mkIf(mkPrim("==", i(1), i(1)), i(1), i(2)), nil},
-		{"eq-check-mode", nil, mkPrim("==", i(1), i(1)), tBool()},
-		{"eq-check-mode-mismatch", nil, mkPrim("==", i(1), i(1)), tInt()},
+		{name: "eq-left-fails-right-int", ctx: nil, term: mkPrim("==", v(5), i(2)), exp: nil},
+		{name: "eq-left-fails-right-bool", ctx: nil, term: mkPrim("==", v(5), bt(true)), exp: nil},
+		{name: "eq-in-if-cond", ctx: nil, term: mkIf(mkPrim("==", i(1), i(1)), i(1), i(2)), exp: nil},
+		{name: "eq-check-mode", ctx: nil, term: mkPrim("==", i(1), i(1)), exp: tBool()},
+		{name: "eq-check-mode-mismatch", ctx: nil, term: mkPrim("==", i(1), i(1)), exp: tInt()},
 
 		// --- `lam`: the invariant is the CHECK-MODE FALL-THROUGH ------------
-		{"lam-synth-identity", nil, mkLam(tInt(), v(0)), nil},
-		{"lam-synth-body-uses-param", nil, mkLam(tInt(), mkPrim("+", v(0), i(1))), nil},
-		{"lam-synth-body-fails", nil, mkLam(tInt(), v(5)), nil},
-		{"lam-synth-nested", nil, mkLam(tInt(), mkLam(tBool(), v(1))), nil},
-		{"lam-synth-shadowing", []*Ty{tBool()}, mkLam(tInt(), v(1)), nil},
+		{name: "lam-synth-identity", ctx: nil, term: mkLam(tInt(), v(0)), exp: nil},
+		{name: "lam-synth-body-uses-param", ctx: nil, term: mkLam(tInt(), mkPrim("+", v(0), i(1))), exp: nil},
+		{name: "lam-synth-body-fails", ctx: nil, term: mkLam(tInt(), v(5)), exp: nil},
+		{name: "lam-synth-nested", ctx: nil, term: mkLam(tInt(), mkLam(tBool(), v(1))), exp: nil},
+		{name: "lam-synth-shadowing", ctx: []*Ty{tBool()}, term: mkLam(tInt(), v(1)), exp: nil},
 
 		// check against a FUNCTION type: parameter compared, body checked.
-		{"lam-check-matching", nil, mkLam(tInt(), v(0)), tFun(tInt(), tInt())},
-		{"lam-check-param-mismatch", nil, mkLam(tInt(), v(0)), tFun(tBool(), tBool())},
-		{"lam-check-body-mismatch", nil, mkLam(tInt(), v(0)), tFun(tInt(), tBool())},
-		{"lam-check-nested", nil, mkLam(tInt(), mkLam(tBool(), v(1))),
-			tFun(tInt(), tFun(tBool(), tInt()))},
+		{name: "lam-check-matching", ctx: nil, term: mkLam(tInt(), v(0)), exp: tFun(tInt(), tInt())},
+		{name: "lam-check-param-mismatch", ctx: nil, term: mkLam(tInt(), v(0)), exp: tFun(tBool(), tBool())},
+		{name: "lam-check-body-mismatch", ctx: nil, term: mkLam(tInt(), v(0)), exp: tFun(tInt(), tBool())},
+		{name: "lam-check-nested", ctx: nil, term: mkLam(tInt(), mkLam(tBool(), v(1))), exp: tFun(tInt(), tFun(tBool(), tInt()))},
 
 		// THE FALL-THROUGH. check.go's `case "lam"` does not return when the
 		// expected type is not a function, so the diagnostic is the generic
 		// "expected X, got (-> ...)" and NOT a lambda-specific message.
-		{"lam-check-against-int", nil, mkLam(tInt(), v(0)), tInt()},
-		{"lam-check-against-bool", nil, mkLam(tInt(), v(0)), tBool()},
+		{name: "lam-check-against-int", ctx: nil, term: mkLam(tInt(), v(0)), exp: tInt()},
+		{name: "lam-check-against-bool", ctx: nil, term: mkLam(tInt(), v(0)), exp: tBool()},
 		// Falling through means the BODY is synthesized, so a broken body is
 		// reported by synthesis rather than by the comparison.
-		{"lam-check-against-int-broken-body", nil, mkLam(tInt(), v(9)), tInt()},
+		{name: "lam-check-against-int-broken-body", ctx: nil, term: mkLam(tInt(), v(9)), exp: tInt()},
 
 		// `==` REFUSES FUNCTION TYPES — witnessable now that lam is ported.
 		// Before this, deleting the tyHasFun check killed zero cases.
-		{"eq-function-types", nil, mkPrim("==", mkLam(tInt(), v(0)), mkLam(tInt(), v(0))), nil},
-		{"eq-function-left-only", nil, mkPrim("==", mkLam(tInt(), v(0)), i(1)), nil},
-		{"eq-function-right-only", nil, mkPrim("==", i(1), mkLam(tInt(), v(0))), nil},
+		{name: "eq-function-types", ctx: nil, term: mkPrim("==", mkLam(tInt(), v(0)), mkLam(tInt(), v(0))), exp: nil},
+		{name: "eq-function-left-only", ctx: nil, term: mkPrim("==", mkLam(tInt(), v(0)), i(1)), exp: nil},
+		{name: "eq-function-right-only", ctx: nil, term: mkPrim("==", i(1), mkLam(tInt(), v(0))), exp: nil},
 
 		// --- `app`: CURRIED, one argument per node -------------------------
 		// Positive witnesses are possible now only because lam is ported.
-		{"app-identity", nil, mkApp(mkLam(tInt(), v(0)), i(1)), nil},
-		{"app-body-uses-param", nil, mkApp(mkLam(tInt(), mkPrim("+", v(0), i(1))), i(2)), nil},
+		{name: "app-identity", ctx: nil, term: mkApp(mkLam(tInt(), v(0)), i(1)), exp: nil},
+		{name: "app-body-uses-param", ctx: nil, term: mkApp(mkLam(tInt(), mkPrim("+", v(0), i(1))), i(2)), exp: nil},
 
 		// Two applications, DISTINCT parameter types, so a machine that reused
 		// the outer parameter type would be caught.
-		{"app-curried-two", nil,
-			mkApp(mkApp(mkLam(tInt(), mkLam(tBool(), v(1))), i(1)), bt(true)), nil},
-		{"app-curried-returns-inner", nil,
-			mkApp(mkApp(mkLam(tInt(), mkLam(tBool(), v(0))), i(1)), bt(true)), nil},
+		{name: "app-curried-two", ctx: nil, term: mkApp(mkApp(mkLam(tInt(), mkLam(tBool(), v(1))), i(1)), bt(true)), exp: nil},
+		{name: "app-curried-returns-inner", ctx: nil, term: mkApp(mkApp(mkLam(tInt(), mkLam(tBool(), v(0))), i(1)), bt(true)), exp: nil},
 		// PARTIAL application: applying one of two parameters yields a function.
-		{"app-partial-yields-function", nil,
-			mkApp(mkLam(tInt(), mkLam(tBool(), v(1))), i(1)), nil},
+		{name: "app-partial-yields-function", ctx: nil, term: mkApp(mkLam(tInt(), mkLam(tBool(), v(1))), i(1)), exp: nil},
 
 		// Callee failures, in precedence order.
-		{"app-callee-synth-fails", nil, mkApp(v(5), i(1)), nil},
-		{"app-callee-non-function", nil, mkApp(i(1), i(2)), nil},
-		{"app-callee-non-function-bool", nil, mkApp(bt(true), i(2)), nil},
+		{name: "app-callee-synth-fails", ctx: nil, term: mkApp(v(5), i(1)), exp: nil},
+		{name: "app-callee-non-function", ctx: nil, term: mkApp(i(1), i(2)), exp: nil},
+		{name: "app-callee-non-function-bool", ctx: nil, term: mkApp(bt(true), i(2)), exp: nil},
 		// The CALLEE is diagnosed before the argument: both are broken here,
 		// and the callee's error must win.
-		{"app-callee-beats-argument", nil, mkApp(i(1), v(9)), nil},
+		{name: "app-callee-beats-argument", ctx: nil, term: mkApp(i(1), v(9)), exp: nil},
 		// Too many arguments surfaces as "applied a non-function" at the node
 		// where the callee stopped being one — currying has no arity check.
-		{"app-too-many-arguments", nil,
-			mkApp(mkApp(mkLam(tInt(), v(0)), i(1)), i(2)), nil},
+		{name: "app-too-many-arguments", ctx: nil, term: mkApp(mkApp(mkLam(tInt(), v(0)), i(1)), i(2)), exp: nil},
 
 		// Argument failures.
-		{"app-argument-synth-fails", nil, mkApp(mkLam(tInt(), v(0)), v(7)), nil},
-		{"app-argument-type-mismatch", nil, mkApp(mkLam(tInt(), v(0)), bt(true)), nil},
-		{"app-argument-mismatch-nested", nil,
-			mkApp(mkApp(mkLam(tInt(), mkLam(tBool(), v(1))), i(1)), i(2)), nil},
+		{name: "app-argument-synth-fails", ctx: nil, term: mkApp(mkLam(tInt(), v(0)), v(7)), exp: nil},
+		{name: "app-argument-type-mismatch", ctx: nil, term: mkApp(mkLam(tInt(), v(0)), bt(true)), exp: nil},
+		{name: "app-argument-mismatch-nested", ctx: nil, term: mkApp(mkApp(mkLam(tInt(), mkLam(tBool(), v(1))), i(1)), i(2)), exp: nil},
 
 		// The argument is SYNTHESIZED and compared, never checked: a term that
 		// only checks would fail here, and this pins the synthesize-first order.
-		{"app-argument-is-synthesized", nil,
-			mkApp(mkLam(tInt(), v(0)), mkIf(bt(true), i(1), bt(true))), nil},
+		{name: "app-argument-is-synthesized", ctx: nil, term: mkApp(mkLam(tInt(), v(0)), mkIf(bt(true), i(1), bt(true))), exp: nil},
 
-		{"app-check-ok", nil, mkApp(mkLam(tInt(), v(0)), i(1)), tInt()},
-		{"app-check-mismatch", nil, mkApp(mkLam(tInt(), v(0)), i(1)), tBool()},
-		{"app-in-if", nil, mkIf(bt(true), mkApp(mkLam(tInt(), v(0)), i(1)), i(2)), nil},
+		{name: "app-check-ok", ctx: nil, term: mkApp(mkLam(tInt(), v(0)), i(1)), exp: tInt()},
+		{name: "app-check-mismatch", ctx: nil, term: mkApp(mkLam(tInt(), v(0)), i(1)), exp: tBool()},
+		{name: "app-in-if", ctx: nil, term: mkIf(bt(true), mkApp(mkLam(tInt(), v(0)), i(1)), i(2)), exp: nil},
 
 		// --- `record` / `field`: INTERLEAVED ordering and synthesis ---------
-		{"record-empty", nil, mkRec(nil), nil},
-		{"record-one", nil, mkRec([]string{"a"}, i(1)), nil},
-		{"record-sorted", nil, mkRec([]string{"a", "b"}, i(1), bt(true)), nil},
-		{"record-three", nil, mkRec([]string{"a", "b", "c"}, i(1), bt(true), i(2)), nil},
+		{name: "record-empty", ctx: nil, term: mkRec(nil), exp: nil},
+		{name: "record-one", ctx: nil, term: mkRec([]string{"a"}, i(1)), exp: nil},
+		{name: "record-sorted", ctx: nil, term: mkRec([]string{"a", "b"}, i(1), bt(true)), exp: nil},
+		{name: "record-three", ctx: nil, term: mkRec([]string{"a", "b", "c"}, i(1), bt(true), i(2)), exp: nil},
 
-		{"record-names-values-mismatch", nil,
-			&Term{K: "record", Names: []string{"a", "b"}, Args: []Term{*i(1)}}, nil},
-		{"record-unsorted", nil, mkRec([]string{"b", "a"}, i(1), bt(true)), nil},
-		{"record-duplicate-names", nil, mkRec([]string{"a", "a"}, i(1), bt(true)), nil},
+		{name: "record-names-values-mismatch", ctx: nil, term: &Term{K: "record", Names: []string{"a", "b"}, Args: []Term{*i(1)}}, exp: nil},
+		{name: "record-unsorted", ctx: nil, term: mkRec([]string{"b", "a"}, i(1), bt(true)), exp: nil},
+		{name: "record-duplicate-names", ctx: nil, term: mkRec([]string{"a", "a"}, i(1), bt(true)), exp: nil},
 
 		// THE INTERLEAVING. Ordering for index i is checked BEFORE value i is
 		// synthesized, so a broken value at the OUT-OF-ORDER index is never
 		// reached and the ordering error wins...
-		{"record-unsorted-beats-later-bad-value", nil,
-			mkRec([]string{"b", "a"}, i(1), v(9)), nil},
+		{name: "record-unsorted-beats-later-bad-value", ctx: nil, term: mkRec([]string{"b", "a"}, i(1), v(9)), exp: nil},
 		// ...while a broken value at index 0 is reported first, because index 0
 		// has no predecessor to compare against.
-		{"record-bad-value-at-zero-beats-unsorted", nil,
-			mkRec([]string{"b", "a"}, v(9), i(1)), nil},
-		{"record-bad-value-middle", nil,
-			mkRec([]string{"a", "b", "c"}, i(1), v(9), i(2)), nil},
-		{"record-two-bad-values-differently", nil,
-			mkRec([]string{"a", "b"}, v(5), v(7)), nil},
+		{name: "record-bad-value-at-zero-beats-unsorted", ctx: nil, term: mkRec([]string{"b", "a"}, v(9), i(1)), exp: nil},
+		{name: "record-bad-value-middle", ctx: nil, term: mkRec([]string{"a", "b", "c"}, i(1), v(9), i(2)), exp: nil},
+		{name: "record-two-bad-values-differently", ctx: nil, term: mkRec([]string{"a", "b"}, v(5), v(7)), exp: nil},
 
-		{"field-ok", nil, mkField(mkRec([]string{"a", "b"}, i(1), bt(true)), "a"), nil},
-		{"field-ok-second", nil, mkField(mkRec([]string{"a", "b"}, i(1), bt(true)), "b"), nil},
-		{"field-missing", nil, mkField(mkRec([]string{"a"}, i(1)), "zz"), nil},
-		{"field-on-non-record", nil, mkField(i(1), "a"), nil},
-		{"field-record-fails", nil, mkField(mkRec([]string{"b", "a"}, i(1), i(2)), "a"), nil},
-		{"field-nested", nil,
-			mkField(mkRec([]string{"r"}, mkRec([]string{"a"}, i(1))), "r"), nil},
+		{name: "field-ok", ctx: nil, term: mkField(mkRec([]string{"a", "b"}, i(1), bt(true)), "a"), exp: nil},
+		{name: "field-ok-second", ctx: nil, term: mkField(mkRec([]string{"a", "b"}, i(1), bt(true)), "b"), exp: nil},
+		{name: "field-missing", ctx: nil, term: mkField(mkRec([]string{"a"}, i(1)), "zz"), exp: nil},
+		{name: "field-on-non-record", ctx: nil, term: mkField(i(1), "a"), exp: nil},
+		{name: "field-record-fails", ctx: nil, term: mkField(mkRec([]string{"b", "a"}, i(1), i(2)), "a"), exp: nil},
+		{name: "field-nested", ctx: nil, term: mkField(mkRec([]string{"r"}, mkRec([]string{"a"}, i(1))), "r"), exp: nil},
 
-		{"record-check-ok", nil, mkRec([]string{"a"}, i(1)),
-			&Ty{K: "record", Names: []string{"a"}, Args: []Ty{*tInt()}}},
-		{"record-check-mismatch", nil, mkRec([]string{"a"}, i(1)), tInt()},
-		{"field-check-ok", nil, mkField(mkRec([]string{"a"}, i(1)), "a"), tInt()},
-		{"record-in-lam", nil, mkLam(tInt(), mkRec([]string{"a"}, v(0))), nil},
+		{name: "record-check-ok", ctx: nil, term: mkRec([]string{"a"}, i(1)), exp: &Ty{K: "record", Names: []string{"a"}, Args: []Ty{*tInt()}}},
+		{name: "record-check-mismatch", ctx: nil, term: mkRec([]string{"a"}, i(1)), exp: tInt()},
+		{name: "field-check-ok", ctx: nil, term: mkField(mkRec([]string{"a"}, i(1)), "a"), exp: tInt()},
+		{name: "record-in-lam", ctx: nil, term: mkLam(tInt(), mkRec([]string{"a"}, v(0))), exp: nil},
 	}
 }
 
@@ -350,6 +338,7 @@ func TestPortedFamilyMatchesRecursiveChecker(t *testing.T) {
 	st := canonicalStore(t)
 
 	cases := append(portedFamilyCases(), matchCases(t, st)...)
+	cases = append(cases, refSelfCases(t, st)...)
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Snapshot the term before either runs, so a mutation by EITHER
@@ -364,7 +353,7 @@ func TestPortedFamilyMatchesRecursiveChecker(t *testing.T) {
 			// total over these structs and still detects any field change.
 			before := snapshotTerm(tc.term)
 
-			rc := &checker{st: st}
+			rc := &checker{st: st, selfTy: tc.selfTy, selfTyVars: tc.selfTyVars}
 			var rTy *Ty
 			var rErr error
 			if tc.exp == nil {
@@ -373,7 +362,7 @@ func TestPortedFamilyMatchesRecursiveChecker(t *testing.T) {
 				rErr = rc.check(tc.ctx, tc.term, tc.exp)
 			}
 
-			m := &checkerMachine{st: st}
+			m := &checkerMachine{st: st, selfTy: tc.selfTy, selfTyVars: tc.selfTyVars}
 			step := checkerStep{mode: modeSynth, ctx: tc.ctx, term: tc.term}
 			if tc.exp != nil {
 				step = checkerStep{mode: modeCheck, ctx: tc.ctx, term: tc.term, exp: tc.exp}
@@ -432,8 +421,7 @@ func TestPortedFamilyMatchesRecursiveChecker(t *testing.T) {
 func TestUnportedFamiliesRefuse(t *testing.T) {
 	st := canonicalStore(t)
 	unported := []*Term{
-		{K: "ctor"},
-		{K: "ref"}, {K: "self"}, {K: "str"},
+		{K: "ctor"}, {K: "str"},
 	}
 	for _, term := range unported {
 		for _, mode := range []checkMode{modeSynth, modeCheck} {
@@ -579,54 +567,116 @@ func matchCases(t *testing.T, st *Store) []familyCase {
 	// Inside the Cons arm the context gains Int then (List Int), so Var 0 is
 	// the tail, Var 1 the head, Var 2 the original scrutinee.
 	return []familyCase{
-		{"match-arms-agree", inList, mkMatch(v(0), i(0), v(1)), nil},
-		{"match-arms-disagree", inList, mkMatch(v(0), i(0), v(0)), nil},
+		{name: "match-arms-agree", ctx: inList, term: mkMatch(v(0), i(0), v(1)), exp: nil},
+		{name: "match-arms-disagree", ctx: inList, term: mkMatch(v(0), i(0), v(0)), exp: nil},
 		// Reversed, so the "X vs Y" order in the diagnostic is observable.
-		{"match-arms-disagree-reversed", inList, mkMatch(v(0), bt(true), v(1)), nil},
+		{name: "match-arms-disagree-reversed", ctx: inList, term: mkMatch(v(0), bt(true), v(1)), exp: nil},
 
 		// PER-ARM CONTEXT. The Nil arm binds nothing, so Var 0 there is the
 		// scrutinee itself; in the Cons arm Var 0 is the tail. A machine that
 		// reused one arm's context for the other changes both arms' types.
-		{"match-nil-arm-sees-scrutinee", inList, mkMatch(v(0), v(0), v(0)), nil},
-		{"match-cons-arm-binds-head", inList, mkMatch(v(0), i(0), v(1)), nil},
-		{"match-cons-arm-binds-tail", inList, mkMatch(v(0), v(0), v(0)), nil},
-		{"match-cons-arm-reaches-outer", inList, mkMatch(v(0), v(0), v(2)), nil},
+		{name: "match-nil-arm-sees-scrutinee", ctx: inList, term: mkMatch(v(0), v(0), v(0)), exp: nil},
+		{name: "match-cons-arm-binds-head", ctx: inList, term: mkMatch(v(0), i(0), v(1)), exp: nil},
+		{name: "match-cons-arm-binds-tail", ctx: inList, term: mkMatch(v(0), v(0), v(0)), exp: nil},
+		{name: "match-cons-arm-reaches-outer", ctx: inList, term: mkMatch(v(0), v(0), v(2)), exp: nil},
 		// Out of scope in the NIL arm but in scope in the Cons arm: a machine
 		// that extended both arms identically would accept this.
-		{"match-nil-arm-out-of-scope", inList, mkMatch(v(0), v(1), v(1)), nil},
+		{name: "match-nil-arm-out-of-scope", ctx: inList, term: mkMatch(v(0), v(1), v(1)), exp: nil},
 
 		// Scrutinee and shape failures, in precedence order.
-		{"match-scrutinee-not-data", nil, mkMatch(i(1), i(0), i(0)), nil},
-		{"match-scrutinee-fails", nil, mkMatch(v(9), i(0), i(0)), nil},
-		{"match-too-few-arms", inList, mkMatch(v(0), i(0)), nil},
-		{"match-too-many-arms", inList, mkMatch(v(0), i(0), i(1), i(2)), nil},
+		{name: "match-scrutinee-not-data", ctx: nil, term: mkMatch(i(1), i(0), i(0)), exp: nil},
+		{name: "match-scrutinee-fails", ctx: nil, term: mkMatch(v(9), i(0), i(0)), exp: nil},
+		{name: "match-too-few-arms", ctx: inList, term: mkMatch(v(0), i(0)), exp: nil},
+		{name: "match-too-many-arms", ctx: inList, term: mkMatch(v(0), i(0), i(1), i(2)), exp: nil},
 		// The scrutinee is diagnosed before the arm count.
-		{"match-scrutinee-beats-arm-count", nil, mkMatch(i(1), i(0)), nil},
+		{name: "match-scrutinee-beats-arm-count", ctx: nil, term: mkMatch(i(1), i(0)), exp: nil},
 
 		// Arm failures: LEFTMOST wins, and the two fail differently.
-		{"match-first-arm-fails", inList, mkMatch(v(0), v(9), v(1)), nil},
-		{"match-second-arm-fails", inList, mkMatch(v(0), i(0), v(9)), nil},
-		{"match-both-arms-fail-differently", inList, mkMatch(v(0), v(8), v(9)), nil},
+		{name: "match-first-arm-fails", ctx: inList, term: mkMatch(v(0), v(9), v(1)), exp: nil},
+		{name: "match-second-arm-fails", ctx: inList, term: mkMatch(v(0), i(0), v(9)), exp: nil},
+		{name: "match-both-arms-fail-differently", ctx: inList, term: mkMatch(v(0), v(8), v(9)), exp: nil},
 
 		// CHECK MODE: every arm is checked against exp; there is no candidate
 		// and no arms-disagree diagnostic.
-		{"match-check-ok", inList, mkMatch(v(0), i(0), v(1)), tInt()},
-		{"match-check-arm-mismatch", inList, mkMatch(v(0), i(0), v(0)), tInt()},
-		{"match-check-both-arms-wrong", inList, mkMatch(v(0), bt(true), v(0)), tInt()},
-		{"match-check-scrutinee-not-data", nil, mkMatch(i(1), i(0), i(0)), tInt()},
+		{name: "match-check-ok", ctx: inList, term: mkMatch(v(0), i(0), v(1)), exp: tInt()},
+		{name: "match-check-arm-mismatch", ctx: inList, term: mkMatch(v(0), i(0), v(0)), exp: tInt()},
+		{name: "match-check-both-arms-wrong", ctx: inList, term: mkMatch(v(0), bt(true), v(0)), exp: tInt()},
+		{name: "match-check-scrutinee-not-data", ctx: nil, term: mkMatch(i(1), i(0), i(0)), exp: tInt()},
 
 		// `Result [a e]` is the witness `List` cannot provide: BOTH its
 		// constructors bind, so a context that leaks from arm 0 into arm 1
 		// changes what Var 1 resolves to there. In List the only binding
 		// constructor is the LAST arm, leaving a leak nothing to contaminate —
 		// which is why a leak mutant killed zero cases until this was added.
-		{"match-result-both-arms-bind", inResult, mkMatch(v(0), v(0), v(0)), nil},
-		{"match-result-arm-reaches-outer", inResult, mkMatch(v(0), v(1), v(1)), nil},
-		{"match-result-leak-witness", inResult, mkMatch(v(0), i(0), v(1)), nil},
-		{"match-result-check-mode", inResult, mkMatch(v(0), v(0), i(0)), tInt()},
+		{name: "match-result-both-arms-bind", ctx: inResult, term: mkMatch(v(0), v(0), v(0)), exp: nil},
+		{name: "match-result-arm-reaches-outer", ctx: inResult, term: mkMatch(v(0), v(1), v(1)), exp: nil},
+		{name: "match-result-leak-witness", ctx: inResult, term: mkMatch(v(0), i(0), v(1)), exp: nil},
+		{name: "match-result-check-mode", ctx: inResult, term: mkMatch(v(0), v(0), i(0)), exp: tInt()},
 
-		{"match-nested-in-arm", inList,
-			mkMatch(v(0), i(0), mkMatch(v(0), i(1), v(1))), nil},
-		{"match-in-lam", nil, mkLam(listInt, mkMatch(v(0), i(0), v(1))), nil},
+		{name: "match-nested-in-arm", ctx: inList, term: mkMatch(v(0), i(0), mkMatch(v(0), i(1), v(1))), exp: nil},
+		{name: "match-in-lam", ctx: nil, term: mkLam(listInt, mkMatch(v(0), i(0), v(1))), exp: nil},
+	}
+}
+
+// refSelfCases needs the corpus: a `ref` names a stored definition by hash, so
+// the family cannot be exercised against hand-built terms alone.
+func refSelfCases(t *testing.T, st *Store) []familyCase {
+	t.Helper()
+	names := st.Names()
+	var mono, poly, data string
+	for n, h := range names {
+		d, err := st.GetDef(h)
+		if err != nil {
+			continue
+		}
+		switch {
+		case d.K == "data" && data == "":
+			data = h
+		case d.K == "func" && d.TyVars == 0 && mono == "":
+			mono = h
+			_ = n
+		case d.K == "func" && d.TyVars == 1 && poly == "":
+			poly = h
+		}
+	}
+	if mono == "" || poly == "" || data == "" {
+		t.Fatalf("corpus lacks a monomorphic func, a 1-parameter func, or a datatype "+
+			"(%q %q %q); ref/self cannot be witnessed", mono, poly, data)
+	}
+	ref := func(h string, args ...Ty) *Term { return &Term{K: "ref", Hash: h, TyArgs: args} }
+	self := func(args ...Ty) *Term { return &Term{K: "self", TyArgs: args} }
+
+	return []familyCase{
+		{name: "ref-monomorphic", term: ref(mono)},
+		{name: "ref-polymorphic-instantiated", term: ref(poly, *tInt())},
+		{name: "ref-polymorphic-other-instantiation", term: ref(poly, *tBool())},
+
+		// Arity is reported BEFORE any argument's well-formedness, so a
+		// wrong-count reference with a bad argument still blames the count.
+		{name: "ref-too-few-tyargs", term: ref(poly)},
+		{name: "ref-too-many-tyargs", term: ref(mono, *tInt())},
+		{name: "ref-wrong-count-and-bad-arg", term: ref(mono, Ty{K: "data", Hash: "nope"})},
+		{name: "ref-bad-tyarg", term: ref(poly, Ty{K: "data", Hash: "nope"})},
+
+		{name: "ref-to-a-datatype", term: ref(data)},
+		{name: "ref-unknown-hash", term: &Term{K: "ref", Hash: "0000000000000000"}},
+
+		// `self` resolves against the ENCLOSING definition, not the store.
+		{name: "self-outside-a-definition", term: self()},
+		{name: "self-monomorphic", term: self(), selfTy: tInt()},
+		{name: "self-wrong-tyarg-count", term: self(*tInt()), selfTy: tInt()},
+		{name: "self-polymorphic", term: self(*tInt()),
+			selfTy: tFun(&Ty{K: "var", Var: 0}, &Ty{K: "var", Var: 0}), selfTyVars: 1},
+		{name: "self-polymorphic-missing-arg", term: self(),
+			selfTy: tFun(&Ty{K: "var", Var: 0}, &Ty{K: "var", Var: 0}), selfTyVars: 1},
+
+		// Composed with ported families, so substitution flows outward.
+		{name: "ref-in-if", term: mkIf(bt(true), ref(mono), ref(mono))},
+		// NOTE: an application whose HEAD is a ref is NOT this family — it is
+		// the spine inference  refuses, covered by
+		// TestAppRefusesRefSelfSpines. A case for it here would fail as
+		// not-yet-ported, which is the correct answer to the wrong question.
+		{name: "self-in-let-body", term: mkLet(tInt(), i(1), self()), selfTy: tInt()},
+		{name: "ref-check-mode", term: ref(mono), exp: tInt()},
 	}
 }

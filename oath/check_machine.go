@@ -587,7 +587,7 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 			m.stack = append(m.stack, &ifBranchFrame{ctx: s.ctx, term: s.term, exp: s.exp, part: "cond"})
 			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
 			return checkResult{}, false, nil
-		case "var", "int", "rat", "float", "bool", "prim", "record", "field":
+		case "var", "int", "rat", "float", "bool", "prim", "record", "field", "ref", "self":
 			// The DEFAULT path: synthesize, then compare. check.go has no
 			// `prim` case either — it falls through to exactly this.
 			m.stack = append(m.stack, &checkCompareFrame{exp: s.exp})
@@ -619,6 +619,15 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 		// SYNTH MODE: the bound value is SYNTHESIZED, then compared.
 		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
 		return checkResult{}, false, nil
+	case "ref", "self":
+		// LEAVES: lookup, validate, substitute. No sub-judgement, so no frame.
+		//
+		// The ref/self-HEADED APPLICATION SPINE is a different obligation and
+		// stays refused in `app`: it infers omitted type arguments across a
+		// whole spine (#35) rather than typing one reference. Keeping them
+		// apart means a divergence names which behaviour diverged.
+		ty, err := m.refSelfTy(s.term)
+		return checkResult{ty: ty, err: err}, true, nil
 	case "match":
 		m.stack = append(m.stack, &matchArmFrame{ctx: s.ctx, term: s.term, part: "scrutinee"})
 		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
@@ -939,4 +948,42 @@ func (f *matchArmFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, 
 		return frameOutcome{next: &next}, nil
 	}
 	return frameOutcome{done: &checkResult{ty: f.result}}, nil
+}
+
+// refSelfTy types a bare reference or self-reference. Extracted as one function
+// because the two share every step but their source of truth: a stored
+// definition's type for `ref`, the enclosing definition's for `self`.
+func (m *checkerMachine) refSelfTy(t *Term) (*Ty, error) {
+	var base *Ty
+	var want int
+	if t.K == "self" {
+		if m.selfTy == nil {
+			return nil, fmt.Errorf("self-reference outside a function definition")
+		}
+		base, want = m.selfTy, m.selfTyVars
+		if len(t.TyArgs) != want {
+			return nil, fmt.Errorf("self-reference given %d type arguments, expected %d", len(t.TyArgs), want)
+		}
+	} else {
+		d, err := m.st.GetDef(t.Hash)
+		if err != nil {
+			return nil, err
+		}
+		if d.K != "func" {
+			return nil, fmt.Errorf("%s is a data definition, not a term", shortHash(t.Hash))
+		}
+		if len(t.TyArgs) != d.TyVars {
+			return nil, fmt.Errorf("reference to %s given %d type arguments, expected %d",
+				shortHash(t.Hash), len(t.TyArgs), d.TyVars)
+		}
+		base = d.Ty
+	}
+	// Well-formedness of each argument is checked AFTER the count, so a
+	// wrong-arity reference reports arity even when an argument is also bad.
+	for i := range t.TyArgs {
+		if err := checkTyWF(m.st, &t.TyArgs[i], m.selfTyVars, false); err != nil {
+			return nil, err
+		}
+	}
+	return substTy(base, t.TyArgs), nil
 }
