@@ -217,8 +217,52 @@ func portedFamilyCases() []familyCase {
 		{"eq-function-types", nil, mkPrim("==", mkLam(tInt(), v(0)), mkLam(tInt(), v(0))), nil},
 		{"eq-function-left-only", nil, mkPrim("==", mkLam(tInt(), v(0)), i(1)), nil},
 		{"eq-function-right-only", nil, mkPrim("==", i(1), mkLam(tInt(), v(0))), nil},
+
+		// --- `app`: CURRIED, one argument per node -------------------------
+		// Positive witnesses are possible now only because lam is ported.
+		{"app-identity", nil, mkApp(mkLam(tInt(), v(0)), i(1)), nil},
+		{"app-body-uses-param", nil, mkApp(mkLam(tInt(), mkPrim("+", v(0), i(1))), i(2)), nil},
+
+		// Two applications, DISTINCT parameter types, so a machine that reused
+		// the outer parameter type would be caught.
+		{"app-curried-two", nil,
+			mkApp(mkApp(mkLam(tInt(), mkLam(tBool(), v(1))), i(1)), bt(true)), nil},
+		{"app-curried-returns-inner", nil,
+			mkApp(mkApp(mkLam(tInt(), mkLam(tBool(), v(0))), i(1)), bt(true)), nil},
+		// PARTIAL application: applying one of two parameters yields a function.
+		{"app-partial-yields-function", nil,
+			mkApp(mkLam(tInt(), mkLam(tBool(), v(1))), i(1)), nil},
+
+		// Callee failures, in precedence order.
+		{"app-callee-synth-fails", nil, mkApp(v(5), i(1)), nil},
+		{"app-callee-non-function", nil, mkApp(i(1), i(2)), nil},
+		{"app-callee-non-function-bool", nil, mkApp(bt(true), i(2)), nil},
+		// The CALLEE is diagnosed before the argument: both are broken here,
+		// and the callee's error must win.
+		{"app-callee-beats-argument", nil, mkApp(i(1), v(9)), nil},
+		// Too many arguments surfaces as "applied a non-function" at the node
+		// where the callee stopped being one — currying has no arity check.
+		{"app-too-many-arguments", nil,
+			mkApp(mkApp(mkLam(tInt(), v(0)), i(1)), i(2)), nil},
+
+		// Argument failures.
+		{"app-argument-synth-fails", nil, mkApp(mkLam(tInt(), v(0)), v(7)), nil},
+		{"app-argument-type-mismatch", nil, mkApp(mkLam(tInt(), v(0)), bt(true)), nil},
+		{"app-argument-mismatch-nested", nil,
+			mkApp(mkApp(mkLam(tInt(), mkLam(tBool(), v(1))), i(1)), i(2)), nil},
+
+		// The argument is SYNTHESIZED and compared, never checked: a term that
+		// only checks would fail here, and this pins the synthesize-first order.
+		{"app-argument-is-synthesized", nil,
+			mkApp(mkLam(tInt(), v(0)), mkIf(bt(true), i(1), bt(true))), nil},
+
+		{"app-check-ok", nil, mkApp(mkLam(tInt(), v(0)), i(1)), tInt()},
+		{"app-check-mismatch", nil, mkApp(mkLam(tInt(), v(0)), i(1)), tBool()},
+		{"app-in-if", nil, mkIf(bt(true), mkApp(mkLam(tInt(), v(0)), i(1)), i(2)), nil},
 	}
 }
+
+func mkApp(fn, arg *Term) *Term { return &Term{K: "app", A: fn, B: arg} }
 
 func mkLam(param *Ty, body *Term) *Term { return &Term{K: "lam", Ty: param, A: body} }
 
@@ -319,7 +363,7 @@ func TestPortedFamilyMatchesRecursiveChecker(t *testing.T) {
 func TestUnportedFamiliesRefuse(t *testing.T) {
 	st := canonicalStore(t)
 	unported := []*Term{
-		{K: "ctor"}, {K: "app"},
+		{K: "ctor"},
 		{K: "match"}, {K: "record"},
 		{K: "field"}, {K: "ref"}, {K: "self"}, {K: "str"},
 	}
@@ -407,5 +451,29 @@ func TestEqWitnessGapsAreStillBlocked(t *testing.T) {
 		t.Error("constructors are ported, so `==`'s RECOVERY path can now be witnessed " +
 			"end to end: add (== (Nil) (Nil [Int])) — left fails synthesis, right " +
 			"succeeds, left then CHECKS successfully — then drop this assertion")
+	}
+}
+
+// TestAppRefusesRefSelfSpines keeps the family boundary explicit. Resolving a
+// definition through the store and inferring type arguments across a whole
+// application spine belongs to ref/self, not to `app`. Refusing by name — the
+// same treatment `==` got inside prim — stops `app` absorbing two semantic
+// families and blurring where a differential failure came from.
+func TestAppRefusesRefSelfSpines(t *testing.T) {
+	st := canonicalStore(t)
+	for _, head := range []string{"ref", "self"} {
+		m := &checkerMachine{st: st}
+		term := mkApp(&Term{K: head}, i(1))
+		_, err := m.run(checkerStep{mode: modeSynth, term: term})
+		var nf errFamilyNotPorted
+		if !errors.As(err, &nf) {
+			t.Errorf("an app with a %s head must be refused by name, got %v", head, err)
+		}
+	}
+	// ...while ordinary application still works, or the refusal above would
+	// just be the whole family being absent.
+	m := &checkerMachine{st: st}
+	if _, err := m.run(checkerStep{mode: modeSynth, term: mkApp(mkLam(tInt(), v(0)), i(1))}); err != nil {
+		t.Fatalf("ordinary application must still be ported, got %v", err)
 	}
 }

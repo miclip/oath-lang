@@ -214,15 +214,24 @@ func (f *ctorValidateFrame) describe() string { return "ctor:validate(" + f.rout
 
 // The remaining families, named now so the port has a checklist rather than a
 // search. Each corresponds to a recursive call in check.go.
-type appArgFrame struct { // application: head done, argument pending
+// appArgFrame sequences one application node. Applications are CURRIED — one
+// argument per node — so there is no arity check here: applying too many
+// arguments surfaces as "applied a non-function" at the node where the callee
+// has stopped being one.
+//
+// THE ARGUMENT IS SYNTHESIZED AND COMPARED, NOT CHECKED against the parameter
+// type. That is not the same thing: a term that only CHECKS — a bare
+// constructor whose type arguments the parameter would determine — fails here
+// today. A port that "improves" this to a check would accept programs the
+// current checker rejects.
+type appArgFrame struct {
 	ctx  []*Ty
-	head *Term
-	args []*Term
-	exp  *Ty
-	idx  int
+	term *Term
+	fnTy *Ty    // the callee's type, once synthesized
+	part string // fn | arg
 }
 
-func (f *appArgFrame) describe() string { return "app:arg" }
+func (f *appArgFrame) describe() string { return "app:" + f.part }
 
 // ifBranchFrame sequences an `if`: condition, then-branch, else-branch, in that
 // order. One frame advances through the three parts rather than three frame
@@ -406,7 +415,6 @@ func (f *ctorSolveFrame) resume(*checkerMachine, checkResult) (frameOutcome, err
 func (f *ctorValidateFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
 	return notPorted(f)
 }
-func (f *appArgFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) { return notPorted(f) }
 func (f *matchArmFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
 	return notPorted(f)
 }
@@ -479,6 +487,15 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 	}
 	if s.mode == modeCheck {
 		switch s.term.K {
+		case "app":
+			if head, _ := spine(s.term); head.K == "ref" || head.K == "self" {
+				return checkResult{}, false, errFamilyNotPorted{"app with a ref/self head", modeCheck}
+			}
+			// check.go's `case "app"` only handles the ref/self spine; anything
+			// else FALLS THROUGH to synthesize-then-compare.
+			m.stack = append(m.stack, &checkCompareFrame{exp: s.exp})
+			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term}
+			return checkResult{}, false, nil
 		case "lam":
 			if s.exp != nil && s.exp.K == "fun" {
 				if err := checkTyWF(m.st, s.term.Ty, m.selfTyVars, false); err != nil {
@@ -543,6 +560,17 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 		}
 		m.stack = append(m.stack, &letBodyFrame{ctx: s.ctx, term: s.term, part: "bound"})
 		// SYNTH MODE: the bound value is SYNTHESIZED, then compared.
+		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
+		return checkResult{}, false, nil
+	case "app":
+		// Spine inference over a ref/self head belongs to THAT family: it
+		// resolves definitions through the store and infers type arguments
+		// across the whole spine. Refused by name so app cannot quietly absorb
+		// two semantic families and blur where a divergence came from.
+		if head, _ := spine(s.term); head.K == "ref" || head.K == "self" {
+			return checkResult{}, false, errFamilyNotPorted{"app with a ref/self head", modeSynth}
+		}
+		m.stack = append(m.stack, &appArgFrame{ctx: s.ctx, term: s.term, part: "fn"})
 		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
 		return checkResult{}, false, nil
 	case "lam":
@@ -744,4 +772,26 @@ func (f *eqFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, error)
 		}
 		return frameOutcome{done: &checkResult{ty: tBool()}}, nil
 	}
+}
+
+func (f *appArgFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, error) {
+	if r.err != nil {
+		return frameOutcome{done: &checkResult{err: r.err}}, nil
+	}
+	if f.part == "fn" {
+		if r.ty == nil || r.ty.K != "fun" {
+			return frameOutcome{done: &checkResult{
+				err: fmt.Errorf("applied a non-function (type %s)", debugTy(r.ty))}}, nil
+		}
+		f.fnTy = r.ty
+		f.part = "arg"
+		next := checkerStep{mode: modeSynth, ctx: f.ctx, term: f.term.B}
+		return frameOutcome{next: &next}, nil
+	}
+	if !tyEq(r.ty, f.fnTy.A) {
+		return frameOutcome{done: &checkResult{
+			err: fmt.Errorf("argument type mismatch: expected %s, got %s",
+				debugTy(f.fnTy.A), debugTy(r.ty))}}, nil
+	}
+	return frameOutcome{done: &checkResult{ty: f.fnTy.B}}, nil
 }
