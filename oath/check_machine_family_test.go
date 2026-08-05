@@ -84,7 +84,51 @@ func portedFamilyCases() []familyCase {
 		{"if-synth-both-wrong-differently", nil, mkIf(bt(true), bt(true), &Term{K: "rat", Rat: big.NewRat(3, 2)}), nil},
 		{"if-check-nested", nil, mkIf(bt(true), mkIf(bt(false), i(1), i(2)), i(3)), tInt()},
 		{"if-check-var-branch", []*Ty{tInt()}, mkIf(bt(true), &Term{K: "var", Idx: 0}, i(2)), tInt()},
+
+		// --- `let`: the invariant is CONTEXT SCOPE, not the answer ----------
+		{"let-synth-basic", nil, mkLet(tBool(), bt(true), v(0)), nil},
+		{"let-synth-annotation-mismatch", nil, mkLet(tBool(), i(1), v(0)), nil},
+		{"let-check-basic", nil, mkLet(tBool(), bt(true), v(0)), tBool()},
+		// synth says "let annotation mismatch"; check says "expected ... got".
+		// Same broken program, two different diagnostics, both preserved.
+		{"let-check-annotation-mismatch", nil, mkLet(tBool(), i(1), v(0)), tBool()},
+		{"let-check-body-mismatch", nil, mkLet(tBool(), bt(true), v(0)), tInt()},
+
+		// The bound value is evaluated in the ORIGINAL context: Var 0 here is
+		// the OUTER binding, not the one being introduced.
+		{"let-bound-uses-outer-ctx", []*Ty{tInt()}, mkLet(tInt(), v(0), v(0)), nil},
+		{"let-bound-sees-no-self", nil, mkLet(tInt(), v(0), v(0)), nil},
+
+		// de Bruijn ordering under nesting: Var 0 is the innermost let, Var 1
+		// the outer one, Var 2 the pre-existing binding.
+		{"let-nested-inner", nil, mkLet(tBool(), bt(true), mkLet(tInt(), i(1), v(0))), nil},
+		{"let-nested-outer", nil, mkLet(tBool(), bt(true), mkLet(tInt(), i(1), v(1))), nil},
+		{"let-nested-preexisting", []*Ty{tFloat()}, mkLet(tBool(), bt(true), mkLet(tInt(), i(1), v(2))), nil},
+		{"let-nested-out-of-scope", nil, mkLet(tBool(), bt(true), mkLet(tInt(), i(1), v(2))), nil},
+
+		// THE LEAKAGE WITNESS. Var 0 resolves to Int outside and to Bool inside
+		// the let, so if the let's extended context survived into the SIBLING
+		// else-branch the two branches would agree and this would be accepted.
+		// "Forget to pop" is invisible without a sibling to leak into.
+		{"let-no-leak-to-sibling", []*Ty{tInt()},
+			mkIf(bt(true), mkLet(tBool(), bt(true), v(0)), v(0)), nil},
+		// Same shape in check mode: the else-branch must still see Int.
+		{"let-no-leak-to-sibling-check", []*Ty{tInt()},
+			mkIf(bt(true), mkLet(tInt(), i(9), v(0)), v(0)), tInt()},
+		// A FAILING body must not leak the extended context either: the else
+		// branch is evaluated after the then-branch has unwound with an error.
+		{"let-no-leak-after-failure", []*Ty{tInt()},
+			mkIf(bt(true), mkLet(tBool(), i(1), v(0)), v(0)), nil},
+		// let inside a let's BOUND position, so the context grows and shrinks
+		// on the way to a sibling rather than only on the way down.
+		{"let-in-bound-position", []*Ty{tInt()},
+			mkLet(tBool(), mkLet(tFloat(), &Term{K: "float"}, bt(true)), v(1)), nil},
 	}
+}
+
+func v(idx int) *Term { return &Term{K: "var", Idx: idx} }
+func mkLet(ty *Ty, bound, body *Term) *Term {
+	return &Term{K: "let", Ty: ty, A: bound, B: body}
 }
 
 func bt(b bool) *Term          { return &Term{K: "bool", Bool: b} }
@@ -171,7 +215,7 @@ func TestPortedFamilyMatchesRecursiveChecker(t *testing.T) {
 func TestUnportedFamiliesRefuse(t *testing.T) {
 	st := canonicalStore(t)
 	unported := []*Term{
-		{K: "ctor"}, {K: "app"}, {K: "lam"}, {K: "let"},
+		{K: "ctor"}, {K: "app"}, {K: "lam"},
 		{K: "match"}, {K: "prim"}, {K: "record"},
 		{K: "field"}, {K: "ref"}, {K: "self"}, {K: "str"},
 	}

@@ -249,13 +249,34 @@ type ifBranchFrame struct {
 
 func (f *ifBranchFrame) describe() string { return "if:" + f.part }
 
-type letBodyFrame struct { // let: bound expression done, body pending
+// letBodyFrame sequences a `let`: the bound expression, then the body under an
+// EXTENDED context.
+//
+// CONTEXT RESTORATION IS STRUCTURAL, NOT AN ACTION. The frame stores the
+// ORIGINAL ctx and derives the body's as pushCtx(f.ctx, t.Ty); nothing is ever
+// popped, because nothing was ever mutated. A sibling that runs after this let
+// resumes from its own frame's ctx and cannot see the binding — there is no
+// machine-level context to leak.
+//
+// That is a deliberate design property and it is still TESTED, because a later
+// refactor could move ctx onto the machine and the leak would be silent: the
+// witness is an `if` whose then-branch contains a let and whose else-branch
+// resolves the SAME de Bruijn index to a different type.
+//
+// The two modes differ in the bound expression AND in the diagnostic:
+//
+//	synth   SYNTHESIZE the bound value, compare to the annotation
+//	        -> "let annotation mismatch: declared X, got Y"
+//	check   CHECK the bound value against the annotation
+//	        -> "expected X, got Y"
+type letBodyFrame struct {
 	ctx  []*Ty
 	term *Term
-	exp  *Ty
+	exp  *Ty    // nil in synth mode
+	part string // bound | body
 }
 
-func (f *letBodyFrame) describe() string { return "let:body" }
+func (f *letBodyFrame) describe() string { return "let:" + f.part }
 
 type matchArmFrame struct { // match: scrutinee or arm i done
 	ctx      []*Ty
@@ -313,9 +334,6 @@ func (f *ctorValidateFrame) resume(*checkerMachine, checkResult) (frameOutcome, 
 	return notPorted(f)
 }
 func (f *appArgFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) { return notPorted(f) }
-func (f *letBodyFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
-	return notPorted(f)
-}
 func (f *matchArmFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
 	return notPorted(f)
 }
@@ -391,6 +409,17 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 	}
 	if s.mode == modeCheck {
 		switch s.term.K {
+		case "let":
+			// The annotation is well-formedness-checked BEFORE any child runs,
+			// so a bad annotation is reported even when the bound expression
+			// would also fail.
+			if err := checkTyWF(m.st, s.term.Ty, m.selfTyVars, false); err != nil {
+				return checkResult{err: err}, true, nil
+			}
+			m.stack = append(m.stack, &letBodyFrame{ctx: s.ctx, term: s.term, exp: s.exp, part: "bound"})
+			// CHECK MODE: the bound value is CHECKED against the annotation.
+			*s = checkerStep{mode: modeCheck, ctx: s.ctx, term: s.term.A, exp: s.term.Ty}
+			return checkResult{}, false, nil
 		case "if":
 			// CHECK MODE: the expected type flows into BOTH branches.
 			m.stack = append(m.stack, &ifBranchFrame{ctx: s.ctx, term: s.term, exp: s.exp, part: "cond"})
@@ -419,6 +448,14 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 		return checkResult{ty: tFloat()}, true, nil
 	case "bool":
 		return checkResult{ty: tBool()}, true, nil
+	case "let":
+		if err := checkTyWF(m.st, s.term.Ty, m.selfTyVars, false); err != nil {
+			return checkResult{err: err}, true, nil
+		}
+		m.stack = append(m.stack, &letBodyFrame{ctx: s.ctx, term: s.term, part: "bound"})
+		// SYNTH MODE: the bound value is SYNTHESIZED, then compared.
+		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
+		return checkResult{}, false, nil
 	case "if":
 		// SYNTH MODE: both branches are synthesized and must agree.
 		m.stack = append(m.stack, &ifBranchFrame{ctx: s.ctx, term: s.term, part: "cond"})
@@ -506,4 +543,28 @@ func (f *ifBranchFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, 
 		}
 		return frameOutcome{done: &checkResult{ty: f.thenTy}}, nil
 	}
+}
+
+func (f *letBodyFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, error) {
+	if r.err != nil {
+		return frameOutcome{done: &checkResult{err: r.err}}, nil
+	}
+	synthMode := f.exp == nil
+	if f.part == "bound" {
+		if synthMode && !tyEq(r.ty, f.term.Ty) {
+			return frameOutcome{done: &checkResult{
+				err: fmt.Errorf("let annotation mismatch: declared %s, got %s",
+					debugTy(f.term.Ty), debugTy(r.ty))}}, nil
+		}
+		f.part = "body"
+		// The body's context is derived from the frame's OWN ctx. The original
+		// is untouched, so whatever runs after this let sees it unchanged.
+		body := pushCtx(f.ctx, f.term.Ty)
+		next := checkerStep{mode: modeSynth, ctx: body, term: f.term.B}
+		if !synthMode {
+			next = checkerStep{mode: modeCheck, ctx: body, term: f.term.B, exp: f.exp}
+		}
+		return frameOutcome{next: &next}, nil
+	}
+	return frameOutcome{done: &checkResult{ty: r.ty}}, nil
 }
