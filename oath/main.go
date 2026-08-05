@@ -99,7 +99,7 @@ func main() {
 	}
 	storeDir := os.Getenv("OATH_STORE")
 	if storeDir == "" {
-		storeDir = "codebase"
+		storeDir = defaultStoreDir
 	}
 	st, err := OpenStore(storeDir)
 	if err != nil {
@@ -1288,6 +1288,11 @@ func remoteCapableList() string {
 // A TABLE RATHER THAN INTROSPECTION, for the same reason remoteCapable is one: the
 // parsers are hand-written switches, so there is nothing to introspect, and a
 // table plus a test is what makes gaining or losing a flag a deliberate edit.
+// defaultStoreDir is the repository's canonical corpus: git-tracked, with an
+// append-only journal. Named rather than inlined because guardNewNames must
+// recognise it by identity however the caller spelled it.
+const defaultStoreDir = "codebase"
+
 var knownFlags = map[string]map[string]bool{
 	"publish":   set("--remote", "--key", "--kms-key", "--license", "--namespace", "--dry-run", "--json", "--yes", "-y"),
 	"put":       set("--remote", "--key", "--author", "--context", "--json", "--new"),
@@ -1353,17 +1358,31 @@ func guardNewNames(st *Store, src string, allowNew bool) error {
 	if allowNew {
 		return nil
 	}
-	// ONLY THE DEFAULT STORE IS GUARDED, and that is the principle rather than a
-	// concession: the hazard is a CASUAL write reaching the canonical corpus, and
-	// setting OATH_STORE is not casual — it is someone stating where they intend
-	// to write. Guarding every store instead broke CI immediately, because
-	// publishing into a FRESH store makes every name new by definition:
-	// scripts/check-stdlib-manifest.py republishes 52 artifacts into a temp dir,
+	// ONLY THE CANONICAL STORE IS GUARDED, and that is the principle rather than
+	// a concession: the hazard is a CASUAL write reaching the canonical corpus.
+	// Guarding every store instead broke CI immediately, because publishing into
+	// a FRESH store makes every name new by definition —
+	// scripts/check-stdlib-manifest.py republishes 52 artifacts into a temp dir
 	// and `oathrs/conformance.sh` rebuilds the corpus from empty. In an empty
 	// store a new name is a RECONSTRUCTION, not a publication decision, so the
-	// premise the guard rests on — that creating a name is an irreversible act
-	// someone chose — does not hold there.
-	if os.Getenv("OATH_STORE") != "" {
+	// premise this guard rests on does not hold there.
+	//
+	// KEYED ON THE STORE'S IDENTITY, NOT ON HOW IT WAS SELECTED. An earlier
+	// version exempted any run with OATH_STORE set, treating the variable as
+	// evidence of intent. That is sound while it is typed per-command and false
+	// the moment it is exported: `export OATH_STORE=codebase` in a shell profile
+	// would have silently disabled this guard, permanently and invisibly, for
+	// the exact store it exists to protect. Comparing resolved paths closes
+	// that, because an explicitly-named canonical store is still the canonical
+	// store.
+	//
+	// ITS WIDTH, STATED SO IT IS NOT OVERREAD: this prevents accidental creation
+	// in the repository's canonical store. It does NOT claim to detect whether
+	// some other explicitly configured store was chosen thoughtfully — a wrapper
+	// pointing OATH_STORE at a second long-lived corpus gets no protection here.
+	// That is a real limit, and still worth far more than inferring publication
+	// intent from a name.
+	if !isCanonicalStore(st.Root) {
 		return nil
 	}
 	forms, err := parseForms(src)
@@ -1394,4 +1413,33 @@ func guardNewNames(st *Store, src string, allowNew bool) error {
 		"  If this is exploratory, use a disposable store:\n"+
 		"      OATH_STORE=$(mktemp -d) oath put %s --new",
 		len(fresh), strings.Join(fresh, ", "), "<file>")
+}
+
+// isCanonicalStore reports whether root resolves to the repository's default
+// store — the git-tracked, append-only-journal corpus that `storeDir` defaults
+// to. Compared by RESOLVED PATH so that naming it explicitly (OATH_STORE=codebase,
+// an absolute path, or a symlink) is still recognised as the same store.
+//
+// Fails OPEN on any resolution error: a guard that cannot tell where it is must
+// not start refusing valid work. The cost of that choice is a missed refusal;
+// the cost of the other is a CLI that stops functioning on unusual filesystems.
+func isCanonicalStore(root string) bool {
+	if root == "" {
+		return false
+	}
+	a, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	b, err := filepath.Abs(defaultStoreDir)
+	if err != nil {
+		return false
+	}
+	if ra, err := filepath.EvalSymlinks(a); err == nil {
+		a = ra
+	}
+	if rb, err := filepath.EvalSymlinks(b); err == nil {
+		b = rb
+	}
+	return a == b
 }

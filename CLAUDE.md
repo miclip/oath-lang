@@ -852,12 +852,24 @@ with the reason, because documentation is the only correction available.
    distinguishes a probe from a publication is not what it is called, it is
    whether anyone decided to create it.
 
-   **AND ONLY THE DEFAULT STORE IS GUARDED.** Setting `OATH_STORE` is someone
-   stating where they intend to write, which is the opposite of a casual write.
-   Guarding every store broke CI within the hour: publishing into a FRESH store
-   makes every name new BY DEFINITION, and in an empty store a new name is a
-   RECONSTRUCTION rather than a publication decision — so the premise the guard
-   rests on does not hold there.
+   **AND ONLY THE CANONICAL STORE IS GUARDED — keyed on the store's IDENTITY,
+   not on how it was selected.** Guarding every store broke CI within the hour:
+   publishing into a FRESH store makes every name new BY DEFINITION, and in an
+   empty store a new name is a RECONSTRUCTION rather than a publication decision,
+   so the premise the guard rests on does not hold there.
+
+   The first repair exempted any run with `OATH_STORE` set, treating the variable
+   as evidence of intent. **That is sound while it is typed per-command and false
+   the moment it is exported** — `export OATH_STORE=codebase` in a shell profile
+   would have disabled the guard permanently and invisibly, for the exact store it
+   protects. Resolved-path comparison closes that: an explicitly-named canonical
+   store is still the canonical store.
+
+   **ITS WIDTH, so it is not overread:** this prevents accidental creation in the
+   repository's canonical corpus. It does NOT detect whether some OTHER
+   explicitly configured store was chosen thoughtfully — a wrapper pointing at a
+   second long-lived corpus gets nothing. A real limit, and still worth far more
+   than inferring publication intent from a name.
 
    > **WHEN A RECURRING MISTAKE LOOKS SUBJECTIVE OR UNENFORCEABLE, CHECK WHETHER
    > THE HAZARD HAS BEEN NAMED AT THE WRONG LAYER. The visible symptom may be a
