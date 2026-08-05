@@ -314,6 +314,32 @@ type primArgFrame struct {
 
 func (f *primArgFrame) describe() string { return "prim:arg" }
 
+// eqFrame is `==`, which is a RECOVERY machine rather than a traversal — the
+// reason it was excluded from prim rather than folded into it.
+//
+// `==` is polymorphic in its operand type, so an operand may be a bare
+// constructor whose type arguments only the OTHER operand determines. Four
+// paths, and they are not symmetric:
+//
+//	left synthesizes            -> check RIGHT against left's type
+//	left fails, right succeeds  -> check LEFT against right's type
+//	both fail                   -> a FIXED message; BOTH original errors are
+//	                               DISCARDED, so there is no precedence to
+//	                               preserve — only the discarding itself
+//	either way, a function type -> "== is not defined on function types"
+//
+// THE FAILURE OF THE LEFT OPERAND IS SUPPRESSED, not propagated. A machine that
+// propagates it turns `==` into ordinary prim and erases the recovery: programs
+// whose left operand cannot be synthesized in isolation, but whose right
+// operand determines the type, would start being rejected.
+type eqFrame struct {
+	ctx  []*Ty
+	term *Term
+	part string // left | right-recover | compare
+}
+
+func (f *eqFrame) describe() string { return "eq:" + f.part }
+
 type recordFieldFrame struct { // record literal: field i done
 	ctx  []*Ty
 	term *Term
@@ -477,7 +503,14 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 		// to the constructor inference pass than to indexed traversal — so it
 		// is refused BY NAME rather than approximated here.
 		if s.term.Op == "==" {
-			return checkResult{}, false, errFamilyNotPorted{"prim ==", modeSynth}
+			// Arity is checked BEFORE any operand runs, matching check.go: a
+			// wrong-arity `==` reports arity even if an operand would also fail.
+			if len(s.term.Args) != 2 {
+				return checkResult{err: fmt.Errorf("primitive == takes 2 arguments, got %d", len(s.term.Args))}, true, nil
+			}
+			m.stack = append(m.stack, &eqFrame{ctx: s.ctx, term: s.term, part: "left"})
+			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: &s.term.Args[0]}
+			return checkResult{}, false, nil
 		}
 		if len(s.term.Args) == 0 {
 			// No children: the operator rules apply immediately. Loop machinery
@@ -617,4 +650,43 @@ func (f *primArgFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, e
 	}
 	ty, err := primResultTy(m.st, f.term.Op, f.argTys)
 	return frameOutcome{done: &checkResult{ty: ty, err: err}}, nil
+}
+
+func (f *eqFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, error) {
+	// known becomes the operand type both sides must share; other is the
+	// operand still to be checked against it.
+	settle := func(known *Ty, other *Term) (frameOutcome, error) {
+		if tyHasFun(known) {
+			return frameOutcome{done: &checkResult{
+				err: fmt.Errorf("== is not defined on function types")}}, nil
+		}
+		f.part = "compare"
+		next := checkerStep{mode: modeCheck, ctx: f.ctx, term: other, exp: known}
+		return frameOutcome{next: &next}, nil
+	}
+	switch f.part {
+	case "left":
+		if r.err != nil {
+			// SUPPRESSED. The left operand's error is discarded and the right
+			// is tried instead; propagating here would erase the recovery.
+			f.part = "right-recover"
+			next := checkerStep{mode: modeSynth, ctx: f.ctx, term: &f.term.Args[1]}
+			return frameOutcome{next: &next}, nil
+		}
+		return settle(r.ty, &f.term.Args[1])
+	case "right-recover":
+		if r.err != nil {
+			// BOTH failed. check.go discards both original errors and reports
+			// this fixed message; reproducing either operand's error would be a
+			// visible change even though it looks more informative.
+			return frameOutcome{done: &checkResult{
+				err: fmt.Errorf("cannot infer the type of == operands — annotate one side")}}, nil
+		}
+		return settle(r.ty, &f.term.Args[0])
+	default: // compare
+		if r.err != nil {
+			return frameOutcome{done: &checkResult{err: r.err}}, nil
+		}
+		return frameOutcome{done: &checkResult{ty: tBool()}}, nil
+	}
 }

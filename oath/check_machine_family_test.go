@@ -162,6 +162,32 @@ func portedFamilyCases() []familyCase {
 		{"prim-check-ok", nil, mkPrim("+", i(1), i(2)), tInt()},
 		{"prim-check-mismatch", nil, mkPrim("+", i(1), i(2)), tBool()},
 		{"prim-check-arg-fails", nil, mkPrim("+", v(5), i(2)), tInt()},
+
+		// --- `==`: the invariant is RECOVERY, not traversal -----------------
+		// Path 1: left synthesizes, right is CHECKED against its type.
+		{"eq-left-synths", nil, mkPrim("==", i(1), i(2)), nil},
+		{"eq-left-synths-mismatch", nil, mkPrim("==", i(1), bt(true)), nil},
+		{"eq-bools", nil, mkPrim("==", bt(true), bt(false)), nil},
+		{"eq-nested", nil, mkPrim("==", mkPrim("==", i(1), i(1)), bt(true)), nil},
+
+		// Path 3: BOTH operands fail synthesis. check.go discards both original
+		// errors for a fixed message, so a machine that propagates the first
+		// one — which looks more informative — is observably different.
+		{"eq-both-fail", nil, mkPrim("==", v(5), v(7)), nil},
+		{"eq-both-fail-same", nil, mkPrim("==", v(9), v(9)), nil},
+
+		// Arity is checked before either operand runs.
+		{"eq-arity-one", nil, mkPrim("==", i(1)), nil},
+		{"eq-arity-three", nil, mkPrim("==", i(1), i(2), i(3)), nil},
+		{"eq-arity-zero", nil, mkPrim("=="), nil},
+
+		// Left fails, right succeeds: the RECOVERY path. Witnessed here only
+		// for its failure tail — see TestEqRecoveryPathLacksAWitness.
+		{"eq-left-fails-right-int", nil, mkPrim("==", v(5), i(2)), nil},
+		{"eq-left-fails-right-bool", nil, mkPrim("==", v(5), bt(true)), nil},
+		{"eq-in-if-cond", nil, mkIf(mkPrim("==", i(1), i(1)), i(1), i(2)), nil},
+		{"eq-check-mode", nil, mkPrim("==", i(1), i(1)), tBool()},
+		{"eq-check-mode-mismatch", nil, mkPrim("==", i(1), i(1)), tInt()},
 	}
 }
 
@@ -315,24 +341,44 @@ func (f *recordingFrame) resume(m *checkerMachine, r checkResult) (frameOutcome,
 	return frameOutcome{done: &r}, nil
 }
 
-// TestPrimEqualityStaysUnported. `==` recovers from a failed synthesis of its
-// first operand by retrying the second — a SUPPRESSED failure, closer to the
-// constructor inference pass than to indexed traversal. It is refused BY NAME
-// rather than approximated, so partial coverage stays explicit.
-func TestPrimEqualityStaysUnported(t *testing.T) {
+// TestEqRecoveryPathLacksAWitness records a GAP, and fails when the gap becomes
+// closable so it cannot be forgotten.
+//
+// `==`'s recovery path is: left operand fails synthesis, right succeeds, and the
+// LEFT is then CHECKED against the right's type — succeeding. Witnessing the
+// SUCCESSFUL tail of that path needs an operand that fails synthesis but checks
+// fine, and the natural one is a bare constructor: (== (Nil) (Nil [Int])), where
+// (Nil) cannot be synthesized alone but checks against (List Int).
+//
+// No such term exists among the currently ported families: every ported form
+// that fails to synthesize also fails to check. So the cases above exercise the
+// recovery path only as far as its failure tail, and the machine's agreement on
+// the SUCCESS tail is unwitnessed.
+//
+// A SECOND GAP, found by mutation rather than by reading: removing the
+// tyHasFun refusal kills nothing, because no ported term HAS a function type.
+// `lam` unblocks it.
+//
+// Both assertions below are keyed to the family that makes their witness
+// constructible, and each FAILS when that family lands. That is the point: the
+// reminder fires when the gap becomes closable, instead of depending on someone
+// remembering an unwritten test six families later.
+func TestEqWitnessGapsAreStillBlocked(t *testing.T) {
 	st := canonicalStore(t)
-	m := &checkerMachine{st: st}
-	_, err := m.run(checkerStep{mode: modeSynth, term: mkPrim("==", i(1), i(1))})
-	var nf errFamilyNotPorted
-	if !errors.As(err, &nf) {
-		t.Fatalf("prim == must be refused by name, got %v", err)
+	unported := func(k string) bool {
+		m := &checkerMachine{st: st}
+		_, err := m.run(checkerStep{mode: modeSynth, term: &Term{K: k}})
+		var nf errFamilyNotPorted
+		return errors.As(err, &nf)
 	}
-	if !strings.Contains(err.Error(), "==") {
-		t.Errorf("the refusal must name the operator, got %q", err)
+	if !unported("ctor") {
+		t.Error("constructors are ported, so `==`'s RECOVERY path can now be witnessed " +
+			"end to end: add (== (Nil) (Nil [Int])) — left fails synthesis, right " +
+			"succeeds, left then CHECKS successfully — then drop this assertion")
 	}
-	// And the rest of the family must still work, or the refusal would just be
-	// the whole family being absent.
-	if _, err := m.run(checkerStep{mode: modeSynth, term: mkPrim("+", i(1), i(2))}); err != nil {
-		t.Fatalf("the rest of prim must still be ported, got %v", err)
+	if !unported("lam") {
+		t.Error("lambdas are ported, so `==`'s FUNCTION-TYPE refusal can now be " +
+			"witnessed: today, deleting the tyHasFun check kills no case because no " +
+			"ported term has a function type — then drop this assertion")
 	}
 }
