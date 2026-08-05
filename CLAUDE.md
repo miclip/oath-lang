@@ -502,11 +502,39 @@ something else or nothing at all. Corpus-versus-phenomenon, applied to a runtime
 recursive?" would not have: it was *what happens to the visitor AFTER the
 overflow?* The first question asks about the code, the second about the claim.
 
-**Start with the INVENTORY, not with a bound.** Enumerate every recursive descent
-reachable from `oathCheck`, classify each guarded or unguarded, and only then
-choose the repair shape. The claim quantifies over attacker-reachable descents,
-so a second hand-placed constant would be the third copy of a bound whose comment
-names an environment — the defect #147 itself was.
+**The inventory is DONE and the repair is HALF LANDED. Read the issue for the
+remaining sequence rather than re-deriving it** — it carries the ten-step port
+plan and three details of `synthCtor` that a naive port gets wrong, one of which
+turns a linear algorithm exponential. A pointer, because that plan will change
+as it is executed and a copy here would not.
+
+The half that landed is `oath/profile.go`: a PORTABLE RESOURCE PROFILE with two
+budgets kept deliberately separate — 65,536 canonical nodes and 512 syntax
+nesting levels, both chosen with measured headroom (the corpus peaks at 1,293
+nodes and 17 levels) rather than reverse-engineered from a crash threshold.
+
+**THE DISTINCTION IS THE WHOLE DESIGN, and it generalises past this issue: a
+LINEAR SPINE IS WORK, NOT NESTING.** `Str` is an inductive datatype, so a
+5,000-rune literal is one syntax node and a 5,000-long `SCons` chain. Bounding
+"depth" with one number would have let the canonical REPRESENTATION of linear
+data decide which strings are legal programs — an implementation detail becoming
+language semantics, which is #147's error one layer up.
+
+**Oath's accepted structural domain is BACKEND-INDEPENDENT.** The same artifact
+must not be a program natively and a refusal in the playground because the two
+borrow different stacks. An implementation may refuse for an explicit documented
+limit; a limit must never emerge accidentally from host call-stack depth.
+
+**AND THE HONEST REMAINDER, which is why this is not closed: the budget bounds
+WORK; only an iterative substrate bounds STACK.** A 5,000-node spine is inside
+the profile, so it is ADMITTED — and the still-recursive bidirectional
+typechecker then descends it and exhausts the host stack. Lowering the node
+limit to make that witness pass would convert a walker defect into an arbitrary
+string-size restriction, i.e. exactly the backend-derived language limit the
+profile exists to remove. **The 5,000-rune string is the witness that keeps
+"bounded size" and "stack-safe processing" from being confused for each other**,
+and `TestGuardsAreDistinguished` asserts the open case as it IS, with a note to
+invert it when the substrate lands.
 
 **#148 IS BLOCKED ON OPERATOR PROVISIONING, NOT ON ENGINEERING**, and the
 distinction decides what a session should do with it: nothing. Its design is
