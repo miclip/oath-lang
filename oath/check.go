@@ -1080,12 +1080,21 @@ func checkDef(st *Store, d *Def) error {
 		if err := checkTyWF(st, d.Ty, d.TyVars, false); err != nil {
 			return err
 		}
-		c := &checker{st: st, selfTyVars: d.TyVars, selfTy: d.Ty}
+		// THE EXPLICIT MACHINE IS AUTHORITATIVE HERE (#149). It replaces a
+		// recursive descent that mapped a term's representation DEPTH onto the
+		// host call stack, so an admitted structure — inside the portable node
+		// profile, shallow in syntax — could still exhaust it. A 5,000-rune
+		// string literal is one syntax node and a 5,000-long SCons spine.
+		//
+		// The recursive checker remains in this file as the differential
+		// ORACLE. It has no production caller; check_machine_test.go's AST scan
+		// enforces the reverse direction for the machine's own types.
+		c := &checkerMachine{st: st, selfTyVars: d.TyVars, selfTy: d.Ty}
 		// Check the body against the declared type (bidirectional, #35): the
 		// expected type flows down so omitted type arguments can be inferred, and
 		// the checker backfills every solved argument into the AST before it is
 		// hashed — so an inferred call is byte-identical to the explicit one.
-		if err := c.check(nil, d.Body, d.Ty); err != nil {
+		if _, err := c.run(checkerStep{mode: modeCheck, term: d.Body, exp: d.Ty}); err != nil {
 			return err
 		}
 		for pi, p := range d.Props {
@@ -1100,7 +1109,10 @@ func checkDef(st *Store, d *Def) error {
 				}
 				ctx = pushCtx(ctx, b)
 			}
-			if err := c.check(ctx, &p.Body, tBool()); err != nil {
+			// A FRESH machine per property: the stack must start empty, and
+			// reusing one would carry any frame a previous failure left behind.
+			pc := &checkerMachine{st: st, selfTyVars: d.TyVars, selfTy: d.Ty}
+			if _, err := pc.run(checkerStep{mode: modeCheck, ctx: ctx, term: &p.Body, exp: tBool()}); err != nil {
 				return fmt.Errorf("property %d: %w", pi, err)
 			}
 		}

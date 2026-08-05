@@ -96,48 +96,61 @@ func TestCtorRouteSplitsTheTwoWitnesses(t *testing.T) {
 	}
 }
 
-// TestCheckerMachineIsNotRouted enforces step 2's whole point: the machine is
-// DECLARED and unreachable. The port proceeds family by family against the
-// frozen fixture, and a stray production reference would start mixing machines
-// without anything saying so.
+// TestRecursiveCheckerCallSitesArePinned replaces the step-2 guard that asserted
+// the machine was UNROUTED. The machine is now authoritative for checkDef, so
+// that assertion is false by design and the useful claim inverted with it.
 //
-// Resolved through the AST rather than by grepping text, so a mention inside a
-// comment or a string does not read as a use — the same distinction
-// boundary_test.go draws between names and bindings.
-func TestCheckerMachineIsNotRouted(t *testing.T) {
-	machineDecls := map[string]bool{
-		"checkerMachine": true, "checkerStep": true, "checkerFrame": true,
-		"checkResult": true, "checkMode": true, "ctorRoute": true,
-		"ctorRouteFor": true, "routeValidateOnly": true, "routeInferSolveValidate": true,
-		"ctorFrame": true, "eqFrame": true, "lamBodyFrame": true, "fieldAccessFrame": true,
-		"appArgFrame": true, "ifBranchFrame": true, "letBodyFrame": true,
-		"matchArmFrame": true, "primArgFrame": true, "recordFieldFrame": true,
-		"notPorted": true, "errFramePending": true,
+// What is pinned is the exact set of production sites that still construct the
+// RECURSIVE checker, so the number can only go down deliberately and a fifth
+// cannot appear unnoticed. checkDef is deliberately absent: it is the gate every
+// definition passes through, and #149's claim quantifies over exits from
+// oathCheck, which reaches the kernel only by that route.
+//
+// The remaining four are OTHER entry points with their own exposure, recorded
+// rather than silently tolerated:
+//
+//	apiEval    `oath eval` and the MCP `eval` tool — attacker-reachable on a
+//	           HOSTED store, though NOT from the browser: the playground
+//	           exports only oathCheck, oathProve and oathKernelVersion.
+//	eHash      the e-graph, reached only by `find --equiv`.
+//	emitDef    the Go and LLVM backends, reached only by `oath build`.
+func TestRecursiveCheckerCallSitesArePinned(t *testing.T) {
+	want := map[string]string{
+		"api.go":     "apiEval",
+		"canon.go":   "eHash",
+		"compile.go": "emitDef",
+		"llvm.go":    "emitDef",
 	}
-
 	files, err := filepath.Glob("*.go")
 	if err != nil || len(files) == 0 {
 		t.Fatalf("no Go files found; this check did not run (%v)", err)
 	}
-	scanned := 0
+	got, scanned := map[string]string{}, 0
 	for _, f := range files {
-		if strings.HasSuffix(f, "_test.go") || f == "check_machine.go" {
+		if strings.HasSuffix(f, "_test.go") {
 			continue
 		}
 		src, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatalf("reading %s: %v", f, err)
 		}
-		file, err := parser.ParseFile(gotoken.NewFileSet(), f, src, 0)
+		fset := gotoken.NewFileSet()
+		file, err := parser.ParseFile(fset, f, src, 0)
 		if err != nil {
 			t.Fatalf("parsing %s: %v", f, err)
 		}
+		var fn string
 		ast.Inspect(file, func(n ast.Node) bool {
-			id, ok := n.(*ast.Ident)
-			if ok && machineDecls[id.Name] {
-				t.Errorf("%s references %s — the checker machine must stay unrouted until "+
-					"its family is ported (#149 step 3). If this is the port, remove this "+
-					"check's exemption deliberately rather than widening it.", f, id.Name)
+			if d, ok := n.(*ast.FuncDecl); ok {
+				fn = d.Name.Name
+			}
+			cl, ok := n.(*ast.CompositeLit)
+			if !ok {
+				return true
+			}
+			id, ok := cl.Type.(*ast.Ident)
+			if ok && id.Name == "checker" {
+				got[f] = fn
 			}
 			return true
 		})
@@ -146,5 +159,22 @@ func TestCheckerMachineIsNotRouted(t *testing.T) {
 	if scanned < 20 {
 		t.Fatalf("only %d production files scanned; the glob did not find the package", scanned)
 	}
-	t.Logf("machine is unrouted across %d production files", scanned)
+	for f, fn := range got {
+		if want[f] != fn {
+			t.Errorf("%s constructs the RECURSIVE checker in %s, which is not a pinned site.\n"+
+				"  If this is a new use, justify it: the machine exists because the recursive\n"+
+				"  checker maps term depth onto the host stack (#149).", f, fn)
+		}
+	}
+	for f, fn := range want {
+		if got[f] != fn {
+			t.Errorf("%s no longer constructs the recursive checker in %s — if it was migrated, "+
+				"remove it from the pinned set in the same commit", f, fn)
+		}
+	}
+	// And the GATE must not: this is the switch-over asserted directly.
+	if fn, ok := got["check.go"]; ok {
+		t.Errorf("check.go constructs the recursive checker in %s; checkDef must route "+
+			"through the explicit machine", fn)
+	}
 }
