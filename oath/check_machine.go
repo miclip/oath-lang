@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 // THE EXPLICIT CHECKER MACHINE (#149, step 2 — types only, NOT routed).
 //
 // Nothing in this file is reachable from production yet. It exists so the port
@@ -62,14 +64,18 @@ type checkerStep struct {
 	cont checkerFrame
 }
 
+// frameOutcome is what a resumed frame decides to do: run another sub-judgement,
+// or finish and hand a result to its own parent. Both are needed and step 2's
+// shape could only express the first — a frame that returned "the next step"
+// had no way to say "I am done", which is most of what a continuation does.
+type frameOutcome struct {
+	next *checkerStep // run this child next; the frame stays on the stack
+	done *checkResult // the frame is finished; pop it and hand this upward
+}
+
 // checkerFrame is a suspended computation waiting on one sub-judgement.
-//
-// resume returns the NEXT step to run. A frame that has finished returns a step
-// whose cont is its own parent, carrying the result upward — so completion and
-// continuation are the same mechanism and there is no separate return path to
-// keep consistent.
 type checkerFrame interface {
-	resume(m *checkerMachine, r checkResult) (checkerStep, error)
+	resume(m *checkerMachine, r checkResult) (frameOutcome, error)
 	// describe names the continuation for diagnostics and for the port's own
 	// tracing. Frames are the port's audit trail; an unnamed one is a step
 	// nobody can locate when the differential moves.
@@ -271,8 +277,8 @@ func (f *recordFieldFrame) describe() string { return "record:field" }
 // differential rather than a crash with a stack trace pointing at the machine
 // that was supposed to remove stack traces.
 
-func notPorted(f checkerFrame) (checkerStep, error) {
-	return checkerStep{}, errFramePending{f.describe()}
+func notPorted(f checkerFrame) (frameOutcome, error) {
+	return frameOutcome{}, errFramePending{f.describe()}
 }
 
 type errFramePending struct{ frame string }
@@ -281,12 +287,158 @@ func (e errFramePending) Error() string {
 	return "checker machine: continuation " + e.frame + " is declared but not yet ported (#149 step 3)"
 }
 
-func (f *ctorInferFrame) resume(*checkerMachine, checkResult) (checkerStep, error)    { return notPorted(f) }
-func (f *ctorSolveFrame) resume(*checkerMachine, checkResult) (checkerStep, error)    { return notPorted(f) }
-func (f *ctorValidateFrame) resume(*checkerMachine, checkResult) (checkerStep, error) { return notPorted(f) }
-func (f *appArgFrame) resume(*checkerMachine, checkResult) (checkerStep, error)       { return notPorted(f) }
-func (f *ifBranchFrame) resume(*checkerMachine, checkResult) (checkerStep, error)     { return notPorted(f) }
-func (f *letBodyFrame) resume(*checkerMachine, checkResult) (checkerStep, error)      { return notPorted(f) }
-func (f *matchArmFrame) resume(*checkerMachine, checkResult) (checkerStep, error)     { return notPorted(f) }
-func (f *primArgFrame) resume(*checkerMachine, checkResult) (checkerStep, error)      { return notPorted(f) }
-func (f *recordFieldFrame) resume(*checkerMachine, checkResult) (checkerStep, error)  { return notPorted(f) }
+func (f *ctorInferFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
+	return notPorted(f)
+}
+func (f *ctorSolveFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
+	return notPorted(f)
+}
+func (f *ctorValidateFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
+	return notPorted(f)
+}
+func (f *appArgFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) { return notPorted(f) }
+func (f *ifBranchFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
+	return notPorted(f)
+}
+func (f *letBodyFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
+	return notPorted(f)
+}
+func (f *matchArmFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
+	return notPorted(f)
+}
+func (f *primArgFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
+	return notPorted(f)
+}
+func (f *recordFieldFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
+	return notPorted(f)
+}
+
+// --- step 3: the run loop, and the first ported family -------------------
+//
+// PORTED SO FAR: synthesis of leaves (var, int, rat, float, bool) and check's
+// DEFAULT path — synthesize, then compare against the expected type.
+//
+// Chosen as the smallest family that exercises continuation plumbing at all.
+// Leaves alone would not: they have no children, so nothing suspends. The
+// default check path is a genuine continuation — check suspends, synth runs, a
+// frame resumes and compares — while touching neither inference nor mutation,
+// which is what makes a divergence here attributable to the machinery rather
+// than to the constructor protocol.
+//
+// Everything else refuses with errFamilyNotPorted. It does NOT fall back to the
+// recursive checker: a silent fallback would let the differential pass while
+// measuring the old machine, which is the failure this whole port is guarding
+// against.
+
+type errFamilyNotPorted struct {
+	kind string
+	mode checkMode
+}
+
+func (e errFamilyNotPorted) Error() string {
+	return "checker machine: " + e.mode.String() + " of `" + e.kind + "` is not yet ported (#149 step 3)"
+}
+
+// checkCompareFrame is check's default path: the term was synthesized, and its
+// type must now equal the expected one.
+//
+// It is a FRAME rather than an inline comparison because the synthesis it waits
+// on may itself suspend arbitrarily deep once further families land.
+type checkCompareFrame struct{ exp *Ty }
+
+func (f *checkCompareFrame) describe() string { return "check:compare" }
+
+func (f *checkCompareFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, error) {
+	if r.err != nil {
+		return frameOutcome{done: &checkResult{err: r.err}}, nil
+	}
+	if !tyEq(r.ty, f.exp) {
+		// Byte-identical to check.go's message: the differential compares a
+		// diagnostic CATEGORY, but a needless rewording is still a change
+		// nobody asked for.
+		return frameOutcome{done: &checkResult{
+			err: fmt.Errorf("expected %s, got %s", debugTy(f.exp), debugTy(r.ty))}}, nil
+	}
+	return frameOutcome{done: &checkResult{}}, nil
+}
+
+// leaf produces a result for a step that needs no children, or reports that the
+// step is not yet portable. ok=false with a nil error means "this step has
+// children" — which no ported family reaches yet.
+func (m *checkerMachine) leaf(s checkerStep) (checkResult, bool, error) {
+	if s.term == nil {
+		return checkResult{err: fmt.Errorf("missing term")}, true, nil
+	}
+	if s.mode == modeCheck {
+		// Only the DEFAULT path is ported. Forms that consume an expected type
+		// directly (ctor, lam, if, let, match, app-with-inference) are not, and
+		// must not be approximated by synthesize-then-compare — that would
+		// change which programs typecheck, not merely how.
+		switch s.term.K {
+		case "var", "int", "rat", "float", "bool":
+			return checkResult{}, false, nil // handled by the caller pushing a compare frame
+		default:
+			return checkResult{}, false, errFamilyNotPorted{s.term.K, modeCheck}
+		}
+	}
+	switch s.term.K {
+	case "var":
+		if s.term.Idx < 0 || s.term.Idx >= len(s.ctx) {
+			return checkResult{err: fmt.Errorf("variable index %d out of scope", s.term.Idx)}, true, nil
+		}
+		return checkResult{ty: s.ctx[len(s.ctx)-1-s.term.Idx]}, true, nil
+	case "int":
+		return checkResult{ty: tInt()}, true, nil
+	case "rat":
+		return checkResult{ty: tRat()}, true, nil
+	case "float":
+		return checkResult{ty: tFloat()}, true, nil
+	case "bool":
+		return checkResult{ty: tBool()}, true, nil
+	}
+	return checkResult{}, false, errFamilyNotPorted{s.term.K, modeSynth}
+}
+
+// run drives the machine to a result. The explicit stack is the whole point:
+// depth costs heap here, not an embedder resource Go can neither measure nor
+// grow.
+func (m *checkerMachine) run(start checkerStep) (*Ty, error) {
+	s := start
+	for {
+		// A check of a ported leaf becomes: synth it, then compare.
+		if s.mode == modeCheck {
+			if _, _, err := m.leaf(s); err != nil {
+				return nil, err
+			}
+			m.stack = append(m.stack, &checkCompareFrame{exp: s.exp})
+			s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term}
+			continue
+		}
+		r, done, err := m.leaf(s)
+		if err != nil {
+			return nil, err
+		}
+		if !done {
+			return nil, errFamilyNotPorted{s.term.K, s.mode}
+		}
+		// Unwind: hand the result to each waiting frame until one asks for
+		// another child or the stack empties.
+		for {
+			if len(m.stack) == 0 {
+				return r.ty, r.err
+			}
+			f := m.stack[len(m.stack)-1]
+			m.stack = m.stack[:len(m.stack)-1]
+			out, ferr := f.resume(m, r)
+			if ferr != nil {
+				return nil, ferr
+			}
+			if out.next != nil {
+				m.stack = append(m.stack, f) // the frame is not finished
+				s = *out.next
+				break
+			}
+			r = *out.done
+		}
+	}
+}
