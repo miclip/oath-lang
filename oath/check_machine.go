@@ -340,6 +340,36 @@ type eqFrame struct {
 
 func (f *eqFrame) describe() string { return "eq:" + f.part }
 
+// lamBodyFrame waits on a lambda's body. The parameter type extends the context
+// for the body ONLY, by the same structural rule as `let`: the frame stores the
+// original ctx and derives the body's, so nothing is popped.
+//
+// The two modes differ in what comes back:
+//
+//	synth   the body is SYNTHESIZED; the result is (-> paramTy bodyTy)
+//	check   against a FUNCTION type: the parameter must equal exp.A and the
+//	        body is CHECKED against exp.B
+//	check   against anything else: check.go's `case "lam"` does not return —
+//	        it FALLS THROUGH to synthesize-then-compare, so the diagnostic is
+//	        "expected Int, got (-> ...)" rather than a lambda-specific message.
+//	        A port that returns a tailored error there is observably different.
+type lamBodyFrame struct {
+	paramTy   *Ty
+	synthMode bool
+}
+
+func (f *lamBodyFrame) describe() string { return "lam:body" }
+
+func (f *lamBodyFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, error) {
+	if r.err != nil {
+		return frameOutcome{done: &checkResult{err: r.err}}, nil
+	}
+	if f.synthMode {
+		return frameOutcome{done: &checkResult{ty: tFun(f.paramTy, r.ty)}}, nil
+	}
+	return frameOutcome{done: &checkResult{}}, nil
+}
+
 type recordFieldFrame struct { // record literal: field i done
 	ctx  []*Ty
 	term *Term
@@ -449,6 +479,24 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 	}
 	if s.mode == modeCheck {
 		switch s.term.K {
+		case "lam":
+			if s.exp != nil && s.exp.K == "fun" {
+				if err := checkTyWF(m.st, s.term.Ty, m.selfTyVars, false); err != nil {
+					return checkResult{err: err}, true, nil
+				}
+				if !tyEq(s.term.Ty, s.exp.A) {
+					return checkResult{err: fmt.Errorf("lambda parameter %s does not match expected %s",
+						debugTy(s.term.Ty), debugTy(s.exp.A))}, true, nil
+				}
+				m.stack = append(m.stack, &lamBodyFrame{paramTy: s.term.Ty})
+				*s = checkerStep{mode: modeCheck, ctx: pushCtx(s.ctx, s.term.Ty), term: s.term.A, exp: s.exp.B}
+				return checkResult{}, false, nil
+			}
+			// FALL THROUGH, exactly as check.go does: no lambda-specific
+			// message when the expected type is not a function.
+			m.stack = append(m.stack, &checkCompareFrame{exp: s.exp})
+			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term}
+			return checkResult{}, false, nil
 		case "let":
 			// The annotation is well-formedness-checked BEFORE any child runs,
 			// so a bad annotation is reported even when the bound expression
@@ -496,6 +544,13 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 		m.stack = append(m.stack, &letBodyFrame{ctx: s.ctx, term: s.term, part: "bound"})
 		// SYNTH MODE: the bound value is SYNTHESIZED, then compared.
 		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
+		return checkResult{}, false, nil
+	case "lam":
+		if err := checkTyWF(m.st, s.term.Ty, m.selfTyVars, false); err != nil {
+			return checkResult{err: err}, true, nil
+		}
+		m.stack = append(m.stack, &lamBodyFrame{paramTy: s.term.Ty, synthMode: true})
+		*s = checkerStep{mode: modeSynth, ctx: pushCtx(s.ctx, s.term.Ty), term: s.term.A}
 		return checkResult{}, false, nil
 	case "prim":
 		// `==` is NOT this family. It recovers from a failed synthesis of its

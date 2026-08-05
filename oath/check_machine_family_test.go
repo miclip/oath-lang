@@ -188,8 +188,39 @@ func portedFamilyCases() []familyCase {
 		{"eq-in-if-cond", nil, mkIf(mkPrim("==", i(1), i(1)), i(1), i(2)), nil},
 		{"eq-check-mode", nil, mkPrim("==", i(1), i(1)), tBool()},
 		{"eq-check-mode-mismatch", nil, mkPrim("==", i(1), i(1)), tInt()},
+
+		// --- `lam`: the invariant is the CHECK-MODE FALL-THROUGH ------------
+		{"lam-synth-identity", nil, mkLam(tInt(), v(0)), nil},
+		{"lam-synth-body-uses-param", nil, mkLam(tInt(), mkPrim("+", v(0), i(1))), nil},
+		{"lam-synth-body-fails", nil, mkLam(tInt(), v(5)), nil},
+		{"lam-synth-nested", nil, mkLam(tInt(), mkLam(tBool(), v(1))), nil},
+		{"lam-synth-shadowing", []*Ty{tBool()}, mkLam(tInt(), v(1)), nil},
+
+		// check against a FUNCTION type: parameter compared, body checked.
+		{"lam-check-matching", nil, mkLam(tInt(), v(0)), tFun(tInt(), tInt())},
+		{"lam-check-param-mismatch", nil, mkLam(tInt(), v(0)), tFun(tBool(), tBool())},
+		{"lam-check-body-mismatch", nil, mkLam(tInt(), v(0)), tFun(tInt(), tBool())},
+		{"lam-check-nested", nil, mkLam(tInt(), mkLam(tBool(), v(1))),
+			tFun(tInt(), tFun(tBool(), tInt()))},
+
+		// THE FALL-THROUGH. check.go's `case "lam"` does not return when the
+		// expected type is not a function, so the diagnostic is the generic
+		// "expected X, got (-> ...)" and NOT a lambda-specific message.
+		{"lam-check-against-int", nil, mkLam(tInt(), v(0)), tInt()},
+		{"lam-check-against-bool", nil, mkLam(tInt(), v(0)), tBool()},
+		// Falling through means the BODY is synthesized, so a broken body is
+		// reported by synthesis rather than by the comparison.
+		{"lam-check-against-int-broken-body", nil, mkLam(tInt(), v(9)), tInt()},
+
+		// `==` REFUSES FUNCTION TYPES — witnessable now that lam is ported.
+		// Before this, deleting the tyHasFun check killed zero cases.
+		{"eq-function-types", nil, mkPrim("==", mkLam(tInt(), v(0)), mkLam(tInt(), v(0))), nil},
+		{"eq-function-left-only", nil, mkPrim("==", mkLam(tInt(), v(0)), i(1)), nil},
+		{"eq-function-right-only", nil, mkPrim("==", i(1), mkLam(tInt(), v(0))), nil},
 	}
 }
+
+func mkLam(param *Ty, body *Term) *Term { return &Term{K: "lam", Ty: param, A: body} }
 
 func mkPrim(op string, args ...*Term) *Term {
 	t := &Term{K: "prim", Op: op}
@@ -288,7 +319,7 @@ func TestPortedFamilyMatchesRecursiveChecker(t *testing.T) {
 func TestUnportedFamiliesRefuse(t *testing.T) {
 	st := canonicalStore(t)
 	unported := []*Term{
-		{K: "ctor"}, {K: "app"}, {K: "lam"},
+		{K: "ctor"}, {K: "app"},
 		{K: "match"}, {K: "record"},
 		{K: "field"}, {K: "ref"}, {K: "self"}, {K: "str"},
 	}
@@ -355,12 +386,13 @@ func (f *recordingFrame) resume(m *checkerMachine, r checkResult) (frameOutcome,
 // recovery path only as far as its failure tail, and the machine's agreement on
 // the SUCCESS tail is unwitnessed.
 //
-// A SECOND GAP, found by mutation rather than by reading: removing the
-// tyHasFun refusal kills nothing, because no ported term HAS a function type.
-// `lam` unblocks it.
+// ONE GAP REMAINS. The second — `==`'s function-type refusal, which no ported
+// term could reach — was retired when `lam` landed and eq-function-types was
+// added; the guard fired exactly as designed and was then removed with the gap
+// it named.
 //
-// Both assertions below are keyed to the family that makes their witness
-// constructible, and each FAILS when that family lands. That is the point: the
+// The assertion below is keyed to the family that makes its witness
+// constructible, and FAILS when that family lands. That is the point: the
 // reminder fires when the gap becomes closable, instead of depending on someone
 // remembering an unwritten test six families later.
 func TestEqWitnessGapsAreStillBlocked(t *testing.T) {
@@ -375,10 +407,5 @@ func TestEqWitnessGapsAreStillBlocked(t *testing.T) {
 		t.Error("constructors are ported, so `==`'s RECOVERY path can now be witnessed " +
 			"end to end: add (== (Nil) (Nil [Int])) — left fails synthesis, right " +
 			"succeeds, left then CHECKS successfully — then drop this assertion")
-	}
-	if !unported("lam") {
-		t.Error("lambdas are ported, so `==`'s FUNCTION-TYPE refusal can now be " +
-			"witnessed: today, deleting the tyHasFun check kills no case because no " +
-			"ported term has a function type — then drop this assertion")
 	}
 }
