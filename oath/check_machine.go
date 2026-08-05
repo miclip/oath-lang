@@ -379,14 +379,44 @@ func (f *lamBodyFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, e
 	return frameOutcome{done: &checkResult{}}, nil
 }
 
-type recordFieldFrame struct { // record literal: field i done
+// recordFieldFrame builds a record literal's type field by field.
+//
+// THE SORTEDNESS CHECK FOR INDEX i RUNS BEFORE ARGUMENT i IS SYNTHESIZED, and
+// interleaving them is the invariant: `{b <broken>, a 1}` reports the ordering
+// violation at index 1 and never visits that value, while a broken value at
+// index 0 is reported first because index 0 has no predecessor to compare
+// against. A machine that validated all names up front, or synthesized all
+// values first, would report the other error.
+type recordFieldFrame struct {
 	ctx  []*Ty
 	term *Term
-	exp  *Ty
 	idx  int
+	tys  []Ty
 }
 
 func (f *recordFieldFrame) describe() string { return "record:field" }
+
+// fieldAccessFrame waits on the record a field is projected from.
+type fieldAccessFrame struct{ op string }
+
+func (f *fieldAccessFrame) describe() string { return "field:access" }
+
+func (f *fieldAccessFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, error) {
+	if r.err != nil {
+		return frameOutcome{done: &checkResult{err: r.err}}, nil
+	}
+	if r.ty == nil || r.ty.K != "record" {
+		return frameOutcome{done: &checkResult{
+			err: fmt.Errorf("field access on non-record (type %s)", debugTy(r.ty))}}, nil
+	}
+	for i, n := range r.ty.Names {
+		if n == f.op {
+			return frameOutcome{done: &checkResult{ty: &r.ty.Args[i]}}, nil
+		}
+	}
+	return frameOutcome{done: &checkResult{
+		err: fmt.Errorf("record %s has no field %q", debugTy(r.ty), f.op)}}, nil
+}
 
 // --- resume stubs -------------------------------------------------------
 //
@@ -416,9 +446,6 @@ func (f *ctorValidateFrame) resume(*checkerMachine, checkResult) (frameOutcome, 
 	return notPorted(f)
 }
 func (f *matchArmFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
-	return notPorted(f)
-}
-func (f *recordFieldFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
 	return notPorted(f)
 }
 
@@ -530,7 +557,7 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 			m.stack = append(m.stack, &ifBranchFrame{ctx: s.ctx, term: s.term, exp: s.exp, part: "cond"})
 			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
 			return checkResult{}, false, nil
-		case "var", "int", "rat", "float", "bool", "prim":
+		case "var", "int", "rat", "float", "bool", "prim", "record", "field":
 			// The DEFAULT path: synthesize, then compare. check.go has no
 			// `prim` case either — it falls through to exactly this.
 			m.stack = append(m.stack, &checkCompareFrame{exp: s.exp})
@@ -560,6 +587,20 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 		}
 		m.stack = append(m.stack, &letBodyFrame{ctx: s.ctx, term: s.term, part: "bound"})
 		// SYNTH MODE: the bound value is SYNTHESIZED, then compared.
+		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
+		return checkResult{}, false, nil
+	case "record":
+		if len(s.term.Names) != len(s.term.Args) {
+			return checkResult{err: fmt.Errorf("record field names and values out of sync")}, true, nil
+		}
+		if len(s.term.Args) == 0 {
+			return checkResult{ty: &Ty{K: "record"}}, true, nil
+		}
+		m.stack = append(m.stack, &recordFieldFrame{ctx: s.ctx, term: s.term})
+		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: &s.term.Args[0]}
+		return checkResult{}, false, nil
+	case "field":
+		m.stack = append(m.stack, &fieldAccessFrame{op: s.term.Op})
 		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
 		return checkResult{}, false, nil
 	case "app":
@@ -794,4 +835,24 @@ func (f *appArgFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, er
 				debugTy(f.fnTy.A), debugTy(r.ty))}}, nil
 	}
 	return frameOutcome{done: &checkResult{ty: f.fnTy.B}}, nil
+}
+
+func (f *recordFieldFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, error) {
+	if r.err != nil {
+		return frameOutcome{done: &checkResult{err: r.err}}, nil
+	}
+	f.tys = append(f.tys, *r.ty)
+	f.idx++
+	if f.idx < len(f.term.Args) {
+		// Ordering is validated for the NEXT index before its value is
+		// visited, matching the recursive checker's interleaving.
+		if f.term.Names[f.idx] <= f.term.Names[f.idx-1] {
+			return frameOutcome{done: &checkResult{
+				err: fmt.Errorf("record fields must be sorted and unique (canonical form)")}}, nil
+		}
+		next := checkerStep{mode: modeSynth, ctx: f.ctx, term: &f.term.Args[f.idx]}
+		return frameOutcome{next: &next}, nil
+	}
+	return frameOutcome{done: &checkResult{ty: &Ty{
+		K: "record", Names: append([]string{}, f.term.Names...), Args: f.tys}}}, nil
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"math/big"
 	"strings"
@@ -259,10 +260,71 @@ func portedFamilyCases() []familyCase {
 		{"app-check-ok", nil, mkApp(mkLam(tInt(), v(0)), i(1)), tInt()},
 		{"app-check-mismatch", nil, mkApp(mkLam(tInt(), v(0)), i(1)), tBool()},
 		{"app-in-if", nil, mkIf(bt(true), mkApp(mkLam(tInt(), v(0)), i(1)), i(2)), nil},
+
+		// --- `record` / `field`: INTERLEAVED ordering and synthesis ---------
+		{"record-empty", nil, mkRec(nil), nil},
+		{"record-one", nil, mkRec([]string{"a"}, i(1)), nil},
+		{"record-sorted", nil, mkRec([]string{"a", "b"}, i(1), bt(true)), nil},
+		{"record-three", nil, mkRec([]string{"a", "b", "c"}, i(1), bt(true), i(2)), nil},
+
+		{"record-names-values-mismatch", nil,
+			&Term{K: "record", Names: []string{"a", "b"}, Args: []Term{*i(1)}}, nil},
+		{"record-unsorted", nil, mkRec([]string{"b", "a"}, i(1), bt(true)), nil},
+		{"record-duplicate-names", nil, mkRec([]string{"a", "a"}, i(1), bt(true)), nil},
+
+		// THE INTERLEAVING. Ordering for index i is checked BEFORE value i is
+		// synthesized, so a broken value at the OUT-OF-ORDER index is never
+		// reached and the ordering error wins...
+		{"record-unsorted-beats-later-bad-value", nil,
+			mkRec([]string{"b", "a"}, i(1), v(9)), nil},
+		// ...while a broken value at index 0 is reported first, because index 0
+		// has no predecessor to compare against.
+		{"record-bad-value-at-zero-beats-unsorted", nil,
+			mkRec([]string{"b", "a"}, v(9), i(1)), nil},
+		{"record-bad-value-middle", nil,
+			mkRec([]string{"a", "b", "c"}, i(1), v(9), i(2)), nil},
+		{"record-two-bad-values-differently", nil,
+			mkRec([]string{"a", "b"}, v(5), v(7)), nil},
+
+		{"field-ok", nil, mkField(mkRec([]string{"a", "b"}, i(1), bt(true)), "a"), nil},
+		{"field-ok-second", nil, mkField(mkRec([]string{"a", "b"}, i(1), bt(true)), "b"), nil},
+		{"field-missing", nil, mkField(mkRec([]string{"a"}, i(1)), "zz"), nil},
+		{"field-on-non-record", nil, mkField(i(1), "a"), nil},
+		{"field-record-fails", nil, mkField(mkRec([]string{"b", "a"}, i(1), i(2)), "a"), nil},
+		{"field-nested", nil,
+			mkField(mkRec([]string{"r"}, mkRec([]string{"a"}, i(1))), "r"), nil},
+
+		{"record-check-ok", nil, mkRec([]string{"a"}, i(1)),
+			&Ty{K: "record", Names: []string{"a"}, Args: []Ty{*tInt()}}},
+		{"record-check-mismatch", nil, mkRec([]string{"a"}, i(1)), tInt()},
+		{"field-check-ok", nil, mkField(mkRec([]string{"a"}, i(1)), "a"), tInt()},
+		{"record-in-lam", nil, mkLam(tInt(), mkRec([]string{"a"}, v(0))), nil},
 	}
 }
 
+func mkRec(names []string, vals ...*Term) *Term {
+	t := &Term{K: "record", Names: names}
+	for _, x := range vals {
+		t.Args = append(t.Args, *x)
+	}
+	return t
+}
+func mkField(rec *Term, name string) *Term { return &Term{K: "field", A: rec, Op: name} }
+
 func mkApp(fn, arg *Term) *Term { return &Term{K: "app", A: fn, B: arg} }
+
+// snapshotTerm renders a term for mutation detection. Total by construction,
+// unlike the canonical encoder — see the note at its call site.
+func snapshotTerm(t *Term) string {
+	if t == nil {
+		return "<nil>"
+	}
+	b, err := json.Marshal(t)
+	if err != nil {
+		return "<unmarshalable: " + err.Error() + ">"
+	}
+	return string(b)
+}
 
 func mkLam(param *Ty, body *Term) *Term { return &Term{K: "lam", Ty: param, A: body} }
 
@@ -289,12 +351,17 @@ func TestPortedFamilyMatchesRecursiveChecker(t *testing.T) {
 
 	for _, tc := range portedFamilyCases() {
 		t.Run(tc.name, func(t *testing.T) {
-			// Hash the term before either runs, so a mutation by EITHER is
-			// visible. The ported family must not write to the AST at all.
-			before := ""
-			if tc.term != nil {
-				before = hashDef(&Def{K: "func", Ty: tInt(), Body: tc.term})
-			}
+			// Snapshot the term before either runs, so a mutation by EITHER
+			// is visible. The ported families must not write to the AST.
+			//
+			// json.Marshal, NOT hashDef. The canonical encoder is deliberately
+			// PARTIAL — it panics on unknown kinds and malformed structures —
+			// because production only ever hashes Defs that already passed the
+			// gate. This population contains deliberately malformed terms (a
+			// record whose Names and Args disagree), so hashing them was a
+			// defect in the test rather than in either checker. Marshalling is
+			// total over these structs and still detects any field change.
+			before := snapshotTerm(tc.term)
 
 			rc := &checker{st: st}
 			var rTy *Ty
@@ -335,8 +402,9 @@ func TestPortedFamilyMatchesRecursiveChecker(t *testing.T) {
 			}
 			// No surviving mutation.
 			if tc.term != nil {
-				if after := hashDef(&Def{K: "func", Ty: tInt(), Body: tc.term}); after != before {
-					t.Fatalf("the term was MUTATED: %s -> %s; this family must not write to the AST", before[:12], after[:12])
+				if after := snapshotTerm(tc.term); after != before {
+					t.Fatalf("the term was MUTATED\n  before: %s\n  after:  %s\n"+
+						"these families must not write to the AST", before, after)
 				}
 			}
 			// Inference accounting untouched on both sides.
@@ -364,8 +432,8 @@ func TestUnportedFamiliesRefuse(t *testing.T) {
 	st := canonicalStore(t)
 	unported := []*Term{
 		{K: "ctor"},
-		{K: "match"}, {K: "record"},
-		{K: "field"}, {K: "ref"}, {K: "self"}, {K: "str"},
+		{K: "match"},
+		{K: "ref"}, {K: "self"}, {K: "str"},
 	}
 	for _, term := range unported {
 		for _, mode := range []checkMode{modeSynth, modeCheck} {
