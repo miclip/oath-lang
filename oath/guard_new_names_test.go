@@ -13,6 +13,7 @@ import (
 // on new-vs-existing, and deliberately include an innocuous-looking name.
 
 func TestGuardNewNamesRefusesFreshBindings(t *testing.T) {
+	t.Setenv("OATH_STORE", "") // the guard applies to the DEFAULT store only
 	st, err := OpenStore("../codebase")
 	if err != nil {
 		t.Fatalf("could not open the committed store: %v", err)
@@ -36,6 +37,7 @@ func TestGuardNewNamesRefusesFreshBindings(t *testing.T) {
 }
 
 func TestGuardNewNamesAllowsRepoints(t *testing.T) {
+	t.Setenv("OATH_STORE", "")
 	st, err := OpenStore("../codebase")
 	if err != nil {
 		t.Fatalf("could not open the committed store: %v", err)
@@ -78,6 +80,7 @@ func TestGuardNewNamesDefersParseErrors(t *testing.T) {
 // fresh names reported, not just the first. A guard that stops at the first
 // would let a reader fix one name and be surprised by the next.
 func TestGuardNewNamesCountsEveryForm(t *testing.T) {
+	t.Setenv("OATH_STORE", "")
 	st, err := OpenStore("../codebase")
 	if err != nil {
 		t.Fatalf("could not open the committed store: %v", err)
@@ -91,5 +94,32 @@ func TestGuardNewNamesCountsEveryForm(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal must mention %q; got %v", want, err)
 		}
+	}
+}
+
+// TestGuardNewNamesSkipsExplicitStores is the CI regression this guard caused on
+// the day it landed. Publishing into a FRESH store makes every name new by
+// definition — scripts/check-stdlib-manifest.py republishes 52 artifacts into a
+// temp dir, and oathrs/conformance.sh rebuilds the corpus from empty. In an
+// empty store a new name is a RECONSTRUCTION, not a publication decision.
+//
+// Setting OATH_STORE is someone stating where they intend to write, which is
+// the opposite of the casual write this guards.
+func TestGuardNewNamesSkipsExplicitStores(t *testing.T) {
+	st, err := OpenStore("../codebase")
+	if err != nil {
+		t.Fatalf("could not open the committed store: %v", err)
+	}
+	src := "(defn scratchprobe [] [(x Int)] Int (+ x 1))"
+
+	t.Setenv("OATH_STORE", "") // control: default store -> refused
+	if err := guardNewNames(st, src, false); err == nil {
+		t.Fatal("control failed: the default store must still refuse a fresh binding, " +
+			"otherwise the case below proves nothing")
+	}
+
+	t.Setenv("OATH_STORE", t.TempDir())
+	if err := guardNewNames(st, src, false); err != nil {
+		t.Errorf("an explicitly chosen store must not be guarded, got %v", err)
 	}
 }

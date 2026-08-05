@@ -1353,6 +1353,19 @@ func guardNewNames(st *Store, src string, allowNew bool) error {
 	if allowNew {
 		return nil
 	}
+	// ONLY THE DEFAULT STORE IS GUARDED, and that is the principle rather than a
+	// concession: the hazard is a CASUAL write reaching the canonical corpus, and
+	// setting OATH_STORE is not casual — it is someone stating where they intend
+	// to write. Guarding every store instead broke CI immediately, because
+	// publishing into a FRESH store makes every name new by definition:
+	// scripts/check-stdlib-manifest.py republishes 52 artifacts into a temp dir,
+	// and `oathrs/conformance.sh` rebuilds the corpus from empty. In an empty
+	// store a new name is a RECONSTRUCTION, not a publication decision, so the
+	// premise the guard rests on — that creating a name is an irreversible act
+	// someone chose — does not hold there.
+	if os.Getenv("OATH_STORE") != "" {
+		return nil
+	}
 	forms, err := parseForms(src)
 	if err != nil {
 		return nil // let apiPut report the real parse error, with its line number

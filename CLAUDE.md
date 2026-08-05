@@ -852,6 +852,23 @@ with the reason, because documentation is the only correction available.
    distinguishes a probe from a publication is not what it is called, it is
    whether anyone decided to create it.
 
+   **AND ONLY THE DEFAULT STORE IS GUARDED.** Setting `OATH_STORE` is someone
+   stating where they intend to write, which is the opposite of a casual write.
+   Guarding every store broke CI within the hour: publishing into a FRESH store
+   makes every name new BY DEFINITION, and in an empty store a new name is a
+   RECONSTRUCTION rather than a publication decision — so the premise the guard
+   rests on does not hold there.
+
+   > **WHEN A RECURRING MISTAKE LOOKS SUBJECTIVE OR UNENFORCEABLE, CHECK WHETHER
+   > THE HAZARD HAS BEEN NAMED AT THE WRONG LAYER. The visible symptom may be a
+   > judgment call while the underlying STATE TRANSITION is mechanical.**
+
+   Name quality is subjective and unenforceable; creating a new permanent
+   binding is neither. That is the whole distance between eight years of advice
+   and twenty lines of code, and it is the same move as every other
+   consolidation in this file — the enforceable boundary was invisible only
+   because the problem had been given the wrong name.
+
 The asymmetry is the point, and it is the one the protocol exists to make you
 feel: publishing is one command, and permanence is the guarantee. If a name is
 not worth defending in a year, do not bind it.
