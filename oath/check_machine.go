@@ -102,6 +102,11 @@ type checkerMachine struct {
 	// equality cannot see that. Visible at n=1 as 2 entries against 1.
 	inferEntries int
 
+	// framesPushed counts continuations created. It witnesses that a family
+	// actually SUSPENDS rather than computing inline — otherwise the plumbing
+	// would be untested and the next family would inherit unexercised machinery.
+	framesPushed int
+
 	// pending carries a step out of a helper that suspended, since a helper
 	// cannot rewrite the run loop's step directly.
 	pending *checkerStep
@@ -561,17 +566,17 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 			// and compares the result afterwards. Both halves are reproduced:
 			// the compare frame goes on first, then the constructor runs with
 			// exp available to matchTy.
-			m.stack = append(m.stack, &checkCompareFrame{exp: s.exp})
+			m.push(&checkCompareFrame{exp: s.exp})
 			return m.beginCtor(s, s.exp)
 		case "match":
-			m.stack = append(m.stack, &matchArmFrame{ctx: s.ctx, term: s.term, exp: s.exp, part: "scrutinee"})
+			m.push(&matchArmFrame{ctx: s.ctx, term: s.term, exp: s.exp, part: "scrutinee"})
 			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
 			return checkResult{}, false, nil
 		case "app":
 			if head, args := spine(s.term); head.K == "ref" || head.K == "self" {
 				// The expected type flows INTO the inference (it seeds the
 				// substitution) and is compared afterwards — both halves.
-				m.stack = append(m.stack, &checkCompareFrame{exp: s.exp})
+				m.push(&checkCompareFrame{exp: s.exp})
 				if r, produced, applicable, err := m.beginInferApp(s, s.exp, head, args); applicable {
 					return r, produced, err
 				}
@@ -579,7 +584,7 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 			}
 			// check.go's `case "app"` only handles the ref/self spine; anything
 			// else FALLS THROUGH to synthesize-then-compare.
-			m.stack = append(m.stack, &checkCompareFrame{exp: s.exp})
+			m.push(&checkCompareFrame{exp: s.exp})
 			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term}
 			return checkResult{}, false, nil
 		case "lam":
@@ -591,13 +596,13 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 					return checkResult{err: fmt.Errorf("lambda parameter %s does not match expected %s",
 						debugTy(s.term.Ty), debugTy(s.exp.A))}, true, nil
 				}
-				m.stack = append(m.stack, &lamBodyFrame{paramTy: s.term.Ty})
+				m.push(&lamBodyFrame{paramTy: s.term.Ty})
 				*s = checkerStep{mode: modeCheck, ctx: pushCtx(s.ctx, s.term.Ty), term: s.term.A, exp: s.exp.B}
 				return checkResult{}, false, nil
 			}
 			// FALL THROUGH, exactly as check.go does: no lambda-specific
 			// message when the expected type is not a function.
-			m.stack = append(m.stack, &checkCompareFrame{exp: s.exp})
+			m.push(&checkCompareFrame{exp: s.exp})
 			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term}
 			return checkResult{}, false, nil
 		case "let":
@@ -607,19 +612,19 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 			if err := checkTyWF(m.st, s.term.Ty, m.selfTyVars, false); err != nil {
 				return checkResult{err: err}, true, nil
 			}
-			m.stack = append(m.stack, &letBodyFrame{ctx: s.ctx, term: s.term, exp: s.exp, part: "bound"})
+			m.push(&letBodyFrame{ctx: s.ctx, term: s.term, exp: s.exp, part: "bound"})
 			// CHECK MODE: the bound value is CHECKED against the annotation.
 			*s = checkerStep{mode: modeCheck, ctx: s.ctx, term: s.term.A, exp: s.term.Ty}
 			return checkResult{}, false, nil
 		case "if":
 			// CHECK MODE: the expected type flows into BOTH branches.
-			m.stack = append(m.stack, &ifBranchFrame{ctx: s.ctx, term: s.term, exp: s.exp, part: "cond"})
+			m.push(&ifBranchFrame{ctx: s.ctx, term: s.term, exp: s.exp, part: "cond"})
 			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
 			return checkResult{}, false, nil
 		case "var", "int", "rat", "float", "bool", "prim", "record", "field", "ref", "self":
 			// The DEFAULT path: synthesize, then compare. check.go has no
 			// `prim` case either — it falls through to exactly this.
-			m.stack = append(m.stack, &checkCompareFrame{exp: s.exp})
+			m.push(&checkCompareFrame{exp: s.exp})
 			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term}
 			return checkResult{}, false, nil
 		default:
@@ -644,7 +649,7 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 		if err := checkTyWF(m.st, s.term.Ty, m.selfTyVars, false); err != nil {
 			return checkResult{err: err}, true, nil
 		}
-		m.stack = append(m.stack, &letBodyFrame{ctx: s.ctx, term: s.term, part: "bound"})
+		m.push(&letBodyFrame{ctx: s.ctx, term: s.term, part: "bound"})
 		// SYNTH MODE: the bound value is SYNTHESIZED, then compared.
 		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
 		return checkResult{}, false, nil
@@ -660,7 +665,7 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 		ty, err := m.refSelfTy(s.term)
 		return checkResult{ty: ty, err: err}, true, nil
 	case "match":
-		m.stack = append(m.stack, &matchArmFrame{ctx: s.ctx, term: s.term, part: "scrutinee"})
+		m.push(&matchArmFrame{ctx: s.ctx, term: s.term, part: "scrutinee"})
 		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
 		return checkResult{}, false, nil
 	case "record":
@@ -670,11 +675,11 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 		if len(s.term.Args) == 0 {
 			return checkResult{ty: &Ty{K: "record"}}, true, nil
 		}
-		m.stack = append(m.stack, &recordFieldFrame{ctx: s.ctx, term: s.term})
+		m.push(&recordFieldFrame{ctx: s.ctx, term: s.term})
 		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: &s.term.Args[0]}
 		return checkResult{}, false, nil
 	case "field":
-		m.stack = append(m.stack, &fieldAccessFrame{op: s.term.Op})
+		m.push(&fieldAccessFrame{op: s.term.Op})
 		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
 		return checkResult{}, false, nil
 	case "app":
@@ -686,14 +691,14 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 			// check.go does: a ref to a data definition, or a head whose type
 			// arguments were written explicitly, is typed by the ordinary rule.
 		}
-		m.stack = append(m.stack, &appArgFrame{ctx: s.ctx, term: s.term, part: "fn"})
+		m.push(&appArgFrame{ctx: s.ctx, term: s.term, part: "fn"})
 		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
 		return checkResult{}, false, nil
 	case "lam":
 		if err := checkTyWF(m.st, s.term.Ty, m.selfTyVars, false); err != nil {
 			return checkResult{err: err}, true, nil
 		}
-		m.stack = append(m.stack, &lamBodyFrame{paramTy: s.term.Ty, synthMode: true})
+		m.push(&lamBodyFrame{paramTy: s.term.Ty, synthMode: true})
 		*s = checkerStep{mode: modeSynth, ctx: pushCtx(s.ctx, s.term.Ty), term: s.term.A}
 		return checkResult{}, false, nil
 	case "prim":
@@ -707,7 +712,7 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 			if len(s.term.Args) != 2 {
 				return checkResult{err: fmt.Errorf("primitive == takes 2 arguments, got %d", len(s.term.Args))}, true, nil
 			}
-			m.stack = append(m.stack, &eqFrame{ctx: s.ctx, term: s.term, part: "left"})
+			m.push(&eqFrame{ctx: s.ctx, term: s.term, part: "left"})
 			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: &s.term.Args[0]}
 			return checkResult{}, false, nil
 		}
@@ -723,7 +728,7 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 		return checkResult{}, false, nil
 	case "if":
 		// SYNTH MODE: both branches are synthesized and must agree.
-		m.stack = append(m.stack, &ifBranchFrame{ctx: s.ctx, term: s.term, part: "cond"})
+		m.push(&ifBranchFrame{ctx: s.ctx, term: s.term, part: "cond"})
 		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
 		return checkResult{}, false, nil
 	}
@@ -734,6 +739,11 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 // depth costs heap here, not an embedder resource Go can neither measure nor
 // grow.
 func (m *checkerMachine) run(start checkerStep) (*Ty, error) {
+	// THE STACK IS RESET AT ENTRY, not merely drained on success. An error
+	// return leaves frames behind, so a REUSED machine would resume into a
+	// previous call's continuation — and the compile/LLVM backends hold one
+	// machine across a whole definition, which is exactly that pattern.
+	m.stack, m.pending = m.stack[:0], nil
 	s := start
 	for {
 		r, produced, err := m.dispatch(&s)
@@ -765,7 +775,7 @@ func (m *checkerMachine) run(start checkerStep) (*Ty, error) {
 				return nil, ferr
 			}
 			if out.next != nil {
-				m.stack = append(m.stack, f) // the frame is not finished
+				m.push(f) // the frame is not finished
 				s = *out.next
 				descend = true
 				break
@@ -1065,7 +1075,7 @@ func (m *checkerMachine) beginCtor(s *checkerStep, exp *Ty) (checkResult, bool, 
 			return m.finishInference(f)
 		}
 		next := checkerStep{mode: modeSynth, ctx: s.ctx, term: &t.Args[0]}
-		m.stack = append(m.stack, f)
+		m.push(f)
 		*s = next
 		return checkResult{}, false, nil
 	}
@@ -1120,7 +1130,7 @@ func (m *checkerMachine) beginValidation(f *ctorFrame, s *checkerStep) (checkRes
 		return checkResult{ty: tDataTy(f.term.Hash, f.term.TyArgs)}, true, nil
 	}
 	*s = checkerStep{mode: modeCheck, ctx: f.ctx, term: &f.term.Args[0], exp: f.fields[0]}
-	m.stack = append(m.stack, f)
+	m.push(f)
 	return checkResult{}, false, nil
 }
 
@@ -1209,7 +1219,7 @@ func (m *checkerMachine) beginInferApp(s *checkerStep, exp *Ty, head *Term, args
 		r, produced, err := m.finishInferApp(f)
 		return r, produced, true, err
 	}
-	m.stack = append(m.stack, f)
+	m.push(f)
 	*s = checkerStep{mode: modeSynth, ctx: f.ctx, term: f.args[0]}
 	return checkResult{}, false, true, nil
 }
@@ -1245,7 +1255,7 @@ func (m *checkerMachine) advanceInferApp(f *inferAppFrame) (checkResult, bool, e
 			}
 			continue
 		}
-		m.stack = append(m.stack, f)
+		m.push(f)
 		m.pending = &checkerStep{mode: modeCheck, ctx: f.ctx, term: f.args[f.idx], exp: solved}
 		return checkResult{}, false, nil
 	}
@@ -1293,4 +1303,23 @@ func (f *inferAppFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, 
 	m.pending = nil
 	m.stack = m.stack[:len(m.stack)-1]
 	return frameOutcome{next: &next}, nil
+}
+
+// synth and check adapt the machine to the recursive checker's call shape, so
+// the components that hold a checker across many sub-queries (the backends, the
+// e-graph) migrate by changing a field type rather than by rewriting every call
+// site. Each starts from a clean stack.
+func (m *checkerMachine) synth(ctx []*Ty, t *Term) (*Ty, error) {
+	return m.run(checkerStep{mode: modeSynth, ctx: ctx, term: t})
+}
+
+func (m *checkerMachine) check(ctx []*Ty, t *Term, exp *Ty) error {
+	_, err := m.run(checkerStep{mode: modeCheck, ctx: ctx, term: t, exp: exp})
+	return err
+}
+
+// push installs a continuation and counts it.
+func (m *checkerMachine) push(f checkerFrame) {
+	m.stack = append(m.stack, f)
+	m.framesPushed++
 }

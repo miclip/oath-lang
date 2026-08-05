@@ -461,33 +461,47 @@ func TestUnportedFamiliesRefuse(t *testing.T) {
 	}
 }
 
-// TestPortedFamilyUsesTheExplicitStack is the reason any of this exists. A
-// check of a ported leaf must actually push a continuation rather than compare
-// inline — otherwise the plumbing is untested and the next family inherits
-// machinery nothing has exercised.
+// TestPortedFamilyUsesTheExplicitStack is the reason any of this exists: a
+// check of a ported leaf must actually SUSPEND rather than compare inline.
+//
+// It counts frames rather than installing a probe frame beneath the run, which
+// is how it worked until run() began resetting the stack at entry — a change
+// made because an error return used to leave frames behind, and the backends
+// hold one machine across a whole definition. The counter survives that reset
+// and is a more direct witness than the probe was.
 func TestPortedFamilyUsesTheExplicitStack(t *testing.T) {
 	st := canonicalStore(t)
-	m := &checkerMachine{st: st}
 
-	// A frame that records that it was resumed, installed beneath the run so
-	// the machine must unwind THROUGH it to finish.
-	probe := &recordingFrame{}
-	m.stack = append(m.stack, probe)
-	if _, err := m.run(checkerStep{mode: modeCheck, term: &Term{K: "int", Int: big.NewInt(1)}, exp: tInt()}); err != nil {
+	// A leaf SYNTHESIS needs no continuation at all.
+	m := &checkerMachine{st: st}
+	if _, err := m.run(checkerStep{mode: modeSynth, term: i(1)}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !probe.resumed {
-		t.Fatal("the machine finished without unwinding through its stack — " +
-			"the check path is not using continuations, so the plumbing is untested")
+	if m.framesPushed != 0 {
+		t.Errorf("synthesizing a leaf should need no continuation, pushed %d", m.framesPushed)
 	}
-}
 
-type recordingFrame struct{ resumed bool }
+	// CHECKING one goes through a compare continuation.
+	m = &checkerMachine{st: st}
+	if _, err := m.run(checkerStep{mode: modeCheck, term: i(1), exp: tInt()}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if m.framesPushed == 0 {
+		t.Fatal("checking a leaf pushed NO continuation — the check path is not " +
+			"using the machinery, so the plumbing is untested")
+	}
 
-func (f *recordingFrame) describe() string { return "test:recording" }
-func (f *recordingFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, error) {
-	f.resumed = true
-	return frameOutcome{done: &r}, nil
+	// And a nested structure pushes more than a flat one, so the count tracks
+	// the shape rather than being incidentally non-zero.
+	flat := &checkerMachine{st: st}
+	_, _ = flat.run(checkerStep{mode: modeSynth, term: mkIf(bt(true), i(1), i(2))})
+	deep := &checkerMachine{st: st}
+	_, _ = deep.run(checkerStep{mode: modeSynth,
+		term: mkIf(bt(true), mkIf(bt(true), i(1), i(2)), i(3))})
+	if deep.framesPushed <= flat.framesPushed {
+		t.Errorf("a nested term pushed %d continuations, flat pushed %d — the count "+
+			"is not tracking structure", deep.framesPushed, flat.framesPushed)
+	}
 }
 
 // TestEqRecoveryPathLacksAWitness records a GAP, and fails when the gap becomes

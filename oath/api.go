@@ -659,8 +659,12 @@ func apiEval(st *Store, src string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	c := &checker{st: st}
-	ty, err := c.synth(nil, term)
+	// The explicit machine (#149), not the recursive checker. NOTE the narrow
+	// scope: this makes the CHECKING step stack-safe, and apiEval still reaches
+	// elabTerm and printValue, which recurse. `oath eval` is not yet stack-safe
+	// end to end — only its checker call is migrated.
+	c := &checkerMachine{st: st}
+	ty, err := c.run(checkerStep{mode: modeSynth, term: term})
 	if err != nil {
 		return "", err
 	}

@@ -124,7 +124,7 @@ type llvmEmitter struct {
 	// Type tracking for record field resolution, threaded exactly as the kernel's
 	// checker is elsewhere: a field projection needs the record's type to know
 	// which slot a name refers to.
-	chk *checker
+	chk *checkerMachine
 	ctx []*Ty
 }
 
@@ -338,7 +338,7 @@ func (e *llvmEmitter) collect(h string) error {
 // ptr @f(ptr %env, ptr %arg), mirroring the evaluator's env/arg discipline.
 func (e *llvmEmitter) emitDef(h string) error {
 	d, _ := e.st.GetDef(h)
-	e.chk = &checker{st: e.st, selfTyVars: d.TyVars, selfTy: d.Ty}
+	e.chk = &checkerMachine{st: e.st, selfTyVars: d.TyVars, selfTy: d.Ty}
 	e.ctx = nil
 	name := e.fname[h]
 	fmt.Fprintf(&e.b, "; %s\ndefine ptr %s(ptr %%env, ptr %%arg) {\n", e.st.NameOf(h), name)

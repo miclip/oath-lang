@@ -96,31 +96,25 @@ func TestCtorRouteSplitsTheTwoWitnesses(t *testing.T) {
 	}
 }
 
-// TestRecursiveCheckerCallSitesArePinned replaces the step-2 guard that asserted
-// the machine was UNROUTED. The machine is now authoritative for checkDef, so
-// that assertion is false by design and the useful claim inverted with it.
+// TestRecursiveCheckerCallSitesArePinned asserts NO production code constructs
+// the recursive checker. It began life as the opposite claim — that the MACHINE
+// was unrouted — and was inverted at the switch-over, then shrunk as each
+// residual caller migrated:
 //
-// What is pinned is the exact set of production sites that still construct the
-// RECURSIVE checker, so the number can only go down deliberately and a fifth
-// cannot appear unnoticed. checkDef is deliberately absent: it is the gate every
-// definition passes through, and #149's claim quantifies over exits from
-// oathCheck, which reaches the kernel only by that route.
+//	step 15   four callers pinned: apiEval, eHash, and both backends' emitDef
+//	now       zero
 //
-// The remaining four are OTHER entry points with their own exposure, recorded
-// rather than silently tolerated:
+// Keeping it as a pinned SET rather than a bare "none" assertion is what made
+// the intermediate states honest: at no point did a passing suite imply the
+// recursive checker had been retired system-wide while callers remained.
 //
-//	apiEval    `oath eval` and the MCP `eval` tool — attacker-reachable on a
-//	           HOSTED store, though NOT from the browser: the playground
-//	           exports only oathCheck, oathProve and oathKernelVersion.
-//	eHash      the e-graph, reached only by `find --equiv`.
-//	emitDef    the Go and LLVM backends, reached only by `oath build`.
+// The recursive checker survives only in test files, as the differential
+// oracle.
 func TestRecursiveCheckerCallSitesArePinned(t *testing.T) {
-	want := map[string]string{
-		"api.go":     "apiEval",
-		"canon.go":   "eHash",
-		"compile.go": "emitDef",
-		"llvm.go":    "emitDef",
-	}
+	// EMPTY. Every production caller has been migrated: apiEval, eHash and both
+	// backends' emitDef now construct the explicit machine. The recursive
+	// checker survives only as the differential oracle in test files.
+	want := map[string]string{}
 	files, err := filepath.Glob("*.go")
 	if err != nil || len(files) == 0 {
 		t.Fatalf("no Go files found; this check did not run (%v)", err)

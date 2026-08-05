@@ -239,7 +239,7 @@ func acRebuild(op string, leaves []Term) *Term {
 // context so it knows an operator's operand type. It NEVER affects identity
 // (docs/egraph.md): a definition's hash is still the O1 encoding of its ACTUAL
 // AST; this only draws equivalence edges between existing objects.
-func eNormalize(chk *checker, ctx []*Ty, t *Term) *Term {
+func eNormalize(chk *checkerMachine, ctx []*Ty, t *Term) *Term {
 	if t == nil {
 		return nil
 	}
@@ -297,7 +297,7 @@ func eNormalize(chk *checker, ctx []*Ty, t *Term) *Term {
 // function up to the rewrite rules — the same equivalence class, though (by
 // design) DIFFERENT identities.
 func eHash(st *Store, d *Def) string {
-	chk := &checker{st: st, selfTyVars: d.TyVars, selfTy: d.Ty}
+	chk := &checkerMachine{st: st, selfTyVars: d.TyVars, selfTy: d.Ty}
 	e := &enc{}
 	e.ty(d.Ty)
 	if d.Body != nil {

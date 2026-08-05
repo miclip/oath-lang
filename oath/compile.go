@@ -335,7 +335,7 @@ type emitter struct {
 	setOps  map[string]setOp // recognized Set/Map-op hashes → native helper + arity
 	// Type tracking for record field resolution: the kernel's own checker,
 	// threaded alongside compilation. ctx mirrors the de Bruijn env.
-	chk *checker
+	chk *checkerMachine
 	ctx []*Ty
 }
 
@@ -1345,7 +1345,7 @@ func (e *emitter) closure(h string) error {
 func (e *emitter) emitDef(h string) error {
 	d, _ := e.st.GetDef(h)
 	name := e.fname[h]
-	e.chk = &checker{st: e.st, selfTyVars: d.TyVars, selfTy: d.Ty}
+	e.chk = &checkerMachine{st: e.st, selfTyVars: d.TyVars, selfTy: d.Ty}
 	e.ctx = nil
 	// A def value is its body evaluated in an empty env: for a lam chain we
 	// emit fn(env, arg) = body of the FIRST lam with arg bound; deeper lams
