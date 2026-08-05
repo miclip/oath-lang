@@ -101,6 +101,10 @@ type checkerMachine struct {
 	// same final term is semantically correct and exponential, and output
 	// equality cannot see that. Visible at n=1 as 2 entries against 1.
 	inferEntries int
+
+	// pending carries a step out of a helper that suspended, since a helper
+	// cannot rewrite the run loop's step directly.
+	pending *checkerStep
 }
 
 // --- the constructor routes ---------------------------------------------
@@ -168,49 +172,39 @@ func ctorRouteFor(d *Def, t *Term) ctorRoute {
 // arrive with step 3, family by family; the shapes are fixed here so the
 // fixture can be run against each family as it lands.
 
-// ctorInferFrame is stage 1: argument idx has been synthesized.
+// ctorFrame drives BOTH constructor routes. One frame with an explicit phase,
+// not three frame types: the run loop re-pushes the same frame across each
+// suspension, and the two passes share accumulated state (the datatype, the
+// substitution, the argument types). The ROUTE is still a named value, so which
+// path produced a given pass stays inspectable.
 //
-// It holds subst because the substitution accumulates ACROSS arguments — a type
-// parameter may be determined by argument 3 after arguments 1 and 2 left it
-// open, so the frame carries partial state rather than recomputing.
-type ctorInferFrame struct {
-	def       *Def
-	term      *Term
-	exp       *Ty
+// Phases, and every boundary between them is semantic:
+//
+//	infer     pass 1 — SYNTHESIZE each argument left to right. A failure is
+//	          SUPPRESSED: that argument contributes nothing to the substitution
+//	          and is left for pass 2 to diagnose.
+//	(solve)   require a COMPLETE substitution, then PUBLISH it to t.TyArgs
+//	          immediately. No sub-judgement, so no suspension — but it is a
+//	          named operation because its timing is the invariant.
+//	validate  pass 2 — CHECK each argument against its substituted field type.
+//	          Re-entry into a child observes that child's populated TyArgs and
+//	          skips inference, which is what keeps this linear.
+//
+// The monomorphic route runs `validate` alone.
+type ctorFrame struct {
 	ctx       []*Ty
-	rawFields []*Ty
+	term      *Term
+	exp       *Ty // the expected type, when one flowed in; seeds the substitution
+	def       *Def
+	route     ctorRoute
+	rawFields []*Ty // uninstantiated field types, for matching during inference
+	fields    []*Ty // substituted field types, for validation
 	subst     []*Ty
 	idx       int
+	phase     string // infer | validate
 }
 
-func (f *ctorInferFrame) describe() string { return "ctor:infer" }
-
-// ctorSolveFrame is stage 2: every argument has been visited and the
-// substitution is complete or it is not. Separate from stage 1 so that
-// PUBLICATION has its own step and cannot drift to a different moment.
-type ctorSolveFrame struct {
-	def   *Def
-	term  *Term
-	ctx   []*Ty
-	subst []*Ty
-}
-
-func (f *ctorSolveFrame) describe() string { return "ctor:solve+publish" }
-
-// ctorValidateFrame is stage 3, and is also the WHOLE of routeValidateOnly.
-// Shared deliberately: the monomorphic route is exactly "validation with no
-// inference before it", and giving it a private copy would invite the two to
-// drift apart.
-type ctorValidateFrame struct {
-	def    *Def
-	term   *Term
-	ctx    []*Ty
-	fields []*Ty
-	idx    int
-	route  ctorRoute // recorded so a trace says which path produced this pass
-}
-
-func (f *ctorValidateFrame) describe() string { return "ctor:validate(" + f.route.String() + ")" }
+func (f *ctorFrame) describe() string { return "ctor:" + f.phase + "(" + f.route.String() + ")" }
 
 // The remaining families, named now so the port has a checklist rather than a
 // search. Each corresponds to a recursive call in check.go.
@@ -465,16 +459,6 @@ func (e errFramePending) Error() string {
 	return "checker machine: continuation " + e.frame + " is declared but not yet ported (#149 step 3)"
 }
 
-func (f *ctorInferFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
-	return notPorted(f)
-}
-func (f *ctorSolveFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
-	return notPorted(f)
-}
-func (f *ctorValidateFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
-	return notPorted(f)
-}
-
 // --- step 3: the run loop, and the first ported family -------------------
 //
 // PORTED SO FAR: synthesis of leaves (var, int, rat, float, bool) and check's
@@ -540,6 +524,13 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 	}
 	if s.mode == modeCheck {
 		switch s.term.K {
+		case "ctor":
+			// check.go passes exp INTO synthCtor (it seeds the substitution)
+			// and compares the result afterwards. Both halves are reproduced:
+			// the compare frame goes on first, then the constructor runs with
+			// exp available to matchTy.
+			m.stack = append(m.stack, &checkCompareFrame{exp: s.exp})
+			return m.beginCtor(s, s.exp)
 		case "match":
 			m.stack = append(m.stack, &matchArmFrame{ctx: s.ctx, term: s.term, exp: s.exp, part: "scrutinee"})
 			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
@@ -619,6 +610,8 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 		// SYNTH MODE: the bound value is SYNTHESIZED, then compared.
 		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
 		return checkResult{}, false, nil
+	case "ctor":
+		return m.beginCtor(s, nil)
 	case "ref", "self":
 		// LEAVES: lookup, validate, substitute. No sub-judgement, so no frame.
 		//
@@ -709,6 +702,14 @@ func (m *checkerMachine) run(start checkerStep) (*Ty, error) {
 			return nil, err
 		}
 		if !produced {
+			// A helper that suspended could not rewrite s directly; it leaves
+			// the step here instead. Checked unconditionally rather than only
+			// on the paths known to use it, so a future helper cannot suspend
+			// into a stale step.
+			if m.pending != nil {
+				s = *m.pending
+				m.pending = nil
+			}
 			continue // a frame was pushed; s now names its first child
 		}
 		// Unwind: hand the result to each waiting frame until one asks for
@@ -986,4 +987,137 @@ func (m *checkerMachine) refSelfTy(t *Term) (*Ty, error) {
 		}
 	}
 	return substTy(base, t.TyArgs), nil
+}
+
+// beginCtor performs everything that precedes the first sub-judgement: resolve
+// the datatype, validate the constructor index and arity, choose the route, and
+// either seed inference or validate the explicit type arguments.
+func (m *checkerMachine) beginCtor(s *checkerStep, exp *Ty) (checkResult, bool, error) {
+	t := s.term
+	d, err := m.st.GetDef(t.Hash)
+	if err != nil {
+		return checkResult{err: err}, true, nil
+	}
+	if d.K != "data" {
+		return checkResult{err: fmt.Errorf("%s is not a data definition", shortHash(t.Hash))}, true, nil
+	}
+	if t.Idx < 0 || t.Idx >= len(d.Ctors) {
+		return checkResult{err: fmt.Errorf("constructor index %d out of range", t.Idx)}, true, nil
+	}
+	rawFields := instCtorFields(d, t.Hash, identityTyArgs(d.TyVars), t.Idx)
+	if len(t.Args) != len(rawFields) {
+		return checkResult{err: fmt.Errorf("constructor takes %d arguments, got %d",
+			len(rawFields), len(t.Args))}, true, nil
+	}
+	f := &ctorFrame{ctx: s.ctx, term: t, exp: exp, def: d,
+		route: ctorRouteFor(d, t), rawFields: rawFields}
+
+	if f.route == routeInferSolveValidate {
+		m.inferEntries++
+		f.subst = make([]*Ty, d.TyVars)
+		if exp != nil {
+			// The expected type seeds the substitution BEFORE any argument is
+			// visited, so a parameter no argument determines can still be
+			// solved from context.
+			_ = matchTy(tDataTy(t.Hash, identityTyArgs(d.TyVars)), exp, f.subst)
+		}
+		f.phase = "infer"
+		if len(t.Args) == 0 {
+			return m.finishInference(f)
+		}
+		next := checkerStep{mode: modeSynth, ctx: s.ctx, term: &t.Args[0]}
+		m.stack = append(m.stack, f)
+		*s = next
+		return checkResult{}, false, nil
+	}
+
+	// MONOMORPHIC ROUTE: nothing to infer.
+	if len(t.TyArgs) != d.TyVars {
+		return checkResult{err: fmt.Errorf("constructor given %d type arguments, expected %d",
+			len(t.TyArgs), d.TyVars)}, true, nil
+	}
+	for i := range t.TyArgs {
+		if err := checkTyWF(m.st, &t.TyArgs[i], m.selfTyVars, false); err != nil {
+			return checkResult{err: err}, true, nil
+		}
+	}
+	return m.beginValidation(f, s)
+}
+
+// finishInference is the SOLVE step: the substitution must be complete, and it
+// is published to t.TyArgs immediately — before validation, not after.
+//
+// The publication is CONTROL STATE, not cached output. It is what makes pass 2's
+// re-entry into a child observe populated TyArgs and skip inference; without it
+// the recurrence is T(n) = 2*T(n-1).
+func (m *checkerMachine) finishInference(f *ctorFrame) (checkResult, bool, error) {
+	for i, sub := range f.subst {
+		if sub == nil {
+			return checkResult{err: fmt.Errorf(
+				"cannot infer type argument %d for constructor %s — add [types] or determining arguments",
+				i, shortHash(f.term.Hash))}, true, nil
+		}
+	}
+	f.term.TyArgs = make([]Ty, len(f.subst))
+	for i := range f.subst {
+		f.term.TyArgs[i] = *f.subst[i]
+	}
+	var s checkerStep
+	r, produced, err := m.beginValidation(f, &s)
+	if produced || err != nil {
+		return r, produced, err
+	}
+	// beginValidation suspended; hand its step back through the machine.
+	m.pending = &s
+	return checkResult{}, false, nil
+}
+
+// beginValidation starts pass 2 — or completes immediately when the constructor
+// takes no arguments.
+func (m *checkerMachine) beginValidation(f *ctorFrame, s *checkerStep) (checkResult, bool, error) {
+	f.fields = instCtorFields(f.def, f.term.Hash, f.term.TyArgs, f.term.Idx)
+	f.phase, f.idx = "validate", 0
+	if len(f.term.Args) == 0 {
+		return checkResult{ty: tDataTy(f.term.Hash, f.term.TyArgs)}, true, nil
+	}
+	*s = checkerStep{mode: modeCheck, ctx: f.ctx, term: &f.term.Args[0], exp: f.fields[0]}
+	m.stack = append(m.stack, f)
+	return checkResult{}, false, nil
+}
+
+func (f *ctorFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, error) {
+	if f.phase == "infer" {
+		// SUPPRESSED: an argument that cannot be synthesized contributes
+		// nothing to the substitution and is left for pass 2 to diagnose.
+		// Propagating here would reject programs this checker accepts.
+		if r.err == nil {
+			_ = matchTy(f.rawFields[f.idx], r.ty, f.subst)
+		}
+		f.idx++
+		if f.idx < len(f.term.Args) {
+			next := checkerStep{mode: modeSynth, ctx: f.ctx, term: &f.term.Args[f.idx]}
+			return frameOutcome{next: &next}, nil
+		}
+		res, produced, err := m.finishInference(f)
+		if err != nil {
+			return frameOutcome{}, err
+		}
+		if produced {
+			return frameOutcome{done: &res}, nil
+		}
+		next := *m.pending
+		m.pending = nil
+		m.stack = m.stack[:len(m.stack)-1] // beginValidation re-pushed this frame
+		return frameOutcome{next: &next}, nil
+	}
+	// VALIDATE: the first failure aborts.
+	if r.err != nil {
+		return frameOutcome{done: &checkResult{err: r.err}}, nil
+	}
+	f.idx++
+	if f.idx < len(f.term.Args) {
+		next := checkerStep{mode: modeCheck, ctx: f.ctx, term: &f.term.Args[f.idx], exp: f.fields[f.idx]}
+		return frameOutcome{next: &next}, nil
+	}
+	return frameOutcome{done: &checkResult{ty: tDataTy(f.term.Hash, f.term.TyArgs)}}, nil
 }

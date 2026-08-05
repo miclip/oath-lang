@@ -339,10 +339,19 @@ func TestPortedFamilyMatchesRecursiveChecker(t *testing.T) {
 
 	cases := append(portedFamilyCases(), matchCases(t, st)...)
 	cases = append(cases, refSelfCases(t, st)...)
+	cases = append(cases, ctorCases(t, st)...)
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Snapshot the term before either runs, so a mutation by EITHER
-			// is visible. The ported families must not write to the AST.
+			// EACH CHECKER GETS ITS OWN COPY. Constructors publish TyArgs into
+			// the term, so running both over one term would let the second see
+			// the first's mutation — and a constructor with TyArgs already
+			// populated takes the MONOMORPHIC route, so the machine would be
+			// silently tested on a different path than the recursive checker.
+			//
+			// The snapshots are then compared to EACH OTHER: the claim is that
+			// both checkers leave the term in the same state, not that neither
+			// writes to it. Families before this one write nothing, and that
+			// remains visible as both snapshots equalling the original.
 			//
 			// json.Marshal, NOT hashDef. The canonical encoder is deliberately
 			// PARTIAL — it panics on unknown kinds and malformed structures —
@@ -352,20 +361,24 @@ func TestPortedFamilyMatchesRecursiveChecker(t *testing.T) {
 			// defect in the test rather than in either checker. Marshalling is
 			// total over these structs and still detects any field change.
 			before := snapshotTerm(tc.term)
+			var recTerm, machTerm *Term
+			if tc.term != nil { // deepCopyTerm(nil) yields an empty term, not nil
+				recTerm, machTerm = deepCopyTerm(tc.term), deepCopyTerm(tc.term)
+			}
 
 			rc := &checker{st: st, selfTy: tc.selfTy, selfTyVars: tc.selfTyVars}
 			var rTy *Ty
 			var rErr error
 			if tc.exp == nil {
-				rTy, rErr = rc.synth(tc.ctx, tc.term)
+				rTy, rErr = rc.synth(tc.ctx, recTerm)
 			} else {
-				rErr = rc.check(tc.ctx, tc.term, tc.exp)
+				rErr = rc.check(tc.ctx, recTerm, tc.exp)
 			}
 
 			m := &checkerMachine{st: st, selfTy: tc.selfTy, selfTyVars: tc.selfTyVars}
-			step := checkerStep{mode: modeSynth, ctx: tc.ctx, term: tc.term}
+			step := checkerStep{mode: modeSynth, ctx: tc.ctx, term: machTerm}
 			if tc.exp != nil {
-				step = checkerStep{mode: modeCheck, ctx: tc.ctx, term: tc.term, exp: tc.exp}
+				step = checkerStep{mode: modeCheck, ctx: tc.ctx, term: machTerm, exp: tc.exp}
 			}
 			mTy, mErr := m.run(step)
 
@@ -390,16 +403,20 @@ func TestPortedFamilyMatchesRecursiveChecker(t *testing.T) {
 			if tc.exp == nil && rErr == nil && !tyEq(rTy, mTy) {
 				t.Fatalf("synthesized type differs\n  recursive: %s\n  machine:   %s", debugTy(rTy), debugTy(mTy))
 			}
-			// No surviving mutation.
-			if tc.term != nil {
-				if after := snapshotTerm(tc.term); after != before {
-					t.Fatalf("the term was MUTATED\n  before: %s\n  after:  %s\n"+
-						"these families must not write to the AST", before, after)
-				}
+			// SURVIVING MUTATION MUST MATCH. Constructors publish solved type
+			// arguments into the term; that is the behaviour under test, not a
+			// defect. What must hold is that both checkers leave the term
+			// identical — including leaving it untouched where nothing infers.
+			if got, want := snapshotTerm(machTerm), snapshotTerm(recTerm); got != want {
+				t.Fatalf("the checkers left the term in DIFFERENT states\n"+
+					"  original:  %s\n  recursive: %s\n  machine:   %s", before, want, got)
 			}
-			// Inference accounting untouched on both sides.
-			if rc.inferEntries != 0 || m.inferEntries != 0 {
-				t.Fatalf("inference entered on a family with no inference: recursive=%d machine=%d",
+			// INFERENCE ACCOUNTING MUST MATCH, exactly. This is the complexity
+			// witness: a machine that loses the memo effect of publishing
+			// TyArgs mid-flight computes the same type and enters inference
+			// exponentially more often.
+			if rc.inferEntries != m.inferEntries {
+				t.Fatalf("inference entry count differs: recursive=%d machine=%d",
 					rc.inferEntries, m.inferEntries)
 			}
 			// The stack must be empty: a frame left behind is a leak that would
@@ -421,7 +438,7 @@ func TestPortedFamilyMatchesRecursiveChecker(t *testing.T) {
 func TestUnportedFamiliesRefuse(t *testing.T) {
 	st := canonicalStore(t)
 	unported := []*Term{
-		{K: "ctor"}, {K: "str"},
+		{K: "str"},
 	}
 	for _, term := range unported {
 		for _, mode := range []checkMode{modeSynth, modeCheck} {
@@ -486,29 +503,15 @@ func (f *recordingFrame) resume(m *checkerMachine, r checkResult) (frameOutcome,
 // recovery path only as far as its failure tail, and the machine's agreement on
 // the SUCCESS tail is unwitnessed.
 //
-// ONE GAP REMAINS. The second — `==`'s function-type refusal, which no ported
-// term could reach — was retired when `lam` landed and eq-function-types was
-// added; the guard fired exactly as designed and was then removed with the gap
-// it named.
+// The two deferred `==` witnesses are now CLOSED, and the guard that held them
+// open retired with them:
 //
-// The assertion below is keyed to the family that makes its witness
-// constructible, and FAILS when that family lands. That is the point: the
-// reminder fires when the gap becomes closable, instead of depending on someone
+//	function-type refusal  closed when `lam` landed (step 8)
+//	recovery-success path  closed here, by eq-recovery-bare-ctor-left
+//
+// The guard failed on the exact commit that made each witness constructible,
+// which is what a deferred obligation should do instead of relying on someone
 // remembering an unwritten test six families later.
-func TestEqWitnessGapsAreStillBlocked(t *testing.T) {
-	st := canonicalStore(t)
-	unported := func(k string) bool {
-		m := &checkerMachine{st: st}
-		_, err := m.run(checkerStep{mode: modeSynth, term: &Term{K: k}})
-		var nf errFamilyNotPorted
-		return errors.As(err, &nf)
-	}
-	if !unported("ctor") {
-		t.Error("constructors are ported, so `==`'s RECOVERY path can now be witnessed " +
-			"end to end: add (== (Nil) (Nil [Int])) — left fails synthesis, right " +
-			"succeeds, left then CHECKS successfully — then drop this assertion")
-	}
-}
 
 // TestAppRefusesRefSelfSpines keeps the family boundary explicit. Resolving a
 // definition through the store and inferring type arguments across a whole
@@ -678,5 +681,121 @@ func refSelfCases(t *testing.T, st *Store) []familyCase {
 		// not-yet-ported, which is the correct answer to the wrong question.
 		{name: "self-in-let-body", term: mkLet(tInt(), i(1), self()), selfTy: tInt()},
 		{name: "ref-check-mode", term: ref(mono), exp: tInt()},
+	}
+}
+
+// ctorCases is the last family, and it carries every mechanism the machine has
+// accumulated: two routes, a suppressed inference pass, a substitution
+// published mid-flight, and the memo that publication creates.
+func ctorCases(t *testing.T, st *Store) []familyCase {
+	t.Helper()
+	find := func(name string) (string, int) {
+		h, idx, ok := st.FindCtor(name)
+		if !ok {
+			t.Fatalf("corpus has no constructor %q; the final family cannot be witnessed", name)
+		}
+		return h, idx
+	}
+	consH, consI := find("Cons")
+	nilH, nilI := find("Nil")
+	someH, someI := find("Some")
+	noneH, noneI := find("None")
+	okH, okI := find("Ok")
+	sconsH, sconsI := find("SCons")
+	snilH, snilI := find("SNil")
+
+	ctor := func(h string, idx int, tyargs []Ty, args ...*Term) *Term {
+		c := &Term{K: "ctor", Hash: h, Idx: idx, TyArgs: tyargs}
+		for _, a := range args {
+			c.Args = append(c.Args, *a)
+		}
+		return c
+	}
+	intT, boolT := []Ty{*tInt()}, []Ty{*tBool()}
+	listInt := &Ty{K: "data", Hash: consH, Args: []Ty{*tInt()}}
+
+	// A monomorphic Str spine: SCons(Int, Str) with tyvars = 0.
+	strSpine := func(n int) *Term {
+		acc := ctor(snilH, snilI, nil)
+		for k := 0; k < n; k++ {
+			acc = ctor(sconsH, sconsI, nil, i(int64(97+k%26)), acc)
+		}
+		return acc
+	}
+	// A polymorphic Cons spine with type arguments OMITTED at every level.
+	polySpine := func(n int) *Term {
+		acc := ctor(nilH, nilI, intT)
+		for k := 0; k < n; k++ {
+			acc = ctor(consH, consI, nil, i(int64(k)), acc)
+		}
+		return acc
+	}
+
+	return []familyCase{
+		// --- MONOMORPHIC ROUTE: no inference, whatever the depth ------------
+		{name: "ctor-mono-snil", term: ctor(snilH, snilI, nil)},
+		{name: "ctor-mono-scons-one", term: ctor(sconsH, sconsI, nil, i(97), ctor(snilH, snilI, nil))},
+		{name: "ctor-mono-spine-8", term: strSpine(8)},
+		{name: "ctor-mono-spine-64", term: strSpine(64)},
+		{name: "ctor-mono-bad-field", term: ctor(sconsH, sconsI, nil, bt(true), ctor(snilH, snilI, nil))},
+
+		// --- POLYMORPHIC ROUTE ---------------------------------------------
+		{name: "ctor-poly-explicit", term: ctor(nilH, nilI, intT)},
+		{name: "ctor-poly-inferred-from-arg", term: ctor(someH, someI, nil, i(1))},
+		{name: "ctor-poly-inferred-bool", term: ctor(someH, someI, nil, bt(true))},
+		{name: "ctor-poly-cons-inferred", term: ctor(consH, consI, nil, i(1), ctor(nilH, nilI, intT))},
+		{name: "ctor-poly-spine-3", term: polySpine(3)},
+		{name: "ctor-poly-spine-16", term: polySpine(16)},
+
+		// A nullary polymorphic constructor determines nothing on its own; the
+		// EXPECTED type must seed the substitution.
+		{name: "ctor-none-bare", term: ctor(noneH, noneI, nil)},
+		{name: "ctor-none-with-expected", term: ctor(noneH, noneI, nil),
+			exp: &Ty{K: "data", Hash: someH, Args: []Ty{*tInt()}}},
+		{name: "ctor-ok-underdetermined", term: ctor(okH, okI, nil, i(1))},
+		{name: "ctor-ok-with-expected", term: ctor(okH, okI, nil, i(1)),
+			exp: &Ty{K: "data", Hash: okH, Args: []Ty{*tInt(), *tBool()}}},
+
+		// Arity, index and datatype failures.
+		{name: "ctor-arity-too-few", term: ctor(consH, consI, nil, i(1))},
+		{name: "ctor-arity-too-many", term: ctor(nilH, nilI, intT, i(1))},
+		{name: "ctor-index-out-of-range", term: &Term{K: "ctor", Hash: consH, Idx: 99}},
+		{name: "ctor-unknown-hash", term: &Term{K: "ctor", Hash: "0000000000000000"}},
+		{name: "ctor-explicit-wrong-count", term: ctor(consH, consI, []Ty{*tInt(), *tBool()}, i(1), ctor(nilH, nilI, intT))},
+
+		// Field mismatches under an explicit instantiation.
+		{name: "ctor-explicit-field-mismatch", term: ctor(consH, consI, intT, bt(true), ctor(nilH, nilI, intT))},
+		{name: "ctor-explicit-tail-mismatch", term: ctor(consH, consI, intT, i(1), ctor(nilH, nilI, boolT))},
+
+		// PASS-1 SUPPRESSION: the first argument cannot be synthesized, the
+		// second determines the parameter, and validation then succeeds.
+		{name: "ctor-suppressed-then-ok", ctx: []*Ty{listInt},
+			term: ctor(consH, consI, nil, i(1), v(0))},
+		{name: "ctor-arg-fails-both-passes", term: ctor(someH, someI, nil, v(9))},
+
+		// check mode: exp seeds the substitution AND is compared afterwards.
+		{name: "ctor-check-matching", term: ctor(someH, someI, nil, i(1)),
+			exp: &Ty{K: "data", Hash: someH, Args: []Ty{*tInt()}}},
+		{name: "ctor-check-mismatch", term: ctor(someH, someI, nil, i(1)),
+			exp: &Ty{K: "data", Hash: someH, Args: []Ty{*tBool()}}},
+		{name: "ctor-check-against-int", term: ctor(someH, someI, nil, i(1)), exp: tInt()},
+
+		// Composed with earlier families.
+		{name: "ctor-in-if", term: mkIf(bt(true), ctor(someH, someI, nil, i(1)), ctor(noneH, noneI, intT))},
+		{name: "ctor-in-lam", term: mkLam(tInt(), ctor(someH, someI, nil, v(0)))},
+		{name: "ctor-in-match-arm", ctx: []*Ty{listInt},
+			term: &Term{K: "match", A: v(0), Arms: []Term{
+				*ctor(nilH, nilI, intT), *ctor(consH, consI, nil, v(1), v(0))}}},
+
+		// THE DEFERRED `==` RECOVERY WITNESS, held open since step 7. The left
+		// operand is a BARE constructor that cannot be synthesized alone; its
+		// failure is suppressed; the right operand determines the type; the
+		// left then CHECKS successfully against it.
+		{name: "eq-recovery-bare-ctor-left",
+			term: mkPrim("==", ctor(nilH, nilI, nil), ctor(nilH, nilI, intT))},
+		{name: "eq-recovery-bare-ctor-right",
+			term: mkPrim("==", ctor(nilH, nilI, intT), ctor(nilH, nilI, nil))},
+		{name: "eq-recovery-both-bare",
+			term: mkPrim("==", ctor(nilH, nilI, nil), ctor(nilH, nilI, nil))},
 	}
 }

@@ -109,7 +109,7 @@ func TestCheckerMachineIsNotRouted(t *testing.T) {
 		"checkerMachine": true, "checkerStep": true, "checkerFrame": true,
 		"checkResult": true, "checkMode": true, "ctorRoute": true,
 		"ctorRouteFor": true, "routeValidateOnly": true, "routeInferSolveValidate": true,
-		"ctorInferFrame": true, "ctorSolveFrame": true, "ctorValidateFrame": true,
+		"ctorFrame": true, "eqFrame": true, "lamBodyFrame": true, "fieldAccessFrame": true,
 		"appArgFrame": true, "ifBranchFrame": true, "letBodyFrame": true,
 		"matchArmFrame": true, "primArgFrame": true, "recordFieldFrame": true,
 		"notPorted": true, "errFramePending": true,
