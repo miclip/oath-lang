@@ -340,6 +340,7 @@ func TestPortedFamilyMatchesRecursiveChecker(t *testing.T) {
 	cases := append(portedFamilyCases(), matchCases(t, st)...)
 	cases = append(cases, refSelfCases(t, st)...)
 	cases = append(cases, ctorCases(t, st)...)
+	cases = append(cases, inferAppCases(t, st)...)
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			// EACH CHECKER GETS ITS OWN COPY. Constructors publish TyArgs into
@@ -513,29 +514,8 @@ func (f *recordingFrame) resume(m *checkerMachine, r checkResult) (frameOutcome,
 // which is what a deferred obligation should do instead of relying on someone
 // remembering an unwritten test six families later.
 
-// TestAppRefusesRefSelfSpines keeps the family boundary explicit. Resolving a
-// definition through the store and inferring type arguments across a whole
-// application spine belongs to ref/self, not to `app`. Refusing by name — the
-// same treatment `==` got inside prim — stops `app` absorbing two semantic
-// families and blurring where a differential failure came from.
-func TestAppRefusesRefSelfSpines(t *testing.T) {
-	st := canonicalStore(t)
-	for _, head := range []string{"ref", "self"} {
-		m := &checkerMachine{st: st}
-		term := mkApp(&Term{K: head}, i(1))
-		_, err := m.run(checkerStep{mode: modeSynth, term: term})
-		var nf errFamilyNotPorted
-		if !errors.As(err, &nf) {
-			t.Errorf("an app with a %s head must be refused by name, got %v", head, err)
-		}
-	}
-	// ...while ordinary application still works, or the refusal above would
-	// just be the whole family being absent.
-	m := &checkerMachine{st: st}
-	if _, err := m.run(checkerStep{mode: modeSynth, term: mkApp(mkLam(tInt(), v(0)), i(1))}); err != nil {
-		t.Fatalf("ordinary application must still be ported, got %v", err)
-	}
-}
+// TestAppRefusesRefSelfSpines was retired when the spine family landed: `app`
+// no longer refuses a ref/self head, because inferAppCases now witnesses it.
 
 // matchCases needs the corpus, because a match's arms are per-CONSTRUCTOR and
 // its scrutinee must have a data type. `List` supplies both: Nil binds nothing,
@@ -798,4 +778,173 @@ func ctorCases(t *testing.T, st *Store) []familyCase {
 		{name: "eq-recovery-both-bare",
 			term: mkPrim("==", ctor(nilH, nilI, nil), ctor(nilH, nilI, nil))},
 	}
+}
+
+// inferAppCases exercises the ref/self-headed application SPINE (#35): omitted
+// type arguments inferred from the whole spine at once.
+func inferAppCases(t *testing.T, st *Store) []familyCase {
+	t.Helper()
+	var poly1, poly2, mono, data string
+	for _, h := range st.Names() {
+		d, err := st.GetDef(h)
+		if err != nil {
+			continue
+		}
+		switch {
+		case d.K == "data" && data == "":
+			data = h
+		case d.K != "func":
+		case d.TyVars == 0 && mono == "":
+			mono = h
+		case d.TyVars == 1 && poly1 == "" && d.Ty != nil && d.Ty.K == "fun":
+			poly1 = h
+		case d.TyVars == 2 && poly2 == "" && d.Ty != nil && d.Ty.K == "fun":
+			poly2 = h
+		}
+	}
+	if poly1 == "" || mono == "" || data == "" {
+		t.Fatalf("corpus lacks the definitions this family needs (%q %q %q)", poly1, mono, data)
+	}
+	ref := func(h string, args ...Ty) *Term { return &Term{K: "ref", Hash: h, TyArgs: args} }
+	app := func(fn *Term, as ...*Term) *Term {
+		for _, a := range as {
+			fn = mkApp(fn, a)
+		}
+		return fn
+	}
+	selfTy1 := tFun(&Ty{K: "var", Var: 0}, &Ty{K: "var", Var: 0})
+
+	cases := []familyCase{
+		// Inference across the spine, with the head's type arguments omitted.
+		{name: "inferapp-poly-one-arg", term: app(ref(poly1), i(1))},
+		{name: "inferapp-poly-bool-arg", term: app(ref(poly1), bt(true))},
+		// An argument that cannot be synthesized is SUPPRESSED in pass 1 and
+		// CHECKED in pass 2 against the solved parameter.
+		{name: "inferapp-suppressed-arg", term: app(ref(poly1), v(9))},
+
+		// Applicability: these are NOT this family and must fall through to
+		// ordinary application, not error here.
+		{name: "inferapp-explicit-tyargs-falls-through", term: app(ref(poly1, *tInt()), i(1))},
+		{name: "inferapp-monomorphic-head-falls-through", term: app(ref(mono), i(1))},
+		{name: "inferapp-data-head-falls-through", term: app(ref(data), i(1))},
+		{name: "inferapp-unknown-hash-falls-through",
+			term: app(&Term{K: "ref", Hash: "0000000000000000"}, i(1))},
+
+		// Over-application: the spine peels one parameter per argument.
+		{name: "inferapp-too-many-arguments", term: app(ref(poly1), i(1), i(2), i(3))},
+
+		// self-headed spines resolve against the enclosing definition.
+		{name: "inferapp-self", term: app(&Term{K: "self"}, i(1)),
+			selfTy: selfTy1, selfTyVars: 1},
+		{name: "inferapp-self-outside-definition", term: app(&Term{K: "self"}, i(1))},
+		{name: "inferapp-self-explicit-falls-through",
+			term:   app(&Term{K: "self", TyArgs: []Ty{*tInt()}}, i(1)),
+			selfTy: selfTy1, selfTyVars: 1},
+
+		// check mode: exp seeds the substitution and is compared afterwards.
+		{name: "inferapp-check-ok", term: app(ref(poly1), i(1)), exp: tInt()},
+		{name: "inferapp-check-mismatch", term: app(ref(poly1), i(1)), exp: tBool()},
+
+		{name: "inferapp-nested-in-if",
+			term: mkIf(bt(true), app(ref(poly1), i(1)), app(ref(poly1), i(2)))},
+	}
+	if poly2 != "" {
+		cases = append(cases,
+			familyCase{name: "inferapp-two-tyvars", term: app(ref(poly2), i(1))},
+			familyCase{name: "inferapp-two-tyvars-with-expected",
+				term: app(ref(poly2), i(1)), exp: tInt()})
+	}
+	return cases
+}
+
+// TestLargeSpineWitnesses are the two #149 witnesses at scale, and they test
+// DIFFERENT things — neither substitutes for the other:
+//
+//	monomorphic Str spine   STACK SAFETY. Shallow syntax, inside the portable
+//	                        node profile, no inference at all. This is the shape
+//	                        that crashes the recursive checker on wasm.
+//	polymorphic Cons spine  COMPLEXITY. Every node enters inference exactly
+//	                        once, which holds only because TyArgs is published
+//	                        between the two passes.
+//
+// Both run NATIVELY here, where Go's growable stacks let the recursive checker
+// survive too — so this pair does not by itself prove the wasm claim. It proves
+// PARITY at depth. The discriminating witness on the failing target is the
+// served-artifact gate; both are required.
+func TestLargeSpineWitnesses(t *testing.T) {
+	st := canonicalStore(t)
+	sconsH, sconsI, ok := st.FindCtor("SCons")
+	if !ok {
+		t.Fatal("corpus has no SCons")
+	}
+	snilH, snilI, _ := st.FindCtor("SNil")
+	consH, consI, _ := st.FindCtor("Cons")
+	nilH, nilI, _ := st.FindCtor("Nil")
+
+	ctor := func(h string, idx int, tyargs []Ty, args ...*Term) *Term {
+		c := &Term{K: "ctor", Hash: h, Idx: idx, TyArgs: tyargs}
+		for _, a := range args {
+			c.Args = append(c.Args, *a)
+		}
+		return c
+	}
+
+	t.Run("monomorphic-5000-rune-string", func(t *testing.T) {
+		const n = 5000
+		build := func() *Term {
+			acc := ctor(snilH, snilI, nil)
+			for k := 0; k < n; k++ {
+				acc = ctor(sconsH, sconsI, nil, i(int64(97+k%26)), acc)
+			}
+			return acc
+		}
+		rc := &checker{st: st}
+		rTy, rErr := rc.synth(nil, build())
+		m := &checkerMachine{st: st}
+		mTy, mErr := m.run(checkerStep{mode: modeSynth, term: build()})
+
+		if rErr != nil || mErr != nil {
+			t.Fatalf("a %d-node Str spine must typecheck\n  recursive: %v\n  machine:   %v", n, rErr, mErr)
+		}
+		if !tyEq(rTy, mTy) {
+			t.Fatalf("type differs: %s vs %s", debugTy(rTy), debugTy(mTy))
+		}
+		// MONOMORPHIC: no inference, whatever the depth. If this ever moves,
+		// the route selection has broken and the spine is exponential.
+		if rc.inferEntries != 0 || m.inferEntries != 0 {
+			t.Fatalf("Str has no type parameters, so inference must never run: recursive=%d machine=%d",
+				rc.inferEntries, m.inferEntries)
+		}
+	})
+
+	t.Run("polymorphic-spine-inference-parity", func(t *testing.T) {
+		for _, n := range []int{1, 2, 8, 64, 400} {
+			build := func() *Term {
+				acc := ctor(nilH, nilI, []Ty{*tInt()})
+				for k := 0; k < n; k++ {
+					acc = ctor(consH, consI, nil, i(int64(k)), acc)
+				}
+				return acc
+			}
+			rc := &checker{st: st}
+			rTy, rErr := rc.synth(nil, build())
+			m := &checkerMachine{st: st}
+			mTy, mErr := m.run(checkerStep{mode: modeSynth, term: build()})
+
+			if rErr != nil || mErr != nil {
+				t.Fatalf("n=%d must typecheck\n  recursive: %v\n  machine:   %v", n, rErr, mErr)
+			}
+			if !tyEq(rTy, mTy) {
+				t.Fatalf("n=%d: type differs", n)
+			}
+			// EXACTLY one inference entry per node, on BOTH. n+1 counts the
+			// terminating Nil, whose type arguments are explicit — so the
+			// expected value is derived from the shape rather than guessed.
+			if rc.inferEntries != n || m.inferEntries != n {
+				t.Fatalf("n=%d: inference entries recursive=%d machine=%d, want %d each — "+
+					"a count above n means the TyArgs memo stopped suppressing re-entry",
+					n, rc.inferEntries, m.inferEntries, n)
+			}
+		}
+	})
 }

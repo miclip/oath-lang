@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -392,4 +393,113 @@ func compareOutcomes(t *testing.T, want, got map[string]checkOutcome) {
 			t.Errorf("%s: new case not in the fixture — regenerate deliberately, do not ignore", name)
 		}
 	}
+}
+
+// TestMachineMatchesOnTheFullFixture routes EVERY fixture case — 30 adversarial
+// plus every corpus definition — through the explicit machine and compares it to
+// the recursive checker (#149, the completeness proof before any switch-over).
+//
+// This is a different claim from the family tests, which use hand-built terms.
+// Here the population is what the kernel actually reads, so a family that is
+// ported but never REACHED by real code would show up as an unexercised route
+// rather than as agreement.
+//
+// EACH CHECKER GETS ITS OWN COPY of the definition. Constructors and spine
+// inference publish type arguments into the term, so sharing one would let the
+// recursive checker prepare the machine's input and silently send it down the
+// validate-only route.
+func TestMachineMatchesOnTheFullFixture(t *testing.T) {
+	wd, _ := os.Getwd()
+	st, err := OpenStore(filepath.Join(wd, "..", "codebase"))
+	if err != nil {
+		t.Fatalf("could not open the corpus: %v", err)
+	}
+
+	sources := map[string]string{}
+	for _, c := range adversarialCases {
+		sources[c.name] = c.src
+	}
+	for _, dir := range []string{"../examples", "../apps"} {
+		_ = filepath.Walk(filepath.Join(wd, dir), func(p string, info os.FileInfo, e error) error {
+			if e != nil || info.IsDir() || !strings.HasSuffix(p, ".oath") {
+				return nil
+			}
+			b, re := os.ReadFile(p)
+			if re != nil {
+				return nil
+			}
+			forms, pe := parseForms(string(b))
+			if pe != nil {
+				return nil
+			}
+			rel, _ := filepath.Rel(wd, p)
+			for i, f := range forms {
+				if len(f.Kids) < 2 || f.Kids[1].K != "sym" {
+					continue
+				}
+				sources[fmt.Sprintf("corpus:%s#%d:%s", filepath.Base(rel), i, f.Kids[1].Sym)] =
+					sxSource(b, f, forms, i)
+			}
+			return nil
+		})
+	}
+	if len(sources) < 200 {
+		t.Fatalf("only %d sources collected; this proof did not run", len(sources))
+	}
+
+	names := make([]string, 0, len(sources))
+	for n := range sources {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	checked, unported := 0, 0
+	for _, name := range names {
+		forms, err := parseForms(sources[name])
+		if err != nil || len(forms) == 0 {
+			continue
+		}
+		def, _, err := elabFunc(st, forms[0])
+		if err != nil || def.K != "func" || def.Ty == nil || def.Body == nil {
+			continue // data definitions and elaboration failures are not checker cases
+		}
+		recDef, machDef := deepCopyDef(def), deepCopyDef(def)
+
+		rc := &checker{st: st, selfTyVars: def.TyVars, selfTy: def.Ty}
+		rErr := rc.check(nil, recDef.Body, recDef.Ty)
+
+		m := &checkerMachine{st: st, selfTyVars: def.TyVars, selfTy: def.Ty}
+		_, mErr := m.run(checkerStep{mode: modeCheck, term: machDef.Body, exp: machDef.Ty})
+
+		// NO ROUTE MAY BE UNPORTED. A "not yet ported" here would mean the
+		// machine is incomplete on real code, which is exactly what this test
+		// exists to rule out before production is switched.
+		var nf errFamilyNotPorted
+		if errors.As(mErr, &nf) {
+			t.Errorf("%s: the machine refused a real definition: %v", name, mErr)
+			unported++
+			continue
+		}
+		checked++
+
+		if (rErr == nil) != (mErr == nil) {
+			t.Errorf("%s: outcome differs\n  recursive: %v\n  machine:   %v", name, rErr, mErr)
+			continue
+		}
+		if rErr != nil && rErr.Error() != mErr.Error() {
+			t.Errorf("%s: diagnostic differs\n  recursive: %q\n  machine:   %q", name, rErr, mErr)
+		}
+		if got, want := hashDef(machDef), hashDef(recDef); got != want {
+			t.Errorf("%s: the checkers left the definition in different states\n"+
+				"  recursive: %s\n  machine:   %s", name, want[:16], got[:16])
+		}
+		if rc.inferEntries != m.inferEntries {
+			t.Errorf("%s: inference entry count differs: recursive=%d machine=%d",
+				name, rc.inferEntries, m.inferEntries)
+		}
+	}
+	if checked < 150 {
+		t.Fatalf("only %d definitions were actually checked; the population collapsed", checked)
+	}
+	t.Logf("machine matches the recursive checker on %d definitions (%d unported routes)", checked, unported)
 }

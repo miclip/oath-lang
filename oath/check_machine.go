@@ -206,6 +206,38 @@ type ctorFrame struct {
 
 func (f *ctorFrame) describe() string { return "ctor:" + f.phase + "(" + f.route.String() + ")" }
 
+// inferAppFrame is the ref/self-headed application SPINE (#35): omitted type
+// arguments inferred from the whole spine at once, not from one reference.
+//
+// The same three stages as a polymorphic constructor — infer, solve+publish,
+// validate — with ONE difference that is easy to miss and changes which
+// programs typecheck:
+//
+//	synthCtor       pass 2 CHECKS every argument against its substituted field.
+//	tryInferApp     pass 2 checks ONLY the arguments whose pass-1 synthesis was
+//	                SUPPRESSED. An argument that synthesized successfully is
+//	                COMPARED to its solved parameter type instead, with a
+//	                positional diagnostic ("argument i: expected X, got Y").
+//
+// So a machine that uniformly re-checks every argument produces different
+// diagnostics for the successful ones, and one that uniformly compares cannot
+// type the suppressed ones at all.
+type inferAppFrame struct {
+	ctx      []*Ty
+	head     *Term
+	args     []*Term
+	exp      *Ty
+	paramTys []*Ty
+	resultTy *Ty
+	subst    []*Ty
+	argTys   []*Ty
+	tyargs   []Ty
+	idx      int
+	phase    string // infer | validate
+}
+
+func (f *inferAppFrame) describe() string { return "inferapp:" + f.phase }
+
 // The remaining families, named now so the port has a checklist rather than a
 // search. Each corresponds to a recursive call in check.go.
 // appArgFrame sequences one application node. Applications are CURRIED — one
@@ -536,8 +568,14 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
 			return checkResult{}, false, nil
 		case "app":
-			if head, _ := spine(s.term); head.K == "ref" || head.K == "self" {
-				return checkResult{}, false, errFamilyNotPorted{"app with a ref/self head", modeCheck}
+			if head, args := spine(s.term); head.K == "ref" || head.K == "self" {
+				// The expected type flows INTO the inference (it seeds the
+				// substitution) and is compared afterwards — both halves.
+				m.stack = append(m.stack, &checkCompareFrame{exp: s.exp})
+				if r, produced, applicable, err := m.beginInferApp(s, s.exp, head, args); applicable {
+					return r, produced, err
+				}
+				m.stack = m.stack[:len(m.stack)-1] // not applicable: undo
 			}
 			// check.go's `case "app"` only handles the ref/self spine; anything
 			// else FALLS THROUGH to synthesize-then-compare.
@@ -640,12 +678,13 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
 		return checkResult{}, false, nil
 	case "app":
-		// Spine inference over a ref/self head belongs to THAT family: it
-		// resolves definitions through the store and infers type arguments
-		// across the whole spine. Refused by name so app cannot quietly absorb
-		// two semantic families and blur where a divergence came from.
-		if head, _ := spine(s.term); head.K == "ref" || head.K == "self" {
-			return checkResult{}, false, errFamilyNotPorted{"app with a ref/self head", modeSynth}
+		if head, args := spine(s.term); head.K == "ref" || head.K == "self" {
+			if r, produced, applicable, err := m.beginInferApp(s, nil, head, args); applicable {
+				return r, produced, err
+			}
+			// NOT APPLICABLE falls through to ordinary application, exactly as
+			// check.go does: a ref to a data definition, or a head whose type
+			// arguments were written explicitly, is typed by the ordinary rule.
 		}
 		m.stack = append(m.stack, &appArgFrame{ctx: s.ctx, term: s.term, part: "fn"})
 		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
@@ -1120,4 +1159,138 @@ func (f *ctorFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, erro
 		return frameOutcome{next: &next}, nil
 	}
 	return frameOutcome{done: &checkResult{ty: tDataTy(f.term.Hash, f.term.TyArgs)}}, nil
+}
+
+// beginInferApp sets up spine inference. applicable=false means this is not the
+// family after all and the caller must fall back to ordinary application.
+//
+// A GetDef failure returns applicable=FALSE with the error DISCARDED, matching
+// check.go: the caller falls through, ordinary application synthesizes the head,
+// and `ref` reports the same failure by its own route. Reporting it here would
+// change which code produced the diagnostic.
+func (m *checkerMachine) beginInferApp(s *checkerStep, exp *Ty, head *Term, args []*Term) (checkResult, bool, bool, error) {
+	var raw *Ty
+	var nvars int
+	switch head.K {
+	case "ref":
+		d, err := m.st.GetDef(head.Hash)
+		if err != nil {
+			return checkResult{}, false, false, nil
+		}
+		if d.K != "func" || !inferReady(d.TyVars, head.TyArgs) {
+			return checkResult{}, false, false, nil
+		}
+		raw, nvars = d.Ty, d.TyVars
+	case "self":
+		if m.selfTy == nil || !inferReady(m.selfTyVars, head.TyArgs) {
+			return checkResult{}, false, false, nil
+		}
+		raw, nvars = m.selfTy, m.selfTyVars
+	default:
+		return checkResult{}, false, false, nil
+	}
+
+	f := &inferAppFrame{ctx: s.ctx, head: head, args: args, exp: exp,
+		paramTys: make([]*Ty, len(args)), subst: make([]*Ty, nvars),
+		argTys: make([]*Ty, len(args)), phase: "infer"}
+	cur := raw
+	for i := range args {
+		if cur.K != "fun" {
+			return checkResult{err: fmt.Errorf("%s applied to too many arguments", headName(head))}, true, true, nil
+		}
+		f.paramTys[i] = cur.A
+		cur = cur.B
+	}
+	f.resultTy = cur
+	if exp != nil {
+		_ = matchTy(f.resultTy, exp, f.subst)
+	}
+	if len(args) == 0 {
+		r, produced, err := m.finishInferApp(f)
+		return r, produced, true, err
+	}
+	m.stack = append(m.stack, f)
+	*s = checkerStep{mode: modeSynth, ctx: f.ctx, term: f.args[0]}
+	return checkResult{}, false, true, nil
+}
+
+// finishInferApp solves, PUBLISHES head.TyArgs, and starts validation.
+func (m *checkerMachine) finishInferApp(f *inferAppFrame) (checkResult, bool, error) {
+	for i, sub := range f.subst {
+		if sub == nil {
+			return checkResult{err: fmt.Errorf(
+				"cannot infer type argument %d for %s — add [types] or determining arguments",
+				i, headName(f.head))}, true, nil
+		}
+	}
+	f.tyargs = make([]Ty, len(f.subst))
+	for i := range f.subst {
+		f.tyargs[i] = *f.subst[i]
+	}
+	f.head.TyArgs = f.tyargs
+	f.phase, f.idx = "validate", 0
+	return m.advanceInferApp(f)
+}
+
+// advanceInferApp walks the validation pass. Arguments that SYNTHESIZED in
+// pass 1 are compared immediately and need no sub-judgement; only the
+// SUPPRESSED ones suspend for a check.
+func (m *checkerMachine) advanceInferApp(f *inferAppFrame) (checkResult, bool, error) {
+	for ; f.idx < len(f.args); f.idx++ {
+		solved := substTy(f.paramTys[f.idx], f.tyargs)
+		if f.argTys[f.idx] != nil {
+			if !tyEq(f.argTys[f.idx], solved) {
+				return checkResult{err: fmt.Errorf("argument %d: expected %s, got %s",
+					f.idx, debugTy(solved), debugTy(f.argTys[f.idx]))}, true, nil
+			}
+			continue
+		}
+		m.stack = append(m.stack, f)
+		m.pending = &checkerStep{mode: modeCheck, ctx: f.ctx, term: f.args[f.idx], exp: solved}
+		return checkResult{}, false, nil
+	}
+	return checkResult{ty: substTy(f.resultTy, f.tyargs)}, true, nil
+}
+
+func (f *inferAppFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, error) {
+	if f.phase == "infer" {
+		// SUPPRESSED, as in the constructor pass: an argument that cannot be
+		// synthesized contributes nothing and is left for validation to check.
+		if r.err == nil {
+			f.argTys[f.idx] = r.ty
+			_ = matchTy(f.paramTys[f.idx], r.ty, f.subst)
+		}
+		f.idx++
+		if f.idx < len(f.args) {
+			next := checkerStep{mode: modeSynth, ctx: f.ctx, term: f.args[f.idx]}
+			return frameOutcome{next: &next}, nil
+		}
+		res, produced, err := m.finishInferApp(f)
+		if err != nil {
+			return frameOutcome{}, err
+		}
+		if produced {
+			return frameOutcome{done: &res}, nil
+		}
+		next := *m.pending
+		m.pending = nil
+		m.stack = m.stack[:len(m.stack)-1] // advanceInferApp re-pushed this frame
+		return frameOutcome{next: &next}, nil
+	}
+	// VALIDATE: a suppressed argument was just checked.
+	if r.err != nil {
+		return frameOutcome{done: &checkResult{err: r.err}}, nil
+	}
+	f.idx++
+	res, produced, err := m.advanceInferApp(f)
+	if err != nil {
+		return frameOutcome{}, err
+	}
+	if produced {
+		return frameOutcome{done: &res}, nil
+	}
+	next := *m.pending
+	m.pending = nil
+	m.stack = m.stack[:len(m.stack)-1]
+	return frameOutcome{next: &next}, nil
 }
