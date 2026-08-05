@@ -827,28 +827,30 @@ with the reason, because documentation is the only correction available.
    `stdlib/oath-stdlib.json` declares. Publishing into the namespace does not make
    something library, and the manifest is what a consumer should be reading —
    but everything under the prefix is what they will SEE.
-6. **THERE IS NO PREVIEW AND NO GUARD ON `put`. THAT IS THE STATE, NOT AN
-   OVERSIGHT TO ROUTE AROUND.** This rule previously said "a dry run costs
-   nothing — `--dry-run` prints the exact bytes", and that flag does not exist on
-   `put`; it is on `transfer` and `plugin install` only. So the one mitigation
-   these rules named was unavailable for the very operation they govern.
+6. **BINDING A NEW NAME NOW REQUIRES `--new`; re-putting an existing one does
+   not.** `oath put` refuses fresh bindings without it, because creating a name
+   is the only irreversible thing `put` does — and `storeDir` defaults to
+   `codebase`, so a bare put on a scratch file used to reach the committed,
+   git-tracked, append-only store with no flag, warning or confirmation. For
+   anything exploratory: `OATH_STORE=$(mktemp -d) oath put <file> --new`.
 
-   What actually exists is worse than nothing-in-particular: `storeDir` defaults
-   to `codebase` (`oath/main.go`), so a bare `oath put` writes to the COMMITTED,
-   git-tracked, append-only-journal store with no flag, no warning and no
-   confirmation. There is no name policy check anywhere.
+   Note `put` has NO `--dry-run` (it is on `transfer` and `plugin install`
+   only). This rule used to recommend one, which meant the single mitigation the
+   naming rules named did not exist for the operation those rules govern.
 
-   Until that changes, the only protection is procedure: `--store` somewhere
-   disposable for anything exploratory, and `git status codebase/` before
-   committing.
+   **THE REASON THE GAP PERSISTED IS WORTH MORE THAN THE GAP, and it generalises
+   past naming.** The original incident was filed as a NAMING problem, and the
+   only correction available for an already-bound name is documentation — so the
+   entire response came out documentation-shaped. Framed as "be careful what you
+   name things" there is nothing to enforce, because name quality is judgment.
+   Framed as "casual writes reach the canonical store" the enforcement point is
+   mechanical and obvious. **Naming the hazard wrongly hid the artefact that
+   would have prevented it** — and the guard, once built, took twenty lines.
 
-   **The reason this gap persisted is worth more than the gap.** The original
-   incident was filed as a NAMING problem, and the only correction available for
-   an already-published name is documentation — so the entire response came out
-   documentation-shaped. Framed as "be careful what you name things" there is
-   nothing to enforce, because name quality is judgment. Framed as "casual writes
-   reach the canonical store" the enforcement point is obvious and mechanical.
-   **Naming the hazard wrongly hid the artefact that would have prevented it.**
+   It guards the ACT, not the SPELLING: a name-shape check would have caught
+   `polyspine50` and waved through `spine`, which is identical pollution. What
+   distinguishes a probe from a publication is not what it is called, it is
+   whether anyone decided to create it.
 
 The asymmetry is the point, and it is the one the protocol exists to make you
 feel: publishing is one command, and permanence is the guarantee. If a name is

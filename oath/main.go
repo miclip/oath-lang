@@ -173,12 +173,15 @@ func main() {
 		ctxHash := ""
 		keyFile := os.Getenv("OATH_KEY")
 		remote := os.Getenv("OATH_REGISTRY")
+		allowNew := false
 		var files []string
 		rest := args[1:]
 		for i := 0; i < len(rest); i++ {
 			switch {
 			case rest[i] == "--json":
 				jsonMode = true
+			case rest[i] == "--new":
+				allowNew = true
 			case rest[i] == "--author" && i+1 < len(rest):
 				author = rest[i+1]
 				i++
@@ -223,7 +226,7 @@ func main() {
 		if len(files) != 1 {
 			fail(fmt.Errorf("usage: oath put [--json] [--author <id>] [--context <hash>] [--key <file>] [--remote <url>] <file.oath>"))
 		}
-		cmdPut(st, files[0], jsonMode, author, ctxHash)
+		cmdPut(st, files[0], jsonMode, author, ctxHash, allowNew)
 	case "config":
 		cmdConfig(args[1:])
 	case "new":
@@ -1064,8 +1067,11 @@ func readSourceFile(path string) string {
 	return string(b)
 }
 
-func cmdPut(st *Store, path string, jsonMode bool, author string, ctxHash string) {
+func cmdPut(st *Store, path string, jsonMode bool, author string, ctxHash string, allowNew bool) {
 	src := readSourceFile(path)
+	if err := guardNewNames(st, src, allowNew); err != nil {
+		fail(err)
+	}
 	results, perr := apiPut(st, src, author, ctxHash)
 	if jsonMode {
 		b, _ := json.MarshalIndent(results, "", "  ")
@@ -1284,7 +1290,7 @@ func remoteCapableList() string {
 // table plus a test is what makes gaining or losing a flag a deliberate edit.
 var knownFlags = map[string]map[string]bool{
 	"publish":   set("--remote", "--key", "--kms-key", "--license", "--namespace", "--dry-run", "--json", "--yes", "-y"),
-	"put":       set("--remote", "--key", "--author", "--context", "--json"),
+	"put":       set("--remote", "--key", "--author", "--context", "--json", "--new"),
 	"reserve":   set("--remote", "--key", "--kms-key", "--dry-run", "--yes", "-y"),
 	"delegate":  set("--remote", "--key", "--kms-key", "--to", "--dry-run", "--yes", "-y"),
 	"revoke":    set("--remote", "--key", "--kms-key", "--from", "--dry-run", "--yes", "-y"),
@@ -1315,4 +1321,64 @@ func knownFlagList(cmd string) string {
 	}
 	sort.Strings(out)
 	return strings.Join(out, " ")
+}
+
+// guardNewNames refuses to BIND A NEW NAME unless the caller asked for it.
+//
+// A name is permanent. The journal is append-only, there is no unbind, and a
+// repoint supersedes a binding without removing it — so creating a name is the
+// only irreversible thing `put` does. Re-putting an EXISTING name is not
+// guarded: it is what `make verify` does on every run, and it cannot introduce
+// a name that was not already chosen deliberately.
+//
+// WHY THIS EXISTS AS CODE AND NOT AS A RULE. The naming rules in CLAUDE.md were
+// written after two exercise artifacts were published into `oath/*`, and they
+// were written as ADVICE because the only correction available for an
+// already-bound name is documentation. Advice does not fire while you are
+// concentrating on something else: this guard was built after a session bound
+// four throwaway definitions into the committed store while carefully debugging
+// an unrelated typechecker question. `storeDir` defaults to `codebase`, which is
+// git-tracked and journal-append-only, so a bare `oath put` on a scratch file
+// reaches the canonical corpus with no flag, warning, or confirmation.
+//
+// It guards the ACT, not the SPELLING. A check on name shape would have caught
+// `polyspine50` and waved through `spine` — identical pollution, identical
+// journal entries, no warning. What distinguishes a probe from a publication is
+// not what it is called; it is whether anyone decided to create it.
+//
+// CLI-ONLY BY DESIGN. apiPut is also reached by the MCP server, the registry and
+// the playground, which have their own authority models; publication policy
+// belongs at the human interface where the mistake happens, not in the kernel.
+func guardNewNames(st *Store, src string, allowNew bool) error {
+	if allowNew {
+		return nil
+	}
+	forms, err := parseForms(src)
+	if err != nil {
+		return nil // let apiPut report the real parse error, with its line number
+	}
+	var fresh []string
+	for _, f := range forms {
+		if len(f.Kids) < 2 || f.Kids[0].K != "sym" || f.Kids[1].K != "sym" {
+			continue
+		}
+		switch f.Kids[0].Sym {
+		case "data", "defn":
+			if name := f.Kids[1].Sym; name != "" {
+				if _, exists := st.Resolve(name); !exists {
+					fresh = append(fresh, name)
+				}
+			}
+		}
+	}
+	if len(fresh) == 0 {
+		return nil
+	}
+	return fmt.Errorf("refusing to bind %d new name(s) without --new: %s\n"+
+		"  A name is PERMANENT: the journal is append-only, there is no unbind, and\n"+
+		"  repointing supersedes a binding rather than removing it.\n"+
+		"  If you meant to publish, pass --new.\n"+
+		"  If this is exploratory, use a disposable store:\n"+
+		"      OATH_STORE=$(mktemp -d) oath put %s --new",
+		len(fresh), strings.Join(fresh, ", "), "<file>")
 }
