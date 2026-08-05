@@ -402,15 +402,14 @@ missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   #149 — unguarded attacker-reachable recursion in
-                              a DEPLOYED kernel
+  more EXPENSIVE if delayed   (empty)
   more VALUABLE if delayed    #146, #134, #139/#140, #138 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #150 (external reviewer capped — CHECK THE ISSUE
                               for the return date before assuming either way),
                               #148 (operator provisioning), #117/#69, #128
-  no CLOCK at all             #115, #116, #65, #66 — open, unscheduled, and
-                              neither cheaper nor dearer for waiting
+  no CLOCK at all             #149, #115, #116, #65, #66 — open, and neither
+                              cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
 below may ELABORATE a row; nothing may add an issue the table does not hold.**
@@ -459,12 +458,12 @@ structural fix is to stop versioning the artifact rather than to watch it.
 **And the behavioural gate must never be read as discharging #148** — it is
 green over a stale-but-agreeing binary by construction.
 
-**#147 SHIPPED AND #149 REPLACED IT — the bucket never emptied.** Both halves in
-one sentence, deliberately, because they were previously two paragraphs fifteen
-lines apart with only the first formatted as queue state: a reader following the
-SKIM RULE above met the retirement and could stop before the retraction. The fix
-for that is ORDERING, not a third paragraph explaining the hazard. Detail below;
-the succession is the queue-state fact and it comes first.
+**#147 SHIPPED; ITS CLASS DID NOT CLOSE WITH IT (#149) — but the successor turned
+out NOT to belong in this bucket.** All three facts in one place deliberately:
+they were once two paragraphs fifteen lines apart with only the retirement
+formatted as queue state, so a skimming reader met the retirement and stopped
+before the retraction. Ordering is the fix, not a third paragraph explaining the
+hazard.
 
 The durable part of #147 is not the fix but WHY the bound was wrong. `maxEvalDepth` was
 one constant derived as a MEMORY budget — correct natively, and meaningless on
@@ -483,10 +482,25 @@ open. Reading "#147 shipped" as "this class is closed" is exactly the mistake th
 witness discipline records as a principle — a regression witness proves the
 repaired door, not the class.
 
-**#149 is EXPENSIVE-IF-DELAYED for a reason that is not urgency-flavoured
-prose.** The playground serves this kernel to anyone who visits, so delay does
-not make the FIX dearer — it makes the EXPOSURE longer, which is the same
-per-visitor clock #145 ran on.
+**#149 WAS PUT IN THE EXPENSIVE-IF-DELAYED BUCKET AND MEASUREMENT TOOK IT BACK
+OUT.** The admitting argument was exposure: the playground serves this kernel to
+every visitor, so delay lengthens the window. That rested on #147's failure mode
+being inherited by analogy — and it is not. Measured: native survives 500,000
+levels of nesting, wasm throws at ~20,000, and the kernel is healthy after five
+consecutive overflows. Nothing persists, so there is no per-visitor clock and
+`#145`'s analogy does not transfer.
+
+**What survives the correction is a different defect, and a real one: THE PARSER
+CAN TERMINATE OUTSIDE OATH'S ERROR CHANNEL.** The contract is that malformed or
+excessive input becomes an Oath error; a host exception crossing the boundary is
+the host leaking through the abstraction, whatever its name. State it at the
+boundary and not as "throws a JS RangeError" — that names TODAY'S WITNESS, and
+the claim has to survive Wasmtime, WASI, or an embedder whose exception is called
+something else or nothing at all. Corpus-versus-phenomenon, applied to a runtime.
+
+**And note which question produced the correction**, because "is the parser
+recursive?" would not have: it was *what happens to the visitor AFTER the
+overflow?* The first question asks about the code, the second about the claim.
 
 **Start with the INVENTORY, not with a bound.** Enumerate every recursive descent
 reachable from `oathCheck`, classify each guarded or unguarded, and only then
@@ -519,14 +533,15 @@ Both were caught by review; one survived my own re-check, because the re-check
 had a broken path join and returned the answer I expected. **A description here
 must be re-verified every time anything lands. A pointer must not.**
 
-**One item is expensive-if-delayed (#149), and it got there by SUCCESSION rather
-than by admission** — which is the case this discipline was weakest at, because
-nobody performs an admission when a bucket merely fails to empty. If the next
-piece of work seems to belong here, say what makes it cheaper NOW than later
-before adding it — and, per the paragraph above, say what will make it stop
-belonging. **The sentence "nothing is currently expensive-if-delayed" sat here
-while #149 was open and known**, because retiring #147 was written up as an event
-and its successor was left in a passing clause.
+**The bucket is empty, and it emptied TWICE for different reasons — once because
+the work shipped (#147), once because the SEVERITY CLAIM was measured and
+withdrawn (#149).** The second is the one this discipline was weakest at. An item
+admitted by inheriting a neighbour's failure mode has never had its own clock
+established, and nothing prompts anyone to establish one later; it simply sits
+there looking urgent. So: if the next piece of work seems to belong here, say
+what makes it cheaper NOW than later, say what will make it stop belonging —
+and if the argument is an ANALOGY to another item, MEASURE the analogy before
+admitting it, because that is the step #149 skipped.
 
 That falsifier, for the record, LOST rather than went unused: #145 asked whether
 `/try`'s corpus might be a deliberate PIN, in which case the repair would have
