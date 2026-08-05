@@ -594,9 +594,18 @@ func identityTyArgs(n int) []Ty {
 
 // spine flattens an application chain into its head and argument terms in
 // application order: (((f a) b) c) → (f, [a, b, c]).
+// spine peels a curried application into its head and arguments.
+//
+// The nil guard is NOT defensive padding: synth documents itself as total on
+// malformed input and names "an app with no function or argument" as a case it
+// must REJECT rather than fault — because GetDef revalidates objects written
+// directly into a store, which never passed the gate. Without it, walking
+// t = t.A dereferenced nil and panicked the kernel on exactly the input the
+// contract promised to refuse. Stopping here hands a nil function to synth,
+// which reports "missing term". Found by porting `app` (#149).
 func spine(t *Term) (*Term, []*Term) {
 	var args []*Term
-	for t.K == "app" {
+	for t != nil && t.K == "app" && t.A != nil {
 		args = append([]*Term{t.B}, args...)
 		t = t.A
 	}
