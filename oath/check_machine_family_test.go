@@ -123,7 +123,54 @@ func portedFamilyCases() []familyCase {
 		// on the way to a sibling rather than only on the way down.
 		{"let-in-bound-position", []*Ty{tInt()},
 			mkLet(tBool(), mkLet(tFloat(), &Term{K: "float"}, bt(true)), v(1)), nil},
+
+		// --- `prim`: the invariant is INDEXED TRAVERSAL --------------------
+		{"prim-add-ok", nil, mkPrim("+", i(1), i(2)), nil},
+		{"prim-unary-neg", nil, mkPrim("neg", i(1)), nil},
+		{"prim-unary-not", nil, mkPrim("not", bt(true)), nil},
+		{"prim-and", nil, mkPrim("and", bt(true), bt(false)), nil},
+
+		// BOUNDARIES: loop machinery usually gets many-argument right and the
+		// edges wrong.
+		{"prim-zero-args", nil, mkPrim("+"), nil},
+		{"prim-zero-args-not", nil, mkPrim("not"), nil},
+		{"prim-one-arg-to-binary", nil, mkPrim("+", i(1)), nil},
+		{"prim-three-args-to-binary", nil, mkPrim("+", i(1), i(2), i(3)), nil},
+
+		// ASYMMETRIC per-position failures. Identical arguments cannot witness
+		// traversal order; these fail DIFFERENTLY per position, so skipping,
+		// reordering, or double-visiting produces a distinguishable diagnostic.
+		{"prim-arg0-fails", nil, mkPrim("+", v(5), i(2)), nil},
+		{"prim-arg1-fails", nil, mkPrim("+", i(1), v(7)), nil},
+		// LEFTMOST wins: a machine that visits right-to-left reports index 7.
+		{"prim-both-fail-differently", nil, mkPrim("+", v(5), v(7)), nil},
+		{"prim-arg2-fails-of-three", nil, mkPrim("+", i(1), i(2), v(9)), nil},
+
+		// Off-by-one in the accumulator shows up as the OPERATOR's diagnostic,
+		// because the wrong types reach primResultTy.
+		{"prim-mixed-numeric", nil, mkPrim("+", i(1), &Term{K: "rat", Rat: big.NewRat(1, 2)}), nil},
+		{"prim-bool-into-arith", nil, mkPrim("+", i(1), bt(true)), nil},
+		{"prim-int-into-bool-op", nil, mkPrim("and", bt(true), i(1)), nil},
+		{"prim-order-matters", nil, mkPrim("+", bt(true), i(1)), nil},
+
+		{"prim-nested", nil, mkPrim("+", mkPrim("+", i(1), i(2)), i(3)), nil},
+		{"prim-nested-inner-fails", nil, mkPrim("+", mkPrim("+", i(1), v(4)), i(3)), nil},
+		{"prim-in-if", nil, mkIf(mkPrim("not", bt(true)), i(1), i(2)), nil},
+		{"prim-in-let-body", nil, mkLet(tInt(), i(1), mkPrim("+", v(0), i(2))), nil},
+
+		// check mode falls through to synthesize-then-compare, as check.go does.
+		{"prim-check-ok", nil, mkPrim("+", i(1), i(2)), tInt()},
+		{"prim-check-mismatch", nil, mkPrim("+", i(1), i(2)), tBool()},
+		{"prim-check-arg-fails", nil, mkPrim("+", v(5), i(2)), tInt()},
 	}
+}
+
+func mkPrim(op string, args ...*Term) *Term {
+	t := &Term{K: "prim", Op: op}
+	for _, a := range args {
+		t.Args = append(t.Args, *a)
+	}
+	return t
 }
 
 func v(idx int) *Term { return &Term{K: "var", Idx: idx} }
@@ -216,7 +263,7 @@ func TestUnportedFamiliesRefuse(t *testing.T) {
 	st := canonicalStore(t)
 	unported := []*Term{
 		{K: "ctor"}, {K: "app"}, {K: "lam"},
-		{K: "match"}, {K: "prim"}, {K: "record"},
+		{K: "match"}, {K: "record"},
 		{K: "field"}, {K: "ref"}, {K: "self"}, {K: "str"},
 	}
 	for _, term := range unported {
@@ -266,4 +313,26 @@ func (f *recordingFrame) describe() string { return "test:recording" }
 func (f *recordingFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, error) {
 	f.resumed = true
 	return frameOutcome{done: &r}, nil
+}
+
+// TestPrimEqualityStaysUnported. `==` recovers from a failed synthesis of its
+// first operand by retrying the second — a SUPPRESSED failure, closer to the
+// constructor inference pass than to indexed traversal. It is refused BY NAME
+// rather than approximated, so partial coverage stays explicit.
+func TestPrimEqualityStaysUnported(t *testing.T) {
+	st := canonicalStore(t)
+	m := &checkerMachine{st: st}
+	_, err := m.run(checkerStep{mode: modeSynth, term: mkPrim("==", i(1), i(1))})
+	var nf errFamilyNotPorted
+	if !errors.As(err, &nf) {
+		t.Fatalf("prim == must be refused by name, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "==") {
+		t.Errorf("the refusal must name the operator, got %q", err)
+	}
+	// And the rest of the family must still work, or the refusal would just be
+	// the whole family being absent.
+	if _, err := m.run(checkerStep{mode: modeSynth, term: mkPrim("+", i(1), i(2))}); err != nil {
+		t.Fatalf("the rest of prim must still be ported, got %v", err)
+	}
 }

@@ -289,10 +289,27 @@ type matchArmFrame struct { // match: scrutinee or arm i done
 
 func (f *matchArmFrame) describe() string { return "match:arm" }
 
-type primArgFrame struct { // primitive: argument i done
-	ctx  []*Ty
-	term *Term
-	idx  int
+// primArgFrame is INDEXED TRAVERSAL: synthesize every argument left to right,
+// accumulate their types, then apply the operator's rules once.
+//
+// The loop state is explicit — index, accumulated types, the original argument
+// list — so the ways this family goes wrong are all visible as frame state
+// rather than as control flow: skipping an argument, visiting one twice,
+// advancing the index before the result is consumed, or pairing argument i with
+// slot i+1.
+//
+// THE FIRST FAILURE ABORTS. Unlike the constructor inference pass, nothing here
+// is suppressed, so the diagnostic belongs to the LEFTMOST failing argument
+// however many others would also fail.
+//
+// The operator rules themselves are NOT reimplemented here: primResultTy is the
+// same function the recursive checker calls. Eleven operator cases copied into
+// a second implementation would compare the cases their author remembered.
+type primArgFrame struct {
+	ctx    []*Ty
+	term   *Term
+	idx    int
+	argTys []*Ty
 }
 
 func (f *primArgFrame) describe() string { return "prim:arg" }
@@ -335,9 +352,6 @@ func (f *ctorValidateFrame) resume(*checkerMachine, checkResult) (frameOutcome, 
 }
 func (f *appArgFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) { return notPorted(f) }
 func (f *matchArmFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
-	return notPorted(f)
-}
-func (f *primArgFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
 	return notPorted(f)
 }
 func (f *recordFieldFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
@@ -425,8 +439,9 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 			m.stack = append(m.stack, &ifBranchFrame{ctx: s.ctx, term: s.term, exp: s.exp, part: "cond"})
 			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
 			return checkResult{}, false, nil
-		case "var", "int", "rat", "float", "bool":
-			// The DEFAULT path: synthesize, then compare.
+		case "var", "int", "rat", "float", "bool", "prim":
+			// The DEFAULT path: synthesize, then compare. check.go has no
+			// `prim` case either — it falls through to exactly this.
 			m.stack = append(m.stack, &checkCompareFrame{exp: s.exp})
 			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term}
 			return checkResult{}, false, nil
@@ -455,6 +470,24 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 		m.stack = append(m.stack, &letBodyFrame{ctx: s.ctx, term: s.term, part: "bound"})
 		// SYNTH MODE: the bound value is SYNTHESIZED, then compared.
 		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
+		return checkResult{}, false, nil
+	case "prim":
+		// `==` is NOT this family. It recovers from a failed synthesis of its
+		// first operand by retrying the second — a suppressed failure, closer
+		// to the constructor inference pass than to indexed traversal — so it
+		// is refused BY NAME rather than approximated here.
+		if s.term.Op == "==" {
+			return checkResult{}, false, errFamilyNotPorted{"prim ==", modeSynth}
+		}
+		if len(s.term.Args) == 0 {
+			// No children: the operator rules apply immediately. Loop machinery
+			// most often gets its termination condition wrong at this boundary.
+			ty, err := primResultTy(m.st, s.term.Op, nil)
+			return checkResult{ty: ty, err: err}, true, nil
+		}
+		m.stack = append(m.stack, &primArgFrame{
+			ctx: s.ctx, term: s.term, argTys: make([]*Ty, len(s.term.Args))})
+		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: &s.term.Args[0]}
 		return checkResult{}, false, nil
 	case "if":
 		// SYNTH MODE: both branches are synthesized and must agree.
@@ -567,4 +600,21 @@ func (f *letBodyFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, e
 		return frameOutcome{next: &next}, nil
 	}
 	return frameOutcome{done: &checkResult{ty: r.ty}}, nil
+}
+
+func (f *primArgFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, error) {
+	if r.err != nil {
+		// Leftmost failure wins; the remaining arguments are not visited.
+		return frameOutcome{done: &checkResult{err: r.err}}, nil
+	}
+	// The result is consumed BEFORE the index advances. Advancing first would
+	// store argument i's type in slot i+1 and leave slot 0 nil.
+	f.argTys[f.idx] = r.ty
+	f.idx++
+	if f.idx < len(f.term.Args) {
+		next := checkerStep{mode: modeSynth, ctx: f.ctx, term: &f.term.Args[f.idx]}
+		return frameOutcome{next: &next}, nil
+	}
+	ty, err := primResultTy(m.st, f.term.Op, f.argTys)
+	return frameOutcome{done: &checkResult{ty: ty, err: err}}, nil
 }

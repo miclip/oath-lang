@@ -872,16 +872,28 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 		}
 		argTys[i] = at
 	}
+	return primResultTy(c.st, t.Op, argTys)
+}
+
+// primResultTy applies a primitive's typing rules to ALREADY SYNTHESIZED
+// argument types. Extracted so the recursive checker and the explicit machine
+// share ONE implementation of eleven operator cases (#149): a hand-copied
+// second version would compare the cases its author remembered, and the
+// differential would then report a divergence with no indication that the two
+// were ever meant to be the same code.
+//
+// Pure apart from the store, which only `str-len`'s List Int type needs.
+func primResultTy(st *Store, op string, argTys []*Ty) (*Ty, error) {
 	need := func(n int) error {
 		if len(argTys) != n {
-			return fmt.Errorf("primitive %s takes %d arguments, got %d", t.Op, n, len(argTys))
+			return fmt.Errorf("primitive %s takes %d arguments, got %d", op, n, len(argTys))
 		}
 		return nil
 	}
 	allInt := func() error {
 		for _, a := range argTys {
 			if a.K != "int" {
-				return fmt.Errorf("primitive %s requires Int arguments, got %s", t.Op, debugTy(a))
+				return fmt.Errorf("primitive %s requires Int arguments, got %s", op, debugTy(a))
 			}
 		}
 		return nil
@@ -889,7 +901,7 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 	allBool := func() error {
 		for _, a := range argTys {
 			if a.K != "bool" {
-				return fmt.Errorf("primitive %s requires Bool arguments, got %s", t.Op, debugTy(a))
+				return fmt.Errorf("primitive %s requires Bool arguments, got %s", op, debugTy(a))
 			}
 		}
 		return nil
@@ -899,12 +911,12 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 	// (arithmetic) or Bool (comparison).
 	numericTy := func() (*Ty, error) {
 		if len(argTys) == 0 || (argTys[0].K != "int" && argTys[0].K != "rat" && argTys[0].K != "float") {
-			return nil, fmt.Errorf("primitive %s requires Int, Rat, or Float arguments", t.Op)
+			return nil, fmt.Errorf("primitive %s requires Int, Rat, or Float arguments", op)
 		}
 		k := argTys[0].K
 		for _, a := range argTys {
 			if a.K != k {
-				return nil, fmt.Errorf("primitive %s requires all operands the same numeric type, got %s and %s", t.Op, k, debugTy(a))
+				return nil, fmt.Errorf("primitive %s requires all operands the same numeric type, got %s and %s", op, k, debugTy(a))
 			}
 		}
 		return &Ty{K: k}, nil
@@ -912,12 +924,12 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 	allFloat := func() error {
 		for _, a := range argTys {
 			if a.K != "float" {
-				return fmt.Errorf("primitive %s requires Float arguments, got %s", t.Op, debugTy(a))
+				return fmt.Errorf("primitive %s requires Float arguments, got %s", op, debugTy(a))
 			}
 		}
 		return nil
 	}
-	switch t.Op {
+	switch op {
 	case "+", "-", "*", "/":
 		if err := need(2); err != nil {
 			return nil, err
@@ -988,16 +1000,16 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 		if err := need(2); err != nil {
 			return nil, err
 		}
-		lst := listOfIntTy(c.st)
+		lst := listOfIntTy(st)
 		if lst == nil {
-			return nil, fmt.Errorf("%s requires the List datatype in scope", t.Op)
+			return nil, fmt.Errorf("%s requires the List datatype in scope", op)
 		}
 		for i, a := range argTys {
 			if !tyEq(a, lst) {
-				return nil, fmt.Errorf("%s argument %d requires (List Int), got %s", t.Op, i, debugTy(a))
+				return nil, fmt.Errorf("%s argument %d requires (List Int), got %s", op, i, debugTy(a))
 			}
 		}
-		if t.Op == "bytes-eq-ct" {
+		if op == "bytes-eq-ct" {
 			return tBool(), nil
 		}
 		return lst, nil
@@ -1031,7 +1043,7 @@ func (c *checker) synthPrim(ctx []*Ty, t *Term) (*Ty, error) {
 		}
 		return tInt(), nil
 	}
-	return nil, fmt.Errorf("unknown primitive %q", t.Op)
+	return nil, fmt.Errorf("unknown primitive %q", op)
 }
 
 // checkDef validates a whole definition against the kernel rules.
