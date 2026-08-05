@@ -349,7 +349,8 @@ func mkIf(a, b, c *Term) *Term { return &Term{K: "if", A: a, B: b, C: c} }
 func TestPortedFamilyMatchesRecursiveChecker(t *testing.T) {
 	st := canonicalStore(t)
 
-	for _, tc := range portedFamilyCases() {
+	cases := append(portedFamilyCases(), matchCases(t, st)...)
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Snapshot the term before either runs, so a mutation by EITHER
 			// is visible. The ported families must not write to the AST.
@@ -432,7 +433,6 @@ func TestUnportedFamiliesRefuse(t *testing.T) {
 	st := canonicalStore(t)
 	unported := []*Term{
 		{K: "ctor"},
-		{K: "match"},
 		{K: "ref"}, {K: "self"}, {K: "str"},
 	}
 	for _, term := range unported {
@@ -543,5 +543,90 @@ func TestAppRefusesRefSelfSpines(t *testing.T) {
 	m := &checkerMachine{st: st}
 	if _, err := m.run(checkerStep{mode: modeSynth, term: mkApp(mkLam(tInt(), v(0)), i(1))}); err != nil {
 		t.Fatalf("ordinary application must still be ported, got %v", err)
+	}
+}
+
+// matchCases needs the corpus, because a match's arms are per-CONSTRUCTOR and
+// its scrutinee must have a data type. `List` supplies both: Nil binds nothing,
+// Cons binds Int and (List Int), so the two arms are ASYMMETRIC — identical
+// arms could not witness per-arm context extension, traversal order, or which
+// arm establishes the result.
+//
+// The scrutinee is a `var` of list type rather than a constructor, so this
+// family is testable before `ctor` is ported.
+func matchCases(t *testing.T, st *Store) []familyCase {
+	t.Helper()
+	consHash, _, ok := st.FindCtor("Cons")
+	if !ok {
+		t.Fatal("corpus has no Cons; match cannot be exercised")
+	}
+	listInt := &Ty{K: "data", Hash: consHash, Args: []Ty{*tInt()}}
+	inList := []*Ty{listInt}
+
+	okHash, _, ok2 := st.FindCtor("Ok")
+	if !ok2 {
+		t.Fatal("corpus has no Ok; the both-arms-bind witness is unavailable")
+	}
+	inResult := []*Ty{{K: "data", Hash: okHash, Args: []Ty{*tInt(), *tBool()}}}
+
+	mkMatch := func(scrut *Term, arms ...*Term) *Term {
+		m := &Term{K: "match", A: scrut}
+		for _, a := range arms {
+			m.Arms = append(m.Arms, *a)
+		}
+		return m
+	}
+	// Inside the Cons arm the context gains Int then (List Int), so Var 0 is
+	// the tail, Var 1 the head, Var 2 the original scrutinee.
+	return []familyCase{
+		{"match-arms-agree", inList, mkMatch(v(0), i(0), v(1)), nil},
+		{"match-arms-disagree", inList, mkMatch(v(0), i(0), v(0)), nil},
+		// Reversed, so the "X vs Y" order in the diagnostic is observable.
+		{"match-arms-disagree-reversed", inList, mkMatch(v(0), bt(true), v(1)), nil},
+
+		// PER-ARM CONTEXT. The Nil arm binds nothing, so Var 0 there is the
+		// scrutinee itself; in the Cons arm Var 0 is the tail. A machine that
+		// reused one arm's context for the other changes both arms' types.
+		{"match-nil-arm-sees-scrutinee", inList, mkMatch(v(0), v(0), v(0)), nil},
+		{"match-cons-arm-binds-head", inList, mkMatch(v(0), i(0), v(1)), nil},
+		{"match-cons-arm-binds-tail", inList, mkMatch(v(0), v(0), v(0)), nil},
+		{"match-cons-arm-reaches-outer", inList, mkMatch(v(0), v(0), v(2)), nil},
+		// Out of scope in the NIL arm but in scope in the Cons arm: a machine
+		// that extended both arms identically would accept this.
+		{"match-nil-arm-out-of-scope", inList, mkMatch(v(0), v(1), v(1)), nil},
+
+		// Scrutinee and shape failures, in precedence order.
+		{"match-scrutinee-not-data", nil, mkMatch(i(1), i(0), i(0)), nil},
+		{"match-scrutinee-fails", nil, mkMatch(v(9), i(0), i(0)), nil},
+		{"match-too-few-arms", inList, mkMatch(v(0), i(0)), nil},
+		{"match-too-many-arms", inList, mkMatch(v(0), i(0), i(1), i(2)), nil},
+		// The scrutinee is diagnosed before the arm count.
+		{"match-scrutinee-beats-arm-count", nil, mkMatch(i(1), i(0)), nil},
+
+		// Arm failures: LEFTMOST wins, and the two fail differently.
+		{"match-first-arm-fails", inList, mkMatch(v(0), v(9), v(1)), nil},
+		{"match-second-arm-fails", inList, mkMatch(v(0), i(0), v(9)), nil},
+		{"match-both-arms-fail-differently", inList, mkMatch(v(0), v(8), v(9)), nil},
+
+		// CHECK MODE: every arm is checked against exp; there is no candidate
+		// and no arms-disagree diagnostic.
+		{"match-check-ok", inList, mkMatch(v(0), i(0), v(1)), tInt()},
+		{"match-check-arm-mismatch", inList, mkMatch(v(0), i(0), v(0)), tInt()},
+		{"match-check-both-arms-wrong", inList, mkMatch(v(0), bt(true), v(0)), tInt()},
+		{"match-check-scrutinee-not-data", nil, mkMatch(i(1), i(0), i(0)), tInt()},
+
+		// `Result [a e]` is the witness `List` cannot provide: BOTH its
+		// constructors bind, so a context that leaks from arm 0 into arm 1
+		// changes what Var 1 resolves to there. In List the only binding
+		// constructor is the LAST arm, leaving a leak nothing to contaminate —
+		// which is why a leak mutant killed zero cases until this was added.
+		{"match-result-both-arms-bind", inResult, mkMatch(v(0), v(0), v(0)), nil},
+		{"match-result-arm-reaches-outer", inResult, mkMatch(v(0), v(1), v(1)), nil},
+		{"match-result-leak-witness", inResult, mkMatch(v(0), i(0), v(1)), nil},
+		{"match-result-check-mode", inResult, mkMatch(v(0), v(0), i(0)), tInt()},
+
+		{"match-nested-in-arm", inList,
+			mkMatch(v(0), i(0), mkMatch(v(0), i(1), v(1))), nil},
+		{"match-in-lam", nil, mkLam(listInt, mkMatch(v(0), i(0), v(1))), nil},
 	}
 }

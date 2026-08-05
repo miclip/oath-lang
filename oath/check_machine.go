@@ -287,16 +287,45 @@ type letBodyFrame struct {
 
 func (f *letBodyFrame) describe() string { return "let:" + f.part }
 
-type matchArmFrame struct { // match: scrutinee or arm i done
-	ctx      []*Ty
-	term     *Term
-	exp      *Ty
-	scrutTy  *Ty
-	idx      int
-	scrutine bool // true while the scrutinee itself is outstanding
+// matchArmFrame sequences a `match`: scrutinee first, then every arm LEFT TO
+// RIGHT under its own extended context.
+//
+// Each arm's context is derived fresh from the frame's ORIGINAL ctx plus that
+// constructor's fields, so arm i+1 cannot see arm i's pattern bindings — the
+// same structural rule as `let`, applied per sibling rather than per nesting
+// level.
+//
+// The modes differ in what the arms are FOR:
+//
+//	synth   each arm is SYNTHESIZED; the FIRST arm establishes the candidate
+//	        result and every later arm must agree with it
+//	check   each arm is CHECKED against exp; there is no candidate and no
+//	        arms-disagree diagnostic — a machine that synthesized and compared
+//	        would report the wrong error on a program with two bad arms
+type matchArmFrame struct {
+	ctx     []*Ty
+	term    *Term
+	exp     *Ty // nil in synth mode
+	data    *Def
+	scrutTy *Ty
+	idx     int
+	result  *Ty // synth mode: the candidate established by the first arm
+	part    string
 }
 
-func (f *matchArmFrame) describe() string { return "match:arm" }
+func (f *matchArmFrame) describe() string { return "match:" + f.part }
+
+// armStep builds the step for arm idx under its own extended context.
+func (f *matchArmFrame) armStep() checkerStep {
+	armCtx := f.ctx
+	for _, fld := range instCtorFields(f.data, f.scrutTy.Hash, f.scrutTy.Args, f.idx) {
+		armCtx = pushCtx(armCtx, fld)
+	}
+	if f.exp == nil {
+		return checkerStep{mode: modeSynth, ctx: armCtx, term: &f.term.Arms[f.idx]}
+	}
+	return checkerStep{mode: modeCheck, ctx: armCtx, term: &f.term.Arms[f.idx], exp: f.exp}
+}
 
 // primArgFrame is INDEXED TRAVERSAL: synthesize every argument left to right,
 // accumulate their types, then apply the operator's rules once.
@@ -445,9 +474,6 @@ func (f *ctorSolveFrame) resume(*checkerMachine, checkResult) (frameOutcome, err
 func (f *ctorValidateFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
 	return notPorted(f)
 }
-func (f *matchArmFrame) resume(*checkerMachine, checkResult) (frameOutcome, error) {
-	return notPorted(f)
-}
 
 // --- step 3: the run loop, and the first ported family -------------------
 //
@@ -514,6 +540,10 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 	}
 	if s.mode == modeCheck {
 		switch s.term.K {
+		case "match":
+			m.stack = append(m.stack, &matchArmFrame{ctx: s.ctx, term: s.term, exp: s.exp, part: "scrutinee"})
+			*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
+			return checkResult{}, false, nil
 		case "app":
 			if head, _ := spine(s.term); head.K == "ref" || head.K == "self" {
 				return checkResult{}, false, errFamilyNotPorted{"app with a ref/self head", modeCheck}
@@ -587,6 +617,10 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 		}
 		m.stack = append(m.stack, &letBodyFrame{ctx: s.ctx, term: s.term, part: "bound"})
 		// SYNTH MODE: the bound value is SYNTHESIZED, then compared.
+		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
+		return checkResult{}, false, nil
+	case "match":
+		m.stack = append(m.stack, &matchArmFrame{ctx: s.ctx, term: s.term, part: "scrutinee"})
 		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: s.term.A}
 		return checkResult{}, false, nil
 	case "record":
@@ -855,4 +889,54 @@ func (f *recordFieldFrame) resume(m *checkerMachine, r checkResult) (frameOutcom
 	}
 	return frameOutcome{done: &checkResult{ty: &Ty{
 		K: "record", Names: append([]string{}, f.term.Names...), Args: f.tys}}}, nil
+}
+
+func (f *matchArmFrame) resume(m *checkerMachine, r checkResult) (frameOutcome, error) {
+	if r.err != nil {
+		return frameOutcome{done: &checkResult{err: r.err}}, nil
+	}
+	if f.part == "scrutinee" {
+		st := r.ty
+		if st == nil || st.K != "data" {
+			return frameOutcome{done: &checkResult{
+				err: fmt.Errorf("match scrutinee must be a data value, got %s", debugTy(st))}}, nil
+		}
+		if f.term.Hash != "" && f.term.Hash != st.Hash {
+			return frameOutcome{done: &checkResult{
+				err: fmt.Errorf("match arms are for a different data type than the scrutinee")}}, nil
+		}
+		d, err := m.st.GetDef(st.Hash)
+		if err != nil {
+			return frameOutcome{done: &checkResult{err: err}}, nil
+		}
+		if len(f.term.Arms) != len(d.Ctors) {
+			return frameOutcome{done: &checkResult{
+				err: fmt.Errorf("match has %d arms, data type has %d constructors",
+					len(f.term.Arms), len(d.Ctors))}}, nil
+		}
+		f.data, f.scrutTy, f.part = d, st, "arm"
+		if len(f.term.Arms) == 0 {
+			// Unreachable through the gate (a data definition needs at least
+			// one constructor) but reachable from a stored object: synth
+			// returns a nil type with NO error, and so must this.
+			return frameOutcome{done: &checkResult{}}, nil
+		}
+		next := f.armStep()
+		return frameOutcome{next: &next}, nil
+	}
+	if f.exp == nil {
+		// The FIRST arm establishes the candidate; later arms must agree.
+		if f.result == nil {
+			f.result = r.ty
+		} else if !tyEq(f.result, r.ty) {
+			return frameOutcome{done: &checkResult{
+				err: fmt.Errorf("match arms disagree: %s vs %s", debugTy(f.result), debugTy(r.ty))}}, nil
+		}
+	}
+	f.idx++
+	if f.idx < len(f.term.Arms) {
+		next := f.armStep()
+		return frameOutcome{next: &next}, nil
+	}
+	return frameOutcome{done: &checkResult{ty: f.result}}, nil
 }
