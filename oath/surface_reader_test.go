@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -247,16 +248,15 @@ func TestReaderDifferentialDiscriminates(t *testing.T) {
 // input through the SERVED wasm artifact. Both are required; neither is
 // sufficient. See #149.
 func TestReaderDepthDoesNotUseHostStack(t *testing.T) {
-	const depth = 200000
-	src := strings.Repeat("(", depth) + strings.Repeat(")", depth)
-	forms, err := parseForms(src)
+	// AT the limit: admitted, and actually that deep rather than truncated.
+	atLimit := strings.Repeat("(", maxSyntaxNesting) + strings.Repeat(")", maxSyntaxNesting)
+	forms, err := parseForms(atLimit)
 	if err != nil {
-		t.Fatalf("depth %d should parse, got %v", depth, err)
+		t.Fatalf("nesting %d is the limit and must be admitted, got %v", maxSyntaxNesting, err)
 	}
 	if len(forms) != 1 {
 		t.Fatalf("expected one form, got %d", len(forms))
 	}
-	// Confirm the structure is actually that deep rather than silently truncated.
 	n, cur := 0, forms[0]
 	for {
 		n++
@@ -265,8 +265,32 @@ func TestReaderDepthDoesNotUseHostStack(t *testing.T) {
 		}
 		cur = cur.Kids[0]
 	}
-	if n != depth {
-		t.Fatalf("expected nesting depth %d, measured %d — the reader truncated", depth, n)
+	if n != maxSyntaxNesting {
+		t.Fatalf("expected nesting depth %d, measured %d — the reader truncated", maxSyntaxNesting, n)
+	}
+
+	// ONE OVER: refused, and refused as a RESOURCE limit rather than as
+	// malformed syntax. The input is well-formed; only its size is at issue.
+	over := strings.Repeat("(", maxSyntaxNesting+1) + strings.Repeat(")", maxSyntaxNesting+1)
+	_, err = parseForms(over)
+	if err == nil {
+		t.Fatalf("nesting %d is over the limit and must be refused", maxSyntaxNesting+1)
+	}
+	var rl *resourceLimitErr
+	if !errors.As(err, &rl) {
+		t.Fatalf("refusal must be a typed resource limit, got %T: %v", err, err)
+	}
+	if rl.what != "syntax nesting" {
+		t.Fatalf("wrong quantity blamed: %q", rl.what)
+	}
+
+	// FAR over: still a clean refusal, and CHEAP. This is the #149 claim proper
+	// — a limit must be reached and reported, never approached until a host
+	// stack gives out. 200,000 is ten times the depth measured to throw a host
+	// exception out of oathCheck on wasm before this existed.
+	huge := strings.Repeat("(", 200000)
+	if _, err := parseForms(huge); !errors.As(err, &rl) {
+		t.Fatalf("200,000 deep must refuse as a resource limit, got %v", err)
 	}
 }
 

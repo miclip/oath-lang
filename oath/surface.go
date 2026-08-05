@@ -253,6 +253,18 @@ func (r *reader) read() (sx, error) {
 		case "sym":
 			val = sx{K: "sym", Sym: t.sym, Line: t.line}
 		case "(", "[", "{":
+			// SYNTAX NESTING ADMISSION. Reported as a typed resource refusal,
+			// never as malformed syntax: the input is well-formed and larger
+			// than this profile admits, and telling an author to fix a program
+			// that has nothing wrong with it is a different (wrong) message.
+			//
+			// Enforceable here precisely BECAUSE this loop is iterative — the
+			// limit is reached and reported rather than approached until a host
+			// stack gives out. It also currently protects the elaborator, which
+			// still descends this tree recursively.
+			if len(stack) >= maxSyntaxNesting {
+				return sx{}, errTooDeeplyNested(t.line)
+			}
 			f := readFrame{kind: "list", open: t.kind, closer: ")", line: t.line}
 			switch t.kind {
 			case "[":

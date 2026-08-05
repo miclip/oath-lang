@@ -252,6 +252,14 @@ func (s *Store) GetDef(h string) (*Def, error) {
 	if err != nil {
 		return nil, fmt.Errorf("stored object %s: %w", shortHash(h), err)
 	}
+	// ADMISSION BOUNDARY 3 of 3 (#149). The decoder is the only path that
+	// reconstructs a Term from bytes rather than from parsed text, so nothing
+	// the reader or elaborator enforces protects it. It matters for the same
+	// reason the re-validation below does: an object written directly into the
+	// store never passed the gate.
+	if err := admitDef(dp); err != nil {
+		return nil, fmt.Errorf("stored object %s: %w", shortHash(h), err)
+	}
 	d := *dp
 	// Content addressing proves the bytes are intact, not that they encode a
 	// well-formed definition. An object written directly into the store (the
