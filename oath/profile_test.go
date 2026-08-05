@@ -167,3 +167,63 @@ func TestCorpusFitsPortableProfile(t *testing.T) {
 			"headroom this thin means ordinary growth will hit the limit", worst, maxCanonicalNodes)
 	}
 }
+
+// TestGuardsAreDistinguished pins WHICH guard refuses each shape. They are all
+// "an error" to a host, and collapsing them into one expected string would let
+// the wrong guard satisfy the test — a nesting bound could silently start doing
+// the node budget's job, or a syntax error could stand in for a resource
+// refusal, and the suite would stay green while the claim quietly changed.
+//
+// Four distinct dispositions, one row each:
+//
+//	nested syntax over the limit    -> RESOURCE_LIMIT, syntax nesting
+//	canonical structure over limit  -> RESOURCE_LIMIT, canonical structure
+//	malformed source                -> an ordinary syntax error, NOT a resource limit
+//	a long linear spine             -> ADMITTED (the open case; see #149)
+func TestGuardsAreDistinguished(t *testing.T) {
+	limitOf := func(err error) *resourceLimitErr {
+		var rl *resourceLimitErr
+		if errors.As(err, &rl) {
+			return rl
+		}
+		return nil
+	}
+
+	// 1. Nesting guard.
+	_, err := parseForms(strings.Repeat("(", maxSyntaxNesting+1) + strings.Repeat(")", maxSyntaxNesting+1))
+	rl := limitOf(err)
+	if rl == nil || rl.what != "syntax nesting" {
+		t.Errorf("deep nesting must be refused by the NESTING guard, got %v", err)
+	}
+
+	// 2. Node-budget guard. Reached only through a structure that is shallow in
+	// syntax, so this cannot be the nesting guard wearing a different label.
+	err = admitDef(defWithNodes(maxCanonicalNodes + 1))
+	rl = limitOf(err)
+	if rl == nil || rl.what != "canonical structure" {
+		t.Errorf("an oversized structure must be refused by the NODE guard, got %v", err)
+	}
+
+	// 3. Malformed source stays an ordinary syntax error. A resource refusal
+	// here would tell an author their program is too big when it is broken.
+	_, err = parseForms("(a (b")
+	if err == nil {
+		t.Error("unclosed input must be an error")
+	} else if limitOf(err) != nil {
+		t.Errorf("malformed source must NOT be a resource refusal, got %v", err)
+	}
+
+	// 4. THE OPEN CASE, asserted as it actually is rather than as we want it.
+	// A long linear spine is shallow in syntax and well under the node budget,
+	// so both guards correctly admit it — and the recursive walkers downstream
+	// then overflow the host stack on wasm. This assertion documents the
+	// boundary between what the profile claims and what it does not, and it
+	// MUST BE INVERTED when the traversal substrate lands.
+	spine := defWithNodes(5000)
+	if err := admitDef(spine); err != nil {
+		t.Errorf("a 5,000-node spine is inside the profile and must be admitted, got %v", err)
+	}
+	if _, err := parseForms(`(defn s [] [] Str "` + strings.Repeat("a", 5000) + `")`); err != nil {
+		t.Errorf("a 5,000-rune literal is one syntax node and must parse, got %v", err)
+	}
+}
