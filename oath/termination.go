@@ -68,45 +68,72 @@ func ltOf(r rel) rel {
 // argument list is in hand. Only App propagates the spine: a self-call
 // reached any other way (through let, if, match, or passed as a value)
 // arrives with an empty spine and conservatively fails the check.
-func (w *termWalker) walk(t *Term, env []rel, spine []rel) {
-	if t == nil {
-		return
-	}
-	switch t.K {
-	case "self":
-		w.sites = append(w.sites, callSite{args: spine})
-	case "app":
-		w.walk(t.A, env, append([]rel{argRel(t.B, env)}, spine...))
-		w.walk(t.B, env, nil)
-	case "lam":
-		w.walk(t.A, pushRel(env, nil), nil)
-	case "let":
-		w.walk(t.A, env, nil)
-		w.walk(t.B, pushRel(env, nil), nil)
-	case "match":
-		w.walk(t.A, env, nil)
-		var brel rel
-		if t.A.K == "var" {
-			brel = ltOf(argRel(t.A, env))
+// walkItem is one pending node for the iterative walker, carrying the per-node
+// state the recursive version passed as arguments.
+type walkItem struct {
+	t     *Term
+	env   []rel
+	spine []rel
+}
+
+// walk collects self-call sites, ITERATIVELY (#149).
+//
+// Converted because a definition that clears the gate is then analysed for
+// termination, and this descended the same linear spine the typechecker had
+// just stopped descending — so `oathCheck` still borrowed the host stack on a
+// 5,000-rune string literal.
+//
+// CHILDREN ARE PUSHED IN REVERSE so they pop in source order. That is not
+// cosmetic: w.sites is append-only and lexDescends reads it positionally, so a
+// reordered traversal can change the termination VERDICT.
+func (w *termWalker) walk(root *Term, rootEnv []rel, rootSpine []rel) {
+	stack := []walkItem{{t: root, env: rootEnv, spine: rootSpine}}
+	for len(stack) > 0 {
+		it := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		t, env := it.t, it.env
+		if t == nil {
+			continue
 		}
-		d, err := w.st.GetDef(t.Hash)
-		if err != nil {
-			w.bad = true
-			return
-		}
-		for i := range t.Arms {
-			env2 := env
-			for range d.Ctors[i] {
-				env2 = pushRel(env2, brel)
+		push := func(w walkItem) { stack = append(stack, w) }
+		switch t.K {
+		case "self":
+			w.sites = append(w.sites, callSite{args: it.spine})
+		case "app":
+			push(walkItem{t: t.B, env: env})
+			push(walkItem{t: t.A, env: env, spine: append([]rel{argRel(t.B, env)}, it.spine...)})
+		case "lam":
+			push(walkItem{t: t.A, env: pushRel(env, nil)})
+		case "let":
+			push(walkItem{t: t.B, env: pushRel(env, nil)})
+			push(walkItem{t: t.A, env: env})
+		case "match":
+			var brel rel
+			if t.A.K == "var" {
+				brel = ltOf(argRel(t.A, env))
 			}
-			w.walk(&t.Arms[i], env2, nil)
-		}
-	default:
-		w.walk(t.A, env, nil)
-		w.walk(t.B, env, nil)
-		w.walk(t.C, env, nil)
-		for i := range t.Args {
-			w.walk(&t.Args[i], env, nil)
+			d, err := w.st.GetDef(t.Hash)
+			if err != nil {
+				// The recursive version returned from THIS invocation only, so
+				// the node's children are skipped and siblings still run.
+				w.bad = true
+				continue
+			}
+			for i := len(t.Arms) - 1; i >= 0; i-- {
+				env2 := env
+				for range d.Ctors[i] {
+					env2 = pushRel(env2, brel)
+				}
+				push(walkItem{t: &t.Arms[i], env: env2})
+			}
+			push(walkItem{t: t.A, env: env})
+		default:
+			for i := len(t.Args) - 1; i >= 0; i-- {
+				push(walkItem{t: &t.Args[i], env: env})
+			}
+			push(walkItem{t: t.C, env: env})
+			push(walkItem{t: t.B, env: env})
+			push(walkItem{t: t.A, env: env})
 		}
 	}
 }
@@ -116,26 +143,28 @@ func isTotal(term string) bool {
 }
 
 func bodyFuncRefs(t *Term) map[string]bool {
+	// Iterative for the same reason as termWalker.walk (#149): this runs over
+	// every admitted definition. The result is a SET, so traversal order does
+	// not affect it — but stack depth does.
 	out := map[string]bool{}
-	var walk func(*Term)
-	walk = func(t *Term) {
-		if t == nil {
-			return
+	stack := []*Term{t}
+	for len(stack) > 0 {
+		cur := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if cur == nil {
+			continue
 		}
-		if t.K == "ref" {
-			out[t.Hash] = true
+		if cur.K == "ref" {
+			out[cur.Hash] = true
 		}
-		walk(t.A)
-		walk(t.B)
-		walk(t.C)
-		for i := range t.Args {
-			walk(&t.Args[i])
+		stack = append(stack, cur.A, cur.B, cur.C)
+		for i := range cur.Args {
+			stack = append(stack, &cur.Args[i])
 		}
-		for i := range t.Arms {
-			walk(&t.Arms[i])
+		for i := range cur.Arms {
+			stack = append(stack, &cur.Arms[i])
 		}
 	}
-	walk(t)
 	return out
 }
 

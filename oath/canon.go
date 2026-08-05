@@ -392,87 +392,138 @@ func (e *enc) tys(ts []Ty) {
 	}
 }
 
-func (e *enc) term(t *Term) {
-	switch t.K {
-	case "var":
-		e.u8(tagTmVar)
-		e.u32(uint32(t.Idx))
-	case "int":
-		e.u8(tagTmInt)
-		e.bigint(t.Int)
-	case "rat":
-		// A rational encodes as its reduced numerator and denominator; big.Rat
-		// keeps them coprime with a positive denominator, so this is canonical.
-		e.u8(tagTmRat)
-		e.bigint(t.Rat.Num())
-		e.bigint(t.Rat.Denom())
-	case "float":
-		// IEEE-754 binary64, 8 big-endian bytes, with NaN canonicalized to a
-		// single quiet pattern (canonFloat) so one value has one encoding.
-		e.u8(tagTmFloat)
-		var buf [8]byte
-		binary.BigEndian.PutUint64(buf[:], math.Float64bits(canonFloat(t.Float)))
-		e.b = append(e.b, buf[:]...)
-	case "bool":
-		e.u8(tagTmBool)
-		if t.Bool {
-			e.u8(1)
-		} else {
-			e.u8(0)
+// encItem is one pending emission for the iterative encoder: a term, a literal
+// string, or a length prefix that must appear AFTER an earlier child's bytes.
+type encItem struct {
+	kind byte // 't' term | 's' string | 'n' u32
+	term *Term
+	s    string
+	n    uint32
+}
+
+// term emits a term's canonical bytes ITERATIVELY (#149).
+//
+// This is identity-critical code, so the conversion is byte-preserving by
+// construction rather than by intent: every case emits exactly the bytes the
+// recursive version emitted, and children are PUSHED IN REVERSE so they pop in
+// source order. canon_iterative_test.go compares the two byte-for-byte over the
+// corpus and over deep adversarial structures — hash equality would be a weaker
+// claim than the one being made, which is that the ENCODING did not move.
+//
+// WHY TERMS AND NOT TYPES. A Ty's depth is bounded by maxSyntaxNesting (512),
+// because type expressions can only nest as far as the source nests. A TERM's
+// depth is not: `Str` is an inductive datatype, so a 5,000-rune literal is a
+// 5,000-long SCons spine from one syntax node. Linear spines are the shape that
+// escapes the syntax bound, which is why they are the shape that needed this.
+func (e *enc) term(root *Term) {
+	stack := []encItem{{kind: 't', term: root}}
+	push := func(it encItem) { stack = append(stack, it) }
+	pushTerm := func(t *Term) { push(encItem{kind: 't', term: t}) }
+
+	for len(stack) > 0 {
+		it := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		switch it.kind {
+		case 's':
+			e.str(it.s)
+			continue
+		case 'n':
+			e.u32(it.n)
+			continue
 		}
-	case "lam":
-		e.u8(tagTmLam)
-		e.ty(t.Ty)
-		e.term(t.A)
-	case "app":
-		e.u8(tagTmApp)
-		e.term(t.A)
-		e.term(t.B)
-	case "let":
-		e.u8(tagTmLet)
-		e.ty(t.Ty)
-		e.term(t.A)
-		e.term(t.B)
-	case "if":
-		e.u8(tagTmIf)
-		e.term(t.A)
-		e.term(t.B)
-		e.term(t.C)
-	case "prim":
-		e.u8(tagTmPrim)
-		e.str(t.Op)
-		e.terms(t.Args)
-	case "ref":
-		e.u8(tagTmRef)
-		e.hash(t.Hash)
-		e.tys(t.TyArgs)
-	case "self":
-		e.u8(tagTmSelf)
-		e.tys(t.TyArgs)
-	case "ctor":
-		e.u8(tagTmCtor)
-		e.hash(t.Hash)
-		e.u32(uint32(t.Idx))
-		e.tys(t.TyArgs)
-		e.terms(t.Args)
-	case "match":
-		e.u8(tagTmMatch)
-		e.hash(t.Hash)
-		e.term(t.A)
-		e.terms(t.Arms)
-	case "record":
-		e.u8(tagTmRecord)
-		e.u32(uint32(len(t.Names)))
-		for i, n := range t.Names {
-			e.str(n)
-			e.term(&t.Args[i])
+		t := it.term
+		switch t.K {
+		case "var":
+			e.u8(tagTmVar)
+			e.u32(uint32(t.Idx))
+		case "int":
+			e.u8(tagTmInt)
+			e.bigint(t.Int)
+		case "rat":
+			// A rational encodes as its reduced numerator and denominator; big.Rat
+			// keeps them coprime with a positive denominator, so this is canonical.
+			e.u8(tagTmRat)
+			e.bigint(t.Rat.Num())
+			e.bigint(t.Rat.Denom())
+		case "float":
+			// IEEE-754 binary64, 8 big-endian bytes, with NaN canonicalized to a
+			// single quiet pattern (canonFloat) so one value has one encoding.
+			e.u8(tagTmFloat)
+			var buf [8]byte
+			binary.BigEndian.PutUint64(buf[:], math.Float64bits(canonFloat(t.Float)))
+			e.b = append(e.b, buf[:]...)
+		case "bool":
+			e.u8(tagTmBool)
+			if t.Bool {
+				e.u8(1)
+			} else {
+				e.u8(0)
+			}
+		case "lam":
+			e.u8(tagTmLam)
+			e.ty(t.Ty)
+			pushTerm(t.A)
+		case "app":
+			e.u8(tagTmApp)
+			pushTerm(t.B)
+			pushTerm(t.A)
+		case "let":
+			e.u8(tagTmLet)
+			e.ty(t.Ty)
+			pushTerm(t.B)
+			pushTerm(t.A)
+		case "if":
+			e.u8(tagTmIf)
+			pushTerm(t.C)
+			pushTerm(t.B)
+			pushTerm(t.A)
+		case "prim":
+			e.u8(tagTmPrim)
+			e.str(t.Op)
+			e.u32(uint32(len(t.Args)))
+			for i := len(t.Args) - 1; i >= 0; i-- {
+				pushTerm(&t.Args[i])
+			}
+		case "ref":
+			e.u8(tagTmRef)
+			e.hash(t.Hash)
+			e.tys(t.TyArgs)
+		case "self":
+			e.u8(tagTmSelf)
+			e.tys(t.TyArgs)
+		case "ctor":
+			e.u8(tagTmCtor)
+			e.hash(t.Hash)
+			e.u32(uint32(t.Idx))
+			e.tys(t.TyArgs)
+			e.u32(uint32(len(t.Args)))
+			for i := len(t.Args) - 1; i >= 0; i-- {
+				pushTerm(&t.Args[i])
+			}
+		case "match":
+			// The arm COUNT is emitted after the scrutinee's bytes, so it is a
+			// work item rather than an immediate write.
+			e.u8(tagTmMatch)
+			e.hash(t.Hash)
+			for i := len(t.Arms) - 1; i >= 0; i-- {
+				pushTerm(&t.Arms[i])
+			}
+			push(encItem{kind: 'n', n: uint32(len(t.Arms))})
+			pushTerm(t.A)
+		case "record":
+			e.u8(tagTmRecord)
+			e.u32(uint32(len(t.Names)))
+			for i := len(t.Names) - 1; i >= 0; i-- {
+				pushTerm(&t.Args[i])
+				push(encItem{kind: 's', s: t.Names[i]})
+			}
+		case "field":
+			e.u8(tagTmField)
+			push(encItem{kind: 's', s: t.Op})
+			pushTerm(t.A)
+		default:
+			panic("encode: unknown Term kind " + t.K)
 		}
-	case "field":
-		e.u8(tagTmField)
-		e.term(t.A)
-		e.str(t.Op)
-	default:
-		panic("encode: unknown Term kind " + t.K)
 	}
 }
 
