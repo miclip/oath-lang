@@ -11,6 +11,19 @@ type checker struct {
 	st         *Store
 	selfTyVars int
 	selfTy     *Ty // declared type of the func being checked; nil outside a func def
+
+	// inferEntries counts entries into constructor type-argument INFERENCE —
+	// pass 1 of synthCtor's three-stage protocol. It exists so that the
+	// LINEARIZING MEMO EFFECT of publishing TyArgs mid-flight is witnessable
+	// directly instead of through wall-clock timing, which is CI-variance-prone
+	// and (measured, #149) easy to take on a path that never runs inference at
+	// all. Per-checker rather than global: no shared state, no race.
+	//
+	// The invariant it witnesses: each constructor node enters inference AT
+	// MOST ONCE, because the validation pass re-enters synthCtor on nodes whose
+	// TyArgs are now populated and inferReady is then false. Without that, the
+	// recurrence is T(n) = 2*T(n-1).
+	inferEntries int
 }
 
 // substTy replaces type variables with the given arguments.
@@ -618,6 +631,7 @@ func (c *checker) synthCtor(ctx []*Ty, t *Term, exp *Ty) (*Ty, error) {
 		return nil, fmt.Errorf("constructor takes %d arguments, got %d", len(rawFields), len(t.Args))
 	}
 	if inferReady(d.TyVars, t.TyArgs) {
+		c.inferEntries++
 		subst := make([]*Ty, d.TyVars)
 		if exp != nil {
 			_ = matchTy(tDataTy(t.Hash, identityTyArgs(d.TyVars)), exp, subst)
