@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 )
 
@@ -42,6 +44,42 @@ import (
 // byte-identical across kernels (oathrs/conformance.sh:350) and SPEC §6.3
 // unchanged, so this adds a reading, not a normative obligation.
 
+// adjudicateRlimitDefault bounds each solver attempt made while adjudicating a
+// survivor. It is ~1/1000 of the proof budget, and that is not a compromise
+// between speed and information — it is where MEASUREMENT put it (#146):
+//
+//	hex-nibble       11 refuted / 31 hold / 0 no-verdict, IDENTICAL at
+//	                 400K, 1M, 4M and the full 400M budget
+//	greet-or-guest   2031 s at the full budget → 3.28 s here, same verdicts
+//	                 (all no-verdict, at every budget tried)
+//
+// 619x on the pathological definition with nothing lost on the informative one.
+// The asymmetry is not luck: a survivor that gets refuted is refuted almost
+// immediately, because the solver only has to exhibit ONE distinguishing model,
+// while a survivor heading for "no verdict" burns the entire budget through
+// every strategy in order to report that it learned nothing. The budget is
+// therefore spent almost entirely on attempts that cannot return information.
+//
+// WHY A DIAGNOSTIC MAY DO THIS AND A PROOF MAY NOT: both terminal verdicts are
+// sound at any budget (see smtCtx.rlimitCap), so a cap trades COVERAGE for
+// time and never correctness. A capped sweep must then report its residue —
+// "N refuted, M hold, R unresolved at this budget" — because R is precisely the
+// set a bigger budget could still move. Reporting N alone would state an
+// implementation limit as a semantic fact.
+const adjudicateRlimitDefault = 400_000
+
+// adjudicateRlimit is the per-attempt cap, with an override for measuring the
+// cap's own cost. OATH_ADJUDICATE_RLIMIT=0 disables it, restoring the full
+// proof budget — which is how the baselines above were taken.
+func adjudicateRlimit() int64 {
+	if v := os.Getenv("OATH_ADJUDICATE_RLIMIT"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n >= 0 {
+			return n
+		}
+	}
+	return adjudicateRlimitDefault
+}
+
 // survivorVerdict is the disposition of one mutant that survived testing.
 //
 // There are deliberately only three. "the mutant satisfies every proven
@@ -51,9 +89,28 @@ import (
 // "equivalent" — that is the direction in which this instrument would lie.
 type survivorVerdict struct {
 	kind   string // "proof-refuted" | "equivalent" | "unadjudicated"
+	why    string // sub-disposition of "unadjudicated" — one of the why* constants
 	prop   string // the proven property that refuted it, when kind == "proof-refuted"
 	reason string // why it is unadjudicated, or the waiver's justification
 }
+
+// The sub-dispositions of "unadjudicated". The KIND says what was established
+// (nothing); these say WHY, and the distinction that matters to a sweep is
+// whether a larger budget could still move the answer:
+//
+//	whyHolds, whyNoProps, whyNonTotal   SETTLED — no budget changes them
+//	whyNoVerdict                        UNRESOLVED — the residue
+//
+// Machine-readable on purpose. A sweep that recovers these by matching the
+// prose instead is one heredoc away from silently mis-scoring itself, which has
+// already happened once on this measurement: a mangled `⊨` became `.`, matched
+// every character, and reported refutations where the truth was zero.
+const (
+	whyHolds     = "holds"
+	whyNoVerdict = "no-verdict"
+	whyNonTotal  = "non-total"
+	whyNoProps   = "no-proven-props"
+)
 
 // adjudicateSurvivor asks the prover whether a mutant that survived generated
 // testing is nonetheless excluded by the specification.
@@ -82,7 +139,7 @@ func adjudicateSurvivor(st *Store, origMeta *Meta, mutHash string, mutDef *Def) 
 // own control flow, and would be wrong the moment either changed.
 func adjudicateSurvivorErr(st *Store, origMeta *Meta, mutHash string, mutDef *Def) (survivorVerdict, error) {
 	if len(origMeta.ProvenProps) == 0 {
-		return survivorVerdict{kind: "unadjudicated", reason: "no proven property to appeal to"}, nil
+		return survivorVerdict{kind: "unadjudicated", why: whyNoProps, reason: "no proven property to appeal to"}, nil
 	}
 	mm := mutantMeta(st, origMeta, mutDef, mutHash)
 	// FAILS CLOSED ON NON-TOTAL MUTANTS, and this is the second half of the
@@ -105,7 +162,7 @@ func adjudicateSurvivorErr(st *Store, origMeta *Meta, mutHash string, mutDef *De
 	// that nothing was established. Caught by review, after the first repair had
 	// already fixed the total case and looked complete.
 	if !isTotal(mm.Termination) {
-		return survivorVerdict{kind: "unadjudicated",
+		return survivorVerdict{kind: "unadjudicated", why: whyNonTotal,
 			reason: fmt.Sprintf("mutant is not provably total (%s), so its defining equation cannot be asserted — any refutation would be against an uninterpreted function",
 				orNone(mm.Termination))}, nil
 	}
@@ -122,6 +179,7 @@ func adjudicateSurvivorErr(st *Store, origMeta *Meta, mutHash string, mutDef *De
 		// must be a function of (goal, lemma set) alone, never of the order
 		// candidates were translated in.
 		c := newSmtCtx(st, mutDef, mutHash)
+		c.rlimitCap = adjudicateRlimit()
 		// The prover reads metadata through metaOf, and the store holds none for
 		// a mutant. Without this the mutant reaches it as an UNINTERPRETED
 		// function — which is not a weaker proof but a CORRUPT one: with no
@@ -153,11 +211,11 @@ func adjudicateSurvivorErr(st *Store, origMeta *Meta, mutHash string, mutDef *De
 	// attempt may be worth retrying, while "every proven property still holds"
 	// says the proven set simply does not separate this mutant and never will.
 	if inconclusive > 0 {
-		return survivorVerdict{kind: "unadjudicated",
+		return survivorVerdict{kind: "unadjudicated", why: whyNoVerdict,
 			reason: fmt.Sprintf("%d proven propert%s did not reach a verdict (timeout, resource cap, or untranslatable)",
 				inconclusive, pluralize(inconclusive, "y", "ies"))}, nil
 	}
-	return survivorVerdict{kind: "unadjudicated", reason: "every proven property still holds on the mutant"}, nil
+	return survivorVerdict{kind: "unadjudicated", why: whyHolds, reason: "every proven property still holds on the mutant"}, nil
 }
 
 // mutantMeta builds the metadata the prover must see for a mutant under
@@ -216,11 +274,39 @@ func renderAdjudication(b *strings.Builder, verdicts []survivorVerdict, descs []
 			len(verdicts)-byKind["equivalent"])
 		return
 	}
+	byWhy := map[string]int{}
+	for _, v := range verdicts {
+		if v.kind == "unadjudicated" {
+			byWhy[v.why]++
+		}
+	}
 	for _, k := range []string{"proof-refuted", "equivalent", "unadjudicated"} {
 		if byKind[k] == 0 {
 			continue
 		}
 		fmt.Fprintf(b, "  %3d %s\n", byKind[k], k)
+		if k != "unadjudicated" {
+			continue
+		}
+		// THE RESIDUE IS BROKEN OUT BECAUSE THE ATTEMPT BUDGET IS CAPPED.
+		// "every proven property still holds" is SETTLED — the proven set does
+		// not separate this mutant and no budget changes that — while "no
+		// verdict" is the only line a larger budget could move. Rolling them
+		// into one number would report the instrument's reach as the
+		// specification's silence, which is the exact conflation this whole
+		// mechanism exists to undo.
+		for _, w := range []struct {
+			key, label string
+		}{
+			{whyHolds, "every proven property still holds (settled)"},
+			{whyNoVerdict, "NO VERDICT within the attempt budget (unresolved)"},
+			{whyNonTotal, "mutant not provably total (settled)"},
+			{whyNoProps, "no proven property to appeal to (settled)"},
+		} {
+			if byWhy[w.key] > 0 {
+				fmt.Fprintf(b, "      %3d %s\n", byWhy[w.key], w.label)
+			}
+		}
 	}
 	// Per-survivor detail, so the summary can be checked rather than trusted.
 	for i, v := range verdicts {

@@ -157,6 +157,29 @@ type smtCtx struct {
 	// store member by anything else running in this process.
 	metaOverride map[string]*Meta
 
+	// rlimitCap bounds EVERY solver attempt this context makes, clamping each
+	// strategy's nominal budget (SPEC §7.2 leaves the runner's budget outside
+	// the hashed script, so a clamp changes outcomes and never bytes). Zero
+	// means no clamp, which is what every normative proof path uses.
+	//
+	// It exists for survivor adjudication (#146), which is a DIAGNOSTIC and not
+	// a proof of record: sweeping the corpus at the full budget is an endurance
+	// test, because a survivor that will never reach a verdict burns the entire
+	// rlimit through every strategy before saying so.
+	//
+	// SOUND AT ANY CAP, and that is the whole licence for it: "refuted" requires
+	// z3 to answer `sat` and "proven" requires `unsat`, while exhausting the
+	// rlimit yields `unknown`, which is neither. So lowering the budget can only
+	// turn a terminal verdict into "no verdict" — it can NEVER invert one, and
+	// it can never manufacture a refutation. A capped sweep therefore reports
+	// exact counts for what it did settle and a residue it must state.
+	//
+	// Threaded through the context rather than folded into effectiveRlimit()
+	// deliberately: that function feeds prove-worker's proof-state fingerprint
+	// (prove_worker.go), so capping there would make a diagnostic re-prove the
+	// corpus.
+	rlimitCap int64
+
 	// ENUMERATION MODE (#139). When set, no solver runs: every script the
 	// strategy sequence builds is RECORDED and answered `unsat`, and each
 	// strategy's success return is bypassed, so the sequence walks to the end
@@ -1103,10 +1126,30 @@ func (c *smtCtx) formulaWith(d *Def, h string, p *Prop, assign map[int]string) (
 // a racy value would be harmless — but keep it race-clean.
 var calibLastConsumed atomic.Int64
 
-// runZ3 runs a goal at the full deterministic budget (SPEC §7.2). The
-// OATH_PROVE_RLIMIT override exists for testing only.
-func runZ3(script string) (string, bool) {
-	return runZ3Budget(script, effectiveRlimit())
+// THERE IS DELIBERATELY NO UNCAPPED `runZ3` HELPER. Every solver attempt in the
+// strategy chain goes through a context, so removing the context-free runner is
+// what makes the cap below unbypassable BY CONSTRUCTION rather than by everyone
+// remembering to thread it. `c.runFull` is the full-budget runner; it is the
+// same thing with the clamp applied, and the clamp is inert (zero cap) on every
+// normative path.
+
+// budget clamps a strategy's nominal per-attempt budget to this context's cap.
+//
+// EVERY solver attempt a context makes routes through here, which is what makes
+// the cap a property of the context rather than of the strategies that remember
+// to honour it. A strategy added later inherits the clamp by construction; one
+// that called runZ3Budget directly would not, and TestEnumerationRunsNoSolver
+// already fails any such call.
+func (c *smtCtx) budget(nominal int64) int64 {
+	if c.rlimitCap > 0 && c.rlimitCap < nominal {
+		return c.rlimitCap
+	}
+	return nominal
+}
+
+// runFull is the default runner: the full per-goal budget, clamped by the cap.
+func (c *smtCtx) runFull(script string) (string, bool) {
+	return runZ3Budget(script, c.budget(effectiveRlimit()))
 }
 
 // effectiveRlimit is the full per-goal budget: the normative proveRlimit, or the
@@ -1455,7 +1498,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 	// recorded outcome is the UNION: anything provable before is still proven
 	// by a later strategy, plus the goals the library was strangling.
 	if lf, lfCap := c.solve("lemma-free", "", buildScript(nil, nil, goal, !c.quantified, false),
-		func(sc string) (string, bool) { return runZ3Budget(sc, lemmaFreeRlimit()) }); !lfCap {
+		func(sc string) (string, bool) { return runZ3Budget(sc, c.budget(lemmaFreeRlimit())) }); !lfCap {
 		if os.Getenv("OATH_PROVE_SPLIT") != "" {
 			pname := fmt.Sprintf("prop%d", pi)
 			if pi < len(m.PropNames) {
@@ -1515,9 +1558,9 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 	var capHit bool
 	if inductionEligible {
 		out, capHit = c.solve("direct", "", directScript,
-			func(sc string) (string, bool) { return runZ3Budget(sc, directRlimit()) })
+			func(sc string) (string, bool) { return runZ3Budget(sc, c.budget(directRlimit())) })
 	} else {
-		out, capHit = c.solve("direct", "", directScript, runZ3)
+		out, capHit = c.solve("direct", "", directScript, c.runFull)
 	}
 	if os.Getenv("OATH_PROVE_SPLIT") != "" {
 		pname := fmt.Sprintf("prop%d", pi)
@@ -1591,7 +1634,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 				break
 			}
 			out, capHit := c.solve("induction", fmt.Sprintf("binder %d ctor %d", i, ci),
-				script(extraDecls, extraAsserts, subgoal, false), runZ3)
+				script(extraDecls, extraAsserts, subgoal, false), c.runFull)
 			if capHit {
 				sawInvalid = true
 				allUnsat = false
@@ -1661,7 +1704,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 					}
 					out, capHit := c.solve("lexicographic",
 						fmt.Sprintf("binders %d,%d ctor %d base", i, j, ci),
-						script(declsI, nil, subgoal, false), runZ3)
+						script(declsI, nil, subgoal, false), c.runFull)
 					if capHit {
 						sawInvalid = true
 						allUnsat = false
@@ -1724,7 +1767,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 					}
 					out, capHit := c.solve("lexicographic",
 						fmt.Sprintf("binders %d,%d ctor %d,%d", i, j, ci, cj),
-						script(extraDecls, extraAsserts, subgoal, false), runZ3)
+						script(extraDecls, extraAsserts, subgoal, false), c.runFull)
 					if capHit {
 						sawInvalid = true
 						allUnsat = false
@@ -1840,7 +1883,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 				discharge := func(detail string, extraAsserts []string, negated string) (bool, bool) {
 					out, cap := c.solve("recursion-induction", detail,
 						script(nil, extraAsserts, negated, false),
-						func(sc string) (string, bool) { return runZ3Budget(sc, directRlimit()) })
+						func(sc string) (string, bool) { return runZ3Budget(sc, c.budget(directRlimit())) })
 					return strings.HasPrefix(out, "unsat"), cap
 				}
 				// BASE: the goal off the recursive region.
@@ -1924,13 +1967,30 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 	// the pre-#50 kernel, while the common inductive case already returned
 	// fast above. The script is byte-identical to the reduced attempt, so no
 	// new direct-attempt script hash is introduced (SPEC §7.2).
-	if inductionEligible {
+	// WHEN A CAP COLLAPSES THE TWO BUDGETS, THIS FALLBACK *IS* THE ATTEMPT ABOVE.
+	// The reduced direct attempt and this one run byte-identical scripts, so at
+	// equal budgets the solver is deterministic and the retry cannot return
+	// anything new — it just spends the budget twice, on the diagnostic path the
+	// cap exists to make cheap.
+	//
+	// OUTCOME-PRESERVING, which is why it is safe rather than merely faster: the
+	// only way to reach here with the budgets equal is a clamp (adjudication's
+	// cap, or OATH_PROVE_RLIMIT below the reduced budget). On every normative
+	// path the nominal budgets are 4M and 400M and this never fires.
+	//
+	// Two conditions are NOT folded in, deliberately. An ENVIRONMENTALLY ABORTED
+	// first attempt (`capHit`) is retried, because a wall-cap abort is not a
+	// verdict and the second run may complete. And ENUMERATION still emits it, or
+	// `prove/attempts.txt` would lose a script it is supposed to pin.
+	redundantFallback := !c.enumerate && !capHit &&
+		c.budget(directRlimit()) == c.budget(effectiveRlimit())
+	if inductionEligible && !redundantFallback {
 		// Recorded under its own label even though the bytes are the direct
 		// attempt's. §7.2 asserts in prose that the fallback introduces no new
 		// script hash; recording it makes that checkable rather than believed —
 		// TestFallbackReusesTheDirectScriptBytes reads the two attempts and
 		// compares them.
-		fb, fbCap := c.solve("direct-fallback", "", directScript, runZ3)
+		fb, fbCap := c.solve("direct-fallback", "", directScript, c.runFull)
 		if os.Getenv("OATH_PROVE_SPLIT") != "" {
 			fmt.Fprintf(os.Stderr, "SPLIT\t%s\tphase=direct-fallback\tconsumed=%d\n", m.Name, calibLastConsumed.Load())
 		}

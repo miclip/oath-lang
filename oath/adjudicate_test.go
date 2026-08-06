@@ -1,6 +1,10 @@
 package main
 
 import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	gotoken "go/token"
 	"strings"
 	"testing"
 )
@@ -370,4 +374,180 @@ func firstKiller(st *Store, m *Meta, mu mutantDef) string {
 		}
 	}
 	return ""
+}
+
+// TestBudgetClampsToTheContextCap asserts every outcome of the clamp as a pure
+// function. The interesting one is the third: a cap ABOVE the nominal budget
+// must not RAISE it, or setting a generous cap would silently strengthen an
+// attempt the strategy chain deliberately weakened (`directRlimit` is reduced on
+// purpose, and prove.go clamps it so a reduced attempt is never stronger than
+// the full fallback that subsumes it).
+func TestBudgetClampsToTheContextCap(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		cap     int64
+		nominal int64
+		want    int64
+	}{
+		{"no cap is inert", 0, 400_000_000, 400_000_000},
+		{"cap below nominal clamps", 400_000, 400_000_000, 400_000},
+		{"cap above nominal does NOT raise", 400_000_000, 4_000_000, 4_000_000},
+		{"cap equal to nominal is a no-op", 4_000_000, 4_000_000, 4_000_000},
+		{"negative cap is inert, never inverted", -1, 4_000_000, 4_000_000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &smtCtx{rlimitCap: tc.cap}
+			if got := c.budget(tc.nominal); got != tc.want {
+				t.Errorf("budget(%d) with cap %d = %d, want %d",
+					tc.nominal, tc.cap, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestEveryStrategyAttemptRoutesThroughTheCap is the EXCLUSIVITY witness for the
+// adjudication cap (#146), and it is a property of the SOURCE rather than of one
+// execution — the same reason TestEnumerationRunsNoSolver is written this way.
+//
+// The claim is not "the cap is applied at the sites I know about". It is that
+// EVERY solver attempt the strategy chain can make derives its budget from
+// `c.budget`. A strategy added later that called `runZ3Budget(sc, directRlimit())`
+// would run at the full budget during adjudication and BREAK NO OUTPUT TEST: the
+// only symptom is a sweep that takes hours and reports verdicts the stated cap
+// says it could not have reached. That is a claim silently becoming false, which
+// is precisely what this repo keeps catching late.
+func TestEveryStrategyAttemptRoutesThroughTheCap(t *testing.T) {
+	fset := gotoken.NewFileSet()
+	file, err := parser.ParseFile(fset, "prove.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fns := map[string]*ast.FuncDecl{}
+	for _, d := range file.Decls {
+		if fn, ok := d.(*ast.FuncDecl); ok {
+			fns[fn.Name.Name] = fn
+		}
+	}
+	body := fns["proveOneInner"]
+	if body == nil {
+		t.Fatal("proveOneInner not found in prove.go — this check has no subject " +
+			"and would otherwise pass by inspecting nothing")
+	}
+
+	// usesCap reports whether an expression subtree calls c.budget(...).
+	usesCap := func(n ast.Node) bool {
+		found := false
+		ast.Inspect(n, func(x ast.Node) bool {
+			call, ok := x.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "budget" {
+				found = true
+			}
+			return true
+		})
+		return found
+	}
+
+	var bypass []string
+	budgeted := 0
+	ast.Inspect(body, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "runZ3Budget" {
+			if len(call.Args) < 2 || !usesCap(call.Args[1]) {
+				bypass = append(bypass, fmt.Sprintf("runZ3Budget with an uncapped budget at %s",
+					fset.Position(call.Pos())))
+			} else {
+				budgeted++
+			}
+		}
+		// A runner passed to c.solve as a bare identifier is a package-level
+		// function, which cannot see the context and therefore cannot honour the
+		// cap. Method values on the context (c.runFull) are checked separately
+		// below, at their definition.
+		// c.solve(strategy, detail, script, run) — the RUNNER is the last
+		// argument, and only it can reach the solver. Checking every argument
+		// instead flags the script and detail strings, which was this test's
+		// own first version and would have made it unsatisfiable.
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "solve" && len(call.Args) == 4 {
+			if id, ok := call.Args[3].(*ast.Ident); ok {
+				bypass = append(bypass, fmt.Sprintf(
+					"c.solve given package-level runner %q at %s — it cannot see the cap",
+					id.Name, fset.Position(call.Args[3].Pos())))
+			}
+		}
+		return true
+	})
+	if len(bypass) != 0 {
+		t.Errorf("solver attempts in proveOneInner bypass smtCtx.budget, so survivor "+
+			"adjudication would silently run them at the FULL proof budget:\n  %s",
+			strings.Join(bypass, "\n  "))
+	}
+
+	// The context's own default runner must honour the cap too, or every
+	// `c.solve(..., c.runFull)` above is uncapped while looking capped.
+	runFull := fns["runFull"]
+	if runFull == nil {
+		t.Fatal("smtCtx.runFull not found — the default runner is the one every " +
+			"strategy without a custom budget uses; its absence voids this check")
+	}
+	if !usesCap(runFull.Body) {
+		t.Error("smtCtx.runFull does not route through smtCtx.budget, so every " +
+			"strategy on the default budget escapes the adjudication cap")
+	}
+
+	// THE CONTROL. All of the above passes trivially over zero call sites — a
+	// renamed runner, a mis-parse, a subject whose body moved. Requiring that
+	// capped attempts were actually SEEN proves the walk reached real code.
+	if budgeted == 0 {
+		t.Error("found no capped runZ3Budget call in proveOneInner — the walk is " +
+			"not seeing the strategy chain, so its silence is not evidence")
+	}
+}
+
+// TestAdjudicationSummarySeparatesTheResidue witnesses the reporting half of the
+// cap: because attempts are bounded, "no verdict" is the ONLY disposition a
+// larger budget could move, and merging it with the settled ones would report
+// the instrument's reach as the specification's silence.
+func TestAdjudicationSummarySeparatesTheResidue(t *testing.T) {
+	verdicts := []survivorVerdict{
+		{kind: "proof-refuted", prop: "digits"},
+		{kind: "unadjudicated", why: whyHolds, reason: "every proven property still holds on the mutant"},
+		{kind: "unadjudicated", why: whyHolds, reason: "every proven property still holds on the mutant"},
+		{kind: "unadjudicated", why: whyNoVerdict, reason: "1 proven property did not reach a verdict"},
+		{kind: "unadjudicated", why: whyNonTotal, reason: "mutant is not provably total"},
+	}
+	descs := []string{"a", "b", "c", "d", "e"}
+	var b strings.Builder
+	renderAdjudication(&b, verdicts, descs, true)
+	out := b.String()
+
+	for _, want := range []string{
+		"    1 proof-refuted",
+		"    4 unadjudicated",
+		"        2 every proven property still holds (settled)",
+		"        1 NO VERDICT within the attempt budget (unresolved)",
+		"        1 mutant not provably total (settled)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("summary missing %q\n--- got ---\n%s", want, out)
+		}
+	}
+
+	// THE CONTROL that makes the separation meaningful: a population with NO
+	// unresolved survivors must not print an unresolved line at all. Without
+	// this the test passes for a renderer that always prints every label with a
+	// zero beside it, which communicates the opposite of what it should.
+	settled := []survivorVerdict{
+		{kind: "unadjudicated", why: whyHolds, reason: "holds"},
+	}
+	var b2 strings.Builder
+	renderAdjudication(&b2, settled, []string{"a"}, true)
+	if strings.Contains(b2.String(), "NO VERDICT") {
+		t.Errorf("a fully settled population reported an unresolved residue:\n%s", b2.String())
+	}
 }
