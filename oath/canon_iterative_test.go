@@ -1042,3 +1042,64 @@ func acFlattenRecursive(op string, args []Term) []Term {
 	}
 	return out
 }
+
+// TestACNormalizationCostIsUnchangedByTheRewrite records a PRE-EXISTING
+// quadratic and pins it against regression, rather than claiming a fix.
+//
+// External review reported that many commutative primitives beneath a deep
+// binder spine allocate gigabytes and attributed it to ctxSlice materialising
+// the context per primitive. The mechanism is real, and caching it is correct —
+// but measurement shows it is NOT the dominant cost:
+//
+//	iterative  1224 MB
+//	recursive  1243 MB
+//
+// The recursive normalizer, which predates all of this work, allocates the same.
+// The cost is AC normalization itself: acFlatten and termBytes run at EVERY
+// level of a nested commutative chain, so the work is quadratic in chain depth.
+// That is an algorithmic property of e-graph normalization, not something the
+// iterative rewrite introduced or could remove.
+//
+// So the honest claim is narrow: the rewrite made `find --equiv` STACK-safe and
+// left its COMPLEXITY unchanged. `find --equiv` remains resource-exhaustible on
+// an admitted deeply-nested commutative chain, by the algorithm rather than by
+// recursion — recorded on #149 rather than implied to be closed.
+//
+// This test exists so the cost cannot silently WORSEN: the iterative version
+// must stay within a small factor of the oracle it replaced.
+func TestACNormalizationCostIsUnchangedByTheRewrite(t *testing.T) {
+	st, err := OpenStore("../codebase")
+	if err != nil {
+		t.Fatalf("could not open the corpus: %v", err)
+	}
+	build := func() *Term {
+		body := &Term{K: "var", Idx: 0}
+		for i := 0; i < 2000; i++ {
+			body = &Term{K: "prim", Op: "==", Args: []Term{{K: "var", Idx: 0}, *body}}
+		}
+		term := body
+		for i := 0; i < 500; i++ {
+			term = &Term{K: "lam", Ty: tInt(), A: term}
+		}
+		return term
+	}
+	measure := func(f func()) uint64 {
+		var a, b runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&a)
+		f()
+		runtime.ReadMemStats(&b)
+		return b.TotalAlloc - a.TotalAlloc
+	}
+	iter := measure(func() { eNormalize(&checkerMachine{st: st}, nil, build()) })
+	rec := measure(func() { eNormalizeRecursive(&checkerMachine{st: st}, nil, build()) })
+
+	// Within 2x of the oracle. A regression that made the iterative version
+	// materially more expensive would show here; the shared quadratic would not.
+	if iter > rec*2 {
+		t.Errorf("the iterative normalizer allocated %d MB against the oracle's %d MB — "+
+			"the rewrite was supposed to change stack usage, not cost", iter>>20, rec>>20)
+	}
+	t.Logf("iterative %d MB, oracle %d MB — the quadratic is shared, and pre-existing",
+		iter>>20, rec>>20)
+}

@@ -100,6 +100,14 @@ func rootOf(e ast.Expr) (string, int) {
 		case *ast.IndexExpr:
 			steps++
 			e = v.X
+		case *ast.SliceExpr:
+			// `walk(args[1:])` is structural descent through a SLICE, which is
+			// the exact class the parameter widening was for. Missing it was
+			// the THIRD narrowing of this detector: parameters, then selector
+			// chains, now slices — each time the shape I had pictured rather
+			// than the one the policy names.
+			steps++
+			e = v.X
 		case *ast.SelectorExpr:
 			steps++
 			e = v.X
@@ -395,6 +403,12 @@ func walkJ(t *Term) { walkK(t) }
 func walkK(t *Term) { _ = t }`, false},
 		{"ty-child-recursion", `
 func walkT(t *Ty) { walkT(t.A) }`, true},
+		{"slice-descent-direct", `
+func walkSl(args []Term) { walkSl(args[1:]) }`, true},
+		{"slice-descent-nested", `
+func walkSn(args []Term) { walkSn(args[0].Args[1:]) }`, true},
+		{"slice-whole-permitted", `
+func walkSw(args []Term) { walkSw(args[:]) }`, true},
 		{"iterative-scheduling-permitted", `
 func walkZ(t *Term) {
 	stack := []*Term{t}

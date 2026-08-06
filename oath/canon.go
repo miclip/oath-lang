@@ -273,6 +273,17 @@ type ctxList struct {
 	ty     *Ty
 	parent *ctxList
 	depth  int
+
+	// materialised caches the slice form. A node is immutable once built, so
+	// the cache is safe to share across every consumer of that context.
+	//
+	// Caching is not an optimisation. Without it the copy merely MOVED from
+	// per-binder to per-synth-call: a term with ~10,000 lambdas and ~20,000
+	// commutative primitives beneath them is inside the profile and still
+	// allocated gigabytes, because each primitive materialised the whole
+	// context. Found by external review, on the commit that fixed the
+	// per-binder copy.
+	materialised []*Ty
 }
 
 func ctxExtend(c *ctxList, ty *Ty) *ctxList {
@@ -287,11 +298,15 @@ func ctxSlice(c *ctxList) []*Ty {
 	if c == nil {
 		return nil
 	}
-	out := make([]*Ty, c.depth)
-	for i := c.depth - 1; c != nil; i-- {
-		out[i] = c.ty
-		c = c.parent
+	if c.materialised != nil {
+		return c.materialised
 	}
+	out := make([]*Ty, c.depth)
+	for n, i := c, c.depth-1; n != nil; i-- {
+		out[i] = n.ty
+		n = n.parent
+	}
+	c.materialised = out
 	return out
 }
 
