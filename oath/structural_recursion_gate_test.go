@@ -128,16 +128,17 @@ func callTarget(c *ast.CallExpr) string {
 	return ""
 }
 
+type fnInfo struct {
+	key    string
+	file   string
+	params map[string]bool
+	calls  map[string][]ast.Expr // callee short name -> flattened argument lists
+}
+
 // findStructuralRecursion returns violations: (function, callee) pairs where a
 // guarded function passes a structural child into a call that can return to it.
 func findStructuralRecursion(t *testing.T, files map[string]string) []string {
 	t.Helper()
-	type fnInfo struct {
-		key    string
-		file   string
-		params map[string]bool
-		calls  map[string][]ast.Expr // callee short name -> argument lists flattened
-	}
 	infos := map[string]*fnInfo{}
 	byShort := map[string][]string{}
 
@@ -186,19 +187,16 @@ func findStructuralRecursion(t *testing.T, files map[string]string) []string {
 			short = short[i+1:]
 		}
 		for callee, args := range info.calls {
-			// DIRECT self-recursion, or a call to a peer that calls back (a
-			// two-function cycle) — both reduce to "the callee can reach me".
-			reaches := callee == short
-			if !reaches {
-				for _, peerKey := range byShort[callee] {
-					if peer := infos[peerKey]; peer != nil {
-						if _, back := peer.calls[short]; back {
-							reaches = true
-						}
-					}
-				}
-			}
-			if !reaches {
+			// "THE CALLEE CAN REACH ME AGAIN", computed over the TRANSITIVE
+			// call graph rather than one hop.
+			//
+			// An earlier version checked only direct recursion and two-function
+			// cycles, which is narrower than the policy this gate states. A
+			// three-function cycle — walkA(t.A) -> walkB(t) -> walkC(t) ->
+			// walkA(t) — passed it, so a future structural descent could
+			// reintroduce host-stack exhaustion without failing. The gate's
+			// universe has to be the one its claim quantifies over.
+			if !reachesBack(infos, byShort, callee, short) {
 				continue
 			}
 			for _, a := range args {
@@ -210,6 +208,35 @@ func findStructuralRecursion(t *testing.T, files map[string]string) []string {
 		}
 	}
 	return bad
+}
+
+// reachesBack reports whether `from` can reach `target` through any chain of
+// calls, so a cycle of ANY length is recognised.
+func reachesBack(infos map[string]*fnInfo, byShort map[string][]string, from, target string) bool {
+	seen := map[string]bool{}
+	var walk func(string) bool
+	walk = func(cur string) bool {
+		if cur == target {
+			return true
+		}
+		if seen[cur] {
+			return false
+		}
+		seen[cur] = true
+		for _, key := range byShort[cur] {
+			info := infos[key]
+			if info == nil {
+				continue
+			}
+			for callee := range info.calls {
+				if walk(callee) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return walk(from)
 }
 
 func TestNoStructuralRecursionInRepairedComponents(t *testing.T) {
@@ -276,6 +303,22 @@ func walkY(t *Term) { for i := range t.Args { walkY(&t.Args[i]) } }`, true},
 		{"indirect-two-function-cycle", `
 func walkP(t *Term) { walkQ(t.A) }
 func walkQ(t *Term) { walkP(t) }`, true},
+		// THREE functions: the shape an earlier version of this gate missed,
+		// because it only looked one hop for a call back.
+		{"indirect-three-function-cycle", `
+func walkA(t *Term) { walkB(t.A) }
+func walkB(t *Term) { walkC(t) }
+func walkC(t *Term) { walkA(t) }`, true},
+		{"indirect-four-function-cycle", `
+func walkE(t *Term) { walkF(t.A) }
+func walkF(t *Term) { walkG(t) }
+func walkG(t *Term) { walkH(t) }
+func walkH(t *Term) { walkE(t) }`, true},
+		// A chain that does NOT come back must stay silent.
+		{"non-cyclic-chain-permitted", `
+func walkI(t *Term) { walkJ(t.A) }
+func walkJ(t *Term) { walkK(t) }
+func walkK(t *Term) { _ = t }`, false},
 		{"ty-child-recursion", `
 func walkT(t *Ty) { walkT(t.A) }`, true},
 		{"iterative-scheduling-permitted", `
