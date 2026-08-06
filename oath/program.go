@@ -39,6 +39,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -921,4 +922,102 @@ func protoInit() {
 // node carrying them is a different type however its hash reads.
 func isProtoData(t *Ty, hash string) bool {
 	return t != nil && t.K == "data" && t.Hash == hash && len(t.Args) == 0
+}
+
+// --- typed backend refusals (#134) -------------------------------------
+//
+// A refusal's REASON is a contract; its wording is presentation. That
+// separation exists because the two were conflated once and a test skipped
+// forever while looking deliberate: it keyed on
+// `strings.Contains(err, "match on Str")`, and the help paragraph LISTS
+// unsupported features — so the substring stayed true after `match` on `Str`
+// was implemented. A witness that reads implementation prose infers semantic
+// state instead of exercising a capability.
+//
+// So callers branch on Reason, which cannot be satisfied by boilerplate, and
+// Detail stays free to be rewritten without silently changing what any gate
+// measures.
+type refusalReason string
+
+// The vocabulary. NEUTRAL where two backends mean the same thing —
+// reasonCapability is emitted by both, because "this backend has no
+// implementation for that capability kind" is one fact about the neutral
+// requirement vocabulary, not two coincidentally similar sentences.
+const (
+	// Shared by every backend.
+	reasonCapability refusalReason = "capability-unsupported"
+
+	// Backend-specific lowering limits.
+	reasonDynamicStr      refusalReason = "dynamic-str"
+	reasonStrElementRange refusalReason = "non-scalar-str-element"
+	reasonIntMissing      refusalReason = "int-missing-value"
+	reasonIntRange        refusalReason = "int-range"
+	reasonRatFloat        refusalReason = "rat-float"
+	reasonPrim            refusalReason = "prim"
+	reasonTermKind        refusalReason = "term-kind"
+	reasonMatchOnStrArms  refusalReason = "match-on-str-arms"
+	reasonHandlerProtocol refusalReason = "handler-protocol"
+	reasonValueBinding    refusalReason = "value-binding-collision"
+)
+
+// backendRefusal is a backend declining to lower something it understands.
+//
+// It is NOT an error in the program: the artifact is valid Oath and this
+// backend covers a subset. Callers that need to know WHICH subset boundary was
+// hit test Reason; callers showing a human the problem print the error.
+type backendRefusal struct {
+	Reason  refusalReason
+	Backend string
+	Detail  string // the human sentence; free to change
+	Help    string // optional trailing guidance; free to change
+}
+
+func (e *backendRefusal) Error() string {
+	if e.Reason == reasonCapability {
+		msg := e.Detail + " has no implementation in the " + e.Backend + " backend"
+		if e.Help != "" {
+			msg += "\n" + e.Help
+		}
+		return msg
+	}
+	msg := "the " + e.Backend + " backend cannot lower " + e.Detail
+	if e.Help != "" {
+		msg += "\n" + e.Help
+	}
+	return msg
+}
+
+// newCapabilityRefusal is the ONE construction for "this backend has no
+// implementation for that capability kind", shared by every backend.
+//
+// It is shared because the two backends previously spelled the same fact as two
+// unrelated fmt.Errorf strings, so a caller could match one and silently miss
+// the other. The neutral requirement vocabulary is a single fact about the
+// program; which backends can provide a kind is a fact about the backends, and
+// both belong to the same relation (#134, #114).
+//
+// `supported` is optional guidance and lives in Help, which is presentation.
+func newCapabilityRefusal(backend, field string, kind capabilityKind, supported []string) error {
+	r := &backendRefusal{
+		Reason:  reasonCapability,
+		Backend: backend,
+		Detail:  "capability " + field + " (" + string(kind) + ")",
+	}
+	if len(supported) > 0 {
+		r.Help = "  This backend supports: " + strings.Join(supported, ", ") + ".\n" +
+			"  The Go backend (`oath build` with no --backend) covers the full vocabulary."
+	}
+	return r
+}
+
+// refusedFor reports the refusal reason, if the error is one. Callers use this
+// rather than matching prose:
+//
+//	if r, ok := refusedFor(err); ok && r == reasonDynamicStr { ... }
+func refusedFor(err error) (refusalReason, bool) {
+	var r *backendRefusal
+	if errors.As(err, &r) {
+		return r.Reason, true
+	}
+	return "", false
 }

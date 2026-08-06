@@ -87,10 +87,7 @@ func llvmProviderFor(r CapabilityRequirement) (llvmProvider, error) {
 	}
 	p, ok := llvmProviders[r.Kind]
 	if !ok {
-		return llvmProvider{}, fmt.Errorf("capability %s (%s) has no implementation in the %s backend\n"+
-			"  This backend supports: %s.\n"+
-			"  The Go backend (`oath build` with no --backend) covers the full vocabulary.",
-			r.Field, r.Kind, llvmBackendVersion, strings.Join(llvmKindNames(), ", "))
+		return llvmProvider{}, newCapabilityRefusal(llvmBackendVersion, r.Field, r.Kind, llvmKindNames())
 	}
 	return p, nil
 }
@@ -206,16 +203,26 @@ func llvmCheckValueBindings(prog *CompiledProgram) error {
 	return nil
 }
 
-func llvmUnsupported(what string) error {
-	return fmt.Errorf("the %s backend cannot lower %s\n"+
-		"  This is a first slice: it covers datatypes, matching, closures, records,\n"+
-		"  Str literals and matching, Bool, Int literals and equality, and the CLI\n"+
-		"  entry protocol.\n"+
-		"  Int is stored as int64 — a SUBSET of Oath's unbounded Int, and literals\n"+
-		"  outside it are refused rather than wrapped. Arithmetic, Rat and Float,\n"+
-		"  Set/Map, dynamic Str construction and the handler protocol are not\n"+
-		"  lowered yet. Build with the Go backend for full coverage.",
-		llvmBackendVersion, what)
+// llvmUnsupported builds a TYPED refusal (#134). The reason is the contract; the
+// help paragraph below is presentation and may be rewritten freely.
+//
+// That paragraph is exactly why the separation exists: it LISTS unsupported
+// features, so a test matching `strings.Contains(err, "match on Str")` stayed
+// satisfied after match on Str was implemented and skipped forever while
+// looking deliberate.
+func llvmUnsupported(reason refusalReason, what string) error {
+	return &backendRefusal{
+		Reason:  reason,
+		Backend: llvmBackendVersion,
+		Detail:  what,
+		Help: "  This is a first slice: it covers datatypes, matching, closures, records,\n" +
+			"  Str literals and matching, Bool, Int literals and equality, and the CLI\n" +
+			"  entry protocol.\n" +
+			"  Int is stored as int64 — a SUBSET of Oath's unbounded Int, and literals\n" +
+			"  outside it are refused rather than wrapped. Arithmetic, Rat and Float,\n" +
+			"  Set/Map, dynamic Str construction and the handler protocol are not\n" +
+			"  lowered yet. Build with the Go backend for full coverage.",
+	}
 }
 
 // strLiteral folds a Str constructor chain to a Go string.
@@ -417,13 +424,13 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 		}
 		if t.Hash == e.strHash && e.strHash != "" {
 			if n, bad := nonScalarStrElement(t, e.strHash); bad {
-				return "", llvmUnsupported(fmt.Sprintf(
+				return "", llvmUnsupported(reasonStrElementRange, fmt.Sprintf(
 					"the Str element %d — this backend packs Str as UTF-8, which encodes only "+
 						"Unicode scalar values (0..0x10FFFF, excluding surrogates 0xD800..0xDFFF). "+
 						"Refusing rather than substituting U+FFFD, which would make distinct Str "+
 						"values identical", n))
 			}
-			return "", llvmUnsupported("a Str built from non-constant parts")
+			return "", llvmUnsupported(reasonDynamicStr, "a Str built from non-constant parts")
 		}
 		return e.build(t.Idx, t.Args, env, depth, self)
 
@@ -501,10 +508,10 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 		// with `oath eval` on an ordinary value and the differential gate would
 		// only notice if a test reached that magnitude.
 		if t.Int == nil {
-			return "", llvmUnsupported("an Int literal with no value")
+			return "", llvmUnsupported(reasonIntMissing, "an Int literal with no value")
 		}
 		if !t.Int.IsInt64() {
-			return "", llvmUnsupported(fmt.Sprintf(
+			return "", llvmUnsupported(reasonIntRange, fmt.Sprintf(
 				"the Int literal %s — this backend stores Int as int64 and Oath's Int is unbounded, "+
 					"so values outside int64 are refused rather than wrapped", t.Int.String()))
 		}
@@ -513,7 +520,7 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 		return v, nil
 
 	case "rat", "float":
-		return "", llvmUnsupported("Rat and Float literals")
+		return "", llvmUnsupported(reasonRatFloat, "Rat and Float literals")
 
 	case "prim":
 		// `==` on two Ints is the first typed operation, and it is here to prove
@@ -539,9 +546,9 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 				return v, nil
 			}
 		}
-		return "", llvmUnsupported(fmt.Sprintf("the primitive operation %q", t.Op))
+		return "", llvmUnsupported(reasonPrim, fmt.Sprintf("the primitive operation %q", t.Op))
 	}
-	return "", llvmUnsupported(fmt.Sprintf("%q terms", t.K))
+	return "", llvmUnsupported(reasonTermKind, fmt.Sprintf("%q terms", t.K))
 }
 
 // build constructs a ctorV-shaped value: allocate a field array, fill it, wrap it.
@@ -639,7 +646,7 @@ func (e *llvmEmitter) emitIf(t *Term, env string, depth int, self string) (strin
 // those are mapped here rather than assumed to coincide.
 func (e *llvmEmitter) emitStrMatch(t *Term, env string, depth int, self string) (string, error) {
 	if len(t.Arms) != 2 || e.strNil < 0 || e.strCons < 0 {
-		return "", llvmUnsupported("a match on Str whose arms are not SNil and SCons")
+		return "", llvmUnsupported(reasonMatchOnStrArms, "a match on Str whose arms are not SNil and SCons")
 	}
 	s, err := e.expr(t.A, env, depth, self)
 	if err != nil {
@@ -1279,9 +1286,9 @@ func listCtorIndices(st *Store, prog *CompiledProgram) (nil_, cons int, err erro
 // emitLLVM lowers a compiled program to textual LLVM IR.
 func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 	if prog.Protocol == entryHandler {
-		return "", llvmUnsupported("the handler protocol\n" +
-			"  A handler is long-running, and this runtime never frees memory — it would\n" +
-			"  leak per request. That is a property of this slice's runtime, not of the\n" +
+		return "", llvmUnsupported(reasonHandlerProtocol, "the handler protocol\n"+
+			"  A handler is long-running, and this runtime never frees memory — it would\n"+
+			"  leak per request. That is a property of this slice's runtime, not of the\n"+
 			"  protocol")
 	}
 	if err := prog.stampBackend(llvmBackendVersion); err != nil {

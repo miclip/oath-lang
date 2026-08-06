@@ -315,8 +315,7 @@ func goProviderFor(r CapabilityRequirement) (goProvider, error) {
 	}
 	p, ok := goProviders[r.Kind]
 	if !ok {
-		return goProvider{}, fmt.Errorf("capability %s (%s) has no implementation in the %s backend",
-			r.Field, r.Kind, goBackendVersion)
+		return goProvider{}, newCapabilityRefusal(goBackendVersion, r.Field, r.Kind, nil)
 	}
 	return p, nil
 }
@@ -411,11 +410,15 @@ func checkValueBindings(prog *CompiledProgram) error {
 		}
 		env := valueEnvVar(r.Field)
 		if prev, dup := seen[env]; dup {
-			return fmt.Errorf("required values %q and %q both bind to %s in the %s backend\n"+
-				"  This backend sources a required value from an environment variable named after\n"+
-				"  the field, and that mapping cannot tell these two apart — they would read one\n"+
-				"  variable and receive the same value. Rename one of them.",
-				prev, r.Field, env, goBackendVersion)
+			return &backendRefusal{
+				Reason:  reasonValueBinding,
+				Backend: goBackendVersion,
+				Detail: fmt.Sprintf("required values %q and %q, which both bind to %s",
+					prev, r.Field, env),
+				Help: "  This backend sources a required value from an environment variable named after\n" +
+					"  the field, and that mapping cannot tell these two apart — they would read one\n" +
+					"  variable and receive the same value. Rename one of them.",
+			}
 		}
 		seen[env] = r.Field
 	}
