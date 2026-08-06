@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -265,4 +266,94 @@ func TestMeasureCanonicalNodeFloor(t *testing.T) {
 	t.Logf("  max nodes/def : %6d  (%s)", maxNodes, nName)
 	t.Logf("  max depth/def : %6d  (%s)   <- an SCons spine WOULD show here", maxDepth, dName)
 	t.Logf("  mean nodes/def: %6d", total/len(seen))
+}
+
+// TestProfileCommentMatchesMeasurement. profile.go's header quotes the corpus
+// figures the budgets were chosen against:
+//
+//	syntax nesting        17
+//	canonical nodes    1,293
+//
+// Those are COPIES of a measurement, and a copy is correct exactly once.
+// TestCorpusFitsPortableProfile guards the CLAIM (headroom stays above 4x), but
+// it fires only at 16,384 nodes — so between 1,293 and there the comment could
+// drift silently, and the numbers a reader calibrates against would be wrong
+// while every gate stayed green.
+//
+// So the figures are DERIVED from the source of truth and compared to the text,
+// the same relationship check-doc-numbers has with fixtures/outcomes.json.
+func TestProfileCommentMatchesMeasurement(t *testing.T) {
+	src, err := os.ReadFile("profile.go")
+	if err != nil {
+		t.Fatalf("reading profile.go: %v", err)
+	}
+	quoted := map[string]int{}
+	for _, line := range strings.Split(string(src), "\n") {
+		f := strings.Fields(strings.TrimPrefix(strings.TrimSpace(line), "//"))
+		// "syntax nesting  17  512  30x" / "canonical nodes/def  1,293  65,536  50x"
+		if len(f) >= 3 && (f[0] == "syntax" || f[0] == "canonical") {
+			n, err := strconv.Atoi(strings.ReplaceAll(f[2], ",", ""))
+			if err == nil {
+				quoted[f[0]] = n
+			}
+		}
+	}
+	if len(quoted) != 2 {
+		t.Fatalf("could not find both figures in profile.go's header (found %v) — "+
+			"if the comment was reworded, update this check WITH it", quoted)
+	}
+
+	// Measure, from the corpus itself.
+	maxNesting := 0
+	for _, dir := range []string{"../examples", "../apps"} {
+		_ = filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() || !strings.HasSuffix(p, ".oath") {
+				return nil
+			}
+			b, rerr := os.ReadFile(p)
+			if rerr != nil {
+				return nil
+			}
+			forms, perr := parseForms(string(b))
+			if perr != nil {
+				return nil
+			}
+			for _, f := range forms {
+				if d := sxDepth(f); d > maxNesting {
+					maxNesting = d
+				}
+			}
+			return nil
+		})
+	}
+	st, err := OpenStore("../codebase")
+	if err != nil {
+		t.Fatalf("could not open the corpus: %v", err)
+	}
+	seen, maxNodes := map[string]bool{}, 0
+	for _, h := range st.Names() {
+		if seen[h] {
+			continue
+		}
+		seen[h] = true
+		d, err := st.GetDef(h)
+		if err != nil {
+			continue
+		}
+		if n, _ := defNodes(d); n > maxNodes {
+			maxNodes = n
+		}
+	}
+	if maxNesting == 0 || maxNodes == 0 {
+		t.Fatalf("measurement produced nothing (nesting=%d nodes=%d)", maxNesting, maxNodes)
+	}
+
+	if quoted["syntax"] != maxNesting {
+		t.Errorf("profile.go says max syntax nesting is %d; the corpus measures %d",
+			quoted["syntax"], maxNesting)
+	}
+	if quoted["canonical"] != maxNodes {
+		t.Errorf("profile.go says max canonical nodes is %d; the corpus measures %d",
+			quoted["canonical"], maxNodes)
+	}
 }
