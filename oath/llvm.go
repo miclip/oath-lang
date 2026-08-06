@@ -192,11 +192,15 @@ func llvmCheckValueBindings(prog *CompiledProgram) error {
 		}
 		env := llvmValueEnvVar(r.Field)
 		if prev, dup := seen[env]; dup {
-			return fmt.Errorf("required values %q and %q both bind to %s in the %s backend\n"+
-				"  This backend sources a required value from an environment variable named after\n"+
-				"  the field, and that mapping cannot tell these two apart — they would read one\n"+
-				"  variable and receive the same value. Rename one of them.",
-				prev, r.Field, env, llvmBackendVersion)
+			return &backendRefusal{
+				Reason:  reasonValueBinding,
+				Backend: llvmBackendVersion,
+				Detail: fmt.Sprintf("required values %q and %q, which both bind to %s",
+					prev, r.Field, env),
+				Help: "  This backend sources a required value from an environment variable named after\n" +
+					"  the field, and that mapping cannot tell these two apart — they would read one\n" +
+					"  variable and receive the same value. Rename one of them.",
+			}
 		}
 		seen[env] = r.Field
 	}

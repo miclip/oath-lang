@@ -101,6 +101,25 @@ func TestBothBackendsShareTheCapabilityReason(t *testing.T) {
 
 // TestEveryRefusalUsesADeclaredReason makes the vocabulary CLOSED.
 //
+// WHAT IT CATCHES, verified by injecting each into a production file:
+//
+//	Reason: "invented"                      a literal            -> fires
+//	no Reason field at all                  omission             -> fires
+//	llvmUnsupported(refusalReason("x"), …)  a conversion at a
+//	                                        forwarder call site  -> fires
+//
+// AND ONE CASE THAT IS NOT REACHABLE, recorded so the absence is not mistaken
+// for a hole: an "undeclared identifier" cannot exist. Any identifier of type
+// refusalReason is declared BY that declaration, and adding
+// `const reasonX refusalReason = "..."` is the legitimate, greppable way to
+// extend the vocabulary. The check exists to stop ad-hoc strings entering it,
+// not to stop it growing.
+//
+// The forwarder path is followed rather than exempted: llvmUnsupported takes a
+// refusalReason parameter, so its Reason field is that parameter and the
+// constant appears at its CALL sites, which are checked separately. Exempting
+// it would have left nine of eleven reasons unverified.
+//
 // The issue asks for "which refusals a backend can emit at all" to be
 // checkable, so a refusal added without a reason identifier is a build error
 // rather than a new string nobody matches. Go will not enforce that — an
@@ -113,12 +132,20 @@ func TestEveryRefusalUsesADeclaredReason(t *testing.T) {
 		t.Fatalf("no Go files found; this check did not run (%v)", err)
 	}
 	type site struct {
-		file string
-		line int
-		lit  bool
+		file      string
+		line      int
+		reason    string // the identifier used, or "" for a literal
+		absent    bool   // no Reason field at all
+		forwarded bool   // a refusalReason parameter, checked at its call sites
 	}
 	var sites []site
+	// forwarders take a refusalReason parameter and construct a refusal from
+	// it, so the constant appears at THEIR call sites instead. Closing the
+	// vocabulary means following them rather than exempting them.
+	forwarders := map[string]bool{}
+	forwardedParams := map[string]bool{}
 	fset := gotoken.NewFileSet()
+	parsed := map[string]*ast.File{}
 	for _, f := range files {
 		if strings.HasSuffix(f, "_test.go") {
 			continue
@@ -131,6 +158,25 @@ func TestEveryRefusalUsesADeclaredReason(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parsing %s: %v", f, err)
 		}
+		parsed[f] = file
+		// A function taking a refusalReason parameter is a forwarder: its
+		// callers supply the constant.
+		for _, d := range file.Decls {
+			fn, ok := d.(*ast.FuncDecl)
+			if !ok || fn.Type.Params == nil {
+				continue
+			}
+			for _, pf := range fn.Type.Params.List {
+				if id, ok := pf.Type.(*ast.Ident); ok && id.Name == "refusalReason" {
+					forwarders[fn.Name.Name] = true
+					for _, nm := range pf.Names {
+						forwardedParams[nm.Name] = true
+					}
+				}
+			}
+		}
+	}
+	for f, file := range parsed {
 		ast.Inspect(file, func(n ast.Node) bool {
 			// Declarations: const reasonX refusalReason = "..."
 			if vs, ok := n.(*ast.ValueSpec); ok {
@@ -149,6 +195,10 @@ func TestEveryRefusalUsesADeclaredReason(t *testing.T) {
 			if !ok || id.Name != "backendRefusal" {
 				return true
 			}
+			// A construction with NO Reason field must be caught too: an
+			// earlier version only recorded sites where a Reason key was
+			// present, so omitting it entirely produced no site and passed.
+			found := false
 			for _, el := range cl.Elts {
 				kv, ok := el.(*ast.KeyValueExpr)
 				if !ok {
@@ -157,12 +207,46 @@ func TestEveryRefusalUsesADeclaredReason(t *testing.T) {
 				if k, ok := kv.Key.(*ast.Ident); !ok || k.Name != "Reason" {
 					continue
 				}
-				_, isIdent := kv.Value.(*ast.Ident)
-				sites = append(sites, site{f, fset.Position(kv.Pos()).Line, !isIdent})
+				found = true
+				name := ""
+				if id, ok := kv.Value.(*ast.Ident); ok {
+					name = id.Name
+				}
+				sites = append(sites, site{file: f, line: fset.Position(kv.Pos()).Line,
+					reason: name, forwarded: forwardedParams[name]})
+			}
+			if !found {
+				sites = append(sites, site{file: f, line: fset.Position(cl.Pos()).Line, absent: true})
 			}
 			return true
 		})
 	}
+	// Every CALL to a forwarder must pass a declared constant, so the
+	// vocabulary is closed through them rather than around them.
+	callSites := 0
+	for f, file := range parsed {
+		ast.Inspect(file, func(n ast.Node) bool {
+			c, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			id, ok := c.Fun.(*ast.Ident)
+			if !ok || !forwarders[id.Name] || len(c.Args) == 0 {
+				return true
+			}
+			arg, isIdent := c.Args[0].(*ast.Ident)
+			if !isIdent || !declared[arg.Name] {
+				t.Errorf("%s:%d calls %s without a declared refusalReason constant",
+					f, fset.Position(c.Pos()).Line, id.Name)
+			}
+			callSites++
+			return true
+		})
+	}
+	if callSites == 0 {
+		t.Error("no forwarder call sites found; the vocabulary is not actually closed")
+	}
+
 	if len(declared) < 5 {
 		t.Fatalf("only %d reason constants found; the scan did not work", len(declared))
 	}
@@ -170,9 +254,22 @@ func TestEveryRefusalUsesADeclaredReason(t *testing.T) {
 		t.Fatal("no backendRefusal constructions found; the scan did not work")
 	}
 	for _, s := range sites {
-		if s.lit {
+		switch {
+		case s.absent:
+			t.Errorf("%s:%d constructs a backendRefusal with NO Reason — every refusal "+
+				"must name one, or callers cannot branch on it", s.file, s.line)
+		case s.reason == "":
 			t.Errorf("%s:%d constructs a refusal with a literal Reason — use a declared "+
 				"constant so the vocabulary stays closed and greppable", s.file, s.line)
+		case s.forwarded:
+			// checked at the forwarder's call sites below
+		case !declared[s.reason]:
+			// Being an identifier is not enough: it must be one of the DECLARED
+			// reasons. An earlier version checked only the syntactic form, so a
+			// newly invented identifier satisfied a test whose claim is that the
+			// vocabulary is closed.
+			t.Errorf("%s:%d uses reason %q, which is not a declared refusalReason constant",
+				s.file, s.line, s.reason)
 		}
 	}
 	t.Logf("%d reason constants, %d construction sites, all naming declared constants",
