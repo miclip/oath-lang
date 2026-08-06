@@ -578,16 +578,29 @@ type dec struct {
 	nodes int
 }
 
-// countNodes charges n nodes against the portable profile and refuses the
-// moment the budget is crossed.
-//
-// Counts are charged when a LENGTH is read, not only when each element is
-// decoded, so a header claiming four billion arguments is refused before any
-// allocation rather than after. The typed refusal is the same one admitDef
-// produces, because it is the same budget being enforced earlier.
+// countNodes charges n nodes against the portable profile and refuses the moment
+// the budget is crossed. Every decoded node charges exactly ONE.
 func (d *dec) countNodes(n int) error {
 	d.nodes += n
 	if d.nodes > maxCanonicalNodes {
+		return errTooManyNodes()
+	}
+	return nil
+}
+
+// reserveNodes checks that a declared collection length COULD fit, WITHOUT
+// charging for it.
+//
+// The distinction is the accepted domain, not an optimisation. Charging the
+// length and then charging each child as it decodes bills a wide structure
+// TWICE: a prim with 32,768 leaf arguments is 32,769 nodes and was refused near
+// the limit, so the decoder accepted less than the profile documents and a valid
+// object became undecodable. Reserving preserves the boundary while still
+// refusing a header that claims millions of elements before make() reserves the
+// memory — u32 caps a length at 1<<24 and a Term is well over a hundred bytes,
+// so one crafted header would otherwise reserve gigabytes.
+func (d *dec) reserveNodes(n int) error {
+	if d.nodes+n > maxCanonicalNodes {
 		return errTooManyNodes()
 	}
 	return nil
@@ -829,7 +842,7 @@ func (d *dec) term() (*Term, error) {
 			if err != nil {
 				return nil, err
 			}
-			if err := d.countNodes(n); err != nil {
+			if err := d.reserveNodes(n); err != nil {
 				return nil, err
 			}
 			task.node.Arms = make([]Term, n)
@@ -959,7 +972,7 @@ func (d *dec) term() (*Term, error) {
 			if err != nil {
 				return nil, err
 			}
-			if err := d.countNodes(n); err != nil {
+			if err := d.reserveNodes(n); err != nil {
 				return nil, err
 			}
 			*dst = Term{K: "prim", Op: op, Args: make([]Term, n)}
@@ -999,7 +1012,7 @@ func (d *dec) term() (*Term, error) {
 			if err != nil {
 				return nil, err
 			}
-			if err := d.countNodes(n); err != nil {
+			if err := d.reserveNodes(n); err != nil {
 				return nil, err
 			}
 			*dst = Term{K: "ctor", Hash: h, Idx: idx, TyArgs: tys, Args: make([]Term, n)}
@@ -1019,7 +1032,7 @@ func (d *dec) term() (*Term, error) {
 			if err != nil {
 				return nil, err
 			}
-			if err := d.countNodes(n); err != nil {
+			if err := d.reserveNodes(n); err != nil {
 				return nil, err
 			}
 			*dst = Term{K: "record", Names: make([]string, n), Args: make([]Term, n)}

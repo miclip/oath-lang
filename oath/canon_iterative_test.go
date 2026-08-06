@@ -455,3 +455,49 @@ func TestDecoderRefusesHugeDeclaredLengthBeforeAllocating(t *testing.T) {
 	// The whole header is 44 bytes; consuming it all and stopping is correct.
 	t.Logf("refused after %d bytes with no element decoded", d.pos)
 }
+
+// TestDecoderAcceptsWideStructuresAtTheProfileBoundary. The decoder must accept
+// exactly what admitDef accepts — no more and NO LESS.
+//
+// An earlier version charged a collection's length AND then charged each child
+// as it decoded, billing wide structures twice. A prim with 32,768 leaf
+// arguments is 32,769 nodes, comfortably inside the profile, and was refused.
+// That is not a missed refusal but a narrowed language: a valid stored object
+// became undecodable, so admission and decoding disagreed about the domain.
+//
+// Found by external review. Every case below is WIDE rather than deep, because
+// depth was the shape already covered and width is where the double charge fell.
+func TestDecoderAcceptsWideStructuresAtTheProfileBoundary(t *testing.T) {
+	wide := func(n int) *Term {
+		p := &Term{K: "prim", Op: "+"}
+		for i := 0; i < n; i++ {
+			p.Args = append(p.Args, Term{K: "int", Int: big.NewInt(int64(i))})
+		}
+		return p
+	}
+	for _, n := range []int{1, 100, 32768, maxCanonicalNodes - 2} {
+		term := wide(n)
+		nodes, ok := countCanonicalNodes(&Def{K: "func", Body: term}, maxCanonicalNodes)
+		if !ok {
+			t.Fatalf("setup: a %d-argument prim is not inside the profile", n)
+		}
+		e := &enc{}
+		e.term(term)
+		d := &dec{b: e.b}
+		got, err := d.term()
+		if err != nil {
+			t.Errorf("a %d-argument prim is %d nodes and inside the profile, but decoding "+
+				"refused it: %v", n, nodes, err)
+			continue
+		}
+		if len(got.Args) != n {
+			t.Errorf("%d arguments decoded as %d", n, len(got.Args))
+		}
+		// Decoding must charge exactly one node per node — the same number the
+		// admission counter reaches.
+		if d.nodes != nodes {
+			t.Errorf("decoder counted %d nodes for a structure admitDef counts as %d",
+				d.nodes, nodes)
+		}
+	}
+}
