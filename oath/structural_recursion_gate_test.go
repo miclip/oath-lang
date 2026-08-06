@@ -348,3 +348,62 @@ func walkS(t *Term) { walkS(t) }`, false},
 		})
 	}
 }
+
+// TestEveryContinuationGoesThroughPush makes the frame counter's invariant
+// ENFORCEABLE rather than a comment.
+//
+// framesPushed is documented as counting every continuation, and
+// TestPortedFamilyUsesTheExplicitStack uses it as evidence that a family
+// actually suspends. A frame installed by a direct `m.stack = append(...)` is
+// invisible to it, so the counter would silently understate — and the test
+// resting on it would silently weaken.
+//
+// That is not hypothetical: `primArgFrame` was installed directly for exactly
+// as long as this check did not exist, because the mechanical conversion to
+// m.push matched only single-line composite literals. Found by external review,
+// not by any local gate.
+func TestEveryContinuationGoesThroughPush(t *testing.T) {
+	src, err := os.ReadFile("check_machine.go")
+	if err != nil {
+		t.Fatalf("reading check_machine.go: %v", err)
+	}
+	file, err := parser.ParseFile(gotoken.NewFileSet(), "check_machine.go", src, 0)
+	if err != nil {
+		t.Fatalf("parsing: %v", err)
+	}
+	direct := 0
+	ast.Inspect(file, func(n ast.Node) bool {
+		fn, ok := n.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			return true
+		}
+		if fn.Name.Name == "push" {
+			return false // push IS the one permitted append
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			as, ok := n.(*ast.AssignStmt)
+			if !ok || len(as.Lhs) != 1 {
+				return true
+			}
+			sel, ok := as.Lhs[0].(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "stack" {
+				return true
+			}
+			// Popping (`m.stack = m.stack[:n]`) is fine; APPENDING is not.
+			for _, r := range as.Rhs {
+				if c, ok := r.(*ast.CallExpr); ok {
+					if id, ok := c.Fun.(*ast.Ident); ok && id.Name == "append" {
+						t.Errorf("%s installs a continuation via a direct append; use m.push "+
+							"so framesPushed counts it", fn.Name.Name)
+						direct++
+					}
+				}
+			}
+			return true
+		})
+		return false
+	})
+	if direct == 0 {
+		t.Log("every continuation is installed through m.push")
+	}
+}

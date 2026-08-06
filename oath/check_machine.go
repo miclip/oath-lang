@@ -722,7 +722,7 @@ func (m *checkerMachine) dispatch(s *checkerStep) (checkResult, bool, error) {
 			ty, err := primResultTy(m.st, s.term.Op, nil)
 			return checkResult{ty: ty, err: err}, true, nil
 		}
-		m.stack = append(m.stack, &primArgFrame{
+		m.push(&primArgFrame{
 			ctx: s.ctx, term: s.term, argTys: make([]*Ty, len(s.term.Args))})
 		*s = checkerStep{mode: modeSynth, ctx: s.ctx, term: &s.term.Args[0]}
 		return checkResult{}, false, nil
