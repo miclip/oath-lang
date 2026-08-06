@@ -712,3 +712,79 @@ func TestTypeEncoderBytesMatchOracle(t *testing.T) {
 	}
 	t.Logf("iterative type encoder is byte-identical on %d corpus types and 12 shapes", checked)
 }
+
+// TestDecoderRefusesNestedWideCollections is the P1 external review found.
+//
+// reserveNodes originally CHECKED a declared length without charging it, so the
+// reservation was invisible to the next check. Crafted bytes could nest a `rec`
+// as the first child of progressively narrower `rec`s: every check passed
+// because only decoded nodes counted, while each level allocated another
+// near-limit slice. Quadratic memory from a few bytes of headers, with no node
+// limit ever reached.
+//
+// The repair is provenance: the length is charged UP FRONT and its children are
+// decoded as prepaid tasks that do not charge again — exact parity with
+// admitDef, and a reservation that survives nesting.
+func TestDecoderRefusesNestedWideCollections(t *testing.T) {
+	// Each level: a `rec` header declaring n args, whose FIRST arg is the next
+	// level. Tiny input, enormous implied allocation.
+	e := &enc{}
+	const levels = 40
+	for i := 0; i < levels; i++ {
+		e.u8(tagTyRec)
+		e.u32(uint32(60000 - i))
+	}
+	e.u8(tagTyInt)
+	crafted := e.b
+	if len(crafted) > 500 {
+		t.Fatalf("setup: the crafted input should be tiny, got %d bytes", len(crafted))
+	}
+
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+
+	d := &dec{b: crafted}
+	_, err := d.ty()
+	if err == nil {
+		t.Fatalf("%d nested rec headers declaring ~60,000 args each must be refused", levels)
+	}
+	var rl *resourceLimitErr
+	if !errors.As(err, &rl) {
+		t.Fatalf("must be refused as a RESOURCE limit, got %v", err)
+	}
+
+	runtime.ReadMemStats(&after)
+	// Two levels at 60,000 Ty each would already be tens of megabytes; forty
+	// would be gigabytes. 64MB separates "refused after one or two slices" from
+	// "allocated its way down the nest".
+	if grew := after.TotalAlloc - before.TotalAlloc; grew > 64<<20 {
+		t.Errorf("refusing %d nested wide collections allocated %d MB from %d bytes of "+
+			"input — the reservation must persist across nesting", levels, grew>>20, len(crafted))
+	}
+
+	// The same shape in TERMS: nested ctor headers.
+	st, err2 := OpenStore("../codebase")
+	if err2 != nil {
+		t.Fatalf("could not open the corpus: %v", err2)
+	}
+	consH, consI, _ := st.FindCtor("Cons")
+	e2 := &enc{}
+	for i := 0; i < levels; i++ {
+		e2.u8(tagTmCtor)
+		e2.hash(consH)
+		e2.u32(uint32(consI))
+		e2.tys(nil)
+		e2.u32(uint32(60000 - i))
+	}
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	d2 := &dec{b: e2.b}
+	if _, err := d2.term(); !errors.As(err, &rl) {
+		t.Fatalf("nested wide ctor headers must be refused as a resource limit, got %v", err)
+	}
+	runtime.ReadMemStats(&after)
+	if grew := after.TotalAlloc - before.TotalAlloc; grew > 64<<20 {
+		t.Errorf("the term decoder allocated %d MB on nested wide headers", grew>>20)
+	}
+}

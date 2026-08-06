@@ -622,22 +622,26 @@ func (d *dec) countNodes(n int) error {
 	return nil
 }
 
-// reserveNodes checks that a declared collection length COULD fit, WITHOUT
-// charging for it.
+// reserveNodes charges a declared collection length UP FRONT, before the slice
+// is allocated, and the children it pays for are then decoded as PREPAID tasks
+// that do not charge again.
 //
-// The distinction is the accepted domain, not an optimisation. Charging the
-// length and then charging each child as it decodes bills a wide structure
-// TWICE: a prim with 32,768 leaf arguments is 32,769 nodes and was refused near
-// the limit, so the decoder accepted less than the profile documents and a valid
-// object became undecodable. Reserving preserves the boundary while still
-// refusing a header that claims millions of elements before make() reserves the
-// memory — u32 caps a length at 1<<24 and a Term is well over a hundred bytes,
-// so one crafted header would otherwise reserve gigabytes.
+// Both halves are load-bearing and each was wrong on its own:
+//
+//	charge the length AND each child   bills wide structures twice, so the
+//	                                   decoder accepted less than the profile
+//	                                   documents and a valid object became
+//	                                   undecodable
+//	check the length without charging  leaves the reservation invisible to the
+//	                                   NEXT check, so nested collections each
+//	                                   allocate a near-limit slice while every
+//	                                   check passes — quadratic memory from a
+//	                                   few bytes of nested `rec` headers
+//
+// Charging once, eagerly, and marking the children prepaid gives exact parity
+// with admitDef AND a reservation that persists across nesting.
 func (d *dec) reserveNodes(n int) error {
-	if d.nodes+n > maxCanonicalNodes {
-		return errTooManyNodes()
-	}
-	return nil
+	return d.countNodes(n)
 }
 
 func (d *dec) fail(f string, a ...any) error {
@@ -749,6 +753,9 @@ type decTyTask struct {
 	dst  *Ty
 	node *Ty
 	idx  int
+
+	// prepaid: see decTask.
+	prepaid bool
 }
 
 // ty decodes one type ITERATIVELY, charging nodes as it builds (#149).
@@ -780,13 +787,15 @@ func (d *dec) ty() (*Ty, error) {
 					name, task.node.Names[task.idx-1])
 			}
 			task.node.Names[task.idx] = name
-			push(decTyTask{kind: 't', dst: &task.node.Args[task.idx]})
+			push(decTyTask{kind: 't', dst: &task.node.Args[task.idx], prepaid: true})
 			continue
 		}
 
 		dst := task.dst
-		if err := d.countNodes(1); err != nil {
-			return nil, err
+		if !task.prepaid {
+			if err := d.countNodes(1); err != nil {
+				return nil, err
+			}
 		}
 		tag, err := d.u8()
 		if err != nil {
@@ -825,7 +834,7 @@ func (d *dec) ty() (*Ty, error) {
 			}
 			*dst = Ty{K: "data", Hash: h, Args: make([]Ty, n)}
 			for i := n - 1; i >= 0; i-- {
-				push(decTyTask{kind: 't', dst: &dst.Args[i]})
+				push(decTyTask{kind: 't', dst: &dst.Args[i], prepaid: true})
 			}
 		case tagTyRec:
 			n, err := d.u32()
@@ -837,7 +846,7 @@ func (d *dec) ty() (*Ty, error) {
 			}
 			*dst = Ty{K: "rec", Args: make([]Ty, n)}
 			for i := n - 1; i >= 0; i-- {
-				push(decTyTask{kind: 't', dst: &dst.Args[i]})
+				push(decTyTask{kind: 't', dst: &dst.Args[i], prepaid: true})
 			}
 		case tagTyRecord:
 			n, err := d.u32()
@@ -886,8 +895,14 @@ func (d *dec) tys() ([]Ty, error) {
 type decTask struct {
 	kind byte  // 't' decode a term into dst | 'm' match-arms | 'r' record entry
 	dst  *Term // kind 't'
-	node *Term // kinds 'm' and 'r': the parent being filled
+	node *Term // kinds 'm', 'r' and 'f': the parent being filled
 	idx  int   // kind 'r': which entry
+
+	// prepaid marks a child whose node was already charged by its parent's
+	// declared length. Charging it again would bill wide structures twice;
+	// not charging the length at all would let nested collections allocate
+	// unboundedly. Provenance is what lets both be avoided.
+	prepaid bool
 }
 
 // term decodes one term ITERATIVELY, counting canonical nodes AS IT BUILDS
@@ -925,7 +940,7 @@ func (d *dec) term() (*Term, error) {
 			}
 			task.node.Arms = make([]Term, n)
 			for i := n - 1; i >= 0; i-- {
-				push(decTask{kind: 't', dst: &task.node.Arms[i]})
+				push(decTask{kind: 't', dst: &task.node.Arms[i], prepaid: true})
 			}
 			continue
 		case 'f':
@@ -946,13 +961,15 @@ func (d *dec) term() (*Term, error) {
 					name, task.node.Names[task.idx-1])
 			}
 			task.node.Names[task.idx] = name
-			push(decTask{kind: 't', dst: &task.node.Args[task.idx]})
+			push(decTask{kind: 't', dst: &task.node.Args[task.idx], prepaid: true})
 			continue
 		}
 
 		dst := task.dst
-		if err := d.countNodes(1); err != nil {
-			return nil, err
+		if !task.prepaid {
+			if err := d.countNodes(1); err != nil {
+				return nil, err
+			}
 		}
 		tag, err := d.u8()
 		if err != nil {
@@ -1055,7 +1072,7 @@ func (d *dec) term() (*Term, error) {
 			}
 			*dst = Term{K: "prim", Op: op, Args: make([]Term, n)}
 			for i := n - 1; i >= 0; i-- {
-				push(decTask{kind: 't', dst: &dst.Args[i]})
+				push(decTask{kind: 't', dst: &dst.Args[i], prepaid: true})
 			}
 		case tagTmRef:
 			h, err := d.hash()
@@ -1095,7 +1112,7 @@ func (d *dec) term() (*Term, error) {
 			}
 			*dst = Term{K: "ctor", Hash: h, Idx: idx, TyArgs: tys, Args: make([]Term, n)}
 			for i := n - 1; i >= 0; i-- {
-				push(decTask{kind: 't', dst: &dst.Args[i]})
+				push(decTask{kind: 't', dst: &dst.Args[i], prepaid: true})
 			}
 		case tagTmMatch:
 			h, err := d.hash()
