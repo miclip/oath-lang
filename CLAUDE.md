@@ -1016,6 +1016,44 @@ discriminating, over the wrong population. The principle underneath the second:
 > IMPLEMENTATION.** The implementation's boundaries are hypotheses. The claim's
 > boundaries are what you are trying to establish.
 
+**AND THE STEP AFTER IT, WHICH IS WHERE FIVE SEPARATE DEFECTS LIVED:**
+
+> **Derive the universe from the claim. Then locate the STRUCTURAL OWNER of that
+> universe and make the invariant EXCLUSIVE there.**
+
+Two steps, not synonyms. The first says which population matters. The second
+says where completeness can actually be ENFORCED — because a guard that
+enumerates callers, paths, shapes or setup conditions is approximating a
+population it does not own, and the approximation is invisible from inside.
+
+Five unlike instances, all found by external review AFTER strong local controls
+passed, each changing the repair rather than merely explaining it:
+
+    claim                              proxy population        structural owner
+    ---------------------------------------------------------------------------
+    detect recursive structural cycles cycle shapes imagined   transitive call
+                                                               reachability
+    count machine suspension           known stack writes      the sole
+                                                               stack-growth seam
+    admit every external structure     remembered API paths    the canonical
+                                                               constructors
+    protect decoded objects            downstream reads        construction,
+                                                               before caching
+    recognise the canonical corpus     the caller's CWD        repository-root
+                                                               identity
+
+Note what the proxies have in common: every one was a set someone could
+ENUMERATE. That is the tell, and it is available before any code is written —
+if the guard's population is a list you wrote down, ask what artifact the claim
+says owns that list.
+
+**AND OWNERSHIP MUST BE DEMONSTRATED, NOT DECLARED — or the rule repeats the
+defect one level higher.** A comment saying "this is the single entry point" is
+worth nothing; the enforcement is what makes it true. Each of the repairs above
+is mechanical: raw constructors have no callers outside their admitting
+wrappers, stack growth has one legal producer, cycle detection walks the actual
+call graph. Those are checkable claims. "I have centralised this" is not.
+
 **AND ITS CONSEQUENCE FOR REPAIRS, WHICH IS EASY TO MISS BECAUSE THE EVIDENCE
 LOOKS SO GOOD:**
 
