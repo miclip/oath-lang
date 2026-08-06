@@ -569,6 +569,28 @@ func encodeDef(d *Def) []byte {
 type dec struct {
 	b   []byte
 	pos int
+
+	// nodes counts canonical nodes AS THEY ARE CONSTRUCTED (#149). The decoder
+	// is a PRE-ADMISSION constructor: admitDef bounds a structure that already
+	// exists, and this is what brings it into existence, so a budget checked
+	// afterwards cannot protect it. Refusal happens at the node that crosses
+	// the limit, before the rest of the object is built.
+	nodes int
+}
+
+// countNodes charges n nodes against the portable profile and refuses the
+// moment the budget is crossed.
+//
+// Counts are charged when a LENGTH is read, not only when each element is
+// decoded, so a header claiming four billion arguments is refused before any
+// allocation rather than after. The typed refusal is the same one admitDef
+// produces, because it is the same budget being enforced earlier.
+func (d *dec) countNodes(n int) error {
+	d.nodes += n
+	if d.nodes > maxCanonicalNodes {
+		return errTooManyNodes()
+	}
+	return nil
 }
 
 func (d *dec) fail(f string, a ...any) error {
@@ -761,203 +783,266 @@ func (d *dec) tys() ([]Ty, error) {
 	return out, nil
 }
 
+// decTask is one pending decode step. `dst` is where the decoded term will be
+// WRITTEN, which is what removes attach logic: a child never has to find its
+// parent, because its destination was chosen when the parent was built.
+//
+// Destinations stay valid because child slices are ALLOCATED IN FULL once their
+// count is known. Appending as children complete would reallocate and invalidate
+// pointers into earlier elements — a bug that would corrupt decoded structures
+// only for terms wide enough to trigger a grow, which is precisely the size
+// range this rewrite exists to handle.
+type decTask struct {
+	kind byte  // 't' decode a term into dst | 'm' match-arms | 'r' record entry
+	dst  *Term // kind 't'
+	node *Term // kinds 'm' and 'r': the parent being filled
+	idx  int   // kind 'r': which entry
+}
+
+// term decodes one term ITERATIVELY, counting canonical nodes AS IT BUILDS
+// (#149).
+//
+// THIS IS A PRE-ADMISSION CONSTRUCTOR, which is why it is stricter than the
+// other repaired walkers. admitDef bounds a structure that already EXISTS; the
+// decoder is what brings it into existence, so a budget checked afterwards
+// cannot protect it. A crafted stored object overflowed the host stack while
+// being decoded, before there was anything to count. Refusal therefore happens
+// DURING construction, at the node that crosses the limit.
+//
+// The recursive decoder remains as the differential oracle for VALID objects. It
+// cannot be the oracle for deep hostile ones: surviving those is the defect, so
+// for them the authority is the encoding format plus the portable profile's
+// refusal contract, not the old implementation's behaviour.
 func (d *dec) term() (*Term, error) {
-	tag, err := d.u8()
-	if err != nil {
-		return nil, err
-	}
-	switch tag {
-	case tagTmVar:
-		v, err := d.u32()
-		if err != nil {
-			return nil, err
-		}
-		return &Term{K: "var", Idx: v}, nil
-	case tagTmInt:
-		v, err := d.bigint()
-		if err != nil {
-			return nil, err
-		}
-		return &Term{K: "int", Int: v}, nil
-	case tagTmRat:
-		num, err := d.bigint()
-		if err != nil {
-			return nil, err
-		}
-		den, err := d.bigint()
-		if err != nil {
-			return nil, err
-		}
-		if den.Sign() <= 0 {
-			return nil, d.fail("rational denominator must be positive")
-		}
-		g := new(big.Int).GCD(nil, nil, new(big.Int).Abs(num), den)
-		if g.Cmp(big.NewInt(1)) != 0 {
-			return nil, d.fail("non-canonical rational (numerator/denominator not coprime)")
-		}
-		return &Term{K: "rat", Rat: new(big.Rat).SetFrac(num, den)}, nil
-	case tagTmFloat:
-		if d.pos+8 > len(d.b) {
-			return nil, d.fail("unexpected end in float")
-		}
-		bits := binary.BigEndian.Uint64(d.b[d.pos : d.pos+8])
-		d.pos += 8
-		// Strict canonical form: any NaN must be THE canonical NaN. Other NaN
-		// payloads (or signaling NaNs) are rejected, exactly as a non-reduced
-		// rational is — one value, one encoding.
-		if math.IsNaN(math.Float64frombits(bits)) && bits != canonNaN {
-			return nil, d.fail("non-canonical NaN bit pattern 0x%016x", bits)
-		}
-		return &Term{K: "float", Float: math.Float64frombits(bits)}, nil
-	case tagTmBool:
-		v, err := d.u8()
-		if err != nil {
-			return nil, err
-		}
-		if v > 1 {
-			return nil, d.fail("bool byte 0x%02x", v)
-		}
-		return &Term{K: "bool", Bool: v == 1}, nil
-	case tagTmLam:
-		ty, err := d.ty()
-		if err != nil {
-			return nil, err
-		}
-		a, err := d.term()
-		if err != nil {
-			return nil, err
-		}
-		return &Term{K: "lam", Ty: ty, A: a}, nil
-	case tagTmApp:
-		a, err := d.term()
-		if err != nil {
-			return nil, err
-		}
-		b, err := d.term()
-		if err != nil {
-			return nil, err
-		}
-		return &Term{K: "app", A: a, B: b}, nil
-	case tagTmLet:
-		ty, err := d.ty()
-		if err != nil {
-			return nil, err
-		}
-		a, err := d.term()
-		if err != nil {
-			return nil, err
-		}
-		b, err := d.term()
-		if err != nil {
-			return nil, err
-		}
-		return &Term{K: "let", Ty: ty, A: a, B: b}, nil
-	case tagTmIf:
-		a, err := d.term()
-		if err != nil {
-			return nil, err
-		}
-		b, err := d.term()
-		if err != nil {
-			return nil, err
-		}
-		c, err := d.term()
-		if err != nil {
-			return nil, err
-		}
-		return &Term{K: "if", A: a, B: b, C: c}, nil
-	case tagTmPrim:
-		op, err := d.str()
-		if err != nil {
-			return nil, err
-		}
-		args, err := d.terms()
-		if err != nil {
-			return nil, err
-		}
-		return &Term{K: "prim", Op: op, Args: args}, nil
-	case tagTmRef:
-		h, err := d.hash()
-		if err != nil {
-			return nil, err
-		}
-		tys, err := d.tys()
-		if err != nil {
-			return nil, err
-		}
-		return &Term{K: "ref", Hash: h, TyArgs: tys}, nil
-	case tagTmSelf:
-		tys, err := d.tys()
-		if err != nil {
-			return nil, err
-		}
-		return &Term{K: "self", TyArgs: tys}, nil
-	case tagTmCtor:
-		h, err := d.hash()
-		if err != nil {
-			return nil, err
-		}
-		idx, err := d.u32()
-		if err != nil {
-			return nil, err
-		}
-		tys, err := d.tys()
-		if err != nil {
-			return nil, err
-		}
-		args, err := d.terms()
-		if err != nil {
-			return nil, err
-		}
-		return &Term{K: "ctor", Hash: h, Idx: idx, TyArgs: tys, Args: args}, nil
-	case tagTmMatch:
-		h, err := d.hash()
-		if err != nil {
-			return nil, err
-		}
-		a, err := d.term()
-		if err != nil {
-			return nil, err
-		}
-		arms, err := d.terms()
-		if err != nil {
-			return nil, err
-		}
-		return &Term{K: "match", Hash: h, A: a, Arms: arms}, nil
-	case tagTmRecord:
-		n, err := d.u32()
-		if err != nil {
-			return nil, err
-		}
-		out := &Term{K: "record"}
-		for i := 0; i < n; i++ {
+	root := &Term{}
+	stack := []decTask{{kind: 't', dst: root}}
+	for len(stack) > 0 {
+		task := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		push := func(t decTask) { stack = append(stack, t) }
+
+		switch task.kind {
+		case 'm':
+			// The arm COUNT is encoded after the scrutinee's bytes, so it is
+			// read here rather than when the match node was created.
+			n, err := d.u32()
+			if err != nil {
+				return nil, err
+			}
+			if err := d.countNodes(n); err != nil {
+				return nil, err
+			}
+			task.node.Arms = make([]Term, n)
+			for i := n - 1; i >= 0; i-- {
+				push(decTask{kind: 't', dst: &task.node.Arms[i]})
+			}
+			continue
+		case 'f':
+			// A field access encodes its NAME after the record's bytes.
 			name, err := d.str()
 			if err != nil {
 				return nil, err
 			}
-			if i > 0 && name <= out.Names[i-1] {
-				return nil, d.fail("record fields not strictly ascending: %q after %q", name, out.Names[i-1])
-			}
-			t, err := d.term()
+			task.node.Op = name
+			continue
+		case 'r':
+			name, err := d.str()
 			if err != nil {
 				return nil, err
 			}
-			out.Names = append(out.Names, name)
-			out.Args = append(out.Args, *t)
+			if task.idx > 0 && name <= task.node.Names[task.idx-1] {
+				return nil, d.fail("record fields not strictly ascending: %q after %q",
+					name, task.node.Names[task.idx-1])
+			}
+			task.node.Names[task.idx] = name
+			push(decTask{kind: 't', dst: &task.node.Args[task.idx]})
+			continue
 		}
-		return out, nil
-	case tagTmField:
-		a, err := d.term()
+
+		dst := task.dst
+		if err := d.countNodes(1); err != nil {
+			return nil, err
+		}
+		tag, err := d.u8()
 		if err != nil {
 			return nil, err
 		}
-		name, err := d.str()
-		if err != nil {
-			return nil, err
+		switch tag {
+		case tagTmVar:
+			v, err := d.u32()
+			if err != nil {
+				return nil, err
+			}
+			*dst = Term{K: "var", Idx: v}
+		case tagTmInt:
+			v, err := d.bigint()
+			if err != nil {
+				return nil, err
+			}
+			*dst = Term{K: "int", Int: v}
+		case tagTmRat:
+			num, err := d.bigint()
+			if err != nil {
+				return nil, err
+			}
+			den, err := d.bigint()
+			if err != nil {
+				return nil, err
+			}
+			if den.Sign() <= 0 {
+				return nil, d.fail("rational denominator must be positive")
+			}
+			g := new(big.Int).GCD(nil, nil, new(big.Int).Abs(num), den)
+			if g.Cmp(big.NewInt(1)) != 0 {
+				return nil, d.fail("non-canonical rational (numerator/denominator not coprime)")
+			}
+			*dst = Term{K: "rat", Rat: new(big.Rat).SetFrac(num, den)}
+		case tagTmFloat:
+			if d.pos+8 > len(d.b) {
+				return nil, d.fail("unexpected end in float")
+			}
+			bits := binary.BigEndian.Uint64(d.b[d.pos : d.pos+8])
+			d.pos += 8
+			// Strict canonical form: any NaN must be THE canonical NaN. Other NaN
+			// payloads (or signaling NaNs) are rejected, exactly as a non-reduced
+			// rational is — one value, one encoding.
+			if math.IsNaN(math.Float64frombits(bits)) && bits != canonNaN {
+				return nil, d.fail("non-canonical NaN bit pattern 0x%016x", bits)
+			}
+			*dst = Term{K: "float", Float: math.Float64frombits(bits)}
+		case tagTmBool:
+			v, err := d.u8()
+			if err != nil {
+				return nil, err
+			}
+			if v > 1 {
+				return nil, d.fail("bool byte 0x%02x", v)
+			}
+			*dst = Term{K: "bool", Bool: v == 1}
+		case tagTmLam:
+			ty, err := d.ty()
+			if err != nil {
+				return nil, err
+			}
+			*dst = Term{K: "lam", Ty: ty}
+			push(decTask{kind: 't', dst: newChild(&dst.A)})
+		case tagTmApp:
+			*dst = Term{K: "app"}
+			b := newChild(&dst.B)
+			a := newChild(&dst.A)
+			push(decTask{kind: 't', dst: b})
+			push(decTask{kind: 't', dst: a})
+		case tagTmLet:
+			ty, err := d.ty()
+			if err != nil {
+				return nil, err
+			}
+			*dst = Term{K: "let", Ty: ty}
+			b := newChild(&dst.B)
+			a := newChild(&dst.A)
+			push(decTask{kind: 't', dst: b})
+			push(decTask{kind: 't', dst: a})
+		case tagTmIf:
+			*dst = Term{K: "if"}
+			c := newChild(&dst.C)
+			b := newChild(&dst.B)
+			a := newChild(&dst.A)
+			push(decTask{kind: 't', dst: c})
+			push(decTask{kind: 't', dst: b})
+			push(decTask{kind: 't', dst: a})
+		case tagTmPrim:
+			op, err := d.str()
+			if err != nil {
+				return nil, err
+			}
+			n, err := d.u32()
+			if err != nil {
+				return nil, err
+			}
+			if err := d.countNodes(n); err != nil {
+				return nil, err
+			}
+			*dst = Term{K: "prim", Op: op, Args: make([]Term, n)}
+			for i := n - 1; i >= 0; i-- {
+				push(decTask{kind: 't', dst: &dst.Args[i]})
+			}
+		case tagTmRef:
+			h, err := d.hash()
+			if err != nil {
+				return nil, err
+			}
+			tys, err := d.tys()
+			if err != nil {
+				return nil, err
+			}
+			*dst = Term{K: "ref", Hash: h, TyArgs: tys}
+		case tagTmSelf:
+			tys, err := d.tys()
+			if err != nil {
+				return nil, err
+			}
+			*dst = Term{K: "self", TyArgs: tys}
+		case tagTmCtor:
+			h, err := d.hash()
+			if err != nil {
+				return nil, err
+			}
+			idx, err := d.u32()
+			if err != nil {
+				return nil, err
+			}
+			tys, err := d.tys()
+			if err != nil {
+				return nil, err
+			}
+			n, err := d.u32()
+			if err != nil {
+				return nil, err
+			}
+			if err := d.countNodes(n); err != nil {
+				return nil, err
+			}
+			*dst = Term{K: "ctor", Hash: h, Idx: idx, TyArgs: tys, Args: make([]Term, n)}
+			for i := n - 1; i >= 0; i-- {
+				push(decTask{kind: 't', dst: &dst.Args[i]})
+			}
+		case tagTmMatch:
+			h, err := d.hash()
+			if err != nil {
+				return nil, err
+			}
+			*dst = Term{K: "match", Hash: h}
+			push(decTask{kind: 'm', node: dst})
+			push(decTask{kind: 't', dst: newChild(&dst.A)})
+		case tagTmRecord:
+			n, err := d.u32()
+			if err != nil {
+				return nil, err
+			}
+			if err := d.countNodes(n); err != nil {
+				return nil, err
+			}
+			*dst = Term{K: "record", Names: make([]string, n), Args: make([]Term, n)}
+			for i := n - 1; i >= 0; i-- {
+				push(decTask{kind: 'r', node: dst, idx: i})
+			}
+		case tagTmField:
+			*dst = Term{K: "field"}
+			// The field NAME follows the record's bytes, so it is read by a
+			// deferred entry rather than here.
+			push(decTask{kind: 'f', node: dst})
+			push(decTask{kind: 't', dst: newChild(&dst.A)})
+		default:
+			return nil, d.fail("unknown Term tag 0x%02x", tag)
 		}
-		return &Term{K: "field", A: a, Op: name}, nil
 	}
-	return nil, d.fail("unknown Term tag 0x%02x", tag)
+	return root, nil
+}
+
+// newChild allocates a child slot and returns a stable pointer to it.
+func newChild(slot **Term) *Term {
+	*slot = &Term{}
+	return *slot
 }
 
 func (d *dec) terms() ([]Term, error) {
@@ -979,8 +1064,14 @@ func (d *dec) terms() ([]Term, error) {
 // decodeDef parses canonical "O1" bytes, rejecting anything malformed or
 // non-canonical (unknown tags, bad booleans, unsorted records, trailing
 // bytes).
+// decodeDefRaw decodes canonical bytes into a Def. The driver lives on `dec` so
+// its progress is observable: a test asserting that an oversized object is
+// refused DURING construction has to be able to see how far the decoder got.
 func decodeDefRaw(b []byte) (*Def, error) {
-	d := &dec{b: b}
+	return (&dec{b: b}).def()
+}
+
+func (d *dec) def() (*Def, error) {
 	m0, err := d.u8()
 	if err != nil {
 		return nil, err
