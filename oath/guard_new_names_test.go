@@ -162,3 +162,53 @@ func TestIsCanonicalStoreRecognisesAliases(t *testing.T) {
 		}
 	}
 }
+
+// TestCanonicalStoreIdentityIsCwdIndependent is the P1 external review found.
+//
+// Identity was compared against filepath.Abs(defaultStoreDir), which resolves
+// "codebase" relative to WHEREVER THE COMMAND RAN. So
+//
+//	cd docs && OATH_STORE=../codebase oath put file.oath
+//
+// did not recognise the real store and bound a permanent name with no warning —
+// reproduced before the fix — while an unrelated `codebase` directory elsewhere
+// WAS treated as canonical.
+//
+// The owning artifact is the REPOSITORY, not the process CWD. These cases run
+// from directories the earlier test never used, which is why it could not have
+// caught this: it chdir'd to the repo root first, making CWD and repo the same
+// thing and the bug invisible.
+func TestCanonicalStoreIdentityIsCwdIndependent(t *testing.T) {
+	t.Chdir("..")
+	abs, err := filepath.Abs(defaultStoreDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// From a SUBDIRECTORY, by relative and absolute path.
+	t.Chdir("docs")
+	for _, spelling := range []string{"../" + defaultStoreDir, abs} {
+		if !isCanonicalStore(spelling) {
+			t.Errorf("from docs/, %q is still the canonical store", spelling)
+		}
+	}
+
+	// From an unrelated directory entirely.
+	t.Chdir(t.TempDir())
+	if !isCanonicalStore(abs) {
+		t.Error("from an unrelated directory, the absolute canonical path is still canonical")
+	}
+	// ...and a same-named directory that is NOT in a repository is not it.
+	other := filepath.Join(t.TempDir(), defaultStoreDir)
+	if err := os.MkdirAll(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if isCanonicalStore(other) {
+		t.Errorf("%q is merely named `codebase`; it is not the repository's store", other)
+	}
+	// A scratch store nested in a NON-repository directory stays unguarded, so
+	// disposable stores keep working from anywhere.
+	if isCanonicalStore(filepath.Join(t.TempDir(), "scratch")) {
+		t.Error("a scratch store must not be treated as canonical")
+	}
+}

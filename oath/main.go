@@ -1415,31 +1415,46 @@ func guardNewNames(st *Store, src string, allowNew bool) error {
 		len(fresh), strings.Join(fresh, ", "), "<file>")
 }
 
-// isCanonicalStore reports whether root resolves to the repository's default
-// store — the git-tracked, append-only-journal corpus that `storeDir` defaults
-// to. Compared by RESOLVED PATH so that naming it explicitly (OATH_STORE=codebase,
-// an absolute path, or a symlink) is still recognised as the same store.
+// isCanonicalStore reports whether root IS the repository's canonical corpus:
+// the git-tracked, append-only-journal store `oath` writes to by default.
 //
-// Fails OPEN on any resolution error: a guard that cannot tell where it is must
-// not start refusing valid work. The cost of that choice is a missed refusal;
-// the cost of the other is a CLI that stops functioning on unusual filesystems.
+// IDENTITY IS ANCHORED TO THE REPOSITORY, NOT TO THE PROCESS CWD, and the
+// difference is a real bypass rather than a nicety. An earlier version compared
+// against filepath.Abs(defaultStoreDir), which resolves "codebase" relative to
+// wherever the command happened to run — so `cd docs && OATH_STORE=../codebase
+// oath put file.oath` did NOT recognise the real store and bound a permanent
+// name with no warning, while an unrelated `codebase` directory elsewhere WAS
+// treated as canonical. Reproduced before this fix. Found by external review.
+//
+// The owning artifact is the repository: a store is canonical when it is named
+// `codebase` at the root of a git working tree. That is true from any working
+// directory and by any spelling — relative, absolute, symlinked, or reached
+// through a parent — because it is a property of the store rather than of how
+// the caller referred to it.
+//
+// Fails CLOSED on an unreadable path (returns false) but note the asymmetry: a
+// false negative here skips a warning, while a false positive only demands an
+// explicit --new. Recognising one extra git-tracked `codebase` is the cheaper
+// error, so the check does not additionally require the path to be TRACKED.
 func isCanonicalStore(root string) bool {
 	if root == "" {
 		return false
 	}
-	a, err := filepath.Abs(root)
+	abs, err := filepath.Abs(root)
 	if err != nil {
 		return false
 	}
-	b, err := filepath.Abs(defaultStoreDir)
-	if err != nil {
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = resolved
+	}
+	if filepath.Base(abs) != defaultStoreDir {
 		return false
 	}
-	if ra, err := filepath.EvalSymlinks(a); err == nil {
-		a = ra
+	// `.git` is a directory in a normal clone and a FILE in a worktree, so
+	// Stat rather than a directory check — the port's own worktrees would
+	// otherwise not be recognised.
+	if _, err := os.Stat(filepath.Join(filepath.Dir(abs), ".git")); err != nil {
+		return false
 	}
-	if rb, err := filepath.EvalSymlinks(b); err == nil {
-		b = rb
-	}
-	return a == b
+	return true
 }
