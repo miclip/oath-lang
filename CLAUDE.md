@@ -405,9 +405,7 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   more EXPENSIVE if delayed   (empty)
   more VALUABLE if delayed    #146, #134, #139/#140, #138 — after more evidence
                               has accumulated to calibrate them
-  waiting for a TRIGGER       #150 (external reviewer capped — CHECK THE ISSUE
-                              for the return date before assuming either way),
-                              #148 (operator provisioning), #117/#69, #128
+  waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
   no CLOCK at all             #149, #115, #116, #65, #66 — open, and neither
                               cheaper nor dearer for waiting
 
@@ -1499,19 +1497,26 @@ Read closed issues + commit messages for the design reasoning;
   `make verify`, and nothing local reminds you — this landed on `main` red for
   exactly that reason after SPEC §14 and `effects.md` were edited.
 - Run `codex review --uncommitted` before committing, and iterate until clean.
-  **THERE IS OPEN REVIEW DEBT — see #150, which is the authority for its own
-  state rather than a list repeated here.** Discharge it in RISK order, kernel
-  bounds first, because a deployment pipeline distributes whatever runtime
-  behaviour those commits contain, faithfully and quickly; a wrong bound is
-  already in users' hands while automation is still a plan.
-  **BUT #150 MAY NOT BE STARTABLE — the external reviewer has a usage cap, and
-  the issue carries the current return date.** Check it before planning around
-  this paragraph; the queue files #150 under a TRIGGER for that reason. **An
-  availability constraint stated only where the WORK is described will be missed
-  by anyone reading where the PRIORITY is argued** — which is why the pointer is
-  here, and why the DATE is not: a date copied to two places in this file goes
-  quietly false on the day it passes, while #150 stays open and every check
-  stays green.
+  **NO REVIEW DEBT IS OPEN** (#150, closed). If the reviewer is ever unavailable
+  again, say so IN THE COMMIT, keep the debt bounded to those commits, and
+  discharge it in RISK order — kernel bounds first, because a deployment pipeline
+  distributes whatever runtime behaviour those commits contain, faithfully and
+  quickly.
+
+  **AND DO NOT LET A GREEN SUITE STAND IN FOR IT.** The one time this debt
+  accumulated, the eventual review found SEVEN defects in 31 commits, FOUR of
+  them in code written to enforce safety — a cycle detector, a frame counter, an
+  admission boundary, a store-identity guard — every one carrying two-way
+  controls and injection controls that passed. A self-written control inherits
+  its author's imagination of the failure mode, which is precisely the class a
+  second reader catches and no local gate can.
+
+  Two method notes, earned: `codex review --base` compares against HEAD, so a
+  MIDDLE commit range needs a `git worktree` at the range's head with a branch at
+  its base. And documentation and startup claims need a separate READING pass —
+  code review will not ask whether a number is copied rather than derived,
+  whether work-state prose has decayed into history, or whether a sentence
+  claims more than its authority establishes.
   **WHEN REVIEW IS UNAVAILABLE — rate limit, outage — SAY SO IN THE COMMIT AND
   KEEP THE DEBT BOUNDED TO THOSE COMMITS.** Tests and mutation controls are strong
   evidence and they are not a substitute: what this review catches is a
