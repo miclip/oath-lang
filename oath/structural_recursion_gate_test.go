@@ -40,10 +40,15 @@ var guardedFiles = map[string]string{
 // stillRecursive records what is NOT covered, with why. Each entry is a claim
 // that can be checked, not a waiver.
 var stillRecursive = map[string]string{
-	"eNormalize": "EXPOSED, and found BY THIS GATE on its first run rather than by " +
-		"reading. The e-graph normalizer descends Terms structurally. Reached only by " +
-		"`find --equiv` (eHash), so it is OUTSIDE the oathCheck boundary #149 closed — " +
-		"but it is a real exposure on that entry point, not a bounded exception.",
+	// EMPTY. Every structural descent over Term/Ty in the guarded components is
+	// iterative.
+	//
+	// It emptied by DETECTION, not by hand: the staleness check refuses an entry
+	// the detector no longer flags, so removing eNormalize was forced by the
+	// gate at the moment its repair landed rather than remembered afterwards.
+	// Two earlier entries had survived their own repairs precisely because no
+	// such check existed — extra exceptions are permissive, so the gate passed
+	// either way and a commit message claimed a removal that never happened.
 }
 
 // enc.term, enc.ty, dec.term and dec.ty were all listed here and are all now

@@ -788,3 +788,145 @@ func TestDecoderRefusesNestedWideCollections(t *testing.T) {
 		t.Errorf("the term decoder allocated %d MB on nested wide headers", grew>>20)
 	}
 }
+
+// eNormalizeRecursive is the normalizer EXACTLY as it stood before the iterative
+// rewrite, retained as the oracle. eNormalize feeds eHash, which `find --equiv`
+// uses to decide that two definitions are the same function — so a changed
+// normal form changes DISCOVERY results, not just performance.
+func eNormalizeRecursive(chk *checkerMachine, ctx []*Ty, t *Term) *Term {
+	if t == nil {
+		return nil
+	}
+	push := func(ty *Ty) []*Ty { return append(append([]*Ty{}, ctx...), ty) }
+	nt := *t
+	switch t.K {
+	case "lam":
+		nt.A = eNormalizeRecursive(chk, push(t.Ty), t.A)
+	case "let":
+		nt.A = eNormalizeRecursive(chk, ctx, t.A)
+		nt.B = eNormalizeRecursive(chk, push(t.Ty), t.B)
+	case "if":
+		nt.A = eNormalizeRecursive(chk, ctx, t.A)
+		nt.B = eNormalizeRecursive(chk, ctx, t.B)
+		nt.C = eNormalizeRecursive(chk, ctx, t.C)
+	case "app":
+		nt.A = eNormalizeRecursive(chk, ctx, t.A)
+		nt.B = eNormalizeRecursive(chk, ctx, t.B)
+	case "field":
+		nt.A = eNormalizeRecursive(chk, ctx, t.A)
+	case "match":
+		nt.A = eNormalizeRecursive(chk, ctx, t.A)
+		nt.Arms = make([]Term, len(t.Arms))
+		scrutTy, terr := chk.synth(ctx, t.A)
+		md, derr := chk.st.GetDef(t.Hash)
+		for i := range t.Arms {
+			armCtx := ctx
+			if terr == nil && derr == nil && scrutTy.K == "data" && i < len(md.Ctors) {
+				for _, f := range instCtorFields(md, scrutTy.Hash, scrutTy.Args, i) {
+					armCtx = append(append([]*Ty{}, armCtx...), f)
+				}
+			}
+			nt.Arms[i] = *eNormalizeRecursive(chk, armCtx, &t.Arms[i])
+		}
+	case "prim", "ctor", "record":
+		nt.Args = make([]Term, len(t.Args))
+		for i := range t.Args {
+			nt.Args[i] = *eNormalizeRecursive(chk, ctx, &t.Args[i])
+		}
+		if t.K == "prim" && commutativePrims[t.Op] && len(nt.Args) == 2 {
+			argTy, _ := chk.synth(ctx, &t.Args[0])
+			if isACPrim(t.Op, argTy) {
+				return acRebuild(t.Op, acFlatten(t.Op, nt.Args))
+			}
+			if bytes.Compare(termBytes(&nt.Args[0]), termBytes(&nt.Args[1])) > 0 {
+				nt.Args[0], nt.Args[1] = nt.Args[1], nt.Args[0]
+			}
+		}
+	}
+	return &nt
+}
+
+// TestNormalizerMatchesOracleOnCorpus is the parity obligation for the last
+// repaired walker. Compared as canonical BYTES of the normal form, because that
+// is what eHash hashes and what discovery compares.
+func TestNormalizerMatchesOracleOnCorpus(t *testing.T) {
+	st, err := OpenStore("../codebase")
+	if err != nil {
+		t.Fatalf("could not open the corpus: %v", err)
+	}
+	seen, checked := map[string]bool{}, 0
+	for name, h := range st.Names() {
+		if seen[h] {
+			continue
+		}
+		seen[h] = true
+		d, err := st.GetDef(h)
+		if err != nil || d.Body == nil {
+			continue
+		}
+		// Each side gets its OWN copy: chk.synth publishes inferred TyArgs into
+		// the term, so a shared input would let the first run prepare the
+		// second — the same defect that nearly invalidated the checker port.
+		a := deepCopyDef(d)
+		b := deepCopyDef(d)
+		chkA := &checkerMachine{st: st, selfTyVars: a.TyVars, selfTy: a.Ty}
+		chkB := &checkerMachine{st: st, selfTyVars: b.TyVars, selfTy: b.Ty}
+
+		ea, eb := &enc{}, &enc{}
+		ea.term(eNormalize(chkA, nil, a.Body))
+		eb.term(eNormalizeRecursive(chkB, nil, b.Body))
+		if !bytes.Equal(ea.b, eb.b) {
+			t.Errorf("%s: normal form MOVED (%d vs %d bytes)", name, len(ea.b), len(eb.b))
+		}
+		checked++
+	}
+	if checked < 100 {
+		t.Fatalf("only %d definitions normalized; the corpus did not load", checked)
+	}
+	t.Logf("iterative normalizer agrees with the oracle on %d definitions", checked)
+}
+
+// TestNormalizerHandlesDeepStructures: a term at the profile's edge must
+// normalize without host recursion. The recursive version would fault here,
+// which is the whole reason for the rewrite — so the oracle is NOT consulted.
+func TestNormalizerHandlesDeepStructures(t *testing.T) {
+	st, err := OpenStore("../codebase")
+	if err != nil {
+		t.Fatalf("could not open the corpus: %v", err)
+	}
+	sconsH, sconsI, _ := st.FindCtor("SCons")
+	snilH, snilI, _ := st.FindCtor("SNil")
+	spine := func(n int) *Term {
+		acc := &Term{K: "ctor", Hash: snilH, Idx: snilI}
+		for k := 0; k < n; k++ {
+			acc = &Term{K: "ctor", Hash: sconsH, Idx: sconsI,
+				Args: []Term{{K: "int", Int: big.NewInt(97)}, *acc}}
+		}
+		return acc
+	}
+	chk := &checkerMachine{st: st}
+	for _, n := range []int{10, 1000, 20000} {
+		out := eNormalize(chk, nil, spine(n))
+		if out == nil {
+			t.Fatalf("n=%d normalized to nil", n)
+		}
+		// Structure preserved: walk the spine and count.
+		depth, cur := 0, out
+		for cur != nil && cur.K == "ctor" && len(cur.Args) == 2 {
+			depth++
+			cur = &cur.Args[1]
+		}
+		if depth != n {
+			t.Errorf("n=%d normalized to a spine of %d", n, depth)
+		}
+	}
+	// A broad term at the profile's width.
+	wide := &Term{K: "record"}
+	for i := 0; i < 5000; i++ {
+		wide.Names = append(wide.Names, fmt.Sprintf("f%04d", i))
+		wide.Args = append(wide.Args, Term{K: "int", Int: big.NewInt(int64(i))})
+	}
+	if out := eNormalize(chk, nil, wide); len(out.Args) != 5000 {
+		t.Errorf("a 5,000-field record normalized to %d fields", len(out.Args))
+	}
+}

@@ -239,57 +239,149 @@ func acRebuild(op string, leaves []Term) *Term {
 // context so it knows an operator's operand type. It NEVER affects identity
 // (docs/egraph.md): a definition's hash is still the O1 encoding of its ACTUAL
 // AST; this only draws equivalence edges between existing objects.
+// eNormItem is one pending normalization. `exit` marks the second visit to a
+// node whose children are done — only `prim` needs one, for AC normalization.
+type eNormItem struct {
+	t    *Term
+	ctx  []*Ty
+	dst  *Term
+	exit bool
+}
+
+// eNormalize rewrites a term to its e-graph normal form, ITERATIVELY (#149).
+//
+// The LAST exposed structural recursion, and the only one that was
+// POST-ADMISSION: it runs on terms the profile has already bounded, so unlike
+// the decoder it needed no admission logic — but a permitted 65,536-node linear
+// spine still exceeds host stack safety, and this is reached from
+// `find --equiv`.
+//
+// It is BOTTOM-UP: a node's result depends on its normalized children, so
+// children are scheduled first and the node revisits itself afterwards — `prim`
+// to apply AC normalization, `match` to synthesize its scrutinee's type once
+// that scrutinee has been normalized.
+//
+// Children are pushed in REVERSE so they pop in source order. For ARGUMENTS
+// that is presentational: chk.synth is called once per node, not per argument,
+// so their relative order is not observable — a control that reordered them
+// moved nothing, which is how that was established rather than assumed. It
+// matters for the SCRUTINEE, whose normalization must precede its own synth.
 func eNormalize(chk *checkerMachine, ctx []*Ty, t *Term) *Term {
 	if t == nil {
 		return nil
 	}
-	push := func(ty *Ty) []*Ty { return append(append([]*Ty{}, ctx...), ty) }
-	nt := *t
-	switch t.K {
-	case "lam":
-		nt.A = eNormalize(chk, push(t.Ty), t.A)
-	case "let":
-		nt.A = eNormalize(chk, ctx, t.A)
-		nt.B = eNormalize(chk, push(t.Ty), t.B)
-	case "if":
-		nt.A = eNormalize(chk, ctx, t.A)
-		nt.B = eNormalize(chk, ctx, t.B)
-		nt.C = eNormalize(chk, ctx, t.C)
-	case "app":
-		nt.A = eNormalize(chk, ctx, t.A)
-		nt.B = eNormalize(chk, ctx, t.B)
-	case "field":
-		nt.A = eNormalize(chk, ctx, t.A)
-	case "match":
-		nt.A = eNormalize(chk, ctx, t.A)
-		nt.Arms = make([]Term, len(t.Arms))
-		scrutTy, terr := chk.synth(ctx, t.A)
-		md, derr := chk.st.GetDef(t.Hash)
-		for i := range t.Arms {
-			armCtx := ctx
-			if terr == nil && derr == nil && scrutTy.K == "data" && i < len(md.Ctors) {
-				for _, f := range instCtorFields(md, scrutTy.Hash, scrutTy.Args, i) {
-					armCtx = append(append([]*Ty{}, armCtx...), f)
+	root := &Term{}
+	stack := []eNormItem{{t: t, ctx: ctx, dst: root}}
+	for len(stack) > 0 {
+		it := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		push := func(x eNormItem) { stack = append(stack, x) }
+		extend := func(base []*Ty, ty *Ty) []*Ty {
+			return append(append([]*Ty{}, base...), ty)
+		}
+
+		if it.exit && it.t.K == "match" {
+			cur, dst := it.t, it.dst
+			scrutTy, terr := chk.synth(it.ctx, cur.A)
+			md, derr := chk.st.GetDef(cur.Hash)
+			for i := len(cur.Arms) - 1; i >= 0; i-- {
+				armCtx := it.ctx
+				if terr == nil && derr == nil && scrutTy.K == "data" && i < len(md.Ctors) {
+					for _, f := range instCtorFields(md, scrutTy.Hash, scrutTy.Args, i) {
+						armCtx = extend(armCtx, f)
+					}
+				}
+				push(eNormItem{t: &cur.Arms[i], ctx: armCtx, dst: &dst.Arms[i]})
+			}
+			continue
+		}
+		if it.exit {
+			// AC normalization, applied once the arguments are normalized.
+			// synth is called on the ORIGINAL argument, as it always was: the
+			// normalized copy may differ, and changing which term is
+			// synthesized changes what gets inferred into it.
+			nt := it.dst
+			if commutativePrims[it.t.Op] && len(nt.Args) == 2 {
+				argTy, _ := chk.synth(it.ctx, &it.t.Args[0])
+				if isACPrim(it.t.Op, argTy) {
+					*nt = *acRebuild(it.t.Op, acFlatten(it.t.Op, nt.Args))
+				} else if bytes.Compare(termBytes(&nt.Args[0]), termBytes(&nt.Args[1])) > 0 {
+					nt.Args[0], nt.Args[1] = nt.Args[1], nt.Args[0]
 				}
 			}
-			nt.Arms[i] = *eNormalize(chk, armCtx, &t.Arms[i])
+			continue
 		}
-	case "prim", "ctor", "record":
-		nt.Args = make([]Term, len(t.Args))
-		for i := range t.Args {
-			nt.Args[i] = *eNormalize(chk, ctx, &t.Args[i])
-		}
-		if t.K == "prim" && commutativePrims[t.Op] && len(nt.Args) == 2 {
-			argTy, _ := chk.synth(ctx, &t.Args[0])
-			if isACPrim(t.Op, argTy) {
-				return acRebuild(t.Op, acFlatten(t.Op, nt.Args))
+
+		cur, dst := it.t, it.dst
+		*dst = *cur
+		switch cur.K {
+		case "lam":
+			if cur.A != nil {
+				dst.A = &Term{}
+				push(eNormItem{t: cur.A, ctx: extend(it.ctx, cur.Ty), dst: dst.A})
 			}
-			if bytes.Compare(termBytes(&nt.Args[0]), termBytes(&nt.Args[1])) > 0 {
-				nt.Args[0], nt.Args[1] = nt.Args[1], nt.Args[0]
+		case "let":
+			if cur.B != nil {
+				dst.B = &Term{}
+				push(eNormItem{t: cur.B, ctx: extend(it.ctx, cur.Ty), dst: dst.B})
+			}
+			if cur.A != nil {
+				dst.A = &Term{}
+				push(eNormItem{t: cur.A, ctx: it.ctx, dst: dst.A})
+			}
+		case "if":
+			for _, c := range []struct {
+				src *Term
+				dst **Term
+			}{{cur.C, &dst.C}, {cur.B, &dst.B}, {cur.A, &dst.A}} {
+				if c.src != nil {
+					*c.dst = &Term{}
+					push(eNormItem{t: c.src, ctx: it.ctx, dst: *c.dst})
+				}
+			}
+		case "app":
+			if cur.B != nil {
+				dst.B = &Term{}
+				push(eNormItem{t: cur.B, ctx: it.ctx, dst: dst.B})
+			}
+			if cur.A != nil {
+				dst.A = &Term{}
+				push(eNormItem{t: cur.A, ctx: it.ctx, dst: dst.A})
+			}
+		case "field":
+			if cur.A != nil {
+				dst.A = &Term{}
+				push(eNormItem{t: cur.A, ctx: it.ctx, dst: dst.A})
+			}
+		case "match":
+			dst.Arms = make([]Term, len(cur.Arms))
+			// THE SCRUTINEE IS NORMALIZED BEFORE ITS TYPE IS SYNTHESIZED, which
+			// is why match needs an exit phase rather than doing this inline.
+			//
+			// The recursive version runs `nt.A = eNormalize(t.A)` and only then
+			// `chk.synth(ctx, t.A)`. Normalizing can MUTATE t.A — synth
+			// publishes inferred TyArgs into the term it is given — so
+			// synthesizing first sees a different term. A first draft here did
+			// exactly that and agreed with the oracle on the whole corpus
+			// anyway, because no corpus scrutinee carries omitted type
+			// arguments. Faithful ordering is not something to infer from a
+			// green differential.
+			push(eNormItem{t: cur, ctx: it.ctx, dst: dst, exit: true})
+			if cur.A != nil {
+				dst.A = &Term{}
+				push(eNormItem{t: cur.A, ctx: it.ctx, dst: dst.A})
+			}
+		case "prim", "ctor", "record":
+			dst.Args = make([]Term, len(cur.Args))
+			if cur.K == "prim" {
+				push(eNormItem{t: cur, ctx: it.ctx, dst: dst, exit: true})
+			}
+			for i := len(cur.Args) - 1; i >= 0; i-- {
+				push(eNormItem{t: &cur.Args[i], ctx: it.ctx, dst: &dst.Args[i]})
 			}
 		}
 	}
-	return &nt
+	return root
 }
 
 // eHash is the equivalence-class key of a definition: its signature plus its
