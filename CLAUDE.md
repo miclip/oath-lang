@@ -502,39 +502,41 @@ something else or nothing at all. Corpus-versus-phenomenon, applied to a runtime
 recursive?" would not have: it was *what happens to the visitor AFTER the
 overflow?* The first question asks about the code, the second about the claim.
 
-**The inventory is DONE and the repair is HALF LANDED. Read the issue for the
-remaining sequence rather than re-deriving it** — it carries the ten-step port
-plan and three details of `synthCtor` that a naive port gets wrong, one of which
-turns a linear algorithm exponential. A pointer, because that plan will change
-as it is executed and a copy here would not.
+**THE BOUNDARY CLAIM IS CLOSED; THE ISSUE IS NOT — and holding those apart is
+the whole discipline.** Read the issue for the remaining two items; they have
+different shapes and are split there rather than described here.
 
-The half that landed is `oath/profile.go`: a PORTABLE RESOURCE PROFILE with two
-budgets kept deliberately separate — 65,536 canonical nodes and 512 syntax
-nesting levels, both chosen with measured headroom (the corpus peaks at 1,293
-nodes and 17 levels) rather than reverse-engineered from a crash threshold.
+What is CLOSED, measured on the served artifact: `oathCheck` completes through
+Oath's own result or error channel for every shape, attacker-controlled
+recursion is bounded before host exhaustion, the kernel survives repeated
+sequences that were previously fatal on the second attempt, and 210/210 corpus
+identities are unmoved. The typechecker, canonical encoder and termination
+walker are iterative; no production code constructs the recursive checker, which
+survives only as the differential oracle.
 
-**THE DISTINCTION IS THE WHOLE DESIGN, and it generalises past this issue: a
-LINEAR SPINE IS WORK, NOT NESTING.** `Str` is an inductive datatype, so a
-5,000-rune literal is one syntax node and a 5,000-long `SCons` chain. Bounding
-"depth" with one number would have let the canonical REPRESENTATION of linear
-data decide which strings are legal programs — an implementation detail becoming
-language semantics, which is #147's error one layer up.
+**THE DURABLE LESSON IS ABOUT WITNESSES, NOT ABOUT STACKS.** Every repair up to
+the gate was verified against descents found BY READING — the implementation's
+decomposition. The structural-recursion gate derives its universe from the
+CLAIM, and found one on its first run that reading had missed (`eNormalize`).
+That is the universe rule paying out on the largest piece of work in the repo:
+a witness derived from the implementation proves the doors you already knew.
 
-**Oath's accepted structural domain is BACKEND-INDEPENDENT.** The same artifact
-must not be a program natively and a refusal in the playground because the two
-borrow different stacks. An implementation may refuse for an explicit documented
-limit; a limit must never emerge accidentally from host call-stack depth.
+**TWO EXCEPTION CLASSES, AND COLLAPSING THEM WOULD DESTROY THE EVIDENCE:**
 
-**AND THE HONEST REMAINDER, which is why this is not closed: the budget bounds
-WORK; only an iterative substrate bounds STACK.** A 5,000-node spine is inside
-the profile, so it is ADMITTED — and the still-recursive bidirectional
-typechecker then descends it and exhausts the host stack. Lowering the node
-limit to make that witness pass would convert a walker defect into an arbitrary
-string-size restriction, i.e. exactly the backend-derived language limit the
-profile exists to remove. **The 5,000-rune string is the witness that keeps
-"bounded size" and "stack-safe processing" from being confused for each other**,
-and `TestGuardsAreDistinguished` asserts the open case as it IS, with a note to
-invert it when the substrate lands.
+    BOUNDED   recursion remains, but admission constrains the structure tightly
+              enough that exhaustion is outside the accepted domain
+    EXPOSED   recursion remains reachable BEFORE any applicable bound — known
+              and unresolved, not waived
+
+An allowlist whose entries all read as "known and fine" while half mean "known
+and NOT fine" has stopped being evidence. Each entry states its BOUND or its
+EXPOSURE accordingly.
+
+**AND ONE ORDERING DEFECT IS WORTH CARRYING HERE, because it generalises past
+this issue:** `decodeDef` runs BEFORE `admitDef`, so the node budget cannot
+protect the decoder that produces the structure it is meant to bound. **A
+resource budget cannot defend the code that runs before it can inspect its
+input** — the refusal has to happen DURING construction, not after.
 
 **#148 IS BLOCKED ON OPERATOR PROVISIONING, NOT ON ENGINEERING**, and the
 distinction decides what a session should do with it: nothing. Its design is
