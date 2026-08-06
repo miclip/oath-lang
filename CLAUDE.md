@@ -406,7 +406,7 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   more VALUABLE if delayed    #146, #134, #139/#140, #138 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
-  no CLOCK at all             #149, #115, #116, #65, #66 — open, and neither
+  no CLOCK at all             #151, #115, #116, #65, #66 — open, and neither
                               cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
@@ -500,41 +500,28 @@ something else or nothing at all. Corpus-versus-phenomenon, applied to a runtime
 recursive?" would not have: it was *what happens to the visitor AFTER the
 overflow?* The first question asks about the code, the second about the claim.
 
-**THE BOUNDARY CLAIM IS CLOSED; THE ISSUE IS NOT — and holding those apart is
-the whole discipline.** Read the issue for the remaining two items; they have
-different shapes and are split there rather than described here.
+**#149 IS CLOSED. Its successor is #151, and the split is the point** — read the
+issue rather than re-deriving it. `oathCheck` is stack-safe end to end on the
+served artifact; what remains is that `find --equiv` is QUADRATIC on deeply
+nested commutative chains, which predates the whole repair (the recursive
+normalizer allocates 1243 MB where the iterative one allocates 1224 MB). A
+different failure mode, repair and acceptance criterion, so it does not hold the
+stack-safety claim open.
 
-What is CLOSED, measured on the served artifact: `oathCheck` completes through
-Oath's own result or error channel for every shape, attacker-controlled
-recursion is bounded before host exhaustion, the kernel survives repeated
-sequences that were previously fatal on the second attempt, and 210/210 corpus
-identities are unmoved. The typechecker, canonical encoder and termination
-walker are iterative; no production code constructs the recursive checker, which
-survives only as the differential oracle.
+**FOUR RESULTS FROM IT ARE ALREADY RECORDED ABOVE AS PRINCIPLES** — a linear
+spine is work not nesting; the accepted structural domain is backend-independent;
+a resource budget cannot defend the code that runs before it can inspect its
+input; and derive-the-universe-then-own-it. The repairs were the smaller half.
 
-**THE DURABLE LESSON IS ABOUT WITNESSES, NOT ABOUT STACKS.** Every repair up to
-the gate was verified against descents found BY READING — the implementation's
-decomposition. The structural-recursion gate derives its universe from the
-CLAIM, and found one on its first run that reading had missed (`eNormalize`).
-That is the universe rule paying out on the largest piece of work in the repo:
-a witness derived from the implementation proves the doors you already knew.
-
-**TWO EXCEPTION CLASSES, AND COLLAPSING THEM WOULD DESTROY THE EVIDENCE:**
-
-    BOUNDED   recursion remains, but admission constrains the structure tightly
-              enough that exhaustion is outside the accepted domain
-    EXPOSED   recursion remains reachable BEFORE any applicable bound — known
-              and unresolved, not waived
-
-An allowlist whose entries all read as "known and fine" while half mean "known
-and NOT fine" has stopped being evidence. Each entry states its BOUND or its
-EXPOSURE accordingly.
-
-**AND ONE ORDERING DEFECT IS WORTH CARRYING HERE, because it generalises past
-this issue:** `decodeDef` runs BEFORE `admitDef`, so the node budget cannot
-protect the decoder that produces the structure it is meant to bound. **A
-resource budget cannot defend the code that runs before it can inspect its
-input** — the refusal has to happen DURING construction, not after.
+**AND THE MEASUREMENT THAT SAVED THE LAST CLAIM IS WORTH THE ROOM.** The
+quadratic was REPORTED as a consequence of copying the binder context per
+primitive. That mechanism was real and was fixed — and measuring showed it was
+not the dominant cost, because the recursive oracle allocated the same. Repairing
+it as reported would have left a false claim standing: that the gigabytes were an
+artifact of the rewrite rather than a property the algorithm always had.
+**Confirm a reported finding by measurement before repairing it**, because a
+correct repair attached to a wrong diagnosis is indistinguishable from a fix
+until someone re-measures.
 
 **#148 IS BLOCKED ON OPERATOR PROVISIONING, NOT ON ENGINEERING**, and the
 distinction decides what a session should do with it: nothing. Its design is
@@ -1044,6 +1031,25 @@ Note what the proxies have in common: every one was a set someone could
 ENUMERATE. That is the tell, and it is available before any code is written —
 if the guard's population is a list you wrote down, ask what artifact the claim
 says owns that list.
+
+**AND THE OWNER MUST BE RECOGNISED BY THE CLAIM'S VOCABULARY, NOT THE EXAMPLES'
+SYNTAX.** A control written from known instances encodes the SHAPE of those
+instances; a control derived from the claim has to normalise incidental forms
+away before deciding coverage. The structural-recursion gate got this wrong three
+times in a row, each time enforcing a policy narrower than the one it stated:
+
+    it looked for                     so it missed
+    ------------------------------------------------------------------
+    parameters typed Term/Ty          acFlatten([]Term)
+    a child as ONE selector on a      args[i].Args — two steps, through
+      parameter                         an index
+    selectors and indexes             walk(args[1:]) — a slice
+
+Every miss was a different ENCODING of the same structural flow, and every fix
+was the same realisation: `[]Term`, `*Term`, `args[i].Args` and `args[1:]` are
+one relation written four ways. The gate became useful only when its
+representation matched the claim — *any recursive cycle carrying a structural
+descendant* — rather than the four spellings already in mind.
 
 **AND OWNERSHIP MUST BE DEMONSTRATED, NOT DECLARED — or the rule repeats the
 defect one level higher.** A comment saying "this is the single entry point" is
