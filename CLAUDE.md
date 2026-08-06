@@ -455,7 +455,7 @@ missing coverage.
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
   more EXPENSIVE if delayed   (empty)
-  more VALUABLE if delayed    #146, #134, #139/#140, #138 — after more evidence
+  more VALUABLE if delayed    #134, #139/#140, #138 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
   no CLOCK at all             #151, #115, #116, #65, #66 — open, and neither
@@ -551,18 +551,8 @@ the queue:**
 **Feedback/tooling — the window is NOT closing.** Improves confidence in future
 work; nothing depends on it immediately.
 
-  1. **#146** how often reach and exclusion diverge — a MEASUREMENT question,
-     deliberately not a tooling one. **Its falsifier is on the issue and it can
-     WIN**, so read it there before starting, along with the population limit
-     that governs how any number may be reported.
-     **Two standing constraints, because each forecloses an approach that will
-     otherwise look obvious:** the corpus is not a neutral sample, so a result
-     can say "N of 106 in this corpus" and never "X is rare"; and **widening
-     GENERATION is the wrong repair** — read #144 before proposing generator
-     work, because a fixed case budget means a better draw REALLOCATES it rather
-     than adding to it.
-  2. **#134** typed refusal reasons
-  3. **#139 SCOPING THE RE-DERIVATION with #140** (prove-worker delta) — one
+  1. **#134** typed refusal reasons
+  2. **#139 SCOPING THE RE-DERIVATION with #140** (prove-worker delta) — one
      item, deliberately: both are *do not redo work whose answer is already
      determined*, one for re-deriving and one for proving, and neither can be
      judged without the other's answer. Doing them apart means deciding twice
@@ -577,7 +567,7 @@ work; nothing depends on it immediately.
 
 **Research — needs runway, not a slot.**
 
-  4. **#138** ACL2 comparative review. It is a REGISTERED EXPERIMENT with a
+  3. **#138** ACL2 comparative review. It is a REGISTERED EXPERIMENT with a
      falsifier, not a reading task, and its value depends on the reading not
      being rushed: a hurried pass would find transformations everywhere, which
      is the outcome the falsifier exists to prevent. Read the issue for the
@@ -585,7 +575,7 @@ work; nothing depends on it immediately.
 
 **Documentation hygiene.**
 
-  5. **#128** — DEFERRED UNTIL AFTER THE NEXT EXTERNALLY-VISIBLE MILESTONE. It
+  4. **#128** — DEFERRED UNTIL AFTER THE NEXT EXTERNALLY-VISIBLE MILESTONE. It
      has a TRIGGER, not a position. It changes no semantics, unblocks no user,
      and closes no narrowing window — and it is small and easy, which is
      precisely why it would interrupt architectural momentum if it sat in the
@@ -1083,11 +1073,17 @@ and never
 
     "X is rare"
 
-which quantifies over programs the corpus never claimed to represent. The
-guarded instance is live: #146's prevalence question has one witness, and the
-tempting sentence when a number arrives is the second one. Saying which
-population a figure describes is not hedging — it is the difference between a
-result and an extrapolation, and only one of them survives a different corpus.
+which quantifies over programs the corpus never claimed to represent. Saying
+which population a figure describes is not hedging — it is the difference
+between a result and an extrapolation, and only one of them survives a different
+corpus.
+
+**THE DISTINCTION HAS SURVIVED ITS FIRST REAL TEMPTATION, AND THAT IS WHY IT IS
+STATED HERE AS A RULE RATHER THAN A CAUTION.** A prevalence measurement over
+every proven definition in this corpus came back as one definition, which reads
+irresistibly as "this is a rare pathology". The supportable sentence names the
+corpus; the tempting one quantifies over programs nobody sampled. Both are one
+word apart, and only the first is a result.
 
 **AND WHEN THE CLAIM'S UNIVERSE HAS NO NAME, NAMING IT IS THE WORK** — the
 property-shaped instance of *a new abstraction earns its place when it makes a

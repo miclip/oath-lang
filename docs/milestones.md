@@ -643,3 +643,66 @@ Reaching the guard is not the fix — the surviving mutants sit in branches no
 property observes at all, so a better draw REALLOCATES a fixed case budget
 rather than adding to it. This is why #146 is framed as a measurement question
 and not as generator work.
+
+## #146 — reach vs exclusion: the falsifier won, 1 of 106
+
+**The question.** A mutation survivor means generated executions did not
+distinguish the mutant. That is compatible with two different situations —
+REACH (a proven property excludes it; the campaign never drew the distinguishing
+input) and an EXCLUSION GAP (no proven property distinguishes it at all).
+Existence was already settled by `hex-nibble`. Prevalence was open.
+
+**The result, over all 106 proven objects a live name reaches in `codebase/`,
+carrying 209 survivors:**
+
+    proof-refuted                    11    all on hex-nibble
+    every proven property holds     168
+    no verdict                       21    residue — see below
+    mutant not provably total         8
+    waived equivalent                 1
+
+    definitions with >=1 proof-refuted survivor      1 of 106
+    of the 93 HIGHER-SCORING proven definitions      0
+
+**This is the outcome the issue nominated in advance as complete**, arguing to
+leave `--prove` opt-in, cheap when unused, and justified by expressiveness
+rather than frequency. The outcome that would have changed the default reporting
+— a material fraction of the higher-scoring proven definitions also carrying
+proof-refuted survivors — is zero. A registered falsifier winning is the point
+of registering it.
+
+**The claim is bounded by its population and stops there:** *in this corpus,
+reach/exclusion divergence is a property of one definition.* Not "it is rare".
+`examples/` is the exhibit set this project chose, weighted toward provable
+arithmetic and structural recursion.
+
+**The residue is irreducible, not budget-limited.** 21 survivors across five
+definitions reached no verdict, and every one was re-run at the full 400M budget
+and returned no verdict again — so the capped sweep found everything an uncapped
+one would have. Escalating ONLY the no-verdict set is sound rather than
+convenient: "still holds" means each proven property was PROVEN (`unsat`) on the
+mutant, and no budget turns `unsat` into `sat`. Only the `unknown`s could move.
+
+**The bounded mode that made it a measurement.** A per-attempt cap on the SMT
+context, defaulting to 1/1000 of the proof budget:
+
+    hex-nibble verdicts     identical at 400K, 1M, 4M and the full 400M
+    greet-or-guest          2031 s -> 3.28 s
+    the whole 106-def sweep 30 s
+
+Sound at any cap because both terminal verdicts require a positive solver answer
+(`sat` / `unsat`) while exhaustion yields `unknown` — so a cap trades COVERAGE
+for time and can never invert a verdict. Which is exactly why the residue is now
+its own reported line: it is the only disposition a larger budget could move,
+and merging it with the settled ones would report the instrument's reach as the
+specification's silence.
+
+**Two instrument defects, both found during the run, both flattering.** The
+population file lacked a trailing newline, so `while read` dropped its last
+entry — and the completion assertion derived its expected count with `wc -l`,
+which undercounts identically. The check agreed with itself and certified
+COMPLETE over 105 of 106. It is the same shape as the `git diff` / `git diff
+HEAD` note in `CLAUDE.md`: **an instrument guarding a hazard can share the
+hazard's blind spot.** Second, the sweep first recovered dispositions by
+matching prose; they are now machine-readable, because prose-matching had
+already mis-scored this very measurement once.
