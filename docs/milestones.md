@@ -374,8 +374,9 @@ itself, in context before the step that says to read it. The claim's universe is
 *readers with no session state*; the session's own first act was never in it.
 
 **The repair** was to point the instrument at a subject that could occupy that
-universe — a dispatched subagent, which has fresh context, no compaction summary
-and no hook digest — rather than to retire the check. Calibration matters: such a
+universe — a dispatched subagent, believed at the time to have fresh context, no
+compaction summary and no hook digest — rather than to retire the check. That
+belief was half wrong, and run 3 below is where it broke. Calibration matters: such a
 reader shares the author's model and priors, so it cannot witness "this file
 assumes knowledge only a Claude session has", but it can witness prose describing
 work that already shipped. It is not the banned simulated newcomer: that rule
@@ -432,3 +433,213 @@ instrument's results must not be stored where its future subjects read. It is th
 same failure as the coaching leak recorded above — a summary reaching the subject
 through the guidance channel rather than the export, where no preflight can see
 it — arriving this time through a repair written in good faith.
+
+**Run 3 (2026-08-06) — VOID, and it falsified the repair's premise.** Dispatched
+to the GENERAL-PURPOSE target. Its context audit reported, before it read a line:
+the full text of `CLAUDE.md`; the user memory index, naming ten issues and
+carrying an explicit verdict that a `CLAUDE.md` claim was stale; and a git digest
+naming the three most recently touched issues. So two of the three injections the
+repair claimed to have removed were still present, and the third had returned in
+a different costume. **The premise "a dispatched subagent has no hook digest" was
+simply false for that target.**
+
+**Run 4 (2026-08-06) — CONTEXT-CLEAN, and it located the actual variable.** Not
+"valid" without qualification, because there are TWO contamination channels and
+this run was only clean on one. The CONTEXT channel — what the reader is handed
+before opening the file — was clean, which is what run 3 failed. The GUIDANCE
+channel — prior runs' conclusions surviving as paraphrases inside `CLAUDE.md`
+itself — was still leaking, which is what voided run 2.
+
+**What that supports, stated narrowly — and NOT "its findings stand", which was
+the first draft here.** A guidance leak can prime a reader toward an ANALOGOUS
+defect without recording the finding itself, so the absence of the exact text
+does not restore independence. What the run's findings rest on instead is
+whether each was independently CONFIRMED:
+
+    confirmed by measurement in-session    stands on the measurement, not on
+    (the 110/71 line counts, the 130-line   the reader's independence
+    span, the read-truncation boundary,
+    #65/#66 appearing only in the table)
+
+    judgment-shaped ("the single most      PROVISIONAL until a guidance-clean
+    misleading stretch", the competing-     run reproduces it
+    candidate list)
+
+Any AGREEMENT it expressed with an existing repair is worth nothing, for exactly
+the reason run 2 was void. Calling the run simply "valid" would be this
+project's most familiar error — a state reported as its stronger neighbour.
+
+A probe first
+established that a different dispatch target — the read-only search agent —
+receives no `CLAUDE.md`, no memory index, no digest and no issue number anywhere.
+Re-run against it, the context audit came back clean: no issue, no work item, no
+queue, no handoff. **The contamination was never a property of subagents; it is a
+property of the TARGET, and the instrument had never named one.** Step 1 now does.
+
+The reader disclosed two leakage-adjacent facts unprompted rather than suppressing
+them — the MCP tool names reveal the project's subsystem vocabulary, and the
+current date dates the file against a `closed 2026-08-02` line. Neither names an
+issue, so neither voids the run under step 1's own criterion. A witness that
+volunteers its own contamination is behaving correctly.
+
+**What run 4 found.** Finding the entry point was easy and it said so — the
+startup sequence's self-declared uniqueness ("THERE IS ONLY ONE") is what let it
+stop weighing candidates, and the parenthetical demoting `## PHASE 5` worked on
+it specifically. Getting from the entry point to a TASK was hard, for five
+reasons, of which two were structural and measurable:
+
+- **The queue's top-down rule CONTRADICTED ITSELF in two sentences.** "Start from
+  the highest non-empty bucket" and "if it is empty, nothing is forced" point
+  different ways the moment the first bucket empties. The session followed the
+  first and landed on #146 in bucket 2; the reader followed the second, and —
+  reasoning that bucket 2's own gloss ("after more evidence has accumulated")
+  argues against starting it and that every bucket-3 trigger reads unfired —
+  landed on #151 in bucket 4.
+
+  **This was NOT "two defensible picks under a working rule", and recording it
+  that way was the first draft here.** The repaired rule resolves it in the
+  reader's favour: a bucket-2 pick must justify overriding that bucket's stated
+  reason to wait, and the session never had such a justification, while a
+  bucket-4 pick needs none. So the divergence was a real defect in the text, the
+  reader was right, and the session was wrong. Under the repaired rule two
+  readers CAN legitimately choose different bucket-4 items — which is why step 3
+  now compares against what the rule EXCLUDES rather than item-to-item.
+- **The EMPTY bucket carried the most prose in the section** — 130 lines of
+  window-closing retrospective about #145, #147 and #149, every paragraph bolded
+  and urgent, with the sentence that resolves it ("the bucket is empty") at the
+  END. Measured against the 8-line table, prose volume ran inversely to
+  actionability. The reader's phrasing: the single most misleading stretch in the
+  file.
+- The `SKIM RULE` asserted closed-issue write-ups "are not the majority". Counted
+  over the 239 lines following the table: 110 retrospective against 71 open-issue
+  guidance. **False** — and a duplicated fact about the file's own composition,
+  which is the same defect class as a duplicated issue status.
+- `## Roadmap / backlog` held a second enumeration of issue status outside the
+  bucket table, which the file's own rule forbids, plus a paragraph narrating a
+  list that had already been deleted.
+- A default file read stops at line 948, so a reader answering from the first page
+  never reaches `## Working in this repo`, the oracle-mode conformance
+  instruction, or the note that a bare `conformance.sh` is a nine-hour job.
+
+The first four were repaired in the same session by editing `CLAUDE.md`. **The
+fifth was NOT repaired and cannot be from inside the file** — the truncation
+point is a harness property. It was only MITIGATED, by the file getting shorter:
+the sections a first-page reader misses moved up, but they still sit past the
+boundary. Recording it as repaired would be the same overstatement these runs
+exist to catch.
+
+**The rule this run adds, and it generalises past this instrument:** *a subject is
+not clean because it is fresh — only because nothing was injected into it, and
+what gets injected is a property of the harness rather than of the dispatch.*
+Run 3's own audit was the only thing that could have caught it; a run that skips
+question 1 and reads straight to the verdict cannot tell the two apart, because a
+contaminated reader produces a report that looks exactly like a clean one.
+
+## The queue entries retired from CLAUDE.md — #145, #147, #149, #133, #121
+
+These sat in the queue's `more EXPENSIVE if delayed` bucket long after that
+bucket emptied, in the urgent register live work is written in. Their durable
+lessons were hoisted to rules in `CLAUDE.md`; the stories are here.
+
+**#145 — the playground served stale hashes.** The window was stated precisely
+when it was admitted: not that the drift grows, but that it **accrued per
+visitor and did not stop**, `/try` being the front door for the audience most
+likely to test that the hash IS the identity. Serving the right hashes
+discharged exactly that (c7a18be); behavioural conformance for the served kernel
+followed (df442f3). It closed by SPLITTING rather than by finishing — the same
+move #130 made in the same session. What was left, artifact freshness, became
+#148, which is DEPLOYMENT work with no per-visitor clock and so did not inherit
+the bucket.
+
+Its falsifier LOST rather than went unused: #145 asked whether `/try`'s corpus
+might be a deliberate PIN, in which case the repair was a label and not a
+regeneration. The answer was already in the tree — `playground-assets` says
+"Regenerate after any kernel or corpus change" — so the question was settled by
+reading, before any work started.
+
+**#147 — a bound derived for the wrong environment.** `maxEvalDepth` was one
+constant derived as a MEMORY budget: correct natively, meaningless on wasm, where
+the binding constraint is the JS host stack Go's runtime borrows. It is now
+per-target (`eval_depth_native.go`, `eval_depth_wasm.go`), with the wasm value
+deliberately far beneath the lowest measured ceiling because a browser tab's is
+not knowable from node. The general form — a bound derived for one deployment
+environment, silently inherited by a second, with the justifying comment still
+reading correctly — is now a rule in `CLAUDE.md`.
+
+**Its close was PREMATURE, which is why #149 followed.** The depth guard fires on
+the EVALUATOR path; the same crash was reachable through the unguarded PARSER.
+The claim was not discharged — it moved to the door still open. Reading "#147
+shipped" as "this class is closed" is exactly what the witness discipline warns
+about: a regression witness proves the repaired door, not the class.
+
+**#149 — admitted to the expensive bucket by ANALOGY, and measurement took it
+back out.** The admitting argument was exposure: the playground serves this
+kernel to every visitor, so delay lengthens the window. That inherited #147's
+failure mode by analogy, and the analogy is false. Measured: native survives
+500,000 levels of nesting, wasm throws at ~20,000, and the kernel is healthy
+after five consecutive overflows. Nothing persists, so there is no per-visitor
+clock. An item admitted by inheriting a neighbour's failure mode never has a
+clock of its own established, and nothing prompts anyone to establish one later.
+
+What survived the correction is a different defect and a real one: **the parser
+could terminate outside Oath's error channel.** The contract is that malformed or
+excessive input becomes an Oath error; a host exception crossing the boundary is
+the host leaking through the abstraction, whatever it is called. Stating it as
+"throws a JS RangeError" would name TODAY'S WITNESS — the claim has to survive
+Wasmtime, WASI, or an embedder whose exception is named something else or
+nothing at all.
+
+Note which question produced that correction, because "is the parser recursive?"
+would not have: it was *what happens to the visitor AFTER the overflow?* The
+first asks about the code, the second about the claim.
+
+**And the measurement that saved the last claim.** The quadratic in `find
+--equiv` was REPORTED as a consequence of copying the binder context per
+primitive. That mechanism was real and was fixed — and measuring showed it was
+not the dominant cost, because the recursive oracle allocated the same (1243 MB
+against 1224 MB). Repairing it as reported would have left a false claim
+standing: that the gigabytes were an artifact of the rewrite rather than a
+property the algorithm always had. Hence the rule: confirm a reported finding by
+measurement before repairing it.
+
+**#133 — the ADMIT boundaries** (4337bf5, cd50e03). All six discharged, the last
+measured rather than reasoned about: four distinct playground sources
+content-addressed to ONE definition, `accepted`, on the deployed binary. What is
+worth carrying forward is the shape of the miss, not the fix. `CLAUDE.md` said of
+#133 *"what remains is not a task"* on the same day the issue recorded an open
+one — and **step 2 of the startup sequence cannot catch that class**, because the
+status never changed. Only reading the issue against the paragraph does. That is
+the concrete reason the pointer discipline exists: a sentence summarising an
+issue's REMAINING WORK decays silently, while the issue does not.
+
+What remained beyond it is the category move #69 owns, and the reason the
+invariant cannot live in identity today: `Str` has no identity of its own —
+`(data IntStack [] (Empty) (Push Int IntStack))` hashes to exactly `Str`'s hash,
+so a rule attached to `SCons` would give Unicode semantics to an integer stack.
+
+**#121 — three instruments, three blind spots, one seven-line definition**
+(604c546). The broken decoder carrying the CORRECT general property scored
+`tested · passed 200 cases`: the generator could not reach the input that
+falsifies it. Proof caught what testing could not, and mutation scoring still
+needed literal witnesses afterwards.
+
+## #130 and #144 — the two repairs that were measured and NOT made
+
+Retired from `CLAUDE.md`'s #146 entry, which now carries only the constraints
+they impose on future work.
+
+**#130 proposed two instruments; neither was built.** Both were measured as
+MISFIRING on the issue's own flagship instance, and the work that emerged
+instead — survivor adjudication, `oath mutate --prove` — shipped. The leftover
+question (how often reach and exclusion actually diverge) became #146 rather
+than staying under #130's title, because keeping it there would have left title,
+motivation and remaining work describing three different things. That is the
+origin of the rule now in `CLAUDE.md`: when an issue's remaining question is no
+longer the one it was opened to answer, close it or split it.
+
+**#144 established that the OBVIOUS repair is the wrong one.** Widening
+generation moved the corpus by **+2 of 1203** and made three definitions WORSE.
+Reaching the guard is not the fix — the surviving mutants sit in branches no
+property observes at all, so a better draw REALLOCATES a fixed case budget
+rather than adding to it. This is why #146 is framed as a measurement question
+and not as generator work.

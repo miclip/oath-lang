@@ -126,9 +126,28 @@ INSTRUMENT. IT IS THE STARTUP SEQUENCE, AND THERE IS ONLY ONE:**
          3. was that easy or hard? name every competing candidate, anything that
             read as stale, and anything describing already-finished work.
 
-     Question 1 verifies the instrument: an answer naming an issue means the
-     reader was not stateless and the run is VOID. **YOU CANNOT BE THAT READER** —
-     structural, not a discipline problem; see below. Do not act on the answer yet.
+     Question 1 verifies the instrument. **CHECK EACH FORBIDDEN CATEGORY, NOT
+     JUST WHETHER AN ISSUE WAS NAMED:** a work item, task or queue by any
+     description; a memory index or remembered conclusions; a commit digest,
+     branch state or diff; a handoff or compaction summary. **Any of them voids
+     the run**, because a digest saying "recent work on the refusal vocabulary"
+     biases task selection exactly as hard as one saying "#134", and an
+     issue-only test waves it through. A reader whose context merely names the
+     PROJECT's subsystems does not void it — that is domain, not work state, and
+     the distinction is whether the context could tell them what to do next.
+     **YOU CANNOT BE THAT READER** — structural, not a discipline problem; see
+     below. Do not act on the answer yet.
+
+     **THE SUBJECT MUST BE DISPATCHED TO A TARGET THAT DOES NOT INHERIT THIS
+     FILE, THE MEMORY INDEX, OR A COMMIT DIGEST.** Not every dispatch target is
+     stateless: the general-purpose one is handed all three before it reads a
+     line, and is VOID BY CONSTRUCTION — its memory index alone names issues and
+     carries verdicts about this file's staleness. The read-only search target
+     receives none of them. **So question 1 is not a formality to skim past; it
+     is the only thing standing between a contaminated subject and a verdict
+     that looks exactly like a clean one.** Check it before reading questions 2
+     and 3, and re-check it whenever the harness changes what a subagent is
+     given, because that is not under this file's control.
   2. **Check the STATUS of every issue this file names.** Derive the list from
      THIS FILE, so the check cannot miss what the file mentions:
 
@@ -197,21 +216,49 @@ INSTRUMENT. IT IS THE STARTUP SEQUENCE, AND THERE IS ONLY ONE:**
      two disagreements to look for and they indict different things:
 
          file vs `gh`         a status or coverage mismatch — the file is stale
-         reader vs the queue  the reader named something other than what the
-                              queue's top-down rule selects — the file MISLEADS
+         reader vs the queue  the reader landed somewhere the queue's rule
+                              EXCLUDES — the file MISLEADS
 
-     The second is the whole point of step 1 and the easier to discard, because a
-     reader who lands somewhere plausible is easy to wave through. It is not a
-     vote on what to work on: the queue decides that. It is evidence about what
-     this file COMMUNICATES, and a mismatch means the prose, not the reader, is
-     wrong. Skipping either repair discards the measurement and leaves the next
-     session to rediscover it.
-  4. **Then start what the queue's top-down rule selects.** This step exists
-     because "what is first" is otherwise two-valued — the SEQUENCE is first for
-     the session, the QUEUE's item is first for the work — and a sequence that
-     ends without handing off to the work is not finished. (`## PHASE 5` below
-     says READ THIS BEFORE PICKING WORK; it frames the phase, it does not compete
-     for the first slot.)
+     **EXCLUDES, not "differs from".** The rule narrows to a bucket and often
+     forces nothing at all (step 4), so there is frequently no single item to
+     compare against, and two readers can pick different items with the file
+     working perfectly. What indicts the prose is a reader who missed a FORCED
+     item, took a bucket-2 or bucket-3 item without the override the rule
+     demands, or could not apply the rule at all — and also a reader who reports
+     reaching their answer by CONSTRUCTION where the rule should have narrowed
+     it. Comparing item-to-item instead would manufacture a defect on every run.
+
+     This is the whole point of step 1 and the easier of the two to discard,
+     because a reader who lands somewhere plausible is easy to wave through. It
+     is not a vote on what to work on. It is evidence about what this file
+     COMMUNICATES, and a mismatch means the prose, not the reader, is wrong.
+     Skipping either repair discards the measurement and leaves the next session
+     to rediscover it.
+  4. **Then apply the queue's rule — and note that it does not always return an
+     item.** This step exists because "what is first" is otherwise two-valued —
+     the SEQUENCE is first for the session, the QUEUE's item is first for the
+     work — and a sequence that ends without handing off to the work is not
+     finished. (`## PHASE 5` below says READ THIS BEFORE PICKING WORK; it frames
+     the phase, it does not compete for the first slot.)
+
+     **THE RULE NEVER NARROWS TO AN ITEM.** No bucket carries an ordering, so
+     wherever it leaves the session, the session still picks — which is why a
+     reader has to orient rather than transcribe.
+
+     **A NON-EMPTY FIRST BUCKET FORCES THAT BUCKET**: everything in it is due,
+     and the session starts one of them now rather than weighing them on merit.
+     **Otherwise the rule returns "nothing is forced", and that is a COMPLETE
+     ANSWER, not a gap to patch.** All three remaining buckets stay selectable,
+     on different terms: buckets 2 and 3 each state a reason to WAIT, so taking
+     one means overriding its stated reason and saying why now, while bucket 4
+     states no reason at all and needs no justification — which makes it the
+     ordinary home of an unforced choice, **not the mandatory one.**
+
+     **"NOTHING IS FORCED" BINDS THE QUEUE, NOT THE SESSION. THE SESSION STILL
+     PICKS ONE AND STARTS IT** — the sequence is finished only when work has
+     begun, and an unforced queue is the ordinary case, not an exit. The only
+     thing a pick must justify is the one stated above: overriding a bucket 2 or
+     3 reason to wait.
 
 **Step 2 validates MEMBERSHIP but not ASSIGNMENT.** It derives the two facts with
 an external authority — every named issue's state, and that the buckets cover
@@ -267,8 +314,11 @@ outside their own perspective, arriving at its own startup check.
 check.** The CLAIM is *a reader whose only context is this file orients onto the
 right first task*. That universe is readers with no session state; it never
 contained the session's first act, and no amount of starting-fresh puts it there.
-A dispatched subagent IS in it — fresh context, no compaction summary, no hook
-digest — so the instrument is now pointed at one.
+A dispatched subagent CAN be in it — but only some are, and which ones is a
+property of the HARNESS, not of dispatching. **A subagent is not stateless
+because it is fresh; it is stateless only if nothing was injected into it**, and
+the injection is invisible from the dispatching side. Step 1 names the targets
+that qualify; question 1 is what confirms it per run.
 
 **Its own falsifier, restated for the new subject, so it stays held to the
 standard everything else here is:**
@@ -377,18 +427,20 @@ until it exactly matched what had been demonstrated. Continue that.
 
 ### THE QUEUE — one ordering, in four buckets; position is not priority
 
-**SKIM RULE, because most of this section is not work state.** The bucket table
-below is the queue. The prose after it is mostly CLOSED-ISSUE RETROSPECTIVES,
-kept because each carries a lesson that outlived its issue — but a reader looking
-for what to do next should read the table, the entry for the item they pick, and
-then SKIP the closed-issue retrospectives — but **read to the end of the section,
-because the standing instructions after the entries are live and several apply to
-work in progress.** Stated as skip-what, not stop-where: an earlier version said
-"and stop", which sends a reader past the table and out of the section before the
-standing instructions, and a walk-back sentence does not undo an imperative.
-Closed-issue write-ups are kept because each carries a lesson that outlived its
-issue; they are the skippable part, and they are not the majority — most of what
-follows the table is open-issue guidance.
+**SKIM RULE.** The bucket table below is the queue. A reader looking for what to
+do next should read the table and the entry for the item they pick, SKIP any
+closed-issue write-up, and **read to the end of the section, because the
+standing instructions after the entries are live and several apply to work in
+progress.** Skip-what, not stop-where — a reader who stops at the entries never
+reaches the standing instructions.
+
+**A CLOSED ISSUE'S WRITE-UP DOES NOT LIVE HERE. Its durable lesson is hoisted to
+a RULE and its story goes to `docs/milestones.md`.** Retrospectives are written
+in the same urgent register as live work and are indistinguishable from it while
+skimming, so they cost a reader far more than the space they occupy. **And do
+not assert what PROPORTION of this section is retrospective** — that is a fact
+about the file's own composition, it changes with every entry added or retired,
+and a written-down proportion rots exactly like a written-down issue status.
 
 **SETTLED, so that it is not reopened as a gap: candidate-script exposure is
 OUTSIDE §10's conformance surface** — decided, recorded on #139, and reflected in
@@ -418,20 +470,22 @@ with it. Note also TRIAGED, not open: `gh` carries far more open issues than thi
 table holds, and claiming otherwise asserts what step 2's coverage check cannot
 establish. The fourth bucket exists so *named* and *bucketed* are the same set.
 
-**READ THE TABLE TOP-DOWN AND START FROM THE HIGHEST NON-EMPTY BUCKET. If that
-bucket is `more EXPENSIVE if delayed`, its contents are what to start; if it is
-empty, nothing is forced and the choice is deliberate.** That is the queue's
-conclusion stated as a RULE, and the distinction from stating the ANSWER is
-load-bearing rather than stylistic: a named winner ("start #N") would make the
-sequence's step 1 unfalsifiable, because a reader asked what to do first would
-transcribe the sentence instead of orienting, and the context audit cannot catch
-contamination living inside the artefact under test. A draft of this paragraph
-did name the issue and had to be pulled for exactly that.
+**ONLY THE FIRST BUCKET FORCES ANYTHING. If `more EXPENSIVE if delayed` is
+non-empty, its contents are what to start, and that is the whole of the rule. If
+it is empty, NOTHING IS FORCED — and the rest do NOT then become a priority
+order.** Buckets 2 and 3 each state a reason to WAIT, so taking one of those
+means overriding its stated reason and saying why now. **Bucket 4 states no
+reason to wait, so taking one of ITS items needs no justification at all — it is
+the ordinary home of an unforced choice.** Position in the table is not
+priority; it is which CLOCK the item is on.
 
-The rule survives the table changing; the answer would not. Every deferral in
-the entries below is stated LOCALLY, and their sum never is — so a reader who
-takes them one at a time can finish the section having started nothing, which is
-the failure this paragraph exists to prevent.
+That is the queue's conclusion stated as a RULE, and the distinction from
+stating the ANSWER is load-bearing rather than stylistic: a named winner ("start
+#N") would make the sequence's step 1 unfalsifiable, because a reader asked what
+to do first would transcribe the sentence instead of orienting, and the context
+audit cannot catch contamination living inside the artefact under test.
+
+The rule survives the table changing; the answer would not.
 
 **Compiler/runtime — one item, and it is DEBT rather than a feature.** #117/#69
 turns out never to have belonged here: the standing instruction below already
@@ -439,89 +493,10 @@ says it stopped blocking anything when #126 closed and must wait for a real
 consumer to fix its scope. So it has a TRIGGER, not a position, and listing it
 under a closing window contradicted the same file's own instruction.
 
-**#145 IS CLOSED, and its window closed with it.** The window was stated
-precisely when it was added — not that the drift grows, but that it **accrued
-per visitor and did not stop**, `/try` being the front door for the audience
-most likely to test that the hash IS the identity. Serving the right hashes
-discharged exactly that (c7a18be), and behavioural conformance for the served
-kernel followed (df442f3).
-
-**It closed by SPLITTING, not by finishing**, which is the same move #130 made
-in the same session: an issue whose remaining question is no longer the one it
-was opened to answer gets closed or split, never repurposed. What was left —
-artifact freshness — is **#148**, and it is DEPLOYMENT work with no per-visitor
-clock, so it does not inherit this bucket. The measurement that sent it there is
-on the issue: a freshness gate fires on 36% of commits at 15 MB a time, so the
-structural fix is to stop versioning the artifact rather than to watch it.
-**And the behavioural gate must never be read as discharging #148** — it is
-green over a stale-but-agreeing binary by construction.
-
-**#147 SHIPPED; ITS CLASS DID NOT CLOSE WITH IT (#149) — but the successor turned
-out NOT to belong in this bucket.** All three facts in one place deliberately:
-they were once two paragraphs fifteen lines apart with only the retirement
-formatted as queue state, so a skimming reader met the retirement and stopped
-before the retraction. Ordering is the fix, not a third paragraph explaining the
-hazard.
-
-The durable part of #147 is not the fix but WHY the bound was wrong. `maxEvalDepth` was
-one constant derived as a MEMORY budget — correct natively, and meaningless on
-wasm, where the binding constraint is the JS HOST STACK Go's runtime borrows.
-It is now per-target (`eval_depth_native.go`, `eval_depth_wasm.go`), and the
-wasm value is deliberately far beneath the lowest measured ceiling because a
-browser tab's is not knowable from node. **The general form: a bound derived for
-one deployment environment, silently inherited by a second, with the justifying
-comment still reading correctly.** Adding a target is the moment to re-derive
-every constant whose comment names an environment.
-
-**Why the succession happened:** #147's close was PREMATURE. Its depth guard
-fires on the EVALUATOR path, and the same crash is reachable through the PARSER,
-which was unguarded. The claim was not discharged; it moved to the door still
-open. Reading "#147 shipped" as "this class is closed" is exactly the mistake the
-witness discipline records as a principle — a regression witness proves the
-repaired door, not the class.
-
-**#149 WAS PUT IN THE EXPENSIVE-IF-DELAYED BUCKET AND MEASUREMENT TOOK IT BACK
-OUT.** The admitting argument was exposure: the playground serves this kernel to
-every visitor, so delay lengthens the window. That rested on #147's failure mode
-being inherited by analogy — and it is not. Measured: native survives 500,000
-levels of nesting, wasm throws at ~20,000, and the kernel is healthy after five
-consecutive overflows. Nothing persists, so there is no per-visitor clock and
-`#145`'s analogy does not transfer.
-
-**What survives the correction is a different defect, and a real one: THE PARSER
-CAN TERMINATE OUTSIDE OATH'S ERROR CHANNEL.** The contract is that malformed or
-excessive input becomes an Oath error; a host exception crossing the boundary is
-the host leaking through the abstraction, whatever its name. State it at the
-boundary and not as "throws a JS RangeError" — that names TODAY'S WITNESS, and
-the claim has to survive Wasmtime, WASI, or an embedder whose exception is called
-something else or nothing at all. Corpus-versus-phenomenon, applied to a runtime.
-
-**And note which question produced the correction**, because "is the parser
-recursive?" would not have: it was *what happens to the visitor AFTER the
-overflow?* The first question asks about the code, the second about the claim.
-
-**#149 IS CLOSED. Its successor is #151, and the split is the point** — read the
-issue rather than re-deriving it. `oathCheck` is stack-safe end to end on the
-served artifact; what remains is that `find --equiv` is QUADRATIC on deeply
-nested commutative chains, which predates the whole repair (the recursive
-normalizer allocates 1243 MB where the iterative one allocates 1224 MB). A
-different failure mode, repair and acceptance criterion, so it does not hold the
-stack-safety claim open.
-
-**FOUR RESULTS FROM IT ARE ALREADY RECORDED ABOVE AS PRINCIPLES** — a linear
-spine is work not nesting; the accepted structural domain is backend-independent;
-a resource budget cannot defend the code that runs before it can inspect its
-input; and derive-the-universe-then-own-it. The repairs were the smaller half.
-
-**AND THE MEASUREMENT THAT SAVED THE LAST CLAIM IS WORTH THE ROOM.** The
-quadratic was REPORTED as a consequence of copying the binder context per
-primitive. That mechanism was real and was fixed — and measuring showed it was
-not the dominant cost, because the recursive oracle allocated the same. Repairing
-it as reported would have left a false claim standing: that the gigabytes were an
-artifact of the rewrite rather than a property the algorithm always had.
-**Confirm a reported finding by measurement before repairing it**, because a
-correct repair attached to a wrong diagnosis is indistinguishable from a fix
-until someone re-measures.
+**#151 is a COMPLEXITY obligation, not a safety one** — that classification is
+the whole of the elaboration, because it is what decides whether the item is
+urgent and it is the one thing about the issue that does not move. Everything
+else about it is on the issue; read it there.
 
 **#148 IS BLOCKED ON OPERATOR PROVISIONING, NOT ON ENGINEERING**, and the
 distinction decides what a session should do with it: nothing. Its design is
@@ -531,92 +506,61 @@ stubbed. What remains needs a bucket, a public-read-no-list policy and a
 create-only WIF binding to exist; writing the workflow first would ship an
 "implemented but unproven" surface, which is the exact class #148 exists to
 remove. **Do not treat "the design is decided" as "the work is available."**
-The provisioning criteria and the one-shot end-to-end proof that follows them
-are on the issue.
+**And NO behavioural gate discharges it** — such a gate is green over a
+stale-but-agreeing binary by construction. The provisioning criteria and the
+one-shot end-to-end proof that follows them are on the issue.
 
-**Retiring an item from this bucket is the same act as admitting one**, and the
-easier one to skip: a stated window that is not re-read when the work lands
-leaves the queue looking urgent about something already done. That is how the
-bucket loses its meaning — not by admitting a weak item, but by keeping a spent
-one.
+**#69 CARRIES A CATEGORY MOVE, AND IT MUST NOT BE RE-FILED AS "ADD A CHECK".**
+`Str`'s scalar range is enforced today by HOST DISCIPLINE at the boundaries
+octets cross; refinement types would move it into ARTIFACT IDENTITY. Those are
+different CLASSES of guarantee, not different amounts of one. SPEC §3 settles
+what a kernel does here; read it there.
 
-Two drafts of the entry that used to sit here were wrong in two directions
-before the third: one said the stale hashes "exist nowhere in the real store"
-(they all do — the store is immutable, so a repoint supersedes a BINDING and
-deletes nothing), and quoted a commit distance already off by a factor of two.
-Both were caught by review; one survived my own re-check, because the re-check
-had a broken path join and returned the answer I expected. **A description here
-must be re-verified every time anything lands. A pointer must not.**
+**ADMITTING TO THE EXPENSIVE-IF-DELAYED BUCKET AND RETIRING FROM IT ARE THE SAME
+ACT — and retiring is the one that gets skipped.** A stated window that is not
+re-read when the work lands leaves the queue looking urgent about something
+already done, and that is how the bucket loses its meaning: not by admitting a
+weak item, but by keeping a spent one. To admit one, say what makes it cheaper
+NOW than later and what will make it stop belonging — **and if the argument is
+an ANALOGY to another item, MEASURE the analogy first**, because an item
+admitted by inheriting a neighbour's failure mode never has a clock of its own,
+and nothing prompts anyone to establish one later. It just sits there looking
+urgent.
 
-**The bucket is empty, and it emptied TWICE for different reasons — once because
-the work shipped (#147), once because the SEVERITY CLAIM was measured and
-withdrawn (#149).** The second is the one this discipline was weakest at. An item
-admitted by inheriting a neighbour's failure mode has never had its own clock
-established, and nothing prompts anyone to establish one later; it simply sits
-there looking urgent. So: if the next piece of work seems to belong here, say
-what makes it cheaper NOW than later, say what will make it stop belonging —
-and if the argument is an ANALOGY to another item, MEASURE the analogy before
-admitting it, because that is the step #149 skipped.
+**Three rules the retired entries paid for, kept because each generalises past
+the queue:**
 
-That falsifier, for the record, LOST rather than went unused: #145 asked whether
-`/try`'s corpus might be a deliberate PIN, in which case the repair would have
-been a label rather than a regeneration. The answer was already in the tree —
-`playground-assets` says "Regenerate after any kernel or corpus change" — so the
-question was settled by reading before any work started. Do not reopen it.
+- **A DESCRIPTION here must be re-verified every time anything lands; a POINTER
+  must not.** That is why an entry cites an issue instead of summarising it, and
+  it is the whole reason the pointer discipline exists.
+- **WHEN AN ISSUE'S REMAINING QUESTION IS NO LONGER THE ONE IT WAS OPENED TO
+  ANSWER, CLOSE IT OR SPLIT IT — never repurpose it.** Preserving issue IDENTITY
+  is what keeps a backlog readable; history accumulating under an old title is
+  what does not, because title, motivation and remaining work then describe
+  three different things.
+- **CONFIRM A REPORTED FINDING BY MEASUREMENT BEFORE REPAIRING IT.** A correct
+  repair attached to a wrong diagnosis is indistinguishable from a fix until
+  someone re-measures.
+- **A BOUND DERIVED FOR ONE DEPLOYMENT ENVIRONMENT IS NOT INHERITED BY A
+  SECOND**, and the justifying comment goes on reading correctly after the
+  inheritance — which is what makes it invisible. Adding a target is the moment
+  to re-derive every constant whose comment names an environment.
 
-  **#133 IS CLOSED** (4337bf5, cd50e03) — all six ADMIT boundaries discharged,
-  the last one measured rather than reasoned about: four distinct playground
-  sources content-addressed to ONE definition, `accepted`, on the deployed
-  binary. What is worth carrying forward is not the fix but the shape of the
-  miss. This file said of #133 *"what remains is not a task"* on the same day
-  the issue recorded an open one, and **step 2 cannot catch that class** — the
-  status never changed; only reading the issue against the paragraph does.
-  Prefer a POINTER for exactly this reason: a sentence summarising an issue's
-  REMAINING WORK decays silently, while the issue does not.
-
-  What remained BEYOND that is a CATEGORY MOVE that
-  #69 already owns: `Str`'s scalar range is enforced today by HOST DISCIPLINE at
-  the boundaries octets cross, and refinement types would move it into ARTIFACT
-  IDENTITY. Those are different classes of guarantee, not different amounts of
-  one — and the reason the invariant cannot live in identity now is that `Str`
-  has none of its own: `(data IntStack [] (Empty) (Push Int IntStack))` hashes to
-  exactly `Str`'s hash, so a rule attached to `SCons` would give Unicode
-  semantics to an integer stack. Do NOT re-file this as "add a check at
-  construction" — SPEC §3 settles what a kernel does here; read it there.
-
-  **#121 is CLOSED** (604c546) and its numbering is gone rather than struck
-  through, because a queue that carries its own history is the thing step 2 of
-  the startup sequence keeps catching. What is worth carrying forward is not the
-  fix but one measurement it produced: the broken decoder carrying the CORRECT
-  general property scored `tested · passed 200 cases`. The generator could not
-  reach the input that falsifies it. Proof caught what testing could not, and
-  mutation scoring still needed literal witnesses afterwards — three instruments,
-  three different blind spots, on one seven-line definition.
+**The retired entries are in `docs/milestones.md`.**
 
 **Feedback/tooling — the window is NOT closing.** Improves confidence in future
 work; nothing depends on it immediately.
 
   1. **#146** how often reach and exclusion diverge — a MEASUREMENT question,
-     deliberately not a tooling one, and its numbering is new because **#130 is
-     CLOSED** rather than repurposed. #130 proposed two instruments; neither was
-     built, both were measured as misfiring on its own flagship instance, and
-     the work that emerged instead (survivor adjudication) shipped. Keeping the
-     leftover question under that title would have recreated the exact queue
-     pathology this file exists to prevent — title, motivation and remaining
-     work describing three different things. **When an issue's remaining
-     question is no longer the one it was opened to answer, close it or split
-     it.** Preserving issue IDENTITY is what keeps a backlog readable; history
-     accumulating under an old title is what does not.
-     **The falsifier is on #146 and it can win: 1 of 106 would be a complete
-     result**, arguing to leave `--prove` exactly as it is. Read the population
-     limit there before reporting any number — the corpus is not a neutral
-     sample, so it can say "N of 106 in this corpus" and never "X is rare".
-     **And one standing result that is NOT superseded: the obvious repair is
-     the wrong one. #144 is CLOSED because widening generation moved the corpus
-     +2 of 1203 and made three definitions WORSE.** Reaching the guard is not
-     the fix — the surviving mutants are in branches no property observes at
-     all. Read #144 before proposing generator work; a fixed case budget means
-     a better draw REALLOCATES it rather than adding to it.
+     deliberately not a tooling one. **Its falsifier is on the issue and it can
+     WIN**, so read it there before starting, along with the population limit
+     that governs how any number may be reported.
+     **Two standing constraints, because each forecloses an approach that will
+     otherwise look obvious:** the corpus is not a neutral sample, so a result
+     can say "N of 106 in this corpus" and never "X is rare"; and **widening
+     GENERATION is the wrong repair** — read #144 before proposing generator
+     work, because a fixed case budget means a better draw REALLOCATES it rather
+     than adding to it.
   2. **#134** typed refusal reasons
   3. **#139 SCOPING THE RE-DERIVATION with #140** (prove-worker delta) — one
      item, deliberately: both are *do not redo work whose answer is already
@@ -1408,25 +1352,15 @@ THE MOMENT IT HAPPENED? (DESIGN.md, four categories)
 
 ## Roadmap / backlog
 
-GitHub issues on miclip/oath-lang. Closed as of 2026-07: team store & policy,
-conformance + CI, O1 identity, prover fixpoint, stateful worlds, #14 (the live
-registry above), #114 (the compiler boundary), #126
-(required values), #118 (typed Str lowering). **#115 is still OPEN** — the LLVM
-backend landed and is described above, but the issue is the wider #13b (typed
-IR, monomorphisation, MLIR), and a shipped subset is not a closed issue. It was
-listed here as closed until the startup check compared this line against `gh`.
-
-**THE LIST OF OPEN RESEARCH PROJECTS THAT USED TO SIT HERE IS GONE — read the
-queue's bucket table instead.** It named four issues with one-line descriptions,
-outside any bucket, under the heading "open research projects, each its own
-session", which reads as an invitation to start one. Two failures at once: a
-second enumeration of work competing with the queue, and DESCRIPTIONS where the
-pointer rule demands pointers. Relabelling it a glossary was tried and does not
-help — a reader still meets numbered open issues outside the table, and the
-descriptions still need re-verifying on every landing.
+GitHub issues on miclip/oath-lang. **The queue's bucket table is the only place
+this file introduces an issue as work, and `gh` is the only authority on any
+issue's STATUS — never restate either here.** A roll-call of what is closed, or
+of open projects with one-line descriptions, is a second enumeration competing
+with the queue; both have sat here before, and both rotted.
 
 Read closed issues + commit messages for the design reasoning;
-`docs/milestones.md` for what each milestone established.
+`docs/milestones.md` for what each milestone established — including where a
+milestone shipped a SUBSET of an issue that remains open.
 
 ## Working in this repo
 
