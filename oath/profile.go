@@ -180,6 +180,13 @@ func countCanonicalNodes(d *Def, limit int) (n int, ok bool) {
 	return n, true
 }
 
+// admitTerm admits a bare Term — `eval` builds one rather than a Def. It counts
+// the term ALONE: wrapping it in a synthetic Def spends budget on a type the
+// caller never wrote, which moves the boundary the profile documents.
+func admitTerm(t *Term) error {
+	return admitDef(&Def{K: "func", Body: t})
+}
+
 // admitDef is the ADMISSION BOUNDARY. Every path that constructs a Def from
 // external input must pass through it — elaboration and decoding today, and
 // anything added later. It is one function rather than a check at each call

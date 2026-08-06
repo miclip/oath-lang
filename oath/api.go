@@ -653,7 +653,13 @@ func apiEval(st *Store, src string) (string, error) {
 	}
 	// `eval` builds a bare Term rather than a Def, so it needs admission of its
 	// own — the same budget, applied to the same kind of structure.
-	if err := admitDef(&Def{K: "func", Ty: tInt(), Body: term}); err != nil {
+	//
+	// NO SYNTHETIC TYPE. An earlier version wrapped the term in
+	// Def{Ty: tInt(), Body: term}, and that tInt() counted as a node, making
+	// eval's effective limit 65,535 against a profile documented as exactly
+	// 65,536. A budget stated as an exact boundary has to be exact at the
+	// boundary, or the number in the documentation is not the number enforced.
+	if err := admitTerm(term); err != nil {
 		return "", err
 	}
 	// The explicit machine (#149), not the recursive checker. NOTE the narrow

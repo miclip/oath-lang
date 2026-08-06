@@ -227,3 +227,24 @@ func TestGuardsAreDistinguished(t *testing.T) {
 		t.Errorf("a 5,000-rune literal is one syntax node and must parse, got %v", err)
 	}
 }
+
+// TestEvalBoundaryIsExact. `eval` admits a bare Term, and the profile documents
+// its limit as EXACTLY maxCanonicalNodes. An earlier version wrapped the term in
+// Def{Ty: tInt(), Body: term}, so the synthetic type spent one node and eval's
+// real limit was 65,535 — a documented boundary that was off by one.
+//
+// Found by external review of a fix written during external review, which is
+// where confidence is highest and scrutiny lowest.
+func TestEvalBoundaryIsExact(t *testing.T) {
+	// linearSpine(n) is exactly n nodes, so these are the boundary itself.
+	if err := admitTerm(linearSpine(maxCanonicalNodes)); err != nil {
+		t.Errorf("a term of exactly %d nodes must be ADMITTED, got %v", maxCanonicalNodes, err)
+	}
+	if err := admitTerm(linearSpine(maxCanonicalNodes + 1)); err == nil {
+		t.Errorf("a term of %d nodes must be REFUSED", maxCanonicalNodes+1)
+	}
+	// And the Def boundary is unchanged, so the two agree on the same number.
+	if err := admitDef(defWithNodes(maxCanonicalNodes)); err != nil {
+		t.Errorf("the Def boundary moved: %v", err)
+	}
+}
