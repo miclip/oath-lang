@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math"
 	"math/big"
 	"runtime"
@@ -500,4 +501,214 @@ func TestDecoderAcceptsWideStructuresAtTheProfileBoundary(t *testing.T) {
 				d.nodes, nodes)
 		}
 	}
+}
+
+// TestTypeDecoderIsIterativeAndExact covers dec.ty, the LAST pre-admission
+// recursion, with the same two independent obligations dec.term needed —
+// neither of which the other can stand in for:
+//
+//	EXACT DOMAIN PARITY      decoding accepts precisely what admitDef accepts
+//	REFUSAL BEFORE ALLOCATION a declared length is rejected before make()
+//
+// Hostile depth here needs genuinely nested BYTES: a type carries no
+// linear-spine sugar, which is why this exposure was narrower than dec.term's
+// and repaired second.
+func TestTypeDecoderIsIterativeAndExact(t *testing.T) {
+	// DEPTH: a nested arrow far past any host stack must decode, not fault.
+	nest := func(n int) *Ty {
+		t := tInt()
+		for i := 0; i < n; i++ {
+			t = tFun(tInt(), t)
+		}
+		return t
+	}
+	for _, n := range []int{1, 100, 10000} {
+		e := &enc{}
+		e.ty(nest(n))
+		d := &dec{b: e.b}
+		got, err := d.ty()
+		if err != nil {
+			t.Fatalf("a %d-deep function type must decode, got %v", n, err)
+		}
+		// Re-encoding must reproduce the bytes exactly.
+		e2 := &enc{}
+		e2.ty(got)
+		if !bytes.Equal(e2.b, e.b) {
+			t.Fatalf("a %d-deep type did not round-trip", n)
+		}
+	}
+
+	// WIDTH, and PARITY with admission: the same structure must count the same.
+	wide := func(n int) *Ty {
+		args := make([]Ty, n)
+		for i := range args {
+			args[i] = *tInt()
+		}
+		return &Ty{K: "rec", Args: args}
+	}
+	for _, n := range []int{1, 100, 32768} {
+		ty := wide(n)
+		nodes, ok := countCanonicalNodes(&Def{K: "func", Ty: ty}, maxCanonicalNodes)
+		if !ok {
+			t.Fatalf("setup: a %d-argument rec type is not inside the profile", n)
+		}
+		e := &enc{}
+		e.ty(ty)
+		d := &dec{b: e.b}
+		if _, err := d.ty(); err != nil {
+			t.Errorf("a %d-argument rec type is %d nodes and inside the profile, but "+
+				"decoding refused it: %v", n, nodes, err)
+			continue
+		}
+		if d.nodes != nodes {
+			t.Errorf("type decoder counted %d nodes for a structure admitDef counts as %d",
+				d.nodes, nodes)
+		}
+	}
+
+	// REFUSAL BEFORE ALLOCATION: a declared length far past the profile, with
+	// no element bytes following it.
+	e := &enc{}
+	e.u8(tagTyRec)
+	e.u32(uint32(1 << 23))
+	d := &dec{b: e.b}
+	_, err := d.ty()
+	var rl *resourceLimitErr
+	if !errors.As(err, &rl) {
+		t.Fatalf("a type header declaring 8M arguments must be refused as a resource "+
+			"limit before allocation, got %v", err)
+	}
+
+	// OVERSIZED DEPTH is refused as a resource limit, not as a fault.
+	deep := &enc{}
+	deep.ty(nest(maxCanonicalNodes))
+	dd := &dec{b: deep.b}
+	if _, err := dd.ty(); !errors.As(err, &rl) {
+		t.Fatalf("an oversized type must be refused as a resource limit, got %v", err)
+	}
+	if dd.pos >= len(deep.b) {
+		t.Error("the type decoder consumed every byte before refusing")
+	}
+}
+
+// encTyRecursive is the type encoder EXACTLY as it stood before the iterative
+// rewrite, kept as the oracle. enc.ty is identity-critical for the same reason
+// enc.term is, so the differential compares BYTES.
+func encTyRecursive(e *enc, t *Ty) {
+	switch t.K {
+	case "int":
+		e.u8(tagTyInt)
+	case "bool":
+		e.u8(tagTyBool)
+	case "rat":
+		e.u8(tagTyRat)
+	case "float":
+		e.u8(tagTyFloat)
+	case "var":
+		e.u8(tagTyVar)
+		e.u32(uint32(t.Var))
+	case "fun":
+		e.u8(tagTyFun)
+		encTyRecursive(e, t.A)
+		encTyRecursive(e, t.B)
+	case "data":
+		e.u8(tagTyData)
+		e.hash(t.Hash)
+		e.u32(uint32(len(t.Args)))
+		for i := range t.Args {
+			encTyRecursive(e, &t.Args[i])
+		}
+	case "rec":
+		e.u8(tagTyRec)
+		e.u32(uint32(len(t.Args)))
+		for i := range t.Args {
+			encTyRecursive(e, &t.Args[i])
+		}
+	case "record":
+		e.u8(tagTyRecord)
+		e.u32(uint32(len(t.Names)))
+		for i, n := range t.Names {
+			e.str(n)
+			encTyRecursive(e, &t.Args[i])
+		}
+	default:
+		panic("encode: unknown Ty kind " + t.K)
+	}
+}
+
+// TestTypeEncoderBytesMatchOracle covers enc.ty over the corpus and over the
+// shapes that motivated the rewrite.
+//
+// The claim that made this look unnecessary was WRONG and self-caught: enc.ty
+// was labelled BOUNDED on the grounds that Ty depth is capped at
+// maxSyntaxNesting — but that cap belongs to the READER, and a DECODED def never
+// passed it. hashDef runs on every stored object including bundle imports, so a
+// structure the profile ADMITS overflowed while being hashed. Reproduced under a
+// 1MB stack limit before the fix.
+func TestTypeEncoderBytesMatchOracle(t *testing.T) {
+	st, err := OpenStore("../codebase")
+	if err != nil {
+		t.Fatalf("could not open the corpus: %v", err)
+	}
+	compare := func(name string, ty *Ty) {
+		t.Helper()
+		a, b := &enc{}, &enc{}
+		a.ty(ty)
+		encTyRecursive(b, ty)
+		if !bytes.Equal(a.b, b.b) {
+			t.Errorf("%s: type bytes MOVED (%d vs %d)", name, len(a.b), len(b.b))
+		}
+	}
+
+	seen, checked := map[string]bool{}, 0
+	for name, h := range st.Names() {
+		if seen[h] {
+			continue
+		}
+		seen[h] = true
+		d, err := st.GetDef(h)
+		if err != nil {
+			continue
+		}
+		if d.Ty != nil {
+			compare(name, d.Ty)
+			checked++
+		}
+		for ci, ctor := range d.Ctors {
+			for i := range ctor {
+				compare(fmt.Sprintf("%s ctor %d field %d", name, ci, i), &ctor[i])
+				checked++
+			}
+		}
+	}
+	if checked < 100 {
+		t.Fatalf("only %d types compared; the corpus did not load", checked)
+	}
+
+	realHash, _, _ := st.FindCtor("Cons")
+	nest := func(n int) *Ty {
+		x := tInt()
+		for i := 0; i < n; i++ {
+			x = tFun(tInt(), x)
+		}
+		return x
+	}
+	wideRec := &Ty{K: "record"}
+	for i := 0; i < 300; i++ {
+		wideRec.Names = append(wideRec.Names, fmt.Sprintf("f%03d", i))
+		wideRec.Args = append(wideRec.Args, *tInt())
+	}
+	for name, ty := range map[string]*Ty{
+		"int": tInt(), "bool": tBool(), "rat": tRat(), "float": tFloat(),
+		"var": tVar(3), "fun": tFun(tInt(), tBool()),
+		"data":       {K: "data", Hash: realHash, Args: []Ty{*tInt()}},
+		"rec":        {K: "rec", Args: []Ty{*tInt(), *tBool()}},
+		"record":     wideRec,
+		"empty-rec":  {K: "rec"},
+		"nest-1000":  nest(1000),
+		"nest-10000": nest(10000),
+	} {
+		compare(name, ty)
+	}
+	t.Logf("iterative type encoder is byte-identical on %d corpus types and 12 shapes", checked)
 }

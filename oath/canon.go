@@ -349,40 +349,74 @@ func (e *enc) hash(h string) {
 	e.b = append(e.b, raw...)
 }
 
-func (e *enc) ty(t *Ty) {
-	switch t.K {
-	case "int":
-		e.u8(tagTyInt)
-	case "bool":
-		e.u8(tagTyBool)
-	case "rat":
-		e.u8(tagTyRat)
-	case "float":
-		e.u8(tagTyFloat)
-	case "var":
-		e.u8(tagTyVar)
-		e.u32(uint32(t.Var))
-	case "fun":
-		e.u8(tagTyFun)
-		e.ty(t.A)
-		e.ty(t.B)
-	case "data":
-		e.u8(tagTyData)
-		e.hash(t.Hash)
-		e.tys(t.Args)
-	case "rec":
-		e.u8(tagTyRec)
-		e.tys(t.Args)
-	case "record":
-		e.u8(tagTyRecord)
-		e.u32(uint32(len(t.Names)))
-		for i, n := range t.Names {
-			e.str(n)
-			e.ty(&t.Args[i])
+// ty emits a type's canonical bytes ITERATIVELY (#149).
+//
+// The claim that made this look safe was WRONG, and self-caught while testing
+// dec.ty: Ty depth is capped at maxSyntaxNesting only for ELABORATED defs, and a
+// DECODED def never passed the reader. hashDef runs on every stored object,
+// including bundle imports — so a structure the profile ADMITS (65,536 nodes, all
+// of them nested arrows) overflowed the host stack while being hashed.
+// Reproduced under a 1MB stack limit before this change.
+//
+// The lesson is the one this repo keeps relearning: a bound cited for one path
+// does not transfer to another that reaches the same code by a different route.
+func (e *enc) ty(root *Ty) {
+	stack := []encTyItem{{ty: root}}
+	for len(stack) > 0 {
+		it := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if it.name != nil {
+			e.str(*it.name)
+			continue
 		}
-	default:
-		panic("encode: unknown Ty kind " + t.K)
+		t := it.ty
+		switch t.K {
+		case "int":
+			e.u8(tagTyInt)
+		case "bool":
+			e.u8(tagTyBool)
+		case "rat":
+			e.u8(tagTyRat)
+		case "float":
+			e.u8(tagTyFloat)
+		case "var":
+			e.u8(tagTyVar)
+			e.u32(uint32(t.Var))
+		case "fun":
+			e.u8(tagTyFun)
+			stack = append(stack, encTyItem{ty: t.B}, encTyItem{ty: t.A})
+		case "data":
+			e.u8(tagTyData)
+			e.hash(t.Hash)
+			e.u32(uint32(len(t.Args)))
+			for i := len(t.Args) - 1; i >= 0; i-- {
+				stack = append(stack, encTyItem{ty: &t.Args[i]})
+			}
+		case "rec":
+			e.u8(tagTyRec)
+			e.u32(uint32(len(t.Args)))
+			for i := len(t.Args) - 1; i >= 0; i-- {
+				stack = append(stack, encTyItem{ty: &t.Args[i]})
+			}
+		case "record":
+			e.u8(tagTyRecord)
+			e.u32(uint32(len(t.Names)))
+			for i := len(t.Names) - 1; i >= 0; i-- {
+				stack = append(stack, encTyItem{ty: &t.Args[i]})
+				n := t.Names[i]
+				stack = append(stack, encTyItem{name: &n})
+			}
+		default:
+			panic("encode: unknown Ty kind " + t.K)
+		}
 	}
+}
+
+// encTyItem is one pending type emission: a type, or a field name that must
+// appear before its type.
+type encTyItem struct {
+	ty   *Ty
+	name *string
 }
 
 func (e *enc) tys(ts []Ty) {
@@ -708,76 +742,120 @@ func (d *dec) hash() (string, error) {
 	return h, nil
 }
 
+// decTyTask mirrors decTask for types: a destination to write into, or a
+// record entry whose NAME is read before its type.
+type decTyTask struct {
+	kind byte // 't' decode a type into dst | 'r' record entry
+	dst  *Ty
+	node *Ty
+	idx  int
+}
+
+// ty decodes one type ITERATIVELY, charging nodes as it builds (#149).
+//
+// This was the LAST pre-admission recursion. dec.term was repaired first because
+// its exposure is cheaper to reach — `Str` makes a 5,000-rune literal a
+// 5,000-deep spine from flat source — but a type carries no such sugar, so
+// hostile depth here needs genuinely nested BYTES. Narrower, equally
+// pre-admission: the reader never saw these bytes, so nothing upstream bounds
+// them, and a budget checked after construction cannot protect the construction.
+//
+// tys() stays a loop: it calls ty() once per element, and each call handles its
+// own nesting internally, so depth does not accumulate across a list.
 func (d *dec) ty() (*Ty, error) {
-	tag, err := d.u8()
-	if err != nil {
-		return nil, err
-	}
-	switch tag {
-	case tagTyInt:
-		return tInt(), nil
-	case tagTyRat:
-		return tRat(), nil
-	case tagTyFloat:
-		return tFloat(), nil
-	case tagTyBool:
-		return tBool(), nil
-	case tagTyVar:
-		v, err := d.u32()
-		if err != nil {
-			return nil, err
-		}
-		return tVar(v), nil
-	case tagTyFun:
-		a, err := d.ty()
-		if err != nil {
-			return nil, err
-		}
-		b, err := d.ty()
-		if err != nil {
-			return nil, err
-		}
-		return tFun(a, b), nil
-	case tagTyData:
-		h, err := d.hash()
-		if err != nil {
-			return nil, err
-		}
-		args, err := d.tys()
-		if err != nil {
-			return nil, err
-		}
-		return tDataTy(h, args), nil
-	case tagTyRec:
-		args, err := d.tys()
-		if err != nil {
-			return nil, err
-		}
-		return tRec(args), nil
-	case tagTyRecord:
-		n, err := d.u32()
-		if err != nil {
-			return nil, err
-		}
-		out := &Ty{K: "record"}
-		for i := 0; i < n; i++ {
+	root := &Ty{}
+	stack := []decTyTask{{kind: 't', dst: root}}
+	for len(stack) > 0 {
+		task := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		push := func(t decTyTask) { stack = append(stack, t) }
+
+		if task.kind == 'r' {
 			name, err := d.str()
 			if err != nil {
 				return nil, err
 			}
-			if i > 0 && name <= out.Names[i-1] {
-				return nil, d.fail("record fields not strictly ascending: %q after %q", name, out.Names[i-1])
+			if task.idx > 0 && name <= task.node.Names[task.idx-1] {
+				return nil, d.fail("record fields not strictly ascending: %q after %q",
+					name, task.node.Names[task.idx-1])
 			}
-			t, err := d.ty()
+			task.node.Names[task.idx] = name
+			push(decTyTask{kind: 't', dst: &task.node.Args[task.idx]})
+			continue
+		}
+
+		dst := task.dst
+		if err := d.countNodes(1); err != nil {
+			return nil, err
+		}
+		tag, err := d.u8()
+		if err != nil {
+			return nil, err
+		}
+		switch tag {
+		case tagTyInt:
+			*dst = Ty{K: "int"}
+		case tagTyRat:
+			*dst = Ty{K: "rat"}
+		case tagTyFloat:
+			*dst = Ty{K: "float"}
+		case tagTyBool:
+			*dst = Ty{K: "bool"}
+		case tagTyVar:
+			v, err := d.u32()
 			if err != nil {
 				return nil, err
 			}
-			out.Names = append(out.Names, name)
-			out.Args = append(out.Args, *t)
+			*dst = Ty{K: "var", Var: v}
+		case tagTyFun:
+			*dst = Ty{K: "fun", A: &Ty{}, B: &Ty{}}
+			push(decTyTask{kind: 't', dst: dst.B})
+			push(decTyTask{kind: 't', dst: dst.A})
+		case tagTyData:
+			h, err := d.hash()
+			if err != nil {
+				return nil, err
+			}
+			n, err := d.u32()
+			if err != nil {
+				return nil, err
+			}
+			if err := d.reserveNodes(n); err != nil {
+				return nil, err
+			}
+			*dst = Ty{K: "data", Hash: h, Args: make([]Ty, n)}
+			for i := n - 1; i >= 0; i-- {
+				push(decTyTask{kind: 't', dst: &dst.Args[i]})
+			}
+		case tagTyRec:
+			n, err := d.u32()
+			if err != nil {
+				return nil, err
+			}
+			if err := d.reserveNodes(n); err != nil {
+				return nil, err
+			}
+			*dst = Ty{K: "rec", Args: make([]Ty, n)}
+			for i := n - 1; i >= 0; i-- {
+				push(decTyTask{kind: 't', dst: &dst.Args[i]})
+			}
+		case tagTyRecord:
+			n, err := d.u32()
+			if err != nil {
+				return nil, err
+			}
+			if err := d.reserveNodes(n); err != nil {
+				return nil, err
+			}
+			*dst = Ty{K: "record", Names: make([]string, n), Args: make([]Ty, n)}
+			for i := n - 1; i >= 0; i-- {
+				push(decTyTask{kind: 'r', node: dst, idx: i})
+			}
+		default:
+			return nil, d.fail("unknown Ty tag 0x%02x", tag)
 		}
-		return out, nil
 	}
-	return nil, d.fail("unknown Ty tag 0x%02x", tag)
+	return root, nil
 }
 
 func (d *dec) tys() ([]Ty, error) {

@@ -40,16 +40,24 @@ var guardedFiles = map[string]string{
 // stillRecursive records what is NOT covered, with why. Each entry is a claim
 // that can be checked, not a waiver.
 var stillRecursive = map[string]string{
-	"enc.ty": "Ty depth is bounded by maxSyntaxNesting (512) for elaborated defs",
-	"dec.ty": "same bound, but see dec.term — the decoder is NOT protected by the reader",
-	"dec.term": "UNREPAIRED: decodeDef runs BEFORE admitDef, so a crafted stored object " +
-		"overflows before its node count is checked. Reachable on a hosted store; not on " +
-		"the playground, whose corpus snapshot is fixed and committed.",
-	"eNormalize": "UNREPAIRED, and FOUND BY THIS GATE on its first run rather than by " +
+	"eNormalize": "EXPOSED, and found BY THIS GATE on its first run rather than by " +
 		"reading. The e-graph normalizer descends Terms structurally. Reached only by " +
 		"`find --equiv` (eHash), so it is OUTSIDE the oathCheck boundary #149 closed — " +
 		"but it is a real exposure on that entry point, not a bounded exception.",
 }
+
+// enc.term, enc.ty, dec.term and dec.ty were all listed here and are all now
+// repaired. Two of those entries were removed only after this file's own
+// staleness check was written: edits to remove them had silently matched nothing
+// (the text had drifted), the gate passed anyway because extra exceptions are
+// PERMISSIVE, and a commit message claimed a removal that had not happened.
+//
+// enc.ty's entry is worth remembering for its content as well as its staleness:
+// it claimed a BOUND that did not apply. Ty depth is capped by maxSyntaxNesting
+// for ELABORATED defs, and a DECODED def never passed the reader — so a
+// structure the profile ADMITS overflowed while being hashed. A bound cited for
+// one path does not transfer to another that reaches the same code by a
+// different route.
 
 // NOTE ON THE TWO "UNREPAIRED" ENTRIES. They are recorded, not waived: each says
 // what is reachable and from where. A bounded exception (enc.ty, dec.ty) states
@@ -274,6 +282,28 @@ func TestNoStructuralRecursionInRepairedComponents(t *testing.T) {
 	if len(unexpected) == 0 {
 		t.Logf("no structural recursion across %d guarded files (%d recorded exceptions)",
 			len(files), len(stillRecursive))
+	}
+
+	// EVERY EXCEPTION MUST STILL BE REAL. An entry for something already
+	// repaired is not harmless: extra exceptions are PERMISSIVE, so the gate
+	// passes either way, and a stale list makes the exposure look worse than it
+	// is while training readers to skim it. Two entries survived their own
+	// repairs here — the removals silently matched nothing and nothing noticed,
+	// because no check tied the list to reality.
+	flagged := map[string]bool{}
+	for _, b := range bad {
+		for name := range stillRecursive {
+			if strings.Contains(b, name) {
+				flagged[name] = true
+			}
+		}
+	}
+	for name, why := range stillRecursive {
+		if !flagged[name] {
+			t.Errorf("stillRecursive lists %q, but the detector no longer flags it — "+
+				"if it was repaired, remove the entry in the SAME commit.\n  entry: %s",
+				name, why)
+		}
 	}
 }
 
