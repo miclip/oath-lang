@@ -930,3 +930,115 @@ func TestNormalizerHandlesDeepStructures(t *testing.T) {
 		t.Errorf("a 5,000-field record normalized to %d fields", len(out.Args))
 	}
 }
+
+// TestNormalizerBoundedWorkOnDeepBinders is the second P1 external review found:
+// removing host recursion does not by itself bound the work PER NODE.
+//
+// The context was copied whole at every binder, so a deep lambda/let spine was
+// quadratic even though the traversal was iterative — a valid 10,000-binder
+// spine allocated roughly 400MB, and a profile-edge spine gigabytes, leaving
+// `find --equiv` resource-exhaustible after the recursion was gone.
+//
+// A persistent context makes extension O(1); a slice is materialised only where
+// chk.synth needs one.
+func TestNormalizerBoundedWorkOnDeepBinders(t *testing.T) {
+	st, err := OpenStore("../codebase")
+	if err != nil {
+		t.Fatalf("could not open the corpus: %v", err)
+	}
+	// A lambda spine: 10,000 nested binders, well inside the profile.
+	spine := func(n int) *Term {
+		body := &Term{K: "var", Idx: 0}
+		cur := body
+		for i := 0; i < n; i++ {
+			cur = &Term{K: "lam", Ty: tInt(), A: cur}
+		}
+		return cur
+	}
+	term := spine(10000)
+	if _, ok := countCanonicalNodes(&Def{K: "func", Body: term}, maxCanonicalNodes); !ok {
+		t.Fatal("setup: the spine is not inside the profile")
+	}
+
+	chk := &checkerMachine{st: st}
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	out := eNormalize(chk, nil, term)
+	runtime.ReadMemStats(&after)
+
+	if out == nil {
+		t.Fatal("normalized to nil")
+	}
+	depth := 0
+	for cur := out; cur != nil && cur.K == "lam"; cur = cur.A {
+		depth++
+	}
+	if depth != 10000 {
+		t.Fatalf("normalized to a %d-binder spine, want 10000", depth)
+	}
+	// Copying the context per binder is ~400MB here. Linear behaviour is a few
+	// megabytes; 64MB separates the two by an order of magnitude without being
+	// brittle about allocator details.
+	if grew := after.TotalAlloc - before.TotalAlloc; grew > 64<<20 {
+		t.Errorf("normalizing a 10,000-binder spine allocated %d MB — extending the "+
+			"binder context must be O(1), not a copy of the whole context", grew>>20)
+	}
+}
+
+// TestACFlattenHandlesDeepChains covers the other P1: a normalized
+// associative-commutative chain is as deep as the term that produced it, and
+// acFlatten descended it on the host stack.
+//
+// The structural gate did NOT see this. Its detector recognised a selector
+// directly on a parameter, and acFlatten descends `args[i].Args` — two steps
+// away, through an index. The detector was widened in the same commit; this
+// test covers the behaviour rather than the detector.
+func TestACFlattenHandlesDeepChains(t *testing.T) {
+	chain := func(n int) []Term {
+		cur := Term{K: "int", Int: big.NewInt(0)}
+		for i := 0; i < n; i++ {
+			cur = Term{K: "prim", Op: "+", Args: []Term{
+				{K: "int", Int: big.NewInt(int64(i + 1))}, cur}}
+		}
+		return []Term{cur, {K: "int", Int: big.NewInt(-1)}}
+	}
+	for _, n := range []int{1, 10, 20000} {
+		out := acFlatten("+", chain(n))
+		if len(out) != n+2 {
+			t.Fatalf("n=%d flattened to %d leaves, want %d", n, len(out), n+2)
+		}
+	}
+	// ORDER is preserved, checked against the RECURSIVE original rather than
+	// against a hand-written expectation. My first attempt wrote the order out
+	// by hand and got it backwards — the chain nests right, so leaves emerge
+	// outermost-first — which would have failed a correct implementation.
+	// Deriving the expectation from the oracle removes my reading of the
+	// nesting from the test entirely.
+	for _, n := range []int{1, 3, 10, 200} {
+		got := acFlatten("+", chain(n))
+		want := acFlattenRecursive("+", chain(n))
+		if len(got) != len(want) {
+			t.Fatalf("n=%d: %d leaves vs oracle's %d", n, len(got), len(want))
+		}
+		for i := range want {
+			if !bytes.Equal(termBytes(&got[i]), termBytes(&want[i])) {
+				t.Fatalf("n=%d: leaf %d differs from the oracle — flattening changed leaf order", n, i)
+			}
+		}
+	}
+}
+
+// acFlattenRecursive is the flattener as it stood before the rewrite, kept as
+// the ordering oracle.
+func acFlattenRecursive(op string, args []Term) []Term {
+	var out []Term
+	for i := range args {
+		if args[i].K == "prim" && args[i].Op == op && len(args[i].Args) == 2 {
+			out = append(out, acFlattenRecursive(op, args[i].Args)...)
+		} else {
+			out = append(out, args[i])
+		}
+	}
+	return out
+}

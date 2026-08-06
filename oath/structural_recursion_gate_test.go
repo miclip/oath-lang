@@ -71,37 +71,76 @@ var stillRecursive = map[string]string{
 // read as "known and fine" when half of them mean "known and not fine".
 
 // structuralChildArg reports whether an expression is a structural child of one
-// of the named Term/Ty parameters — `t.A`, `&t.Args[i]`, `t.Ty`, and so on.
+// of the named Term/Ty parameters — `t.A`, `&t.Args[i]`, `args[i].Args`.
+//
+// A STEP IS REQUIRED. `walk(t)` passes the parameter itself and is permitted;
+// `walk(t.A)` descends and is not. That distinction is what keeps the gate from
+// banning legitimate self-calls, and it is why the root cannot simply be matched
+// as an identifier.
+//
+// An earlier version unwrapped to a bare identifier and had no case for one, so
+// `args[i].Args` — two steps from the parameter — returned false and acFlatten
+// went undetected. The shape the detector recognised was the shape I had
+// pictured: one selector directly on a parameter.
 func structuralChildArg(e ast.Expr, params map[string]bool) bool {
-	switch v := e.(type) {
-	case *ast.UnaryExpr:
-		return structuralChildArg(v.X, params)
-	case *ast.IndexExpr:
-		return structuralChildArg(v.X, params)
-	case *ast.SelectorExpr:
-		if id, ok := v.X.(*ast.Ident); ok {
-			return params[id.Name] // t.A, t.Args, t.Ty ...
+	name, steps := rootOf(e)
+	return steps > 0 && params[name]
+}
+
+// rootOf peels selectors, indexes and address-of operators, returning the root
+// identifier and how many structural steps were taken to reach it.
+func rootOf(e ast.Expr) (string, int) {
+	steps := 0
+	for {
+		switch v := e.(type) {
+		case *ast.UnaryExpr:
+			e = v.X
+		case *ast.ParenExpr:
+			e = v.X
+		case *ast.IndexExpr:
+			steps++
+			e = v.X
+		case *ast.SelectorExpr:
+			steps++
+			e = v.X
+		case *ast.Ident:
+			return v.Name, steps
+		default:
+			return "", 0
 		}
-		return structuralChildArg(v.X, params)
 	}
-	return false
 }
 
 // termOrTyParams collects the parameters of Term/Ty type, which are the only
 // ones a structural descent can be rooted at.
 func termOrTyParams(fn *ast.FuncDecl) map[string]bool {
 	out := map[string]bool{}
+	// A parameter counts if it CARRIES Term/Ty, not only if it IS one:
+	// *Term, Term, []Term, []*Ty and so on. An earlier version matched only the
+	// pointer and value forms, so acFlatten([]Term) — genuinely recursive, on
+	// the oathCheck-adjacent `find --equiv` path — was invisible to this gate
+	// for as long as it existed. Found by external review, which is the second
+	// time this detector's own universe was narrower than its claim.
+	carries := func(t ast.Expr) bool {
+		for {
+			switch v := t.(type) {
+			case *ast.StarExpr:
+				t = v.X
+			case *ast.ArrayType:
+				t = v.Elt
+			case *ast.Ident:
+				return v.Name == "Term" || v.Name == "Ty"
+			default:
+				return false
+			}
+		}
+	}
 	add := func(fl *ast.FieldList) {
 		if fl == nil {
 			return
 		}
 		for _, f := range fl.List {
-			t := f.Type
-			if s, ok := t.(*ast.StarExpr); ok {
-				t = s.X
-			}
-			id, ok := t.(*ast.Ident)
-			if !ok || (id.Name != "Term" && id.Name != "Ty") {
+			if !carries(f.Type) {
 				continue
 			}
 			for _, n := range f.Names {

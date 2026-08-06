@@ -207,14 +207,33 @@ func isACPrim(op string, argTy *Ty) bool {
 
 // acFlatten collects the leaves of a chain of one AC operator (already-normalized
 // sub-terms of the same op are recursed into).
+// acFlatten collects the leaves of an associative-commutative chain,
+// ITERATIVELY (#149).
+//
+// A normalized `and`/`or`/`+`/`*` chain is as deep as the term that produced it,
+// so this mapped an admitted 65,536-node structure onto the host stack from
+// `find --equiv`. The structural gate did not see it: its detector recognised a
+// selector directly on a parameter and this descends `args[i].Args`, two steps
+// away. Found by external review; the detector was widened in the same commit.
+//
+// Children are pushed in REVERSE so leaves come out in source order, which is
+// what acRebuild then sorts — a reordering here would be invisible after the
+// sort for most inputs and visible for any chain containing equal-comparing
+// leaves.
 func acFlatten(op string, args []Term) []Term {
 	var out []Term
-	for i := range args {
-		if args[i].K == "prim" && args[i].Op == op && len(args[i].Args) == 2 {
-			out = append(out, acFlatten(op, args[i].Args)...)
-		} else {
-			out = append(out, args[i])
+	stack := make([]Term, 0, len(args))
+	for i := len(args) - 1; i >= 0; i-- {
+		stack = append(stack, args[i])
+	}
+	for len(stack) > 0 {
+		a := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if a.K == "prim" && a.Op == op && len(a.Args) == 2 {
+			stack = append(stack, a.Args[1], a.Args[0])
+			continue
 		}
+		out = append(out, a)
 	}
 	return out
 }
@@ -239,11 +258,48 @@ func acRebuild(op string, leaves []Term) *Term {
 // context so it knows an operator's operand type. It NEVER affects identity
 // (docs/egraph.md): a definition's hash is still the O1 encoding of its ACTUAL
 // AST; this only draws equivalence edges between existing objects.
+// ctxList is a PERSISTENT binder context. Extending is O(1) and sharing is safe
+// because no node is ever mutated.
+//
+// The obvious representation — copy the whole []*Ty per binder — makes an
+// iterative traversal quadratic anyway: a valid 10,000-binder spine allocated
+// roughly 400MB, and a profile-edge spine gigabytes, so `find --equiv` stayed
+// resource-exhaustible after the recursion was removed. Removing host recursion
+// does not by itself bound the work per node. Found by external review.
+//
+// A slice is materialised only where chk.synth actually needs one, which is once
+// per prim and once per match rather than once per binder.
+type ctxList struct {
+	ty     *Ty
+	parent *ctxList
+	depth  int
+}
+
+func ctxExtend(c *ctxList, ty *Ty) *ctxList {
+	d := 1
+	if c != nil {
+		d = c.depth + 1
+	}
+	return &ctxList{ty: ty, parent: c, depth: d}
+}
+
+func ctxSlice(c *ctxList) []*Ty {
+	if c == nil {
+		return nil
+	}
+	out := make([]*Ty, c.depth)
+	for i := c.depth - 1; c != nil; i-- {
+		out[i] = c.ty
+		c = c.parent
+	}
+	return out
+}
+
 // eNormItem is one pending normalization. `exit` marks the second visit to a
 // node whose children are done — only `prim` needs one, for AC normalization.
 type eNormItem struct {
 	t    *Term
-	ctx  []*Ty
+	ctx  *ctxList
 	dst  *Term
 	exit bool
 }
@@ -271,18 +327,20 @@ func eNormalize(chk *checkerMachine, ctx []*Ty, t *Term) *Term {
 		return nil
 	}
 	root := &Term{}
-	stack := []eNormItem{{t: t, ctx: ctx, dst: root}}
+	var c0 *ctxList
+	for _, ty := range ctx {
+		c0 = ctxExtend(c0, ty)
+	}
+	stack := []eNormItem{{t: t, ctx: c0, dst: root}}
 	for len(stack) > 0 {
 		it := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 		push := func(x eNormItem) { stack = append(stack, x) }
-		extend := func(base []*Ty, ty *Ty) []*Ty {
-			return append(append([]*Ty{}, base...), ty)
-		}
+		extend := ctxExtend
 
 		if it.exit && it.t.K == "match" {
 			cur, dst := it.t, it.dst
-			scrutTy, terr := chk.synth(it.ctx, cur.A)
+			scrutTy, terr := chk.synth(ctxSlice(it.ctx), cur.A)
 			md, derr := chk.st.GetDef(cur.Hash)
 			for i := len(cur.Arms) - 1; i >= 0; i-- {
 				armCtx := it.ctx
@@ -302,7 +360,7 @@ func eNormalize(chk *checkerMachine, ctx []*Ty, t *Term) *Term {
 			// synthesized changes what gets inferred into it.
 			nt := it.dst
 			if commutativePrims[it.t.Op] && len(nt.Args) == 2 {
-				argTy, _ := chk.synth(it.ctx, &it.t.Args[0])
+				argTy, _ := chk.synth(ctxSlice(it.ctx), &it.t.Args[0])
 				if isACPrim(it.t.Op, argTy) {
 					*nt = *acRebuild(it.t.Op, acFlatten(it.t.Op, nt.Args))
 				} else if bytes.Compare(termBytes(&nt.Args[0]), termBytes(&nt.Args[1])) > 0 {
