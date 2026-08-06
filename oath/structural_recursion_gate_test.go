@@ -407,3 +407,68 @@ func TestEveryContinuationGoesThroughPush(t *testing.T) {
 		t.Log("every continuation is installed through m.push")
 	}
 }
+
+// TestAdmissionCannotBeBypassed pins that every construction of a Def from
+// external input passes through admission.
+//
+// The check began in apiPutSigned alone — the one call site I was looking at —
+// and external review found three more elaboration endpoints (apiFindSpec,
+// apiFindImplies, buildPublishPlan) plus the bundle-import path, all of which
+// built and then processed structures `put` correctly refuses. The claim
+// quantifies over CONSTRUCTORS, not over the callers a reader can enumerate, so
+// the check now lives in elabFunc/elabData/decodeDef and the raw forms must have
+// no other callers.
+//
+// This is the same enforcement shape as m.push: make the seam the only legal
+// producer, so completeness is structural rather than remembered.
+func TestAdmissionCannotBeBypassed(t *testing.T) {
+	raw := map[string]string{
+		"elabFuncRaw":  "elabFunc",
+		"elabDataRaw":  "elabData",
+		"decodeDefRaw": "decodeDef",
+	}
+	files, err := filepath.Glob("*.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no Go files found; this check did not run (%v)", err)
+	}
+	scanned := 0
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatalf("reading %s: %v", f, err)
+		}
+		file, err := parser.ParseFile(gotoken.NewFileSet(), f, src, 0)
+		if err != nil {
+			t.Fatalf("parsing %s: %v", f, err)
+		}
+		for _, d := range file.Decls {
+			fn, ok := d.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				continue
+			}
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				c, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				id, ok := c.Fun.(*ast.Ident)
+				if !ok {
+					return true
+				}
+				if wrapper, isRaw := raw[id.Name]; isRaw && fn.Name.Name != wrapper {
+					t.Errorf("%s calls %s directly, bypassing admission; call %s instead",
+						fn.Name.Name, id.Name, wrapper)
+				}
+				return true
+			})
+		}
+		scanned++
+	}
+	if scanned < 20 {
+		t.Fatalf("only %d production files scanned; the glob did not find the package", scanned)
+	}
+	t.Logf("all %d construction sites route through admission", len(raw))
+}

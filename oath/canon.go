@@ -979,7 +979,7 @@ func (d *dec) terms() ([]Term, error) {
 // decodeDef parses canonical "O1" bytes, rejecting anything malformed or
 // non-canonical (unknown tags, bad booleans, unsorted records, trailing
 // bytes).
-func decodeDef(b []byte) (*Def, error) {
+func decodeDefRaw(b []byte) (*Def, error) {
 	d := &dec{b: b}
 	m0, err := d.u8()
 	if err != nil {
@@ -1066,4 +1066,24 @@ func shortHash(h string) string {
 		return h[:12]
 	}
 	return h
+}
+
+// decodeDef wraps decoding with ADMISSION (#149), for the same reason
+// elaboration does: this is where a Def is CONSTRUCTED from external bytes.
+//
+// GetDef checked admission itself, which missed the bundle-import path —
+// registry.go decodes, typechecks and calls StoreObject directly, so an
+// oversized bundle object entered the cache and every later GetDef returned it
+// from there without ever reaching that check. Found by external review.
+//
+// NOTE what this does NOT fix: decodeDefRaw is still recursive, so a crafted
+// object can overflow while being DECODED, before there is a structure to
+// count. That is the pre-admission ordering defect recorded on #149; admission
+// here bounds what is ADMITTED, not what is CONSTRUCTED.
+func decodeDef(b []byte) (*Def, error) {
+	d, err := decodeDefRaw(b)
+	if err != nil {
+		return d, err
+	}
+	return d, admitDef(d)
 }

@@ -62,14 +62,6 @@ func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pu
 		default:
 			err = fmt.Errorf("line %d: unknown top-level form %q", f.Line, f.Kids[0].Sym)
 		}
-		if err == nil {
-			// ADMISSION BOUNDARY 2 of 3 (#149): elaborated structure.
-			// The reader's nesting limit does not bound this — a string or list
-			// literal is one syntax node and an arbitrarily long canonical
-			// spine, which is the whole reason node count and nesting are
-			// separate budgets.
-			err = admitDef(def)
-		}
 		if err != nil {
 			_ = st.AppendLog(&LogEntry{Author: author, Name: formName, Status: "rejected", Error: err.Error(), Context: ctxHash})
 			return results, err
@@ -657,6 +649,11 @@ func apiEval(st *Store, src string) (string, error) {
 	e := &elab{st: st}
 	term, err := e.elabTerm(forms[0])
 	if err != nil {
+		return "", err
+	}
+	// `eval` builds a bare Term rather than a Def, so it needs admission of its
+	// own — the same budget, applied to the same kind of structure.
+	if err := admitDef(&Def{K: "func", Ty: tInt(), Body: term}); err != nil {
 		return "", err
 	}
 	// The explicit machine (#149), not the recursive checker. NOTE the narrow

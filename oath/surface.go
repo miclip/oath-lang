@@ -875,7 +875,7 @@ func tyvarNames(b sx) ([]string, error) {
 }
 
 // elabData: (data Name [tyvars] (Ctor fieldTy ...) ...)
-func elabData(st *Store, x sx) (*Def, *Meta, error) {
+func elabDataRaw(st *Store, x sx) (*Def, *Meta, error) {
 	if len(x.Kids) < 3 || x.Kids[1].K != "sym" || x.Kids[2].K != "brack" {
 		return nil, nil, fmt.Errorf("line %d: data needs a name, [tyvars], and constructors", x.Line)
 	}
@@ -908,7 +908,7 @@ func elabData(st *Store, x sx) (*Def, *Meta, error) {
 }
 
 // elabFunc: (defn name [tyvars] [(param ty) ...] retTy body prop...)
-func elabFunc(st *Store, x sx) (*Def, *Meta, error) {
+func elabFuncRaw(st *Store, x sx) (*Def, *Meta, error) {
 	if len(x.Kids) < 6 || x.Kids[1].K != "sym" || x.Kids[2].K != "brack" || x.Kids[3].K != "brack" {
 		return nil, nil, fmt.Errorf("line %d: defn needs name [tyvars] [(param ty)...] retTy body", x.Line)
 	}
@@ -967,4 +967,34 @@ func elabFunc(st *Store, x sx) (*Def, *Meta, error) {
 	def := &Def{K: "func", TyVars: len(tvs), Ty: fullTy, Body: body, Props: props}
 	meta := &Meta{Name: name, TyVarNames: tvs, PropNames: propNames, ParamNames: pnames, Guarantee: Guarantee{Level: "asserted"}}
 	return def, meta, nil
+}
+
+// elabData and elabFunc wrap elaboration with ADMISSION (#149).
+//
+// The check lives HERE, at construction, and not at each call site. It was
+// originally placed in apiPutSigned alone, which is where I happened to be
+// looking — and external review found three other endpoints that elaborate
+// user-supplied source and then typecheck or PROVE it (apiFindSpec,
+// apiFindImplies, buildPublishPlan). A shallow source with a long string
+// literal exceeds the node budget while passing the syntax-nesting limit, so
+// those paths processed artifacts `put` correctly refuses.
+//
+// The claim quantifies over EVERY canonical structure the kernel builds from
+// external input. Its universe is therefore the CONSTRUCTORS, not the callers a
+// reader can enumerate — a list of call sites answers a different question and
+// answers it completely.
+func elabData(st *Store, x sx) (*Def, *Meta, error) {
+	d, m, err := elabDataRaw(st, x)
+	if err != nil {
+		return d, m, err
+	}
+	return d, m, admitDef(d)
+}
+
+func elabFunc(st *Store, x sx) (*Def, *Meta, error) {
+	d, m, err := elabFuncRaw(st, x)
+	if err != nil {
+		return d, m, err
+	}
+	return d, m, admitDef(d)
 }
