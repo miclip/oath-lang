@@ -201,6 +201,78 @@ reason to PAY for it. On this evidence the recommendation is that **#155 closes
 DECLINED**: the admitted-head boundary stands, now on measurement rather than on
 caution.
 
+## What witnesses the normal form, and what does not (#152)
+
+`eNormalize`'s output IS discovery: `eHash` is signature plus normalized body,
+and `find --equiv` groups by it. A change to the normal form does not degrade
+performance or break a proof — it **may silently redefine equivalence classes**,
+and the two ways it can go are worth separating. A RULE change moves only
+definitions containing an applicable redex, so it repartitions some classes and
+leaves the rest alone. A change to canonical BYTES can move every `eHash` while
+leaving the partition identical. Neither is visible as a failure anywhere
+obvious, which is why it is worth stating plainly what would notice.
+
+**Measured, by mutating SIX of rung 1a's rules, one at a time.** Not all of
+them: eta reduction, the Boolean unit rules, `and` idempotence and several type
+variants were not mutated, so no witness is claimed or denied for those.
+
+    rule mutated                    goldens      caught by
+    ---------------------------------------------------------------
+    `+ 0` Int/Rat                   SURVIVED     find_test.go
+    `* 1.0` Float                   SURVIVED     find_test.go
+    `or` idempotence                SURVIVED     find_test.go
+    `negInvolution`                 SURVIVED     find_test.go x3
+    `ifSelect` const-cond           SURVIVED     find_test.go x4
+    `ifSelect` identical-branches   SURVIVED     find_test.go x5
+
+**Six of six survived the recorded digests. Six of six were caught by the
+discovery-behaviour tests.**
+
+**THE WITNESS FOR THESE SIX IS `find_test.go`, AND IT WORKS ON `eHash`.** The
+relevant cases compare equivalence keys directly; they do not call
+`apiFindEquiv` or assert its printed output. That is the right level — `eHash`
+is exactly what `find --equiv` groups by — but it is a claim about the KEY, not
+about the command's returned text, and nothing here covers the latter.
+
+**THE RECORDED GOLDENS ARE NOT A SYSTEMATIC WITNESS, WHICH IS NARROWER THAN
+SAYING THEY WITNESS NOTHING.** They do catch some rules: disabling Int `* 1`
+moves the `int-times-duplicates` digest, and the Boolean unit rules moved
+`bool-and-duplicates` and `bool-or-duplicates` when rung 1a landed. What the
+measurement establishes is that they catch **none of the six mutated above** —
+`+ 0` Int/Rat, Float `* 1`, `or` idempotence, `negInvolution`, and both
+`ifSelect` forms. So they cover part of the rule set by accident of which shapes
+were chosen, and no argument says which part. Do not call them the witness, and
+do not call them useless.
+
+**A GOLDEN CASE CAN BE TOPICALLY EXACT AND STILL INCAPABLE OF WITNESSING ITS
+RULE**, which is the finding worth carrying past this issue.
+`bool-or-duplicates` looks like it covers `or` idempotence and does not: the
+unit pass consumes the duplicates before idempotence can act. `int-plus-*` and
+`+ 0` are the same shape. **Coverage cannot be read off case names** — it has to
+be measured by mutation, which is why this was settled that way rather than by
+inspection, and why any future fixture needs its own coverage argument rather
+than a plausible-looking list.
+
+**THE ACCEPTED RESIDUAL GAP, stated so nobody has to rediscover it.** These
+tests compare INLINE SYNTHETIC PAIRS, not equivalence matches among the
+committed corpus. So the gap is not "a change that leaves corpus matches
+identical" — it is narrower and differently shaped: **a normal-form change that
+does not alter the `eHash` relation between any of the specific pairs those
+tests construct would pass**, whatever it does to the corpus. Conversely, a
+change that repartitions real corpus definitions is not guaranteed to fail them.
+That is accepted deliberately, not overlooked:
+
+- `eNormalizeRecursive` cannot close it — it calls the same `acFlatten` and
+  `acRebuild` as the subject, so both sides of that differential move together.
+- `oathrs` implements no `eNormalize`, so the normal form sits outside the
+  cross-kernel conformance surface. A byte-exact cross-kernel witness would
+  require implementing it there, BLIND from `docs/SPEC.md` — never by copying
+  from `oath/`.
+
+**Revisit this before rung 1b.** Equality saturation and extraction will move
+the normal form far more than rung 1a did, and the decision above is what
+determines whether that work has a witness or only a proxy.
+
 ## What rung 1a is NOT
 
 Named explicitly, because "the e-graph" invites all four:
