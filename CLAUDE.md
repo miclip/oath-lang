@@ -627,7 +627,9 @@ under a closing window contradicted the same file's own instruction.
 
 **#155 is a COST boundary, not a soundness one** — that classification is the
 whole of the elaboration, because it decides what would close it. The rewrite it
-declines is already sound; what is missing is an O(1) freeness test. Its
+declines is already sound; what is missing is TWO things, and doing either alone
+leaves the quadratic in place — an O(1) freeness test AND shifts accumulated
+through a chain of etas rather than applied per level. Its
 falsifier can win outright: if admitting the head discovers nothing new on the
 corpus, the refusal stands and the issue closes declined. Measure that first.
 
