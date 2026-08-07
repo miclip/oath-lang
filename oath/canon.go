@@ -184,6 +184,63 @@ func termBytes(t *Term) []byte {
 	return e.b
 }
 
+// compareTermsCanonical returns exactly what
+// bytes.Compare(termBytes(a), termBytes(b)) returns, without materialising
+// either encoding past the first byte at which they differ (#151).
+//
+// WHY NOT CACHE EACH SUBTREE'S BYTES INSTEAD. The obvious repair — encode every
+// normalized node once and keep the result — is itself quadratic: in a chain of
+// depth d the node at level i encodes to O(d-i) bytes, so the cache alone is
+// O(d²) and the memory is the very thing being repaired. What is quadratic here
+// is not that bytes are recomputed but that WHOLE SUBTREES are encoded to decide
+// an ordering that is almost always settled by the first byte. `==` over a chain
+// compares a leaf against the rest of the chain at every level; the tags differ
+// immediately, and today both sides are encoded in full to discover that.
+//
+// The doubling is what keeps it faithful AND cheap. Encoding is re-run rather
+// than resumed, so the total work is a geometric series in the position of the
+// first difference — at most twice the bytes a single comparison genuinely
+// needs. Across a whole term the bound is the standard smaller-of-two-subtrees
+// argument: a comparison costs the SHORTER encoding, and no node can be its own
+// sibling's size all the way down without the term growing exponentially.
+//
+// EXACT FIDELITY IS BY CONSTRUCTION, not by a re-derived comparator. This runs
+// the real encoder and stops it; it does not walk the two terms deciding what
+// their encodings would have compared like. A hand-written structural
+// comparator would be a second implementation of the byte layout — the thing
+// this repository has already learned to refuse — and it would silently disagree
+// wherever a length prefix orders differently from the field it prefixes.
+func compareTermsCanonical(a, b *Term) int {
+	for limit := 64; ; limit *= 2 {
+		ea, eb := &enc{limit: limit}, &enc{limit: limit}
+		ea.term(a)
+		eb.term(b)
+		n := len(ea.b)
+		if len(eb.b) < n {
+			n = len(eb.b)
+		}
+		if c := bytes.Compare(ea.b[:n], eb.b[:n]); c != 0 {
+			return c
+		}
+		// Only the bytes BOTH sides have produced can decide anything, so the
+		// result is settled solely when neither side has more to write.
+		//
+		// An earlier version also returned early when one side was complete and
+		// the other merely truncated past that length, on the argument that a
+		// complete encoding whose bytes all agree must be a proper prefix and so
+		// compares less. That is true — the encoding is a self-delimiting TLV
+		// tree, so no complete encoding is a proper prefix of another and the
+		// case cannot arise at all. Which is exactly why it was deleted: it was
+		// unreachable code whose correctness rested on an argument about the
+		// format, and inverting it changed no test. Looping instead is correct
+		// whether or not that argument holds, and costs at most one extra
+		// doubling on a case that never occurs.
+		if !ea.truncated && !eb.truncated {
+			return bytes.Compare(ea.b, eb.b)
+		}
+	}
+}
+
 // commutativePrims commute for EVERY operand type (structural `==` is symmetric;
 // `and`/`or` are non-short-circuiting; `+`/`*` commute even for Float). So
 // sorting their operands into a canonical order is a sound rewrite everywhere.
@@ -240,13 +297,28 @@ func acFlatten(op string, args []Term) []Term {
 
 // acRebuild sorts the leaves and rebuilds a canonical right-nested chain, so any
 // association/order of the same leaves yields one form.
+//
+// Each leaf is encoded ONCE into a sort key rather than re-encoded inside the
+// comparator (#151). The comparator ran O(k log k) times and encoded both of its
+// arguments every time, so a k-leaf chain paid O(k log k) encodings for O(k)
+// distinct leaves. The ORDER is unchanged: the keys are the same bytes the
+// comparator computed, and leaves that tie are byte-identical, so which of them
+// an unstable sort puts first cannot be observed in the output.
 func acRebuild(op string, leaves []Term) *Term {
-	sort.Slice(leaves, func(i, j int) bool {
-		return bytes.Compare(termBytes(&leaves[i]), termBytes(&leaves[j])) < 0
+	keyed := make([]struct {
+		t   Term
+		key []byte
+	}, len(leaves))
+	for i := range leaves {
+		keyed[i].t = leaves[i]
+		keyed[i].key = termBytes(&leaves[i])
+	}
+	sort.Slice(keyed, func(i, j int) bool {
+		return bytes.Compare(keyed[i].key, keyed[j].key) < 0
 	})
-	cur := leaves[len(leaves)-1]
-	for i := len(leaves) - 2; i >= 0; i-- {
-		cur = Term{K: "prim", Op: op, Args: []Term{leaves[i], cur}}
+	cur := keyed[len(keyed)-1].t
+	for i := len(keyed) - 2; i >= 0; i-- {
+		cur = Term{K: "prim", Op: op, Args: []Term{keyed[i].t, cur}}
 	}
 	return &cur
 }
@@ -312,11 +384,20 @@ func ctxSlice(c *ctxList) []*Ty {
 
 // eNormItem is one pending normalization. `exit` marks the second visit to a
 // node whose children are done — only `prim` needs one, for AC normalization.
+//
+// chainOp is the operator of this node's PARENT, when that parent is a
+// commutative primitive with two arguments — that is, when this node sits
+// somewhere a same-op chain could continue (#151). A node whose own operator
+// equals it is an INTERIOR node of an associative-commutative chain, and its
+// rebuild is left to the chain's root. It is the parent's operator rather than a
+// flag because interior-ness is exactly "my parent will flatten through me",
+// and the parent is the only one that knows.
 type eNormItem struct {
-	t    *Term
-	ctx  *ctxList
-	dst  *Term
-	exit bool
+	t       *Term
+	ctx     *ctxList
+	dst     *Term
+	exit    bool
+	chainOp string
 }
 
 // eNormalize rewrites a term to its e-graph normal form, ITERATIVELY (#149).
@@ -347,6 +428,36 @@ func eNormalize(chk *checkerMachine, ctx []*Ty, t *Term) *Term {
 		c0 = ctxExtend(c0, ty)
 	}
 	stack := []eNormItem{{t: t, ctx: c0, dst: root}}
+
+	// DEFERRED AC INTERIORS (#151). A node marked here is a normalized
+	// `op(x, y)` whose flatten-and-rebuild has NOT been done, because its parent
+	// carries the same operator and will either flatten straight through it or
+	// force it. The set exists to distinguish that from the other way a same-op
+	// child can reach its parent unrebuilt — one whose own AC test came out
+	// false, which today's acFlatten still descends through and which must keep
+	// being left exactly as it is.
+	//
+	// Nothing escapes: a node is marked only when its parent is a commutative
+	// two-argument primitive, and every prim schedules an exit visit, so the
+	// parent always runs and always resolves it.
+	var deferredAC map[*Term]bool
+	deferAC := func(d *Term) {
+		if deferredAC == nil {
+			deferredAC = map[*Term]bool{}
+		}
+		deferredAC[d] = true
+	}
+	// forceAC materialises a deferred interior. It is the same work the node
+	// would have done in place, and it reaches the whole deferred sub-chain
+	// beneath it in one pass, because acFlatten descends through every same-op
+	// node regardless of who deferred it.
+	forceAC := func(d *Term) {
+		if deferredAC[d] {
+			delete(deferredAC, d)
+			*d = *acRebuild(d.Op, acFlatten(d.Op, d.Args))
+		}
+	}
+
 	for len(stack) > 0 {
 		it := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -377,9 +488,37 @@ func eNormalize(chk *checkerMachine, ctx []*Ty, t *Term) *Term {
 			if commutativePrims[it.t.Op] && len(nt.Args) == 2 {
 				argTy, _ := chk.synth(ctxSlice(it.ctx), &it.t.Args[0])
 				if isACPrim(it.t.Op, argTy) {
-					*nt = *acRebuild(it.t.Op, acFlatten(it.t.Op, nt.Args))
-				} else if bytes.Compare(termBytes(&nt.Args[0]), termBytes(&nt.Args[1])) > 0 {
-					nt.Args[0], nt.Args[1] = nt.Args[1], nt.Args[0]
+					// ONE FLATTEN AND ONE SORT PER MAXIMAL CHAIN (#151).
+					//
+					// Rebuilding here at every level was the quadratic: both
+					// acFlatten and acRebuild walk the whole chain, and a chain
+					// of depth d ran them d times. An interior node instead
+					// leaves its normalized `op(x, y)` alone, so the chain
+					// arrives at its root in one piece and is flattened once.
+					//
+					// The leaf MULTISET is what survives either way; only the
+					// pre-sort ORDER differs, and acRebuild sorts on the
+					// canonical bytes, so leaves that could be ordered
+					// differently are byte-identical and the rebuilt chain is
+					// the same bytes. That is not reasoning to trust on its own
+					// — it is pinned by a recorded digest in
+					// canon_iterative_test.go, which is the only witness that
+					// can see a change here at all.
+					if it.chainOp == it.t.Op {
+						deferAC(nt)
+					} else {
+						*nt = *acRebuild(it.t.Op, acFlatten(it.t.Op, nt.Args))
+					}
+				} else {
+					// This node does not associate, so a deferred child has no
+					// parent left to absorb it and must be materialised now.
+					// Reachable when synth disagrees between a parent and its
+					// same-op child — the child is AC, the parent is not.
+					forceAC(&nt.Args[0])
+					forceAC(&nt.Args[1])
+					if compareTermsCanonical(&nt.Args[0], &nt.Args[1]) > 0 {
+						nt.Args[0], nt.Args[1] = nt.Args[1], nt.Args[0]
+					}
 				}
 			}
 			continue
@@ -446,11 +585,19 @@ func eNormalize(chk *checkerMachine, ctx []*Ty, t *Term) *Term {
 			}
 		case "prim", "ctor", "record":
 			dst.Args = make([]Term, len(cur.Args))
+			// A child may continue this node's chain only if this node is the
+			// shape acFlatten descends through: a commutative primitive with
+			// two arguments. Anything else ends the chain, and its children
+			// carry no chainOp.
+			childChain := ""
 			if cur.K == "prim" {
-				push(eNormItem{t: cur, ctx: it.ctx, dst: dst, exit: true})
+				push(eNormItem{t: cur, ctx: it.ctx, dst: dst, exit: true, chainOp: it.chainOp})
+				if commutativePrims[cur.Op] && len(cur.Args) == 2 {
+					childChain = cur.Op
+				}
 			}
 			for i := len(cur.Args) - 1; i >= 0; i-- {
-				push(eNormItem{t: &cur.Args[i], ctx: it.ctx, dst: &dst.Args[i]})
+				push(eNormItem{t: &cur.Args[i], ctx: it.ctx, dst: &dst.Args[i], chainOp: childChain})
 			}
 		}
 	}
@@ -485,25 +632,107 @@ func hashDefV0(d *Def) string {
 
 // ---------- encoder ----------
 
-type enc struct{ b []byte }
+// enc appends canonical bytes in stream order and NEVER backpatches — the `'n'`
+// and `'s'` work items in enc.term exist precisely so that a length emitted
+// after a child's bytes is still written in order. That property is what makes
+// a truncated encoding a true PREFIX of the full one, which compareTermsCanonical
+// depends on.
+//
+// limit, when non-zero, stops encoding once that many bytes exist. It does not
+// change which bytes are produced, only how many; truncated records whether
+// anything was left unwritten.
+//
+// THE LIMIT IS OWNED BY THE BYTE SEAM, NOT BY THE WORK LOOPS. Checking it only
+// between enc.term's work items bounds the number of NODES visited after the
+// window closes, which is not the claim: one item can append a whole big.Int
+// magnitude, a whole string, or a whole type encoding, so a 64-byte window could
+// materialise megabytes while every byte written was still a faithful prefix.
+// The structural owner of "how many bytes exist" is the place bytes are
+// appended, and that is `room` — every other method here derives its behaviour
+// from it, so a new emitter cannot be added that silently escapes the bound.
+type enc struct {
+	b         []byte
+	limit     int
+	truncated bool
+}
 
-func (e *enc) u8(v byte)    { e.b = append(e.b, v) }
-func (e *enc) u32(v uint32) { e.b = binary.BigEndian.AppendUint32(e.b, v) }
-func (e *enc) i64(v int64)  { e.b = binary.BigEndian.AppendUint64(e.b, uint64(v)) }
-func (e *enc) str(s string) { e.u32(uint32(len(s))); e.b = append(e.b, s...) }
+// room reports how many of the next n bytes may be written, and records
+// truncation when that is fewer than n. With no limit it is the identity, which
+// is what keeps unlimited encoding byte-identical to the pre-limit encoder.
+func (e *enc) room(n int) int {
+	if e.limit <= 0 {
+		return n
+	}
+	r := e.limit - len(e.b)
+	if r < 0 {
+		r = 0
+	}
+	if r < n {
+		e.truncated = true
+		return r
+	}
+	return n
+}
+
+// raw and rawStr are the only two places bytes reach e.b outside the fast paths
+// below, which are the same operation specialised so the unlimited encoder does
+// not pay for a bounds computation on every tag byte.
+func (e *enc) raw(p []byte)    { e.b = append(e.b, p[:e.room(len(p))]...) }
+func (e *enc) rawStr(s string) { e.b = append(e.b, s[:e.room(len(s))]...) }
+
+func (e *enc) u8(v byte) {
+	if e.room(1) == 1 {
+		e.b = append(e.b, v)
+	}
+}
+
+func (e *enc) u32(v uint32) {
+	if e.limit <= 0 {
+		e.b = binary.BigEndian.AppendUint32(e.b, v)
+		return
+	}
+	var buf [4]byte
+	binary.BigEndian.PutUint32(buf[:], v)
+	e.raw(buf[:])
+}
+
+func (e *enc) i64(v int64) {
+	if e.limit <= 0 {
+		e.b = binary.BigEndian.AppendUint64(e.b, uint64(v))
+		return
+	}
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], uint64(v))
+	e.raw(buf[:])
+}
+
+func (e *enc) str(s string) { e.u32(uint32(len(s))); e.rawStr(s) }
 
 // bigint encodes an arbitrary-precision integer canonically: a sign byte
 // (0x00 for ≥0, 0x01 for <0), then a u32 magnitude length, then the minimal
 // big-endian magnitude bytes (no leading zeros; zero is sign 0x00, length 0).
+//
+// The DECLARED length is always the true one — truncation drops trailing bytes
+// and never rewrites a prefix that has already been committed — so the length is
+// computed from BitLen rather than from the materialised magnitude. big.Int has
+// no prefix accessor, so v.Bytes() still allocates the whole magnitude when even
+// one byte of it is wanted; what the guard buys is that a bigint lying entirely
+// beyond the window costs nothing at all.
 func (e *enc) bigint(v *big.Int) {
 	if v.Sign() < 0 {
 		e.u8(1)
 	} else {
 		e.u8(0)
 	}
-	mag := v.Bytes()
-	e.u32(uint32(len(mag)))
-	e.b = append(e.b, mag...)
+	magLen := (v.BitLen() + 7) / 8 // exactly len(v.Bytes())
+	e.u32(uint32(magLen))
+	if magLen == 0 {
+		return
+	}
+	if e.room(magLen) == 0 {
+		return
+	}
+	e.raw(v.Bytes())
 }
 
 func (e *enc) hash(h string) {
@@ -511,7 +740,20 @@ func (e *enc) hash(h string) {
 	if err != nil || len(raw) != 32 {
 		panic(fmt.Sprintf("malformed hash reference %q in definition", h))
 	}
-	e.b = append(e.b, raw...)
+	e.raw(raw)
+}
+
+// stop reports that the window is closed. It is only ever consulted with work
+// still PENDING, so reaching the limit there means bytes were left unwritten —
+// which is what licenses it to record the truncation rather than merely observe
+// it. `room` would record the same thing at the next append; this exists so that
+// a structure with millions of remaining nodes does not walk them to find out.
+func (e *enc) stop() bool {
+	if e.limit > 0 && len(e.b) >= e.limit {
+		e.truncated = true
+		return true
+	}
+	return false
 }
 
 // ty emits a type's canonical bytes ITERATIVELY (#149).
@@ -528,6 +770,9 @@ func (e *enc) hash(h string) {
 func (e *enc) ty(root *Ty) {
 	stack := []encTyItem{{ty: root}}
 	for len(stack) > 0 {
+		if e.stop() {
+			return
+		}
 		it := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 		if it.name != nil {
@@ -587,6 +832,9 @@ type encTyItem struct {
 func (e *enc) tys(ts []Ty) {
 	e.u32(uint32(len(ts)))
 	for i := range ts {
+		if e.stop() {
+			return
+		}
 		e.ty(&ts[i])
 	}
 }
@@ -620,6 +868,14 @@ func (e *enc) term(root *Term) {
 	pushTerm := func(t *Term) { push(encItem{kind: 't', term: t}) }
 
 	for len(stack) > 0 {
+		// The ONLY effect of a limit is to stop early. Bytes are appended in
+		// stream order, so whatever has been written when this fires is exactly
+		// a prefix of the full encoding — never a rearrangement of it. The
+		// bound itself is enforced at the byte seam (see enc.room); this only
+		// avoids walking the remaining nodes once nothing more can be written.
+		if e.stop() {
+			return
+		}
 		it := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 		switch it.kind {
@@ -650,7 +906,7 @@ func (e *enc) term(root *Term) {
 			e.u8(tagTmFloat)
 			var buf [8]byte
 			binary.BigEndian.PutUint64(buf[:], math.Float64bits(canonFloat(t.Float)))
-			e.b = append(e.b, buf[:]...)
+			e.raw(buf[:])
 		case "bool":
 			e.u8(tagTmBool)
 			if t.Bool {
@@ -729,6 +985,9 @@ func (e *enc) term(root *Term) {
 func (e *enc) terms(ts []Term) {
 	e.u32(uint32(len(ts)))
 	for i := range ts {
+		if e.stop() {
+			return
+		}
 		e.term(&ts[i])
 	}
 }

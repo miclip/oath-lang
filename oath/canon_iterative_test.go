@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -1043,30 +1045,22 @@ func acFlattenRecursive(op string, args []Term) []Term {
 	return out
 }
 
-// TestACNormalizationCostIsUnchangedByTheRewrite records a PRE-EXISTING
-// quadratic and pins it against regression, rather than claiming a fix.
+// TestACNormalizationCostIsUnchangedByTheRewrite pins ONE RELATIVE BOUND: the
+// iterative normalizer must not cost materially more than the recursive oracle
+// it replaced. That is the claim the #149 rewrite had to support — stack safety
+// bought without a cost regression — and it is a statement about the two
+// implementations, not about how expensive either of them is.
 //
-// External review reported that many commutative primitives beneath a deep
-// binder spine allocate gigabytes and attributed it to ctxSlice materialising
-// the context per primitive. The mechanism is real, and caching it is correct —
-// but measurement shows it is NOT the dominant cost:
+// It was written when both sides allocated gigabytes on this term (1224 MB
+// iterative against 1243 MB recursive) and AC normalization was quadratic in
+// chain depth in both. #151 removed that quadratic from the iterative side, so
+// the two numbers are now far apart and far smaller. NOTHING HERE NEEDED TO
+// CHANGE, which is the point of a relative bound: the assertion compares the
+// implementations, so it survives either of them getting faster and still fails
+// if the iterative one regresses toward the oracle.
 //
-//	iterative  1224 MB
-//	recursive  1243 MB
-//
-// The recursive normalizer, which predates all of this work, allocates the same.
-// The cost is AC normalization itself: acFlatten and termBytes run at EVERY
-// level of a nested commutative chain, so the work is quadratic in chain depth.
-// That is an algorithmic property of e-graph normalization, not something the
-// iterative rewrite introduced or could remove.
-//
-// So the honest claim is narrow: the rewrite made `find --equiv` STACK-safe and
-// left its COMPLEXITY unchanged. `find --equiv` remains resource-exhaustible on
-// an admitted deeply-nested commutative chain, by the algorithm rather than by
-// recursion — recorded on #149 rather than implied to be closed.
-//
-// This test exists so the cost cannot silently WORSEN: the iterative version
-// must stay within a small factor of the oracle it replaced.
+// The absolute figures #151 was measured against, and the tests that own the
+// complexity claim, are below — this one deliberately does not assert either.
 func TestACNormalizationCostIsUnchangedByTheRewrite(t *testing.T) {
 	st, err := OpenStore("../codebase")
 	if err != nil {
@@ -1095,11 +1089,776 @@ func TestACNormalizationCostIsUnchangedByTheRewrite(t *testing.T) {
 	rec := measure(func() { eNormalizeRecursive(&checkerMachine{st: st}, nil, build()) })
 
 	// Within 2x of the oracle. A regression that made the iterative version
-	// materially more expensive would show here; the shared quadratic would not.
+	// materially more expensive would show here. The bound is one-sided on
+	// purpose: the iterative side coming in FAR under the oracle is #151
+	// working, not something for this test to have an opinion about.
 	if iter > rec*2 {
 		t.Errorf("the iterative normalizer allocated %d MB against the oracle's %d MB — "+
 			"the rewrite was supposed to change stack usage, not cost", iter>>20, rec>>20)
 	}
-	t.Logf("iterative %d MB, oracle %d MB — the quadratic is shared, and pre-existing",
+	t.Logf("iterative %d MB, oracle %d MB — the iterative side carries no cost regression",
 		iter>>20, rec>>20)
+}
+
+// ---------------------------------------------------------------------------
+// #151 — the quadratic itself, which the test above deliberately does NOT claim
+// to fix. The three tests below are its acceptance criteria, and they divide the
+// obligation so that no one of them can be satisfied by the wrong repair. They
+// were written to FAIL against the pre-repair normalizer, and each was watched
+// failing before the repair was written:
+//
+//	SHAPE   allocation against CHAIN DEPTH. Owns the asymptotics; a constant-
+//	        factor win does not satisfy it.
+//	COST    the one term #151 measured. Owns the concrete claim against the two
+//	        recorded baselines; a shape improvement that leaves this term
+//	        gigabyte-scale does not satisfy it.
+//	BYTES   the normal form is unchanged. Owns identity — eHash feeds
+//	        `find --equiv`, so a cheaper normalizer that reorders leaves changes
+//	        DISCOVERY results, which is a worse defect than the cost it fixes.
+//
+// SHAPE and COST measured the defect: ×4 per doubling on both AC paths, and
+// 1224 MB on the term #151 recorded. BYTES passed before the repair as well as
+// after it — its job was never to fail, but to constrain what the repair was
+// allowed to change while making the other two pass.
+
+// acAllocBytes is the allocation a single call attributes to itself. TotalAlloc
+// is cumulative and never decreases, so this measures work DONE rather than
+// memory retained — which is the right quantity for a complexity claim: a
+// quadratic that is promptly collected is still quadratic.
+func acAllocBytes(f func()) uint64 {
+	var a, b runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&a)
+	f()
+	runtime.ReadMemStats(&b)
+	return b.TotalAlloc - a.TotalAlloc
+}
+
+// acChain builds the shape #151 measures: a right-nested chain of one
+// commutative primitive over `var 0`, beneath a spine of binders that gives that
+// variable a type. The binders are what make the operand type SYNTHESIZABLE, so
+// the AC decision is reached rather than skipped.
+func acChain(op string, prims, binders int, ty func() *Ty) *Term {
+	body := &Term{K: "var", Idx: 0}
+	for i := 0; i < prims; i++ {
+		body = &Term{K: "prim", Op: op, Args: []Term{{K: "var", Idx: 0}, *body}}
+	}
+	term := body
+	for i := 0; i < binders; i++ {
+		term = &Term{K: "lam", Ty: ty(), A: term}
+	}
+	return term
+}
+
+// TestACNormalizationScalesSubQuadraticallyWithChainDepth is #151's first
+// acceptance criterion: measure against CHAIN DEPTH, not just total allocation,
+// so the SHAPE of the improvement is visible.
+//
+// A total-allocation bound alone cannot distinguish the two repairs that matter:
+// a smaller constant in front of the same quadratic passes it, and that is not
+// what #151 asks for — the term is admitted by the portable profile at depths
+// far past anything measured here, so only the exponent bounds the exposure.
+//
+// The instrument is the DOUBLING RATIO. Quadratic work quadruples when depth
+// doubles; linear work doubles; n log n sits just above 2. Measured today, every
+// doubling on every op lands at 3.9-4.4, so the threshold of 3.0 is not a
+// borderline call in either direction: it rejects the quadratic with margin and
+// admits anything genuinely sub-quadratic with margin.
+//
+// BOTH AC PATHS ARE COVERED, because the two repeated walks #151 names live on
+// different branches and a repair to one leaves the other quadratic:
+//
+//	`==`  commutes but does not associate, so it is never flattened — its cost
+//	      is termBytes on both operands at every level of the chain.
+//	`+`   over Int is AC, so it goes through acFlatten and acRebuild, which
+//	      re-walk and re-sort the whole chain at every level.
+func TestACNormalizationScalesSubQuadraticallyWithChainDepth(t *testing.T) {
+	st, err := OpenStore("../codebase")
+	if err != nil {
+		t.Fatalf("could not open the corpus: %v", err)
+	}
+	depths := []int{500, 1000, 2000, 4000}
+	for _, c := range []struct {
+		op   string
+		ty   func() *Ty
+		path string
+	}{
+		{"==", tInt, "commutative compare (termBytes per level)"},
+		{"+", tInt, "associative-commutative (acFlatten/acRebuild per level)"},
+	} {
+		t.Run(c.op, func(t *testing.T) {
+			var got []uint64
+			for _, d := range depths {
+				// The whole series must be inside the portable profile, or the
+				// measurement is of a term the kernel would never admit.
+				if _, ok := countCanonicalNodes(&Def{K: "func", Body: acChain(c.op, d, 1, c.ty)}, maxCanonicalNodes); !ok {
+					t.Fatalf("setup: a depth-%d chain is outside the portable profile", d)
+				}
+				got = append(got, acAllocBytes(func() {
+					eNormalize(&checkerMachine{st: st}, nil, acChain(c.op, d, 1, c.ty))
+				}))
+			}
+			for i := range depths {
+				ratio := 0.0
+				if i > 0 {
+					ratio = float64(got[i]) / float64(got[i-1])
+				}
+				t.Logf("depth %5d  %9d KB  x%.2f  (%s)", depths[i], got[i]>>10, ratio, c.path)
+			}
+			for i := 1; i < len(depths); i++ {
+				ratio := float64(got[i]) / float64(got[i-1])
+				if ratio > 3.0 {
+					t.Errorf("doubling the chain from %d to %d multiplied allocation by %.2f "+
+						"(%d KB -> %d KB) — AC normalization is quadratic in chain depth, so "+
+						"`find --equiv` is resource-exhaustible on a term the profile admits (#151)",
+						depths[i-1], depths[i], ratio, got[i-1]>>10, got[i]>>10)
+				}
+			}
+		})
+	}
+}
+
+// The two allocation figures #151 recorded, on the term it recorded them for.
+// They are CONSTANTS rather than live measurements for opposite reasons, and
+// only one of them could be derived instead:
+//
+//	acRecordedIterative  the pre-repair iterative normalizer, which no longer
+//	                     exists to be measured. The number is the only surviving
+//	                     evidence of what the repair had to beat, which is
+//	                     exactly why it is written down rather than derived.
+//	acRecordedRecursive  the recursive oracle, which is retained in this file and
+//	                     therefore CAN be measured live. It is measured live
+//	                     below as well, and the constant is kept only so the two
+//	                     can be seen to agree — a machine or toolchain that moved
+//	                     the numbers shows up as a divergence in the log rather
+//	                     than silently rebasing the claim.
+const (
+	acRecordedIterative = 1224 << 20
+	acRecordedRecursive = 1243 << 20
+)
+
+// TestACNormalizationBeatsBothRecordedBaselines is #151's fourth acceptance
+// criterion — improvement against BOTH baselines — on the exact term the issue
+// measured: 6,000 commutative primitives beneath 2,000 binders, 16,001 canonical
+// nodes, comfortably inside the portable profile.
+//
+// Beating the baselines by any margin at all is too weak to be worth asserting
+// on its own: an implementation that came in one megabyte under would satisfy
+// the letter and leave `find --equiv` exhaustible. So the bar is a QUARTER of
+// the lower baseline. That number is not a prediction of the repair — removing
+// the repeated walks should land far below it — it is the point past which an
+// implementation is no longer merely quadratic with a better constant. The
+// asymptotics are owned by the shape test above; this test owns the concrete
+// term, and its threshold is deliberately loose enough not to fail a correct
+// repair that is slower than hoped.
+func TestACNormalizationBeatsBothRecordedBaselines(t *testing.T) {
+	st, err := OpenStore("../codebase")
+	if err != nil {
+		t.Fatalf("could not open the corpus: %v", err)
+	}
+	build := func() *Term { return acChain("==", 6000, 2000, tInt) }
+	nodes, ok := countCanonicalNodes(&Def{K: "func", Body: build()}, maxCanonicalNodes)
+	if !ok {
+		t.Fatalf("setup: the 6,000-prim/2,000-binder term is outside the portable profile")
+	}
+	if nodes != 16001 {
+		t.Fatalf("setup: the term has %d canonical nodes, not the 16,001 #151 measured", nodes)
+	}
+
+	iter := acAllocBytes(func() { eNormalize(&checkerMachine{st: st}, nil, build()) })
+	rec := acAllocBytes(func() { eNormalizeRecursive(&checkerMachine{st: st}, nil, build()) })
+	t.Logf("normalizer %d MB; oracle %d MB live, %d MB recorded; pre-repair iterative %d MB recorded",
+		iter>>20, rec>>20, acRecordedRecursive>>20, acRecordedIterative>>20)
+
+	// The live oracle, which cannot go stale.
+	if iter >= rec {
+		t.Errorf("the normalizer allocated %d MB against the recursive oracle's %d MB — "+
+			"#151 requires beating the oracle, not matching it", iter>>20, rec>>20)
+	}
+	// The two recorded baselines, named in #151.
+	if iter >= uint64(acRecordedRecursive) {
+		t.Errorf("the normalizer allocated %d MB, not below the recorded recursive baseline of %d MB (#151)",
+			iter>>20, acRecordedRecursive>>20)
+	}
+	if iter >= uint64(acRecordedIterative) {
+		t.Errorf("the normalizer allocated %d MB, not below the recorded iterative baseline of %d MB (#151)",
+			iter>>20, acRecordedIterative>>20)
+	}
+	if margin := uint64(acRecordedIterative) / 4; iter > margin {
+		t.Errorf("the normalizer allocated %d MB against a required %d MB — under the lower "+
+			"recorded baseline is not enough, because a smaller constant in front of the same "+
+			"quadratic satisfies that and leaves `find --equiv` exhaustible (#151)",
+			iter>>20, margin>>20)
+	}
+}
+
+// acNest builds one association of the same leaf sequence. The three shapes are
+// the ones a flattening bug distinguishes: `assoc` is what acFlatten's own output
+// looks like, `left` is what it must still recognise, and `balanced` is what
+// neither special case covers.
+func acNest(op string, leaves []Term, shape string) Term {
+	if len(leaves) == 1 {
+		return leaves[0]
+	}
+	switch shape {
+	case "right":
+		cur := leaves[len(leaves)-1]
+		for i := len(leaves) - 2; i >= 0; i-- {
+			cur = Term{K: "prim", Op: op, Args: []Term{leaves[i], cur}}
+		}
+		return cur
+	case "left":
+		cur := leaves[0]
+		for i := 1; i < len(leaves); i++ {
+			cur = Term{K: "prim", Op: op, Args: []Term{cur, leaves[i]}}
+		}
+		return cur
+	default: // balanced
+		level := append([]Term{}, leaves...)
+		for len(level) > 1 {
+			var next []Term
+			for i := 0; i < len(level); i += 2 {
+				if i+1 == len(level) {
+					next = append(next, level[i])
+					continue
+				}
+				next = append(next, Term{K: "prim", Op: op, Args: []Term{level[i], level[i+1]}})
+			}
+			level = next
+		}
+		return level[0]
+	}
+}
+
+// acPermute returns a small fixed set of orderings — identity, reverse, two
+// rotations and an adjacent swap. Deterministic on purpose: a seeded shuffle
+// would make a failure depend on a seed nobody recorded.
+func acPermute(leaves []Term) [][]Term {
+	n := len(leaves)
+	rot := func(k int) []Term {
+		out := make([]Term, 0, n)
+		for i := 0; i < n; i++ {
+			out = append(out, leaves[(i+k)%n])
+		}
+		return out
+	}
+	rev := make([]Term, 0, n)
+	for i := n - 1; i >= 0; i-- {
+		rev = append(rev, leaves[i])
+	}
+	swapped := append([]Term{}, leaves...)
+	if n > 1 {
+		swapped[0], swapped[1] = swapped[1], swapped[0]
+	}
+	return [][]Term{append([]Term{}, leaves...), rev, rot(1), rot(n / 2), swapped}
+}
+
+func acInts(vals ...int64) []Term {
+	out := make([]Term, 0, len(vals))
+	for _, v := range vals {
+		out = append(out, Term{K: "int", Int: big.NewInt(v)})
+	}
+	return out
+}
+
+// TestNormalizerACBytesMatchOracleOnAdversarialChains is #151's third acceptance
+// criterion, and the one that constrains the repair rather than demanding it:
+// the normal form must be preserved BYTE-FOR-BYTE.
+//
+// eHash hashes the normal form and `find --equiv` compares eHashes, so a
+// normalizer that gets faster by reordering leaves does not lose performance
+// evidence — it silently changes which definitions the registry reports as the
+// same function. That is a worse defect than the cost being repaired, and it
+// would pass every test above.
+//
+// The inputs are chosen for what a flattening optimization is most likely to get
+// wrong, none of which the corpus contains:
+//
+//   - DUPLICATE and EQUAL-COMPARING leaves, where the sort's comparator returns
+//     neither less nor greater. sort.Slice is not stable, so any change to the
+//     order leaves are COLLECTED in is observable exactly here and nowhere else.
+//   - VARIED ASSOCIATION of one leaf multiset, which is the whole point of
+//     flattening: a repair that recognises only its own right-nested output
+//     would leave left-nested and balanced inputs unflattened.
+//   - MIXED OPERATORS, where a chain must stop at the boundary rather than
+//     absorb a foreign node.
+//   - Float `+`, which commutes but does NOT associate. It must still be
+//     swapped and must NOT be flattened; the control below shows this suite can
+//     see the difference.
+func TestNormalizerACBytesMatchOracleOnAdversarialChains(t *testing.T) {
+	st, err := OpenStore("../codebase")
+	if err != nil {
+		t.Fatalf("could not open the corpus: %v", err)
+	}
+	norm := func(mk func() *Term) []byte {
+		// Each side gets a FRESH term: chk.synth publishes inferred TyArgs into
+		// the term it is given, so a shared input would let one run prepare the
+		// other.
+		return termBytes(eNormalize(&checkerMachine{st: st}, nil, mk()))
+	}
+	oracle := func(mk func() *Term) []byte {
+		return termBytes(eNormalizeRecursive(&checkerMachine{st: st}, nil, mk()))
+	}
+
+	bools := func(vals ...bool) []Term {
+		out := make([]Term, 0, len(vals))
+		for _, v := range vals {
+			out = append(out, Term{K: "bool", Bool: v})
+		}
+		return out
+	}
+	floats := func(vals ...float64) []Term {
+		out := make([]Term, 0, len(vals))
+		for _, v := range vals {
+			out = append(out, Term{K: "float", Float: v})
+		}
+		return out
+	}
+	// A leaf multiset whose members compare EQUAL as bytes but are separate
+	// nodes, plus a compound leaf repeated: the sort cannot order these, so any
+	// change in collection order shows up in the result.
+	compound := Term{K: "prim", Op: "*", Args: acInts(2, 3)}
+	nested := Term{K: "prim", Op: "*", Args: []Term{{K: "prim", Op: "+", Args: acInts(1, 1)}, {K: "int", Int: big.NewInt(9)}}}
+
+	// THE GOLDEN IS NOT BELT-AND-BRACES — IT IS THE ONLY WITNESS FOR THE AC
+	// NORMAL FORM ITSELF, and that was established by mutation rather than
+	// assumed.
+	//
+	// The retained oracle `eNormalizeRecursive` calls the SAME acFlatten and
+	// acRebuild as the normalizer under test. That is correct for what the
+	// oracle was built for — the iterative REWRITE left those two functions
+	// alone — but it makes oracle parity structurally blind to any change
+	// INSIDE them, which is exactly where a #151 repair has to land.
+	//
+	// Measured: inverting acRebuild's comparator, so every AC chain normalizes
+	// to the reverse order, is caught by NOTHING in this repository. Not this
+	// file's corpus differential (both sides move together), not the fixtures,
+	// not `oathrs` — which does not implement eNormalize at all, so the normal
+	// form is outside the cross-kernel conformance surface. Every `find --equiv`
+	// equivalence class would silently change and every gate would stay green.
+	//
+	// So the bytes are pinned to a RECORDED digest. Its whole job is to make
+	// changing the normal form a deliberate act with a visible diff: criterion 3
+	// of #151 says PRESERVE, and preservation cannot be witnessed by comparing
+	// two callers of the code being changed. If a future rule set intentionally
+	// moves the normal form, updating these constants is the point at which
+	// someone has to say so — and to notice that stored eHashes are now stale.
+	cases := []struct {
+		name   string
+		op     string
+		ac     bool // flattened, so every association of one multiset collapses
+		leaves []Term
+		golden string // sha256 over every shape/permutation's normal form, in order
+	}{
+		{"int-plus-distinct", "+", true, acInts(5, 2, 9, 1),
+			"f78fb78da54522d6179427a7dc34ee64db8d71fce1dbc2f889c996a5c705ad35"},
+		{"int-plus-all-equal", "+", true, acInts(7, 7, 7, 7, 7),
+			"711a33aeaf05042f9922551069461aaa52e4a8927365ac28fc3d7b9092802984"},
+		{"int-plus-duplicates", "+", true, acInts(3, 1, 3, 1, 2, 3),
+			"73cc7aa40b16ba9f23ded2beffdb77bafaaeb5e4ea8bc999e7381658acd2e67b"},
+		{"int-times-duplicates", "*", true, acInts(4, 4, 1, 4, 2),
+			"0afe91b0eb295789f9a4a31570e7dcc2936750ffc95b0245e2e9b911d97bf2c4"},
+		{"int-plus-compound-duplicates", "+", true,
+			[]Term{compound, {K: "int", Int: big.NewInt(1)}, compound, nested, nested},
+			"37d1f1308c73561ca7ad668a50ac71353d33b9bfdff1f4dc6da40480b993ce5b"},
+		{"bool-and-duplicates", "and", true, bools(true, false, true, true, false),
+			"81e1a1c47fb1043b8e623d03bcbf441eeca290603d60c4081dce90836b18063f"},
+		{"bool-or-duplicates", "or", true, bools(false, false, true, false),
+			"fcb78cdd3547ba7f91c92440b2c923726219ea41122dca2bac33fcb58c48eea7"},
+		{"int-eq-duplicates", "==", false, acInts(6, 6, 2, 6),
+			"c1a13c53bc9b0c36a40eb399db51a0b28d9d5b234f18550a3fd89b439cb6cf16"},
+		{"float-plus-duplicates", "+", false, floats(1.5, 1.5, -0.5, 1.5),
+			"4bf15dbacdb69c0868361ca3b9ca429f600691fcaed6834235623842978c0f1c"},
+	}
+	shapes := []string{"right", "left", "balanced"}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var canonical []byte
+			digest := sha256.New()
+			for _, shape := range shapes {
+				for pi, perm := range acPermute(c.leaves) {
+					leaves := perm
+					mk := func() *Term { tm := acNest(c.op, leaves, shape); return &tm }
+					got, want := norm(mk), oracle(mk)
+					if !bytes.Equal(got, want) {
+						t.Fatalf("%s/%s/perm%d: normal form MOVED from the oracle (%d vs %d bytes) — "+
+							"eHash feeds `find --equiv`, so this changes discovery, not just cost",
+							c.op, shape, pi, len(got), len(want))
+					}
+					digest.Write(got)
+					if !c.ac {
+						continue
+					}
+					// AC: every association and order of one multiset is one
+					// normal form. This is the property `find --equiv` sells,
+					// and the one a cheaper flatten is most likely to break.
+					if canonical == nil {
+						canonical = got
+					} else if !bytes.Equal(canonical, got) {
+						t.Fatalf("%s/%s/perm%d: an AC chain normalized to a DIFFERENT form than "+
+							"another association of the same leaves", c.op, shape, pi)
+					}
+				}
+			}
+			if got := hex.EncodeToString(digest.Sum(nil)); got != c.golden {
+				t.Errorf("the normal form MOVED: %s\n  want %s\n  got  %s\n"+
+					"  eHash hashes this, `find --equiv` compares eHashes, and no other check in\n"+
+					"  this repository can see the change — the retained oracle shares acFlatten and\n"+
+					"  acRebuild with the code under test. If this move is intended, say so and\n"+
+					"  account for every stored eHash it invalidates (#151 criterion 3).",
+					c.name, c.golden, got)
+			}
+		})
+	}
+
+	// CONTROL. Float `+` does not associate, so re-association must NOT collapse
+	// — if it did, the checks above would be passing vacuously on a normalizer
+	// that flattens everything. This is the mutation that tells a working suite
+	// from one that cannot see association at all.
+	fl := floats(1.5, 2.5, 3.5, 4.5)
+	l := norm(func() *Term { tm := acNest("+", fl, "left"); return &tm })
+	r := norm(func() *Term { tm := acNest("+", fl, "right"); return &tm })
+	if bytes.Equal(l, r) {
+		t.Error("left- and right-associated Float chains normalized to the same form — " +
+			"Float addition does not associate, so flattening it is unsound")
+	}
+	// And the same multiset over Int MUST collapse, so the control above is
+	// discriminating rather than merely negative.
+	il := norm(func() *Term { tm := acNest("+", acInts(1, 2, 3, 4), "left"); return &tm })
+	ir := norm(func() *Term { tm := acNest("+", acInts(1, 2, 3, 4), "right"); return &tm })
+	if !bytes.Equal(il, ir) {
+		t.Error("left- and right-associated Int chains normalized differently — AC flattening is not happening")
+	}
+
+	// DEPTH, where a repair's shortcuts actually live. Byte parity on a chain
+	// long enough that any per-level caching or early-exit is exercised, with
+	// all-equal leaves so leaf order is unconstrained by the comparator.
+	for _, c := range []struct {
+		op    string
+		depth int
+		ty    func() *Ty
+	}{
+		{"==", 2000, tInt},
+		{"+", 600, tInt},
+		{"and", 600, tBool},
+	} {
+		mk := func() *Term { return acChain(c.op, c.depth, 1, c.ty) }
+		if got, want := norm(mk), oracle(mk); !bytes.Equal(got, want) {
+			t.Errorf("%s at depth %d: normal form MOVED from the oracle (%d vs %d bytes)",
+				c.op, c.depth, len(got), len(want))
+		}
+	}
+}
+
+// TestCompareTermsCanonicalMatchesByteCompare is the differential for the
+// comparator #151 introduced. Its claim is exact: for ANY two terms it returns
+// what bytes.Compare over their full canonical encodings returns. Nothing else
+// witnesses that directly — the normalizer tests only reach it through terms
+// whose encodings differ in their first byte, which is the one case no
+// implementation could get wrong.
+//
+// THE UNIVERSE IS PAIRS OF TERMS, so it is built from two sources that fail
+// differently: every body in the corpus, which is what the kernel actually
+// compares, and constructed pairs whose encodings agree for thousands of bytes,
+// which is the only way to reach the doubling loop at all. The control at the
+// end asserts that the second kind is really present — without it this test
+// would pass while exercising a single 64-byte encode, which is precisely the
+// vacuous witness this repository keeps finding.
+func TestCompareTermsCanonicalMatchesByteCompare(t *testing.T) {
+	st, err := OpenStore("../codebase")
+	if err != nil {
+		t.Fatalf("could not open the corpus: %v", err)
+	}
+	var terms []*Term
+	seen := map[string]bool{}
+	for _, h := range st.Names() {
+		if seen[h] {
+			continue
+		}
+		seen[h] = true
+		if d, err := st.GetDef(h); err == nil && d.Body != nil {
+			terms = append(terms, d.Body)
+		}
+	}
+	if len(terms) < 100 {
+		t.Fatalf("only %d corpus bodies; the corpus did not load", len(terms))
+	}
+
+	// Pairs whose encodings agree far past the comparator's first window: one
+	// long chain, and the same chain with a single leaf changed at the far end.
+	longChain := func(n int, last int64) *Term {
+		cur := Term{K: "int", Int: big.NewInt(last)}
+		for i := 0; i < n; i++ {
+			cur = Term{K: "prim", Op: "+", Args: []Term{{K: "int", Int: big.NewInt(1)}, cur}}
+		}
+		return &cur
+	}
+	deep := []*Term{longChain(200, 1), longChain(200, 2), longChain(201, 1), longChain(200, 1)}
+	terms = append(terms, deep...)
+
+	keys := make([][]byte, len(terms))
+	for i, tm := range terms {
+		keys[i] = termBytes(tm)
+	}
+	sign := func(n int) int {
+		switch {
+		case n < 0:
+			return -1
+		case n > 0:
+			return 1
+		}
+		return 0
+	}
+	for i := range terms {
+		for j := range terms {
+			want := sign(bytes.Compare(keys[i], keys[j]))
+			if got := sign(compareTermsCanonical(terms[i], terms[j])); got != want {
+				t.Fatalf("pair (%d,%d): comparator said %d, bytes.Compare said %d "+
+					"(%d vs %d encoded bytes)", i, j, got, want, len(keys[i]), len(keys[j]))
+			}
+		}
+	}
+
+	// CONTROL: the deep pairs must actually differ LATE, or the loop above
+	// never left its first encode window and this test proved nothing about
+	// the part of the comparator that can be wrong.
+	firstDiff := func(a, b []byte) int {
+		n := len(a)
+		if len(b) < n {
+			n = len(b)
+		}
+		for i := 0; i < n; i++ {
+			if a[i] != b[i] {
+				return i
+			}
+		}
+		return n
+	}
+	da, db := termBytes(deep[0]), termBytes(deep[1])
+	if d := firstDiff(da, db); d <= 64 {
+		t.Fatalf("setup: the deep pair diverges at byte %d, inside the first encode "+
+			"window — the doubling loop was never exercised", d)
+	} else {
+		t.Logf("%d corpus bodies + deep pairs; deepest divergence at byte %d of %d",
+			len(terms)-len(deep), d, len(da))
+	}
+	if !bytes.Equal(termBytes(deep[0]), termBytes(deep[3])) {
+		t.Fatal("setup: the equal-pair control is not equal")
+	}
+}
+
+// TestNormalizerForcesDeferredChainUnderNonAssociatingParent covers the one
+// branch #151's repair added that no other test reaches.
+//
+// Deferring an AC chain's rebuild to its root rests on the root existing: an
+// interior node leaves itself un-normalized because a same-op parent will
+// flatten straight through it. That parent decides ASSOCIATIVITY from its own
+// synthesized operand type, and the two decisions can disagree — a parent whose
+// first operand does not synthesize is not AC, and it must materialise the child
+// it is no longer going to absorb. Without that, a deferred chain escapes
+// un-normalized and `find --equiv` silently loses the equivalence.
+//
+// It needs a term whose operand types disagree between a node and its child,
+// which no well-typed definition produces — so the corpus differential cannot
+// reach it, and neutering the repair's force path passes every other test.
+func TestNormalizerForcesDeferredChainUnderNonAssociatingParent(t *testing.T) {
+	st, err := OpenStore("../codebase")
+	if err != nil {
+		t.Fatalf("could not open the corpus: %v", err)
+	}
+	// args[0] is an out-of-range de Bruijn index, so the parent's synth fails
+	// and the parent is not AC; args[1] is an ordinary Int chain, so the child
+	// is AC and defers.
+	mk := func() *Term {
+		inner := acNest("+", acInts(3, 1, 2), "right")
+		return &Term{K: "prim", Op: "+", Args: []Term{{K: "var", Idx: 99}, inner}}
+	}
+	if ty, err := (&checkerMachine{st: st}).synth(nil, &mk().Args[0]); err == nil {
+		t.Fatalf("setup: the parent's first operand synthesized to %v — it must FAIL "+
+			"for the parent to be non-associating", ty)
+	}
+	if ty, err := (&checkerMachine{st: st}).synth(nil, &mk().Args[1].Args[0]); err != nil || !isACPrim("+", ty) {
+		t.Fatalf("setup: the child's operand must synthesize to an AC type, got %v/%v", ty, err)
+	}
+
+	got := termBytes(eNormalize(&checkerMachine{st: st}, nil, mk()))
+	want := termBytes(eNormalizeRecursive(&checkerMachine{st: st}, nil, mk()))
+	if !bytes.Equal(got, want) {
+		t.Errorf("a deferred AC chain under a non-associating parent was left un-normalized "+
+			"(%d vs the oracle's %d bytes)", len(got), len(want))
+	}
+	// The chain really must have been rebuilt: sorted leaves, not source order.
+	if bytes.Equal(got, termBytes(mk())) {
+		t.Error("the term came back unchanged — nothing was normalized at all")
+	}
+}
+
+// TestBoundedEncodeIsAnExactPrefixInsideAtomicPayloads witnesses the LIMIT,
+// which is a different claim from the comparator's ANSWER and needs its own
+// test because no existing one can fail on it.
+//
+// compareTermsCanonical's cost argument is that a limited encode writes at most
+// `limit` bytes, so the doubling loop's total work is a geometric series in the
+// position of the first difference. Checking the limit only BETWEEN work items
+// leaves that argument false: a single work item can append a whole big.Int
+// magnitude, a whole string, or a whole TYPE encoding, so a 64-byte window can
+// materialise megabytes. The ordering stays correct the whole time — the bytes
+// are still a prefix, just far too many of them — which is precisely why the
+// comparator differential is blind to it. Every assertion below is about SIZE
+// and PREFIX EXACTNESS; the comparator's verdict is checked only as a
+// regression guard.
+//
+// THE UNIVERSE IS DERIVED FROM THE CLAIM, not from the encoder's switch: it is
+// the append paths that can emit an unbounded run of bytes without returning to
+// enc.term's loop. That is bigint (`int`, `rat`), str (both the inline operator
+// in `prim` and the deferred 's' item behind `record`/`field`), and the type
+// encoder reached through `lam`/`let` (ty) and `self`/`ctor` (tys). A payload
+// buried under a chain is included so the run does not begin at byte 1.
+func TestBoundedEncodeIsAnExactPrefixInsideAtomicPayloads(t *testing.T) {
+	const payload = 8000
+
+	bigA := new(big.Int).Lsh(big.NewInt(1), 8*payload)
+	bigB := new(big.Int).Add(bigA, big.NewInt(1)) // differs in the LAST magnitude byte
+	strA := strings.Repeat("z", payload)
+	strB := strA[:payload-1] + "y"
+	deepTy := func(tail *Ty) *Ty {
+		cur := tail
+		for i := 0; i < payload; i++ {
+			cur = &Ty{K: "fun", A: &Ty{K: "int"}, B: cur}
+		}
+		return cur
+	}
+	wideTys := func(tail *Ty) []Ty {
+		out := make([]Ty, payload)
+		for i := range out {
+			out[i] = Ty{K: "int"}
+		}
+		out[len(out)-1] = *tail
+		return out
+	}
+	one := Term{K: "int", Int: big.NewInt(1)}
+	behind := func(t Term) *Term {
+		// Three ordinary nodes first, so the unbounded run starts well inside
+		// the encoding rather than at its second byte.
+		return &Term{K: "prim", Op: "+", Args: []Term{one, {K: "prim", Op: "+", Args: []Term{one, t}}}}
+	}
+
+	cases := []struct {
+		name string
+		a, b *Term
+	}{
+		{"int-magnitude", &Term{K: "int", Int: bigA}, &Term{K: "int", Int: bigB}},
+		{"rat-magnitude",
+			&Term{K: "rat", Rat: new(big.Rat).SetInt(bigA)},
+			&Term{K: "rat", Rat: new(big.Rat).SetInt(bigB)}},
+		{"prim-operator",
+			&Term{K: "prim", Op: strA, Args: []Term{one}},
+			&Term{K: "prim", Op: strB, Args: []Term{one}}},
+		{"record-field-name",
+			&Term{K: "record", Names: []string{strA}, Args: []Term{one}},
+			&Term{K: "record", Names: []string{strB}, Args: []Term{one}}},
+		{"field-projection-name",
+			&Term{K: "field", Op: strA, A: &one},
+			&Term{K: "field", Op: strB, A: &one}},
+		{"lam-binder-type",
+			&Term{K: "lam", Ty: deepTy(tInt()), A: &one},
+			&Term{K: "lam", Ty: deepTy(tBool()), A: &one}},
+		{"self-type-arguments",
+			&Term{K: "self", TyArgs: wideTys(tInt())},
+			&Term{K: "self", TyArgs: wideTys(tBool())}},
+		{"payload-behind-a-chain",
+			behind(Term{K: "int", Int: bigA}),
+			behind(Term{K: "int", Int: bigB})},
+	}
+
+	sign := func(n int) int {
+		switch {
+		case n < 0:
+			return -1
+		case n > 0:
+			return 1
+		}
+		return 0
+	}
+	firstDiff := func(a, b []byte) int {
+		n := len(a)
+		if len(b) < n {
+			n = len(b)
+		}
+		for i := 0; i < n; i++ {
+			if a[i] != b[i] {
+				return i
+			}
+		}
+		return n
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			for side, tm := range map[string]*Term{"a": c.a, "b": c.b} {
+				full := termBytes(tm)
+				if len(full) < 1000 {
+					t.Fatalf("setup: %s encodes to only %d bytes — the payload is not large "+
+						"enough for a 64-byte window to be exceeded", side, len(full))
+				}
+				// UNLIMITED MUST NOT MOVE. The limit is an added stop condition,
+				// never a change to which bytes are produced.
+				var oracle enc
+				encTermRecursive(&oracle, tm)
+				if !bytes.Equal(full, oracle.b) {
+					t.Fatalf("%s: unlimited encoding moved from the pre-#151 oracle (%d vs %d bytes)",
+						side, len(full), len(oracle.b))
+				}
+				if unl := (&enc{}); true {
+					unl.term(tm)
+					if unl.truncated {
+						t.Fatalf("%s: an unlimited encode reported itself truncated", side)
+					}
+				}
+
+				limits := make([]int, 0, 320)
+				for l := 1; l <= 300; l++ {
+					limits = append(limits, l)
+				}
+				limits = append(limits, 1000, 4096, len(full)-1, len(full), len(full)+1, 2*len(full))
+				for _, limit := range limits {
+					e := &enc{limit: limit}
+					e.term(tm)
+					want := limit
+					if len(full) < want {
+						want = len(full)
+					}
+					if len(e.b) != want {
+						t.Fatalf("%s: a limit of %d over a %d-byte encoding produced %d bytes "+
+							"(want %d) — the limit is honoured only BETWEEN work items, so one "+
+							"bigint/str/ty append runs past it", side, limit, len(full), len(e.b), want)
+					}
+					if !bytes.Equal(e.b, full[:len(e.b)]) {
+						t.Fatalf("%s: a limit of %d produced bytes that are not a prefix of the "+
+							"full encoding", side, limit)
+					}
+					if got, wantTrunc := e.truncated, len(e.b) < len(full); got != wantTrunc {
+						t.Fatalf("%s: a limit of %d wrote %d of %d bytes but reported truncated=%v",
+							side, limit, len(e.b), len(full), got)
+					}
+				}
+			}
+
+			// CONTROL: the pair must diverge LATE, or the parity check below
+			// never leaves the comparator's first window and proves nothing
+			// about the doubling loop over a truncated atomic payload.
+			ka, kb := termBytes(c.a), termBytes(c.b)
+			if d := firstDiff(ka, kb); d <= 64 {
+				t.Fatalf("setup: the pair diverges at byte %d, inside the first encode window", d)
+			}
+			for _, p := range [][2]*Term{{c.a, c.b}, {c.b, c.a}, {c.a, c.a}, {c.b, c.b}} {
+				want := sign(bytes.Compare(termBytes(p[0]), termBytes(p[1])))
+				if got := sign(compareTermsCanonical(p[0], p[1])); got != want {
+					t.Fatalf("comparator said %d, bytes.Compare said %d over %d/%d encoded bytes",
+						got, want, len(termBytes(p[0])), len(termBytes(p[1])))
+				}
+			}
+		})
+	}
 }
