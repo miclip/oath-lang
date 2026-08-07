@@ -590,7 +590,7 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   more VALUABLE if delayed    #134, #139/#140, #138 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
-  no CLOCK at all             #151, #115, #116, #65, #66 — open, and neither
+  no CLOCK at all             #152, #115, #116, #65, #66 — open, and neither
                               cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
@@ -625,10 +625,11 @@ says it stopped blocking anything when #126 closed and must wait for a real
 consumer to fix its scope. So it has a TRIGGER, not a position, and listing it
 under a closing window contradicted the same file's own instruction.
 
-**#151 is a COMPLEXITY obligation, not a safety one** — that classification is
-the whole of the elaboration, because it is what decides whether the item is
-urgent and it is the one thing about the issue that does not move. Everything
-else about it is on the issue; read it there.
+**#152 is a WITNESS gap, not a defect** — that classification is the whole of
+the elaboration, because it decides what "done" could even mean. Nothing is
+currently wrong with the AC normal form; what is missing is anything that would
+NOTICE if it changed, and one live option is to accept that explicitly. Read the
+issue rather than re-deriving it.
 
 **#148 IS BLOCKED ON OPERATOR PROVISIONING, NOT ON ENGINEERING**, and the
 distinction decides what a session should do with it: nothing. Its design is
