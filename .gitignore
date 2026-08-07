@@ -1,6 +1,8 @@
 oath/oath
 oathrs/target/
 .claude/
+.codex/
+.conclave/
 
 # Signing keys and bearer tokens must never enter the repository. `oath keygen`
 # writes <prefix>.key (private) and <prefix>.pub (public) into the working
