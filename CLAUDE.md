@@ -590,8 +590,8 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   more VALUABLE if delayed    #134, #139/#140, #138 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
-  no CLOCK at all             #155, #152, #115, #116, #65, #66 — open, and
-                              neither cheaper nor dearer for waiting
+  no CLOCK at all             #152, #115, #116, #65, #66 — open, and neither
+                              cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
 below may ELABORATE a row; nothing may add an issue the table does not hold.**
@@ -624,13 +624,6 @@ turns out never to have belonged here: the standing instruction below already
 says it stopped blocking anything when #126 closed and must wait for a real
 consumer to fix its scope. So it has a TRIGGER, not a position, and listing it
 under a closing window contradicted the same file's own instruction.
-
-**#155 is a COST boundary, not a soundness one** — that classification is the
-whole of the elaboration, because it decides what would close it: the rewrite it
-declines is already SOUND, so nothing here is a correctness question and the
-preconditions are performance ones, stated on the issue. Its
-falsifier can win outright: if admitting the head discovers nothing new on the
-corpus, the refusal stands and the issue closes declined. Measure that first.
 
 **#152 is a WITNESS gap, not a defect** — that classification is the whole of
 the elaboration, because it decides what "done" could even mean. Nothing is
