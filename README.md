@@ -268,8 +268,9 @@ $ oath find --implies flipped.oath         # by PROOF: who provably satisfies it
 Four modes, all name-free: by example, by a spec you write (`self` is the sought
 function), matched *up to operand types* (Int and Rat commutativity match), and —
 because a property is portable — by **proof-implication**: append your spec to
-each same-signature definition and prove it, so commutativity written
-`(== (self b a) (self a b))` still finds `+` even though its AST differs. This is
+each signature-compatible definition and prove it, so commutativity written
+`(== (self b a) (self a b))` still finds `+` even though its AST differs, and an
+`Int` law finds its `Rat` counterpart with your binders re-typed to it. This is
 the layer that makes the commons real: pull proven code by property, rebuild
 nothing. Full rationale in [docs/discovery.md](docs/discovery.md).
 

@@ -499,16 +499,130 @@ func apiFindSpec(st *Store, src string) (string, error) {
 	return b.String(), nil
 }
 
+// crossTypeSub is the leaf-type substitution taking a query signature to a
+// candidate signature: query primitive KIND -> candidate type. It is keyed by
+// kind because generalizeTypes assigns one type variable per distinct primitive
+// kind, shared across every occurrence — so the mapping is per-kind by
+// construction, not per-position.
+type crossTypeSub map[string]Ty
+
+// crossTypeCompatible reports whether two signatures are equal up to primitive
+// leaves, and if so returns the witnessing substitution. Compatibility is
+// decided by generalizeTypes + tyBytes — the same anti-unification propHashGeneral
+// already uses for the cross-type SHAPE surface — rather than by a hand-written
+// structural walk: the generalization is the authority for what "same up to
+// operand types" means, and a second walker deciding it independently could
+// disagree with the hash surface. The walk below runs only AFTER equality is
+// established, and only to read the witnessing map off two shapes already known
+// to coincide.
+//
+// Note this admits (Int,Int)->Int against (Bool,Bool)->Bool: both generalize to
+// (t0,t0)->t0. That is intended. Admission is not a claim — the PROOF is the
+// filter, and a law that does not hold over the candidate's types simply fails
+// to prove.
+func crossTypeCompatible(qTy, cTy *Ty) (crossTypeSub, bool) {
+	gq := generalizeTypes([]Ty{*qTy})
+	gc := generalizeTypes([]Ty{*cTy})
+	if !bytes.Equal(tyBytes(&gq[0]), tyBytes(&gc[0])) {
+		return nil, false
+	}
+	sub := crossTypeSub{}
+	var walk func(a, b *Ty) bool
+	walk = func(a, b *Ty) bool {
+		switch a.K {
+		case "int", "rat", "float", "bool":
+			if prev, ok := sub[a.K]; ok {
+				return bytes.Equal(tyBytes(&prev), tyBytes(b))
+			}
+			sub[a.K] = *b
+			return true
+		case "fun":
+			return b.K == "fun" && walk(a.A, b.A) && walk(a.B, b.B)
+		case "data", "rec", "record":
+			if b.K != a.K || len(a.Args) != len(b.Args) {
+				return false
+			}
+			for i := range a.Args {
+				if !walk(&a.Args[i], &b.Args[i]) {
+					return false
+				}
+			}
+			return true
+		default:
+			return bytes.Equal(tyBytes(a), tyBytes(b))
+		}
+	}
+	if !walk(qTy, cTy) {
+		return nil, false
+	}
+	return sub, true
+}
+
+// crossTypeRetypeBinders applies the substitution to a query property's BINDER
+// types. Binder kinds absent from the signature are left unchanged (there is
+// nothing to map them to), which is sound: an unmapped binder either still
+// typechecks against the candidate or is rejected by checkDef.
+//
+// SCOPE, deliberately: only Prop.Binders are re-typed. Term.TyArgs (ref/self/ctor
+// instantiations) and Term.Ty (lam/let annotations) inside a property BODY are
+// left alone. The consequence is not unsoundness but REJECTION — a body-embedded
+// type that disagrees with the re-typed binders fails checkDef and the candidate
+// is dropped, which is why checkDef on the augmented definition is a required
+// gate here and not an optimisation. Threading the substitution through bodies
+// is a separate, larger change.
+func crossTypeRetypeBinders(binders []Ty, sub crossTypeSub) []Ty {
+	var gen func(t *Ty) Ty
+	gen = func(t *Ty) Ty {
+		switch t.K {
+		case "int", "rat", "float", "bool":
+			if to, ok := sub[t.K]; ok {
+				return to
+			}
+			return *t
+		case "fun":
+			return *tFun(ptrTy(gen(t.A)), ptrTy(gen(t.B)))
+		case "data":
+			return *tDataTy(t.Hash, genArgs(t.Args, gen))
+		case "rec":
+			return *tRec(genArgs(t.Args, gen))
+		case "record":
+			out := *t
+			out.Args = genArgs(t.Args, gen)
+			return out
+		default:
+			return *t
+		}
+	}
+	out := make([]Ty, len(binders))
+	for i := range binders {
+		out[i] = gen(&binders[i])
+	}
+	return out
+}
+
 // apiFindImplies is spec-query by PROOF-IMPLICATION: find every definition that
 // PROVABLY satisfies a fresh spec — not just the ones whose stated law matches
 // by shape. Because a property is `self`-referential and de Bruijn, it is
-// portable: for each definition of the same signature, we append the query
-// property and try to prove it (reusing the full prover, including that
-// definition's own proven properties as lemmas and its body). If it proves, the
-// definition satisfies the spec — even when the spec is written differently from
-// any law that definition happens to have stated. This catches semantic matches
-// that the content-hash surface misses (e.g. commutativity written `(== (self b
-// a) (self a b))` still proves against `+`).
+// portable: for each candidate definition we append the query property and try
+// to prove it (reusing the full prover, including that definition's own proven
+// properties as lemmas and its body). If it proves, the definition satisfies the
+// spec — even when the spec is written differently from any law that definition
+// happens to have stated. This catches semantic matches that the content-hash
+// surface misses (e.g. commutativity written `(== (self b a) (self a b))` still
+// proves against `+`).
+//
+// The candidate set is signature-compatible, NOT same-signature: a definition
+// whose signature equals the query's up to primitive leaves is admitted with the
+// query's binders re-typed to it, so an Int law finds its Rat, Float and Bool
+// counterparts. Exact matches are unaffected — they are proved with the query
+// property verbatim.
+//
+// COST, measured on the committed corpus before this was widened (one real
+// query, alternating order, three repetitions per mode): candidates 6 -> 9
+// (1.500x), z3 subprocesses 12 -> 16 (1.333x), median wall 5m44.257s ->
+// 5m44.981s (1.002x). The candidate set grows by half while wall clock does not
+// move, because runtime here is dominated by goals that never prove, and the
+// admitted cross-type candidates are not those.
 func apiFindImplies(st *Store, src string) (string, error) {
 	if err := z3Available(); err != nil {
 		return "", err
@@ -547,17 +661,44 @@ func apiFindImplies(st *Store, src string) (string, error) {
 		for _, k := range keys {
 			h := names[k]
 			d, err := st.GetDef(h)
-			if err != nil || d.K != "func" || !bytes.Equal(tyBytes(d.Ty), qsig) {
+			if err != nil || d.K != "func" {
 				continue
+			}
+			// Exact signature: the query property is portable (self + de Bruijn)
+			// and is appended verbatim. Otherwise admit the candidate only if its
+			// signature is equal up to primitive leaves, and re-type the query's
+			// binders to it.
+			qp, crossSig := qd.Props[pqi], ""
+			if !bytes.Equal(tyBytes(d.Ty), qsig) {
+				sub, ok := crossTypeCompatible(qd.Ty, d.Ty)
+				if !ok {
+					continue
+				}
+				qp = Prop{Binders: crossTypeRetypeBinders(qp.Binders, sub), Body: qp.Body}
+				crossSig = printTy(st, d.Ty, nil)
 			}
 			m, err := st.GetMeta(h)
 			if err != nil {
 				continue
 			}
-			// The query property is portable (self + de Bruijn): append it to
-			// this same-signature definition and prove it about that def.
 			aug := *d
-			aug.Props = append(append([]Prop{}, d.Props...), qd.Props[pqi])
+			aug.Props = append(append([]Prop{}, d.Props...), qp)
+			// REQUIRED GATE, UNCONDITIONAL, and the unconditional part is the
+			// load-bearing half. Only binders are re-typed, so a property body
+			// carrying its own types can disagree with them — that disagreement
+			// must reject the candidate rather than reach the prover.
+			//
+			// It must also run on the EXACT path, which is not obvious. `tyBytes`
+			// excludes `Def.TyVars`, so a candidate declaring an unused type
+			// parameter still matches exactly, and the appended query's `self`
+			// nodes then carry the wrong number of type arguments. Gating only
+			// the retyped path leaves that augmentation ill-typed on the way to
+			// `proveOne`, which can inline it and report a FALSE PROOF.
+			//
+			// Such a candidate is dropped, and that is correct rather than a
+			// regression: it does not typecheck. Before this rung there was no
+			// gate at all, so the case reached the prover unchecked — widening
+			// the search is what made the hole visible, not what created it.
 			if err := checkDef(st, &aug); err != nil {
 				continue
 			}
@@ -568,12 +709,16 @@ func apiFindImplies(st *Store, src string) (string, error) {
 			// by real prop index) must not leak into a discovery query.
 			loadLemmaLibrary(c, st, &aug, h, m, -1)
 			if o := c.proveOne(&aug, h, m, &aug.Props[pi], pi); o.status == "proven" {
-				fmt.Fprintf(&b, "      %-18s ← provably satisfies it (%s)\n", k, o.method)
+				if crossSig != "" {
+					fmt.Fprintf(&b, "      %-18s ← provably satisfies it at %s (%s, cross-type: query binders re-typed)\n", k, crossSig, o.method)
+				} else {
+					fmt.Fprintf(&b, "      %-18s ← provably satisfies it (%s)\n", k, o.method)
+				}
 				found = true
 			}
 		}
 		if !found {
-			b.WriteString("      (no definition provably satisfies this — in the same-signature, provable set)\n")
+			b.WriteString("      (no definition provably satisfies this — in the signature-compatible, provable set)\n")
 		}
 	}
 	return b.String(), nil

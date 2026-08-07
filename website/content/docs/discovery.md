@@ -111,14 +111,26 @@ and match). What remains:
   `oath find --implies <file>` (and the `find_implies` MCP tool) finds every
   definition that PROVABLY satisfies the spec — via Z3, not by shape. Because a
   property is `self`-referential and de Bruijn it is *portable*: for each
-  same-signature definition, the query property is appended and proved (reusing
+  candidate definition, the query property is appended and proved (reusing
   the whole prover — the definition's body and its own proven properties as
   lemmas). This catches semantic matches the hash surface misses — commutativity
   written `(== (self b a) (self a b))` has a different AST from the usual form,
   so `find --spec` misses it, but `find --implies` proves `+` satisfies it. The
-  first version restricts candidates to an EXACT signature match (no cross-type
-  re-typing yet) and pays a proof per candidate; the win is finding defs that
-  satisfy your spec *however they wrote their own*.
+  win is finding defs that satisfy your spec *however they wrote their own*.
+
+  Candidates are **signature-compatible, not same-signature**: a definition
+  whose signature equals the query's *up to primitive leaves* is admitted with
+  the query's binders re-typed to it, so an `Int` law reaches its `Rat`, `Float`
+  and `Bool` counterparts and the hit reports the signature it was proved at.
+  Admission is deliberately wider than truth — `(Int,Int)->Int` and
+  `(Bool,Bool)->Bool` generalize alike — because the PROOF is the filter, not
+  the signature. Only the property's BINDERS are re-typed; a property whose
+  BODY carries its own type annotations no longer typechecks against the
+  candidate and is rejected rather than approximated. Cost on the committed
+  corpus, measured before this widened: half again as many candidates
+  (6 -> 9), a third more solver calls (12 -> 16), and no measurable change in
+  wall clock (5m44.257s -> 5m44.981s median), because the run is dominated by
+  goals that never prove and the new candidates are not those.
 - **Body-equivalence** has a first slice: `oath find --equiv <name>` (and the
   `find_equiv` MCP tool) find definitions that are the SAME FUNCTION up to the
   rewrite rules — a different implementation that normalizes to the same

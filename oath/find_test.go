@@ -141,6 +141,135 @@ func TestFindImplies(t *testing.T) {
 	}
 }
 
+// TestFindImpliesCrossType is the regression witness for the CROSS-TYPE
+// admission: a query stated over Int finds definitions whose signature differs
+// only in its primitive leaves, with the query's binders re-typed to theirs.
+//
+// It fails on exact-signature-only code, and each assertion names the mutation
+// that breaks it:
+//   - REVERT THE ADMISSION (skip candidates whose signature is not byte-equal)
+//     and the Rat and Bool hits disappear.
+//   - REVERT THE RE-TYPING (append the Int-bindered property verbatim to a Rat
+//     definition) and checkDef rejects every cross-type candidate, so the hits
+//     disappear the same way — which is why the second assertion checks the
+//     RE-TYPED SIGNATURE is reported, not merely that a name appears.
+//   - DROP THE checkDef GATE and the last section reports a candidate for a
+//     property whose body still says Int while its binders say Rat. That is
+//     measured, not assumed: with the gate removed the prover returns `proven`
+//     for the ill-typed augmentation rather than failing, because nothing
+//     downstream re-typechecks what it is handed.
+//
+// The negative assertions are not decoration. Admission is deliberately wider
+// than truth — (Rat,Rat)->Rat and (Bool,Bool)->Bool both generalize to
+// (t0,t0)->t0 — so the PROOF is the filter, and a non-commutative candidate of a
+// compatible signature must be admitted and then rejected.
+func TestFindImpliesCrossType(t *testing.T) {
+	if z3Available() != nil {
+		t.Skip("z3 not available")
+	}
+	st := newStore(t)
+	put(t, st, `(defn plus-r [] [(a Rat) (b Rat)] Rat (+ a b))`)
+	put(t, st, `(defn and-b [] [(a Bool) (b Bool)] Bool (and a b))`)
+	// CONTROL: signature-compatible with the query, and NOT commutative.
+	put(t, st, `(defn minus-r [] [(a Rat) (b Rat)] Rat (- a b))`)
+	// CONTROL: a different signature SHAPE (three arguments), which the
+	// compatibility relation must not admit at all.
+	put(t, st, `(defn add3-r [] [(a Rat) (b Rat) (c Rat)] Rat (+ a (+ b c)))`)
+
+	out, err := apiFindImplies(st, `(defn q [] [(a Int) (b Int)] Int (+ a b)
+		(prop comm [(a Int) (b Int)] (== (q a b) (q b a))))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// THE CLAIM: an Int query reaches Rat and Bool definitions.
+	for _, want := range []string{"plus-r", "and-b"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("cross-type proof-implication should find %s for an Int commutativity query:\n%s", want, out)
+		}
+	}
+	// The candidate's own signature is reported, so a reader can see the query
+	// was proved AT A DIFFERENT TYPE rather than assume an exact match.
+	for _, want := range []string{"(-> Rat Rat Rat)", "(-> Bool Bool Bool)", "cross-type"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("cross-type hits must report the candidate signature and be labelled (missing %q):\n%s", want, out)
+		}
+	}
+	// CONTROL: admitted, proved against, and rejected by the prover.
+	if strings.Contains(out, "minus-r") {
+		t.Fatalf("subtraction is not commutative and must not be reported:\n%s", out)
+	}
+	// CONTROL: not signature-compatible in the first place.
+	if strings.Contains(out, "add3-r") {
+		t.Fatalf("a 3-argument signature must not be admitted against a 2-argument query:\n%s", out)
+	}
+
+	// CONTROL, the other direction: exact-signature behaviour is unchanged and
+	// reports NO cross-type label, so widening did not relabel the old path.
+	put(t, st, `(defn plus-i [] [(a Int) (b Int)] Int (+ a b))`)
+	exact, err := apiFindImplies(st, `(defn q [] [(a Int) (b Int)] Int (+ a b)
+		(prop comm [(a Int) (b Int)] (== (q a b) (q b a))))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(exact, "\n") {
+		if strings.Contains(line, "plus-i") && strings.Contains(line, "cross-type") {
+			t.Fatalf("an exact-signature hit must not be labelled cross-type:\n%s", line)
+		}
+	}
+	if !strings.Contains(exact, "plus-i") {
+		t.Fatalf("the exact-signature path must still find plus-i:\n%s", exact)
+	}
+
+	// THE checkDef GATE, witnessed. Only BINDERS are re-typed, so a property
+	// whose BODY carries its own type annotation still says Int after the
+	// binders say Rat. That augmentation is ill-typed and must be dropped —
+	// dropping the gate instead makes this same query report plus-r as
+	// `provably satisfies it`, because the prover does not re-typecheck what it
+	// is handed. This is the rung-3 residue: rejected, not silently approximated.
+	st2 := newStore(t)
+	put(t, st2, `(defn plus-r2 [] [(a Rat) (b Rat)] Rat (+ a b))`)
+	residue, err := apiFindImplies(st2, `(defn q [] [(a Int) (b Int)] Int (+ a b)
+		(prop annotated [(a Int) (b Int)] (== ((fn [(x Int)] x) (q a b)) (q b a))))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(residue, "plus-r2") {
+		t.Fatalf("a property body carrying Int must not be proved against a Rat definition (checkDef gate):\n%s", residue)
+	}
+}
+
+// TestCrossTypeCompatibilityShape pins the RELATION independently of the prover:
+// compatibility is up to PRIMITIVE LEAVES, so the leaf-sharing pattern is
+// preserved even though the leaf types are not.
+func TestCrossTypeCompatibilityShape(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(defn c-ii [] [(a Int) (b Int)] Int (+ a b))`)
+	put(t, st, `(defn c-bb [] [(a Bool) (b Bool)] Bool (and a b))`)
+	put(t, st, `(defn c-ib [] [(a Int) (b Int)] Bool (== a b))`)
+	ii, bb, ib := mustDef(t, st, "c-ii").Ty, mustDef(t, st, "c-bb").Ty, mustDef(t, st, "c-ib").Ty
+	if _, ok := crossTypeCompatible(ii, bb); !ok {
+		t.Fatal("(Int,Int)->Int and (Bool,Bool)->Bool generalize alike and must be compatible")
+	}
+	// (Int,Int)->Int has ONE distinct leaf kind; (Int,Int)->Bool has two. Their
+	// generalizations differ ([t0,t0]->t0 vs [t0,t0]->t1), so the SHARING
+	// pattern — not just the arity — is what compatibility preserves.
+	if _, ok := crossTypeCompatible(ii, ib); ok {
+		t.Fatal("(Int,Int)->Int must not be compatible with (Int,Int)->Bool: leaf sharing differs")
+	}
+	// Re-typing rewrites every occurrence of the mapped kind, and only those.
+	sub, ok := crossTypeCompatible(ii, bb)
+	if !ok {
+		t.Fatal("expected compatibility")
+	}
+	got := crossTypeRetypeBinders([]Ty{*tInt(), {K: "str"}}, sub)
+	if got[0].K != "bool" {
+		t.Fatalf("an Int binder must be re-typed to Bool, got %q", got[0].K)
+	}
+	if got[1].K != "str" {
+		t.Fatalf("an unmapped binder kind must be left alone, got %q", got[1].K)
+	}
+}
+
 // The e-graph rung: two implementations equal up to the rewrite rules
 // (commutativity) share an eHash and are found equivalent — but keep DISTINCT
 // identities (the layer draws an edge, it never merges objects). A

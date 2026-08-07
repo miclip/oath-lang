@@ -115,7 +115,7 @@ func mcpTools() []map[string]any {
 		},
 		{
 			"name":        "find_implies",
-			"description": "Spec-query by PROOF-IMPLICATION: like find_spec, but finds every definition that PROVABLY satisfies the spec (via Z3), not just the ones whose stated law matches by shape. Catches semantic matches the content-hash surface misses — e.g. commutativity written `(== (self b a) (self a b))` still proves against `+`. Slower (a proof per same-signature candidate) but the real reuse question: 'who can I prove satisfies this, however they wrote their own specs?'. As with find_spec, project the user's intent into the spec LOCALLY and send only the spec, then call `explain` on each candidate before selecting.",
+			"description": "Spec-query by PROOF-IMPLICATION: like find_spec, but finds every definition that PROVABLY satisfies the spec (via Z3), not just the ones whose stated law matches by shape. Catches semantic matches the content-hash surface misses — e.g. commutativity written `(== (self b a) (self a b))` still proves against `+`. Candidates are signature-COMPATIBLE, not same-signature: a definition whose signature matches up to primitive leaves is admitted with the query's binders re-typed to it, so an Int law finds its Rat/Float/Bool counterparts and the hit reports which signature it was proved at. Slower (a proof per candidate) but the real reuse question: 'who can I prove satisfies this, however they wrote their own specs?'. As with find_spec, project the user's intent into the spec LOCALLY and send only the spec, then call `explain` on each candidate before selecting.",
 			"inputSchema": obj(map[string]any{"source": str("an Oath (defn ...) whose properties are the spec to prove against candidates")}, "source"),
 		},
 		{
