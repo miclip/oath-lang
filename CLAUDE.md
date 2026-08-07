@@ -231,9 +231,19 @@ INSTRUMENT. IT IS THE STARTUP SEQUENCE, AND THERE IS ONLY ONE:**
      This is the whole point of step 1 and the easier of the two to discard,
      because a reader who lands somewhere plausible is easy to wave through. It
      is not a vote on what to work on. It is evidence about what this file
-     COMMUNICATES, and a mismatch means the prose, not the reader, is wrong.
-     Skipping either repair discards the measurement and leaves the next session
-     to rediscover it.
+     COMMUNICATES, and a confirmed mismatch means the prose, not the reader, is
+     wrong. Skipping either repair discards the measurement and leaves the next
+     session to rediscover it.
+
+     **CONFIRM BEFORE REPAIRING — the reader is not yet a clean-room subject.**
+     A `file vs gh` mismatch needs nothing: `gh` is the authority and step 2
+     already ran. A `reader vs the queue` mismatch is a claim about prose, and
+     the guidance channel into this file is still open, so confirm it by COUNT,
+     INSPECT or RE-DISPATCH — the three routes, and why agreement and
+     disagreement are not worth the same, are with the instrument's calibration
+     below. Most such findings are settled by INSPECT in seconds; this is a
+     step, not a delay. Repairing on unconfirmed output would edit this file
+     from a subject that read part of its own previous conclusions.
   4. **Then apply the queue's rule — and note that it does not always return an
      item.** This step exists because "what is first" is otherwise two-valued —
      the SEQUENCE is first for the session, the QUEUE's item is first for the
@@ -328,6 +338,66 @@ standard everything else here is:**
   the original was, and a second void instrument is worse than none.
 - If it reports the first task correctly while this file is known-stale, retire
   it too: it would be agreeing with the author rather than reading.
+
+**WEIGH ITS OUTPUT ASYMMETRICALLY: AGREEMENT IS WEAK EVIDENCE, DISAGREEMENT IS
+STRONG.** There are TWO contamination channels and only one is closed. The
+CONTEXT channel — what the reader is handed before it opens this file — is
+controlled by the dispatch rule above. The GUIDANCE channel is closed only to
+the extent this file has actually been cleaned: paraphrased conclusions attach
+themselves to the rules they motivated, and stripping the run RECORDS does not
+strip those.
+
+**THAT IS A DEBT TO DRIVE TO ZERO, NOT A CONDITION TO LIVE WITH** — the hard
+rule below requires removing such paraphrases, and this calibration exists
+because the removal is never provably complete, not as permission to stop
+removing. While any remain, the subject is imperfectly independent of previous
+measurements, and the two verdicts are not worth the same:
+
+    the reader AGREES with a repair    worth little — it may be reading the
+                                       previous run's conclusion back to you
+    the reader DISAGREES, or reports   worth MORE, and still not self-standing:
+    something never written down       check it before acting
+
+**The second row is a RANKING, not a licence.** A leak primes ATTENTION as well
+as wording, so it can steer a reader toward an analogous defect it never spelled
+out — a novel-looking finding is therefore not proof of independence.
+
+**TWO DIFFERENT BARS, and using one word for both is what makes a rule like this
+read as self-contradictory:**
+
+    to ACT on a finding      it must not rest on ONE READER'S say-so
+                             — CORROBORATION
+    to RECORD it as          it must not rest on the LEAK
+    established              — INDEPENDENCE
+
+Three routes clear the first. Only the first two also clear the second.
+
+    COUNT it            the claim is quantitative — line spans, proportions,
+                        which sections exist. Settled by a command.
+    INSPECT it          the claim names a defect VISIBLE in the artefact once
+                        pointed at — two sentences that contradict each other
+                        are checkable by reading them, not by trusting whoever
+                        noticed. Most communication defects land here.
+    RE-DISPATCH         the claim is purely behavioural and neither of the
+                        above reaches it. A SECOND reader, clean target, and
+                        NOT told the first's finding — naming it would destroy
+                        the very thing being tested.
+
+**RE-DISPATCH CLEARS THE FIRST BAR AND NOT THE SECOND, EXACTLY.** A second
+reader shares this one's model, priors and leaked file, so it can reproduce the
+same priming rather than corroborate the finding — two correlated subjects are
+one measurement taken twice. What it does buy is real: the finding is no longer
+one reader's say-so, which separates a systematic effect from a one-off. Genuine
+independence needs a reader that does not share the model, which is the same
+limit recorded below for what this instrument can witness at all.
+
+So for a behavioural finding reaching only RE-DISPATCH: **REPAIR IT — step 3
+stands, and prose two readers stumble on is worth clarifying whatever the cause.
+RECORD IT AS PROVISIONAL**, and never let a further agreeing reader upgrade it.
+That is the agreement trap one level down.
+
+That asymmetry is not a defect of the instrument; it is how to READ one whose
+subject is imperfectly independent. **Do not resolve it by counting agreements.**
 
 **And the honest limit, because a substitute witness must be calibrated, not
 just adopted.** A dispatched reader shares this one's model and priors, so it
