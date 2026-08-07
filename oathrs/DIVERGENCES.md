@@ -402,6 +402,15 @@ same sat/unsat. All 48 definitions / 189 property outcomes reproduce.
     matching the "undertested" exhibit. This also makes every non-recursive
     Int/Bool/record/interval definition decide instantly.
 
+    *Surface note (verified 2026-08-06).* The two kernels reach that verdict by
+    different routes and say so differently. Go loads three quantified lemmas
+    about `abs`, so its `sat` is NOT a refutation and it prints `· unproven
+    bounded-wrongly  no direct proof; induction did not discharge`. My CLI
+    prints only the tally — `abs-small\t0/1\t-` — so the refutation is internal
+    and never rendered. Both record `proven: false`, so conformance is
+    unaffected; the divergence is in the reason, not the outcome. Neither
+    kernel prints a counterexample here.
+
 41. **Recursion axiom gated on totality (§7).** A recursive callee is
     `declare-fun` + a `forall` defining-equation axiom with the application as
     `:pattern`, but only when its termination verdict is total; otherwise it is

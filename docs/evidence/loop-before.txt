@@ -3,9 +3,19 @@ phase: BEFORE — the registry had SCORED the artifact but had NOT yet completed
        its own proof pass.
 
 Recorded from the live `explain` response at 12:22Z, minutes after the corpus
-push. The paired AFTER capture (loop-after.txt) was taken at 12:31Z, by which
-point the registry's proof pass had completed — the window between the two was
-about nine minutes.
+push. The paired AFTER capture (loop-after.txt) self-stamps
+2026-07-29T13:17:14Z, by which point the registry's proof pass had completed —
+about 55 minutes after this capture, not the nine minutes an earlier version of
+this note claimed. This capture's stamp has only minute precision, so 55:14 is
+an upper bound on the interval rather than the interval.
+
+The two stamps BRACKET the registry's transition; they do not date it. All they
+establish is that the registry still said `tested` at 12:22Z and said PROVEN by
+13:17:14Z. Nothing committed here narrows it: codebase/log.jsonl records the
+AUTHOR'S LOCAL store crossing tested -> PROVEN a day earlier, on 2026-07-28
+(seq 486 at 13:06:13Z, seq 495 at 15:55:24Z, same hash 604e3e90...) — a
+different event, and not evidence about when the registry re-derived the proof.
+The registry's transition time is not derivable from this repository.
 
 Note what does NOT change between the two: the artifact hash, and the mutation
 campaign digest. The identity is fixed; only the EVIDENCE improves, and each

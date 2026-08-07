@@ -1000,9 +1000,12 @@ reproducibility (given the same solver):
 
 ### 7.1 SMT-LIB generation details
 
-- Z3 is invoked as `z3 -in` with a 15 second timeout per solver call. Timeout,
-  process failure, stderr-only output, or output not beginning with `sat` or
-  `unsat` is `unknown`, never proof.
+- Z3 is invoked as `z3 -in`. The per-attempt budget and the disposition of any
+  non-verdict output (process failure, stderr-only output, output not beginning
+  with `sat` or `unsat`, or a wall-cap hit) are governed EXCLUSIVELY by §7.2's
+  **Deterministic proof budget (normative)** and **Attempt validity (normative,
+  #29)** rules. This subsection adds no timeout of its own and no alternate
+  outcome mapping.
 - SMT identifiers are produced by replacing every character outside
   `[A-Za-z0-9]` with `_`. This is not guaranteed collision-free; fixture
   coverage must include collision-prone metadata names before relying on such
@@ -1015,7 +1018,8 @@ reproducibility (given the same solver):
   a negative numerator rendered `(- N)` as above; `0/1` is `(/ 0 1)`. The
   numeric-overloaded prims propagate the operand sort: `+ - * neg` over `Real`
   stay `Real`, `< <=` yield `Bool`, and `/` over `Real` is admitted (exact
-  real division) — in contrast to `/` over `Int`, which is excluded below.
+  real division), translated directly — unlike `/` over `Int`, which is
+  admitted through the truncation bridge given above.
 - `Float` translates to the SMT sort `Float64` = `(_ FloatingPoint 11 53)`
   (Z3's float theory, FPA, is decidable — the reason `Float` is a primitive).
   A float literal renders as `(fp (_ bvS 1) (_ bvE 11) (_ bvM 52))` from its
@@ -1025,15 +1029,14 @@ reproducibility (given the same solver):
   `(fp.div RNE …)` (round-nearest-even), `neg` to `(fp.neg …)`, `< <=` to
   `(fp.lt …)`/`(fp.leq …)`. Structural `==` over `Float` is SMT `=` (Leibniz —
   `NaN = NaN`, `+0.0 ≠ -0.0`), matching kernel identity; the `fp-eq` primitive
-  is IEEE `(fp.eq …)`. `/` over `Float` is admitted (total IEEE division), in
-  contrast to `/` over `Int`.
+  is IEEE `(fp.eq …)`. `/` over `Float` is admitted (total IEEE division),
+  translated directly rather than through the `Int` truncation bridge.
 - Numeric conversions translate on their total, exact directions: `to-rat` of
   an `Int` is `(to_real N)` → `Real`; `to-float` of an `Int` is
   `((_ to_fp 11 53) RNE (to_real N))` and of a `Rat` is `((_ to_fp 11 53) RNE
   R)` → `Float64`; `floor` of a `Rat` is `(to_int R)` → `Int` (SMT `to_int` is
   floor). The `Float`-source conversions `to-rat`/`floor` are PARTIAL (NaN/inf
-  have no rational/integer) and are excluded from the fragment, like `/` over
-  `Int`.
+  have no rational/integer) and are EXCLUDED from translation.
 - SMT string literals double `"` characters inside the SMT string. Other
   string escaping must match SMT-LIB accepted literal syntax and the examples
   corpus.

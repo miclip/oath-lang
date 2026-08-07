@@ -4,7 +4,9 @@ An experiment: what would a programming language look like if it were designed
 **only for AI authors** — no human ergonomics, no files, no style, just
 verifiability and locality?
 
-Oath is the v0 kernel of that idea, ~2,000 lines of dependency-free Go.
+Oath is the v0 kernel of that idea: an identity/typecheck/eval core of ~4,600
+lines of dependency-free Go (`wc -l oath/{ast,canon,check,eval,surface}.go`),
+still small enough for one reader to audit end to end.
 Definitions are content-addressed (identity = SHA-256 of the canonical AST),
 carry machine-checkable properties as part of their signature, and live in an
 immutable object database instead of source files. Names are metadata. The
@@ -41,14 +43,29 @@ theorem `is-sorted xs ⟹ sort xs == xs`) — `map.preserves-length` with a
 quantified higher-order induction hypothesis, and `greet`'s capability
 properties for every possible network.
 
-`examples/undertested.oath` is the exhibit for why the rungs differ: its
-property passes all 200 test cases and is refuted by Z3 at x = -401, outside
-anything the generator draws. Z3 reasons over unbounded integers and the
-evaluator matches it — `Int` is arbitrary precision, so a proof carries no
-overflow caveat. Integer division stays outside the fragment on purpose
-(kernel truncates, SMT-LIB is Euclidean — a "proof" would certify the wrong
-theorem); rational division does not — `Rat` is exact ℚ over the `Real` sort,
-so `(a/b)*b == a` is proven.
+`examples/undertested.oath` is the exhibit for why the rungs differ:
+`abs-small`'s property passes all 200 test cases — the generator never draws a
+value large enough to break it — and still never reaches `proven`. Both kernels
+record `proven: false`, by different routes, and the difference is worth
+knowing. The Go kernel loads three quantified lemmas about `abs`, so under §7 a
+`sat` is not a refutation there; it reports `no direct proof; induction did not
+discharge`. The Rust kernel inlines `abs`, leaving the goal quantifier-free, so
+its `sat` IS a refutation and it skips induction — though its CLI renders the
+outcome only as unproven. Same verdict, different reason (`oathrs/DIVERGENCES.md`
+entry 40). Z3 reasons over unbounded integers and the evaluator matches it —
+`Int` is arbitrary precision, so a proof carries no overflow caveat.
+
+Integer division is provable too, but only across a bridge:
+the kernel's `/` truncates toward zero and its `%` takes the dividend's sign,
+while SMT-LIB's `div`/`mod` are Euclidean, so emitting those directly would
+certify the wrong theorem for a negative dividend. SPEC §7.1 (#71) therefore
+MANDATES that `Int` `/` and `%` translate to `oath_tquo`/`oath_trem` — two
+definitions, emitted together on first use, that are exactly the kernel's
+semantics wherever the divisor is non-zero. Division BY zero errors in the
+kernel, so it is deliberately left unconstrained: a property depending on it
+simply fails to prove, rather than proving something the evaluator cannot run.
+Rational division needs no bridge — `Rat` is exact ℚ over the `Real` sort, so
+`(a/b)*b == a` is proven.
 
 Two more dimensions ride alongside: **termination** (a structural checker
 proves totality where recursion visibly descends, including lexicographic

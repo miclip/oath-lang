@@ -42,13 +42,14 @@ valuable) — but `oath build` will refuse to compile an executable from it.
 ## The honest gap: `tested` but not `proven`
 
 The most important rung is the one people usually paper over. `abs-small` passes
-every test — and Z3 still can't prove it:
+every test and still does not reach `proven` — here in the **Go kernel**:
 
 ```console
 $ oath verify abs-small
 ✓ prop bounded-wrongly          passed 200 cases
 
 $ oath prove abs-small
+lemma library: 3 from dependencies, 0 from prior runs
 · unproven  bounded-wrongly     no direct proof; induction did not discharge
 proven: 0/1 properties
 ```
@@ -57,6 +58,26 @@ proven: 0/1 properties
 not upgrade a claim it couldn't actually close. That gap *is* the feature: the
 verdict tells you exactly how far the guarantee goes. (`examples/undertested.oath`
 is the exhibit for why the rungs differ — a sample can miss what a proof catches.)
+
+**The reason is kernel-specific; the verdict is not.** That first line matters:
+the Go kernel has three quantified lemmas about `abs` in scope, and under
+SPEC §7 a `sat` in the presence of quantifiers is not a refutation — only
+"unproven". The independent Rust kernel inlines `abs` instead, so the goal is
+quantifier-free, its `sat` IS a genuine refutation, and it skips induction
+entirely. Its CLI surfaces neither distinction, printing just the tally. It
+takes files rather than store names, so `abs` is supplied from `examples/ints.oath`
+(run from the repo root):
+
+```console
+$ cargo run --manifest-path oathrs/Cargo.toml --release -- \
+    prove <(sed -n '6,13p' examples/ints.oath) examples/undertested.oath
+abs	3/3	+++
+abs-small	0/1	-
+```
+
+Both kernels record `proven: false`, which is why conformance passes. Only the
+human-facing *reason* differs, and neither kernel prints a counterexample for
+this definition. See `oathrs/DIVERGENCES.md` entry 40.
 
 ## Mutation: is the spec even watching?
 

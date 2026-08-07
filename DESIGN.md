@@ -538,13 +538,22 @@ Oath is a synthesis, not an invention; the pieces have owners:
 
 ## What v0 deliberately is not
 
-- **Proven only for a fragment.** `oath prove` discharges properties in the
-  non-recursive Int/Bool fragment via Z3 (unbounded-int semantics — now the
-  kernel's actual `Int`, which is arbitrary precision, so proofs hold with no
-  overflow caveat). Recursion needs induction — the road there is a Lean-style
-  kernel. Everything outside the fragment bails with a reason and stays
-  `tested`; `examples/undertested.oath` shows why the distinction matters
-  (200 cases passed, refuted at x = -401).
+- **Proven, but not for everything.** `oath prove` discharges properties via Z3
+  over unbounded integers — now the kernel's actual `Int`, which is arbitrary
+  precision, so proofs hold with no overflow caveat. Recursion is INSIDE that
+  reach rather than beyond it: a recursive function PROVEN TOTAL enters the SMT
+  problem as a quantified defining equation — one whose termination is unproven
+  is deliberately left uninterpreted, because asserting an equation for a
+  possibly-diverging function can make the context inconsistent and discharge
+  anything. A goal that no direct attempt settles is
+  tried by structural induction, by lexicographic induction on a pair of
+  binders, and by recursion induction for functions driven by an integer
+  counter. Proven properties then serve as lemmas in later proofs. What stays
+  outside is named rather than hidden: a construct the translator does not
+  support, or a goal no strategy discharges, bails with a reason and the
+  definition remains `tested`; `examples/undertested.oath` shows why the
+  distinction matters (200 cases passed, still unproven in both kernels — the
+  README carries the per-kernel detail).
 - **Termination is proven only structurally** — a Foetus-lite check (after
   Agda): total iff some fixed argument position strictly descends at every
   self-call and all callees are total (hash-acyclicity makes this compose

@@ -104,7 +104,7 @@ export default function BuildingOath() {
   (prop bounded-wrongly [(x Int)]
     (< (abs-small x) 401)))`}
         label="abs-small.oath"
-        verdict={<span className="tok-comment">tested 200/200 · PROVEN? no — refuted at x = -401</span>}
+        verdict={<span className="tok-comment">tested 200/200 · PROVEN? no — the property is false at x = -401</span>}
       />
       <p>
         Tested is not proven. The ladder exists precisely so that the difference is

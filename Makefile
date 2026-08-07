@@ -287,10 +287,17 @@ fixtures: build
 # Guard: the website's proof ledger must match the canonical fixtures ledger
 # byte-for-byte. The site claims its numbers are "read live from the machine's
 # own ledger"; this fails CI if that claim ever goes stale (#30).
+#
+# The byte diff covers the DATA the /corpus page reads. It says nothing about
+# the numbers hardcoded into essay and docs prose, which is how #93 shipped an
+# essay contradicting the evidence it cited. check-essay-claims.py closes that
+# half: derived claims are recomputed from the fixtures, historical and
+# captured ones are pinned with provenance. Both must pass.
 check-web-ledger:
 	@diff -q fixtures/prove/outcomes.json website/lib/outcomes.json >/dev/null \
 		&& echo "web ledger in sync ✓" \
 		|| { echo "ERROR: website/lib/outcomes.json drifted from fixtures/prove/outcomes.json — run 'make fixtures'"; exit 1; }
+	@python3 scripts/check-essay-claims.py
 
 # The website renders the tutorials from docs/tutorial/*.md (the single source),
 # copied verbatim into website/content/tutorials/ so the Vercel build (rooted at
