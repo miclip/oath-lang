@@ -738,3 +738,55 @@ different means, and only the first is closed today. Writing the third row's
 consequence exposed the sharpest fact about the leak: it lives INSIDE the
 artefact under test, so no reader closes it — which is what makes it a debt to
 retire rather than a calibration to live with.
+
+## #80 — the prefilter that works is not a structural one
+
+Closed on a mechanism the issue did not name, after its own recommendation was
+built and measured unsound. **367.882s → 0.054s** (`ff137c1`).
+
+**The issue proposed narrowing candidates "by signature and property SHAPE"
+before invoking Z3.** Both shape filters were implemented and gated by a
+soundness test:
+
+    states-the-law     drops ALL FOUR provers
+    commutative-head   drops max2 — body `(if (< a b) b a)`, provably
+                       commutative anyway
+
+`find --implies` exists precisely to see THROUGH shape — it is the route to
+semantic matches that content-hash matching misses. **Filtering on shape
+reinstates the miss the prover was called to fix.** That is not a bug in the two
+filters; it is what the category buys.
+
+The sound STRUCTURAL filters barely helped either. Of the two candidates
+carrying 99.98% of the runtime (`e-div` 229.6s, `pow` 138.2s), `total-only`
+eliminated neither and `non-recursive` eliminated one — 1.00x and 1.60x.
+
+**What worked is not structural at all.** A concrete pass evaluates the goal
+under generated environments and skips the solver only when one makes it FALSE.
+Evaluation is the reference semantics, so a goal false under some concrete
+environment IS false and no valid proof exists — the skip and the proof would
+contradict each other. **The argument is about the GOAL, not about any corpus**,
+which is what separates it from a heuristic tuned to `examples/`.
+
+**And the guard is the half that keeps it honest.** Generation failure,
+evaluator errors, fuel exhaustion and a non-Bool result are all INDETERMINATE
+and defer to the solver: *the evaluator could not finish* is not *the property
+is false*. A non-terminating candidate makes that difference visible, and a
+control asserts it — because a prefilter that rejects MORE looks better, and
+that is the signature of a fabricating one.
+
+**The measurement also exposed a defect older than the work** (#156): the tool
+prints only `proven`, so refuted-with-a-countermodel, the-solver-declined and
+the-wall-cap-fired all render as "no definition provably satisfies this". Asking
+what a bounded search would owe its reader is what surfaced it — the residue
+obligation was already unmet, before any bound existed.
+
+**A methodological failure of mine is recorded with it**, because the correction
+came from the implementer rather than from me. I measured the package at 413s
+and reported a 12x CI regression as fact. The tree had been left mid-mutation by
+a budget-terminated run: 365s of that is what the suite costs with this feature
+DISABLED, which the mutation control later quantified exactly. The package was
+~38s before and ~37s after. The follow-up work was still worth doing, for a
+different reason than the one I gave it — a correct repair attached to a wrong
+diagnosis, which this file already warns is indistinguishable from a fix until
+someone re-measures.
