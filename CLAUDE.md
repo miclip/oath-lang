@@ -626,10 +626,9 @@ consumer to fix its scope. So it has a TRIGGER, not a position, and listing it
 under a closing window contradicted the same file's own instruction.
 
 **#155 is a COST boundary, not a soundness one** — that classification is the
-whole of the elaboration, because it decides what would close it. The rewrite it
-declines is already sound; what is missing is TWO things, and doing either alone
-leaves the quadratic in place — an O(1) freeness test AND shifts accumulated
-through a chain of etas rather than applied per level. Its
+whole of the elaboration, because it decides what would close it: the rewrite it
+declines is already SOUND, so nothing here is a correctness question and the
+preconditions are performance ones, stated on the issue. Its
 falsifier can win outright: if admitting the head discovers nothing new on the
 corpus, the refusal stands and the issue closes declined. Measure that first.
 
