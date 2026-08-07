@@ -590,7 +590,7 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   more VALUABLE if delayed    #134, #139/#140, #138 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
-  no CLOCK at all             #80, #152, #115, #116, #65, #66 — open, and
+  no CLOCK at all             #156, #152, #115, #116, #65, #66 — open, and
                               neither cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
@@ -625,18 +625,12 @@ says it stopped blocking anything when #126 closed and must wait for a real
 consumer to fix its scope. So it has a TRIGGER, not a position, and listing it
 under a closing window contradicted the same file's own instruction.
 
-**#80 IS A LATENCY CONTRACT PROBLEM, NOT A PERFORMANCE ONE** — the computation
-is legitimate and the answer is correct; what fails is that ordinary
-infrastructure reads 56s of silence as breakage, and agents abandon a tool that
-works. That classification decides the shape of a fix: making it faster is one
-option among several, and an honest timeout contract might close it without
-touching the solver at all.
-
-**It sits in bucket 4 DESPITE an exposure argument, deliberately.** Every agent
-that meets it forms a false belief about reliability, which sounds like a
-per-visitor clock — but that is an ANALOGY to #145, and this file's own rule is
-to MEASURE an analogy before admitting one on it. Nobody has measured how often
-the path is actually reached. Until someone does, it has no clock of its own.
+**#156 IS ABOUT WHAT THE TOOL SAYS, NOT WHAT IT FINDS** — `find --implies` works;
+what it will not tell you is which of three different things happened when it
+found nothing. Refuted-with-a-countermodel, the-solver-declined and the-wall-cap-
+fired all print as "no definition provably satisfies this", and the third is an
+implementation limit wearing a claim about the world. Read the issue; the volume
+question and whether `refuted` deserves promotion out of residue are both live.
 
 **#152 is a WITNESS gap, not a defect** — that classification is the whole of
 the elaboration, because it decides what "done" could even mean. Nothing is
