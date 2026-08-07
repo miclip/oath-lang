@@ -1,6 +1,8 @@
 # Semantic canonicalization (the e-graph) — design note
 
-**Status:** shipped (2026-07) — commutativity + type-directed associativity. The last rung of the discovery
+**Status:** shipped (2026-07) — commutativity + type-directed associativity;
+extended (2026-08, "rung 1a") with identity elements, Bool idempotence, `neg`
+involution, and the control-flow and binding rules. The last rung of the discovery
 ladder (docs/discovery.md): find definitions that are the SAME FUNCTION even when
 their bodies differ — body-equivalence, not just same-property (rung 2) or
 provably-satisfies-my-spec (proof-implication).
@@ -63,16 +65,102 @@ The first, soundest rules are the algebraic ones for the built-in operators:
   checker and de Bruijn context and synthesizes the operator's operand type to
   decide (`isACPrim`). **This slice** — the numeric tower told the e-graph where
   each rule is allowed to fire.
-- Unit/identity laws (`x + 0 = x`, `x * 1 = x`), and eventually a real
-  saturating e-graph with a growable rule set and equality-saturation extraction,
-  are the deeper versions still to come — tracked, with the other discovery
-  rungs, in issue #65.
-
 `eNormalize` walks a term applying the confluent rules directly to a normal form
 (a full e-graph data structure isn't needed while the rules are confluent);
 `eHash(def)` = hash of the definition's signature plus its normalized body.
 `oath find --equiv <name>` returns the definitions sharing an `eHash` —
 different identities, same equivalence class.
+
+## Rung 1a: the structure-removing rules
+
+Commutativity and associativity REORDER a chain. These REMOVE structure from it,
+so a body carrying an identity element, a duplicated `Bool` operand, or a doubled
+`neg` lands in the same class as the body it equals. Each rule is stated with the
+types it fires on and the types it is EXCLUDED from, because the exclusions are
+where the soundness lives:
+
+| rule | fires on | excluded from, and why |
+| --- | --- | --- |
+| `x + 0` ≡ `x` | `Int`, `Rat` | **`Float`** — `-0.0 + 0.0` is `+0.0`, a distinct value under the kernel's Leibniz `==`, so this would merge definitions that disagree on an input |
+| `x * 1` ≡ `x` | `Int`, `Rat`, `Float` | nothing — `x * 1.0` is `x` for every IEEE value: `±0.0` keeps its sign, `±inf` is unchanged, and NaN stays NaN, which is an identity rather than a near-miss only because the kernel canonicalizes every NaN to one bit pattern |
+| `x and true` ≡ `x`, `x or false` ≡ `x` | `Bool` | — |
+| `x and x` ≡ `x`, `x or x` ≡ `x` | `Bool` | **`+` and `*`** — they are not idempotent (`a + a` is `2a`), so a rule keyed on "the same operand twice" rather than on which operators are idempotent would be unsound |
+| `neg (neg x)` ≡ `x` | `Int`, `Rat`, `Float` | nothing — `neg`'s typing rule admits exactly those three, and flipping a sign twice restores the exact value, including `±0.0`, `±inf` and (canonical) NaN |
+
+Type direction is carried by the leaf's own kind, and that is exact rather than a
+shortcut: the checker refuses operands of mixed numeric type and the language has
+no numeric coercion, so an `int`-kinded literal inside a `+` proves the whole
+chain is `Int`-typed. A `Float` chain cannot smuggle an `int` `0` past the test,
+because such a term does not typecheck.
+
+The unit and idempotence rules are applied where a whole chain is visible — once
+per maximal associative-commutative chain, not per level — so they compose with
+the flattening rather than fighting it.
+
+## Rung 1a: control flow and binding
+
+These are restricted by Oath's **strict evaluation order** and by **binding
+structure**, not by any type's algebra. So unlike the table above they carry no
+`Float` carve-out and hold at every well-formed type.
+
+- **`if true`/`if false` select their branch.** Unconditional: the other branch
+  was never going to be evaluated, so discarding it removes no work whatever it
+  contains. The branches themselves carry no side condition — a non-total live
+  branch is preserved and a dead branch is discarded unevaluated.
+- **`(if c x x)` ≡ `x` only when `c` is ALREADY A VALUE** — a `var`, which
+  call-by-value has already bound to a value, or a `Bool` literal. The evaluator
+  evaluates an `if` condition before selecting a branch, so a condition that is a
+  COMPUTATION is part of what the term does; dropping a divergent one turns a
+  non-terminating term into a terminating one, which is removing divergence
+  rather than preserving meaning.
+- **`fn x. (f x)` ≡ `f`** when the argument is exactly the removed binder and the
+  head is a value. The left side is a value whatever `f` is, while the right side
+  evaluates `f` immediately, so a head that diverges would MOVE divergence from
+  application time to construction time. The binder must also not occur free in
+  the head: removing it shifts every free index, and an occurrence of the binder
+  itself has no index to shift to.
+
+**The admitted eta heads are `var` and `ref`, and that boundary is a COST one as
+much as a semantic one.**
+
+- A `var` head is one node. Its index *is* the freeness question — index 0 is the
+  removed binder itself, and is rejected — and the shift is one decrement.
+- A `ref` head is one node carrying a hash and TYPE arguments, so it contains no
+  term de Bruijn index at all: the binder cannot occur free in it and the shift
+  is vacuous. It is not a value by KIND, because evaluating a `ref` evaluates the
+  referenced body and a nullary definition's body is not a lambda — so it is
+  admitted only when a store lookup shows that body BEGINS WITH a lambda, which
+  makes evaluating it a closure construction.
+- **A `lam` head is equally sound and is deliberately NOT admitted.** It is
+  unbounded, so deciding freeness and shifting indices inside it means walking a
+  subtree containing the rest of the term — quadratic on the tower
+  `fn x. ((fn y. …) x)`, on a term the portable profile admits and
+  `find --equiv` normalizes. Re-admitting it requires making freeness and
+  shifting O(1) first (a min-free-index attribute computed during normalization,
+  and shifts accumulated through a chain of etas rather than applied per level),
+  not merely re-establishing that the rewrite is sound, which it already is. An
+  allocation-scaling regression holds that line.
+
+## What rung 1a is NOT
+
+Named explicitly, because "the e-graph" invites all four:
+
+- **No distributivity.** `a * (b + c)` and `(a * b) + (a * c)` remain distinct.
+  Distribution is not confluent as a rewrite in either direction — it needs a
+  cost function to choose a direction, which is an extraction problem, not a
+  normalization one.
+- **No e-class data structure.** There is no union-find over terms; `eNormalize`
+  rewrites directly to a normal form, which is all a confluent rule set needs.
+- **No equality saturation.** Rules are applied once, bottom-up, to a fixed
+  normal form. Nothing runs to a fixpoint over a growing set of equalities.
+- **No extraction.** With no e-classes and no cost function there is nothing to
+  extract a best representative from; the normal form IS the representative.
+
+Those four are what a real saturating engine (egg-style) buys, and they are the
+deeper version still to come — tracked, with the other discovery rungs, in issue
+#65. Adding a non-confluent rule such as distributivity is precisely the point at
+which the direct-normalization shortcut stops working and the data structure has
+to arrive.
 
 ## Why this is the right shape
 

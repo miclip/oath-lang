@@ -804,6 +804,10 @@ func eNormalizeRecursive(chk *checkerMachine, ctx []*Ty, t *Term) *Term {
 	switch t.K {
 	case "lam":
 		nt.A = eNormalizeRecursive(chk, push(t.Ty), t.A)
+		if s := etaReduce(chk.st, &nt); s != nil {
+			r := *s
+			return &r
+		}
 	case "let":
 		nt.A = eNormalizeRecursive(chk, ctx, t.A)
 		nt.B = eNormalizeRecursive(chk, push(t.Ty), t.B)
@@ -811,6 +815,10 @@ func eNormalizeRecursive(chk *checkerMachine, ctx []*Ty, t *Term) *Term {
 		nt.A = eNormalizeRecursive(chk, ctx, t.A)
 		nt.B = eNormalizeRecursive(chk, ctx, t.B)
 		nt.C = eNormalizeRecursive(chk, ctx, t.C)
+		if s := ifSelect(&nt); s != nil {
+			r := *s
+			return &r
+		}
 	case "app":
 		nt.A = eNormalizeRecursive(chk, ctx, t.A)
 		nt.B = eNormalizeRecursive(chk, ctx, t.B)
@@ -835,10 +843,28 @@ func eNormalizeRecursive(chk *checkerMachine, ctx []*Ty, t *Term) *Term {
 		for i := range t.Args {
 			nt.Args[i] = *eNormalizeRecursive(chk, ctx, &t.Args[i])
 		}
+		// The unit / idempotence / involution rules, expressed through the SAME
+		// helpers the normalizer under test calls. That is deliberate and it is
+		// the same trade the oracle already makes for acFlatten and acRebuild:
+		// the oracle's job is to witness the ITERATION, so re-deriving the rules
+		// here would make it a second implementation of the rewrite set — and
+		// two hand-written rule sets disagree exactly where nobody looks. What
+		// this file cannot see inside a shared helper, the recorded digests in
+		// TestNormalizerACBytesMatchOracleOnAdversarialChains can.
+		if t.K == "prim" {
+			if s := negInvolution(t.Op, nt.Args); s != nil {
+				r := *s
+				return &r
+			}
+		}
 		if t.K == "prim" && commutativePrims[t.Op] && len(nt.Args) == 2 {
 			argTy, _ := chk.synth(ctx, &t.Args[0])
 			if isACPrim(t.Op, argTy) {
 				return acRebuild(t.Op, acFlatten(t.Op, nt.Args))
+			}
+			if s := mulUnitSurvivor(t.Op, argTy, nt.Args); s != nil {
+				r := *s
+				return &r
 			}
 			if bytes.Compare(termBytes(&nt.Args[0]), termBytes(&nt.Args[1])) > 0 {
 				nt.Args[0], nt.Args[1] = nt.Args[1], nt.Args[0]
@@ -1218,6 +1244,87 @@ func TestACNormalizationScalesSubQuadraticallyWithChainDepth(t *testing.T) {
 	}
 }
 
+// etaTower builds the shape the eta rule is exhaustible on:
+//
+//	T_k = fn x. ((fn y. T_{k+1}) x)
+//
+// Every level is an eta redex whose HEAD contains every deeper level, so a rule
+// that walks its head to check binder-freeness and to shift indices pays
+// O(depth) at each of O(depth) levels. The redexes fire from the inside out, so
+// none of them is skipped and the heads stay large all the way up.
+//
+// Every binder is Int and the tower IS type-coherent: each application applies
+// an `Int -> …` to an Int, so `etaTower(n)` synthesizes at `Int -> Int -> … ->
+// Int` with no context. Nothing here depends on that — eta admission consults no
+// type at all — but the measurement is of a term the checker accepts rather than
+// of a shape the kernel would never see.
+func etaTower(n int) *Term {
+	cur := &Term{K: "var", Idx: 0}
+	for k := 0; k < n; k++ {
+		head := &Term{K: "lam", Ty: tInt(), A: cur}
+		cur = &Term{K: "lam", Ty: tInt(), A: &Term{K: "app", A: head, B: &Term{K: "var", Idx: 0}}}
+	}
+	return cur
+}
+
+// TestEtaNormalizationScalesSubQuadraticallyWithTowerDepth is the same
+// obligation as the AC SHAPE criterion above, on the rewrite that arrived after
+// it — and it is here because the eta rule reintroduced exactly the defect #151
+// removed, in a new place.
+//
+// A `lam` head is a sound eta head and an UNBOUNDED one. Admitting it makes the
+// binder-freeness test and the index shift walk a subtree that contains the rest
+// of the term, which is quadratic on the tower above: measured at ×2.3, ×4.2,
+// ×4.2 per doubling before the narrowing, reachable from `find --equiv` on a
+// term the portable profile admits. The repair is not a faster walk — it is
+// admitting only heads of CONSTANT SIZE (`var`, `ref`), for which the test and
+// the shift are O(1) and no tower can accumulate.
+//
+// The instrument is the DOUBLING RATIO, and the 3.0 threshold is the one the AC
+// criterion already justifies: quadratic work quadruples per doubling, linear
+// doubles, and n log n sits just above 2 — so 3.0 rejects the quadratic with
+// margin and admits anything genuinely sub-quadratic with margin.
+//
+// The term is built OUTSIDE the measured closure, unlike the AC test. Building
+// it is O(depth) and normalizing it was O(depth²); including a linear build in
+// the measurement dilutes the ratio most at the smallest depth, which is where
+// the instrument is weakest. Excluding it measures the rule and nothing else.
+func TestEtaNormalizationScalesSubQuadraticallyWithTowerDepth(t *testing.T) {
+	st, err := OpenStore("../codebase")
+	if err != nil {
+		t.Fatalf("could not open the corpus: %v", err)
+	}
+	depths := []int{500, 1000, 2000, 4000}
+	var got []uint64
+	for _, d := range depths {
+		// The whole series must be inside the portable profile, or the
+		// measurement is of a term the kernel would never admit.
+		tm := etaTower(d)
+		if _, ok := countCanonicalNodes(&Def{K: "func", Body: tm}, maxCanonicalNodes); !ok {
+			t.Fatalf("setup: a depth-%d eta tower is outside the portable profile", d)
+		}
+		got = append(got, acAllocBytes(func() {
+			eNormalize(&checkerMachine{st: st}, nil, tm)
+		}))
+	}
+	for i := range depths {
+		ratio := 0.0
+		if i > 0 {
+			ratio = float64(got[i]) / float64(got[i-1])
+		}
+		t.Logf("tower depth %5d  %9d KB  x%.2f", depths[i], got[i]>>10, ratio)
+	}
+	for i := 1; i < len(depths); i++ {
+		ratio := float64(got[i]) / float64(got[i-1])
+		if ratio > 3.0 {
+			t.Errorf("doubling the eta tower from %d to %d multiplied allocation by %.2f "+
+				"(%d KB -> %d KB) — eta normalization is quadratic in tower depth, so "+
+				"`find --equiv` is resource-exhaustible on a term the profile admits",
+				depths[i-1], depths[i], ratio, got[i-1]>>10, got[i]>>10)
+		}
+	}
+}
+
 // The two allocation figures #151 recorded, on the term it recorded them for.
 // They are CONSTANTS rather than live measurements for opposite reasons, and
 // only one of them could be derived instead:
@@ -1443,6 +1550,15 @@ func TestNormalizerACBytesMatchOracleOnAdversarialChains(t *testing.T) {
 	// two callers of the code being changed. If a future rule set intentionally
 	// moves the normal form, updating these constants is the point at which
 	// someone has to say so — and to notice that stored eHashes are now stale.
+	//
+	// THREE OF THESE DIGESTS WERE MOVED DELIBERATELY BY RUNG 1a, and each one is
+	// accounted for at its own row below. That is the mechanism working, not a
+	// nuisance: the rung added rules that REMOVE leaves from a chain, so every
+	// case whose leaf multiset contains an identity element or a duplicated Bool
+	// operand had to move, and every case without one had to stay. Six of the
+	// nine did stay, which is what makes the three that moved evidence rather
+	// than noise. Nothing stores an eHash, so no artifact was invalidated; what
+	// changed is which definitions `find --equiv` reports as the same function.
 	cases := []struct {
 		name   string
 		op     string
@@ -1456,15 +1572,30 @@ func TestNormalizerACBytesMatchOracleOnAdversarialChains(t *testing.T) {
 			"711a33aeaf05042f9922551069461aaa52e4a8927365ac28fc3d7b9092802984"},
 		{"int-plus-duplicates", "+", true, acInts(3, 1, 3, 1, 2, 3),
 			"73cc7aa40b16ba9f23ded2beffdb77bafaaeb5e4ea8bc999e7381658acd2e67b"},
+		// MOVED BY RUNG 1a (`* 1`): the leaf multiset {4,4,1,4,2} contains the
+		// multiplicative identity, which acDropUnits removes, so the chain
+		// rebuilds from four leaves instead of five. `int-plus-distinct` and
+		// `int-plus-duplicates` also contain a 1 and did NOT move, because 1 is
+		// not `+`'s identity — which is the control on this row's explanation.
 		{"int-times-duplicates", "*", true, acInts(4, 4, 1, 4, 2),
-			"0afe91b0eb295789f9a4a31570e7dcc2936750ffc95b0245e2e9b911d97bf2c4"},
+			"b9ea30e63ef7d94651a9a5be3aa272a76797c3f49e769ddf2bed60003caf87da"},
 		{"int-plus-compound-duplicates", "+", true,
 			[]Term{compound, {K: "int", Int: big.NewInt(1)}, compound, nested, nested},
 			"37d1f1308c73561ca7ad668a50ac71353d33b9bfdff1f4dc6da40480b993ce5b"},
+		// MOVED BY RUNG 1a (`and true`, then idempotence): {T,F,T,T,F} loses its
+		// three `true` leaves to the identity rule and its duplicate `false` to
+		// idempotence, so a five-leaf chain rebuilds as the single leaf `false`.
+		// Both rules are needed to reach that form and each is separately
+		// witnessed in find_test.go.
 		{"bool-and-duplicates", "and", true, bools(true, false, true, true, false),
-			"81e1a1c47fb1043b8e623d03bcbf441eeca290603d60c4081dce90836b18063f"},
+			"95019114f461addf39baede6935405f335c347b397925aa8136104d3e2501b12"},
+		// MOVED BY RUNG 1a (`or false`, then idempotence): the mirror case —
+		// {F,F,T,F} loses its `false` leaves to `or`'s identity and rebuilds as
+		// the single leaf `true`. Note the two rows move in OPPOSITE directions
+		// (to `false` and to `true`), so a mutant that dropped one Bool literal
+		// kind regardless of operator could not produce both.
 		{"bool-or-duplicates", "or", true, bools(false, false, true, false),
-			"fcb78cdd3547ba7f91c92440b2c923726219ea41122dca2bac33fcb58c48eea7"},
+			"b46050a16cce45da95eefdda2337dbb4d1f33b8294ac8e25748e551df1b0d8d7"},
 		{"int-eq-duplicates", "==", false, acInts(6, 6, 2, 6),
 			"c1a13c53bc9b0c36a40eb399db51a0b28d9d5b234f18550a3fd89b439cb6cf16"},
 		{"float-plus-duplicates", "+", false, floats(1.5, 1.5, -0.5, 1.5),

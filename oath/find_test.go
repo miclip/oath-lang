@@ -209,6 +209,270 @@ func TestFindEquivTypeDirectedAssoc(t *testing.T) {
 	}
 }
 
+// UNIT, IDEMPOTENCE AND INVOLUTION RULES. A body carrying an identity element
+// (`+ 0`, `* 1`, `and true`, `or false`), a duplicated Bool operand, or a
+// doubled `neg` belongs in the same equivalence class as the body it is equal
+// to, and this pins both halves of that: which bodies collapse, and which
+// deliberately do not.
+//
+// THE MUTATION THIS KILLS — two of them, in opposite directions, which is why
+// the table carries controls rather than only collapses:
+//
+//   - DISABLED REWRITE: delete the unit/idempotence/involution pass from
+//     eNormalize, or gate its entry on a condition that is never true (e.g.
+//     `if false`, an empty identity-element table, or a `switch` whose default
+//     returns the term untouched). Every collapse row goes red.
+//   - TYPE-BLIND OR CONSTANT-BLIND REWRITE: apply `+ 0` to Float, or reduce
+//     `and x c` / `* x c` for ANY constant c rather than only the identity
+//     element. Both mutants pass every collapse row and are caught only by the
+//     `wantEquiv: false` controls.
+//
+// The soundness side-conditions, since two of these are easy to get wrong:
+// Float `* 1.0` IS sound (x*1.0 is x for every IEEE x, including ±0.0, ±inf,
+// and — under the kernel's single canonical NaN — NaN), while Float `+ 0.0` is
+// NOT: -0.0 + 0.0 is +0.0, a distinct value under the kernel's Leibniz `==`.
+// Double `neg` is sound over Float for the same canonical-NaN reason.
+func TestFindEquivUnitAndIdempotenceRules(t *testing.T) {
+	cases := []struct {
+		name      string
+		lhs, rhs  string // two defn bodies with the SAME signature
+		wantEquiv bool
+		why       string
+	}{
+		// --- additive/multiplicative units -------------------------------
+		{"int-add-zero", `[(a Int)] Int (+ a 0)`, `[(a Int)] Int a`, true,
+			"0 is the additive identity over Int"},
+		{"int-mul-one", `[(a Int)] Int (* a 1)`, `[(a Int)] Int a`, true,
+			"1 is the multiplicative identity over Int"},
+		{"rat-add-zero", `[(a Rat)] Rat (+ a 0/1)`, `[(a Rat)] Rat a`, true,
+			"0 is the additive identity over Rat"},
+		{"rat-mul-one", `[(a Rat)] Rat (* a 1/1)`, `[(a Rat)] Rat a`, true,
+			"1 is the multiplicative identity over Rat"},
+		{"float-mul-one", `[(a Float)] Float (* a 1.0f)`, `[(a Float)] Float a`, true,
+			"x * 1.0 is x for every IEEE value, canonical NaN included"},
+
+		// --- Bool units and idempotence ----------------------------------
+		{"bool-and-true", `[(a Bool)] Bool (and a true)`, `[(a Bool)] Bool a`, true,
+			"true is the identity of non-short-circuiting and"},
+		{"bool-or-false", `[(a Bool)] Bool (or a false)`, `[(a Bool)] Bool a`, true,
+			"false is the identity of non-short-circuiting or"},
+		{"bool-and-idem", `[(a Bool)] Bool (and a a)`, `[(a Bool)] Bool a`, true,
+			"and is idempotent"},
+		{"bool-or-idem", `[(a Bool)] Bool (or a a)`, `[(a Bool)] Bool a`, true,
+			"or is idempotent"},
+
+		// --- involution --------------------------------------------------
+		{"int-double-neg", `[(a Int)] Int (neg (neg a))`, `[(a Int)] Int a`, true,
+			"neg is an involution over Int"},
+		{"rat-double-neg", `[(a Rat)] Rat (neg (neg a))`, `[(a Rat)] Rat a`, true,
+			"neg is an involution over Rat"},
+		{"float-double-neg", `[(a Float)] Float (neg (neg a))`, `[(a Float)] Float a`, true,
+			"sign flipped twice is the same bits; NaN is canonical"},
+
+		// --- CONTROLS: unsound collapses that must NOT happen ------------
+		{"float-add-zero-control", `[(a Float)] Float (+ a 0.0f)`, `[(a Float)] Float a`, false,
+			"-0.0 + 0.0 is +0.0, so 0.0 is NOT a Float additive identity"},
+		{"int-add-idem-control", `[(a Int)] Int (+ a a)`, `[(a Int)] Int a`, false,
+			"+ is not idempotent — a+a is 2a"},
+		{"int-mul-idem-control", `[(a Int)] Int (* a a)`, `[(a Int)] Int a`, false,
+			"* is not idempotent — a*a is a squared"},
+		{"rat-mul-idem-control", `[(a Rat)] Rat (* a a)`, `[(a Rat)] Rat a`, false,
+			"* is not idempotent over Rat either"},
+		{"bool-and-false-control", `[(a Bool)] Bool (and a false)`, `[(a Bool)] Bool a`, false,
+			"false is and's ANNIHILATOR, not its identity — a wrong-constant mutant"},
+		{"int-mul-zero-control", `[(a Int)] Int (* a 0)`, `[(a Int)] Int a`, false,
+			"0 is *'s annihilator, not its identity — a wrong-constant mutant"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			st := newStore(t)
+			put(t, st, "(defn lhs [] "+tc.lhs+")")
+			put(t, st, "(defn rhs [] "+tc.rhs+")")
+			l, r := mustDef(t, st, "lhs"), mustDef(t, st, "rhs")
+
+			// CONTROL FOR THE MEASUREMENT ITSELF: the two bodies must have
+			// distinct IDENTITIES, or an eHash comparison is vacuous — it
+			// would pass for a collapse row even with every rewrite deleted.
+			if hashDef(l) == hashDef(r) {
+				t.Fatalf("%s: the two bodies already share an identity — the eHash assertion below proves nothing", tc.name)
+			}
+
+			got := eHash(st, l) == eHash(st, r)
+			if got != tc.wantEquiv {
+				verb := "should collapse"
+				if !tc.wantEquiv {
+					verb = "must NOT collapse"
+				}
+				t.Fatalf("%s: eHash equal = %v, want %v — %s (%s)\n  lhs: %s\n  rhs: %s",
+					tc.name, got, tc.wantEquiv, verb, tc.why, tc.lhs, tc.rhs)
+			}
+		})
+	}
+}
+
+// CONTROL FLOW AND BINDING RULES: identical `if` branches, a constant `if`
+// condition, and eta.
+//
+// THESE SIDE CONDITIONS ARE OF A DIFFERENT KIND FROM THE UNIT RULES ABOVE, and
+// saying so is the point of putting them in a separate table. `+ 0` is excluded
+// for Float because of what Float ARITHMETIC does — the restriction is a fact
+// about one type's algebra. Nothing below is. Each rule here is restricted by
+// Oath's STRICT EVALUATION ORDER (eval.go's `if` evaluates its condition before
+// selecting a branch; an application evaluates its head) and by BINDING
+// STRUCTURE (de Bruijn indices shift when a binder is removed). Both hold at
+// EVERY well-formed type, so the Float rows below are representative rather than
+// special, and a future numeric type would need no new carve-out.
+//
+// THE MUTATION THIS KILLS — again in two directions:
+//
+//   - DISABLED REWRITE: remove the `if` or `lam` exit phase from eNormalize.
+//     Every collapse row goes red.
+//   - UNRESTRICTED REWRITE: `(if c x x)` → `x` for ANY condition, or eta for any
+//     head, or eta without shifting the free indices of the head. Each passes
+//     every collapse row and is caught only by a control.
+//
+// WHY EACH RESTRICTION IS REAL, since "the two branches are the same" and "the
+// argument is applied straight through" both look unconditional:
+//
+//   - `(if c x x)` may drop `c` only when `c` is ALREADY A VALUE — a `var`
+//     (bound to a value under call-by-value) or a Bool literal. If `c` is a
+//     computation, evaluating it is part of what the term does: dropping a
+//     divergent condition turns a non-terminating term into a terminating one,
+//     which is REMOVING divergence, not preserving meaning. The branches
+//     themselves are unconstrained — exactly one is ever evaluated — which is
+//     why one collapse row below has divergent branches on purpose.
+//
+//   - `fn [(x A)] (f x)` → `f` needs `f` to be a SYNTACTIC VALUE, because the
+//     left side is a value whatever `f` is, while the right side evaluates `f`
+//     immediately. An `f` that diverges would MOVE divergence from application
+//     time to construction time. A bare `ref` is NOT a value by kind —
+//     eval.go's `ref` case evaluates the referenced definition's body — but it
+//     IS one when a store lookup shows that body begins with `lam`, because
+//     evaluating it then just builds a closure. `boom` below is the control for
+//     the other case: nullary, body `self`, so its ref diverges.
+//
+//     THE ADMITTED HEADS ARE `var` AND `ref`, AND THE BOUNDARY IS A COST ONE AS
+//     MUCH AS A SEMANTIC ONE. A `lam` head is equally sound and is DELIBERATELY
+//     DEFERRED: the binder-shift below must walk the whole head, and a lam head
+//     contains arbitrarily much of the term, so a nested tower
+//     `fn x. ((fn y. …) x)` costs O(n²) — measured at 11ms/26ms/109ms/459ms for
+//     n = 500/1000/2000/4000, which extrapolates to minutes at the profile's
+//     admitted node count, reachable from `find --equiv`. `var` and `ref` heads
+//     are single nodes, so their check and shift are O(1) and no tower shape can
+//     accumulate. RE-ADMITTING `lam` REQUIRES MAKING THE FREE-OCCURRENCE TEST
+//     AND THE SHIFT O(1) FIRST (a min-free-index attribute computed during
+//     normalization, and shifts accumulated through a chain rather than applied
+//     per level) — not merely deciding the rewrite is sound, which it already
+//     is.
+//
+//   - and `x` must not be free in `f`, which is not about evaluation at all: the
+//     rewrite deletes a binder, so every free index in `f` shifts. If `x` occurs
+//     free there is no index to shift it to, and the naive implementation —
+//     leave every index alone — silently repoints that occurrence at whatever
+//     encloses the lambda. The control below pins exactly that output.
+//     ONE VARIANT IS DELIBERATELY NOT PINNED, because it is not wrong: shifting
+//     the occurrence DOWN as well lands it on the head's own outermost binder,
+//     which is beta-reduction at a value argument and agrees with the original
+//     on every input. Mutating the implementation that way kills nothing here,
+//     and should not — a control that forbade it would be pinning an
+//     incompleteness rather than a defect.
+func TestFindEquivControlFlowAndEtaRules(t *testing.T) {
+	cases := []struct {
+		name      string
+		lhs, rhs  string
+		wantEquiv bool
+		why       string
+	}{
+		// --- identical branches, condition already a value ----------------
+		{"if-same-var-int", `[(c Bool) (x Int)] Int (if c x x)`, `[(c Bool) (x Int)] Int x`, true,
+			"a var is a value under call-by-value, so dropping the condition drops no work"},
+		{"if-same-var-bool", `[(c Bool) (x Bool)] Bool (if c x x)`, `[(c Bool) (x Bool)] Bool x`, true,
+			"the result type is irrelevant to this rule"},
+		{"if-same-var-float", `[(c Bool) (x Float)] Float (if c x x)`, `[(c Bool) (x Float)] Float x`, true,
+			"Float is not a special case here — no arithmetic is involved"},
+		{"if-same-var-rat", `[(c Bool) (x Rat)] Rat (if c x x)`, `[(c Bool) (x Rat)] Rat x`, true,
+			"nor is Rat"},
+		{"if-same-var-fun", `[(c Bool) (x (-> Int Int))] (-> Int Int) (if c x x)`,
+			`[(c Bool) (x (-> Int Int))] (-> Int Int) x`, true,
+			"a function-typed result too: the rule quantifies over every well-formed type"},
+		{"if-same-lit-false", `[(x Int)] Int (if false x x)`, `[(x Int)] Int x`, true,
+			"a Bool literal is a value"},
+
+		// --- constant condition -------------------------------------------
+		{"if-const-true", `[(x Int) (y Int)] Int (if true x y)`, `[(x Int) (y Int)] Int x`, true,
+			"true selects the then-branch; the else-branch was never going to be evaluated"},
+		{"if-const-false", `[(x Int) (y Int)] Int (if false x y)`, `[(x Int) (y Int)] Int y`, true,
+			"false selects the else-branch"},
+		{"if-const-divergent-branches", `[(n Int)] Int (if true (spin-b-i n) (dbl n))`,
+			`[(n Int)] Int (spin-b-i n)`, true,
+			"THE BRANCHES NEED NOT BE VALUES: exactly one is evaluated either way, so a " +
+				"non-total live branch is preserved and a dead branch is discarded unevaluated"},
+
+		// --- eta ----------------------------------------------------------
+		{"eta-outer-var-head", `[(g (-> Int Int))] (-> Int Int) (fn [(x Int)] (g x))`,
+			`[(g (-> Int Int))] (-> Int Int) g`, true,
+			"THE REINDEXING WITNESS: g is var1 inside the lambda and must become var0 once " +
+				"the lambda is removed — an implementation that forgets the shift produces " +
+				"different bytes and this row stays red"},
+		{"eta-ref-head-total", `[] (-> Int Int) (fn [(x Int)] (dbl x))`, `[] (-> Int Int) dbl`, true,
+			"dbl's stored body BEGINS WITH lam, so evaluating the ref immediately produces a " +
+				"closure and does no work — the store lookup is what makes this head a value. " +
+				"A ref also carries no term de Bruijn index, so the shift is vacuous here"},
+
+		// --- CONTROLS: rewrites that would remove or move divergence -------
+		{"eta-free-x-control", `[(n Int)] (-> Int Int) (fn [(x Int)] ((fn [(y Int)] (+ y x)) x))`,
+			`[(n Int)] (-> Int Int) (fn [(y Int)] (+ y n))`, false,
+			"x IS free in the head, and the rhs is precisely what an unshifted rewrite emits — " +
+				"the x occurrence silently repointed at the enclosing parameter n"},
+		{"eta-nontotal-app-head-control", `[(n Int)] (-> Int Int) (fn [(x Int)] ((pick n) x))`,
+			`[(n Int)] (-> Int Int) (pick n)`, false,
+			"the head is an APPLICATION of a non-total definition: the lhs is a value, the rhs " +
+				"diverges on construction — eta would MOVE divergence"},
+		{"eta-nontotal-ref-head-control", `[] (-> Int Int) (fn [(x Int)] (boom x))`,
+			`[] (-> Int Int) boom`, false,
+			"a bare ref is not a value: boom is nullary, so evaluating the ref evaluates its " +
+				"body and diverges"},
+		{"if-nontotal-cond-control", `[(n Int) (x Int)] Int (if (spin-b n) x x)`,
+			`[(n Int) (x Int)] Int x`, false,
+			"identical branches, but the condition is a non-total call — dropping it would " +
+				"REMOVE divergence"},
+	}
+
+	// One store for the whole table: the setup definitions the controls need are
+	// stored objects, and `boom` in particular has to be a real store entry for
+	// "evaluating this ref runs a non-total body" to be a fact about the store
+	// rather than about the test's imagination.
+	st := newStore(t)
+	put(t, st, `(defn dbl [] [(k Int)] Int (+ k k))`)
+	put(t, st, `(defn spin-b [] [(n Int)] Bool (spin-b n))`)    // non-total, Bool-valued
+	put(t, st, `(defn spin-b-i [] [(n Int)] Int (spin-b-i n))`) // non-total, Int-valued
+	put(t, st, `(defn pick [] [(n Int)] (-> Int Int) (pick n))`)
+	put(t, st, `(defn boom [] [] (-> Int Int) (boom))`) // nullary: its body is `self`, not a lam
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ln, rn := "l-"+tc.name, "r-"+tc.name
+			put(t, st, "(defn "+ln+" [] "+tc.lhs+")")
+			put(t, st, "(defn "+rn+" [] "+tc.rhs+")")
+			l, r := mustDef(t, st, ln), mustDef(t, st, rn)
+
+			if hashDef(l) == hashDef(r) {
+				t.Fatalf("%s: the two bodies already share an identity — the eHash assertion below proves nothing", tc.name)
+			}
+			got := eHash(st, l) == eHash(st, r)
+			if got != tc.wantEquiv {
+				verb := "should collapse"
+				if !tc.wantEquiv {
+					verb = "must NOT collapse"
+				}
+				t.Fatalf("%s: eHash equal = %v, want %v — %s (%s)\n  lhs: %s\n  rhs: %s",
+					tc.name, got, tc.wantEquiv, verb, tc.why, tc.lhs, tc.rhs)
+			}
+		})
+	}
+}
+
 func mustDef(t *testing.T, st *Store, name string) *Def {
 	t.Helper()
 	h, ok := st.Resolve(name)

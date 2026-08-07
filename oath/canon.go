@@ -262,6 +262,242 @@ func isACPrim(op string, argTy *Ty) bool {
 	return false
 }
 
+// ---------- unit, idempotence and involution rules ----------
+//
+// The second rung of the rewrite set. Commutativity and associativity reorder a
+// chain; these REMOVE structure from it, so a body carrying an identity element,
+// a duplicated Bool operand, or a doubled `neg` lands in the same equivalence
+// class as the body it is equal to.
+//
+// Every rule below is TYPE-DIRECTED, and the direction is exact rather than
+// approximate — see acUnitLeaf for why the leaf's own kind is sufficient
+// evidence of the chain's operand type.
+
+var (
+	acOneInt = big.NewInt(1)
+	acOneRat = big.NewRat(1, 1)
+)
+
+// acUnitLeaf reports whether a leaf of an `op` chain is that operator's IDENTITY
+// ELEMENT, and may therefore be dropped.
+//
+// TYPE DIRECTION IS CARRIED BY THE LEAF'S OWN KIND, and that is exact, not a
+// shortcut: `numericTy` (check.go) refuses operands of mixed numeric type and
+// the language has no numeric coercion, so an `int`-kinded literal inside a `+`
+// proves the whole chain is Int-typed. A Float chain cannot smuggle an `int` 0
+// past this test, because such a term does not typecheck.
+//
+// 0 IS DELIBERATELY NOT A FLOAT ADDITIVE IDENTITY. `-0.0 + 0.0` is `+0.0`, a
+// DISTINCT value under the kernel's Leibniz `==`, so dropping a Float `+ 0.0`
+// would merge two definitions that disagree on an input. Float `+` never reaches
+// this function through the AC path (isACPrim is false for it), and the float
+// case below is confined to `*`, where `x * 1.0` is `x` for every IEEE value:
+// ±0.0 keeps its sign, ±inf is unchanged, and NaN stays NaN — which is an
+// identity here rather than a near-miss only because the kernel canonicalizes
+// every NaN to one bit pattern (canonFloat).
+func acUnitLeaf(op string, t *Term) bool {
+	switch op {
+	case "+":
+		switch t.K {
+		case "int":
+			return t.Int != nil && t.Int.Sign() == 0
+		case "rat":
+			return t.Rat != nil && t.Rat.Sign() == 0
+		}
+	case "*":
+		switch t.K {
+		case "int":
+			return t.Int != nil && t.Int.Cmp(acOneInt) == 0
+		case "rat":
+			return t.Rat != nil && t.Rat.Cmp(acOneRat) == 0
+		case "float":
+			// Exactly 1.0. -1.0 and NaN both fail this comparison.
+			return t.Float == 1
+		}
+	case "and":
+		return t.K == "bool" && t.Bool
+	case "or":
+		return t.K == "bool" && !t.Bool
+	}
+	return false
+}
+
+// idempotentPrims are the operators for which `op(x, x)` is `x`. Bool `and` and
+// `or` only — `+` and `*` are NOT idempotent (`a + a` is `2a`), which is a
+// distinction a rule keyed on "same operand twice" would lose.
+var idempotentPrims = map[string]bool{"and": true, "or": true}
+
+// acDropUnits removes the identity-element leaves of an `op` chain.
+//
+// If EVERY leaf is the identity then the chain IS the identity, so one of the
+// dropped leaves is kept — that leaf rather than a freshly constructed literal,
+// because it already carries the operand type. An Int 0 and a Rat 0 are
+// different terms with different bytes, and only the input says which one this
+// chain was written at.
+func acDropUnits(op string, leaves []Term) []Term {
+	kept := make([]Term, 0, len(leaves))
+	for i := range leaves {
+		if !acUnitLeaf(op, &leaves[i]) {
+			kept = append(kept, leaves[i])
+		}
+	}
+	if len(kept) == 0 {
+		return []Term{leaves[0]}
+	}
+	return kept
+}
+
+// mulUnitSurvivor returns the operand that survives `x * 1.0` over FLOAT, or nil
+// when the rule does not apply.
+//
+// Int and Rat never reach here: their `*` chains are associative-commutative, so
+// their unit is dropped by acDropUnits inside acRebuild. Float `*` commutes but
+// does not associate, so it is never flattened and needs the rule stated at the
+// node — the one place where "which type is this?" cannot be read off a chain,
+// which is why this one takes the synthesized operand type and refuses to fire
+// without it.
+func mulUnitSurvivor(op string, argTy *Ty, args []Term) *Term {
+	if op != "*" || argTy == nil || argTy.K != "float" || len(args) != 2 {
+		return nil
+	}
+	if acUnitLeaf("*", &args[0]) {
+		return &args[1]
+	}
+	if acUnitLeaf("*", &args[1]) {
+		return &args[0]
+	}
+	return nil
+}
+
+// negInvolution returns the operand of a doubled `neg`, or nil.
+//
+// THERE IS NO OPERAND TYPE TO DIRECT ON, which is why this takes no Ty and is
+// stated as an absence rather than left unsaid: `neg`'s typing rule admits Int,
+// Rat and Float and nothing else (check.go's numericTy), and the rule is sound
+// on all three. Flipping a sign twice restores the exact value, and for Float
+// that includes ±0.0, ±inf and NaN — NaN's sign bit carries no identity because
+// the kernel canonicalizes every NaN to one pattern.
+func negInvolution(op string, args []Term) *Term {
+	if op != "neg" || len(args) != 1 {
+		return nil
+	}
+	in := args[0]
+	if in.K == "prim" && in.Op == "neg" && len(in.Args) == 1 {
+		return &in.Args[0]
+	}
+	return nil
+}
+
+// ---------- control-flow and binding rules ----------
+//
+// The third rung. These are restricted by Oath's STRICT EVALUATION ORDER and by
+// BINDING STRUCTURE rather than by any operand type's algebra, so unlike the
+// unit rules above they carry no Float carve-out and hold at every well-formed
+// type.
+
+// ifSelect returns the term a normalized `if` node reduces to, or nil.
+//
+// TWO RULES, AND THE SECOND IS THE RESTRICTED ONE. A constant condition selects
+// its branch unconditionally: the other branch was never going to be evaluated,
+// so discarding it removes no work whatever it contains — which is why the
+// branches carry no side condition of their own.
+//
+// Identical branches may drop the condition ONLY IF THE CONDITION IS ALREADY A
+// VALUE — a `var`, which call-by-value has already bound to a value, or a Bool
+// literal. eval.go evaluates an `if` condition before selecting a branch, so a
+// condition that is a COMPUTATION is part of what the term does: dropping a
+// divergent one turns a non-terminating term into a terminating one. That is
+// removing divergence, not preserving meaning.
+func ifSelect(t *Term) *Term {
+	if t.A == nil || t.B == nil || t.C == nil {
+		return nil
+	}
+	if t.A.K == "bool" {
+		if t.A.Bool {
+			return t.B
+		}
+		return t.C
+	}
+	if t.A.K == "var" && compareTermsCanonical(t.B, t.C) == 0 {
+		return t.B
+	}
+	return nil
+}
+
+// etaReduce returns the term a normalized `lam` node eta-reduces to, or nil.
+//
+// `fn x. (f x)` is `f` only under conditions that fail in three different ways,
+// and the ADMITTED HEAD SET IS BOUNDED BY COST AS WELL AS BY SEMANTICS:
+//
+//   - THE ARGUMENT MUST BE EXACTLY THE REMOVED BINDER (`var` 0). `fn x. (f y)`
+//     is not an eta redex at all.
+//   - THE HEAD MUST BE A VALUE, because the left side is a value whatever `f`
+//     is, while the right side evaluates `f` immediately — a head that diverges
+//     would MOVE divergence from application time to construction time.
+//   - THE BINDER MUST NOT OCCUR FREE IN THE HEAD, which is not about evaluation
+//     at all: removing the binder shifts every free index, and an occurrence of
+//     the binder itself has no index to shift to.
+//
+// ONLY HEADS OF CONSTANT SIZE ARE ADMITTED, AND THAT IS THE WHOLE REASON THE
+// LAST TWO CONDITIONS ARE CHEAP TO DECIDE HERE RATHER THAN BY A TRAVERSAL:
+//
+//	var   one node. Its index IS the freeness question — index 0 is the removed
+//	      binder itself and is rejected — and the shift is one decrement.
+//	ref   one node carrying a hash and TYPE arguments, so it contains no term de
+//	      Bruijn index at all: the binder cannot occur free in it and the shift
+//	      is vacuous. It is not a value by KIND — eval.go's `ref` case evaluates
+//	      the referenced body — so it is admitted only when a store lookup shows
+//	      that body BEGINS WITH `lam`, which makes evaluating it a closure
+//	      construction. A nullary definition's body is not a lam, and its ref can
+//	      diverge.
+//
+// A `lam` HEAD IS EQUALLY SOUND AND IS DELIBERATELY NOT ADMITTED. It is
+// unbounded: deciding freeness and shifting indices inside it means walking a
+// subtree that contains the rest of the term, which is quadratic on the tower
+// `fn x. ((fn y. …) x)` — measured at ×3.9 per doubling and 1.8 GB at depth
+// 4000, on a term the portable profile admits and `find --equiv` normalizes.
+// RE-ADMITTING IT REQUIRES MAKING FREENESS AND SHIFTING O(1) FIRST — a
+// min-free-index attribute computed during normalization, and shifts
+// accumulated through a chain of etas rather than applied per level — not
+// merely re-establishing that the rewrite is sound, which it already is.
+// TestEtaNormalizationScalesSubQuadraticallyWithTowerDepth is what holds that
+// line; it was watched failing against the lam-head implementation.
+func etaReduce(st *Store, lam *Term) *Term {
+	if lam.A == nil {
+		return nil
+	}
+	b := lam.A
+	if b.K != "app" || b.A == nil || b.B == nil {
+		return nil
+	}
+	if b.B.K != "var" || b.B.Idx != 0 {
+		return nil
+	}
+	h := b.A
+	switch h.K {
+	case "var":
+		if h.Idx == 0 {
+			// The head IS the binder being removed — a free occurrence, with
+			// nothing to shift it to.
+			return nil
+		}
+		r := *h
+		r.Idx = h.Idx - 1
+		return &r
+	case "ref":
+		if st == nil {
+			return nil
+		}
+		d, err := st.GetDef(h.Hash)
+		if err != nil || d.Body == nil || d.Body.K != "lam" {
+			return nil
+		}
+		r := *h
+		return &r
+	}
+	return nil
+}
+
 // acFlatten collects the leaves of a chain of one AC operator (already-normalized
 // sub-terms of the same op are recursed into).
 // acFlatten collects the leaves of an associative-commutative chain,
@@ -304,7 +540,21 @@ func acFlatten(op string, args []Term) []Term {
 // distinct leaves. The ORDER is unchanged: the keys are the same bytes the
 // comparator computed, and leaves that tie are byte-identical, so which of them
 // an unstable sort puts first cannot be observed in the output.
+//
+// THE UNIT AND IDEMPOTENCE RULES ARE APPLIED HERE BECAUSE THIS IS THE ONE PLACE
+// THAT SEES A WHOLE CHAIN. Every route into an AC normal form — the chain root
+// in eNormalize, forceAC materialising a deferred interior, and the retained
+// recursive oracle — arrives through this function on the output of acFlatten,
+// so a rule stated here is a rule those three cannot state differently. Applying
+// it per NODE instead would be the same defect the flatten already avoids: the
+// leaf multiset is a property of the maximal chain, not of any level in it.
+//
+// Dropping runs BEFORE keys are computed, so a dropped leaf is never encoded.
+// Deduplication runs AFTER the sort, where equal leaves are adjacent and the
+// comparison is the same canonical bytes the ordering already used — never a
+// second notion of "the same leaf".
 func acRebuild(op string, leaves []Term) *Term {
+	leaves = acDropUnits(op, leaves)
 	keyed := make([]struct {
 		t   Term
 		key []byte
@@ -316,6 +566,17 @@ func acRebuild(op string, leaves []Term) *Term {
 	sort.Slice(keyed, func(i, j int) bool {
 		return bytes.Compare(keyed[i].key, keyed[j].key) < 0
 	})
+	if idempotentPrims[op] {
+		w := 1
+		for i := 1; i < len(keyed); i++ {
+			if bytes.Equal(keyed[i].key, keyed[w-1].key) {
+				continue
+			}
+			keyed[w] = keyed[i]
+			w++
+		}
+		keyed = keyed[:w]
+	}
 	cur := keyed[len(keyed)-1].t
 	for i := len(keyed) - 2; i >= 0; i-- {
 		cur = Term{K: "prim", Op: op, Args: []Term{keyed[i].t, cur}}
@@ -324,9 +585,13 @@ func acRebuild(op string, leaves []Term) *Term {
 }
 
 // eNormalize rewrites a term to a canonical form under the confluent algebraic
-// rewrite rules: commutativity (canonical operand order) and TYPE-DIRECTED
+// rewrite rules: commutativity (canonical operand order), TYPE-DIRECTED
 // associativity (flatten + sort `+`/`*` chains over Int/Rat and `and`/`or` over
-// Bool — never Float). It is type-aware, threading the checker and de Bruijn
+// Bool — never Float), the structure-REMOVING rules above — identity elements
+// (`+ 0` over Int/Rat, `* 1` over Int/Rat/Float, `and true`, `or false`), Bool
+// idempotence, and `neg` involution — and the control-flow and binding rules:
+// constant-condition `if`, identical branches under a value condition, and eta
+// over a value head. It is type-aware, threading the checker and de Bruijn
 // context so it knows an operator's operand type. It NEVER affects identity
 // (docs/egraph.md): a definition's hash is still the O1 encoding of its ACTUAL
 // AST; this only draws equivalence edges between existing objects.
@@ -479,12 +744,38 @@ func eNormalize(chk *checkerMachine, ctx []*Ty, t *Term) *Term {
 			}
 			continue
 		}
+		// `if` and `lam` are TRUE POST-CHILD phases, unlike match's above: their
+		// children are scheduled during the descent and this runs once those
+		// children are normalized. Neither node's children can be a deferred AC
+		// interior — deferral is set only when the parent is a commutative
+		// two-argument primitive, and these are not — so what is inspected here
+		// is always fully materialised.
+		if it.exit && it.t.K == "if" {
+			if s := ifSelect(it.dst); s != nil {
+				*it.dst = *s
+			}
+			continue
+		}
+		if it.exit && it.t.K == "lam" {
+			if s := etaReduce(chk.st, it.dst); s != nil {
+				*it.dst = *s
+			}
+			continue
+		}
 		if it.exit {
 			// AC normalization, applied once the arguments are normalized.
 			// synth is called on the ORIGINAL argument, as it always was: the
 			// normalized copy may differ, and changing which term is
 			// synthesized changes what gets inferred into it.
 			nt := it.dst
+			// INVOLUTION. `neg` is unary, so it is not a chain and has no
+			// deferred interior to force: it is not in commutativePrims, so its
+			// child was pushed with an empty chainOp and can never have been
+			// deferred.
+			if s := negInvolution(it.t.Op, nt.Args); s != nil {
+				*nt = *s
+				continue
+			}
 			if commutativePrims[it.t.Op] && len(nt.Args) == 2 {
 				argTy, _ := chk.synth(ctxSlice(it.ctx), &it.t.Args[0])
 				if isACPrim(it.t.Op, argTy) {
@@ -516,6 +807,14 @@ func eNormalize(chk *checkerMachine, ctx []*Ty, t *Term) *Term {
 					// same-op child — the child is AC, the parent is not.
 					forceAC(&nt.Args[0])
 					forceAC(&nt.Args[1])
+					// FLOAT `* 1`. The unit rule for the one commutative,
+					// NON-associating operator that has a unit — so it cannot be
+					// carried by the chain machinery above. It runs after
+					// forceAC, so a surviving operand is always materialised.
+					if s := mulUnitSurvivor(it.t.Op, argTy, nt.Args); s != nil {
+						*nt = *s
+						continue
+					}
 					if compareTermsCanonical(&nt.Args[0], &nt.Args[1]) > 0 {
 						nt.Args[0], nt.Args[1] = nt.Args[1], nt.Args[0]
 					}
@@ -529,6 +828,10 @@ func eNormalize(chk *checkerMachine, ctx []*Ty, t *Term) *Term {
 		switch cur.K {
 		case "lam":
 			if cur.A != nil {
+				// The exit is pushed FIRST so it pops LAST: eta inspects a body
+				// that has already been normalized, which is what lets a chain
+				// of etas reduce from the inside out in one pass.
+				push(eNormItem{t: cur, ctx: it.ctx, dst: dst, exit: true})
 				dst.A = &Term{}
 				push(eNormItem{t: cur.A, ctx: extend(it.ctx, cur.Ty), dst: dst.A})
 			}
@@ -542,6 +845,8 @@ func eNormalize(chk *checkerMachine, ctx []*Ty, t *Term) *Term {
 				push(eNormItem{t: cur.A, ctx: it.ctx, dst: dst.A})
 			}
 		case "if":
+			// Exit first, so it pops last (see `lam` above).
+			push(eNormItem{t: cur, ctx: it.ctx, dst: dst, exit: true})
 			for _, c := range []struct {
 				src *Term
 				dst **Term

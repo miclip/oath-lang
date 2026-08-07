@@ -122,12 +122,27 @@ and match). What remains:
 - **Body-equivalence** has a first slice: `oath find --equiv <name>` (and the
   `find_equiv` MCP tool) find definitions that are the SAME FUNCTION up to the
   rewrite rules — a different implementation that normalizes to the same
-  canonical form. This is the e-graph (docs/egraph.md); the rules are
-  commutativity (`(+ a b)` ≡ `(+ b a)`) and **type-directed associativity**
-  (`(+ (+ a b) c)` ≡ `(+ a (+ b c))` over Int/Rat, but NOT Float, whose addition
-  isn't associative) — matched defs share an `eHash` but keep distinct
-  identities. Unit laws and a full saturating engine are the deeper versions. Full extensional equivalence is undecidable, so this
-  collapses things equal *under the rules*, never all equal functions.
+  canonical form. This is the e-graph (docs/egraph.md); matched defs share an
+  `eHash` but keep distinct identities. The shipped rules are:
+  - commutativity (`(+ a b)` ≡ `(+ b a)`), sound for every operand type;
+  - **type-directed associativity** (`(+ (+ a b) c)` ≡ `(+ a (+ b c))` over
+    Int/Rat and `and`/`or` over Bool, but NOT Float, whose addition isn't
+    associative);
+  - **identity elements**, also type-directed: `x + 0` over Int/Rat but NOT
+    Float (`-0.0 + 0.0` is `+0.0`, a distinct value), `x * 1` over Int/Rat/Float,
+    `x and true`, `x or false`;
+  - **Bool idempotence** (`x and x` ≡ `x`) — never `+` or `*`, which are not
+    idempotent — and **`neg` involution** over Int/Rat/Float;
+  - **constant-condition `if`**, identical `if` branches under a condition that
+    is already a value, and **eta** over a `var` or `ref` head. These last are
+    restricted by strict evaluation order rather than by type: dropping a
+    divergent `if` condition would remove divergence, and eta over a computed
+    head would move it.
+
+  A full saturating engine — distributivity, e-classes, equality saturation,
+  extraction — is the deeper version, and none of it is present today. Full
+  extensional equivalence is undecidable, so this collapses things equal *under
+  the rules*, never all equal functions.
 
 The rungs compose: content-hash match (up to type) for the fast common case,
 proof-implication for the semantic cases it misses, and the e-graph for
