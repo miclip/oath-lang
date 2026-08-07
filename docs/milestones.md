@@ -706,3 +706,35 @@ HEAD` note in `CLAUDE.md`: **an instrument guarding a hazard can share the
 hazard's blind spot.** Second, the sweep first recovered dispositions by
 matching prose; they are now machine-readable, because prose-matching had
 already mis-scored this very measurement once.
+
+## The startup read's calibration — the two wrong turns before "claim types, not routes"
+
+The rule in `CLAUDE.md` says independence is a property of the CLAIM, not of the
+activity that produced the evidence. It arrived by making the opposite mistake
+twice, and both are worth recording because each looked like the obvious repair.
+
+**First: crediting a second READER.** The initial rule offered re-dispatch as
+independent confirmation. But a second reader shares the first's model, priors
+and the same leaked file, so two correlated subjects are one measurement taken
+twice — it establishes REPRODUCIBILITY, not independence.
+
+**Second: crediting INSPECTION.** The repair then said the artefact outranks any
+reader of it, which is true for a DECIDABLE claim — two sentences that contradict
+each other are checkable by quoting them, and priming cannot make them agree. It
+is false for a JUDGMENT about presentation, where a primed inspector reaches a
+primed reading just as easily. The route was being credited when the claim's type
+was doing the work.
+
+Both were caught by review, not by re-reading. The session had already been
+obeying the correct rule without naming it: the queue-rule contradiction was
+settled by quoting both sentences, while "the most misleading stretch in the
+file" only became usable once the 130-line span was counted — the judgment was
+never the evidence, the count was.
+
+**And the channel taxonomy was wrong until the last pass.** The calibration
+described TWO contamination channels (context, guidance) and then reasoned about
+MODEL correlation as though it were one of them. They are three, they close by
+different means, and only the first is closed today. Writing the third row's
+consequence exposed the sharpest fact about the leak: it lives INSIDE the
+artefact under test, so no reader closes it — which is what makes it a debt to
+retire rather than a calibration to live with.

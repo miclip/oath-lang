@@ -340,12 +340,18 @@ standard everything else here is:**
   it too: it would be agreeing with the author rather than reading.
 
 **WEIGH ITS OUTPUT ASYMMETRICALLY: AGREEMENT IS WEAK EVIDENCE, DISAGREEMENT IS
-WORTH CHECKING.** There are TWO contamination channels and only one is closed. The
-CONTEXT channel — what the reader is handed before it opens this file — is
-controlled by the dispatch rule above. The GUIDANCE channel is closed only to
-the extent this file has actually been cleaned: paraphrased conclusions attach
-themselves to the rules they motivated, and stripping the run RECORDS does not
-strip those.
+WORTH CHECKING.** There are THREE contamination channels, they close by
+different means, and only the first is closed today:
+
+    CONTEXT   what the reader is handed before it opens this file.
+              CLOSED by the dispatch rule above; verified per run by question 1.
+    GUIDANCE  prior conclusions surviving INSIDE this file as paraphrases
+              attached to the rules they motivated — stripping the run RECORDS
+              does not strip these. Closed only to the extent the file has
+              actually been cleaned, and NOT closable by any reader.
+    MODEL     the reader shares this one's priors, so it cannot witness what
+              those priors hide. Closed only by a genuinely different reader;
+              the standing limit recorded below.
 
 **THAT IS A DEBT TO DRIVE TO ZERO, NOT A CONDITION TO LIVE WITH** — the hard
 rule below requires removing such paraphrases, and this calibration exists
@@ -370,19 +376,56 @@ read as self-contradictory:**
     to RECORD it as          it must not rest on the LEAK
     established              — INDEPENDENCE
 
-All three clear the first bar. **What clears the SECOND is not the route but the
-CLAIM'S TYPE**, and conflating those over-credits inspection:
+All three clear the first bar. The second is where the routes stop mattering:
+
+> **ROUTES PRODUCE EVIDENCE. CLAIM TYPES DETERMINE WHAT EVIDENCE IS SUFFICIENT.**
+
+That is more stable than assigning epistemic weight to procedures. Independence
+is a property of the CLAIM, never of the activity that produced the evidence:
 
     DECIDABLE from the artefact    two sentences that contradict each other, a
                                    duplicated authority, a status that
                                    disagrees with `gh`. Anyone who looks sees
                                    the same thing; priming cannot make two
-                                   sentences agree. INDEPENDENT.
-    A JUDGMENT about the artefact   "this is misleading", "this heading
-                                   dominates that parenthetical". A primed
+                                   sentences agree. The ARTEFACT settles it.
+    QUANTITATIVE                   line spans, proportions, timings. A
+                                   MEASUREMENT settles it.
+    A JUDGMENT about presentation   "this is misleading", "this heading
+    or interpretation              dominates that parenthetical". A primed
                                    inspector reaches a primed reading just as
-                                   easily. NOT independent — reduce it to
-                                   something COUNTABLE, or keep it provisional.
+                                   easily, so neither inspection nor a
+                                   correlated reader settles it. **REDUCE IT
+                                   TO ONE OF THE ROWS ABOVE, or it stays
+                                   PROVISIONAL** — which is not a bar to
+                                   repairing it, only to recording it as
+                                   established.
+
+**REDUCING MEANS REPLACING, NOT VALIDATING — and getting this backwards is how a
+judgment gets laundered into a fact.** A measurement establishes ITSELF and
+nothing above it. Counting that 130 lines elaborate an empty bucket establishes
+exactly that; it does NOT establish that the passage is the most misleading in
+the file, and the choice of what to count was made by a primed reader anyway. So
+when a judgment is reduced, the measured claim SUPERSEDES it: record the count,
+drop the interpretation, and repair whatever the count justifies. Keeping both —
+the number as evidence and the judgment as its conclusion — is the same defect
+as reporting a corpus figure as a statement about programs in general.
+
+**FOR A READER-BASED JUDGMENT CLAIM — the third row only — ALL THREE CHANNELS
+MUST BE CLEAR, AND A DIFFERENT-MODEL READER CLOSES ONLY ONE.** Decidable and
+quantitative claims are unaffected: the artefact and the measurement settle
+those whatever any reader inherits, which is exactly why reducing a judgment to
+one of them is the escape. A different-model reader closes MODEL. CONTEXT still has to be closed by dispatching it the
+same way. And GUIDANCE is closed by NO reader, because the residue lives INSIDE
+the artefact under test — every reader of this file inherits it, whatever model
+they are. There is no reader who has read this file and not read what it still
+carries.
+
+**Hence the debt's sharpest consequence.** While any paraphrased conclusion
+remains, a different-model judge is NECESSARY but not SUFFICIENT for a judgment
+claim about this file — so such claims are reducible (to a decidable or
+countable form) or PROVISIONAL, and not establishable by a reader alone.
+**Retiring the debt is what would make them establishable at all** — the
+concrete cost of leaving it, and the reason it is a debt and not a calibration.
 
 Within the decidable class the ordering is principled rather than a preference:
 **the ARTEFACT outranks any reader of it.** Re-reading the text is MORE
@@ -405,9 +448,10 @@ the text cannot.
 reader shares this one's model, priors and leaked file, so it can reproduce the
 same priming rather than corroborate the finding — two correlated subjects are
 one measurement taken twice. What it does buy is real: the finding is no longer
-one reader's say-so, which separates a systematic effect from a one-off. Genuine
-independence needs a reader that does not share the model, which is the same
-limit recorded below for what this instrument can witness at all.
+one reader's say-so, which separates a systematic effect from a one-off.
+Defeating the MODEL correlation needs a reader that does not share the model —
+the limit recorded below for what this instrument can witness at all — and that
+is NECESSARY, not sufficient, for the reason in the next paragraph.
 
 So for a behavioural finding reaching only RE-DISPATCH: **REPAIR IT — step 3
 stands, and prose two readers stumble on is worth clarifying whatever the cause.
