@@ -340,7 +340,7 @@ standard everything else here is:**
   it too: it would be agreeing with the author rather than reading.
 
 **WEIGH ITS OUTPUT ASYMMETRICALLY: AGREEMENT IS WEAK EVIDENCE, DISAGREEMENT IS
-STRONG.** There are TWO contamination channels and only one is closed. The
+WORTH CHECKING.** There are TWO contamination channels and only one is closed. The
 CONTEXT channel — what the reader is handed before it opens this file — is
 controlled by the dispatch rule above. The GUIDANCE channel is closed only to
 the extent this file has actually been cleaned: paraphrased conclusions attach
@@ -370,7 +370,25 @@ read as self-contradictory:**
     to RECORD it as          it must not rest on the LEAK
     established              — INDEPENDENCE
 
-Three routes clear the first. Only the first two also clear the second.
+All three clear the first bar. **What clears the SECOND is not the route but the
+CLAIM'S TYPE**, and conflating those over-credits inspection:
+
+    DECIDABLE from the artefact    two sentences that contradict each other, a
+                                   duplicated authority, a status that
+                                   disagrees with `gh`. Anyone who looks sees
+                                   the same thing; priming cannot make two
+                                   sentences agree. INDEPENDENT.
+    A JUDGMENT about the artefact   "this is misleading", "this heading
+                                   dominates that parenthetical". A primed
+                                   inspector reaches a primed reading just as
+                                   easily. NOT independent — reduce it to
+                                   something COUNTABLE, or keep it provisional.
+
+Within the decidable class the ordering is principled rather than a preference:
+**the ARTEFACT outranks any reader of it.** Re-reading the text is MORE
+independent than consulting a second reader — the opposite of what "get a second
+opinion" suggests — because a correlated observer can inherit the priming and
+the text cannot.
 
     COUNT it            the claim is quantitative — line spans, proportions,
                         which sections exist. Settled by a command.
