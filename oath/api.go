@@ -623,6 +623,107 @@ func crossTypeRetypeBinders(binders []Ty, sub crossTypeSub) []Ty {
 // 5m44.981s (1.002x). The candidate set grows by half while wall clock does not
 // move, because runtime here is dominated by goals that never prove, and the
 // admitted cross-type candidates are not those.
+// ---------------------------------------------------------------------------
+// The pre-solver concrete pass (#80).
+// ---------------------------------------------------------------------------
+
+// ceOutcome is the TYPED result of the concrete search that runs before the
+// solver in apiFindImplies.
+//
+// It is a type rather than a rendered string deliberately. The obvious
+// implementation reuses runProp and reads its Counter text for the substring
+// "runtime error:" to tell an implementation limit from a falsehood — which
+// works, and makes the discrimination this pass depends on for SOUNDNESS one
+// reworded message away from silently inverting. A caller that cannot tell "the
+// property is false" from "the evaluator gave up" will eventually report the
+// second as the first, and that is the exact error class this repo keeps
+// catching.
+type ceOutcome int
+
+const (
+	// ceNone: no sampled environment falsified the goal. Decides nothing — the
+	// goal goes to the solver, which is the only thing that can prove it.
+	ceNone ceOutcome = iota
+	// ceFalsified: a concrete environment evaluated the goal to Boolean FALSE.
+	ceFalsified
+	// ceIndeterminate: at least one sample hit an IMPLEMENTATION LIMIT — value
+	// generation failed, the evaluator errored, or fuel ran out — and none was
+	// false. Never a reason to reject. Distinguished from ceNone only so a test
+	// can witness that the two are not being conflated.
+	ceIndeterminate
+)
+
+// findImpliesProbeSeed fixes the sample sequence so the pass is DETERMINISTIC:
+// the same query against the same corpus skips exactly the same candidates on
+// every run and on every host. A discovery result that varied between runs would
+// be a worse failure than a slow one.
+const findImpliesProbeSeed uint64 = 0x9E3779B97F4A7C15
+
+const (
+	findImpliesProbeCases = 64
+	findImpliesProbeFuel  = 200_000
+)
+
+// concreteCounterexample looks for a concrete environment that makes the goal
+// evaluate to Boolean false.
+//
+// WHY THIS IS SOUND AHEAD OF THE PROVER, where a structural or shape-based
+// filter is not: evaluation is the reference semantics of the language, so a
+// goal that evaluates to false under some concrete environment IS false, and no
+// valid proof of it exists. Skipping the solver for such a goal therefore cannot
+// remove a definition that would otherwise have been returned — the skip and the
+// proof would contradict each other. The argument is about the goal, not about
+// any particular corpus, which is what makes it general.
+//
+// A shape filter has no such argument, and `find --implies` exists precisely to
+// see THROUGH shape: filtering on shape would reinstate the miss the prover is
+// called to fix.
+//
+// WHAT IT MUST NEVER DO is promote an IMPLEMENTATION LIMIT to a semantic fact.
+// Generation failure, evaluator errors and fuel exhaustion are all
+// ceIndeterminate — "the evaluator could not finish" is not "the property is
+// false", and a non-terminating candidate is the case that makes the difference
+// visible. A non-Bool result is likewise not a falsehood; it is a surprise, and
+// it defers to the solver.
+func concreteCounterexample(st *Store, h string, p *Prop) ceOutcome {
+	sawIndeterminate := false
+	for c := 0; c < findImpliesProbeCases; c++ {
+		r := &rng{s: findImpliesProbeSeed ^ uint64(c)*0xD1B54A32D192ED03}
+		size := c % 8
+		env := make([]Value, 0, len(p.Binders))
+		generated := true
+		for bi := range p.Binders {
+			v, err := genValue(st, &p.Binders[bi], size, r)
+			if err != nil {
+				generated = false
+				break
+			}
+			env = append(env, v)
+		}
+		if !generated {
+			sawIndeterminate = true
+			continue
+		}
+		ev := &evaluator{st: st, fuel: findImpliesProbeFuel}
+		out, err := ev.eval(env, h, &p.Body)
+		if err != nil {
+			sawIndeterminate = true
+			continue
+		}
+		if out.K != "bool" {
+			sawIndeterminate = true
+			continue
+		}
+		if !out.Bool {
+			return ceFalsified
+		}
+	}
+	if sawIndeterminate {
+		return ceIndeterminate
+	}
+	return ceNone
+}
+
 func apiFindImplies(st *Store, src string) (string, error) {
 	if err := z3Available(); err != nil {
 		return "", err
@@ -700,6 +801,22 @@ func apiFindImplies(st *Store, src string) (string, error) {
 			// gate at all, so the case reached the prover unchecked — widening
 			// the search is what made the hole visible, not what created it.
 			if err := checkDef(st, &aug); err != nil {
+				continue
+			}
+			// #80. A goal with a concrete countermodel cannot be proven, so the
+			// solver has nothing to contribute to it. Skipping it is a pure
+			// latency change: the returned set is defined by which goals are
+			// PROVEN, and this can only skip goals that are FALSE.
+			//
+			// It must run BEFORE newSmtCtx, not merely before proveOne: building
+			// the context is itself work, and the point is to reach the solver
+			// layer as rarely as possible.
+			//
+			// This is NOT a timeout and NOT a cap. Every goal that survives it
+			// still gets the full unmodified proof search, so no verdict is
+			// weakened and no coverage is traded away — which is why it needs no
+			// residue report, unlike a budget.
+			if concreteCounterexample(st, h, &qp) == ceFalsified {
 				continue
 			}
 			pi := len(d.Props)
