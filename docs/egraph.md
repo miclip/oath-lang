@@ -141,6 +141,66 @@ much as a semantic one.**
   not merely re-establishing that the rewrite is sound, which it already is. An
   allocation-scaling regression holds that line.
 
+### The lam-head refusal, measured (#155)
+
+**The falsifier came back ZERO: admitting `lam` heads discovers nothing on the
+committed corpus.** The sound rule — freeness and shifting decided by traversal,
+which is what the deferred attribute would make O(1) — moves no definition's
+normal form and creates no new equivalence:
+
+    committed corpus, codebase/ at 9f7cbf3 (2026-08-07) — a ONE-SHOT
+    experiment, like the tower timings above: the lam-head normalizer exists
+    only in the harness, so nothing in the tree regenerates these.
+
+    unique function digests                194   210 live names, 15 non-function,
+                                                 deduped by hash
+    pairs compared                      18,721
+    definitions whose eHash MOVED             0
+    NEWLY equivalent pairs                    0
+    equivalent pairs at baseline              0   nothing was equivalent before,
+                                                  either
+
+The census says why, and says it more strongly than the pair count can: those
+194 bodies normalize to **322 `lam` nodes, of which 3 are eta-shaped
+`fn x. (H x)` — and their heads are `app` (2) and `self` (1).** Bodies only,
+because `eHash` is signature plus normalized BODY and nothing else; the corpus's
+property bodies carry 2 further `lam` nodes and no eta shapes at all. Not one
+lam-headed redex exists in the corpus, and **none of the three that do exist is
+excluded by the cost boundary:**
+
+- `json-string-value` and `parse-nat` head theirs with an `app`, a COMPUTATION,
+  refused by the head-is-a-value condition.
+- `spin` is `fn x. (self x)`, outside the admitted `var`/`ref` set — and `self`
+  is not the cheap addition it resembles. The `ref` rule's licence is that the
+  referenced body BEGINS WITH A LAMBDA, and for a `self` head this rewrite
+  destroys its own premise: `spin`'s body would become `self`, which evaluates
+  by evaluating `spin`'s body again. That is the same divergence-moved-to-
+  construction failure the value condition exists to prevent, arriving through
+  the head's own definition.
+
+**Method, and the two controls the zero rests on.** The universe is
+`apiFindEquiv`'s own — every live name resolved, kept when `K == "func"`,
+deduped by hash — because a walk of `meta/` would answer a question about the
+store's HISTORY while looking like a question about the corpus. `eHash` was then
+computed for every definition twice, once under the shipped rule and once under
+the lam-head rule, and the two partitions compared pairwise. **An instrument
+that measures nothing also reports zero**, and the baseline row above shows this
+corpus offers no positive instance of its own, so the discrimination was
+established synthetically first: the rule fires on `fn x. ((fn y. y) x)`,
+refuses when the binder occurs free in the head, decrements outer free indices —
+and end-to-end, a definition whose body is a lam-head redex takes the same
+`eHash` as its already-reduced twin only when the rule is on. The corpus zero is
+therefore a fact about the corpus rather than about the harness.
+
+**What it does not say.** It is a statement about THIS corpus, not about Oath
+programs in general: `examples/` and `apps/` are the exhibits this project
+chose, and the eta tower is a term the portable profile admits whether or not
+anyone here has written one. It also does not make the rewrite unsound — it is
+sound and unadmitted, which was already the position. What it removes is the
+reason to PAY for it. On this evidence the recommendation is that **#155 closes
+DECLINED**: the admitted-head boundary stands, now on measurement rather than on
+caution.
+
 ## What rung 1a is NOT
 
 Named explicitly, because "the e-graph" invites all four:
