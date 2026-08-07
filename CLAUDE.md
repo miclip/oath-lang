@@ -590,8 +590,8 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   more VALUABLE if delayed    #134, #139/#140, #138 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
-  no CLOCK at all             #156, #152, #115, #116, #65, #66 — open, and
-                              neither cheaper nor dearer for waiting
+  no CLOCK at all             #156, #115, #116, #65, #66 — open, and neither
+                              cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
 below may ELABORATE a row; nothing may add an issue the table does not hold.**
@@ -631,12 +631,6 @@ found nothing. Refuted-with-a-countermodel, the-solver-declined and the-wall-cap
 fired all print as "no definition provably satisfies this", and the third is an
 implementation limit wearing a claim about the world. Read the issue; the volume
 question and whether `refuted` deserves promotion out of residue are both live.
-
-**#152 is a WITNESS gap, not a defect** — that classification is the whole of
-the elaboration, because it decides what "done" could even mean. Nothing is
-currently wrong with the AC normal form; what is missing is anything that would
-NOTICE if it changed, and one live option is to accept that explicitly. Read the
-issue rather than re-deriving it.
 
 **#148 IS BLOCKED ON OPERATOR PROVISIONING, NOT ON ENGINEERING**, and the
 distinction decides what a session should do with it: nothing. Its design is
