@@ -591,8 +591,8 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
   no CLOCK at all             #159, #68, #158, #119, #115, #116, #74, #65,
-                              #66 — open, and neither cheaper nor dearer
-                              for waiting
+                              #66, #160 — open, and neither cheaper nor
+                              dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
 below may ELABORATE a row; nothing may add an issue the table does not hold.**
