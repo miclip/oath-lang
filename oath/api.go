@@ -949,7 +949,15 @@ func renderImplyResults(b *strings.Builder, results []implyResult, mode findImpl
 // act on it at all. Evidence is collapsed to one line — solver models arrive as
 // multi-line s-expressions — so a hundred candidates stay readable as a list.
 func implyEvidenceLine(r implyResult) string {
-	ev := strings.Join(strings.Fields(r.evidence), " ")
+	raw := r.evidence
+	// ONLY a solver refutation's evidence is z3's raw response, so only it can
+	// carry the telemetry. Evaluation countermodels are this kernel's own
+	// rendering of an environment, and a non-refuted candidate's evidence is a
+	// prose reason — neither is parsed, let alone cut.
+	if r.status == implyRefuted && !r.byEval {
+		raw = stripSolverTelemetry(raw)
+	}
+	ev := strings.Join(strings.Fields(raw), " ")
 	sig := ""
 	if r.crossSig != "" {
 		sig = " at " + r.crossSig
@@ -968,6 +976,165 @@ func implyEvidenceLine(r implyResult) string {
 		return "(no reason recorded)" + sig
 	}
 	return ev + sig
+}
+
+// solverTelemetryKeys names the `(get-info :...)` responses that follow every
+// solver answer. They are ATTEMPT-VALIDITY TELEMETRY — how much work the run
+// spent and why it stopped — and they bind nothing, so under the words
+// "countermodel (solver):" they are not merely noise: `(:reason-unknown "")`
+// reads as the prover declining to give a reason, on a line that has just
+// reported a refutation.
+//
+// THE AUTHORITY IS `runZ3Budget` IN prove.go, which appends the get-info
+// commands; this list is a duplicate of that call site's vocabulary, and a
+// duplicate is correct exactly once. It is guarded rather than trusted:
+// TestSolverTelemetryKeysMatchProveGo derives the set from that call site and
+// fails if the two ever drift, so a third telemetry line cannot be added
+// without this list following it.
+var solverTelemetryKeys = []string{"rlimit", "reason-unknown"}
+
+// stripSolverTelemetry removes the telemetry forms trailing a solver
+// refutation's evidence, leaving the countermodel.
+//
+// IT IS CONSERVATIVE IN ONE DIRECTION ONLY, and that asymmetry is the whole
+// design: a countermodel that still carries telemetry is untidy, while a
+// countermodel with a binding silently removed is WRONG and the reader cannot
+// tell — the line still says "countermodel (solver)" and still looks complete.
+// So every uncertainty returns the input UNCHANGED. Concretely it cuts a form
+// only when all four hold:
+//
+//	the whole text tokenizes as balanced s-expressions (strings and |symbols|
+//	  opaque, so a paren inside a reason-unknown payload cannot desynchronise it)
+//	the form is at the very END — a telemetry-shaped form in the middle of a
+//	  model is not something this function claims to understand
+//	its head is `:key` for a key this kernel knows it ASKED for, not any
+//	  keyword-headed form
+//	something is left afterwards — if every form were telemetry there is no
+//	  countermodel here and the shape is not the one modelled
+func stripSolverTelemetry(detail string) string {
+	forms, ok := smtTopLevelForms(detail)
+	if !ok {
+		return detail
+	}
+	cut := len(forms)
+	for cut > 0 && isSolverTelemetryForm(detail[forms[cut-1].start:forms[cut-1].end]) {
+		cut--
+	}
+	if cut == len(forms) || cut == 0 {
+		return detail
+	}
+	return strings.TrimRight(detail[:forms[cut-1].end], " \t\r\n")
+}
+
+// smtSpan is one top-level form's extent in the response text. Spans rather
+// than substrings so the caller can cut the ORIGINAL bytes: re-serializing
+// parsed forms would rewrite the model's own formatting, which is a change this
+// function has no business making.
+type smtSpan struct{ start, end int }
+
+// smtTopLevelForms splits an SMT-LIB response into its top-level forms, or
+// reports that it could not. `ok == false` means the text did not tokenize —
+// unbalanced parens, an unterminated string or quoted symbol — and the caller
+// must then leave it alone rather than guess where a form ends.
+func smtTopLevelForms(s string) ([]smtSpan, bool) {
+	var forms []smtSpan
+	depth, start := 0, -1
+	flush := func(end int) {
+		if depth == 0 && start >= 0 {
+			forms = append(forms, smtSpan{start, end})
+			start = -1
+		}
+	}
+	for i := 0; i < len(s); {
+		switch c := s[i]; {
+		case c == ';': // a comment runs to end of line
+			flush(i)
+			for i < len(s) && s[i] != '\n' {
+				i++
+			}
+		case c == ' ' || c == '\t' || c == '\r' || c == '\n':
+			flush(i)
+			i++
+		case c == '"' || c == '|':
+			// OPAQUE. An SMT string may contain parentheses — z3 puts them in
+			// reason-unknown payloads — so a tokenizer that did not skip these
+			// would mis-nest and cut in the wrong place.
+			if start < 0 {
+				start = i
+			}
+			i++
+			closed := false
+			for i < len(s) {
+				if s[i] == c {
+					if c == '"' && i+1 < len(s) && s[i+1] == '"' { // "" escapes a quote
+						i += 2
+						continue
+					}
+					i++
+					closed = true
+					break
+				}
+				i++
+			}
+			if !closed {
+				return nil, false
+			}
+			flush(i)
+		case c == '(':
+			flush(i)
+			if depth == 0 {
+				start = i
+			}
+			depth++
+			i++
+		case c == ')':
+			depth--
+			if depth < 0 {
+				return nil, false
+			}
+			i++
+			flush(i)
+		default:
+			if start < 0 {
+				start = i
+			}
+			i++
+		}
+	}
+	if depth != 0 {
+		return nil, false
+	}
+	flush(len(s))
+	return forms, true
+}
+
+// isSolverTelemetryForm reports whether one top-level form is a response to a
+// get-info command this kernel issued. It matches on the KEY, never on the
+// payload: a filter keyed on the empty `(:reason-unknown "")` seen in one run
+// would leave a populated one through, and the populated one is the case that
+// most looks like part of a model.
+func isSolverTelemetryForm(f string) bool {
+	if len(f) < 2 || f[0] != '(' || f[len(f)-1] != ')' {
+		return false
+	}
+	i := 1
+	for i < len(f) && (f[i] == ' ' || f[i] == '\t' || f[i] == '\r' || f[i] == '\n') {
+		i++
+	}
+	if i >= len(f) || f[i] != ':' {
+		return false
+	}
+	i++
+	j := i
+	for j < len(f) && !strings.ContainsRune(" \t\r\n()", rune(f[j])) {
+		j++
+	}
+	for _, k := range solverTelemetryKeys {
+		if f[i:j] == k {
+			return true
+		}
+	}
+	return false
 }
 
 func apiFindImplies(st *Store, src string, mode findImpliesMode) (string, error) {
