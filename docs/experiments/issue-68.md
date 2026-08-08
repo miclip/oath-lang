@@ -981,11 +981,140 @@ gate, and it is offered as one.
 - **No verdict on #68.** Whether sequence-theory encoding is worth building, and
   against what falsifier, is untouched. The census is what such a decision would
   need underneath it, not an input tilted toward an answer.
-- **No encoder, no prover change, no SPEC change.** Nothing in this work reaches
-  the kernel's proof path.
+- **No encoder and no SPEC change.** This said "no prover change" and that stopped
+  being true when section 7's producer landed: `oath/prove.go` gained a
+  diagnostic observer seam on `solve` and a telemetry cell on `runZ3Budget`. The
+  seam is inert — nothing in the kernel installs an observer, no normative path
+  reads it, and no proof outcome depends on it — but the file must not claim the
+  proof path was left untouched when it was edited. The ENCODING is what nothing
+  here reaches.
 - **No hash re-derivation from source**, for the reason given under the
   instrument: that claim belongs to `oathrs/conformance.sh` check 1 and to
   `make verify`, and the latter writes.
 - **No mutation of `codebase/`.** Verified after the fact: `git status
   codebase/` is clean, and the controls that did mutate the store ran in a
   detached worktree and were reverted there.
+
+## 7. The bounded producer, and the other two thirds
+
+Section 6 ends by saying a producer bounded to a smaller budget "is a separate
+instrument and is not written yet." It is written now, it has been run over the
+whole non-proven set, and this section is what it returned.
+
+**EVERY FIGURE BELOW WAS MEASURED AT `rlimit = 4000000`.** That is not a
+footnote to the numbers, it is part of them. A verdict is a function of (script
+bytes, solver version, rlimit), so an `unknown` here says z3 did not converge
+within 4M and says NOTHING about what it would do with more. The normative
+per-goal budget is `proveRlimit` at 400M — one hundred times this — so **a 4M
+`unknown` is not a 400M `unknown`**, and no row below may be restated as "the
+prover cannot do this". What it can be restated as is "not settled within a
+budget one hundredth of the normative one", which is a weaker and true claim.
+
+The 4M figure is not arbitrary: `OATH_PROVE_RLIMIT=4000000` makes
+`effectiveRlimit()` 4M, and `directRlimit()`/`lemmaFreeRlimit()` clamp to it, so
+every strategy in the ladder runs at one budget and a single number describes all
+of them. At the normative 400M those two strategies still run at 4M, so the
+lemma-free probe and the induction-eligible direct attempt are budget-identical
+here and in a normative run.
+
+### The universe
+
+All **141** non-proven per-object properties (145 per-name), taken from the
+committed store's own metadata — the same set section 1 counts and the same set
+`scripts/prove-reasons.py`'s `check()` reconciles against. Nothing was sampled,
+excluded or truncated.
+
+**90 of the 141 emit at least one candidate script; 51 emit none.** That split is
+a FACT ABOUT THE GOALS, not a statement about this sweep's coverage: the 51 were
+swept like everything else, and their goals were untranslatable rather than
+skipped, truncated or budget-limited. Section 6 derives the same 90/51 boundary
+from a committed fixture with no solver, which is the cross-check that the
+producer's universe and the fixture's agree.
+
+### What z3 answered
+
+| category | per-object | per-name |
+|---|---:|---:|
+| Proves when attempted | 43 | 43 |
+| Solver did not converge within the pinned 4M rlimit | 42 | 46 |
+| Never reached the solver (translation bail) | 51 | 51 |
+| Refuted — demonstrated non-theorem | 3 | 3 |
+| Countermodel found, verdict withheld | 1 | 1 |
+| Solver returned `unknown` for another reason | 1 | 1 |
+| Proved-but-withheld / late translation bail / environmentally invalidated | 0 | 0 |
+| **total** | **141** | **145** |
+
+The 51 reproduce section 6's fixture-only derivation exactly, which is the point
+of deriving them twice from different artefacts.
+
+**The interesting row is the first.** 43 properties the store records as
+unproven discharge from the state the store itself records — 35 of them at the
+lemma-free probe, which admits no lemmas at all, in a median of 5 milliseconds.
+This is the documented behaviour of a corpus whose proof state advances as
+dependencies settle (`oath fixtures` writes verdicts back, and counts climb run
+over run); it is not a discovery that the prover was wrong.
+
+### Controls
+
+- **The script hash.** Each property's direct-attempt script was sha256'd and
+  compared to its row in `fixtures/prove/scripts.txt`. **90 matched, 0
+  mismatched**, 51 have no direct script and no pinned row. A mismatch would mean
+  a different recorded lemma state, hence a different experiment from the pinned
+  one — never noise. 55 of the 90 were compared AS SENT to the solver; the other
+  35 discharged before the direct attempt ran, so their script was rebuilt under
+  the same store and lemma state and the record says which route was used. The
+  two are not equally strong evidence and are counted separately.
+- **One budget.** Every record carries `rlimit` 4000000; the classifier refuses a
+  sweep that mixes budgets.
+- **No environmental aborts.** Zero `capHit` attempts, so no row rests on a
+  wall-clock cap, a memout, or lost telemetry.
+- **Seriality, asserted.** The telemetry seam is a package-level cell, so it is
+  sound only while one prover runs. Each property asserts that the number of
+  solver attempts published equals the number the observer recorded; any foreign
+  attempt inflates the total. It held for all 141.
+- **Confirmed by a different route.** Ten of the 43, chosen cheapest-first within
+  each discharging strategy so that all four are represented, were re-proved with
+  the `oath prove` CLI against a COPY of the store — exercising the CLI, the
+  normative prover path and the store write path, none of which the producer's
+  harness touches. **All ten agreed on both the verdict and the discharging
+  strategy**, as did five further properties the same invocations happened to
+  cover. No invocation approached the three-minute limit.
+- **Nothing was written.** `git status codebase/ fixtures/` clean before and
+  after; the CLI confirmation ran against a temporary copy.
+
+### The projection miss, which is worth more than the numbers above
+
+The sweep was launched on a projection of **3.8 minutes, with 14.9 minutes given
+as an absolute ceiling**. It took **18 minutes 8 seconds** — the ceiling was
+breached, and the run finished inside its 20-minute wall with 111 seconds to
+spare. Both cost models were wrong, and they were wrong in instructive ways:
+
+- **Enumerated attempts overestimate volume.** 244 of the 686 enumerable attempts
+  actually executed. The four properties with the largest enumerated counts
+  (`gh-request` 0–2 at 73 each, `header-or[1]` at 27) execute exactly ONE attempt
+  and finish in milliseconds, because the lemma-free probe discharges them. A
+  goal emits many enumerable scripts when it has many binders and constructors,
+  which is not the same thing as being expensive.
+- **Wall time is not a function of rlimit.** rlimit is a deterministic WORK
+  counter, not a clock. Attempts that burn exactly the same 4M differ by two
+  orders of magnitude in seconds, so any projection built on budgets or attempt
+  counts is unsound in principle rather than merely imprecise.
+- **Six properties of 141 carried 83% of the cost.** `rot-h3` and `rot-hl`
+  consumed 909 of the 1088 seconds, with four attempts each;
+  `rot-h3.neg-one-pulls-last-to-front` alone took 236 seconds. The pre-launch
+  sample of nine properties contained no `rot-*`.
+
+The general shape is one this file's own controls section already names: a proxy
+was chosen because it was ENUMERABLE — attempt counts are sitting in a committed
+fixture — and it turned out to measure something adjacent to the claim. The
+claim was wall-clock cost; the population that owns it is the set of goals that
+fail to discharge, and nothing in the fixture identifies those.
+
+### What section 7 does not settle
+
+- **It does not classify at the normative budget.** Every non-converging row here
+  is a statement about 4M. The 400M question is exactly the nine-hour sweep
+  section 6 declines to carry, and this does not replace it.
+- **It does not re-derive the 43 into the store.** The sweep writes nothing, so
+  the corpus still records those properties as unproven. Whether to advance them
+  is a separate decision with its own cost.

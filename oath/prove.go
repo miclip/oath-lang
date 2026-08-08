@@ -198,6 +198,10 @@ type smtCtx struct {
 	// to pin. `enumerate` is set by scriptAttempts alone and never by proveOne.
 	enumerate bool
 	attempts  []scriptAttempt
+
+	// observer, when set, receives per-attempt telemetry. Diagnostic only; see
+	// proveObserver below. nil on every normative path.
+	observer proveObserver
 }
 
 // scriptAttempt is one script the strategy sequence can emit for a property.
@@ -224,7 +228,45 @@ func (c *smtCtx) solve(strategy, detail, sc string, run func(string) (string, bo
 		c.attempts = append(c.attempts, scriptAttempt{strategy, detail, sc})
 		return "unsat", false
 	}
-	return run(sc)
+	if c.observer == nil {
+		return run(sc)
+	}
+	// A HEURISTIC, AND SAID SO. lastZ3 is package-level, so telemetry read after
+	// run() is this attempt's only if nothing else published meanwhile. The delta
+	// catches the common interleavings and it is NOT a guarantee: z3Seq.Add and
+	// lastZ3.Store are separate operations, so a concurrent prover can leave the
+	// counter one higher than we started while the cell holds ANOTHER goal's
+	// telemetry — delta 1, accepted, wrong goal. Tightening it would mean a lock
+	// on the normative path, which a diagnostic may not buy.
+	//
+	// WHAT ACTUALLY MAKES THIS SOUND IS THE CALLER: the seam is valid only for a
+	// SERIAL producer, and no normative path installs an observer, so nothing in
+	// the kernel — scanBulkProve included — is ever observed. The delta is a
+	// cheap alarm for the case where that precondition has been broken, not the
+	// thing the correctness rests on. The producer asserts its own seriality.
+	before := z3Seq.Load()
+	out, capHit := run(sc)
+	t, _ := lastZ3.Load().(z3Telemetry)
+	c.observer.onAttempt(strategy, detail, sc, out, capHit, t, t.Seq-before)
+	return out, capHit
+}
+
+// proveObserver watches the strategy sequence run. It is a DIAGNOSTIC seam: no
+// proof outcome may depend on it, and nothing in the kernel installs one. It
+// exists so a producer can record per-attempt telemetry through the same code
+// path the prover actually runs, rather than through a parallel enumerator that
+// would drift from it.
+//
+// `seqDelta` is 1 whenever no other publication was observed while the attempt
+// ran. That is NECESSARY for the telemetry to be this attempt's and not
+// sufficient (see solve); an observer must refuse anything else, and must not
+// read a delta of 1 as proof that the seam was used serially.
+type proveObserver interface {
+	onAttempt(strategy, detail, script, out string, capHit bool, t z3Telemetry, seqDelta int64)
+	// onDatatypeBinder reports the prover's own hasDT flag, and is called only
+	// when the direct phase is reached — which is why an absent value is
+	// meaningful and must not be defaulted to false.
+	onDatatypeBinder(bool)
 }
 
 // scriptAttempts returns every script the strategy sequence can emit for
@@ -1218,6 +1260,7 @@ func runZ3Budget(script string, rl int64) (string, bool) {
 	// kernel caught it, #17 epilogue).
 	res, capHit := execZ3(full)
 	if capHit {
+		publishZ3Telemetry(rl, -1, "", "", true)
 		return "", true
 	}
 	consumed, haveConsumed := int64(-1), false
@@ -1254,9 +1297,6 @@ func runZ3Budget(script string, rl int64) (string, bool) {
 		}
 	}
 	calibLastConsumed.Store(consumed)
-	if strings.HasPrefix(res, "unsat") || strings.HasPrefix(res, "sat") {
-		return res, false
-	}
 	// ATTEMPT VALIDITY (SPEC §7.2, #29): a non-verdict is an OUTCOME only
 	// when z3's own telemetry proves the attempt was deterministic —
 	// either the budget was genuinely spent (reason "canceled" with
@@ -1268,20 +1308,74 @@ func runZ3Budget(script string, rl int64) (string, bool) {
 	// (the process died mid-attempt). Recording any of those as unproven
 	// would make verdicts depend on RAM and signals, which is the
 	// machine-dependence this design exists to abolish.
+	//
+	// The cases are ORDERED exactly as the sequence of early returns they
+	// replaced: a terminal verdict wins first, and the invalidating
+	// conditions are only consulted for a non-verdict. Collapsing them into
+	// one switch is what gives the function a SINGLE exit, which is what
+	// makes the telemetry publication below unmissable — a future case added
+	// with its own `return` would silently stop reporting the attempt.
+	out, invalid := res, false
 	switch {
-	case !haveConsumed || !haveReason:
-		return "", true
-	case reason == "":
+	case strings.HasPrefix(res, "unsat") || strings.HasPrefix(res, "sat"):
+		// a terminal verdict; validity does not arise
+	case !haveConsumed || !haveReason,
 		// A blank reason on a non-verdict is absence of evidence, not
 		// evidence of determinism — the rule demands POSITIVE telemetry
 		// (found by the blind kernel, DIVERGENCES 71 ambiguity 3).
-		return "", true
-	case strings.Contains(reason, "memout") || strings.Contains(reason, "memory"):
-		return "", true
-	case reason == "canceled" && consumed < rl:
-		return "", true
+		reason == "",
+		strings.Contains(reason, "memout") || strings.Contains(reason, "memory"),
+		reason == "canceled" && consumed < rl:
+		out, invalid = "", true
 	}
-	return res, false
+	publishZ3Telemetry(rl, consumed, reason, out, invalid)
+	return out, invalid
+}
+
+// z3Telemetry is one solver attempt as the runner saw it: the budget it was
+// GIVEN, what it spent, z3's own reason string, and the verdict after attempt
+// validity has been applied. `Verdict` is `capHit` for every INVALID attempt —
+// wall-clock cap, memout, an external cancel below budget, or missing telemetry
+// — because the kernel treats those identically (they are not outcomes), and a
+// consumer that split them would be inventing a distinction §7.2 does not make.
+type z3Telemetry struct {
+	Seq      int64 // increments once per attempt; see solve's freshness check
+	Budget   int64
+	Consumed int64
+	Reason   string
+	Verdict  string // unsat | sat | unknown | capHit
+}
+
+// lastZ3 holds the most recent attempt's telemetry, and z3Seq counts attempts.
+//
+// A SIDE-CHANNEL, exactly like calibLastConsumed above and subject to the same
+// rule: nothing in a proof outcome may depend on it. It exists so a diagnostic
+// producer can report WHY a property is not proven — which needs the budget and
+// the reason string, neither of which survives runZ3Budget's (string, bool)
+// return. The alternative was a second script builder outside the prover, which
+// this repo has already learned re-derives the bytes its author remembered.
+//
+// It is written unconditionally and read only by an installed observer, so the
+// parallel scanBulkProve path is unaffected: with no observer, nobody reads it.
+// The seq counter is what makes a read SAFE rather than merely usual — see
+// solve, which refuses telemetry that another goroutine could have overwritten.
+var (
+	lastZ3 atomic.Value // z3Telemetry
+	z3Seq  atomic.Int64
+)
+
+func publishZ3Telemetry(budget, consumed int64, reason, out string, invalid bool) {
+	v := "unknown"
+	switch {
+	case invalid:
+		v = "capHit"
+	case strings.HasPrefix(out, "unsat"):
+		v = "unsat"
+	case strings.HasPrefix(out, "sat"):
+		v = "sat"
+	}
+	lastZ3.Store(z3Telemetry{Seq: z3Seq.Add(1), Budget: budget,
+		Consumed: consumed, Reason: reason, Verdict: v})
 }
 
 func sortedDepHashes(d *Def) []string {
@@ -1550,6 +1644,11 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 		if binderSorts[i] == "Int" {
 			inductionEligible = true
 		}
+	}
+	if c.observer != nil {
+		// Reported HERE, immediately before the direct phase, so that "absent"
+		// means the direct phase was never reached rather than "false".
+		c.observer.onDatatypeBinder(hasDTBinder)
 	}
 	directScript := script(nil, nil, goal, !c.quantified)
 	sawInvalid := false
