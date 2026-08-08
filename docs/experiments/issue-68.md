@@ -1118,3 +1118,139 @@ fail to discharge, and nothing in the fixture identifies those.
 - **It does not re-derive the 43 into the store.** The sweep writes nothing, so
   the corpus still records those properties as unproven. Whether to advance them
   is a separate decision with its own cost.
+
+## 8. The verdict — how many stalling goals a sequence encoding could reach
+
+Sections 6 and 7 exist to make this question answerable. This is the answer:
+**zero of the 42, in this corpus.** The recommendation recorded on the issue is to
+decline, and the falsifier fired as written.
+
+### The population, and what it is not
+
+The universe is the **42 per-object budget-exhausted** properties from §7 — the
+ones that stall. NOT the 141 non-proven, and NOT the 51 that never reached the
+solver: a goal the strategy sequence could not translate is not evidence about a
+solver theory. Two neighbours are excluded and neither is a `Str` goal:
+`abs-small.bounded-wrongly` (countermodel-withheld, `Int`) and
+`set-inter.empty-left` (solver-unknown, `Set`).
+
+**Measured at `rlimit = 4000000`, and what that does NOT establish.** The corpus
+already records all 42 as unproven at the normative 400M, so a 4M non-convergence
+is the EXPECTED observation and adds no information about them. It may not be
+restated as "4M showed this is hard" — 400M already showed that. Only a 4M PROOF
+would have been positive information, and this population is by construction not
+that. §7's 43 proves-on-attempt were the positive-information rows; these are a
+different set.
+
+### The criterion, pinned before any type was derived
+
+`Str` is a datatype (SPEC §3), translated to an SMT algebraic datatype with
+user-defined recursive functions over it, so **nothing in the corpus reaches Z3's
+`Seq` sort today**. The criterion is therefore counterfactual — if the goal were
+re-encoded onto `Seq`, would it land in a fragment Z3 decides? All five conditions
+required:
+
+- **R1** a binder or the definition's result is `Str` as the kernel types it
+  (byte strings are deliberately not `Str`, SPEC §2);
+- **R2** the `Str` operations reduce to the seq signature — concat, length, index,
+  extract, prefix/contains, indexof, replace, regular membership. A user-defined
+  recursive function that is not one of these still has no theory after
+  re-encoding;
+- **R3** no quantifier alternation (a universal goal negates to quantifier-free,
+  which is the target fragment);
+- **R4** arithmetic entanglement bounded — strip the `Str` and ask whether an Int
+  obligation remains that z3 was already failing on;
+- **R5** recursion is not the obstacle — seq theory does not supply induction.
+
+Writing it first is the control. A criterion written after seeing which goals one
+would like to qualify is fitted, and this is the number the whole issue turns on.
+
+### Result: 0 reachable, 0 borderline, 42 not reachable
+
+Types come from the kernel (`oath get`), never from names — `bytes-after` is
+`[(needle (List Int)) (hay (List Int))]` and is not a `Str` goal despite being
+string-shaped work. The container datatypes were checked for a hidden `Str`:
+`Map = List (Pair Int Int)`, `Set = List Int`, `Queue = List Int × List Int`,
+`Run = Int × Int`. None carry one.
+
+### R1 holds — the only candidates (3)
+
+| property | binder types | signature | verdict |
+|---|---|---|---|
+| `config-has-key.finds-head` | `(List Str), Str` | `(-> (List Str) Str Bool)` | NOT REACHABLE — the property is FALSE |
+| `show-int.roundtrip` | `Int` | `(-> Int Str)` | NOT REACHABLE — fails R2/R4/R5 (Int div/mod) |
+| `config-missing.complete-config-reports-nothing` | `Str, Str` | `(-> (List Str) (List Str) Str)` | NOT REACHABLE — the property is FALSE |
+
+### R1 fails — no `Str` in binders or signature (39)
+
+| binder types | n | properties |
+|---|---:|---|
+| `Int, (List Int)` | 14 | `rot-h2.decomposes-in-range`, `rot-h2.neg-one-pulls-last-to-front`, `rot-h2.periodic-in-length`, `rot-h2.shift-one-moves-head-to-back`, `rot-h3.neg-one-pulls-last-to-front`, `rot-h3.periodic-in-length`, `rot-h3.shift-one-moves-head-to-back`, `rot-hl.neg-one-pulls-last-to-front`, `rot-hl.periodic-in-length`, `rot-hl.shift-one-moves-head-to-back`, `rot.decomposes-in-range`, `rot.neg-one-pulls-last-to-front`, `rot.periodic-in-length`, `rot.shift-one-moves-head-to-back` |
+| `(List Int), (List Int)` | 4 | `bad-reverse.antidistributes-over-append`, `bytes-after.finds-at-head`, `q-drop.drop-is-tail`, `q-drop.peek-drop-rebuild` |
+| `Int, Int` | 4 | `e-div.division-identity`, `e-div.shift-by-divisor`, `e-mod.periodic`, `rle-encode.uniform-list-is-one-run` |
+| `Int, Int, Map` | 3 | `map-has.present-after-insert`, `map-insert.finds-inserted`, `map-merge.prefers-left` |
+| `Int, Set` | 3 | `set-add.add-idempotent`, `set-add.adds-member`, `set-union.union-has-left` |
+| `Set` | 3 | `set-elems.size-is-length`, `set-size.non-negative`, `set-union.empty-left` |
+| `(List Int)` | 2 | `q-drop.drop-back-only`, `rle-encode.roundtrip` |
+| `Int` | 2 | `set-empty.has-nothing`, `set-member.empty-has-none` |
+| `Tree, Int` | 2 | `t-insert.insert-keeps-sorted`, `t-member.member-flatten-equiv` |
+| `Int, Int, Int, Int` | 1 | `rle-encode.two-runs-stay-two-runs` |
+| `Map` | 1 | `map-size.non-negative` |
+
+total: 42 = 3 + 39
+
+### The three candidates
+
+**`show-int.roundtrip`** satisfies R1 through its RESULT type only; its binder is
+`Int`. `show-nat n = if n < 10 then digit else str-append(show-nat (n/10), …)` —
+the content is base-10 representation correctness over integer division and
+modulo. Fails R2, R4 and R5. `Str` is the carrier, not the subject, and this is
+the one property disposed of by the reasoned part of the criterion.
+
+**`config-has-key.finds-head`** and **`config-missing.complete-config-reports-nothing`**
+were expected to be the borderline cases, turning on whether `config-key` could be
+re-expressed via `seq.indexof`/`seq.extract`. They are not borderline: **they are
+false**. Neither guards its `key` against containing the separator `=`. Filed as
+its own issue with counterexamples and controls, because it is a corpus defect
+independent of this one — and the verdict here does not depend on repairing it.
+
+### Why the verdict survives the soft part of the criterion
+
+R2–R5 are REASONED about Z3's sequence solver, not measured: no goal was actually
+re-encoded onto the `Seq` sort. That limit is real and it carries almost nothing,
+which is worth stating rather than leaving as a caveat over the whole result:
+
+- **39 of 42 fall to R1 alone**, decidable from the kernel's own types;
+- **2 of the remaining 3 are false**, decidable by reading `examples/config.oath`;
+- **1 is disposed of by the reasoned part**, and it fails R4 on an Int obligation
+  that survives stripping the `Str` entirely.
+
+### Scope — a corpus figure, not a claim about sequence encodings
+
+The supportable sentence is *"in the current Oath corpus, zero stalling properties
+are in reach of a sequence encoding"*. It is NOT *"a `Str` sequence encoding is not
+worth building"*. `examples/` is not a neutral sample of programs — it is the
+exhibits this project chose, weighted toward provable arithmetic and structural
+recursion because that is what the prover reaches. Three of 42 stalling properties
+touching `Str` at all is a fact about that weighting as much as about seq theory.
+
+**What would change the answer:** a corpus with real text processing in it.
+`docs/experiments/webhook-friction.md` concludes the datatype slice should have
+been byte lists and text. If that lands and brings genuine `Str` manipulation,
+this measurement should be re-run before the question is treated as settled — the
+producer makes that one command rather than a fresh investigation.
+
+### Method note
+
+Two of the three candidates were settled by **a single `oath eval`, in
+milliseconds, with no solver involved**. The prover had been running against both
+for the full budget and returned `unknown` — which is the honest answer to the
+wrong question. This is the chain this file has recorded before: a named domain
+makes a meaningful question askable, one evaluation exposes the defect, and proof
+confirms a repair rather than finding the defect.
+
+It also sharpens §7's caution in a new direction. §7 warned that a 4M `unknown`
+must not be read as "the prover cannot do this". These two show the stronger
+version: an `unknown` on a FALSE property reads as difficulty, and every
+instrument in this repository reported them as merely unproven until one input
+was tried.
