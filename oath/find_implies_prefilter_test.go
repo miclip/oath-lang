@@ -45,7 +45,7 @@ func TestFindImpliesPreservesTutorialHits(t *testing.T) {
 	requireZ3(t)
 	st := openCorpusCopy(t)
 
-	out, err := apiFindImplies(st, prefilterFlippedQuery)
+	out, err := apiFindImplies(st, prefilterFlippedQuery, findImpliesSummary)
 	if err != nil {
 		t.Fatalf("find --implies: %v", err)
 	}
@@ -59,6 +59,47 @@ func TestFindImpliesPreservesTutorialHits(t *testing.T) {
 	// loop that had itself stopped matching anything.
 	if strings.Contains(out, "no definition provably satisfies this") {
 		t.Errorf("the query returned no hits at all:\n%s", out)
+	}
+
+	// THE RESIDUE THE TUTORIAL ALSO PRINTS (#156). docs/tutorial/discovery.md now
+	// shows this query's non-proven candidates as well as its hits, and reasons
+	// about them by name — so those lines are corpus-derived claims in prose with
+	// the same standing as the hit list above, and they rot the same way. Pinned
+	// here for the same reason `prefilterExpectedHits` is: the document asserts
+	// them and nothing else reads the document.
+	//
+	// NOT PINNED: the countermodel VALUES the tutorial prints (`2, 0` and the
+	// rest). Those are whatever genValue produces, and pinning them would import
+	// exactly the brittleness TestConcreteRefutationRetainsItsWitness declines a
+	// golden string to avoid. The tutorial's CLAIMS about them — that `(pow 2 0)`
+	// is 1 and `(pow 0 2)` is 0 — are facts about the language and hold whichever
+	// environment the search happens to find.
+	for _, want := range []string{
+		"4 REFUTED",
+		"1 NO VERDICT — the prover did not settle it",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("docs/tutorial/discovery.md prints %q for this query and the summary no longer "+
+				"says it:\n%s", want, out)
+		}
+	}
+	detailed, err := apiFindImplies(st, prefilterFlippedQuery, findImpliesDetailed)
+	if err != nil {
+		t.Fatalf("find --implies --details: %v", err)
+	}
+	for _, want := range []string{"e-div", "e-mod", "pow", "rat-recover", "spin-partial"} {
+		if !strings.Contains(detailed, want) {
+			t.Errorf("docs/tutorial/discovery.md names %q in its --details transcript and it is no "+
+				"longer reported:\n%s", want, detailed)
+		}
+	}
+	// And the tutorial's reading of the last one: spin-partial is UNSETTLED, not
+	// refuted. The document spends a paragraph on that distinction, so a change
+	// that moved it into the refuted group would make the prose wrong while every
+	// name above still appeared.
+	if !strings.Contains(implyDetailSection(t, detailed, "NO VERDICT"), "spin-partial") {
+		t.Errorf("spin-partial is no longer reported as unsettled; the tutorial explains it as an "+
+			"implementation limit rather than a refutation:\n%s", detailed)
 	}
 }
 
@@ -93,9 +134,17 @@ const prefilterSyntheticQuery = `(defn wanted [] [(a Int) (b Int)] Int (+ a b)
 // belongs to the REFUTED candidate is exactly `both - onlyProven`, and the claim
 // is that it is zero — which stays true however the ladder evolves.
 //
-// WHAT MUTATION MAKES IT FAIL: removing the `concreteCounterexample(...) ==
-// ceFalsified { continue }` guard from apiFindImplies. Verified by reverting;
-// the exact mutation and the observed counts are recorded in the test log.
+// WHAT MUTATION MAKES IT FAIL: letting a concretely refuted candidate through to
+// the prover — sending the `concreteProbe(...) == ceFalsified` branch on to
+// newSmtCtx instead of recording the refutation and moving to the next candidate.
+// Verified by reverting; the exact mutation and the observed counts are recorded
+// in the test log.
+//
+// NOTE WHAT IT DOES NOT ASSERT, since #156 changed what the report says: the
+// refuted candidate is REPORTED now, with its countermodel, and only in detail
+// mode. This test is about the SOLVER COST of a refuted candidate, which is zero
+// either way — reporting a refutation costs no z3 launch, because the whole
+// reason it can be reported is that evaluation already settled it.
 func TestConcretePassKeepsRefutedCandidateOutOfTheSolver(t *testing.T) {
 	requireZ3(t)
 
@@ -112,10 +161,10 @@ func TestConcretePassKeepsRefutedCandidateOutOfTheSolver(t *testing.T) {
 			t.Fatalf("%s was not admitted, so this test cannot witness anything", want)
 		}
 	}
-	if o := concreteCounterexample(probe, admitted["diff-int"].hash, ptrProp(admitted["diff-int"].prop)); o != ceFalsified {
+	if o := concreteProbe(probe, admitted["diff-int"].hash, ptrProp(admitted["diff-int"].prop)).outcome; o != ceFalsified {
 		t.Fatalf("diff-int is not concretely refuted (outcome=%d) — it is not the case this test needs", o)
 	}
-	if o := concreteCounterexample(probe, admitted["sum-int"].hash, ptrProp(admitted["sum-int"].prop)); o == ceFalsified {
+	if o := concreteProbe(probe, admitted["sum-int"].hash, ptrProp(admitted["sum-int"].prop)).outcome; o == ceFalsified {
 		t.Fatalf("UNSOUND: the concrete pass refuted sum-int, which satisfies the law")
 	}
 
@@ -134,7 +183,7 @@ func TestConcretePassKeepsRefutedCandidateOutOfTheSolver(t *testing.T) {
 	if onlyProven == 0 {
 		t.Fatal("no solver launch at all for sum-int — the query never reaches the prover, so the difference below is vacuous")
 	}
-	if !strings.Contains(outProven, "sum-int") {
+	if satisfyingLineFor(outProven, "sum-int") == "" {
 		t.Errorf("sum-int is not reported as satisfying the law:\n%s", outProven)
 	}
 
@@ -149,11 +198,21 @@ func TestConcretePassKeepsRefutedCandidateOutOfTheSolver(t *testing.T) {
 	}
 	// The semantic answer must be unchanged by the pass in BOTH directions: the
 	// hit survives, and the refuted candidate is not reported as a hit.
-	if !strings.Contains(outBoth, "sum-int") {
+	//
+	// THE SECOND HALF IS ASSERTED AGAINST THE SATISFYING LINES, NOT THE WHOLE
+	// REPORT. `!Contains(outBoth, "diff-int")` says what its own message claims
+	// only while nothing else may mention the name — which stopped being true when
+	// #156 began reporting refutations. It would then be satisfied by a silent
+	// drop and by a correct refutation alike, and the message would still read
+	// "is reported as satisfying a law it falsifies". The claim here is about the
+	// SATISFYING lines, so that is what is examined.
+	// This half doubles as satisfyingLineFor's own control: it must find the hit
+	// that IS there, or its silence about diff-int below would prove nothing.
+	if satisfyingLineFor(outBoth, "sum-int") == "" {
 		t.Errorf("sum-int disappeared once diff-int was in the store:\n%s", outBoth)
 	}
-	if strings.Contains(outBoth, "diff-int") {
-		t.Errorf("diff-int is reported as satisfying a law it falsifies:\n%s", outBoth)
+	if hit := satisfyingLineFor(outBoth, "diff-int"); hit != "" {
+		t.Errorf("diff-int is reported as satisfying a law it falsifies:\n%s", hit)
 	}
 }
 
@@ -175,7 +234,7 @@ func prefilterSyntheticArm(t *testing.T, basePATH string, defs ...string) (int, 
 	}
 	t.Setenv("PATH", basePATH)
 	count := installZ3Counter(t)
-	out, err := apiFindImplies(st, prefilterSyntheticQuery)
+	out, err := apiFindImplies(st, prefilterSyntheticQuery, findImpliesSummary)
 	if err != nil {
 		t.Fatalf("find --implies: %v", err)
 	}
@@ -199,7 +258,7 @@ func TestConcretePassNeverRejectsOnImplementationLimits(t *testing.T) {
 
 	seen := map[string]ceOutcome{}
 	for name, p := range admitted {
-		seen[name] = concreteCounterexample(st, p.hash, &p.prop)
+		seen[name] = concreteProbe(st, p.hash, &p.prop).outcome
 	}
 
 	// CONTROL 1: definitions that provably satisfy the law must not be rejected.
@@ -254,6 +313,138 @@ func TestConcretePassNeverRejectsOnImplementationLimits(t *testing.T) {
 		t.Error("the concrete pass refuted NOTHING — it cannot be doing the work it is credited with")
 	}
 	t.Logf("concrete pass refuted %d of %d admitted candidates; spin-partial = %s", fired, len(seen), ceName(o))
+}
+
+// TestConcreteRefutationRetainsItsWitness is the regression witness for the
+// countermodel the pre-solver search used to discard.
+//
+// THE CLAIM, in two halves that fail in opposite directions: a ceFalsified result
+// carries the environment that actually falsified the goal and renders it
+// deterministically, and the other two outcomes carry NOTHING.
+//
+// WHY THE LOAD-BEARING ASSERTION IS A RE-EVALUATION AND NOT A STRING CHECK: a
+// result that retains SOME environment passes any "the witness is non-empty"
+// test while being evidence for nothing. Re-running the goal under the retained
+// environment is the only assertion that distinguishes the countermodel the
+// search found from a plausible-looking neighbour of it, and it borrows no
+// knowledge of how the search picked it.
+//
+// WHAT MUTATIONS MAKE IT FAIL — three, each verified by making the edit and
+// watching it fail, then restoring:
+//
+//   - dropping the witness (`return ceResult{outcome: ceFalsified}`), which is
+//     the behaviour this test regresses against. Fails on the arity check.
+//   - retaining an environment that is not the falsifying one. Fails on the
+//     re-evaluation: the goal comes back true.
+//   - attaching the last sampled environment to a non-falsified outcome, the
+//     mutation that would let an implementation limit read as a countermodel.
+//     Fails on the sum-int and spin-partial arms.
+//
+// The rendering assertions deliberately do NOT pin a golden string. The values
+// are whatever genValue produces, and a golden would fail on any unrelated
+// generator change while witnessing nothing the determinism check below does not.
+func TestConcreteRefutationRetainsItsWitness(t *testing.T) {
+	probe := newStore(t)
+	put(t, probe, prefilterSyntheticSum)
+	put(t, probe, prefilterSyntheticDiff)
+	_, admitted := findImpliesAdmitForTest(t, probe, prefilterSyntheticQuery)
+	for _, want := range []string{"sum-int", "diff-int"} {
+		if _, ok := admitted[want]; !ok {
+			t.Fatalf("%s was not admitted, so this test cannot witness anything", want)
+		}
+	}
+
+	// ARM 1 — the refuted candidate. diff-int falsifies flipped commutativity, so
+	// this is the outcome that must carry evidence.
+	diff := admitted["diff-int"]
+	dp := diff.prop
+	got := concreteProbe(probe, diff.hash, &dp)
+	if got.outcome != ceFalsified {
+		t.Fatalf("diff-int outcome = %s, want ceFalsified — this test needs the refuted case", ceName(got.outcome))
+	}
+	if len(got.env) != len(dp.Binders) {
+		t.Fatalf("the refutation retained %d values for %d binders — the witness was discarded or truncated",
+			len(got.env), len(dp.Binders))
+	}
+
+	// THE DISCRIMINATING ASSERTION: the retained environment, re-evaluated, must
+	// make the goal false. A witness that does not falsify is not a witness.
+	ev := &evaluator{st: probe, fuel: findImpliesProbeFuel}
+	out, err := ev.eval(got.env, diff.hash, &dp.Body)
+	if err != nil {
+		t.Fatalf("the retained witness does not evaluate: %v — it is not an environment the goal was run in", err)
+	}
+	if out.K != "bool" {
+		t.Fatalf("the retained witness evaluates to %q, not bool — the search reported a refutation it did not have", out.K)
+	}
+	if out.Bool {
+		t.Errorf("the retained environment SATISFIES the goal: the result kept some environment, but not the one that falsified it")
+	}
+
+	w := got.witness(probe)
+	if w == "" {
+		t.Fatalf("a ceFalsified result rendered no witness")
+	}
+	for i, v := range got.env {
+		if !strings.Contains(w, printValue(probe, v)) {
+			t.Errorf("binder %d (%s) is missing from the rendered witness %q", i, printValue(probe, v), w)
+		}
+	}
+	// DETERMINISM: an independent search over the same store must render the same
+	// witness. This is what a discovery result reporting the witness would depend
+	// on, and it is the same guarantee findImpliesProbeSeed gives the skip itself.
+	again := concreteProbe(probe, diff.hash, &dp)
+	if w2 := again.witness(probe); w2 != w {
+		t.Errorf("the witness is not deterministic: %q then %q", w, w2)
+	}
+	t.Logf("diff-int witness: %s", w)
+
+	// ARM 2 — a candidate that SATISFIES the law. No countermodel exists, so none
+	// may be reported.
+	sum := admitted["sum-int"]
+	sp := sum.prop
+	sr := concreteProbe(probe, sum.hash, &sp)
+	if sr.outcome == ceFalsified {
+		t.Fatalf("UNSOUND: the concrete pass refuted sum-int, which satisfies the law")
+	}
+	if sr.env != nil || sr.witness(probe) != "" {
+		t.Errorf("%s carried a witness (%d values, rendered %q) — only a refutation has one",
+			ceName(sr.outcome), len(sr.env), sr.witness(probe))
+	}
+
+	// ARM 3 — an IMPLEMENTATION LIMIT. spin-partial cannot finish, so every sample
+	// exhausts fuel and the pass reports ceIndeterminate. This is the arm that
+	// catches a result which attaches whatever environment it last generated:
+	// there, an environment nothing was ever decided under would be rendered as a
+	// countermodel, which is exactly the promotion this pass exists not to make.
+	//
+	// NO SKIP BRANCH, for the reason the control above it states: a test that logs
+	// its own absence reports success for having measured nothing.
+	corpus := openCorpusCopy(t)
+	_, corpusAdmitted := findImpliesAdmitForTest(t, corpus, prefilterFlippedQuery)
+	spin, ok := corpusAdmitted["spin-partial"]
+	if !ok {
+		t.Fatalf("spin-partial is not admitted, so nothing here witnesses that an implementation "+
+			"limit carries no witness; admitted set was %v", sortedCandNames(corpusAdmitted))
+	}
+	sipr := spin.prop
+	ir := concreteProbe(corpus, spin.hash, &sipr)
+	if ir.outcome != ceIndeterminate {
+		t.Fatalf("spin-partial outcome = %s, want ceIndeterminate — this arm needs the limit case", ceName(ir.outcome))
+	}
+	if ir.env != nil || ir.witness(corpus) != "" {
+		t.Errorf("an implementation limit carried a witness (%d values, rendered %q): a computation that "+
+			"never finished cannot have refuted anything", len(ir.env), ir.witness(corpus))
+	}
+}
+
+func sortedCandNames(m map[string]findImpliesAdmitCand) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // ceName renders an outcome for a failure message. A bare integer in an

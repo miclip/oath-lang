@@ -38,6 +38,7 @@ usage:
   oath find <name>                    find definitions that satisfy the same PROPERTY (by content hash, not name)
   oath find --spec <file>             find definitions that satisfy a FRESH spec (a defn whose props are the query)
   oath find --implies <file>          find definitions that PROVABLY satisfy a spec (Z3 proof, catches semantic matches)
+  oath find --implies <f> --details   ...and NAME the candidates refuted or left without a verdict, with the evidence
   oath find --equiv <name>            find definitions that are the SAME FUNCTION up to rewrite rules (the e-graph)
   oath context <name...> [--budget N] spec-only slice of the named defs + transitive deps (no bodies)
   oath dependents <name>              list definitions that reference a definition
@@ -774,17 +775,7 @@ func main() {
 		fmt.Printf("  `referenced` members are RECOMMENDED, not republished — their terms\n")
 		fmt.Printf("  are their publisher's. `oath stdlib <name>` shows the provenance.\n")
 	case "find":
-		if len(args) == 3 && args[1] == "--spec" {
-			cmdFindSpec(st, args[2])
-		} else if len(args) == 3 && args[1] == "--implies" {
-			cmdFindImplies(st, args[2])
-		} else if len(args) == 3 && args[1] == "--equiv" {
-			cmdFindEquiv(st, args[2])
-		} else if len(args) == 2 {
-			cmdFind(st, args[1])
-		} else {
-			fail(fmt.Errorf("usage: oath find <name> | --spec <file> | --implies <file> | --equiv <name>"))
-		}
+		runFind(st, args[1:])
 	case "verify":
 		if len(args) != 2 {
 			fail(fmt.Errorf("usage: oath verify <name>"))
@@ -1220,13 +1211,176 @@ func cmdFindSpec(st *Store, path string) {
 	fmt.Print(out)
 }
 
-func cmdFindImplies(st *Store, path string) {
+func cmdFindImplies(st *Store, path string, mode findImpliesMode) {
 	src := readSourceFile(path)
-	out, err := apiFindImplies(st, src)
+	out, err := apiFindImplies(st, src, mode)
 	if err != nil {
 		fail(err)
 	}
 	fmt.Print(out)
+}
+
+// ---------------------------------------------------------------------------
+// `oath find`'s argument grammar (#156).
+// ---------------------------------------------------------------------------
+
+// runFind is the whole of `oath find`: parse, then dispatch to the form's
+// command. It lives outside main's switch so the path a user actually takes —
+// argument text in, rendered report out — is exercisable by a test. Left inline,
+// the only thing standing between `--details` and being parsed-but-ignored would
+// be a one-line expression no test could reach without running the binary.
+func runFind(st *Store, args []string) {
+	fa, err := parseFindArgs(args)
+	if err != nil {
+		fail(err)
+	}
+	switch fa.form {
+	case findFormSpec:
+		cmdFindSpec(st, fa.target)
+	case findFormImplies:
+		cmdFindImplies(st, fa.target, fa.mode)
+	case findFormEquiv:
+		cmdFindEquiv(st, fa.target)
+	default:
+		cmdFind(st, fa.target)
+	}
+}
+
+// findForm is which of the four queries `oath find` was asked for. They are
+// mutually exclusive: each searches a different surface, and a command line
+// naming two has not asked for both, it has asked ambiguously.
+type findForm int
+
+const (
+	findFormName findForm = iota // oath find <name>
+	findFormSpec
+	findFormImplies
+	findFormEquiv
+)
+
+// findSelectors maps each selector flag to the form it selects, and it is the
+// ONLY place a form's spelling is written down: parseFindArgs recognises
+// selectors from it, and knownFlags["find"] is DERIVED from it. Two hand-written
+// lists could disagree about which flags `find` accepts, and the disagreement
+// would be invisible from inside either — the pre-dispatch guard would refuse a
+// flag the parser handles, or catalogue one it does not.
+var findSelectors = map[string]findForm{
+	"--spec":    findFormSpec,
+	"--implies": findFormImplies,
+	"--equiv":   findFormEquiv,
+}
+
+// findDetailsFlag selects the detailed report from apiFindImplies: the
+// candidates that were REFUTED or left without a verdict, named, with their
+// evidence. Summary stays the default because the ANSWER is what proved, and on
+// a large store naming every miss buries it.
+const findDetailsFlag = "--details"
+
+const findUsage = "usage: oath find <name> | --spec <file> | --implies <file> [--details] | --equiv <name>"
+
+// findArgs is a parsed `oath find` command line.
+type findArgs struct {
+	form   findForm
+	target string
+	mode   findImpliesMode
+}
+
+// parseFindArgs is `oath find`'s grammar as a TOTAL FUNCTION returning an error
+// rather than exiting, so every refusal is assertable directly instead of only
+// through a process that died.
+//
+// WHAT IT REFUSES, and why each is a refusal rather than a default:
+//
+//   - two selectors. `--spec f --implies g` is not a request for both; picking
+//     either silently answers a question that was not asked.
+//   - a selector with no value, or a value that is itself a flag. `find
+//     --implies --details q.oath` would otherwise read `--details` as the
+//     FILENAME and fail later with a confusing I/O error.
+//   - a stray positional beside a selector — which is what `--details true`
+//     degrades to, since --details is boolean. Absorbing the `true` would let
+//     `--details false` turn detail ON.
+//   - --details twice. A repeated boolean is harmless to obey and evidence that
+//     the caller believes something the flag does not do.
+//   - --details on any form but --implies. The other three have no unproven
+//     residue to report, so accepting it there would be accepting a flag that
+//     does nothing, which is the class of defect knownFlags exists to prevent.
+//
+// The unknown-flag branch duplicates the pre-dispatch knownFlags guard, which
+// normally fires first. It is kept because this function is also the parser the
+// table is derived from, and a parser that silently accepted an uncatalogued
+// flag would make the derivation a lie the day the two drifted.
+func parseFindArgs(args []string) (findArgs, error) {
+	fa := findArgs{mode: findImpliesSummary}
+	selector, details := "", false
+	var positionals []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case findSelectorOf(a) != nil:
+			if selector != "" {
+				return fa, fmt.Errorf("`oath find` answers ONE query at a time, and %s and %s are two different "+
+					"searches. Run them separately. %s", selector, a, findUsage)
+			}
+			if i+1 >= len(args) {
+				return fa, fmt.Errorf("%s needs a value and none followed it. %s", a, findUsage)
+			}
+			if strings.HasPrefix(args[i+1], "--") {
+				return fa, fmt.Errorf("%s needs a value, but %q is a flag — as written, %s would be read as the "+
+					"thing to search for. %s", a, args[i+1], args[i+1], findUsage)
+			}
+			selector, fa.form, fa.target = a, *findSelectorOf(a), args[i+1]
+			i++
+		case a == findDetailsFlag:
+			if details {
+				return fa, fmt.Errorf("%s was given twice. It is a switch, so the repeat asks for something it "+
+					"cannot do. %s", findDetailsFlag, findUsage)
+			}
+			details = true
+		case strings.HasPrefix(a, "--"):
+			return fa, fmt.Errorf("`oath find` has no flag %q, and silently ignoring it would let this command "+
+				"do something other than what you asked. %s", a, findUsage)
+		default:
+			positionals = append(positionals, a)
+		}
+	}
+	if selector == "" {
+		if len(positionals) != 1 {
+			return fa, fmt.Errorf(findUsage)
+		}
+		fa.form, fa.target = findFormName, positionals[0]
+	} else if len(positionals) != 0 {
+		return fa, fmt.Errorf("`oath find %s %s` takes no further arguments, and %q was left over — "+
+			"%s is a switch and takes no value. %s", selector, fa.target, positionals[0], findDetailsFlag, findUsage)
+	}
+	if details {
+		if fa.form != findFormImplies {
+			return fa, fmt.Errorf("%s belongs to the --implies form only: it reports the candidates a PROOF "+
+				"refuted or left unsettled, and the other searches never attempt one. %s",
+				findDetailsFlag, findUsage)
+		}
+		fa.mode = findImpliesDetailed
+	}
+	return fa, nil
+}
+
+// findSelectorOf returns the form a token selects, or nil if it is not a
+// selector. A pointer so "not a selector" is distinguishable from findFormName,
+// which is the zero value.
+func findSelectorOf(a string) *findForm {
+	if f, ok := findSelectors[a]; ok {
+		return &f
+	}
+	return nil
+}
+
+// findKnownFlags is knownFlags["find"], derived from the grammar above rather
+// than written out beside it.
+func findKnownFlags() map[string]bool {
+	m := map[string]bool{findDetailsFlag: true}
+	for f := range findSelectors {
+		m[f] = true
+	}
+	return m
 }
 
 func cmdFindEquiv(st *Store, name string) {
@@ -1305,6 +1459,10 @@ var knownFlags = map[string]map[string]bool{
 	"log":       set("--remote", "--key", "--kms-key", "--local"),
 	"plugin":    set("--codex", "--claude-code", "--user", "--dir", "--registry", "--dry-run"),
 	"build":     set("--backend"),
+	// DERIVED from the grammar in parseFindArgs, not restated beside it: the
+	// guard above and the parser must agree about which flags `find` accepts, and
+	// a hand-copied list is correct exactly once.
+	"find": findKnownFlags(),
 }
 
 func set(flags ...string) map[string]bool {

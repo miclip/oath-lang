@@ -122,7 +122,7 @@ func TestFindImplies(t *testing.T) {
 	}
 	// ...but proof-implication proves it.
 	impl, err := apiFindImplies(st, `(defn q [] [(a Rat) (b Rat)] Rat (+ a b)
-		(prop fc [(a Rat) (b Rat)] (== (q b a) (q a b))))`)
+		(prop fc [(a Rat) (b Rat)] (== (q b a) (q a b))))`, findImpliesSummary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,15 +130,126 @@ func TestFindImplies(t *testing.T) {
 		t.Fatalf("proof-implication should find plus-r (+ provably satisfies flipped comm):\n%s", impl)
 	}
 
-	// A false spec finds nothing (left-projection is not true for +).
-	no, err := apiFindImplies(st, `(defn q [] [(a Rat) (b Rat)] Rat (+ a b)
-		(prop proj [(a Rat) (b Rat)] (== (q a b) a)))`)
+	// A FALSE SPEC IS A REFUTATION, NOT AN ABSENCE (#156). Left-projection is not
+	// true of +, and that is something ESTABLISHED about plus-r rather than
+	// something the search failed to find. The assertion this replaces read
+	// `!Contains(no, "plus-r")` over the summary output, which is satisfied both
+	// by "plus-r was refuted and reported as such" and by "plus-r was silently
+	// dropped" — the conflation #156 exists to remove, sitting inside the test
+	// that was supposed to pin the behaviour.
+	//
+	// WHAT MUTATION MAKES IT FAIL: the pre-change behaviour itself — `continue`ing
+	// past a concretely refuted candidate without recording it (equivalently,
+	// dropping the `evidence:`/`byEval:` fields, or rendering detail as summary).
+	// Then the REFUTED section never appears and no countermodel is reported.
+	// Verified by reverting.
+	const falseSpec = `(defn q [] [(a Rat) (b Rat)] Rat (+ a b)
+		(prop proj [(a Rat) (b Rat)] (== (q a b) a)))`
+	detailed, err := apiFindImplies(st, falseSpec, findImpliesDetailed)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(no, "plus-r") {
-		t.Fatalf("a false spec must not match plus-r:\n%s", no)
+	// Detailed output must place plus-r under REFUTED, with the countermodel.
+	//
+	// THE EVIDENCE IS ASSERTED ON plus-r's OWN LINE, not on the section. That
+	// section's heading reads "REFUTED — proved NOT to satisfy it (a countermodel
+	// exists)", so a Contains for "countermodel" over the section is satisfied by
+	// the heading alone and stays green with every candidate's evidence stripped.
+	// The candidate NAME is safe to look for section-wide because no heading
+	// contains it; the evidence word is not.
+	sect := implyDetailSection(t, detailed, "REFUTED")
+	cand := ""
+	for _, line := range strings.Split(sect, "\n") {
+		if strings.Contains(line, "plus-r") {
+			cand = line
+		}
 	}
+	if cand == "" {
+		t.Errorf("a refuted candidate must be reported under REFUTED, not dropped:\n%s", detailed)
+	} else if !strings.Contains(cand, "countermodel") {
+		t.Errorf("the refutation must carry its countermodel — a refutation without evidence is an "+
+			"assertion:\n%s", cand)
+	}
+	// ...and must NOT be reported as satisfying the spec. The name appearing is
+	// only correct because of WHERE it appears, so both halves are asserted.
+	if hit := satisfyingLineFor(detailed, "plus-r"); hit != "" {
+		t.Errorf("a false spec must not report plus-r as satisfying it:\n%s", hit)
+	}
+	// The world-claim must be suppressed: something WAS established here, so
+	// "no definition provably satisfies this" is not the report.
+	if strings.Contains(detailed, "no definition provably satisfies this") {
+		t.Errorf("the no-match fallback fired despite a refutation on record:\n%s", detailed)
+	}
+
+	// SUMMARY MODE, the same query: the refutation is COUNTED, and the candidate
+	// is not named. This is what keeps the old assertion's meaning — plus-r is
+	// not presented as a hit — while making the count the thing that says so.
+	no, err := apiFindImplies(st, falseSpec, findImpliesSummary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// SUMMARY MODE NAMES THE REFUTATION TOO. The count alone is not actionable —
+	// "1 REFUTED" does not tell you WHICH definition was disproved, and that is
+	// the finding. Both the count and the name are asserted, because either
+	// alone passes for a renderer that drops the other.
+	if !strings.Contains(no, "1 REFUTED") {
+		t.Fatalf("summary mode must report the refutation count:\n%s", no)
+	}
+	if !strings.Contains(no, "plus-r") {
+		t.Fatalf("summary mode must NAME the refuted candidate — a refutation is a result, and "+
+			"a count without a name cannot be acted on:\n%s", no)
+	}
+}
+
+// satisfyingLineFor returns the line reporting `name` as a HIT, or "" if there
+// is none. It is how a test asks "was this candidate returned as satisfying the
+// query?" without conflating that with "is this name mentioned anywhere in the
+// report" — two different questions that were the same question until refutations
+// began being reported by name.
+//
+// It matches on implySatisfiesMarker, the same constant the renderer writes, so a
+// reworded hit line breaks the writer and the reader together instead of leaving
+// every caller here silently matching nothing.
+func satisfyingLineFor(out, name string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, name) && strings.Contains(line, implySatisfiesMarker) {
+			return line
+		}
+	}
+	return ""
+}
+
+// implyDetailSection returns the lines of `out` belonging to the status row
+// whose label contains `label` — the row line itself plus the indented candidate
+// lines under it, stopping at the next row or the next query property.
+//
+// Asserting on a SECTION rather than on the whole output is what makes "reported
+// as refuted" different from "the name appears somewhere". A Contains over the
+// full text is satisfied by a candidate listed under any heading at all, which is
+// exactly the imprecision that let a silent drop and a reported refutation look
+// alike.
+func implyDetailSection(t *testing.T, out, label string) string {
+	t.Helper()
+	var sect []string
+	in := false
+	for _, line := range strings.Split(out, "\n") {
+		trimmed := strings.TrimLeft(line, " ")
+		indent := len(line) - len(trimmed)
+		switch {
+		case in && indent > 6:
+			sect = append(sect, line)
+		case in:
+			in = false
+		}
+		if indent == 6 && strings.Contains(line, label) {
+			in = true
+			sect = append(sect, line)
+		}
+	}
+	if len(sect) == 0 {
+		t.Fatalf("no %q section in output:\n%s", label, out)
+	}
+	return strings.Join(sect, "\n")
 }
 
 // TestFindImpliesCrossType is the regression witness for the CROSS-TYPE
@@ -163,6 +274,25 @@ func TestFindImplies(t *testing.T) {
 // than truth — (Rat,Rat)->Rat and (Bool,Bool)->Bool both generalize to
 // (t0,t0)->t0 — so the PROOF is the filter, and a non-commutative candidate of a
 // compatible signature must be admitted and then rejected.
+//
+// THE TWO CONTROLS ASSERT DIFFERENT THINGS AND MUST BE DISTINGUISHABLE, which is
+// why the first query runs in DETAIL mode. `minus-r` is admitted and then
+// refuted; `add3-r` is never admitted at all. Under summary output neither is
+// named, so a single `!Contains(out, ...)` was true of both for two unrelated
+// reasons — and would have gone on passing if admission had silently stopped
+// reaching `minus-r`, which is the exact regression this test exists to catch.
+// The contract is therefore stated positively for one and negatively for the
+// other:
+//
+//	minus-r   PRESENT, in the REFUTED section, with a countermodel and its
+//	          re-typed signature — proof of admission AND of rejection
+//	add3-r    ABSENT from the whole report — never a candidate, so there is
+//	          nothing to classify
+//
+// The signature assertions are read off the SATISFYING line for each hit rather
+// than off the whole report, for the same reason: in detail mode a refuted
+// cross-type candidate also prints `at (-> Rat Rat Rat)`, so a whole-output
+// match would no longer establish that the HIT reported its type.
 func TestFindImpliesCrossType(t *testing.T) {
 	if z3Available() != nil {
 		t.Skip("z3 not available")
@@ -177,28 +307,61 @@ func TestFindImpliesCrossType(t *testing.T) {
 	put(t, st, `(defn add3-r [] [(a Rat) (b Rat) (c Rat)] Rat (+ a (+ b c)))`)
 
 	out, err := apiFindImplies(st, `(defn q [] [(a Int) (b Int)] Int (+ a b)
-		(prop comm [(a Int) (b Int)] (== (q a b) (q b a))))`)
+		(prop comm [(a Int) (b Int)] (== (q a b) (q b a))))`, findImpliesDetailed)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// THE CLAIM: an Int query reaches Rat and Bool definitions.
-	for _, want := range []string{"plus-r", "and-b"} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("cross-type proof-implication should find %s for an Int commutativity query:\n%s", want, out)
+	// THE CLAIM: an Int query reaches Rat and Bool definitions, and each hit
+	// reports the signature it was proved AT, so a reader can see it was a
+	// different type rather than assume an exact match. Both facts are read off
+	// the candidate's own SATISFYING line — a whole-output match would accept the
+	// signature appearing on somebody else's line.
+	for _, c := range []struct{ name, sig string }{
+		{"plus-r", "(-> Rat Rat Rat)"},
+		{"and-b", "(-> Bool Bool Bool)"},
+	} {
+		hit := satisfyingLineFor(out, c.name)
+		if hit == "" {
+			t.Fatalf("cross-type proof-implication should find %s for an Int commutativity query:\n%s", c.name, out)
+		}
+		if !strings.Contains(hit, c.sig) || !strings.Contains(hit, "cross-type") {
+			t.Fatalf("%s's hit must report %s and be labelled cross-type:\n%s", c.name, c.sig, hit)
 		}
 	}
-	// The candidate's own signature is reported, so a reader can see the query
-	// was proved AT A DIFFERENT TYPE rather than assume an exact match.
-	for _, want := range []string{"(-> Rat Rat Rat)", "(-> Bool Bool Bool)", "cross-type"} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("cross-type hits must report the candidate signature and be labelled (missing %q):\n%s", want, out)
+	// CONTROL: ADMITTED, proved against, and REJECTED by the prover — and both
+	// halves are asserted, because only the pair separates this from add3-r
+	// below. Its presence in the REFUTED section witnesses admission; the
+	// countermodel witnesses that a verdict was actually reached rather than the
+	// candidate being set aside; the re-typed signature witnesses that admission
+	// went through the cross-type path.
+	refuted := implyDetailSection(t, out, "REFUTED")
+	minus := ""
+	for _, line := range strings.Split(refuted, "\n") {
+		if strings.Contains(line, "minus-r") {
+			minus = line
 		}
 	}
-	// CONTROL: admitted, proved against, and rejected by the prover.
-	if strings.Contains(out, "minus-r") {
-		t.Fatalf("subtraction is not commutative and must not be reported:\n%s", out)
+	if minus == "" {
+		t.Fatalf("subtraction is not commutative, so minus-r must be reported as REFUTED — its absence "+
+			"here means it was never admitted, which is a different failure:\n%s", out)
 	}
-	// CONTROL: not signature-compatible in the first place.
+	// ASSERTED ON minus-r's OWN LINE, not on the section. The section's heading is
+	// "REFUTED — proved NOT to satisfy it (a countermodel exists)", so a Contains
+	// for "countermodel" over the section is satisfied by the heading and would
+	// pass with every candidate's evidence stripped. Found by mutation, not by
+	// reading: dropping the retained witness left the section assertion green.
+	for _, want := range []string{"countermodel", "(-> Rat Rat Rat)"} {
+		if !strings.Contains(minus, want) {
+			t.Fatalf("minus-r's refutation must carry %q — otherwise this witnesses a name in a section "+
+				"and not a verdict reached about a cross-type candidate:\n%s", want, minus)
+		}
+	}
+	if hit := satisfyingLineFor(out, "minus-r"); hit != "" {
+		t.Fatalf("subtraction is not commutative and must not be reported as satisfying the query:\n%s", hit)
+	}
+	// CONTROL: not signature-compatible in the first place, so it is not a
+	// candidate and appears NOWHERE — not as a hit, not as a refutation, not as
+	// an unsettled goal. This is the assertion that must stay a whole-report one.
 	if strings.Contains(out, "add3-r") {
 		t.Fatalf("a 3-argument signature must not be admitted against a 2-argument query:\n%s", out)
 	}
@@ -207,7 +370,7 @@ func TestFindImpliesCrossType(t *testing.T) {
 	// reports NO cross-type label, so widening did not relabel the old path.
 	put(t, st, `(defn plus-i [] [(a Int) (b Int)] Int (+ a b))`)
 	exact, err := apiFindImplies(st, `(defn q [] [(a Int) (b Int)] Int (+ a b)
-		(prop comm [(a Int) (b Int)] (== (q a b) (q b a))))`)
+		(prop comm [(a Int) (b Int)] (== (q a b) (q b a))))`, findImpliesSummary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +392,7 @@ func TestFindImpliesCrossType(t *testing.T) {
 	st2 := newStore(t)
 	put(t, st2, `(defn plus-r2 [] [(a Rat) (b Rat)] Rat (+ a b))`)
 	residue, err := apiFindImplies(st2, `(defn q [] [(a Int) (b Int)] Int (+ a b)
-		(prop annotated [(a Int) (b Int)] (== ((fn [(x Int)] x) (q a b)) (q b a))))`)
+		(prop annotated [(a Int) (b Int)] (== ((fn [(x Int)] x) (q a b)) (q b a))))`, findImpliesSummary)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -80,6 +80,8 @@ spec query "wanted" — which definitions PROVABLY satisfy it (proof-implication
       max2               ← provably satisfies it at (-> Int Int Int) (direct (lemma-free), cross-type: query binders re-typed)
       rat-add            ← provably satisfies it (direct (lemma-free))
       rat-mul            ← provably satisfies it (direct (lemma-free))
+      4 REFUTED — proved NOT to satisfy it (a countermodel exists)
+      1 NO VERDICT — the prover did not settle it (a limit of this prover, NOT a fact about the definition)
 ```
 
 Now they're found. Each of these operations is commutative in its own domain —
@@ -93,6 +95,77 @@ over `Int`, so they were proved with your binders re-typed to *their* signature
 `max2` is the one worth pausing on: it is `(if (< a b) b a)`, and it states no
 commutativity law anywhere. Nothing about it *says* commutative. It came back
 because the prover was asked, and maximum genuinely is.
+
+### The last two lines are not a residue
+
+Nine definitions were signature-compatible with that query. Four proved, and the
+other five are the two counted lines — which are **not one thing**, and the
+difference is the whole reason they are counted separately.
+
+**A refutation is a finding.** Four definitions were proved *not* to satisfy your
+spec, each with a concrete countermodel. That is something established about the
+commons, in the same currency as a hit: you now know those four are the wrong
+tool for this job, and you know why. It is not "the search came up short".
+
+**A no-verdict is a fact about the tool.** One candidate was neither proved nor
+refuted. Nothing follows about it — in particular, *not* that it fails your spec.
+Reporting it beside the refutations, under a different label, is the point: "no
+proof" is not "disproof", and a report that summed them would be stating a limit
+of this prover as a property of somebody's code.
+
+`--details` names both groups and shows the evidence:
+
+```console
+$ oath find --implies flipped.oath --details
+spec query "wanted" — which definitions PROVABLY satisfy it (proof-implication, not shape match):
+
+  · flipped
+      apply2             ← provably satisfies it at (-> Int Int Int) (direct (lemma-free), cross-type: query binders re-typed)
+      max2               ← provably satisfies it at (-> Int Int Int) (direct (lemma-free), cross-type: query binders re-typed)
+      rat-add            ← provably satisfies it (direct (lemma-free))
+      rat-mul            ← provably satisfies it (direct (lemma-free))
+      4 REFUTED — proved NOT to satisfy it (a countermodel exists)
+          e-div              countermodel (by evaluation): -16, 11 at (-> Int Int Int)
+          e-mod              countermodel (by evaluation): 2, 0 at (-> Int Int Int)
+          pow                countermodel (by evaluation): 2, 0 at (-> Int Int Int)
+          rat-recover        countermodel (by evaluation): 4/5, -2
+      1 NO VERDICT — the prover did not settle it (a limit of this prover, NOT a fact about the definition)
+          spin-partial       apply2 must be fully applied to inline at (-> Int Int Int)
+```
+
+Every countermodel is a pair you can check yourself, because it is exactly the
+environment the goal was falsified in:
+
+```console
+$ oath eval '(pow 2 0)'          # → 1 : Int
+$ oath eval '(pow 0 2)'          # → 0 : Int
+```
+
+`(pow 2 0)` is 1 and `(pow 0 2)` is 0, so exponentiation is emphatically not
+commutative and `2, 0` is the proof. `rat-recover` is the interesting one: it is
+a **fully proven** definition whose one law is `(== (rat-recover a b) a)` — it is
+proven to be a *projection*, and a projection is about as far from commutative as
+a two-argument function gets. Proven does not mean "proven to be what you wanted";
+this report tells you which.
+
+The countermodels above all say **by evaluation**. Oath ran the goal on concrete
+values before calling Z3, and a goal that evaluates to `false` under some
+environment *is* false — evaluation is the reference semantics, so no proof of it
+can exist. When the sampled values do not falsify a goal, it goes to the solver,
+and a countermodel the solver finds is labelled `(solver)` instead.
+
+Now the last line, and read it precisely. `spin-partial` did **not** fail. Its
+body returns `(apply2 x)` — a *partially applied* function — and partial
+application is outside the fragment this prover translates to SMT, so the goal
+could never be handed to Z3 at all. Note what the message does not say: it says
+nothing about whether `spin-partial` is commutative. It reports where the
+instrument stopped. A better prover would move that line; nothing about
+`spin-partial` would have changed.
+
+Summary counts are the default because the answer is what *proved*, and on a
+large registry naming every miss would bury it. Reach for `--details` when the
+misses are what you are actually asking about — "why didn't it find X?" is a
+question the counts alone cannot answer.
 
 ## 4. The e-graph — "which of these are the same function?"
 

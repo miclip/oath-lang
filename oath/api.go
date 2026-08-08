@@ -653,10 +653,59 @@ const (
 	ceIndeterminate
 )
 
+// ceResult is the typed result of the concrete pre-solver search: the OUTCOME,
+// together with — for ceFalsified alone — the environment that witnessed it.
+//
+// Retaining the environment rather than only the verdict is what makes a
+// refutation REPORTABLE. A verdict alone says only that SOME goal was false and
+// never which values made it so, and a candidate reported that way is
+// indistinguishable from one that was never a candidate. The countermodel is
+// already in hand at the moment of the decision; keeping it is what lets the
+// decision be shown rather than merely acted on.
+//
+// THE INVARIANT: env is non-nil exactly when outcome == ceFalsified. ceNone and
+// ceIndeterminate carry no witness because neither HAS one — "no sample was
+// false" and "a sample never finished" are both the ABSENCE of a countermodel,
+// and attaching the last sampled environment to either would dress an
+// implementation limit up as evidence. That is the conflation ceOutcome exists
+// to prevent, arriving one layer out: the verdict would still be honest while
+// the attached values quietly implied a refutation that never happened.
+type ceResult struct {
+	outcome ceOutcome
+	env     []Value // the falsifying environment; non-nil iff outcome == ceFalsified
+}
+
+// witness renders the falsifying environment, and renders NOTHING for the two
+// outcomes that have none — the invariant above, enforced at the one place a
+// caller can read the witness rather than merely documented on the field.
+//
+// DETERMINISM is a property of both halves and neither is incidental. The search
+// is seeded (findImpliesProbeSeed) and returns at the FIRST falsifying sample, so
+// the retained environment is a function of (store, hash, prop) alone; and
+// printValue is structural, with no map iteration anywhere in Value. The same
+// query against the same corpus therefore renders the same witness on every run
+// and every host — the same guarantee findImpliesProbeSeed exists to give the
+// skip decision, extended to the evidence for it.
+//
+// It renders with printValue, which is what runProp already renders a
+// counterexample with, so a witness reported here reads exactly like one
+// reported by verify rather than introducing a second spelling of the same fact.
+func (r ceResult) witness(st *Store) string {
+	if r.outcome != ceFalsified {
+		return ""
+	}
+	parts := make([]string, 0, len(r.env))
+	for _, v := range r.env {
+		parts = append(parts, printValue(st, v))
+	}
+	return strings.Join(parts, ", ")
+}
+
 // findImpliesProbeSeed fixes the sample sequence so the pass is DETERMINISTIC:
-// the same query against the same corpus skips exactly the same candidates on
-// every run and on every host. A discovery result that varied between runs would
-// be a worse failure than a slow one.
+// the same query against the same corpus refutes exactly the same candidates on
+// every run and on every host, AND reports the same countermodel for each. A
+// discovery result that varied between runs would be a worse failure than a slow
+// one, and that now covers the evidence as well as the verdict.
 const findImpliesProbeSeed uint64 = 0x9E3779B97F4A7C15
 
 const (
@@ -664,16 +713,21 @@ const (
 	findImpliesProbeFuel  = 200_000
 )
 
-// concreteCounterexample looks for a concrete environment that makes the goal
-// evaluate to Boolean false.
+// concreteProbe looks for a concrete environment that makes the goal evaluate to
+// Boolean false, and RETAINS the one it finds.
 //
 // WHY THIS IS SOUND AHEAD OF THE PROVER, where a structural or shape-based
 // filter is not: evaluation is the reference semantics of the language, so a
 // goal that evaluates to false under some concrete environment IS false, and no
-// valid proof of it exists. Skipping the solver for such a goal therefore cannot
-// remove a definition that would otherwise have been returned — the skip and the
-// proof would contradict each other. The argument is about the goal, not about
-// any particular corpus, which is what makes it general.
+// valid proof of it exists. Not calling the solver for such a goal therefore
+// cannot remove a definition that would otherwise have been returned — the
+// refutation and the proof would contradict each other. The argument is about the
+// goal, not about any particular corpus, which is what makes it general.
+//
+// It is also why the outcome is reported as a REFUTATION rather than as a
+// candidate that was passed over: the same argument that licenses skipping the
+// solver is the argument that the goal is false. Calling this a skip understates
+// what was established.
 //
 // A shape filter has no such argument, and `find --implies` exists precisely to
 // see THROUGH shape: filtering on shape would reinstate the miss the prover is
@@ -685,7 +739,7 @@ const (
 // false", and a non-terminating candidate is the case that makes the difference
 // visible. A non-Bool result is likewise not a falsehood; it is a surprise, and
 // it defers to the solver.
-func concreteCounterexample(st *Store, h string, p *Prop) ceOutcome {
+func concreteProbe(st *Store, h string, p *Prop) ceResult {
 	sawIndeterminate := false
 	for c := 0; c < findImpliesProbeCases; c++ {
 		r := &rng{s: findImpliesProbeSeed ^ uint64(c)*0xD1B54A32D192ED03}
@@ -715,16 +769,208 @@ func concreteCounterexample(st *Store, h string, p *Prop) ceOutcome {
 			continue
 		}
 		if !out.Bool {
-			return ceFalsified
+			// env is allocated fresh per case, so retaining it here cannot be
+			// overwritten by a later sample — and there is no later sample, because
+			// the first falsifying environment ends the search.
+			return ceResult{outcome: ceFalsified, env: env}
 		}
 	}
 	if sawIndeterminate {
-		return ceIndeterminate
+		return ceResult{outcome: ceIndeterminate}
 	}
-	return ceNone
+	return ceResult{outcome: ceNone}
 }
 
-func apiFindImplies(st *Store, src string) (string, error) {
+// ---------------------------------------------------------------------------
+// What `find --implies` did NOT find (#156).
+// ---------------------------------------------------------------------------
+
+// implyStatus is what `find --implies` established about ONE admitted candidate
+// against ONE query property. It is the four-way classification proveOne already
+// makes, carried out to the report instead of collapsed at the boundary.
+//
+// The collapse it replaces printed a candidate only when it PROVED, so three
+// materially different results rendered as the same silence: nothing in the
+// corpus was close, something was REFUTED with a countermodel, and the prover
+// declined. The first is a fact about the corpus, the second is a POSITIVE
+// finding about the corpus, and the third is a fact about this implementation.
+// Summing them states an implementation limit as a semantic one.
+type implyStatus int
+
+const (
+	// implyProven: the query property was PROVED of this definition. The answer
+	// to the query.
+	implyProven implyStatus = iota
+	// implyRefuted: the query property was proved FALSE of this definition, by a
+	// concrete countermodel or by the solver. This is a result, not a residue —
+	// "this definition provably does NOT satisfy your law, here is why" is
+	// something established about the corpus, and burying it under "did not
+	// prove" reports a proof as an absence.
+	implyRefuted
+	// implyUnknown: no verdict. The solver declined, the goal was untranslatable,
+	// or the strategy ladder ran out. It says NOTHING about the definition, and
+	// must never be read as "does not satisfy".
+	implyUnknown
+	// implyInvalidated: a strategy attempt was environmentally aborted, so no
+	// negative verdict is valid at all (SPEC §7.2). Distinct from implyUnknown:
+	// there the prover finished and had nothing; here the prover's own run is not
+	// a basis for any verdict.
+	implyInvalidated
+)
+
+// classifyProofStatus maps proveOne's status string onto the reported
+// classification. It is TOTAL, and the second return says whether the status was
+// RECOGNISED.
+//
+// proveOne returns a string, so an unrecognised value is a live possibility
+// whenever prove.go grows a status. Degrading it to implyUnknown is the safe
+// direction — implyUnknown is the classification that claims nothing about the
+// definition — but it must be VISIBLE that the degradation happened, which is
+// what the bool is for. Silently folding an unknown status into "did not prove"
+// would be the same erasure this whole mechanism exists to undo, one level up.
+func classifyProofStatus(s string) (implyStatus, bool) {
+	switch s {
+	case "proven":
+		return implyProven, true
+	case "refuted":
+		return implyRefuted, true
+	case "unknown":
+		return implyUnknown, true
+	case "invalidated":
+		return implyInvalidated, true
+	}
+	return implyUnknown, false
+}
+
+// implyResult is one admitted candidate's classification against one query
+// property, with the evidence for it.
+type implyResult struct {
+	name     string      // the candidate's name
+	status   implyStatus // what was established about it
+	method   string      // implyProven: how it was proved
+	crossSig string      // the candidate's own signature, when admitted cross-type
+	evidence string      // the countermodel, or the prover's reason for having none
+	byEval   bool        // the verdict came from EVALUATION, not from the solver
+}
+
+// findImpliesMode selects how much of the classification is rendered.
+//
+// The default is counts because the candidate set grows with the corpus while
+// the ANSWER — what proved — does not: on a large store, naming every refuted
+// and unsettled candidate buries the hits under the misses. Detail is the
+// explicit ask, and it is where the evidence lives.
+type findImpliesMode int
+
+const (
+	findImpliesSummary  findImpliesMode = iota // per-status counts
+	findImpliesDetailed                        // per-candidate names and evidence
+)
+
+// implyStatusRows fixes the RENDER ORDER and the wording of the three non-proven
+// classifications. Proven candidates are not here: they are named individually in
+// both modes, because they are the query's answer and a count of them would be
+// strictly less information.
+//
+// The wording is load-bearing. Two rows say "NO VERDICT" and they say it for
+// different reasons that are never summed — the same separation renderAdjudication
+// keeps between a settled survivor and an unresolved one, and for the same reason:
+// one of these is what a better prover would move, and the other is not.
+var implyStatusRows = []struct {
+	status implyStatus
+	label  string
+}{
+	{implyRefuted, "REFUTED — proved NOT to satisfy it (a countermodel exists)"},
+	{implyUnknown, "NO VERDICT — the prover did not settle it (a limit of this prover, NOT a fact about the definition)"},
+	{implyInvalidated, "NO VERDICT — a strategy attempt was environmentally aborted, so no negative verdict is valid (SPEC §7.2)"},
+}
+
+// implySatisfiesMarker is what a line reporting a HIT says, and it is a named
+// constant because tests read the rendered report to decide whether a candidate
+// was returned as satisfying the query. Spelled out at both the writer and the
+// reader, a reworded marker would leave those tests matching nothing and passing
+// — a check that quietly stops looking is worse than no check.
+const implySatisfiesMarker = "← provably satisfies it"
+
+// renderImplyResults writes one query property's classification.
+//
+// It is a PURE function of the results and the mode so that every outcome can be
+// asserted directly, rather than only through a query that happens to produce
+// one. That matters most for the statuses a synthetic store cannot cheaply
+// provoke: an unreachable rendering branch is indistinguishable from a correct
+// one when the only witness is an end-to-end run.
+func renderImplyResults(b *strings.Builder, results []implyResult, mode findImpliesMode) {
+	byStatus := map[implyStatus][]implyResult{}
+	for _, r := range results {
+		byStatus[r.status] = append(byStatus[r.status], r)
+	}
+	// The answer first, named in both modes and in the format it has always had.
+	for _, r := range byStatus[implyProven] {
+		if r.crossSig != "" {
+			fmt.Fprintf(b, "      %-18s %s at %s (%s, cross-type: query binders re-typed)\n", r.name, implySatisfiesMarker, r.crossSig, r.method)
+		} else {
+			fmt.Fprintf(b, "      %-18s %s (%s)\n", r.name, implySatisfiesMarker, r.method)
+		}
+	}
+	for _, row := range implyStatusRows {
+		rs := byStatus[row.status]
+		if len(rs) == 0 {
+			continue
+		}
+		fmt.Fprintf(b, "      %d %s\n", len(rs), row.label)
+		// REFUTATIONS ARE NAMED IN BOTH MODES; the residue is counted in summary.
+		// The asymmetry is the point of calling a refutation a RESULT: "1 REFUTED"
+		// is not actionable, because the finding IS which definition was refuted.
+		// An unresolved count is actionable at a glance — it tells you the answer
+		// is incomplete without needing to know which candidates were involved.
+		// So the volume rule applies to the residue and not to results.
+		if mode != findImpliesDetailed && row.status != implyRefuted {
+			continue
+		}
+		for _, r := range rs {
+			fmt.Fprintf(b, "          %-18s %s\n", r.name, implyEvidenceLine(r))
+		}
+	}
+	// THE FALLBACK FIRES ONLY WHEN NOTHING WAS CLASSIFIED AT ALL. Its sentence is
+	// about the WORLD — no definition satisfies this — and it is supportable only
+	// when the signature-compatible set was empty. With a refutation on record the
+	// report already says what was established; with an unsettled candidate on
+	// record the sentence would be claiming exactly what the prover declined to
+	// decide.
+	if len(results) == 0 {
+		b.WriteString("      (no definition provably satisfies this — in the signature-compatible, provable set)\n")
+	}
+}
+
+// implyEvidenceLine renders one candidate's evidence on a single line.
+//
+// It names the SOURCE of a refutation, because the two are different kinds of
+// fact and only one of them involves the solver: a concrete countermodel is an
+// EVALUATION of the reference semantics, which is why the pre-solver pass may
+// act on it at all. Evidence is collapsed to one line — solver models arrive as
+// multi-line s-expressions — so a hundred candidates stay readable as a list.
+func implyEvidenceLine(r implyResult) string {
+	ev := strings.Join(strings.Fields(r.evidence), " ")
+	sig := ""
+	if r.crossSig != "" {
+		sig = " at " + r.crossSig
+	}
+	if r.status == implyRefuted {
+		src := "solver"
+		if r.byEval {
+			src = "by evaluation"
+		}
+		if ev == "" {
+			return fmt.Sprintf("refuted (%s)%s", src, sig)
+		}
+		return fmt.Sprintf("countermodel (%s): %s%s", src, ev, sig)
+	}
+	if ev == "" {
+		return "(no reason recorded)" + sig
+	}
+	return ev + sig
+}
+
+func apiFindImplies(st *Store, src string, mode findImpliesMode) (string, error) {
 	if err := z3Available(); err != nil {
 		return "", err
 	}
@@ -758,7 +1004,7 @@ func apiFindImplies(st *Store, src string) (string, error) {
 	fmt.Fprintf(&b, "spec query %q — which definitions PROVABLY satisfy it (proof-implication, not shape match):\n", qm.Name)
 	for pqi := range qd.Props {
 		fmt.Fprintf(&b, "\n  · %s\n", propNameOf(qm, pqi))
-		found := false
+		var results []implyResult
 		for _, k := range keys {
 			h := names[k]
 			d, err := st.GetDef(h)
@@ -803,10 +1049,17 @@ func apiFindImplies(st *Store, src string) (string, error) {
 			if err := checkDef(st, &aug); err != nil {
 				continue
 			}
-			// #80. A goal with a concrete countermodel cannot be proven, so the
-			// solver has nothing to contribute to it. Skipping it is a pure
-			// latency change: the returned set is defined by which goals are
-			// PROVEN, and this can only skip goals that are FALSE.
+			// #80/#156. A goal with a concrete countermodel cannot be proven, so
+			// the solver has nothing to contribute to it — and the countermodel
+			// SETTLES the candidate rather than setting it aside. It is recorded
+			// as REFUTED, with the environment that falsified it, because
+			// evaluation is the reference semantics: this is not a candidate the
+			// search failed to reach a verdict on, it is one it reached a negative
+			// verdict on without needing z3.
+			//
+			// The returned SATISFYING set is therefore unchanged by this branch,
+			// which is what makes the latency argument sound: it can only divert
+			// goals that are FALSE.
 			//
 			// It must run BEFORE newSmtCtx, not merely before proveOne: building
 			// the context is itself work, and the point is to reach the solver
@@ -814,9 +1067,15 @@ func apiFindImplies(st *Store, src string) (string, error) {
 			//
 			// This is NOT a timeout and NOT a cap. Every goal that survives it
 			// still gets the full unmodified proof search, so no verdict is
-			// weakened and no coverage is traded away — which is why it needs no
-			// residue report, unlike a budget.
-			if concreteCounterexample(st, h, &qp) == ceFalsified {
+			// weakened and no coverage is traded away. Unlike a budget, what it
+			// leaves behind is a RESULT rather than an unexamined remainder —
+			// which is why the report can name it instead of merely counting what
+			// it did not get to.
+			if probe := concreteProbe(st, h, &qp); probe.outcome == ceFalsified {
+				results = append(results, implyResult{
+					name: k, status: implyRefuted, crossSig: crossSig,
+					evidence: probe.witness(st), byEval: true,
+				})
 				continue
 			}
 			pi := len(d.Props)
@@ -825,18 +1084,22 @@ func apiFindImplies(st *Store, src string) (string, error) {
 			// definition's own props, not one the author hinted — its hints (keyed
 			// by real prop index) must not leak into a discovery query.
 			loadLemmaLibrary(c, st, &aug, h, m, -1)
-			if o := c.proveOne(&aug, h, m, &aug.Props[pi], pi); o.status == "proven" {
-				if crossSig != "" {
-					fmt.Fprintf(&b, "      %-18s ← provably satisfies it at %s (%s, cross-type: query binders re-typed)\n", k, crossSig, o.method)
-				} else {
-					fmt.Fprintf(&b, "      %-18s ← provably satisfies it (%s)\n", k, o.method)
-				}
-				found = true
+			o := c.proveOne(&aug, h, m, &aug.Props[pi], pi)
+			status, known := classifyProofStatus(o.status)
+			detail := o.detail
+			if !known {
+				// Do not let an unrecognised status disappear into the residue it
+				// is being degraded to. It is reported as a no-verdict — the
+				// classification that claims nothing — but the reason names the
+				// status, so the degradation is legible rather than inferred.
+				detail = fmt.Sprintf("unrecognised prover status %q: %s", o.status, o.detail)
 			}
+			results = append(results, implyResult{
+				name: k, status: status, method: o.method,
+				crossSig: crossSig, evidence: detail,
+			})
 		}
-		if !found {
-			b.WriteString("      (no definition provably satisfies this — in the signature-compatible, provable set)\n")
-		}
+		renderImplyResults(&b, results, mode)
 	}
 	return b.String(), nil
 }

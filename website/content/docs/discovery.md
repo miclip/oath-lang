@@ -131,6 +131,50 @@ and match). What remains:
   (6 -> 9), a third more solver calls (12 -> 16), and no measurable change in
   wall clock (5m44.257s -> 5m44.981s median), because the run is dominated by
   goals that never prove and the new candidates are not those.
+
+  **Every admitted candidate is now classified and reported, not just the ones
+  that proved** (#156). The prover returns four outcomes and they are kept four:
+
+  | outcome | what it establishes | about what |
+  |---|---|---|
+  | `proven` | the definition satisfies the spec | the definition |
+  | `REFUTED` | the definition provably does NOT satisfy it, and here is a countermodel | the definition |
+  | `NO VERDICT` (unsettled) | the prover declined, or the goal was untranslatable | **this prover** |
+  | `NO VERDICT` (aborted) | a strategy attempt was environmentally aborted, so no negative verdict is valid (SPEC §7.2) | **this run** |
+
+  The split is a soundness matter rather than a presentational one. Before it,
+  all three non-proven outcomes rendered as `(no definition provably satisfies
+  this)` — a sentence about the WORLD, printed on the strength of a sentence
+  about the TOOL. "No proof" is not "disproof"; a solver timeout is not a
+  counterexample.
+
+  **A refutation is a positive result and is presented as one.** It is a proof,
+  just not the one you asked for: "this definition provably does not satisfy your
+  law, and here are the values that show it". Filing that under "did not prove"
+  reports a proof as an absence. Two things can produce one — the concrete
+  pre-solver pass, whose falsifying environment is retained and reported `(by
+  evaluation)`, and the solver, reported `(solver)`. The first is sound ahead of
+  the prover for the reason the pass exists at all: evaluation is the reference
+  semantics, so a goal that evaluates to `false` under a concrete environment is
+  false and no valid proof of it exists.
+
+  The no-match line now fires **only when nothing was admitted at all**, which is
+  the one situation in which it is supportable. With a refutation on record the
+  report has already said what was established; with an unsettled candidate on
+  record it would be asserting exactly what the prover declined to decide.
+
+  By default the proven ones are named, REFUTED ones are named with their
+  countermodel, and the two unsettled classes are reported as COUNTS. The
+  asymmetry is the content of calling a refutation a RESULT rather than residue:
+  `2 REFUTED` is not actionable, because the finding IS which definition was
+  disproved and by what — while an unresolved count IS actionable at a glance,
+  since it says the answer is incomplete without needing the names. A large
+  registry would bury the hits under its own unsettled candidates; it is not
+  buried by its refutations, which are findings in their own right. `oath find --implies <file>
+  --details` names every candidate and prints its evidence — the countermodel, or
+  the prover's reason for not having one. `--details` is accepted on the
+  `--implies` form only; the other three searches attempt no proof and so have no
+  unproven residue to report.
 - **Body-equivalence** has a first slice: `oath find --equiv <name>` (and the
   `find_equiv` MCP tool) find definitions that are the SAME FUNCTION up to the
   rewrite rules — a different implementation that normalizes to the same

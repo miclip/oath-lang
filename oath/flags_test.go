@@ -14,6 +14,10 @@ func TestKnownFlagsCoverWhatCommandsParse(t *testing.T) {
 		"transfer":  {"--to", "--recipient-key", "--key", "--dry-run", "-y"},
 		"authority": {"--remote", "--key", "--kms-key"},
 		"ls":        {"--remote", "--local", "--key"},
+		// `find` was catalogued when --details landed (#156). Every form it
+		// parses is listed, which is the condition the uncatalogued-commands test
+		// below states before a command may move into the table.
+		"find": {"--spec", "--implies", "--equiv", "--details"},
 	} {
 		for _, f := range flags {
 			if !knownFlags[cmd][f] {
@@ -48,8 +52,14 @@ func TestKnownFlagsCoverWhatCommandsParse(t *testing.T) {
 func TestUncataloguedCommandsAreNotFlagChecked(t *testing.T) {
 	// Commands invoked by the container entrypoint, CI, and the Makefile. If any
 	// gains an entry, every flag it accepts must be listed in the same edit.
+	// `find` LEFT this list when --details landed (#156). It is the only removal so
+	// far, and it was allowed because the condition this test states was met
+	// rather than waived: every flag `find` parses is in the table, and the table
+	// is DERIVED from the parser's own grammar (findKnownFlags), so the two cannot
+	// drift into the state that broke `serve`. TestFindFlagTableIsDerivedFromTheParser
+	// is what checks that, and TestParseFindArgs checks each form still parses.
 	for _, cmd := range []string{"serve", "prove-worker", "prove", "audit", "verify",
-		"find", "export", "import", "fixtures", "migrate-store", "store-check"} {
+		"export", "import", "fixtures", "migrate-store", "store-check"} {
 		if flags, catalogued := knownFlags[cmd]; catalogued {
 			t.Errorf("%q is now flag-checked with %d known flags. That is fine ONLY if every "+
 				"flag it accepts is listed — `serve --http --tokens --authorized-keys` broke a "+

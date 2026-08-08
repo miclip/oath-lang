@@ -263,6 +263,12 @@ $ oath find --spec spec.oath               # by a fresh spec: who proved it?
 
 $ oath find --implies flipped.oath         # by PROOF: who provably satisfies it?
       rat-add   ← provably satisfies it (direct)
+      4 REFUTED — proved NOT to satisfy it (a countermodel exists)
+      1 NO VERDICT — the prover did not settle it (a limit of this prover, NOT a fact about the definition)
+
+$ oath find --implies flipped.oath --details    # ...and name them, with the evidence
+      e-mod     countermodel (by evaluation): 2, 0
+      pow       countermodel (by evaluation): 2, 0
 ```
 
 Four modes, all name-free: by example, by a spec you write (`self` is the sought
@@ -273,6 +279,15 @@ each signature-compatible definition and prove it, so commutativity written
 `Int` law finds its `Rat` counterpart with your binders re-typed to it. This is
 the layer that makes the commons real: pull proven code by property, rebuild
 nothing. Full rationale in [docs/discovery.md](docs/discovery.md).
+
+**It also reports what it did *not* find, and keeps the reasons apart.** A
+`REFUTED` candidate was proved *not* to satisfy your spec — a finding about the
+commons, with a countermodel you can re-run yourself (`(pow 2 0)` is 1 and
+`(pow 0 2)` is 0). `NO VERDICT` is a statement about the prover, not about the
+code: the solver declined, or the goal was outside the translatable fragment.
+Summing them would report an implementation limit as a semantic fact, which is
+why "no definition provably satisfies this" is now printed only when nothing was
+even a candidate. `--details` names the candidates and shows the evidence.
 
 ## Licensing
 
