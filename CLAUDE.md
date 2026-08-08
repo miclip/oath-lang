@@ -590,7 +590,7 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   more VALUABLE if delayed    #134, #139/#140, #138 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
-  no CLOCK at all             #156, #115, #116, #65, #66 — open, and neither
+  no CLOCK at all             #157, #115, #116, #65, #66 — open, and neither
                               cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
@@ -625,12 +625,20 @@ says it stopped blocking anything when #126 closed and must wait for a real
 consumer to fix its scope. So it has a TRIGGER, not a position, and listing it
 under a closing window contradicted the same file's own instruction.
 
-**#156 IS ABOUT WHAT THE TOOL SAYS, NOT WHAT IT FINDS** — `find --implies` works;
-what it will not tell you is which of three different things happened when it
-found nothing. Refuted-with-a-countermodel, the-solver-declined and the-wall-cap-
-fired all print as "no definition provably satisfies this", and the third is an
-implementation limit wearing a claim about the world. Read the issue; the volume
-question and whether `refuted` deserves promotion out of residue are both live.
+**#157 IS A CLASS, NOT A BUG** — the same whole-text `Contains` conflation #156
+removed, surviving in three more assertions, plus a refutation line that renders
+raw solver text and reads like a no-verdict. Its value is that each instance is
+already located and diagnosed; its risk is being treated as tidy-up, when one of
+them is a test saved only by an accident of today's failure mode.
+
+**AND THE RULE THAT CAME OUT OF #156 IS WORTH MORE THAN EITHER ISSUE. "DO NOT
+WEAKEN A TEST" IS UNENFORCEABLE WHEN THE CONTRACT ITSELF CHANGES**, because
+every legitimate update looks like a weakening from inside the old assertion.
+The workable form is comparative: **an assertion may be REPLACED when the
+contract it encodes has deliberately changed, but the replacement must pin the
+new contract AT LEAST AS TIGHTLY as the old one pinned the old.** If it cannot
+be made at least as strong, that is the signal to stop and ask rather than to
+proceed carefully.
 
 **#148 IS BLOCKED ON OPERATOR PROVISIONING, NOT ON ENGINEERING**, and the
 distinction decides what a session should do with it: nothing. Its design is
