@@ -5,11 +5,20 @@ the corpus is proven, tested or stalled has to be built on — the universe firs
 the numbers second. It enumerates every live name, every object those names
 resolve to, and every property verdict on both, from the committed store.
 
-**It classifies nothing.** No property here is called blocked, stalled,
-SMT-incomplete or reachable-by-sequence-theory; no verdict on #68 is offered or
-implied; nothing is recommended. Those are downstream questions, and running them
-against a universe nobody had pinned down is how this repository has previously
-produced figures that overstated a population by ten definitions.
+**It calls no property blocked, stalled, SMT-incomplete or
+reachable-by-sequence-theory; no verdict on #68 is offered or implied; nothing is
+recommended.** Those are downstream questions, and running them against a
+universe nobody had pinned down is how this repository has previously produced
+figures that overstated a population by ten definitions.
+
+Sections 1-5 are the census and sort nothing at all. **Section 6 draws exactly
+one line through the non-proven set** — whether a candidate SMT script was ever
+emitted for the goal — and cross-tabulates which induction strategies the goal
+was a candidate for. Both are facts about the goal's SHAPE, decidable from a
+committed fixture with no solver, and neither is a reason the goal failed. This
+paragraph read "**It classifies nothing**" while sections 1-5 were the whole
+file; section 6 made that flatly false, and the sentence would have gone on
+reading correctly without a word of it changing.
 
 **Nothing here writes.** The store is opened, read and closed, and `git status
 codebase/ fixtures/` was clean before and after every run reported below. In
@@ -771,11 +780,204 @@ For the record and dated like everything else here: `gh issue view 71` reported
 `CLOSED` on 2026-08-08. `gh` is the authority on issue status; that line is a
 reading taken on that date, not a fact this file asserts.
 
+## 6. How much of "why is it not proven" a committed fixture already answers
+
+The obvious way to find out why 141 properties are not proven is to prove them
+again with the prover's diagnostic seams open — `OATH_PROVE_CALIBRATE` for the
+per-attempt solver verdict and consumed rlimit, `OATH_PROVE_SPLIT` for the
+datatype-binder flag — and read the telemetry. **That measurement was written,
+run, and is NOT committed**, because at the pinned `proveRlimit` it costs what
+the cold conformance re-derivation costs: every unproven property burns the full
+budget through every strategy, serially, which is where the nine-hour figure
+comes from. A sweep nobody can afford to run is not a tool the repository should
+carry: re-proving the corpus is how the classification gets paid for, and this
+question does not justify that price. What survives is the RECORD FORMAT and the classifier
+that consumes it, in `scripts/prove-reasons.py`; a producer bounded to a smaller
+budget is a separate instrument and is not written yet.
+
+**A third of the answer does not require paying it, and the artefact that
+supplies it was already committed for another purpose.** `fixtures/prove/attempts.txt`
+(#139) pins the sha256 of every script the strategy sequence CAN emit for every
+property, enumerated with `smtCtx.enumerate` set, which is to say WITHOUT running
+a solver. Two facts follow from the pinned rows alone, and neither needs a
+verdict:
+
+- **A property with no row emitted no candidate script, so it never reached the
+  solver.** There is no SMT answer to look up because no SMT problem was ever
+  built.
+- **Among goals that translate, a strategy appears iff the goal's shape admits
+  it.** `induction` rows are emitted when some binder's sort is a datatype
+  (`prove.go`'s `hasDTBinder`, the same predicate its `OATH_PROVE_SPLIT` seam
+  prints), and the induction loop iterates over exactly those binders. So
+  candidacy is readable off the fixture.
+  **The leading clause is not a hedge, it is the condition.** A goal that bails
+  in translation emits NO row for any strategy, datatype binder or not, because
+  the bail happens before the strategy sequence is reached — so absence of an
+  `induction` row does not imply absence of a datatype binder, and reading the
+  biconditional unconditionally would misdescribe the no-script population. This
+  is why the candidacy table below is restricted to the goals that reached the
+  solver: within that set the two directions do coincide, and outside it the
+  question is not merely unanswered but ill-posed.
+
+<!-- -->
+
+    ( cd oath && OATH_CENSUS_OUT=/tmp/census.json go test -run TestCorpusCensus -count=1 )
+    python3 scripts/prove-reasons.py ladder /tmp/census.json
+
+Run on 2026-08-08 against `61e9fe2`, `fixtures/prove/attempts.txt` at 2937 pinned
+rows. **The budget is not a parameter of any figure in this section**, which is
+the whole point of it: no solver was invoked, so there is no rlimit to report.
+
+| | per-object | per-name | what the fixture establishes |
+|---|---:|---:|---|
+| **Emitted no candidate script — never reached the solver** | 51 | 51 | the strategy sequence bailed before its first solver call, so no SMT verdict of any kind exists for the property |
+| **Reached the solver** | 90 | 94 | at least one script was emitted; what z3 answered is not in this fixture |
+| **total non-proven** | **141** | **145** | |
+
+**Settled without running z3: 51 of 141 per-object (36.2%), 51 of 145 per-name
+(35.2%).** The two columns agree in absolute terms because neither aliased object
+contributes to this class — `rot`/`rot-f`'s four extra non-proven properties all
+reached the solver — so the aliasing moves the denominator and not the numerator.
+
+The universe is the census's, not the fixture's. `attempts.txt` holds a row only
+where a script exists, so taking its key set as the population would drop exactly
+the class being counted.
+
+### Induction candidacy, cross-tabulated
+
+Whether the goal was a candidate for induction is an ATTRIBUTE of the goal, not a
+competing bucket: it co-occurs with every failure mode alike, and "induction was
+never applicable" is a different statement from "induction was tried and did not
+discharge". Restricted to the properties that reached the solver, since the
+question is vacuous for the others.
+
+| candidate for | per-object | per-name |
+|---|---:|---:|
+| `induction` (a datatype-typed binder) | 61 | 65 |
+| `lexicographic` (an ordered pair, #17) | 16 | 16 |
+| `recursion-induction` (the callee's own recursion, #57) | 0 | 0 |
+| *none — direct attempts only* | 29 | 29 |
+| **reached the solver** | **90** | **94** |
+
+The rows are not exclusive. The combinations, which are:
+
+| combination | per-object | per-name |
+|---|---:|---:|
+| `induction` | 45 | 49 |
+| direct only | 29 | 29 |
+| `induction` + `lexicographic` | 16 | 16 |
+
+Two things this table says that the summary line does not. **Every lexicographic
+candidate is also a structural one** — no goal reaches the ordered-pair strategy
+without a datatype binder — so lexicographic induction never widens the reachable
+set here, it only offers a second route into it. And **`recursion-induction` is a
+candidate on no unproven property at all**: its 30 pinned scripts belong to 15
+properties, and all 15 are proven.
+
+**That is a statement about SHAPE, and it must not be read as one about
+OUTCOMES.** The fixture is enumerated with `smtCtx.enumerate` set, and in that
+mode `solve` returns `unsat` without running anything while each strategy's
+success return is bypassed (`oath/prove.go:223`), precisely so the walk continues
+into every later strategy. **So a proven property pins scripts for strategies
+that never ran on it** — whichever strategy actually discharged it short-circuits
+in a real proof and the rest are never reached. The rows therefore establish that
+15 proven properties were CANDIDATES for recursion-induction, and nothing about
+whether it was attempted on any of them, let alone whether it succeeded. An
+earlier draft of this paragraph said the strategy "has only ever succeeded" on
+"the 15 properties it was tried on"; both clauses were unsupported by the
+artefact they cited, and the section's own rule — candidacy is an attribute, not
+an outcome — is what they broke. What the rows do support is the negative: no
+unproven goal in this corpus has the shape recursion-induction applies to, so it
+is not a strategy being defeated here, it is one not being reached.
+
+### What this does not settle, stated because the reverse reading is the tempting one
+
+The 90 that reached the solver stay unclassified. Refuted, countermodel-withheld,
+rlimit-exhausted and solver-unknown are distinguished by what z3 ANSWERED, and no
+byte of that is in a fixture of script hashes. This section moves a boundary; it
+does not sort the remainder.
+
+Two soundness questions were closed by measurement rather than assumed, both in
+enumerate mode and both solver-free:
+
+- **Is "no rows" the same set as the prover's translation bail?** Re-running the
+  ladder in enumerate mode over all 51 reports `unknown` with a detail naming the
+  construct, and zero errors: 34 `"lam" terms are outside the provable fragment`,
+  16 `hmac-sha256 is outside the provable fragment (trusted crypto primitive)`,
+  1 `apply2 must be fully applied to inline`. They are the same set on this
+  corpus.
+- **Can a property bail AFTER emitting a script?** Nothing forbids it in
+  principle, and it would make "has rows" the wrong test. Measured: all 94
+  per-name properties that emitted a script run their ladder to the end and
+  return the one fixed exhaustion sentence. Zero late bails. That equivalence is
+  a fact about this corpus, not a theorem about the prover.
+
+### Controls
+
+The reconciliation is only worth reading if it can fail, so each branch was
+watched firing against a mutated fixture. The unmutated fixture passes first;
+every mutation below exits non-zero naming the specific defect.
+
+| mutation | what fired |
+|---|---|
+| *(none — the committed fixture)* | passes |
+| fixture absent | `is missing; without it this mode's silence is not evidence` |
+| fixture present but empty | `has no rows; nothing below would be measured` |
+| a row naming a property the census does not hold | orphan row named |
+| every script of a PROVEN property removed (`abs[0]`) | `is PROVEN yet pins no script — absence cannot mean 'never reached the solver'` |
+| one alias's rows removed (`rot-f[0]`) | `aliases ['rot', 'rot-f'] disagree on the ladder for prop 0` |
+| a truncated row | `malformed row` |
+| a strategy label typo (`lemma-free` → `inductoin`) | `carries unrecognised strategy label(s)` |
+
+The last one is not about the partition but about the candidacy tables: an
+unrecognised label leaves the property counted as having reached the solver while
+dropping it out of its `induction` row and into *direct only*, so it changes the
+answer rather than failing. The vocabulary is pinned against its authority, the
+`c.solve("<strategy>", …)` call sites in `oath/prove.go`; a strategy added there
+will be refused here, loudly, which is the correct direction.
+
+The fourth is the one that makes the partition mean anything. "Emitted no script"
+is evidence of never reaching the solver only if proven properties never look
+that way — a proven property necessarily reached the solver, so a proven property
+with no pinned script would indict the fixture rather than the goal.
+
+**AND THE CONTROL THAT DOES NOT EXIST, NAMED BECAUSE ITS ABSENCE IS LOAD-BEARING.**
+Nothing above catches a fixture that lost a NON-PROVEN property's rows: such a
+property would join the left-hand column silently and inflate the 51. The reason
+is not oversight. **`attempts.txt` has no row meaning "enumerated, emitted
+nothing"** — absence spells "the goal bailed" and "nobody looked" identically —
+so the distinction has nowhere in the format to live, and no amount of checking
+recovers what was never written down. External review raised exactly this, a
+def-level check was written to answer it, and the check was **unsound and
+deleted**: 12 definitions in this corpus legitimately pin no row for any of their
+properties (every goal bails on `hmac-sha256` or `lam`), so "has properties, pins
+nothing" is a true description of correct data. It fired on the unmutated
+fixture, which is how it was caught.
+
+What actually closes the question is the first bullet above — the enumerate-mode
+re-run, whose 34 + 16 + 1 details sum to exactly the 51 — because that consults
+the PRODUCER rather than the fixture. It is corroboration on this corpus, not a
+property of the format, and it has to be re-run when either moves.
+
+In place of the missing control the ladder now REPORTS the column's shape: of the
+51, **50 belong to definitions that pin no script for any property and 1
+(`excluded-witness[1]`) to a definition that pins scripts for its other
+properties.** A partially stale fixture would have to swell that second group, so
+the single name is printed rather than counted. That is a description, not a
+gate, and it is offered as one.
+
 ## What this file deliberately does not do
 
-- **No classification.** Nothing is labelled blocked, stalled, SMT-incomplete,
-  or amenable to any proof strategy. The 141 unproven properties (per object;
-  145 per name) are enumerated and not sorted.
+- **No classification of WHY a goal the solver saw did not prove.** Nothing is
+  labelled blocked, stalled or SMT-incomplete. Section 6 draws exactly one line
+  through the 141 (per object; 145 per name) — did a candidate script exist at
+  all — and records which strategies each goal was a candidate for. Both are
+  facts about the goal's SHAPE, decidable from a committed fixture with no solver
+  and no judgement. The 90 that reached the solver are still enumerated and not
+  sorted, and sorting them requires knowing what z3 answered — which no committed
+  artefact records and no instrument in this tree currently produces.
+  This bullet said "no classification" flatly before section 6 existed; it was
+  true when written, and leaving it would have made the file disagree with itself.
 - **No verdict on #68.** Whether sequence-theory encoding is worth building, and
   against what falsifier, is untouched. The census is what such a decision would
   need underneath it, not an input tilted toward an answer.
