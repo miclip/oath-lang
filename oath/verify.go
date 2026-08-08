@@ -39,8 +39,7 @@ func verifyReports(st *Store, h string) ([]PropReport, *Def, *Meta, error) {
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	seedBytes, _ := hex.DecodeString(h[:16])
-	base := binary.BigEndian.Uint64(seedBytes)
+	base := caseSeedBase(h)
 	var reports []PropReport
 	for pi := range d.Props {
 		name := fmt.Sprintf("prop%d", pi)
@@ -97,27 +96,50 @@ func verifyDef(st *Store, h string) ([]PropReport, error) {
 	return reports, nil
 }
 
+// caseSeedBase derives a definition's case-seed base from its hash. It is the
+// SOLE authority on that derivation: a hand-repeated copy drifts, and anything
+// reading it would then describe a different draw than the verdict it checks.
+func caseSeedBase(hash string) uint64 {
+	seedB, _ := hex.DecodeString(hash[:16])
+	return binary.BigEndian.Uint64(seedB)
+}
+
+// genPropCase produces the binder values for ONE case of a property, through
+// the deterministic tester's own seed and size schedule.
+//
+// It is the SOLE authority on that schedule, and the reason it is a function
+// rather than three matching loops is the one this repo keeps arriving at: a
+// duplicate is correct exactly once, and nothing announces when it stops being.
+// `runProp` binds what this returns, so anything asking "what does the tester
+// actually generate?" — a cross-check claiming an identical input stream, a
+// measurement of the generator's reach — must ASK here rather than reproduce
+// the derivation. Reproducing it yields a population that looks like the
+// tester's and silently stops being it the moment the schedule changes.
+func genPropCase(st *Store, p *Prop, base uint64, pi, c int) ([]Value, error) {
+	r := &rng{s: base ^ (uint64(pi) << 32) ^ uint64(c)*0xD1B54A32D192ED03}
+	size := c % 8
+	env := make([]Value, 0, len(p.Binders))
+	for bi := range p.Binders {
+		v, err := genValue(st, &p.Binders[bi], size, r)
+		if err != nil {
+			return nil, err
+		}
+		env = append(env, v)
+	}
+	return env, nil
+}
+
 func runProp(st *Store, h string, p *Prop, name string, base uint64, pi int, cases int, fuel int64) PropReport {
 	rep := PropReport{Name: name}
 	for c := 0; c < cases; c++ {
-		r := &rng{s: base ^ (uint64(pi) << 32) ^ uint64(c)*0xD1B54A32D192ED03}
-		size := c % 8
-
-		var env []Value
-		var inputs []string
-		genFailed := false
-		for bi := range p.Binders {
-			v, err := genValue(st, &p.Binders[bi], size, r)
-			if err != nil {
-				rep.Err = err.Error()
-				genFailed = true
-				break
-			}
-			env = append(env, v)
-			inputs = append(inputs, printValue(st, v))
-		}
-		if genFailed {
+		env, err := genPropCase(st, p, base, pi, c)
+		if err != nil {
+			rep.Err = err.Error()
 			return rep
+		}
+		inputs := make([]string, len(env))
+		for i, v := range env {
+			inputs[i] = printValue(st, v)
 		}
 
 		ev := &evaluator{st: st, fuel: fuel}

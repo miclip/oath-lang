@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -200,10 +199,11 @@ func genMutants(st *Store, d *Def) []mutantDef {
 // asking "is this mutant a survivor?" runs the ENGINE's derivation rather than
 // a second copy of it — a hand-repeated seed would drift and the test would
 // then measure a different draw than the score it is checking.
-func mutantSeed(hash string) uint64 {
-	seedB, _ := hex.DecodeString(hash[:16])
-	return binary.BigEndian.Uint64(seedB)
-}
+//
+// It is the same derivation the tester uses for an ordinary definition, so it
+// DELEGATES rather than repeating it; the name is kept because a mutant's hash
+// is what callers here have in hand.
+func mutantSeed(hash string) uint64 { return caseSeedBase(hash) }
 
 func metaPropName(m *Meta, pi int) string {
 	if pi < len(m.PropNames) {
@@ -375,8 +375,7 @@ func apiWaive(st *Store, name, mutantPrefix, reason, by string) (string, error) 
 			continue
 		}
 		st.CacheDef(mu.hash, mu.def)
-		seedB, _ := hex.DecodeString(mu.hash[:16])
-		base := binary.BigEndian.Uint64(seedB)
+		base := mutantSeed(mu.hash)
 		for pi := range mu.def.Props {
 			rep := runProp(st, mu.hash, &mu.def.Props[pi], metaPropName(m, pi), base, pi, mutantCases, mutantFuel)
 			if rep.Failed || rep.Err != "" {

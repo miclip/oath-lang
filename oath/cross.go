@@ -1,8 +1,6 @@
 package main
 
 import (
-	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"strings"
 )
@@ -53,27 +51,19 @@ func (d crossDir) contradictions() []PropReport {
 // inputs, making the distinguishing counterexample directly comparable), but
 // with `self` bound to a DIFFERENT body's hash for evaluation.
 func crossProp(st *Store, ownerHash, bodyHash string, p *Prop, name string, pi int) PropReport {
-	seedBytes, _ := hex.DecodeString(ownerHash[:16])
-	base := binary.BigEndian.Uint64(seedBytes)
+	// The "identical input stream" claim above is only true while this shares
+	// the tester's schedule, so it CALLS that schedule rather than matching it.
+	base := caseSeedBase(ownerHash)
 	rep := PropReport{Name: name}
 	for c := 0; c < propCases; c++ {
-		r := &rng{s: base ^ (uint64(pi) << 32) ^ uint64(c)*0xD1B54A32D192ED03}
-		size := c % 8
-		var env []Value
-		var inputs []string
-		genFailed := false
-		for bi := range p.Binders {
-			v, err := genValue(st, &p.Binders[bi], size, r)
-			if err != nil {
-				rep.Err = err.Error()
-				genFailed = true
-				break
-			}
-			env = append(env, v)
-			inputs = append(inputs, printValue(st, v))
-		}
-		if genFailed {
+		env, err := genPropCase(st, p, base, pi, c)
+		if err != nil {
+			rep.Err = err.Error()
 			return rep
+		}
+		inputs := make([]string, len(env))
+		for i, v := range env {
+			inputs[i] = printValue(st, v)
 		}
 		ev := &evaluator{st: st, fuel: propFuel}
 		out, err := ev.eval(env, bodyHash, &p.Body)
