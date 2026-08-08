@@ -1119,13 +1119,154 @@ fail to discharge, and nothing in the fixture identifies those.
   the corpus still records those properties as unproven. Whether to advance them
   is a separate decision with its own cost.
 
-## 8. The verdict — how many stalling goals a sequence encoding could reach
+## 8. The verdict — WITHDRAWN AS SCOPED. It answers half of #68.
 
-Sections 6 and 7 exist to make this question answerable. This is the answer:
-**at most 2 of the 42, in this corpus, and neither is confirmed.** The
-recommendation recorded on the issue is to decline, and the falsifier reads on the
-population being small — which it is. An earlier version of this line said *zero*,
-and that count did not survive review; see the borderline pair below.
+**READ THIS BEFORE THE NUMBERS BELOW.** Everything in this section evaluates
+`Str` goals. #68 proposes encoding *"`Str` goals **(and `List`-of-scalar goals
+where it applies)**"*. The second clause was dropped, and R1 — "no `Str` in
+binders or signature" — then excluded **20 goals that are inside the proposal's
+scope**: 14 typed `Int, (List Int)`, 4 typed `(List Int), (List Int)`, 2 typed
+`(List Int)`.
+
+That is this repository's own rule broken at the top of its own analysis: **a
+witness must derive its universe from the CLAIM, never from a narrowing of it.**
+The universe here came from a partial reading of the issue's own sentence, and
+every count downstream inherits it.
+
+**AND THE OMITTED CLASS IS THE MOST PLAUSIBLE ONE, WHICH IS WHY THIS IS WITHDRAWN
+RATHER THAN FOOTNOTED.** The 14 `Int, (List Int)` goals are the `rot-*` rotation
+laws — `periodic-in-length`, `decomposes-in-range`,
+`shift-one-moves-head-to-back` and `neg-one-pulls-last-to-front`, the last across
+all four of `rot`, `rot-h2`, `rot-h3` and `rot-hl` — and rotation over a sequence
+is `seq.extract`
+plus `seq.++`, which is the shape a sequence solver handles best. **Six of those
+14** — the `rot-h3` and `rot-hl` properties — are what §7 measured as consuming
+83% of the entire sweep; that figure belongs to those six, not to the class, and
+an earlier draft of this paragraph attached it to all 14. A scoping slip excluded
+the strongest candidates in the corpus, and the surviving analysis reads as if it
+had considered them.
+
+**A SECOND EXCLUSION WAS CLAIMED HERE AND IS WITHDRAWN — IT WAS MINE, AND IT WAS
+WRONG.** This section argued that §7's removal of the **51 translation-bails** was
+also a scoping error, on the reasoning that a bail is an ENCODING failure and #68
+is an ENCODING change. The principle is sound. The application was not, and the
+example carried it: `gh-signature` was cited as four `tested`, `Str`-typed
+properties with no candidate scripts. **`fixtures/prove/attempts.txt` holds 17
+rows for `gh-signature`.** It emitted candidate scripts, reached the solver, and
+is not a bail at all.
+
+With the example gone the claim collapses, because §6 already gives the 51 their
+causes: **34 unsupported `lam` terms, 16 trusted `hmac-sha256` calls, and one
+partial application.** A list-to-`Seq` representation adds support for none of
+those. §7's exclusion of the 51 was correct.
+
+**HOW IT GOT WRITTEN IS THE PART WORTH KEEPING.** The example was supplied by a
+review, contradicted by the next review of the same file, and asserted here in
+between without being checked — against this repository's own instruction not to
+take an agent's report at face value. Verifying it cost one `grep`. A repair that
+introduces a defect while fixing one is the failure mode this file has now
+demonstrated three times in a single section; the first draft also reported "71
+of 141 omitted", sweeping all 51 back into scope, which the same reasoning
+refutes.
+
+**SO ONE SCOPING ERROR STANDS, NOT TWO:** R1's exclusion of the 20 in-scope
+`List`-of-scalar goals. That one is enough to withdraw the verdict on its own.
+
+**SO NO CORRECTED TOTAL IS OFFERED.** Three attempts at this population have been
+wrong — R1 dropped in-scope `List`-of-scalar goals, a repair swept in 51 goals
+that do not belong, and a further repair rested on an unverified example. Quoting
+a fourth number here would be the same mistake with better manners.
+
+**WHAT STANDS — dispositions, not counts.** The three examined `Str` candidates
+rest on their own evidence: `show-int.roundtrip` fails on an Int obligation that
+survives stripping the `Str`, and the two `config.oath` properties are false and
+therefore unprovable, though a `seq` encoding might refute them. Those hold
+whatever the population turns out to be.
+
+**WHAT DOES NOT STAND — every count, and any recommendation.** Not "0 of 42", not
+"at most 2 of 42", not "decline", and not the zero in the title-question table
+below, which is derived from the same 42 and therefore inherits the same wrong
+universe. #68 is UNANSWERED.
+
+**WHAT ANSWERING IT REQUIRES** is stated once, in full, at the end of this
+section — *"Why this section stops here instead of being repaired again"*. It is
+deliberately not summarised here: an earlier draft gave a short version that said
+"over ALL properties that are not `proven`", which silently readmits the 43 whose
+stored verdict is stale but which the CURRENT encoding proves. Two recipes for
+one population is how this section acquired most of its defects.
+
+Reaching the `List`-of-scalar half needs a criterion of its own — R1–R5 are
+written about `Str` — and the producer makes re-running the measurement one
+command, so the cost is the criterion, not the data.
+
+---
+
+### The `Str`-scoped result, unchanged
+
+Sections 6 and 7 exist to make this question answerable. Within `Str` goals:
+**at most 2 of the 42 examined, and neither is confirmed.** An earlier version of
+this line said *zero*, and that count did not survive review; see the borderline
+pair below.
+
+### The title question — UNANSWERED, and for a DIFFERENT reason than the verdict
+
+The issue is titled *"push `Str` properties from tested to PROVEN"*. That is a
+narrower question than reachability, its universe is NOT the reachability
+verdict's, and conflating the two produced three wrong answers here in
+succession. Stated once, correctly:
+
+| | its universe | why the analysis missed it |
+|---|---|---|
+| reachability verdict | `Str` goals **and** `List`-of-scalar goals, per #68's own sentence | R1 dropped 20 in-scope `List`-of-scalar goals |
+| **title question** | `Str` properties **the current encoding cannot prove** | the analysis used the 42 budget-exhausted goals, which is neither a superset nor a subset of that |
+
+**The `List`-of-scalar omission does NOT touch the title question** — the title
+asks about `Str` only. Saying it did was an error in an earlier draft of this
+section, and it contradicted a correction two paragraphs away.
+
+**And the population is not "every `Str` property the store marks non-proven"
+either.** §7 measured 43 properties that PROVE when attempted at 4M — their
+stored verdicts are stale, and `gh-signature`'s four are among them, discharging
+through the existing lemma-free path. Counting those as headroom for #68 would
+attribute STORE ADVANCEMENT to an ENCODING CHANGE. That mistake was also made
+here, twice, citing `gh-signature` first as a translation bail (it has 17 rows in
+`attempts.txt`) and then as an open case (it already proves).
+
+So the title question's population is: **`Str` properties that the CURRENT
+encoding, at a stated budget, does not prove.** Deriving it means subtracting the
+43 stale-verdict proofs before counting anything — which this file has the data
+to do and did not do.
+
+### Why this section stops here instead of being repaired again
+
+Eight consecutive review rounds found eight real defects in these conclusions,
+each unrelated to the last: a wrong exclusion criterion, a partial correction, an
+overclaimed bound, a fabricated second exclusion, an unverified example, a
+misattributed cost figure, two conflated universes. That pattern is this
+repository's own signal that **an artefact is missing rather than a paragraph
+being wrong** — and the missing artefact is a population derived from #68's claim
+instead of from whichever subset was nearest to hand.
+
+Repairing the prose again would produce a ninth number computed over a ninth
+universe. **The counts in the remainder of this section are therefore WITHDRAWN
+rather than corrected**, and the section is kept for its method, its data and its
+three individual dispositions.
+
+**What a correct answer requires**, so the next attempt starts from the claim:
+
+1. Two populations, derived separately and never merged — #68's proposal (`Str`
+   AND `List`-of-scalar) for reachability, and `Str`-only for the title question.
+2. Subtract the 43 stale-verdict proofs from **BOTH**, before either is counted.
+   A stored `tested` is not evidence the current encoding cannot prove it, and
+   leaving them in would credit a sequence encoding with proofs the existing one
+   already produces — the same store-advancement-as-encoding-impact error made
+   twice above, which applies to reachability exactly as it does to the title.
+3. Dispose of each translation-bail on whether a `Seq` REPRESENTATION would make
+   it translatable — §6 gives their causes as 34 unsupported `lam`, 16 trusted
+   `hmac-sha256`, one partial application, none of which it would.
+4. A reachability criterion for `List`-of-scalar goals; R1–R5 are `Str`-only.
+
+The producer makes re-running the data one command. The cost is the criteria.
 
 ### The population, and what it is not
 
@@ -1255,27 +1396,32 @@ substituted a true observation for the question asked.
 
 ### Scope — a corpus figure, not a claim about sequence encodings
 
-The supportable sentence is *"in the current Oath corpus, at most 2 of 42 stalling
-properties are in reach of a sequence encoding, and neither is confirmed"*. It is
-NOT *"zero are"*, and it is NOT *"a `Str` sequence encoding is not worth
-building"*. The recommendation to decline rests on **at most 2 of 42**, which is
-small enough to carry it — but the recommendation and the count are different
-claims, and the count is not uniformly measured either. Its parts have different
-standing, and collapsing them is how a bound gets quoted as though it were an
-observation:
+**RETIRED BY THE WITHDRAWAL AT THE HEAD OF THIS SECTION.** What follows was
+written when the population was believed to be the 42, and it is kept only so the
+retired claim is legible rather than silently deleted. Its arithmetic is sound and
+its universe is wrong; do not quote it.
 
-- **39 of 42 excluded by R1 is MEASURED** — decidable from the kernel's own
-  types, no reasoning about Z3 involved;
-- **the step from 3 candidates to 2 is REASONED**, resting on R2/R4/R5 against
-  `show-int.roundtrip`, and R2–R5 were never measured because no goal was
-  re-encoded onto the `Seq` sort;
-- **the remaining 2 are UNRESOLVED**, not counted either way.
-
-So the honest form of the upper bound is *at most 3 measured, at most 2 once one
-reasoned exclusion is granted*. `examples/` is not a neutral sample of programs — it is the
-exhibits this project chose, weighted toward provable arithmetic and structural
-recursion because that is what the prover reaches. Three of 42 stalling properties
-touching `Str` at all is a fact about that weighting as much as about seq theory.
+> The supportable sentence is *"in the current Oath corpus, at most 2 of 42 stalling
+> properties are in reach of a sequence encoding, and neither is confirmed"*. It is
+> NOT *"zero are"*, and it is NOT *"a `Str` sequence encoding is not worth
+> building"*. The recommendation to decline rests on **at most 2 of 42**, which is
+> small enough to carry it — but the recommendation and the count are different
+> claims, and the count is not uniformly measured either. Its parts have different
+> standing, and collapsing them is how a bound gets quoted as though it were an
+> observation:
+>
+> - **39 of 42 excluded by R1 is MEASURED** — decidable from the kernel's own
+>   types, no reasoning about Z3 involved;
+> - **the step from 3 candidates to 2 is REASONED**, resting on R2/R4/R5 against
+>   `show-int.roundtrip`, and R2–R5 were never measured because no goal was
+>   re-encoded onto the `Seq` sort;
+> - **the remaining 2 are UNRESOLVED**, not counted either way.
+>
+> So the honest form of the upper bound is *at most 3 measured, at most 2 once one
+> reasoned exclusion is granted*. `examples/` is not a neutral sample of programs — it is the
+> exhibits this project chose, weighted toward provable arithmetic and structural
+> recursion because that is what the prover reaches. Three of 42 stalling properties
+> touching `Str` at all is a fact about that weighting as much as about seq theory.
 
 **What would change the answer:** a corpus with real text processing in it.
 `docs/experiments/webhook-friction.md` concludes the datatype slice should have
