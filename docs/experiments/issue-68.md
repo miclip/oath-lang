@@ -1122,8 +1122,10 @@ fail to discharge, and nothing in the fixture identifies those.
 ## 8. The verdict — how many stalling goals a sequence encoding could reach
 
 Sections 6 and 7 exist to make this question answerable. This is the answer:
-**zero of the 42, in this corpus.** The recommendation recorded on the issue is to
-decline, and the falsifier fired as written.
+**at most 2 of the 42, in this corpus, and neither is confirmed.** The
+recommendation recorded on the issue is to decline, and the falsifier reads on the
+population being small — which it is. An earlier version of this line said *zero*,
+and that count did not survive review; see the borderline pair below.
 
 ### The population, and what it is not
 
@@ -1165,7 +1167,7 @@ required:
 Writing it first is the control. A criterion written after seeing which goals one
 would like to qualify is fitted, and this is the number the whole issue turns on.
 
-### Result: 0 reachable, 0 borderline, 42 not reachable
+### Result: 0 confirmed reachable, 2 borderline, 40 not reachable
 
 Types come from the kernel (`oath get`), never from names — `bytes-after` is
 `[(needle (List Int)) (hay (List Int))]` and is not a `Str` goal despite being
@@ -1177,9 +1179,9 @@ string-shaped work. The container datatypes were checked for a hidden `Str`:
 
 | property | binder types | signature | verdict |
 |---|---|---|---|
-| `config-has-key.finds-head` | `(List Str), Str` | `(-> (List Str) Str Bool)` | NOT REACHABLE — the property is FALSE |
+| `config-has-key.finds-head` | `(List Str), Str` | `(-> (List Str) Str Bool)` | **BORDERLINE** — the property is FALSE, but a `seq.indexof`/`seq.extract` encoding could DECIDE it by refuting; R2–R5 unmeasured |
 | `show-int.roundtrip` | `Int` | `(-> Int Str)` | NOT REACHABLE — fails R2/R4/R5 (Int div/mod) |
-| `config-missing.complete-config-reports-nothing` | `Str, Str` | `(-> (List Str) (List Str) Str)` | NOT REACHABLE — the property is FALSE |
+| `config-missing.complete-config-reports-nothing` | `Str, Str` | `(-> (List Str) (List Str) Str)` | **BORDERLINE** — same: falsity is not unreachability, and deciding includes refuting |
 
 ### R1 fails — no `Str` in binders or signature (39)
 
@@ -1197,7 +1199,7 @@ string-shaped work. The container datatypes were checked for a hidden `Str`:
 | `Int, Int, Int, Int` | 1 | `rle-encode.two-runs-stay-two-runs` |
 | `Map` | 1 | `map-size.non-negative` |
 
-total: 42 = 3 + 39
+total: 42 = 40 not reachable + 2 borderline + 0 confirmed reachable
 
 ### The three candidates
 
@@ -1209,27 +1211,68 @@ the one property disposed of by the reasoned part of the criterion.
 
 **`config-has-key.finds-head`** and **`config-missing.complete-config-reports-nothing`**
 were expected to be the borderline cases, turning on whether `config-key` could be
-re-expressed via `seq.indexof`/`seq.extract`. They are not borderline: **they are
-false**. Neither guards its `key` against containing the separator `=`. Filed as
-its own issue with counterexamples and controls, because it is a corpus defect
-independent of this one — and the verdict here does not depend on repairing it.
+re-expressed via `seq.indexof`/`seq.extract`. They ARE borderline, and a first
+version of this section wrongly discharged them by observing that **they are
+false** — neither guards its `key` against containing the separator `=`. Filed as
+#161 with counterexamples and controls, because it is a corpus defect independent
+of this one.
 
-### Why the verdict survives the soft part of the criterion
+**FALSITY DOES NOT MAKE A GOAL UNREACHABLE, AND THE CRITERION SAYS SO IN ITS OWN
+WORDS.** R1–R5 ask whether Z3's sequence theory can DECIDE the re-encoded goal,
+and deciding includes answering `sat` with a counterexample. A `seq.indexof` /
+`seq.extract` encoding of `config-key` is exactly the shape that could surface the
+separator-in-key witness, turning both stalls into REFUTATIONS. That is a decision
+procedure doing its job, not a goal outside its reach — and it would have caught
+#161 automatically, which is the opposite of irrelevant.
+
+So these two rows stay BORDERLINE, for the reason the rest of this section already
+gives: R2–R5 are reasoned rather than measured, and the reduction of `config-key`
+onto the `Seq` sort is explicitly left unresolved here. They cannot be discharged
+by an argument the criterion does not contain.
+
+The error is recorded rather than quietly corrected because of its shape: a true
+observation about the properties (they are false) was substituted for the question
+actually asked (can seq theory decide them). Both readings produce a tidy number,
+and only one of them answers #68.
+
+### What the soft part of the criterion actually carries
 
 R2–R5 are REASONED about Z3's sequence solver, not measured: no goal was actually
 re-encoded onto the `Seq` sort. That limit is real and it carries almost nothing,
 which is worth stating rather than leaving as a caveat over the whole result:
 
 - **39 of 42 fall to R1 alone**, decidable from the kernel's own types;
-- **2 of the remaining 3 are false**, decidable by reading `examples/config.oath`;
 - **1 is disposed of by the reasoned part**, and it fails R4 on an Int obligation
-  that survives stripping the `Str` entirely.
+  that survives stripping the `Str` entirely;
+- **2 remain BORDERLINE** — the `config.oath` pair, which a `seq.indexof` /
+  `seq.extract` encoding might DECIDE by refuting, and which the unmeasured part
+  of the criterion cannot dispose of.
+
+So the split is **40 not reachable, 2 borderline, 0 confirmed reachable**, and the
+soft part of the criterion carries those 2 rather than nothing. An earlier version
+of this section claimed 42 = 3 + 39 with the pair discharged as false, which
+substituted a true observation for the question asked.
 
 ### Scope — a corpus figure, not a claim about sequence encodings
 
-The supportable sentence is *"in the current Oath corpus, zero stalling properties
-are in reach of a sequence encoding"*. It is NOT *"a `Str` sequence encoding is not
-worth building"*. `examples/` is not a neutral sample of programs — it is the
+The supportable sentence is *"in the current Oath corpus, at most 2 of 42 stalling
+properties are in reach of a sequence encoding, and neither is confirmed"*. It is
+NOT *"zero are"*, and it is NOT *"a `Str` sequence encoding is not worth
+building"*. The recommendation to decline rests on **at most 2 of 42**, which is
+small enough to carry it — but the recommendation and the count are different
+claims, and the count is not uniformly measured either. Its parts have different
+standing, and collapsing them is how a bound gets quoted as though it were an
+observation:
+
+- **39 of 42 excluded by R1 is MEASURED** — decidable from the kernel's own
+  types, no reasoning about Z3 involved;
+- **the step from 3 candidates to 2 is REASONED**, resting on R2/R4/R5 against
+  `show-int.roundtrip`, and R2–R5 were never measured because no goal was
+  re-encoded onto the `Seq` sort;
+- **the remaining 2 are UNRESOLVED**, not counted either way.
+
+So the honest form of the upper bound is *at most 3 measured, at most 2 once one
+reasoned exclusion is granted*. `examples/` is not a neutral sample of programs — it is the
 exhibits this project chose, weighted toward provable arithmetic and structural
 recursion because that is what the prover reaches. Three of 42 stalling properties
 touching `Str` at all is a fact about that weighting as much as about seq theory.
@@ -1242,10 +1285,13 @@ producer makes that one command rather than a fresh investigation.
 
 ### Method note
 
-Two of the three candidates were settled by **a single `oath eval`, in
-milliseconds, with no solver involved**. The prover had been running against both
-for the full budget and returned `unknown` — which is the honest answer to the
-wrong question. This is the chain this file has recorded before: a named domain
+Two CORPUS DEFECTS — not two candidates — were settled by **a single `oath eval`,
+in milliseconds, with no solver involved**. The distinction matters and an earlier
+version of this note lost it: the evaluation settles that the two `config.oath`
+properties are FALSE, which is #161. It does NOT settle whether sequence theory
+could decide them, and those two remain borderline here for exactly that reason.
+The prover had been running against both for the full budget and returned
+`unknown` — which is the honest answer to the wrong question. This is the chain this file has recorded before: a named domain
 makes a meaningful question askable, one evaluation exposes the defect, and proof
 confirms a repair rather than finding the defect.
 
