@@ -93,13 +93,39 @@ func TestFindImpliesPreservesTutorialHits(t *testing.T) {
 				"longer reported:\n%s", want, detailed)
 		}
 	}
-	// And the tutorial's reading of the last one: spin-partial is UNSETTLED, not
-	// refuted. The document spends a paragraph on that distinction, so a change
-	// that moved it into the refuted group would make the prose wrong while every
-	// name above still appeared.
-	if !strings.Contains(implyDetailSection(t, detailed, "NO VERDICT"), "spin-partial") {
-		t.Errorf("spin-partial is no longer reported as unsettled; the tutorial explains it as an "+
-			"implementation limit rather than a refutation:\n%s", detailed)
+	// And the tutorial's reading of the last one: spin-partial is unsettled
+	// BECAUSE THE PROVER DID NOT SETTLE IT — an implementation limit — which is a
+	// narrower claim than "not refuted", and the narrower one is what the document
+	// spends a paragraph on.
+	//
+	// TWO THINGS THIS ASSERTION HAD TO STOP DOING, both found by mutation:
+	//
+	//   - IT ASKED FOR THE "NO VERDICT" SECTION, AND THERE ARE TWO. Both rows in
+	//     implyStatusRows begin "NO VERDICT", so implyDetailSection matched each of
+	//     them and returned their union. Reclassifying spin-partial from
+	//     implyUnknown to implyInvalidated moves it to the OTHER row — an
+	//     ENVIRONMENTAL ABORT under SPEC §7.2, not a prover limit, so the tutorial's
+	//     paragraph becomes wrong — and this assertion went on passing. It was
+	//     rescued only by the count assertion above it, which is a different claim
+	//     that a future edit is free to change. The row is now named by the half of
+	//     its label that distinguishes it.
+	//   - IT LOOKED FOR THE NAME ANYWHERE IN THE SECTION. Evidence text carries
+	//     DEFINITION NAMES — spin-partial's own line reads "apply2 must be fully
+	//     applied to inline" — so a section-wide match can be satisfied by another
+	//     candidate's reason mentioning this one, which is a sentence about
+	//     something else. The name must be the CANDIDATE of its line, which is what
+	//     the leading-position check below requires.
+	unsettled := implyDetailSection(t, detailed, "NO VERDICT — the prover did not settle it")
+	spinLine := ""
+	for _, l := range strings.Split(unsettled, "\n") {
+		if strings.HasPrefix(strings.TrimLeft(l, " "), "spin-partial") {
+			spinLine = l
+		}
+	}
+	if spinLine == "" {
+		t.Errorf("spin-partial is no longer reported as a candidate the PROVER DID NOT SETTLE; the "+
+			"tutorial explains it as an implementation limit, which is neither a refutation nor an "+
+			"environmental abort:\n%s", detailed)
 	}
 }
 
@@ -140,11 +166,13 @@ const prefilterSyntheticQuery = `(defn wanted [] [(a Int) (b Int)] Int (+ a b)
 // Verified by reverting; the exact mutation and the observed counts are recorded
 // in the test log.
 //
-// NOTE WHAT IT DOES NOT ASSERT, since #156 changed what the report says: the
-// refuted candidate is REPORTED now, with its countermodel, and only in detail
-// mode. This test is about the SOLVER COST of a refuted candidate, which is zero
-// either way — reporting a refutation costs no z3 launch, because the whole
-// reason it can be reported is that evaluation already settled it.
+// AND WHAT #156 ADDED TO IT: a refuted candidate is now a REPORTED RESULT, named
+// with its countermodel in SUMMARY mode as well as detail. That does not change
+// the solver cost — reporting a refutation launches no z3, because the whole
+// reason it can be reported is that evaluation already settled it — but it does
+// change what "the answer is unchanged" is allowed to mean here, so the second
+// half of the semantic assertion below is stated positively rather than as an
+// absence. See prefilterAssertRefutedByEvaluation for why.
 func TestConcretePassKeepsRefutedCandidateOutOfTheSolver(t *testing.T) {
 	requireZ3(t)
 
@@ -161,8 +189,22 @@ func TestConcretePassKeepsRefutedCandidateOutOfTheSolver(t *testing.T) {
 			t.Fatalf("%s was not admitted, so this test cannot witness anything", want)
 		}
 	}
-	if o := concreteProbe(probe, admitted["diff-int"].hash, ptrProp(admitted["diff-int"].prop)).outcome; o != ceFalsified {
-		t.Fatalf("diff-int is not concretely refuted (outcome=%d) — it is not the case this test needs", o)
+	diffProbe := concreteProbe(probe, admitted["diff-int"].hash, ptrProp(admitted["diff-int"].prop))
+	if diffProbe.outcome != ceFalsified {
+		t.Fatalf("diff-int is not concretely refuted (%s) — it is not the case this test needs", ceName(diffProbe.outcome))
+	}
+	// diff-int's OWN countermodel, computed here against an independent store and
+	// used below as the expected evidence in the report. It is derived rather than
+	// pinned as a golden: findImpliesProbeSeed fixes the sample sequence and
+	// printValue is structural, so the witness is a function of (defs, prop) and
+	// this probe's store and the arm's store must produce the same one. That is
+	// what makes the assertion CANDIDATE-SPECIFIC — the word "countermodel" alone
+	// is satisfied by any candidate's evidence pasted onto any candidate's line,
+	// and by the section heading, which itself contains it.
+	wantWitness := diffProbe.witness(probe)
+	if wantWitness == "" {
+		t.Fatalf("the concrete refutation of diff-int rendered no witness, so there is no "+
+			"candidate-specific evidence for this test to look for; env=%v", diffProbe.env)
 	}
 	if o := concreteProbe(probe, admitted["sum-int"].hash, ptrProp(admitted["sum-int"].prop)).outcome; o == ceFalsified {
 		t.Fatalf("UNSOUND: the concrete pass refuted sum-int, which satisfies the law")
@@ -197,23 +239,86 @@ func TestConcretePassKeepsRefutedCandidateOutOfTheSolver(t *testing.T) {
 			both, onlyProven, both-onlyProven)
 	}
 	// The semantic answer must be unchanged by the pass in BOTH directions: the
-	// hit survives, and the refuted candidate is not reported as a hit.
+	// hit survives, and the refuted candidate is REPORTED AS REFUTED.
 	//
-	// THE SECOND HALF IS ASSERTED AGAINST THE SATISFYING LINES, NOT THE WHOLE
-	// REPORT. `!Contains(outBoth, "diff-int")` says what its own message claims
-	// only while nothing else may mention the name — which stopped being true when
-	// #156 began reporting refutations. It would then be satisfied by a silent
-	// drop and by a correct refutation alike, and the message would still read
-	// "is reported as satisfying a law it falsifies". The claim here is about the
-	// SATISFYING lines, so that is what is examined.
 	// This half doubles as satisfyingLineFor's own control: it must find the hit
-	// that IS there, or its silence about diff-int below would prove nothing.
+	// that IS there, or its silence about diff-int would prove nothing.
 	if satisfyingLineFor(outBoth, "sum-int") == "" {
 		t.Errorf("sum-int disappeared once diff-int was in the store:\n%s", outBoth)
 	}
-	if hit := satisfyingLineFor(outBoth, "diff-int"); hit != "" {
-		t.Errorf("diff-int is reported as satisfying a law it falsifies:\n%s", hit)
+	prefilterAssertRefutedByEvaluation(t, outBoth, "diff-int", wantWitness)
+}
+
+// prefilterAssertRefutedByEvaluation asserts the full disposition of a
+// concretely refuted candidate in a rendered report: PRESENT under REFUTED, on
+// its own line, carrying its OWN countermodel and naming EVALUATION as the
+// source of it, and ABSENT from the satisfying lines.
+//
+// WHY ALL FOUR AND NOT THE LAST ONE ALONE. The assertion this replaces was
+// `satisfyingLineFor(outBoth, "diff-int") == ""` — an exclusion, and exclusions
+// are one-directional by construction. It is satisfied by the behaviour it was
+// written to pin AND by a renderer that drops the candidate silently, which is
+// precisely the conflation #156 removed from the product and left standing here.
+// A test whose only claim is that something is missing cannot tell "correctly
+// classified elsewhere" from "not classified at all".
+//
+// WHY THE EVIDENCE IS CHECKED ON THE CANDIDATE'S LINE AND AGAINST ITS OWN
+// WITNESS. The REFUTED heading reads "...(a countermodel exists)", so a Contains
+// for "countermodel" over the section is satisfied by the heading with every
+// candidate's evidence stripped. And a line-scoped Contains for the bare word is
+// satisfied by any candidate's values on any candidate's line. Requiring the
+// witness that concreteProbe independently produces FOR THIS CANDIDATE is what
+// makes the evidence attributable rather than merely present.
+//
+// WHY "by evaluation" IS PART OF IT. It is the report's claim that the verdict
+// cost no solver launch, and it is the rendering-side counterpart of the count
+// assertion above: the two would drift apart silently if only one were pinned.
+//
+// WHAT MUTATIONS MAKE IT FAIL — each verified by making the edit in
+// apiFindImplies's ceFalsified branch, running, and restoring. The failure each
+// one produces is named here rather than pointed at, so the record cannot come
+// apart from the assertion it justifies:
+//
+//   - SILENT DROP: `continue` past a ceFalsified candidate without appending an
+//     implyResult (the pre-#156 behaviour). No REFUTED section exists and the
+//     lookup fatals. The old exclusion assertion passed this unchanged.
+//   - MISCLASSIFICATION: record the refuted candidate as implyProven instead.
+//     diff-int is reported as satisfying the law it falsifies; the satisfying
+//     check fires and the REFUTED lookup fatals.
+//   - EVIDENCE DROPPED: omit `evidence: probe.witness(st)`, keeping the
+//     classification. The line renders `refuted (by evaluation)` and the
+//     countermodel check fires. This is what stops clause 3 riding along on the
+//     two above, both of which fail before the evidence is ever read.
+//   - SOURCE MISREPORTED: omit `byEval: true`. The line renders
+//     `countermodel (solver): …` — a verdict the report attributes to z3 while
+//     the count assertion above says no z3 ran — and the source check fires.
+func prefilterAssertRefutedByEvaluation(t *testing.T, out, name, wantWitness string) {
+	t.Helper()
+	if hit := satisfyingLineFor(out, name); hit != "" {
+		t.Errorf("%s is reported as satisfying a law it falsifies:\n%s", name, hit)
 	}
+	// implyDetailSection fatals when the row is absent, which is the correct
+	// verdict for a silent drop: there is no refuted section to read.
+	sect := implyDetailSection(t, out, "REFUTED")
+	line := ""
+	for _, l := range strings.Split(sect, "\n") {
+		if strings.Contains(l, name) {
+			line = l
+		}
+	}
+	if line == "" {
+		t.Fatalf("%s was refuted by the concrete pass but is not named under REFUTED — a refutation "+
+			"that is not reported is indistinguishable from a candidate that was never considered:\n%s", name, out)
+	}
+	if !strings.Contains(line, "by evaluation") {
+		t.Errorf("%s's refutation does not name EVALUATION as its source, so the report no longer "+
+			"says the verdict was reached without the solver:\n%s", name, line)
+	}
+	if !strings.Contains(line, wantWitness) {
+		t.Errorf("%s's reported evidence does not contain its own countermodel (%q) — the refutation "+
+			"is asserted rather than witnessed:\n%s", name, wantWitness, line)
+	}
+	t.Logf("refuted line: %s", strings.TrimSpace(line))
 }
 
 // prefilterSyntheticArm builds a fresh store holding exactly the given

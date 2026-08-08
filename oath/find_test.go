@@ -389,16 +389,167 @@ func TestFindImpliesCrossType(t *testing.T) {
 	// dropping the gate instead makes this same query report plus-r as
 	// `provably satisfies it`, because the prover does not re-typecheck what it
 	// is handed. This is the rung-3 residue: rejected, not silently approximated.
+	//
+	// THE OLD ASSERTION WAS `!Contains(residue, "plus-r2")` OVER SUMMARY OUTPUT,
+	// AND IT NAMED A CAUSE IT COULD NOT SEE. Summary mode counts the residue
+	// without naming it (renderImplyResults skips the non-refuted rows), so the
+	// absence of the name was equally consistent with the intended drop, with
+	// plus-r2 being classified NO VERDICT, and with it being ruled out for
+	// signature incompatibility that has nothing to do with the gate. Three
+	// causes, one silence, and the failure message asserted a specific one of
+	// them. The contract is therefore split into the two claims it was making:
+	//
+	//	the DECISION   crossTypeCompatible admits the signature, and checkDef
+	//	               then rejects the augmentation — "dropped BECAUSE
+	//	               ill-typed", asserted where the decision is made
+	//	the REPORT     plus-r2 is in NONE of the four dispositions, asserted in
+	//	               DETAIL mode, where every classification is named
+	//
+	// WHAT MUTATIONS MAKE THIS BLOCK FAIL — each applied, run, and reverted. The
+	// third is the one that establishes the strengthening, and the last two are
+	// the ones that keep the guards from being decoration:
+	//
+	//   - DROP THE checkDef GATE. plus-r2 is reported as `provably satisfies it at
+	//     (-> Rat Rat Rat)` — a false proof — and the satisfying check fires.
+	//   - RECORD THE ILL-TYPED CANDIDATE AS implyRefuted instead of dropping it.
+	//     The whole-report check fires. The old assertion also caught this one,
+	//     because summary mode names refutations.
+	//   - RECORD IT AS implyUnknown (NO VERDICT). The whole-report check fires.
+	//     THE OLD ASSERTION PASSED THIS UNCHANGED: summary mode counts the residue
+	//     without naming it, so "plus-r2 does not appear" was true of a candidate
+	//     that had been classified. This is why the report half moved to detail.
+	//   - CLASSIFY IT AS implyUnknown *AND* STOP NAMING THE RESIDUE IN DETAIL MODE.
+	//     The name is then absent from a report that classified the candidate
+	//     anyway, so every name-based check passes and only the FALLBACK assertion
+	//     fires. That is the whole reason the fallback is asserted: a negative is
+	//     satisfied by a renderer that drops the name, a fired fallback is not.
+	//   - MAKE checkDef ACCEPT the augmentation. The decision half fires — and
+	//     nothing else does, which is the point of asserting the gate directly
+	//     rather than only through what the report omits.
+	//   - GIVE plus-r2 A THIRD Rat ARGUMENT. The signature stops being cross-type
+	//     compatible, so the gate is never reached and the VACUITY GUARD fires —
+	//     before checkErr is looked at, which is the ordering that makes the guard
+	//     mean anything.
+	//   - MAKE crossTypeCompatible ARITY-BLIND. The add3-r control fires, and it
+	//     is the only assertion here that can catch it.
+	const annotatedQuery = `(defn q [] [(a Int) (b Int)] Int (+ a b)
+		(prop annotated [(a Int) (b Int)] (== ((fn [(x Int)] x) (q a b)) (q b a))))`
 	st2 := newStore(t)
 	put(t, st2, `(defn plus-r2 [] [(a Rat) (b Rat)] Rat (+ a b))`)
-	residue, err := apiFindImplies(st2, `(defn q [] [(a Int) (b Int)] Int (+ a b)
-		(prop annotated [(a Int) (b Int)] (== ((fn [(x Int)] x) (q a b)) (q b a))))`, findImpliesSummary)
+
+	// THE DECISION. The compatibility half is the vacuity guard and it is not
+	// optional: without it "checkDef rejected the augmentation" is unfalsifiable
+	// against a world where the candidate never got far enough to be checked, and
+	// the whole control would keep passing while the gate it names was dead code.
+	compatible, checkErr := crossTypeAugmentForTest(t, st2, annotatedQuery, "plus-r2")
+	if !compatible {
+		t.Fatalf("plus-r2's signature is no longer cross-type compatible with the query, so the " +
+			"checkDef gate is never reached and this control witnesses nothing about it")
+	}
+	if checkErr == nil {
+		t.Fatal("checkDef ACCEPTED the re-typed augmentation: only binders are re-typed, so the " +
+			"property body's own Int annotation still disagrees with the Rat binders, and an " +
+			"augmentation that does not typecheck must not reach the prover")
+	}
+	// TWO-WAY CONTROL ON THE GUARD ABOVE. The guard pins the TRUE direction and
+	// this pins the FALSE one, and they are broken by different things — which is
+	// why both are here rather than one standing in for the other:
+	//
+	//	the guard   fires when the FIXTURE drifts. Give plus-r2 a third Rat
+	//	            argument and it is no longer signature-compatible, the gate is
+	//	            never reached, and the guard stops the test before checkErr is
+	//	            examined at all. Verified by making exactly that edit.
+	//	this        fires when the RELATION loses discrimination. Make
+	//	            crossTypeCompatible arity-blind and it calls a 3-argument
+	//	            candidate compatible with a 2-argument query, which no fixture
+	//	            change can reveal.
+	if compat, _ := crossTypeAugmentForTest(t, st, `(defn q [] [(a Int) (b Int)] Int (+ a b)
+		(prop comm [(a Int) (b Int)] (== (q a b) (q b a))))`, "add3-r"); compat {
+		t.Fatal("crossTypeAugmentForTest calls a 3-argument candidate signature-compatible with a " +
+			"2-argument query, so its compatibility result cannot distinguish anything and the " +
+			"vacuity guard above is dead")
+	}
+
+	// THE REPORT, in DETAIL mode so that every classification names its members.
+	// The four dispositions are checked as one negative and one positive: plus-r2
+	// appears nowhere, and the fallback FIRES — which says the classified set was
+	// empty rather than merely that this name is not in it. Without the fallback
+	// assertion a renderer that dropped the name while still classifying the
+	// candidate would satisfy the negative half.
+	residue, err := apiFindImplies(st2, annotatedQuery, findImpliesDetailed)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(residue, "plus-r2") {
-		t.Fatalf("a property body carrying Int must not be proved against a Rat definition (checkDef gate):\n%s", residue)
+	if hit := satisfyingLineFor(residue, "plus-r2"); hit != "" {
+		t.Fatalf("a property body carrying Int must not be proved against a Rat definition (checkDef gate):\n%s", hit)
 	}
+	if strings.Contains(residue, "plus-r2") {
+		t.Fatalf("plus-r2 was dropped by the checkDef gate, so it must appear in NO classification — "+
+			"reporting it as refuted or unsettled would claim a verdict about a goal that never "+
+			"typechecked:\n%s", residue)
+	}
+	if !strings.Contains(residue, "no definition provably satisfies this") {
+		t.Fatalf("the empty-answer fallback did not fire, so something WAS classified for a query "+
+			"whose only candidate is ill-typed:\n%s", residue)
+	}
+	// THE OLD SUMMARY-MODE CHECK IS NOT RETAINED, AND KEEPING IT WOULD HAVE BEEN
+	// THE MISTAKE. It is the same whole-output shape being removed here, so
+	// carrying it along "for coverage" would preserve the defect under the name of
+	// preserving the contract. It is also redundant for a structural reason rather
+	// than a probable one: `mode` reaches nothing in apiFindImplies except the
+	// final renderImplyResults call, and the fallback is gated on
+	// `len(results) == 0` — so asserting the fallback fired ESTABLISHES that the
+	// classified set is empty, which is a fact about the classification and holds
+	// in every mode. A summary render of an empty result set cannot name plus-r2.
+}
+
+// crossTypeAugmentForTest rebuilds, for ONE named candidate, exactly the
+// augmentation apiFindImplies would hand the prover — the query's property
+// re-typed to the candidate's signature and appended past the candidate's own
+// props — and reports the two facts that decide whether it is admitted:
+//
+//	compatible  did crossTypeCompatible admit the SIGNATURE at all?
+//	err         what did the checkDef gate say about the augmentation?
+//
+// It exists so a test can assert WHY a candidate is missing from a report rather
+// than only THAT it is missing. Absence has several causes — an incompatible
+// signature, an unreadable object, an ill-typed augmentation — and a report
+// cannot tell them apart, because all three produce the same silence. Splitting
+// them is what turns "plus-r2 does not appear" into "plus-r2 is compatible and
+// was rejected by checkDef", which is the claim the residue control is making.
+//
+// It uses the SHIPPED predicates (crossTypeCompatible, crossTypeRetypeBinders,
+// checkDef) rather than re-implementing the decision, so it cannot pass on a
+// re-implementation that has drifted from the path under test.
+func crossTypeAugmentForTest(t *testing.T, st *Store, query, name string) (bool, error) {
+	t.Helper()
+	forms, err := parseForms(query)
+	if err != nil {
+		t.Fatalf("parse query: %v", err)
+	}
+	qd, _, err := elabFunc(st, forms[0])
+	if err != nil {
+		t.Fatalf("elaborate query: %v", err)
+	}
+	h, ok := st.Names()[name]
+	if !ok {
+		t.Fatalf("%s is not in the store, so nothing here witnesses its admission", name)
+	}
+	d, err := st.GetDef(h)
+	if err != nil {
+		t.Fatalf("get %s: %v", name, err)
+	}
+	qp := qd.Props[0]
+	if string(tyBytes(d.Ty)) != string(tyBytes(qd.Ty)) {
+		sub, ok := crossTypeCompatible(qd.Ty, d.Ty)
+		if !ok {
+			return false, nil
+		}
+		qp = Prop{Binders: crossTypeRetypeBinders(qp.Binders, sub), Body: qp.Body}
+	}
+	aug := *d
+	aug.Props = append(append([]Prop{}, d.Props...), qp)
+	return true, checkDef(st, &aug)
 }
 
 // TestCrossTypeCompatibilityShape pins the RELATION independently of the prover:
