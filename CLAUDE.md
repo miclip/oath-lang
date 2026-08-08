@@ -586,7 +586,9 @@ missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   (empty)
+  more EXPENSIVE if delayed   #161 — two properties are FALSE while carrying a
+                              `tested` guarantee, so every day they stand is a
+                              day the ladder's own evidence is wrong about them
   more VALUABLE if delayed    #134, #139/#140, #138, #38 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128

@@ -219,7 +219,8 @@ func TestProveReasonsSweep(t *testing.T) {
 	// THE BUDGET MUST BE PINNED EXPLICITLY. Defaulting to proveRlimit would run
 	// the nine-hour sweep from a command that looks bounded, and every figure
 	// downstream would name a budget the caller never chose.
-	if os.Getenv("OATH_PROVE_RLIMIT") == "" {
+	raw := os.Getenv("OATH_PROVE_RLIMIT")
+	if raw == "" {
 		t.Fatal("OATH_PROVE_RLIMIT must be set: the record format requires every figure to name " +
 			"its budget, and an unset budget silently means the full 400M per-goal sweep")
 	}
@@ -227,6 +228,20 @@ func TestProveReasonsSweep(t *testing.T) {
 		t.Fatalf("z3: %v", err)
 	}
 	rlimit := effectiveRlimit()
+	// PRESENCE IS NOT ACCEPTANCE, and the difference is the whole guard.
+	// effectiveRlimit() ignores a value it cannot parse or that is <= 0 and
+	// falls back to proveRlimit, so `0` or `4000000x` passes a set/unset check
+	// and launches the very nine-hour sweep this bound exists to prevent — a
+	// typo defeating the only thing between a bounded run and a pegged machine.
+	// The check is DERIVED from the authority rather than restating its parse
+	// rule: ask effectiveRlimit() what it actually took, and refuse unless it
+	// took THIS value. If its acceptance rule ever changes, this follows.
+	if want, err := strconv.ParseInt(raw, 10, 64); err != nil || want <= 0 || rlimit != want {
+		t.Fatalf("OATH_PROVE_RLIMIT=%q was NOT honoured: effectiveRlimit() returned %d. "+
+			"It silently ignores an unparseable or non-positive value and falls back to the "+
+			"full %d-unit budget, so this run would have swept at the normative rlimit while "+
+			"every figure claimed the budget you typed.", raw, rlimit, int64(proveRlimit))
+	}
 
 	be, err := openFSBackend("../codebase")
 	if err != nil {
@@ -437,11 +452,29 @@ func TestProveReasonsSweep(t *testing.T) {
 		}
 		want, havePin := pinned[[2]string{tg.name, strconv.Itoa(tg.pi)}]
 		switch {
-		case !havePin || rec.DirectSHA == "":
+		case !havePin && rec.DirectSHA == "":
+			// BOTH absent is the ONLY legitimate absence, and it is exactly the
+			// translation-bail shape: no direct script exists, so scripts.txt
+			// pins no row for it. Nothing to compare, and nothing is claimed.
 			noPin++
 			rec.ControlRoute = "absent"
-			t.Logf("script control did NOT run for %s[%d]: pinned row present=%v, "+
-				"direct script obtainable=%v", tg.name, tg.pi, havePin, rec.DirectSHA != "")
+			t.Logf("script control did not apply to %s[%d]: no direct script and no pinned row "+
+				"— the translation-bail shape", tg.name, tg.pi)
+		case havePin != (rec.DirectSHA != ""):
+			// ONE-SIDED IS A FAILED CONTROL, NOT AN ABSENT ONE, and folding it in
+			// with the line above let the sweep exit successfully while the
+			// script-state control never ran for this property. A pin with no
+			// obtainable script means the goal no longer builds the script it was
+			// pinned from; a script with no pin means it is not the pinned one.
+			// Either way the record's budget and verdict describe a script nothing
+			// here compared, which is the measurement this control exists to make.
+			t.Errorf("script control is ONE-SIDED for %s[%d]: pinned row present=%v, direct "+
+				"script obtainable=%v. Only BOTH-absent is legitimate (a translation bail); "+
+				"one side alone means this property's script state was never checked, and its "+
+				"record would report a verdict for a script nothing compared to the pin",
+				tg.name, tg.pi, havePin, rec.DirectSHA != "")
+			noPin++
+			rec.ControlRoute = "one-sided"
 		default:
 			rec.PinnedSHA = want
 			hit := want == rec.DirectSHA
