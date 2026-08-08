@@ -587,11 +587,12 @@ missing coverage.
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
   more EXPENSIVE if delayed   (empty)
-  more VALUABLE if delayed    #134, #139/#140, #138 — after more evidence
+  more VALUABLE if delayed    #134, #139/#140, #138, #38 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
-  no CLOCK at all             #159, #158, #115, #116, #65, #66 — open, and
-                              neither cheaper nor dearer for waiting
+  no CLOCK at all             #159, #68, #158, #119, #115, #116, #74, #65,
+                              #66 — open, and neither cheaper nor dearer
+                              for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
 below may ELABORATE a row; nothing may add an issue the table does not hold.**
@@ -619,11 +620,11 @@ audit cannot catch contamination living inside the artefact under test.
 
 The rule survives the table changing; the answer would not.
 
-**#159 IS THE QUEUE'S ONLY LANGUAGE ITEM, AND ITS ABSENCE UNTIL NOW WAS THE
-SIGNAL.** Every other bucket-4 row is compiler, attestation, discovery or
-registry — infrastructure around a language whose top measured gap had no issue.
-What keeps this experimental is not that the substrate is unproven; it is that
-you cannot get a field out of a JSON body without writing a byte scanner.
+**#159 IS THE TOP-RANKED LANGUAGE ITEM, AND IT IS RANKED BY MEASUREMENT** —
+off the demand list #120 produced by BUILDING something, which outranks any
+ordering argued from taste. What keeps this experimental is not that the
+substrate is unproven; it is that you cannot get a field out of a JSON body
+without writing a byte scanner.
 
 **It is a TYPE question, not a library one, which is what makes it belong here.**
 `Str` is codepoints and a body is bytes and both are `(List Int)`, so the decode
