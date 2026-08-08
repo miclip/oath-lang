@@ -590,8 +590,8 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   more VALUABLE if delayed    #134, #139/#140, #138 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
-  no CLOCK at all             #157, #115, #116, #65, #66 — open, and neither
-                              cheaper nor dearer for waiting
+  no CLOCK at all             #115, #116, #65, #66 — open, and neither cheaper
+                              nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
 below may ELABORATE a row; nothing may add an issue the table does not hold.**
@@ -624,12 +624,6 @@ turns out never to have belonged here: the standing instruction below already
 says it stopped blocking anything when #126 closed and must wait for a real
 consumer to fix its scope. So it has a TRIGGER, not a position, and listing it
 under a closing window contradicted the same file's own instruction.
-
-**#157 IS A CLASS, NOT A BUG** — the same whole-text `Contains` conflation #156
-removed, surviving in three more assertions, plus a refutation line that renders
-raw solver text and reads like a no-verdict. Its value is that each instance is
-already located and diagnosed; its risk is being treated as tidy-up, when one of
-them is a test saved only by an accident of today's failure mode.
 
 **AND THE RULE THAT CAME OUT OF #156 IS WORTH MORE THAN EITHER ISSUE. "DO NOT
 WEAKEN A TEST" IS UNENFORCEABLE WHEN THE CONTRACT ITSELF CHANGES**, because
