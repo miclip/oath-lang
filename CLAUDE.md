@@ -590,8 +590,8 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   more VALUABLE if delayed    #134, #139/#140, #138 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
-  no CLOCK at all             #115, #116, #65, #66 — open, and neither cheaper
-                              nor dearer for waiting
+  no CLOCK at all             #158, #115, #116, #65, #66 — open, and neither
+                              cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
 below may ELABORATE a row; nothing may add an issue the table does not hold.**
@@ -618,6 +618,24 @@ to do first would transcribe the sentence instead of orienting, and the context
 audit cannot catch contamination living inside the artefact under test.
 
 The rule survives the table changing; the answer would not.
+
+**#158 IS A STATED COMPILER MILESTONE, WHICH IS THE CLAUSE THAT ADMITS IT.** The
+standing instruction below says broadening the backend requires a NEW CONSUMER
+*or a separately stated compiler milestone* — #158 is filed under the second,
+explicitly, rather than arriving as momentum.
+
+**It exists because the consumer clause cannot resolve its own precondition
+here.** `oath/llvm.go` refuses arithmetic, so it compiles a subset no real
+program lives inside — and a backend nobody can use cannot attract the consumer
+whose demand would justify lifting the refusal. Held indefinitely, a guard
+against momentum becomes paralysis. That reasoning is what makes it a milestone
+and not an exception; do not reuse it to admit anything else without the same
+argument.
+
+**It is much smaller than #115 and sits in front of it.** One program end to
+end, reach not speed. A typed IR is OUT of scope because #118 already measured
+the `Def` closure sufficient — and the falsifier that would reopen that question
+is on the issue, where it belongs.
 
 **Compiler/runtime — one item, and it is DEBT rather than a feature.** #117/#69
 turns out never to have belonged here: the standing instruction below already
