@@ -590,8 +590,8 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   more VALUABLE if delayed    #134, #139/#140, #138 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
-  no CLOCK at all             #158, #115, #116, #65, #66 — open, and neither
-                              cheaper nor dearer for waiting
+  no CLOCK at all             #159, #158, #115, #116, #65, #66 — open, and
+                              neither cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
 below may ELABORATE a row; nothing may add an issue the table does not hold.**
@@ -618,6 +618,23 @@ to do first would transcribe the sentence instead of orienting, and the context
 audit cannot catch contamination living inside the artefact under test.
 
 The rule survives the table changing; the answer would not.
+
+**#159 IS THE QUEUE'S ONLY LANGUAGE ITEM, AND ITS ABSENCE UNTIL NOW WAS THE
+SIGNAL.** Every other bucket-4 row is compiler, attestation, discovery or
+registry — infrastructure around a language whose top measured gap had no issue.
+What keeps this experimental is not that the substrate is unproven; it is that
+you cannot get a field out of a JSON body without writing a byte scanner.
+
+**It is a TYPE question, not a library one, which is what makes it belong here.**
+`Str` is codepoints and a body is bytes and both are `(List Int)`, so the decode
+that cannot be written correctly is indistinguishable from one that can. A JSON
+parser is a library; a type that says which of the two a value holds is not, and
+a parser written against the ambiguity inherits the defect.
+
+**Read the friction log before ranking anything else in this bucket.**
+`docs/experiments/webhook-friction.md` is a demand list produced by BUILDING
+something, which is worth more than any ordering argued from taste — and its own
+conclusion is that the datatype slice should have been byte lists and text.
 
 **#158 IS A STATED COMPILER MILESTONE, WHICH IS THE CLAUSE THAT ADMITS IT.** The
 standing instruction below says broadening the backend requires a NEW CONSUMER
