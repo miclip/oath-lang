@@ -3,7 +3,8 @@
 **What this file is:** the record of an evaluation of #69's refinement types
 against #159, run in steps, with each step committed before the next begins.
 
-**STEPS 1 AND 2 ARE PRESENT.**
+**STEPS 1, 2 AND 4 ARE PRESENT.** There is no step 3; the numbering is the
+session's plan and nothing is missing between them.
 
 - **Step 1** states the claim under evaluation and derives the universe it
   quantifies over — the population `U`, and on it the two obligations `R` and
@@ -11,8 +12,10 @@ against #159, run in steps, with each step committed before the next begins.
 - **Step 2** evaluates ONE construction against `R` and `S`: refinement types
   whose base value remains the original `(List Int)`. It reaches a decidable
   result for that construction and deliberately does not generalise past it.
+- **Step 4** names the CLASS of mechanism that step 2's argument does not
+  reach. It designs nothing, measures nothing, and chooses nothing.
 
-Neither step reaches a verdict on #159 or on #69 as a whole.
+No step reaches a verdict on #159 or on #69 as a whole.
 
 Run on 2026-08-09 against `fc3f8f6`, with `oath/oath` rebuilt from that tree.
 `oath eval` resolves names out of `codebase/` without writing to it. Step 2's
@@ -799,3 +802,121 @@ canonical store and their names are not bound in it — an exercise gets its own
 store, never the namespace holding the standard library. `git status codebase/`
 was clean before and after, and `bytes-ok`'s hash `#d2406871baf1` is the
 committed corpus object, unchanged.
+
+---
+
+# Step 4 — the class of mechanism step 2 does not reach
+
+**This step names a CLASS and designs nothing.** It adds no measurement, and it
+rests entirely on the SHAPE of step 2's argument rather than on any new fact. If
+it reads as a proposal, a preference between the options below, or the beginning
+of a design, it has gone wrong.
+
+## The criterion, which generates the class rather than listing it
+
+Step 2's result comes from one sentence:
+
+> membership in `{v : (List Int) | P v}` is a FUNCTION OF `v`, and the two
+> members of every pair in `S` are one `v`.
+
+Everything else in step 2 — the two spellings, the vacuous producer predicate,
+the soundness argument that empties the CP end — is a consequence of that
+premise or a failed attempt to escape it. So the criterion for what step 2 does
+not reach is exactly the negation of its premise:
+
+> **A mechanism is outside step 2's result iff how it CLASSIFIES a value — what
+> type that value has, and therefore what it may be passed to — is not solely a
+> function of the original, unchanged `(List Int)`.**
+
+**The subject of that sentence is the MECHANISM'S CLASSIFICATION, not the role**,
+and getting that wrong makes the criterion vacuous. Two earlier drafts did: they
+said the ROLE is not a function of the value, which is true of step 2's own
+construction — indeed it is the whole defect — so the criterion admitted the
+very thing it was meant to exclude. What distinguishes step 2's construction is
+that ITS classification, membership in `{v | P v}`, IS solely a function of `v`.
+
+Two ways for a classification to fail that, and both matter because they cover
+different options:
+
+    classification depends on something       phantom types, nominal types with
+    carried ALONGSIDE the value               hidden constructors, a brand or
+                                              result index however obtained
+
+    the thing classified is no longer         record wrappers, distinct
+    the bare list                             datatypes, opaque types
+
+Stating it as a criterion rather than a list matters, because a list invites the
+reading that these are the options. They are instances.
+
+## Three named candidates — two are in the class, one only in a particular form
+
+- **PHANTOM TYPES.** The role rides in a type parameter that no value inhabits,
+  so two values with identical representation carry different types. Provenance
+  lives in the type index.
+- **NOMINAL TYPES / NEWTYPES WITH HIDDEN CONSTRUCTORS.** The role IS the type's
+  identity, and the hidden constructor is the load-bearing half rather than the
+  wrapper: a wrapper whose constructor is freely available is one retag away
+  from the value it wraps, which is the same laundering shape step 2 found in
+  *forgetting a refinement is free*.
+
+**EFFECT / CAPABILITY TYPING is named third because this step's brief named it,
+and reporting it accurately means reporting that its ORDINARY form does NOT
+satisfy the criterion.** An effect discipline types a COMPUTATION — what it may
+do, what authority it holds. Effect rows and capability records alike describe
+the computation, and neither keeps WHICH capability produced a value once that
+value is bound: what comes back is a bare `(List Int)`, both roles are again one
+value at one type, and that is step 2's premise restored rather than escaped.
+
+It enters the class only in a RESULT-INDEXED or BRANDED form, where the role
+persists on the value — and at that point the persistence is doing the work, and
+it is the first instance's machinery under another name. So the accurate
+statement is not "effect typing is a third way" but "provenance must persist on
+the value, and an effect system is one place a brand could come from".
+
+Worth pointing at rather than rediscovering: Oath's capability model is option 3
+of `docs/effects.md` §"Options considered", chosen because *"capability passing
+adds zero type rules to the trusted core"* — and effect rows, option 1, were
+considered and declined there. So nothing in the language today carries a role
+this way, in either form. That is a statement about what exists, not an argument
+against the option.
+
+**These are different features with different costs, and the costs are not
+compared here.** One known obstacle is worth pointing at rather than
+rediscovering: Oath's types are STRUCTURAL, so the nominal instance runs into
+the thing #133 recorded and `issue-159.md` measured — `Str` has no identity of
+its own, and a monomorphic `Bytes` datatype puts to `Str`'s hash byte for byte.
+That is a pointer to a known result, not an assessment of the option.
+
+The list is not exhaustive. Anything satisfying the criterion belongs to the
+class whether or not it is named here.
+
+## What step 2 declared OUT, which is not the same as refuted
+
+Step 2's construction was refinements over the unchanged `(List Int)`. **Record
+wrappers, opaque or abstract types, and distinct datatypes were declared OUTSIDE
+it**, and being outside a result is not being refuted by one:
+
+> **None of them is excluded by anything in this file. Any of them may still
+> work, and step 2 says nothing either way about them.**
+
+Each changes the value or the type's identity, so each fails step 2's premise by
+the criterion's SECOND row — which is the same statement seen from the other
+side, and the reason the criterion has to have that row at all.
+
+## What a later evaluation of any candidate would owe
+
+Not guidance about mechanism, only the scope already fixed by step 1: a
+candidate has to be evaluated against **both** obligations, `R` and `S`, and in
+**both** directions of `ρ`. Step 2's own finding is the reason to say so — the
+CP→OCT direction is the one the residue's original write-up leads with, while
+the OCT→CP direction turned out to be the one nothing protected at all.
+
+## What step 4 does NOT establish
+
+- That any mechanism in the class WORKS. The criterion says step 2's argument
+  does not apply to them; it says nothing about whether they discharge `R` or
+  seal `S`.
+- Any ranking, preference or recommendation among the instances.
+- Anything about cost, feasibility, or fit with the O1 encoding. The one
+  obstacle named above is a pointer to an existing measurement, not an
+  evaluation.
