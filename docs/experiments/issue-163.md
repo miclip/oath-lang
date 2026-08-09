@@ -382,3 +382,672 @@ outcome changes the value; what it cannot see is the modulus at a FORCED
 selection — `below(1)` at size 0, where only the draw's EXISTENCE is observable.
 That existence is precisely what §4's "single-candidate selection is not skipped"
 clause requires, and it is what the test pins.
+
+## The blind round on the changed text (step 3)
+
+Step 2 rewrote normative text, so the blind rule applies — scoped to that text.
+This section is the round's full record: what the subject was given, what the
+harness can and cannot vouch for about its isolation, its unedited answer, and a
+disposition for each finding.
+
+### Context audit — THREE RUNS, AND THE FIRST ONE WAS CONTAMINATED
+
+The round was run three times. **Recording all three is the point.** Run 1's
+context audit was wrong in a way I asserted rather than checked; run 2 closed the
+CONTEXT channel with an audit taken before the extract was read; run 3 used a
+different model, because two readers sharing the author's model are one
+measurement taken twice. Each run and its full transcript is below, in order.
+
+**RUN 1 — a general-purpose subagent. CONTAMINATED; its result does not stand
+alone.**
+
+| channel | state |
+| --- | --- |
+| repository access | **CLOSED, harness-verified.** The dispatch returned `tool_uses: 0` — no file opened, no command run, no search. That is the harness's count, not the subject's own claim, which is why it outweighs the subject's closing sentence saying the same thing. |
+| always-loaded guidance | **CONTAMINATED, issue-specifically.** A general-purpose subagent inherits `CLAUDE.md`, and `CLAUDE.md`'s queue names #163 and *describes the rule under test*: "SPEC §4 still specifies a primitive `Str` generator that was deleted when `Str` became inductive, asserting printable-ASCII coverage NEITHER kernel provides." I first wrote that this channel was merely "open" because `CLAUDE.md` points at normative text rather than paraphrasing it. That general rule holds; this entry is the exception, and I did not go and look. |
+| model | **OPEN.** Same model as the author. It cannot witness an assumption the author and it both hold. Closed only by run 3, below. |
+
+**What the priming could have reached, stated narrowly rather than waved away.**
+It describes the OLD entry's alphabet claim and that no kernel implements it. It
+does NOT describe the `Data`-rule delegation, the `below(1)`/`below(2)`
+selection, the field order or the size clamp — the substance of parts 1–3. So it
+bears most directly on question 3b, *"is a length drawn before the codepoints?"*,
+which is exactly the answer the priming makes cheap.
+
+**RUN 2 — the read-only search target, with a context audit asked FIRST.** Same
+extract, same four questions, preceded by a question naming each forbidden
+category. Its answer, verbatim:
+
+> I do NOT have: (a) no project instructions file (no CLAUDE.md content anywhere
+> in context — only the generic "init" skill description that mentions CLAUDE.md
+> by name, not its contents); (b) no memory index or remembered conclusions;
+> (c) no commit digest, branch state, or diff (only the bare fact "Is a directory
+> a git repo: Yes" — no actual git data); (d) no handoff or session summary;
+> (e) no GitHub issue number and no work queue.
+
+Note the asymmetry in what backs each run: run 1's isolation is vouched for by a
+harness tool-use count, run 2's by the subject's own enumeration of its context.
+Run 2's is the more informative answer and the less independently verifiable one,
+and neither closes the MODEL channel.
+
+**RUN 2 REPRODUCED THE DERIVATION** — the same pseudocode, the same 1/4/7 draw
+counts for the size-2 trace, and the same four answers. That agreement across a
+primed and an unprimed reader, on material the priming does not describe, is the
+durable result of this round.
+
+**One qualification, which "exactly" would have papered over.** A prose aside in
+run 2 says the `SCons` head costs "1 or 2 draws". Its own pseudocode, its own
+trace and its own part 4 all say exactly 2 — part 4 states it flatly: "always 2
+(discriminator + boundary-or-range value), never 1 and never 3". The kernel
+agrees; both `Int` branches consume `below(4)` plus one more draw. So the aside
+is a slip run 2 corrects twice within the same answer, not a competing
+derivation — but it is an internal inconsistency in the load-bearing run, and it
+is recorded rather than smoothed, because a reader auditing this transcript will
+hit that sentence and deserves to know it was seen.
+
+**What did NOT survive the second run is the AMBIGUITY LIST.** Run 1 flagged the
+boundary-table mapping; run 2 used `[-2,-1,0,1,2][b]` without remark and raised
+three different points instead. So the ambiguity lists are reader-dependent and
+must not be read as a census of what is underdetermined — only as leads. The one
+that mattered was settled by MEASUREMENT below, which is the only route that
+closes all three channels.
+
+### The prompt, verbatim
+
+Reproduced in full, since a summary of a blind prompt cannot be audited — small
+wording differences decide whether an answer was derived or primed. The subject
+was given the two random primitives and the size-clamp preamble, §3's `Str`
+declaration, and three entries from §4's list: `Int` (because the rewritten
+`Str` entry delegates its `SCons` head to it by name), the rewritten `Str` entry
+verbatim as committed in `fb82d1c`, and `Data` (because the rewritten entry says
+`Data` governs). Nothing else from the specification, and no part of the kernel.
+
+The `below`/`intIn` gloss and the one-step-per-call sentence restate §4's own rng
+definitions, which the extract needed in order to be self-contained; §3's
+declaration is quoted down to the one sentence the `Str` entry depends on.
+
+**One exactness caveat, since "verbatim" is a strong word.** The `Str` entry
+above is byte-identical to the committed §4 text — checked, not eyeballed. The
+`Data` rule was re-wrapped to fit the prompt: word-for-word identical, different
+line breaks. Nothing else was altered.
+
+    You are implementing a specification from its text ALONE.
+
+    HARD CONSTRAINT: Do NOT read, search, list, or open any file. Do NOT run any
+    command. Do NOT use any tool at all. Answer only from the text quoted below.
+    At the end of your answer, state explicitly whether you used any information
+    not in this prompt.
+
+    === BEGIN EXTRACT ===
+
+    The random source provides exactly two primitives:
+
+        below(n)     -> an integer in [0, n-1]
+        intIn(lo,hi) -> an integer in [lo, hi]
+
+    Each call to either primitive advances the random source by exactly one step.
+
+    Size is a recursion budget and is clamped to a minimum of 0 on entry to every
+    generation call. Data fields recurse at `size - 1`.
+
+    Section 3 declares:
+
+        A string is a value of the ordinary datatype
+        (data Str [] (SNil) (SCons Int Str))
+        a sequence of Unicode scalar values.
+
+    Generation by type — draw order is normative:
+
+    - `Int`: draw `below(4)`; on 0, draw `below(5)` into boundary table
+      `[-2,-1,0,1,2]`; otherwise draw `intIn(-20,20)`.
+
+    - `Str`: **the `Data` rule below governs. This entry is a pointer to it, not a
+      competing rule** — `Str` is not a primitive type (§3), it is the datatype
+      `(data Str [] (SNil) (SCons Int Str))`, and a `Str` is generated exactly as any
+      other data value. **There is no length draw and no alphabet draw.** Because
+      draw order is normative and `Str` is the type most likely to be looked up
+      expecting an exception, the resulting sequence is spelled out here as a worked
+      instance of the `Data` rule: size clamps to a minimum of 0 on entry; at size 0
+      the sole constructor without a recursive field is `SNil` and its selection
+      still consumes a draw, `below(1)`, giving the empty string; at size > 0 the
+      selection is `below(2)` over the constructors in declaration order
+      `[SNil, SCons]`, where 0 gives `SNil` and ends the string and 1 gives `SCons`,
+      whose two fields are generated left-to-right at size−1 — first the `Int` head
+      by the `Int` rule above, then the `Str` tail by this same rule. Every codepoint
+      is therefore an `Int` draw. **Should this paragraph and the `Data` rule ever
+      disagree, the `Data` rule is authoritative and this paragraph is the defect.**
+
+    - Data: if size ≤ 0, choose uniformly among constructors with no recursive
+      field (error if none); else uniformly among all constructors — and the
+      selection ALWAYS consumes exactly one below(k) draw, including when k = 1
+      (single-candidate selection is not skipped, in either size branch). Fields
+      generated left-to-right at size−1.
+
+    === END EXTRACT ===
+
+    Produce, purely from that text:
+
+    1. Pseudocode for `genStr(size, r)` returning the list of codepoints, using
+       only `below` and `intIn`. Be exact about the ORDER and the COUNT of draws.
+    2. The full draw trace for `genStr(size = 2, r)` as a decision tree: name each
+       draw in order, what each outcome means, and where the generation stops.
+       Cover every branch.
+    3. Answer these four questions with a yes/no and one sentence:
+       a. How many draws does `genStr(size = 0, r)` take?
+       b. Is a length drawn before the codepoints?
+       c. If the size-0 selection has only one possible outcome, is its draw skipped?
+       d. For `SCons`, which field is generated first?
+    4. State anything in the extract you found ambiguous, underdetermined, or that
+       you had to guess at. Be specific and quote the sentence. If nothing was
+       ambiguous, say so plainly — do not invent problems.
+
+Question 4's last clause is deliberate. A reader asked to find problems finds
+problems; the licence to say "nothing was ambiguous" is what makes the two
+findings it did report worth reading.
+
+### Run 1's response, unedited
+
+> **1. Pseudocode for `genStr(size, r)`**
+>
+> Per the extract, `Str` is not a primitive — it's generated exactly by the `Data` rule for `(data Str [] (SNil) (SCons Int Str))`, with the worked-out draw counts given explicitly in the `Str` paragraph. `Int` is generated by the separate `Int` rule.
+>
+> ```
+> genStr(size, r):
+>     size = max(size, 0)                 # clamp on entry, per the general rule
+>
+>     if size <= 0:
+>         c = below(1)                    # only SNil has no recursive field; k=1
+>                                          # draw still happens (selection is never skipped)
+>         # c == 0 always  ->  SNil
+>         return []                       # empty string
+>
+>     else:  # size > 0
+>         c = below(2)                    # over [SNil, SCons], declaration order
+>         if c == 0:
+>             return []                   # SNil, stop
+>         else:  # c == 1, SCons
+>             head = genInt(size - 1, r)  # Int field first
+>             tail = genStr(size - 1, r)  # Str field second, same rule, recursively
+>             return [head] + tail
+>
+> genInt(size, r):
+>     size = max(size, 0)                 # clamp applies to every generation call,
+>                                          # though the Int rule itself never reads size
+>     k = below(4)
+>     if k == 0:
+>         b = below(5)
+>         table = [-2, -1, 0, 1, 2]
+>         return table[b]
+>     else:                               # k in {1,2,3}
+>         return intIn(-20, 20)
+> ```
+>
+> Draw count for one `Int`: always exactly **2** draws (`below(4)` then either `below(5)` or `intIn(-20,20)`).
+> Draw count for one `Str` constructor selection: always exactly **1** draw (`below(2)` if size>0, `below(1)` if size≤0).
+>
+> **2. Draw trace for `genStr(size = 2, r)`**
+>
+> ```
+> draw 1: below(2)          [Str selection, size=2>0, over [SNil, SCons]]
+> ├── 0 -> SNil. Result = "". STOP. (1 draw total)
+> └── 1 -> SCons. Generate Int head, then Str tail at size=1.
+>
+>     draw 2: below(4)      [Int head, k-selector]
+>     ├── 0 -> draw 3: below(5)      -> head = table[draw3] ∈ {-2,-1,0,1,2}
+>     └── 1,2,3 -> draw 3: intIn(-20,20) -> head = draw3's value
+>     (either way, exactly draws 2-3 consumed; proceed to tail)
+>
+>     draw 4: below(2)      [Str tail selection, size=1>0]
+>     ├── 0 -> SNil. tail = "". Result = [head]. STOP. (4 draws total)
+>     └── 1 -> SCons. Generate Int head2, then Str tail2 at size=0.
+>
+>         draw 5: below(4)  [Int head2, k-selector]
+>         ├── 0 -> draw 6: below(5)      -> head2 = table[draw6]
+>         └── 1,2,3 -> draw 6: intIn(-20,20) -> head2 = draw6's value
+>         (exactly draws 5-6 consumed; proceed to tail2)
+>
+>         draw 7: below(1)  [Str tail2 selection, size=0<=0; only SNil qualifies]
+>         └── 0 (only possible outcome, still drawn) -> SNil. tail2 = "".
+>             Result = [head, head2]. STOP. (7 draws total)
+> ```
+>
+> Every leaf is covered: the run stops at draw 1 (empty string, length 0), at draw 4 (length 1), or at draw 7 (length 2 — the maximum reachable at size 2, since size decrements by 1 per `SCons` and generation is forced to `SNil` once size ≤ 0). The value of draw 3 / draw 6 (which primitive fires, `below(5)` vs `intIn`) never changes the *count* or *position* of subsequent draws — only the resulting codepoint.
+>
+> **3. Four questions**
+>
+> **a. How many draws does `genStr(size = 0, r)` take?**
+> 1 draw. At size ≤ 0 only `SNil` has no recursive field, so exactly one `below(1)` draw is made (always yielding 0), and generation stops immediately.
+>
+> **b. Is a length drawn before the codepoints?**
+> No. There is no length draw anywhere in the rule; the text says explicitly "There is no length draw and no alphabet draw." Length emerges implicitly from however many times the per-level constructor-selection draw (`below(2)`, or `below(1)` at the base) comes up `SCons` before hitting `SNil` or running out of size.
+>
+> **c. If the size-0 selection has only one possible outcome, is its draw skipped?**
+> No. The `Data` rule states the selection "ALWAYS consumes exactly one `below(k)` draw, including when k = 1 (single-candidate selection is not skipped, in either size branch)" — so `below(1)` is drawn even though its outcome is forced.
+>
+> **d. For `SCons`, which field is generated first?**
+> The `Int` head field first, then the `Str` tail field. The `Str` paragraph states it directly: "whose two fields are generated left-to-right at size−1 — first the `Int` head by the `Int` rule above, then the `Str` tail by this same rule."
+>
+> **4. Ambiguities / underdetermined points**
+>
+> Two minor points, neither of which affects the draw *order* or *count* derived above, but which are not fully pinned down by the text:
+>
+> 1. **Which `below(5)` outcome maps to which boundary-table entry.** The text says: "on 0, draw `below(5)` into boundary table `[-2,-1,0,1,2]`." It never states the mapping formula explicitly (e.g., that outcome `i` selects `table[i]`); I inferred the natural in-order index mapping (`table[b]`) rather than finding it spelled out. This affects only which *value* is produced by draw 3/6, not the sequence of draws.
+>
+> 2. **Whether the "clamped to a minimum of 0 on entry to every generation call" rule has any effect on `Int` generation.** The general note says every generation call clamps size on entry, implying `genInt` also receives and clamps a size parameter — but the `Int` rule itself never mentions size at all, so it's unclear whether size is even passed to it or simply irrelevant/unused. I treated it as passed-but-unused, which doesn't change the draw sequence for `Str`, but the text doesn't explicitly confirm that `genInt` takes a size argument at all.
+>
+> Beyond those two, the `Str`-specific paragraph is unusually explicit (it exists precisely to preempt the "Str might have a length/alphabet draw" assumption) and directly states the draw at size 0, the draw at size>0, the constructor order, the field order, and that selection is never skipped — so the core derivation in parts 1–3 is not guesswork.
+>
+> I used no information beyond the extract quoted in the prompt; per the hard constraint, no files, searches, or tools were used to produce this answer.
+
+### The primary result
+
+Parts 1–3 are correct against the kernel — in BOTH runs, identically — and
+`oath/gen_str_spec_order_test.go` is what says so rather than my reading of them:
+its `genStrFromSpecText` is the same algorithm both subjects derived, and it
+reproduces the kernel's value and draw count over 44 000 generations. The four
+answers are right in both runs: one draw at size 0, no length draw, the forced
+selection not skipped, the `Int` head first.
+
+**The rewritten `Str` entry is derivable.** That is what the round was run to
+find out.
+
+### Run 2's prompt delta
+
+Run 2 used the SAME extract and the SAME questions 1–4, byte for byte. Two
+changes only: the hard constraint moved to the top, and a question 0 was
+prepended, answered before the extract was read.
+
+    HARD CONSTRAINT: Do NOT read, search, list, or open any file. Do NOT run any
+    command. Do NOT use any tool at all. Answer only from the text quoted in this
+    prompt. This is a controlled derivation exercise; using tools would
+    invalidate it.
+
+    QUESTION 0 — ANSWER THIS FIRST AND HONESTLY. Before you read anything below,
+    what context were you given? Specifically, state whether your context
+    contains any of: (a) a project instructions file (e.g. CLAUDE.md) or its
+    contents; (b) a memory index or remembered conclusions; (c) a commit digest,
+    branch state or diff; (d) a handoff or session summary; (e) any mention of a
+    GitHub issue number or a work queue. Quote or describe anything you find. If
+    you have none of these, say so plainly. Answer this before reading the rest —
+    do not let the extract below influence it.
+
+The five categories are `CLAUDE.md`'s own forbidden list for its startup
+instrument, used here for the same reason: an issue-only check waves through a
+digest that primes just as hard.
+
+### Run 2's response, unedited except for two marked redactions
+
+**The two redactions, stated before the transcript so nothing inside it is
+authorial.** An operator email and a local filesystem path were replaced with
+`<redacted>` placeholders where they appear in the context audit — neither is
+evidence about isolation, and a committed document is the wrong place for
+either. The redactions are marked inline. Everything else below is
+character-for-character as returned.
+
+
+> **QUESTION 0 — What context I was given**
+>
+> Before reading the extract, my actual context for this turn consists of:
+>
+> - A system-reminder with two fields: `userEmail` (`<redacted>`) and `currentDate` (2026-08-09), with a note that this context "may or may not be relevant" to the task.
+> - A system-reminder listing deferred tools available via ToolSearch (names only, no schemas) — things like CronCreate, WebFetch, various mcp__oath-registry__* and mcp__oath__* tools, Gmail/Calendar/Drive tools, sinesync tools, browser-automation tools, etc.
+> - A system-reminder listing available Skills (dataviz, artifact-design, code-review, simplify, init, security-review, etc.) with one-line descriptions.
+> - The environment block naming this as a "file search specialist" persona for Claude Code, with a working directory `<redacted local path>`, noting it is a git repo, on macOS/zsh.
+> - The user's prompt itself, containing the hard constraint and the extract.
+>
+> I do NOT have: (a) no project instructions file (no CLAUDE.md content anywhere in context — only the generic "init" skill description that mentions CLAUDE.md by name, not its contents); (b) no memory index or remembered conclusions; (c) no commit digest, branch state, or diff (only the bare fact "Is a directory a git repo: Yes" — no actual git data); (d) no handoff or session summary; (e) no GitHub issue number and no work queue.
+>
+> So: none of (a)–(e) are present. The only "extra" context is the userEmail/currentDate reminder and tool/skill name lists, none of which bear on the technical question below. Per the hard constraint, I will not use any tool and will answer purely from the quoted extract.
+>
+> ---
+>
+> **1. Pseudocode for `genStr(size, r)`**
+>
+> ```
+> genStr(size, r):
+>     size = max(size, 0)               # clamp on entry
+>     if size <= 0:
+>         c = below(1, r)               # 1 draw; only candidate is SNil (no recursive field)
+>         # c is always 0 -> SNil
+>         return []                     # empty string, 1 draw total
+>     else:
+>         c = below(2, r)               # 1 draw; selection over [SNil, SCons]
+>         if c == 0:
+>             return []                 # SNil, stops here
+>         else:                         # c == 1, SCons
+>             head = genInt(r)          # Int rule, at size-1 (Int draw count doesn't depend on size)
+>             tail = genStr(size - 1, r) # Str tail, recursive call at size-1
+>             return [head] + tail
+>
+> genInt(r):
+>     d = below(4, r)                   # 1 draw
+>     if d == 0:
+>         b = below(5, r)               # 1 draw into boundary table
+>         return [-2,-1,0,1,2][b]
+>     else:
+>         return intIn(-20, 20, r)      # 1 draw
+> ```
+>
+> Draw order per `SCons` step: constructor-selection draw, then `Int` draw(s) for head (1 or 2 draws), then recurse into tail (which starts with its own constructor-selection draw). No length draw, no alphabet draw, ever.
+>
+> ---
+>
+> **2. Full draw trace for `genStr(size = 2, r)`**
+>
+> Entry: size = 2, clamped to 2 (already ≥ 0).
+>
+> - **D1: constructor selection at size 2** — size > 0, so `below(2)` over `[SNil, SCons]`.
+>   - **D1 = 0 → SNil.** String ends immediately. Result: `[]`. (Total draws: 1.)
+>   - **D1 = 1 → SCons.** Continue: generate Int head, then Str tail at size 1.
+>     - **D2: Int discriminator** — `below(4)`.
+>       - **D2 = 0 → boundary branch.**
+>         - **D3: boundary index** — `below(5)`, selects from `[-2,-1,0,1,2]`. This fixes the head codepoint. (Draws so far: 3.)
+>       - **D2 ∈ {1,2,3} → range branch.**
+>         - **D3: `intIn(-20,20)`** fixes the head codepoint. (Draws so far: 3.)
+>       - (Either way, exactly one head value is now fixed, using either 2 draws (D2, D3) if boundary, same count either way — 2 draws for the Int in both sub-branches: D2 always happens, then exactly one more draw (D3) happens whether it's the boundary-table draw or the intIn draw.)
+>     - Now recurse: **genStr(size = 1, r)** for the tail.
+>       - **D4: constructor selection at size 1** — size > 0, so `below(2)` over `[SNil, SCons]`.
+>         - **D4 = 0 → SNil.** Tail ends. Result: `[head]`. (Total draws: 4.)
+>         - **D4 = 1 → SCons.** Generate second Int head, then Str tail at size 0.
+>           - **D5: Int discriminator** — `below(4)`.
+>             - **D5 = 0 → boundary branch.**
+>               - **D6: boundary index** — `below(5)` → second codepoint fixed. (Draws so far: 6.)
+>             - **D5 ∈ {1,2,3} → range branch.**
+>               - **D6: `intIn(-20,20)`** → second codepoint fixed. (Draws so far: 6.)
+>           - Recurse: **genStr(size = 0, r)** for the final tail.
+>             - **D7: constructor selection at size 0** — size ≤ 0, so choose uniformly among constructors with no recursive field. Only `SNil` qualifies, so this is `below(1)`.
+>               - **D7 = 0 → SNil** (only possible outcome, but the draw is still consumed per the Data rule: "the selection ALWAYS consumes exactly one below(k) draw, including when k = 1"). String ends. Result: `[head1, head2]`. (Total draws: 7.)
+>
+> Every leaf of this tree terminates in `SNil`; there is no other way to stop. The branches, by total draw count, are:
+> - 1 draw → `""` (empty)
+> - 4 draws → 1 codepoint string
+> - 7 draws → 2 codepoint string (the maximum reachable at size 2, since size decrements by 1 each `SCons` and generation must stop — via forced `SNil` — once size hits 0)
+>
+> Note: within each "Int" sub-step the draw count is always 2 (discriminator + boundary-or-range value), never 1 and never 3; I did not observe any text allowing the Int rule to short-circuit.
+>
+> ---
+>
+> **3. Short answers**
+>
+> a. **How many draws does `genStr(size = 0, r)` take?** 1 draw. At size ≤ 0 only `SNil` (no recursive field) qualifies, and per the Data rule "the selection ALWAYS consumes exactly one below(k) draw, including when k = 1" — so the single `below(1)` draw still happens even though its outcome is forced.
+>
+> b. **Is a length drawn before the codepoints?** No — the extract states explicitly "There is no length draw and no alphabet draw"; length is an emergent property of how many times the `SCons` branch is chosen before `SNil` is chosen, not something drawn directly.
+>
+> c. **If the size-0 selection has only one possible outcome, is its draw skipped?** No — the extract is explicit: "the selection ALWAYS consumes exactly one below(k) draw, including when k = 1 (single-candidate selection is not skipped, in either size branch)."
+>
+> d. **For `SCons`, which field is generated first?** The `Int` head is generated first, then the `Str` tail — "whose two fields are generated left-to-right at size−1 — first the `Int` head by the `Int` rule above, then the `Str` tail by this same rule."
+>
+> ---
+>
+> **4. Ambiguities / underdetermined points / things I had to guess at**
+>
+> - **The extract gives two Int-draw counts but doesn't explicitly total them.** The `Int` rule says "draw `below(4)`; on 0, draw `below(5)`... otherwise draw `intIn(-20,20)`." This clearly means always 1 draw (the `below(4)`) plus always exactly 1 more draw (either the `below(5)` or the `intIn` — these are described as alternatives, not additions), for a total of exactly 2 draws per Int. I'm confident in this reading, but the text never states "2 draws total" as a single explicit number — I derived it by reading "on 0, draw X; otherwise, draw Y" as mutually exclusive single follow-up draws. This is a minor inferential step rather than a directly quoted fact.
+>
+> - **"below(1)" mechanics are asserted, not derived.** The text asserts as a conclusion ("still consumes a draw, `below(1)`") that size-0 selection is a `below(1)` call, which requires reading "choose uniformly among constructors with no recursive field" plus "the selection ALWAYS consumes exactly one below(k) draw" together — i.e., k here is the count of eligible (non-recursive-field) constructors, which is 1 for `Str`. The extract does the algebra for us in this specific case, so it's not really ambiguous for `Str`, but the general Data rule doesn't spell out that "k" always means "size of the eligible constructor set" as opposed to some fixed constant — I inferred that from context rather than finding it stated as a general definition.
+>
+> - **Whether "size" clamping happens on the *recursive call* or is re-clamped each time.** The general preamble says "Size is a recursion budget and is clamped to a minimum of 0 on entry to every generation call." I applied this per call (i.e., `genStr(size-1, ...)` clamps `size-1` again on entry), which matters if size could go negative — but since size decrements by exactly 1 and the base case (size ≤ 0) triggers before any negative value could be produced from a positive size, this clamping is in practice inert for `Str`. Not a real ambiguity, just something I had to reason through rather than being told directly.
+>
+> Beyond these two minor inferential steps (both of which the extract supports unambiguously once the two relevant sentences are combined), I found nothing else genuinely ambiguous or underdetermined in the extract — the draw order, draw counts, termination condition, and the authority of the Data rule over the prose paragraph are all stated explicitly.
+
+**Where the two runs differ, and where they do not.** The pseudocode, the 1/4/7
+draw counts and all four answers are the same. Run 2 additionally observes that
+every leaf terminates in `SNil` and that the `Int` sub-step is always exactly two
+draws — both correct, neither asked for; the second of those is also what
+contradicts its own "1 or 2 draws" aside, dispositioned in the context audit
+above. The ambiguity lists share nothing.
+
+### RUN 3 — a DIFFERENT MODEL, because two correlated readers are one measurement taken twice
+
+Runs 1 and 2 share the author's model, so their agreement cannot witness an
+assumption all three of us hold. Review pressed exactly this point. Run 3 was
+therefore dispatched to **Claude Haiku 4.5** — a different model from the author's
+— on the read-only target, same extract, same context audit, with question 3
+extended by one item: *exactly how many draws does one `Int` cost?*, aimed at the
+one place run 2 contradicted itself.
+
+Its context audit:
+
+> I was given none of: (a) a project instructions file or its contents, (b) a
+> memory index or remembered conclusions, (c) a commit digest, branch state, or
+> diff, (d) a handoff or session summary, (e) any GitHub issue number or work
+> queue. I have only the extract of text you provided.
+
+Its derivation, unedited:
+
+> ```
+> genStr(size, r):
+>   size = max(size, 0)
+>
+>   if size == 0:
+>     r.below(1)                    // Draw: constructor selection (SNil only)
+>     return []
+>   else:
+>     constructor = r.below(2)      // Draw: constructor selection (SNil or SCons)
+>
+>     if constructor == 0:          // SNil
+>       return []
+>     else:                          // SCons
+>       // Generate Int head
+>       int_choice = r.below(4)      // Draw: Int case decision
+>       if int_choice == 0:
+>         idx = r.below(5)           // Draw: boundary index
+>         head = [-2, -1, 0, 1, 2][idx]
+>       else:
+>         head = r.intIn(-20, 20)    // Draw: general Int value
+>
+>       // Generate Str tail recursively at size - 1
+>       tail = genStr(size - 1, r)
+>
+>       return [head] ++ tail
+> ```
+>
+> Each path through the pseudocode shows draw order left-to-right. Int generation always consumes exactly 2 draws (one to decide case, one for the value).
+>
+> **2. For `genStr(size = 2, r)`: possible draw counts and string lengths**
+>
+> | Total Draws | String Length | Path |
+> |-------------|---------------|------|
+> | 1           | 0             | First below(2) selects SNil |
+> | 4           | 1             | SCons → Int (2 draws) → genStr(1) has below(2)→0 (1 draw) |
+> | 7           | 2             | SCons → Int (2 draws) → genStr(1) has below(2)→1 → Int (2 draws) → genStr(0) below(1) (1 draw) |
+>
+> **3. Short answers**
+>
+> a. **1 draw.** At size 0, a single `below(1)` is drawn to select SNil.
+>
+> b. **No.** The Str generation draws for constructor selection and field generation only; there is no explicit length draw.
+>
+> c. **No.** The extract states: "the selection ALWAYS consumes exactly one below(k) draw, including when k = 1 (single-candidate selection is not skipped, in either size branch)."
+>
+> d. **The Int head.** The text says: "whose two fields are generated left-to-right at size−1 — first the `Int` head by the `Int` rule above, then the `Str` tail."
+>
+> e. **2 draws.** One `below(4)` to decide the case, then exactly one more draw (either `below(5)` or `intIn(-20,20)`).
+>
+> **4. Ambiguities**
+>
+> The extract is clear and well-specified. No ambiguities required guessing. The draw order, counts, and structure of all generation rules are explicit; the worked Str example removes any uncertainty about how the Data rule applies to this datatype.
+
+**Three results from run 3.** The derivation and the 1/4/7 counts match runs 1
+and 2. Its answer to 3e is 2 draws, unambiguously — settling run 2's internal
+contradiction against run 2's own slip. And it reported NO ambiguities, having
+been given the same explicit licence to say so.
+
+**How much that closes, stated so a reader can discount it themselves.** Haiku
+4.5 is a different model from the author's, which is what the MODEL channel asks
+for; it is not a different vendor or a different training lineage, so the
+correlation is REDUCED rather than eliminated. Three readers, two of them sharing
+the author's model, one not, all reaching the same algorithm — that is the
+evidence, and it is worth what it is worth.
+
+### Run 2's findings, and what they say about the step 2 disposition
+
+Run 2 raised three points instead of run 1's two, and none of them overlaps.
+Quoted from its answer:
+
+> - **The extract gives two Int-draw counts but doesn't explicitly total them.**
+>   [...] I derived it by reading "on 0, draw X; otherwise, draw Y" as mutually
+>   exclusive single follow-up draws. This is a minor inferential step rather
+>   than a directly quoted fact.
+> - **"below(1)" mechanics are asserted, not derived.** [...] the general Data
+>   rule doesn't spell out that "k" always means "size of the eligible
+>   constructor set" as opposed to some fixed constant — I inferred that from
+>   context rather than finding it stated as a general definition. **The extract
+>   does the algebra for us in this specific case, so it's not really ambiguous
+>   for `Str`.**
+> - **Whether "size" clamping happens on the recursive call or is re-clamped each
+>   time.** [...] since size decrements by exactly 1 and the base case (size ≤ 0)
+>   triggers before any negative value could be produced from a positive size,
+>   this clamping is in practice inert for `Str`.
+
+**Dispositioned in turn, and none blocks reproduction.**
+
+The first is DERIVABLE and was derived — the subject reached exactly 2 draws per
+`Int` and got it right; "not stated as a single number" is a readability note,
+not an underdetermination. The third is NON-OBSERVABLE for `Str` by the
+subject's own argument, which is correct: size decrements by one from a positive
+value, so the clamp cannot fire on a `Str` recursion, and `oath/gen.go` clamps on
+entry regardless.
+
+**The second is the one worth keeping, because it argues for the step 2
+disposition rather than against it.** The `Data` rule never defines `k` as the
+cardinality of the eligible constructor set; a reader has to infer it. For `Str`
+that inference is unnecessary — the rewritten entry states `below(1)` and
+`below(2)` outright. **So the worked instance is not merely redundant: it is
+load-bearing for exactly the reader the entry exists for**, and had step 2 chosen
+DELETION, this reader would have had to derive `k` from an undefined term. That
+is evidence the disposition was right, arriving from a reader who knew nothing
+about the choice. The gap in the general `Data` rule is real, is not in the
+changed text, and is recorded here rather than repaired.
+
+### Disposition of run 1's finding 1 — the boundary-table index mapping
+
+**MEASURED, CONFIRMED, AND OUT OF SCOPE — recorded rather than repaired.**
+
+The finding is about §4's `Int` rule, which this change did not touch. That is
+NOT why it is being left alone; predating the change decides nothing. It is left
+alone because it does not block deriving the delegated `Str` sequence, and
+because repairing it is a different edit from the one #163 authorised.
+
+What the wording gives a reader: `below(n)` is defined as `next() mod n`, so
+`below(5)` ranges over `[0,4]`; the table `[-2,-1,0,1,2]` has exactly five
+entries in a written order. Index-by-position is a reading in which both the
+modulus and the written order do work — but it is not the ONLY such reading
+(`table[4-b]` uses both too), so the mapping is fixed by ORDINARY CONVENTION
+rather than by any sentence. The subject named exactly that: it "inferred the
+natural in-order index mapping rather than finding it spelled out".
+
+**It is observable, and the size of that was measured rather than argued.** With
+`gen.go`'s boundary indexing reversed to `boundary[len-1-below(len)]` in a
+throwaway worktree, nothing else changed, a committed conformance transcript
+moves:
+
+```
+committed   fixtures/verify/bad-reverse.txt
+    counterexample: (Cons -1 Nil), (Cons -8 (Cons 2 (Cons 15 Nil)))
+reversed    the same definition under the mutated kernel
+    counterexample: (Cons 1 Nil), (Cons -8 (Cons -2 (Cons 15 Nil)))
+```
+
+`-1` becomes `1` and `2` becomes `-2`. So this is not a stylistic gap: the
+mapping is on §10's conformance surface, and two kernels choosing differently
+would diverge in bytes. Two Go tests also fail under the mutation, so the
+committed evidence does discriminate.
+
+**And it has already been survived by the thing that would have caught it.**
+`oathrs` was built BLIND from `docs/SPEC.md` and reproduces all 191
+`verify/*.txt` transcripts byte-identically, counterexamples included — verified
+again at this commit. An independent implementer reading only the specification
+did land on `table[b]`. So the accurate verdict is **underspecified in the text,
+determined by convention, and empirically survived** — three different states,
+and collapsing them into "the spec is wrong" or "the spec is fine" loses the
+part that matters.
+
+**Not repaired here.** It changes no `Str` draw and blocks no reproduction of
+the delegated sequence, and #163's scope is §4's `Str` entry. It is written down
+here, with its measurement, for a decision that is not this commit's to make.
+
+### Disposition of run 1's finding 2 — whether `Int` generation takes a size argument
+
+**NON-OBSERVABLE, THEREFORE NOT A DEFECT — and demonstrated, not asserted.**
+
+The `Int` rule reads: draw `below(4)`; on 0, draw `below(5)` into the boundary
+table; otherwise draw `intIn(-20,20)`. No branch, modulus, bound or draw count
+mentions size. The clamp preamble constrains what a generation call does with a
+size it USES; a rule that never reads size cannot behave differently for having
+been handed one.
+
+The demonstration is already in the repository and was not written for this
+purpose, which is why it counts: `genIntFromSpecText` in
+`oath/gen_str_spec_order_test.go` takes **no size parameter at all** —
+
+```go
+func genIntFromSpecText(r *rng) int64 {
+```
+
+— and the derivation built on it reproduces the kernel's value and draw count
+over 44 000 generations across sizes −3 to 8. The kernel's `genValue` does pass
+size to its `int` arm. Both readings, same bytes. The subject reached the same
+conclusion by inspection ("passed-but-unused, which doesn't change the draw
+sequence"); the test is what makes it a measurement instead of two readers
+agreeing.
+
+**No text change.** An unobservable distinction does not need adjudicating, and
+adding a sentence to say so would put the author's resolved uncertainty into
+normative text for every future reader to inherit.
+
+### What step 3 changed in the specification
+
+Nothing. All five findings across the two runs were dispositioned above and none
+blocks reproduction of the delegated `Str` sequence:
+
+| finding | run | verdict |
+| --- | --- | --- |
+| boundary-table index mapping | 1 | observable and MEASURED, gap in the adjacent `Int` rule, already derived correctly by an independent kernel — recorded, not repaired |
+| does `Int` generation take a size argument | 1 | NON-OBSERVABLE; demonstrated by a size-free derivation reproducing the kernel |
+| `Int`'s total draw count not stated as a number | 2 | DERIVABLE, and derived correctly |
+| `k` undefined in the general `Data` rule | 2 | real gap in the `Data` rule; the rewritten `Str` entry states the two values outright, which is why it does not reach `Str` |
+| re-clamping on the recursive call | 2 | NON-OBSERVABLE for `Str`; the clamp cannot fire on this recursion |
+
+**The step 2 text stands as committed**, and one finding turned into evidence
+for it: the reader who could not define `k` from the `Data` rule did not need to,
+because the worked instance had already done that algebra.
+
+### What is ESTABLISHED and what stays PROVISIONAL
+
+The round supports two different claims and they are not worth the same. Keeping
+them apart is the whole calibration:
+
+**ESTABLISHED — decidable, and no reader's priors touch it — over a SAMPLED
+population.** `gen_str_spec_order_test.go` implements the rewritten text and
+reproduces the kernel's generated value and draw count on **every one of 44 000
+generations: 4 000 seeds at each of 11 sizes (−3, −1, 0…8), covering every size
+the case schedule reaches and both sides of the clamp**, with two
+deliberately-wrong derivations as controls. That is settled by a command rather
+than by anyone's reading — but it is AGREEMENT OVER THAT POPULATION, not a proof
+of equivalence. A divergence at some unsampled seed or a larger size would
+survive it. No structural argument for the general case is offered here, and
+claiming one would repeat the mistake this whole record exists to correct.
+
+**PROVISIONAL — the reader claim.** *An independent reader given only these
+sentences arrives at that algorithm.* Three did, and it is still provisional,
+for a reason worth naming exactly:
+
+**The only HARNESS-VERIFIED isolation datum in this whole record belongs to the
+CONTAMINATED run.** Run 1's `tool_uses: 0` came from the dispatcher. Runs 2 and
+3 — the ones the conclusion rests on — closed CONTEXT by their own account of
+their own context, and a subject's self-report is precisely the kind of evidence
+this repository declines to treat as established elsewhere. Run 3's "I have only
+the extract" is also loose on its face: it necessarily also received the hard
+constraint and the questions.
+
+MODEL is addressed by run 3 being a different model, and addressed is not
+eliminated — same vendor, same lineage.
+
+So: three readers, one derivation, no harness-side confirmation for the two that
+matter. That is worth recording and not worth calling established. What would
+upgrade it is a dispatch that reports the subject's full context from the harness
+side rather than from the subject.
+
+**NOT established, and not attempted.** That these sentences carry no assumption
+the whole Claude family shares. No reader available here can witness that, and
+saying otherwise would be the exact overreach step 1 was corrected for.
