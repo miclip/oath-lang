@@ -1,0 +1,30 @@
+{
+  "name": "config-missing",
+  "prop_names": [
+    "nothing-required-is-complete",
+    "reports-a-missing-key",
+    "complete-config-reports-nothing"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "lines",
+    "required"
+  ],
+  "confinement": [
+    "",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

@@ -1,13 +1,13 @@
 {
   "name": "config-missing",
-  "hash": "8c9e095b0d72fe2dd3338908839c2f89353f2585efb362b8d298a6f562b779a6",
+  "hash": "4e98c1f046641afe2e92352d929931cf7079ce2ac1bf6028e0e7ee2cfacedac0",
   "kind": "func",
   "termination": "structural",
   "confinement": [
     "",
     ""
   ],
-  "level": "tested",
+  "level": "proven",
   "cases": 200,
-  "proven": 2
+  "proven": 3
 }

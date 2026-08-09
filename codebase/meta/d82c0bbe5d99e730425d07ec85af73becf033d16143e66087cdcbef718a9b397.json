@@ -1,0 +1,28 @@
+{
+  "name": "check-config",
+  "prop_names": [
+    "no-args-is-usage",
+    "reports-ok-or-missing"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 2
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "caps",
+    "args"
+  ],
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "proven_props": [
+    0,
+    1
+  ]
+}

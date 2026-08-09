@@ -7,15 +7,39 @@ import (
 	"testing"
 )
 
-// STR GENERATOR REACH — the measurement half of #161, run BEFORE either
-// property is repaired.
+// STR GENERATOR REACH — the measurement half of #161, taken BEFORE either
+// property was repaired. The figures below are a historical record of the
+// generator at that moment, and the ratchets keep them honest.
 //
-// #161 found two committed properties in examples/config.oath that are FALSE
-// while recorded `tested` at 200 cases with `falsified: null`. Repairing the
-// properties would leave the question underneath untouched:
+// #161 found two committed properties in examples/config.oath that WERE FALSE
+// while recorded `tested` at 200 cases with `falsified: null`. BOTH HAVE SINCE
+// BEEN REPAIRED — each is now guarded by `(== (config-key key) key)` and PROVEN
+// over unbounded ints; `config_guard_test.go` carries the firing and non-firing
+// controls. Repairing them left the question underneath untouched, which is why
+// this measurement was taken first and is kept afterwards:
 //
 //	can the deterministic tester's Str generator produce the one codepoint
 //	these definitions branch on at all?
+//
+// THAT QUESTION IS STILL OPEN AND IS NOW #162. The answer measured here is no,
+// and the repair above did not change it: guarding two properties removed two
+// false claims, and left every future Str definition exposed to the same gap.
+// Later measurements, recorded on #162, showed that widening the generator's
+// uniform Int arm makes '=' REACHABLE without making it FINDABLE. TWO DISTINCT
+// PROBES, and they must not be quoted as one — the second is the range actually
+// proposed, and it detects WORSE than the first because 256 values dilute each
+// codepoint further than 148 do:
+//
+//	                          hit rate, key binder   detection in 200 cases
+//	  [-20,127]  (throwaway    0.36% / 0.34%          51.4% / 49.4%
+//	              probe below)
+//	  [-128,127] (the widening 0.14% / 0.30%          24.4% / 45.2%
+//	              actually run)
+//
+// Under [-128,127] BOTH properties took zero hits inside the first 200 cases —
+// the schedule verification really runs — and neither was falsified. So "reach
+// is not detection" is not a coin flip at the range proposed; it is worse than
+// one, and the coin-flip figures belong to the throwaway probe alone.
 //
 // THE CLAIM, and its universe, derived from the claim rather than from the
 // generator's decomposition:
@@ -47,9 +71,12 @@ import (
 // consistent with a rare event, and only a longer run of the SAME schedule
 // distinguishes "rare" from "unreachable". Both counts are reported.
 //
-// THE KNOWN FALSIFIERS AND THEIR CONTROLS, recorded here because the
-// measurement is only interesting if the properties really are false. Run
-// against the committed store with `oath eval`; no solver, no store write:
+// THE FALSIFIERS AS THEY STOOD, recorded here because the measurement was only
+// interesting if the properties really were false. These bindings are now
+// EXCLUDED BY THE GUARDS rather than falsifying — they are reproduced verbatim
+// as the historical evidence, and `config_guard_test.go` asserts every one of
+// them against the current store. Run against the committed store with
+// `oath eval`; no solver, no store write:
 //
 //	(config-has-key (Cons [Str] (str-append "a=b" "=v") (Nil [Str])) "a=b")
 //	  -> false     FALSIFIER   (finds-head asserts true)

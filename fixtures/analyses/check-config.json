@@ -1,6 +1,6 @@
 {
   "name": "check-config",
-  "hash": "3bb186fa472835cdf59d0711de06105362f7ea8c515071c38bac688ebd1a9f16",
+  "hash": "d82c0bbe5d99e730425d07ec85af73becf033d16143e66087cdcbef718a9b397",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
