@@ -10,13 +10,102 @@ import (
 const propCases = 200
 const propFuel = 2_000_000
 
+// PropOutcome is the three-way result of checking one property.
+//
+// THE DISTINCTION IS THE POINT, AND IT IS THE ONE THIS PROJECT KEEPS NAMING:
+// an implementation limit is not a semantic fact. A property that EVALUATES TO
+// FALSE is refuted — a real defect, and the strongest thing the tester can say.
+// A property whose cases could not be EVALUATED AT ALL — fuel exhausted, depth
+// exceeded, an input the generator could not build — has produced no verdict
+// whatsoever, and recording that as refutation asserts something about the
+// program that nothing observed.
+//
+// The kernel already had this concept one layer up: §7.2 requires an aborted
+// solver attempt be reported "environmentally inconclusive rather than as a
+// divergence", because "no valid verdict exists" is a different claim from
+// "not proven". Property testing had no such state, so every unevaluable case
+// was funnelled into `falsified` by fiat. This is that same rule, applied to
+// the tester rather than the prover.
+type PropOutcome string
+
+const (
+	PropPassed        PropOutcome = "passed"
+	PropFalsified     PropOutcome = "falsified"
+	PropIndeterminate PropOutcome = "indeterminate"
+)
+
 // PropReport is the outcome of checking one property.
 type PropReport struct {
 	Name    string
-	Passed  int // cases that passed
-	Failed  bool
-	Counter string // rendered counterexample inputs, if falsified
-	Err     string // generation/setup error, if any
+	Outcome PropOutcome
+	Passed  int    // cases that evaluated to true
+	Indet   int    // cases that could not be evaluated at all
+	Counter string // rendered counterexample inputs — ONLY when falsified
+	Err     string // why no verdict was reached — ONLY when indeterminate
+}
+
+// Falsified reports whether the property was REFUTED — an evaluated boolean
+// false. It is deliberately a method rather than a field: the old `Failed bool`
+// was set for refutation AND for evaluation errors, and every consumer that
+// read it inherited the conflation. A method cannot be assigned to, so no
+// caller can quietly re-widen it.
+func (r PropReport) Falsified() bool { return r.Outcome == PropFalsified }
+
+// Indeterminate reports whether the tester reached no verdict.
+func (r PropReport) Indeterminate() bool { return r.Outcome == PropIndeterminate }
+
+// Established reports whether this property's cases all passed — the only
+// outcome that may contribute to a `tested` guarantee.
+func (r PropReport) Established() bool { return r.Outcome == PropPassed }
+
+// Marker, Headline and Detail are the ONE rendering vocabulary for a property
+// outcome. Four surfaces print these lines — `verify` (which is also the
+// conformance transcript), `put`, `cross` and the MCP tools — and before this
+// each re-derived the distinction from two booleans with its own spelling. A
+// renderer that disagreed with the ladder about what "falsified" looks like
+// would be invisible from inside either one, so the words live with the type
+// and each surface supplies only its own indentation.
+func (r PropReport) Marker() string {
+	switch r.Outcome {
+	case PropFalsified:
+		return "✗"
+	case PropIndeterminate:
+		return "?"
+	default:
+		return "✓"
+	}
+}
+
+func (r PropReport) Headline() string {
+	switch r.Outcome {
+	case PropFalsified:
+		return fmt.Sprintf("FALSIFIED after %d cases", r.Passed)
+	case PropIndeterminate:
+		return fmt.Sprintf("INDETERMINATE (%d passed, %d unevaluable)", r.Passed, r.Indet)
+	default:
+		return fmt.Sprintf("passed %d cases", r.Passed)
+	}
+}
+
+// Detail returns the labelled second line, if the outcome has one. A falsified
+// property carries a COUNTEREXAMPLE — an input that refutes it. An
+// indeterminate one carries a REASON and deliberately NO counterexample: the
+// inputs it could not evaluate refute nothing, and printing them under that
+// label is what made a fuel exhaustion read as a defect.
+// A refutation ALWAYS prints its counterexample line, even when the rendered
+// inputs are empty — a property with no binders is refuted by the empty
+// binding, and that line is part of the committed conformance transcripts.
+// Suppressing it when the text is empty would move a fixture for a reason
+// unrelated to this change.
+func (r PropReport) Detail() (label, text string, ok bool) {
+	switch r.Outcome {
+	case PropFalsified:
+		return "counterexample", r.Counter, true
+	case PropIndeterminate:
+		return "no verdict", r.Err, r.Err != ""
+	default:
+		return "", "", false
+	}
 }
 
 // verifyDef runs every property of a function definition and records the
@@ -59,30 +148,14 @@ func verifyDef(st *Store, h string) ([]PropReport, error) {
 	m := *mp
 
 	prevLevel := m.Guarantee.Level
-	g := Guarantee{Level: "asserted"}
-	if len(d.Props) > 0 {
-		var falsified []string
-		for _, r := range reports {
-			if r.Failed || r.Err != "" {
-				falsified = append(falsified, r.Name)
-			}
-		}
-		if len(falsified) > 0 {
-			g = Guarantee{Level: "falsified", Falsified: falsified}
-		} else {
-			g = Guarantee{Level: "tested", Cases: propCases}
-		}
-	}
+	g := guaranteeFromReports(d, reports)
 	m.Guarantee = g
-	switch {
-	case g.Level == "falsified":
+	allProven := len(d.Props) > 0 && len(m.ProvenProps) == len(d.Props)
+	m.Guarantee.Level = resolveLevel(g.Level, prevLevel, allProven)
+	if m.Guarantee.Level == "falsified" {
 		// A refuted definition retains no proofs — leaving ProvenProps set
 		// would be a self-contradictory record (falsified AND proven).
 		m.ProvenProps = nil
-	case g.Level == "tested" && prevLevel == "proven" && len(m.ProvenProps) == len(d.Props):
-		// Re-verification must not silently demote a real proof: the props are
-		// identical (same hash ⇒ same Def), so prior SMT proofs still stand.
-		m.Guarantee.Level = "proven"
 	}
 	// Keep the proven count consistent with the retained proof set, so a
 	// partially-proven `tested` def (e.g. 3 of 5) still reports "3 proven"
@@ -94,6 +167,82 @@ func verifyDef(st *Store, h string) ([]PropReport, error) {
 		return nil, err
 	}
 	return reports, nil
+}
+
+// guaranteeFromReports maps property outcomes to a guarantee level. It is a
+// PURE function of (does the def have properties, what did each report say) so
+// every outcome can be asserted directly rather than inferred from a store
+// round-trip — the shape this repo's gate discipline asks for.
+//
+// The ladder, in priority order:
+//
+//	any FALSIFIED        -> falsified, naming the refuted properties.
+//	                        A refutation is the strongest thing the tester can
+//	                        say and it dominates any indeterminacy elsewhere.
+//	any INDETERMINATE    -> asserted. NOT `tested`: `tested` means "all
+//	                        properties passed all cases", and a property whose
+//	                        cases could not be evaluated has not passed them.
+//	                        Recording it as `tested` would claim evidence that
+//	                        does not exist; recording it as `falsified` would
+//	                        claim a refutation that does not exist. `asserted`
+//	                        — the property is stated, testing established
+//	                        nothing — is exactly the available truth, and it
+//	                        needs no new level and no stored-data migration.
+//	all PASSED           -> tested.
+//	no properties        -> asserted.
+func guaranteeFromReports(d *Def, reports []PropReport) Guarantee {
+	if len(d.Props) == 0 {
+		return Guarantee{Level: "asserted"}
+	}
+	var falsified, indeterminate []string
+	for _, r := range reports {
+		switch r.Outcome {
+		case PropFalsified:
+			falsified = append(falsified, r.Name)
+		case PropIndeterminate:
+			indeterminate = append(indeterminate, r.Name)
+		}
+	}
+	switch {
+	case len(falsified) > 0:
+		// The indeterminate names are carried ALONGSIDE the falsified ones, not
+		// dropped. A refutation elsewhere does not turn an unevaluable property
+		// into a checked one, and dropping the names here would let `explain`
+		// fall through to reporting it as `tested` — reintroducing the exact
+		// claim this change removes, on a definition that is already known bad.
+		return Guarantee{Level: "falsified", Falsified: falsified, Indeterminate: indeterminate}
+	case len(indeterminate) > 0:
+		// `asserted`, but NAMING the properties that reached no verdict. The
+		// level alone cannot distinguish this from a definition that swears
+		// nothing, and a reader who cannot tell those apart is being told a
+		// definition has no properties when it has properties nobody could
+		// evaluate.
+		return Guarantee{Level: "asserted", Indeterminate: indeterminate}
+	default:
+		return Guarantee{Level: "tested", Cases: propCases}
+	}
+}
+
+// resolveLevel decides the level actually recorded, given the level the current
+// run computed, the level the object already carried, and whether every
+// property carries a standing SMT proof. Pure, so every combination can be
+// asserted rather than inferred from a store round-trip.
+//
+// IT EXISTS TO PROTECT PROOFS FROM THE TESTER'S BUDGET. A proof quantifies over
+// ALL inputs; a generated case that ran out of fuel is a fact about 2,000,000
+// fuel units and says nothing about the program. So a `proven` definition whose
+// properties all still carry proofs stays proven when a run comes back
+// `tested` (nothing new was learned) or `asserted` (nothing was learned at
+// all). Only a REFUTATION — an evaluated boolean false, which contradicts the
+// proof outright and means one of the two is wrong — takes a proof away.
+func resolveLevel(computed, prevLevel string, allProven bool) string {
+	if computed == "falsified" {
+		return "falsified"
+	}
+	if prevLevel == "proven" && allProven {
+		return "proven"
+	}
+	return computed
 }
 
 // caseSeedBase derives a definition's case-seed base from its hash. It is the
@@ -129,13 +278,33 @@ func genPropCase(st *Store, p *Prop, base uint64, pi, c int) ([]Value, error) {
 	return env, nil
 }
 
+// runProp checks one property over `cases` generated cases.
+//
+// A REFUTATION DOMINATES AN INDETERMINACY, which is why an unevaluable case
+// does NOT stop the run. If some case evaluates to false the property IS false,
+// and that is a positive finding about the program; a case that ran out of fuel
+// is only a fact about the budget. Stopping at the first indeterminate case
+// would let a fuel exhaustion at case 3 hide a genuine counterexample at case
+// 4, downgrading a real defect into "no verdict". Only a refutation stops the
+// run, because after one there is nothing left to learn.
 func runProp(st *Store, h string, p *Prop, name string, base uint64, pi int, cases int, fuel int64) PropReport {
-	rep := PropReport{Name: name}
+	rep := PropReport{Name: name, Outcome: PropPassed}
+	// The first reason no verdict was reached, kept so the report can say WHY
+	// it is indeterminate. Later reasons are not collected: one is enough to
+	// act on, and the count is reported separately.
+	noVerdict := func(reason string) {
+		rep.Indet++
+		if rep.Err == "" {
+			rep.Err = reason
+		}
+	}
 	for c := 0; c < cases; c++ {
 		env, err := genPropCase(st, p, base, pi, c)
 		if err != nil {
-			rep.Err = err.Error()
-			return rep
+			// The generator could not build an input. No case was run, so
+			// nothing was observed about the property.
+			noVerdict(err.Error())
+			continue
 		}
 		inputs := make([]string, len(env))
 		for i, v := range env {
@@ -145,16 +314,35 @@ func runProp(st *Store, h string, p *Prop, name string, base uint64, pi int, cas
 		ev := &evaluator{st: st, fuel: fuel}
 		out, err := ev.eval(env, h, &p.Body)
 		if err != nil {
-			rep.Failed = true
-			rep.Counter = strings.Join(inputs, ", ") + "  (runtime error: " + err.Error() + ")"
-			return rep
+			// Fuel exhausted, depth exceeded, or any other runtime error. The
+			// property did not evaluate, so it was neither confirmed nor
+			// refuted on this case.
+			noVerdict(err.Error())
+			continue
 		}
-		if out.K != "bool" || !out.Bool {
-			rep.Failed = true
+		if out.K != "bool" {
+			// Not a boolean verdict, so not a refutation. The checker should
+			// make this unreachable; if it happens, "no verdict" is the honest
+			// report rather than a refutation nothing observed.
+			noVerdict("property did not evaluate to a bool")
+			continue
+		}
+		if !out.Bool {
+			// AN EVALUATED BOOLEAN FALSE — the only thing that refutes.
+			rep.Outcome = PropFalsified
 			rep.Counter = strings.Join(inputs, ", ")
+			// Any no-verdict reason collected from an earlier case is
+			// DISCARDED. The report is now a refutation, and Err means "why no
+			// verdict was reached" — carrying both would emit a counterexample
+			// AND an error on the same property, which is the conflation this
+			// change exists to remove, reappearing inside a single record.
+			rep.Err = ""
 			return rep
 		}
 		rep.Passed++
+	}
+	if rep.Indet > 0 {
+		rep.Outcome = PropIndeterminate
 	}
 	return rep
 }

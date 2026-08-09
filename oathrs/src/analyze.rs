@@ -696,6 +696,11 @@ pub fn mutation_score(store: &Store, hash: &str) -> Option<(u32, u32)> {
         let mut s = store.clone();
         s.def_by_hash.insert(mhash.clone(), mdef);
         let mut is_killed = false;
+        // SPEC §6.3: the first property whose outcome is `falsified` (§4.1)
+        // kills the mutant, and only that. An `indeterminate` property does NOT
+        // kill — the tester reached no verdict under the 500,000-fuel budget,
+        // which is a fact about the harness and not about what the
+        // specification excludes.
         for (pi, prop) in props.iter().enumerate() {
             if let PropResult::Falsified { .. } =
                 run_prop(&s, &mhash, pi as u64, prop, MUT_CASES, MUT_FUEL)
@@ -755,10 +760,11 @@ pub fn analyze(store: &Store, name: &str, proofs: Option<&[bool]>) -> Analysis {
                 ("asserted".to_string(), None, None)
             } else {
                 let mut falsified = false;
+                let mut indeterminate = false;
                 let info = store.func_by_hash.get(&hash).unwrap();
                 for (pi, prop) in props.iter().enumerate() {
                     let _ = &info.prop_names[pi];
-                    if let PropResult::Falsified { .. } = run_prop(
+                    match run_prop(
                         store,
                         &hash,
                         pi as u64,
@@ -766,8 +772,12 @@ pub fn analyze(store: &Store, name: &str, proofs: Option<&[bool]>) -> Analysis {
                         crate::verify::VERIFY_CASES,
                         crate::verify::VERIFY_FUEL,
                     ) {
-                        falsified = true;
-                        break;
+                        PropResult::Falsified { .. } => {
+                            falsified = true;
+                            break;
+                        }
+                        PropResult::Indeterminate { .. } => indeterminate = true,
+                        PropResult::Passed => {}
                     }
                 }
                 // SPEC §6 (Spec strength): spec strength is computed for every
@@ -778,18 +788,33 @@ pub fn analyze(store: &Store, name: &str, proofs: Option<&[bool]>) -> Analysis {
                     Some((_, 0)) => None,
                     other => other,
                 };
+                // SPEC §5: an `indeterminate` property yields `asserted`, not
+                // `tested` and not `falsified` — the property is stated and
+                // testing established nothing. No case count is recorded on a
+                // guarantee reached this way, because no count of cases
+                // established it. `falsified` still dominates (§4.1).
                 if falsified {
                     ("falsified".to_string(), None, m)
+                } else if indeterminate {
+                    ("asserted".to_string(), None, m)
                 } else {
                     ("tested".to_string(), Some(200), m)
                 }
             };
             // proof-derived upgrade (SPEC §7.3): if all properties are proven,
             // none refuted, and the prior level is tested, become proven.
+            // SPEC §5: A STANDING PROOF SURVIVES AN `indeterminate` RUN — a
+            // proof quantifies over all inputs, so a case the tester could not
+            // evaluate cannot subtract from it. Only a `falsified` property
+            // removes a proof, so `asserted` (reached via indeterminate, the
+            // only way a def with properties reaches it) upgrades too. `cases`
+            // stays absent there: no count of cases established the level.
             let (level, proven) = match proofs {
                 Some(flags) if !props.is_empty() => {
                     let count = flags.iter().filter(|b| **b).count();
-                    let lvl = if level == "tested" && count == props.len() {
+                    let lvl = if (level == "tested" || level == "asserted")
+                        && count == props.len()
+                    {
                         "proven".to_string()
                     } else {
                         level

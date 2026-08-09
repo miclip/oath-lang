@@ -205,6 +205,38 @@ func genMutants(st *Store, d *Def) []mutantDef {
 // is what callers here have in hand.
 func mutantSeed(hash string) uint64 { return caseSeedBase(hash) }
 
+// mutantKiller runs a mutant's properties and reports which one REFUTES it.
+//
+// ONLY AN EVALUATED BOOLEAN FALSE KILLS. A mutant whose properties run out of
+// fuel or blow the depth limit has not been caught — the tester reached no
+// verdict on it, which is a fact about the 500,000-fuel budget and not about
+// whether the specification excludes the mutated behaviour. Counting such a
+// mutant as killed inflates the spec-strength score with the harness's own
+// timeouts, and the score already answers REACH rather than exclusion; letting
+// non-termination masquerade as a kill would make it answer neither cleanly.
+//
+// The distinction is the same one `terminationOf` insists on: not proved to
+// terminate is not shown to diverge. `indeterminate` is returned alongside so
+// callers can report a mutant that survived because nothing was OBSERVED
+// differently from one that survived because nothing could be observed.
+//
+// Extracted so the kill rule has ONE home: it was written out at three call
+// sites, and a scoring loop that disagreed with the waiver gate about what
+// kills would be invisible from inside either.
+func mutantKiller(st *Store, m *Meta, mu mutantDef) (killer string, indeterminate bool) {
+	base := mutantSeed(mu.hash)
+	for pi := range mu.def.Props {
+		rep := runProp(st, mu.hash, &mu.def.Props[pi], metaPropName(m, pi), base, pi, mutantCases, mutantFuel)
+		if rep.Falsified() {
+			return rep.Name, false
+		}
+		if rep.Indeterminate() {
+			indeterminate = true
+		}
+	}
+	return "", indeterminate
+}
+
 func metaPropName(m *Meta, pi int) string {
 	if pi < len(m.PropNames) {
 		return m.PropNames[pi]
@@ -264,7 +296,7 @@ func apiMutateHashOpt(st *Store, h string, adjudicate bool) (string, error) {
 		waived[m.WaivedMutants[i].Hash] = &m.WaivedMutants[i]
 	}
 	var b strings.Builder
-	killed, waivedSeen := 0, 0
+	killed, waivedSeen, survivedIndet := 0, 0, 0
 	// Survivors are collected rather than only printed, so their DISPOSITION can
 	// be reported beneath the score (#130). A survivor is any mutant generated
 	// execution failed to distinguish — waived ones included, since a waiver is
@@ -276,15 +308,7 @@ func apiMutateHashOpt(st *Store, h string, adjudicate bool) (string, error) {
 		// Mutants are evaluated from the in-memory cache only — they are
 		// candidates under interrogation, never admitted to the codebase.
 		st.CacheDef(mu.hash, mu.def)
-		base := mutantSeed(mu.hash)
-		killer := ""
-		for pi := range mu.def.Props {
-			rep := runProp(st, mu.hash, &mu.def.Props[pi], metaPropName(m, pi), base, pi, mutantCases, mutantFuel)
-			if rep.Failed || rep.Err != "" {
-				killer = rep.Name
-				break
-			}
-		}
+		killer, indeterminate := mutantKiller(st, m, mu)
 		switch {
 		case killer != "":
 			killed++
@@ -292,12 +316,29 @@ func apiMutateHashOpt(st *Store, h string, adjudicate bool) (string, error) {
 		case waived[mu.hash] != nil:
 			// A waiver is an annotation with a justification on record —
 			// reported distinctly, never counted as a kill.
+			//
+			// THIS ARM MUST PRECEDE THE INDETERMINATE ONE. `oath waive` refuses
+			// only mutants that are KILLED, so an unevaluable mutant can now
+			// legitimately carry a waiver; classifying it as no-verdict first
+			// would discard a judgement a human recorded and drop it from the
+			// waived count. A recorded human judgement outranks the harness's
+			// report of its own budget.
 			waivedSeen++
 			w := waived[mu.hash]
 			fmt.Fprintf(&b, "○ waived    %-22s — %s (by %s)\n", mu.desc, w.Reason, w.By)
 			survivors = append(survivors, mu)
 			survivorDescs = append(survivorDescs, mu.desc)
 			survivorVerdicts = append(survivorVerdicts, survivorVerdict{kind: "equivalent", reason: w.Reason})
+		case indeterminate:
+			// Survived, but nothing was OBSERVED about it: the properties ran
+			// out of budget rather than holding. Reported distinctly so the
+			// score is not read as "the spec allows this" when the truth is
+			// "the harness never found out".
+			survivedIndet++
+			fmt.Fprintf(&b, "? no verdict %-21s — properties could not be evaluated\n", mu.desc)
+			survivors = append(survivors, mu)
+			survivorDescs = append(survivorDescs, mu.desc)
+			survivorVerdicts = append(survivorVerdicts, survivorVerdict{kind: "unadjudicated", reason: "properties reached no verdict on this mutant"})
 		default:
 			pr := &printer{st: st, tvs: m.TyVarNames}
 			fmt.Fprintf(&b, "✗ SURVIVED  %-22s — generated cases did not distinguish this change\n", mu.desc)
@@ -316,6 +357,12 @@ func apiMutateHashOpt(st *Store, h string, adjudicate bool) (string, error) {
 	fmt.Fprintf(&b, "generated mutation score: %d/%d mutants killed", killed, len(muts))
 	if waivedSeen > 0 {
 		fmt.Fprintf(&b, " (+%d waived as equivalent, justification on record)", waivedSeen)
+	}
+	if survivedIndet > 0 {
+		// Reported next to the score rather than folded into it: these mutants
+		// were neither excluded by the spec nor shown to be allowed by it, and
+		// a bare denominator cannot say which.
+		fmt.Fprintf(&b, " (+%d reached no verdict — properties could not be evaluated)", survivedIndet)
 	}
 	b.WriteString("\n")
 	if adjudicate {
@@ -375,12 +422,8 @@ func apiWaive(st *Store, name, mutantPrefix, reason, by string) (string, error) 
 			continue
 		}
 		st.CacheDef(mu.hash, mu.def)
-		base := mutantSeed(mu.hash)
-		for pi := range mu.def.Props {
-			rep := runProp(st, mu.hash, &mu.def.Props[pi], metaPropName(m, pi), base, pi, mutantCases, mutantFuel)
-			if rep.Failed || rep.Err != "" {
-				return "", fmt.Errorf("mutant %s is killed by %s — nothing to waive", shortHash(mu.hash), rep.Name)
-			}
+		if killer, _ := mutantKiller(st, m, mu); killer != "" {
+			return "", fmt.Errorf("mutant %s is killed by %s — nothing to waive", shortHash(mu.hash), killer)
 		}
 		for _, w := range m.WaivedMutants {
 			if w.Hash == mu.hash {

@@ -64,7 +64,26 @@ const EXAMPLES: { label: string; note: string; src: string }[] = [
   },
 ];
 
-type Prop = { name: string; passed: number; failed: boolean; counterexample?: string };
+// `outcome` is the authority (SPEC §4.1). `failed` is retained by the kernel but
+// narrowed to refutation only, so branching on it alone renders an
+// INDETERMINATE property — one whose cases could not be evaluated — as a green
+// tick, which is the misreport the three-way outcome exists to prevent.
+type Prop = {
+  name: string;
+  passed: number;
+  indeterminate?: number;
+  outcome?: "passed" | "falsified" | "indeterminate";
+  failed: boolean;
+  counterexample?: string;
+  error?: string;
+};
+// Older kernels emit no `outcome`; fall back to the narrowed `failed` flag so a
+// stale WASM build keeps rendering pass/fail correctly rather than blank.
+function propOutcome(p: Prop): "passed" | "falsified" | "indeterminate" {
+  if (p.outcome) return p.outcome;
+  return p.failed ? "falsified" : "passed";
+}
+
 type Report = {
   name: string;
   status: string;
@@ -404,10 +423,15 @@ export default function TryPage() {
                   <ul style={{ listStyle: "none", padding: 0, margin: "12px 0 0" }}>
                     {r.props.map((p, j) => (
                       <li key={j} style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, padding: "3px 0", color: "var(--cream-dim)" }}>
-                        <span style={{ color: p.failed ? "var(--clay)" : "var(--sage-bright)" }}>{p.failed ? "✗" : "✓"}</span>{" "}
+                        <span style={{ color: propOutcome(p) === "falsified" ? "var(--clay)" : propOutcome(p) === "indeterminate" ? "var(--cream-dim)" : "var(--sage-bright)" }}>
+                          {propOutcome(p) === "falsified" ? "✗" : propOutcome(p) === "indeterminate" ? "?" : "✓"}
+                        </span>{" "}
                         {p.name}
-                        {p.failed && p.counterexample && (
+                        {propOutcome(p) === "falsified" && p.counterexample && (
                           <span style={{ color: "var(--clay)" }}> — counterexample: {p.counterexample}</span>
+                        )}
+                        {propOutcome(p) === "indeterminate" && (
+                          <span style={{ color: "var(--cream-dim)" }}> — no verdict{p.error ? `: ${p.error}` : ""}</span>
                         )}
                       </li>
                     ))}

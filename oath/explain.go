@@ -27,7 +27,7 @@ import (
 type explainProp struct {
 	Name   string `json:"name"`
 	Hash   string `json:"hash"`   // the property's own content hash (spec identity)
-	Status string `json:"status"` // proven | tested | falsified
+	Status string `json:"status"` // proven | tested | indeterminate | falsified
 }
 
 type explainWaiver struct {
@@ -235,6 +235,13 @@ func buildExplain(st *Store, name string) (*explainPkg, error) {
 	for _, fn := range m.Guarantee.Falsified {
 		falsified[fn] = true
 	}
+	// Properties that reached NO VERDICT (SPEC §4.1). Without this they fall
+	// through to the "tested" default below and `explain` reports that they
+	// held on generated cases — a claim nothing observed.
+	indeterminate := map[string]bool{}
+	for _, in := range m.Guarantee.Indeterminate {
+		indeterminate[in] = true
+	}
 
 	pkg := &explainPkg{
 		Name: name, Hash: h,
@@ -268,7 +275,12 @@ func buildExplain(st *Store, name string) (*explainPkg, error) {
 		case falsified[pn]:
 			status = "falsified"
 		case proven[pi]:
+			// A proof outranks an indeterminate test run: it establishes the
+			// property for ALL inputs, which is strictly more than any case
+			// could have shown.
 			status = "proven"
+		case indeterminate[pn]:
+			status = "indeterminate"
 		}
 		pkg.Properties = append(pkg.Properties, explainProp{
 			Name: pn, Hash: propHash(&d.Props[pi]), Status: status,
@@ -322,6 +334,14 @@ func explainLimitations(st *Store, p *explainPkg, m *Meta) []string {
 		switch pr.Status {
 		case "falsified":
 			out = append(out, fmt.Sprintf("property %q is FALSIFIED — a counterexample exists", pr.Name))
+		case "indeterminate":
+			// "at least one", not "no": a property is indeterminate as soon as
+			// ONE case is unevaluable, and cases may well have passed alongside
+			// it. Saying none could be evaluated would overstate the gap and
+			// contradict the verify transcript, which reports both counts.
+			out = append(out, fmt.Sprintf(
+				"property %q reached NO VERDICT — at least one generated case could not be "+
+					"evaluated, so it is neither tested nor refuted", pr.Name))
 		case "tested":
 			unproven = append(unproven, pr.Name)
 		}

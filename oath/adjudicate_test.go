@@ -364,16 +364,12 @@ func TestAdjudicationDoesNotChangeTheScore(t *testing.T) {
 	}
 }
 
-// firstKiller reproduces the scoring loop's kill test for one mutant.
+// firstKiller CALLS the scoring loop's kill test rather than reproducing it. It
+// used to be a third copy of the predicate, which meant a test asking "is this
+// mutant a survivor?" could answer differently from the engine that scored it.
 func firstKiller(st *Store, m *Meta, mu mutantDef) string {
-	base := mutantSeed(mu.hash)
-	for pi := range mu.def.Props {
-		rep := runProp(st, mu.hash, &mu.def.Props[pi], metaPropName(m, pi), base, pi, mutantCases, mutantFuel)
-		if rep.Failed || rep.Err != "" {
-			return rep.Name
-		}
-	}
-	return ""
+	killer, _ := mutantKiller(st, m, mu)
+	return killer
 }
 
 // TestBudgetClampsToTheContextCap asserts every outcome of the clamp as a pure

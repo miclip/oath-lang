@@ -102,9 +102,12 @@ func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pu
 				rep.Status = "falsified"
 			}
 			for _, r := range reports {
+				label, text, hasDetail := r.Detail()
 				rep.Props = append(rep.Props, propJSON{
-					Name: r.Name, Passed: r.Passed, Failed: r.Failed,
+					Name: r.Name, Passed: r.Passed, Indeterminate: r.Indet,
+					Outcome: string(r.Outcome), Failed: r.Falsified(),
 					Counterexample: r.Counter, Error: r.Err,
+					Headline: r.Headline(), DetailLabel: label, Detail: text, HasDetail: hasDetail,
 				})
 			}
 		}
@@ -270,13 +273,9 @@ func renderPutReports(results []putReport) string {
 				fmt.Fprintf(&b, "    capabilities: %s\n", rep.Confinement)
 			}
 			for _, r := range rep.Props {
-				if r.Failed {
-					fmt.Fprintf(&b, "    prop %-24s FALSIFIED after %d cases\n", r.Name, r.Passed)
-					fmt.Fprintf(&b, "      counterexample: %s\n", r.Counterexample)
-				} else if r.Error != "" {
-					fmt.Fprintf(&b, "    prop %-24s ERROR: %s\n", r.Name, r.Error)
-				} else {
-					fmt.Fprintf(&b, "    prop %-24s passed %d cases\n", r.Name, r.Passed)
+				fmt.Fprintf(&b, "    prop %-24s %s\n", r.Name, r.Headline)
+				if r.HasDetail {
+					fmt.Fprintf(&b, "      %s: %s\n", r.DetailLabel, r.Detail)
 				}
 			}
 		}
@@ -1391,12 +1390,9 @@ func apiVerify(st *Store, name string) (string, error) {
 func renderVerifyReports(reports []PropReport) string {
 	var b strings.Builder
 	for _, r := range reports {
-		if r.Failed {
-			fmt.Fprintf(&b, "✗ prop %-24s FALSIFIED after %d cases\n    counterexample: %s\n", r.Name, r.Passed, r.Counter)
-		} else if r.Err != "" {
-			fmt.Fprintf(&b, "✗ prop %-24s ERROR: %s\n", r.Name, r.Err)
-		} else {
-			fmt.Fprintf(&b, "✓ prop %-24s passed %d cases\n", r.Name, r.Passed)
+		fmt.Fprintf(&b, "%s prop %-24s %s\n", r.Marker(), r.Name, r.Headline())
+		if label, text, ok := r.Detail(); ok {
+			fmt.Fprintf(&b, "    %s: %s\n", label, text)
 		}
 	}
 	return b.String()

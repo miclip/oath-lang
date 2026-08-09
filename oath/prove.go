@@ -2123,6 +2123,29 @@ func apiProve(st *Store, name string) (string, error) {
 // repoint, so while a job is pending the NAME still resolves to the previous
 // object — the proof must target the stored candidate hash, not the name.
 // `display` is used only for the human-readable report.
+
+// promotableToProven reports whether a guarantee may be lifted to `proven` once
+// every property carries a proof (SPEC §5). Named so the rule has one home: a
+// test that re-spelled it could agree with itself while disagreeing with the
+// prover.
+//
+// The third arm is the one the three-way outcome added. An `asserted` level
+// reached through INDETERMINACY is promotable — its properties exist and none
+// was refuted, the tester merely could not evaluate them, and a proof does not
+// care whether a generated case ran out of fuel. Excluding it would make such
+// definitions unprovable in principle, since testing can never lift them to
+// `tested` for a proof to land on. A bare `asserted` has no properties at all,
+// so there is nothing to prove and nothing to promote.
+func promotableToProven(g Guarantee) bool {
+	switch g.Level {
+	case "tested", "proven":
+		return true
+	case "asserted":
+		return len(g.Indeterminate) > 0
+	}
+	return false
+}
+
 func apiProveHash(st *Store, h string, display string) (string, error) {
 	d, err := st.GetDef(h)
 	if err != nil {
@@ -2354,14 +2377,30 @@ func apiProveHash(st *Store, h string, display string) (string, error) {
 	// underlying tested level, or the store would advertise `proven` with an
 	// incomplete ProvenProps set.
 	allProven := len(d.Props) > 0 && proven == len(d.Props) && !anyRefuted
+	// An `asserted` level reached through INDETERMINACY (SPEC §4.1) is
+	// promotable. Its properties exist and none was refuted — the tester simply
+	// could not evaluate them — and a proof is exactly the instrument that does
+	// not care whether a generated case ran out of fuel. Excluding it would make
+	// `spin`-shaped definitions unprovable in principle: the tester can never
+	// lift them to `tested`, so a complete proof would have nowhere to land.
+	// A bare `asserted` (no properties at all) is NOT promotable, and cannot be:
+	// allProven requires len(d.Props) > 0.
 	switch {
-	case allProven && (m.Guarantee.Level == "tested" || m.Guarantee.Level == "proven"):
+	case allProven && promotableToProven(m.Guarantee):
 		m.Guarantee.Level = "proven"
 	case !allProven && m.Guarantee.Level == "proven":
-		// `proven` is only ever reached from `tested`; demote back to it.
-		m.Guarantee.Level = "tested"
-		if m.Guarantee.Cases == 0 {
-			m.Guarantee.Cases = propCases
+		// Demote to whatever the TESTER could actually establish. A definition
+		// promoted from indeterminacy must fall back to `asserted`, not to
+		// `tested`: no case ever passed, so claiming a case count on the way
+		// down would invent evidence the demotion itself is admitting is absent.
+		if len(m.Guarantee.Indeterminate) > 0 {
+			m.Guarantee.Level = "asserted"
+			m.Guarantee.Cases = 0
+		} else {
+			m.Guarantee.Level = "tested"
+			if m.Guarantee.Cases == 0 {
+				m.Guarantee.Cases = propCases
+			}
 		}
 	}
 	if err := st.SetMeta(h, m); err != nil {

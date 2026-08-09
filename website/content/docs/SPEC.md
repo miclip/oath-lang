@@ -524,8 +524,10 @@ Value printing is normative for counterexamples and conformance:
 - Closures print `<fn>`.
 - Native functions print `<fn x. x>`, `<fn x. A*x + B>`, `<fn _. V>`, or
   `<fn {K→V ...} else D>` with table entries in generation order.
-- A property runtime error counterexample appends two spaces and `(runtime
-  error: MESSAGE)` after the comma-separated printed inputs.
+- A refuted property's counterexample is the comma-separated printed inputs of
+  the first refuting case. An `indeterminate` property (§4.1) has no
+  counterexample; it reports the reason its first `no-verdict` case reached no
+  verdict, unadorned.
 
 ## 4. Deterministic generation
 
@@ -579,19 +581,100 @@ Generation by type — draw order is normative:
   generated left-to-right at size−1.
 
 Verification runs **200 cases per property** with **2,000,000 fuel** per
-case. Mutation testing runs 60 cases with 500,000 fuel. A runtime error
-(including fuel/depth exhaustion) during a case is a failure of that case.
+case. Mutation testing runs 60 cases with 500,000 fuel.
+
+### 4.1 Case outcomes and property outcomes
+
+Each case has exactly one outcome:
+
+| case outcome | when |
+| --- | --- |
+| `pass` | the property body evaluated to boolean `true` |
+| `refute` | the property body evaluated to boolean `false` |
+| `no-verdict` | the case could not be evaluated: the generator failed to build an input, evaluation raised a runtime error (including fuel and depth exhaustion, §3.1), or the body produced a non-boolean value |
+
+A property's outcome is derived from its cases:
+
+| property outcome | when |
+| --- | --- |
+| `passed` | every case passed |
+| `falsified` | at least one case refuted |
+| `indeterminate` | no case refuted and at least one case reached `no-verdict` |
+
+**A REFUTATION DOMINATES A NO-VERDICT.** A kernel MUST NOT stop a property's
+run on a `no-verdict` case; it MUST continue so that a later refuting case is
+still found. It MAY stop on the first `refute`. Consequently a property with
+both `no-verdict` and `refute` cases is `falsified`, and the recorded
+counterexample is the first refuting input — the same input a kernel with
+unlimited fuel would report.
+
+**THE REPORTED CASE COUNT IS THE NUMBER OF `pass` CASES, NEVER THE NUMBER OF
+CASES ATTEMPTED.** Both counts coincide unless a `no-verdict` case precedes a
+refutation, and there they differ: a kernel reporting attempts would emit a
+different number from one reporting passes for the same definition and the same
+seed. Passes are what both the `passed N cases` and `FALSIFIED after N cases`
+reports mean, so `no-verdict` cases are excluded from both. §10 point 2 makes
+this byte-visible, which is why it is pinned here rather than left to the
+renderer.
+
+**A `no-verdict` CASE IS NOT A FAILURE.** Fuel and depth bounds are properties
+of the evaluating kernel, not of the program under test, so a case that could
+not be evaluated is evidence of nothing about the property. Recording it as a
+refutation would assert a semantic fact on the strength of an implementation
+limit. This is the same rule §7.2 already applies to aborted solver attempts,
+where "no valid verdict exists" is required to be reported distinctly from
+"not proven"; §4.1 applies it to the tester.
+
+An `indeterminate` property records NO counterexample — no input refuted it —
+and instead records the reason the first `no-verdict` case reached no verdict.
 
 ## 5. Verdicts
 
-Guarantee levels: `asserted` (no properties), `tested` (all properties
-passed all cases), `falsified` (some property failed — the failing property
-names are recorded, with the first counterexample), `proven` (§7 succeeded
-for all properties). Falsified definitions ARE stored; rejection happens
-only at the typecheck gate. `put` reporting (JSON mode) and the journal
-(§8) carry: name, hash, kind, status, guarantee, termination, confinement,
-prior hash on repoint, and per-property results with counterexamples
-rendered by the value printer.
+Guarantee levels: `asserted` (no properties, OR some property is
+`indeterminate` and none is `falsified` — see below), `tested` (every property
+`passed`), `falsified` (some property is `falsified` — those property names are
+recorded, with the first counterexample), `proven` (§7 succeeded for all
+properties). Falsified definitions ARE stored; rejection happens only at the
+typecheck gate. `put` reporting (JSON mode) and the journal (§8) carry: name,
+hash, kind, status, guarantee, termination, confinement, prior hash on repoint,
+and per-property results with counterexamples rendered by the value printer.
+
+**AN `indeterminate` PROPERTY YIELDS `asserted`, NOT `tested` AND NOT
+`falsified`.** `tested` means the cases passed, which an unevaluated case did
+not; `falsified` means a case refuted, which an unevaluated case did not
+either. `asserted` — the property is stated and testing established nothing —
+is the only level supported by what was observed. A kernel MUST NOT record a
+case count on a guarantee reached this way, because no count of cases
+established it.
+
+`asserted` therefore covers two distinct situations, and the STORED GUARANTEE
+(§8 metadata) MUST record which: alongside the `falsified` property names it
+carries the names of the `indeterminate` ones, absent when the definition simply
+has no properties. Without that a reader cannot distinguish "this definition
+swears nothing" from "it swears things no case could evaluate", and reporting
+the second as the first states an absence that is not there. Any surface
+rendering a guarantee to a human MUST NOT describe the second as having no
+properties.
+
+This obligation is on the stored guarantee and on rendering, NOT on the
+`analyses/*.json` conformance projection, which records `level` alone and
+likewise carries no `falsified` names.
+
+**AN `asserted` LEVEL REACHED THROUGH INDETERMINACY IS PROVABLE.** If §7 proves
+every property of such a definition, its level becomes `proven` exactly as it
+would from `tested`. Excluding it would make definitions whose properties are
+unevaluable — the very ones most in need of a proof — unprovable in principle,
+since testing can never lift them to `tested` for the proof to land on. An
+`asserted` definition with NO properties is not promotable; there is nothing to
+prove. On demotion, such a definition returns to `asserted`, never to `tested`:
+no case ever passed, so no case count may be claimed on the way down.
+
+**A STANDING PROOF SURVIVES AN `indeterminate` RUN.** If the prior recorded
+level is `proven` and every property still carries a proof (§7.3), the level
+remains `proven` when a run yields `tested` or `asserted`. A proof quantifies
+over all inputs; a case the tester could not evaluate cannot subtract from it.
+Only a `falsified` property removes a proof, because a refutation and a proof
+of the same property cannot both stand.
 
 ## 6. Auxiliary analyses (metadata verdicts, never rejections)
 
@@ -818,9 +901,16 @@ vs `<` where equal elements are indistinguishable); the score's denominator
 honestly includes such unkillable mutants rather than special-casing them.
 
 Each mutant runs properties in property order with `mutantCases=60` and
-`mutantFuel=500000`, seeded by the mutant hash using §4. The first property
-that fails or errors kills the mutant. Survivors are rendered with the
-projection printer.
+`mutantFuel=500000`, seeded by the mutant hash using §4. **The first property
+whose outcome is `falsified` (§4.1) kills the mutant, and only that.** A
+property that comes back `indeterminate` does NOT kill: the tester reached no
+verdict on that mutant, which is a fact about the 500,000-fuel budget and not
+about what the specification excludes. Counting it as a kill would credit the
+specification for the harness running out of budget — and since the score
+already answers REACH rather than exclusion, admitting timeouts would leave it
+answering neither. A mutant that survives only because no property could be
+evaluated SHOULD be reported distinctly from one whose properties held.
+Survivors are rendered with the projection printer.
 
 ### 6.4 Cross-check algorithm (N-version specification)
 
@@ -850,8 +940,12 @@ Given two names resolving to hashes `hA` and `hB` with definitions `dA`, `dB`:
   property OWNER's hash — not the body's — means the cross-run and an ordinary
   `verify` of that owner draw the identical input stream, so a falsifying
   counterexample is directly comparable across the two bodies.
-- **Verdict.** `AGREE` iff no property of either side is falsified against the
-  other's body; `DISAGREE` otherwise. Because `self` is name-free (§1), the
+- **Verdict.** `AGREE` iff no property of either side is `falsified` (§4.1)
+  against the other's body; `DISAGREE` otherwise. An `indeterminate` property
+  is NOT a contradiction — the two authors have not been shown to disagree if
+  nothing could be evaluated — but it constrains nothing either, so a kernel
+  MUST report such properties distinctly rather than letting them read as
+  checks that held. Because `self` is name-free (§1), the
   rebinding is purely mechanical. The verdict is a pure function of
   `(hA, hB, store)` and is therefore reproducible and cross-kernel comparable.
   On `DISAGREE`, the falsifying `(side, property, counterexample)` localizes the
@@ -2940,8 +3034,9 @@ A candidate kernel conforms if, against a reference store:
 
 1. It computes byte-identical hashes for every definition in the store
    (equivalently: re-elaborating `examples/*.oath` reproduces every hash).
-2. Given the same definition hash, it reproduces every property verdict,
-   pass count, and counterexample string byte-for-byte.
+2. Given the same definition hash, it reproduces every property outcome
+   (§4.1 — `passed`, `falsified` or `indeterminate`), pass count, and
+   counterexample or no-verdict reason byte-for-byte.
 3. Its gate accepts and rejects exactly the same definitions.
 4. Termination and confinement verdicts match.
 5. Proof outcomes match, given the same solver version (proof *methods* —

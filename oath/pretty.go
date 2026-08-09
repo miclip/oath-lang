@@ -292,6 +292,18 @@ func guaranteeString(g Guarantee) string {
 	case "proven":
 		return fmt.Sprintf("PROVEN (all %d properties, Z3 over unbounded ints)", g.Proven)
 	}
+	if len(g.Indeterminate) > 0 {
+		// NOT "no properties checked": the properties exist and were run, and
+		// every case was unevaluable. Saying they were absent would hide the
+		// very state this level was widened to carry.
+		s := fmt.Sprintf("asserted (%d propert%s reached no verdict: %s)",
+			len(g.Indeterminate), pluralize(len(g.Indeterminate), "y", "ies"),
+			strings.Join(g.Indeterminate, ", "))
+		if g.Proven > 0 {
+			s += fmt.Sprintf(", %d proven", g.Proven)
+		}
+		return s
+	}
 	return "asserted (no properties checked)"
 }
 

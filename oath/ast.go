@@ -84,7 +84,14 @@ type Guarantee struct {
 	Level     string   `json:"level"`               // asserted | tested | falsified | proven
 	Cases     int      `json:"cases,omitempty"`     // tested: cases per property
 	Proven    int      `json:"proven,omitempty"`    // properties proven by SMT (unbounded-int semantics)
-	Falsified []string `json:"falsified,omitempty"` // falsified: names of failed properties
+	Falsified []string `json:"falsified,omitempty"` // falsified: names of refuted properties
+	// Indeterminate names the properties that reached NO VERDICT (SPEC §4.1) —
+	// every case unevaluable, so neither confirmed nor refuted. It is recorded
+	// rather than inferred because `asserted` now covers two different
+	// situations, and only this field distinguishes "this definition swears
+	// nothing" from "it swears things the tester could not evaluate". Additive
+	// and omitempty: absent means none, so no stored object needs migrating.
+	Indeterminate []string `json:"indeterminate,omitempty"`
 }
 
 // AliasNaming is the naming metadata of one name bound to an object. Two

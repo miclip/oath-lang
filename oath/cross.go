@@ -35,10 +35,29 @@ type crossDir struct {
 	reports    []PropReport // one per property of the spec side
 }
 
+// contradictions are the properties one side's spec REFUTES on the other's
+// body. Only a refutation counts: a property that could not be evaluated
+// against the other body (fuel, depth) is not evidence that the two authors
+// disagree, and counting it as one would manufacture a DISAGREE verdict out of
+// a resource limit. Indeterminate reports are surfaced separately by
+// inconclusive() so they are visible rather than silently dropped.
 func (d crossDir) contradictions() []PropReport {
 	var out []PropReport
 	for _, r := range d.reports {
-		if r.Failed || r.Err != "" {
+		if r.Falsified() {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// inconclusive are the properties that reached no verdict against the other
+// body. They weaken an AGREE — nothing was checked — without supporting a
+// DISAGREE.
+func (d crossDir) inconclusive() []PropReport {
+	var out []PropReport
+	for _, r := range d.reports {
+		if r.Indeterminate() {
 			out = append(out, r)
 		}
 	}
@@ -50,36 +69,16 @@ func (d crossDir) contradictions() []PropReport {
 // ordinary `verify` of the owner — a cross-failure and a self-pass then share
 // inputs, making the distinguishing counterexample directly comparable), but
 // with `self` bound to a DIFFERENT body's hash for evaluation.
+// It is a call, not a copy. The only thing a cross-check changes is which body
+// `self` binds to for evaluation — the seed schedule, the case count, the fuel
+// and, crucially, WHAT COUNTS AS A REFUTATION are all the tester's. runProp
+// already takes the evaluation hash and the seed base as separate arguments, so
+// binding a different body is exactly what its existing parameters express.
+// Re-implementing the loop here would give the refutation/indeterminacy rule a
+// second home, and a cross-check disagreeing with `verify` about what a
+// falsification IS would be invisible from either side.
 func crossProp(st *Store, ownerHash, bodyHash string, p *Prop, name string, pi int) PropReport {
-	// The "identical input stream" claim above is only true while this shares
-	// the tester's schedule, so it CALLS that schedule rather than matching it.
-	base := caseSeedBase(ownerHash)
-	rep := PropReport{Name: name}
-	for c := 0; c < propCases; c++ {
-		env, err := genPropCase(st, p, base, pi, c)
-		if err != nil {
-			rep.Err = err.Error()
-			return rep
-		}
-		inputs := make([]string, len(env))
-		for i, v := range env {
-			inputs[i] = printValue(st, v)
-		}
-		ev := &evaluator{st: st, fuel: propFuel}
-		out, err := ev.eval(env, bodyHash, &p.Body)
-		if err != nil {
-			rep.Failed = true
-			rep.Counter = strings.Join(inputs, ", ") + "  (runtime error: " + err.Error() + ")"
-			return rep
-		}
-		if out.K != "bool" || !out.Bool {
-			rep.Failed = true
-			rep.Counter = strings.Join(inputs, ", ")
-			return rep
-		}
-		rep.Passed++
-	}
-	return rep
+	return runProp(st, bodyHash, p, name, caseSeedBase(ownerHash), pi, propCases, propFuel)
 }
 
 // CrossResult is the full outcome of cross-checking two definitions.
@@ -160,13 +159,9 @@ func renderCross(r *CrossResult) string {
 		}
 		fmt.Fprintf(&b, "  %s's spec on %s's body:\n", d.spec, d.body)
 		for _, rp := range d.reports {
-			switch {
-			case rp.Failed:
-				fmt.Fprintf(&b, "    ✗ %-24s FALSIFIED after %d cases\n        counterexample: %s\n", rp.Name, rp.Passed, rp.Counter)
-			case rp.Err != "":
-				fmt.Fprintf(&b, "    ✗ %-24s ERROR: %s\n", rp.Name, rp.Err)
-			default:
-				fmt.Fprintf(&b, "    ✓ %-24s passed %d cases\n", rp.Name, rp.Passed)
+			fmt.Fprintf(&b, "    %s %-24s %s\n", rp.Marker(), rp.Name, rp.Headline())
+			if label, text, ok := rp.Detail(); ok {
+				fmt.Fprintf(&b, "        %s: %s\n", label, text)
 			}
 		}
 	}
@@ -175,6 +170,18 @@ func renderCross(r *CrossResult) string {
 	b.WriteString("\n")
 
 	if r.Agree() {
+		// An AGREE over properties that never evaluated would overstate what
+		// was checked, so the inconclusive ones are named rather than folded
+		// into the reassuring sentence.
+		inconclusive := append(append([]PropReport{}, r.aOnB.inconclusive()...), r.bOnA.inconclusive()...)
+		if len(inconclusive) > 0 {
+			fmt.Fprintf(&b, "AGREE ON WHAT WAS CHECKED — no property of either side is refuted by the\n")
+			fmt.Fprintf(&b, "other's body, but %d reached no verdict and constrain nothing:\n", len(inconclusive))
+			for _, rp := range inconclusive {
+				fmt.Fprintf(&b, "  %s — %s\n", rp.Name, rp.Err)
+			}
+			return b.String()
+		}
 		fmt.Fprintf(&b, "AGREE — every property of each holds against the other's body.\n")
 		b.WriteString("Two independent processes converged on the same function over the\n")
 		b.WriteString("deterministic domain; no misalignment flagged. (Honest limit: two\n")

@@ -222,7 +222,9 @@ fn cmd_prove(paths: &[String], hints_path: Option<&str>) -> i32 {
             return 1;
         }
     };
-    // falsified set: any prop falsified under testing
+    // falsified set: any prop falsified under testing. SPEC §5 — only a
+    // `falsified` property removes a proof; an `indeterminate` one does not,
+    // because a case the tester could not evaluate refuted nothing.
     let mut falsified = std::collections::BTreeSet::new();
     for (name, def) in &store.def_by_name {
         if let Def::Func { props, .. } = def {

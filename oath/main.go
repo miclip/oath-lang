@@ -1025,12 +1025,30 @@ type putReport struct {
 	JournalEntry    string `json:"journal_entry,omitempty"`
 }
 
+// propJSON is a WIRE FORMAT — `put --json`, the WASM playground, and any
+// machine consumer read it.
+//
+// `outcome` is the authority: passed | falsified | indeterminate. `failed` is
+// RETAINED and NARROWED — it is now true only for a refutation, where before it
+// was also true for a case that could not be evaluated. That is a deliberate
+// semantic change and the reason `outcome` exists: a consumer reading only
+// `failed` now sees an indeterminate property as not-failed, which is correct
+// but less informative, so anything making a decision should read `outcome`.
 type propJSON struct {
 	Name           string `json:"name"`
 	Passed         int    `json:"passed"`
-	Failed         bool   `json:"failed"`
+	Indeterminate  int    `json:"indeterminate,omitempty"` // cases that could not be evaluated
+	Outcome        string `json:"outcome"`
+	Failed         bool   `json:"failed"` // refuted — NOT merely unevaluated
 	Counterexample string `json:"counterexample,omitempty"`
 	Error          string `json:"error,omitempty"`
+	// Rendering, carried so every surface prints one vocabulary. HasDetail is
+	// separate from Detail being non-empty: a nullary property refuted by the
+	// empty binding has an empty counterexample and still prints its line.
+	Headline    string `json:"-"`
+	DetailLabel string `json:"-"`
+	Detail      string `json:"-"`
+	HasDetail   bool   `json:"-"`
 }
 
 // readSourceFile reads a .oath file and REFUSES bytes that are not valid UTF-8
