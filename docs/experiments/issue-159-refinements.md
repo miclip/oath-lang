@@ -16,118 +16,213 @@ put, proved or waived, and `git status` was clean before and after.
 
 > **#69's refinement types close #159** — a refinement discipline distinguishes
 > the CODEPOINT reading of a `(List Int)` from the OCTET reading everywhere the
-> webhook digest defect confuses them.
+> webhook residue confuses them.
 
 That is the sentence later steps have to make true or false. It is stated here
 so the universe can be derived FROM IT rather than from #69's design space or
 from the kernel's decomposition, per this repo's rule that a witness derives its
 universe from the claim.
 
-### Step 1's universe is NECESSARY, NOT SUFFICIENT, for that claim
-
-**Step 1 derives one component of the claim's universe: the digest defect, where
-text is read as octets.** #159's residue has a measured second direction —
-`bytes-str` reading a request body's octets as codepoints (`issue-159.md` §"A
-THIRD site, in the other direction"). Its universe is NOT derived here.
-
-Stated in the file rather than left to a reader's inference, because the failure
-it prevents is specific: **a mechanism can satisfy every pair derived below and
-still not close #159.** No later step may report closure from this universe
-alone; the reverse-direction universe has to be derived first, and until it is,
-the strongest available verdict is *insufficient* or *not yet decided* — never
-*closes*. This is the same shape as the correction already recorded on #159's
-own falsifier, where a claim scoped to boundaries read as exhaustive precisely
-because the defect had stopped being a boundary problem.
-
 ## What is already established, and not re-derived here
 
 `docs/experiments/issue-159.md` is the measured record; the #159 comment of
 2026-08-08 (commit `60e9074`) summarises it. Three of its results are load-
-bearing for the derivation below and are cited rather than repeated:
+bearing below and are cited rather than repeated:
 
 - **`Str` and `(List Int)` are ALREADY distinct types**, in both directions,
   with well-typed controls. The conflation is not between them — it is INSIDE
   `(List Int)`, one level lower (§"`(List Int)` and `Str` are ALREADY distinct
   types").
 - **`str-bytes` performs no encoding.** It is the identity on the codepoint
-  spine, so the value it produces is a codepoint list wearing an octet list's
-  type (§"The crypto measurement" / §"`ключ` versus Latin-1").
+  spine (§"The crypto measurement" / §"`ключ` versus Latin-1").
 - **A monomorphic `Bytes` datatype puts to `Str`'s hash, byte for byte**, from
-  two independent stores (§"Result — the two printed hashes"). Cited only as a
+  two independent stores (§"Result — the two printed hashes"). Cited as a
   constraint on what a mechanism may assume; not evaluated here.
 
 The origin measurement is `docs/experiments/webhook-friction.md` entry 3. #133
 records why `Str` has no identity of its own.
 
-## The universe, derived from the digest defect
+## Why the universe is not pairs of encodings
 
-The defect is a disagreement between two functions, not between two types. The
-receiver computes its digest keyed by `(str-bytes secret)`; every peer that
-signs — `openssl`, GitHub — computes it keyed by the UTF-8 octets of the same
-secret. So there are two functions `Str -> (List Int)`:
+A first derivation of this file made the universe
 
-    C(s)  =  str-bytes s              the CODEPOINT reading — in-language, PROVEN,
-                                      TOTAL on Str
-    O(s)  =  the UTF-8 octets of s    the OCTET reading — what a peer means by
-                                      "the bytes of s"; DEFINED ONLY where every
-                                      element of s is a Unicode scalar value
+    { (C(s), O(s)) : s : Str }        C(s) = str-bytes s, O(s) = the UTF-8 octets
 
-and the universe the closure claim quantifies over is the set of PAIRS
+and that is **the wrong universe**, kept here because the error is instructive
+rather than embarrassing. That set relates two ENCODINGS of one string, so it
+answers *was this value encoded correctly*. It presupposes exactly what is in
+question: to form the pair at all you must already know which component is text
+and which is octets. **The separation claim is about telling the two apart when
+the underlying value is the same**, and a relation indexed by `s` can never
+exhibit that case, because it never puts one value in two roles.
 
-    U  =  { (C(s), O(s))  :  s : Str, every element of s a scalar value }
+So the universe is over VALUES CARRYING A ROLE, and the encoding functions
+become what generates its members rather than what its members are.
 
-**The domain restriction is derived, not convenient.** SPEC §3 states that `Str`
-CONSTRUCTION IS UNCHECKED and that a kernel MUST NOT reject a non-scalar element
-at construction — `(SCons -1 (SNil))` is an ordinary value — while PACK MUST
-encode each element injectively **or refuse it by name**. So `O` has no value on
-a non-scalar `Str`, and a universe written over all of `Str` would be asserting
-pairs whose second component does not exist. The excluded class is named and
-measured below rather than waved past.
+## The universe, derived from the residue
 
-Both components inhabit **one type**, `(List Int)`. The defect is that the
-program supplies the first where the protocol requires the second, and the pair
-is the smallest object that can express that, which is why the universe is pairs
-and not values.
+A **role** is what a `(List Int)` value is being taken to mean:
 
-`O` is not realized in the committed corpus — no UTF-8 encoder is bound in
-`codebase/` — so `python3`/`openssl` stand in for it below. That is a property
-of the corpus, not of the language; `issue-159.md` §"Decoding IS expressible
-today" measured a 1–2 byte decoder written in current Oath.
+    CP    the elements are Unicode codepoints — text
+    OCT   the elements are octets — bytes on a wire, keys of a digest
 
-### The partition, by the codepoints `s` contains
+The residue's members are **tagged values** `(v, r)`, `v : (List Int)`,
+`r ∈ {CP, OCT}`, and the universe is
 
-Exhaustive and disjoint by construction. The empty string falls in class A.
+    U  =  { (v, CP) : v ∈ V_CP }  ∪  { (v, OCT) : v ∈ V_OCT }
 
-| class | `s` contains | `C(s)` vs `O(s)` | is `C(s)` a well-formed octet list? |
+      V_CP   = lists of Unicode SCALAR values — what a `Str` reading can mean
+      V_OCT  = lists of elements in 0..255  — what an octet reading can mean
+
+The tag is **provenance**, not a component of the value: `(List Int)` carries
+`v` and nothing else, which is the whole of #159 restated in the vocabulary the
+claim needs.
+
+### The fault is one operation, in both directions
+
+The webhook residue's two measured sites are the same primitive move — a
+**retag that is the identity on the value**:
+
+    ρ : (v, r)  ↦  (v, r')          r ≠ r',  v unchanged
+
+| direction | site | what it does | role supplied → role required |
 |---|---|---|---|
-| **A** ASCII | no codepoint ≥ U+0080 | **equal as values** | yes |
-| **B** Latin-1 | some codepoint in U+0080..U+00FF, none above | **different values** | **yes** — every element is in 0..255 |
-| **C** wide | some codepoint > U+00FF | different values | no — an element exceeds 255 |
+| **text → octets** | the handler's own digest — `apps/github-webhook/webhook.oath:669` and `examples/webhook.oath:179`, both `hmac-sha256 (str-bytes secret) (req-body r)` | `str-bytes` is the identity on the codepoint spine, so the digest is keyed by a CP value | **CP → OCT** |
+| **octets → text** | `bytes-str` (`apps/…/webhook.oath:125`), reached on the handler path at `:195` inside `json-scoped-string`, itself called from `:304` | reinterprets the body's octets as codepoints; no decode happens | **OCT → CP** |
 
-Measured, verbatim:
+Those are the RECEIVER sites, deliberately: `gh-sign` (`apps/…:484`) and the
+signature built inside `accepts-correctly-signed` (`examples/webhook.oath:227`)
+contain the same expression but are a spec helper and a property antecedent, and
+citing them would put the residue in the test scaffolding rather than in the
+code that runs.
+
+Both directions are in U by construction, and neither is deferred. **Any further
+site is another instance of ρ**, so it adds a location, not a class — which is
+why the universe is derived from the residue rather than from a list of call
+sites.
+
+### The diagonal, where a value carries both roles at once
+
+    Δ  =  V_CP ∩ V_OCT  =  V_OCT
+
+because every value in `0..255` IS a Unicode scalar value. That containment is
+strict — `(Cons 1082 Nil)` is in `V_CP` and not in `V_OCT` — and it is the
+asymmetry the rest of this section turns on: **`V_OCT ⊆ V_CP`, so every octet
+value is also a legitimate codepoint value, and the entire OCT half of U lies on
+the diagonal.**
+
+On Δ the tag is invisible in the value, and both tags are genuinely inhabited.
+The sharpest witness is one value in both roles at one site — `v = [195, 169]`,
+message `hi`:
+
+`hex-encode` returns a `Str`, which `oath eval` prints as an `SCons` spine, so
+`dec` renders it back to text. It decides nothing and is part of every digest
+transcript in this file:
 
 ```
-$ ./oath/oath eval '(str-bytes "hi")'
-(Cons 104 (Cons 105 Nil)) : (List Int)              # C, class A
-$ ./oath/oath eval '(str-bytes "é")'
-(Cons 233 Nil) : (List Int)                         # C, class B
-$ ./oath/oath eval '(str-bytes "Ã©")'
-(Cons 195 (Cons 169 Nil)) : (List Int)              # C, class B
-$ ./oath/oath eval '(str-bytes "ключ")'
-(Cons 1082 (Cons 1083 (Cons 1102 (Cons 1095 Nil)))) : (List Int)   # C, class C
-
-$ python3 -c 'for s in ["hi","é","Ã©","ключ"]: print(list(s.encode("utf-8")))'
-[104, 105]                                          # O("hi")     == C("hi")
-[195, 169]                                          # O("é")
-[195, 131, 194, 169]                                # O("Ã©")
-[208, 186, 208, 187, 209, 142, 209, 135]            # O("ключ")
+$ dec() { python3 -c 'import sys,re; t=sys.stdin.read(); m="".join(chr(int(n)) for n in re.findall(r"SCons (\d+)", t)); print(m if m else t.strip())'; }
+$ V='(Cons [Int] 195 (Cons [Int] 169 (Nil [Int])))'
+$ ./oath/oath eval "(hex-encode (hmac-sha256 $V (str-bytes \"hi\")))" | dec   # v as OCT
+736b1ddb4b8685c2375cf5e24d67dea428aee0ebd97865bfc79fd11ad8195092
+$ printf 'hi' | openssl dgst -sha256 -hmac 'é' -r | cut -d' ' -f1            # the peer, also OCT
+736b1ddb4b8685c2375cf5e24d67dea428aee0ebd97865bfc79fd11ad8195092             # AGREE
+$ ./oath/oath eval '(hex-encode (hmac-sha256 (str-bytes "é") (str-bytes "hi")))' | dec
+3a169af12b91e599a5c454790156426c43bd0aacd1b28cdc6cd930fd8a354f3f             # the CP path — different key
+$ ./oath/oath eval "(== (str-bytes \"Ã©\") $V)"
+true : Bool                                                                  # v as CP is the text "Ã©"
 ```
 
-### The digest witness, with its message stated
+One value. Tagged OCT it is the UTF-8 of `"é"` and keys the digest the outside
+world computes. Tagged CP it is the text `"Ã©"`. Nothing in `(List Int)`
+separates those two facts.
 
-**The message is held constant at `hi` for every row**, and both sides are shown
-in full, because a digest is a function of key AND message and a table of key
-labels alone is not reproducible:
+### The partition — where confusion is observable, and where it is not
+
+`ρ` is what confusion IS, so the classes are the classes of `ρ`'s behaviour.
+
+The classes partition `V_CP` on DIAGONAL MEMBERSHIP first, and only then on
+element range — which is what makes them disjoint. A value is on the diagonal
+exactly when **every** element is ≤ 0xFF, so a single wide element takes the
+whole value off it, however many bytes sit beside it.
+
+| class | values | `ρ` | observable? |
+|---|---|---|---|
+| **A** diagonal, ASCII | `v ∈ Δ` and every element < 0x80 | defined both ways | **NO — the two roles denote the same thing.** The equality control |
+| **B** diagonal, high | `v ∈ Δ` and some element ≥ 0x80 (so all elements ≤ 0xFF) | defined both ways | **YES, SILENTLY** — changes the HMAC key; changes the decoded text |
+| **C** off-diagonal | `v ∉ Δ` — some element > 0xFF | CP→OCT undefined; no OCT member exists | **YES, LOUDLY — but by a tool**, see below |
+
+Disjoint and exhaustive over `V_CP` by construction, and the mixed case is the
+one to check: `[233, 1082]` is **class C, not class B**, because `1082` puts it
+off the diagonal — the high byte beside it changes nothing about whether the
+value can carry an OCT role at all. Measured, not reasoned:
+
+```
+$ ./oath/oath eval '(bytes-ok (Cons [Int] 233 (Cons [Int] 1082 (Nil [Int]))))'
+false : Bool
+$ ./oath/oath eval '(hex-encode (hmac-sha256 (Cons [Int] 233 (Cons [Int] 1082 (Nil [Int]))) (str-bytes "hi")))'
+error: byte list element out of range 0..255
+```
+
+**Class A is the equality control and it is why the defect ships.** For a
+value all of whose elements are below 0x80, the text with those codepoints has
+exactly those UTF-8 octets, so retagging changes nothing observable — the digest
+agrees, the decode round-trips:
+
+```
+$ printf '  key C("correct-horse-battery-staple"): '; ...   # transcript below
+  key C("correct-horse-battery-staple"): 9f17a8d3…3593ba9
+  openssl (key O(same), message hi):     9f17a8d3…3593ba9            AGREE
+
+$ ./oath/oath eval "(bytes-str <octets of 'hi'>)"
+(SCons 104 (SCons 105 SNil)) : Str        →  "hi"                    IDENTITY
+```
+
+Every ASCII fixture, property and test in the corpus lives here, under either
+tag, which is precisely why nothing caught the residue. It is also the control
+in the instrument sense: a measurement reporting that confusion is observable in
+class A would indict the measurement, not the language.
+
+**Class B is where both directions bite, and neither raises.**
+
+```
+  # CP → OCT, message hi
+  key C("é"):                3a169af12b91e599a5c454790156426c43bd0aacd1b28cdc6cd930fd8a354f3f
+  openssl (key O("é")):      736b1ddb4b8685c2375cf5e24d67dea428aee0ebd97865bfc79fd11ad8195092
+                                                                     DISAGREE, silently
+
+  # OCT → CP
+$ ./oath/oath eval "(bytes-str <octets of 'café'>)"
+(SCons 99 (SCons 97 (SCons 102 (SCons 195 (SCons 169 SNil))))) : Str →  "cafÃ©"
+```
+
+**Class C is where a TOOL, not the type, intervenes — and only in one
+direction.** `[1082, …]` has no OCT member, so the CP→OCT retag is refused:
+
+```
+  key C("ключ"):             error: byte list element out of range 0..255
+  openssl (key O("ключ")):   a6bb06fd5113d614381228dadccbccdbeb05e99168c5f3e2dff41a0875e0babf
+```
+
+There is no matching class in the OCT→CP direction, and that follows from
+`V_OCT ⊆ V_CP` rather than from a gap in testing: **every octet list is a valid
+codepoint list, so `bytes-str` has no loud case at all.** A body that is not
+valid UTF-8 in the first place is re-read as text in silence:
+
+```
+$ ./oath/oath eval '(bytes-str (Cons [Int] 233 (Nil [Int])))'
+(SCons 233 SNil) : Str        →  "é"        # 0xE9 alone is not valid UTF-8
+$ ./oath/oath eval '(bytes-str (Cons [Int] 255 (Cons [Int] 254 (Nil [Int]))))'
+(SCons 255 (SCons 254 SNil)) : Str  →  "ÿþ"  # nor is 0xFF 0xFE
+```
+
+So the two directions are not symmetric in the only way an operator would
+notice: the digest direction announces itself on class C, and the decode
+direction never announces itself anywhere.
+
+### The full transcripts, with their messages stated
+
+A digest is a function of key AND message, so a table of key labels is not
+reproducible. The message is `hi` throughout.
 
 ```sh
 for s in 'correct-horse-battery-staple' 'é' 'ключ'; do
@@ -139,9 +234,6 @@ for s in 'correct-horse-battery-staple' 'é' 'ключ'; do
 done
 ```
 
-`oath eval` prints a `Str` as its `SCons` spine, so the `python3` filter renders
-`hex-encode`'s result back to text; it decides nothing. Output, verbatim:
-
 ```
   key C("correct-horse-battery-staple"): 9f17a8d3d1ca75f4de963f878d19e78a611d3aeb451707218b0473c6a3593ba9
   openssl (key O("correct-horse-battery-staple")): 9f17a8d3d1ca75f4de963f878d19e78a611d3aeb451707218b0473c6a3593ba9
@@ -151,78 +243,78 @@ done
   openssl (key O("ключ")): a6bb06fd5113d614381228dadccbccdbeb05e99168c5f3e2dff41a0875e0babf
 ```
 
-**Class A is the control, and it is the whole reason the defect ships.** `C = O`
-there as values, so the two readings coincide and no confusion is expressible.
-Every ASCII test, fixture and property passes under either reading, and the
-first row AGREES.
+The class A row is the discriminating control: the same two commands agree
+there, so the class B disagreement is not the `openssl` invocation being wrong.
+Scoped as the existing record scopes it — the disagreement is measured for the
+message `hi`; what holds for every message is that the two sides are keyed
+differently.
 
-**Class B is the silent witness.** `C(s) ≠ O(s)`, and yet `C(s)` is a perfectly
-well-formed octet list, so the digest is simply computed under a different key
-and the second row DISAGREES. Nothing is raised.
+The reverse direction, with its body built as octets rather than spelled out:
 
-The class A row is the discriminating control for that instrument: the same two
-commands agree there, so the class B disagreement is not the `openssl`
-invocation being wrong. Scoped as the existing record scopes it — the
-disagreement is measured for the message `hi`; what holds for every message is
-that the two sides are keyed differently.
+`oct` builds a body from a string's UTF-8 octets; `txt` renders a returned `Str`
+back to text as a Python `repr`, so an unprintable codepoint cannot be lost in
+the terminal. Neither decides anything.
 
-**Class C is where a tool, not the type, intervenes** — see the world/tool split
-below.
+```sh
+oct() { python3 -c 'import sys
+t="(Nil [Int])"
+for b in reversed(sys.argv[1].encode("utf-8")): t="(Cons [Int] %d %s)"%(b,t)
+print(t)' "$1"; }
+txt() { python3 -c 'import sys,re; print(repr("".join(chr(int(n)) for n in re.findall(r"SCons (\d+)", sys.stdin.read()))))'; }
 
-### Class D — non-scalar `Str`, excluded from U, and why the exclusion is safe
+for s in 'hi' 'café' 'ключ'; do ./oath/oath eval "(bytes-str $(oct "$s"))"; done          # spines
+for s in 'hi' 'café' 'ключ'; do ./oath/oath eval "(bytes-str $(oct "$s"))" | txt; done    # as text
+```
 
-A `Str` whose elements are not all Unicode scalar values constructs without
-complaint, and `str-bytes` carries the element through unchanged:
+The spines, verbatim:
+
+```
+(SCons 104 (SCons 105 SNil)) : Str
+(SCons 99 (SCons 97 (SCons 102 (SCons 195 (SCons 169 SNil))))) : Str
+(SCons 208 (SCons 186 (SCons 208 (SCons 187 (SCons 209 (SCons 142 (SCons 209 (SCons 135 SNil)))))))) : Str
+```
+
+and the same three through `txt`, verbatim:
+
+```
+'hi'                    # class A — the identity, and the reason nothing caught this
+'cafÃ©'                 # class B — mojibake
+'ÐºÐ»Ñ\x8eÑ\x87'        # class B — and two codepoints, U+008E and U+0087, are C1
+                        # controls with no printable form: not merely wrong text
+```
+
+**Every octet of `ключ` is in byte range, so the Cyrillic BODY is class B while
+the Cyrillic SECRET is class C.** The class of a member is a property of the
+VALUE and its role, never of the string a human had in mind.
+
+### Outside U — non-scalar `Str`, and why excluding it is safe
+
+`Str` construction is unchecked: SPEC §3 says a kernel MUST NOT reject a
+non-scalar element at construction, so `(SCons -1 (SNil))` is an ordinary `Str`.
+It is outside U because **UTF-8 has no encoding for a non-scalar value**, so it
+has no octet reading to confuse a codepoint reading with — a fact about the
+encoding, not about any kernel's boundary policy.
+
+Stating it that way matters, because SPEC §3's PACK does NOT simply require
+refusal: it requires that an implementation *encode each element injectively OR
+refuse that element by name*, and a kernel taking the first branch would still
+not be producing UTF-8. This kernel takes the second, measured below.
 
 ```
 $ ./oath/oath eval '(SCons -1 (SNil))'
 (SCons -1 SNil) : Str
-$ ./oath/oath eval '(SCons 55296 (SNil))'          # a surrogate
-(SCons 55296 SNil) : Str
 $ ./oath/oath eval '(str-bytes (SCons -1 (SNil)))'
 (Cons -1 Nil) : (List Int)
 $ ./oath/oath eval '(bytes-ok (str-bytes (SCons -1 (SNil))))'
 false : Bool
 ```
 
-`O` is undefined here, so these strings carry no pair and are outside U. **The
-exclusion cannot smuggle a silent case out of the universe**, and that is a
-consequence of the ranges rather than an assurance: every value in `0..255` IS a
-scalar value, so a non-scalar element is necessarily outside `0..255`, so every
-class D string fails `bytes-ok` exactly as class C does. Class B — the silent
-class, the one the closure claim has to reach — contains no class D member by
-construction.
-
-The digest defect's own secrets arrive by ADMIT (`process_env`), which SPEC §3
-requires to decode as UTF-8 or refuse, so they are scalar-valued before they
-reach `str-bytes`. Class D is reachable only by constructing a `Str` in-language.
-
-### The identical-value witness, which is what makes class B more than "similar"
-
-Class B is not merely a class where two values differ while looking alike. **The
-ranges of `C` and `O` INTERSECT**, and the intersection is inhabited by a
-witness both readings claim:
-
-    C("Ã©")  =  (Cons 195 (Cons 169 Nil))  =  O("é")
-
-Decided in-language, by the kernel's own equality rather than by reading two
-printed spines, with a control that must come back `false`:
-
-```
-$ ./oath/oath eval '(== (str-bytes "Ã©") (Cons [Int] 195 (Cons [Int] 169 (Nil [Int]))))'
-true : Bool
-$ ./oath/oath eval '(== (str-bytes "é")  (Cons [Int] 195 (Cons [Int] 169 (Nil [Int]))))'
-false : Bool                                    # control — the instrument discriminates
-```
-
-So U contains pairs drawn from DISTINCT strings whose readings collide on a
-single value: one `(List Int)` value is simultaneously the codepoint reading of
-`"Ã©"` and the octet reading of `"é"`. This is the mojibake pair, arriving as an
-equality rather than as an anecdote.
-
-**Whether that intersection is fatal to a mechanism, harmless, or avoidable by
-attaching the distinction somewhere other than the value is exactly what step 2
-evaluates. It is NOT decided here, and this witness is not an argument.**
+**The exclusion cannot smuggle a silent case out of U**, and that is a
+consequence of the ranges rather than an assurance: every value in `0..255` is a
+scalar value, so a non-scalar element is necessarily outside `0..255`, so no
+non-scalar value is on the diagonal. Class B — the silent class — contains none
+of them. The digest defect's own secrets arrive by ADMIT (`process_env`), which
+SPEC §3 requires to decode as UTF-8 or refuse.
 
 ## World claims and tool claims
 
@@ -231,52 +323,46 @@ kind survives the tool improving.
 
 **WORLD — about the language and the values:**
 
-- `C` and `O` are distinct functions into `(List Int)` — `C` total on `Str`, `O`
-  defined only on scalar-valued `Str` — and on their common domain they agree
-  exactly on class A.
-- Every value in `0..255` is a Unicode scalar value, so class D is disjoint from
-  classes A and B.
-- `C` is the identity on the codepoint spine; no encoding happens (cited).
-- The ranges of `C` and `O` intersect outside class A, witnessed by the `==`
-  above.
-- `(List Int)` is one type and both readings inhabit it; the pair, not either
-  component, is what carries the defect.
+- `(List Int)` carries a value and no role; the role is provenance, and the
+  residue in both directions is a retag `ρ` that is the identity on the value.
+- `V_OCT ⊆ V_CP`, strictly. Every octet list is a legitimate codepoint list, so
+  the OCT half of U lies entirely on the diagonal and the OCT→CP direction has
+  no refusable case.
+- On class A the two roles denote the same thing, so `ρ` is unobservable there.
+- `str-bytes` is the identity on the codepoint spine; no encoding happens
+  (cited).
+- Non-scalar `Str` values carry no role, and none of them is on the diagonal.
 
 **TOOL — about this kernel, this corpus, this run:**
 
 - `error: byte list element out of range 0..255` is the **Go kernel's runtime
   range check** reached through `hmac-sha256`. It is not a type error and not a
-  language-level distinction between the readings. Class C failing loudly is an
+  language-level distinction between roles. Class C failing loudly is an
   IMPLEMENTATION LIMIT REPORTED, not a semantic fact: nothing in a class C value
-  says "these are codepoints" — only that some element is outside `0..255`. The
-  class C row of the digest transcript above is that error; `openssl` computed a
-  digest for the same secret on the same message.
-
-- `bytes-ok` is a predicate over VALUE RANGE, not over provenance, so it passes
-  on all of class A and all of class B and fails on classes C and D alike. Its
-  dangerous case is its pass:
+  says "this is text" — only that some element is too large to be an octet.
+- `bytes-ok` is a predicate over VALUE RANGE, not over provenance. It accepts
+  exactly the diagonal, so it passes on all of class A and all of class B and
+  cannot see the tag:
 
   ```
   $ for s in 'hi' 'é' 'Ã©' 'ключ'; do ./oath/oath eval "(bytes-ok (str-bytes \"$s\"))"; done
   true : Bool          # class A
   true : Bool          # class B
-  true : Bool          # class B — and this value is O("é")
+  true : Bool          # class B — and this value is the UTF-8 of "é"
   false : Bool         # class C
   ```
-- `openssl` and `python3` are the stand-ins for `O`; the UTF-8 standard, not
-  this repository, is what makes them the reference.
-- Printed `(Cons …)` spines are `oath eval`'s rendering. The identical-value
-  claim rests on the in-language `==`, not on the rendering.
+
+- `openssl` and `python3` stand in for the octet reading of a string; the UTF-8
+  standard, not this repository, is what makes them the reference. No UTF-8
+  encoder is bound in `codebase/`.
+- Printed `(Cons …)`/`(SCons …)` spines are `oath eval`'s rendering; the
+  diagonal claim rests on the in-language `==`, not on the rendering.
 
 ## What step 1 does NOT establish
 
-- Nothing about refinement types, their identity, `#69`, or `#133`'s obstacle.
-- Nothing about whether class B is reachable in any deployment other than the
-  webhook one already measured.
-- **Nothing about the OTHER direction of the residue** — `bytes-str`
-  reinterpreting a body as codepoints, `issue-159.md` §"A THIRD site". That
-  universe is NOT derived here, and per the necessary-not-sufficient note at the top,
-  U alone cannot support a closure verdict. Deriving it is the next step's first
-  obligation, ahead of evaluating any mechanism.
-- The universe above is derived from the DIGEST defect as scoped, so nothing
-  here says whether the two directions need one mechanism or two.
+- Nothing about refinement types, their identity, #69, or #133's obstacle.
+- Nothing about whether one mechanism or two would be needed for the two
+  directions of `ρ`.
+- Nothing about how many corpus or deployment sites instantiate `ρ`. U is
+  derived from the residue, so a new site is a new location in an existing
+  class; counting locations is a different question and is not asked here.
