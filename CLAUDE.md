@@ -1620,14 +1620,36 @@ milestone shipped a SUBSET of an issue that remains open.
   documentation at all can still red the build. Also pushed to `main` red for
   exactly this reason, after #161's guards rehashed four config definitions.
 
-  **THE THREE GATES OUTSIDE `--checks` ARE NOW A SET, AND THE SET IS THE POINT:**
-  `make check-web-docs` (docs edited), `make check-playground-snapshot` (identity
-  moved), and `OATHRS_CONFORMANCE_PROVE=oracle ./oathrs/conformance.sh`
-  (semantics or identity moved). None is in `make verify`, none is in a
-  conclave `--checks` contract, and each was learned by a red build. Running
-  `go test` and conformance and concluding "the gates are green" names two of
-  three — which is how this one was missed while the other two were run
-  deliberately.
+  **DO NOT ENUMERATE THE GATE SET FROM MEMORY, AND DO NOT TRY TO GREP IT EITHER.
+  READ THE `run:` STEPS IN `.github/workflows/conformance.yml`.** That file is the
+  authority; there is no local target that runs what it runs, so "the gates are
+  green" is a claim about a SAMPLE unless you went and looked.
+
+  This paragraph has now been wrong four times, and the way it failed is the
+  useful part. It first named three gates from memory, then four, both by someone
+  who had just been red on CI for exactly this. Replacing recall with a one-line
+  grep then failed three more times for UNRELATED reasons — it matched commands
+  inside prose comments (recommending `make fixtures`, which WRITES VERDICTS
+  BACK); it dropped the `OATHRS_CONFORMANCE_PROVE=oracle` prefix, turning the
+  two-minute push gate into the NINE-HOUR scheduled job; and it saw only `make`
+  lines, silently omitting the Go and Rust test steps. **A regex over YAML is not
+  a parse, and each repair was correct about the previous defect and blind to the
+  next one.** That is this file's own signal that the artefact is wrong rather
+  than the wording: the thing that would settle it is a checked-in target that
+  runs the read-only subset, not a cleverer command in prose.
+
+  Two hazards a reader cannot discover by looking, which is why they are here and
+  the list is not:
+
+    - **Some CI steps MUTATE locally.** `make verify` appends to the append-only
+      journal even when nothing changes, `oath fixtures` writes verdicts back,
+      and `make check` is `verify prove` — not a sweep. CI runs these against an
+      ephemeral checkout where that is harmless. Here it is not. The `check-*`
+      targets are read-only and safe to run in bulk.
+    - **Conformance mode is part of the command, not decoration.**
+      `OATHRS_CONFORMANCE_PROVE=oracle ./oathrs/conformance.sh` is the push gate
+      (~2 min); the bare invocation is the cold re-derivation (9+ hours).
+
 - Run `codex review --uncommitted` before committing, and iterate until clean.
   **NO REVIEW DEBT IS OPEN** (#150, closed). If the reviewer is ever unavailable
   again, say so IN THE COMMIT, keep the debt bounded to those commits, and
