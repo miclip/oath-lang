@@ -1612,6 +1612,22 @@ milestone shipped a SUBSET of an issue that remains open.
   any drift. It is a separate gate from `check-doc-numbers`, it is not part of
   `make verify`, and nothing local reminds you — this landed on `main` red for
   exactly that reason after SPEC §14 and `effects.md` were edited.
+- **MOVED A DEFINITION'S HASH? RUN `make playground-assets` AND COMMIT THE
+  RESULT.** `website/public/pgrt/corpus-snapshot.json` mirrors `codebase/` for
+  the browser playground, and `make check-playground-snapshot` fails CI on any
+  drift. Same shape as the rule above and a DIFFERENT trigger: that one fires on
+  editing `docs/`, this one on changing corpus IDENTITY, so a change touching no
+  documentation at all can still red the build. Also pushed to `main` red for
+  exactly this reason, after #161's guards rehashed four config definitions.
+
+  **THE THREE GATES OUTSIDE `--checks` ARE NOW A SET, AND THE SET IS THE POINT:**
+  `make check-web-docs` (docs edited), `make check-playground-snapshot` (identity
+  moved), and `OATHRS_CONFORMANCE_PROVE=oracle ./oathrs/conformance.sh`
+  (semantics or identity moved). None is in `make verify`, none is in a
+  conclave `--checks` contract, and each was learned by a red build. Running
+  `go test` and conformance and concluding "the gates are green" names two of
+  three — which is how this one was missed while the other two were run
+  deliberately.
 - Run `codex review --uncommitted` before committing, and iterate until clean.
   **NO REVIEW DEBT IS OPEN** (#150, closed). If the reviewer is ever unavailable
   again, say so IN THE COMMIT, keep the debt bounded to those commits, and
