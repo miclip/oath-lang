@@ -295,6 +295,47 @@ it is the ratchet assertions that carry the verdict. Note too that the emission
 totals are unchanged under both, which is why arm B pins them separately: they
 record the *length* schedule, and neither mutation touched it.
 
+## A SECOND OBSERVATION, RECORDED NOT CHASED: generated `Str` values carry non-scalar codepoints
+
+**Recorded because it was asked for, and CORRECTED after review, because the
+first version of this section called it a defect and §3 says it is not.** The
+correction is the useful part; the observation stands either way.
+
+The witness is the exhibit above: `bytes-str` prop 1 binder 0, case 5 — one of
+the 200 cases verification runs for that property — binds the `Str`
+`[-15, 1, -1]`. Neither `-15` nor `-1` is a Unicode scalar value. It is not
+rare: in the synthetic 200 000-draw sweep, **69 561 of 149 449 emitted
+codepoints are negative** (46.5%), reported by the #161 artefact's own alphabet
+test.
+
+**What SPEC §3 actually says about that, quoted rather than paraphrased:**
+
+```
+CONSTRUCTION IS UNCHECKED, and a KERNEL MUST NOT reject a non-scalar element
+at construction. `(SCons -1 (SNil))` is an ordinary value of the semantics in
+this section.
+```
+
+§3 uses `(SCons -1 (SNil))` as its own example. The scalar range is "a property
+of the boundaries a `Str` CROSSES, not of the datatype", enforced by hosts at
+ADMIT and PACK. So a generator emitting `-15` is **producing an ordinary value
+of the language, not violating the specification**, and a generator that
+special-cased `Str` to avoid it would be the incompatible change — exactly the
+"rule attached to `SCons`" §3 rejects, since `Str`'s canonical form is shared by
+every `(data T [] (A) (B Int T))`.
+
+**What remains true and is worth someone's attention** is a calibration point,
+not a defect: a property quantifying over `Str` is quantified over the whole
+datatype, which §3 deliberately makes wider than text. Roughly half the
+codepoints any `Str` property is tested on are values no ADMIT boundary could
+ever produce. That says something about what `tested` means for text-handling
+definitions — the same class of question as #161, and adjacent to #69, whose
+refinement types are the recorded route from host discipline to identity.
+
+It is filed here as an observation with its witness and its correct normative
+reading. Whether it becomes an issue is the human's call, and it should be made
+knowing §3 permits what was seen.
+
 ## What this establishes, and what it does not
 
 **Established.** Neither kernel implements SPEC §4's `Str` rule, and no fixture
@@ -320,3 +361,24 @@ Every figure here is about this corpus and this generator, and the arm-B figures
 are about a synthetic stream no committed property samples. The ratchets in
 `oath/gen_str_spec_alphabet_test.go` exist so that if any of them stops being
 true, this file is re-read rather than left standing.
+
+## What step 2 did with this
+
+Step 2 resolved the precedence rather than deleting the rule. §4's `Str` entry
+now states that the **`Data` rule governs**, delegates to it, spells out the
+resulting draw sequence as a worked instance, and names the `Data` rule as
+authoritative should the two ever disagree — so the redundancy is documentation
+with a stated tie-break rather than a second source of truth. The reason for
+choosing explicit precedence over deletion is in that commit and on #163.
+
+`oath/gen_str_spec_order_test.go` is what makes the rewritten entry worth its
+normativity: an implementation written from the new sentences alone reproduces
+the kernel's generated value AND leaves the rng in the same state, over 44 000
+generations spanning sizes −3 to 8. **Stated precisely, after review corrected an
+overstatement:** the rng is splitmix64 over one word of state that advances by a
+constant per call, so an equal final state establishes an equal DRAW COUNT, not
+which primitive each draw used. Sweeping seeds constrains every modulus whose
+outcome changes the value; what it cannot see is the modulus at a FORCED
+selection — `below(1)` at size 0, where only the draw's EXISTENCE is observable.
+That existence is precisely what §4's "single-candidate selection is not skipped"
+clause requires, and it is what the test pins.

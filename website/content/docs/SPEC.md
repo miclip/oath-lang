@@ -567,8 +567,21 @@ Generation by type — draw order is normative:
   `intIn(-8,8)`, then the denominator `intIn(1,4)` (numerator first), and take
   `numerator / denominator` as a binary64. Every generated NaN is canonical.
 - `Bool`: `below(2) == 0`.
-- `Str`: length `below(size+1)`, then that many draws of `below(7)` into
-  alphabet `"ab xyz!"` (bytes, in that order).
+- `Str`: **the `Data` rule below governs. This entry is a pointer to it, not a
+  competing rule** — `Str` is not a primitive type (§3), it is the datatype
+  `(data Str [] (SNil) (SCons Int Str))`, and a `Str` is generated exactly as any
+  other data value. **There is no length draw and no alphabet draw.** Because
+  draw order is normative and `Str` is the type most likely to be looked up
+  expecting an exception, the resulting sequence is spelled out here as a worked
+  instance of the `Data` rule: size clamps to a minimum of 0 on entry; at size 0
+  the sole constructor without a recursive field is `SNil` and its selection
+  still consumes a draw, `below(1)`, giving the empty string; at size > 0 the
+  selection is `below(2)` over the constructors in declaration order
+  `[SNil, SCons]`, where 0 gives `SNil` and ends the string and 1 gives `SCons`,
+  whose two fields are generated left-to-right at size−1 — first the `Int` head
+  by the `Int` rule above, then the `Str` tail by this same rule. Every codepoint
+  is therefore an `Int` draw. **Should this paragraph and the `Data` rule ever
+  disagree, the `Data` rule is authoritative and this paragraph is the defect.**
 - `Int -> Int`: draw `below(4)`: 0 → identity; 1,2 → affine with
   `NA = intIn(-3,3)`, `NB = intIn(-10,10)`; 3 → table (below).
 - Any other function type: table with `n = 1 + below(3)` entries — for each,
