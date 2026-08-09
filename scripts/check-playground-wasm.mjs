@@ -127,27 +127,60 @@ const mustReach = Object.keys(expected).filter((n) => !excludedNames.has(n));
 const missing = mustReach.filter((n) => !reached.has(n));
 
 // THE #147 REGRESSION WITNESS, asserted by name. Non-terminating input must
-// reach the depth guard and FALSIFY — the outcome examples/nontotal.oath's own
-// comment promises — rather than exhausting the JS host stack and killing the
-// runtime. The corpus sweep above would also catch a regression here, but only
-// as an anonymous "threw while elaborating"; naming it means the next person
-// who raises maxEvalDepth for GOOS=js learns why they cannot.
-let spinVerdict = "kernel did not survive", spinAlive = false;
+// reach the depth guard and come back INDETERMINATE rather than exhausting the
+// JS host stack and killing the runtime. The corpus sweep above would also
+// catch a regression here, but only as an anonymous "threw while elaborating";
+// naming it means the next person who raises maxEvalDepth for GOOS=js learns
+// why they cannot.
+//
+// THIS ASSERTED `falsified` UNTIL SPEC §4.1 (three-valued property outcomes)
+// DELIBERATELY CHANGED THE CONTRACT: depth exhaustion is a `no-verdict` case,
+// so the property is `indeterminate` and the definition is `asserted`, which
+// puts as `accepted`. The old expectation was the very conflation §4.1 removed
+// — a limit of the evaluator reported as a fact about the program.
+//
+// The replacement is STRICTLY TIGHTER than what it replaces, which is the bar
+// for changing an assertion whose contract moved. `falsified` was one bit and
+// could not tell a refutation from an unevaluated case; these four pin that the
+// guard actually fired (indeterminate > 0), that the outcome is classified as
+// the wire format's authority field says, that the definition is accepted, and
+// that the runtime survived. A kernel that silently PASSED the property — the
+// dangerous regression, since it would report a non-terminating function's law
+// as holding — failed the old check and fails this one too.
+let spinOutcome = "kernel did not survive", spinUneval = -1;
+let spinStatus = "none", spinGuarantee = "none", spinAlive = false;
 try {
   const r = JSON.parse(globalThis.oathCheck(snap.root,
     "(defn spin147 [] [(x Int)] Int (spin147 x) (prop claims-zero [(x Int)] (== (spin147 x) 0)))"));
-  spinVerdict = r.reports?.[0]?.status ?? "no report";
+  spinStatus = r.reports?.[0]?.status ?? "no report";
+  // `status` is accepted for BOTH tested and asserted, so it does not pin the
+  // level derivation §4.1 promises. `guarantee` is the field that does — and it
+  // carries a rendered reason after the level ("asserted (1 property reached no
+  // verdict: ...)"), so match the PREFIX. Still tight: tested, falsified and
+  // proven all fail it.
+  spinGuarantee = r.reports?.[0]?.guarantee ?? "no guarantee";
+  spinOutcome = r.reports?.[0]?.props?.[0]?.outcome ?? "no prop";
+  spinUneval = r.reports?.[0]?.props?.[0]?.indeterminate ?? 0;
   // Alive-after is the half that matters: a crash kills every LATER call, so a
   // verdict alone does not establish the runtime survived producing it.
   const after = JSON.parse(globalThis.oathCheck(snap.root,
     "(defn alive147 [] [(x Int)] Int (+ x x) (prop d [(x Int)] (== (alive147 x) (* 2 x))))"));
   spinAlive = after.reports?.[0]?.status === "accepted";
 } catch (e) {
-  spinVerdict = `THREW ${String(e).split("\n")[0]}`;
+  spinOutcome = `THREW ${String(e).split("\n")[0]}`;
 }
-if (spinVerdict !== "falsified" || !spinAlive) {
-  console.error("ERROR: non-terminating input did not falsify cleanly (#147 regression)");
-  console.error(`  verdict: ${spinVerdict}   kernel alive afterwards: ${spinAlive}`);
+if (spinOutcome !== "indeterminate" || spinUneval < 1 || spinStatus !== "accepted"
+    || !spinGuarantee.startsWith("asserted") || !spinAlive) {
+  console.error("ERROR: non-terminating input did not reach the depth guard cleanly (#147 regression)");
+  console.error(`  prop outcome: ${spinOutcome}   unevaluated cases: ${spinUneval}`);
+  console.error(`  put status: ${spinStatus}   guarantee: ${spinGuarantee}   kernel alive afterwards: ${spinAlive}`);
+  console.error("  Expected: outcome `indeterminate` with at least one unevaluated case,");
+  console.error("  guarantee `asserted`, status `accepted`, runtime alive — see SPEC §4.1.");
+  console.error("  `guarantee` is checked separately because `status` is `accepted` for");
+  console.error("  BOTH tested and asserted, so status alone does not pin the level. An outcome of");
+  console.error("  `passed` is the dangerous failure: it reports a non-terminating");
+  console.error("  function's law as holding. `falsified` means depth exhaustion is");
+  console.error("  being counted as a refutation again, which §4.1 forbids.");
   console.error("  The wasm depth guard must fire BEFORE the JS host stack is exhausted.");
   console.error("  maxEvalDepth for GOOS=js lives in oath/eval_depth_wasm.go and is bounded");
   console.error("  by the embedder's stack, not by Go memory — see #147 before raising it.");
@@ -156,7 +189,8 @@ if (spinVerdict !== "falsified" || !spinAlive) {
 
 if (changed.length === 0 && unknown.length === 0 && errored.length === 0 && missing.length === 0) {
   console.log(`served wasm reproduces corpus identities ✓ (${reached.size}/${mustReach.length} required names from ${sources.length} files)`);
-  console.log("  non-terminating input falsifies and the kernel survives ✓ (#147)");
+  console.log(`  non-terminating input reaches the depth guard and the kernel survives ✓ (#147) ` +
+              `— outcome indeterminate, ${spinUneval} case(s) unevaluated, guarantee asserted`);
   for (const [f, e] of EXCLUDED) console.log(`  EXCLUDED ${f} (${e.names.join(", ")}) — ${e.why}`);
   console.log("  NOTE: this is behavioural agreement on what the corpus exercises. It says NOTHING about whether the artifact is current.");
   process.exit(0);

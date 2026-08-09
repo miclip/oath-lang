@@ -1,8 +1,14 @@
 ; A function the type system happily accepts and the termination checker
 ; refuses to bless: the recursion never descends, so no structural argument
 ; exists. The kernel labels it `termination unproven` rather than rejecting
-; it — and when its oath runs, the fuel bound converts the infinite loop
-; into an honest FALSIFIED verdict instead of a hang.
+; it — and when its oath runs, the fuel bound converts the infinite loop into an
+; INDETERMINATE outcome instead of a hang: the case could not be evaluated, so
+; per SPEC §4.1 it is a `no-verdict` and the definition is `asserted`.
+;
+; This comment said FALSIFIED until §4.1, and that was the conflation §4.1
+; removed — the evaluator running out of fuel is a fact about the evaluator, not
+; a counterexample to the property. `spin` remains an honest exhibit; what
+; changed is which honest thing it exhibits.
 
 (defn spin [] [(x Int)] Int
   (spin x)
