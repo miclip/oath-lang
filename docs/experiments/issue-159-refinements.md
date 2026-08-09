@@ -3,14 +3,22 @@
 **What this file is:** the record of an evaluation of #69's refinement types
 against #159, run in steps, with each step committed before the next begins.
 
-**ONLY STEP 1 IS PRESENT.** Step 1 states the claim under evaluation and derives
-the universe that claim quantifies over. It evaluates no mechanism, proposes no
-repair, and reaches no verdict on #159 or #69. Anything below that reads as an
-argument for or against a design is a defect in this file.
+**STEPS 1 AND 2 ARE PRESENT.**
+
+- **Step 1** states the claim under evaluation and derives the universe it
+  quantifies over — the population `U`, and on it the two obligations `R` and
+  `S`. It evaluates no mechanism.
+- **Step 2** evaluates ONE construction against `R` and `S`: refinement types
+  whose base value remains the original `(List Int)`. It reaches a decidable
+  result for that construction and deliberately does not generalise past it.
+
+Neither step reaches a verdict on #159 or on #69 as a whole.
 
 Run on 2026-08-09 against `fc3f8f6`, with `oath/oath` rebuilt from that tree.
-`oath eval` resolves names out of `codebase/` without writing to it; nothing was
-put, proved or waived, and `git status` was clean before and after.
+`oath eval` resolves names out of `codebase/` without writing to it. Step 2's
+three supporting definitions were put and proved in a THROWAWAY COPY of the
+store, never in `codebase/` — nothing was put, proved or waived in the canonical
+store, and `git status codebase/` was clean before and after.
 
 ## The claim under evaluation
 
@@ -470,3 +478,324 @@ kind survives the tool improving.
 - Nothing about how many corpus or deployment sites instantiate `ρ`. U is
   derived from the residue, so a new site is a new location in an existing
   class; counting locations is a different question and is not asked here.
+
+---
+
+# Step 2 — refinements over the same base value, against `R` and `S`
+
+## The construction under test, and what it is not
+
+`docs/refinements.md` is the #69 design note, and it is **DESIGN ONLY** — no
+kernel implements refinements, so nothing in this step measures a refinement
+type. What it does is reason from that note, supplying every fact the reasoning
+depends on by measurement.
+
+The construction tested here is
+
+    {v : (List Int) | P v}
+
+— a refinement whose **base value remains the original `(List Int)`**. A record
+wrapper, an opaque or abstract type, a nominal newtype and a distinct datatype
+are all OUTSIDE it, because each changes the value or the type's identity rather
+than attaching a predicate to the value already flowing.
+
+Four properties of the design are load-bearing, cited rather than paraphrased:
+
+- **The form.** `{x: T | P}` — a base type and a proposition
+  (`docs/refinements.md` §"THE IDENTITY DECISION").
+- **Identity is SYNTACTIC**, over the O1 canonical encoded AST rather than
+  source text: *"`{x | x > 0}` and `{x | 0 < x}` are different types with
+  different hashes"* (§"THE IDENTITY DECISION", §"'Syntactic' means the CANONICAL
+  ENCODED AST").
+- **Subtyping is by implication, at the call.** `{x: T | P} <: {x: T | Q}` iff
+  `P ⟹ Q`, discharged by SMT; `{x: T | P} <: T` always; `T <: {x: T | P}` only
+  with a discharged obligation (§"Subtyping: where the SMT actually goes").
+- **Obligations get the guarantee ladder, not a binary** — proven / tested /
+  falsified / asserted, where only *falsified* is a hard error, because *"an
+  undischargeable obligation must NOT be a hard type error"* (same section).
+
+## Case 1 — the range predicate. It discharges `R`
+
+    Octets  =  {v : (List Int) | bytes-ok v}
+
+`bytes-ok` (`examples/http.oath:132`) is exactly the decision procedure `R`
+needs, and the corpus comments have been asking for this refinement by name for
+some time (`examples/http.oath:128`, `apps/…/webhook.oath:487`,
+`examples/webhook.oath:222` — all three say `{b: Int | 0 <= b <= 255}` would
+have said it in the type).
+
+Against `R`: a class C value reaching an OCT position needs `T <: Octets`, and
+where that obligation is SETTLED the outcome is what `R` asks for — a falsified
+obligation is the ladder's one hard error. **`R` becomes EXPRESSIBLE in the
+type, out of the Go kernel's runtime range check.** That is a real gain and this
+step does not diminish it.
+
+**But expressible is not discharged, and the gap is the ladder's by design.**
+An obligation that is neither proved nor falsified is RECORDED — as `tested` if
+the deterministic tester found no counterexample, as `asserted` otherwise — and
+in both cases the call proceeds, because only *falsified* is a hard error. In either case a class C value still reaches its OCT
+position, which is exactly what `R` forbids. So the construction satisfies `R`
+on the obligations a checker SETTLES — proves or falsifies — and not in general — and the residual is
+not hypothetical bookkeeping, since the obligation here is a recursive predicate
+over a list and `docs/refinements.md` says quantified or recursive refinements
+*"will sometimes not discharge"*.
+
+One further limit, from the design's own silence rather than from scepticism:
+it does not settle flow-sensitivity, so what happens after a runtime `bytes-ok`
+test in an enclosing branch is not something this step can read off it.
+
+**Now the shape of what just happened, which is the whole of case 1's bearing on
+`S`.** The extension of `bytes-ok` is exactly `Δ`, and `Δ` is exactly `S`'s
+domain. So the predicate that discharges everything OFF the diagonal accepts
+BOTH members of every pair ON it. The instrument is not weak here; it is
+maximally blind, and by construction.
+
+## Case 2 — two syntactically distinct predicates. Different hashes, and NOT kept apart
+
+A second spelling of the same set, associated the other way and written with
+strict inequalities against the neighbouring integers:
+
+```
+(defn byte-range-ok [] [(bs (List Int))] Bool
+  (match bs
+    ((Nil) true)
+    ((Cons b rest) (and (< -1 b) (and (< b 256) (byte-range-ok rest))))) …)
+```
+
+Measured in a throwaway copy of the store — the corpus-level ANALOGUE of the
+design's identity rule, since refinement types do not exist to be hashed:
+
+```
+$ OATH_STORE=<copy> ./oath/oath ls | grep -E 'bytes-ok|byte-range-ok|spellings-agree'
+byte-range-ok    #961b502d5afc  func  tested (200 cases per property) · total
+bytes-ok         #d2406871baf1  func  PROVEN (all 3 properties, Z3 over unbounded ints) · total
+spellings-agree  #90e4a488f855  func  tested (200 cases per property) · total
+
+$ OATH_STORE=<copy> ./oath/oath prove spellings-agree
+∎ PROVEN    holds-for-every-list         induction on binder 0 (Z3, unbounded ints)
+proven: 1/1 properties
+```
+
+`spellings-agree` is `(== (bytes-ok v) (byte-range-ok v))`, PROVEN for every
+list. So the two predicates are **different objects with the same extension**,
+which is precisely the situation the identity decision describes for
+`{v | bytes-ok v}` and `{v | byte-range-ok v}`: different propositions,
+different canonical ASTs, **different type hashes**.
+
+**And that buys nothing at a call.** Subtyping is `P ⟹ Q` by SMT, and the
+implication holds in BOTH directions here — that is what the proof above says —
+so each is a subtype of the other and either may be passed wherever the other is
+required.
+
+> **DIFFERENT HASHES IS NOT KEPT APART AT A CALL.** Syntactic identity keeps two
+> types from being the same OBJECT. Semantic subtyping is what decides whether a
+> value may cross a boundary, and it erases the syntactic distinction exactly
+> when the two predicates have the same extension.
+
+**Two questions live here and only one of them is the obligation**, which an
+earlier draft of this paragraph ran together — it said two refinements are kept
+apart at a call when their extensions DIFFER, and that is simply wrong.
+`{x|P} <: {x|Q}` iff `P ⟹ Q`, i.e. iff the extension of `P` is a SUBSET of the
+extension of `Q`. Non-interchangeability is failed INCLUSION, not difference:
+`{v | all elements in 0..127}` and `{v | all elements in 0..255}` have different
+extensions and one is still freely passable as the other.
+
+    (i)   are the two TYPES interchangeable?     — inclusion between extensions
+    (ii)  does a type separate the two MEMBERS   — the obligation S states
+          of a pair in S?
+
+Getting (i) is easy and buys nothing. Two refinements that disagree anywhere —
+outside `Δ`, or on part of it — fail inclusion in one direction and are
+genuinely not interchangeable. **And every one of them still treats both members
+of every `S` pair identically**, because separation would need a predicate that
+accepts one member and rejects the other, while membership is a function of `v`
+alone and the two members ARE one `v`. Whichever side of the predicate that
+value falls, both members fall with it.
+
+So the sharpening runs the other way from what the draft claimed: you can
+manufacture as many mutually non-implying refinement types over `(List Int)` as
+you like, and not one of their PREDICATES decides which role a given `v` is in.
+Whether the TYPES so declared can still block a call is a different question,
+and it is answered in the result section rather than here.
+
+## Case 3 — a predicate mentioning the producer. Vacuous, and its negation empty
+
+The one remaining hope for a value predicate is to name where the value CAME
+FROM:
+
+    {v : (List Int) | ∃ s : Str. v == str-bytes s}
+
+**It is true of every value.** `str-bytes` and `bytes-str` are mutually inverse,
+so `s = bytes-str v` witnesses the existential for any `v`. One direction is
+already PROVEN in the committed corpus (`bytes-str`'s `inverts-str-bytes`,
+`#db845547035a`: `(bytes-str (str-bytes s)) == s`). The other was not, so it was
+proved for this step, in the store copy:
+
+```
+(defn str-bytes-is-onto [] [(v (List Int))] Bool
+  (== (str-bytes (bytes-str v)) v)
+  (prop holds-for-every-list [(v (List Int))] (str-bytes-is-onto v)))
+```
+
+```
+$ OATH_STORE=<copy> ./oath/oath prove str-bytes-is-onto
+lemma library: 8 from dependencies, 1 from prior runs
+∎ PROVEN    holds-for-every-list         induction on binder 0 (Z3, unbounded ints)
+proven: 1/1 properties
+```
+
+`str-bytes` is therefore a BIJECTION `Str ↔ (List Int)`, machine-checked in both
+directions. So:
+
+- the provenance predicate is **VACUOUSLY TRUE** — its extension is every
+  `(List Int)`, so it types nothing out;
+- its negation, `{v | ¬∃s. v == str-bytes s}`, has an **EMPTY EXTENSION** — no
+  value satisfies it.
+
+One admits everything and the other admits nothing, and the reason is the same
+fact from step 1 wearing different clothes: `str-bytes` performs no encoding, so
+"came from a `Str`" is not a property that any value fails.
+
+**Both are EXTENSIONAL facts, and this step stops there rather than predicting
+what a checker would do with them.** What a call does depends on how an
+implementation discharges `T <: {x | P}` for a predicate that is quantified over
+`Str` and recursive — whether the tester can decide the inner existential at a
+generated value (it would have to construct the witness `bytes-str v`, or reach
+for the surjectivity lemma proved above), and whether an unrefuted, unproved
+obligation lands `tested` or `asserted`. `docs/refinements.md` specifies none of
+that, no kernel implements refinements, and three drafts of this paragraph each
+asserted a different operational outcome before this one declined to.
+
+The extensional result is what the case needed and it does not depend on any of
+it: **a predicate that no value fails and a predicate that no value satisfies
+are the two ways of saying nothing**, and naming the producer gives exactly
+those two.
+
+The dependent spelling `{v | v == str-bytes s}`, with `s` a free variable, is a
+RELATION between two values rather than a property of one. It can be stated
+where `s` is in scope, and the design note describes refinements over `x` alone;
+a type carrying a free variable could not travel with the value past the binding
+of `s`, which is exactly where the digest's octets go.
+
+## The result, decidable, and for this construction only
+
+The three cases are not the evidence. They are the three ways one might hope to
+escape what follows, and each fails for its own reason.
+
+### What no predicate can do
+
+> **The two members of any pair in `S` are the SAME VALUE `v`, and membership in
+> `{v : (List Int) | P v}` is a function of `v`. So for every predicate `P`,
+> both members are in the type or both are out.**
+
+That quantifies over ALL predicates rather than sampling them, and no search
+would help — which is what makes it decidable rather than empirical. **What it
+establishes is that no predicate DECIDES a value's role**, and it is worth
+stating exactly that much, because an earlier draft of this section stretched it
+into "no refinement separates any pair", which is FALSE and was caught in
+review.
+
+### Separation at a call, once the declarations have to be SOUND
+
+A call is not checked by testing the value. It is checked by SUBTYPING between
+DECLARED types, so the question is what refinements the two ends can soundly
+carry. An earlier draft answered that with "any two incomparable predicates",
+concluded the separation would be nominal, and left the outcome undetermined.
+**That was wrong, and the universe from step 1 is what refutes it.**
+
+**The CP end cannot carry a non-trivial refinement at all.** A sound result type
+`str-bytes : Str -> {x : (List Int) | P x}` needs every value `str-bytes` can
+return to satisfy `P` — and `str-bytes-is-onto`, PROVEN above, says its range is
+ALL of `(List Int)`. So `ext(P) = V_CP =` every list, and `P` is vacuous. This is
+the same measurement doing double duty: the bijection that empties the
+provenance predicate also forbids any sound refinement on the producer's result.
+
+**The OCT end carries exactly `Δ`.** `ext(Q) ⊆ Δ` or the type admits values that
+are not octets; `ext(Q) ⊇ Δ` or it rejects legitimate bodies. So `ext(Q) = Δ`.
+
+Now read the two directions off the subtyping rule, `P ⟹ Q` iff
+`ext(P) ⊆ ext(Q)`:
+
+| direction | check | extensions | result |
+|---|---|---|---|
+| **OCT → CP** — `bytes-str` on a body | `Q ⟹ P` | `Δ ⊆` every list | **HOLDS — the call is allowed** |
+| **CP → OCT** — the digest | `P ⟹ Q` | every list `⊄ Δ` | fails, and falsifiably: `[1082]` is a counterexample |
+
+**The reverse direction gets no protection at all, and that conclusion depends
+on nothing left open.** `Q ⟹ P` holds outright, so no ladder state, no
+obligation granularity and no flow-sensitivity is involved: reading a request
+body as text is exactly as permitted after the refinements as before.
+
+**And the forward direction's block is a RANGE block — it is `R` again, not
+`S`.** It falsifies on `[1082]`, a class C value, and against the DECLARED types
+it falsifies for every secret including ASCII ones, because `str-bytes`'s
+refinement is vacuous. A flow-sensitive checker could do better, and the design
+note leaves flow-sensitivity open, so this step cannot say the forward call is
+rejected outright.
+
+**But look at what the flow-sensitive route actually buys, because it is not
+separation.** The app already guards with `secret-is-usable`
+(`apps/github-webhook/webhook.oath:663`), whose second conjunct demands
+printable ASCII; a checker that narrowed the secret to `{x | ascii x}` after
+that guard would discharge `⟹ Octets`, admitting the ASCII secret while `[233]`
+never reaches the narrowing at all. That works — and it works by **EXCLUDING
+`S_high` from the program**, not by telling CP from OCT. What is left is
+`S_ascii`, where step 1 measured the two roles as observationally equal and
+there is nothing to separate.
+
+So the honest forward-direction statement is narrower than "the block fails" and
+sharper than "the block works": on the diagonal a predicate can only ADMIT or
+EXCLUDE a value in BOTH roles, so a program either refuses class B secrets
+outright — losing every legitimate one along with the dangerous ones — or admits
+them and is wrong about them. There is no third option, and that is a property
+of the construction rather than of any checker's cleverness.
+
+The nominal escape survives only by making a declaration UNSOUND — excluding
+legitimate CP values, or admitting non-octets. That is not a discipline a
+correct program can adopt, so it is not an open question about the design; it is
+a wrong turn, recorded here because it took a review pass to see it was one.
+
+**The two obligations, then:**
+
+    R  —  EXPRESSIBLE, and discharged exactly on the obligations a checker
+          SETTLES (proves or falsifies). Where one lands `tested` or
+          `asserted` the call proceeds and a class C value still reaches an OCT
+          position, so the construction does NOT satisfy R in general
+    S  —  NOT SEALED by this construction. OCT→CP is ALLOWED outright by
+          subtyping, unconditionally. CP→OCT can be blocked, but only by RANGE:
+          on Δ a predicate admits or excludes a value in BOTH roles, so a
+          program can refuse class B wholesale — restricting itself to S_ascii,
+          where the roles coincide — and cannot tell the two roles apart
+
+The two are limits of different kinds, and collapsing them would misreport both.
+`R`'s is a COVERAGE limit: a better solver, a lemma or `oath hint` moves
+individual obligations from unsettled to settled, and nothing about the
+construction stands in the way. `S`'s is not a solver limit at all — no proof
+effort makes a predicate see a distinction the value does not carry, and no
+declaration a correct program can make blocks the reverse direction at all.
+
+## What step 2 does NOT establish
+
+- **Nothing about a record wrapper, an opaque or abstract type, a nominal
+  newtype, or a distinct datatype.** Each changes the value or the type's
+  identity, so each is a different construction and none inherits this result.
+  Note especially that `issue-159.md`'s measurement — a monomorphic `Bytes`
+  DATATYPE puts to `Str`'s hash — is a fact about datatypes and does not follow
+  from anything here, nor this from it.
+- Nothing about refinements over other base types, or about #69 as a whole. #69
+  is a general feature and this is one construction inside it.
+- Nothing about whether discharging `R` alone justifies the feature. That is a
+  judgement about cost, and no measurement here speaks to it.
+- Nothing about `S` being unreachable by any mechanism. What is established is
+  that a predicate over the unchanged value cannot reach it — which is a
+  statement about this construction, not about the design space.
+
+## Provenance of step 2's measurements
+
+`str-bytes-is-onto` (`#33ee2d264b24`), `byte-range-ok` (`#961b502d5afc`) and
+`spellings-agree` (`#90e4a488f855`) were put with `--new` into a COPY of
+`codebase/` in a scratch directory and proved there. They are not in the
+canonical store and their names are not bound in it — an exercise gets its own
+store, never the namespace holding the standard library. `git status codebase/`
+was clean before and after, and `bytes-ok`'s hash `#d2406871baf1` is the
+committed corpus object, unchanged.
