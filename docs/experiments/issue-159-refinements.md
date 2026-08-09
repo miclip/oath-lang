@@ -57,7 +57,12 @@ the underlying value is the same**, and a relation indexed by `s` can never
 exhibit that case, because it never puts one value in two roles.
 
 So the universe is over VALUES CARRYING A ROLE, and the encoding functions
-become what generates its members rather than what its members are.
+become what generates its members rather than what its members are. It arrives
+in two layers, and both are needed: a POPULATION of tagged values (`U`), and on
+it the obligations a mechanism must discharge — `R`, refusing the UNCHANGED
+retag of a CP member that has no OCT member at the same value, and `S`,
+separating same-value pairs that have two live roles. `S` is the part no
+predicate over the value can reach, and `R` is the part that one can.
 
 ## The universe, derived from the residue
 
@@ -67,16 +72,24 @@ A **role** is what a `(List Int)` value is being taken to mean:
     OCT   the elements are octets — bytes on a wire, keys of a digest
 
 The residue's members are **tagged values** `(v, r)`, `v : (List Int)`,
-`r ∈ {CP, OCT}`, and the universe is
+`r ∈ {CP, OCT}`, and the tagged population is
 
     U  =  { (v, CP) : v ∈ V_CP }  ∪  { (v, OCT) : v ∈ V_OCT }
 
-      V_CP   = lists of Unicode SCALAR values — what a `Str` reading can mean
-      V_OCT  = lists of elements in 0..255  — what an octet reading can mean
+      V_CP   = every (List Int) — `Str` CONSTRUCTION IS UNCHECKED (SPEC §3), so
+               any list of Ints is some `Str`'s element list and can arrive
+               tagged CP
+      V_OCT  = lists of elements in 0..255 — what can be octets at all
 
 The tag is **provenance**, not a component of the value: `(List Int)` carries
 `v` and nothing else, which is the whole of #159 restated in the vocabulary the
 claim needs.
+
+**`V_CP` is defined by provenance and `V_OCT` by representability, and mixing
+those two up is a live error rather than a pedantic one** — an earlier draft
+defined `V_CP` as the SCALAR lists, which is a validity condition, and then
+concluded that a non-scalar `Str`'s spine carried no role at all. It carries a
+CP role: it came out of a genuine `Str`. What it lacks is an OCT counterpart.
 
 ### The fault is one operation, in both directions
 
@@ -105,11 +118,15 @@ sites.
 
     Δ  =  V_CP ∩ V_OCT  =  V_OCT
 
-because every value in `0..255` IS a Unicode scalar value. That containment is
-strict — `(Cons 1082 Nil)` is in `V_CP` and not in `V_OCT` — and it is the
-asymmetry the rest of this section turns on: **`V_OCT ⊆ V_CP`, so every octet
-value is also a legitimate codepoint value, and the entire OCT half of U lies on
-the diagonal.**
+strictly — `(Cons 1082 Nil)` is in `V_CP` and not in `V_OCT`. **The entire OCT
+half of U therefore lies on the diagonal**, and that is the asymmetry the rest
+of this section turns on.
+
+It holds for two separate reasons, worth keeping apart because only the second
+is a fact about Unicode: `V_CP` is everything, so the containment is immediate;
+and every value in `0..255` is additionally a Unicode SCALAR value, which is
+what makes an octet list not merely CP-tagged but a WELL-FORMED text — the
+reason `bytes-str` never has to refuse anything (measured below).
 
 On Δ the tag is invisible in the value, and both tags are genuinely inhabited.
 The sharpest witness is one value in both roles at one site — `v = [195, 169]`,
@@ -136,20 +153,96 @@ One value. Tagged OCT it is the UTF-8 of `"é"` and keys the digest the outside
 world computes. Tagged CP it is the text `"Ã©"`. Nothing in `(List Int)`
 separates those two facts.
 
+### S — the separation obligation, as a relation rather than a population
+
+U is a POPULATION of tagged values. The obligation the closure claim states is a
+RELATION on it: the pairs of members a mechanism must hold apart. Only same-value
+pairs can state that obligation, because a pair with two different values is
+already held apart by the value:
+
+    S  =  { ((v, CP), (v, OCT))  :  v ∈ V_OCT }
+
+**S is exactly the diagonal, in bijection with `V_OCT`.** So the separation
+obligation is precisely as large as the set of octet lists: every possible
+request body, and every secret whose codepoints happen to fit in byte range.
+
+Its two subsets are the two halves of the measurement, and they are subsets of
+S rather than of U — a distinction that matters, because they are conditions on
+`v`, applied to a pair:
+
+    S_ascii  =  { ((v, CP), (v, OCT)) ∈ S  :  every element of v < 0x80 }
+    S_high   =  { ((v, CP), (v, OCT)) ∈ S  :  some element of v ≥ 0x80 }
+
+- **`S_ascii` is the OBSERVATIONAL-EQUALITY control.** Its two members denote the
+  same thing: the same digest, and a decode that is the identity. Nothing an
+  Oath program can compute distinguishes them, which is why the corpus's ASCII
+  fixtures pass under either tag and caught nothing.
+- **`S_high` is the silent webhook hazard**, in both directions at once — the
+  digest is keyed differently and the decode produces mojibake, with nothing
+  raised on either path.
+
+**Class C contributes NO pair to S, and that is a property of the values rather
+than a scoping decision.** An off-diagonal `v` has no OCT member for the pair's
+second component to be, so no same-value pair exists to separate. It is
+**RANGE-DISCRIMINABLE**: a predicate over the value alone decides it, and
+`bytes-ok` is such a predicate, needing no provenance. The same is true of a
+non-scalar `Str`'s spine, for the same reason and one step further out.
+
+**Contributing no pair to S is NOT the same as being outside the obligation, and
+conflating those two would let a later step claim closure too cheaply.** A
+class C secret still reaches `hmac-sha256` — a CP-tagged value arriving at an
+OCT position, which is the fault the claim names. It simply is not a SEPARATION
+fault. So the obligation has two components, and the residue splits at the
+diagonal into exactly these:
+
+    R  =  { (v, CP)  :  v ∈ V_CP \ V_OCT }     REFUSE THE RETAG — a CP member
+                                                with no OCT member at the SAME
+                                                value, reaching an OCT position.
+                                                Decidable from the value;
+                                                `bytes-ok` decides it
+
+    S  =  { ((v, CP), (v, OCT))  :  v ∈ V_OCT } SEPARATE — same value, two live
+                                                roles. NOT decidable from the
+                                                value, by construction
+
+**`R` FORBIDS `ρ`, NOT ENCODING, and the difference decides what step 2 may
+count as a failure.** `[1082]` is the text `"к"` and it certainly has an octet
+reading — UTF-8 `[208, 186]`. What it does not have is an OCT member carrying
+the SAME list, which is why the identity retag must be refused there. A real
+encoder CHANGES the value and is therefore not `ρ` at all; a mechanism that
+refuses `ρ` while admitting an explicit encode satisfies `R`, and reading `R`
+as "these values may not become octets" would reject exactly the repair the
+residue calls for. (The non-scalar members differ in the reason and not in the
+obligation: UTF-8 has no encoding for them, and SPEC §3 leaves a kernel the
+choice of an injective encoding or a named refusal.)
+
+**Closure requires both, and step 2 must evaluate a mechanism against R and S
+alike.** R is not already discharged: what refuses a class C secret today is the
+Go kernel's runtime range check, not a type — an implementation limit reported
+at run time, which is a different guarantee from a value that cannot reach that
+position. S is the harder half and the one this file's measurements are pointed
+at, but "harder" is not "the whole obligation".
+
 ### The partition — where confusion is observable, and where it is not
 
 `ρ` is what confusion IS, so the classes are the classes of `ρ`'s behaviour.
 
 The classes partition `V_CP` on DIAGONAL MEMBERSHIP first, and only then on
 element range — which is what makes them disjoint. A value is on the diagonal
-exactly when **every** element is ≤ 0xFF, so a single wide element takes the
-whole value off it, however many bytes sit beside it.
+exactly when **every** element is in `0..255` — BOTH bounds, since `V_CP` is
+every `(List Int)` and a negative element is as far off the diagonal as a wide
+one. A single out-of-range element takes the whole value off it, however many
+bytes sit beside it.
 
 | class | values | `ρ` | observable? |
 |---|---|---|---|
 | **A** diagonal, ASCII | `v ∈ Δ` and every element < 0x80 | defined both ways | **NO — the two roles denote the same thing.** The equality control |
-| **B** diagonal, high | `v ∈ Δ` and some element ≥ 0x80 (so all elements ≤ 0xFF) | defined both ways | **YES, SILENTLY** — changes the HMAC key; changes the decoded text |
-| **C** off-diagonal | `v ∉ Δ` — some element > 0xFF | CP→OCT undefined; no OCT member exists | **YES, LOUDLY — but by a tool**, see below |
+| **B** diagonal, high | `v ∈ Δ` and some element ≥ 0x80 (so every element is in `0..255`) | defined both ways | **YES, SILENTLY** — changes the HMAC key; changes the decoded text |
+| **C** off-diagonal | `v ∉ Δ` — some element outside `0..255`, above it (`1082`) or below it (`-1`) | CP→OCT undefined; no OCT member exists, so **no pair in S** | **YES, LOUDLY — but by a tool**, see below |
+
+The classes are conditions on VALUES; `S_ascii` and `S_high` above are the same
+two conditions read as conditions on a PAIR. Class A ↔ `S_ascii`, class B ↔
+`S_high`, and class C ↔ `R` — no pair, and the refusal obligation instead.
 
 Disjoint and exhaustive over `V_CP` by construction, and the mixed case is the
 one to check: `[233, 1082]` is **class C, not class B**, because `1082` puts it
@@ -287,13 +380,15 @@ and the same three through `txt`, verbatim:
 the Cyrillic SECRET is class C.** The class of a member is a property of the
 VALUE and its role, never of the string a human had in mind.
 
-### Outside U — non-scalar `Str`, and why excluding it is safe
+### Non-scalar `Str` — a CP member with no OCT counterpart
 
 `Str` construction is unchecked: SPEC §3 says a kernel MUST NOT reject a
-non-scalar element at construction, so `(SCons -1 (SNil))` is an ordinary `Str`.
-It is outside U because **UTF-8 has no encoding for a non-scalar value**, so it
-has no octet reading to confuse a codepoint reading with — a fact about the
-encoding, not about any kernel's boundary policy.
+non-scalar element at construction, so `(SCons -1 (SNil))` is an ordinary `Str`
+and `(Cons -1 Nil)` is an ordinary CP-tagged member of U. **What it lacks is an
+OCT role**, because UTF-8 has no encoding for a non-scalar value — a fact about
+the encoding, not about any kernel's boundary policy. It therefore contributes
+no pair to S and falls under `R` instead, exactly as class C does — the refusal
+obligation, not an exemption.
 
 Stating it that way matters, because SPEC §3's PACK does NOT simply require
 refusal: it requires that an implementation *encode each element injectively OR
@@ -309,12 +404,12 @@ $ ./oath/oath eval '(bytes-ok (str-bytes (SCons -1 (SNil))))'
 false : Bool
 ```
 
-**The exclusion cannot smuggle a silent case out of U**, and that is a
-consequence of the ranges rather than an assurance: every value in `0..255` is a
-scalar value, so a non-scalar element is necessarily outside `0..255`, so no
-non-scalar value is on the diagonal. Class B — the silent class — contains none
-of them. The digest defect's own secrets arrive by ADMIT (`process_env`), which
-SPEC §3 requires to decode as UTF-8 or refuse.
+**Leaving it out of S cannot smuggle a silent case out of the obligation**, and
+that is a consequence of the ranges rather than an assurance: every value in
+`0..255` is a scalar value, so a non-scalar element is necessarily outside
+`0..255`, so no non-scalar value is on the diagonal. `S_high` — the silent set —
+contains none of them. The digest defect's own secrets arrive by ADMIT
+(`process_env`), which SPEC §3 requires to decode as UTF-8 or refuse.
 
 ## World claims and tool claims
 
@@ -328,10 +423,19 @@ kind survives the tool improving.
 - `V_OCT ⊆ V_CP`, strictly. Every octet list is a legitimate codepoint list, so
   the OCT half of U lies entirely on the diagonal and the OCT→CP direction has
   no refusable case.
-- On class A the two roles denote the same thing, so `ρ` is unobservable there.
+- The separation obligation is the same-value relation
+  `S = {((v, CP), (v, OCT)) : v ∈ V_OCT}`, in bijection with `V_OCT`; everything
+  off the diagonal is range-discriminable and contributes no pair. Those
+  off-diagonal members carry the REFUSAL obligation `R` instead, which is part
+  of the claim and not discharged by falling outside `S`.
+- On `S_ascii` the two roles denote the same thing, so `ρ` is unobservable
+  there.
+- **A non-scalar `Str`'s spine carries a CP role and no OCT role.** It is a
+  member of U, not an exclusion from it, and it contributes no pair to S.
 - `str-bytes` is the identity on the codepoint spine; no encoding happens
   (cited).
-- Non-scalar `Str` values carry no role, and none of them is on the diagonal.
+- Non-scalar `Str` values carry no OCT role, and none of them is on the
+  diagonal.
 
 **TOOL — about this kernel, this corpus, this run:**
 
