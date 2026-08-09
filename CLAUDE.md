@@ -589,11 +589,17 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   more EXPENSIVE if delayed   #161 — two properties are FALSE while carrying a
                               `tested` guarantee, so every day they stand is a
                               day the ladder's own evidence is wrong about them
+                              #163 — SPEC §4 still specifies a primitive `Str`
+                              generator that was deleted when `Str` became
+                              inductive, asserting printable-ASCII coverage
+                              NEITHER kernel provides. It is false normative
+                              text: a third kernel written from the spec today
+                              would implement it and diverge
   more VALUABLE if delayed    #134, #139/#140, #138, #38 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
   no CLOCK at all             #159, #68, #158, #119, #115, #116, #74, #65,
-                              #66, #160 — open, and neither cheaper nor
+                              #66, #160, #162 — open, and neither cheaper nor
                               dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
