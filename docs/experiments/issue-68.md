@@ -13,9 +13,11 @@ produced figures that overstated a population by ten definitions.
 **That scope statement now governs §§1–7 only, and the file has grown past it.**
 §9 pins a criterion and §10 applies it, so the document DOES assign per-goal
 reachability verdicts — with every disposition citing the clause that decided it
-and the clause committed before the number. **What is still true of the whole
-file is the last clause: no verdict on #68 itself is offered and nothing is
-recommended** (§10.7 says why the counts do not choose one).
+and the clause committed before the number. §10 assigns no verdict on #68 itself
+and §10.7 says why its counts do not choose one; **§11 then does assign one —
+NARROW — on an argument stated there rather than on the counts alone.** So the
+original "nothing is recommended" no longer describes the file either, and this
+paragraph supersedes it.
 
 Sections 1-5 are the census and sort nothing at all. **Section 6 draws exactly
 one line through the non-proven set** — whether a candidate SMT script was ever
@@ -2387,13 +2389,14 @@ verdicts. Nothing below reads a type off an identifier.
 | step | operation | result |
 |---|---|---:|
 | 1 | START — non-proven per-object properties | **139** |
-| 2 | SUBTRACT everything the CURRENT encoding decides (43 `proves-on-attempt` + 3 `refuted`) | −46 → **93** |
-| 3 | PARTITION by subject rule and BRANCH | A **76**, B **47**, out of A **17** |
+| 2 | SUBTRACT everything the CURRENT encoding decides (43 `proves-on-attempt` + 3 `refuted` + 1 store-recorded falsification) | −47 → **92** |
+| 3 | PARTITION by subject rule and BRANCH | A **75**, B **47**, out of A **17** |
 | 4 | TAG each translation bail by REPRESENTABILITY | see §10.5 |
 | 5 | CLASSIFY | §10.3, §10.4 |
 | 6 | REMOVE properties established FALSE — population B only | −0 |
 
-**Step 2's subtraction, itemised.** The three refuted are `f-scale-inv.recovers`,
+**Step 2's subtraction, itemised — AND A CORRECTION TO ITS FIRST COMMITTED FORM.**
+The three the sweep refuted are `f-scale-inv.recovers`,
 `f-tenths.is-three-tenths` and `spin.claims-zero` — subtracted from **both**
 populations, because deciding includes refuting and a refutation the current
 encoding has already produced is not headroom for a new one. The single
@@ -2401,6 +2404,20 @@ encoding has already produced is not headroom for a new one. The single
 inadmissible as falsity precisely because the countermodel was never confirmed,
 and it is not a decision either. The single `solver-unknown` stays for the same
 reason.
+
+**A fourth is subtracted on the STORE's authority, and the first commit of this
+section missed it.** `bad-reverse.antidistributes-over-append` comes back
+`unknown` from the sweep — z3 does not refute it within 4M — but the store
+records `guarantee.falsified` for it, and `fixtures/verify/bad-reverse.txt`
+carries the reproducible counterexample `(Cons -1 Nil), (Cons -8 (Cons 2 (Cons 15
+Nil)))`. §9.2 names the authority for step 2 as *"§7's measured sweep; the
+store"*, and the property is already decided; leaving it in would credit a
+sequence encoding with a decision the corpus already holds. **The first commit of
+§10 read only the sweep's status field and therefore subtracted 46 rather than
+47.** Every figure below is the corrected one — population A is 75, not 76, and
+its borderline count is 26, not 27. Recorded rather than silently amended,
+because a count that moved after publication is exactly what this file asks
+others to disclose.
 
 **Step 6 removed nothing.** No residual population-B goal carries an admissible
 falsity witness under §9.2.1 — the recorded refutations were already gone at
@@ -2412,8 +2429,8 @@ step 2, and no counterexample-by-evaluation is on record for any survivor.
 |---|---:|
 | CONFIRMED REACHABLE | **0** |
 | NOT REACHABLE | **49** |
-| BORDERLINE | **27** |
-| total | **76** |
+| BORDERLINE | **26** |
+| total | **75** |
 
 **The zero is STRUCTURAL, not measured, and must not be read as a decline.**
 §9.5's last row makes CONFIRMED REACHABLE unachievable this round: it requires a
@@ -2435,13 +2452,13 @@ B is a proper subset of A (§9.1), and its single borderline member is
 is R1 alone, so §9.5's second row puts every `List`-only goal outside B whatever
 its L-classification.
 
-**OUT OF POPULATION (B) — 46 of the 93 residual goals, each citing R1 alone.**
+**OUT OF POPULATION (B) — 45 of the 92 residual goals, each citing R1 alone.**
 §9.5's second row makes B's subject rule R1 and nothing else, so §9.8's citation
 requirement is discharged for these by one citation rather than two: **no term,
 binder or result anywhere in the goal is typed `Str`, so R1 fails.** Seventeen of
 them are the goals already outside A (§10.5's last group, which fail R1 *and*
-L1). The other 29 are in A on L1 and out of B on R1:
-`bad-reverse.antidistributes-over-append`, `bytes-after.finds-at-head`,
+L1). The other 28 are in A on L1 and out of B on R1:
+`bytes-after.finds-at-head`,
 `json-string-value.no-newline`, `json-string-value.no-quote`,
 `json-string-value.no-tab`, `q-drop.drop-back-only`, `q-drop.drop-is-tail`,
 `q-drop.peek-drop-rebuild`, `rle-encode.roundtrip`,
@@ -2515,8 +2532,8 @@ Row 3 (A and B alike): `gh-sign.carries-the-algorithm`,
 
 **BORDERLINE — the soft clause, AND the hard rules accounted for.** §9.8 requires
 both, because a row naming a genuine soft clause while a hard failure sits
-unmentioned looks audited and is wrong. All 27 share one soft disposition and one
-hard-rule account, so both are stated once rather than copied 27 times:
+unmentioned looks audited and is wrong. All 26 share one soft disposition and one
+hard-rule account, so both are stated once rather than copied 26 times:
 
 > **Soft clause: §9.4's L4a PRECEDENCE TABLE, ROW 2** — *registry entry: none;
 > termination verdict: proven total* → **BORDERLINE (SOFT)**. The bridge registry
@@ -2545,18 +2562,18 @@ hard-rule account, so both are stated once rather than copied 27 times:
 > are unavailable by construction: both require a RECORDED decision failure on a
 > RE-ENCODED goal, and no goal has ever been re-encoded.
 
-Population A borderline (26 `List`-subject goals): the 14 rotation laws —
+Population A borderline (25 `List`-subject goals): the 14 rotation laws —
 `rot.decomposes-in-range`, `rot.neg-one-pulls-last-to-front`,
 `rot.periodic-in-length`, `rot.shift-one-moves-head-to-back`, and the same four
 for `rot-h2`, three for `rot-h3` and three for `rot-hl` — plus
-`bad-reverse.antidistributes-over-append`, `bytes-after.finds-at-head`,
+`bytes-after.finds-at-head`,
 `q-drop.drop-back-only`, `q-drop.drop-is-tail`, `q-drop.peek-drop-rebuild`,
 `rle-encode.roundtrip`, `rle-encode.two-runs-stay-two-runs`,
 `rle-encode.uniform-list-is-one-run`, `set-elems.size-is-length`,
 `set-member.empty-has-none`, `t-insert.insert-keeps-sorted`,
 `t-member.member-flatten-equiv`.
 
-**Seventeen of the 27 carry a SECOND soft disposition, which does not change the
+**Seventeen of the 26 carry a SECOND soft disposition, which does not change the
 verdict but is part of the row: the 14 rotation laws, `show-int.roundtrip`, and
 the two guarded `rle-encode` laws** (`uniform-list-is-one-run`,
 `two-runs-stay-two-runs`), whose integer guards `1 <= x0` and `1 <= x2` survive
@@ -2613,7 +2630,7 @@ and a trusted crypto primitive (`hmac-sha256`), neither of which is about how a
 sequence is represented.
 
 **3. Every borderline verdict in both populations rests on the SAME empty
-registry.** Not one of the 27 was parked by a solver limit, an arithmetic
+registry.** Not one of the 26 was parked by a solver limit, an arithmetic
 coupling or a nesting question in isolation: each stops at L4a row 2 because a
 recursive list function has no bridge entry. The classification therefore does
 not distribute across many independent obstacles — it concentrates on one
@@ -2631,7 +2648,7 @@ the pinned budget, so step 2 subtracts it before the partition and it never
 enters population A at all — the finding contradicted this section's own
 derivation, and review caught it.
 
-Re-measured properly: of the 76 residual population-A goals, the number whose
+Re-measured properly: of the 75 residual population-A goals, the number whose
 ONLY witness for R1 or L1 is a field of a non-sequence datatype is **zero**.
 Every member is admitted by a binder, by its own signature, by a called symbol's
 signature, or by a `List`/`Str` constructor written in the goal. **So the clause
@@ -2647,9 +2664,9 @@ assigning one from this table alone would repeat §8's error of letting an
 arithmetic result stand in for an argument. Three facts pull in different
 directions and the weighing is a separate act:
 
-- 49 of 76 population-A goals are NOT REACHABLE on causes a sequence encoding
+- 49 of 75 population-A goals are NOT REACHABLE on causes a sequence encoding
   does not touch, and the whole of population B's 46 are among them;
-- the 27 borderline goals — including all 14 rotation laws, the class #68's
+- the 26 borderline goals — including all 14 rotation laws, the class #68's
   proposal reaches — are blocked on exactly one missing artefact, the bridge;
 - CONFIRMED REACHABLE is 0 by construction, so **nothing here confirms that any
   goal is reachable**, and nothing here refutes it either.
@@ -2657,3 +2674,274 @@ directions and the weighing is a separate act:
 **A figure quoted without its snapshot and budget is not a result**: all of the
 above is *in the Oath corpus at `66e9fa4`, at a 4M rlimit*, and both populations
 are UPPER BOUNDS at that budget, as §9.1 requires them to be reported.
+
+## 11. THE VERDICT — NARROW
+
+**#68 is answered NARROW.** Not proceed on a `Str`-and-all-scalar-sequence
+encoding, and not decline. What the classification supports is a small, separately
+gated feasibility milestone over ONE family, with a falsifier that returns
+DECLINE if it fails.
+
+### 11.1 What is rejected, and on what evidence
+
+**A broad strategy — bridge the datatypes, encode `Str` and every `List σ` onto
+`Seq` — is not supported by anything measured here.**
+
+- **The title question has one unresolved candidate.** Population B is 47
+  residual goals: 46 NOT REACHABLE on translation bails that a representation
+  change does not touch, and `show-int.roundtrip` alone left BORDERLINE. A
+  `Str`→`Seq` programme justified by "properties that would become `proven`" is
+  justified, in this corpus, by one property.
+- **The reachability side is not broad either; it is CONCENTRATED.** 25 of
+  population A's 26 borderline goals are `List`-subject, and every one of the 26
+  stops at the same clause — §9.4's L4a precedence table, row 2 — because a
+  recursive list function has no bridge-registry entry. That is one missing
+  artefact, not twenty-seven independent obstacles.
+- **49 of A's 75 are NOT REACHABLE on causes representation does not reach** —
+  higher-order terms and a trusted crypto primitive. §9.3's REPRESENTABLE row,
+  the only row a `Seq` representation would move, is empty.
+
+**And the CONFIRMED REACHABLE zero is evidence for neither side.** It is
+structural: §9.5 requires a goal actually re-encoded and answered, no re-encoder
+exists, and building one was out of scope. Reading a decline off it would be an
+implementation limit reported as a semantic fact — which is why the verdict rests
+on the borderline concentration and the bail causes instead.
+
+### 11.2 What NARROW commits to
+
+A separately gated **`List Int` rotation feasibility milestone**, and nothing
+wider. It is not started here and this section builds nothing.
+
+| | |
+|---|---|
+| scope | prove the datatype↔`Seq` equivalences for **`append`, `take`, `drop`, `length`** — exactly the callees the rotation family reaches, per the kernel's own `deps` |
+| registry | each becomes a **PROVED** entry under §9.4's bridge registry, which is what makes L4a row 1 fire; an ASSERTED entry is explicitly not enough and leaves every goal BORDERLINE |
+| **entry KEYING** | entries are keyed by **definition AND type instantiation** — `append@[Int]`, `take@[Int]`, `drop@[Int]`, `length@[Int]` — never by the bare name. All four are polymorphic (`forall a`), the obligations below are proved at `List Int` only, and §9.4 describes an entry as naming the DEFINITION; a definition-level entry would therefore license the seq rewrite at `List Str`, `List (Pair Int Int)` and every other instantiation on the strength of an `Int`-only proof. Either the registry carries instantiation-keyed entries when it is built, or the milestone must discharge the obligations parametrically — and a bare-name entry from these proofs is unsound |
+| cross-kernel | the equivalences must reproduce **byte-identically in both kernels**, on the same terms as everything else that touches identity — a bridge that exists only in the Go kernel is not a language fact |
+| target | the **14 rotation laws** must DECIDE — `rot`, `rot-h2`, `rot-h3`, `rot-hl` |
+| **budget and solver, pinned here and not later** | **`rlimit = 4000000` under z3 `4.16.0`** — the same budget AND the same solver this classification ran at, so the milestone's result is like-for-like against §10: these 14 did NOT decide at 4M under the current encoding, and deciding at 4M under the re-encoding is therefore a comparison rather than a fresh experiment. Both halves are load-bearing, because §7 records an outcome as a function of (script bytes, solver version, rlimit) — matching the budget alone would let the laws decide because z3 improved. The normative `proveRlimit` is 400M, one hundred times larger; a result quoted there answers a different question and does not discharge the falsifier. If the pinned solver is unavailable when the milestone runs, that is an amendment naming the new version, not a silent substitution |
+| success | §9.5's own condition, unchanged — re-encoded onto `Seq`, answered `sat` or `unsat` within the stated rlimit, **and no soft assumption left open**, every bridge used PROVED |
+
+**Proving the four bridges is NOT by itself success, and this is the easiest part
+to overclaim.** It moves the rotation family off L4a row 2; it does not discharge
+**L5**, which is soft throughout for exactly these goals — their residual
+coupling is `(% (+ k (length xs)) (length xs))`, length-and-index arithmetic
+against `seq.len`. Only an actual decision at a named budget closes that, which
+is why the milestone's target is the family deciding rather than the bridges
+existing.
+
+**The milestone TARGETS 14 of the 25 `List`-subject borderline goals, and one
+more comes along free, for 15 reachable under the same four bridges.**
+`set-elems.size-is-length` widens no bridge and is not part of the pass/fail
+condition — the falsifier stays pinned on the 14, precommitted — but it is
+reachable all the same: `set-elems` and `set-size` are both non-recursive,
+`(match s ((MkSet x0) x0))` and `(match s ((MkSet x0) (length [Int] x0)))`, so
+L2's unfolding removes both and leaves only `length`, which the milestone already
+registers. **A first draft listed it among the excluded and claimed each excluded
+law needed its own bridge; that was false, and review caught it.**
+
+**`bad-reverse.antidistributes-over-append` is NOT in this accounting at all**,
+though two drafts placed it on either side of the boundary. It is already decided
+— the store records it falsified with a reproducible counterexample — so §9.2's
+step 2 subtracts it before any partition, and counting it as reachability
+attributable to a new encoding would be the store-advancement error in the one
+section arguing against that error.
+
+The remaining 10 do each need a further bridge and are the widening this verdict
+declines to authorise in advance: `bytes-after.finds-at-head`, the three
+`q-drop` laws, the three `rle-encode` laws, `set-member.empty-has-none`,
+`t-insert.insert-keeps-sorted` and `t-member.member-flatten-equiv` — reaching
+`reverse`, `count`, `contains`, `is-sorted`, `t-flatten`, `si-member` and the
+`rle-*` family.
+
+### 11.3 The falsifier
+
+> **If ANY obligation in §11.2's protocol fails to discharge — the four transport
+> equations, EITHER carrier round-trip, or the `seq.len` induction scheme the
+> second round-trip requires — OR if fewer than all 14 rotation laws decide at
+> `rlimit = 4000000` under z3 `4.16.0` once they do, #68 is DECLINED.**
+
+**The carrier round-trips are IN the condition, not a footnote to it.** An
+earlier draft named only the four transport equations, which would have let an
+encoding pass with the transports proved and the bijection unestablished — and
+that encoding cannot soundly report a `sat`, so the gate would have certified
+exactly the unsound case §11.2 introduced them to prevent.
+
+**The bridge half needs its own stopping condition, or it is unfalsifiable** — a
+proof that has not succeeded yet is not a proof that cannot, and without a bound
+every failed attempt is answered by trying harder, indefinitely.
+
+**But the obvious protocol is not available, and saying why is half the value of
+this paragraph.** A first draft required each equivalence to be "stated as a
+property and proved by the kernel's ordinary path". **That is unstatable.** `Seq`
+is an SMT sort, not an Oath source type, so no Oath property can mention
+`seq.++`; and the ordinary prover emits `List` as an algebraic datatype, so
+turning the re-encoding on first in order to prove the bridge would make the
+proof ASSUME the bridge it exists to justify. Caught in review, and recorded
+because a circular protocol that reads like ordinary practice is exactly the kind
+of obligation this file keeps finding presupposes a structure nobody built.
+
+**So the bridge obligation lives BELOW the property language, and the milestone
+must build the generator that emits it.** Its shape, pinned here so the falsifier
+is measurable:
+
+  - a **total FUNCTION `to-seq : List Int → (Seq Int)`, DEFINED by its two
+    equations** — not a relation constrained by them:
+
+        to-seq(Nil)        = (as seq.empty (Seq Int))
+        to-seq(Cons x xs)  = (seq.++ (seq.unit x) (to-seq xs))
+
+    §9.7b already fixes both right-hand sides, including why the `as` annotation
+    is required on the z3 this repository runs. **A first draft declared an
+    uninterpreted relation `R` and asserted the two clauses as implications. That
+    is unsound as a gate and was caught in review**: two one-way implications do
+    not characterise `R`, so z3 may take `R` universally true, `R(Nil, seq.unit
+    0)` then holds, and the length obligation below is FALSE — the falsifier
+    would return DECLINE for every possible encoding, measuring the
+    obligation's own defect instead of the bridge. A definitional extension by a
+    structurally recursive total function is conservative and is uniquely pinned
+    on the datatype's finite elements, which is what the gate needs;
+  - one **transport obligation per bridged function, as an EQUATION** —
+    `∀ xs ys. to-seq(append xs ys) = (seq.++ (to-seq xs) (to-seq ys))`;
+    `∀ xs. length(xs) = (seq.len (to-seq xs))`, the one that lands in `Int`
+    rather than in a sequence; and for `take`/`drop`, TOTAL
+    equations built on a clamped index `c = (ite (< k 0) 0 (ite (> k (seq.len s)) (seq.len s) k))`
+    with `s = (to-seq xs)`:
+
+        ∀ k xs. to-seq(take k xs) = (seq.extract s 0 c)
+        ∀ k xs. to-seq(drop k xs) = (seq.extract s c (- (seq.len s) c))
+
+    **The clamp is what makes the entries SOUND TO REGISTER, and a guarded
+    version would not be.** `take`/`drop` are total in Oath at every `k` —
+    verified by evaluation, not assumed: `take -1 xs = Nil`, `drop -1 xs = xs`,
+    and both saturate above `length`. `seq.extract` does not behave that way at a
+    negative offset. **A first draft stated these as guarded equations holding
+    only for `0 ≤ k ≤ length(xs)`, and §9.4's registry has no notion of a guarded
+    entry** — so registering one would globally license `drop ↦ seq.extract` and
+    permit an invalid rewrite on any goal using an out-of-range index. Caught in
+    review. A second draft then justified the clamp by claiming
+    `neg-one-pulls-last-to-front` exercises the negative case; **that is also
+    wrong** — all four rotation implementations normalise `k` into `[0, len)`
+    before `take` or `drop` sees it, by one of TWO forms and not the single one
+    that draft attributed to all of them: `rot` and `rot-h2` use the nested
+    remainder `(% (+ (% k len) len) len)`, while `rot-h3` and `rot-hl` compute
+    `(% k len)` and then add `len` when it is negative. So these 14 targets never
+    reach an out-of-range index. The clamp is
+    required for REGISTRY SOUNDNESS, since an entry is global and other goals may
+    pass any `k`; it is not evidenced by the target family. The clamped form is
+    total, needs no guard, and is registrable as written;
+  - **a CARRIER-CORRESPONDENCE obligation, because the milestone counts `sat` as
+    success and the four equations above do not earn it.** They establish that
+    every `List Int` maps to a sequence with its operations preserved — enough
+    for `unsat`, since a list counterexample would have to appear as a sequence
+    counterexample. **`sat` runs the other way**: the witness z3 exhibits lives in
+    `(Seq Int)`, and nothing above says every such sequence is the image of a
+    list, so an unbacked `sat` would "refute" an Oath law with a value the
+    language has no term for. So an inverse `of-seq : (Seq Int) → List Int` is
+    required — and **DEFINED, not merely declared**, by recursion on `seq.len`,
+    which is the same decomposition §9.7b already fixes for a sequence-typed
+    `match`:
+
+        of-seq(s) = Nil                                      when (seq.len s) = 0
+        of-seq(s) = Cons (seq.nth s 0)
+                         (of-seq (seq.extract s 1 (- (seq.len s) 1)))  otherwise
+
+    with both round-trips then discharged under the same protocol:
+
+        ∀ xs. of-seq(to-seq xs) = xs
+        ∀ s.  to-seq(of-seq s)  = s
+
+    **A declared-but-undefined `of-seq` would be an arbitrary function and BOTH
+    round-trips would be satisfiable-when-negated, failing the gate for every
+    possible encoding — the same defect as the uninterpreted `R` above, one level
+    down, and likewise caught in review rather than by its author.**
+
+    Together these make `to-seq` a bijection, which is what lets a decision
+    transfer in either direction — the same distinction §9.1 draws when it admits
+    refutation as a decision: a refutation only counts if it refutes the Oath
+    goal.
+
+    **And the second round-trip needs an induction principle this repository does
+    not currently have.** `∀ s. to-seq(of-seq s) = s` inducts on `seq.len s`, an
+    integer measure over the SEQUENCE sort — not structural induction over an
+    Oath datatype, which is what §7.2 supplies. Building that scheme is part of
+    the milestone, and **if it cannot be supplied, the milestone has failed and
+    the falsifier fires** — stated here so that a missing induction principle is
+    a recorded outcome rather than a reason to relax the gate;
+  - discharged **directly by z3** against the datatype axioms the kernel already
+    emits, with the induction over the cons-list supplied EXPLICITLY by §7.2's
+    existing structural-induction machinery — these are not quantifier-free and
+    z3 does not induct on its own;
+  - **at `rlimit = 4000000` under z3 `4.16.0`**, the same budget and solver as
+    everything else in this milestone.
+
+**The bound, which is what makes the branch fire.** An obligation that does not
+discharge under exactly those conditions **has failed**, and no retry with a
+larger budget, an added tactic or a hand-supplied lemma counts as discharging it
+— **with ONE exemption, named in advance so the stopping rule does not forbid the
+milestone's own declared scope: the `seq.len` induction scheme required by the
+second round-trip above.** That scheme is part of what the milestone builds, and
+banning it while requiring the obligation it discharges would make the gate
+unsatisfiable by construction. The exemption is exactly that scheme and nothing
+else; any FURTHER tactic introduced to rescue a failing obligation is the
+fitted-criterion failure the bound exists to prevent. Re-attempting after a LATER, independently
+motivated prover improvement is a NEW run of the milestone, stated as such.
+
+**And each entry must be PROVED, not asserted** — §9.4 makes an asserted entry
+soft, and a milestone that accepted one would be assuming exactly the thing #68
+asks about.
+
+**The budget is part of the condition, pinned now precisely so it cannot be
+chosen after the results are seen** — that is what separates a precommitted gate
+from one fitted to its outcome, and it is the same discipline §9.1 applies to the
+populations. Raising it later is an amendment with a reason, not a detail.
+
+**"Fewer than all 14" is deliberate, and it is stricter than "the family does not
+move".** A partial result — some laws deciding, others not — fails the milestone's
+stated target, and a falsifier that returned DECLINE only on total failure would
+let a partial success be reported as a pass. If a partial result is later judged
+worth pursuing, that is a NEW milestone with its own stated target and its own
+falsifier, not this one passing.
+
+Both halves are measurable on the committed corpus, which is the standard this
+repository asks of a falsifier. The second half is the sharper one: bridges can
+be provable and still leave the family undecided, because L5's coupling is a
+different obstacle from L4a's — and a milestone that treated proved bridges as
+the finish line would report a partial success as a completed one.
+
+**And the credible "no change required" outcome, which every architectural issue
+here must keep:** if the rotation family does not move, the corpus shows no
+`List` law reached and **one unresolved `Str` candidate still unresolved** —
+`show-int.roundtrip` is BORDERLINE, not confirmed, and §9.5 records that no goal
+in this round was re-encoded at all. So the outcome is *nothing demonstrated*,
+not *one property bought*, and the current inductive encoding stands unchanged.
+
+### 11.4 How each figure depends on the four binding requirements
+
+Every number above is a function of four method requirements. Read as
+*"requirement → what the figure would have been without it"*, because a figure
+quoted without them is not the same figure:
+
+| requirement | what it produced, and what dropping it would do |
+|---|---|
+| **Two populations, never merged** | A = 75 and B = 47 are different denominators over different questions. Merged, the 25 `List`-subject borderline goals would sit in the title question's numerator and a one-candidate result would read as twenty-six. This is the exact conflation §8's counts died of |
+| **Subtract the decided from BOTH before counting** | −47 (43 `proves-on-attempt` + 3 `refuted` + 1 store-recorded falsification the sweep left `unknown`). Re-partitioned rather than simply added back: 35 of the 47 satisfy A's subject rule and 30 satisfy B's, so without step 2 A reads **110** and B reads **77**. Each of those 35 and 30 would credit a sequence encoding with a decision the CURRENT encoding already makes. It is the largest single term in the derivation. (The three refutations are `Int`/`Float`-only and fail both subject rules, so they never reach either denominator — subtracting them at step 2 changes no count and is done because §9.2 requires the two populations to rest on one snapshot, not because it moves a number) |
+| **Dispose bails on REPRESENTATION, not decidability** | This is what makes 49 of A NOT REACHABLE rather than borderline. Asked instead "would a solver decide it once re-encoded", the 49 would have joined the soft pile and A would read 0 / 0 / 75 — a result with no discrimination in it at all, and unfalsifiable |
+| **Three counts, with the specific reason per borderline** | This is what exposed the concentration. A single "reachable" number, or borderline without per-goal reasons, would have hidden that all 26 stop at one clause — and the concentration is the entire basis for NARROW rather than decline |
+
+**All of it is bounded the same way:** *in the Oath corpus at `66e9fa4`, at a 4M
+rlimit*, with both populations UPPER BOUNDS at that budget per §9.1. A different
+corpus — one with real text processing, which is `#159`'s subject and the
+`webhook-friction` demand list's own conclusion — could move every figure here,
+and re-running costs one command.
+
+### 11.5 What this verdict does not authorise
+
+No encoder, no prover change, no SPEC change is authorised by this section. The
+milestone above is a separately gated piece of work with its own falsifier; it is
+described here so the verdict is checkable, not started.
+
+**This section does not close #68 and asserts nothing about its status** — `gh`
+is the authority on that, and a status frozen into prose here would go stale
+without any file changing. What it records is the RECOMMENDATION: NARROW, with
+§11.3 as the condition that turns it into a decline.
