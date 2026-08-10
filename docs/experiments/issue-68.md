@@ -2945,3 +2945,24 @@ described here so the verdict is checkable, not started.
 is the authority on that, and a status frozen into prose here would go stale
 without any file changing. What it records is the RECOMMENDATION: NARROW, with
 §11.3 as the condition that turns it into a decline.
+
+### 11.6 Probe records — NOT milestone attempts
+
+Work done against §11.3's obligations OUTSIDE a run of the milestone is recorded
+in its own file, and the outcomes are deliberately not summarised here: §11.3 is a
+PREREGISTERED falsifier, and a running tally inside the preregistration is how a
+gate stops being one. A pointer cannot go stale in that direction; a summary can.
+
+- `docs/experiments/issue-68-milestone-round-trip.md` — the two carrier
+  round-trips and the `seq.len` induction scheme, probed in isolation.
+
+**A PROBE IS NOT AN ATTEMPT, AND THE DISTINCTION IS LOAD-BEARING RATHER THAN
+PEDANTIC.** §11.3 requires the milestone to BUILD the generator and treats any
+obligation that does not discharge as a failure. So filing hand-run scripts as a
+milestone attempt would fire the falsifier and DECLINE #68 on work nobody ran the
+milestone for — a gate engaged by something other than the thing it gates. A probe
+can therefore de-risk a branch, or find a DECLINE early, but it can never
+discharge an obligation and never satisfies §11.3.
+
+Nothing in this list bears on the milestone's status, which is the conjunction
+§11.3 states and is established by running it.
