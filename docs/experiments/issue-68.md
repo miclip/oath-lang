@@ -5,11 +5,17 @@ the corpus is proven, tested or stalled has to be built on — the universe firs
 the numbers second. It enumerates every live name, every object those names
 resolve to, and every property verdict on both, from the committed store.
 
-**It calls no property blocked, stalled, SMT-incomplete or
-reachable-by-sequence-theory; no verdict on #68 is offered or implied; nothing is
-recommended.** Those are downstream questions, and running them against a
-universe nobody had pinned down is how this repository has previously produced
-figures that overstated a population by ten definitions.
+**§§1–7 call no property blocked, stalled, SMT-incomplete or
+reachable-by-sequence-theory.** Those are downstream questions, and running them
+against a universe nobody had pinned down is how this repository has previously
+produced figures that overstated a population by ten definitions.
+
+**That scope statement now governs §§1–7 only, and the file has grown past it.**
+§9 pins a criterion and §10 applies it, so the document DOES assign per-goal
+reachability verdicts — with every disposition citing the clause that decided it
+and the clause committed before the number. **What is still true of the whole
+file is the last clause: no verdict on #68 itself is offered and nothing is
+recommended** (§10.7 says why the counts do not choose one).
 
 Sections 1-5 are the census and sort nothing at all. **Section 6 draws exactly
 one line through the non-proven set** — whether a candidate SMT script was ever
@@ -2346,3 +2352,308 @@ channels, and all three of those remain open.** It read §9 and §8 before it wa
 seated, it remains a reader of the file that carries them, and it shares the
 author's model. The citation requirement makes what remains inspectable rather
 than closing it.
+
+## 10. THE CLASSIFICATION — §9 applied, at one snapshot, with every disposition cited
+
+**This section assigns verdicts. It assigns NO recommendation** — proceed,
+decline and narrow are all still open, and §10.6 says why the counts alone do
+not choose between them.
+
+Applied by the session seated at §9.9, which did not write the criterion. Every
+rule cited below predates every number in this section; the ordered chain is
+`685a393` → `7cde5c4` → `2b95de3` → `66e9fa4`, and the classification is this
+commit.
+
+### 10.1 The snapshot, the budget, and the producer's own controls
+
+| | |
+|---|---|
+| snapshot | `66e9fa4` — one commit for every step, per §9.2's ONE SNAPSHOT rule |
+| budget | `OATH_PROVE_RLIMIT=4000000` — §7's pinned rlimit, as §9.1 requires |
+| producer | `TestProveReasonsSweep` (`oath/prove_reasons_producer_test.go`), re-run; no second instrument was built |
+| census | `TestCorpusCensus` (`oath/corpus_census_test.go`), re-run at the same commit |
+| parallelism | `GOMAXPROCS=3` |
+| coverage | **139 of 139 — the sweep completed.** No subset, no truncation |
+| solver wall | 1120 s total, inside the 20-minute ceiling |
+| script control | 88 records match their pinned `fixtures/prove/scripts.txt` hash; 51 emit no script at all (`absent`), 35 `regenerated` |
+| universe control | `scripts/prove-reasons.py check` **RECONCILES** — every non-proven property of the census is classified exactly once, 139 per-object / 143 per-name |
+
+**Types come from the kernel** (`oath get`), never from names — signatures,
+per-property binder types, constructor field types, `deps` and termination
+verdicts. Nothing below reads a type off an identifier.
+
+### 10.2 The derivation, step by step
+
+| step | operation | result |
+|---|---|---:|
+| 1 | START — non-proven per-object properties | **139** |
+| 2 | SUBTRACT everything the CURRENT encoding decides (43 `proves-on-attempt` + 3 `refuted`) | −46 → **93** |
+| 3 | PARTITION by subject rule and BRANCH | A **76**, B **47**, out of A **17** |
+| 4 | TAG each translation bail by REPRESENTABILITY | see §10.5 |
+| 5 | CLASSIFY | §10.3, §10.4 |
+| 6 | REMOVE properties established FALSE — population B only | −0 |
+
+**Step 2's subtraction, itemised.** The three refuted are `f-scale-inv.recovers`,
+`f-tenths.is-three-tenths` and `spin.claims-zero` — subtracted from **both**
+populations, because deciding includes refuting and a refutation the current
+encoding has already produced is not headroom for a new one. The single
+`countermodel-withheld` record is **not** subtracted: §9.2.1 rules it
+inadmissible as falsity precisely because the countermodel was never confirmed,
+and it is not a decision either. The single `solver-unknown` stays for the same
+reason.
+
+**Step 6 removed nothing.** No residual population-B goal carries an admissible
+falsity witness under §9.2.1 — the recorded refutations were already gone at
+step 2, and no counterexample-by-evaluation is on record for any survivor.
+
+### 10.3 POPULATION A — can a sequence encoding DECIDE the goal?
+
+| verdict | count |
+|---|---:|
+| CONFIRMED REACHABLE | **0** |
+| NOT REACHABLE | **49** |
+| BORDERLINE | **27** |
+| total | **76** |
+
+**The zero is STRUCTURAL, not measured, and must not be read as a decline.**
+§9.5's last row makes CONFIRMED REACHABLE unachievable this round: it requires a
+goal actually re-encoded onto `Seq` and answered by z3, no re-encoder exists, and
+building one is out of scope. The count could not have been anything else. What
+this round measures is the split between the other two.
+
+### 10.4 POPULATION B — can a sequence encoding push a `Str` property to `proven`?
+
+| verdict | count |
+|---|---:|
+| CONFIRMED REACHABLE | **0** |
+| NOT REACHABLE | **46** |
+| BORDERLINE | **1** |
+| total | **47** |
+
+B is a proper subset of A (§9.1), and its single borderline member is
+`show-int.roundtrip`. **No rotation law appears here at all** — B's subject rule
+is R1 alone, so §9.5's second row puts every `List`-only goal outside B whatever
+its L-classification.
+
+**OUT OF POPULATION (B) — 46 of the 93 residual goals, each citing R1 alone.**
+§9.5's second row makes B's subject rule R1 and nothing else, so §9.8's citation
+requirement is discharged for these by one citation rather than two: **no term,
+binder or result anywhere in the goal is typed `Str`, so R1 fails.** Seventeen of
+them are the goals already outside A (§10.5's last group, which fail R1 *and*
+L1). The other 29 are in A on L1 and out of B on R1:
+`bad-reverse.antidistributes-over-append`, `bytes-after.finds-at-head`,
+`json-string-value.no-newline`, `json-string-value.no-quote`,
+`json-string-value.no-tab`, `q-drop.drop-back-only`, `q-drop.drop-is-tail`,
+`q-drop.peek-drop-rebuild`, `rle-encode.roundtrip`,
+`rle-encode.two-runs-stay-two-runs`, `rle-encode.uniform-list-is-one-run`,
+`rot.decomposes-in-range`, `rot.neg-one-pulls-last-to-front`,
+`rot.periodic-in-length`, `rot.shift-one-moves-head-to-back`,
+`rot-h2.decomposes-in-range`, `rot-h2.neg-one-pulls-last-to-front`,
+`rot-h2.periodic-in-length`, `rot-h2.shift-one-moves-head-to-back`,
+`rot-h3.neg-one-pulls-last-to-front`, `rot-h3.periodic-in-length`,
+`rot-h3.shift-one-moves-head-to-back`, `rot-hl.neg-one-pulls-last-to-front`,
+`rot-hl.periodic-in-length`, `rot-hl.shift-one-moves-head-to-back`,
+`set-elems.size-is-length`, `set-member.empty-has-none`,
+`t-insert.insert-keeps-sorted`, `t-member.member-flatten-equiv`.
+
+### 10.5 Every disposition, with the clause that decided it
+
+**NOT REACHABLE — translation bail, tagged UNAFFECTED (§9.3).** Step 4 runs
+INSIDE each population, so only in-population bails are tagged: **49 in A, of
+which 46 are in B.** The corpus carries 51 bails in total; the other two —
+`hmac-kat-rfc4231-2.matches-published-vector` and
+`excluded-witness.reaches-excluded-op` — fail both subject rules and were removed
+at step 3, so they are never tagged and receive no verdict. The second is the
+corpus's only partial-application bail, which is why §9.3's row 4 has no
+in-population member. Every TAGGED bail falls in one of §9.3's UNAFFECTED rows,
+and each forces NOT REACHABLE (hard) citing its cause. **No bail was caused by
+the carrier** — §9.3's REPRESENTABLE row, the only one a `Seq` representation
+would fix, has **zero members**.
+
+| §9.3 row | recorded cause | A | B |
+|---|---|---:|---:|
+| row 2 — an unsupported term form (e.g. `lam`) | `"lam" terms are outside the provable fragment` | 34 | 31 |
+| row 3 — a trusted/opaque call the translator refuses to model | `hmac-sha256 is outside the provable fragment (trusted crypto)` | 15 | 15 |
+| row 4 — a partial application | `apply2 must be fully applied to inline` | 0 | 0 |
+| row 1 — the carrier | — | **0** | **0** |
+
+Row 2 (A): `gh-record.declares-its-schema`, `gh-record.has-five-fields`,
+`gh-record.never-empty`, `gh-spec-secret.is-usable`,
+`gh-webhook.a-non-ping-does-record`, `gh-webhook.never-leaks-a-body`,
+`gh-webhook.non-post-is-405`, `gh-webhook.ping-does-not-record`,
+`gh-webhook.status-is-one-of-seven`, `gh-webhook.unsigned-is-401`,
+`gh-webhook.unusable-secret-refuses-a-valid-signature`,
+`gh-webhook.unusable-secret-refuses-everything`,
+`json-scoped-string.absent-scope-is-marked`,
+`json-scoped-string.value-has-no-quote`, `json-scoped-string.value-has-no-tab`,
+`json-string-value.no-newline`, `json-string-value.no-quote`,
+`json-string-value.no-tab`, `no-field-can-inject.carriage-return-cannot-inject`,
+`no-field-can-inject.newline-cannot-inject`,
+`no-field-can-inject.no-control-byte-can-inject`,
+`no-field-can-inject.tab-cannot-inject`, `record-field.a-newline-is-rejected`,
+`record-field.a-tab-is-rejected`, `record-field.never-contains-a-tab`,
+`record-field.printable-passes-through`,
+`record-under.a-non-ascii-repository-is-marked-absent`,
+`record-under.clean-values-are-well-formed`,
+`record-under.clean-values-reach-the-record`,
+`secret-is-usable.empty-is-not-usable`, `secret-is-usable.latin1-is-not-usable`,
+`secret-is-usable.non-ascii-is-not-usable`, `secret-is-usable.short-is-not-usable`,
+`secret-is-usable.usable-encodes`. The three not in B are the
+`json-string-value` trio, whose subject is `(List Int)` with no `Str` anywhere.
+
+Row 3 (A and B alike): `gh-sign.carries-the-algorithm`,
+`gh-sign.survives-gh-signature`, `gh-webhook.accepts-github-signed`,
+`gh-webhook.tampering-is-rejected`,
+`gh-webhook.trailing-junk-after-a-valid-digest-is-rejected`,
+`gh-webhook.unprefixed-signature-is-rejected`,
+`gh-webhook.unreadable-content-type-is-415`, `gh-webhook.wrong-path-is-404`,
+`hmac-kat-rfc4231-2.arguments-are-not-symmetric`,
+`hmac-kat-rfc4231-2.length-mismatch-is-not-equal`,
+`webhook.accepts-correctly-signed`, `webhook.accepts-only-with-202`,
+`webhook.never-leaks-a-body`, `webhook.tampering-is-rejected`,
+`webhook.unsigned-is-401`.
+
+**BORDERLINE — the soft clause, AND the hard rules accounted for.** §9.8 requires
+both, because a row naming a genuine soft clause while a hard failure sits
+unmentioned looks audited and is wrong. All 27 share one soft disposition and one
+hard-rule account, so both are stated once rather than copied 27 times:
+
+> **Soft clause: §9.4's L4a PRECEDENCE TABLE, ROW 2** — *registry entry: none;
+> termination verdict: proven total* → **BORDERLINE (SOFT)**. The bridge registry
+> is empty (§9.4, *"The registry is EMPTY at the time of writing"*), so row 1
+> cannot fire; and every recursive callee reached by these goals is **proven
+> total** as the kernel records it — `append`, `take`, `drop`, `length`,
+> `reverse`, `bytes-after`, `rle-encode`, `rle-decode`, `rle-expand`, `count`,
+> `contains`, `is-sorted`, `t-flatten`, `show-nat`, `si-member` (reached through
+> the non-recursive `set-member`) and `parse-nat-go` (reached through the
+> non-recursive `parse-nat`). So each arrives carrying its defining axiom, and
+> whether that suffices is L4b's unmeasured question.
+
+> **Hard rules, each checked and passed.** **L1** — the subject rule is satisfied,
+> which is what put the goal in the population. **L2** — after unfolding every
+> non-recursive user definition to a fixpoint, the operations remaining on a list
+> subject are exactly the recursive callees named above, which §9.4 routes to L4a
+> rather than failing; the `List`/`Str` constructors and sequence-scrutinee
+> `match` forms that unfolding cannot remove are admitted by **§9.7b**; equality
+> over sequence-valued terms, `ite` and the connectives are SMT core structure,
+> admitted by L2's own whitelist clause; and constructors, selectors and `match`
+> of `Option`, `Pair`, `Queue`, `Tree`, `Run`, `Request` and `Response` are not
+> operations on a list subject at all, per **§9.7a**. **L3** — no goal in this
+> corpus contains an existential; all binders are universal, so no alternation
+> survives negation. **§9.3** — not applicable: every one of these reached the
+> solver, so there is no bail to tag. **L4a's hard branch and L5's hard branch**
+> are unavailable by construction: both require a RECORDED decision failure on a
+> RE-ENCODED goal, and no goal has ever been re-encoded.
+
+Population A borderline (26 `List`-subject goals): the 14 rotation laws —
+`rot.decomposes-in-range`, `rot.neg-one-pulls-last-to-front`,
+`rot.periodic-in-length`, `rot.shift-one-moves-head-to-back`, and the same four
+for `rot-h2`, three for `rot-h3` and three for `rot-hl` — plus
+`bad-reverse.antidistributes-over-append`, `bytes-after.finds-at-head`,
+`q-drop.drop-back-only`, `q-drop.drop-is-tail`, `q-drop.peek-drop-rebuild`,
+`rle-encode.roundtrip`, `rle-encode.two-runs-stay-two-runs`,
+`rle-encode.uniform-list-is-one-run`, `set-elems.size-is-length`,
+`set-member.empty-has-none`, `t-insert.insert-keeps-sorted`,
+`t-member.member-flatten-equiv`.
+
+**Seventeen of the 27 carry a SECOND soft disposition, which does not change the
+verdict but is part of the row: the 14 rotation laws, `show-int.roundtrip`, and
+the two guarded `rle-encode` laws** (`uniform-list-is-one-run`,
+`two-runs-stay-two-runs`), whose integer guards `1 <= x0` and `1 <= x2` survive
+L5's stripping test still coupled to `rle-expand`'s length behaviour. Their
+residual coupling is length-and-index arithmetic — `(% (+ k (length xs)) (length
+xs))` for the rotations, base-10 digit recursion for `show-int`, a run-length
+guard for the two `rle-encode` laws — which is **L5**, SOFT
+throughout, and explicitly *not* a translation failure: §9.4 records that
+truncating division and modulo are translated by the kernel (`oath_tquo` /
+`oath_trem`) and that the earlier premise to the contrary is superseded.
+
+Population B borderline (1): `show-int.roundtrip`, by the same row-2 clause
+through §9.4.1's mapping — R5 inherits L4's precedence table, R2 inherits L2, R4
+inherits L5 as SOFT throughout.
+
+**OUT OF POPULATION (A) — a membership fact, not a verdict (§9.5, first row).**
+17 goals fail **both** R1 and L1, and §9.8 requires both citations because
+exclusion needs each to fail: no term, binder or result anywhere in the goal is
+typed `Str` (fails R1), and none is typed `List σ` for σ a scalar (fails L1).
+Five are `Int` goals — `abs-small.bounded-wrongly`, `e-div.division-identity`,
+`e-div.shift-by-divisor`, `e-mod.periodic`,
+`excluded-witness.reaches-excluded-op`. One is a `Bool` goal whose statement is
+the bare constant, so nothing of any other type occurs in it —
+`hmac-kat-rfc4231-2.matches-published-vector`; note that the same definition's
+other two properties DO enter, since their statements write `Str` literals and
+`(Nil [Int])`, and membership under §9.4's L1 is a property of the goal rather
+than of the definition. Four are `Map` goals — `map-has.present-after-insert`,
+`map-insert.finds-inserted`, `map-merge.prefers-left`, `map-size.non-negative`.
+Seven are `Set` goals — `set-add.add-idempotent`, `set-add.adds-member`,
+`set-empty.has-nothing`, `set-inter.empty-left`, `set-size.non-negative`,
+`set-union.empty-left`, `set-union.union-has-left` — excluded by **L1's
+distinct-datatype clause**: `Set` is declared `(MkSet (List Int))`, a distinct
+datatype whose carrier happens to be a list, and L1 pins that such a type does
+not satisfy the subject rule even where the kernel would unfold it. `Map`
+(`(MkMap (List (Pair Int Int)))`) is excluded by the same clause, and the `mi-*`
+goals over `(List (Pair Int Int))` fail L1 for a different reason — `Pair` is not
+a scalar.
+
+### 10.6 Four findings
+
+**1. The two goals §8 left BORDERLINE are gone, decided by the CURRENT encoding.**
+`config-has-key.finds-head` and `config-missing.complete-config-reports-nothing`
+were false when §8 examined them; `#161`'s repair landed in `ebbe7a2`, and at this
+snapshot both are **proven** in the store. They leave the universe at step 1, not
+step 2. This is why §9.2 forbids reusing §7's rows across the identity move: the
+universe is **139** here against §7's **141**, and the two are exactly these.
+
+**2. Not one translation bail would be fixed by a `Seq` representation.** All 49
+in-population bails tag UNAFFECTED; §9.3's REPRESENTABLE row is empty. That is
+the row the whole step-4 apparatus exists to find, and it has no members — so
+every bail in either population is NOT REACHABLE on a cause a sequence encoding
+does not touch. The cause is uniform and unglamorous: higher-order terms (`lam`)
+and a trusted crypto primitive (`hmac-sha256`), neither of which is about how a
+sequence is represented.
+
+**3. Every borderline verdict in both populations rests on the SAME empty
+registry.** Not one of the 27 was parked by a solver limit, an arithmetic
+coupling or a nesting question in isolation: each stops at L4a row 2 because a
+recursive list function has no bridge entry. The classification therefore does
+not distribute across many independent obstacles — it concentrates on one
+artefact that §9.4 pins as unbuilt and that #68 itself proposes.
+
+**4. L1's "OR ANY TERM" clause is broader than its stated motivation — and at
+this snapshot it moves NOTHING, which was measured rather than assumed.** The
+clause reaches "any term occurring in the goal", so a goal with no sequence
+content of its own qualifies if a `match` arm merely binds an unused field typed
+`List σ`. That is wider than the motivation §9.4 gives for it (goals that
+*construct a list and apply list operations to it*), and the first draft of this
+finding named `hdr-probe.always-200` as the instance. **That was wrong and is
+recorded rather than quietly replaced**: `hdr-probe.always-200` is `proven` at
+the pinned budget, so step 2 subtracts it before the partition and it never
+enters population A at all — the finding contradicted this section's own
+derivation, and review caught it.
+
+Re-measured properly: of the 76 residual population-A goals, the number whose
+ONLY witness for R1 or L1 is a field of a non-sequence datatype is **zero**.
+Every member is admitted by a binder, by its own signature, by a called symbol's
+signature, or by a `List`/`Str` constructor written in the goal. **So the clause
+as written and the clause as motivated select the same population here.** The
+concern is real about the text and is not load-bearing for these counts; a corpus
+with more datatypes carrying sequence fields could separate them, and this
+measurement should be redone if one arrives.
+
+### 10.7 Why no recommendation is assigned here
+
+The counts do not choose between proceed, decline and narrow on their own, and
+assigning one from this table alone would repeat §8's error of letting an
+arithmetic result stand in for an argument. Three facts pull in different
+directions and the weighing is a separate act:
+
+- 49 of 76 population-A goals are NOT REACHABLE on causes a sequence encoding
+  does not touch, and the whole of population B's 46 are among them;
+- the 27 borderline goals — including all 14 rotation laws, the class #68's
+  proposal reaches — are blocked on exactly one missing artefact, the bridge;
+- CONFIRMED REACHABLE is 0 by construction, so **nothing here confirms that any
+  goal is reachable**, and nothing here refutes it either.
+
+**A figure quoted without its snapshot and budget is not a result**: all of the
+above is *in the Oath corpus at `66e9fa4`, at a 4M rlimit*, and both populations
+are UPPER BOUNDS at that budget, as §9.1 requires them to be reported.
