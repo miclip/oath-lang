@@ -1984,6 +1984,10 @@ are kept apart.
   classification is not that it touched less data; it is that it asked which
   OPERATIONS occur, never which goals qualify. The distinction is the whole
   content of the ordering control, so it is stated rather than smoothed over.
+- **The instrument that did it is not retained** (§9.8): it transcribed the
+  producer's universe derivation instead of deriving from it, which is a second
+  authority for one set. A future round re-derives subjects from the producer's
+  own universe and the kernel's types, not from a copy.
 - **It DOES invoke a solver once, and pretending otherwise would be the same
   class of overclaim as the heading this section already had to correct.** L2's
   regular-membership clause rests on a capability probe against the z3 on PATH
@@ -2123,3 +2127,108 @@ the author's to make after the fact.
 population-A and population-B goal whose residual operations include a
 constructor or a `match` of `List` or `Str`. No disposition predates this
 amendment, so nothing needs revisiting.
+
+### 9.8 AMENDMENT 2 (2026-08-10) — who applies the criterion, and the control that replaces the reader who could not
+
+**Filed under §9's amendment protocol, in its own commit, before any goal is
+given a verdict.** It adds one REQUIREMENT to the classification step and
+records why that requirement exists, which is a fact about the classification's
+standing rather than about any goal.
+
+#### THE GAP §9 LEFT OPEN
+
+§9 pins the ORDER — criterion first, classification after, with git as the
+authority. It says nothing about WHO applies it, and the two controls are not
+the same. §9's own opening already concedes the weaker half: the author cannot
+un-read §8. The half not conceded is that **an author applying their own
+criterion cannot un-know which way they were leaning while writing it.** A rule
+can be perfectly pinned and still be applied by the one reader who knows what it
+was hoping to find.
+
+The strongest available answer to that is a DIFFERENT reader applying the
+committed rule — the same argument, one layer up, as this repository's
+stateless-reader instrument: a criterion binds whoever applies it, and the bind
+is only testable on someone who did not write it.
+
+#### WHAT WAS ATTEMPTED, AND WHAT HAPPENED
+
+That reader was dispatched. **It failed on a TRANSPORT fault** — the
+replacement's acceptance could not be observed, so the swap was correctly
+refused rather than proceeding on an unverified party. It is not a judgement on
+either agent, and it is recorded because the alternative is a reader assuming an
+independence that was attempted and lost.
+
+**So the criterion's AUTHOR applies the criterion.** That is a weaker
+arrangement than the one intended, and no substitute recovers it: the three
+contamination channels this repository already distinguishes are CONTEXT,
+GUIDANCE and MODEL, and what failed here closes none of them. Nothing below
+claims otherwise.
+
+**One consequence for §9.7, stated so it is not overread.** Amendment 1 records
+that it was found by computing residual operations before any goal had a
+verdict. The instrument that computed them is NOT retained in the tree — it
+duplicated the producer's universe derivation by transcription, which is a
+second authority for one set and the failure mode this file spends §1 avoiding.
+So §9.7's provenance sentence is **not auditable from the repository**. What IS
+auditable is the part that carries the weight: both amendments are committed
+before any classification, and the commits are ordered.
+
+#### THE REQUIREMENT: CITE THE CLAUSE, NOT A SUMMARY
+
+> **Every goal the criterion sends to NOT REACHABLE or to BORDERLINE must cite
+> the SPECIFIC CLAUSE that decided it** — the rule and the sub-clause, quoted or
+> pinpointed, not a paraphrase of its effect.
+
+  - a citation naming only a rule (*"fails L2"*) is INSUFFICIENT where that rule
+    has clauses that dispose differently — L2's unfolding step, its core-equality
+    admission and §9.7's two dispositions are separate grounds and are not
+    interchangeable;
+  - **a BORDERLINE row carries TWO things, because that verdict is a claim about
+    ALL remaining obstacles and not about one.** It names which soft disposition
+    parked the goal — "soft" being a property of a clause, not of a goal — AND
+    it records that every applicable HARD rule was checked and passed, naming
+    them. Citing a genuine soft clause while a hard failure sits unmentioned
+    yields a row that looks audited and is wrong: §9.5 sends any goal failing a
+    hard rule to NOT REACHABLE regardless of how many soft obstacles it also
+    has. The clause-to-verdict comparison cannot expose an omission the row
+    never mentions, so the row must positively account for the hard rules —
+    the same reason population A's exclusion needs both subject citations
+    rather than one;
+  - the same practice is followed for OUT OF POPULATION rows, which can only ever
+    be produced by the subject rules — and for **population A that means BOTH
+    R1 AND L1 must be cited as failing**, since exclusion from A requires
+    failing each of them and one citation leaves the other route open.
+    Population B's exclusion cites R1 alone, its subject rule being R1 alone.
+    That is consistency rather than an extension: the requirement as stated
+    governs the two verdict classes above.
+
+#### WHAT THE REQUIREMENT BUYS, AT ITS REAL SIZE
+
+It makes the application **AUDITABLE against commits that predate it**. The
+baseline is the ORDERED CHAIN, not one commit, and naming only the first would
+send an auditor to a revision that does not contain the clauses many
+dispositions will cite:
+
+    685a393   §9 — the criterion
+    7cde5c4   §9.7 — AMENDMENT 1 (L2's quantification; constructor and match)
+    this one  §9.8 — AMENDMENT 2 (the citation requirement itself)
+
+Every one predates any classification. An auditor reads the cited clause at
+whichever of them introduced it, reads the disposition, and checks that the
+clause says what the disposition claims — a DECIDABLE comparison in this file's
+own sense, settled by two texts rather than by trusting either reader. **Any
+later amendment joins the chain and must likewise precede the dispositions that
+cite it**; a citation to a clause that postdates its own disposition is the
+fitted-criterion failure wearing the citation requirement as cover.
+
+**It does not make the application INDEPENDENT, and it must not be reported as
+if it did.** A leaning reader can cite a real clause and still have chosen which
+clause to reach for. What the citation converts is the FAILURE MODE: a fitted
+application stops being invisible prose and becomes a checkable mismatch between
+a clause and the verdict drawn from it. That is a smaller claim than
+independence and it is the one that is true.
+
+The honest summary of the arrangement, since a later reader will otherwise
+reconstruct it too kindly: **the criterion is independent of the classification;
+the classifier is not independent of the criterion; the citation requirement
+makes the gap inspectable rather than closing it.**
