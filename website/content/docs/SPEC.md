@@ -1692,8 +1692,13 @@ would each be free to invent one.
 
 #### 7.4.1 The core
 
-Every bridge obligation for `List Int` begins with this preamble, verbatim, one
-LF after each line:
+**EVERY** bridge obligation for `List Int` — all three, including
+`measure-decreases` — begins with this preamble, verbatim, one LF after each
+line. And every obligation's COMPLETE script is this core followed immediately by
+its subgoal block, with the final `(check-sat)` likewise terminated by one LF and
+nothing after it. Both halves of that are stated because either one left implicit
+moves a digest: a subgoal emitted without the core, or a script without its
+trailing LF, is a different byte string and therefore a different obligation.
 
 ```
 (declare-datatypes ((List_Int 0)) (((Nil_List_Int ) (Cons_List_Int (Cons_List_Int_0 Int) (Cons_List_Int_1 List_Int)))))
@@ -1728,6 +1733,14 @@ which is why §7.4.3 is an obligation and not an assumption.
 
 #### 7.4.2 The `seq.len` induction scheme
 
+**THE NAME `roundtrip2` IS NOT A DANGLING REFERENCE.** A datatype/sequence
+bijection has TWO carrier round-trips — `∀xs. of-seq(to-seq xs) = xs` and
+`∀s. to-seq(of-seq s) = s` — and this section pins only the second. The first is
+deliberately absent rather than forgotten: it inducts structurally over `List`,
+which §7.2 already supplies, so it needs no new scheme and no new normative
+bytes. The numbering names its position in that pair, and a kernel implementing
+this section emits the three obligations below and no others.
+
 `∀s. to-seq(of-seq s) = s` cannot be discharged directly: it requires induction
 on `seq.len s`, an integer measure over the SEQUENCE sort, which is neither
 structural induction over an Oath datatype (§7.2) nor lexicographic induction
@@ -1761,8 +1774,12 @@ call is made on. Both subgoals `unsat` establish the universal, subject to §7.4
 #### 7.4.3 The measure obligation
 
 The scheme above is sound only if the measure strictly decreases. A kernel MUST
-emit this as its own obligation, `measure-decreases`, and MUST NOT assert it as a
-hypothesis inside `roundtrip2-step`:
+emit this as its own obligation, `measure-decreases` — its own SCRIPT, appended
+to the §7.4.1 core exactly like the other two, not a bare subgoal — and MUST NOT
+assert it as a hypothesis inside `roundtrip2-step`. The core is redundant for
+this particular goal, which mentions neither bridge function; it is included
+anyway so that every obligation in this section has one shape, and because
+"its own obligation" would otherwise be readable as "its own subgoal alone":
 
 ```
 (declare-const s (Seq Int))
@@ -1784,12 +1801,37 @@ The obligations are emitted in this fixed order — `measure-decreases`,
 `roundtrip2-base`, `roundtrip2-step` — scheme soundness first, so that a reader
 meeting a failure meets it before the results it invalidates.
 
-A kernel exposing this capability SHOULD offer a manifest: the header line
-`# id<TAB>sha256(script)` followed by one `<id><TAB><lowercase hex>` line per
-obligation in that order, each terminated by LF. The digest is `SHA-256` over the
-script bytes ALONE — core plus subgoal, with no rlimit header and no trailing
-`get-info` lines, matching §7.2's rule that runner options sit outside a script's
-identity.
+A kernel exposing this capability MAY omit a manifest entirely. If it emits one,
+these bytes are REQUIRED — optional to offer, pinned once offered, because a
+manifest whose layout varied would be useless for the cross-kernel comparison it
+exists to serve.
+
+The manifest is a header line followed by one line per obligation in §7.4.4's
+order, EVERY line including the header terminated by a single LF (`0x0A`), with
+no trailing blank line. The header is the literal string
+
+    `#`, SPACE, `id`, TAB, `sha256(script)`
+
+— that is 19 bytes before its terminating LF — and each subsequent line is the
+obligation's id, one TAB (`0x09`), and the digest
+as exactly 64 LOWERCASE hex characters with no `0x` prefix. **Written out
+longhand because the obvious shorthand is ambiguous**: a notation like
+`# id<TAB>sha256(script)` uses angle brackets as a substitution placeholder on
+one line and, for `sha256(script)`, as literal column text on the same line —
+and nothing in it says which is which.
+
+The digest is `SHA-256` over the script bytes ALONE — the §7.4.1 core plus the
+subgoal, with no rlimit header and no trailing `get-info` lines, matching §7.2's
+rule that runner options sit outside a script's identity.
+
+**THIS SECTION FIXES NO SOLVER BUDGET, AND THAT IS A SCOPE BOUNDARY RATHER THAN
+AN OVERSIGHT.** §7.4 pins what the obligations ARE, not what running them proves.
+§7.2's budgets govern proof scripts for definitions in a store; a bridge
+obligation belongs to no definition and is not part of any verdict a kernel
+records. A caller that runs these scripts therefore chooses and must STATE its
+rlimit, since §7.2 already makes an outcome a function of (script bytes, solver
+version, rlimit) — an outcome quoted without the last two is not comparable to
+anything.
 
 ## 8. The journal
 

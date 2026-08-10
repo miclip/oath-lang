@@ -99,7 +99,13 @@ SURFACES = {
     # constructor's trailing space, obligation order, manifest layout). Handing
     # over a hash manifest would let it iterate against the answer instead of
     # deriving it, which is the corroboration §13 exists to withhold.
-    "7.4": ([], ["oathrs/"]),
+    # fixtures/campaign/ is NOT a §7.4 witness and leaks nothing about it. It is
+    # here because the first §7.4 round could not run `cargo test` at all:
+    # campaign.rs include_str!s that file, so its absence broke the existing
+    # suite and the subject had to verify in a scratch copy. A blind subject that
+    # cannot run the tests already in the tree is a weaker subject than one that
+    # can — reported by the round itself.
+    "7.4": ([], ["oathrs/", "fixtures/campaign/"]),
 }
 
 # NORMATIVE DATA: incorporated by reference, schema and interpretation defined in

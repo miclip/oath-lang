@@ -228,6 +228,19 @@ jobs:
           z3 --version
           OATHRS_CONFORMANCE_PROVE=oracle ./oathrs/conformance.sh
 
+      # §7.4's cross-kernel claim, and it runs HERE rather than inside
+      # conformance.sh on purpose. That script ships to blind subjects as part of
+      # the oathrs/ surface, and this check IMPLEMENTS the rule it tests — it
+      # extracts the normative scripts from the SPEC — so shipping it would hand
+      # a blind subject the answer inside its own harness.
+      #
+      # Both kernels are compared to the SPEC, never to each other: agreement is
+      # then a consequence rather than the measurement, and a divergence says
+      # which side moved. Runs after conformance.sh, which builds the release
+      # binary this needs; the check VOIDs rather than passes if it is absent.
+      - name: bridge obligations match SPEC §7.4 (Rust)
+        run: python3 scripts/check-bridge-bytes.py --kernel rust
+
   rust-conformance-full:
     name: independent kernel (Rust) — full empirical re-derivation
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

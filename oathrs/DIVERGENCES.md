@@ -2594,3 +2594,51 @@ specification saying so, and a fixture proving the agreement is intentional
 rather than coincidental: `gate/reject/malformed_utf8_source.oath` is now the
 8th reject vector, so both kernels are pinned to refuse, and a future kernel
 that quietly substitutes fails the gate instead of publishing a merged artifact.
+
+## SPEC §7.4 — bridge obligations: eight underdeterminations, zero byte divergence
+
+The blind round for §7.4 (#68's NARROW milestone) is the first where the Rust
+kernel reproduced the reference bytes EXACTLY on the first attempt — all three
+obligation scripts and the manifest, byte-identical, derived from the
+specification with `oath/`, `codebase/`, `docs/experiments/` and `scripts/`
+absent from the dispatch root and no expected-output fixture supplied.
+
+**That agreement is the weaker half of the result.** The subject also reported
+eight places where §7.4 did not determine an implementation, and it got the bytes
+right while explicitly recording that two of them were GUESSES that would have
+moved a published digest had they gone the other way. A round that had only
+compared bytes would have called this a clean pass and left all eight in place.
+
+The two that were coin-flips, both now settled in §7.4:
+
+- **Does `measure-decreases` carry the §7.4.1 core?** §7.4.2 said the round-trip
+  pair was "each appended to the §7.4.1 core"; §7.4.3 said only "its own
+  obligation", which reads as a bare subgoal. The core is semantically dead
+  weight there — that script mentions neither bridge function — so the reading
+  was genuinely open. §7.4.1's "Every bridge obligation begins with this
+  preamble" pointed the other way and the subject followed it. Now stated in both
+  places.
+- **Is the final `(check-sat)` LF-terminated?** §7.4.1 pinned "one LF after each
+  line" for its OWN block only; the subgoal blocks said nothing. Applying the
+  rule uniformly was a guess. All three digests change if it goes the other way.
+
+The other six, all repaired: the manifest header mixed placeholder and literal
+notation (`<TAB>` substituted, `sha256(script)` literal, nothing distinguishing
+them); "each terminated by LF" did not visibly cover the header; `roundtrip2`
+named the second of a pair whose first appeared nowhere in the document; the
+manifest was SHOULD while the integration treated it as required; no rlimit was
+stated for actually running an obligation, which §7.2 makes part of an outcome's
+identity; and the hex width was never given.
+
+**None of the repairs changed a byte** — both kernels already agreed on every
+question the prose left open, which is exactly why the prose could stay wrong
+indefinitely. The gate `check-bridge-bytes.py --kernel go|rust` now holds each
+kernel to the SPEC separately rather than to the other, so a future divergence
+names the side that moved.
+
+One EXPORT-SURFACE finding, unrelated to the section: `cargo test` cannot compile
+in the §7.4 dispatch root, because `campaign.rs` does `include_str!` on
+`fixtures/campaign/vectors.txt` and the §7.4 surface ships no `fixtures/`. The
+subject verified its tests in a scratch copy instead. A blind subject that cannot
+run the existing suite is a weaker subject than one that can; the surface should
+carry that fixture.

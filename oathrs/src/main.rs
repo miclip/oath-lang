@@ -1,4 +1,5 @@
 use oathrs::analyze;
+use oathrs::bridge;
 use oathrs::check;
 use oathrs::elaborate::elaborate_corpus;
 use oathrs::fixture::encode_name;
@@ -572,6 +573,51 @@ fn cmd_scripts(paths: &[String], outcomes_path: &str) -> i32 {
     0
 }
 
+/// SPEC §7.4 bridge obligations. With no argument, print the §7.4.4 manifest;
+/// with `--emit <id>`, print that obligation's complete script bytes (the
+/// §7.4.1 core plus its subgoal) and nothing else. This produces TEXT only — no
+/// solver is invoked and none need be installed — so it is not behind the
+/// `prove` feature.
+fn cmd_bridge_obligation(args: &[String]) -> i32 {
+    match args.first().map(|s| s.as_str()) {
+        None => {
+            print!("{}", bridge::manifest());
+            0
+        }
+        // Exactly `--emit <id>`, nothing after it. A trailing token used to be
+        // ignored, so `--emit <id> --prove` printed a script and exited 0 —
+        // automation reading that status would record work that never happened.
+        // The Go kernel refuses the same shape for the same reason.
+        Some("--emit") if args.len() > 2 => {
+            eprintln!("unexpected argument after the id: {}", args[2]);
+            eprintln!("usage: oathrs bridge-obligation [--emit <id>]");
+            1
+        }
+        Some("--emit") => match args.get(1) {
+            None => {
+                eprintln!("usage: oathrs bridge-obligation [--emit <id>]");
+                1
+            }
+            Some(id) => match bridge::script(id) {
+                Some(s) => {
+                    print!("{}", s);
+                    0
+                }
+                None => {
+                    let ids: Vec<&str> = bridge::OBLIGATIONS.iter().map(|(i, _)| *i).collect();
+                    eprintln!("unknown bridge obligation: {} (known: {})", id, ids.join(", "));
+                    1
+                }
+            },
+        },
+        Some(other) => {
+            eprintln!("unknown argument: {}", other);
+            eprintln!("usage: oathrs bridge-obligation [--emit <id>]");
+            1
+        }
+    }
+}
+
 /// Build the SPEC §1.5 golden O1 encoding Defs by hand and compare against the
 /// fixture .bin files (byte-identity + manifest hash), then round-trip each
 /// through the strict decoder.
@@ -743,7 +789,7 @@ fn main() {
 fn run() -> i32 {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
-        eprintln!("usage: oathrs <hash|canon|verify|analyze|enctest> ...");
+        eprintln!("usage: oathrs <hash|canon|verify|analyze|bridge-obligation|enctest> ...");
         return 1;
     }
     match args[1].as_str() {
@@ -830,6 +876,7 @@ fn run() -> i32 {
                 }
             }
         }
+        "bridge-obligation" => cmd_bridge_obligation(&args[2..]),
         "enctest" => {
             if args.len() < 3 {
                 eprintln!("usage: oathrs enctest <encoding-dir>");

@@ -236,6 +236,11 @@ func cmdBridgeObligation(args []string) {
 	// §11.2 pins the budget AND the solver. proveDirectRlimit is that 4M
 	// budget; the solver pin is checked by the caller's environment, not
 	// here, because this kernel does not choose which z3 is on PATH.
+	// STATE THE BUDGET AND THE SOLVER IN THE OUTPUT. §7.4.4 says an outcome
+	// quoted without its rlimit and solver version is not comparable to
+	// anything; a command that printed bare verdicts would make this kernel the
+	// first violator of the rule its own specification states.
+	fmt.Printf("# solver=%s rlimit=%d\n", bridgeSolverPin, proveDirectRlimit)
 	bad := false
 	for _, o := range bridgeObligations() {
 		out, capHit := runZ3Budget(o.Script, proveDirectRlimit)
