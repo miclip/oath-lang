@@ -1268,6 +1268,10 @@ three individual dispositions.
 
 The producer makes re-running the data one command. The cost is the criteria.
 
+**Those four are discharged, as criteria and not as results, by §9** — which
+pins the populations and the `List`-of-scalar rules and deliberately measures
+nothing about the corpus. Nothing below this line is repaired by it; §8's counts stay withdrawn.
+
 ### The population, and what it is not
 
 The universe is the **42 per-object budget-exhausted** properties from §7 — the
@@ -1446,3 +1450,545 @@ must not be read as "the prover cannot do this". These two show the stronger
 version: an `unknown` on a FALSE property reads as difficulty, and every
 instrument in this repository reported them as merely unproven until one input
 was tried.
+
+## 9. PREREGISTRATION — the two populations and the criteria, pinned before any classification
+
+**This section classifies nothing, counts nothing, and measures nothing about
+the corpus — with ONE recorded exception, a solver capability probe named and
+scripted in §9.4, which touches no corpus goal.** §8 withdrew every number it had because each was computed over a
+universe chosen after the fact; a fifth number written the same way would be the
+same defect with better manners. So this section does the part §8 named as the
+missing artefact and stops: it DEFINES the populations, DERIVES them from #68's
+own sentence rather than from whichever subset is nearest to hand, and PINS the
+classification criteria — while the producer has not been re-run and no goal has
+been classified under them.
+
+**WHAT THIS IS NOT: A BLIND PREREGISTRATION, AND SAYING OTHERWISE WOULD BE THE
+KIND OF OVERCLAIM THIS FILE EXISTS TO CATCH.** A first draft of this heading said
+*fixed before any datum is read*, and that is false. §8 sits a few hundred lines
+above, and it already records the candidates' binder types, the `Str` arm's
+dispositions and which class its author considered most plausible; this very
+section calls that class the strongest in the corpus. **The data are already in
+the file and already in the author's head, and committing §9 first does not
+un-read them.** The honest description is a PROSPECTIVE REANALYSIS INFORMED BY
+§8: what it fixes in advance is the classification, not the author's knowledge.
+
+**So what the ordering actually buys, stated at its real size.** A criterion
+written after seeing which goals one would like to qualify is fitted, and the
+reader cannot tell from the finished document. Git makes the WEAKER property
+checkable: these rules land in their own commit, before any commit carrying a
+disposition under them, so a rule bent to admit a goal must appear as an
+amendment with a reason and a timestamp rather than as prose that was always
+there. **The residual risk is not removed and no protocol here removes it** —
+knowing which goals are the plausible candidates can shape a criterion toward
+admitting them, invisibly. The two mitigations available are that the rules are
+written in the vocabulary of types and term forms rather than by naming corpus
+definitions, and that the amendment record is public. Neither is blindness.
+
+**The amendment protocol, because a pinned criterion that is quietly edited is
+worse than an unpinned one.** If applying these rules turns out to need a
+decision this section does not contain, that is an INCOMPLETE criterion, not a
+judgement call to make at the point of use. Record the amendment here, with its
+reason, in a commit of its own, BEFORE the classification it enables — and
+re-run every disposition it could move. An amendment made in the same commit as
+the results it permits is indistinguishable from fitting.
+
+**One verdict class is unreachable this round, by construction.** CONFIRMED
+REACHABLE requires that a goal was actually re-encoded onto the `Seq` sort and
+answered by z3 within a stated rlimit. No re-encoder exists — §8's criterion
+already recorded R2–R5 as reasoned rather than measured, and that limit is
+unchanged. So the achievable outcome of the next round is a partition into NOT
+REACHABLE and BORDERLINE, and a reader expecting a confirmed count should stop
+expecting one here rather than after reading the tables.
+
+### 9.1 Two populations, derived separately, NEVER merged
+
+#68 carries two questions with two universes, and §8's counts died of conflating
+them. They are defined here as separate derivations that share steps without
+sharing membership.
+
+| | POPULATION A — reachability | POPULATION B — the title question |
+|---|---|---|
+| the question | can a sequence encoding DECIDE the goal? | can a sequence encoding turn a `Str` property from `tested` into `proven`? |
+| authority for its scope | #68's proposal sentence: *"`Str` goals (and `List`-of-scalar goals where it applies)"* | #68's title: *"push `Str` properties from tested to PROVEN"* |
+| subject rule | **R1 or L1** | **R1 only** |
+| deciding includes refuting? | **yes** — a false property is decidable and counts | **no** — a false property can never become `proven` and is removed |
+| budget | **§7's pinned rlimit, fixed here** — both populations are UPPER BOUNDS at that budget, and it is stated with every result | same |
+
+**THE BUDGET IS PART OF THE MEMBERSHIP RULE, SO IT IS PINNED HERE AND NOT
+CHOSEN LATER: step 2 runs at §7's rlimit.** What is pinned is the BUDGET, not
+§7's result rows — those name hashes from §7's snapshot, and reusing them across
+a change of identity subtracts objects the corpus no longer has while missing
+ones it does. So the producer is RE-RUN at the classification snapshot, at §7's
+rlimit; §7's rows may be reused only when classifying at §7's own commit. That
+makes both populations **upper bounds**: a property the current encoding proves
+only at the normative `proveRlimit` is still inside them, so every downstream
+figure overstates the headroom available to a sequence encoding, in a known
+direction. Re-running the subtraction at a different budget is an AMENDMENT
+under the protocol above and re-derives BOTH populations. **It moves them in
+whichever direction the budget moved**: RAISING the budget (solver and scripts
+unchanged) proves more at step 2, subtracts more, and shrinks both; LOWERING it
+subtracts less and GROWS both. An earlier draft claimed shrinkage
+unconditionally, which is true only of the increase. A result quoted without its
+budget is not a result.
+
+**B IS A PROPER SUBSET OF A, and that makes conflating them MORE tempting rather
+than less.** Every B member satisfies R1 and so enters A; A additionally holds
+the `List`-of-scalar arm, and B additionally removes the false properties. A
+`List Int` rotation law is in A and cannot be in B; a false `Str` property is in
+A and is removed from B; a `Str` property the current encoding already proves is
+in neither. **Nesting is not a rounding.** A figure over A is not a bound on B
+in the direction anyone wants — B is smaller, but its members are classified
+under a different question — so any sentence quoting one figure for both is
+wrong however the arithmetic checks out. An earlier draft of this paragraph
+asserted the two were NOT nested, which was false and was caught in review;
+recorded rather than silently corrected, because the wrong set relationship
+would have propagated into every downstream count.
+
+### 9.2 The derivation, as a transformation
+
+Each row is an OPERATION with an owner, so a later reader can ask of any
+disposition which step made it and on what authority. **Steps 1–2 are shared and
+the derivation BRANCHES AT STEP 3**: A takes both arms of the partition, B takes
+the R1 arm only and never sees an L1-only goal. Steps 4–5 then run inside each
+population, and step 6 applies to B alone. An earlier draft called steps 1–5
+shared, which left every L1-only goal formally inside B — the exact conflation
+§9.1 forbids, reintroduced by the table that was supposed to prevent it.
+
+| # | operation | applied to | authority for the disposition |
+|---|---|---|---|
+| 1 | **START** from the non-proven per-object properties | the committed store's own metadata, §1's set | the store |
+| 2 | **SUBTRACT** everything the CURRENT encoding already DECIDES — proofs and refutations alike | §7's *proves when attempted* row, §7's *refuted — demonstrated non-theorem* row, and every property carrying a recorded `refuted` verdict | §7's measured sweep; the store |
+| 3 | **PARTITION** by subject type and BRANCH — A takes the R1 arm and the L1 arm, **B takes the R1 arm only**; what satisfies neither rule is dropped, being out of the universe rather than unreachable | the survivors of 1–2 | R1 (`Str`), L1 (`List` of scalar) |
+| 4 | **TAG** each translation bail in the partitions with its REPRESENTABILITY disposition | the bails §6 and §7 agree emit no candidate script | §6's recorded cause, per bail |
+| 5 | **CLASSIFY** each goal, taking step 4's tag as its first input | each partition | R1–R5 for `Str` subjects, L1–L5 for `List`-of-scalar subjects |
+| 6 | **REMOVE** properties established FALSE — **population B only** | B's partition | an admissible falsity witness, per §9.2.1 |
+
+#### 9.2.1 What establishes FALSE, pinned before step 6 is run
+
+"Known false" is not self-defining, and left open it would let B's membership be
+decided while classifying — which the amendment protocol forbids. **Two
+categories of evidence are admissible, and nothing else:**
+
+  - a **recorded `refuted` verdict** — the prover demonstrated a non-theorem.
+    **Step 2 removes these from BOTH populations, so this category should never
+    fire at step 6.** If a refutation is recorded after step 2's snapshot, do
+    NOT remove it from B here: re-run step 2 for both populations instead. **The
+    two populations must always rest on ONE snapshot** — removing late from B
+    alone would leave A carrying a goal the current encoding has already
+    decided, which is exactly the headroom overstatement step 2 exists to
+    prevent, reintroduced by the repair;
+  - a **counterexample EXHIBITED BY EVALUATION** and recorded with its concrete
+    inputs, so a reader can reproduce it without a solver. This is the #161
+    route.
+
+**Explicitly NOT admissible**, because each looks like falsity and is not: a
+`countermodel-withheld` row (the verdict is withheld precisely because the
+countermodel was not confirmed — it becomes admissible only by being evaluated,
+at which point it is the second category); a solver `unknown` however long it
+ran; a reviewer's or an author's argument that the property "looks false"
+without a witness. **A removal at step 6 cites its witness or does not happen.**
+
+**ONE SNAPSHOT FOR THE WHOLE DERIVATION, NAMED IN THE RESULT.** Steps 1 and 2
+read different artefacts — the store's current metadata, and §7's recorded sweep
+— and nothing forces them to describe the same corpus. A verdict is a fact about
+a HASH, so once identities move, §7's rows can name objects no live name
+resolves to while step 1 enumerates goals the sweep never attempted. The residual
+is then a subtraction between two different corpora, which is this file's own
+store-history-versus-corpus error with a clock added.
+
+**This mismatch is LIVE, not hypothetical.** §7 ran against the commit named at
+the head of this file; `codebase/names.json` has moved since, in `ebbe7a2` — the
+#161 config repair, which is the very pair §8 left BORDERLINE. So the rule, and
+it forecloses the tempting shortcut:
+
+  - pin every step to ONE commit, name it in the result, and **re-run the
+    producer at that commit** rather than reusing §7's rows across a change of
+    identity. The producer exists precisely so this costs one command;
+  - reusing §7's sweep is permitted ONLY when classifying at §7's own commit;
+  - **the `Str` dispositions §8 recorded are not carried forward automatically**
+    — they were taken before `ebbe7a2` and must be re-derived at the
+    classification snapshot like anything else.
+
+**Step 2 in full, because it is the error §8 made twice.** A stored `tested` is
+not evidence that the current encoding cannot prove the property; §7 measured a
+set of them discharging from the state the store already records. Leaving those
+in would credit a sequence encoding with proofs the EXISTING encoding produces —
+store advancement reported as encoding impact. Subtract them from **BOTH**
+populations, not just from B.
+
+**A DECISION IS A DECISION WHETHER OR NOT THE STORE HAS CAUGHT UP.** §7's sweep
+refuted goals whose refutations it did not persist — it writes nothing — so a
+rule subtracting only RECORDED refutations would readmit them and credit the
+sequence encoding with a decision the current encoding had just made in front of
+us. Step 2 consumes §7's refuted row as well as the store's.
+
+**AND THE SAME ARGUMENT REACHES REFUTATIONS, WHICH AN EARLIER DRAFT LEFT IN.**
+Population A asks whether a sequence encoding could DECIDE a goal, and deciding
+includes refuting — so a property the current encoding has ALREADY refuted is
+already decided, and counting it as reachable-by-`Seq` credits the new encoding
+with a decision the existing one made. Subtract recorded refutations at step 2,
+from both populations. **The boundary is who decided it, not whether it is
+true:** a property that is UNDECIDED today and later turns out false stays in A,
+because there the sequence encoding would be the thing that settles it. That is
+the same distinction §8 got wrong from the other side, when it removed false
+properties from the reachable set for being false.
+
+**And step 2's honest limit, pinned now rather than discovered later.** §7's
+sweep ran at its own pinned rlimit, well below the normative `proveRlimit` — §7
+states both figures and the ratio, and they are not restated here. The set it
+identified is therefore a LOWER BOUND on staleness: a
+property that would discharge at the normative budget but not at §7's is not
+subtracted and stays in both populations. The residual may still contain
+properties the current encoding proves. That biases every downstream figure in
+the SAME direction — it overstates the headroom available to a sequence encoding
+— and any result must say so rather than presenting the residual as exactly the
+set the current encoding cannot reach.
+
+### 9.3 Step 4 — translation bails are TAGGED by REPRESENTABILITY
+
+A bail is a goal the strategy sequence could not translate at all, so it never
+reached a solver. §8 first excluded these, then argued they were wrongly
+excluded on an unverified example, then withdrew that argument. The rule that
+settles it is not about which side was right; it is about which question a bail
+answers.
+
+> **Ask whether re-representing the subject as a `Seq` makes the TERM
+> TRANSLATABLE. Do NOT ask whether a solver would then decide it.** The second
+> question is step 5's, and a goal that still does not translate never gets
+> there.
+
+**A BAIL IS A CLASSIFICATION INPUT, NOT A MEMBERSHIP TEST — this is why the step
+moved after the partition.** Membership in a population is decided by the
+subject rules and by nothing else; that is what "derive the universe from the
+claim" means here, and #68's claim is about subjects, not about which goals the
+current translator happens to handle. A bailing goal that satisfies R1 or L1 is
+IN, and the representability question then decides its VERDICT. An earlier draft
+of this section made the bail an exclusion filter running before the partition,
+which dropped in-scope goals out of the denominator and contradicted §9.5's own
+membership rule two subsections later — the same shrink-the-universe move §8
+died of, re-entering through a different door.
+
+| the cause §6 records for the bail | does a `Seq` representation change it? | tag, and the verdict it forces |
+|---|---|---|
+| the carrier — a list/string term the translator cannot encode | **yes**, by hypothesis | **REPRESENTABLE** — no verdict yet; continue to L2–L5 / R2–R5 |
+| an unsupported term form (e.g. `lam`) | no — the form is unsupported whatever the subject's carrier is | **UNAFFECTED** — **NOT REACHABLE** (hard), citing the cause |
+| a trusted/opaque call the translator refuses to model | no — the refusal is about the callee, not the carrier | **UNAFFECTED** — **NOT REACHABLE** (hard), citing the cause |
+| a partial application | no — arity, not representation | **UNAFFECTED** — **NOT REACHABLE** (hard), citing the cause |
+| any cause not listed above | undetermined by this table | **AMENDMENT REQUIRED** before the goal is classified |
+
+An UNAFFECTED bail is NOT REACHABLE rather than out of scope, and the difference
+is exactly the one §8 kept losing: it is an in-scope goal that a sequence
+encoding demonstrably does not reach, which is a finding. Dropping it instead
+would shrink the denominator and inflate every proportion computed over it.
+
+The last row is the point of writing this as a table: a cause with no row is a
+gap in the criterion, and the protocol above says what to do with it. An
+unlisted cause disposed of at the point of use is exactly how §8 acquired a
+fabricated exclusion.
+
+### 9.4 L1–L5 — the `List`-of-scalar criterion
+
+R1–R5 (§8) are written about `Str` and their TEXT is unchanged. This is their
+counterpart, and it is **SHAPE-BASED**: every rule is a question about the goal's
+types and term forms, so it is answerable from the kernel's own `oath get` output
+and the definition body, with no solver and no re-encoder. Where a rule cannot be
+answered that way it is marked SOFT below, and a goal disposed of by a soft rule
+alone is BORDERLINE, never NOT REACHABLE.
+
+**R1–R5 CARRY NO HARDNESS LABELS, AND §9.5 CANNOT CLASSIFY WITHOUT THEM.** §8
+wrote them before the hard/soft distinction existed, and it disposed of R2–R5
+failures inconsistently as a result — one goal NOT REACHABLE, another pair
+BORDERLINE, with nothing in the criterion saying which was right. Rather than
+rewrite a withdrawn section's rules, the labels are DERIVED here by mapping each
+`Str` rule onto the `List` rule that asks the same question, and every clause
+below — the unfolding step, the admission of core equality, the bridge registry,
+the two-part stripping test — applies to the `Str` arm through this mapping:
+
+| `Str` rule | asks the same question as | hardness it inherits |
+|---|---|---|
+| R1 subject | L1 | HARD |
+| R2 operations reduce to the seq signature | L2 | HARD, after unfolding, with core equality admitted and recursive symbols routed through the bridge registry |
+| R3 no quantifier alternation | L3 | HARD, with L3's soft carve-out for a witness the signature can name |
+| R4 arithmetic entanglement | L5 | SOFT throughout — a hard verdict needs a recorded failure on the RE-ENCODED goal |
+| R5 recursion is not the obstacle | L4 | per L4a's precedence table — HARD only on a recorded decision failure over the re-encoded goal; L4b (induction-only) SOFT |
+
+**R4 AND L5 SUPPLY NO HARD FAILURES TODAY, WHICH IS WORTH SAYING AS A FACT ABOUT
+THE CRITERION** — and saying it WITHOUT naming any goal, since classifying one
+here would break this section's own ordering control. Their hard branch needs a
+recorded failure on a RE-ENCODED goal, and no goal has ever been re-encoded. An
+outcome on the goal as the kernel translates it today is a different claim, and
+treating one as the other is this repository's own *a statement about the tool is
+not a statement about the world* arriving inside the criterion meant to prevent
+it. **Consequently §8's `Str` dispositions are NOT carried forward** — as the
+snapshot rule already requires — and where they land under these rules is the
+next round's result, not this section's.
+
+The criterion is counterfactual in the same way R1–R5 are: nothing in the corpus
+reaches Z3's `Seq` sort today, so each rule asks what would be true IF the
+subject were re-encoded onto `Seq`.
+
+**L1 — SUBJECT (hard).** A binder of the property, the definition's result, **or
+ANY term occurring in the goal** is typed `List σ` as the kernel types it, where
+σ is a SCALAR: a sort with no user-datatype structure — `Int`, `Bool`, `Rat`,
+`Float`. A user datatype is not a scalar, and that includes `Str`, so `List Str`
+fails L1 on that subject (its `Str` part is R1's business, not L1's).
+
+  - **"OR ANY TERM" IS LOAD-BEARING AND WAS MISSING FROM THE FIRST DRAFT.** A
+    property can construct a list and apply list operations to it while every
+    binder is an `Int` and the result is some other datatype — a law about an
+    encoder applied to a literal-built list is exactly that shape. Keying the
+    subject rule to binders and results alone would drop such goals at step 3
+    as out of scope, which is the incomplete-population failure this whole
+    section exists to repair, reproduced one level down. **The same widening
+    applies to R1 through §9.4.1's mapping**: a `Str` term in the goal is a
+    `Str` subject whether or not a binder carries the type.
+
+  - **A distinct datatype whose CARRIER happens to be a list does NOT satisfy
+    L1**, even where the kernel would unfold it to one. This is a decision, made
+    here rather than at the point of use: the bridge #68 proposes must justify a
+    datatype↔seq equivalence PER DECLARATION, and for a container whose intended
+    semantics is not the carrier's — unordered, keyed, deduplicated — a `Seq`
+    encoding of the carrier does not model the type. Admitting one would be
+    exactly the soundness risk #68's own design constraints forbid. A later
+    round that wants such a type in the population must ARGUE THE BRIDGE in an
+    amendment; it may not simply widen the count.
+  - **A goal carrying several sequence-shaped subjects: MEMBERSHIP comes from
+    ANY ONE subject satisfying R1 or L1; the others affect only the VERDICT.**
+    Deciding the goal means deciding all of it, so an unhandled subject forces
+    NOT REACHABLE or BORDERLINE according to that subject's own hardness — but
+    it never removes the goal from the population. An earlier draft wrote this
+    as "qualifies only if EVERY subject is handled", which made one condition
+    readable as both a membership test and a verdict test, so the denominator
+    depended on which rule a classifier reached first.
+  - **NESTED SEQUENCE SUBJECTS — `List Str`, `List (List τ)` — have their own
+    clause, because without one the rule above is unsatisfiable for goals that
+    contain them.** Such a subject satisfies neither L1 (its element is not a
+    scalar) nor R1 (it is not itself `Str`), so a goal entering the population
+    through some OTHER subject would have a subject no criterion reaches. Pinned
+    disposition, in two parts:
+      - a nested sequence subject **does not confer membership**: it satisfies
+        no subject rule, so it cannot pull a goal into population A on its own;
+      - where a goal is already a member and carries one, the nested subject is
+        **SOFT**. `(Seq (Seq τ))` is expressible in z3, so this is not a
+        shape-level impossibility; how far the decision procedures extend over
+        nested sequences is exactly the unmeasured kind of question. So such a
+        goal is BORDERLINE, never NOT REACHABLE on account of the nesting.
+
+**L2 — SEQUENCE OPERATIONS (hard where the term forms are read off the body).**
+**Evaluate L2 on the goal AFTER UNFOLDING every non-recursive user definition
+applied to a list subject, to a fixpoint** — then every operation remaining on a
+list subject must reduce to the seq signature: `seq.++`, `seq.len`, `seq.unit`,
+`seq.empty`, `seq.at`, `seq.nth`, `seq.extract`, `seq.prefixof`, `seq.suffixof`,
+`seq.contains`, `seq.indexof`, `seq.replace`. An operation still outside that
+list after unfolding has no theory after re-encoding.
+
+  - **THE WHITELIST IS LIST-SPECIFIC OPERATIONS ONLY. SMT CORE STRUCTURE IS
+    ADMITTED THROUGHOUT AND IS NOT MEASURED AGAINST IT** — equality and
+    disequality over sequence-valued terms, `ite`, and the boolean connectives.
+    Core equality is defined at every sort, sequences included, so reading the
+    whitelist as exhaustive over ALL term forms would hard-fail every law of the
+    form *this sequence expression equals that one*, which is the shape most
+    list laws take. An earlier draft was open to that reading.
+
+  - **THE UNFOLDING STEP IS NOT A DETAIL; WITHOUT IT L2 IS A NAME CHECK.** A
+    goal states its law about a user-defined wrapper, essentially never about
+    `seq.++` directly, so a literal whitelist applied to the surface term would
+    hard-fail every candidate in the corpus — including the ones this file
+    elsewhere calls the strongest — before their bodies were looked at, and it
+    would contradict L4a, which explicitly admits non-recursive user functions.
+    An earlier draft did exactly that and was caught in review. What L2 rejects
+    is an operation with no seq counterpart ONCE THE DEFINITIONS ARE GONE.
+  - **Recursive user functions are L4a's business, not L2's.** Unfolding stops
+    at them by definition, and L4a decides them — through the BRIDGE REGISTRY
+    below, which is what stops L2 and L4a defining each other in a circle.
+
+**THE BRIDGE REGISTRY — how a RECURSIVE user function may count as a seq
+operation at all.** L2 admits non-recursive definitions by unfolding them; L4a
+admits a recursive one only if it "is an L2 operation", and nothing so far says
+how that could ever be established. Left there the pair is circular, and the
+circle bites exactly the interesting goals: a list rotation expressed through
+recursive `append`/`take`/`drop` has no route to qualify and no route to be
+honestly refused. The rule that breaks it:
+
+  - A recursive user definition counts as an L2 operation ONLY through an
+    explicit REGISTRY ENTRY naming the definition and the seq operation it is
+    claimed to denote — `append` ↦ `seq.++`, `take`/`drop` ↦ `seq.extract`, and
+    so on. **An entry is a CLAIM OF EQUIVALENCE between a recursive definition
+    over the inductive datatype and a seq term**, which is precisely the
+    datatype↔seq bridge #68 proposes and #68's own design constraints say must
+    be verified before anything is discharged through it.
+  - **The registry is EMPTY at the time of writing, and adding an entry is an
+    AMENDMENT** under the protocol above: name the definition, name the seq
+    operation, state the equivalence, say whether it is proved or asserted.
+  - **A recursive symbol with NO entry is not thereby unreachable** — absence of
+    evidence is not disproof, and an empty registry must never be stricter than
+    an asserted entry. What an empty entry means depends on the callee's
+    termination verdict as well, so the registry does NOT decide alone: **the
+    single authority for a recursive callee is the precedence table in L4a
+    below**, which takes both facts as input. Nothing in this bullet is a
+    verdict.
+  - **An entry that is asserted rather than proved is SOFT.** Any goal whose
+    classification depends on one is therefore BORDERLINE — never NOT REACHABLE
+    and never CONFIRMED REACHABLE. That is the right resting place: the whole
+    question #68 asks is whether such bridges can be justified, so a criterion
+    that silently assumed one would be answering the issue by assumption.
+  - **Regular membership IS in L2's signature, and this one is MEASURED rather
+    than reasoned.** An earlier draft excluded it on the premise that `re.*` is
+    a string facility whose applicability to `(Seq Int)` was unknown. That
+    premise is false on the z3 this repository runs (4.16.0): `seq.in.re` over a
+    `(Seq Int)` with a regex built from `seq.to.re`/`seq.unit` is accepted and
+    solved. So `seq.in.re`, `seq.to.re` and the `re.*` constructors are admitted
+    for the `List` arm on the same footing as for `Str`, and a goal using
+    regular membership continues through the remaining rules instead of being
+    parked at BORDERLINE by a wrong premise. The measurement is a one-line
+    script and is worth re-running if the pinned solver moves.
+
+**L3 — QUANTIFIERS (hard).** No quantifier alternation: the property's binders
+are universal, and after negation no quantifier remains over a list, an index or
+an element. A bounded existential is admitted ONLY if its witness is named by a
+seq operation — `seq.indexof` supplies the index, `seq.extract` the segment. An
+existential the signature cannot name survives negation as a universal over the
+sequence and leaves the fragment.
+
+**L4 — USER RECURSION.** Two clauses, and they differ in HARDNESS as well as in
+direction, which an earlier draft of this section missed by labelling both hard:
+
+  - **L4a — and it SPLITS ON TERMINATION, which the first draft missed by
+    assuming every recursive callee is uninterpreted.** It is not: `ensureFn`
+    (`oath/prove.go`) declares the symbol and, **for a function PROVEN TOTAL,
+    asserts its defining equation as a quantified axiom**; only a non-total
+    callee is left declared-but-uninterpreted. So:
+      - a recursive callee **proven total** arrives carrying its defining
+        equation, so the goal is not theory-free and may well be decided even
+        though the callee matches no whitelisted operation;
+      - a recursive callee **NOT proven total** is left declared without an
+        equation, so the re-encoded goal is `Seq` plus an uninterpreted symbol —
+        which is a weaker position, **not a hard failure**.
+    Both are SOFT, and the exact dispositions with their precedence are in the
+    table below, which is the authority; this bullet only says what the kernel
+    does.
+    **The axiom is a universal assertion, which is itself why this is soft
+    rather than admitted:** it does not create alternation inside the negated
+    goal, but it does take the problem out of the purely quantifier-free
+    fragment L3 targets, and how far z3's sequence solver carries it is exactly
+    the unmeasured thing.
+
+**PRECEDENCE FOR A RECURSIVE CALLEE — ONE TABLE, BECAUSE TWO RULES REACHED THE
+SAME QUESTION.** The bridge registry and the termination split are both about
+"may this recursive symbol be treated as a sequence operation", and read as
+peers they contradict each other in both directions: an unregistered total
+callee would be simultaneously unresolved and SOFT, and a non-total callee with
+an asserted entry would be simultaneously BORDERLINE and NOT REACHABLE. They are
+therefore reduced to one derivation, consulted top to bottom, first match wins:
+
+| # | registry entry | termination verdict | outcome |
+|---|---|---|---|
+| 1 | **PROVED** | any | the callee IS that seq operation — continue under L2, L4a does not fire |
+| 2 | none, asserted, or "no counterpart claimed" | **proven total** | **BORDERLINE (SOFT)** — it arrives with its defining axiom, and whether that suffices is L4b's unmeasured question |
+| 3 | none, asserted, or "no counterpart claimed" | **not proven total** | **BORDERLINE (SOFT)** — declared with no equation, so the re-encoded goal is `Seq` + an uninterpreted symbol. **HARD (NOT REACHABLE) only where a decision failure on the RE-ENCODED goal is actually recorded** |
+
+**ROW 3 WAS HARD IN AN EARLIER DRAFT AND THAT WAS THIS REPOSITORY'S SIGNATURE
+MISTAKE — AN IMPLEMENTATION LIMIT REPORTED AS A SEMANTIC FACT.** `terminationOf`
+is conservative and answers `unknown` for any shape it cannot handle
+(`oath/termination.go`), so "not proven total" is a statement about the
+ANALYSER. And an uninterpreted symbol does not make a formula undecidable:
+`Seq` + UF is frequently decided, not least when the goal is refutable. Hard-
+failing every such goal would have excluded goals sequence theory can settle,
+on the strength of a non-proof.
+
+**Why a PROVED entry outranks everything and an ASSERTED one outranks nothing.**
+Row 1 is an established equivalence, which is what the bridge is for; an
+asserted entry establishes nothing and therefore changes no row. **So L4a is
+hard in exactly one circumstance — a RECORDED decision failure over the
+re-encoded goal — and nothing else about recursion produces a hard verdict.**
+That is the honest consequence of having no re-encoder: recursion mostly cannot
+be disposed of yet, and the criterion says so instead of guessing.
+  - **L4b (SOFT).** The goal must not HOLD only by induction over the list. Seq
+    theory supplies decision procedures, not induction. **But "this law is true
+    only by induction" is a SEMANTIC JUDGEMENT, not a shape** — a recursive
+    identity whose operations otherwise map onto `Seq` may or may not need
+    spine induction once re-encoded, and no reading of `oath get` output settles
+    it. So a goal disposed of by L4b ALONE is BORDERLINE, never NOT REACHABLE.
+    Calling it hard would have licensed a post-hoc exclusion wearing a
+    shape-based rule's clothes, which is the failure mode §8 records.
+
+**L5 — LENGTH AND INDEX ARITHMETIC (SOFT throughout, until a re-encoded goal can
+actually be run).** The coupling between `seq.len`, index expressions and Int
+reasoning is where sequence solvers actually stop.
+
+  - **The stripping test, the same instrument as R4 — and it is SOFT
+    THROUGHOUT.** Replace every list term with a fresh variable and every length
+    with a fresh non-negative Int. Whether an Int obligation REMAINS is read off
+    the stripped goal, and a remaining one is evidence the sequence structure
+    was the carrier rather than the subject. **It is not more than evidence.**
+    Stripping DISCARDS constraints — the fresh variables are unrelated where the
+    sequence terms were not — and re-encoding can add relationships and change
+    what the solver simplifies, so a failure on the stripped obligation does not
+    establish that re-encoding "moves nothing", and an `unknown` or an exhausted
+    budget establishes less still. **The disposition is BORDERLINE. A hard NOT
+    REACHABLE here needs a recorded failure on the RE-ENCODED goal at the pinned
+    budget**, exactly as in L4a's row 3.
+  - **Truncating division and modulo do NOT fail L5 as untranslatable.** An
+    earlier draft of this rule said they did, citing §6 — that premise is
+    SUPERSEDED: #71 is closed and the kernel translates `/` and `%` through
+    `oath_tquo`/`oath_trem` (SPEC §7.1, `oath/prove.go`). They may still defeat
+    the solver, and div/mod coupled to `seq.len` is outside any fragment z3
+    decides — but that is a SOFT disposition yielding BORDERLINE, not a
+    translation failure. The rotation laws are the class this would have
+    wrongly excluded, and they are the strongest candidates the corpus has.
+  - **Linear length constraints across a bounded number of concatenations are
+    handled in practice but are not decided in general.** A goal whose only
+    remaining coupling is of that form is SOFT, hence BORDERLINE, not reachable.
+
+### 9.5 The verdict classes, pinned so they are not decided per goal
+
+| class | condition |
+|---|---|
+| **OUT OF POPULATION (A)** | satisfies neither R1 nor L1. Not a verdict — the goal is not in A's universe, is excluded at step 3, and appears in NO denominator over A |
+| **OUT OF POPULATION (B)** | fails R1 — **B's subject rule is R1 ALONE**, so every L1-only goal is out of B whatever its L-classification, and a rotation law can never touch the title question's denominator |
+| **NOT REACHABLE** | is IN the population, and fails a HARD rule — on grounds decidable from the kernel's types and the definition body, OR from a measurement this section specifically admits (a RECORDED failure on the re-encoded goal, under R4/L5 and L4a's row 3; the §9.6 capability probe). No other measurement may harden a rule at the point of use |
+| **BORDERLINE** | is in the population, and every remaining obstacle rests on a SOFT disposition — reasoning about z3's sequence solver rather than a measurement |
+| **CONFIRMED REACHABLE** | the goal was re-encoded onto `Seq`, z3 answered `sat` or `unsat` within a stated rlimit, **AND no SOFT assumption remains open** — in particular every bridge-registry entry the encoding used is PROVED, not asserted. A goal decided through an asserted bridge stays BORDERLINE, because the bridge is the thing #68 asks about. **Not achievable this round; no re-encoder exists.** |
+
+**THE FIRST ROW IS A MEMBERSHIP FACT, NOT A CLASSIFICATION, AND KEEPING THEM
+APART IS THE WHOLE LESSON OF §8.** The subject rules DEFINE the population;
+failing one means the goal was never in scope, not that a sequence encoding
+cannot reach it. §8's headline table reported goals with no `Str` anywhere as
+NOT REACHABLE, which put out-of-scope subjects into the denominator and made a
+narrow universe look like a surveyed one. An earlier draft of this table
+repeated it. A goal that fails both subject rules is reported, if at all, as
+what was EXCLUDED and why — never as a verdict about sequence theory.
+
+**FALSITY IS NOT UNREACHABILITY, and it is a step-6 concern, not a step-5 one.**
+Deciding includes answering `sat` with a counterexample, so a false property is
+classified for population A exactly as a true one is — §8 records this being got
+wrong and corrected. Population B removes it at step 6 instead, for the
+different reason that it can never become `proven`. **One goal, two populations,
+two dispositions, no contradiction** — which is the whole reason the populations
+are kept apart.
+
+### 9.6 What this section deliberately does not do
+
+- It runs nothing over the corpus. The producer is untouched and
+  `git status codebase/ fixtures/` is unchanged by this commit.
+- **It DOES invoke a solver once, and pretending otherwise would be the same
+  class of overclaim as the heading this section already had to correct.** L2's
+  regular-membership clause rests on a capability probe against the z3 on PATH
+  (4.16.0), reproduced here in full so it is evidence rather than an assertion:
+
+        (declare-const xs (Seq Int))
+        (declare-const x Int)
+        (assert (seq.in.re xs (re.+ (seq.to.re (seq.unit x)))))
+        (assert (= (seq.len xs) 3))
+        (check-sat)
+
+  It returns `sat`. **It mentions no corpus goal and classifies nothing** — it
+  establishes what the SOLVER supports, which is why it can sit inside a
+  criterion instead of inside a result. A rule resting on an unmeasured premise
+  about the solver is how the earlier draft got this backwards, parking goals at
+  BORDERLINE on a guess.
+- It looks up no candidate's type. Deriving types is step 3 and belongs to the
+  round this section precedes.
+- It offers no count, no bound and no recommendation for #68 — which remains
+  UNANSWERED, exactly as §8 left it.
