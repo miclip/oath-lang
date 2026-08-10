@@ -222,6 +222,14 @@ check-store:
 check-normative-source:
 	@python3 scripts/check-normative-source.py
 
+# SPEC §7.4 pins the BYTES of the #68 bridge obligations so a second kernel can
+# reproduce them without reading this one's source. That only means something if
+# the reference kernel is held to the document rather than the document being a
+# description of the kernel, which is what this compares.
+.PHONY: check-bridge-bytes
+check-bridge-bytes:
+	@python3 scripts/check-bridge-bytes.py
+
 # The corpus/registry reconciliation RATCHET, exercised against a synthetic tree.
 #
 # The live check (scripts/check-registry-reconciliation.py --fetch) needs read

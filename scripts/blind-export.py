@@ -59,6 +59,12 @@ PROSE = ["docs/SPEC.md"]
 # than relaxing it keeps the N-version property intact.
 FORBIDDEN_BY_SECTION = {
     "10.0a": ("oath/", "codebase/", "docs/experiments/", "website/"),
+    # #68 §7.4: implement the bridge obligations in oathrs from the SPEC alone.
+    # docs/experiments/ matters MORE here than in any previous round —
+    # issue-68.md carries the milestone's design argument AND a probe record
+    # containing the literal scripts with their hashes, so shipping it would
+    # hand the subject the answer and the check together.
+    "7.4": ("oath/", "codebase/", "docs/experiments/", "website/", "scripts/"),
 }
 
 SURFACES = {
@@ -86,6 +92,14 @@ SURFACES = {
     # oath/ is forbidden by default here, which matters more than usual — the Go
     # adapter IS the reference implementation of this section.
     "14": ([], []),
+    # #68 §7.4: bridge obligations in the Rust kernel. NO witnesses, and that is
+    # the strong form rather than a gap. §7.4 prints the script text literally,
+    # so the subject does not need a vector to BUILD from — what is being tested
+    # is whether the prose determines the bytes EXACTLY (whitespace, the nullary
+    # constructor's trailing space, obligation order, manifest layout). Handing
+    # over a hash manifest would let it iterate against the answer instead of
+    # deriving it, which is the corroboration §13 exists to withhold.
+    "7.4": ([], ["oathrs/"]),
 }
 
 # NORMATIVE DATA: incorporated by reference, schema and interpretation defined in

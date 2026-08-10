@@ -1667,6 +1667,130 @@ outcome, and a hash of the emitted SMT-LIB obligation. The current metadata
 stores only the proven count and property indices, so these proof-provenance
 fixtures are external to the hashed definition.
 
+### 7.4 Bridge obligations (normative BYTES, OPTIONAL capability, #68)
+
+A kernel MAY emit **bridge obligations**: SMT scripts witnessing that an Oath
+datatype and an SMT `Seq` sort carry the same information, so that a goal about
+the datatype could be re-encoded onto the sequence theory. This section pins the
+BYTES of the obligations for `List Int`, and nothing else.
+
+**THIS IS NOT PART OF §10's CONFORMANCE SURFACE, BY DECISION AND NOT BY
+OMISSION.** A kernel that emits no bridge obligation is NOT deficient — the same
+disposition §7.2 reaches for `prove/attempts.txt`, and for the same reason:
+requiring it would standardize an optional analysis rather than observable proof
+semantics. What this section forbids is emitting DIFFERENT bytes under the same
+name. A kernel that offers the capability MUST emit exactly the scripts below,
+because the only thing a second kernel's agreement can witness is agreement on
+bytes somebody wrote down first.
+
+**Why the bytes and not merely the claim.** These obligations are not expressible
+as Oath properties: `Seq` is an SMT sort with no Oath spelling, so no property can
+mention `seq.++`, and there is no `Def` whose translation produces them. The
+ordinary §7.2 machinery — first-touch declaration order over a translated body —
+therefore does not determine them, and without a normative spelling two kernels
+would each be free to invent one.
+
+#### 7.4.1 The core
+
+Every bridge obligation for `List Int` begins with this preamble, verbatim, one
+LF after each line:
+
+```
+(declare-datatypes ((List_Int 0)) (((Nil_List_Int ) (Cons_List_Int (Cons_List_Int_0 Int) (Cons_List_Int_1 List_Int)))))
+(declare-fun fn_to_seq_Int (List_Int) (Seq Int))
+(assert (forall ((p0 List_Int)) (! (= (fn_to_seq_Int p0) (ite ((_ is Nil_List_Int) p0) (as seq.empty (Seq Int)) (seq.++ (seq.unit (Cons_List_Int_0 p0)) (fn_to_seq_Int (Cons_List_Int_1 p0))))) :pattern ((fn_to_seq_Int p0)))))
+(assert (= (fn_to_seq_Int Nil_List_Int) (as seq.empty (Seq Int))))
+(assert (forall ((q0 Int) (q1 List_Int)) (= (fn_to_seq_Int (Cons_List_Int q0 q1)) (seq.++ (seq.unit q0) (fn_to_seq_Int q1)))))
+(declare-fun fn_of_seq_Int ((Seq Int)) List_Int)
+(assert (forall ((s0 (Seq Int))) (! (= (fn_of_seq_Int s0) (ite (= (seq.len s0) 0) Nil_List_Int (Cons_List_Int (seq.nth s0 0) (fn_of_seq_Int (seq.extract s0 1 (- (seq.len s0) 1)))))) :pattern ((fn_of_seq_Int s0)))))
+```
+
+Three byte-level details are load-bearing and a kernel that "tidies" any of them
+emits different bytes:
+
+- The datatype line follows §7.1's existing spelling, including the SPACE after a
+  nullary constructor name (`(Nil_List_Int )`).
+- `(as seq.empty (Seq Int))` MUST carry the `as` annotation. `seq.empty` takes no
+  arguments, so its range sort is otherwise ambiguous and a solver may reject the
+  bare form.
+- Symbol names are structural, per §7.2: `fn_<name>_<sorts>` for the bridge
+  functions, `p<i>` and `q<i>` for binders by index, `s0` for the sequence binder
+  of a sequence-recursive definition.
+
+**BOTH FUNCTIONS ARE DEFINED, NOT DECLARED, AND THIS IS A SOUNDNESS REQUIREMENT
+RATHER THAN A STYLE.** An uninterpreted `of-seq` constrained by implications is
+an ARBITRARY function: the round-trip obligations below are then satisfiable when
+negated for reasons that have nothing to do with the encoding, so the obligation
+would fail for every possible bridge and would be measuring its own defect.
+`to-seq` is pinned uniquely on the datatype's finite elements by its per-
+constructor equations; `of-seq` is pinned by well-founded recursion on `seq.len`,
+which is why §7.4.3 is an obligation and not an assumption.
+
+#### 7.4.2 The `seq.len` induction scheme
+
+`∀s. to-seq(of-seq s) = s` cannot be discharged directly: it requires induction
+on `seq.len s`, an integer measure over the SEQUENCE sort, which is neither
+structural induction over an Oath datatype (§7.2) nor lexicographic induction
+over datatype binders. A kernel offering this capability MUST emit it as exactly
+two subgoals, each appended to the §7.4.1 core.
+
+`roundtrip2-base`:
+
+```
+(declare-const s (Seq Int))
+(assert (= (seq.len s) 0))
+(assert (not (= (fn_to_seq_Int (fn_of_seq_Int s)) s)))
+(check-sat)
+```
+
+`roundtrip2-step`:
+
+```
+(declare-const s (Seq Int))
+(assert (> (seq.len s) 0))
+(define-fun ih_tail () (Seq Int) (seq.extract s 1 (- (seq.len s) 1)))
+(assert (= (fn_to_seq_Int (fn_of_seq_Int ih_tail)) ih_tail))
+(assert (not (= (fn_to_seq_Int (fn_of_seq_Int s)) s)))
+(check-sat)
+```
+
+This is the sequence-sorted analogue of §7.2's recursion induction — induct along
+the function's own recursion, with the hypothesis at the argument the recursive
+call is made on. Both subgoals `unsat` establish the universal, subject to §7.4.3.
+
+#### 7.4.3 The measure obligation
+
+The scheme above is sound only if the measure strictly decreases. A kernel MUST
+emit this as its own obligation, `measure-decreases`, and MUST NOT assert it as a
+hypothesis inside `roundtrip2-step`:
+
+```
+(declare-const s (Seq Int))
+(assert (> (seq.len s) 0))
+(assert (not (= (seq.len (seq.extract s 1 (- (seq.len s) 1))) (- (seq.len s) 1))))
+(check-sat)
+```
+
+**The separation is the point.** Asserted into the step, it would be a supplied
+lemma and the step would prove nothing about whether the recursion terminates —
+the two subgoals would still report `unsat` while no longer implying the
+universal. Emitted separately, it is a check on the SCHEME. A kernel whose
+solver answers anything but `unsat` here MUST NOT report the round-trip as
+established, however the other two subgoals answered.
+
+#### 7.4.4 Emission order and the manifest
+
+The obligations are emitted in this fixed order — `measure-decreases`,
+`roundtrip2-base`, `roundtrip2-step` — scheme soundness first, so that a reader
+meeting a failure meets it before the results it invalidates.
+
+A kernel exposing this capability SHOULD offer a manifest: the header line
+`# id<TAB>sha256(script)` followed by one `<id><TAB><lowercase hex>` line per
+obligation in that order, each terminated by LF. The digest is `SHA-256` over the
+script bytes ALONE — core plus subgoal, with no rlimit header and no trailing
+`get-info` lines, matching §7.2's rule that runner options sit outside a script's
+identity.
+
 ## 8. The journal
 
 Append-only, one JSON object per line: `seq`, `time` (RFC3339 UTC),

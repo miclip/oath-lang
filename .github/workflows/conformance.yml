@@ -134,6 +134,13 @@ jobs:
       - name: identity constants are findable in the spec (SPEC §13)
         run: make check-normative-source
 
+      # §7.4's bridge-obligation bytes are what a second kernel is compared
+      # against, so the reference kernel must be derived from the SPEC rather
+      # than the SPEC from it. Byte comparison only — this step runs no solver
+      # and says nothing about whether the obligations discharge.
+      - name: bridge-obligation bytes match SPEC §7.4
+        run: make check-bridge-bytes
+
       # Gates the reconciliation LOGIC, not the live registry. The live check
       # needs production store credentials; this proves the ratchet classifies
       # rather than counts, which is the part that could silently rot.

@@ -98,6 +98,16 @@ func main() {
 		cmdProvenance(args[1])
 		return
 	}
+	// bridge-obligation emits SPEC §7.4's fixed scripts and never touches the
+	// store. Dispatched early for the same reason as provenance: opening the
+	// store CREATES ./codebase/{objects,meta} relative to the caller, so a
+	// gate that merely asks the kernel for its bytes would leave directories
+	// behind in whatever tree it ran from — and would fail outright on an
+	// unreadable or cloud-configured store it has no business consulting.
+	if args[0] == "bridge-obligation" {
+		cmdBridgeObligation(args[1:])
+		return
+	}
 	storeDir := os.Getenv("OATH_STORE")
 	if storeDir == "" {
 		storeDir = defaultStoreDir
