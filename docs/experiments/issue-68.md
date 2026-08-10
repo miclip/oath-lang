@@ -1453,15 +1453,20 @@ was tried.
 
 ## 9. PREREGISTRATION — the two populations and the criteria, pinned before any classification
 
-**This section classifies nothing, counts nothing, and measures nothing about
-the corpus — with ONE recorded exception, a solver capability probe named and
-scripted in §9.4, which touches no corpus goal.** §8 withdrew every number it had because each was computed over a
+**This section CLASSIFIES nothing and COUNTS nothing.** It does not claim to
+have touched no data: §9.6 lists what was run — a solver capability probe, and,
+in the course of finding AMENDMENT 1, a read-only pass over the corpus that
+computed which OPERATIONS occur in the population without drawing a verdict on
+any goal. **The control this section offers is the ORDER — every rule committed
+before any disposition — not ignorance of the corpus**, which §9's own opening
+paragraphs already concede is unavailable. §8 withdrew every number it had because each was computed over a
 universe chosen after the fact; a fifth number written the same way would be the
 same defect with better manners. So this section does the part §8 named as the
 missing artefact and stops: it DEFINES the populations, DERIVES them from #68's
 own sentence rather than from whichever subset is nearest to hand, and PINS the
-classification criteria — while the producer has not been re-run and no goal has
-been classified under them.
+classification criteria — with no goal classified under them. The producer HAS
+been re-run since, read-only, in the course of finding AMENDMENT 1; §9.6 says
+what that did and did not establish.
 
 **WHAT THIS IS NOT: A BLIND PREREGISTRATION, AND SAYING OTHERWISE WOULD BE THE
 KIND OF OVERCLAIM THIS FILE EXISTS TO CATCH.** A first draft of this heading said
@@ -1970,8 +1975,15 @@ are kept apart.
 
 ### 9.6 What this section deliberately does not do
 
-- It runs nothing over the corpus. The producer is untouched and
+- It commits no classification and no count, and
   `git status codebase/ fixtures/` is unchanged by this commit.
+- **It is NOT true that nothing was run over the corpus, and an earlier draft of
+  this bullet said so.** Finding AMENDMENT 1 required re-running the existing
+  producer and computing each goal's residual operations — read-only, writing
+  nothing, and stopping before any verdict. What separates that from a
+  classification is not that it touched less data; it is that it asked which
+  OPERATIONS occur, never which goals qualify. The distinction is the whole
+  content of the ordering control, so it is stated rather than smoothed over.
 - **It DOES invoke a solver once, and pretending otherwise would be the same
   class of overclaim as the heading this section already had to correct.** L2's
   regular-membership clause rests on a capability probe against the z3 on PATH
@@ -1988,7 +2000,126 @@ are kept apart.
   criterion instead of inside a result. A rule resting on an unmeasured premise
   about the solver is how the earlier draft got this backwards, parking goals at
   BORDERLINE on a guess.
-- It looks up no candidate's type. Deriving types is step 3 and belongs to the
-  round this section precedes.
+- It records no candidate's type and no per-goal disposition. Step 3's partition
+  and everything after it belong to the round this section precedes.
 - It offers no count, no bound and no recommendation for #68 — which remains
   UNANSWERED, exactly as §8 left it.
+
+### 9.7 AMENDMENT 1 (2026-08-10) — what L2 quantifies over, and the datatype's OWN constructor and eliminator
+
+**Filed under §9's amendment protocol, in its own commit, before any goal is
+given a verdict under the amended rule. Two clauses, because applying L2 needs
+both and neither is in the section.**
+
+#### 9.7a — what counts as "an operation ON A LIST SUBJECT"
+
+**THE GAP.** L2 measures "every operation remaining on a list subject" against
+the seq signature. It never says which operations those are, and the reading is
+not forced: a goal in this corpus routinely applies `Some` to a list, projects a
+`Request` field holding one, or matches an `Option` whose payload is a list.
+Every one of those touches a sequence and none is on the whitelist, so a reader
+choosing the wide reading hard-fails them and a reader choosing the narrow one
+does not. That is a decision the section does not contain.
+
+**THE DISPOSITION.** An operation is **on a list subject** iff it is one of the
+following two forms — and the EXCLUSION in the second bullet is part of the
+definition, not a gloss on it, because a bare "consumes or produces a sequence"
+test admits the very selectors the next paragraph refuses:
+
+  - a **prim** or a **user definition** whose result type, or some argument type,
+    **IS** a sequence type (`Str`, or `List` of anything) — not merely mentions
+    one nested inside some other type — **excluding the constructors, field
+    selectors and `match` forms of a NON-sequence datatype, whatever their
+    result type**. A selector returning `List Int` out of a record is still a
+    selector of that record;
+  - a **constructor or `match` OF the sequence datatype itself** (§9.7b).
+
+A constructor, field projection or `match` of a **non-sequence** datatype that
+merely CARRIES a sequence in a field is **not** on a list subject. `Some xs`,
+`Request.body`, `match` on an `Option (List Int)` — the re-encoding substitutes
+the field's SORT and changes nothing about the operation, which stays exactly the
+algebraic-datatype constructor or selector it is today. L2 does not reach them,
+in either direction: they neither qualify a goal nor fail it.
+
+**Why the wide reading is refused rather than merely not chosen.** It would
+hard-fail every goal that puts a list inside any other datatype, on the strength
+of an operation the hypothesised encoding does not touch — an implementation
+limit reported as a semantic fact, in the one place §9 exists to prevent it.
+
+#### 9.7b — the sequence datatype's own constructor and eliminator
+
+**THE GAP.** L2 whitelists twelve `seq` operations and admits SMT core structure
+alongside them, and it says unfolding stops at recursive definitions. It does not
+say what becomes of the two term forms the inductive datatype itself supplies and
+that unfolding therefore CANNOT remove: a **constructor** of the sequence type,
+and a **`match` whose scrutinee is sequence-typed**. Both are operations
+remaining on a list subject after unfolding; neither is on the whitelist; and
+L2's closing sentence — *"an operation still outside that list after unfolding
+has no theory after re-encoding"* — read literally hard-fails both.
+
+**THE DISPOSITION: BOTH ARE ADMITTED.** `List` and `Str` are cons-lists as the
+kernel declares them (`(Nil)` / `(Cons a (self a))` and `(SNil)` /
+`(SCons Int self)`), so each form has a translation built only from the
+whitelist and the core structure L2 already admits:
+
+| form | reduces to |
+|---|---|
+| `Nil`, `SNil` | `(as seq.empty (Seq σ))` |
+| `Cons x xs`, `SCons x xs` | `(seq.++ (seq.unit x) xs)` |
+| `match s { nil-arm; cons-arm }` where `s` is sequence-typed | `(ite (= s (as seq.empty (Seq σ))) nil-arm cons-arm)`, with the cons arm's binders bound to `(seq.nth s 0)` and `(seq.extract s 1 (- (seq.len s) 1))` |
+
+**THE `as` IS NOT DECORATION AND THE SORT σ IS THE ELEMENT'S, MEASURED NOT
+ASSUMED.** `seq.empty` takes no arguments, so z3 cannot infer its range and
+rejects the bare form — *"Sort of polymorphic function 'seq.empty' is ambiguous"*
+— even inside `(= s seq.empty)` where a reader would expect the equation to
+constrain it. Checked on the z3 this repository runs (4.16.0): the bare form
+errors, `(as seq.empty (Seq Int))` is accepted. A reduction that does not
+translate would leave this amendment admitting forms it cannot actually deliver,
+which is the failure mode §9's whole apparatus is pointed at.
+
+L2 requires an operation to **reduce to** the signature, not to **be** one of its
+members, so each row is inside the rule as written. What the rule does not
+contain is the reduction itself, and supplying it at the point of use is what the
+amendment protocol forbids.
+
+**SCOPE, because the admission is narrower than it looks.** It reaches a
+constructor or `match` **of the datatype being re-encoded** and nothing else. A
+`match` on `Option`, `Pair`, `Queue`, `Tree`, `Request` or `Response` is not an
+operation on a list subject: those types stay SMT algebraic datatypes under the
+hypothesised encoding, and L2 never reaches them. This amendment does not widen
+L1's subject rule by one goal.
+
+**HARDNESS: UNCHANGED, AND THIS IS THE HALF THAT KEEPS IT FROM BEING A
+WIDENING.** It admits two FORMS; it decides no goal. Every goal it un-blocks
+continues to L3, L4 and L5, where the empty bridge registry and the soft rules
+are what actually dispose of it. Nothing here can produce a CONFIRMED REACHABLE,
+which §9 already records as unreachable this round.
+
+**WHY THE OTHER READING IS NOT AVAILABLE — an argument from the section, not
+from the outcome.** Hard-failing constructors and `match` would hard-fail every
+goal WHOSE RESIDUAL OPERATIONS CONTAIN ONE. That is not every sequence goal — a
+law relating two sequence binders through a single call constructs nothing and
+matches nothing, and would be untouched — and the first draft of this sentence
+said "no law about a list can avoid its constructors", which is simply false.
+The narrower claim is still decisive, because the affected class includes any
+law stated by cases or built from literals, which is how a law about a cons-list
+is ordinarily written. §9.4 already refuses that outcome for the neighbouring case, in
+L2's own words: a literal whitelist applied to the surface term *"would
+hard-fail every candidate in the corpus — including the ones this file elsewhere
+calls the strongest — before their bodies were looked at"*. The same objection
+applies one layer down, to the forms unfolding leaves behind.
+
+**HOW IT WAS FOUND, because the ordering control is worth exactly what its
+honesty is worth.** It was found by computing the residual operation set of every
+population-A goal after L2's unfolding — after the producer had been re-run and
+the partition taken, and **before any goal was given a verdict**. So it was
+written knowing which OPERATIONS occur in the population and not knowing which
+verdicts follow from disposing of them. That is weaker than blindness and
+stronger than a mid-classification adjustment; it is recorded as an amendment
+rather than described as a clarification precisely because the distinction is not
+the author's to make after the fact.
+
+**WHAT IT COULD MOVE, and therefore what must be re-derived under it:** every
+population-A and population-B goal whose residual operations include a
+constructor or a `match` of `List` or `Str`. No disposition predates this
+amendment, so nothing needs revisiting.
