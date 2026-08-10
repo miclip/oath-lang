@@ -2232,3 +2232,117 @@ The honest summary of the arrangement, since a later reader will otherwise
 reconstruct it too kindly: **the criterion is independent of the classification;
 the classifier is not independent of the criterion; the citation requirement
 makes the gap inspectable rather than closing it.**
+
+### 9.9 AMENDMENT 3 (2026-08-10) — the reader WAS seated on the second attempt, and what that does and does not establish
+
+**A FORWARD CORRECTION. §9.8 IS LEFT INTACT AND IS NOT REWRITTEN**, because it
+was true when it was written and the sequence of attempts is itself part of the
+record. Filed in its own commit, before any goal is given a verdict, and it
+changes no classification rule: no population, no step of §9.2, no R- or L-rule,
+no verdict class, no admissible-falsity category.
+
+#### WHAT §9.8 GOT RIGHT, AND WHAT SUPERSEDES IT
+
+§9.8 records that the independent reader was dispatched and lost to a transport
+fault — the replacement's acceptance could not be observed, so the swap was
+correctly refused rather than proceeding on an unverified party. That happened
+**twice**, and the second attempt SUCCEEDED. So the sentence §9.8 draws from it
+— *"the criterion's AUTHOR applies the criterion"* — is superseded: the criterion
+pinned in `685a393`, as amended by `7cde5c4` and `2b95de3`, **is being applied by
+a session that did not write it.**
+
+The transport events are not visible from inside this repository. They are
+recorded here on the OPERATOR'S authority, labelled as such, because a later
+reader can check every other claim in this section against the tree and cannot
+check that one.
+
+#### WHAT IT CLOSES — AUTHORSHIP, WHICH IS NOT ONE OF THE THREE CHANNELS
+
+§9.8 names the three contamination channels this repository distinguishes and
+says the failed rotation closed none of them. **The successful rotation closes
+none of them either**, and a first draft of this section claimed it closed
+CONTEXT — caught in review, recorded rather than quietly fixed, because it is
+precisely the overclaim this file exists to catch:
+
+    CONTEXT    NOT closed. `CLAUDE.md` defines it as what a reader is handed
+               BEFORE it opens the artefact, closed only by a clean dispatch and
+               verified per run by asking what context the reader received. This
+               session had read §9 and #68's withdrawn results before it was
+               seated, so it fails that test outright.
+    GUIDANCE   NOT closed, and NOT closable by any reader. §7's and §8's data sit
+               a few hundred lines above the rules, in the same file the applier
+               must read to apply them. §9's own opening already concedes
+               blindness is unavailable to anyone; a seated reader does not
+               change that.
+    MODEL      NOT closed. The applier shares the author's model and priors, so
+               it cannot witness what those priors hide.
+
+**What the rotation closes is AUTHORSHIP, and that is a FOURTH property rather
+than a fourth channel.** The three channels are dimensions along which a reader
+can be CORRELATED with the artefact's author — what it was handed, what the
+artefact itself still carries, and what it shares by construction. Authorship
+asks a different question: not what correlates the applier with the author, but
+whether the applier IS the author of the rule it is applying. §9.8 identifies it as the
+strongest available answer to an author applying their own criterion — *"a
+criterion binds whoever applies it, and the bind is only testable on someone who
+did not write it"* — and it is now satisfied: the applier has no private leaning
+from the drafting to carry, because it did not draft. That is real, it is what
+the rotation was for, and it is **not** an independence claim in the sense the
+three channels measure.
+
+**AND THE APPLIER'S OWN EXPOSURE, STATED RATHER THAN LEFT TO INFERENCE.** Before
+being seated, this session had read #68's comments — including §8's withdrawn
+counts — and §9, and had restated the criterion's constraints in prose while
+relaying them in an advisory capacity. **It authored no rule, amended no rule,
+and chose no disposition.** *Did not write it* is a smaller claim than *came to
+it cold*, and only the first is true here.
+
+#### THE CITATION REQUIREMENT IS RETAINED, AT A DIFFERENT RANK
+
+§9.8 introduced the exact-clause requirement as what replaces the reader who
+could not be seated. That framing is now wrong and the requirement is not:
+
+> **It is retained. It is no longer a SUBSTITUTE for independence; it is an
+> ADDITIONAL AUDIT CONTROL, and it is not dropped on the grounds that it is no
+> longer needed.**
+
+What it buys is orthogonal to who applies the rule. Authorship independence is a
+fact a later reader must take on trust; a clause-to-verdict comparison is
+DECIDABLE from two committed texts, and it stays decidable however independent
+the applier was. Every rule §9.8 states for it is unchanged and binding —
+including that a BORDERLINE row names its soft disposition **and** positively
+accounts for every applicable hard rule, and that an OUT OF POPULATION (A) row
+cites both R1 and L1 as failing.
+
+The ordered chain, extended; every commit in it predates any classification, and
+a citation to a clause postdating its own disposition remains the fitted-criterion
+failure wearing the requirement as cover:
+
+    685a393   §9   — the criterion
+    7cde5c4   §9.7 — AMENDMENT 1 (L2's quantification; constructor and match)
+    2b95de3   §9.8 — AMENDMENT 2 (the citation requirement)
+    this one  §9.9 — AMENDMENT 3 (the reader seated; the requirement retained)
+
+#### A ROLLBACK RESTORES THE AGENT, NOT THE TREE
+
+Recorded because a later reader meeting the artefacts alone would misread them.
+The first, rolled-back replacement **left uncommitted work behind**: a draft of
+the §9.7 amendment, and an untracked test file. A rollback returns the previous
+session to service; it does not revert the working tree, so that state outlived
+the agent that produced it. The §9.7 draft was subsequently carried to commit as
+`7cde5c4`. The test file was the duplicate universe-derivation instrument §9.8
+already records as not retained, and it is absent from the tree.
+
+The seated implementer verified `git status` clean at `2b95de3` before writing
+this section, and **treats no stray artifact as its own work** — an uncommitted
+file of unknown provenance is exactly the thing a fresh reader would otherwise
+adopt by assuming it wrote it.
+
+#### THE HONEST SUMMARY, SUPERSEDING §9.8'S LAST PARAGRAPH IN ONE CLAUSE ONLY
+
+The criterion is independent of the classification. **The classifier is now
+independent of the criterion in AUTHORSHIP — which is not one of the three
+channels, and all three of those remain open.** It read §9 and §8 before it was
+seated, it remains a reader of the file that carries them, and it shares the
+author's model. The citation requirement makes what remains inspectable rather
+than closing it.
