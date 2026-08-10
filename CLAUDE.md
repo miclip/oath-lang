@@ -586,21 +586,13 @@ missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   #161 — two properties are FALSE while carrying a
-                              `tested` guarantee, so every day they stand is a
-                              day the ladder's own evidence is wrong about them
-                              #163 — SPEC §4 still specifies a primitive `Str`
-                              generator that was deleted when `Str` became
-                              inductive, asserting printable-ASCII coverage
-                              NEITHER kernel provides. It is false normative
-                              text: a third kernel written from the spec today
-                              would implement it and diverge
+  more EXPENSIVE if delayed   (empty)
   more VALUABLE if delayed    #134, #139/#140, #138, #38 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
-  no CLOCK at all             #159, #68, #158, #119, #115, #116, #74, #65,
-                              #66, #160, #162 — open, and neither cheaper nor
-                              dearer for waiting
+  no CLOCK at all             #68, #158, #119, #115, #116, #74, #65, #66,
+                              #160, #161, #162, #163 — open, and neither
+                              cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
 below may ELABORATE a row; nothing may add an issue the table does not hold.**
@@ -628,19 +620,37 @@ audit cannot catch contamination living inside the artefact under test.
 
 The rule survives the table changing; the answer would not.
 
-**#159 IS THE TOP-RANKED LANGUAGE ITEM, AND IT IS RANKED BY MEASUREMENT** —
-off the demand list #120 produced by BUILDING something, which outranks any
-ordering argued from taste. What keeps this experimental is not that the
-substrate is unproven; it is that you cannot get a field out of a JSON body
-without writing a byte scanner.
+**A PREDICATE OVER A VALUE CANNOT SEPARATE TWO ROLES THAT ONE VALUE CARRIES.**
+#159 asked whether Oath needs a type separating bytes from text. It is NOT
+answered — no verdict was reached on whether a type is required — but one shape
+of the design space was closed by measurement rather than taste: refinements of
+the form `{v : (List Int) | P v}` cannot do it, because both roles are carried by
+one value, so any such predicate admits or excludes it in BOTH roles and there is
+no third option.
 
-**It is a TYPE question, not a library one, which is what makes it belong here.**
-`Str` is codepoints and a body is bytes and both are `(List Int)`, so the decode
-that cannot be written correctly is indistinguishable from one that can. A JSON
-parser is a library; a type that says which of the two a value holds is not, and
-a parser written against the ambiguity inherits the defect.
+**THE CRITERION IS AN EXCLUSION TEST, NOT A SUFFICIENCY TEST, and stating it the
+other way is the overclaim this file keeps having to correct** — including in the
+first draft of this very paragraph:
 
-**Read the friction log before ranking anything else in this bucket.**
+> a mechanism is OUTSIDE that result iff how it classifies a value is not solely
+> a function of the ORIGINAL, UNCHANGED `(List Int)`
+
+Failing that test means a mechanism is not refuted. It does NOT mean it works.
+Both qualifiers earn their place: *original* and *unchanged*, because a record
+wrapper classifies from its new wrapped value and may preserve provenance
+perfectly well; and *classifies*, because two drafts wrote ROLE as the subject,
+which is vacuous — the role is never a function of the value, that being the
+defect itself.
+
+Two corollaries worth carrying, both measured: **different type hashes are not
+kept apart at a call** when subtyping is implication, since mutually implying
+predicates interchange freely; and a predicate mentioning the PRODUCER is vacuous
+whenever that producer is onto, because its negation is empty. Record:
+`docs/experiments/issue-159-refinements.md`, whose own scope statement is the
+thing to read before reusing any of this — records, opaque types and distinct
+datatypes were outside the construction tested and are not refuted by it.
+
+**Read the friction log before ranking language work.**
 `docs/experiments/webhook-friction.md` is a demand list produced by BUILDING
 something, which is worth more than any ordering argued from taste — and its own
 conclusion is that the datatype slice should have been byte lists and text.
