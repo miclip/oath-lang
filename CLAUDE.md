@@ -589,10 +589,25 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   more EXPENSIVE if delayed   (empty)
   more VALUABLE if delayed    #134, #139/#140, #138, #38 — after more evidence
                               has accumulated to calibrate them
-  waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
-  no CLOCK at all             #158, #119, #115, #116, #74, #65, #66, #160,
-                              #162 — open, and neither cheaper nor dearer
-                              for waiting
+  waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128,
+                              #162 — designed, measured, PARKED: it detects what
+                              uniform widening cannot, and buys nothing in THIS
+                              corpus (survived->killed = 0 over 3,319 mutants).
+                              TRIGGER IS A MEASUREMENT, NOT A FEELING: land it
+                              only if the step-2 campaign shows survived->killed
+                              > 0. "A corpus that parses text" does NOT qualify —
+                              config.oath already splits on `=` and yielded zero.
+                              THE RUNNABLE REVISION IS 20a24cc, NOT THE BRANCH
+                              TIP: the tip (ad5b2c8) deletes the step-2 campaign
+                              and the helpers it calls, so restoring the test
+                              alone will not compile. And MERGE CURRENT main INTO
+                              A THROWAWAY COPY of 20a24cc before running — that
+                              revision carries a frozen codebase/ and the campaign
+                              copies the store from its own checkout, so running
+                              it as-is re-measures the OLD corpus and reproduces
+                              zero forever, a trigger that can never fire
+  no CLOCK at all             #158, #119, #115, #116, #74, #65, #66, #160 —
+                              open, and neither cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
 below may ELABORATE a row; nothing may add an issue the table does not hold.**
