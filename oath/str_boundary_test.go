@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -496,5 +497,118 @@ func TestGoBackendRefusesMalformedArgvAtIngestion(t *testing.T) {
 		t.Errorf("malformed argv[2] was accepted and printed %q", out)
 	} else if !strings.Contains(string(out), "command-line argument 2") {
 		t.Errorf("malformed argv[2] refused, but reported as: %q", out)
+	}
+}
+
+// readfile IS A THIRD MECHANISM, AND ITS OCTETS ARE THE LEAST CONSTRAINED OF
+// ANY ADMIT SITE.
+//
+// argv and env arrive from a process launch; a FILE is arbitrary bytes chosen
+// by whoever wrote it, so this is the crossing most likely to meet input that
+// was never meant to be text. It was nonetheless unwitnessed: replacing the
+// guarded result with `string(b)` in the Go backend's file_read provider —
+// nothing else changed — leaves the entire `oath` package suite GREEN, while
+// the same program goes from exit 70 naming the path to exit 0 printing the
+// file's malformed bytes. Measured, not inferred.
+//
+// The program returns the read result WITHOUT DECODING IT, for the reason the
+// two argv tests give: a guard at decode is invisible to a program that never
+// steps through the value, so only a guard at ingestion can account for a
+// refusal here.
+//
+// SCOPE: go-emit only. The LLVM backend has its own file_read provider with its
+// own guard, on the same claim and a different mechanism; it is not witnessed
+// by this test.
+func TestGoBackendRefusesMalformedFileContentsAtIngestion(t *testing.T) {
+	st := capStore(t)
+	put(t, st, `(defn readit [] [(w {readfile (-> Str Str)}) (args (List Str))] Str
+		(match args ((Nil) "no path") ((Cons p t) ((. w readfile) p))))`)
+	markVerified(t, st, "readit")
+	bin, _ := buildProgram(t, st, "readit")
+	dir := t.TempDir()
+
+	// The filename is generated rather than taken from the case label: a label
+	// is prose ("overlong '/'") and a path is not, and deriving one from the
+	// other made this test fail on its own fixture setup rather than on the
+	// property. Distinct paths per case also give the diagnostic assertion
+	// below something specific to match.
+	n := 0
+	write := func(content string) string {
+		t.Helper()
+		n++
+		p := filepath.Join(dir, "case"+strconv.Itoa(n))
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	// CONTROL FIRST: if valid contents do not survive the crossing, every
+	// refusal below is evidence about a broken program rather than a boundary.
+	for _, ok := range []struct{ name, content string }{
+		{"ascii", "plain"},
+		{"empty", ""},
+		{"2-byte", "café"},
+		{"4-byte astral", "lock 🔒"},
+		// A VALIDLY ENCODED U+FFFD, which the rune-only spelling of this check
+		// would refuse as though it were malformed storage.
+		{"encoded U+FFFD", "�tail"},
+		// NUL IS U+0000, AN ORDINARY SCALAR. A file carrying one is text, and
+		// this crossing is where that distinction is easiest to get wrong: the
+		// value comes from os.ReadFile, so nothing has truncated it at a NUL,
+		// and the validator must not treat it as a malformed byte.
+		{"NUL is a scalar", "before\x00after"},
+	} {
+		out, err := exec.Command(bin, write(ok.content)).CombinedOutput()
+		if err != nil {
+			t.Fatalf("control %s: valid contents were refused: %v — %s", ok.name, err, out)
+		}
+		if got := strings.TrimRight(string(out), "\n"); got != ok.content {
+			t.Fatalf("control %s: contents %q came back as %q", ok.name, ok.content, got)
+		}
+	}
+
+	// A MISSING FILE IS NOT A TEXT PROBLEM. The provider answers the capability
+	// failure sentinel and the program runs on; folding that into the UTF-8
+	// refusal would report a read error as though the bytes were malformed.
+	cmd := exec.Command(bin, filepath.Join(dir, "no-such-file"))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Errorf("a missing file exited %d: %q — read failure and malformed text are "+
+			"different answers and must not share an exit path", cmd.ProcessState.ExitCode(), out)
+	}
+
+	// Each vector is a DIFFERENT way to be malformed, because a check written
+	// against bare 0xff passes a suite built from bare 0xff.
+	for _, bad := range []struct{ name, content string }{
+		{"invalid start byte", "A\xff\xfeB"},
+		{"lone continuation", "\x80abc"},
+		{"truncated 3-byte", "A\xe2\x9c"},
+		{"overlong '/'", "\xc0\xaf"},
+		{"surrogate half, CESU-8 style", "\xed\xa0\x80"},
+	} {
+		path := write(bad.content)
+		cmd := exec.Command(bin, path)
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Errorf("%s: malformed file contents reached the program, which printed %q",
+				bad.name, out)
+			continue
+		}
+		// 70 specifically. The decode guard on this backend is a PANIC, so
+		// accepting any non-zero exit would admit the disposition this test
+		// exists to rule out.
+		if code := cmd.ProcessState.ExitCode(); code != 70 {
+			t.Errorf("%s: refused with exit %d, want 70", bad.name, code)
+		}
+		if !strings.Contains(string(out), "not valid UTF-8") {
+			t.Errorf("%s: refused, but not for the declared reason: %q", bad.name, out)
+		}
+		// WHICH file. Relocating the refusal to ingestion is what buys the
+		// provenance; a message naming only "a Str" would be the decode-time
+		// refusal satisfying this test's other expectations.
+		if !strings.Contains(string(out), "the contents of "+path) {
+			t.Errorf("%s: refusal does not name the file it read: %q", bad.name, out)
+		}
 	}
 }
