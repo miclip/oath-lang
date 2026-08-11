@@ -1,0 +1,117 @@
+; SHOW-FROM-MARKER — a file viewer that prints a document from the first
+; occurrence of a marker onwards. `show-from-marker notes.md '## Today'` prints
+; the section and everything after it; `show-from-marker message.txt $'\n\n'`
+; prints a message body without its headers.
+;
+; It exists to answer #158's own falsifier — "enumerate what `llvm.go` accepts
+; today, and try to write a useful program inside it" — through the real CLI
+; rather than through a test harness. It is self-contained: `List` and `Str` are
+; declared here, so `oath put` into an empty store is all it needs.
+;
+; WHAT IT DELIBERATELY DOES NOT DO: build a string. The LLVM backend folds Str
+; LITERALS to constants and refuses a Str assembled from non-constant parts, so
+; every value this program returns is either a literal or a SUFFIX of its input —
+; and a suffix is reachable by matching, which is supported. That constraint
+; shaped the program and did not prevent it.
+;
+; `line-count-report` at the bottom is the CONTROL, and is not part of the
+; viewer: it is one arithmetic operation outside the subset, so the LLVM backend
+; must refuse it by name while the Go backend compiles it. Without that, a green
+; run would be equally consistent with the refusals having been removed.
+
+(data List [a]
+  (Nil)
+  (Cons a (List a)))
+
+(data Str []
+  (SNil)
+  (SCons Int Str))
+
+; Codepointwise prefix test. Both strings are runtime values — the marker
+; arrives from argv and the text from the file — so this is comparing two
+; DYNAMIC strings, which the subset reaches through `==` on the Int codepoints a
+; Str match binds.
+(defn str-has-prefix [] [(p Str) (s Str)] Bool
+  (match p
+    ((SNil) true)
+    ((SCons pc pr)
+      (match s
+        ((SNil) false)
+        ((SCons sc sr) (if (== pc sc) (str-has-prefix pr sr) false)))))
+  (prop empty-is-a-prefix [(s Str)] (str-has-prefix (SNil) s))
+  (prop nothing-precedes-empty [(pc Int) (pr Str)]
+    (not (str-has-prefix (SCons pc pr) (SNil))))
+  (prop self-prefix [(s Str)] (str-has-prefix s s)))
+
+(defn str-contains [] [(n Str) (h Str)] Bool
+  (if (str-has-prefix n h)
+      true
+      (match h
+        ((SNil) false)
+        ((SCons c r) (str-contains n r))))
+  (prop prefix-is-contained [(n Str) (h Str)]
+    (if (str-has-prefix n h) (str-contains n h) true))
+  (prop empty-is-contained [(h Str)] (str-contains (SNil) h))
+  (prop nonempty-not-in-empty [(c Int) (r Str)]
+    (not (str-contains (SCons c r) (SNil)))))
+
+; The suffix beginning at the first occurrence of `n`, or the empty string when
+; there is none. NOT-FOUND AND FOUND-AT-THE-END ARE NOT DISTINGUISHED HERE — the
+; empty string is a legitimate result of both — which is why the entry point asks
+; `str-contains` rather than testing this result for emptiness.
+(defn str-tail-from [] [(n Str) (h Str)] Str
+  (if (str-has-prefix n h)
+      h
+      (match h
+        ((SNil) (SNil))
+        ((SCons c r) (str-tail-from n r))))
+  (prop found-result-starts-with-marker [(n Str) (h Str)]
+    (if (str-contains n h) (str-has-prefix n (str-tail-from n h)) true))
+  (prop missing-marker-yields-empty [(n Str) (h Str)]
+    (if (str-contains n h) true (== (str-tail-from n h) (SNil))))
+  (prop prefix-returns-whole [(n Str) (h Str)]
+    (if (str-has-prefix n h) (== (str-tail-from n h) h) true)))
+
+(defn show-from-marker [] [(caps {readfile (-> Str Str)}) (args (List Str))] Str
+  (match args
+    ((Nil) "usage: show-from-marker <file> <marker>")
+    ((Cons path rest)
+      (match rest
+        ((Nil) "usage: show-from-marker <file> <marker>")
+        ((Cons marker more)
+          (let (text Str ((. caps readfile) path))
+            (if (str-contains marker text)
+                (str-tail-from marker text)
+                "show-from-marker: marker not found"))))))
+  (prop no-args-is-usage [(caps {readfile (-> Str Str)})]
+    (== (show-from-marker caps (Nil [Str])) "usage: show-from-marker <file> <marker>"))
+  (prop one-arg-is-usage [(caps {readfile (-> Str Str)}) (path Str)]
+    (== (show-from-marker caps (Cons [Str] path (Nil [Str])))
+        "usage: show-from-marker <file> <marker>"))
+  (prop found-output-starts-with-marker
+        [(caps {readfile (-> Str Str)}) (path Str) (marker Str) (more (List Str))]
+    (let (args (List Str) (Cons [Str] path (Cons [Str] marker more)))
+      (if (str-contains marker ((. caps readfile) path))
+          (str-has-prefix marker (show-from-marker caps args))
+          true))))
+
+; ---------- the fail-closed control ----------
+;
+; Counting requires `+`, and this backend implements exactly one typed operation
+; on Int: `==`. So `line-count-report` is a VERIFIED entry point the Go backend
+; compiles and the LLVM backend must refuse, naming the primitive it does not
+; have. A refusal here is the boundary still being where it says it is.
+(defn count-lines [] [(s Str)] Int
+  (match s
+    ((SNil) 0)
+    ((SCons c r) (if (== c 10) (+ 1 (count-lines r)) (count-lines r))))
+  (prop nonneg [(s Str)] (<= 0 (count-lines s)))
+  (prop empty-has-none [] (== (count-lines (SNil)) 0)))
+
+(defn line-count-report [] [(caps {readfile (-> Str Str)}) (args (List Str))] Str
+  (match args
+    ((Nil) "usage: line-count-report <file>")
+    ((Cons path rest)
+      (if (== (count-lines ((. caps readfile) path)) 0) "no newlines" "has newlines")))
+  (prop no-args-is-usage [(caps {readfile (-> Str Str)})]
+    (== (line-count-report caps (Nil [Str])) "usage: line-count-report <file>")))

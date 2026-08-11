@@ -663,3 +663,75 @@ func TestCapabilityParityAcrossBackends(t *testing.T) {
 		}
 	}
 }
+
+// ---------- #158's falsifier, run through the real CLI ----------
+//
+// Everything above exercises the backend IN PROCESS, which cannot witness the
+// claim #158 actually asks about: that a person can write a useful program,
+// `oath put` it, and `oath build --backend llvm` it. The acceptance script does
+// that through the CLI into a scratch store, with `oath eval` as the reference
+// for both backends and a control that must fire.
+//
+// It lives under docs/experiments/ because it is the experiment's record; it is
+// invoked from HERE because an acceptance script nothing runs is a document
+// pretending to be a gate. Two seconds, and it is the only check in this file
+// that would notice `oath put`, argument passing or the build command breaking
+// while the emitter stayed correct.
+func TestLLVMSubsetAcceptanceScript(t *testing.T) {
+	requireClang(t)
+	script := filepath.Join("..", "docs", "experiments", "issue-158-llvm-subset", "acceptance.sh")
+	if _, err := os.Stat(script); err != nil {
+		t.Fatalf("the acceptance script is missing: %v", err)
+	}
+	// OATH_BIN IS STRIPPED, not merely left unset. The script honours it so a
+	// person can point the gate at a particular binary; inheriting one here would
+	// silently test something other than this checkout, which is the same shape as
+	// an exported OATH_STORE disabling the publication guard — a variable that is
+	// evidence of intent when typed per-command and a trap once it is exported.
+	cmd := exec.Command("sh", script)
+	cmd.Env = cmd.Env[:0]
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "OATH_BIN=") {
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("acceptance failed: %v\n%s", err, out)
+	}
+	// ASSERT THE SUMMARY LINE AND THE COUNT, not the exit status. A harness that
+	// dies during its own setup exits 0 on some shells and reads exactly like a
+	// clean pass; and one whose checks were quietly narrowed to none would still
+	// print "all 0 checks passed".
+	var ran int
+	if _, e := fmt.Sscanf(lastSummaryLine(string(out)), "show-from-marker acceptance: all %d checks passed", &ran); e != nil {
+		t.Fatalf("the script did not reach its own verdict:\n%s", out)
+	}
+	got := 0
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "  ok    ") {
+			got++
+		}
+	}
+	if got != ran {
+		t.Errorf("the summary claims %d checks and %d were printed — the count and the "+
+			"checks disagree, so one of them is not measuring the run", ran, got)
+	}
+	// A FLOOR, so a future edit cannot narrow the acceptance to nothing and stay
+	// green. It is not the current count restated: it is the smallest number that
+	// still covers the control, the fail-closed control and the three-way cases.
+	if ran < 20 {
+		t.Errorf("acceptance ran %d checks, fewer than the 20 that cover the controls", ran)
+	}
+}
+
+// lastSummaryLine returns the final non-empty line of the script's output.
+func lastSummaryLine(s string) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) != "" {
+			return lines[i]
+		}
+	}
+	return ""
+}
