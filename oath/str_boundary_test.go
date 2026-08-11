@@ -612,3 +612,112 @@ func TestGoBackendRefusesMalformedFileContentsAtIngestion(t *testing.T) {
 		}
 	}
 }
+
+// THE FOURTH DOOR: the same file_read claim, the other backend's mechanism.
+//
+// llvm-ir does not share go-emit's provider. It reads the file in its own C
+// runtime and admits the bytes through o_strn_host, so the guard measured in
+// the Go provider says nothing about this one — and this one was equally
+// unwitnessed: replacing o_strn_host with the unguarded o_strn, nothing else
+// changed, leaves the entire `oath` package suite GREEN while a program reading
+// malformed bytes goes from exit 70 naming the path to exit 0 printing them.
+//
+// LENGTH-AWARE ON BOTH SIDES OF THE MUTATION, deliberately. o_strn takes an
+// explicit length, so the mutant still preserves NUL and still returns the whole
+// file; the ONLY thing it drops is validation. A mutation to o_str would have
+// changed two things at once, and a test that then failed could not say which.
+func TestLLVMRefusesMalformedFileContentsAtIngestion(t *testing.T) {
+	requireClang(t)
+	st := llvmStore(t)
+	put(t, st, `(defn readit [] [(w {readfile (-> Str Str)}) (args (List Str))] Str
+		(match args ((Nil) "no path") ((Cons p t) ((. w readfile) p))))`)
+	markVerified(t, st, "readit")
+	bin := buildLLVM(t, st, "readit")
+	dir := t.TempDir()
+
+	n := 0
+	write := func(content string) string {
+		t.Helper()
+		n++
+		p := filepath.Join(dir, "case"+strconv.Itoa(n))
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	// CONTROL FIRST: valid contents must survive the crossing byte for byte, or
+	// every refusal below is evidence about a broken program.
+	for _, ok := range []struct{ name, content string }{
+		{"ascii", "plain"},
+		{"empty", ""},
+		{"2-byte", "café"},
+		{"4-byte astral", "lock 🔒"},
+		{"encoded U+FFFD", "�tail"},
+		// NUL IS U+0000 AND THE FILE IS TEXT. This backend packs a Str as a
+		// buffer plus a length precisely so a NUL is data rather than a
+		// terminator, and the validator must agree: a C-string-shaped check
+		// would stop at the NUL, validate "before", and admit whatever follows
+		// it unread.
+		{"NUL is a scalar", "before\x00after"},
+	} {
+		out, err := exec.Command(bin, write(ok.content)).CombinedOutput()
+		if err != nil {
+			t.Fatalf("control %s: valid contents were refused: %v — %q", ok.name, err, out)
+		}
+		if got := strings.TrimRight(string(out), "\n"); got != ok.content {
+			t.Fatalf("control %s: contents %q came back as %q", ok.name, ok.content, got)
+		}
+	}
+
+	// A MISSING FILE IS NOT A TEXT PROBLEM: the provider answers the capability
+	// failure value and the program runs on. Asserting this also stops the test
+	// from being satisfied by a backend that refuses everything.
+	cmd := exec.Command(bin, filepath.Join(dir, "no-such-file"))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Errorf("a missing file exited %d: %q — a read failure and malformed text are "+
+			"different answers and must not share an exit path", cmd.ProcessState.ExitCode(), out)
+	}
+
+	for _, bad := range []struct{ name, content string }{
+		{"invalid start byte", "A\xff\xfeB"},
+		{"lone continuation", "\x80abc"},
+		{"truncated 3-byte", "A\xe2\x9c"},
+		{"overlong '/'", "\xc0\xaf"},
+		{"surrogate half, CESU-8 style", "\xed\xa0\x80"},
+		// MALFORMED AFTER A NUL. The NUL control above proves valid text with a
+		// NUL is admitted; this proves the scan did not simply STOP there. A
+		// C-string check passes both that control and every vector above it,
+		// and only this one separates the two.
+		{"malformed after a NUL", "ok\x00\xff\xfe"},
+	} {
+		path := write(bad.content)
+		cmd := exec.Command(bin, path)
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Errorf("%s: malformed file contents reached the program, which printed %q",
+				bad.name, out)
+			continue
+		}
+		if code := cmd.ProcessState.ExitCode(); code != 70 {
+			t.Errorf("%s: refused with exit %d, want 70 — a supervisor should not need to "+
+				"know which backend compiled the artifact", bad.name, code)
+		}
+		if !strings.Contains(string(out), "not valid UTF-8") {
+			t.Errorf("%s: refused, but not for the declared reason: %q", bad.name, out)
+		}
+		// WHICH file — and the expected text is TRUNCATED the way the runtime
+		// truncates it. The C diagnostic formats the path with %.120s into a
+		// fixed buffer, so asserting the raw path would pass here and fail
+		// wherever the temp root is longer, which is a property of the machine
+		// and not of the boundary.
+		want := path
+		if len(want) > 120 {
+			want = want[:120]
+		}
+		if !strings.Contains(string(out), "the contents of "+want) {
+			t.Errorf("%s: refusal does not name the file it read: %q", bad.name, out)
+		}
+	}
+}
