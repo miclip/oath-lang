@@ -224,17 +224,7 @@ func mutantSeed(hash string) uint64 { return caseSeedBase(hash) }
 // sites, and a scoring loop that disagreed with the waiver gate about what
 // kills would be invisible from inside either.
 func mutantKiller(st *Store, m *Meta, mu mutantDef) (killer string, indeterminate bool) {
-	base := mutantSeed(mu.hash)
-	for pi := range mu.def.Props {
-		rep := runProp(st, mu.hash, &mu.def.Props[pi], metaPropName(m, pi), base, pi, mutantCases, mutantFuel)
-		if rep.Falsified() {
-			return rep.Name, false
-		}
-		if rep.Indeterminate() {
-			indeterminate = true
-		}
-	}
-	return "", indeterminate
+	return mutantKillerWeighted(st, m, mu, nil)
 }
 
 func metaPropName(m *Meta, pi int) string {
@@ -571,4 +561,23 @@ func campaignEncode(d campaignDescription) []byte {
 func campaignDigest(d campaignDescription) string {
 	s := sha256.Sum256(campaignEncode(d))
 	return hex.EncodeToString(s[:])
+}
+
+// mutantKillerWeighted is mutantKiller with the #162 prototype's optional Str
+// weighting. `w == nil` is the production path. Same reason as runProp's
+// wrapper for it being a parameter: ONLY AN EVALUATED BOOLEAN FALSE KILLS is
+// this function's rule, and a second copy of it that agreed today would be
+// free to disagree later.
+func mutantKillerWeighted(st *Store, m *Meta, mu mutantDef, w *strWeights) (killer string, indeterminate bool) {
+	base := mutantSeed(mu.hash)
+	for pi := range mu.def.Props {
+		rep := runPropWeighted(st, mu.hash, &mu.def.Props[pi], metaPropName(m, pi), base, pi, mutantCases, mutantFuel, w)
+		if rep.Falsified() {
+			return rep.Name, false
+		}
+		if rep.Indeterminate() {
+			indeterminate = true
+		}
+	}
+	return "", indeterminate
 }

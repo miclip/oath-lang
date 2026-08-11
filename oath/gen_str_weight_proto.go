@@ -38,10 +38,34 @@ import (
 	"sort"
 )
 
+// canonicalStrHash is the Str datatype's identity, DERIVED rather than looked
+// up: it is the canonical hash of the declaration
+//
+//	(data Str [] (SNil) (SCons Int Str))
+//
+// STEP 2 REPLACED A NAME LOOKUP HERE, and the reason is condition 3 rather than
+// tidiness. `strTypeHash` resolves the name "Str" through `names.json`, which is
+// MUTABLE store state: repointing that name would silently change which values
+// the generator weights, and #162's condition 3 requires that a definition's
+// literal set cannot change without its hash changing. A name is exactly the
+// kind of thing that can. Reconstructing the declaration and hashing it is the
+// repository's standing answer to "are these the same type?" — canonical
+// structural equality IS hash equality — and it makes extraction a function of
+// bytes alone.
+//
+// TestStep2CanonicalStrHashMatchesTheCorpus pins it against the live store, so
+// this cannot drift into naming a type nothing uses.
+func canonicalStrHash() string {
+	return hashDef(&Def{K: "data", TyVars: 0, Ctors: [][]Ty{
+		{},                       // SNil
+		{{K: "int"}, {K: "rec"}}, // SCons Int Str
+	}})
+}
+
 // strWeights is the literal alphabet a weighted run draws from, together with
 // the identity of the Str ADT it applies to. It is never constructed empty:
-// strLiteralClosure returns nil in that case, so "no literals in the closure"
-// and "weighting off" are one state rather than two that can disagree.
+// the builders return nil in that case, so "no literals in the closure" and
+// "weighting off" are one state rather than two that can disagree.
 type strWeights struct {
 	strHash string  // the Str datatype's hash; the structural site of the weighting
 	lits    []int64 // unique, numerically sorted, non-empty
@@ -99,6 +123,44 @@ func genStrCodepoint(r *rng) Value {
 	return genInt(r)
 }
 
+// strWeightsForOwner IS THE RESOLVED DESIGN — the single entry point Step 2
+// measures, and the only one anything downstream should call.
+//
+// Step 1 measured the two readings the issue's wording left open and both
+// detected, so Step 2 resolves them on grounds other than the detection
+// numbers:
+//
+//	CLOSURE   TRANSITIVE. Relevance has to follow behaviour through helpers of
+//	          arbitrary depth. The direct reading finds 61 at `config-missing`
+//	          only because that definition happens to be one hop from
+//	          `config-key`; a third definition calling `config-missing` would
+//	          branch on the same delimiter and never see it.
+//	BINDERS   EVERY Str VALUE, recursively. A delimiter matters exactly as much
+//	          inside a `(List Str)` element as at the top level, and the narrow
+//	          reading's boundary is the binder's declared type — a fact about
+//	          how a property was written, not about what the code branches on.
+//
+// The rejected narrow reading survives in `binderOnly` because Step 1's
+// measurement cites it; nothing here sets it.
+func strWeightsForOwner(st *Store, ownerHash string) (*strWeights, error) {
+	return strLiteralClosureTransitive(st, ownerHash)
+}
+
+// strWeightsForDef is strWeightsForOwner for a definition that is NOT in the
+// store — a generated mutant, whose canonical bytes exist only in hand.
+//
+// THE POPULATION IS THE MUTANT'S OWN, not the original's, and that is a
+// decision rather than a convenience. The weighting is defined as a function of
+// the definition under test, and under mutation the definition under test IS
+// the mutant: a mutant that rewrites the literal 61 is a definition that
+// branches on something else, and generating 61s for it would be weighting
+// toward a constant its body no longer contains. Scoring it against the
+// original's alphabet would measure the original's relevance against the
+// mutant's behaviour.
+func strWeightsForDef(st *Store, ownerHash string, owner *Def) (*strWeights, error) {
+	return strLiteralPopulationOf(st, ownerHash, owner, true)
+}
+
 // TWO READINGS OF "THE CANONICAL DEPENDENCY CLOSURE", AND BOTH ARE MEASURED.
 //
 // #162 names `sortedDepHashes` as the source. That function returns a
@@ -149,14 +211,25 @@ func strLiteralClosureTransitive(st *Store, ownerHash string) (*strWeights, erro
 // measurement that is a false positive, so an incomplete population must
 // invalidate the run rather than quietly become a different experiment.
 func strLiteralPopulation(st *Store, ownerHash string, transitive bool) (*strWeights, error) {
-	strHash := strTypeHash(st)
-	if strHash == "" {
-		return nil, nil
-	}
 	owner, err := st.GetDef(ownerHash)
 	if err != nil {
 		return nil, err
 	}
+	return strLiteralPopulationOf(st, ownerHash, owner, transitive)
+}
+
+// strLiteralPopulationOf is the extraction proper, taking the owner's decoded
+// canonical bytes directly so a definition that is not in the store — a
+// generated mutant — can be scored without being published to score it.
+//
+// CONDITION 3 IS A PROPERTY OF THIS FUNCTION'S READS. It touches the owner's
+// canonical bytes and, recursively, the canonical bytes of hash-addressed
+// dependencies. It reads no name index and no metadata, so nothing that can
+// change without changing a hash can change what it returns.
+// TestStep2ExtractionReadsOnlyCanonicalBytes audits that mechanically rather
+// than taking this paragraph's word for it.
+func strLiteralPopulationOf(st *Store, ownerHash string, owner *Def, transitive bool) (*strWeights, error) {
+	strHash := canonicalStrHash()
 	seen := map[int64]bool{}
 	collectDefLiterals(owner, seen)
 
