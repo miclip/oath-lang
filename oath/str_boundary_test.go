@@ -325,12 +325,11 @@ func TestBothBackendsRefuseMalformedCapabilityBytesAtIngestion(t *testing.T) {
 // not a capability.
 //
 // SCOPE, because this test names one backend where the tests above name two:
-// what was MEASURED is the llvm-ir door. Replacing o_str_host with o_str in
+// what it witnesses is the llvm-ir door. Replacing o_str_host with o_str in
 // o_argv — deleting that backend's argv guard outright — leaves the entire
 // `oath` package suite GREEN, so nothing in this repository observed the
-// crossing. go-emit has its own argv guard on a different mechanism
-// (oathStrFromHost, in the main it emits), and this test does NOT witness it;
-// that door is still open and is not claimed closed here.
+// crossing. go-emit builds argv through a DIFFERENT mechanism and is witnessed
+// by the test below, not by this one; they are two doors, measured separately.
 //
 // The program deliberately NEVER DECODES the value it is handed — it returns
 // the head of argv, and o_print writes a Str's bytes out without stepping
@@ -393,6 +392,97 @@ func TestLLVMRefusesMalformedArgvAtIngestion(t *testing.T) {
 		// decode to ingestion is what buys that provenance, and a message that
 		// only says "a Str" would be the decode-time refusal wearing this
 		// test's expectations.
+		if !strings.Contains(string(out), "command-line argument 1") {
+			t.Errorf("%s: refusal does not name the offending argument: %q", bad.name, out)
+		}
+	}
+
+	// Not only argv[1]: the index carried into the diagnostic is computed per
+	// argument, so a later one must be reported as itself.
+	cmd := exec.Command(bin, "fine", "\xffbad")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Errorf("malformed argv[2] was accepted and printed %q", out)
+	} else if !strings.Contains(string(out), "command-line argument 2") {
+		t.Errorf("malformed argv[2] refused, but reported as: %q", out)
+	}
+}
+
+// THE SECOND ARGV DOOR. go-emit's guard was measured unwitnessed BEFORE this
+// test existed, and by a separate mutation: deleting the oathStrFromHost call
+// from the main the Go backend emits left the whole package suite green, with
+// the same before/after split on a real binary (exit 70 naming the argument,
+// against exit 0 printing the malformed bytes). That measurement is on the
+// issue; it is not re-derived here, and this test is what would now notice.
+//
+// TWO DOORS, NOT ONE TEST OVER TWO BACKENDS, which is why this is written out
+// rather than folded into a loop with the LLVM case. The tests further up loop
+// over backends because one capability mechanism is lowered two ways. argv is
+// not that: each backend BUILDS the (List Str) itself, in its own emitted main,
+// through a guard of its own — a C runtime call in one and a Go call in the
+// other. A shared loop would suggest a shared crossing and quietly imply that
+// mutating either one is covered by the pair.
+//
+// Same discriminator, and it is load-bearing here too: the program returns the
+// head of argv and never steps through it, so go-emit's DECODE guard
+// (oathStrHead, which panics) is never reached and only the INGESTION guard can
+// account for a refusal. A program that matched on the value would pass against
+// either disposition — and the two are not even the same failure: decode panics,
+// while ingestion exits 70 with the argument named.
+func TestGoBackendRefusesMalformedArgvAtIngestion(t *testing.T) {
+	st := llvmStore(t)
+	put(t, st, `(defn argecho [] [(args (List Str))] Str
+		(match args ((Nil) "none") ((Cons h t) h)))`)
+	markVerified(t, st, "argecho")
+	bin, _ := buildProgram(t, st, "argecho")
+
+	// CONTROL FIRST: if valid text does not survive the crossing, every refusal
+	// below is evidence about a broken program rather than about the boundary.
+	for _, ok := range []struct{ name, value string }{
+		{"ascii", "plain"},
+		{"empty", ""},
+		{"2-byte", "café"},
+		{"4-byte astral", "lock 🔒"},
+		// A VALIDLY ENCODED U+FFFD: utf8.ValidString admits it and the rune-only
+		// spelling of this check would not, so it is the vector that tells a
+		// correct implementation from the obvious wrong one.
+		{"encoded U+FFFD", "�tail"},
+	} {
+		out, err := exec.Command(bin, ok.value).CombinedOutput()
+		if err != nil {
+			t.Fatalf("control %s: valid argv %q was refused: %v — %s", ok.name, ok.value, err, out)
+		}
+		if got := strings.TrimRight(string(out), "\n"); got != ok.value {
+			t.Fatalf("control %s: argv %q came back as %q", ok.name, ok.value, got)
+		}
+	}
+
+	// Each vector is a DIFFERENT way to be malformed, because a check written
+	// against bare 0xff passes a suite built from bare 0xff.
+	for _, bad := range []struct{ name, value string }{
+		{"invalid start byte", "\xff\xfeA"},
+		{"lone continuation", "\x80abc"},
+		{"truncated 3-byte", "\xe2\x9c"},
+		{"overlong '/'", "\xc0\xaf"},
+		{"surrogate half, CESU-8 style", "\xed\xa0\x80"},
+	} {
+		cmd := exec.Command(bin, bad.value)
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Errorf("%s: malformed argv reached the program, which printed %q; argv must be "+
+				"refused on the way IN, not when something happens to decode it", bad.name, out)
+			continue
+		}
+		// 70 specifically, and not merely non-zero: the decode guard is a panic,
+		// so accepting any failure would let this test pass against the
+		// disposition it exists to rule out.
+		if code := cmd.ProcessState.ExitCode(); code != 70 {
+			t.Errorf("%s: refused with exit %d, want 70 — a supervisor should not need to "+
+				"know which backend compiled the artifact", bad.name, code)
+		}
+		if !strings.Contains(string(out), "not valid UTF-8") {
+			t.Errorf("%s: refused, but not for the declared reason: %q", bad.name, out)
+		}
 		if !strings.Contains(string(out), "command-line argument 1") {
 			t.Errorf("%s: refusal does not name the offending argument: %q", bad.name, out)
 		}
