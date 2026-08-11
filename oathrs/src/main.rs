@@ -573,11 +573,21 @@ fn cmd_scripts(paths: &[String], outcomes_path: &str) -> i32 {
     0
 }
 
-/// SPEC §7.4 bridge obligations. With no argument, print the §7.4.4 manifest;
-/// with `--emit <id>`, print that obligation's complete script bytes (the
-/// §7.4.1 core plus its subgoal) and nothing else. This produces TEXT only — no
-/// solver is invoked and none need be installed — so it is not behind the
-/// `prove` feature.
+/// SPEC §7.4 bridge obligations. With no argument, print the §7.4.9 manifest;
+/// with `--emit <id>`, print that obligation's complete script bytes and
+/// nothing else.
+///
+/// "Complete" depends on the obligation's FAMILY, and the two families do not
+/// share a preamble: for a CARRIER obligation (§7.4.2, §7.4.3) it is the §7.4.1
+/// core plus the subgoal, and for a TRANSPORT obligation (§7.4.5-§7.4.8) it is
+/// the §7.4.4 preamble plus the bridged function's declaration block plus the
+/// subgoal.
+///
+/// This produces TEXT only — no solver is invoked and none need be installed —
+/// so it is not behind the `prove` feature. §7.4.9 fixes no solver budget: a
+/// caller that RUNS one of these scripts chooses and must state its rlimit,
+/// since §7.2 already makes an outcome a function of (script bytes, solver
+/// version, rlimit).
 fn cmd_bridge_obligation(args: &[String]) -> i32 {
     match args.first().map(|s| s.as_str()) {
         None => {
@@ -604,8 +614,11 @@ fn cmd_bridge_obligation(args: &[String]) -> i32 {
                     0
                 }
                 None => {
-                    let ids: Vec<&str> = bridge::OBLIGATIONS.iter().map(|(i, _)| *i).collect();
-                    eprintln!("unknown bridge obligation: {} (known: {})", id, ids.join(", "));
+                    eprintln!(
+                        "unknown bridge obligation: {} (known: {})",
+                        id,
+                        bridge::ids().join(", ")
+                    );
                     1
                 }
             },

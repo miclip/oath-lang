@@ -28,13 +28,40 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SPEC = ROOT / "docs" / "SPEC.md"
 
-# The obligations, in §7.4.4's emission order. Each is (id, [block keys]) where a
+# The obligations, in §7.4.9's emission order. Each is (id, [block keys]) where a
 # block key names a fenced block by the heading it lives under. Order matters:
-# the script is the concatenation of its blocks in this order.
+# the script is the CONCATENATION of its blocks in this order, and the two
+# families concatenate different things — a carrier is core+subgoal, a transport
+# is transport-preamble + the function's declaration block + subgoal. Spelling
+# each obligation as its own list is what keeps that difference DATA rather than
+# a branch: adding a fifth bridged function is four more rows, not a new case.
 OBLIGATIONS = [
-    ("measure-decreases", "measure"),
-    ("roundtrip2-base", "base"),
-    ("roundtrip2-step", "step"),
+    ("measure-decreases", ["core", "measure"]),
+    ("roundtrip2-base", ["core", "rt2-base"]),
+    ("roundtrip2-step", ["core", "rt2-step"]),
+    ("transport-append-base", ["tcore", "append-decl", "append-base"]),
+    ("transport-append-step", ["tcore", "append-decl", "append-step"]),
+    ("transport-length-base", ["tcore", "length-decl", "length-base"]),
+    ("transport-length-step", ["tcore", "length-decl", "length-step"]),
+    ("transport-take-base", ["tcore", "take-decl", "take-base"]),
+    ("transport-take-step", ["tcore", "take-decl", "take-step"]),
+    ("transport-drop-base", ["tcore", "drop-decl", "drop-base"]),
+    ("transport-drop-step", ["tcore", "drop-decl", "drop-step"]),
+]
+
+# Which §7.4 subsection supplies which blocks, and HOW MANY it must supply. The
+# count is asserted rather than inferred: a subsection that grew or lost a fenced
+# block would otherwise silently re-map which block is which, and the gate would
+# compare real bytes against the wrong normative text and still print a verdict.
+SECTIONS = [
+    ("#### 7.4.1 The core", ["core"]),
+    ("#### 7.4.2 The `seq.len` induction scheme", ["rt2-base", "rt2-step"]),
+    ("#### 7.4.3 The measure obligation", ["measure"]),
+    ("#### 7.4.4 The transport preamble", ["tcore"]),
+    ("#### 7.4.5 `append`", ["append-decl", "append-base", "append-step"]),
+    ("#### 7.4.6 `length`", ["length-decl", "length-base", "length-step"]),
+    ("#### 7.4.7 `take`", ["take-decl", "take-base", "take-step"]),
+    ("#### 7.4.8 `drop`", ["drop-decl", "drop-base", "drop-step"]),
 ]
 
 
@@ -44,11 +71,12 @@ def fail(msg):
 
 
 def extract_blocks():
-    """Pull the four normative fenced blocks out of §7.4.
+    """Pull the normative fenced blocks out of §7.4.
 
     Anchored on the section headings rather than on block ORDER, so inserting
     prose between them cannot silently re-map which block is which — a failure
-    that would still produce four blocks and compare the wrong ones.
+    that would still produce the right NUMBER of blocks and compare the wrong
+    ones.
     """
     text = SPEC.read_text()
     start = text.find("### 7.4 Bridge obligations")
@@ -59,32 +87,37 @@ def extract_blocks():
         fail("VOID — could not find the end of §7; this check did NOT run")
     sec = text[start:end]
 
-    def one(heading, key):
+    out = {}
+    for heading, keys in SECTIONS:
         i = sec.find(heading)
         if i < 0:
             fail(f"VOID — subsection {heading!r} not found; this check did NOT run")
-        # the next fenced block after the heading, up to the following heading
+        # every fenced block after the heading, up to the following heading
         nxt = sec.find("\n#### ", i + 1)
         window = sec[i : nxt if nxt > 0 else len(sec)]
         blocks = re.findall(r"\n```\n(.*?)```", window, re.S)
-        if len(blocks) != (2 if key == "scheme" else 1):
+        if len(blocks) != len(keys):
             fail(
-                f"VOID — expected {'2' if key == 'scheme' else '1'} fenced block(s) under "
-                f"{heading!r}, found {len(blocks)}; this check did NOT run"
+                f"VOID — expected {len(keys)} fenced block(s) under {heading!r}, "
+                f"found {len(blocks)}; this check did NOT run"
             )
-        return blocks
-
-    core = one("#### 7.4.1 The core", "core")[0]
-    base, step = one("#### 7.4.2 The `seq.len` induction scheme", "scheme")
-    measure = one("#### 7.4.3 The measure obligation", "measure")[0]
-    return {"core": core, "base": base, "step": step, "measure": measure}
+        out.update(zip(keys, blocks))
+    return out
 
 
 def main():
     blocks = extract_blocks()
-    core = blocks["core"]
-    if "declare-datatypes" not in core or "fn_of_seq_Int" not in core:
+    # Shape checks on the two preambles, so a mis-anchored extraction that
+    # happened to yield the right block COUNTS still cannot be interpreted.
+    # `of-seq` distinguishes them: the carrier core declares it and the
+    # transport preamble deliberately does not (§7.4.4), so asserting its
+    # presence in one and absence in the other catches the two blocks being
+    # swapped — which counting alone would wave through.
+    if "declare-datatypes" not in blocks["core"] or "fn_of_seq_Int" not in blocks["core"]:
         fail("VOID — the extracted core does not look like the core; this check did NOT run")
+    if "declare-datatypes" not in blocks["tcore"] or "fn_of_seq_Int" in blocks["tcore"]:
+        fail("VOID — the extracted transport preamble does not look like the transport "
+             "preamble; this check did NOT run")
 
     # WHICH KERNEL. Both are compared against the SPEC rather than against each
     # other, deliberately: Go==spec and Rust==spec together give Go==Rust, and
@@ -158,8 +191,8 @@ def main():
 
     problems = []
     manifest_lines = ["# id\tsha256(script)"]
-    for oid, key in OBLIGATIONS:
-        want = core + blocks[key]
+    for oid, keys in OBLIGATIONS:
+        want = "".join(blocks[k] for k in keys)
         try:
             # RAW BYTES, NOT text=True. Universal-newline translation would fold
             # a CRLF-emitting kernel to LF and let it pass a gate whose entire

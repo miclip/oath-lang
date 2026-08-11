@@ -19,16 +19,28 @@ package main
 // emitting them directly.
 //
 // The cost of that choice is real and is why the bytes are pinned normatively
-// (SPEC §7.3) and in a fixture: an emitter that does not share `Cx`'s
+// (SPEC §7.4) and in a fixture: an emitter that does not share `Cx`'s
 // declaration discipline cannot INHERIT byte-agreement with a second kernel, so
 // the agreement has to be specified and then checked. That is the same trade
 // §7.2 already makes for the ordinary path — it writes the naming and ordering
 // rules down rather than declaring the implementation authoritative.
 //
-// SCOPE. Deliberately one obligation. §11.2's four transport equations
-// (append/take/drop/length) and §11.3's 14 rotation laws are NOT here, and
-// nothing in this file registers a §9.4 bridge-registry entry. Proving this
-// obligation is not the milestone passing; see issue-68.md §11.3.
+// SCOPE. The two carrier round-trips' second half, plus §11.2's four transport
+// equations (append/length/take/drop) at `List Int`. §11.3's 14 rotation laws
+// are NOT here, and nothing in this file registers a §9.4 bridge-registry
+// entry.
+//
+// THE MILESTONE'S TRANSPORT ATTEMPT WAS RUN AGAINST THIS GENERATOR AND §11.3'S
+// FALSIFIER FIRED. `transport-take-step` did not discharge at the pinned budget,
+// and the run additionally reached past §11.3's bound, so no transport equation
+// is credited as discharged — the three that returned `unsat` included.
+// `docs/experiments/issue-68-milestone-transport.md` is the record; read it
+// before quoting any result from `--prove`, because the solver output alone
+// reads like three passes and one hard case, which is not what happened.
+//
+// NONE OF THAT IMPUGNS THE BYTES. SPEC §7.4 fixes what the obligations ARE and
+// deliberately fixes no budget; a second kernel reproduces every digest here
+// from the document alone. The verdict was spent; the artefact was not.
 
 import (
 	"crypto/sha256"
@@ -50,8 +62,9 @@ import (
 // if it ever drifts from the fixture.
 const bridgeSolverPin = "Z3 version 4.16.0 - 64 bit"
 
-// bridgeCore is the shared preamble: the `List Int` datatype as this kernel
-// spells it, then `to-seq` and `of-seq` as DEFINED total functions.
+// bridgeCore is the CARRIER family's preamble (SPEC §7.4.1): the `List Int`
+// datatype as this kernel spells it, then `to-seq` and `of-seq` as DEFINED
+// total functions. The TRANSPORT family carries bridgeTransportCore instead.
 //
 // The two function encodings are deliberately different shapes, and the
 // difference is forced by §11.3 rather than chosen:
@@ -124,11 +137,147 @@ const bridgeMeasureDecreases = `(declare-const s (Seq Int))
 (check-sat)
 `
 
+// bridgeTransportCore is the TRANSPORT family's preamble (SPEC §7.4.4).
+//
+// It is bridgeCore minus `of-seq`, which no transport goal mentions, and minus
+// the patterned `ite`-form defining equation for `to-seq`. THAT SECOND OMISSION
+// IS THE ONE WORTH UNDERSTANDING, because it looks like a weakening and is not.
+//
+// The `ite`-form equation lets `to-seq` unfold at an argument that is not
+// syntactically a constructor application. Exactly one thing in §7.4 produces
+// such an argument: the round-trips apply `to-seq` to `(fn_of_seq_Int s)`. A
+// transport goal never does — every `to-seq` argument it builds is a
+// constructor application or a bridged-function result that unfolds to one — so
+// the equation is a consequence of the two per-constructor equations that the
+// goal cannot use, while its trigger `(fn_to_seq_Int p0)` matches every
+// `to-seq` term the goal DOES build. Same discipline as §7.2's relevance
+// filtering, which likewise admits only what a goal's footprint reaches.
+//
+// `to-seq` is still DEFINED and not merely declared, which is the soundness
+// requirement §7.4.1 states: the two per-constructor equations pin it uniquely
+// on the datatype's finite elements. Dropping a redundant consequence of a
+// definition is not dropping the definition.
+const bridgeTransportCore = `(declare-datatypes ((List_Int 0)) (((Nil_List_Int ) (Cons_List_Int (Cons_List_Int_0 Int) (Cons_List_Int_1 List_Int)))))
+(declare-fun fn_to_seq_Int (List_Int) (Seq Int))
+(assert (= (fn_to_seq_Int Nil_List_Int) (as seq.empty (Seq Int))))
+(assert (forall ((q0 Int) (q1 List_Int)) (= (fn_to_seq_Int (Cons_List_Int q0 q1)) (seq.++ (seq.unit q0) (fn_to_seq_Int q1)))))
+`
+
+// The four bridged functions' declaration blocks.
+//
+// THESE ARE NOT HAND-WRITTEN FROM THE OATH SOURCE. Each was transcribed from
+// what this kernel's own §7.2 translation emits for the corpus definition —
+// `directAttemptScript` on `append`, `length`, `take`, `drop` — so a transport
+// obligation talks about the same function the prover talks about, including
+// the `:pattern` and the `ite` nesting. A hand-derived spelling that happened
+// to be semantically equivalent would make the obligation a claim about a
+// function nothing else in the kernel uses.
+const (
+	bridgeDeclAppend = `(declare-fun fn_append_Int (List_Int List_Int) List_Int)
+(assert (forall ((p0 List_Int) (p1 List_Int)) (! (= (fn_append_Int p0 p1) (ite ((_ is Nil_List_Int) p0) p1 (Cons_List_Int (Cons_List_Int_0 p0) (fn_append_Int (Cons_List_Int_1 p0) p1)))) :pattern ((fn_append_Int p0 p1)))))
+`
+	bridgeDeclLength = `(declare-fun fn_length_Int (List_Int) Int)
+(assert (forall ((p0 List_Int)) (! (= (fn_length_Int p0) (ite ((_ is Nil_List_Int) p0) 0 (+ 1 (fn_length_Int (Cons_List_Int_1 p0))))) :pattern ((fn_length_Int p0)))))
+`
+	bridgeDeclTake = `(declare-fun fn_take_Int (Int List_Int) List_Int)
+(assert (forall ((p0 Int) (p1 List_Int)) (! (= (fn_take_Int p0 p1) (ite (<= p0 0) Nil_List_Int (ite ((_ is Nil_List_Int) p1) Nil_List_Int (Cons_List_Int (Cons_List_Int_0 p1) (fn_take_Int (- p0 1) (Cons_List_Int_1 p1)))))) :pattern ((fn_take_Int p0 p1)))))
+`
+	bridgeDeclDrop = `(declare-fun fn_drop_Int (Int List_Int) List_Int)
+(assert (forall ((p0 Int) (p1 List_Int)) (! (= (fn_drop_Int p0 p1) (ite (<= p0 0) p1 (ite ((_ is Nil_List_Int) p1) Nil_List_Int (fn_drop_Int (- p0 1) (Cons_List_Int_1 p1))))) :pattern ((fn_drop_Int p0 p1)))))
+`
+)
+
+// The eight transport subgoals: one base and one step per bridged function,
+// structural induction over the cons-list per SPEC §7.4.4.
+//
+// Binder naming is §7.2's and carries no new vocabulary: `b<i>` for the
+// obligation's own binders — ALL of them, including the one the induction
+// replaces, which is why `b0` is declared and unused in every base and step;
+// `f<i>` for the constructor's fields; `q<i>` for the binders the induction
+// hypothesis generalizes, at the index they have in the obligation.
+const (
+	bridgeAppendBase = `(declare-const b0 List_Int)
+(declare-const b1 List_Int)
+(assert (not (= (fn_to_seq_Int (fn_append_Int Nil_List_Int b1)) (seq.++ (fn_to_seq_Int Nil_List_Int) (fn_to_seq_Int b1)))))
+(check-sat)
+`
+	bridgeAppendStep = `(declare-const b0 List_Int)
+(declare-const b1 List_Int)
+(declare-const f0 Int)
+(declare-const f1 List_Int)
+(assert (forall ((q1 List_Int)) (= (fn_to_seq_Int (fn_append_Int f1 q1)) (seq.++ (fn_to_seq_Int f1) (fn_to_seq_Int q1)))))
+(assert (not (= (fn_to_seq_Int (fn_append_Int (Cons_List_Int f0 f1) b1)) (seq.++ (fn_to_seq_Int (Cons_List_Int f0 f1)) (fn_to_seq_Int b1)))))
+(check-sat)
+`
+	// length has ONE binder, so its induction hypothesis generalizes nothing
+	// and carries no quantifier. That is the general rule applied, not a
+	// special case — and it is the reason this obligation lands in `Int`
+	// rather than in a sequence.
+	bridgeLengthBase = `(declare-const b0 List_Int)
+(assert (not (= (fn_length_Int Nil_List_Int) (seq.len (fn_to_seq_Int Nil_List_Int)))))
+(check-sat)
+`
+	bridgeLengthStep = `(declare-const b0 List_Int)
+(declare-const f0 Int)
+(declare-const f1 List_Int)
+(assert (= (fn_length_Int f1) (seq.len (fn_to_seq_Int f1))))
+(assert (not (= (fn_length_Int (Cons_List_Int f0 f1)) (seq.len (fn_to_seq_Int (Cons_List_Int f0 f1))))))
+(check-sat)
+`
+	// take/drop: `k` is take's and drop's FIRST Oath parameter, so it is b0
+	// and the list is b1. The index is CLAMPED at every occurrence —
+	//     c = (ite (< k 0) 0 (ite (> k (seq.len s)) (seq.len s) k))
+	// — because take/drop are total in Oath at every k (take -1 xs = Nil,
+	// drop -1 xs = xs, both saturating above length) and `seq.extract` is not
+	// total that way at a negative offset. A GUARDED equation is the
+	// alternative and is not available: an obligation is a global fact about
+	// the bridged function, so a guarded one would license an invalid rewrite
+	// wherever an out-of-range index is passed. NEVER emit or register the
+	// guarded form.
+	//
+	// `s_nil`/`s_tail`/`s_cons` name the sequence where it appears more than
+	// once in one formula. The induction hypotheses write the same expressions
+	// longhand because a `define-fun` cannot mention a bound variable — forced,
+	// not stylistic, and the same asymmetry §7.4.4 records.
+	bridgeTakeBase = `(declare-const b0 Int)
+(declare-const b1 List_Int)
+(define-fun s_nil () (Seq Int) (fn_to_seq_Int Nil_List_Int))
+(assert (not (= (fn_to_seq_Int (fn_take_Int b0 Nil_List_Int)) (seq.extract s_nil 0 (ite (< b0 0) 0 (ite (> b0 (seq.len s_nil)) (seq.len s_nil) b0))))))
+(check-sat)
+`
+	bridgeTakeStep = `(declare-const b0 Int)
+(declare-const b1 List_Int)
+(declare-const f0 Int)
+(declare-const f1 List_Int)
+(define-fun s_tail () (Seq Int) (fn_to_seq_Int f1))
+(define-fun s_cons () (Seq Int) (fn_to_seq_Int (Cons_List_Int f0 f1)))
+(assert (forall ((q0 Int)) (= (fn_to_seq_Int (fn_take_Int q0 f1)) (seq.extract s_tail 0 (ite (< q0 0) 0 (ite (> q0 (seq.len s_tail)) (seq.len s_tail) q0))))))
+(assert (not (= (fn_to_seq_Int (fn_take_Int b0 (Cons_List_Int f0 f1))) (seq.extract s_cons 0 (ite (< b0 0) 0 (ite (> b0 (seq.len s_cons)) (seq.len s_cons) b0))))))
+(check-sat)
+`
+	bridgeDropBase = `(declare-const b0 Int)
+(declare-const b1 List_Int)
+(define-fun s_nil () (Seq Int) (fn_to_seq_Int Nil_List_Int))
+(assert (not (= (fn_to_seq_Int (fn_drop_Int b0 Nil_List_Int)) (seq.extract s_nil (ite (< b0 0) 0 (ite (> b0 (seq.len s_nil)) (seq.len s_nil) b0)) (- (seq.len s_nil) (ite (< b0 0) 0 (ite (> b0 (seq.len s_nil)) (seq.len s_nil) b0)))))))
+(check-sat)
+`
+	bridgeDropStep = `(declare-const b0 Int)
+(declare-const b1 List_Int)
+(declare-const f0 Int)
+(declare-const f1 List_Int)
+(define-fun s_tail () (Seq Int) (fn_to_seq_Int f1))
+(define-fun s_cons () (Seq Int) (fn_to_seq_Int (Cons_List_Int f0 f1)))
+(assert (forall ((q0 Int)) (= (fn_to_seq_Int (fn_drop_Int q0 f1)) (seq.extract s_tail (ite (< q0 0) 0 (ite (> q0 (seq.len s_tail)) (seq.len s_tail) q0)) (- (seq.len s_tail) (ite (< q0 0) 0 (ite (> q0 (seq.len s_tail)) (seq.len s_tail) q0)))))))
+(assert (not (= (fn_to_seq_Int (fn_drop_Int b0 (Cons_List_Int f0 f1))) (seq.extract s_cons (ite (< b0 0) 0 (ite (> b0 (seq.len s_cons)) (seq.len s_cons) b0)) (- (seq.len s_cons) (ite (< b0 0) 0 (ite (> b0 (seq.len s_cons)) (seq.len s_cons) b0)))))))
+(check-sat)
+`
+)
+
 // bridgeObligation is one emitted obligation: a stable id and the script bytes.
 //
 // The id is part of the interchange surface — a second kernel has to agree on
 // WHICH script a hash belongs to, not merely on a set of hashes — so ids are
-// fixed strings here and in SPEC §7.3, never derived from a loop index.
+// fixed strings here and in SPEC §7.4, never derived from a loop index.
 type bridgeObligation struct {
 	ID     string
 	Script string
@@ -136,16 +285,31 @@ type bridgeObligation struct {
 
 // bridgeObligations returns the emitted obligations in a FIXED order.
 //
-// Order is part of the fixture's bytes, so it is normative (SPEC §7.3). It runs
-// scheme-soundness first, then base, then step, which is also the order in which
-// a failure should be read: a failing measure invalidates the other two as a
-// proof of the universal, so reporting it first stops a reader concluding
-// anything from two greens above a red.
+// Order is part of the fixture's bytes, so it is normative (SPEC §7.4.9). It
+// runs scheme-soundness first, then the carrier base and step, which is also
+// the order in which a failure should be read: a failing measure invalidates
+// the other two as a proof of the universal, so reporting it first stops a
+// reader concluding anything from two greens above a red. The transports follow
+// — they do not depend on the scheme, but a `sat` over this encoding is only
+// meaningful once the carriers hold, so the carriers are read first.
+//
+// A CARRIER script is core+subgoal; a TRANSPORT script is transport-core +
+// the bridged function's declaration block + subgoal. Both are "the complete
+// script"; only what that concatenates differs.
 func bridgeObligations() []bridgeObligation {
+	tr := func(decl, subgoal string) string { return bridgeTransportCore + decl + subgoal }
 	return []bridgeObligation{
 		{"measure-decreases", bridgeCore + bridgeMeasureDecreases},
 		{"roundtrip2-base", bridgeCore + bridgeRT2Base},
 		{"roundtrip2-step", bridgeCore + bridgeRT2Step},
+		{"transport-append-base", tr(bridgeDeclAppend, bridgeAppendBase)},
+		{"transport-append-step", tr(bridgeDeclAppend, bridgeAppendStep)},
+		{"transport-length-base", tr(bridgeDeclLength, bridgeLengthBase)},
+		{"transport-length-step", tr(bridgeDeclLength, bridgeLengthStep)},
+		{"transport-take-base", tr(bridgeDeclTake, bridgeTakeBase)},
+		{"transport-take-step", tr(bridgeDeclTake, bridgeTakeStep)},
+		{"transport-drop-base", tr(bridgeDeclDrop, bridgeDropBase)},
+		{"transport-drop-step", tr(bridgeDeclDrop, bridgeDropStep)},
 	}
 }
 

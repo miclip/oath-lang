@@ -1692,13 +1692,27 @@ would each be free to invent one.
 
 #### 7.4.1 The core
 
-**EVERY** bridge obligation for `List Int` — all three, including
+There are two FAMILIES of bridge obligation and they carry different preambles.
+The CARRIER obligations (§7.4.2, §7.4.3) establish that `to-seq` and `of-seq`
+are mutually inverse; the TRANSPORT obligations (§7.4.4 onward) establish that
+one bridged function commutes with `to-seq`.
+
+**TWO PREAMBLES, TWO NAMES, USED CONSISTENTLY FROM HERE ON:** the block below is
+**the CARRIER CORE**, and §7.4.4's is **the TRANSPORT PREAMBLE**. Where the rest
+of §7.4 says "the core" unqualified it means this one, which is the historical
+name and why the heading keeps it. The distinction is not decoration: an
+implementation that read "begins with this preamble" as family-agnostic would
+emit eight scripts with the wrong first four lines, which is exactly the mistake
+this naming exists to make impossible to reach by accident.
+
+**EVERY CARRIER obligation for `List Int` — all three, including
 `measure-decreases` — begins with this preamble, verbatim, one LF after each
-line. And every obligation's COMPLETE script is this core followed immediately by
-its subgoal block, with the final `(check-sat)` likewise terminated by one LF and
-nothing after it. Both halves of that are stated because either one left implicit
-moves a digest: a subgoal emitted without the core, or a script without its
-trailing LF, is a different byte string and therefore a different obligation.
+line.** And every carrier obligation's COMPLETE script is this core followed
+immediately by its subgoal block, with the final `(check-sat)` likewise
+terminated by one LF and nothing after it. Both halves of that are stated
+because either one left implicit moves a digest: a subgoal emitted without the
+core, or a script without its trailing LF, is a different byte string and
+therefore a different obligation.
 
 ```
 (declare-datatypes ((List_Int 0)) (((Nil_List_Int ) (Cons_List_Int (Cons_List_Int_0 Int) (Cons_List_Int_1 List_Int)))))
@@ -1731,6 +1745,18 @@ would fail for every possible bridge and would be measuring its own defect.
 constructor equations; `of-seq` is pinned by well-founded recursion on `seq.len`,
 which is why §7.4.3 is an obligation and not an assumption.
 
+**THE THIRD ASSERTION IS THE ONE §7.4.4 DROPS, AND WHAT IT IS FOR IS WHAT
+DECIDES THAT.** The patterned `ite`-form equation lets `to-seq` unfold at an
+argument that is not syntactically a constructor application. Exactly one
+situation in this section produces such an argument: the round-trips apply
+`to-seq` to `(fn_of_seq_Int s)`, an opaque `List_Int` term that neither
+per-constructor equation can match. It is therefore load-bearing for the carrier
+family and inert for the transport family, whose every `to-seq` argument is a
+constructor application or a bridged-function result that unfolds to one — and
+an inert axiom is not free, because its trigger `(fn_to_seq_Int p0)` matches
+every `to-seq` term a transport goal builds. §7.4.4 states the resulting rule
+positively rather than as an exception.
+
 #### 7.4.2 The `seq.len` induction scheme
 
 **THE NAME `roundtrip2` IS NOT A DANGLING REFERENCE.** A datatype/sequence
@@ -1739,7 +1765,9 @@ bijection has TWO carrier round-trips — `∀xs. of-seq(to-seq xs) = xs` and
 deliberately absent rather than forgotten: it inducts structurally over `List`,
 which §7.2 already supplies, so it needs no new scheme and no new normative
 bytes. The numbering names its position in that pair, and a kernel implementing
-this section emits the three obligations below and no others.
+the CARRIER family emits `roundtrip2-base`, `roundtrip2-step` and §7.4.3's
+`measure-decreases` and no others. The transport family is §7.4.4's, counted
+separately.
 
 `∀s. to-seq(of-seq s) = s` cannot be discharged directly: it requires induction
 on `seq.len s`, an integer measure over the SEQUENCE sort, which is neither
@@ -1778,7 +1806,7 @@ emit this as its own obligation, `measure-decreases` — its own SCRIPT, appende
 to the §7.4.1 core exactly like the other two, not a bare subgoal — and MUST NOT
 assert it as a hypothesis inside `roundtrip2-step`. The core is redundant for
 this particular goal, which mentions neither bridge function; it is included
-anyway so that every obligation in this section has one shape, and because
+anyway so that every CARRIER obligation has one shape, and because
 "its own obligation" would otherwise be readable as "its own subgoal alone":
 
 ```
@@ -1795,19 +1823,283 @@ universal. Emitted separately, it is a check on the SCHEME. A kernel whose
 solver answers anything but `unsat` here MUST NOT report the round-trip as
 established, however the other two subgoals answered.
 
-#### 7.4.4 Emission order and the manifest
+#### 7.4.4 The transport preamble
+
+A TRANSPORT obligation says that one bridged function commutes with `to-seq`:
+that carrying a `List Int` operation across the bridge and performing the
+corresponding `(Seq Int)` operation give the same RESULT. Not "the same
+sequence" — `length` lands in `Int` (§7.4.6), so a quarter of the family would
+be excluded by its own general statement. Four functions are bridged —
+`append`, `length`, `take`, `drop` — one subsection each below, and a kernel
+implementing the TRANSPORT family emits those eight subgoals and no others.
+"The transport family", not "this section": §7.4.2 says the same of the three
+carriers, and a section-scoped reading of either would contradict §7.4.9's
+eleven.
+
+**AN OBLIGATION'S `id` IS THE BACKTICKED LABEL INTRODUCING ITS SUBGOAL BLOCK**,
+here and in §7.4.2/§7.4.3 — `transport-append-base` and the rest — and §7.4.9
+lists exactly those strings. Stated because it was otherwise derivable only by
+inference, and an id is not a private matter: the manifest is keyed by it, so
+two kernels disagreeing about ids disagree about the artefact §7.4 exists to
+make comparable.
+
+**THE TWO FAMILIES ARE INDEPENDENTLY OPTIONAL.** §7.4 as a whole is an optional
+capability (§7.4 preamble), and a kernel MAY offer either family without the
+other. What is pinned is what it emits IF it emits: a kernel offering only the
+carriers emits §7.4.9's first three lines in that order, and a manifest listing
+the obligations that kernel actually offers is conformant. What is forbidden
+throughout is different bytes under one name.
+
+**A TRANSPORT OBLIGATION IS KEYED BY DEFINITION AND TYPE INSTANTIATION, NOT BY
+NAME.** All four functions are polymorphic in Oath; every obligation here is
+stated at `List Int` and licenses nothing at any other instantiation. A kernel
+that recorded a bare-name result from these scripts would be claiming an
+`Int`-only proof at `List Str` and every other element type.
+
+**THAT PROHIBITION IS ON RECORDING A RESULT, NOT ON NAMING A SCRIPT**, which is
+worth separating because §7.4.9's manifest is keyed by the bare id
+`transport-append-base` with no element type in it. An id names one fixed byte
+string, and that byte string mentions `List_Int` throughout; there is nothing
+for it to be ambiguous about. A VERDICT is what must not be filed under a bare
+name.
+
+Every transport obligation begins with this preamble instead of §7.4.1's core,
+verbatim, one LF after each line, and its COMPLETE script is this preamble, then
+the bridged function's declaration block from its own subsection, then the
+subgoal block — three parts concatenated in that order with no separator, the
+final `(check-sat)` terminated by one LF and nothing after it:
+
+```
+(declare-datatypes ((List_Int 0)) (((Nil_List_Int ) (Cons_List_Int (Cons_List_Int_0 Int) (Cons_List_Int_1 List_Int)))))
+(declare-fun fn_to_seq_Int (List_Int) (Seq Int))
+(assert (= (fn_to_seq_Int Nil_List_Int) (as seq.empty (Seq Int))))
+(assert (forall ((q0 Int) (q1 List_Int)) (= (fn_to_seq_Int (Cons_List_Int q0 q1)) (seq.++ (seq.unit q0) (fn_to_seq_Int q1)))))
+```
+
+That is §7.4.1's core minus `of-seq`, which no transport goal mentions, and
+minus the patterned `ite`-form equation, for the reason §7.4.1 gives. `to-seq`
+is still DEFINED and not merely declared: the two per-constructor equations pin
+it uniquely on the datatype's finite elements, which is the whole of what makes
+the extension conservative. Dropping a redundant consequence of those equations
+is not dropping the definition.
+
+**THE INDUCTION IS SUPPLIED, NOT HOPED FOR.** Each equation is universally
+quantified over a `List Int` and is not quantifier-free, and a solver does not
+induct on its own. So each is emitted as exactly two subgoals — `-base` and
+`-step` — structurally over the cons-list, which is the same scheme §7.2 already
+supplies for an Oath property with a datatype binder. Both `unsat` establish the
+universal. The naming follows §7.2's structural rule with no new vocabulary:
+
+- `b<i>` for the obligation's own binders, declared as fresh constants in
+  parameter order, ALL of them — including the one the induction replaces, which
+  is therefore declared and unused. Declaring exactly the binders and
+  substituting into the formula are separate steps in §7.2, and a kernel that
+  merged them here would emit a different byte string.
+- `f<i>` for the constructor's field constants, by field index: `f0` is the
+  `Cons` head and `f1` the tail.
+- `q<i>` for the binders the induction hypothesis GENERALIZES — every binder
+  other than the one being inducted on, quantified in the hypothesis at the
+  index it has in the obligation.
+- `s_nil`, `s_tail`, `s_cons` for a `define-fun` naming `(fn_to_seq_Int x)` at,
+  respectively, `Nil_List_Int`, the tail `f1`, and the constructed
+  `(Cons_List_Int f0 f1)`. Only §7.4.7 and §7.4.8 use these, and only where the
+  same sequence appears more than once in one formula. Each names a DECLARED
+  CONSTANT's image, so each is usable everywhere in its script — inside the
+  induction hypothesis's `forall` included, which is where §7.4.7 and §7.4.8 do
+  in fact use `s_tail`. What those hypotheses write out longhand instead is the
+  CLAMP, and only the clamp, because the clamp mentions the bound `q0` and a
+  `define-fun` cannot mention a bound variable. That asymmetry is forced, not
+  stylistic, and it is between the two HALVES of the expression rather than
+  between the hypothesis and the goal.
+
+**WHERE THE PROSE AND THE BLOCKS DISAGREE, THE BLOCKS WIN, AND THE BULLETS
+ABOVE ARE DESCRIPTIVE RATHER THAN GENERATIVE.** They fix the spellings; they do
+not fix the sorts of `f0`/`f1`, the order of the declaration groups, that
+`s_tail` precedes `s_cons`, or that the hypothesis is asserted before the
+negated goal. Every one of those is settled only by reading the eight blocks,
+which is sufficient because §7.4 pins exactly these eight — a reader deriving a
+NINTH transport from the bullets alone would not get determinate bytes, and
+would be adding an obligation this section does not have.
+
+**AND THE INDEXES IN `take`/`drop` ARE CLAMPED, WHICH IS A SOUNDNESS
+REQUIREMENT AND NOT A CONVENIENCE.** Writing `s` for the sequence and `k` for
+the index, every occurrence is
+
+    c  =  (ite (< k 0) 0 (ite (> k (seq.len s)) (seq.len s) k))
+
+`take` and `drop` are TOTAL in Oath at every `k`: `take -1 xs` is `Nil`,
+`drop -1 xs` is `xs`, and both saturate above `length`. `seq.extract` does not
+behave that way at a negative offset. A GUARDED equation holding only for
+`0 ≤ k ≤ length(xs)` would be the alternative, and it is not available: an
+obligation is a global fact about the bridged function, there is no notion of a
+guarded one, and registering a guarded equation as if unguarded would license an
+invalid rewrite on any goal passing an out-of-range index. The clamped form is
+total, needs no guard, and is what a kernel MUST emit. A kernel that emits a
+guarded form emits different bytes under the same name, which §7.4 forbids.
+
+#### 7.4.5 `append`
+
+`∀ xs ys. to-seq(append xs ys) = (seq.++ (to-seq xs) (to-seq ys))`, inducting on
+`xs` and generalizing `ys`. The declaration block:
+
+```
+(declare-fun fn_append_Int (List_Int List_Int) List_Int)
+(assert (forall ((p0 List_Int) (p1 List_Int)) (! (= (fn_append_Int p0 p1) (ite ((_ is Nil_List_Int) p0) p1 (Cons_List_Int (Cons_List_Int_0 p0) (fn_append_Int (Cons_List_Int_1 p0) p1)))) :pattern ((fn_append_Int p0 p1)))))
+```
+
+`transport-append-base`:
+
+```
+(declare-const b0 List_Int)
+(declare-const b1 List_Int)
+(assert (not (= (fn_to_seq_Int (fn_append_Int Nil_List_Int b1)) (seq.++ (fn_to_seq_Int Nil_List_Int) (fn_to_seq_Int b1)))))
+(check-sat)
+```
+
+`transport-append-step`:
+
+```
+(declare-const b0 List_Int)
+(declare-const b1 List_Int)
+(declare-const f0 Int)
+(declare-const f1 List_Int)
+(assert (forall ((q1 List_Int)) (= (fn_to_seq_Int (fn_append_Int f1 q1)) (seq.++ (fn_to_seq_Int f1) (fn_to_seq_Int q1)))))
+(assert (not (= (fn_to_seq_Int (fn_append_Int (Cons_List_Int f0 f1) b1)) (seq.++ (fn_to_seq_Int (Cons_List_Int f0 f1)) (fn_to_seq_Int b1)))))
+(check-sat)
+```
+
+#### 7.4.6 `length`
+
+`∀ xs. length(xs) = (seq.len (to-seq xs))` — the one transport that lands in
+`Int` rather than in a sequence, inducting on `xs`. It has a single binder, so
+the induction hypothesis generalizes nothing and carries no quantifier; that is
+the general rule applied, not a special case. The declaration block:
+
+```
+(declare-fun fn_length_Int (List_Int) Int)
+(assert (forall ((p0 List_Int)) (! (= (fn_length_Int p0) (ite ((_ is Nil_List_Int) p0) 0 (+ 1 (fn_length_Int (Cons_List_Int_1 p0))))) :pattern ((fn_length_Int p0)))))
+```
+
+`transport-length-base`:
+
+```
+(declare-const b0 List_Int)
+(assert (not (= (fn_length_Int Nil_List_Int) (seq.len (fn_to_seq_Int Nil_List_Int)))))
+(check-sat)
+```
+
+`transport-length-step`:
+
+```
+(declare-const b0 List_Int)
+(declare-const f0 Int)
+(declare-const f1 List_Int)
+(assert (= (fn_length_Int f1) (seq.len (fn_to_seq_Int f1))))
+(assert (not (= (fn_length_Int (Cons_List_Int f0 f1)) (seq.len (fn_to_seq_Int (Cons_List_Int f0 f1))))))
+(check-sat)
+```
+
+#### 7.4.7 `take`
+
+`∀ k xs. to-seq(take k xs) = (seq.extract s 0 c)` with `s = (to-seq xs)` and `c`
+the clamp of §7.4.4, inducting on `xs` and generalizing `k`. `k` is the FIRST
+parameter of `take` in Oath, so it is `b0` and the list is `b1`. The declaration
+block:
+
+```
+(declare-fun fn_take_Int (Int List_Int) List_Int)
+(assert (forall ((p0 Int) (p1 List_Int)) (! (= (fn_take_Int p0 p1) (ite (<= p0 0) Nil_List_Int (ite ((_ is Nil_List_Int) p1) Nil_List_Int (Cons_List_Int (Cons_List_Int_0 p1) (fn_take_Int (- p0 1) (Cons_List_Int_1 p1)))))) :pattern ((fn_take_Int p0 p1)))))
+```
+
+`transport-take-base`:
+
+```
+(declare-const b0 Int)
+(declare-const b1 List_Int)
+(define-fun s_nil () (Seq Int) (fn_to_seq_Int Nil_List_Int))
+(assert (not (= (fn_to_seq_Int (fn_take_Int b0 Nil_List_Int)) (seq.extract s_nil 0 (ite (< b0 0) 0 (ite (> b0 (seq.len s_nil)) (seq.len s_nil) b0))))))
+(check-sat)
+```
+
+`transport-take-step`:
+
+```
+(declare-const b0 Int)
+(declare-const b1 List_Int)
+(declare-const f0 Int)
+(declare-const f1 List_Int)
+(define-fun s_tail () (Seq Int) (fn_to_seq_Int f1))
+(define-fun s_cons () (Seq Int) (fn_to_seq_Int (Cons_List_Int f0 f1)))
+(assert (forall ((q0 Int)) (= (fn_to_seq_Int (fn_take_Int q0 f1)) (seq.extract s_tail 0 (ite (< q0 0) 0 (ite (> q0 (seq.len s_tail)) (seq.len s_tail) q0))))))
+(assert (not (= (fn_to_seq_Int (fn_take_Int b0 (Cons_List_Int f0 f1))) (seq.extract s_cons 0 (ite (< b0 0) 0 (ite (> b0 (seq.len s_cons)) (seq.len s_cons) b0))))))
+(check-sat)
+```
+
+#### 7.4.8 `drop`
+
+`∀ k xs. to-seq(drop k xs) = (seq.extract s c (- (seq.len s) c))` with the same
+`s` and `c`, inducting on `xs` and generalizing `k`. The clamp appears TWICE in
+each formula — once as the offset and once inside the length — and both
+occurrences are written out; a kernel that factored one of them into a
+`define-fun` would emit different bytes. The declaration block:
+
+```
+(declare-fun fn_drop_Int (Int List_Int) List_Int)
+(assert (forall ((p0 Int) (p1 List_Int)) (! (= (fn_drop_Int p0 p1) (ite (<= p0 0) p1 (ite ((_ is Nil_List_Int) p1) Nil_List_Int (fn_drop_Int (- p0 1) (Cons_List_Int_1 p1))))) :pattern ((fn_drop_Int p0 p1)))))
+```
+
+`transport-drop-base`:
+
+```
+(declare-const b0 Int)
+(declare-const b1 List_Int)
+(define-fun s_nil () (Seq Int) (fn_to_seq_Int Nil_List_Int))
+(assert (not (= (fn_to_seq_Int (fn_drop_Int b0 Nil_List_Int)) (seq.extract s_nil (ite (< b0 0) 0 (ite (> b0 (seq.len s_nil)) (seq.len s_nil) b0)) (- (seq.len s_nil) (ite (< b0 0) 0 (ite (> b0 (seq.len s_nil)) (seq.len s_nil) b0)))))))
+(check-sat)
+```
+
+`transport-drop-step`:
+
+```
+(declare-const b0 Int)
+(declare-const b1 List_Int)
+(declare-const f0 Int)
+(declare-const f1 List_Int)
+(define-fun s_tail () (Seq Int) (fn_to_seq_Int f1))
+(define-fun s_cons () (Seq Int) (fn_to_seq_Int (Cons_List_Int f0 f1)))
+(assert (forall ((q0 Int)) (= (fn_to_seq_Int (fn_drop_Int q0 f1)) (seq.extract s_tail (ite (< q0 0) 0 (ite (> q0 (seq.len s_tail)) (seq.len s_tail) q0)) (- (seq.len s_tail) (ite (< q0 0) 0 (ite (> q0 (seq.len s_tail)) (seq.len s_tail) q0)))))))
+(assert (not (= (fn_to_seq_Int (fn_drop_Int b0 (Cons_List_Int f0 f1))) (seq.extract s_cons (ite (< b0 0) 0 (ite (> b0 (seq.len s_cons)) (seq.len s_cons) b0)) (- (seq.len s_cons) (ite (< b0 0) 0 (ite (> b0 (seq.len s_cons)) (seq.len s_cons) b0)))))))
+(check-sat)
+```
+
+#### 7.4.9 Emission order and the manifest
 
 The obligations are emitted in this fixed order — `measure-decreases`,
-`roundtrip2-base`, `roundtrip2-step` — scheme soundness first, so that a reader
-meeting a failure meets it before the results it invalidates.
+`roundtrip2-base`, `roundtrip2-step`, then `transport-append-base`,
+`transport-append-step`, `transport-length-base`, `transport-length-step`,
+`transport-take-base`, `transport-take-step`, `transport-drop-base`,
+`transport-drop-step` — scheme soundness first, so that a reader meeting a
+failure meets it before the results it invalidates, then the carriers, then the
+transports in §7.4.5-§7.4.8's order.
+
+**A TRANSPORT RESULT IS NOT USABLE WITHOUT THE CARRIERS, WHICH IS WHY THEY ARE
+EMITTED FIRST AND NOT MERELY LISTED FIRST.** The transports establish that every
+`List Int` maps to a sequence with its operations preserved. That is enough to
+carry a REFUTATION back — a list counterexample would appear as a sequence
+counterexample — and it is not enough to carry a SATISFYING witness back, since
+nothing in a transport says every sequence is the image of a list. The carriers
+are what supply that, so a kernel whose carrier obligations did not all answer
+`unsat` MUST NOT report a `sat` obtained over this encoding as refuting an Oath
+goal, however the transports answered.
 
 A kernel exposing this capability MAY omit a manifest entirely. If it emits one,
 these bytes are REQUIRED — optional to offer, pinned once offered, because a
 manifest whose layout varied would be useless for the cross-kernel comparison it
 exists to serve.
 
-The manifest is a header line followed by one line per obligation in §7.4.4's
-order, EVERY line including the header terminated by a single LF (`0x0A`), with
+The manifest is a header line followed by one line per obligation in the
+emission order fixed above, EVERY line including the header terminated by a
+single LF (`0x0A`), with
 no trailing blank line. The header is the literal string
 
     `#`, SPACE, `id`, TAB, `sha256(script)`
@@ -1820,9 +2112,12 @@ longhand because the obvious shorthand is ambiguous**: a notation like
 one line and, for `sha256(script)`, as literal column text on the same line —
 and nothing in it says which is which.
 
-The digest is `SHA-256` over the script bytes ALONE — the §7.4.1 core plus the
-subgoal, with no rlimit header and no trailing `get-info` lines, matching §7.2's
-rule that runner options sit outside a script's identity.
+The digest is `SHA-256` over the script bytes ALONE — for a carrier obligation
+the §7.4.1 core plus the subgoal, for a transport obligation the §7.4.4 preamble
+plus the declaration block plus the subgoal — with no rlimit header and no
+trailing `get-info` lines, matching §7.2's rule that runner options sit outside
+a script's identity. The digest is over the COMPLETE script in both families,
+which is the fact that does not vary; only what "complete" concatenates does.
 
 **THIS SECTION FIXES NO SOLVER BUDGET, AND THAT IS A SCOPE BOUNDARY RATHER THAN
 AN OVERSIGHT.** §7.4 pins what the obligations ARE, not what running them proves.
