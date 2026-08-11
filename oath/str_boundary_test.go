@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -718,6 +720,127 @@ func TestLLVMRefusesMalformedFileContentsAtIngestion(t *testing.T) {
 		}
 		if !strings.Contains(string(out), "the contents of "+want) {
 			t.Errorf("%s: refusal does not name the file it read: %q", bad.name, out)
+		}
+	}
+}
+
+// THE FIFTH AND LAST ADMIT SITE, AND THE ONLY ONE WITH NO SECOND BACKEND.
+//
+// llvm-ir has no fetch crossing to witness: it REFUSES http_request by name at
+// compile time, which is a supported-subset decision rather than a gap. Two
+// backends may implement different subsets of one capability vocabulary, so the
+// absence of a paired test here is the design and not an omission — and stating
+// that is the difference between a claim about the language and a claim about
+// one lowering.
+//
+// The bytes at this crossing are the least controlled of the five. argv and env
+// come from whoever launched the process and a file from whoever wrote it; a
+// RESPONSE BODY is chosen by a remote party the operator does not control, and
+// may be chosen adversarially. It was nonetheless unwitnessed: replacing the
+// guarded body with the raw string in the Go backend's http_request provider
+// leaves the whole `oath` package suite GREEN, while a program reading a
+// malformed body goes from exit 70 naming the URL to exit 0 printing the bytes.
+//
+// (SPEC §14.2 governs the OTHER direction — a Str built from an inbound request
+// — and answers 400 without invoking the handler, because a remote party must
+// not be able to end the process. Here the program is the client and the exit
+// is its own, which is why these two dispositions differ without disagreeing.)
+func TestGoBackendRefusesMalformedResponseBodyAtIngestion(t *testing.T) {
+	st := capStore(t)
+	put(t, st, `(defn fetchit [] [(w {fetch (-> Str Str)}) (args (List Str))] Str
+		(match args ((Nil) "no url") ((Cons u t) ((. w fetch) u))))`)
+	markVerified(t, st, "fetchit")
+	bin, _ := buildProgram(t, st, "fetchit")
+
+	// The body is keyed by path so one server answers every case and each
+	// refusal has a DISTINCT url to name.
+	bodies := map[string]string{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, ok := bodies[r.URL.Path]
+		if !ok {
+			t.Errorf("the program requested %q, which this test never registered", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		// Octet-stream, so nothing in the stack is entitled to transcode the
+		// body on the way out and the bytes the test wrote are the bytes the
+		// program reads.
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	n := 0
+	serve := func(content string) string {
+		n++
+		p := "/case" + strconv.Itoa(n)
+		bodies[p] = content
+		return srv.URL + p
+	}
+
+	// CONTROL FIRST: a valid body must reach the program byte for byte.
+	for _, ok := range []struct{ name, content string }{
+		{"ascii", "plain"},
+		{"2-byte", "café"},
+		{"4-byte astral", "lock 🔒"},
+		{"encoded U+FFFD", "�tail"},
+		{"NUL is a scalar", "before\x00after"},
+		// An empty body is legitimate, and it is ALSO what the failure sentinel
+		// looks like — the two are indistinguishable downstream by construction.
+		// Asserted here so that equivalence is recorded rather than discovered.
+		{"empty", ""},
+	} {
+		out, err := exec.Command(bin, serve(ok.content)).CombinedOutput()
+		if err != nil {
+			t.Fatalf("control %s: a valid response body was refused: %v — %q", ok.name, err, out)
+		}
+		if got := strings.TrimRight(string(out), "\n"); got != ok.content {
+			t.Fatalf("control %s: body %q came back as %q", ok.name, ok.content, got)
+		}
+	}
+
+	// A FAILED REQUEST IS NOT A TEXT PROBLEM. The provider answers the
+	// capability failure value and the program runs on; folding that into the
+	// UTF-8 refusal would report an unreachable host as malformed bytes.
+	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	deadURL := dead.URL
+	dead.Close()
+	cmd := exec.Command(bin, deadURL)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Errorf("an unreachable server exited %d: %q — a request failure and a malformed "+
+			"body are different answers and must not share an exit path",
+			cmd.ProcessState.ExitCode(), out)
+	}
+
+	for _, bad := range []struct{ name, content string }{
+		{"invalid start byte", "A\xff\xfeB"},
+		{"lone continuation", "\x80abc"},
+		{"truncated 3-byte", "A\xe2\x9c"},
+		{"overlong '/'", "\xc0\xaf"},
+		{"surrogate half, CESU-8 style", "\xed\xa0\x80"},
+		{"malformed after a NUL", "ok\x00\xff\xfe"},
+	} {
+		url := serve(bad.content)
+		cmd := exec.Command(bin, url)
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Errorf("%s: a malformed response body reached the program, which printed %q",
+				bad.name, out)
+			continue
+		}
+		if code := cmd.ProcessState.ExitCode(); code != 70 {
+			t.Errorf("%s: refused with exit %d, want 70", bad.name, code)
+		}
+		if !strings.Contains(string(out), "not valid UTF-8") {
+			t.Errorf("%s: refused, but not for the declared reason: %q", bad.name, out)
+		}
+		// WHICH REQUEST. A program may fetch many urls, so naming the one that
+		// failed is worth more here than at any other crossing — and because
+		// every case has its own path, a hardcoded or shared message cannot
+		// satisfy this.
+		if !strings.Contains(string(out), "the response body from "+url) {
+			t.Errorf("%s: refusal does not name the request it read: %q", bad.name, out)
 		}
 	}
 }
