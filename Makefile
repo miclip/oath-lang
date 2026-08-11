@@ -226,6 +226,19 @@ check-normative-source:
 # reproduce them without reading this one's source. That only means something if
 # the reference kernel is held to the document rather than the document being a
 # description of the kernel, which is what this compares.
+# The read-only subset of what CI runs, DERIVED from the workflow rather than
+# remembered. There is no other local command that runs the CI set, so before this
+# existed every pre-commit sweep was a sample assembled by hand — enumerated wrongly
+# four times in one week, twice reddening main. `--list` shows the plan without
+# running anything. It REFUSES on a CI step it has never seen rather than guessing.
+# Depends on `build` because several gates invoke `oath/oath` directly, and CI
+# gets it via `make verify`'s prerequisite — which this deliberately skips. On a
+# clean checkout the binary is absent and those gates would fail for a reason
+# that has nothing to do with what they check.
+.PHONY: ci-local
+ci-local: build
+	@python3 scripts/ci-local.py
+
 .PHONY: check-bridge-bytes
 check-bridge-bytes:
 	@python3 scripts/check-bridge-bytes.py
