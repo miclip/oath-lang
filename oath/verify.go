@@ -265,10 +265,23 @@ func caseSeedBase(hash string) uint64 {
 // the derivation. Reproducing it yields a population that looks like the
 // tester's and silently stops being it the moment the schedule changes.
 func genPropCase(st *Store, p *Prop, base uint64, pi, c int) ([]Value, error) {
+	return genPropCaseWeighted(st, p, base, pi, c, nil)
+}
+
+// genPropCaseWeighted is genPropCase's body, with the #162 Step 1 prototype's
+// optional Str weighting. A nil `w` is the production path and takes no extra
+// draw, so this remains the SOLE authority the doc comment above claims: the
+// schedule is written once and the prototype varies one arm of it, rather than
+// standing up a second copy that agrees today.
+func genPropCaseWeighted(st *Store, p *Prop, base uint64, pi, c int, w *strWeights) ([]Value, error) {
 	r := &rng{s: base ^ (uint64(pi) << 32) ^ uint64(c)*0xD1B54A32D192ED03}
 	size := c % 8
 	env := make([]Value, 0, len(p.Binders))
 	for bi := range p.Binders {
+		// Prototype only. forBinder is nil-receiver-safe and returns w
+		// unchanged unless the narrow reading is being measured, so the
+		// production path assigns nil here exactly as before.
+		r.strW = w.forBinder(&p.Binders[bi])
 		v, err := genValue(st, &p.Binders[bi], size, r)
 		if err != nil {
 			return nil, err
@@ -288,6 +301,17 @@ func genPropCase(st *Store, p *Prop, base uint64, pi, c int) ([]Value, error) {
 // 4, downgrading a real defect into "no verdict". Only a refutation stops the
 // run, because after one there is nothing left to learn.
 func runProp(st *Store, h string, p *Prop, name string, base uint64, pi int, cases int, fuel int64) PropReport {
+	return runPropWeighted(st, h, p, name, base, pi, cases, fuel, nil)
+}
+
+// runPropWeighted is runProp's body with the #162 Step 1 prototype's optional
+// Str weighting threaded to the generator. `w == nil` is the production path,
+// bit-for-bit; the measurement passes a non-nil set. Same reason as
+// genPropCaseWeighted for it being a parameter rather than a second loop: the
+// refutation rule below — a refutation dominates an indeterminacy — must not
+// exist in two places, or a measurement can report a different verdict than
+// verification would for the same inputs.
+func runPropWeighted(st *Store, h string, p *Prop, name string, base uint64, pi int, cases int, fuel int64, w *strWeights) PropReport {
 	rep := PropReport{Name: name, Outcome: PropPassed}
 	// The first reason no verdict was reached, kept so the report can say WHY
 	// it is indeterminate. Later reasons are not collected: one is enough to
@@ -299,7 +323,7 @@ func runProp(st *Store, h string, p *Prop, name string, base uint64, pi int, cas
 		}
 	}
 	for c := 0; c < cases; c++ {
-		env, err := genPropCase(st, p, base, pi, c)
+		env, err := genPropCaseWeighted(st, p, base, pi, c, w)
 		if err != nil {
 			// The generator could not build an input. No case was run, so
 			// nothing was observed about the property.
