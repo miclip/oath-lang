@@ -360,6 +360,7 @@ func TestSpecStrAlphabetIsUnreachedByTheGenerator(t *testing.T) {
 		t.Fatalf("the extended window (%d) must exceed propCases (%d) or it adds nothing",
 			armAExtCases, propCases)
 	}
+	armAFromLiterals, armAUnexplained := 0, 0
 	armAReal := newStrTally() // c < propCases — the cases verification runs
 	armAExt := newStrTally()  // c < armAExtCases — the same seed path, continued
 	armARealValues, armAExtValues := 0, 0
@@ -378,9 +379,22 @@ func TestSpecStrAlphabetIsUnreachedByTheGenerator(t *testing.T) {
 			t.Fatalf("%s: reading the definition: %v", site.defName, err)
 		}
 		p := &d.Props[site.pi]
-		base := caseSeedBase(site.hash)
+		sch := mustSchedule(st, site.hash)
+		// SPEC §4 determines EXACTLY where a codepoint may come from: the
+		// generic Int arm's [-20,20], or this definition's literal set L(D).
+		// Containment in that union is what replaced the old "the declared
+		// alphabet is unreached" assertion — see the note at the check below.
+		allowed := map[int64]bool{}
+		if sch.lits != nil {
+			for _, v := range sch.lits.lits {
+				if v.IsInt64() {
+					allowed[v.Int64()] = true
+				}
+			}
+		}
+		siteLits := len(allowed)
 		for c := 0; c < armAExtCases; c++ {
-			env, err := genPropCase(st, p, base, site.pi, c)
+			env, err := genPropCase(st, p, sch, site.pi, c)
 			if err != nil {
 				// Generation can legitimately fail for a type the generator
 				// cannot build; that case contributes nothing and is not a
@@ -397,6 +411,21 @@ func TestSpecStrAlphabetIsUnreachedByTheGenerator(t *testing.T) {
 					t.Fatalf("%s prop %d case %d binder %d: value is not a Str spine",
 						site.defName, site.pi, c, bi)
 				}
+				for _, cp := range cps {
+					if cp >= -20 && cp <= 20 {
+						continue
+					}
+					if allowed[cp] {
+						armAFromLiterals++
+						continue
+					}
+					armAUnexplained++
+					if armAUnexplained <= 5 {
+						t.Errorf("%s prop %d case %d binder %d: codepoint %d is outside BOTH the Int "+
+							"arm's [-20,20] and this definition's %d-literal set — §4 admits no third "+
+							"source", site.defName, site.pi, c, bi, cp, siteLits)
+					}
+				}
 				armAExt.add(cps)
 				armAExtValues++
 				if c < propCases {
@@ -410,7 +439,7 @@ func TestSpecStrAlphabetIsUnreachedByTheGenerator(t *testing.T) {
 					hits, _ := spine.specAlphabetHits(env[bi])
 					fmt.Printf("  EXHIBIT %d: %s prop %d binder %d, case c=%d (size %d) -> Str codepoints %v\n",
 						exhibits, site.defName, site.pi, bi, c, c%8, cps)
-					fmt.Printf("             codepoints in SPEC §4's alphabet \"ab xyz!\": %v (want none)\n", hits)
+					fmt.Printf("             of these, %v are characters the deleted \"ab xyz!\" bullet named — now reachable, as CORPUS LITERALS rather than as an alphabet\n", hits)
 				}
 			}
 		}
@@ -430,17 +459,34 @@ func TestSpecStrAlphabetIsUnreachedByTheGenerator(t *testing.T) {
 	}
 	armAReal.report(fmt.Sprintf("ARM A (real, %d cases/prop)", propCases), armARealValues)
 	armAExt.report(fmt.Sprintf("ARM A (extended, %d cases/prop)", armAExtCases), armAExtValues)
-	armAReal.checkDeclaredCodepointsUnreached(t, "ARM A real", armARealValues)
-	armAExt.checkDeclaredCodepointsUnreached(t, "ARM A extended", armAExtValues)
-	// Containment, not equality: this population changes with the corpus, so an
-	// exact range would red the build on any new Str property. Arm B carries the
-	// equality pin. The bound still fires on the direction that matters — a
-	// widened integer range is what would put "ab xyz!" in reach.
-	if armAExt.minCp < -20 || armAExt.maxCp > 20 {
-		t.Errorf("RECORDED MEASUREMENT IS STALE (ARM A) — observed codepoints in [%d, %d], outside the "+
-			"recorded [-20, 20]. The Str alphabet has moved; re-read docs/experiments/issue-163.md.",
-			armAExt.minCp, armAExt.maxCp)
+	// THE ASSERTION THIS ARM CARRIES CHANGED WHEN §4 GAINED ITS LITERAL RULE,
+	// AND IT IS NOW TIGHTER RATHER THAN LOOSER.
+	//
+	// It used to assert that the codepoints of §4's old primitive-`Str`
+	// alphabet — the deleted `"ab xyz!"` bullet #163 removed — never occur, and
+	// that every codepoint lies in [-20,20]. Both are now FALSE and rightly so:
+	// `a`, `b`, space, `x`, `y`, `z` and `!` all appear in string literals in
+	// this corpus, so §4's literal rule puts them in reach. Keeping the old
+	// assertion would have meant asserting that the rule does not work.
+	//
+	// The replacement pins the whole distribution instead of seven absences:
+	// every codepoint drawn must come from [-20,20] or from that definition's
+	// own L(D), because §4 admits NO THIRD SOURCE. That subsumes the old claim
+	// — a `"ab xyz!"` alphabet table would be a third source and would be
+	// caught wherever those characters are not corpus literals — and it also
+	// catches a wrong literal set, a leaked literal set from another
+	// definition, and a widened Int arm, none of which the old form could see.
+	// The per-codepoint check runs in the loop above; these are its controls.
+	if armAUnexplained != 0 {
+		t.Errorf("ARM A: %d codepoints had no source §4 admits", armAUnexplained)
 	}
+	if armAFromLiterals == 0 {
+		t.Error("ARM A: NOT ONE codepoint came from a literal set over the whole extended window, so " +
+			"the containment check above is satisfied by the Int arm alone and witnesses nothing " +
+			"about §4's literal rule")
+	}
+	t.Logf("ARM A: %d codepoints drawn from literal sets, %d unexplained, observed range [%d, %d]",
+		armAFromLiterals, armAUnexplained, armAExt.minCp, armAExt.maxCp)
 
 	// --- ARM B: THE PINNED INSTRUMENT ----------------------------------------
 	// A synthetic single-Str-binder property at seed base 0. SYNTHETIC IS THE
@@ -451,7 +497,7 @@ func TestSpecStrAlphabetIsUnreachedByTheGenerator(t *testing.T) {
 	const armBDraws = 200000
 	armB := newStrTally()
 	for c := 0; c < armBDraws; c++ {
-		env, err := genPropCase(st, strProp, 0, 0, c)
+		env, err := genPropCase(st, strProp, unweightedSchedule(zeroOwnerHash), 0, c)
 		if err != nil {
 			t.Fatalf("ARM B draw %d: generation failed: %v", c, err)
 		}

@@ -65,6 +65,11 @@ FORBIDDEN_BY_SECTION = {
     # containing the literal scripts with their hashes, so shipping it would
     # hand the subject the answer and the check together.
     "7.4": ("oath/", "codebase/", "docs/experiments/", "website/", "scripts/"),
+    # #162 §4: implement literal-weighted Str generation in oathrs from the
+    # SPEC alone. oath/ matters more here than in most rounds — the Go
+    # generator IS the reference implementation of the rule under test, and
+    # `oath/gen.go` would hand over the draw order verbatim.
+    "4": ("oath/", "codebase/", "docs/experiments/", "website/", "scripts/"),
 }
 
 SURFACES = {
@@ -106,6 +111,18 @@ SURFACES = {
     # cannot run the tests already in the tree is a weaker subject than one that
     # can — reported by the round itself.
     "7.4": ([], ["oathrs/", "fixtures/campaign/"]),
+    # #162 §4: literal-weighted Str generation. The Rust kernel and the corpus
+    # it generates over, so the subject can build and run — but NOT
+    # `fixtures/verify/`, and that omission is the strong form of this round
+    # rather than a gap. A verify transcript RECORDS GENERATED CASES: handing
+    # one over for a rule about how cases are generated lets a subject iterate
+    # against the answer instead of deriving the draw order, which is exactly
+    # the corroboration §13 exists to withhold. Canonical fixtures and hashes
+    # are supplied because they pin IDENTITY, which this change does not touch,
+    # and a subject that cannot confirm it still reproduces the corpus hashes is
+    # a weaker subject than one that can.
+    "4": ([], ["oathrs/", "examples/", "fixtures/canonical/", "fixtures/hashes.txt",
+               "fixtures/MANIFEST.md"]),
 }
 
 # NORMATIVE DATA: incorporated by reference, schema and interpretation defined in

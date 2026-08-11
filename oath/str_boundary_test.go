@@ -31,10 +31,10 @@ func TestSourceMustBeValidUTF8(t *testing.T) {
 	// lexer rather than for the reason each declares.
 	for _, ok := range []string{
 		`(defn f [] [(x Int)] Str "plain ascii")`,
-		`(defn f [] [(x Int)] Str "café")`,          // 2-byte
-		`(defn f [] [(x Int)] Str "check ✓")`,       // 3-byte
-		`(defn f [] [(x Int)] Str "lock 🔒")`,        // 4-byte, astral
-		"(defn f [] [(x Int)] Str \"�\")",      // a VALIDLY ENCODED U+FFFD
+		`(defn f [] [(x Int)] Str "café")`,    // 2-byte
+		`(defn f [] [(x Int)] Str "check ✓")`, // 3-byte
+		`(defn f [] [(x Int)] Str "lock 🔒")`,  // 4-byte, astral
+		"(defn f [] [(x Int)] Str \"�\")",     // a VALIDLY ENCODED U+FFFD
 		`; comment with é and 🔒` + "\n(defn f [] [(x Int)] Int 1)",
 	} {
 		if _, err := lex(ok); err != nil {

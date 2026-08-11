@@ -208,12 +208,16 @@ type strBinderStat struct {
 // target names the property under measurement and pins the binder shape that
 // makes the positional lookup meaningful.
 type strReachTarget struct {
-	defName   string
-	propName  string
-	binderKs  []string // expected Ty.K per binder, in declaration order
-	strNames  map[int]string
-	relevant  int // the binder the claim is about
-	sourceRef string
+	defName  string
+	propName string
+	binderKs []string // expected Ty.K per binder, in declaration order
+	strNames map[int]string
+	relevant int // the binder the claim is about
+	// The RECORDED measurement for that binder, pinned by equality. Both were
+	// 0 and [-20,20] before SPEC §4 gained its literal rule.
+	recordedHits  int
+	recordedMaxCp int64
+	sourceRef     string
 }
 
 func TestStrGeneratorReachOfEqualsCodepoint(t *testing.T) {
@@ -273,19 +277,23 @@ func TestStrGeneratorReachOfEqualsCodepoint(t *testing.T) {
 			defName:  "config-has-key",
 			propName: "finds-head",
 			// (prop finds-head [(rest (List Str)) (key Str)] ...)
-			binderKs:  []string{"data", "data"},
-			strNames:  map[int]string{1: "key"},
-			relevant:  1,
-			sourceRef: "examples/config.oath:35-37",
+			binderKs:      []string{"data", "data"},
+			strNames:      map[int]string{1: "key"},
+			relevant:      1,
+			recordedHits:  107,
+			recordedMaxCp: 120,
+			sourceRef:     "examples/config.oath:35-37",
 		},
 		{
 			defName:  "config-missing",
 			propName: "complete-config-reports-nothing",
 			// (prop complete-config-reports-nothing [(k Str) (v Str)] ...)
-			binderKs:  []string{"data", "data"},
-			strNames:  map[int]string{0: "k", 1: "v"},
-			relevant:  0,
-			sourceRef: "examples/config.oath:55-57",
+			binderKs:      []string{"data", "data"},
+			strNames:      map[int]string{0: "k", 1: "v"},
+			relevant:      0,
+			recordedHits:  89,
+			recordedMaxCp: 120,
+			sourceRef:     "examples/config.oath:55-57",
 		},
 	}
 
@@ -342,8 +350,8 @@ func TestStrGeneratorReachOfEqualsCodepoint(t *testing.T) {
 		// DERIVED, not reproduced: caseSeedBase and genPropCase are the same
 		// functions runProp binds its cases from, so this measures the
 		// tester's population by construction and cannot drift from it.
-		base := caseSeedBase(h)
 
+		sch := mustSchedule(st, h)
 		stats := map[int]*strBinderStat{}
 		for i, n := range tg.strNames {
 			stats[i] = &strBinderStat{idx: i, name: n, minCp: 1 << 62, distinctCp: map[int64]int{}}
@@ -355,7 +363,7 @@ func TestStrGeneratorReachOfEqualsCodepoint(t *testing.T) {
 			// reproduced: scoring only the binders of interest would
 			// desynchronise the stream and measure a generator the tester
 			// never runs.
-			env, err := genPropCase(st, p, base, pi, c)
+			env, err := genPropCase(st, p, sch, pi, c)
 			if err != nil {
 				t.Fatalf("%s.%s case %d: generation failed: %v", tg.defName, tg.propName, c, err)
 			}
@@ -405,7 +413,7 @@ func TestStrGeneratorReachOfEqualsCodepoint(t *testing.T) {
 			}
 		}
 
-		fmt.Printf("%s.%s   (%s, prop index %d, seed base %016x)\n", tg.defName, tg.propName, tg.sourceRef, pi, base)
+		fmt.Printf("%s.%s   (%s, prop index %d, seed base %016x)\n", tg.defName, tg.propName, tg.sourceRef, pi, sch.base)
 		idxs := []int{}
 		for i := range stats {
 			idxs = append(idxs, i)
@@ -456,21 +464,36 @@ func TestStrGeneratorReachOfEqualsCodepoint(t *testing.T) {
 				// demands that CHANGING that fact be loud, so the recorded
 				// number and the prose quoting it are re-read together rather
 				// than one of them silently becoming a lie.
-				if s.hits != 0 {
-					t.Errorf("RECORDED MEASUREMENT IS STALE — %s.%s binder %d (%s) now produces codepoint %d "+
-						"in %d/%d cases (%.3f%%), where this file records 0. That is not a regression: it means "+
-						"the Str generator's reach has changed. Re-read the header block, the #161 write-up and "+
+				// --- THE RECORDED MEASUREMENT, AS A RATCHET ------------
+				// THIS NUMBER USED TO BE ZERO, AND THE CHANGE IS THE POINT
+				// RATHER THAN A REGRESSION. SPEC §4's literal rule now draws
+				// the delimiter from the definition's own closure, so the
+				// reach this file was built to record as UNACHIEVED is
+				// achieved. The recorded figure is replaced by the new one and
+				// pinned by EQUALITY, exactly as tightly as the zero was: a
+				// value that changes in either direction is still loud.
+				if s.hits != tg.recordedHits {
+					t.Errorf("RECORDED MEASUREMENT IS STALE — %s.%s binder %d (%s) produces codepoint %d "+
+						"in %d/%d cases (%.3f%%), where this file records %d. Re-read the header block and "+
 						"anything quoting these figures, then update them together.",
 						tg.defName, tg.propName, s.idx, s.name, strReachCodepoint,
-						s.hits, strReachCases, pct)
+						s.hits, strReachCases, pct, tg.recordedHits)
 				}
-				// The generator's alphabet is what the zero is a consequence
-				// of; pin the bound so a widened range cannot pass unnoticed
-				// even if '=' itself happens to stay unreached.
-				if s.maxCp > 20 || s.minCp < -20 {
+				// CONTROL: the reach must be non-zero, or the equality above
+				// would be satisfied by a generator in which §4's rule does
+				// nothing at all — which is the state this file originally
+				// recorded.
+				if s.hits == 0 {
+					t.Errorf("%s.%s binder %d (%s) reaches codepoint %d in NO case; §4's literal rule "+
+						"is not acting on this binder", tg.defName, tg.propName, s.idx, s.name, strReachCodepoint)
+				}
+				// The alphabet bound moves with it: codepoints now come from
+				// [-20,20] OR the definition's literal set, so the ceiling is
+				// the largest literal that set holds rather than 20.
+				if s.maxCp > tg.recordedMaxCp || s.minCp < -20 {
 					t.Errorf("RECORDED MEASUREMENT IS STALE — %s.%s binder %d (%s) observed codepoints in [%d, %d], "+
-						"where this file records [-20, 20]. The Str alphabet has moved; re-read the recorded figures.",
-						tg.defName, tg.propName, s.idx, s.name, s.minCp, s.maxCp)
+						"where this file records [-20, %d]. Re-read the recorded figures.",
+						tg.defName, tg.propName, s.idx, s.name, s.minCp, s.maxCp, tg.recordedMaxCp)
 				}
 			}
 		}
@@ -511,7 +534,7 @@ func TestStrGeneratorCodepointAlphabet(t *testing.T) {
 	total := 0
 	nonEmpty := 0
 	for c := 0; c < draws; c++ {
-		env, err := genPropCase(st, strProp, 0, 0, c)
+		env, err := genPropCase(st, strProp, unweightedSchedule(zeroOwnerHash), 0, c)
 		if err != nil {
 			t.Fatalf("draw %d: %v", c, err)
 		}

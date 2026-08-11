@@ -128,14 +128,18 @@ func verifyReports(st *Store, h string) ([]PropReport, *Def, *Meta, error) {
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	base := caseSeedBase(h)
+	// A schedule that failed to resolve is NOT an error here: §4.1 says the
+	// affected cases are `no-verdict`, and the schedule carries the failure so
+	// each case reports it individually. Returning the error would collapse a
+	// per-case disposition into a whole-definition failure.
+	sch, _ := newGenSchedule(st, h)
 	var reports []PropReport
 	for pi := range d.Props {
 		name := fmt.Sprintf("prop%d", pi)
 		if pi < len(m.PropNames) {
 			name = m.PropNames[pi]
 		}
-		reports = append(reports, runProp(st, h, &d.Props[pi], name, base, pi, propCases, propFuel))
+		reports = append(reports, runProp(st, h, &d.Props[pi], name, sch, pi, propCases, propFuel))
 	}
 	return reports, d, m, nil
 }
@@ -264,24 +268,58 @@ func caseSeedBase(hash string) uint64 {
 // measurement of the generator's reach — must ASK here rather than reproduce
 // the derivation. Reproducing it yields a population that looks like the
 // tester's and silently stops being it the moment the schedule changes.
-func genPropCase(st *Store, p *Prop, base uint64, pi, c int) ([]Value, error) {
-	return genPropCaseWeighted(st, p, base, pi, c, nil)
+// genSchedule is everything one case's draws depend on beyond (pi, c): the
+// seed base and, per SPEC §4, the literal set L(D) of the definition under
+// test. Resolved ONCE per property run rather than per case.
+//
+// IT REPLACED A `base uint64` PARAMETER, and that is a consolidation rather
+// than plumbing. Every caller derived that base as caseSeedBase(owner) and then
+// passed the two independently; §4 adds a second thing derived from the same
+// owner, so passing three values that must agree gives three ways to disagree.
+// One constructor, one owner, no way to seed from one definition and weight
+// from another.
+type genSchedule struct {
+	owner string      // the definition under test — §4's D
+	base  uint64      // caseSeedBase(owner)
+	lits  *strWeights // §4's L(D); nil when empty, which means NO extra draw
+
+	// err records a closure that could not be resolved. §4 makes an
+	// unresolvable dependency an ERROR rather than a skip — a truncated L(D) is
+	// a different distribution, not a smaller one — and §4.1 gives the
+	// disposition: every case is `no-verdict`. Carrying it HERE rather than
+	// failing the whole run is what makes that true, because runProp already
+	// turns a generator failure into exactly one no-verdict case.
+	err error
 }
 
-// genPropCaseWeighted is genPropCase's body, with the #162 Step 1 prototype's
-// optional Str weighting. A nil `w` is the production path and takes no extra
-// draw, so this remains the SOLE authority the doc comment above claims: the
-// schedule is written once and the prototype varies one arm of it, rather than
-// standing up a second copy that agrees today.
-func genPropCaseWeighted(st *Store, p *Prop, base uint64, pi, c int, w *strWeights) ([]Value, error) {
-	r := &rng{s: base ^ (uint64(pi) << 32) ^ uint64(c)*0xD1B54A32D192ED03}
+// newGenSchedule resolves the schedule for a definition in the store.
+func newGenSchedule(st *Store, owner string) (*genSchedule, error) {
+	lits, err := strLiterals(st, owner)
+	if err != nil {
+		return &genSchedule{owner: owner, base: caseSeedBase(owner), err: err}, err
+	}
+	return &genSchedule{owner: owner, base: caseSeedBase(owner), lits: lits}, nil
+}
+
+// newGenScheduleFor resolves the schedule for a definition whose canonical
+// bytes are in hand rather than in the store — §6.3 mutation scoring, where §4
+// makes the mutant the definition under test.
+func newGenScheduleFor(st *Store, owner string, d *Def) (*genSchedule, error) {
+	lits, err := strLiteralsOf(st, owner, d)
+	if err != nil {
+		return &genSchedule{owner: owner, base: caseSeedBase(owner), err: err}, err
+	}
+	return &genSchedule{owner: owner, base: caseSeedBase(owner), lits: lits}, nil
+}
+
+func genPropCase(st *Store, p *Prop, sch *genSchedule, pi, c int) ([]Value, error) {
+	if sch.err != nil {
+		return nil, sch.err
+	}
+	r := &rng{s: sch.base ^ (uint64(pi) << 32) ^ uint64(c)*0xD1B54A32D192ED03, lits: sch.lits}
 	size := c % 8
 	env := make([]Value, 0, len(p.Binders))
 	for bi := range p.Binders {
-		// Prototype only. forBinder is nil-receiver-safe and returns w
-		// unchanged unless the narrow reading is being measured, so the
-		// production path assigns nil here exactly as before.
-		r.strW = w.forBinder(&p.Binders[bi])
 		v, err := genValue(st, &p.Binders[bi], size, r)
 		if err != nil {
 			return nil, err
@@ -300,18 +338,7 @@ func genPropCaseWeighted(st *Store, p *Prop, base uint64, pi, c int, w *strWeigh
 // would let a fuel exhaustion at case 3 hide a genuine counterexample at case
 // 4, downgrading a real defect into "no verdict". Only a refutation stops the
 // run, because after one there is nothing left to learn.
-func runProp(st *Store, h string, p *Prop, name string, base uint64, pi int, cases int, fuel int64) PropReport {
-	return runPropWeighted(st, h, p, name, base, pi, cases, fuel, nil)
-}
-
-// runPropWeighted is runProp's body with the #162 Step 1 prototype's optional
-// Str weighting threaded to the generator. `w == nil` is the production path,
-// bit-for-bit; the measurement passes a non-nil set. Same reason as
-// genPropCaseWeighted for it being a parameter rather than a second loop: the
-// refutation rule below — a refutation dominates an indeterminacy — must not
-// exist in two places, or a measurement can report a different verdict than
-// verification would for the same inputs.
-func runPropWeighted(st *Store, h string, p *Prop, name string, base uint64, pi int, cases int, fuel int64, w *strWeights) PropReport {
+func runProp(st *Store, h string, p *Prop, name string, sch *genSchedule, pi int, cases int, fuel int64) PropReport {
 	rep := PropReport{Name: name, Outcome: PropPassed}
 	// The first reason no verdict was reached, kept so the report can say WHY
 	// it is indeterminate. Later reasons are not collected: one is enough to
@@ -323,7 +350,7 @@ func runPropWeighted(st *Store, h string, p *Prop, name string, base uint64, pi 
 		}
 	}
 	for c := 0; c < cases; c++ {
-		env, err := genPropCaseWeighted(st, p, base, pi, c, w)
+		env, err := genPropCase(st, p, sch, pi, c)
 		if err != nil {
 			// The generator could not build an input. No case was run, so
 			// nothing was observed about the property.

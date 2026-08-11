@@ -71,11 +71,10 @@ func propIndex(t *testing.T, st *Store, name, prop string) (string, *Def, int) {
 func TestFuelExhaustionIsIndeterminateNotFalsified(t *testing.T) {
 	st := openCommittedStore(t)
 	h, d, pi := propIndex(t, st, "fib", "nonneg")
-	base := caseSeedBase(h)
 
 	// NON-FIRING half: the real budget. fib is committed `proven`; its property
 	// holds on every generated case.
-	full := runProp(st, h, &d.Props[pi], "nonneg", base, pi, 20, propFuel)
+	full := runProp(st, h, &d.Props[pi], "nonneg", mustSchedule(st, h), pi, 20, propFuel)
 	if full.Outcome != PropPassed {
 		t.Fatalf("CONTROL FAILED: fib.nonneg at the real fuel budget came back %q (%s); "+
 			"the starved arm below cannot be attributed to fuel if the baseline is not clean",
@@ -88,7 +87,7 @@ func TestFuelExhaustionIsIndeterminateNotFalsified(t *testing.T) {
 	// FIRING half: starve it. fib is naive-exponential, so a tiny budget cannot
 	// evaluate it — the same shape the blast-radius measurement produced with a
 	// wider Int draw, reached here without touching the generator.
-	starved := runProp(st, h, &d.Props[pi], "nonneg", base, pi, 20, 200)
+	starved := runProp(st, h, &d.Props[pi], "nonneg", mustSchedule(st, h), pi, 20, 200)
 	if starved.Outcome != PropIndeterminate {
 		t.Fatalf("FIRING CONTROL FAILED: fib.nonneg starved of fuel came back %q, want %q. "+
 			"An implementation limit is being reported as a semantic fact.",
@@ -124,7 +123,7 @@ func TestFuelExhaustionIsIndeterminateNotFalsified(t *testing.T) {
 func TestRealFalsePropertyStillFalsifies(t *testing.T) {
 	st := openCommittedStore(t)
 	h, d, pi := propIndex(t, st, "bad-reverse", "antidistributes-over-append")
-	rep := runProp(st, h, &d.Props[pi], "antidistributes-over-append", caseSeedBase(h), pi, propCases, propFuel)
+	rep := runProp(st, h, &d.Props[pi], "antidistributes-over-append", mustSchedule(st, h), pi, propCases, propFuel)
 
 	if rep.Outcome != PropFalsified {
 		t.Fatalf("NON-FIRING CONTROL FAILED: bad-reverse.antidistributes-over-append came back %q, want %q. "+
@@ -173,7 +172,7 @@ func TestRefutationDominatesIndeterminacy(t *testing.T) {
 
 	// CONTROL, full budget: no case is stranded, so the outcome is a clean
 	// refutation. This is what the mixed run must still agree with.
-	clean := runProp(st, h, &d.Props[0], "mixed", caseSeedBase(h), 0, propCases, propFuel)
+	clean := runProp(st, h, &d.Props[0], "mixed", mustSchedule(st, h), 0, propCases, propFuel)
 	if clean.Outcome != PropFalsified || clean.Indet != 0 {
 		t.Fatalf("CONTROL FAILED: at full fuel `mixed` is %q with %d unevaluable cases; want a clean refutation",
 			clean.Outcome, clean.Indet)
@@ -181,7 +180,7 @@ func TestRefutationDominatesIndeterminacy(t *testing.T) {
 
 	// THE MIXED RUN: a budget that strands the large draws while leaving the
 	// refuting case evaluable.
-	mixed := runProp(st, h, &d.Props[0], "mixed", caseSeedBase(h), 0, propCases, 30)
+	mixed := runProp(st, h, &d.Props[0], "mixed", mustSchedule(st, h), 0, propCases, 30)
 	if mixed.Indet == 0 {
 		t.Fatalf("SETUP FAILED: fuel 30 stranded no case, so this run does not test dominance at all "+
 			"(outcome %q, passed %d)", mixed.Outcome, mixed.Passed)

@@ -567,21 +567,119 @@ Generation by type — draw order is normative:
   `intIn(-8,8)`, then the denominator `intIn(1,4)` (numerator first), and take
   `numerator / denominator` as a binary64. Every generated NaN is canonical.
 - `Bool`: `below(2) == 0`.
-- `Str`: **the `Data` rule below governs. This entry is a pointer to it, not a
-  competing rule** — `Str` is not a primitive type (§3), it is the datatype
-  `(data Str [] (SNil) (SCons Int Str))`, and a `Str` is generated exactly as any
-  other data value. **There is no length draw and no alphabet draw.** Because
-  draw order is normative and `Str` is the type most likely to be looked up
-  expecting an exception, the resulting sequence is spelled out here as a worked
-  instance of the `Data` rule: size clamps to a minimum of 0 on entry; at size 0
-  the sole constructor without a recursive field is `SNil` and its selection
-  still consumes a draw, `below(1)`, giving the empty string; at size > 0 the
-  selection is `below(2)` over the constructors in declaration order
-  `[SNil, SCons]`, where 0 gives `SNil` and ends the string and 1 gives `SCons`,
-  whose two fields are generated left-to-right at size−1 — first the `Int` head
-  by the `Int` rule above, then the `Str` tail by this same rule. Every codepoint
-  is therefore an `Int` draw. **Should this paragraph and the `Data` rule ever
-  disagree, the `Data` rule is authoritative and this paragraph is the defect.**
+- `Str`: **the `Data` rule below remains AUTHORITATIVE for constructor selection
+  and for recursion.** `Str` is not a primitive type (§3), it is the datatype
+  `(data Str [] (SNil) (SCons Int Str))`, and its spine is generated exactly as
+  any other data value. **There is no length draw and no alphabet draw.** This
+  entry adds exactly one rule to `Data`, and changes nothing else: the `Int`
+  HEAD of an `SCons` may be drawn from the definition's own literals instead of
+  by the ordinary `Int` rule. Everything below is either that rule or a worked
+  restatement of `Data`; **should this entry and the `Data` rule disagree about
+  constructor selection or recursion, `Data` is authoritative and this entry is
+  the defect.**
+
+  The spine, as a worked instance of `Data`: size clamps to a minimum of 0 on
+  entry; at size 0 the sole constructor without a recursive field is `SNil` and
+  its selection still consumes a draw, `below(1)`, giving the empty string; at
+  size > 0 the selection is `below(2)` over the constructors in declaration
+  order `[SNil, SCons]`, where 0 gives `SNil` and ends the string and 1 gives
+  `SCons`, whose two fields are generated left-to-right at size−1 — first the
+  `Int` head, then the `Str` tail by this same rule.
+
+  **Identifying `Str`.** A datatype is `Str` iff its hash equals the §1
+  canonical hash of the declaration `(data Str [] (SNil) (SCons Int Str))`: a
+  `data` definition with no type parameters and EXACTLY TWO constructors, the
+  first with no fields and the second with fields `[Int, rec]`. The hash is
+  authoritative; that sentence is a gloss of it. **A kernel MUST NOT identify
+  `Str` by name.**
+
+  **This rule therefore binds every int-cons-list, and that is INTENDED.** §3
+  warns that a rule attached to `SCons` "would bind every
+  `(data T [] (A) (B Int T))` — an integer stack, a run-length chain — and give
+  Unicode semantics to types that carry no text". That warning is about
+  SEMANTICS and still stands: nothing here confers text meaning on such a type.
+  This rule is about which INTEGERS a generator prefers, a type carrying no text
+  loses nothing by being offered its own definition's constants, and the
+  alternative is a narrower test that could only be a name. **A kernel MUST NOT
+  add a guard narrowing this rule to types it judges to be text.** Names are metadata (§8) and may be repointed at any time, so
+  a generator keyed on one would produce different cases for identical canonical
+  bytes — and every verdict derived from those cases would depend on state that
+  is not part of identity.
+
+  **The literal set.** Let *D* be the definition whose property is being
+  generated for — under §6.3 mutation scoring, that is the MUTANT, since the
+  mutant is the definition under test. **L(D) is the unique `Int` literals
+  occurring in the canonical body and property bodies of *D* and of every
+  definition in *D*'s transitive dependency closure, in ascending NUMERIC
+  order.** Precisely:
+
+  - The closure uses §7.2's EDGE RELATION — a definition's dependencies are
+    EVERYTHING its body AND its properties reference, applied uniformly at the
+    seed and at every traversal step — with two boundary conditions §7.2 does
+    not itself state, spelled out here because they are §4's and not §7.2's:
+    the closure is **REFLEXIVE** (*D* contributes its own literals, where
+    §7.2 collects the definition under proof separately), and a **TYPE
+    REFERENCE IS AN EDGE** like a term reference, so a definition's declared
+    signature and the datatypes it mentions are traversed.
+    Both are literal-neutral over the definitions this specification admits
+    today — a `data` definition contains no term and therefore no `Int`
+    literal, and its own outgoing edges are again type edges, so the members
+    they add form a literal-free component. **They are stated anyway rather
+    than left to that lemma**, because the lemma is a fact about the CURRENT
+    language: were a `data` definition ever to carry a literal, two kernels
+    reading "§7.2's closure" differently would silently produce different
+    cases.
+  - A property body contributes exactly as the definition body does. A property
+    is part of the definition (§1), and its literals are literals of the
+    definition.
+  - **An `Int` LITERAL IS AN `int` TERM** — §1.2's `int` term node, and
+    nothing else. Explicitly NOT: the numerator or denominator of a `rat`
+    literal, any part of a `float` literal, a de Bruijn index, a constructor
+    index, an arity, or a length prefix. Those are integers that occur in the
+    canonical bytes; they are not literals of type `Int`, and admitting them
+    would make L(D) a fact about the ENCODING rather than about the program.
+    A `rat` is one literal of type `Rat`, not two of type `Int`.
+  - Literals are arbitrary-precision integers (§3). They are compared, sorted
+    and deduplicated by NUMERIC VALUE, not by any encoding of them; a kernel
+    that narrowed them to a machine word would produce a different set, and
+    therefore different cases, for a definition mentioning a large constant.
+  - **A DEFINITION IN THE CLOSURE THAT CANNOT BE RESOLVED IS AN ERROR.** The
+    kernel MUST NOT skip it and continue: dropping a member SHRINKS L(D), and a
+    smaller set raises every surviving literal's share of the weighted arm, so a
+    partial traversal yields a DIFFERENT distribution rather than a smaller one
+    — and two kernels disagreeing about it would generate different cases from
+    identical bytes. Generation for that definition fails; every case of every
+    property so affected is `no-verdict` (§4.1). Note this is reachable under
+    §6.3, where *D* is a mutant held only in memory.
+  - `Str` literals in surface syntax contribute THROUGH this rule and not
+    beside it: they elaborate to `SCons` chains of `Int` literals before
+    canonicalization (§2), so their codepoints already ARE `Int` literals of
+    the body. There is no separate `Str`-literal rule and a kernel MUST NOT add
+    one.
+  - Definitions with no body and no properties — datatypes — contribute
+    nothing, but are still traversed, since a type reference is a dependency
+    edge like any other.
+
+  L(D) is a function of canonical bytes alone: it reads no name index and no
+  metadata. Because a dependency's hash is part of the canonical encoding of
+  every definition referring to it (§1), **L(D) cannot change without D's hash
+  changing** — which is what makes the generated case a function of identity.
+
+  **The draw.** If L(D) is EMPTY, generation follows the `Data` rule exactly and
+  consumes **no extra draw**. If L(D) is non-empty, then for EVERY `Str` value
+  generated anywhere in the case — including `Str` values nested inside other
+  data values, at any depth, and including binders whose declared type is not
+  `Str` — the `Int` head of an `SCons` is generated as:
+
+  ```
+  draw below(4)
+    == 0 : draw below(|L(D)|); the head is L(D)[that index]
+    else : apply the Int rule above, unchanged
+  ```
+
+  The `below(4)` draw is taken FIRST and unconditionally, before either branch,
+  so the draw count of the choice does not depend on which branch is taken. The
+  `Str` TAIL and the spine are unaffected: they are `Data`.
 - `Int -> Int`: draw `below(4)`: 0 → identity; 1,2 → affine with
   `NA = intIn(-3,3)`, `NB = intIn(-10,10)`; 3 → table (below).
 - Any other function type: table with `n = 1 + below(3)` entries — for each,

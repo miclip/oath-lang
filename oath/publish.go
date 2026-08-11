@@ -282,7 +282,6 @@ func confirm(prompt string) bool {
 	return s == "y" || s == "Y" || s == "yes"
 }
 
-
 // applyNamespace prefixes a declared name with a publication-time namespace.
 //
 // Separated from buildPublishPlan so the rule is testable without a registry:

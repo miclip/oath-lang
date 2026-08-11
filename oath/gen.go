@@ -20,11 +20,9 @@ var floatBoundary = []float64{
 type rng struct {
 	s uint64
 
-	// PROTOTYPE, #162 Step 1 — throwaway. When non-nil, codepoints of a
-	// generated Str are drawn from a corpus-literal set one time in four (see
-	// gen_str_weight_proto.go). A nil field is EXACTLY today's schedule: no
-	// extra draw is taken, so every existing stream is byte-identical.
-	strW *strWeights
+	// SPEC §4: the literal set L(D) of the definition under test. When nil the
+	// set is empty and §4 requires NO extra draw — the Data rule exactly.
+	lits *strWeights
 }
 
 // next is splitmix64: tiny, well-distributed, dependency-free.
@@ -44,10 +42,10 @@ func (r *rng) intIn(lo, hi int64) int64 {
 	return lo + int64(r.next()%uint64(hi-lo+1))
 }
 
-// genInt is the generic Int arm, extracted from genValue's "int" case so the
-// prototype's weighted Str arm can fall back to it rather than restate it. One
-// authority for the draw, called from two places; the sequence of draws is
-// unchanged from the inline form it replaces.
+// genInt is the generic Int arm, extracted from genValue's "int" case so §4's
+// weighted Str head can fall back to it rather than restate it — the spec says
+// the non-weighted branch applies "the Int rule above, unchanged", and one
+// authority for that draw is how it stays unchanged.
 //
 // Bias toward boundary values: off-by-one and base-case mutants live at small
 // magnitudes that uniform sampling rarely witnesses. (Found by the split-agent
@@ -164,11 +162,13 @@ func genValue(st *Store, ty *Ty, size int, r *rng) (Value, error) {
 		fields := instCtorFields(d, ty.Hash, ty.Args, idx)
 		fv := make([]Value, len(fields))
 		for i, f := range fields {
-			// PROTOTYPE, #162 Step 1. An Int field of the Str ADT IS a
+			// SPEC §4's weighted head. An Int field of the Str ADT IS a
 			// codepoint — that is the whole of what Str's SCons carries — so
-			// this is the structural site the weighting attaches to, rather
-			// than a name or an arity guess. Unreachable when strW is nil.
-			if r.strW != nil && ty.Hash == r.strW.strHash && f.K == "int" {
+			// this is the structural site the rule attaches to, reached for
+			// Str at ANY depth, including nested inside other data values.
+			// Identity, never a name: r.lits.strHash is the canonical
+			// declaration hash.
+			if r.lits != nil && ty.Hash == r.lits.strHash && f.K == "int" {
 				fv[i] = genStrCodepoint(r)
 				continue
 			}

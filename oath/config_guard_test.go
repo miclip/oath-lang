@@ -259,9 +259,10 @@ func TestConfigGuardCostsNoGeneratedCases(t *testing.T) {
 		defName  string
 		propName string
 		binder   int // the guarded binder, positionally, per the source declaration
+		excluded int // RECORDED: cases of the 200 the guard removes
 	}{
-		{"config-has-key", "finds-head", 1},                      // (rest, key)
-		{"config-missing", "complete-config-reports-nothing", 0}, // (k, v)
+		{"config-has-key", "finds-head", 1, 4},                      // (rest, key)
+		{"config-missing", "complete-config-reports-nothing", 0, 3}, // (k, v)
 	}
 
 	for _, tc := range cases {
@@ -278,10 +279,10 @@ func TestConfigGuardCostsNoGeneratedCases(t *testing.T) {
 
 		// The tester's own seed path, not a lookalike — same two functions
 		// runProp binds its cases from.
-		base := caseSeedBase(h)
+		sch := mustSchedule(st, h)
 		excluded, nonEmpty, totalCps := 0, 0, 0
 		for c := 0; c < propCases; c++ {
-			env, err := genPropCase(st, p, base, pi, c)
+			env, err := genPropCase(st, p, sch, pi, c)
 			if err != nil {
 				t.Fatalf("%s.%s case %d: %v", tc.defName, tc.propName, c, err)
 			}
@@ -310,11 +311,30 @@ func TestConfigGuardCostsNoGeneratedCases(t *testing.T) {
 		}
 		t.Logf("%s.%s binder %d: %d/%d generated cases excluded by the guard (%d non-empty keys, %d codepoints)",
 			tc.defName, tc.propName, tc.binder, excluded, propCases, nonEmpty, totalCps)
-		if excluded != 0 {
-			t.Errorf("RECORDED MEASUREMENT IS STALE — %s.%s binder %d: the guard now excludes %d of the %d "+
-				"cases verification runs, where this file records 0. The Str generator's reach has changed "+
-				"(see #162); the `tested` figure for this property no longer covers what it used to.",
-				tc.defName, tc.propName, tc.binder, excluded, propCases)
+		// THE RECORDED FIGURE WAS 0 AND IS NOW NON-ZERO, AND THAT IS THE
+		// REPAIR LANDING RATHER THAN A REGRESSION.
+		//
+		// This test used to assert the guard cost NOTHING: the generator could
+		// not produce the delimiter, so the guard narrowed the property's
+		// STATED domain without narrowing the domain it was TESTED on — which
+		// meant the `tested` figure was covering cases the guard had already
+		// excluded on paper only. SPEC §4's literal rule closed that: the
+		// delimiter is now generated, the guard now removes real cases, and the
+		// `tested` figure means what it says.
+		//
+		// Pinned by EQUALITY, exactly as tightly as the zero was.
+		if excluded != tc.excluded {
+			t.Errorf("RECORDED MEASUREMENT IS STALE — %s.%s binder %d: the guard excludes %d of the %d "+
+				"cases verification runs, where this file records %d. Re-read this file's figures and "+
+				"anything quoting them, then update them together.",
+				tc.defName, tc.propName, tc.binder, excluded, propCases, tc.excluded)
+		}
+		// CONTROL: a zero would mean §4's rule never puts the delimiter in
+		// this binder, and the guard would once again be narrowing only the
+		// stated domain.
+		if excluded == 0 {
+			t.Errorf("%s.%s binder %d: the guard excludes NO generated case, so it narrows the stated "+
+				"domain without narrowing the tested one", tc.defName, tc.propName, tc.binder)
 		}
 	}
 }

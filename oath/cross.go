@@ -77,8 +77,18 @@ func (d crossDir) inconclusive() []PropReport {
 // Re-implementing the loop here would give the refutation/indeterminacy rule a
 // second home, and a cross-check disagreeing with `verify` about what a
 // falsification IS would be invisible from either side.
-func crossProp(st *Store, ownerHash, bodyHash string, p *Prop, name string, pi int) PropReport {
-	return runProp(st, bodyHash, p, name, caseSeedBase(ownerHash), pi, propCases, propFuel)
+// The SCHEDULE comes from the OWNER, not from the body under evaluation — both
+// halves of it. That was already true of the seed, and SPEC §4's literal set
+// joins it for the same reason: the point of a cross-check is that the two runs
+// see IDENTICAL INPUTS and differ only in which body `self` binds to. Weighting
+// by the body's own literals instead would change the inputs as well, and a
+// cross-failure would no longer be attributable to the body.
+func crossProp(st *Store, ownerHash, bodyHash string, p *Prop, name string, pi int) (PropReport, error) {
+	sch, err := newGenSchedule(st, ownerHash)
+	if err != nil {
+		return PropReport{}, err
+	}
+	return runProp(st, bodyHash, p, name, sch, pi, propCases, propFuel), nil
 }
 
 // CrossResult is the full outcome of cross-checking two definitions.
@@ -132,10 +142,18 @@ func crossCheck(st *Store, nameA, nameB string) (*CrossResult, error) {
 	mA, _ := st.GetMeta(hA)
 	mB, _ := st.GetMeta(hB)
 	for pi := range dA.Props {
-		res.aOnB.reports = append(res.aOnB.reports, crossProp(st, hA, hB, &dA.Props[pi], propName(mA, pi), pi))
+		r, err := crossProp(st, hA, hB, &dA.Props[pi], propName(mA, pi), pi)
+		if err != nil {
+			return nil, err
+		}
+		res.aOnB.reports = append(res.aOnB.reports, r)
 	}
 	for pi := range dB.Props {
-		res.bOnA.reports = append(res.bOnA.reports, crossProp(st, hB, hA, &dB.Props[pi], propName(mB, pi), pi))
+		r, err := crossProp(st, hB, hA, &dB.Props[pi], propName(mB, pi), pi)
+		if err != nil {
+			return nil, err
+		}
+		res.bOnA.reports = append(res.bOnA.reports, r)
 	}
 	return res, nil
 }

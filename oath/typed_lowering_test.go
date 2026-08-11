@@ -155,8 +155,8 @@ func TestEverySubtermTypeIsRecoverableFromTheDefClosure(t *testing.T) {
 //
 // So it measures BOTH, and the delta is the finding:
 //
-//   raw     — what the canonical stored bytes carry, via decodeDef, no checkDef
-//   loaded  — what a backend sees, after the store's load path has inferred
+//	raw     — what the canonical stored bytes carry, via decodeDef, no checkDef
+//	loaded  — what a backend sees, after the store's load path has inferred
 //
 // A monomorphising backend genuinely does see concrete arguments everywhere.
 // But "the Def closure is the neutral representation of a body" quietly means
@@ -452,8 +452,8 @@ func TestStrElementIsPackedInjectivelyOrRefused(t *testing.T) {
 		cp   string
 		want string
 	}{
-		{"sc-ascii", "65", "A"},          // 41
-		{"sc-latin", "195", "Ã"},    // c3 83 — U+00C3, NOT the byte 0xC3
+		{"sc-ascii", "65", "A"},             // 41
+		{"sc-latin", "195", "Ã"},            // c3 83 — U+00C3, NOT the byte 0xC3
 		{"sc-max", "1114111", "\U0010ffff"}, // the largest scalar, 0x10FFFF
 	} {
 		put(t, st, `(defn `+ok.name+` [] [(args (List Str))] Str (SCons `+ok.cp+` (SNil)))`)
@@ -540,10 +540,10 @@ func TestStrMatchWalksScalarsOfEveryWidth(t *testing.T) {
 	}{
 		// one, two, three and four byte scalars, each followed by ASCII so the
 		// remainder after the wide scalar is checked too.
-		{"w1", `(SCons 65 (SCons 66 (SNil)))`, "ok"},                      // A B
-		{"w2", `(SCons 233 (SCons 66 (SNil)))`, "ok"},                     // é B   c3 a9 42
-		{"w3", `(SCons 8364 (SCons 66 (SNil)))`, "ok"},                    // € B   e2 82 ac 42
-		{"w4", `(SCons 128512 (SCons 66 (SNil)))`, "ok"},                  // 😀 B  f0 9f 98 80 42
+		{"w1", `(SCons 65 (SCons 66 (SNil)))`, "ok"},     // A B
+		{"w2", `(SCons 233 (SCons 66 (SNil)))`, "ok"},    // é B   c3 a9 42
+		{"w3", `(SCons 8364 (SCons 66 (SNil)))`, "ok"},   // € B   e2 82 ac 42
+		{"w4", `(SCons 128512 (SCons 66 (SNil)))`, "ok"}, // 😀 B  f0 9f 98 80 42
 		{"empty", `(SNil)`, "ok"},
 	} {
 		var body string
