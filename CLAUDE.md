@@ -590,6 +590,11 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   more VALUABLE if delayed    #134, #139/#140, #138, #38 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128,
+                              #164 — the LLVM backend can COMPARE and SEARCH
+                              dynamic strings but not BUILD one, so nothing can
+                              be reported that cannot be quoted. Trigger: a
+                              program someone WANTS that needs construction —
+                              not an argument that it would be nice,
                               #162 — designed, measured, PARKED: it detects what
                               uniform widening cannot, and buys nothing in THIS
                               corpus (survived->killed = 0 over 3,319 mutants).
