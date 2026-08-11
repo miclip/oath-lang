@@ -314,3 +314,97 @@ func TestBothBackendsRefuseMalformedCapabilityBytesAtIngestion(t *testing.T) {
 		}
 	}
 }
+
+// ARGV IS AN INGESTION SITE AND IT WAS UNWITNESSED.
+//
+// Every test above reaches Str through a CAPABILITY — env, a required value —
+// and argv reaches it through a different mechanism: the backend builds the
+// (List Str) from the process's own arguments before the entry is applied.
+// That is the same shape as the required-value miss recorded above: a site list
+// derived from the emitter's capability decomposition cannot see a path that is
+// not a capability.
+//
+// SCOPE, because this test names one backend where the tests above name two:
+// what was MEASURED is the llvm-ir door. Replacing o_str_host with o_str in
+// o_argv — deleting that backend's argv guard outright — leaves the entire
+// `oath` package suite GREEN, so nothing in this repository observed the
+// crossing. go-emit has its own argv guard on a different mechanism
+// (oathStrFromHost, in the main it emits), and this test does NOT witness it;
+// that door is still open and is not claimed closed here.
+//
+// The program deliberately NEVER DECODES the value it is handed — it returns
+// the head of argv, and o_print writes a Str's bytes out without stepping
+// through them. So a guard at decode is invisible to this test and a guard at
+// ingestion is not, which is the distinction the env test above had to make for
+// the same reason. Under the mutant these vectors print their malformed bytes
+// to stdout and exit 0.
+func TestLLVMRefusesMalformedArgvAtIngestion(t *testing.T) {
+	requireClang(t)
+	st := llvmStore(t)
+	put(t, st, `(defn argecho [] [(args (List Str))] Str
+		(match args ((Nil) "none") ((Cons h t) h)))`)
+	markVerified(t, st, "argecho")
+	bin := buildLLVM(t, st, "argecho")
+
+	// CONTROL FIRST: if valid text does not survive the crossing, every refusal
+	// below is evidence about a broken program rather than about the boundary.
+	for _, ok := range []struct{ name, value string }{
+		{"ascii", "plain"},
+		{"empty", ""},
+		{"2-byte", "café"},
+		{"4-byte astral", "lock 🔒"},
+		// A VALIDLY ENCODED U+FFFD. The obvious spelling of this check — refuse
+		// whatever decodes to RuneError — refuses this legitimate text, and only
+		// this vector separates the two implementations.
+		{"encoded U+FFFD", "�tail"},
+	} {
+		out, err := exec.Command(bin, ok.value).CombinedOutput()
+		if err != nil {
+			t.Fatalf("control %s: valid argv %q was refused: %v — %s", ok.name, ok.value, err, out)
+		}
+		if got := strings.TrimRight(string(out), "\n"); got != ok.value {
+			t.Fatalf("control %s: argv %q came back as %q", ok.name, ok.value, got)
+		}
+	}
+
+	// Each vector is a DIFFERENT way to be malformed, because a check written
+	// against bare 0xff passes a suite built from bare 0xff.
+	for _, bad := range []struct{ name, value string }{
+		{"invalid start byte", "\xff\xfeA"},
+		{"lone continuation", "\x80abc"},
+		{"truncated 3-byte", "\xe2\x9c"},
+		{"overlong '/'", "\xc0\xaf"},
+		{"surrogate half, CESU-8 style", "\xed\xa0\x80"},
+	} {
+		cmd := exec.Command(bin, bad.value)
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Errorf("%s: malformed argv reached the program, which printed %q; argv must be "+
+				"refused on the way IN, not when something happens to decode it", bad.name, out)
+			continue
+		}
+		if code := cmd.ProcessState.ExitCode(); code != 70 {
+			t.Errorf("%s: refused with exit %d, want 70", bad.name, code)
+		}
+		if !strings.Contains(string(out), "not valid UTF-8") {
+			t.Errorf("%s: refused, but not for the declared reason: %q", bad.name, out)
+		}
+		// The diagnostic must name WHICH argument. Relocating the refusal from
+		// decode to ingestion is what buys that provenance, and a message that
+		// only says "a Str" would be the decode-time refusal wearing this
+		// test's expectations.
+		if !strings.Contains(string(out), "command-line argument 1") {
+			t.Errorf("%s: refusal does not name the offending argument: %q", bad.name, out)
+		}
+	}
+
+	// Not only argv[1]: the index carried into the diagnostic is computed per
+	// argument, so a later one must be reported as itself.
+	cmd := exec.Command(bin, "fine", "\xffbad")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Errorf("malformed argv[2] was accepted and printed %q", out)
+	} else if !strings.Contains(string(out), "command-line argument 2") {
+		t.Errorf("malformed argv[2] refused, but reported as: %q", out)
+	}
+}
