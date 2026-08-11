@@ -590,9 +590,9 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   more VALUABLE if delayed    #134, #139/#140, #138, #38 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128
-  no CLOCK at all             #68, #158, #119, #115, #116, #74, #65, #66,
-                              #160, #162 — open, and neither cheaper nor
-                              dearer for waiting
+  no CLOCK at all             #158, #119, #115, #116, #74, #65, #66, #160,
+                              #162 — open, and neither cheaper nor dearer
+                              for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
 below may ELABORATE a row; nothing may add an issue the table does not hold.**
@@ -1614,6 +1614,17 @@ milestone shipped a SUBSET of an issue that remains open.
   than exotic. Refer to issues as a bare `#N` in prose, and reserve
   `closes/fixes/resolves #N` for a dedicated final line when that is actually
   the intent. Narrow operational fact, earned once, at cost.
+
+  **A NEGATED OR QUOTED VERB IS NOT INERT.** There is no sentence context, no
+  quotation and no irony: the parser sees a verb adjacent to a number. A commit
+  that DISCUSSES this hazard must spell the number differently or omit it — the
+  belief that writing about the rule exempts you from it is how it recurs.
+
+  **AND CHECK `stateReason`, NOT JUST `state`, AFTER ANY CLOSE THAT WAS NOT
+  DELIBERATE.** A parser close records `COMPLETED`, so a DECLINED issue reads as
+  done; `gh issue close --reason "not planned"` requires the issue OPEN, so
+  correcting it means reopening and re-closing.
+
 - The examples double as the conformance corpus (SPEC.md §10): treat
   hash changes in `codebase/names.json` as meaningful diffs.
 - **EDITED A FILE UNDER `docs/`? RUN `make webdocs` AND COMMIT THE RESULT.**

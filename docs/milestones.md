@@ -790,3 +790,31 @@ DISABLED, which the mutation control later quantified exactly. The package was
 different reason than the one I gave it — a correct repair attached to a wrong
 diagnosis, which this file already warns is indistinguishable from a fix until
 someone re-measures.
+
+## The closing-verb parser: twice more, and the second by the commit documenting the first
+
+`CLAUDE.md` has carried a rule about GitHub's lexical closing-verb parser since a
+commit containing "would close #145 falsely" — inside a sentence arguing against
+closing it — closed #145. On 2026-08-10 it fired twice more, and the shape of the
+recurrence is worth keeping even though the rule itself did not change.
+
+**The first was ordinary.** The #68 verdict commit's body ended with "This
+section does not close #68 and asserts nothing about its status" — a sentence
+whose entire purpose was to deny the action it performed. The goal that produced
+that commit said explicitly to keep closing verbs out of the body.
+
+**The second was the commit written to document the first.** Its title was *"The
+sentence saying it did not close #68 closed #68"*, which carries the pattern
+twice, and it closed #68 again. The rule was known, quoted, and being obeyed in
+spirit; what failed was the assumption that a NEGATED or QUOTED verb is inert.
+
+**A third cost, from the same two closes, was separate and easy to miss.** A parser close records
+`stateReason: COMPLETED`. #68's verdict was DECLINE, so the metadata said the
+opposite of the decision, and `gh issue close --reason "not planned"` requires the
+issue to be OPEN — correcting it meant reopening and re-closing. The state was
+right and the reason was wrong, which is the kind of defect nobody looks for.
+
+Both durable rules are in `CLAUDE.md`; this is the record of what earned them.
+The general form has appeared elsewhere in this project under other names: a rule
+can be understood, endorsed, and violated in the same act of explaining it,
+because the explanation is written in the vocabulary the rule governs.
