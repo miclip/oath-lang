@@ -245,13 +245,21 @@ the whole argument for building it.
   is not a semantic commitment, and nothing here measures it.
 - **The copy itself.** Part 4 says why: the evidence reaches buffer LIFETIME, and
   a lowering that shared bytes without ever writing them would pass correctly.
-- **A diagnostic asymmetry, noted and deliberately not asserted.** The Go backend
-  tests `IsInt64` before it classifies, so past int64 it names the element
-  without its class while the LLVM backend names both. Neither substitutes and
-  both stay distinguishable, so this is a diagnostic difference and not a
-  semantic one. `compile.go` was not changed — it is the other backend and
-  outside this issue — and the gate does not pin the current wording, because
-  pinning it would turn a future improvement to that message into a red build for
-  no reason a reader could act on.
+- ~~**A diagnostic asymmetry, noted and deliberately not asserted.**~~ **FIXED
+  in a follow-up, and the reasoning above was half right.** The Go backend tested
+  `IsInt64` before it classified, so past int64 it named the element without its
+  class while this backend named both. Declining to pin the WORDING was correct —
+  that would redden a build over an improved message. But the gate can pin
+  something weaker and more durable: that both backends name the same CLASS for
+  the same runtime value. It does now, and it fires on `cons-astronomical` when
+  the ordering is put back. The repair in `compile.go` is ordering rather than new
+  logic — once the sign is known, a magnitude outside int64 is above 0x10FFFF with
+  certainty.
+
+  Worth recording as the general form, because "out of scope" was doing two jobs
+  here: the other backend was correctly out of scope for the LOWERING, and the
+  AGREEMENT between them never belonged to either backend alone. A cross-backend
+  claim has no home inside one backend's issue, which is how it nearly became a
+  sentence in a write-up instead of a check.
 - **`Rat`, `Float`, `Set`, `Map`, the handler protocol, `http_request` and
   `neg`** all remain refused by name. Nothing here reaches them.

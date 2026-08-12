@@ -597,8 +597,7 @@ missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   #164 — the LLVM backend's remaining forced gap;
-                              see the retirement condition below
+  more EXPENSIVE if delayed   (empty)
   more VALUABLE if delayed    #134, #139/#140, #138, #38 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128,
@@ -677,20 +676,12 @@ whenever that producer is onto, because its negation is empty. Record:
 thing to read before reusing any of this — records, opaque types and distinct
 datatypes were outside the construction tested and are not refuted by it.
 
-**THE FIRST BUCKET'S ADMISSION, AND ITS RETIREMENT CONDITION, WHICH IS THE HALF
-THAT GETS SKIPPED.** It is admitted on this clock — every language capability
-added while the backend cannot express it is a capability whose COMPILED
-representation nobody has checked, and the checking gets dearer as the corpus
-grows:
-
-    #164  an Oath `Str` CONSTRUCTOR whose parts are not compile-time constants
-          is refused; a chain of literal codepoints folds instead. Retires when
-          a non-folding constructor lowers.
-
-**WHEN THIS BUCKET HOLDS SEVERAL ITEMS, EACH CARRIES ITS OWN RETIREMENT
-CONDITION AND IS CHECKED ALONE.** A shared condition keeps a spent item sitting
-here looking urgent until its neighbour lands, which is how the bucket loses its
-meaning.
+**THE FIRST BUCKET'S ADMISSION AND ITS RETIREMENT ARE THE SAME ACT, AND
+RETIRING IS THE HALF THAT GETS SKIPPED.** To admit an item, say what makes it
+cheaper NOW than later AND what will make it stop belonging. **WHEN THE BUCKET
+HOLDS SEVERAL, EACH CARRIES ITS OWN RETIREMENT CONDITION AND IS CHECKED ALONE** —
+a shared condition keeps a spent item sitting here looking urgent until its
+neighbour lands, which is how the bucket loses its meaning.
 
 **State #164 at that precision and not one word wider.** The runtime builds
 `Str` VALUES at runtime constantly — from argv, from file reads, from tails —
