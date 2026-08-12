@@ -1496,10 +1496,15 @@ static void o_magdivmod(const o_u32 *a, int na, const o_u32 *b, int nb,
 
 /* The phrasing matches 'oath eval' - "division by zero" and "modulo by zero" -
    because the CONDITION is a fact about the language and not about this host.
-   The framing around it differs by construction: the interpreter reports an
-   error and exits 1, the Go backend panics out of big.Int and exits 2, and this
-   exits 70, the code every other refusal in this runtime uses. All three fail
-   and all three name the same thing. */
+   The framing around it differs, and by less than it did: the interpreter
+   reports an error and exits 1; both COMPILED backends now write one line and
+   exit 70, this one because it always did and the Go one since the #167 work gave
+   its emitted runtime a single refusal door instead of panicking out of
+   big.Int at status 2. All three fail and all three name the same thing.
+
+   The remaining asymmetry is prose, not status: this runtime spells out why a
+   zero divisor has no answer and the Go backend's line stops at the condition.
+   That is #164-shaped work on the message, deliberately not folded in here. */
 static void o_int_divzero(const char *what) {
   fprintf(stderr, "oath: %s: the divisor evaluated to 0, which has no quotient in Z. "
                   "Refusing rather than answering.\n", what);

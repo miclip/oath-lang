@@ -463,8 +463,8 @@ func TestUnprovidableCapabilityRefusesLaunch(t *testing.T) {
 	if !ok {
 		t.Fatalf("unexpected failure: %v", err)
 	}
-	if ee.ExitCode() != exitCapabilityUnavailable {
-		t.Fatalf("exit code %d, want %d (EX_UNAVAILABLE)", ee.ExitCode(), exitCapabilityUnavailable)
+	if ee.ExitCode() != exitHostRefusal {
+		t.Fatalf("exit code %d, want %d (EX_UNAVAILABLE)", ee.ExitCode(), exitHostRefusal)
 	}
 	// The entry point must not have run: an unprovidable capability is not a
 	// value the program gets to observe.

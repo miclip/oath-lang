@@ -210,10 +210,21 @@ func TestLLVMRefusesANonScalarBuiltAtRuntime(t *testing.T) {
 		// class as the div/mod diagnostic #166 found, and only a check that reads
 		// the message sees either.
 		goBin, _ := buildProgram(t, st, c.name)
-		goOut, goErr := exec.Command(goBin, "A").CombinedOutput()
+		goCmd := exec.Command(goBin, "A")
+		goOut, goErr := goCmd.CombinedOutput()
 		if goErr == nil {
 			t.Errorf("%s: the Go backend produced %q instead of refusing", c.name, goOut)
 			continue
+		}
+		// AND WITH THE SAME STATUS (#167). This assertion could not be written
+		// while the Go backend panicked out of oathStrCons: two artifacts
+		// compiled from ONE definition refused the same value for the same
+		// stated reason and handed a supervisor 2 and 70. "Both say why" was
+		// checked below and "both say it the same way" was not.
+		if code := goCmd.ProcessState.ExitCode(); code != exitHostRefusal {
+			t.Errorf("%s: the Go backend refused with exit %d, want %d — the backends must "+
+				"agree on the machine-readable half of a refusal as well as the prose",
+				c.name, code, exitHostRefusal)
 		}
 		if !strings.Contains(string(goOut), c.want) {
 			t.Errorf("%s: the Go backend refused without naming the element %s: %s",

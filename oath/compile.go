@@ -103,7 +103,7 @@ func reportBuild(prog *CompiledProgram, out string) {
 			rs = append(rs, fmt.Sprintf("%s (%s)", r.Field, r.Kind))
 		}
 		fmt.Printf("  requires: %s\n", strings.Join(rs, ", "))
-		fmt.Printf("  every one is resolved before the entry point runs, or the program exits %d.\n", exitCapabilityUnavailable)
+		fmt.Printf("  every one is resolved before the entry point runs, or the program exits %d.\n", exitHostRefusal)
 	}
 	// The sidecar is a convenience for tooling that would rather read a file than
 	// scan a binary. It is NOT the record — the executable carries that, and a
@@ -169,11 +169,24 @@ func cmdProvenance(path string) {
 // artifact says which lowering produced it without the manifest describing Go.
 const goBackendVersion = "go-emit/2"
 
-// exitCapabilityUnavailable is the status a compiled program exits with when a
-// required capability cannot be provided. 70 is sysexits.h EX_UNAVAILABLE — "a
+// exitHostRefusal is the status a compiled artifact exits with when the HOST
+// refuses: it cannot supply a required capability, or it cannot carry out
+// something the program asked of it. 70 is sysexits.h EX_UNAVAILABLE — "a
 // service the program needs is not available" — chosen so a supervisor can tell
-// a launch refusal from an ordinary program failure without parsing stderr.
-const exitCapabilityUnavailable = 70
+// a refusal from an ordinary program failure without parsing stderr.
+//
+// ONE constant, covering BOTH clocks, because a supervisor reads one number:
+// launch-time provisioning failure (the program never starts) and run-time host
+// refusal (the program stops) are both "this host could not complete the
+// artifact", and the LLVM backend has always used 70 for both. It was named
+// exitCapabilityUnavailable while only the launch half went through it, which
+// made the runtime half look like a different contract instead of an unwired
+// one (#167).
+//
+// It is the sole authority for the number in this backend: the emitted runtime
+// gets `oathExitRefusal` formatted FROM this constant rather than a second 70
+// written down beside it.
+const exitHostRefusal = 70
 
 // goProvider is the Go backend's implementation of one capability kind.
 type goProvider struct {
@@ -577,6 +590,135 @@ func emitProgram(st *Store, prog *CompiledProgram) (string, error) {
 			fmt.Fprintf(&e.b, "var _ = %s\n", sym)
 		}
 	}
+	// THE ARTIFACT'S REFUSAL MECHANISM, EMITTED ONCE (#167).
+	//
+	// Every host-side refusal in this runtime goes through oathRefuse, and the
+	// number it exits with is FORMATTED FROM exitHostRefusal rather than written
+	// down again here — one authority for the status a supervisor reads.
+	fmt.Fprintf(&e.b, `
+// oathExitRefusal is what this artifact exits with when the HOST refuses. It is
+// the same status the launch gate uses for an unprovidable capability and the
+// same one the LLVM backend uses for every refusal in its runtime: two artifacts
+// compiled from ONE definition must not tell a supervisor different stories
+// about why they stopped.
+const oathExitRefusal = %d
+
+// THE ARTIFACT ENDS IN EXACTLY THREE WAYS, and each has a named authority so
+// that the classification is structural rather than a convention.
+//
+//	oathDone            an ordinary successful return, status 0
+//	oathListenFailed    the handler could not bind, status 1
+//	oathRefuse -> a boundary   a HOST-SIDE REFUSAL, disposed of below
+//
+// A listen failure is NOT the refusal status, on purpose: it happens after
+// provisioning succeeded, and apps/github-webhook's acceptance suite uses
+// exactly that difference as its control that capabilities resolve BEFORE the
+// port is bound. Folding it in would destroy a live discriminator.
+//
+// Leaving these as bare os.Exit calls in main would make "which exits are
+// legitimate" a claim about VALUES (0 and 1 are fine, 70 is not) rather than
+// about SITES, and a host refusal added to main later would satisfy that check
+// while bypassing the refusal path entirely.
+func oathDone() {
+	os.Exit(0)
+}
+
+func oathListenFailed(err error) {
+	fmt.Fprintln(os.Stderr, err)
+	os.Exit(1)
+}
+
+// oathRefusal is a refusal IN FLIGHT: raised where the condition is detected,
+// disposed of by the BOUNDARY it unwinds to. It is not an Oath value, and no
+// Oath code can observe it, branch on it or continue past it.
+//
+// WHY IT TRAVELS INSTEAD OF EXITING WHERE IT IS RAISED. The CONDITION is a fact
+// about the language — a zero divisor, a codepoint outside the scalars — but
+// what should HAPPEN is a fact about the boundary the artifact runs under, and
+// only the boundary knows it. A standalone program has nothing left to do, so
+// it prints one line and exits %d. A handler is a long-lived server whose input
+// comes from a remote party, and SPEC 14.2 is explicit that a remote party must
+// never be able to end the process: there the disposition is a 500 and a served
+// connection, exactly as it already is for a malformed Response.
+//
+// The first version of this exited at the raise site. It read as one clean door
+// and handed any handler dividing by a request byte a remote process-kill. One
+// door with two dispositions is not a weakening of that design; it is what the
+// design needed, and it is the shape this project keeps arriving at — the
+// BOUNDARY owns the transformation, not the place that detected the condition.
+type oathRefusal struct{ msg string }
+
+// WHAT IS A REFUSAL, and it is a classification rather than a style: conditions
+// a WELL-TYPED Oath program can reach at run time — a codepoint outside the
+// scalars, a zero divisor, octets from outside the language that are not text.
+// Those are the artifact's contract with its host.
+//
+// WHAT IS NOT: conditions unreachable unless this compiler or its checker is
+// WRONG — structEq on a function value, a non-exhaustive match, a byte list
+// whose element is not an Int. Those stay panics, on purpose. They are not
+// refusals the artifact offers its supervisor; they are bug reports, and the
+// stack trace is the useful part. A compiler defect reported as an orderly
+// refusal would be indistinguishable from the host declining to do something,
+// which is the collapse this change exists to undo, one layer down.
+//
+// ONE LINE IS A PROPERTY OF THIS FUNCTION, NOT A HABIT OF ITS CALLERS. A
+// refusal names what it refused, and some of those names are chosen by whoever
+// runs the artifact — a file path, a URL, an environment value, an error from
+// the host. A newline inside one would split a refusal into two lines, which
+// breaks the contract and lets a caller forge a line in someone's log.
+//
+// The encoding is INJECTIVE: a backslash is escaped BEFORE the line breaks, so
+// a name containing a real newline and one containing the two characters
+// backslash-n stay two distinct diagnostics. Escaping only the line breaks
+// would collapse them — distinct inputs, one output, which is the U+FFFD defect
+// relocated into the message.
+func oathRefuse(msg string) {
+	b := make([]byte, 0, len(msg))
+	for i := 0; i < len(msg); i++ {
+		switch msg[i] {
+		case '\\':
+			b = append(b, '\\', '\\')
+		case '\n':
+			b = append(b, '\\', 'n')
+		case '\r':
+			b = append(b, '\\', 'r')
+		default:
+			b = append(b, msg[i])
+		}
+	}
+	panic(oathRefusal{string(b)})
+}
+
+// oathRefusalOf is where the two classes are TOLD APART, and it is one function
+// so that every boundary tells them apart the same way.
+//
+// recover() cannot be selective: catching a refusal means catching a
+// compiler-bug panic too. So the only way to leave a bug alone is to re-raise
+// what is not a refusal — it keeps its stack trace and its status 2, and the
+// two classes stay as far apart as they were when one of them was the only
+// mechanism. Every boundary calls this; none of them repeats the type test.
+func oathRefusalOf(r any) (string, bool) {
+	if r == nil {
+		return "", false
+	}
+	if ref, ok := r.(oathRefusal); ok {
+		return ref.msg, true
+	}
+	panic(r)
+}
+
+// oathExitOnRefusal is the STANDALONE disposition, deferred by main: one stderr
+// line, then the refusal status. It covers a refusal raised anywhere in the
+// program, capability provisioning included — that runs in this goroutine
+// before anything is served.
+func oathExitOnRefusal() {
+	if msg, ok := oathRefusalOf(recover()); ok {
+		fmt.Fprintln(os.Stderr, msg)
+		os.Exit(oathExitRefusal)
+	}
+}
+`, exitHostRefusal, exitHostRefusal)
+
 	e.b.WriteString(`
 // oathCapFailure is the CALL-failure value in Oath's capability protocol: a
 // capability that was provided, was invoked, and could not complete. It is an
@@ -624,7 +766,7 @@ func oathStrCons(cp *big.Int, rest string) string {
 }
 
 func oathRefuseStrElement(what string) {
-	panic("oath: this backend cannot encode Str element " + what +
+	oathRefuse("oath: this backend cannot encode Str element " + what +
 		": Str is packed as UTF-8, which encodes only Unicode scalar values. " +
 		"Refusing rather than substituting U+FFFD, which would make distinct Str values identical.")
 }
@@ -638,7 +780,7 @@ func oathRefuseStrElement(what string) {
 // stays as the backstop for a path this list forgot, which is exactly the kind
 // of list that acquires a new entry later.
 //
-// Refusal is exit 70, NOT oathCapFailure. The failure value is "" (see above),
+// Refusal is oathRefuse, NOT oathCapFailure. The failure value is "" (see above),
 // so routing malformed bytes there would make invalid input indistinguishable
 // from an unset variable or an empty file — the same collapse of distinct inputs
 // this is removing, relocated one layer up. And 70 is already what both backends
@@ -651,10 +793,9 @@ func oathRefuseStrElement(what string) {
 // process, so that disposition is a response, not an exit.
 func oathStrFromHost(what, s string) string {
 	if !utf8.ValidString(s) {
-		fmt.Fprintf(os.Stderr, "oath: %s is not valid UTF-8, so it has no Str value; "+
+		oathRefuse(fmt.Sprintf("oath: %s is not valid UTF-8, so it has no Str value; "+
 			"refusing rather than substituting U+FFFD, which would make distinct inputs identical. "+
-			"Arbitrary octets need a bytes-typed channel, not Str.\n", what)
-		os.Exit(70)
+			"Arbitrary octets need a bytes-typed channel, not Str.", what))
 	}
 	return s
 }
@@ -673,7 +814,7 @@ func oathStrFromHost(what, s string) string {
 func oathStrHead(s string) (rune, int) {
 	r, sz := utf8.DecodeRuneInString(s)
 	if r == utf8.RuneError && sz <= 1 {
-		panic("oath: a Str holds bytes that are not valid UTF-8; this backend packs Str as UTF-8 " +
+		oathRefuse("oath: a Str holds bytes that are not valid UTF-8; this backend packs Str as UTF-8 " +
 			"and refuses to decode malformed storage rather than replace or guess it")
 	}
 	return r, sz
@@ -681,14 +822,24 @@ func oathStrHead(s string) (rune, int) {
 `)
 	e.b.WriteString(`
 // oBytes reads a (List Int) value as raw bytes; oList rebuilds one. Elements
-// outside 0..255 PANIC rather than truncate: a digest over silently truncated
+// outside 0..255 REFUSE rather than truncate: a digest over silently truncated
 // input would verify against a message nobody sent.
 func oBytes(v any) []byte {
 	var out []byte
 	for cur, _ := v.(*ctorV); cur != nil && cur.idx == 1; cur, _ = cur.fields[1].(*ctorV) {
 		n, ok := cur.fields[0].(*big.Int)
-		if !ok || !n.IsInt64() || n.Int64() < 0 || n.Int64() > 255 {
-			panic("byte list element out of range 0..255")
+		// TWO CONDITIONS, TWO CLASSES, and merging them said the wrong thing
+		// about one of them. A (List Int) whose element is not an Int is a
+		// broken representation — the checker types this argument — so it is a
+		// compiler bug and keeps its stack. Only the RANGE is something a
+		// well-typed program can reach, and reporting a broken representation as
+		// "out of range 0..255" described the value as merely too large, which
+		// it is not.
+		if !ok {
+			panic("byte list element is not an Int")
+		}
+		if !n.IsInt64() || n.Int64() < 0 || n.Int64() > 255 {
+			oathRefuse("oath: byte list element out of range 0..255")
 		}
 		out = append(out, byte(n.Int64()))
 	}
@@ -722,13 +873,13 @@ func ra(s string) *big.Rat { v, _ := new(big.Rat).SetString(s); return v }
 // the same definition must not tell a different story about why it stopped.
 func iquo(a, b *big.Int) *big.Int {
 	if b.Sign() == 0 {
-		panic("division by zero")
+		oathRefuse("oath: division by zero")
 	}
 	return new(big.Int).Quo(a, b)
 }
 func irem(a, b *big.Int) *big.Int {
 	if b.Sign() == 0 {
-		panic("modulo by zero")
+		oathRefuse("oath: modulo by zero")
 	}
 	return new(big.Int).Rem(a, b)
 }
@@ -743,20 +894,21 @@ func canonF(f float64) float64 {
 }
 
 // Numeric conversions (mirror the interpreter). Widening is total; the
-// Float→{Rat,Int} narrowings panic on non-finite input, matching eval's error.
+// Float→{Rat,Int} narrowings REFUSE non-finite input, naming the same condition
+// eval's error names.
 func i2r(x *big.Int) *big.Rat { return new(big.Rat).SetInt(x) }
 func i2f(x *big.Int) float64  { f, _ := new(big.Float).SetInt(x).Float64(); return canonF(f) }
 func r2f(x *big.Rat) float64  { f, _ := x.Float64(); return canonF(f) }
 func f2r(x float64) *big.Rat {
 	if math.IsNaN(x) || math.IsInf(x, 0) {
-		panic("to-rat of non-finite float")
+		oathRefuse("oath: to-rat of non-finite float")
 	}
 	return new(big.Rat).SetFloat64(x)
 }
 func rfloor(x *big.Rat) *big.Int { return new(big.Int).Div(x.Num(), x.Denom()) }
 func ffloor(x float64) *big.Int {
 	if math.IsNaN(x) || math.IsInf(x, 0) {
-		panic("floor of non-finite float")
+		oathRefuse("oath: floor of non-finite float")
 	}
 	i, _ := big.NewFloat(math.Floor(x)).Int(nil)
 	return i
@@ -808,6 +960,12 @@ func structEq(a, b any) bool {
 		}
 		return true
 	}
+	// A BUG PANIC, NOT A REFUSAL (see oathRefuse). Equality is only ever emitted
+	// at a type the checker admitted for it, and no such type contains a
+	// function, so reaching this means the checker let one through. Exiting 70
+	// here would report a compiler defect in the vocabulary the artifact uses to
+	// tell its supervisor the HOST declined something — and the stack trace,
+	// useless for a refusal, is the whole value of a bug report.
 	panic("structEq on function value")
 }
 
@@ -1073,23 +1231,25 @@ func oathProvideValue(field, envVar string) (any, error) {
 	return v, nil
 }
 
+// The LAUNCH half of the refusal contract, and it goes through the SAME door as
+// the runtime half (#167). It always exited 70; what it did not do was share a
+// path with the conditions the program can reach after it starts, so the two
+// halves could drift apart while each stayed internally right.
 func oathResolveCapabilities() any {
 	fields := make([]any, len(oathRequired))
 	for i, c := range oathRequired {
 		v, err := c.provide()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "oath: this host cannot provide required capability %%s (%%s): %%v\n", c.field, c.kind, err)
-			os.Exit(%d)
+			oathRefuse(fmt.Sprintf("oath: this host cannot provide required capability %%s (%%s): %%v", c.field, c.kind, err))
 		}
 		if v == nil {
-			fmt.Fprintf(os.Stderr, "oath: provider for required capability %%s (%%s) supplied nothing\n", c.field, c.kind)
-			os.Exit(%d)
+			oathRefuse(fmt.Sprintf("oath: provider for required capability %%s (%%s) supplied nothing", c.field, c.kind))
 		}
 		fields[i] = v
 	}
 	return &ctorV{idx: -1, fields: fields}
 }
-`, strings.Join(slots, "\n"), exitCapabilityUnavailable, exitCapabilityUnavailable)
+`, strings.Join(slots, "\n"))
 		caps = "\tvar realWorld any = oathResolveCapabilities()\n"
 		entryCall = fmt.Sprintf("apply(%s(nil, realWorld), %s)", e.fname[prog.EntryHash], entryArg)
 	}
@@ -1187,11 +1347,37 @@ func oathLowerASCII(s string) string {
 }
 
 func main() {
+	// Covers PROVISIONING, which happens in this goroutine before anything is
+	// served — a launch refusal must end the process. It does NOT cover a
+	// request: each one installs its own disposition below, because a remote
+	// party must never be able to end this process (SPEC 14.2).
+	defer oathExitOnRefusal()
 	addr := os.Getenv("OATH_HTTP_ADDR")
 	if addr == "" {
 		addr = ":8080"
 	}
 %s	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// THE REQUEST-SCOPED DISPOSITION OF A REFUSAL, and the reason a refusal
+		// is a travelling value rather than an exit.
+		//
+		// A handler's input is chosen by a remote party, and a well-typed
+		// handler can reach a refusal from it — dividing by a body byte that
+		// arrived as zero is enough. Exiting there would hand that party the
+		// process. SPEC 14.2 already settles the principle for a malformed
+		// request field (400, handler not invoked); this is the same principle
+		// one step later, when the handler WAS invoked and could not complete,
+		// so the answer is 500 and the server keeps serving.
+		//
+		// The line still goes to stderr: the operator needs to see it, and a
+		// 500 with no operand named is the silent failure this repo keeps
+		// finding. A BUG panic is re-raised for net/http to handle as before.
+		defer func() {
+			if msg, ok := oathRefusalOf(recover()); ok {
+				fmt.Fprintln(os.Stderr, msg)
+				http.Error(w, "the handler could not complete this request", 500)
+			}
+		}()
+
 		// SPEC 14.2 row 20: the receipt-time observation is taken BEFORE the body
 		// is consumed. Reading first and stamping after records body-COMPLETION
 		// time, which for a slow or large upload differs from receipt by seconds
@@ -1375,8 +1561,7 @@ func main() {
 	})
 	fmt.Fprintf(os.Stderr, "oath handler listening on %%s\n", addr)
 	if err := http.ListenAndServe(addr, nil); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		oathListenFailed(err)
 	}
 }
 `, caps, entryCall)
@@ -1384,6 +1569,10 @@ func main() {
 	}
 	fmt.Fprintf(&e.b, `
 func main() {
+	// FIRST STATEMENT, so it covers capability provisioning and argv admission
+	// as well as the entry point. A refusal raised before this is installed
+	// would reach the runtime's default panic printer instead of the contract.
+	defer oathExitOnRefusal()
 	var args any = &ctorV{idx: 0} // Nil
 	for i := len(os.Args) - 1; i >= 1; i-- {
 		args = &ctorV{idx: 1, fields: []any{
@@ -1391,7 +1580,7 @@ func main() {
 	}
 %s	out := %s
 	fmt.Println(out.(string))
-	os.Exit(0)
+	oathDone()
 }
 `, caps, entryCall)
 	return e.b.String(), nil
@@ -1650,6 +1839,12 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 		// and Go forbids a type assertion on a non-interface. Found by the LLVM
 		// backend, which compiles such a program correctly; the Go backend refused
 		// to build it at all.
+		// A BUG PANIC, NOT A REFUSAL (#167): the checker requires one arm per
+		// constructor, so a scrutinee whose idx no case matches means the
+		// emitted switch and the datatype disagree. That is this compiler
+		// being wrong, not the host declining something, and it stays a panic
+		// for the reason recorded at oathRefuse — a refusal is a contract with
+		// the supervisor, and a compiler defect must not be reported in it.
 		b.WriteString("\t\t}\n\t\tpanic(\"non-exhaustive\")\n\t})(any(" + s + ").(*ctorV), env)")
 		return b.String(), nil
 	case "record":

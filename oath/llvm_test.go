@@ -200,8 +200,8 @@ func TestLLVMLaunchGate(t *testing.T) {
 	if !ok {
 		t.Fatalf("unexpected failure: %v", err)
 	}
-	if ee.ExitCode() != exitCapabilityUnavailable {
-		t.Fatalf("exit %d, want %d — the two backends must refuse identically", ee.ExitCode(), exitCapabilityUnavailable)
+	if ee.ExitCode() != exitHostRefusal {
+		t.Fatalf("exit %d, want %d — the two backends must refuse identically", ee.ExitCode(), exitHostRefusal)
 	}
 	if len(stdout) != 0 {
 		t.Fatalf("the entry point produced output (%q) despite a failed resolution", stdout)

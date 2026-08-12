@@ -173,12 +173,21 @@ naming the element; neither substitutes, on either stream; the LLVM artifact
 exits 70, names the class too, and prints nothing on stdout; and the four
 messages stay four distinct messages.
 
-**The two backends fail differently and it is not papered over**, the same shape
-as the zero-divisor block: the Go backend panics out of `oathStrCons` and exits
-2, the LLVM artifact exits 70. No specification fixes either, so what is asserted
-of both is what the LANGUAGE determines — construction FAILS and NAMES the
-element — and the exit code is asserted only of the artifact whose own runtime
-fixes it.
+**The two backends failed differently and it was not papered over**, the same
+shape as the zero-divisor block: the Go backend panicked out of `oathStrCons`
+and exited 2, the LLVM artifact exited 70. No specification fixes either, so
+what was asserted of both was what the LANGUAGE determines — construction FAILS
+and NAMES the element — and the exit code was asserted only of the artifact
+whose own runtime fixed it.
+
+**That asymmetry is gone, and this paragraph is why the split was left standing
+here.** Naming the element and naming the STATUS are separate claims, and only
+the first was in this round's scope — widening it would have been momentum. The
+work under #167 gave the Go backend's emitted runtime a single `oathRefuse`
+door: one stderr line, exit 70, no goroutine dump. So the exit code is now
+asserted of both artifacts and the tests above gained that half. What remains
+asymmetric is prose: the LLVM runtime spells out why a zero divisor has no
+answer, the Go line stops at the condition.
 
 **The fail-closed control did not move, and that is the result.** #166 moved it
 three times (`line-count-report` → `line-pair-report` → `int-halved` → the

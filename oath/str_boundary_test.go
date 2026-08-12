@@ -428,10 +428,17 @@ func TestLLVMRefusesMalformedArgvAtIngestion(t *testing.T) {
 //
 // Same discriminator, and it is load-bearing here too: the program returns the
 // head of argv and never steps through it, so go-emit's DECODE guard
-// (oathStrHead, which panics) is never reached and only the INGESTION guard can
-// account for a refusal. A program that matched on the value would pass against
-// either disposition — and the two are not even the same failure: decode panics,
-// while ingestion exits 70 with the argument named.
+// (oathStrHead) is never reached and only the INGESTION guard can account for a
+// refusal. A program that matched on the value would pass against either
+// disposition.
+//
+// WHICH HALF OF THE ASSERTION DISCRIMINATES CHANGED WITH THE #167 WORK, AND THE
+// ASSERTION DID NOT. Decode used to panic and ingestion used to exit 70, so the
+// STATUS alone told them apart; both now refuse through the one door, so the
+// status no longer does and the MESSAGE does — decode says "a Str holds bytes",
+// ingestion names the argument. That distinction was already asserted below
+// (and had to be: a status shared with every other refusal was never enough on
+// its own), so the pair still pins ingestion exactly as tightly as before.
 func TestGoBackendRefusesMalformedArgvAtIngestion(t *testing.T) {
 	st := llvmStore(t)
 	put(t, st, `(defn argecho [] [(args (List Str))] Str
@@ -476,9 +483,10 @@ func TestGoBackendRefusesMalformedArgvAtIngestion(t *testing.T) {
 				"refused on the way IN, not when something happens to decode it", bad.name, out)
 			continue
 		}
-		// 70 specifically, and not merely non-zero: the decode guard is a panic,
-		// so accepting any failure would let this test pass against the
-		// disposition it exists to rule out.
+		// 70 specifically, and not merely non-zero. Since the #167 work this no longer
+		// separates ingestion from decode — both refuse with 70 — but it is
+		// still the artifact's refusal contract, and "any failure" would admit a
+		// crash. The naming assertions below are what place the refusal.
 		if code := cmd.ProcessState.ExitCode(); code != 70 {
 			t.Errorf("%s: refused with exit %d, want 70 — a supervisor should not need to "+
 				"know which backend compiled the artifact", bad.name, code)
@@ -597,9 +605,9 @@ func TestGoBackendRefusesMalformedFileContentsAtIngestion(t *testing.T) {
 				bad.name, out)
 			continue
 		}
-		// 70 specifically. The decode guard on this backend is a PANIC, so
-		// accepting any non-zero exit would admit the disposition this test
-		// exists to rule out.
+		// 70 specifically, and not merely non-zero. Since the #167 work the decode guard
+		// exits 70 too, so what places this refusal at INGESTION is the
+		// path-naming assertion below rather than the status.
 		if code := cmd.ProcessState.ExitCode(); code != 70 {
 			t.Errorf("%s: refused with exit %d, want 70", bad.name, code)
 		}
