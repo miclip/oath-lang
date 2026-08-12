@@ -601,6 +601,11 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   more VALUABLE if delayed    #134, #139/#140, #138, #38 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128,
+                              #116 — the reproducibility premise is MEASURED
+                              and fails; the disposition is recorded. Trigger:
+                              a party that needs to verify an artifact it did
+                              not build. Not an argument that attestation
+                              would be good,
                               #162 — designed, measured, PARKED: it detects what
                               uniform widening cannot, and buys nothing in THIS
                               corpus (survived->killed = 0 over 3,319 mutants).
@@ -617,7 +622,7 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               copies the store from its own checkout, so running
                               it as-is re-measures the OLD corpus and reproduces
                               zero forever, a trigger that can never fire
-  no CLOCK at all             #115, #116, #74, #65, #66, #165 —
+  no CLOCK at all             #115, #168, #74, #65, #66, #165 —
                               open, and neither cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
