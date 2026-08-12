@@ -103,9 +103,9 @@ MUTATES: dict[tuple[str, str], str] = {
 NEEDS_ENV: dict[tuple[str, str], str] = {
     ("conformance", "the webhook application still works end to end (#120)", "66f73ce195e0"):
         "fails on some dev machines and passes in CI; not diagnostic locally",
-    ("conformance", "pin z3 4.16.0 (proof outcomes are solver-version-sensitive, SPEC §10.5)", "d88ebb19e797"):
+    ("conformance", "pin z3 4.16.0 (proof outcomes are solver-version-sensitive, SPEC §10.5)", "947e3becff78"):
         "provisions the runner's z3; the gate itself pins the version it used",
-    ("conformance", "pin z3 4.16.0", "d88ebb19e797"):
+    ("conformance", "pin z3 4.16.0", "947e3becff78"):
         "provisions the runner's z3",
     ("conformance", "six-check conformance (cold prove at the SPEC budget)", "1dc431d452c0"):
         "the 9+ hour cold re-derivation; schedule/dispatch only",

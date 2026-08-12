@@ -208,7 +208,23 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: pin z3 4.16.0 (proof outcomes are solver-version-sensitive, SPEC §10.5)
         run: |
-          curl -sSL -o z3.zip https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip
+          # -f, and RETRIES. Without -f, curl writes an HTTP error page into
+          # z3.zip and exits 0, so a failed download surfaces as "cannot find
+          # zipfile directory" from unzip — a step that cannot tell a transient
+          # outage from a corrupt release. This job has already been red once
+          # for exactly that. The retry is because the failure it hides is
+          # usually transient, and the verify is because -f does not prove the
+          # bytes are the ones this gate pins.
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 \
+               -o z3.zip https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip
+          # A PINNED DIGEST, not a structural check. `unzip -t` validates ZIP
+          # framing and CRCs, which a REPLACED but well-formed asset passes —
+          # and §10.5 makes proof outcomes solver-version-sensitive, so "some
+          # valid zip arrived" is not the claim this step is making. The claim
+          # is that these are the bytes the conformance oracle was derived
+          # against, and only a hash establishes it.
+          echo "7288c49a5bd6dbafd7b0b0d1f65956b91672da24b08f09242919af159be3418e  z3.zip" \
+            | sha256sum -c - || { echo "z3 archive is not the pinned build"; exit 1; }
           unzip -q z3.zip
           echo "$PWD/z3-4.16.0-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
       # The Rust kernel's UN-CORPUS'D normative behaviour is enforced only here. Its
@@ -251,7 +267,23 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: pin z3 4.16.0
         run: |
-          curl -sSL -o z3.zip https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip
+          # -f, and RETRIES. Without -f, curl writes an HTTP error page into
+          # z3.zip and exits 0, so a failed download surfaces as "cannot find
+          # zipfile directory" from unzip — a step that cannot tell a transient
+          # outage from a corrupt release. This job has already been red once
+          # for exactly that. The retry is because the failure it hides is
+          # usually transient, and the verify is because -f does not prove the
+          # bytes are the ones this gate pins.
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 \
+               -o z3.zip https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip
+          # A PINNED DIGEST, not a structural check. `unzip -t` validates ZIP
+          # framing and CRCs, which a REPLACED but well-formed asset passes —
+          # and §10.5 makes proof outcomes solver-version-sensitive, so "some
+          # valid zip arrived" is not the claim this step is making. The claim
+          # is that these are the bytes the conformance oracle was derived
+          # against, and only a hash establishes it.
+          echo "7288c49a5bd6dbafd7b0b0d1f65956b91672da24b08f09242919af159be3418e  z3.zip" \
+            | sha256sum -c - || { echo "z3 archive is not the pinned build"; exit 1; }
           unzip -q z3.zip
           echo "$PWD/z3-4.16.0-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
       - name: six-check conformance (cold prove at the SPEC budget)
