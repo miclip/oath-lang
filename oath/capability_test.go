@@ -200,7 +200,7 @@ func TestRequirementsFollowRecordOrder(t *testing.T) {
 
 	h, _ := st.Resolve("main-two")
 	d, _ := st.GetDef(h)
-	capTy, _, ok := entryShape(st, d.Ty)
+	capTy, _, ok := classifyEntry(st, d.Ty)
 	if !ok {
 		t.Fatal("main-two is not an entry point")
 	}
@@ -357,8 +357,9 @@ func TestEmptyCapabilityRecordIsStillApplied(t *testing.T) {
 	if err != nil {
 		t.Fatalf("planProgram: %v", err)
 	}
-	if prog.CapTy == nil {
-		t.Fatal("an empty capability record must still be a capability record")
+	if prog.Shape != shapeCLICaps {
+		t.Fatalf("shape = %s, want %s: an empty capability record must still be a capability record",
+			prog.Shape, shapeCLICaps)
 	}
 	if len(prog.Requirements) != 0 {
 		t.Fatalf("requirements = %v, want none", prog.Requirements)
@@ -397,8 +398,8 @@ func TestHandlerDoesNotCarryTheOutboundClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("planProgram: %v", err)
 	}
-	if prog.Protocol != entryHandler {
-		t.Fatalf("hnd was classified as %s, not a handler", entryProtocolName(prog.Protocol))
+	if prog.Shape != shapeHandlerCaps {
+		t.Fatalf("hnd was classified as %s, not a capability-first handler", prog.Shape)
 	}
 	src, err := emitProgram(st, prog)
 	if err != nil {

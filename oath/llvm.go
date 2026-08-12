@@ -1776,6 +1776,82 @@ declare ptr @o_cap_readfile(ptr)
 declare ptr @o_cap_emit(ptr)
 `
 
+// ---------- this backend's answer for each entry shape ----------
+
+// llvmEntry is the LLVM backend's DECISION for one EntryShape.
+//
+// A REFUSAL IS A CASE. This backend covers a subset, and the shapes it declines
+// are written into the same table as the ones it lowers — so declining is
+// something the table says rather than something an early `if` in emitLLVM
+// remembers to do. That is what makes every consumer of the shape refuse
+// consistently: listCtorIndices cannot walk an entry type this backend never
+// agreed to compile, because asking for the shape is what surfaces the refusal.
+type llvmEntry struct {
+	// shape is the case this row decides, and it must equal the row's own index.
+	// The array's LENGTH is checked by the compiler; this is what makes a row
+	// left at its zero value in the middle of the table detectable. It matters
+	// more here than in the Go backend, because llvmEntry's zero value is a
+	// LEGITIMATE row — it is exactly the plain CLI answer — so a hole would
+	// otherwise be indistinguishable from a decision.
+	shape EntryShape
+
+	// refuse, when non-nil, CONSTRUCTS this backend's refusal of the shape. The
+	// remaining fields are then unreachable, because llvmEntryFor turns the row
+	// into an error rather than a case.
+	//
+	// It is a constructor rather than a stored refusalReason so that the reason
+	// constant appears literally at the construction site: the refusal
+	// vocabulary is closed by tracing assignments to declared constants
+	// (TestEveryRefusalUsesADeclaredReason), and a reason carried through a
+	// struct field is not traceable — correctly, since a computed reason is not
+	// vocabulary.
+	refuse func() error
+
+	// caps: resolve a capability record and apply it before the argv argument.
+	caps bool
+	// argvDepth is how many leading arrows to step past in the entry's TYPE
+	// before reaching the parameter argv is built for. A capability-first entry
+	// is (-> {caps} (-> (List Str) Str)), so its argv parameter is one arrow in.
+	argvDepth int
+}
+
+// llvmRefuseHandler is this backend's refusal of both handler shapes. Shared,
+// because the reason is the same fact about this runtime in both cases — the
+// capability record a handler may take changes nothing about it.
+func llvmRefuseHandler() error {
+	return llvmUnsupported(reasonHandlerProtocol, "the handler protocol\n"+
+		"  A handler is long-running, and this runtime never frees memory — it would\n"+
+		"  leak per request. That is a property of this slice's runtime, not of the\n"+
+		"  protocol")
+}
+
+var llvmEntries = [...]llvmEntry{
+	shapeCLI:         {shape: shapeCLI, caps: false, argvDepth: 0},
+	shapeCLICaps:     {shape: shapeCLICaps, caps: true, argvDepth: 1},
+	shapeHandler:     {shape: shapeHandler, refuse: llvmRefuseHandler},
+	shapeHandlerCaps: {shape: shapeHandlerCaps, refuse: llvmRefuseHandler},
+}
+
+// EXHAUSTIVENESS, at compile time. Adding a shape to the variant makes this a
+// type error here, in the LLVM backend, independently of the Go backend's own
+// assertion — two backends, two failures, neither derived from the other.
+var _ entryShapeTable = [len(llvmEntries)]struct{}{}
+
+// llvmEntryFor is the ONE way this backend learns an entry's shape. It reports
+// an undecided shape and a declined one as errors of the appropriate kinds — an
+// undecided shape is a defect in this backend, a declined one is this backend's
+// subset boundary and carries a typed refusal reason (#134).
+func llvmEntryFor(prog *CompiledProgram) (llvmEntry, error) {
+	ent, err := entryShapeCase("the LLVM backend", &llvmEntries, prog.Shape)
+	if err != nil {
+		return llvmEntry{}, err
+	}
+	if ent.refuse != nil {
+		return llvmEntry{}, ent.refuse()
+	}
+	return ent, nil
+}
+
 // listCtorIndices reports the constructor indices of Nil and Cons for the List
 // datatype the entry's argument uses.
 //
@@ -1785,17 +1861,32 @@ declare ptr @o_cap_emit(ptr)
 // failure would be a program that reverses its own arguments, which no type error
 // catches.
 func listCtorIndices(st *Store, prog *CompiledProgram) (nil_, cons int, err error) {
+	// The shape decides where argv is, and whether this backend lowers the entry
+	// at all — asked BEFORE the store, so a declined shape is refused as a subset
+	// boundary rather than reported as whatever the type walk happens to trip on.
+	//
+	// The depth comes from the shape rather than from the capability record's
+	// nil-ness so that this walk and the capability construction below cannot
+	// disagree about where argv is: they read one fact.
+	ent, err := llvmEntryFor(prog)
+	if err != nil {
+		return 0, 0, err
+	}
 	d, err := st.GetDef(prog.EntryHash)
 	if err != nil {
 		return 0, 0, err
 	}
-	// Walk to the argv parameter: past the capability record when the entry takes
-	// one. Resolving the NAME "List" instead would read the CURRENT binding, and a
-	// store that has since rebound List would hand this program constructor
-	// indices for a different datatype — argv silently reversed, or arms selected
-	// wrongly, with no type error anywhere.
+	// Walk to the argv parameter, by the DEPTH THE SHAPE STATES — past the
+	// capability record when the entry takes one. Resolving the NAME "List"
+	// instead would read the CURRENT binding, and a store that has since rebound
+	// List would hand this program constructor indices for a different datatype —
+	// argv silently reversed, or arms selected wrongly, with no type error
+	// anywhere.
 	ty := d.Ty
-	if prog.CapTy != nil {
+	for i := 0; i < ent.argvDepth; i++ {
+		if ty == nil || ty.K != "fun" {
+			return 0, 0, fmt.Errorf("entry is not %s: it has fewer than %d leading arrows", prog.Shape, ent.argvDepth+1)
+		}
 		ty = ty.B
 	}
 	if ty == nil || ty.A == nil || ty.A.K != "data" {
@@ -1844,11 +1935,12 @@ func listCtorIndices(st *Store, prog *CompiledProgram) (nil_, cons int, err erro
 
 // emitLLVM lowers a compiled program to textual LLVM IR.
 func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
-	if prog.Protocol == entryHandler {
-		return "", llvmUnsupported(reasonHandlerProtocol, "the handler protocol\n"+
-			"  A handler is long-running, and this runtime never frees memory — it would\n"+
-			"  leak per request. That is a property of this slice's runtime, not of the\n"+
-			"  protocol")
+	// The shape decides everything about the entry's interface, including whether
+	// this backend lowers it at all. Asked first, so a declined shape refuses
+	// before the artifact is stamped.
+	ent, err := llvmEntryFor(prog)
+	if err != nil {
+		return "", err
 	}
 	if err := prog.stampBackend(llvmBackendVersion); err != nil {
 		return "", err
@@ -1897,13 +1989,13 @@ func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 
 	// The capability boundary: authority enters exactly once, here.
 	e.b = strings.Builder{}
-	// Keyed on the RECORD, not the requirement count. An entry typed
+	// Keyed on the SHAPE, not the requirement count. An entry typed
 	// (-> {} (-> (List Str) Str)) requires nothing and still TAKES a capability
 	// argument: its arity comes from its type. The Go backend had this exact bug
 	// and it is no less wrong here — argv would be passed where the record belongs
 	// and the program would print a closure.
 	var caps string
-	if prog.CapTy != nil {
+	if ent.caps {
 		e.label("entry")
 		arr := e.next()
 		fmt.Fprintf(&e.b, "  %s = call ptr @o_fields(i32 %d)\n", arr, len(prog.Requirements))
@@ -1938,7 +2030,7 @@ func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 	fmt.Fprintf(&e.b, "  call void @o_keep(ptr @oath_provenance)\n")
 	entry := e.fname[prog.EntryHash]
 	out := e.next()
-	if prog.CapTy != nil {
+	if ent.caps {
 		c := e.next()
 		fmt.Fprintf(&e.b, "  %s = call ptr @o_resolve_caps()\n", c)
 		inner := e.next()

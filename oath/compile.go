@@ -379,16 +379,6 @@ func (e *emitter) resolveNativeContainers() {
 	}
 }
 
-// goImports computes the import set for one program: the fixed runtime support,
-// plus whatever the ingress protocol and the DECLARED REQUIREMENTS need.
-//
-// The requirement-driven part is load-bearing rather than cosmetic. #114's
-// acceptance test asks for a program verified to receive only capability A,
-// launched in a host that possesses A and B, that cannot observe or invoke B. The
-// strongest available answer is that B is not in the binary: a program requiring
-// only `env` links no HTTP client, so there is no reachable code path to an
-// outbound request, whatever the host is capable of. A fixed import list made that
-// claim untrue for every program ever built by this compiler.
 // checkValueBindings refuses a program whose required values would collide in
 // this backend's host bindings.
 //
@@ -425,7 +415,66 @@ func checkValueBindings(prog *CompiledProgram) error {
 	return nil
 }
 
-func goImports(prog *CompiledProgram) []string {
+// ---------- this backend's answer for each entry shape ----------
+
+// goEntry is the Go backend's DECISION for one EntryShape: what main binds the
+// entry's own input to, whether authority is resolved and applied first, which
+// main is emitted, and what the PROTOCOL alone costs in imports.
+//
+// It is a table rather than a chain of conditionals so that the decision is
+// per-shape and total. Adding a shape to the variant does not silently inherit
+// the CLI answers here; it fails to build until this table says what the new
+// shape means to Go.
+type goEntry struct {
+	// shape is the case this row decides, and it must equal the row's own index.
+	// The array's LENGTH is checked by the compiler; this is what makes a row
+	// left at its zero value in the middle of the table detectable, which length
+	// alone cannot see. See TestShapeTablesAreIndexedByShape.
+	shape EntryShape
+
+	arg     string   // what main binds the entry's own input to
+	caps    bool     // resolve the capability record and apply it before the input
+	handler bool     // emit the HTTP adapter rather than the argv main
+	imports []string // imports the PROTOCOL needs; capability imports are separate
+}
+
+// goHandlerImports is what serving costs. It is protocol-driven and NOT
+// authority: the host owns the socket, so net/http appears here for a handler
+// and never implies the outbound client — see goImportKeepalive.
+var goHandlerImports = []string{"net/http", "io", "time"}
+
+var goEntries = [...]goEntry{
+	shapeCLI:         {shape: shapeCLI, arg: "args", caps: false, handler: false},
+	shapeCLICaps:     {shape: shapeCLICaps, arg: "args", caps: true, handler: false},
+	shapeHandler:     {shape: shapeHandler, arg: "req", caps: false, handler: true, imports: goHandlerImports},
+	shapeHandlerCaps: {shape: shapeHandlerCaps, arg: "req", caps: true, handler: true, imports: goHandlerImports},
+}
+
+// EXHAUSTIVENESS, at compile time. Adding a shape to the variant makes this a
+// type error here, in the Go backend, before any test runs — which is the whole
+// claim: a new entry protocol cannot be introduced without this backend saying
+// what it means.
+var _ entryShapeTable = [len(goEntries)]struct{}{}
+
+func goEntryFor(prog *CompiledProgram) (goEntry, error) {
+	return entryShapeCase("the Go backend", &goEntries, prog.Shape)
+}
+
+// goImports computes the import set for one program: the fixed runtime support,
+// plus whatever the ingress protocol and the DECLARED REQUIREMENTS need.
+//
+// The requirement-driven part is load-bearing rather than cosmetic. #114's
+// acceptance test asks for a program verified to receive only capability A,
+// launched in a host that possesses A and B, that cannot observe or invoke B. The
+// strongest available answer is that B is not in the binary: a program requiring
+// only `env` links no HTTP client, so there is no reachable code path to an
+// outbound request, whatever the host is capable of. A fixed import list made that
+// claim untrue for every program ever built by this compiler.
+//
+// It resolves the shape itself rather than being handed the answer, so the
+// import set is a consumer of the variant in its own right: a shape this backend
+// has no case for cannot produce an import list at all.
+func goImports(prog *CompiledProgram) ([]string, error) {
 	// Always present: the type-erased value representation and the numeric,
 	// string and container helpers every emitted program carries.
 	need := map[string]bool{
@@ -433,10 +482,12 @@ func goImports(prog *CompiledProgram) []string {
 		"crypto/hmac": true, "crypto/sha256": true, "crypto/subtle": true,
 		"os": true, "sort": true, "unicode/utf8": true,
 	}
-	if prog.Protocol == entryHandler {
-		// The host owns the socket: serving is the ingress protocol, not a
-		// capability the program holds. See entryKind.
-		need["net/http"], need["io"], need["time"] = true, true, true
+	ent, err := goEntryFor(prog)
+	if err != nil {
+		return nil, err
+	}
+	for _, imp := range ent.imports {
+		need[imp] = true
 	}
 	for _, r := range prog.Requirements {
 		if p, ok := goProviders[r.Kind]; ok {
@@ -450,7 +501,7 @@ func goImports(prog *CompiledProgram) []string {
 		out = append(out, imp)
 	}
 	sort.Strings(out)
-	return out
+	return out, nil
 }
 
 // goImportKeepalive names one symbol per ALWAYS-PRESENT import that the fixed
@@ -480,6 +531,14 @@ func emitProgram(st *Store, prog *CompiledProgram) (string, error) {
 	if err := checkValueBindings(prog); err != nil {
 		return "", err
 	}
+	// The entry's shape, decided once and consulted wherever the shape matters.
+	// Resolved BEFORE anything is emitted: a shape this backend has no case for
+	// must stop the build rather than reach the point where some conditional
+	// quietly takes its else branch.
+	ent, err := goEntryFor(prog)
+	if err != nil {
+		return "", err
+	}
 	// This backend claims the artifact. Done before anything is emitted so an
 	// incomplete record stops the build rather than reaching a binary.
 	if err := prog.stampBackend(goBackendVersion); err != nil {
@@ -505,7 +564,10 @@ func emitProgram(st *Store, prog *CompiledProgram) (string, error) {
 	e.b.WriteString("// Generated by oath build — do not edit.\n")
 	e.b.WriteString("// Values: int64 | bool | string | *closure | *ctorV (type-erased).\n")
 	e.b.WriteString("package main\n\nimport (\n")
-	imports := goImports(prog)
+	imports, err := goImports(prog)
+	if err != nil {
+		return "", err
+	}
 	for _, imp := range imports {
 		fmt.Fprintf(&e.b, "\t%q\n", imp)
 	}
@@ -936,18 +998,15 @@ func init() { oathProvenanceKeep = append(oathProvenanceKeep, oathProvenance) }
 	// everything below received it as an ordinary argument and was verified
 	// against all simulated worlds before the real one arrived.
 	caps := ""
-	entryArg := "args"
-	if prog.Protocol == entryHandler {
-		entryArg = "req"
-	}
+	entryArg := ent.arg
 	entryCall := fmt.Sprintf("%s(nil, %s)", e.fname[prog.EntryHash], entryArg)
-	// Keyed on the RECORD, not on the requirement count. An entry typed
+	// Keyed on the SHAPE, not on the requirement count. An entry typed
 	// (-> {} (-> (List Str) Str)) requires nothing and still takes a capability
 	// argument: its arity comes from its type, and skipping the record would pass
 	// argv where the record belongs and hand the caller a closure to assert a
 	// string on. "Requires nothing" is a statement about authority; "takes no
 	// argument" is a statement about shape, and they are not the same statement.
-	if prog.CapTy != nil {
+	if ent.caps {
 		var slots []string
 		for i, r := range prog.Requirements {
 			slots = append(slots, fmt.Sprintf("\t{field: %q, kind: %q, provide: %s},",
@@ -1034,7 +1093,7 @@ func oathResolveCapabilities() any {
 		caps = "\tvar realWorld any = oathResolveCapabilities()\n"
 		entryCall = fmt.Sprintf("apply(%s(nil, realWorld), %s)", e.fname[prog.EntryHash], entryArg)
 	}
-	if prog.Protocol == entryHandler {
+	if ent.handler {
 		// HANDLER protocol (#78). The host owns the socket, TLS, routing and
 		// process lifecycle; the artifact is a pure function from a Request
 		// VALUE to a Response value. This adapter is the whole irreversible

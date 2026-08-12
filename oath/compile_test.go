@@ -332,7 +332,7 @@ func codegenPlan(t *testing.T, st *Store, name string) *CompiledProgram {
 	if err != nil {
 		t.Fatal(err)
 	}
-	capTy, kind, ok := entryShape(st, d.Ty)
+	capTy, shape, ok := classifyEntry(st, d.Ty)
 	if !ok {
 		t.Fatalf("%s is not an entry point: %s", name, debugTy(d.Ty))
 	}
@@ -348,15 +348,19 @@ func codegenPlan(t *testing.T, st *Store, name string) *CompiledProgram {
 	if err != nil {
 		t.Fatal(err)
 	}
+	protocol, err := entryProtocolName(shape)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Backend is left unset: only a backend may claim an artifact, and
 	// emitProgram stamps it. See TestProvenanceDigestIsStable.
 	return &CompiledProgram{
-		Entry: name, EntryHash: h, Protocol: kind, CapTy: capTy,
+		Entry: name, EntryHash: h, Shape: shape,
 		Requirements: reqs, Closure: closure,
 		Provenance: ProvenanceManifest{
 			Schema: provenanceSchema, Entry: name, EntryHash: h,
 			EntryType: printTy(st, d.Ty, m.TyVarNames),
-			Protocol:  entryProtocolName(kind), Guarantee: "asserted",
+			Protocol:  protocol, Guarantee: "asserted",
 			Requirements: reqs, Closure: closure,
 			Kernel: kernelVersion,
 		},

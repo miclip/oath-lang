@@ -60,9 +60,15 @@ const provenanceSchema = "oath-provenance/1"
 // file named "the Go backend" leaves the boundary true in substance and soft in
 // structure, which is exactly the shape a second backend would trip over.
 
-// entryKind distinguishes the two entry PROTOCOLS. A CLI entry is invoked once
-// with argv and returns stdout; a HANDLER is invoked per request by the host and
-// returns a response (#78).
+// EntryShape is the WHOLE of what a backend must know about an entry point's
+// interface: which PROTOCOL it speaks and whether it takes a leading capability
+// record. It is one variant rather than two independent facts because the two
+// were previously read from two different places — `Protocol` for the protocol
+// and `CapTy != nil` for the arity — and a *Ty consulted for its nil-ness is a
+// TYPE being used as a flag. That works exactly until something else wants to
+// know the arity and reads the requirement count instead, which is the bug both
+// backends carry a comment about: an entry typed (-> {} (-> (List Str) Str))
+// requires nothing and still takes a capability argument.
 //
 // Ingress is deliberately a protocol rather than a capability. A capability is
 // outbound authority the program HOLDS and may misuse — hence the confinement
@@ -71,37 +77,138 @@ const provenanceSchema = "oath-provenance/1"
 // So a handler needs no new capability, and inherits confinement checking,
 // verification against every generated request, and the refusal-to-wire gates
 // exactly as the CLI protocols do.
-type entryKind int
+//
+// THE POINT OF NAMING THE COMBINATIONS rather than carrying a protocol and a
+// bool: a backend cannot answer for a shape by accident. Every shape-keyed
+// decision is a TABLE INDEXED BY THE VARIANT whose length the compiler checks
+// against numEntryShapes, so adding a fifth shape here fails to COMPILE in every
+// backend until each one says what the new shape means — including saying it
+// refuses it. Neither backend can be extended by inference.
+type EntryShape int
 
 const (
-	entryCLI entryKind = iota
-	entryHandler
+	shapeCLI EntryShape = iota
+	shapeCLICaps
+	shapeHandler
+	shapeHandlerCaps
+
+	// numEntryShapes is the TERMINAL SENTINEL and the single authority on the
+	// variant's size. It must stay last: a shape declared after it would not be
+	// counted, and every coverage check here is measured against this number.
+	//
+	// It exists because the alternative — a hand-written list of the shapes —
+	// is itself a place a new shape can be omitted, and omitting it there leaves
+	// every "does this table decide every shape?" check passing while measuring
+	// a universe smaller than the variant. A count the compiler derives from the
+	// iota block cannot be forgotten, which a list can.
+	numEntryShapes
 )
 
-// entryShape classifies an entry type, returning the capability record (nil if
-// the entry takes none), which protocol it speaks, and whether it is an entry at
-// all. Recognized:
+// entryShapes is the variant's universe, DERIVED from the sentinel rather than
+// written out. Used where iteration reads better than an index loop; it is not
+// an independent authority and cannot disagree with numEntryShapes.
+func entryShapes() []EntryShape {
+	out := make([]EntryShape, 0, numEntryShapes)
+	for s := EntryShape(0); s < numEntryShapes; s++ {
+		out = append(out, s)
+	}
+	return out
+}
+
+// shapeNames renders the variant for messages. Like every shape-keyed table it
+// is indexed by the variant and length-checked below, so a shape added without a
+// name fails to compile rather than printing as a bare integer at the moment
+// someone is trying to read an error about it.
+var shapeNames = [...]string{
+	shapeCLI:         "cli",
+	shapeCLICaps:     "cli-with-capabilities",
+	shapeHandler:     "handler",
+	shapeHandlerCaps: "handler-with-capabilities",
+}
+
+// entryShapeTable is the COMPILE-TIME exhaustiveness assertion every shape-keyed
+// table declares against its own length:
 //
-//	(-> (List Str) Str)             CLI
-//	(-> {caps} (-> (List Str) Str)) CLI, capability-first
-//	(-> Request Response)           handler
-//	(-> {caps} (-> Request Response)) handler, capability-first
-func entryShape(st *Store, t *Ty) (*Ty, entryKind, bool) {
+//	var _ entryShapeTable = [len(myTable)]struct{}{}
+//
+// Two array types are identical only when their lengths are, so a table with a
+// row missing — or a stale table carrying one too many — is a TYPE ERROR at the
+// declaration, in the file that owns the decision. No test has to run, no build
+// has to reach the missing case, and nothing has to remember to look. The
+// assertion names this type, so the compiler's message names the obligation.
+//
+// This is why the tables are `[...]T{shapeX: …}` arrays rather than maps. A map's
+// totality is a run-time property at best: a map missing a row answers with the
+// zero value, which for a backend means silently doing whatever its zero row
+// happens to say, at the first build that reaches the missing case.
+//
+// THE RESIDUAL GAP, stated because a length check is not a coverage check: a
+// table can reach the right LENGTH while leaving a MIDDLE index at its zero
+// value, and for at least one row the zero value is a legitimate answer, so it
+// cannot be rejected on sight. Each table therefore also names the shape each row
+// decides, checked position-by-position — see TestShapeTablesAreIndexedByShape.
+// The length is the compile-time half and the index check is the run-time half;
+// neither subsumes the other.
+type entryShapeTable = [numEntryShapes]struct{}
+
+var _ entryShapeTable = [len(shapeNames)]struct{}{}
+
+// String never fails, because a renderer that can fail is unusable inside the
+// error messages that report the failure. Coverage of shapeNames is a compile
+// error; this fallback is for a value outside the variant, which is a runtime
+// possibility because EntryShape is an integer type.
+func (s EntryShape) String() string {
+	if s < 0 || int(s) >= len(shapeNames) {
+		return fmt.Sprintf("entry-shape-%d", int(s))
+	}
+	return shapeNames[s]
+}
+
+// entryShapeCase selects one shape's case from a table that is TOTAL BY
+// CONSTRUCTION — the compiler has already established that, at the table's
+// declaration, so nothing is checked here about coverage.
+//
+// What remains is the one thing the compiler cannot establish: EntryShape is an
+// integer type, so a value outside the variant can be constructed and reach an
+// index. That is rejected rather than allowed to index out of range, because a
+// panic in a build reads as a compiler crash rather than as a program this
+// backend has no case for.
+func entryShapeCase[T any](owner string, table *[numEntryShapes]T, s EntryShape) (T, error) {
+	if s < 0 || s >= numEntryShapes {
+		var zero T
+		return zero, fmt.Errorf("%s was asked for %s, which is not an entry shape this build defines", owner, s)
+	}
+	return table[s], nil
+}
+
+// classifyEntry classifies an entry type, returning the capability record (nil if
+// the entry takes none), its shape, and whether it is an entry at all.
+// Recognized, one per shape:
+//
+//	(-> (List Str) Str)               shapeCLI
+//	(-> {caps} (-> (List Str) Str))   shapeCLICaps
+//	(-> Request Response)             shapeHandler
+//	(-> {caps} (-> Request Response)) shapeHandlerCaps
+//
+// The record type is returned for entryRequirements to read; it is deliberately
+// NOT carried on CompiledProgram, because a backend holding it would read its
+// nil-ness for the arity and the shape would stop being the single answer.
+func classifyEntry(st *Store, t *Ty) (*Ty, EntryShape, bool) {
 	if isPureEntry(st, t) {
-		return nil, entryCLI, true
+		return nil, shapeCLI, true
 	}
 	if isHandlerEntry(st, t) {
-		return nil, entryHandler, true
+		return nil, shapeHandler, true
 	}
 	if t != nil && t.K == "fun" && t.A != nil && t.A.K == "record" {
 		if isPureEntry(st, t.B) {
-			return t.A, entryCLI, true
+			return t.A, shapeCLICaps, true
 		}
 		if isHandlerEntry(st, t.B) {
-			return t.A, entryHandler, true
+			return t.A, shapeHandlerCaps, true
 		}
 	}
-	return nil, entryCLI, false
+	return nil, shapeCLI, false
 }
 
 // isHandlerEntry recognizes (-> Request Response) by the STRUCTURE of the two
@@ -360,14 +467,35 @@ func knownCapabilityFields() []string {
 
 // ---------- the compiled program ----------
 
-// entryProtocolName renders an entryKind for the manifest. The manifest is read
-// by things that are not this program, so the protocol is a word rather than an
-// integer whose meaning lives in a Go const block.
-func entryProtocolName(k entryKind) string {
-	if k == entryHandler {
-		return "handler"
-	}
-	return "cli"
+// entryProtocolNames maps each shape to the word the MANIFEST uses. The manifest
+// is read by things that are not this program, so the protocol is a word rather
+// than an integer whose meaning lives in a Go const block.
+//
+// TWO SHAPES SHARE ONE WORD, AND THE ARITY IS THEREFORE NOT IN THE MANIFEST AT
+// ALL. An earlier version of this comment said the reader recovers the arity
+// from `requirements`; that is FALSE, and an entry typed
+// (-> {} (-> (List Str) Str)) is the counterexample — it requires nothing, so
+// `requirements` is `[]`, and it still takes a capability record. The record's
+// presence and its CONTENTS are independent facts, which is the same confusion
+// this variant exists to remove, reappearing one layer up in the record that
+// describes the build.
+//
+// It is left out rather than added because the manifest describes the ARTIFACT,
+// and the arity is a fact about how a backend calls it; `entry_type` already
+// carries the entry's full type, from which the arity is genuinely recoverable.
+// Making the protocol word a table rather than an `if` is what stops a new
+// protocol from silently being recorded as "cli".
+var entryProtocolNames = [...]string{
+	shapeCLI:         "cli",
+	shapeCLICaps:     "cli",
+	shapeHandler:     "handler",
+	shapeHandlerCaps: "handler",
+}
+
+var _ entryShapeTable = [len(entryProtocolNames)]struct{}{}
+
+func entryProtocolName(s EntryShape) (string, error) {
+	return entryShapeCase("the provenance manifest", &entryProtocolNames, s)
 }
 
 // CompiledProgram is the backend-neutral description of one artifact: what it is,
@@ -383,12 +511,18 @@ func entryProtocolName(k entryKind) string {
 // each is resolved into exactly one record slot, and the record is applied to the
 // entry a single time at the boundary. "Or it does not start" is the part that was
 // missing — see the resolution preamble the Go backend emits.
+// Shape is the ONLY statement of the entry's interface. The capability record
+// TYPE is deliberately absent: it was here, and every backend read it as
+// `CapTy != nil` to decide arity — a type consulted as a flag, alongside a
+// separate `Protocol` field for the protocol, so one interface was two facts a
+// backend could combine wrongly. Requirements answers what authority is demanded
+// and answers nothing about shape; len(Requirements) == 0 is true of an entry
+// typed (-> {} (-> (List Str) Str)), which still takes the record.
 type CompiledProgram struct {
 	Entry        string                  // resolved name, as asked for
 	EntryHash    string                  // the def hash — the artifact's identity
-	Protocol     entryKind               // CLI or handler ingress
-	CapTy        *Ty                     // the capability record type, or nil
-	Requirements []CapabilityRequirement // derived from CapTy; the authority demand
+	Shape        EntryShape              // the entry's protocol AND arity, as one fact
+	Requirements []CapabilityRequirement // derived from the capability record; the authority demand
 	Closure      []string                // every def hash the artifact depends on, sorted
 	Provenance   ProvenanceManifest
 }
@@ -800,10 +934,14 @@ func planProgram(st *Store, name string) (*CompiledProgram, error) {
 		return nil, fmt.Errorf("%s has no verified properties — swear and verify an oath before building", name)
 	}
 
-	capTy, kind, ok := entryShape(st, d.Ty)
+	capTy, shape, ok := classifyEntry(st, d.Ty)
 	if !ok {
 		return nil, fmt.Errorf("%s : %s — entry protocol requires (-> (List Str) Str), (-> Request Response), or either with a leading {caps} record",
 			name, debugTy(d.Ty))
+	}
+	protocol, err := entryProtocolName(shape)
+	if err != nil {
+		return nil, err
 	}
 	reqs, err := entryRequirements(st, capTy)
 	if err != nil {
@@ -823,8 +961,7 @@ func planProgram(st *Store, name string) (*CompiledProgram, error) {
 	prog := &CompiledProgram{
 		Entry:        name,
 		EntryHash:    h,
-		Protocol:     kind,
-		CapTy:        capTy,
+		Shape:        shape,
 		Requirements: reqs,
 		Closure:      closure,
 		Provenance: ProvenanceManifest{
@@ -832,7 +969,7 @@ func planProgram(st *Store, name string) (*CompiledProgram, error) {
 			Entry:        name,
 			EntryHash:    h,
 			EntryType:    printTy(st, d.Ty, m.TyVarNames),
-			Protocol:     entryProtocolName(kind),
+			Protocol:     protocol,
 			Guarantee:    guaranteeString(m.Guarantee),
 			Requirements: reqs,
 			Closure:      closure,
