@@ -254,9 +254,14 @@ perfectly reproducible build. So the controls run first and are asserted:
 - **Identity** — an untouched `cp` of each artifact must compare *identical*.
 - **Detection** — a flipped byte and an appended byte must each compare
   *different*, in both backends, and must each fail `codesign --verify --strict`.
+- **The reader is unaffected** — each mutant's manifest must still read (exit 0)
+  and be byte-identical to the unmutated artifact's.
+- **The flip is placed** outside the embedded provenance record, asserted rather
+  than assumed, so the row above cannot fail because the reader worked.
 
-Both directions are needed: identity alone is satisfied by a comparison that
-never reports a difference, detection alone by one that always does.
+The first two directions are both needed: identity alone is satisfied by a
+comparison that never reports a difference, detection alone by one that always
+does.
 
 **Every assertion class was verified by fault injection**, in a temporary copy
 run from the real directory and deleted afterwards — not by reading it:
@@ -266,6 +271,22 @@ run from the real directory and deleted afterwards — not by reading it:
 | mutator made a no-op | detection checks fail, identity still passes | exit 8, exactly those 8 checks failed |
 | `gamma` overwritten with `alpha` | filename check fails | exit 4, both backends' rows failed |
 | identity copy corrupted | identity check fails | (same run) both backends' rows failed |
+| flip aimed **into** the provenance record | placement check fails, and the reader-integrity checks fail with it | exit 6: both backends' placement rows, plus both `manifest is still READ` and both byte-identity rows |
+
+The last row covers both newer control classes at once, and its second half is
+the point rather than a side effect. With the flip inside the record the reader
+**refuses** the artifact — measured directly:
+
+```
+$ oath provenance <artifact with one byte flipped inside the record>
+error: ...: no Oath provenance found          # exit 1
+```
+
+which is #114's documented reader behaviour for a record that is no longer
+valid. The reader-integrity checks then fail **because the reader worked
+correctly**, not because it degraded. That is exactly the misreading the
+placement control exists to prevent, and it is why the two are asserted
+together.
 
 The filename rows were rewritten after that injection run, so their fault
 injection is the rewrite itself: asserting the identifier against the basename
@@ -375,3 +396,193 @@ defect.
 hide the others.** While emission order varies, no measurement of causes 2 or 3
 is stable enough to confirm its own repair — which is how this record's first
 draft attributed cause 3 to a backend that does not have it.
+
+## A design disposition (NON-NORMATIVE)
+
+**This decides nothing and specifies nothing.** It is not SPEC text, no code
+implements it, and any of it may be overturned by the SPEC update and blind
+round that a real wire format would require. It is here because the
+measurements above bear on #116's four open questions, and leaving them
+unanswered would waste the evidence — a starting position that can be argued
+with beats four questions that have to be re-derived from scratch.
+
+Where a disposition rests on something measured in this record, the measurement
+is named. Where it rests on judgement, it says so.
+
+### 1. Where does the signature live? — a DETACHED attestation, first
+
+The issue lists three candidates. Two are excluded on grounds this experiment
+can state, and the third is chosen with its weakness named rather than waved
+past.
+
+**Appending to a FINISHED artifact is ruled out by measurement**, and the
+qualifier is doing real work. What was measured is a byte appended *after* the
+linker applied its ad-hoc signature: it fails `codesign --verify --strict` on
+both backends *and the artifact still runs normally* (§What the host signature
+does). That is the worst available combination — the platform rejects it, the
+loader accepts it, so the failure surfaces at distribution time on someone
+else's machine rather than at build time on yours.
+
+**That does not rule out appended attestations in general**, and this record
+does not claim it does. An attestation written into the image *before* final
+signing, or followed by re-signing, was not measured and would not obviously
+fail; nor does the constraint necessarily exist on ELF at all. What the
+measurement excludes is the cheap version — attaching an attestation to an
+artifact that is already built and signed — which is the shape a detached format
+would most naturally be converted into. Ruling the general case in or out needs
+a build-integrated experiment nobody has run.
+
+**A registry record is excluded on scope, not on merit.** It would make
+attestation require PUBLICATION — an artifact built locally, or built in CI and
+never put, could not be attested at all. That inverts the relationship #114
+established, where `oath provenance` reads an artifact without opening a store.
+A registry record is a good *additional* home for an attestation and a bad
+*only* home.
+
+**So: a detached attestation, and its known weakness is separation.** Precisely:
+because the attestation names the artifact digest, a MISMATCHED pair is
+detectable — the digest simply will not match the bytes. What is not detectable
+is a REMOVED attestation, which downgrades the artifact to "unsigned" rather
+than to "tampered". That is not fatal, and it is exactly why question 3's answer
+matters: if verification is a distinct act that fails closed, "unsigned" is a
+refusal at the point where someone demanded attestation, not a silent pass.
+
+### 2. Who signs? — the BUILDER, as an existing Ed25519 principal
+
+**This is a TRUST-POLICY judgement, not something the measurements force**, and
+the distinction is worth stating because the obvious argument for it does not
+work. Timing only establishes that nobody can sign *before* the link step: the
+digest is taken of the finished binary, which is the same self-reference the
+issue identifies as the reason the signature must be external. It does **not**
+single out the builder, because once the attestation is detached, every party
+that receives the binary — the publisher included — possesses the bytes and
+could produce the first signature.
+
+What actually selects the builder is a policy choice about what the signature
+should MEAN: *this principal ran this build and vouches that these bytes came
+out of it*. That is a claim only the builder is in a position to make honestly.
+A publisher signature would mean something weaker and still useful — *this
+principal is distributing these bytes* — and the two are different assertions
+rather than competing candidates for one slot.
+
+The principal model already exists and needs no new cryptography: Ed25519
+signatures, `oath keygen`, a principal IS a keypair (SPEC §8.4), KMS-held keys
+in CI. Reusing it keeps attestation inside the trust model rather than beside
+it.
+
+**Publisher and builder are the same actor today and are not the same role.**
+The disposition is to sign as the builder and leave publisher attestation as a
+separate, later signature over the same artifact — additive rather than a
+redefinition, which is what keeps the two from having to be disentangled after
+the fact.
+
+### 3. Does `oath provenance` verify? — no, and a distinct command does
+
+`oath provenance` stays **strictly a reader**, and a separate command performs
+verification and **fails closed**.
+
+**Measured support**, and the script asserts it so this is not a description:
+`oath provenance` on a flipped and on an appended artifact exits 0 and returns a
+manifest **byte-identical to the unmutated artifact's**. Two details make that
+mean what it says — the whole manifest is compared rather than a field chosen by
+whoever wrote the check, and the flip is placed provably OUTSIDE the embedded
+record, since a flip landing inside it would make the reader correctly report a
+changed record and fail this check for the opposite of its stated reason.
+
+That is #116's own framing — the reader reports faithfully, faithfulness being
+the whole of the claim — confirmed against tampered input rather than assumed.
+
+Reading what an artifact claims and checking whether the claim is backed are
+different acts, and the reader is honest precisely because it does not pretend
+to the second. #114 declined to bolt an unsigned-but-official-looking check onto
+the reader for this reason; adding a *signed* check to the same command would
+recreate the problem one level up, because a reader that sometimes verifies
+teaches its users that its output means verification.
+
+Two commands also give "unsigned" somewhere to be a refusal rather than a shrug,
+which is what makes the detached format's separation weakness survivable.
+
+### 4. What is signed? — the raw artifact digest AND the canonical manifest
+
+Sign the pair: the exact **raw SHA-256 of the artifact bytes**, and the
+**canonical embedded manifest**.
+
+**Measured support, and this is the sharpest result in the record for design
+purposes.** Three consecutive builds of one closure:
+
+```
+build 1  artifact=62c4ff81417438bf  provenance=f48738b8d4bf8bb8
+build 2  artifact=b2db545f3fe0eb4f  provenance=f48738b8d4bf8bb8
+build 3  artifact=eb1fcc3c18e0ef69  provenance=f48738b8d4bf8bb8
+```
+
+Three distinct artifacts, **one manifest digest**
+(`f48738b8d4bf8bb8759126db8d23b37c9a4163342441a79d9e2d2e14f7700c90`).
+
+**Scope, because the obvious generalisation is false.** That measurement is
+within ONE backend. The manifest stamps the backend that produced it, so the two
+backends necessarily disagree — measured, not assumed:
+
+```
+go    backend=go-emit/2   provenance=f48738b8d4bf8bb8759126db8d23b37c9a4163342441a79d9e2d2e14f7700c90
+llvm  backend=llvm-ir/1   provenance=4f85feca1ac456cfec094bfb27586f4dda23de9a6a8993ef24388429f258d0ed
+```
+
+So the manifest is stable across *rebuilds*, not across *lowerings*. An earlier
+draft of this section claimed the latter, which `ProvenanceManifest`'s required
+`backend` field makes impossible.
+
+**The conclusion needs only the within-backend result.** One manifest digest
+covers three different binaries, so a canonical description does not identify
+the machine code it describes. Signing the manifest alone would sign a statement
+that distinct binaries satisfy equally — including, on this evidence, three
+consecutive builds of the same closure on the same machine. Signing the digest
+alone would bind bytes to no claim about what they are. Only the pair says
+*this principal asserts that these exact bytes are a build of this closure*.
+
+### When
+
+**Not yet, and the reason is not that signing is hard.** Signing is
+straightforward today and would be honest as far as it goes: a builder can sign
+whatever bytes it produced. What is missing is the property people will read
+into it.
+
+A signature over a non-reproducible artifact can only ever mean *"I built these
+bytes"*. It cannot mean *"this closure yields these bytes"*, because on this
+evidence the same closure yields different bytes on consecutive builds of the
+same machine. The second reading is the one attestation is wanted for, and
+shipping the first while the second is unavailable invites exactly the
+conflation this project keeps correcting — an implementation limit reported as a
+semantic fact.
+
+So implementation waits on these, in order:
+
+1. **The three causes repaired**, cause 1 first, since while emission order
+   varies no measurement of the other two is stable enough to confirm its own
+   repair.
+2. **The scope of the resulting claim settled**, because step 1 does not reach
+   it. The three causes are all same-machine, so repairing them buys
+   reproducibility *in one build environment*. Nothing here measures whether a
+   different OS, architecture, SDK, or Go/clang version produces the same bytes
+   — §What this does NOT establish says so — and that is the axis a verifier on
+   another machine actually sits on. Two honest ways out, and this record does
+   not pick between them because neither is a measurement it can make:
+   **pin the build environment** and let the attestation mean "these bytes, from
+   this pinned toolchain", or **measure cross-environment reproducibility** and
+   claim only what survives it. What is not available is the unscoped reading.
+3. **The wire format taking its SPEC update and blind round.** A wire format is
+   normative text by construction: a second kernel has to produce and check the
+   same bytes. Writing it here would be the mistake this repository has already
+   paid for — asserting an obligation without building the structure that
+   satisfies it.
+
+Step 2 is the one most likely to be skipped, because step 1 produces a visible
+green result that looks like the property has been obtained. It has not: it has
+been obtained *on one machine*, which is the narrower neighbouring state.
+
+**A note for whoever builds that round.** `docs/experiments/` is a forbidden
+prefix in `scripts/blind-export.py` by default and in every per-section set it
+defines, so this file does not currently reach a blind subject. It must stay
+that way for the attestation round specifically: this section states the
+conclusions such a round would exist to derive independently, so exporting it
+would hand the subject the answer.

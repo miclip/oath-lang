@@ -129,31 +129,79 @@ echo
 echo "CONTROLS — can the comparison tell a mutated artifact from an untouched one?"
 echo
 
-# The mutator is an INSTRUMENT, so its own failure mode is closed first. Writing
-# to a fresh path drops the execute bit (python's open() creates mode 0644),
-# which once made a flipped artifact look like it had been REJECTED BY THE
-# KERNEL when it had merely been made unrunnable by this script. The mode is
-# restored and asserted below.
-mutate() { # mutate <src> <dst> <mode: flip|append>
-  python3 - "$1" "$2" "$3" <<'PY'
+# The mutator is an INSTRUMENT, so its own failure modes are closed first.
+#
+# TWO of them, both found by review rather than by reading:
+#
+#   1. Writing to a fresh path drops the execute bit (python's open() creates
+#      mode 0644), which once made a flipped artifact look like it had been
+#      REJECTED BY THE KERNEL when it had merely been made unrunnable here.
+#      The mode is restored and asserted below.
+#   2. A flip at an arbitrary offset can land INSIDE the embedded provenance
+#      record. The reader would then correctly report a changed record, and the
+#      "manifest is still read" check would fail for a reason opposite to its
+#      label — the reader working, not breaking. So the flip offset is chosen to
+#      avoid the record, and `mutate` PRINTS `SAFE` or `UNSAFE` for the caller
+#      to assert rather than deciding silently.
+#
+# The record's byte range is found by locating the exact text `oath provenance`
+# prints, which is the raw embedded record; a margin covers the surrounding
+# marker bytes.
+mutate() { # mutate <src> <dst> <mode: flip|append> [provenance-text-file]
+  python3 - "$1" "$2" "$3" "${4:-}" <<'PY'
 import sys
 src, dst, mode = sys.argv[1], sys.argv[2], sys.argv[3]
+provfile = sys.argv[4] if len(sys.argv) > 4 else ''
 b = bytearray(open(src, 'rb').read())
-if mode == 'flip':
-    b[len(b) // 3] ^= 0x01
-elif mode == 'append':
+
+if mode == 'append':
     b += b'X'
-else:
+    open(dst, 'wb').write(bytes(b)); print('SAFE append'); raise SystemExit
+
+if mode != 'flip':
     sys.exit("unknown mutation %r" % mode)
-open(dst, 'wb').write(bytes(b))
+
+# Every byte range the provenance record occupies, plus a margin for markers.
+MARGIN = 256
+forbidden = []
+if provfile:
+    raw = open(provfile, 'rb').read().strip()
+    if raw:
+        i = b.find(raw)
+        while i != -1:
+            forbidden.append((i - MARGIN, i + len(raw) + MARGIN))
+            i = b.find(raw, i + 1)
+
+def inside(o):
+    return any(lo <= o < hi for lo, hi in forbidden)
+
+off = len(b) // 3
+if inside(off):                      # walk forward to the first safe offset
+    for cand in range(off, len(b)):
+        if not inside(cand):
+            off = cand
+            break
+open(dst, 'wb').write(bytes(b[:off] + bytearray([b[off] ^ 0x01]) + b[off + 1:]))
+# UNSAFE is reported rather than raised: the caller asserts it, so a future
+# layout change surfaces as a named failing check instead of a stack trace.
+print(('SAFE' if (forbidden and not inside(off)) else 'UNSAFE'), 'flip', off)
 PY
   chmod +x "$2"
 }
 
 for k in go llvm; do
   cp "$work/ctl/$k" "$work/ctl/$k-copy"
-  mutate "$work/ctl/$k" "$work/ctl/$k-flip" flip
-  mutate "$work/ctl/$k" "$work/ctl/$k-append" append
+  # The ORIGINAL manifest, captured before anything is mutated. It is both the
+  # region the flip must avoid and the reference the mutants' manifests are
+  # compared against.
+  orc=0; "$oath" provenance "$work/ctl/$k" > "$work/ctl/$k.prov" 2>/dev/null || orc=$?
+  check "$k: the unmutated artifact's manifest reads" "0" "$orc"
+
+  fs=$(mutate "$work/ctl/$k" "$work/ctl/$k-flip" flip "$work/ctl/$k.prov")
+  mutate "$work/ctl/$k" "$work/ctl/$k-append" append > /dev/null
+  # The flip must land OUTSIDE the embedded record, or the manifest check below
+  # would be measuring the reader noticing a changed record.
+  check "$k: the flip lands outside the provenance record" "SAFE" "$(printf '%s' "$fs" | cut -d' ' -f1)"
 
   # CONTROL A — the comparison must call an untouched copy IDENTICAL. Without
   # this, "detected a mutation" is equally consistent with a comparison that
@@ -175,6 +223,29 @@ for k in go llvm; do
   # a fact about this script rather than about the artifact.
   check "$k: the mutants kept the execute bit" "yes" \
         "$([ -x "$work/ctl/$k-flip" ] && [ -x "$work/ctl/$k-append" ] && echo yes || echo no)"
+
+  # THE READER STAYS A READER, measured rather than assumed. #116's own framing
+  # is that `oath provenance` reports a manifest FAITHFULLY, faithfulness being
+  # the whole of the claim — so a tampered artifact must still be read, and read
+  # correctly. This is what makes "reading is not verifying" a fact about the
+  # command instead of a position, and it is cited by the design disposition in
+  # the README, which is why it is asserted here rather than described there.
+  # BOTH the exit status and the content are asserted, and they are captured
+  # SEPARATELY on purpose: a POSIX pipeline reports the status of its LAST
+  # command, so piping `oath provenance` into a parser would report python's
+  # status and silently accept a provenance command that printed a usable
+  # manifest and then failed. The output goes to a file first, and the status is
+  # taken from the command itself.
+  # The WHOLE manifest is compared, not a field this script thought to name. A
+  # hand-picked field (`entry`) would pass while `backend`, `kernel` or a hash
+  # changed underneath it — the same defect as any hand-written structural
+  # matcher, which compares what its author remembered and accepts the rest.
+  for v in flip append; do
+    prc=0; "$oath" provenance "$work/ctl/$k-$v" > "$work/ctl/$k-$v.prov" 2>/dev/null || prc=$?
+    check "$k: a $v mutant's manifest is still READ, not refused" "0" "$prc"
+    check "  ...and is byte-identical to the original's" \
+          "$(digest "$work/ctl/$k.prov")" "$(digest "$work/ctl/$k-$v.prov")"
+  done
 done
 
 # ---------- what the host's own signature check says ----------
