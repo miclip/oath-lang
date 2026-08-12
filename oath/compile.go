@@ -539,13 +539,20 @@ const oathCapFailure = ""
 // backends did it, so they agreed with each other and disagreed with the
 // reference, and the three-way gate stayed green.
 func oathStrCons(cp *big.Int, rest string) string {
+	// SIGN BEFORE MAGNITUDE, so a value too large for int64 still gets a CLASS.
+	// Testing IsInt64 first left both huge positives and huge negatives with a
+	// bare number and no reason, while the LLVM backend named them — and the two
+	// backends refuse the same values, so they should say the same thing about
+	// why. A magnitude outside int64 is above 0x10FFFF with certainty once the
+	// sign is known.
+	if cp.Sign() < 0 {
+		oathRefuseStrElement(cp.String() + " (negative)")
+	}
 	if !cp.IsInt64() {
-		oathRefuseStrElement(cp.String())
+		oathRefuseStrElement(cp.String() + " (above the maximum scalar 0x10FFFF)")
 	}
 	n := cp.Int64()
 	switch {
-	case n < 0:
-		oathRefuseStrElement(cp.String() + " (negative)")
 	case n > 0x10FFFF:
 		oathRefuseStrElement(cp.String() + " (above the maximum scalar 0x10FFFF)")
 	case n >= 0xD800 && n <= 0xDFFF:

@@ -199,6 +199,32 @@ func TestLLVMRefusesANonScalarBuiltAtRuntime(t *testing.T) {
 			t.Errorf("%s: refused the EMPTY argument list too, so the failure above is not "+
 				"evidence about the element: %v", c.name, err)
 		}
+
+		// AND THE OTHER BACKEND MUST REFUSE THE SAME VALUE FOR THE SAME STATED
+		// REASON. Both pack Str as UTF-8, so they exclude exactly the same set —
+		// but "both refuse" is a weaker claim than "both say why", and it was the
+		// weaker one that held: testing IsInt64 before the sign left the Go
+		// backend naming the astronomical case with a bare number while this
+		// backend named its class. Two artifacts compiled from ONE definition
+		// telling different stories about why they stopped is the same defect
+		// class as the div/mod diagnostic #166 found, and only a check that reads
+		// the message sees either.
+		goBin, _ := buildProgram(t, st, c.name)
+		goOut, goErr := exec.Command(goBin, "A").CombinedOutput()
+		if goErr == nil {
+			t.Errorf("%s: the Go backend produced %q instead of refusing", c.name, goOut)
+			continue
+		}
+		if !strings.Contains(string(goOut), c.want) {
+			t.Errorf("%s: the Go backend refused without naming the element %s: %s",
+				c.name, c.want, goOut)
+		}
+		for _, class := range []string{"negative", "above the maximum scalar", "a surrogate"} {
+			if strings.Contains(string(out), class) != strings.Contains(string(goOut), class) {
+				t.Errorf("%s: the backends disagree about the CLASS %q — llvm=%q go=%q",
+					c.name, class, out, goOut)
+			}
+		}
 	}
 }
 

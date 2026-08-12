@@ -145,6 +145,14 @@ relaxation, and `CLAUDE.md` carries the instruction not to delete it.
 STILL REFUSED, deliberately: arithmetic, Rat and Float, Set/Map, dynamic Str
 construction, the handler protocol.
 
+> **THAT LIST IS A SNAPSHOT OF THIS MILESTONE, NOT THE LIVE BOUNDARY.** Arithmetic
+> was lifted by #166 and dynamic `Str` construction by #164; `Rat`, `Float`,
+> `Set`/`Map`, the handler protocol and `neg` remain refused. The sentence above
+> is left as written because it records what this milestone shipped — but a
+> reader meeting it alone would take it as current, which is the exact way this
+> project's prose rots: **a paragraph's class changes without its text changing.**
+> `oath/llvm.go` is the authority on what is refused today.
+
 Open from this work: **#133** (is Str defined only over Unicode scalar values —
 NORMATIVE, needs SPEC prose and a scoped blind round; the information-loss half
 is already fixed as a backend subset boundary) and **#134** (typed refusal
