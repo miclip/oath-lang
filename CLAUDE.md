@@ -1697,23 +1697,40 @@ milestone shipped a SUBSET of an issue that remains open.
   documentation at all can still red the build. Also pushed to `main` red for
   exactly this reason, after #161's guards rehashed four config definitions.
 
-  **DO NOT ENUMERATE THE GATE SET FROM MEMORY, AND DO NOT TRY TO GREP IT EITHER.
-  READ THE `run:` STEPS IN `.github/workflows/conformance.yml`.** That file is the
-  authority; there is no local target that runs what it runs, so "the gates are
-  green" is a claim about a SAMPLE unless you went and looked.
+  **DO NOT ENUMERATE THE GATE SET FROM MEMORY OR BY GREP. RUN `make ci-local`.**
+  It derives the gates from the workflow's `pull_request` triggers, classifies
+  every step, and REFUSES on one it does not recognise — so a step added to CI
+  cannot silently escape it.
 
-  This paragraph has now been wrong four times, and the way it failed is the
-  useful part. It first named three gates from memory, then four, both by someone
-  who had just been red on CI for exactly this. Replacing recall with a one-line
-  grep then failed three more times for UNRELATED reasons — it matched commands
-  inside prose comments (recommending `make fixtures`, which WRITES VERDICTS
-  BACK); it dropped the `OATHRS_CONFORMANCE_PROVE=oracle` prefix, turning the
-  two-minute push gate into the NINE-HOUR scheduled job; and it saw only `make`
-  lines, silently omitting the Go and Rust test steps. **A regex over YAML is not
-  a parse, and each repair was correct about the previous defect and blind to the
-  next one.** That is this file's own signal that the artefact is wrong rather
-  than the wording: the thing that would settle it is a checked-in target that
-  runs the read-only subset, not a cleverer command in prose.
+  **IT RUNS A SUBSET AND SAYS SO IN ITS OWN OUTPUT — roughly half the steps.**
+  Action steps, the cloud/Postgres integration job, the wasm target, the
+  nine-hour cold re-derivation and the one MUTATING step (`make verify`) are
+  skipped with reasons. So "ci-local green" is not "CI green", and the honest
+  claim after running it is the one the script itself prints.
+
+  This paragraph has now been wrong FIVE times, and the fifth is a different
+  mode from the first four. It first named three gates from memory, then four,
+  both by someone who had just been red on CI for exactly this. Replacing recall
+  with a one-line grep then failed three more times for UNRELATED reasons — it
+  matched commands inside prose comments (recommending `make fixtures`, which
+  WRITES VERDICTS BACK); it dropped the `OATHRS_CONFORMANCE_PROVE=oracle` prefix,
+  turning the two-minute push gate into the NINE-HOUR scheduled job; and it saw
+  only `make` lines, silently omitting the Go and Rust test steps. **A regex over
+  YAML is not a parse, and each repair was correct about the previous defect and
+  blind to the next one.**
+
+  **THE FIFTH FAILURE IS THE ONE WORTH GENERALISING: THIS PARAGRAPH NAMED THE
+  ARTEFACT THAT WOULD SETTLE IT, THE ARTEFACT WAS BUILT THE SAME DAY, AND THE
+  PARAGRAPH WENT ON SAYING IT DID NOT EXIST.** It read *"there is no local target
+  that runs what it runs"* and sent readers to parse the YAML by hand — which a
+  session then did, faithfully, and missed `ci-local` because the file it trusted
+  told it there was nothing to miss.
+
+  > **WHEN GUIDANCE NAMES A MISSING ARTEFACT, BUILDING THAT ARTEFACT IS THE
+  > TRIGGER TO RE-READ THE GUIDANCE.** Nothing else will fire: the prose is
+  > untouched, no test covers it, and the sentence goes on parsing as sensible
+  > advice. A stale instruction that describes a GAP is worse than one that
+  > describes a fact, because it actively routes readers away from the fix.
 
   Two hazards a reader cannot discover by looking, which is why they are here and
   the list is not:
