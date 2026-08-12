@@ -23,7 +23,58 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 oath="$root/oath/oath"
 work=$(mktemp -d)
-port="${OATH_TEST_PORT:-8899}"
+# A PER-RUN PORT, because a well-known number collects squatters. An abandoned
+# test double from an unrelated project sat on the old fixed 8899 for five days,
+# and this suite reported the difference as fourteen application defects.
+#
+# SCOPE, kept to what this actually buys: it removes the STALE-OCCUPANT case.
+# It does NOT make two concurrent runs of this suite safe — ephemeral allocation
+# reserves nothing, so two runs can still draw overlapping triples, and one of
+# them then measures a port the other owns. Concurrent runs were never supported
+# (a fixed port made them collide by construction) and are not supported now;
+# measured rather than assumed, by running two at once and watching one fail.
+# OATH_TEST_PORT pins the base for anyone debugging.
+port="${OATH_TEST_PORT:-}"
+if [ -z "$port" ]; then
+  port=$(python3 - <<'PICKPORT'
+import socket
+# A base whose +1 and +2 are free too, since the suite uses all three. Ephemeral
+# allocation gives no such guarantee, so the neighbours are checked and the
+# whole triple retried rather than assumed.
+for _ in range(50):
+    s = socket.socket(); s.bind(("", 0)); base = s.getsockname()[1]; s.close()
+    # base+2 must be a PORT. Where the ephemeral range reaches the top of it,
+    # bind() on 65536 raises OverflowError rather than OSError, so an unlucky
+    # draw would escape the retry instead of taking it.
+    if base + 2 > 65535:
+        continue
+    # SELECTION MUST BIND WHAT THE PREFLIGHT BINDS, or it can hand back a triple
+    # the preflight then rejects — an abort where a retry was available. base and
+    # base+1 are wildcard binds for the servers, so they are probed dual-stack;
+    # base+2 is a loopback bind.
+    def free(port, loopback=False):
+        try:
+            if not loopback and socket.has_dualstack_ipv6():
+                s = socket.create_server(("", port), family=socket.AF_INET6,
+                                         dualstack_ipv6=True, reuse_port=False)
+            else:
+                s = socket.create_server(("127.0.0.1" if loopback else "", port),
+                                         reuse_port=False)
+        except OSError:
+            return None
+        return s
+    held = [free(base), free(base + 1), free(base + 2, loopback=True)]
+    ok = all(h is not None for h in held)
+    for h in held:
+        if h is not None: h.close()
+    if not ok:
+        continue
+    print(base); break
+else:
+    raise SystemExit("could not find three consecutive free ports")
+PICKPORT
+  ) || { echo "FAIL setup: could not allocate a free port triple"; exit 1; }
+fi
 url="http://127.0.0.1:$port/hook"
 secret="0123456789abcdef0123456789abcdef"
 pid=""
@@ -40,6 +91,113 @@ cleanup() {
   rm -rf "$work"
 }
 trap cleanup EXIT INT TERM
+
+# THE PORT MUST BE FREE BEFORE ANYTHING IS MEASURED ON IT.
+#
+# A stranger already listening here does not make this suite fail to START — it
+# makes it run to completion against the WRONG SERVER and report the difference
+# as defects in the application. Not hypothetical: an orphaned test double from
+# an unrelated project sat on this port for five days, and this suite reported
+# fourteen substantive failures — wrong status codes, a missing repository, a
+# missing schema — every one a true statement about a server nobody here wrote.
+#
+# Indistinguishable from a real regression by construction, because every
+# assertion is about a RESPONSE and a foreign server produces responses. So this
+# runs first and fails as SETUP, which this repo separates from a defect on
+# purpose: a check that cannot tell "my setup is broken" from "the thing I hunt
+# is present" is worse than no check.
+#
+# IT BINDS RATHER THAN LISTING LISTENERS, AND BINDS EVERY ADDRESS THIS SUITE
+# WILL. `lsof` is not required by this script and is absent on some systems, so
+# keying on it would SKIP the check exactly where it is needed — the defect this
+# check exists to prevent, one level up. python3 is already required.
+#
+# The universe is derived from what the suite USES, not from the one port that
+# is easy to remember: three ports, and two different bind addresses. `:$port`
+# is a WILDCARD bind, so probing 127.0.0.1 alone would pass while a process
+# holding another interface on that port makes the server's real bind fail —
+# the same proxy mistake in the address that the port list makes in the count.
+# Each row below binds the way its user binds. If a new port or address is
+# added below, it belongs here too.
+# The port+2 rows are probed only when the launch-probe block will actually run.
+# That block is skipped as root (a 000 directory is still writable), so requiring
+# its port there would fail setup over an address the suite never touches.
+addrs=":$port :$((port + 1))"
+[ "$(id -u)" != "0" ] && addrs="$addrs 127.0.0.1:$((port + 2))"
+
+ports_ok=1
+for spec in $addrs; do
+  python3 - "$spec" <<'PORTCHECK' || ports_ok=0
+import socket, sys
+
+host, _, port = sys.argv[1].rpartition(":")
+port = int(port)
+
+# MIRROR WHAT THE SERVER DOES, rather than testing a convenient approximation.
+# Go's ListenAndServe(":PORT") opens a DUAL-STACK IPv6 wildcard where the host
+# supports one, so an AF_INET probe of 0.0.0.0 can succeed while the server's
+# real bind fails against an IPv6-only holder. The point of binding instead of
+# listing listeners is that the probe agrees with the server BY CONSTRUCTION —
+# which only holds while it makes the same call.
+try:
+    if host == "" and socket.has_dualstack_ipv6():
+        s = socket.create_server(("", port), family=socket.AF_INET6,
+                                 dualstack_ipv6=True, reuse_port=False)
+    else:
+        s = socket.create_server((host, port), reuse_port=False)
+except OSError as e:
+    sys.stderr.write("%s is unavailable: %s\n" % (sys.argv[1], e))
+    sys.exit(1)
+s.close()
+PORTCHECK
+done
+if [ "$ports_ok" != "1" ]; then
+  echo "FAIL setup: an address this suite needs is taken, so it would measure whatever"
+  echo "  is there and report the difference as application defects."
+  echo "  Stop what is holding it, or set OATH_TEST_PORT to a free base port."
+  exit 1
+fi
+
+# await_ours waits for OUR server to answer, and fails setup if it died.
+#
+# THE PREFLIGHT ABOVE IS AN EARLY ERROR, NOT A GUARANTEE. It closes its sockets
+# before any server binds, so a process arriving in that window — two overlapping
+# `make check-app` runs, most plausibly — wins the port instead. The readiness
+# loop then succeeds on the FIRST answer from anyone, and every assertion after
+# it measures a stranger. That is the same wrong-server measurement, re-entered
+# through a door the preflight cannot close.
+#
+# What this catches is the child that LOST: a server refused the port exits on
+# EADDRINUSE, so a dead pid after the poll means anything answering is not ours.
+# Checked after the poll rather than before, because losing is what takes time to
+# observe.
+#
+# WHAT IT DOES NOT CATCH, stated rather than implied: if a stranger answers while
+# our child has not yet reached its own bind, the poll returns and the pid is
+# still alive — liveness at that instant is not ownership. Closing that needs the
+# server to identify itself, which is an application change and out of scope here.
+# The per-run port above removes the stale-fixture cause rather than the
+# possibility, so the residual is a stranger arriving in a window of
+# milliseconds on a port the OS has just called free.
+await_ours() { # await_ours <pid> <url>
+  i=0
+  while [ $i -lt 50 ] && ! curl -sS -o /dev/null "$2" 2>/dev/null; do i=$((i + 1)); sleep 0.1; done
+  # NOT `kill -0`: an unwaited child that has exited stays a ZOMBIE under dash
+  # (which is /bin/sh on the CI runner) and answers kill -0 perfectly well, so
+  # the check would pass for exactly the corpse it exists to detect. This file
+  # already documents that hazard for the launch probes; the same trap was
+  # walked into one helper later. `ps -o stat=` reports Z for a zombie and
+  # nothing at all once reaped, so both failure shapes are covered and neither
+  # reaps the child that the caller still has to `wait` for.
+  st=$(ps -o stat= -p "$1" 2>/dev/null || true)
+  case "${st# }" in
+    "" | Z*)
+      echo "FAIL setup: the server exited instead of serving $2 — most likely it lost the"
+      echo "  port to another process, so anything answering there is not ours."
+      exit 1
+      ;;
+  esac
+}
 
 fail=0
 check() { # check <label> <expected> <actual>
@@ -168,7 +326,7 @@ chmod 755 "$work/nodir" 2>/dev/null || true
 OATH_VALUE_SECRET="$secret" OATH_EMIT_PATH="$work/events.log" \
   OATH_HTTP_ADDR=":$port" "$work/gh-webhookd" > "$work/out" 2> "$work/err" &
 pid=$!
-i=0; while [ $i -lt 50 ] && ! curl -sS -o /dev/null "http://127.0.0.1:$port/" 2>/dev/null; do i=$((i+1)); sleep 0.1; done
+await_ours "$pid" "http://127.0.0.1:$port/"
 
 echo "serving on :$port"
 sig=$(sign "$secret" "$work/body.json")
@@ -274,7 +432,7 @@ kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true; pid=""
 env OATH_VALUE_SECRET="ключключключключключключключключ" OATH_EMIT_PATH="$work/utf8.log" \
   OATH_HTTP_ADDR=":$port" "$work/gh-webhookd" > /dev/null 2>&1 &
 pid=$!
-i=0; while [ $i -lt 50 ] && ! curl -sS -o /dev/null "http://127.0.0.1:$port/" 2>/dev/null; do i=$((i+1)); sleep 0.1; done
+await_ours "$pid" "http://127.0.0.1:$port/"
 utf8sig=$(python3 -c "import hmac,hashlib;print(hmac.new('ключключключключключключключключ'.encode(),open('$work/body.json','rb').read(),hashlib.sha256).hexdigest())")
 check "a non-encodable secret is refused, not a panic" \
       "500" "$(post "$url" application/json push utf8 "sha256=$utf8sig" "$work/body.json")"
@@ -288,7 +446,7 @@ latin1="ééééééééééééééééééééééééééééééé"
 env OATH_VALUE_SECRET="$latin1" OATH_EMIT_PATH="$work/latin1.log" \
   OATH_HTTP_ADDR=":$port" "$work/gh-webhookd" > /dev/null 2>&1 &
 pid=$!
-i=0; while [ $i -lt 50 ] && ! curl -sS -o /dev/null "http://127.0.0.1:$port/" 2>/dev/null; do i=$((i+1)); sleep 0.1; done
+await_ours "$pid" "http://127.0.0.1:$port/"
 check "a secret with a space is refused" \
       "500" "$(env OATH_VALUE_SECRET="0123456789 abcdef" OATH_EMIT_PATH="$work/sp.log" OATH_HTTP_ADDR=":$((port+1))" "$work/gh-webhookd" > /dev/null 2>&1 & sp=$!; i=0; while [ $i -lt 50 ] && ! curl -sS -o /dev/null "http://127.0.0.1:$((port+1))/" 2>/dev/null; do i=$((i+1)); sleep 0.1; done; c=$(post "http://127.0.0.1:$((port+1))/hook" application/json push sp "sha256=$(sign "0123456789 abcdef" "$work/body.json")" "$work/body.json"); kill $sp 2>/dev/null; wait $sp 2>/dev/null || true; echo "$c")"
 check "a latin-1 secret is refused, not mis-signed" \
