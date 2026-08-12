@@ -124,11 +124,13 @@ the emission asserted the opposite — *"both panic on a zero divisor, matching
 eval's div/mod-by-zero error"*. A correspondence claimed in a comment and never
 checked; the gate that checks it is nine lines long.
 
-**The general form: a two-way differential gate cannot see an error two
-implementations inherit from the same host library.** The Go backend agreed with
-itself, and any comparison against it alone would have agreed too. It took a
-third path, written against the specification rather than against Go, asking
-what the failure was CALLED.
+**The general form: a differential gate that compares only success-path values
+is blind to every difference in how the paths FAIL.** Not "a third path was
+needed" — `oath eval` reports `modulo by zero` itself, so eval-versus-Go was
+already a disagreement and two paths would have sufficed. The gate compared what
+programs PRINTED, and a program that dies prints nothing to compare, so the
+divergence sat in a channel nothing read. Asserting the diagnostic is what found
+it; the number of paths is not what was missing.
 
 ## The instrument was wrong first, and that is the finding
 

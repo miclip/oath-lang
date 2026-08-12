@@ -870,3 +870,109 @@ about the tool; *no real program lives inside* is a claim about programs, and it
 was inferred by reading a REFUSAL LIST — which enumerates what is excluded and
 therefore cannot measure what is admitted. The complement of a list you can read
 is not a set you have looked at.
+
+## #166 — the falsifier that lost, and the defect it found in the backend nobody was changing
+
+**The forced item.** The LLVM backend stored `Int` as a `long long` and refused
+any literal outside it. That was an honest subset — it refused rather than
+wrapped, and said so — but `Int` is ℤ *because the prover's `Int` is unbounded*,
+so a machine-width `Int` would put overflow reasoning into every arithmetic
+proof in the corpus. That makes the width a SEMANTIC commitment rather than a
+representation a backend chooses, and it is the distinction the queue's
+structural-model rule turns on.
+
+**The cheap falsifier ran first and did not fire.** A *checked* int64 — trapping
+on overflow with a named diagnostic — is fail-closed rather than wrapping, so if
+nothing the backend accepts could distinguish it from ℤ, the trap was the honest
+design. It was built, not argued about, and pointed at the boundary. Three
+things made the negative result decisive:
+
+- the distinguishing property is **PROVEN**, so the artifact was not disagreeing
+  with another implementation — it was failing to exhibit a property the kernel
+  proved of the definition it was compiled from;
+- a second entry took its operand from `argv`, so **one binary took both sides
+  of the boundary from its input**: no argument completed, and any NON-EMPTY
+  argument refused. The qualifier is not pedantry — the entry matches `SNil`
+  first and returns `"empty-argument"` before reaching the addition, so an empty
+  argument completes too, and "any argument refuses" was false as first written.
+  What the witness needs is only that ONE runtime-supplied value crosses the
+  boundary and another does not, which it does. No build-time analysis
+  reproduces that, and it closes the objection that a compiler could simply
+  refuse the overflowing case statically;
+- the old `int-range` check meant the subset **could not name the right answer**
+  — `9223372036854775808` was itself a refused literal — so ℤ's result was
+  observable only as "none of the above".
+
+Scope, stated because it is easy to overread: this establishes that the subset
+ADMITS a distinguishing program. It is not a claim that programs anyone wants
+overflow. Different populations, and only the first was measured.
+
+**The representation.** Sign-magnitude, base 2³², least-significant limb first,
+written into the emitted C runtime; 32-bit limbs so every intermediate fits a
+64-bit unsigned, avoiding compiler-specific 128-bit types as well as any
+library. Literals cross as **decimal digits rather than limbs** — the digits are
+the canonical form the AST already holds, so nothing has to agree with the
+runtime about limb order or width. That is what retired `int-range`.
+
+**The finding worth more than the feature.** Holding all three paths to *naming*
+the by-zero condition, rather than merely to failing, exposed a defect in the Go
+backend, which nothing in this work was changing. `big.Int.Quo` and
+`big.Int.Rem` BOTH panic with `division by zero`, so a compiled artifact
+reported a division fault for a modulo the program never performed, while the
+interpreter distinguished the two. It had been wrong since the Go backend gained
+arithmetic, and the comment above the emission asserted precisely the
+correspondence that did not hold.
+
+> **A DIFFERENTIAL GATE THAT COMPARES ONLY SUCCESS-PATH VALUES IS BLIND TO
+> EVERY DIFFERENCE IN HOW THE PATHS FAIL.**
+
+The first draft of this paragraph credited the wrong instrument — it said a
+two-way gate could not have seen this because both sides inherited the error
+from one host library. That is a true sentence about a different situation. It
+is not what happened: `oath eval` reports `modulo by zero` itself and inherits
+nothing, so eval-versus-Go was already a disagreement and TWO paths would have
+been enough. What no number of paths supplies is the assertion. The gate
+compared the values programs printed, and a program that dies prints nothing to
+compare — so the divergence sat in a channel the gate never read.
+
+Adding the third path is what happened; asserting the DIAGNOSTIC is what found
+it. Recorded this way round because attributing a discovery to the more
+impressive-sounding mechanism is a recurring error here — the same shape as
+crediting the prover for a defect a single evaluation exposed.
+
+**Two assertions replaced under #156's rule, each pinning more than before.**
+The old refusal test asserted one bit, and "refused" is satisfied by a backend
+that refuses everything; the replacement pins the VALUE — the digits must reach
+the emitted IR, and a sum leaving int64 must equal the exact answer, excluding
+wrapping (int64 min) and saturating (int64 max) by naming the value that is
+neither. And the acceptance runner's floor of 20 checks permitted deleting the
+entire arithmetic section while the script ran 67: **a count is a proxy for
+coverage**, so the families are now asserted by LABEL, which is what owns the
+claim.
+
+**Verifying that second one took three attempts, and the two failures are the
+general lesson.** The first mutation broke the script, so the test failed at its
+did-not-reach-a-verdict check rather than at the new assertion — a probe asking
+"did it fail?" cannot tell a working gate from a crashing one. The second was
+served from Go's **test cache** and measured nothing at all, which looks
+identical to a pass. It fires correctly under `-count=1` with a mutation that
+leaves the harness valid.
+
+**The fuzzer's own instrument was wrong first.** It passed a deliberately
+injected carry bug 150 cases at a time, because two independently drawn operands
+almost never sum across a 32-bit limb boundary — a random *k*-bit operand has a
+top limb that is not full. The one defect class the fuzzer existed to catch was
+the one its generator could not reach.
+
+**Provenance, recorded because it shaped the outcome.** The work began under a
+two-agent session whose transcript body was lost mid-run to a known front-end
+defect; the session was aborted rather than continued into a live turn, and the
+remainder finished directly. What was in the tree was sound — the bignum runtime
+and its evidence. What the interrupted run had not yet reached was everything
+describing the OLD boundary: a test table still listing `/` and `%` as refused, a
+fail-closed control built on `/` after `/` had been lowered, and three prose
+descriptions. All were found by review. **An interrupted run leaves the artefacts
+that describe its own starting state, and those are the ones nothing fails on.**
+
+Landed `c6b5dd9`. Retired from the forced bucket on landing, without waiting for
+its neighbour — which is what per-entry retirement conditions are for.
