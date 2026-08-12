@@ -1055,3 +1055,64 @@ EveryShape` closes that from the other side: every named shape is reachable from
 a real entry type, so the variant is neither under- nor over-specified.
 
 Landed `ebff84e`.
+
+## #167 — the fix that would have made a handler killable from the internet
+
+**The asymmetry.** A host-side refusal in a go-emit artifact panicked: status 2
+plus a goroutine dump naming the temp directory the Go source was emitted into.
+The same condition in an llvm-ir artifact wrote one stderr line and exited 70.
+One source definition, two answers to a supervisor reading the status. The
+falsifier — *maybe exit status is not part of the contract* — lost on evidence:
+70 is asserted in four test files and documented in `docs/effects.md` and
+`README.md`.
+
+**THE OBVIOUS FIX WAS WRONG, AND WORSE THAN THE DEFECT.** Writing the line and
+`os.Exit(70)` at the detection site is what landed first. A handler is a
+long-lived server whose input a remote party chooses, and a well-typed handler
+can reach a refusal from that input — **dividing by a body byte that arrived as
+zero is enough.** Exiting at the raise site hands that party the process,
+against SPEC 14.2's rule that a remote party must never be able to end a host.
+net/http had been recovering the panic per connection, so the process survived;
+the "improvement" would have introduced a remote process-kill.
+
+**So the CONDITION is a fact about the language and the DISPOSITION is a fact
+about the boundary, and only the boundary knows it.** `oathRefuse` raises an
+`oathRefusal` value; each boundary disposes of one — standalone `main` exits 70,
+the handler adapter answers 500 and keeps serving. The boundary owns the
+transformation, not the place that detected the condition, which is the pattern
+this project keeps arriving at from unrelated directions.
+
+**The classification, stated rather than implied.** A REFUSAL is reachable by a
+well-typed program: a codepoint outside the scalars, a zero divisor, octets that
+are not text. A PANIC is unreachable unless the compiler is wrong. Applying the
+split found a merge that described a broken representation as *"out of range
+0..255"* — an implementation defect reported as a semantic fact, which is this
+file's own named failure mode. `oathRefusalOf` is the single place the two are
+told apart, and it re-raises what is not a refusal, because `recover()` cannot be
+selective.
+
+**The witness gap, and why a structural assertion was not enough.** The
+handler's re-raise was covered only by *"both boundaries call one classifier"* —
+which establishes that the code is SHAPED correctly, not that a running artifact
+BEHAVES correctly. The behavioural witness pins both directions: a clean response
+means a compiler defect was swallowed, a dead process means SPEC 14.2 is
+violated. Verified by removing the re-raise.
+
+**And six unguarded skips would have hidden it.** Four `go toolchain` and two
+filename skips meant an absent toolchain or an unaccommodating filesystem would
+remove these witnesses in CI while the run stayed green — the failure
+`requireClang` names twenty lines above in the same package, reproduced by tests
+written after it.
+
+**FOUR REVIEW FINDINGS ON ONE TEST, ALL THE SAME SHAPE.** The assertion was for a
+line's ABSENCE, and every defect made absence easier to observe than presence: a
+`signal 0` liveness probe that fails on Windows against a healthy server; a
+stderr condition that passed when both substrings appeared; a bare
+`bytes.Buffer` read while `os/exec` was writing it; and `cmd.Process.Wait`, which
+waits for the process and leaves the copy goroutine running, where `cmd.Wait`
+joins the copiers.
+
+> **A WITNESS FOR SOMETHING NOT HAPPENING HAS TO PROVE IT WAS IN A POSITION TO
+> SEE IT.**
+
+Landed `43f457c`, witnesses completed `3c80992`.
