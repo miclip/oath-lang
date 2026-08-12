@@ -1,0 +1,128 @@
+; INT64-BOUNDARY-PROBE — five entry points that sit exactly where a fixed-width
+; Int would break, and now must not break at all.
+;
+; THIS FILE HAS BEEN THROUGH TWO CONTRACTS, and the second replaced the first
+; because the first was measured. #166 offered a cheap way not to need an
+; arbitrary-precision runtime: a CHECKED int64 that traps on overflow instead of
+; wrapping. If nothing the subset accepts could tell that from Oath's Int, the
+; trap was the honest design. This file was the attempt to tell them apart, and
+; it succeeded — `sum-past-int64-max` refused at runtime while `oath eval` and
+; the Go backend answered, with `sum-past-max-from-argv` showing the overflow
+; can depend on input no compiler sees. So the falsifier did not fire and the
+; representation moved to arbitrary precision.
+;
+; The entries are the same. What they assert is STRICTLY STRONGER: where the
+; probe once recorded that the artifact REFUSED, it now records the exact value
+; it produces. Refusal is one bit; the value is the whole answer.
+;
+; The clearest measure of the change is a sentence this file used to carry and
+; can no longer: "the correct answer to (+ 9223372036854775807 1) is
+; 9223372036854775808, and the LLVM backend REFUSES that literal at compile time,
+; so a program it accepts cannot NAME the right answer, only distinguish wrong
+; ones." Every comparison below now names it.
+;
+; Self-contained: List and Str are declared here, so `oath put` into an empty
+; scratch store is all it needs. Nothing here is ever put into the canonical
+; store.
+
+(data List [a]
+  (Nil)
+  (Cons a (List a)))
+
+(data Str []
+  (SNil)
+  (SCons Int Str))
+
+; ---------- 1. the add is real ----------
+;
+; Without this every other check below is equally consistent with `+` having
+; been lowered to something that ignores its arguments.
+
+(defn small-sum-is-computed [] [(args (List Str))] Str
+  (if (== (+ 2 2) 4) "sum-ok" "sum-wrong")
+  (prop computes [] (== (small-sum-is-computed (Nil [Str])) "sum-ok")))
+
+; ---------- 2. the old in-range boundary ----------
+;
+; 9223372036854775806 + 1 is exactly int64 max. Under the checked prototype this
+; was the control that pinned the trap to overflow rather than to magnitude;
+; under arbitrary precision it is an ordinary sum that happens to sit on a
+; boundary the representation no longer has. It is kept because a regression to
+; a fixed-width runtime would show up here first.
+
+(defn sum-reaches-int64-max [] [(args (List Str))] Str
+  (let (n Int (+ 9223372036854775806 1))
+    (if (== n 9223372036854775807) "reached-max" "did-not-reach-max"))
+  (prop reaches [] (== (sum-reaches-int64-max (Nil [Str])) "reached-max")))
+
+; ---------- 3. THE WITNESS ----------
+;
+; (+ 9223372036854775807 1) leaves int64 by exactly one. The sum is SEQUENCED
+; BEFORE the result — bound by a `let`, then observed — so no backend reaches
+; the returned literal without having performed the addition.
+;
+; Four outcomes are now distinguishable, where the checked prototype could only
+; produce the last one by exiting:
+;
+;   "exact"          the sum is 9223372036854775808 — Oath's answer
+;   "wrapped-int64"  the sum is int64 min — a silently wrapping backend
+;   "neither"        some third wrong answer
+;   (no output)      a fixed-width backend refusing rather than answering
+;
+; The property is PROVEN over ℤ, which is what makes this the sharp form of the
+; question: a compiled artifact that does not return "exact" is not disagreeing
+; with another implementation, it is failing to exhibit a property the kernel
+; proved of the definition it was compiled from.
+
+(defn sum-past-int64-max [] [(args (List Str))] Str
+  (let (n Int (+ 9223372036854775807 1))
+    (if (== n 9223372036854775808) "exact"
+      (if (== n -9223372036854775808) "wrapped-int64" "neither")))
+  (prop exact [] (== (sum-past-int64-max (Nil [Str])) "exact")))
+
+; ---------- 4. the same witness, with the operand coming from OUTSIDE ----------
+;
+; Entry 3 adds two literals, which invites the objection that a sufficiently
+; clever compiler could decide it statically. Here the second operand is the
+; first codepoint of the first command-line argument — a value that does not
+; exist until the process runs.
+;
+; The assertion is an IDENTITY rather than a constant, so it holds for whatever
+; the input turns out to be: (max + c) - max must be c. That requires the
+; intermediate to be represented exactly, which is the whole claim — a
+; fixed-width runtime cannot produce it for any c > 0, whether it wraps or
+; traps. The ordering test then confirms the intermediate really is past int64
+; max rather than merely round-tripping.
+
+(defn sum-past-max-from-argv [] [(args (List Str))] Str
+  (match args
+    ((Nil) "no-argument")
+    ((Cons h t)
+      (match h
+        ((SNil) "empty-argument")
+        ((SCons c rest)
+          (let (n Int (+ 9223372036854775807 c))
+            (if (== (- n 9223372036854775807) c)
+              (if (<= n 9223372036854775807) "not-past-max" "past-max-exactly")
+              "round-trip-failed"))))))
+  (prop no-argument [] (== (sum-past-max-from-argv (Nil [Str])) "no-argument"))
+  (prop letter-a-is-past-max [(t (List Str))]
+    (== (sum-past-max-from-argv (Cons [Str] (SCons 97 (SNil)) t)) "past-max-exactly")))
+
+; ---------- 5. the fail-closed control ----------
+;
+; `neg` is the remaining Int boundary and is deliberately NOT lowered: it is
+; unary, so it shares no lowering path with the binary operations above. The
+; LLVM backend must refuse this entry BY NAME while the Go backend compiles it.
+; Without the control, a green run is equally consistent with the refusals
+; having been deleted.
+;
+; THE CONTROL MUST BE AN OPERATION THE BACKEND STILL REFUSES, WHICH IS NOT A
+; FIXED SET. This was `/` while division was unlowered; lowering it turned the
+; control into a permanent failure rather than into a silent pass — which is
+; the right direction for a control to break, and the reason it is checked
+; here rather than assumed.
+
+(defn negate-control [] [(args (List Str))] Str
+  (if (== (neg 9223372036854775808) -9223372036854775808) "negate-ok" "negate-wrong")
+  (prop computes [] (== (negate-control (Nil [Str])) "negate-ok")))

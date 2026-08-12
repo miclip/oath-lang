@@ -220,12 +220,13 @@ func llvmUnsupported(reason refusalReason, what string) error {
 		Backend: llvmBackendVersion,
 		Detail:  what,
 		Help: "  This is a first slice: it covers datatypes, matching, closures, records,\n" +
-			"  Str literals and matching, Bool, Int literals and equality, and the CLI\n" +
-			"  entry protocol.\n" +
-			"  Int is stored as int64 — a SUBSET of Oath's unbounded Int, and literals\n" +
-			"  outside it are refused rather than wrapped. Arithmetic, Rat and Float,\n" +
-			"  Set/Map, dynamic Str construction and the handler protocol are not\n" +
-			"  lowered yet. Build with the Go backend for full coverage.",
+			"  Str literals and matching, Bool, the CLI entry protocol, and Int —\n" +
+			"  arbitrary-precision, literals of any magnitude, with the binary\n" +
+			"  operations `+ - * / %` and `== < <=`. Division truncates toward zero\n" +
+			"  and a zero divisor fails at runtime, matching `oath eval`.\n" +
+			"  `neg` is refused by name (use `(- 0 x)`), as are Rat and Float,\n" +
+			"  Set/Map, dynamic Str construction and the handler protocol. Build with\n" +
+			"  the Go backend for full coverage.",
 	}
 }
 
@@ -506,32 +507,58 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 		return e.defValue(self)
 
 	case "int":
-		// THE RANGE CHECK IS THE POINT. Oath's Int is ℤ; this runtime stores
-		// int64. A literal outside that is REFUSED at compile time rather than
-		// truncated, because a backend that silently wrapped would disagree
-		// with `oath eval` on an ordinary value and the differential gate would
-		// only notice if a test reached that magnitude.
+		// THE LITERAL IS EMITTED AS DECIMAL TEXT, NOT AS A MACHINE WORD.
+		//
+		// This is what retires the old `int-range` refusal. The runtime stored a
+		// long long and the compiler refused any literal outside it, which was
+		// honest — it was a SUBSET that said so — and #166's own falsifier then
+		// showed the subset is observably distinguishable from ℤ by a program
+		// the backend accepts. So the representation moved rather than the
+		// refusal, and there is now no Int literal this backend cannot carry.
+		//
+		// Text rather than limbs, deliberately: the digits are the canonical
+		// form the AST already holds, so the emitter needs no encoding of its
+		// own, and nothing has to agree with the runtime about limb order or
+		// width. `int-missing-value` stays — a term with no value at all is a
+		// malformed AST, not a magnitude.
 		if t.Int == nil {
 			return "", llvmUnsupported(reasonIntMissing, "an Int literal with no value")
 		}
-		if !t.Int.IsInt64() {
-			return "", llvmUnsupported(reasonIntRange, fmt.Sprintf(
-				"the Int literal %s — this backend stores Int as int64 and Oath's Int is unbounded, "+
-					"so values outside int64 are refused rather than wrapped", t.Int.String()))
-		}
 		v := e.next()
-		fmt.Fprintf(&e.b, "  %s = call ptr @o_int(i64 %d)\n", v, t.Int.Int64())
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_int_dec(ptr %s)\n", v, e.strConst(t.Int.String()))
 		return v, nil
 
 	case "rat", "float":
 		return "", llvmUnsupported(reasonRatFloat, "Rat and Float literals")
 
 	case "prim":
-		// `==` on two Ints is the first typed operation, and it is here to prove
-		// the representation carries through calls, closures and constructors —
-		// not as the start of an arithmetic library. Everything else stays
-		// refused by name.
-		if t.Op == "==" && len(t.Args) == 2 {
+		// THE Int PRIMITIVES, AND THE BOUNDARY IS `/`.
+		//
+		// The table is the whole vocabulary this backend lowers, and it is a
+		// table rather than a chain of ifs because a reader asking "is X
+		// supported" should find the answer in one place. Two shapes, and the
+		// return type is what separates them: an ARITHMETIC op returns an Int,
+		// an ORDERING op returns an i32 that o_bool lifts to a Bool.
+		//
+		// `neg` stays refused BY NAME. It is unary, so it does not fit either
+		// shape here, and `(- 0 x)` already reaches it — which makes it a
+		// LOWERING gap rather than a semantic one, and worth saying so instead
+		// of quietly adding a third shape for one operation. A backend subset is
+		// an honest claim only while what is outside it is named.
+		intArith := map[string]string{
+			"+": "o_int_add", "-": "o_int_sub", "*": "o_int_mul",
+			"/": "o_int_div", "%": "o_int_mod",
+		}
+		intOrder := map[string]string{"==": "o_int_eq", "<": "o_int_lt", "<=": "o_int_le"}
+		arith, isArith := intArith[t.Op]
+		order, isOrder := intOrder[t.Op]
+		if len(t.Args) == 2 && (isArith || isOrder) {
+			// THE TYPE GUARD IS LOAD-BEARING, not a formality. `+ - * < <=` are
+			// numeric-OVERLOADED in the language — the same op spells Rat and
+			// Float arithmetic — and `==` is polymorphic over everything. So the
+			// operand types decide whether this is the Int lowering at all, and
+			// a Rat addition must fall through to the refusal below rather than
+			// be handed to an integer runtime.
 			at, aerr := e.chk.synth(e.ctx, &t.Args[0])
 			bt, berr := e.chk.synth(e.ctx, &t.Args[1])
 			if aerr == nil && berr == nil && at != nil && bt != nil && at.K == "int" && bt.K == "int" {
@@ -543,8 +570,13 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 				if err != nil {
 					return "", err
 				}
+				if isArith {
+					v := e.next()
+					fmt.Fprintf(&e.b, "  %s = call ptr @%s(ptr %s, ptr %s)\n", v, arith, a, b)
+					return v, nil
+				}
 				r := e.next()
-				fmt.Fprintf(&e.b, "  %s = call i32 @o_int_eq(ptr %s, ptr %s)\n", r, a, b)
+				fmt.Fprintf(&e.b, "  %s = call i32 @%s(ptr %s, ptr %s)\n", r, order, a, b)
 				v := e.next()
 				fmt.Fprintf(&e.b, "  %s = call ptr @o_bool(i32 %s)\n", v, r)
 				return v, nil
@@ -824,7 +856,14 @@ struct OVal {
   int n;        /* field count */
   const char *s;
   int slen;     /* byte length: a Str may contain NUL, so strlen is not enough */
-  long long i;  /* T_INT storage — a SUBSET of Oath's unbounded Int, see o_int */
+  /* T_INT storage: SIGN-MAGNITUDE, base 2^32, least-significant limb first.
+     isign is -1, 0 or +1 and is 0 if and only if the value is zero; ilen
+     carries no leading zero limbs. That pair of invariants is what makes
+     comparison a limb-count check before anything else, and it is established
+     in exactly one place — o_int_wrap. See o_int. */
+  int isign;
+  int ilen;
+  unsigned int *imag;
   OVal **f;
   OCode code;
   OVal **env;
@@ -844,19 +883,194 @@ OVal *o_strn(const char *s, int n) {
 OVal *o_str(const char *s) { return o_strn(s, s ? (int)strlen(s) : 0); }
 OVal *o_bool(int b) { OVal *v = val(T_BOOL); v->idx = b ? 1 : 0; return v; }
 
-/* AN OATH Int, and the range is the honest part.
+/* AN OATH Int IS UNBOUNDED, AND THIS IS THE REPRESENTATION THAT MAKES THAT TRUE.
 
-   Oath's Int is mathematically unbounded — ℤ, arbitrary precision, SPEC §1 and
-   the int term carries a big.Int. This runtime stores a fixed-width value, so
-   it implements a SUBSET, and a subset must say so rather than wrap. Two-s
-   complement wraparound would make the backend disagree with oath eval on a
-   value the language considers perfectly ordinary, and the three-way gate would
-   only catch it if a test happened to reach that magnitude.
+   Oath's Int is mathematically Z - arbitrary precision, SPEC 1, and the int term
+   carries a big.Int. That is a SEMANTIC commitment rather than a representation
+   choice: the prover's Int is unbounded, so a machine-width Int would put
+   overflow reasoning into every arithmetic proof in the corpus. A backend is
+   free to lay out a Set or a Str however it likes and is not free to bound Int.
 
-   So the compiler refuses a literal it cannot represent, and this is the
-   runtime's half of that contract. The i field is the storage; nothing here
-   promises it is all of Int. Arbitrary precision is the destination, not this commit. */
-OVal *o_int(long long n) { OVal *v = val(T_INT); v->i = n; return v; }
+   This runtime used to store a long long and refuse what did not fit. Refusing
+   is honest and it is still a SUBSET, and #166's own falsifier was run before
+   this was written: a checked int64 is observably distinguishable from Z by a
+   program the subset accepts, with the overflow depending on runtime input, so
+   the cheap answer lost on evidence. docs/experiments/issue-166-bignum-int/.
+
+   NO DEPENDENCIES, which is a constraint on the whole backend and not a
+   preference: IR is emitted as text and clang is invoked, and nothing links GMP.
+   So the arithmetic is written here, in the emitted runtime.
+
+   SIGN-MAGNITUDE, base 2^32, least-significant limb first. Limbs are 32 bits so
+   that every intermediate fits a 64-bit unsigned, which is what lets this avoid
+   both compiler-specific 128-bit types and any dependency.
+
+   TWO INVARIANTS, established in ONE place (o_int_wrap) and relied on
+   everywhere: isign is 0 if and only if the value is zero, and ilen counts no
+   leading zero limbs. Together they make comparison a limb-count test first, and
+   they are why every constructor below routes through the wrapper instead of
+   filling the fields itself. */
+
+typedef unsigned int o_u32;
+typedef unsigned long long o_u64;
+
+static o_u32 *o_magalloc(int n) {
+  return (o_u32 *)xalloc(sizeof(o_u32) * (size_t)(n > 0 ? n : 1));
+}
+
+/* The single normalizer. Nothing else may decide how long a magnitude is. */
+static int o_magnorm(const o_u32 *d, int n) {
+  while (n > 0 && d[n - 1] == 0) n--;
+  return n;
+}
+
+/* THE ONLY CONSTRUCTOR OF A T_INT. Values are immutable and nothing here frees,
+   so magnitudes are SHARED rather than copied - a caller handing this an array
+   it still holds is fine, because neither party can mutate one.
+
+   The zero clause is DEFENSIVE RATHER THAN LIVE, and saying so is the honest
+   reading: mutating it to permit a negative zero changes no program's output,
+   because no caller reaches here with a negative sign and an empty magnitude -
+   cancellation passes sign 0 explicitly, multiplication by zero has sign 0, and
+   the emitter never writes the literal "-0". It is kept because it is what makes
+   the invariant hold for callers that do not yet exist, and because a comparison
+   that had to ask "is this the negative kind of zero" would be the drift this
+   file is built to avoid. */
+static OVal *o_int_wrap(int sign, o_u32 *mag, int n) {
+  OVal *v = val(T_INT);
+  n = o_magnorm(mag, n);
+  v->ilen = n;
+  v->isign = n == 0 ? 0 : (sign < 0 ? -1 : 1);
+  v->imag = n == 0 ? 0 : mag;
+  return v;
+}
+
+static int o_magcmp(const o_u32 *a, int na, const o_u32 *b, int nb) {
+  if (na != nb) return na < nb ? -1 : 1;
+  for (int i = na - 1; i >= 0; i--)
+    if (a[i] != b[i]) return a[i] < b[i] ? -1 : 1;
+  return 0;
+}
+
+static o_u32 *o_magadd(const o_u32 *a, int na, const o_u32 *b, int nb, int *nr) {
+  if (na < nb) { const o_u32 *t = a; a = b; b = t; int k = na; na = nb; nb = k; }
+  o_u32 *r = o_magalloc(na + 1);
+  o_u64 carry = 0;
+  for (int i = 0; i < na; i++) {
+    o_u64 s = (o_u64)a[i] + carry + (o_u64)(i < nb ? b[i] : 0u);
+    r[i] = (o_u32)s;
+    carry = s >> 32;
+  }
+  r[na] = (o_u32)carry;
+  *nr = na + 1;
+  return r;
+}
+
+/* THE BORROW LOOP, IN PLACE AND WRITTEN ONCE. Requires |r| >= |b|; the caller
+   orders the operands by o_magcmp. Division subtracts thousands of times and
+   allocating a result for each would be pure waste, but the reason this is the
+   core rather than a second copy is correctness, not speed: two borrow loops
+   are two chances to get the borrow wrong, and only one of them would be under
+   the differential fuzzer's nose. */
+static void o_magsubfrom(o_u32 *r, int rn, const o_u32 *b, int nb) {
+  o_u64 borrow = 0;
+  for (int i = 0; i < rn; i++) {
+    o_u64 bi = (o_u64)(i < nb ? b[i] : 0u) + borrow;
+    o_u64 ai = (o_u64)r[i];
+    if (ai >= bi) { r[i] = (o_u32)(ai - bi); borrow = 0; }
+    else { r[i] = (o_u32)(ai + ((o_u64)1 << 32) - bi); borrow = 1; }
+  }
+}
+
+static o_u32 *o_magsub(const o_u32 *a, int na, const o_u32 *b, int nb, int *nr) {
+  o_u32 *r = o_magalloc(na);
+  for (int i = 0; i < na; i++) r[i] = a[i];
+  o_magsubfrom(r, na, b, nb);
+  *nr = na;
+  return r;
+}
+
+static o_u32 *o_magmul(const o_u32 *a, int na, const o_u32 *b, int nb, int *nr) {
+  if (na == 0 || nb == 0) { *nr = 0; return o_magalloc(1); }
+  int n = na + nb;
+  o_u32 *r = o_magalloc(n);
+  for (int i = 0; i < n; i++) r[i] = 0;
+  for (int i = 0; i < na; i++) {
+    o_u64 carry = 0;
+    for (int j = 0; j < nb; j++) {
+      o_u64 t = (o_u64)a[i] * (o_u64)b[j] + (o_u64)r[i + j] + carry;
+      r[i + j] = (o_u32)t;
+      carry = t >> 32;
+    }
+    /* The product of na and nb limbs occupies at most na+nb, so this cannot run
+       off the end; the bound is asserted rather than assumed. */
+    for (int k = i + nb; carry && k < n; k++) {
+      o_u64 t = (o_u64)r[k] + carry;
+      r[k] = (o_u32)t;
+      carry = t >> 32;
+    }
+  }
+  *nr = n;
+  return r;
+}
+
+/* Small values - codepoints from a Str match, and anything the runtime itself
+   builds. LLONG_MIN has no positive counterpart, so the magnitude is taken in
+   unsigned arithmetic where negating it is defined. */
+OVal *o_int(long long n) {
+  o_u64 m = n < 0 ? (o_u64)0 - (o_u64)n : (o_u64)n;
+  o_u32 *d = o_magalloc(2);
+  d[0] = (o_u32)m;
+  d[1] = (o_u32)(m >> 32);
+  return o_int_wrap(n < 0 ? -1 : 1, d, 2);
+}
+
+/* A LITERAL OF ANY MAGNITUDE, from its decimal text.
+
+   The compiler emits the digits rather than a machine word, which is what
+   retires the old compile-time range refusal: there is no longer a literal this
+   backend cannot represent. Repeated multiply-by-ten is quadratic in the digit
+   count and that is fine - this runs once per literal, at the point of use.
+
+   Malformed text is a hard failure rather than a guess. It can only come from
+   the emitter, so it means the compiler is broken, and continuing would put an
+   invented number into a verified program. */
+OVal *o_int_dec(const char *s) {
+  int sign = 1;
+  const char *p = s ? s : "";
+  if (*p == '-') { sign = -1; p++; }
+  else if (*p == '+') { p++; }
+  if (!*p) {
+    fputs("oath: the compiler emitted an Int literal with no digits\n", stderr);
+    exit(70);
+  }
+  int cap = 4, n = 0;
+  o_u32 *d = o_magalloc(cap);
+  for (; *p; p++) {
+    if (*p < '0' || *p > '9') {
+      fprintf(stderr, "oath: the compiler emitted a malformed Int literal '%s'\n", s);
+      exit(70);
+    }
+    o_u64 carry = (o_u64)(*p - '0');
+    for (int i = 0; i < n; i++) {
+      o_u64 t = (o_u64)d[i] * 10u + carry;
+      d[i] = (o_u32)t;
+      carry = t >> 32;
+    }
+    while (carry) {
+      if (n == cap) {
+        int nc = cap * 2;
+        o_u32 *g = o_magalloc(nc);
+        for (int i = 0; i < n; i++) g[i] = d[i];
+        d = g;
+        cap = nc;
+      }
+      d[n++] = (o_u32)carry;
+      carry >>= 32;
+    }
+  }
+  return o_int_wrap(sign, d, n);
+}
 
 /* MATCHING A Str OBSERVES CODEPOINTS, NOT BYTES.
 
@@ -979,11 +1193,154 @@ OVal *o_str_tail(OVal *v) {
   if (n == 0) { fputs("oath: tail of an empty Str\n", stderr); exit(70); }
   return o_strn(v->s + n, v->slen - n);
 }
-long long o_int_val(OVal *v) {
+static OVal *o_int_arg(OVal *v) {
   if (!v || v->tag != T_INT) { fputs("oath: not an Int\n", stderr); exit(70); }
-  return v->i;
+  return v;
 }
-int o_int_eq(OVal *a, OVal *b) { return o_int_val(a) == o_int_val(b); }
+
+/* ADDITION AND SUBTRACTION ARE ONE OPERATION. bs is +1 for a + b and -1 for
+   a - b, so subtraction is addition against a flipped operand sign and there is
+   no second implementation of the carry/borrow reasoning to keep in step.
+
+   The four cases below are what sign-magnitude costs, and each is decided by
+   COMPARING MAGNITUDES rather than by guessing the result's sign: like signs
+   add, unlike signs subtract the smaller from the larger and take the larger's
+   sign, and equal magnitudes with unlike signs are exactly zero. That last one
+   is the case a two-s complement implementation gets for free and this one has
+   to name - it is also the only place a NEGATIVE ZERO could be created, which
+   o_int_wrap then forbids. */
+static OVal *o_int_addsub(OVal *a, OVal *b, int bs) {
+  int sa = o_int_arg(a)->isign, sb = bs * o_int_arg(b)->isign;
+  int n;
+  if (sa == 0) return o_int_wrap(sb, b->imag, b->ilen);
+  if (sb == 0) return o_int_wrap(sa, a->imag, a->ilen);
+  if (sa == sb) {
+    o_u32 *r = o_magadd(a->imag, a->ilen, b->imag, b->ilen, &n);
+    return o_int_wrap(sa, r, n);
+  }
+  int c = o_magcmp(a->imag, a->ilen, b->imag, b->ilen);
+  if (c == 0) return o_int_wrap(0, 0, 0);
+  if (c > 0) {
+    o_u32 *r = o_magsub(a->imag, a->ilen, b->imag, b->ilen, &n);
+    return o_int_wrap(sa, r, n);
+  }
+  o_u32 *r = o_magsub(b->imag, b->ilen, a->imag, a->ilen, &n);
+  return o_int_wrap(sb, r, n);
+}
+
+OVal *o_int_add(OVal *a, OVal *b) { return o_int_addsub(a, b, 1); }
+OVal *o_int_sub(OVal *a, OVal *b) { return o_int_addsub(a, b, -1); }
+
+OVal *o_int_mul(OVal *a, OVal *b) {
+  int n;
+  o_u32 *r = o_magmul(o_int_arg(a)->imag, a->ilen, o_int_arg(b)->imag, b->ilen, &n);
+  return o_int_wrap(a->isign * b->isign, r, n);
+}
+
+/* THE ONE ORDERING PRIMITIVE. ==, < and <= are all derived from it below rather
+   than implemented three times: a hand-written equality that compared only the
+   fields its author remembered is exactly the incompleteness this project keeps
+   finding, and there is no second notion of "same Int" to drift from this one. */
+int o_int_cmp(OVal *a, OVal *b) {
+  int sa = o_int_arg(a)->isign, sb = o_int_arg(b)->isign;
+  if (sa != sb) return sa < sb ? -1 : 1;
+  if (sa == 0) return 0;
+  int c = o_magcmp(a->imag, a->ilen, b->imag, b->ilen);
+  return sa > 0 ? c : -c;
+}
+
+int o_int_eq(OVal *a, OVal *b) { return o_int_cmp(a, b) == 0; }
+int o_int_lt(OVal *a, OVal *b) { return o_int_cmp(a, b) < 0; }
+int o_int_le(OVal *a, OVal *b) { return o_int_cmp(a, b) <= 0; }
+
+/* ---------- division ----------
+
+   ONE CORE, TWO OPERATIONS. '/' and '%' differ only in which half of the same
+   result they return and which sign they attach to it, so computing them apart
+   would be two implementations of one fact - and the fact they share is exactly
+   the one that must hold: a == b*q + r. A separate remainder routine could
+   satisfy its own tests while disagreeing with the quotient beside it.
+
+   BINARY LONG DIVISION, one bit at a time, deliberately. Knuth's algorithm D is
+   the fast way and its quotient-estimate correction step is the part that gets
+   written wrong; this shifts, compares and subtracts, which is slow and has
+   nothing to estimate. The backend's stated position is that this is a correct
+   representation and not a fast one, and division is where that position costs
+   the most - so it is worth saying plainly rather than discovering later.
+
+   The invariant is r < b at the top of every iteration, which is what bounds the
+   accumulator: doubling it and setting one bit leaves r < 2b, so nb+1 limbs
+   always suffice and the shift can never carry out of the top. */
+static void o_magdivmod(const o_u32 *a, int na, const o_u32 *b, int nb,
+                        o_u32 **qp, int *nq, o_u32 **rp, int *nr) {
+  if (o_magcmp(a, na, b, nb) < 0) {
+    /* |a| < |b|: the quotient is 0 and the remainder is the dividend. Handled
+       first because the loop below would be correct but would spend na*32
+       iterations discovering it. */
+    o_u32 *r = o_magalloc(na);
+    for (int i = 0; i < na; i++) r[i] = a[i];
+    *qp = o_magalloc(1); (*qp)[0] = 0; *nq = 0;
+    *rp = r; *nr = na;
+    return;
+  }
+  int rn = nb + 1;
+  o_u32 *q = o_magalloc(na);
+  o_u32 *r = o_magalloc(rn);
+  for (int i = 0; i < na; i++) q[i] = 0;
+  for (int i = 0; i < rn; i++) r[i] = 0;
+  for (int i = na * 32 - 1; i >= 0; i--) {
+    o_u32 carry = 0;
+    for (int k = 0; k < rn; k++) {
+      o_u32 next = r[k] >> 31;
+      r[k] = (r[k] << 1) | carry;
+      carry = next;
+    }
+    r[0] |= (a[i >> 5] >> (i & 31)) & 1u;
+    if (o_magcmp(r, o_magnorm(r, rn), b, nb) >= 0) {
+      o_magsubfrom(r, rn, b, nb);
+      q[i >> 5] |= 1u << (i & 31);
+    }
+  }
+  *qp = q; *nq = na;
+  *rp = r; *nr = rn;
+}
+
+/* The phrasing matches 'oath eval' - "division by zero" and "modulo by zero" -
+   because the CONDITION is a fact about the language and not about this host.
+   The framing around it differs by construction: the interpreter reports an
+   error and exits 1, the Go backend panics out of big.Int and exits 2, and this
+   exits 70, the code every other refusal in this runtime uses. All three fail
+   and all three name the same thing. */
+static void o_int_divzero(const char *what) {
+  fprintf(stderr, "oath: %s: the divisor evaluated to 0, which has no quotient in Z. "
+                  "Refusing rather than answering.\n", what);
+  exit(70);
+}
+
+/* Sign, and it is the whole of what distinguishes these from the magnitudes.
+
+   TRUNCATED toward zero, remainder taking the DIVIDEND's sign - which is what
+   'oath eval' does, measured rather than assumed: (/ -7 2) is -3 and (% -7 2)
+   is -1, so the pair rounds toward zero rather than toward negative infinity.
+   Magnitude division truncates by construction, so the quotient needs only the
+   product of the signs and the remainder needs only the dividend's; there is no
+   correction step, which is precisely why floor division would need one. */
+OVal *o_int_div(OVal *a, OVal *b) {
+  if (o_int_arg(b)->isign == 0) o_int_divzero("division by zero");
+  if (o_int_arg(a)->isign == 0) return o_int_wrap(0, 0, 0);
+  o_u32 *q, *r; int nq, nr;
+  o_magdivmod(a->imag, a->ilen, b->imag, b->ilen, &q, &nq, &r, &nr);
+  return o_int_wrap(a->isign * b->isign, q, nq);
+}
+
+OVal *o_int_mod(OVal *a, OVal *b) {
+  if (o_int_arg(b)->isign == 0) o_int_divzero("modulo by zero");
+  if (o_int_arg(a)->isign == 0) return o_int_wrap(0, 0, 0);
+  o_u32 *q, *r; int nq, nr;
+  o_magdivmod(a->imag, a->ilen, b->imag, b->ilen, &q, &nq, &r, &nr);
+  return o_int_wrap(a->isign, r, nr);
+}
+
 int o_truth(OVal *v) { return v && v->tag == T_BOOL && v->idx != 0; }
 int o_idx(OVal *v) { return v ? v->idx : -1; }
 const char *o_cstr(OVal *v) { return (v && v->tag == T_STR && v->s) ? v->s : ""; }
@@ -1215,7 +1572,15 @@ declare ptr @o_int(i64)
 declare i32 @o_str_idx(ptr)
 declare ptr @o_str_head(ptr)
 declare ptr @o_str_tail(ptr)
+declare ptr @o_int_dec(ptr)
+declare ptr @o_int_add(ptr, ptr)
+declare ptr @o_int_sub(ptr, ptr)
+declare ptr @o_int_mul(ptr, ptr)
+declare ptr @o_int_div(ptr, ptr)
+declare ptr @o_int_mod(ptr, ptr)
 declare i32 @o_int_eq(ptr, ptr)
+declare i32 @o_int_lt(ptr, ptr)
+declare i32 @o_int_le(ptr, ptr)
 declare ptr @o_cap_env(ptr)
 declare ptr @o_cap_readfile(ptr)
 declare ptr @o_cap_emit(ptr)

@@ -1,0 +1,293 @@
+; ARBITRARY-PRECISION Int, EXERCISED THROUGH THE THREE-WAY GATE (#166).
+;
+; The LLVM backend's Int was a long long, with literals outside it refused at
+; compile time. #166's own falsifier was run first and lost: a checked int64 is
+; observably distinguishable from Oath's Int by a program the subset accepts,
+; with the overflow depending on runtime input. So the representation moved.
+; docs/experiments/issue-166-bignum-int/ is that record.
+;
+; These entries are the named cases the change has to survive. They live beside
+; `show-from-marker` rather than inside it because that program is #158's
+; evidence that a USEFUL program fits the subset, and arithmetic exercises are
+; not that — but they belong to the same acceptance script, which is the harness
+; #166 was told to extend rather than replace. `List` and `Str` are declared in
+; show-from-marker.oath and are already bound when this file is put.
+;
+; SHAPE OF EVERY ENTRY, and it is forced rather than chosen: this backend folds
+; Str LITERALS to constants and refuses a Str built from non-constant parts, so
+; a program cannot print a number it computed. Each entry therefore compares a
+; computed value against a literal and returns a literal Str naming the first
+; case that failed — which also means a wrong answer is identified, not merely
+; detected.
+;
+; The literals are the oracle. They are not the same computation written twice:
+; `oath eval` reads them through the kernel's big.Int and the LLVM artifact
+; through the emitted C, and the acceptance script requires both to agree with
+; each other and with the Go backend.
+
+; ---------- large-literal parsing ----------
+;
+; The old `int-range` refusal is retired, so a literal of any magnitude has to
+; survive the trip from canonical bytes through decimal text into limbs. Two
+; things are checked that a "parser" returning zero for everything would fail:
+; a literal must differ from its neighbour in a digit far from the end, and a
+; literal must equal a value ARITHMETIC produced.
+(defn int-large-literals [] [(args (List Str))] Str
+  (if (== (- 100000000000000000000000000000000000000001
+             100000000000000000000000000000000000000000) 1)
+    (if (== 115792089237316195423570985008687907853269984665640564039457584007913129639936
+            (* 340282366920938463463374607431768211456
+               340282366920938463463374607431768211456))
+      (if (== (+ -123456789012345678901234567890123456789012345678901234567890
+                  123456789012345678901234567890123456789012345678901234567890) 0)
+        (if (== (- 179769313486231590772930519078902473361797697894230657273430081157732675805500963132708477322407536021120113879871393357658789768814416622492847430639474124377767893424865485276302219601246094119453082952085005768838150682342462881473913110540827237163350510684586298239947245938479716304835356329624224137216
+                   1)
+                179769313486231590772930519078902473361797697894230657273430081157732675805500963132708477322407536021120113879871393357658789768814416622492847430639474124377767893424865485276302219601246094119453082952085005768838150682342462881473913110540827237163350510684586298239947245938479716304835356329624224137215)
+          "ok" "wrong-2-to-the-1024") "wrong-negative-literal") "wrong-2-to-the-256")
+    "wrong-neighbouring-digits")
+  (prop ok [] (== (int-large-literals (Nil [Str])) "ok")))
+
+; ---------- carry and borrow across limb boundaries ----------
+;
+; The runtime is base 2^32, so 2^32, 2^64 and 2^128 are exactly where a carry
+; leaves one limb for the next and where a borrow runs the other way. These are
+; the magnitudes a randomly chosen operand almost never reaches — the fuzzer in
+; the #166 directory passed a deliberately broken carry until its generator was
+; changed to construct the crossing instead of hoping for it.
+(defn int-carry [] [(args (List Str))] Str
+  (if (== (+ 4294967295 1) 4294967296)
+    (if (== (+ 18446744073709551615 1) 18446744073709551616)
+      (if (== (+ 340282366920938463463374607431768211455 1)
+              340282366920938463463374607431768211456)
+        (if (== (- 18446744073709551616 1) 18446744073709551615)
+          (if (== (+ 18446744073709551615 18446744073709551615) 36893488147419103230)
+            "ok" "wrong-both-limbs-full") "wrong-borrow") "wrong-2-to-the-128")
+      "wrong-2-to-the-64")
+    "wrong-2-to-the-32")
+  (prop ok [] (== (int-carry (Nil [Str])) "ok")))
+
+; ---------- sign ----------
+;
+; Sign-magnitude decides the result's sign by COMPARING MAGNITUDES, so the cases
+; that matter are the ones where the sign of the answer is not the sign of
+; either operand, and where a larger negative meets a smaller positive.
+(defn int-sign [] [(args (List Str))] Str
+  (if (== (+ -5 3) -2)
+    (if (== (+ 5 -3) 2)
+      (if (== (- -5 -3) -2)
+        (if (== (* -3 -4) 12)
+          (if (== (* -3 4) -12)
+            (if (== (+ -18446744073709551616 1) -18446744073709551615)
+              (if (== (- 1 18446744073709551616) -18446744073709551615)
+                "ok" "wrong-small-minus-large") "wrong-large-negative")
+            "wrong-mixed-product") "wrong-negative-product") "wrong-negative-minus-negative")
+      "wrong-positive-wins") "wrong-negative-wins")
+  (prop ok [] (== (int-sign (Nil [Str])) "ok")))
+
+; ---------- cancellation ----------
+;
+; Equal magnitudes with unlike signs is the one case that produces exactly zero,
+; and it is the only place a NEGATIVE ZERO could be created. A representation
+; carrying two spellings of zero would answer `(== x 0)` wrongly for one of them
+; while every other operation looked correct.
+(defn int-cancellation [] [(args (List Str))] Str
+  (if (== (- 340282366920938463463374607431768211456
+             340282366920938463463374607431768211456) 0)
+    (if (== (+ 340282366920938463463374607431768211456
+               (- 0 340282366920938463463374607431768211456)) 0)
+      (if (== (- (+ 18446744073709551616 4294967295) 4294967295) 18446744073709551616)
+        (if (== (if (< (- 5 5) 0) 1 0) 0)
+          (if (== (if (< 0 (- 5 5)) 1 0) 0)
+            "ok" "wrong-zero-is-not-above-zero") "wrong-zero-is-not-below-zero")
+        "wrong-round-trip") "wrong-annihilation")
+    "wrong-self-difference")
+  (prop ok [] (== (int-cancellation (Nil [Str])) "ok")))
+
+; ---------- multiplication ----------
+;
+; Multiplication is the only operation whose result needs more limbs than either
+; operand, so it is the only one where the inner carry has to propagate past the
+; end of the shorter factor.
+(defn int-multiplication [] [(args (List Str))] Str
+  (if (== (* 4294967296 4294967296) 18446744073709551616)
+    (if (== (* 99999999999999999999 99999999999999999999)
+            9999999999999999999800000000000000000001)
+      (if (== (* 0 340282366920938463463374607431768211456) 0)
+        (if (== (* 340282366920938463463374607431768211456 0) 0)
+          (if (== (* 12345678901234567890 98765432109876543210)
+                  1219326311370217952237463801111263526900)
+            "ok" "wrong-uneven-factors") "wrong-zero-on-the-right")
+        "wrong-zero-on-the-left") "wrong-square")
+    "wrong-limb-square")
+  (prop ok [] (== (int-multiplication (Nil [Str])) "ok")))
+
+; ---------- ordering ----------
+;
+; `<` and `<=` are derived from one comparison, which is what keeps them from
+; disagreeing. `not` is not lowered by this backend, so a Bool is funnelled
+; through an `if` into an Int and compared there — the same shape the fuzzer
+; uses, and the reason the ordering cases can be stated at all.
+(defn int-ordering [] [(args (List Str))] Str
+  (if (== (if (< -1 0) 1 0) 1)
+    (if (== (if (< 0 -1) 1 0) 0)
+      (if (== (if (< 18446744073709551615 18446744073709551616) 1 0) 1)
+        (if (== (if (< -18446744073709551616 -18446744073709551615) 1 0) 1)
+          (if (== (if (<= 340282366920938463463374607431768211456
+                          340282366920938463463374607431768211456) 1 0) 1)
+            (if (== (if (< 340282366920938463463374607431768211456
+                           340282366920938463463374607431768211456) 1 0) 0)
+              "ok" "wrong-strict-on-equals") "wrong-reflexive")
+          "wrong-negative-order") "wrong-limb-order")
+      "wrong-zero-below-negative")
+    "wrong-negative-below-zero")
+  (prop ok [] (== (int-ordering (Nil [Str])) "ok")))
+
+; ---------- division: exact and inexact ----------
+;
+; `int-halved` was the fail-closed control while `/` was outside the subset. It
+; is now the simplest positive case, and it is kept rather than replaced: an
+; entry that used to be refused and now has to answer is the only thing that
+; witnesses the boundary MOVED, as distinct from witnessing that something is
+; still outside it.
+(defn int-halved [] [(args (List Str))] Str
+  (if (== (/ 340282366920938463463374607431768211456 2)
+          170141183460469231731687303715884105728)
+    "ok" "wrong-halved")
+  (prop ok [] (== (int-halved (Nil [Str])) "ok")))
+
+(defn int-division-exactness [] [(args (List Str))] Str
+  (if (== (/ 12 4) 3)
+    (if (== (% 12 4) 0)
+      (if (== (/ 13 4) 3)
+        (if (== (% 13 4) 1)
+          (if (== (/ 15 4) 3)
+            (if (== (% 15 4) 3)
+              (if (== (/ 16 4) 4)
+                "ok" "wrong-next-exact") "wrong-largest-remainder")
+              "wrong-truncates-down") "wrong-inexact-remainder")
+            "wrong-inexact-quotient") "wrong-exact-remainder")
+    "wrong-exact-quotient")
+  (prop ok [] (== (int-division-exactness (Nil [Str])) "ok")))
+
+; ---------- every sign combination ----------
+;
+; TRUNCATED toward zero, remainder taking the DIVIDEND's sign. That is measured
+; from `oath eval`, not chosen: (/ -7 2) is -3 and (% -7 2) is -1, so the pair
+; rounds toward zero rather than toward negative infinity. A FLOOR-dividing
+; backend would answer -4 and +1 here, and would be correct about a different
+; language. All four sign combinations appear because the quotient's sign is a
+; product and the remainder's is not — an implementation that gave the remainder
+; the divisor's sign agrees on three of the eight answers below.
+(defn int-division-signs [] [(args (List Str))] Str
+  (if (== (/ 7 2) 3)
+    (if (== (/ -7 2) -3)
+      (if (== (/ 7 -2) -3)
+        (if (== (/ -7 -2) 3)
+          (if (== (% 7 2) 1)
+            (if (== (% -7 2) -1)
+              (if (== (% 7 -2) 1)
+                (if (== (% -7 -2) -1)
+                  "ok" "wrong-mod-neg-neg") "wrong-mod-pos-neg")
+                "wrong-mod-neg-pos") "wrong-mod-pos-pos")
+            "wrong-div-neg-neg") "wrong-div-pos-neg")
+        "wrong-div-neg-pos") "wrong-div-pos-pos")
+  (prop ok [] (== (int-division-signs (Nil [Str])) "ok")))
+
+; ---------- dividend smaller than the divisor, and multi-limb operands ----------
+;
+; |a| < |b| is the shortcut path — quotient zero, remainder the dividend — and
+; it is the one place a wrong answer is invisible to the identity below unless
+; the sign is checked too, since 0*b + a is a whatever the quotient's sign is.
+; The multi-limb cases divide across the 2^32 and 2^128 boundaries, which is
+; where the accumulator's `r < b` invariant is tightest.
+(defn int-division-boundaries [] [(args (List Str))] Str
+  (if (== (/ 2 7) 0)
+    (if (== (% 2 7) 2)
+      (if (== (/ -2 7) 0)
+        (if (== (% -2 7) -2)
+          (if (== (/ 115792089237316195423570985008687907853269984665640564039457584007913129639936
+                     340282366920938463463374607431768211456)
+                  340282366920938463463374607431768211456)
+            (if (== (% 115792089237316195423570985008687907853269984665640564039457584007913129639937
+                       340282366920938463463374607431768211456) 1)
+              (if (== (/ 340282366920938463463374607431768211456 4294967296)
+                      79228162514264337593543950336)
+                (if (== (/ 340282366920938463463374607431768211456
+                           340282366920938463463374607431768211456) 1)
+                  "ok" "wrong-self-quotient") "wrong-limb-divisor")
+                "wrong-multi-limb-remainder") "wrong-multi-limb-quotient")
+            "wrong-negative-small-remainder") "wrong-negative-small-quotient")
+        "wrong-small-remainder") "wrong-small-quotient")
+  (prop ok [] (== (int-division-boundaries (Nil [Str])) "ok")))
+
+; ---------- a = b*q + r ----------
+;
+; THE ONE CASE THE OTHERS CANNOT FAIL ALONE. A quotient and a remainder computed
+; by separate code can each satisfy their own comparison while disagreeing with
+; each other; this is what binds them, and it is stated in terms of the operands
+; rather than against a precomputed answer, so it cannot be satisfied by an
+; implementation that agrees with a wrong expectation.
+(defn int-divmod-identity [] [(args (List Str))] Str
+  (if (== (+ (* 4 (/ 13 4)) (% 13 4)) 13)
+    (if (== (+ (* 2 (/ -7 2)) (% -7 2)) -7)
+      (if (== (+ (* -2 (/ 7 -2)) (% 7 -2)) 7)
+        (if (== (+ (* -2 (/ -7 -2)) (% -7 -2)) -7)
+          (if (== (+ (* 7 (/ 2 7)) (% 2 7)) 2)
+            (if (== (+ (* 340282366920938463463374607431768211456
+                          (/ 115792089237316195423570985008687907853269984665640564039457584007913129639937
+                             340282366920938463463374607431768211456))
+                       (% 115792089237316195423570985008687907853269984665640564039457584007913129639937
+                          340282366920938463463374607431768211456))
+                    115792089237316195423570985008687907853269984665640564039457584007913129639937)
+              "ok" "wrong-multi-limb-identity") "wrong-small-dividend-identity")
+            "wrong-neg-neg-identity") "wrong-pos-neg-identity")
+        "wrong-neg-pos-identity") "wrong-pos-pos-identity")
+  (prop ok [] (== (int-divmod-identity (Nil [Str])) "ok")))
+
+; ---------- the zero-divisor controls ----------
+;
+; A ZERO DIVISOR IS A RUNTIME FAILURE, NOT A VALUE, so it cannot be written as a
+; comparison like everything above. It also cannot be written as a literal: the
+; property checker would evaluate `(/ 1 0)` and the definition would never reach
+; `tested`, so `oath build` would refuse it and the control would be untestable
+; rather than fail-closed.
+;
+; So the divisor is derived from RUNTIME INPUT and is zero for every input: `c`
+; is the first codepoint of the first argument and `(- c c)` is 0 whatever it
+; was. The properties quantify only over the no-argument branch, which is the
+; branch that has an answer. The compiled artifact then fails only when actually
+; asked, which is the behaviour under test.
+(defn int-divide-by-zero [] [(args (List Str))] Str
+  (match args
+    ((Nil) "no-argument")
+    ((Cons h t)
+      (match h
+        ((SNil) "empty-argument")
+        ((SCons c rest)
+          (if (== (/ 100 (- c c)) 0) "unreachable-zero" "unreachable-other")))))
+  (prop no-argument [] (== (int-divide-by-zero (Nil [Str])) "no-argument")))
+
+(defn int-modulo-by-zero [] [(args (List Str))] Str
+  (match args
+    ((Nil) "no-argument")
+    ((Cons h t)
+      (match h
+        ((SNil) "empty-argument")
+        ((SCons c rest)
+          (if (== (% 100 (- c c)) 0) "unreachable-zero" "unreachable-other")))))
+  (prop no-argument [] (== (int-modulo-by-zero (Nil [Str])) "no-argument")))
+
+; ---------- the fail-closed control ----------
+;
+; `neg` IS WHAT IS LEFT OUTSIDE, and it is a LOWERING gap rather than a semantic
+; one: it is unary, so it does not fit either shape the emitter handles, and
+; `(- 0 x)` already reaches the same value. That makes it a weaker boundary than
+; `/` was — worth saying, because a control's value depends on what it excludes.
+; It is still the thing that distinguishes "the subset grew" from "the refusals
+; were deleted": the LLVM backend must refuse this entry BY NAME while the Go
+; backend compiles it.
+(defn int-negated [] [(args (List Str))] Str
+  (if (== (neg 340282366920938463463374607431768211456)
+          -340282366920938463463374607431768211456)
+    "ok" "wrong-negated")
+  (prop ok [] (== (int-negated (Nil [Str])) "ok")))

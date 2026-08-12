@@ -49,9 +49,9 @@ the time of writing; the reason constants are declared in
 | `record`, `field` | accepted; a field must resolve on a synthesized record type (`441-466`) |
 | `ctor` | accepted for any non-`Str` datatype (`439`); for `Str`, see below |
 | `match` | accepted; on `Str` it must have exactly the two arms `SNil`/`SCons`, else `reasonMatchOnStrArms` (`651-654`) |
-| `int` | accepted iff the literal fits `int64`; else `reasonIntRange` / `reasonIntMissing` (`508-524`) |
+| `int` | accepted at ANY magnitude, emitted as decimal text; `reasonIntMissing` only when the term carries no value at all |
 | `rat`, `float` | always refused, `reasonRatFloat` (`526-527`) |
-| `prim` | **exactly one operation**: `==` on two arguments that both synthesize to `Int` (`534-537`). Everything else — all arithmetic, all comparison, `==` on `Str` or `Bool` — `reasonPrim` (`553`) |
+| `prim` | **eight operations**, all requiring both arguments to synthesize to `Int`: `+ - * / %` and `== < <=`. Everything else — `neg` (unary, so it shares no lowering path), every Rat and Float operation, `==` on `Str` or `Bool` — `reasonPrim`. The type guard is what decides: `+ - * < <=` are numeric-OVERLOADED and `==` is polymorphic, so a Rat addition falls through to the refusal rather than into the Int lowering |
 | anything else | `reasonTermKind` (`555`) |
 
 `Str` is the interesting row. A `Str` constructor chain whose heads are all `Int`
@@ -130,12 +130,39 @@ reports *the Go backend disagrees*, breaking the decoder stops the run at setup,
 and deleting a single check makes the Go test fail on the count. A gate never
 observed failing is a hypothesis.
 
-**The fail-closed control is in the corpus file on purpose.**
-`line-count-report`, at the bottom of `show-from-marker.oath`, is one arithmetic
-operation outside the subset: verified, compiled by the Go backend, refused by
+**The fail-closed control is in a corpus file on purpose.** It is one
+primitive outside the subset: verified, compiled by the Go backend, refused by
 name by the LLVM backend. Without it, a green run would be equally consistent
-with the refusals having been removed rather than with the program having been
+with the refusals having been removed rather than with the programs having been
 written inside them.
+
+**AND IT HAS MOVED THREE TIMES SINCE, WHICH IS THE PART WORTH KEEPING.** It was
+`line-count-report`, which needs `+`, while the backend had only `==`. #166's
+checked-`+` prototype moved `+` inside, so it became `line-pair-report`, which
+needs `*`. #166's arbitrary-precision `Int` moved `+ - * == < <=` inside, so it
+became `int-halved`, which needs `/` — and then `/` and `%` were lowered too, so
+it is now `int-negated`, which needs `neg`. Each move was forced by the same rule: an
+assertion may be replaced when the contract it encodes deliberately changed, but
+the replacement must pin the new contract at least as tightly — and a refusal
+alone cannot, because it witnesses that something is still outside the boundary
+without witnessing that the boundary MOVED. So each move added the positive
+half: every operation that came inside is now checked three ways, and the entry
+that used to be refused is required to compile and agree. The script grew from
+22 checks to 67 across the three moves.
+
+**THE CONTROL'S OPERATION IS NOT A FIXED CHOICE, AND THAT IS THE DURABLE
+LESSON.** A fail-closed control has to name something the backend still refuses,
+so every time the subset grows the control must move or it becomes a permanent
+failure. That is the right direction for it to break — a control that started
+passing would be indistinguishable from a working one — but it means the control
+is a MAINTAINED artefact, not a written-once one. `neg` is the last Int operation
+left to name; when it goes inside, this control has to leave the Int vocabulary
+entirely.
+
+Worth noting how the first move was detected. Nobody went looking: lowering `+`
+turned the then-control red, and a gate written before the change with no
+knowledge of it reported that the subset boundary had moved. That is the control
+doing exactly its job.
 
 ## Limits of this result
 

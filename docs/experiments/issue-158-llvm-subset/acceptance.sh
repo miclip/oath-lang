@@ -142,18 +142,24 @@ fi
 # 1. PUT. Every definition must reach at least `tested`: `oath build` refuses an
 #    entry point that was falsified or never verified, so this is not setup, it
 #    is the first half of the milestone's claim.
+#    int-arithmetic.oath is put SECOND and does not redeclare List or Str: it
+#    reuses the bindings show-from-marker.oath made, so the two files describe
+#    one store rather than two versions of the same datatypes.
 if ! OATH_AUTHOR="${OATH_AUTHOR:-claude-main}" "$oath" put "$here/show-from-marker.oath" --new > "$work/put.txt" 2>&1; then
   echo "FAIL setup: oath put failed"; cat "$work/put.txt"; exit 1
 fi
+if ! OATH_AUTHOR="${OATH_AUTHOR:-claude-main}" "$oath" put "$here/int-arithmetic.oath" --new > "$work/put-int.txt" 2>&1; then
+  echo "FAIL setup: oath put of the arithmetic entries failed"; cat "$work/put-int.txt"; exit 1
+fi
 check "every definition reaches at least 'tested'" "0" \
-      "$(grep -Ec 'asserted|falsified|✗' "$work/put.txt" || true)"
+      "$(cat "$work/put.txt" "$work/put-int.txt" | grep -Ec 'asserted|falsified|✗' || true)"
 
 # 2. BUILD, both backends. A refusal from the LLVM backend here is this
 #    milestone's premise — that the subset holds no useful program — coming true.
-if ! "$oath" build show-from-marker -o "$work/go" > "$work/build-go.txt" 2>&1; then
+if ! "$oath" build show-from-marker -o "$work/go-show-from-marker" > "$work/build-go.txt" 2>&1; then
   echo "FAIL setup: the Go backend refused"; cat "$work/build-go.txt"; exit 1
 fi
-if ! "$oath" build show-from-marker --backend llvm -o "$work/llvm" > "$work/build-llvm.txt" 2>&1; then
+if ! "$oath" build show-from-marker --backend llvm -o "$work/llvm-show-from-marker" > "$work/build-llvm.txt" 2>&1; then
   echo "FAIL: the LLVM backend refused to compile show-from-marker"
   cat "$work/build-llvm.txt"; exit 1
 fi
@@ -162,21 +168,50 @@ check "the LLVM backend names its lowering" "1" \
 check "the artifact declares the file_read requirement" "1" \
       "$(grep -c 'requires: readfile (file_read)' "$work/build-llvm.txt" || true)"
 
-# 3. THE FAIL-CLOSED CONTROL. `line-count-report` is verified, compiles under the
-#    Go backend, and needs `+` — the one thing separating it from the viewer. The
-#    LLVM backend must refuse it BY NAME. Without this, everything above is
-#    equally consistent with the subset's refusals having been removed rather
-#    than with the program having been written inside them.
-if ! "$oath" build line-count-report -o "$work/go-control" > "$work/build-control-go.txt" 2>&1; then
+# 3. THE FAIL-CLOSED CONTROL. `int-halved` is verified, compiles under the Go
+#    backend, and needs `/` — the one thing separating it from everything the
+#    subset now reaches. The LLVM backend must refuse it BY NAME. Without this,
+#    everything above is equally consistent with the subset's refusals having
+#    been removed rather than with the programs having been written inside them.
+#
+#    THE CONTROL HAS MOVED THREE TIMES, and every move was forced by the same
+#    rule. It was `line-count-report` (needs `+`) while the backend had only
+#    `==`; #166's checked-`+` prototype moved `+` inside, so it became
+#    `line-pair-report` (needs `*`); arbitrary-precision Int moved
+#    `+ - * == < <=` inside, so it became `int-halved` (needs `/`); and `/` and
+#    `%` then landed too, so it is now `neg`. Each time the contract changed
+#    deliberately and the replacement had to pin the new one AT LEAST AS TIGHTLY
+#    — which a refusal alone cannot do. A refusal witnesses that something is
+#    still outside the boundary; it does not witness that the boundary MOVED.
+#    So every operation that came inside is checked POSITIVELY, three ways,
+#    below.
+#
+#    `neg` IS A WEAKER BOUNDARY THAN `/` WAS, and the script says so rather than
+#    presenting it as an equal replacement. It is unary, so the emitter has no
+#    shape for it, and `(- 0 x)` already reaches the same value — so what it
+#    excludes is a lowering gap, not a semantic one. It is still the only thing
+#    separating "the subset grew" from "the refusals were deleted".
+if ! "$oath" build int-negated -o "$work/go-control" > "$work/build-control-go.txt" 2>&1; then
   echo "FAIL setup: the Go backend refused the control, so it is not a BACKEND-SUBSET boundary"
   cat "$work/build-control-go.txt"; exit 1
 fi
-"$oath" build line-count-report --backend llvm -o "$work/llvm-control" > "$work/build-control.txt" 2>&1 && rc=0 || rc=$?
-check "the LLVM backend still refuses arithmetic" "1" "$([ "$rc" != "0" ] && echo 1 || echo 0)"
+"$oath" build int-negated --backend llvm -o "$work/llvm-control" > "$work/build-control.txt" 2>&1 && rc=0 || rc=$?
+check "the LLVM backend still refuses what it cannot lower" "1" \
+      "$([ "$rc" != "0" ] && echo 1 || echo 0)"
 check "  ...and names the primitive it lacks" "1" \
-      "$(grep -c 'primitive operation "+"' "$work/build-control.txt" || true)"
+      "$(grep -c 'primitive operation "neg"' "$work/build-control.txt" || true)"
 check "  ...and emitted no executable" "0" \
       "$([ -e "$work/llvm-control" ] && echo 1 || echo 0)"
+
+# 3b. THE OTHER HALF: the entry that needs `+` must now COMPILE and agree three
+#     ways. A refusal here would mean checked `+` never reached the emitter, and
+#     a wrong answer would mean it reached it and computes something else — both
+#     invisible to the refusal check above.
+if ! "$oath" build line-count-report -o "$work/go-line-count-report" > "$work/build-lcr-go.txt" 2>&1; then
+  echo "FAIL setup: the Go backend refused line-count-report"; cat "$work/build-lcr-go.txt"; exit 1
+fi
+"$oath" build line-count-report --backend llvm -o "$work/llvm-line-count-report" > "$work/build-lcr-ll.txt" 2>&1 && rc=0 || rc=$?
+check "the LLVM backend now compiles the entry that needs '+'" "0" "$rc"
 
 caps=""
 set_reference_file() { caps="{readfile (fn [(p Str)] $(oath_literal "$1"))}"; }
@@ -189,17 +224,18 @@ set_reference_file() { caps="{readfile (fn [(p Str)] $(oath_literal "$1"))}"; }
 # crashing binary would kill only that subshell — and the empty output it left
 # behind is exactly what a PASSING case looks like here. A program that dies on
 # one particular input would then be green on that input and nowhere else.
-three_way() {
+three_way() { # three_way <entry> [argv...]
+  entry=$1; shift
   argv=$(argv_literal "$@")
   rc=0
-  "$oath" eval "(show-from-marker $caps $argv)" > "$work/eval.txt" 2> "$work/eval.err" || rc=$?
+  "$oath" eval "($entry $caps $argv)" > "$work/eval.txt" 2> "$work/eval.err" || rc=$?
   if [ "$rc" != "0" ]; then
     printf 'the interpreter exited %s on this input' "$rc"; return 0
   fi
   want=$( { decode_str "$work/eval.txt"; printf X; } ); want=${want%X}
 
-  rc_go=0; "$work/go" "$@" > "$work/go.out" 2> "$work/go.err" || rc_go=$?
-  rc_ll=0; "$work/llvm" "$@" > "$work/ll.out" 2> "$work/ll.err" || rc_ll=$?
+  rc_go=0; "$work/go-$entry" "$@" > "$work/go.out" 2> "$work/go.err" || rc_go=$?
+  rc_ll=0; "$work/llvm-$entry" "$@" > "$work/ll.out" 2> "$work/ll.err" || rc_ll=$?
   if [ "$rc_go" != "0" ] || [ "$rc_ll" != "0" ]; then
     printf 'a compiled program exited nonzero (go=%s llvm=%s)' "$rc_go" "$rc_ll"; return 0
   fi
@@ -224,29 +260,128 @@ three_way() {
 set_reference_file "$work/wrong.txt"
 check "CONTROL: a wrong reference IS reported" \
       "BOTH backends disagree with the interpreter" \
-      "$(three_way "$work/sample.txt" "---$nl")"
+      "$(three_way show-from-marker "$work/sample.txt" "---$nl")"
 
 # The passing checks, recorded only now that the gate has been seen to fire.
 set_reference_file "$work/sample.txt"
-check "reads from the marker onwards"                    "" "$(three_way "$work/sample.txt" "---$nl")"
-check "a marker at the very start returns the whole file" "" "$(three_way "$work/sample.txt" 'name')"
-check "a marker matching the last line"                  "" "$(three_way "$work/sample.txt" 'trailing')"
-check "an absent marker is reported, not empty output"   "" "$(three_way "$work/sample.txt" 'no-such-marker')"
-check "a non-ASCII marker"                               "" "$(three_way "$work/sample.txt" 'café')"
-check "an empty marker matches at position 0"            "" "$(three_way "$work/sample.txt" '')"
-check "no arguments is the usage line"                   "" "$(three_way)"
-check "one argument is the usage line"                   "" "$(three_way "$work/sample.txt")"
+check "reads from the marker onwards"                    "" "$(three_way show-from-marker "$work/sample.txt" "---$nl")"
+check "a marker at the very start returns the whole file" "" "$(three_way show-from-marker "$work/sample.txt" 'name')"
+check "a marker matching the last line"                  "" "$(three_way show-from-marker "$work/sample.txt" 'trailing')"
+check "an absent marker is reported, not empty output"   "" "$(three_way show-from-marker "$work/sample.txt" 'no-such-marker')"
+check "a non-ASCII marker"                               "" "$(three_way show-from-marker "$work/sample.txt" 'café')"
+check "an empty marker matches at position 0"            "" "$(three_way show-from-marker "$work/sample.txt" '')"
+check "no arguments is the usage line"                   "" "$(three_way show-from-marker)"
+check "one argument is the usage line"                   "" "$(three_way show-from-marker "$work/sample.txt")"
+
+# The `+` half of the moved boundary, through the same comparator: the entry
+# that used to be refused now has to give the interpreter's answer on both of
+# its branches, not merely build.
+check "the '+' entry agrees three ways on a file with newlines" "" \
+      "$(three_way line-count-report "$work/sample.txt")"
+check "  ...and on no arguments"                               "" \
+      "$(three_way line-count-report)"
+check "  ...and it really counted, rather than defaulting"     "has newlines" \
+      "$("$work/llvm-line-count-report" "$work/sample.txt" | tr -d '\n')"
+
+# ---------- #166: ARBITRARY-PRECISION Int, THREE WAYS ----------
+#
+# Every operation that came inside the boundary, checked positively. `oath eval`
+# reads these literals through the kernel's big.Int and the LLVM artifact
+# through the emitted C runtime's own decimal parser, so agreement is between
+# two independent readings of the same digits rather than one computation
+# written twice.
+#
+# TWO ASSERTIONS PER FAMILY, and the second is not redundant. `three_way` says
+# the paths AGREE; it does not say they agree on "ok". Each entry returns a
+# literal naming the first case that failed, so three identically wrong
+# implementations would agree on `wrong-2-to-the-64` and pass the first check
+# alone. The second check reads the answer.
+#
+# caps is emptied because these entries take only argv — the viewer's capability
+# record is not part of their signature, and passing one would be a type error
+# rather than a disagreement.
+caps=""
+for n in int-large-literals int-carry int-sign int-cancellation int-multiplication int-ordering \
+         int-halved int-division-exactness int-division-signs int-division-boundaries \
+         int-divmod-identity; do
+  if ! "$oath" build "$n" -o "$work/go-$n" > "$work/b-go-$n.txt" 2>&1; then
+    echo "FAIL setup: the Go backend refused $n"; cat "$work/b-go-$n.txt"; exit 1
+  fi
+  if ! "$oath" build "$n" --backend llvm -o "$work/llvm-$n" > "$work/b-ll-$n.txt" 2>&1; then
+    echo "FAIL: the LLVM backend refused $n — arbitrary-precision Int is not reaching the emitter"
+    cat "$work/b-ll-$n.txt"; exit 1
+  fi
+  check "$n agrees three ways" "" "$(three_way "$n")"
+  check "  ...and the answer is 'ok', not an agreed-wrong one" "ok" \
+        "$("$work/llvm-$n" | tr -d '\n')"
+done
+
+# And one magnitude no int64 could hold, read back out of the artifact rather
+# than out of a comparison: 2^1024 - 1 has 309 decimal digits, and the old
+# backend refused the literal at compile time.
+check "a 309-digit literal survives compilation" "ok" \
+      "$("$work/llvm-int-large-literals" | tr -d '\n')"
+
+# ---------- THE ZERO-DIVISOR CONTROLS ----------
+#
+# A zero divisor is a runtime FAILURE, so it is not compared like everything
+# above — each path is asked separately and all three must fail NAMING the same
+# condition. The divisor is derived from runtime input and is zero for any
+# input, so the failure cannot have been decided at compile time.
+#
+# THE THREE PATHS FAIL DIFFERENTLY AND THAT IS NOT PAPERED OVER: the interpreter
+# reports an error and exits 1, the Go backend panics out of big.Int and exits 2,
+# and the LLVM artifact exits 70, the code its runtime uses for every refusal.
+# What is asserted is what the LANGUAGE determines — that the operation fails and
+# names the condition — rather than a host framing no specification fixes.
+#
+# The no-argument branch is checked FIRST, three ways. Without it, "the binary
+# exits nonzero when given an argument" is equally consistent with a binary that
+# cannot run at all.
+for n in int-divide-by-zero int-modulo-by-zero; do
+  if ! "$oath" build "$n" -o "$work/go-$n" > "$work/b-go-$n.txt" 2>&1; then
+    echo "FAIL setup: the Go backend refused $n"; cat "$work/b-go-$n.txt"; exit 1
+  fi
+  if ! "$oath" build "$n" --backend llvm -o "$work/llvm-$n" > "$work/b-ll-$n.txt" 2>&1; then
+    echo "FAIL: the LLVM backend refused $n at BUILD time. A zero divisor is a"
+    echo "      runtime condition here, so refusing the program is the wrong answer."
+    cat "$work/b-ll-$n.txt"; exit 1
+  fi
+  check "$n runs normally when not asked to divide" "" "$(three_way "$n")"
+  check "  ...and takes the no-argument branch" "no-argument" \
+        "$("$work/llvm-$n" | tr -d '\n')"
+done
+
+# `division by zero` / `modulo by zero` is the phrase `oath eval` uses, so it is
+# the phrase all three are held to. Naming the condition is the assertion; the
+# wording around it is each host's own.
+for pair in "int-divide-by-zero:division by zero" "int-modulo-by-zero:modulo by zero"; do
+  n=${pair%%:*}; phrase=${pair#*:}
+
+  rc_e=0; "$oath" eval "($n (Cons [Str] \"x\" (Nil [Str])))" > "$work/dz-eval.txt" 2>&1 || rc_e=$?
+  check "$n: the interpreter fails" "1" "$([ "$rc_e" != "0" ] && echo 1 || echo 0)"
+  check "  ...naming the condition" "1" "$(grep -c "$phrase" "$work/dz-eval.txt" || true)"
+
+  rc_g=0; "$work/go-$n" x > "$work/dz-go.txt" 2>&1 || rc_g=$?
+  check "  ...the Go backend fails" "1" "$([ "$rc_g" != "0" ] && echo 1 || echo 0)"
+  check "  ...naming the condition" "1" "$(grep -c "$phrase" "$work/dz-go.txt" || true)"
+
+  rc_l=0; "$work/llvm-$n" x > "$work/dz-ll.out" 2> "$work/dz-ll.err" || rc_l=$?
+  check "  ...the LLVM backend fails" "70" "$rc_l"
+  check "  ...naming the condition" "1" "$(grep -c "$phrase" "$work/dz-ll.err" || true)"
+  check "  ...and printing no answer" "" "$(cat "$work/dz-ll.out")"
+done
 
 # And the observable behaviour a user would check by eye, so three-way agreement
 # on the WRONG answer cannot pass unnoticed.
 check "the found output starts with the marker" "---" \
-      "$("$work/llvm" "$work/sample.txt" "---$nl" | head -c 3)"
+      "$("$work/llvm-show-from-marker" "$work/sample.txt" "---$nl" | head -c 3)"
 check "the absent-marker message is the artifact's own" \
       "show-from-marker: marker not found" \
-      "$("$work/llvm" "$work/sample.txt" 'no-such-marker')"
+      "$("$work/llvm-show-from-marker" "$work/sample.txt" 'no-such-marker')"
 check "the usage line is the artifact's own" \
       "usage: show-from-marker <file> <marker>" \
-      "$("$work/llvm")"
+      "$("$work/llvm-show-from-marker")"
 
 # A LARGE REAL FILE. The interpreter is not the reference here — a multi-kilobyte
 # Oath literal is not the same input by any useful definition — so this compares
@@ -255,8 +390,8 @@ check "the usage line is the artifact's own" \
 # The runs are NOT piped into `shasum`: a pipeline reports the status of its LAST
 # command, so two crashing programs would hash two empty outputs and agree. Their
 # statuses are checked first, and only then their bytes.
-big_go=0; "$work/go"   "$root/docs/SPEC.md" '## 7.2 ' > "$work/big-go.out"   2>&1 || big_go=$?
-big_ll=0; "$work/llvm" "$root/docs/SPEC.md" '## 7.2 ' > "$work/big-ll.out" 2>&1 || big_ll=$?
+big_go=0; "$work/go-show-from-marker"   "$root/docs/SPEC.md" '## 7.2 ' > "$work/big-go.out"   2>&1 || big_go=$?
+big_ll=0; "$work/llvm-show-from-marker" "$root/docs/SPEC.md" '## 7.2 ' > "$work/big-ll.out" 2>&1 || big_ll=$?
 check "both backends survive a large real file" "0 0" "$big_go $big_ll"
 check "  ...and produce the same bytes" \
       "$(shasum < "$work/big-go.out" | cut -d' ' -f1)" \

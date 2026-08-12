@@ -383,18 +383,23 @@ func TestStrElementsAreCodepointsNotEncodedBytes(t *testing.T) {
 	}
 }
 
-// AN INT THE BACKEND CANNOT REPRESENT IS REFUSED, NEVER WRAPPED.
+// AN INT OUTSIDE INT64 IS CARRIED EXACTLY — NEITHER REFUSED NOR WRAPPED.
 //
 // Oath's Int is ℤ — unbounded, SPEC §1, and the `int` term carries a big.Int.
-// The LLVM runtime stores int64, so it implements a SUBSET, and the whole
-// question is what a subset does at its boundary. Two's-complement wraparound
-// would make the backend disagree with `oath eval` on a value the language
-// considers ordinary, and the three-way gate would only catch it if some test
-// happened to reach that magnitude.
+// This test used to assert the opposite: the LLVM runtime stored an int64 and
+// REFUSED any literal outside it. That was an honest subset — refusing is not
+// wrapping — and #166 then measured it: a fixed-width Int is observably
+// distinguishable from ℤ by a program the backend accepts, with the overflow
+// depending on runtime input. So the representation moved to arbitrary
+// precision and the contract this test encodes deliberately changed.
 //
-// The CONTROL matters as much as the refusal: an in-range literal must still
-// lower, or "refuses out-of-range" would be satisfied by refusing everything.
-func TestOutOfRangeIntIsRefusedNotWrapped(t *testing.T) {
+// THE REPLACEMENT IS TIGHTER THAN THE REFUSAL IT REPLACES, which is what the
+// change required. "Refused" is one bit and is satisfied by a backend that
+// refuses everything; the assertions below pin the VALUE. The literal's digits
+// must reach the emitted IR, and a sum that leaves int64 must equal the exact
+// answer rather than either the wrapped one or int64's own bounds — so a
+// regression to a fixed-width runtime fails here whichever way it fails.
+func TestIntOutsideInt64IsCarriedExactly(t *testing.T) {
 	st := llvmStore(t)
 	put(t, st, `(defn big-lit [] [(args (List Str))] Str (if (== 99999999999999999999999999 0) "z" "n"))`)
 	markVerified(t, st, "big-lit")
@@ -402,16 +407,41 @@ func TestOutOfRangeIntIsRefusedNotWrapped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
-	_, err = emitLLVM(st, prog)
-	if err == nil {
-		t.Fatal("lowered an Int literal outside int64 — it must be refused, because wrapping it would " +
-			"silently disagree with the reference on an ordinary Oath value")
+	ir, err := emitLLVM(st, prog)
+	if err != nil {
+		t.Fatalf("refused an Int literal outside int64: %v", err)
 	}
-	if !strings.Contains(err.Error(), "99999999999999999999999999") {
-		t.Errorf("refused but did not name the literal: %v", err)
+	// The digits must survive into the IR. Accepting the literal and emitting
+	// something else is precisely the silent disagreement the old refusal
+	// existed to prevent, and an acceptance test alone would not see it.
+	if !strings.Contains(ir, "99999999999999999999999999") {
+		t.Error("the emitted IR does not carry the literal's digits, so the value " +
+			"reaching the runtime is not the one in the source")
 	}
 
-	// CONTROL: in range still lowers, so the refusal is a boundary and not a wall.
+	// AND THE ARITHMETIC, not just the literal: a sum crossing the old boundary
+	// must equal the exact answer. Wrapping gives int64 min and saturating gives
+	// int64 max, so both are excluded by naming the value that is neither.
+	put(t, st, `(defn past-max [] [(args (List Str))] Str
+		(if (== (+ 9223372036854775807 1) 9223372036854775808) "exact"
+			(if (== (+ 9223372036854775807 1) -9223372036854775808) "wrapped" "neither")))`)
+	markVerified(t, st, "past-max")
+	pm, err := planProgram(st, "past-max")
+	if err != nil {
+		t.Fatalf("plan past-max: %v", err)
+	}
+	if _, err := emitLLVM(st, pm); err != nil {
+		t.Fatalf("refused a sum that leaves int64: %v", err)
+	}
+	// The interpreter is the reference for what "exact" means here, so it is
+	// asked rather than assumed — a hardcoded expectation would be this test
+	// agreeing with its own author.
+	if got := evalDenotation(t, st, `(past-max (Nil [Str]))`); got != "exact" {
+		t.Fatalf("the reference itself answers %q, so the expectation below would be meaningless", got)
+	}
+
+	// CONTROL: a small literal still lowers, so none of the above is satisfied by
+	// a backend that accepts everything for the wrong reason.
 	put(t, st, `(defn small-lit [] [(args (List Str))] Str (if (== 42 42) "y" "n"))`)
 	markVerified(t, st, "small-lit")
 	ok, err := planProgram(st, "small-lit")

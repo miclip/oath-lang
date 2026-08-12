@@ -646,6 +646,24 @@ func bi(s string) *big.Int { v, _ := new(big.Int).SetString(s, 10); return v }
 // ra parses a rational literal ("num/den") into an exact big.Rat.
 func ra(s string) *big.Rat { v, _ := new(big.Rat).SetString(s); return v }
 
+// iquo / irem are Int division and modulo, and they exist ONLY to name the
+// condition. big.Int.Quo and big.Int.Rem both panic with "division by zero",
+// so a modulo fault reported a division — the operation the program did not
+// perform. The interpreter distinguishes the two, so an artifact compiled from
+// the same definition must not tell a different story about why it stopped.
+func iquo(a, b *big.Int) *big.Int {
+	if b.Sign() == 0 {
+		panic("division by zero")
+	}
+	return new(big.Int).Quo(a, b)
+}
+func irem(a, b *big.Int) *big.Int {
+	if b.Sign() == 0 {
+		panic("modulo by zero")
+	}
+	return new(big.Int).Rem(a, b)
+}
+
 // canonF canonicalizes a float64: every NaN becomes the one canonical NaN, so
 // runtime identity matches the kernel (and prover). -0.0 and ±inf are kept.
 func canonF(f float64) float64 {
@@ -1736,15 +1754,20 @@ func (e *emitter) prim(t *Term, depth int, self string) (string, error) {
 		return fmt.Sprintf("any(ffloor(%s.(float64)))", args[0]), nil
 	}
 	// Integers are arbitrary-precision (*big.Int); + - * / % never overflow.
-	bigOp := map[string]string{"+": "Add", "-": "Sub", "*": "Mul", "/": "Quo", "%": "Rem"}
+	bigOp := map[string]string{"+": "Add", "-": "Sub", "*": "Mul"}
 	cmp := func(op string) string {
 		return fmt.Sprintf("any(%s.(*big.Int).Cmp(%s.(*big.Int)) %s 0)", args[0], args[1], op)
 	}
 	switch t.Op {
-	case "+", "-", "*", "/", "%":
-		// Quo/Rem truncate toward zero / take the dividend's sign (SPEC); both
-		// panic on a zero divisor, matching eval's div/mod-by-zero error.
+	case "+", "-", "*":
 		return fmt.Sprintf("any(new(big.Int).%s(%s.(*big.Int), %s.(*big.Int)))", bigOp[t.Op], args[0], args[1]), nil
+	case "/", "%":
+		// Quo/Rem truncate toward zero / take the dividend's sign (SPEC). They
+		// go through iquo/irem rather than being emitted inline, because
+		// big.Int.Rem panics with "division by zero" — naming an operation the
+		// program never performed. The helper names the condition instead.
+		helper := map[string]string{"/": "iquo", "%": "irem"}[t.Op]
+		return fmt.Sprintf("any(%s(%s.(*big.Int), %s.(*big.Int)))", helper, args[0], args[1]), nil
 	case "neg":
 		return fmt.Sprintf("any(new(big.Int).Neg(%s.(*big.Int)))", args[0]), nil
 	case "<":

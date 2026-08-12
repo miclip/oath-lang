@@ -259,20 +259,99 @@ func TestLLVMRefusesAKindItCannotLower(t *testing.T) {
 // Unsupported LANGUAGE constructs are refused rather than miscompiled. A backend
 // that guessed at what it did not understand would make the differential gate the
 // only thing standing between a wrong answer and a shipped executable.
-func TestLLVMRefusesWhatItCannotLower(t *testing.T) {
-	st := llvmStore(t)
-	put(t, st, `(defn arith [] [(args (List Str))] Str
-		(if (< 1 2) "yes" "no"))`)
-	markVerified(t, st, "arith")
+// THE SUBSET BOUNDARY, BOTH SIDES OF IT.
+//
+// This checked that `<` was refused, back when the backend lowered exactly one
+// primitive. #166 moved `+ - * == < <=` inside, so the contract it encoded
+// deliberately changed — and by the rule this repo works to, a replacement must
+// pin the NEW contract at least as tightly. A refusal on its own cannot: it
+// witnesses that something is still outside the boundary without witnessing that
+// the boundary moved, so a lowering silently deleted later would keep this green.
+//
+// Hence the table. Every operation named `accepted` must emit, every operation
+// named `refused` must be refused BY NAME, and the two lists together are the
+// claim. `neg` is unary and unlowered, so it is the remaining Int boundary.
+//
+// ACCEPTANCE IS THE WEAKER HALF OF EACH ROW AND IS NOT LEFT TO CARRY THE CLAIM.
+// This asserts only that an operation LOWERS; it says nothing about the value
+// produced, so a row moved from refused to accepted has surrendered a check
+// unless something else pins the semantics. For `/` and `%` that is
+// `docs/experiments/issue-158-llvm-subset/acceptance.sh`, which compares both
+// against `oath eval` and holds all three paths to naming the by-zero condition
+// they actually hit — strictly more than the refusal it replaced.
+func TestLLVMPrimitiveBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		accepted   bool
+	}{
+		{"add", `(if (== (+ 1 2) 3) "yes" "no")`, true},
+		{"sub", `(if (== (- 3 1) 2) "yes" "no")`, true},
+		{"mul", `(if (== (* 2 3) 6) "yes" "no")`, true},
+		{"eq", `(if (== 1 1) "yes" "no")`, true},
+		{"lt", `(if (< 1 2) "yes" "no")`, true},
+		{"le", `(if (<= 1 2) "yes" "no")`, true},
+		{"div", `(if (== (/ 4 2) 2) "yes" "no")`, true},
+		{"mod", `(if (== (% 4 2) 0) "yes" "no")`, true},
+		{"neg", `(if (== (neg 1) -1) "yes" "no")`, false},
+		// `==` is polymorphic and only its Int instance is lowered, so this is
+		// not a stray case: it is the guard that keeps the six rows above from
+		// being read as "the operator is supported".
+		{"eq-on-str", `(if (== "a" "a") "yes" "no")`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := llvmStore(t)
+			put(t, st, `(defn probe [] [(args (List Str))] Str `+tc.body+`)`)
+			markVerified(t, st, "probe")
+			prog, err := planProgram(st, "probe")
+			if err != nil {
+				t.Fatalf("planProgram: %v", err)
+			}
+			_, err = emitLLVM(st, prog)
+			if tc.accepted {
+				if err != nil {
+					t.Fatalf("the LLVM backend refused %s, which it lowers: %v", tc.name, err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("the LLVM backend accepted %s, which it cannot lower", tc.name)
+			}
+			if !strings.Contains(err.Error(), "cannot lower") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			// BY NAME, not merely refused. A refusal that did not say which
+			// operation was missing would leave a user guessing, and would let a
+			// refusal for an unrelated reason pass as this one.
+			if !strings.Contains(err.Error(), "primitive operation") {
+				t.Fatalf("%s was refused without naming a primitive: %v", tc.name, err)
+			}
+		})
+	}
+}
 
-	prog, err := planProgram(st, "arith")
+// An Int literal of any magnitude must reach the emitter. This is the retirement
+// of `int-range` stated as a test: the old backend refused the literal below at
+// compile time, and refusing it again would be a regression to a fixed-width
+// representation rather than a stricter subset.
+func TestLLVMAcceptsLargeIntLiterals(t *testing.T) {
+	st := llvmStore(t)
+	put(t, st, `(defn huge [] [(args (List Str))] Str
+		(if (== (+ 9223372036854775807 1) 9223372036854775808) "yes" "no"))`)
+	markVerified(t, st, "huge")
+	prog, err := planProgram(st, "huge")
 	if err != nil {
 		t.Fatalf("planProgram: %v", err)
 	}
-	if _, err := emitLLVM(st, prog); err == nil {
-		t.Fatal("the LLVM backend accepted integer arithmetic it cannot lower")
-	} else if !strings.Contains(err.Error(), "cannot lower") {
-		t.Fatalf("unexpected error: %v", err)
+	ir, err := emitLLVM(st, prog)
+	if err != nil {
+		t.Fatalf("the LLVM backend refused a literal outside int64: %v", err)
+	}
+	// The digits must appear in the emitted IR. Without this the test would pass
+	// on a backend that accepted the literal and silently emitted something else,
+	// which is the failure the old range check existed to prevent.
+	if !strings.Contains(ir, "9223372036854775808") {
+		t.Fatal("the emitted IR does not carry the literal's digits, so the value " +
+			"reaching the runtime is not the one in the source")
 	}
 }
 
@@ -722,6 +801,35 @@ func TestLLVMSubsetAcceptanceScript(t *testing.T) {
 	// still covers the control, the fail-closed control and the three-way cases.
 	if ran < 20 {
 		t.Errorf("acceptance ran %d checks, fewer than the 20 that cover the controls", ran)
+	}
+
+	// AND A COUNT IS A PROXY FOR COVERAGE, WHICH IS THE DEFECT THE FLOOR ALONE
+	// CARRIES. A floor set below the current count permits deleting a whole
+	// FAMILY of checks and staying green — deleting every arbitrary-precision
+	// case above left 20-odd others behind and would have passed. The claim is
+	// that each family is exercised, and the structural owner of that claim is
+	// the check LABELS, not their number: a family cannot be removed without its
+	// label going with it.
+	//
+	// These name families, never individual cases, so adding or refining a check
+	// inside one does not touch this list.
+	for _, family := range []string{
+		"the LLVM backend still refuses what it cannot lower", // the fail-closed control
+		"CONTROL: a wrong reference IS reported",              // the comparator's own control
+		"int-large-literals",                                  // beyond int64, parsed and carried
+		"int-carry",                                           // limb boundaries
+		"int-sign",                                            // sign-magnitude
+		"int-multiplication",
+		"int-ordering",
+		"int-divmod-identity",  // the law relating the two
+		"int-divide-by-zero",   // the disposition, not just the value
+		"int-modulo-by-zero",   // and that it is named DISTINCTLY from division
+		"digit literal survives compilation",
+	} {
+		if !strings.Contains(string(out), family) {
+			t.Errorf("acceptance no longer exercises %q — a family was removed, "+
+				"which the count floor alone cannot see", family)
+		}
 	}
 }
 
