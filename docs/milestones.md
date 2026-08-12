@@ -984,3 +984,74 @@ that describe its own starting state, and those are the ones nothing fails on.**
 
 Landed `c6b5dd9`. Retired from the forced bucket on landing, without waiting for
 its neighbour — which is what per-entry retirement conditions are for.
+
+## #119 — the entry's interface becomes one variant, and exhaustiveness becomes a type error
+
+**The defect was a defect CLASS, which is why the fix is an API and not two
+lines.** `if len(prog.Requirements) > 0` decided whether to build and apply the
+capability record. But an entry typed `(-> {} (-> (List Str) Str))` requires no
+authority and STILL takes the record, because arity comes from its type — so the
+count passed argv where the record belonged. The Go backend printed a closure;
+the LLVM backend did the same thing independently, hours apart, in a file that
+shares no code with the first. **A bug that reproduces itself in a fresh file is
+an API problem, not an attention problem.**
+
+Two questions were being answered by one field: *"requires nothing"* is about
+AUTHORITY, *"takes no argument"* is about SHAPE. Nothing stopped a backend author
+from reaching for the more obvious-looking one.
+
+**`EntryShape` names the four COMBINATIONS** — cli, cli-with-capabilities,
+handler, handler-with-capabilities — rather than carrying a protocol plus a flag,
+because a protocol-and-a-boolean is still two things a consumer can read one of.
+`CapTy` is gone from `CompiledProgram` entirely, which is what makes "no arity
+inference" structural rather than a convention: the record type is still derived
+during planning for `entryRequirements`, it is simply never carried where a
+backend could reach it. `len(Requirements)` survives only where it sizes provider
+arrays and prints the authority list — the question the list actually answers.
+
+**EXHAUSTIVENESS IS A COMPILE ERROR, NOT A TEST**, which Go does not give you for
+free:
+
+    type entryShapeTable = [numEntryShapes]struct{}
+    var _ entryShapeTable = [len(goEntries)]struct{}{}
+
+Two array types are identical only when their lengths are, so a missing or
+surplus row is a type error at the declaration, in the file that owns the
+decision. `numEntryShapes` is a terminal sentinel in the iota block, so the
+variant's size is DERIVED rather than written down.
+
+**THE FIRST ATTEMPT WAS WEAKER AND LOOKED FINISHED, WHICH IS THE PART WORTH
+KEEPING.** It used maps plus a hand-written `entryShapes()` list and checked
+totality at every lookup. That is a real check — but the LIST is itself a place a
+new constant can be omitted, and omitting it there leaves every "does this table
+decide every shape?" check passing while measuring a universe smaller than the
+variant. **The authority for the size has to be something the compiler derives.**
+The issue is about inferring a fact instead of consuming it, and the first repair
+reproduced that one level up.
+
+**A LENGTH CHECK IS NOT A COVERAGE CHECK**, stated rather than papered over: a
+table can reach the right length with a MIDDLE index left at its zero value, and
+for one backend the zero value is a legitimate row — exactly the plain CLI
+answer, so it cannot be rejected on sight. Each row therefore names the shape it
+decides, checked against its index at run time. The compile-time half catches an
+omitted shape; the run-time half catches a hole. **Neither subsumes the other.**
+
+**A REFUSAL IS A CASE.** The LLVM backend covers a subset, and the shapes it
+declines are rows in the same table rather than an early `if` that has to
+remember. The row holds a constructor rather than a stored `refusalReason`,
+because the refusal vocabulary is closed by tracing assignments to declared
+constants and a reason carried through a struct field is not traceable —
+correctly, since a computed reason is not vocabulary.
+
+**Also corrected: a comment claiming the manifest's reader recovers arity from
+`requirements`.** False, and the empty capability record is the counterexample —
+the same presence-versus-contents confusion this variant exists to remove,
+reappearing one layer up in the record that describes the build.
+
+**The test set covers both directions, which is more than exhaustiveness.**
+Totality alone is satisfiable by a variant carrying cases nothing can produce —
+a green check over a universe partly made of fiction. `TestClassifyEntryInhabits
+EveryShape` closes that from the other side: every named shape is reachable from
+a real entry type, so the variant is neither under- nor over-specified.
+
+Landed `ebff84e`.
