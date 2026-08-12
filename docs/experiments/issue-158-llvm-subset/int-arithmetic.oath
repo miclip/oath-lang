@@ -13,12 +13,16 @@
 ; #166 was told to extend rather than replace. `List` and `Str` are declared in
 ; show-from-marker.oath and are already bound when this file is put.
 ;
-; SHAPE OF EVERY ENTRY, and it is forced rather than chosen: this backend folds
-; Str LITERALS to constants and refuses a Str built from non-constant parts, so
-; a program cannot print a number it computed. Each entry therefore compares a
-; computed value against a literal and returns a literal Str naming the first
-; case that failed — which also means a wrong answer is identified, not merely
-; detected.
+; SHAPE OF EVERY ENTRY: each compares a computed value against a literal and
+; returns a literal Str naming the first case that failed, so a wrong answer is
+; identified rather than merely detected.
+;
+; That shape was FORCED when these were written — the backend folded Str literals
+; to constants and refused a Str built from non-constant parts, so a program
+; could not print a number it computed. #164 lifted that refusal and the shape is
+; now CHOSEN: it survives because a literal naming the failed case is a better
+; oracle than a rendered number, not because nothing else is expressible.
+; str-construction.oath is where construction itself is exercised.
 ;
 ; The literals are the oracle. They are not the same computation written twice:
 ; `oath eval` reads them through the kernel's big.Int and the LLVM artifact

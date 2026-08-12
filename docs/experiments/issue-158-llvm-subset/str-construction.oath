@@ -1,0 +1,150 @@
+; BUILDING A Str FROM VALUES THE COMPILER CANNOT SEE (#164).
+;
+; The LLVM backend folded a Str constructor chain of Int literals to a constant
+; and REFUSED anything else, so every result a compiled program could produce
+; was a literal or a SUFFIX of an input. It could search and echo; it could not
+; report. `int-arithmetic.oath` says so in its own header, and its entries are
+; shaped around the limitation: each compares a computed value against a literal
+; and returns a LITERAL naming the case that failed, because it cannot print the
+; number it computed.
+;
+; These entries are the other side of that. Every one of them returns bytes that
+; appear in no literal in the program and are not a suffix of any argument, so a
+; backend still folding — or one that quietly started substituting — cannot
+; produce them by accident.
+;
+; `List` and `Str` are declared in show-from-marker.oath and are already bound
+; when this file is put; the helpers here are new because the ones there return
+; Bool or a TAIL of their input, which is exactly the class that needs no
+; construction.
+;
+; THE NON-SCALAR ENTRIES AT THE BOTTOM ARE NOT COMPARED THREE WAYS, and the
+; reason is the finding rather than an omission: SPEC 3 says construction is
+; unchecked and a KERNEL MUST NOT reject a non-scalar element, while a backend
+; storing a Str as packed UTF-8 performs PACK at construction and may refuse
+; there. So the interpreter ACCEPTS what both packed backends REFUSE. That is
+; the honest subset boundary, and the acceptance script asserts each side of it
+; separately rather than asking a comparator to reconcile them.
+
+; ---------- the helpers, all three of them constructing ----------
+
+(defn str-cat [] [(a Str) (b Str)] Str
+  (match a
+    ((SNil) b)
+    ((SCons c rest) (SCons c (str-cat rest b))))
+  (prop left-unit [] (== (str-cat "" "abc") "abc"))
+  (prop right-unit [] (== (str-cat "abc" "") "abc"))
+  (prop joins [] (== (str-cat "ab" "cd") "abcd")))
+
+; Every codepoint of the result is ARITHMETIC on an input codepoint, so the
+; result is not a substring of the input and is in no literal here.
+(defn str-bump [] [(s Str)] Str
+  (match s
+    ((SNil) (SNil))
+    ((SCons c rest) (SCons (+ c 1) (str-bump rest))))
+  (prop shifts [] (== (str-bump "HAL") "IBM"))
+  (prop empty [] (== (str-bump "") "")))
+
+(defn str-reverse-onto [] [(s Str) (acc Str)] Str
+  (match s
+    ((SNil) acc)
+    ((SCons c rest) (str-reverse-onto rest (SCons c acc))))
+  (prop onto-empty [] (== (str-reverse-onto "abc" "") "cba")))
+
+; Reversal is the case a VIEW cannot serve: every proper prefix of the result is
+; a fresh allocation, and no suffix of the input spells it.
+(defn str-reverse [] [(s Str)] Str
+  (str-reverse-onto s "")
+  (prop reverses [] (== (str-reverse "abc") "cba"))
+  (prop involutive [] (== (str-reverse (str-reverse "café")) "café"))
+  (prop empty [] (== (str-reverse "") "")))
+
+(defn str-drop1 [] [(s Str)] Str
+  (match s
+    ((SNil) (SNil))
+    ((SCons c rest) rest))
+  (prop drops [] (== (str-drop1 "abc") "bc"))
+  (prop empty [] (== (str-drop1 "") "")))
+
+; ---------- construction from runtime values ----------
+;
+; #164's own example: the message the old subset could not express at all.
+(defn str-report [] [(args (List Str))] Str
+  (match args
+    ((Nil) "missing key: <none>")
+    ((Cons h t) (str-cat "missing key: " h)))
+  (prop no-args [] (== (str-report (Nil [Str])) "missing key: <none>"))
+  (prop names-the-key []
+    (== (str-report (Cons [Str] "host" (Nil [Str]))) "missing key: host")))
+
+; The stronger one. The result shares no codepoint with the input and appears
+; nowhere in the program text.
+(defn str-shifted [] [(args (List Str))] Str
+  (match args
+    ((Nil) "")
+    ((Cons h t) (str-bump h)))
+  (prop shifts [] (== (str-shifted (Cons [Str] "HAL" (Nil [Str]))) "IBM")))
+
+; Order-reversing, so agreement cannot come from a lowering that returns a view
+; of the argument.
+(defn str-mirrored [] [(args (List Str))] Str
+  (match args
+    ((Nil) "")
+    ((Cons h t) (str-cat h (str-reverse h))))
+  (prop mirrors [] (== (str-mirrored (Cons [Str] "ab" (Nil [Str]))) "abba")))
+
+; A TAIL HELD ACROSS LATER CONSTRUCTION. o_str_tail hands out a VIEW into its
+; parent's buffer; runtime construction is the first allocating producer of
+; buffers, so this takes a tail FIRST and uses it only after two more strings
+; have been built. It does not witness the copy — a lowering that shared the
+; bytes and never wrote them would also pass, correctly, because the claim is
+; about lifetime and not about layout.
+(defn str-held-tail [] [(args (List Str))] Str
+  (match args
+    ((Nil) "")
+    ((Cons h t)
+      (match (str-drop1 (str-cat "xy" h))
+        ((SNil) "empty")
+        ((SCons c rest)
+          (str-cat (SCons c rest)
+                   (str-cat (str-bump h) (str-cat "0123456789" h)))))))
+  (prop holds [] (== (str-held-tail (Cons [Str] "a" (Nil [Str]))) "yab0123456789a"))
+  (prop no-args [] (== (str-held-tail (Nil [Str])) "")))
+
+; ---------- the non-scalar classes, one entry each ----------
+;
+; The head of each SCons is computed from an INPUT codepoint, so nothing folds
+; and the compile-time scan cannot see it: this is the runtime path and nothing
+; else. With argv[0] = "A" (65) each entry lands on exactly one class.
+;
+; Each returns "" for no arguments, which is what lets the acceptance script
+; prove the artifact RUNS — otherwise "it exits nonzero" is equally consistent
+; with a binary that cannot start.
+
+(defn str-nonscalar-negative [] [(args (List Str))] Str
+  (match args
+    ((Nil) "")
+    ((Cons h t) (match h ((SNil) "") ((SCons c rest) (SCons (- 0 c) (SNil))))))
+  (prop no-args [] (== (str-nonscalar-negative (Nil [Str])) "")))
+
+(defn str-nonscalar-surrogate [] [(args (List Str))] Str
+  (match args
+    ((Nil) "")
+    ((Cons h t) (match h ((SNil) "") ((SCons c rest) (SCons (+ c 55231) (SNil))))))
+  (prop no-args [] (== (str-nonscalar-surrogate (Nil [Str])) "")))
+
+(defn str-nonscalar-above-max [] [(args (List Str))] Str
+  (match args
+    ((Nil) "")
+    ((Cons h t) (match h ((SNil) "") ((SCons c rest) (SCons (+ c 1114047) (SNil))))))
+  (prop no-args [] (== (str-nonscalar-above-max (Nil [Str])) "")))
+
+; 65 * 10^21 — far past int64, so the refusal has to render a MULTI-LIMB
+; magnitude, and eighteen of its digits are zeros that only survive if interior
+; nine-digit chunks keep their leading zeros.
+(defn str-nonscalar-astronomical [] [(args (List Str))] Str
+  (match args
+    ((Nil) "")
+    ((Cons h t)
+      (match h ((SNil) "") ((SCons c rest) (SCons (* c (* 1000000000000 1000000000)) (SNil))))))
+  (prop no-args [] (== (str-nonscalar-astronomical (Nil [Str])) "")))

@@ -62,6 +62,14 @@ NUL survives. A `Str` constructor that does **not** fold is refused —
 non-scalar codepoint (`429-438`). The consequence is exact: **emitted IR never
 constructs a `Str` at runtime.**
 
+> **SUPERSEDED as a statement about the CURRENT backend.** That row, and the
+> class it bounds the subset to, is what #164 lifted: a non-folding chain now
+> lowers through a runtime constructor, and `reasonDynamicStr` is retired.
+> `../issue-164-dynamic-str/` is that record. The finding below stands as the
+> measurement it was — it is the evidence #164 acted on — and is read as a
+> snapshot, not as the live boundary. `oath/llvm.go` is the authority on what is
+> refused today; every line number here is from the time of writing.
+
 Capabilities are not the constraint. `llvmProviders` (`74-78`) supplies
 `process_env`, `file_read` and `record_sink`; `capabilityVocabulary`
 (`program.go:209-230`) declares four kinds, so the only one absent is
@@ -96,6 +104,12 @@ If the backend is widened, **dynamic `Str` construction is the first thing to
 lift, not `Rat`** — it is one runtime function and it converts "select and echo"
 into "report", which is where the next demand actually is. Arithmetic is a second
 and independent axis. Filed separately; this record is the evidence for it.
+
+Both have since been done, in the order the arithmetic axis first: #166
+(arbitrary-precision `Int` and the binary primitives,
+`../issue-166-bignum-int/`) and then #164 (runtime `Str` construction,
+`../issue-164-dynamic-str/`). The recommendation above was one runtime function
+and it was approximately right about the size. `Rat` is still refused.
 
 `docs/tutorial/circle.md` remains uncompilable by this backend, and that is
 unchanged and unclaimed. What is refuted is the premise that no useful program

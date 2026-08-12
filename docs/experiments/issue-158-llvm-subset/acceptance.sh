@@ -151,8 +151,11 @@ fi
 if ! OATH_AUTHOR="${OATH_AUTHOR:-claude-main}" "$oath" put "$here/int-arithmetic.oath" --new > "$work/put-int.txt" 2>&1; then
   echo "FAIL setup: oath put of the arithmetic entries failed"; cat "$work/put-int.txt"; exit 1
 fi
+if ! OATH_AUTHOR="${OATH_AUTHOR:-claude-main}" "$oath" put "$here/str-construction.oath" --new > "$work/put-str.txt" 2>&1; then
+  echo "FAIL setup: oath put of the Str construction entries failed"; cat "$work/put-str.txt"; exit 1
+fi
 check "every definition reaches at least 'tested'" "0" \
-      "$(cat "$work/put.txt" "$work/put-int.txt" | grep -Ec 'asserted|falsified|✗' || true)"
+      "$(cat "$work/put.txt" "$work/put-int.txt" "$work/put-str.txt" | grep -Ec 'asserted|falsified|✗' || true)"
 
 # 2. BUILD, both backends. A refusal from the LLVM backend here is this
 #    milestone's premise — that the subset holds no useful program — coming true.
@@ -371,6 +374,163 @@ for pair in "int-divide-by-zero:division by zero" "int-modulo-by-zero:modulo by 
   check "  ...naming the condition" "1" "$(grep -c "$phrase" "$work/dz-ll.err" || true)"
   check "  ...and printing no answer" "" "$(cat "$work/dz-ll.out")"
 done
+
+# ---------- #164: A Str BUILT FROM RUNTIME VALUES, THREE WAYS ----------
+#
+# The LLVM backend folded a literal Str chain and REFUSED every other one, which
+# bounded it to results that are a literal or a SUFFIX of an input: it could
+# search and echo, never report. Each entry here returns bytes that appear in no
+# literal in the program and are not a suffix of any argument, so a backend still
+# folding cannot produce them by accident.
+#
+# `int-negated` above REMAINS the fail-closed control and did not move. That is
+# the point: #164 widened Str construction, not the primitive vocabulary, so the
+# thing separating "the subset grew" from "the refusals were deleted" is still
+# `neg` and needed no replacement. A control that moves whenever anything lands
+# is not measuring a boundary.
+for n in str-report str-shifted str-mirrored str-held-tail; do
+  if ! "$oath" build "$n" -o "$work/go-$n" > "$work/b-go-$n.txt" 2>&1; then
+    echo "FAIL setup: the Go backend refused $n"; cat "$work/b-go-$n.txt"; exit 1
+  fi
+  if ! "$oath" build "$n" --backend llvm -o "$work/llvm-$n" > "$work/b-ll-$n.txt" 2>&1; then
+    echo "FAIL: the LLVM backend refused $n — runtime Str construction is not reaching the emitter"
+    cat "$work/b-ll-$n.txt"; exit 1
+  fi
+done
+
+# TWO ASSERTIONS PER ENTRY, for the reason the arithmetic block gives: agreement
+# is not correctness. Three paths that all returned the argument unchanged would
+# agree, so the second check reads the answer a person would read.
+check "str-report agrees three ways with no arguments" "" "$(three_way str-report)"
+check "str-report agrees three ways on a key"          "" "$(three_way str-report host)"
+check "  ...and really built the message"  "missing key: host" \
+      "$("$work/llvm-str-report" host | tr -d '\n')"
+check "str-report on a multi-byte key"                 "" "$(three_way str-report 'café')"
+check "  ...and the non-ASCII survived construction" "missing key: café" \
+      "$("$work/llvm-str-report" 'café' | tr -d '\n')"
+
+# Every codepoint here is arithmetic on an input codepoint, so the result is in
+# no literal and is not a substring of the input.
+check "str-shifted agrees three ways"                  "" "$(three_way str-shifted HAL)"
+check "  ...and the codepoints really moved"      "IBM" \
+      "$("$work/llvm-str-shifted" HAL | tr -d '\n')"
+check "str-shifted on an empty argument"               "" "$(three_way str-shifted '')"
+check "str-shifted with no arguments"                  "" "$(three_way str-shifted)"
+
+# Order-reversing, so agreement cannot come from a lowering that hands back a
+# view of its argument.
+check "str-mirrored agrees three ways"                 "" "$(three_way str-mirrored ab)"
+check "  ...and the result is not a view of the input" "abba" \
+      "$("$work/llvm-str-mirrored" ab | tr -d '\n')"
+check "str-mirrored on a multi-byte argument"          "" "$(three_way str-mirrored 'café')"
+
+# A TAIL HELD ACROSS LATER CONSTRUCTION. `o_str_tail` returns a pointer INTO its
+# parent's buffer; runtime construction is the first ALLOCATING producer of Str
+# buffers, so an allocator that reused or freed one would break a view taken
+# before it — silently, and only for a program that holds a tail across a later
+# construction. This entry is that program.
+check "str-held-tail agrees three ways"                "" "$(three_way str-held-tail a)"
+check "  ...and on a long argument"                    "" \
+      "$(three_way str-held-tail 'a longer argument, held across several later allocations')"
+check "  ...and the held tail is still intact"    "yab0123456789a" \
+      "$("$work/llvm-str-held-tail" a | tr -d '\n')"
+
+# ---------- #164: THE NON-SCALAR CLASSES ----------
+#
+# THE THREE PATHS DISAGREE HERE BY DESIGN, so this is not run through
+# `three_way`; each is asked separately, as the zero-divisor block does. The
+# disagreement is not a divergence, it is the honest subset boundary: SPEC 3 says
+# construction is UNCHECKED and a KERNEL MUST NOT reject a non-scalar element,
+# and says in the same place that an implementation storing a Str as packed UTF-8
+# performs PACK at construction and may refuse there. So the interpreter accepts
+# what both packed backends refuse, and each side is asserted on its own terms.
+#
+# THE TWO BACKENDS FAIL DIFFERENTLY AND THAT IS NOT PAPERED OVER, exactly as with
+# a zero divisor: the Go backend panics and exits 2, the LLVM artifact exits 70,
+# the code its runtime uses for every refusal. No specification fixes either, so
+# what is asserted of both is what the LANGUAGE determines — that construction
+# FAILS and NAMES the element — and the exit code is asserted only of the LLVM
+# artifact, whose own runtime does fix it.
+#
+# The head of each SCons is computed from an INPUT codepoint, so nothing folds
+# and the compile-time scan cannot see it: this is the runtime path and nothing
+# else. Each entry returns "" for no arguments, which is what makes "it exits
+# nonzero" evidence about the ELEMENT rather than about a binary that cannot run.
+for n in str-nonscalar-negative str-nonscalar-surrogate str-nonscalar-above-max \
+         str-nonscalar-astronomical; do
+  if ! "$oath" build "$n" -o "$work/go-$n" > "$work/b-go-$n.txt" 2>&1; then
+    echo "FAIL setup: the Go backend refused $n at BUILD time"; cat "$work/b-go-$n.txt"; exit 1
+  fi
+  if ! "$oath" build "$n" --backend llvm -o "$work/llvm-$n" > "$work/b-ll-$n.txt" 2>&1; then
+    echo "FAIL: the LLVM backend refused $n at BUILD time. The element is computed from"
+    echo "      runtime input, so refusing the PROGRAM is the wrong answer — the check"
+    echo "      belongs at construction, not at compile time."
+    cat "$work/b-ll-$n.txt"; exit 1
+  fi
+  # THE CONTROL, FIRST: the artifact must RUN. Without it every refusal below is
+  # equally consistent with a binary that dies whatever it is given.
+  check "$n runs when not asked to build a non-scalar" "" "$(three_way "$n")"
+done
+
+: > "$work/ns-messages.txt"
+for pair in "str-nonscalar-negative:-65:(negative)" \
+            "str-nonscalar-surrogate:55296:(a surrogate, 0xD800..0xDFFF)" \
+            "str-nonscalar-above-max:1114112:(above the maximum scalar 0x10FFFF)" \
+            "str-nonscalar-astronomical:65000000000000000000000:(above the maximum scalar 0x10FFFF)"; do
+  n=${pair%%:*}; rest=${pair#*:}; el=${rest%%:*}; cls=${rest#*:}
+
+  # THE KERNEL'S SIDE OF SPEC 3. The interpreter must CONSTRUCT the value, not
+  # refuse it — and the element must appear in the result, so "it exited 0" is
+  # not satisfied by an interpreter that quietly returned something else.
+  rc_e=0; "$oath" eval "($n (Cons [Str] \"A\" (Nil [Str])))" > "$work/ns-eval.txt" 2>&1 || rc_e=$?
+  check "$n: the interpreter ACCEPTS the runtime non-scalar" "0" "$rc_e"
+  check "  ...and carries the element in the value" "1" \
+        "$(grep -c -- "SCons $el" "$work/ns-eval.txt" || true)"
+
+  # The Go backend. Nonzero and NAMING the element; the exit code is its own.
+  rc_g=0; "$work/go-$n" A > "$work/ns-go.out" 2> "$work/ns-go.err" || rc_g=$?
+  cat "$work/ns-go.out" "$work/ns-go.err" > "$work/ns-go.txt"
+  check "  ...the Go backend refuses" "1" "$([ "$rc_g" != "0" ] && echo 1 || echo 0)"
+  check "  ...naming the element" "1" "$(grep -cF -- "$el" "$work/ns-go.txt" || true)"
+
+  # The LLVM backend. Exit 70, the element AND its class, and nothing on stdout —
+  # a partial answer followed by a refusal would be worse than either.
+  rc_l=0; "$work/llvm-$n" A > "$work/ns-ll.out" 2> "$work/ns-ll.err" || rc_l=$?
+  check "  ...the LLVM backend refuses" "70" "$rc_l"
+  check "  ...naming the element" "1" "$(grep -cF -- "$el" "$work/ns-ll.err" || true)"
+  check "  ...and its class" "1" "$(grep -cF -- "$cls" "$work/ns-ll.err" || true)"
+  check "  ...and printing no answer" "" "$(cat "$work/ns-ll.out")"
+
+  # NO SUBSTITUTION, asserted directly rather than inferred from the exit code.
+  # U+FFFD is what `string(rune(n))` produced before either backend refused, and
+  # it made -1, 55296 and 1114112 into the same three bytes.
+  #
+  # BOTH STREAMS, and the first draft of this check read stderr alone — which is
+  # exactly the wrong half. A backend that substituted rather than refused would
+  # print its replacement to STDOUT and say nothing on stderr, so the check as
+  # first written could not fail for the reason its label gives. Found by
+  # building the mutant it was supposed to catch, not by rereading it.
+  cat "$work/ns-ll.out" "$work/ns-ll.err" > "$work/ns-ll.txt"
+  check "  ...and substituting nothing, on either stream" "0 0" \
+        "$(grep -c '�' "$work/ns-go.txt" || true) $(grep -c '�' "$work/ns-ll.txt" || true)"
+
+  cat "$work/ns-ll.err" >> "$work/ns-messages.txt"
+done
+
+# AND THE MESSAGES STAY DISTINGUISHABLE. Collapsing them would be the same defect
+# as U+FFFD — distinct refused inputs producing one output — relocated from the
+# result into the diagnostic, where nothing else here would see it.
+check "the four refusals are four distinct messages" "4" \
+      "$(sort -u "$work/ns-messages.txt" | grep -c 'cannot encode Str element' || true)"
+
+# AN ASYMMETRY NOTED AND DELIBERATELY NOT ASSERTED. The Go backend tests
+# `IsInt64` before it classifies, so past int64 it names the element without its
+# class while the LLVM backend names both. Neither substitutes and both stay
+# distinguishable, so it is a diagnostic difference rather than a semantic one —
+# and pinning it would make a future improvement to that message turn this gate
+# red for no reason a reader could act on. What is asserted of the Go backend
+# above is the established contract: it REFUSES and it NAMES THE ELEMENT. Both
+# hold whether or not the class is ever added.
 
 # And the observable behaviour a user would check by eye, so three-way agreement
 # on the WRONG answer cannot pass unnoticed.

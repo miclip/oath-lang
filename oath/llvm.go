@@ -27,15 +27,16 @@ package main
 // NO DEPENDENCIES. IR is emitted as text and clang is invoked, exactly as the Go
 // backend emits Go and invokes `go build`. Nothing links LLVM into the kernel.
 //
-// HONEST SUBSET. This backend refuses far more than it accepts — arithmetic, the
-// numeric tower, native containers, dynamic Str construction, the handler
-// protocol, and the http_request capability. Refusals are explicit and name what
-// is missing. A backend that silently miscompiled what it did not understand
-// would be worse than one that compiles almost nothing, because the differential
-// gate is what makes any of this trustworthy.
+// HONEST SUBSET. This backend refuses far more than it accepts — the rest of the
+// numeric tower, native containers, the handler protocol, and the http_request
+// capability. Refusals are explicit and name what is missing. A backend that
+// silently miscompiled what it did not understand would be worse than one that
+// compiles almost nothing, because the differential gate is what makes any of
+// this trustworthy.
 
 import (
 	"fmt"
+	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -220,13 +221,14 @@ func llvmUnsupported(reason refusalReason, what string) error {
 		Backend: llvmBackendVersion,
 		Detail:  what,
 		Help: "  This is a first slice: it covers datatypes, matching, closures, records,\n" +
-			"  Str literals and matching, Bool, the CLI entry protocol, and Int —\n" +
-			"  arbitrary-precision, literals of any magnitude, with the binary\n" +
-			"  operations `+ - * / %` and `== < <=`. Division truncates toward zero\n" +
-			"  and a zero divisor fails at runtime, matching `oath eval`.\n" +
+			"  Str (literals, matching, and construction from values computed at\n" +
+			"  runtime), Bool, the CLI entry protocol, and Int — arbitrary-precision,\n" +
+			"  literals of any magnitude, with the binary operations `+ - * / %` and\n" +
+			"  `== < <=`. Division truncates toward zero and a zero divisor fails at\n" +
+			"  runtime, matching `oath eval`.\n" +
 			"  `neg` is refused by name (use `(- 0 x)`), as are Rat and Float,\n" +
-			"  Set/Map, dynamic Str construction and the handler protocol. Build with\n" +
-			"  the Go backend for full coverage.",
+			"  Set/Map and the handler protocol. Build with the Go backend for full\n" +
+			"  coverage.",
 	}
 }
 
@@ -238,8 +240,11 @@ func llvmUnsupported(reason refusalReason, what string) error {
 // codepoints exist only inside literals, so a literal becomes a constant and
 // nothing else needs to know what an Int is.
 //
-// Returns ok=false for a Str built from non-constant parts, which is refused
-// rather than guessed at.
+// Returns ok=false for a Str built from non-constant parts. That is no longer a
+// refusal (#164): the caller lowers such a chain through o_str_cons and PACK
+// happens at run time. So this predicate now decides WHERE the codepoint check
+// runs, not WHETHER the program builds — and a false negative here costs an
+// allocation, where it used to cost a build.
 func (e *llvmEmitter) strLiteral(t *Term) (string, bool) {
 	if t == nil || t.K != "ctor" || t.Hash != e.strHash || e.strHash == "" {
 		return "", false
@@ -274,22 +279,34 @@ func isUnicodeScalar(n int64) bool {
 	return n >= 0 && n <= 0x10FFFF && !(n >= 0xD800 && n <= 0xDFFF)
 }
 
-// nonScalarStrElement returns the first Str element this backend cannot encode,
-// so the refusal can NAME it instead of reporting the generic non-constant
-// reason — two different repairs, and an operator should not have to guess.
-func nonScalarStrElement(t *Term, strHash string) (int64, bool) {
+// nonScalarStrElement returns the first LITERAL Str element this backend cannot
+// encode, so the refusal can NAME it instead of reporting the generic
+// non-constant reason — two different repairs, and an operator should not have
+// to guess.
+//
+// It scans only the literal elements of the spine, which is what makes it a
+// COMPILE-TIME check: an element whose value is not known until the program runs
+// is checked by o_str_cons in the emitted runtime instead. A chain may carry
+// both, and then the statically-known bad element is the one reported, because
+// reporting it costs nothing and a build that fails is cheaper than a process
+// that exits 70.
+//
+// A magnitude beyond int64 is non-scalar with certainty — 0..0x10FFFF fits in a
+// few bits — so it is REPORTED rather than skipped. Returning the big.Int rather
+// than an int64 is what makes that expressible: the previous signature could not
+// name a value it could not hold, so `(SCons 99999999999999999999 (SNil))`
+// reached the generic non-constant refusal and blamed the wrong thing.
+func nonScalarStrElement(t *Term, strHash string) (*big.Int, bool) {
 	for t != nil && t.K == "ctor" && t.Hash == strHash && len(t.Args) == 2 {
 		if t.Args[0].K == "int" && t.Args[0].Int != nil {
-			if !t.Args[0].Int.IsInt64() {
-				return 0, false
-			}
-			if n := t.Args[0].Int.Int64(); !isUnicodeScalar(n) {
+			n := t.Args[0].Int
+			if !n.IsInt64() || !isUnicodeScalar(n.Int64()) {
 				return n, true
 			}
 		}
 		t = &t.Args[1]
 	}
-	return 0, false
+	return nil, false
 }
 
 // resolveStrCtors records SNil/SCons for this store's Str and checks their shape,
@@ -430,12 +447,56 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 		if t.Hash == e.strHash && e.strHash != "" {
 			if n, bad := nonScalarStrElement(t, e.strHash); bad {
 				return "", llvmUnsupported(reasonStrElementRange, fmt.Sprintf(
-					"the Str element %d — this backend packs Str as UTF-8, which encodes only "+
+					"the Str element %s — this backend packs Str as UTF-8, which encodes only "+
 						"Unicode scalar values (0..0x10FFFF, excluding surrogates 0xD800..0xDFFF). "+
 						"Refusing rather than substituting U+FFFD, which would make distinct Str "+
 						"values identical", n))
 			}
-			return "", llvmUnsupported(reasonDynamicStr, "a Str built from non-constant parts")
+			// A Str WHOSE PARTS ARE NOT CONSTANTS IS BUILT AT RUNTIME.
+			//
+			// What this retires is `reasonDynamicStr`, and the retirement is the
+			// point: the old refusal made every result of a compiled program a
+			// literal or a SUFFIX of an input, so a program could search and echo
+			// but never report — no `"missing key: " ++ k`, no counts (#164).
+			//
+			// PACK MOVES TO RUNTIME, IT DOES NOT DISAPPEAR. SPEC §3 says a kernel
+			// MUST NOT reject a non-scalar element at construction, and says in the
+			// same breath that a backend storing a Str as packed UTF-8 performs PACK
+			// at the moment of construction, so refusing there is the PACK
+			// obligation discharged early rather than a second semantics. The
+			// literal case above discharges it at compile time; o_str_cons
+			// discharges the rest at run time. What neither may do is substitute.
+			//
+			// So `oath eval` remains the reference and is ALLOWED to disagree here:
+			// it constructs `(SCons -1 (SNil))` happily, and this backend refuses to
+			// carry it. A refusal is never evidence that a value is illegal Oath.
+			// NOT a refusal: resolveStrCtors already established that this store's
+			// Str is SNil/0 and SCons/2, and SNil folded above, so reaching here
+			// means the datatype is not the one that was resolved. A
+			// backendRefusal would be the wrong classification — it says "valid
+			// Oath, outside this backend's subset" — and labelling this
+			// `dynamic-str` would leave a caller matching that reason receiving a
+			// broken-invariant report instead of the subset boundary it asked
+			// about.
+			if t.Idx != e.strCons || len(t.Args) != 2 {
+				return "", fmt.Errorf("Str constructor %d has %d arguments; this store's Str resolved to SNil/0 and SCons/2",
+					t.Idx, len(t.Args))
+			}
+			// LEFT-TO-RIGHT, as SPEC §3 requires of every ctor: the head's
+			// instructions are emitted before the tail's, so a failure in the head
+			// happens first. Emission order IS evaluation order here, since neither
+			// operand is a block.
+			head, err := e.expr(&t.Args[0], env, depth, self)
+			if err != nil {
+				return "", err
+			}
+			rest, err := e.expr(&t.Args[1], env, depth, self)
+			if err != nil {
+				return "", err
+			}
+			v := e.next()
+			fmt.Fprintf(&e.b, "  %s = call ptr @o_str_cons(ptr %s, ptr %s)\n", v, head, rest)
+			return v, nil
 		}
 		return e.build(t.Idx, t.Args, env, depth, self)
 
@@ -1081,10 +1142,17 @@ OVal *o_int_dec(const char *s) {
    OWNERSHIP, stated rather than left to be discovered: the tail is a VIEW into
    the parent buffer, not a copy. That is sound because every Str buffer in this
    runtime is immutable and outlives the program - literals are IR constants,
-   and capability values come from getenv, which is stable for the process
-   lifetime. Nothing here frees, so a view cannot dangle. If a Str ever gains a
-   buffer with a shorter lifetime, this is the line that has to change, and it
-   must change to a copy rather than to a hope.
+   capability values come from getenv, which is stable for the process lifetime,
+   and a buffer built by o_str_cons is calloc'd and never freed or written again.
+   Nothing here frees, so a view cannot dangle. If a Str ever gains a buffer with
+   a shorter lifetime, this is the line that has to change, and it must change to
+   a copy rather than to a hope.
+
+   THE CONDITION IS ON THE BUFFER'S LIFETIME, NOT ON WHERE IT CAME FROM, which is
+   why adding runtime construction added a clause here rather than a caveat: an
+   allocating constructor is exactly the change that would invalidate a view if
+   the allocation were ever reused, and o_str_cons is written so that it is
+   not.
 
    STRICT DECODING, done by hand: no locale, no mbrtowc, no replacement. It
    rejects overlong encodings, surrogates and anything above 0x10FFFF, because
@@ -1196,6 +1264,127 @@ OVal *o_str_tail(OVal *v) {
 static OVal *o_int_arg(OVal *v) {
   if (!v || v->tag != T_INT) { fputs("oath: not an Int\n", stderr); exit(70); }
   return v;
+}
+
+/* THE DIAGNOSTIC RENDERING OF AN Int, and it exists for exactly one reason: a
+   refusal that cannot NAME the element it refused lets two distinct values
+   produce one message, which is the collapse this whole boundary exists to
+   prevent, moved from the output into the error text.
+
+   Repeated division of the magnitude by 10^9 - nine digits per pass, because
+   10^9 fits a 32-bit limb and (rem << 32) | limb fits the 64-bit intermediate
+   every operation here is written to stay inside. Quadratic in the limb count
+   and reached only on the way to exit(70), so its cost is never on a live path.
+
+   Ten decimal digits per 32-bit limb is a safe bound (2^32 < 10^10), plus a
+   sign and a terminator. */
+static char *o_int_decimal(OVal *v) {
+  int n = v->ilen;
+  if (n == 0) { char *z = (char *)xalloc(2); z[0] = '0'; return z; }
+  o_u32 *d = o_magalloc(n);
+  for (int i = 0; i < n; i++) d[i] = v->imag[i];
+  int cap = n * 10 + 2;
+  char *rev = (char *)xalloc((size_t)cap + 1);
+  int len = 0;
+  while (n > 0) {
+    o_u64 rem = 0;
+    for (int i = n - 1; i >= 0; i--) {
+      o_u64 cur = (rem << 32) | (o_u64)d[i];
+      d[i] = (o_u32)(cur / 1000000000u);
+      rem = cur % 1000000000u;
+    }
+    n = o_magnorm(d, n);
+    /* A FULL NINE DIGITS while limbs remain, so an interior chunk keeps its
+       leading zeros; the last chunk stops at its own most significant digit.
+       Reaching n == 0 with rem == 0 would mean the value was zero, which the
+       first line already returned. */
+    for (int k = 0; k < 9 && (rem > 0 || n > 0); k++) {
+      rev[len++] = (char)('0' + (int)(rem % 10));
+      rem /= 10;
+    }
+  }
+  char *out = (char *)xalloc((size_t)len + 2);
+  int j = 0;
+  if (v->isign < 0) out[j++] = '-';
+  for (int i = len - 1; i >= 0; i--) out[j++] = rev[i];
+  return out;
+}
+
+static int o_utf8_encode(long long cp, unsigned char *out) {
+  if (cp < 0x80) { out[0] = (unsigned char)cp; return 1; }
+  if (cp < 0x800) {
+    out[0] = (unsigned char)(0xC0 | (cp >> 6));
+    out[1] = (unsigned char)(0x80 | (cp & 0x3F));
+    return 2;
+  }
+  if (cp < 0x10000) {
+    out[0] = (unsigned char)(0xE0 | (cp >> 12));
+    out[1] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F));
+    out[2] = (unsigned char)(0x80 | (cp & 0x3F));
+    return 3;
+  }
+  out[0] = (unsigned char)(0xF0 | (cp >> 18));
+  out[1] = (unsigned char)(0x80 | ((cp >> 12) & 0x3F));
+  out[2] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F));
+  out[3] = (unsigned char)(0x80 | (cp & 0x3F));
+  return 4;
+}
+
+static void o_str_cons_refuse(OVal *cp, const char *why) {
+  fprintf(stderr, "oath: this backend cannot encode Str element %s (%s): Str is packed as "
+                  "UTF-8, which encodes only Unicode scalar values. Refusing rather than "
+                  "substituting U+FFFD, which would make distinct Str values identical.\n",
+          o_int_decimal(cp), why);
+  exit(70);
+}
+
+/* BUILDING A Str AT RUNTIME. This is SCons for a chain the compiler could not
+   fold, and it is where PACK happens for everything the compile-time check
+   could not see.
+
+   REFUSAL, NEVER SUBSTITUTION, and each class named separately: string(rune(n))
+   in the other backend once turned -1, 55296 and 1114112 into the same three
+   bytes, so three distinct values had one encoding and the constructor had no
+   inverse. The classes are split so three refused inputs stay three
+   distinguishable messages.
+
+   SPEC 3 calls (SCons -1 (SNil)) an ordinary value and forbids a KERNEL from
+   rejecting it; the same paragraph permits a backend that stores a Str as packed
+   UTF-8 to perform PACK at construction and refuse there. The interpreter
+   remains the reference, and its disagreement here is the honest subset boundary
+   rather than a divergence.
+
+   A FRESH BUFFER, prefix plus a COPY of the tail. The copy is not an
+   optimization left on the table: o_str_tail hands out a VIEW into its parent,
+   so a Str value may be a window on a buffer someone else's value also spans,
+   and a constructed Str must own contiguous bytes of its own. Every buffer here
+   is immutable and nothing frees, so both the new buffer and any view into the
+   old one stay valid for the process lifetime. The trailing NUL is for o_cstr,
+   which hands a C string to a capability; slen is what carries the real length,
+   because a Str may contain U+0000.
+
+   O(n) per cons and so O(n^2) to build a string one element at a time. That is
+   the same cost the Go backend pays for its own prepend-and-concat and is a
+   representation choice this backend is free to revisit; it is not a semantic
+   commitment. */
+OVal *o_str_cons(OVal *cpv, OVal *rest) {
+  o_int_arg(cpv);
+  if (cpv->isign < 0) o_str_cons_refuse(cpv, "negative");
+  if (cpv->ilen > 1) o_str_cons_refuse(cpv, "above the maximum scalar 0x10FFFF");
+  long long cp = cpv->ilen == 0 ? 0 : (long long)cpv->imag[0];
+  if (cp > 0x10FFFF) o_str_cons_refuse(cpv, "above the maximum scalar 0x10FFFF");
+  if (cp >= 0xD800 && cp <= 0xDFFF) o_str_cons_refuse(cpv, "a surrogate, 0xD800..0xDFFF");
+  if (!rest || rest->tag != T_STR) {
+    fputs("oath: the tail of a Str constructor is not a Str\n", stderr);
+    exit(70);
+  }
+  unsigned char enc[4];
+  int k = o_utf8_encode(cp, enc);
+  int n = rest->slen;
+  char *buf = (char *)xalloc((size_t)k + (size_t)n + 1);
+  memcpy(buf, enc, (size_t)k);
+  if (n > 0) memcpy(buf + k, rest->s, (size_t)n);
+  return o_strn(buf, k + n);
 }
 
 /* ADDITION AND SUBTRACTION ARE ONE OPERATION. bs is +1 for a + b and -1 for
@@ -1572,6 +1761,7 @@ declare ptr @o_int(i64)
 declare i32 @o_str_idx(ptr)
 declare ptr @o_str_head(ptr)
 declare ptr @o_str_tail(ptr)
+declare ptr @o_str_cons(ptr, ptr)
 declare ptr @o_int_dec(ptr)
 declare ptr @o_int_add(ptr, ptr)
 declare ptr @o_int_sub(ptr, ptr)

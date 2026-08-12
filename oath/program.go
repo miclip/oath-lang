@@ -948,6 +948,15 @@ const (
 	reasonCapability refusalReason = "capability-unsupported"
 
 	// Backend-specific lowering limits.
+	//
+	// RETIRED, AND SAID SO RATHER THAN QUIETLY LEFT: no backend emits
+	// reasonIntRange (#166 made Int arbitrary-precision) or reasonDynamicStr
+	// (#164 lowered runtime Str construction). They stay in the vocabulary
+	// because a reason is a published contract term and removing one silently
+	// changes what a caller's `==` means — but a caller branching on either
+	// today is writing a branch that can never be taken, which is the same
+	// forever-skipping guard this type was introduced to prevent. Delete them
+	// together, deliberately, if the vocabulary is ever versioned.
 	reasonDynamicStr      refusalReason = "dynamic-str"
 	reasonStrElementRange refusalReason = "non-scalar-str-element"
 	reasonIntMissing      refusalReason = "int-missing-value"
@@ -1013,7 +1022,7 @@ func newCapabilityRefusal(backend, field string, kind capabilityKind, supported 
 // refusedFor reports the refusal reason, if the error is one. Callers use this
 // rather than matching prose:
 //
-//	if r, ok := refusedFor(err); ok && r == reasonDynamicStr { ... }
+//	if r, ok := refusedFor(err); ok && r == reasonStrElementRange { ... }
 func refusedFor(err error) (refusalReason, bool) {
 	var r *backendRefusal
 	if errors.As(err, &r) {

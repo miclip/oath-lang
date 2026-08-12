@@ -821,10 +821,22 @@ func TestLLVMSubsetAcceptanceScript(t *testing.T) {
 		"int-sign",                                            // sign-magnitude
 		"int-multiplication",
 		"int-ordering",
-		"int-divmod-identity",  // the law relating the two
-		"int-divide-by-zero",   // the disposition, not just the value
-		"int-modulo-by-zero",   // and that it is named DISTINCTLY from division
+		"int-divmod-identity", // the law relating the two
+		"int-divide-by-zero",  // the disposition, not just the value
+		"int-modulo-by-zero",  // and that it is named DISTINCTLY from division
 		"digit literal survives compilation",
+
+		// #164, runtime Str construction. Five labels rather than one, because
+		// the family has halves that fail independently: a result the old subset
+		// could not express, a result no view of the input spells, a tail held
+		// across a later allocation, and the two sides of the non-scalar
+		// disposition — which are not one claim, since the interpreter ACCEPTING
+		// and the packed backends REFUSING could each regress alone.
+		"str-report",    // "missing key: " ++ k — the case the subset could not express
+		"str-mirrored",  // order-reversing, so no view of the argument spells it
+		"str-held-tail", // a tail view surviving later construction
+		"the interpreter ACCEPTS the runtime non-scalar", // SPEC 3's kernel obligation
+		"str-nonscalar-surrogate",                        // and the packed backends refusing
 	} {
 		if !strings.Contains(string(out), family) {
 			t.Errorf("acceptance no longer exercises %q — a family was removed, "+
