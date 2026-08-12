@@ -537,6 +537,17 @@ So the diagnostic, askable of any verdict before it is written down:
 **is this sentence about the WORLD, or about my TOOL?** The two read identically
 in a status line, and only one of them stays true when the tool improves.
 
+**AND IT IS NOT ONLY VERDICTS: A WORK ITEM'S PREMISE IS A CLAIM, AND THIS ONE
+COST AN ISSUE.** *Refuses arithmetic* is a fact about a backend; *compiles a
+subset no real program lives inside* is a claim about programs — and the second
+was inferred from the first by reading a REFUSAL LIST, which enumerates what is
+excluded and therefore cannot measure what is admitted. **The complement of a
+list you can read is not a set you have looked at.** Writing a program inside
+the subset settled it in one attempt, with nothing lifted. So ask it of the
+sentence that JUSTIFIES work, not just of the verdicts the work produces: a
+premise stated as a limitation of the tool is checkable, and a premise stated as
+a fact about the world usually has not been.
+
 **THE THROUGH-LINE, across authority, transfer, the compiler boundary, the
 application, the blind rounds and §14: each step reduced where UNVERIFIED
 ASSUMPTIONS could hide.** Different domains, one trajectory, and
@@ -611,7 +622,7 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               copies the store from its own checkout, so running
                               it as-is re-measures the OLD corpus and reproduces
                               zero forever, a trigger that can never fire
-  no CLOCK at all             #158, #119, #115, #116, #74, #65, #66, #160 —
+  no CLOCK at all             #119, #115, #116, #74, #65, #66, #160 —
                               open, and neither cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
@@ -674,24 +685,6 @@ datatypes were outside the construction tested and are not refuted by it.
 `docs/experiments/webhook-friction.md` is a demand list produced by BUILDING
 something, which is worth more than any ordering argued from taste — and its own
 conclusion is that the datatype slice should have been byte lists and text.
-
-**#158 IS A STATED COMPILER MILESTONE, WHICH IS THE CLAUSE THAT ADMITS IT.** The
-standing instruction below says broadening the backend requires a NEW CONSUMER
-*or a separately stated compiler milestone* — #158 is filed under the second,
-explicitly, rather than arriving as momentum.
-
-**It exists because the consumer clause cannot resolve its own precondition
-here.** `oath/llvm.go` refuses arithmetic, so it compiles a subset no real
-program lives inside — and a backend nobody can use cannot attract the consumer
-whose demand would justify lifting the refusal. Held indefinitely, a guard
-against momentum becomes paralysis. That reasoning is what makes it a milestone
-and not an exception; do not reuse it to admit anything else without the same
-argument.
-
-**It is much smaller than #115 and sits in front of it.** One program end to
-end, reach not speed. A typed IR is OUT of scope because #118 already measured
-the `Def` closure sufficient — and the falsifier that would reopen that question
-is on the issue, where it belongs.
 
 **Compiler/runtime — one item, and it is DEBT rather than a feature.** #117/#69
 turns out never to have belonged here: the standing instruction below already

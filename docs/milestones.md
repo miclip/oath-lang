@@ -818,3 +818,55 @@ Both durable rules are in `CLAUDE.md`; this is the record of what earned them.
 The general form has appeared elsewhere in this project under other names: a rule
 can be understood, endorsed, and violated in the same act of explaining it,
 because the explanation is written in the vocabulary the rule governs.
+
+## #158 — a stated compiler milestone, retired by its own falsifier before any work
+
+**The admission.** `CLAUDE.md` requires a NEW CONSUMER *or a separately stated
+compiler milestone* before the LLVM backend broadens, so that it cannot widen on
+momentum. #158 was filed deliberately under the second clause, with an argument
+for why the first could not resolve itself here: `oath/llvm.go` refuses
+arithmetic, `Rat`, `Float`, `Set`/`Map`, dynamic `Str` construction and the
+handler protocol, so it compiled a subset **no real program lived inside** — and
+a backend nobody can use cannot attract the consumer whose demand would justify
+lifting the refusal. Held indefinitely, a guard against momentum becomes
+paralysis.
+
+**The falsifier the issue wrote against itself.** *Enumerate what `llvm.go`
+accepts today, and try to write a useful program inside it. If one exists, close
+this and file what it revealed instead.* Cheap, and it could win — which is why
+it was placed before any building.
+
+**It won in one attempt.** `docs/experiments/issue-158-llvm-subset/show-from-marker.oath`
+is a file viewer that prints a document from the first occurrence of a marker
+onward. It compiles through `oath build --backend llvm`, runs natively on real
+files, and agrees with `oath eval` and with the Go backend. **No line of
+`oath/llvm.go` changed.** The acceptance gate runs the real CLI into a scratch
+store, uses `oath eval` as the reference for both backends, asserts a control
+that must fire, and keeps a fail-closed control one arithmetic operation outside
+the subset that LLVM must still refuse by name; it runs from
+`TestLLVMSubsetAcceptanceScript` rather than sitting in a directory.
+
+**What the attempt revealed, which is the part worth keeping.** The binding
+constraint is not `Rat` and not arithmetic — it is **dynamic `Str` construction**.
+A program in the subset can COMPARE and SEARCH runtime strings but cannot BUILD
+one, so every result it produces is a literal or a suffix of an input. Filed as
+#164 with code-derived evidence; the queue's trigger for it reads *nothing can be
+reported that cannot be quoted*.
+
+**Two things the close deliberately does not claim.** `docs/tutorial/circle.md`
+— #158's own chosen target — still does not compile; what was refuted is *no
+useful program fits*, not *circle fits*. And it is one program: the subset is
+shown non-empty and useful, not measured against what people want.
+
+**Closed NOT_PLANNED, not COMPLETED.** The milestone's work was never done; its
+premise was withdrawn. The distinction matters because a parser close records
+`COMPLETED`, and a milestone reading as achieved would misrepresent the backend's
+reach to every later session.
+
+**The durable lesson is hoisted into `CLAUDE.md`** under *an implementation limit
+reported as a semantic fact*, one level up from where that rule previously lived:
+the premise ADMITTING a work item is a claim too. *Refuses arithmetic* is a fact
+about the tool; *no real program lives inside* is a claim about programs, and it
+was inferred by reading a REFUSAL LIST — which enumerates what is excluded and
+therefore cannot measure what is admitted. The complement of a list you can read
+is not a set you have looked at.
