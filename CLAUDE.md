@@ -597,15 +597,11 @@ missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   (empty)
+  more EXPENSIVE if delayed   #166, #164 — the LLVM backend's two forced gaps,
+                              each retiring on its OWN condition; see below
   more VALUABLE if delayed    #134, #139/#140, #138, #38 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128,
-                              #164 — the LLVM backend can COMPARE and SEARCH
-                              dynamic strings but not BUILD one, so nothing can
-                              be reported that cannot be quoted. Trigger: a
-                              program someone WANTS that needs construction —
-                              not an argument that it would be nice,
                               #162 — designed, measured, PARKED: it detects what
                               uniform widening cannot, and buys nothing in THIS
                               corpus (survived->killed = 0 over 3,319 mutants).
@@ -622,7 +618,7 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               copies the store from its own checkout, so running
                               it as-is re-measures the OLD corpus and reproduces
                               zero forever, a trigger that can never fire
-  no CLOCK at all             #119, #115, #116, #74, #65, #66, #160 —
+  no CLOCK at all             #119, #115, #116, #74, #65, #66, #160, #165 —
                               open, and neither cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
@@ -680,6 +676,57 @@ whenever that producer is onto, because its negation is empty. Record:
 `docs/experiments/issue-159-refinements.md`, whose own scope statement is the
 thing to read before reusing any of this — records, opaque types and distinct
 datatypes were outside the construction tested and are not refuted by it.
+
+**THE FIRST BUCKET'S ADMISSION, AND ITS RETIREMENT CONDITION, WHICH IS THE HALF
+THAT GETS SKIPPED.** Both are admitted on one clock — every language capability
+added while the backend cannot express these is a capability whose COMPILED
+representation nobody has checked, and the checking gets dearer as the corpus
+grows. **Each retires on its OWN condition, checked separately**, because a
+shared one would keep a spent item sitting in the forced bucket until its
+neighbour landed:
+
+    #166  the backend accepts exactly ONE primitive operation — `==` on two
+          `Int`s. Retires when Int arithmetic lowers and is gated against
+          `oath eval`.
+    #164  an Oath `Str` CONSTRUCTOR whose parts are not compile-time constants
+          is refused; a chain of literal codepoints folds instead. Retires when
+          a non-folding constructor lowers.
+
+**State #164 at that precision and not one word wider.** The runtime builds
+`Str` VALUES at runtime constantly — from argv, from file reads, from tails —
+so "cannot construct a `Str` at runtime" is false as written and would make the
+retirement predicate already satisfied. What is refused is one TERM FORM. (The
+same overstatement is in `docs/experiments/issue-158-llvm-subset/README.md`;
+prefer the issue.)
+
+**AND THE REASON THAT CLOCK IS SLOW RATHER THAN URGENT IS A PATTERN WORTH KNOWING
+BEFORE RANKING ANY LANGUAGE WORK: PROVE OVER THE STRUCTURAL MODEL, RUN OVER A
+NATIVE REPRESENTATION.** `Str` is a codepoint datatype proven inductively and
+compiled to a host string; `Set` and `Map` are canonical sorted lists (#37)
+refined AT COMPILE TIME ONLY into native hash maps. The prover never sees the
+host type. So a backend's representation choices bind NOTHING — the obligation is
+to match `oath eval`, never to match the other backend.
+
+Which sorts the language's commitments into two classes, and only one of them
+constrains a future backend:
+
+    SEMANTICS, forced on every backend   REPRESENTATION, each backend's own
+    ---------------------------------------------------------------------
+    `Int` is ℤ — the prover's Int is     `Set`/`Map` as hash maps, sorted
+    unbounded, and a machine-width Int   arrays, or anything else that
+    would put overflow reasoning into    matches the canonical model
+    every arithmetic proof
+    `Rat` is ℚ, exact                    how a `Str` is laid out in memory
+    `Float` is binary64, bit-identity,   how closures are represented
+    `==` is Leibniz/SMT `=`
+    `Str` is an inductive datatype so
+    structural induction is available
+
+**The test for a new language capability is therefore whether it has a STRUCTURAL
+MODEL, not whether it is cheap in the current backend.** One defined as an Oath
+datatype costs a future backend a representation choice; one that smuggles in a
+primitive with no structural model costs it a semantic obligation forever. That
+is the guard, and it is cheaper than any ledger of accumulated debt.
 
 **Read the friction log before ranking language work.**
 `docs/experiments/webhook-friction.md` is a demand list produced by BUILDING
