@@ -371,11 +371,23 @@ func (s *Store) SetMeta(h string, m *Meta) error {
 
 // NameOf returns the current name pointing at h, or a short hash if unnamed
 // or superseded.
+//
+// A hash may carry SEVERAL names: structurally identical declarations are one
+// object, so `Interval`/`Run` and `rot`/`rot-f` each alias a single hash in the
+// committed corpus. Which of them this returns must not depend on Go's map
+// iteration, because both backends build their emitted function names from it —
+// an aliased definition anywhere in a program's closure would otherwise move the
+// generated source run to run, independently of #168's closure ordering. The
+// LEAST name is chosen for no reason beyond being a total order on names.
 func (s *Store) NameOf(h string) string {
+	best := ""
 	for n, nh := range s.Names() {
-		if nh == h {
-			return n
+		if nh == h && (best == "" || n < best) {
+			best = n
 		}
+	}
+	if best != "" {
+		return best
 	}
 	if m, err := s.GetMeta(h); err == nil {
 		return m.Name + "@" + shortHash(h)

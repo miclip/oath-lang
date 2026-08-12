@@ -861,11 +861,10 @@ func slicesContains(xs []string, x string) bool {
 // sorted. Datatypes are included: they are part of what the artifact was built
 // from even though the Go backend erases them to constructor indices.
 //
-// This is deliberately NOT the emitter's emission order. Emission order is a
-// backend decision — the Go backend skips definitions it lowers to native
-// container operations, and another backend will skip different ones. The
-// provenance closure answers a different question ("what does this artifact
-// depend on") whose answer must not shift when a backend changes its mind.
+// This is NOT the emitter's emission order — see emissionOrder below. The two
+// answer different questions and must be allowed to differ: the provenance
+// closure says what the artifact was built FROM, and its answer must not shift
+// when a backend changes which definitions it lowers natively.
 func programClosure(st *Store, entry string) ([]string, error) {
 	seen := map[string]bool{}
 	var walk func(h string) error
@@ -899,6 +898,69 @@ func programClosure(st *Store, entry string) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// emissionOrder returns the functions a backend must emit for `entry`, each
+// preceded by everything it depends on, in an order that is a function of the
+// definitions alone.
+//
+// THIS IS THE ONLY DEPENDENCY-ORDERING WALK A BACKEND MAY USE. Both backends
+// previously carried their own copy, each recursing over collectDepsBody in Go
+// MAP ITERATION ORDER, so siblings with no edge between them came out in a
+// different order run to run and one build of an unchanged tree did not match
+// the next (#168, measured at 27/3 over 30 Go emissions and 25/5 over 30 LLVM).
+// Sorting inside each copy would have fixed today's symptom and left a third
+// copy free to appear; ownership is exclusive here instead, and the backends
+// have no ordering code left to drift from.
+//
+// Determinism comes from visiting each definition's dependencies in HASH order.
+// Hashes are canonical identity, so the order is a property of what is being
+// compiled rather than of the run, the store's layout, or the names bound to it.
+//
+// `native` names definitions the calling backend lowers to its own primitives.
+// They are PRUNED, not filtered afterwards: a backend that never emits an
+// operation must not emit that operation's structural helpers either, and those
+// helpers are usually reachable only through it. Filtering a single fixed order
+// would emit them as dead code — or, if the filter also dropped their names,
+// leave the emitted code referring to functions that were never written. Which
+// definitions are native is the one thing here that is a backend decision; the
+// ORDER is not, which is why the argument comes in and the walk does not go out.
+func emissionOrder(st *Store, entry string, native map[string]bool) ([]string, error) {
+	seen := map[string]bool{}
+	var order []string
+	var walk func(h string) error
+	walk = func(h string) error {
+		if seen[h] {
+			return nil
+		}
+		seen[h] = true
+		if native[h] {
+			return nil
+		}
+		d, err := st.GetDef(h)
+		if err != nil {
+			return err
+		}
+		if d.K != "func" {
+			return nil // datatypes are erased to constructor indices
+		}
+		deps := make([]string, 0, len(collectDepsBody(d)))
+		for dep := range collectDepsBody(d) {
+			deps = append(deps, dep)
+		}
+		sort.Strings(deps)
+		for _, dep := range deps {
+			if err := walk(dep); err != nil {
+				return err
+			}
+		}
+		order = append(order, h) // after its dependencies
+		return nil
+	}
+	if err := walk(entry); err != nil {
+		return nil, err
+	}
+	return order, nil
 }
 
 // planProgram is the whole front half of `oath build`: resolve the name, apply

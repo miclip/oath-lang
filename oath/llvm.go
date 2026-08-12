@@ -109,8 +109,7 @@ type llvmEmitter struct {
 	b       strings.Builder // function bodies
 	consts  strings.Builder // string constants
 	fname   map[string]string
-	order   []string
-	seen    map[string]bool
+	order   []string // emission order, from the neutral emissionOrder
 	strHash string
 	strNil  int      // SNil's constructor index in THIS store's Str
 	strCons int      // SCons's index
@@ -339,27 +338,22 @@ func (e *llvmEmitter) resolveStrCtors() error {
 	return nil
 }
 
-// closure orders the entry's dependency closure, functions only, deps first —
-// the same traversal every backend needs and none of them shares.
-func (e *llvmEmitter) collect(h string) error {
-	if e.seen[h] {
-		return nil
-	}
-	e.seen[h] = true
-	d, err := e.st.GetDef(h)
+// plan fixes what this backend emits and in what order, by asking the neutral
+// layer for the entry's dependency-first order.
+//
+// This backend lowers no definition natively — it has no Set/Map recognition —
+// so it prunes nothing and emits the whole function closure. The traversal
+// itself lives in program.go: it was duplicated here once, and the copy ordered
+// siblings by map iteration (#168).
+func (e *llvmEmitter) plan(entry string) error {
+	order, err := emissionOrder(e.st, entry, nil)
 	if err != nil {
 		return err
 	}
-	if d.K != "func" {
-		return nil // datatypes are erased to constructor indices
+	e.order = order
+	for _, h := range order {
+		e.fname[h] = "@f_" + smtName(e.st.NameOf(h)) + "_" + h[:8]
 	}
-	for dep := range collectDepsBody(d) {
-		if err := e.collect(dep); err != nil {
-			return err
-		}
-	}
-	e.fname[h] = "@f_" + smtName(e.st.NameOf(h)) + "_" + h[:8]
-	e.order = append(e.order, h)
 	return nil
 }
 
@@ -1966,7 +1960,7 @@ func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 		return "", err
 	}
 
-	e := &llvmEmitter{st: st, fname: map[string]string{}, seen: map[string]bool{}, strHash: strTypeHash(st)}
+	e := &llvmEmitter{st: st, fname: map[string]string{}, strHash: strTypeHash(st)}
 	// Constructor indices are DERIVED, never assumed. A store whose Str declares
 	// SCons first would otherwise have every non-empty literal folded to "" —
 	// a silently wrong program, which is the one outcome this backend refuses to
@@ -1976,7 +1970,7 @@ func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 			return "", err
 		}
 	}
-	if err := e.collect(prog.EntryHash); err != nil {
+	if err := e.plan(prog.EntryHash); err != nil {
 		return "", err
 	}
 	var body strings.Builder

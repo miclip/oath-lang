@@ -1116,3 +1116,73 @@ joins the copiers.
 > SEE IT.**
 
 Landed `43f457c`, witnesses completed `3c80992`.
+
+## #168 — the compiler stops being a coin flip, and the cause the issue named was half of it
+
+Both backends walked the dependency closure with `for dep := range
+collectDepsBody(d)`, each into its own `order` slice, so definitions with no
+edge between them came out in whatever order Go's map iterator chose. The
+generated program was a permutation of itself run to run. Measured on the
+committed corpus before the repair, over 30 emissions each: `gh-webhook` 29/29
+differed from the first, `main-echo` 25/29, `circle` 13/29, `main-fetch` 0/29
+(its closure is one definition, so nothing could permute). After: 0/29 for all
+four, and the emitted source is a PURE PERMUTATION of what it was — same length,
+same multiset of lines, so nothing was added or dropped by the change.
+
+**The consolidation, not two sorts.** `emissionOrder` in `program.go` is now the
+only dependency-ordering walk; both backends call it and neither retains any
+closure code. The order is deterministic because each definition's dependencies
+are visited in HASH order — canonical identity, so the order is a property of
+what is being compiled.
+
+**A backend's native lowerings are PRUNED, not filtered.** The Go backend lowers
+recognised `Set`/`Map` operations at their call sites, and the sorted-list
+helpers those operations are defined in terms of are reachable only through them.
+Filtering a single fixed order would have emitted those helpers as dead code —
+or, had the filter also dropped their names, left the emitted program calling
+functions nobody wrote. So the native set is an ARGUMENT to the shared walk. The
+emitted definition set is byte-for-byte the same as before the change, checked
+on all four corpus entries.
+
+**THE ISSUE NAMED THE CLOSURE WALK. THE CLAIM WAS "EMISSION IS A FUNCTION OF ITS
+INPUTS", AND A SECOND CAUSE SAT OUTSIDE THE NAMED DECOMPOSITION.** Both emitted
+function names are built from `Store.NameOf`, which returned the first name Go's
+map iterator produced for a hash. A hash may carry SEVERAL names — structurally
+identical declarations are one object, and `Interval`/`Run` and `rot`/`rot-f`
+alias in this corpus today — so an aliased definition anywhere in a program's
+closure moved the generated source independently of any ordering. It now returns
+the least name. Nothing in the four corpus closures is aliased, which is exactly
+why fixing only what the issue named would have looked complete: the corpus
+cannot currently witness the second cause, and the test fixture was built to.
+
+That is `derive the universe from the CLAIM, not from the implementation's
+decomposition` arriving again — the walk was the enumerated proxy, and
+`NameOf` is one layer out from it.
+
+**The control had to be structural.** The first version asserted that the
+pre-#168 walk produced ≥2 distinct orders over 100 draws, which asserts that Go
+RANDOMISES map iteration — unspecified, not promised to vary. It now asserts that
+the fixture contains two EMITTED definitions that are dependencies of a common
+parent and of neither each other, so its order is genuinely free; the observed
+variety is logged, not claimed. Restricting that count to emitted definitions was
+not cosmetic: counting datatype dependencies made it pass over a fixture whose
+order was forced, since datatypes are erased and pairwise independent.
+
+**And the fixture's own first draft was refuted by content addressing.** Four
+identity functions on `Str` are ONE object under four names, so the closure held
+a single sibling and there was nothing to permute. The control caught it.
+
+N=100 repetitions is worth stating against the measured rates rather than
+asserted: the pre-repair Go split of 27/3 recorded in
+`docs/experiments/issue-116-reproducibility` implies a majority rate p ≈ 0.9, so
+a still-broken emitter passes 100 repetitions with probability ≈ 3e-5, and the
+LLVM split of 25/5 gives ≈ 1e-8. Those rates were measured on the experiment's
+program, not on the test fixture; the structural control is what establishes that
+the fixture can vary at all.
+
+**What this does NOT establish.** Artifact-level reproducibility of `oath build`
+end to end: `-trimpath` and the LLVM basename cause are recorded in the same
+experiment, independent, and deliberately out of scope. Cross-machine
+reproducibility is untouched. And no corpus entry compiles under the LLVM
+backend today — the LLVM half of the byte-identity witness runs on the fixture
+only.

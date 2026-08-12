@@ -339,8 +339,7 @@ type emitter struct {
 	st      *Store
 	b       strings.Builder
 	fname   map[string]string // def hash → emitted Go function name
-	order   []string          // emission order (deps first)
-	seen    map[string]bool
+	order   []string          // emission order, from the neutral emissionOrder
 	strHash string           // hash of the Str datatype; its values compile to Go strings
 	setHash string           // hash of the Set datatype; its values compile to native osets
 	mapHash string           // hash of the Map datatype; its values compile to native omaps
@@ -557,9 +556,9 @@ func emitProgram(st *Store, prog *CompiledProgram) (string, error) {
 	if err := prog.stampBackend(goBackendVersion); err != nil {
 		return "", err
 	}
-	e := &emitter{st: st, fname: map[string]string{}, seen: map[string]bool{}, strHash: strTypeHash(st)}
+	e := &emitter{st: st, fname: map[string]string{}, strHash: strTypeHash(st)}
 	e.resolveNativeContainers()
-	if err := e.closure(prog.EntryHash); err != nil {
+	if err := e.plan(prog.EntryHash); err != nil {
 		return "", err
 	}
 	// Resolve every requirement to a provider BEFORE emitting anything. A
@@ -1586,32 +1585,26 @@ func main() {
 	return e.b.String(), nil
 }
 
-// closure orders the entry's dependency closure, functions only, deps first.
-func (e *emitter) closure(h string) error {
-	if e.seen[h] {
-		return nil
+// plan fixes what this backend emits and in what order, by asking the neutral
+// layer for the entry's dependency-first order.
+//
+// The set this backend lowers natively is the recognized Set/Map operations:
+// they become oset/omap helpers at their call sites, so neither the operation
+// nor the sorted-list helpers it is defined in terms of are emitted. Passing
+// them to emissionOrder prunes them; nothing here walks the closure itself.
+func (e *emitter) plan(entry string) error {
+	native := make(map[string]bool, len(e.setOps))
+	for h := range e.setOps {
+		native[h] = true
 	}
-	// Recognized Set operations lower to native oset helpers at their call
-	// sites, so neither the operation nor its sorted-list helpers are emitted.
-	if _, ok := e.setOps[h]; ok {
-		e.seen[h] = true
-		return nil
-	}
-	e.seen[h] = true
-	d, err := e.st.GetDef(h)
+	order, err := emissionOrder(e.st, entry, native)
 	if err != nil {
 		return err
 	}
-	if d.K != "func" {
-		return nil // datatypes are erased to ctor indices
+	e.order = order
+	for _, h := range order {
+		e.fname[h] = "f_" + smtName(e.st.NameOf(h)) + "_" + h[:8]
 	}
-	for dep := range collectDepsBody(d) {
-		if err := e.closure(dep); err != nil {
-			return err
-		}
-	}
-	e.fname[h] = "f_" + smtName(e.st.NameOf(h)) + "_" + h[:8]
-	e.order = append(e.order, h)
 	return nil
 }
 
