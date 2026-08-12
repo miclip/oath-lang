@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -462,10 +463,44 @@ func TestEmittedRuntimeHasOneRefusalPath(t *testing.T) {
 //   - stdout untouched
 //   - ONE line, and no goroutine dump — the dump named the emitted program's
 //     temp directory, which is build-time detail escaping into runtime output
-func TestCompiledArtifactRefusesWithOneLineAndSeventy(t *testing.T) {
+//
+// requireGoToolchain skips locally and FAILS in CI, following requireClang in
+// llvm_test.go for the same reason it exists there.
+//
+// Every test below that exercises a COMPILED artifact shells out to `go build`,
+// so an absent toolchain removes the whole disposition claim — refusals exiting
+// 70, bug panics still escaping — while the run stays green. CI is a Go
+// project's CI; the toolchain is never legitimately missing there, which is
+// exactly why nobody would notice the day it went.
+func requireGoToolchain(t *testing.T) {
+	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not available")
+		if os.Getenv("CI") != "" {
+			t.Fatal("the go toolchain is absent, so no compiled artifact was built and " +
+				"the refusal disposition is unwitnessed. In CI that is a failure, not a skip.")
+		}
+		t.Skip("go toolchain not available (local); this is a hard failure under CI=1")
 	}
+}
+
+// requireFilename skips locally and FAILS in CI when a filesystem will not hold
+// a name the test needs. The names here carry a newline on purpose — they are
+// how the injectivity of the refusal message is tested — and a filesystem that
+// refuses them removes that witness rather than failing it.
+func requireFilename(t *testing.T, path string, err error) {
+	t.Helper()
+	if err == nil {
+		return
+	}
+	if os.Getenv("CI") != "" {
+		t.Fatalf("this filesystem will not hold %q, so the message-injectivity witness "+
+			"did not run. In CI that is a failure, not a skip: %v", path, err)
+	}
+	t.Skipf("this filesystem does not accept the filename %q (local): %v", path, err)
+}
+
+func TestCompiledArtifactRefusesWithOneLineAndSeventy(t *testing.T) {
+	requireGoToolchain(t)
 	cases := []struct {
 		name string
 		def  string
@@ -531,9 +566,7 @@ func TestCompiledArtifactRefusesWithOneLineAndSeventy(t *testing.T) {
 	fileDir := t.TempDir()
 	badPath := filepath.Join(fileDir, "two\nlines")
 	goodPath := filepath.Join(fileDir, "ordinary")
-	if err := os.WriteFile(badPath, []byte("\xff\xfe"), 0o644); err != nil {
-		t.Skipf("this filesystem does not accept a newline in a filename: %v", err)
-	}
+	requireFilename(t, badPath, os.WriteFile(badPath, []byte("\xff\xfe"), 0o644))
 	if err := os.WriteFile(goodPath, []byte("fine"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -612,9 +645,7 @@ func TestCompiledArtifactRefusesWithOneLineAndSeventy(t *testing.T) {
 // process survived. The first request is the control: without it, "500" could
 // be a handler that refuses everything.
 func TestHandlerRefusalAnswers500AndKeepsServing(t *testing.T) {
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not available")
-	}
+	requireGoToolchain(t)
 	st := capStore(t)
 	put(t, st, `(data Pair [a b] (Pair a b))`)
 	put(t, st, `(data Request [] (Req Str Str (List (Pair Str Str)) (List Int) Int))`)
@@ -723,9 +754,7 @@ func TestHandlerRefusalAnswers500AndKeepsServing(t *testing.T) {
 // area exists to remove, relocated from the output into the message: two
 // distinct inputs, one rendering, no way back.
 func TestRefusalMessageEncodingIsInjective(t *testing.T) {
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not available")
-	}
+	requireGoToolchain(t)
 	st := capStore(t)
 	put(t, st, `(defn readit [] [(w {readfile (-> Str Str)}) (args (List Str))] Str
 		(match args ((Nil) "no path") ((Cons p t) ((. w readfile) p))))`)
@@ -736,9 +765,7 @@ func TestRefusalMessageEncodingIsInjective(t *testing.T) {
 	newline := filepath.Join(dir, "two\nlines")
 	literal := filepath.Join(dir, "two\\nlines")
 	for _, p := range []string{newline, literal} {
-		if err := os.WriteFile(p, []byte("\xff\xfe"), 0o644); err != nil {
-			t.Skipf("this filesystem does not accept the filename %q: %v", p, err)
-		}
+		requireFilename(t, p, os.WriteFile(p, []byte("\xff\xfe"), 0o644))
 	}
 
 	say := func(path string) string {
@@ -784,9 +811,7 @@ func TestRefusalMessageEncodingIsInjective(t *testing.T) {
 // not the condition, so injecting one at a point inside main's dynamic extent
 // is the only way to put the disposer in front of it at all.
 func TestBugPanicStillEscapesAsAPanic(t *testing.T) {
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go toolchain not available")
-	}
+	requireGoToolchain(t)
 	st := capStore(t)
 	put(t, st, `(defn echo1 [] [(args (List Str))] Str
 		(match args ((Nil) "none") ((Cons h t) h)))`)
@@ -861,5 +886,192 @@ func TestBugPanicStillEscapesAsAPanic(t *testing.T) {
 		if !strings.Contains(errb.String(), want) {
 			t.Errorf("the bug report does not contain %q: %q", want, errb.String())
 		}
+	}
+}
+
+// A BUG PANIC INSIDE A HANDLER MUST NOT BE SWALLOWED, AND MUST NOT KILL THE
+// PROCESS EITHER.
+//
+// The per-request disposer calls the same oathRefusalOf as the standalone one,
+// and that function re-raises anything that is not an oathRefusal — so a
+// compiler-bug panic keeps travelling and net/http recovers it per connection,
+// exactly as before #167. Both halves matter and they fail in opposite
+// directions:
+//
+//	swallowed   the disposer returns quietly, the request gets a clean answer,
+//	            and a compiler defect is now invisible — the outcome the
+//	            refusal/panic split exists to prevent
+//	fatal       the panic ends the process, and a remote party who can reach a
+//	            bug can stop the host — SPEC 14.2's rule, and the reason the
+//	            standalone disposition was wrong for this boundary
+//
+// The structural assertion that both boundaries call one classifier is real but
+// it is not this: it says the code is shaped correctly, not that a running
+// artifact behaves correctly. The injection mirrors
+// TestBugPanicStillEscapesAsAPanic — after the disposer, so the panic unwinds
+// THROUGH it — and is gated on a header so ordinary requests still prove the
+// server is alive.
+// syncBuf is a bytes.Buffer safe to read while os/exec's stderr-copy goroutine
+// is still writing to it. Reading a bare bytes.Buffer there is a data race, and
+// the race is not theoretical for an assertion ABOUT stderr: the copy may not
+// have drained the line the assertion is looking for, so the check passes by
+// missing it rather than by the line being absent.
+type syncBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuf) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
+func TestHandlerBugPanicIsNotSwallowedAndDoesNotKillTheProcess(t *testing.T) {
+	requireGoToolchain(t)
+	st := capStore(t)
+	put(t, st, `(data Pair [a b] (Pair a b))`)
+	put(t, st, `(data Request [] (Req Str Str (List (Pair Str Str)) (List Int) Int))`)
+	put(t, st, `(data Response [] (Resp Int (List (Pair Str Str)) (List Int)))`)
+	put(t, st, `(defn okhandler [] [(r Request)] Response
+		(match r ((Req m p h b t) (Resp 200 (Nil [(Pair Str Str)]) (Nil [Int])))))`)
+	markVerified(t, st, "okhandler")
+	prog, err := planProgram(st, "okhandler")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := emitProgram(st, prog)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// AFTER the per-request disposer, so the panic unwinds through it. The
+	// anchor is asserted unique for the same reason the standalone test asserts
+	// its own: an injection that silently lands nowhere makes every assertion
+	// below vacuous.
+	const anchor = "\t\t}()\n"
+	dispose := "if msg, ok := oathRefusalOf(recover()); ok {"
+	i := strings.Index(src, dispose)
+	if i < 0 {
+		t.Fatal("the emitted handler has no per-request disposer, so this test is not " +
+			"measuring what it believes it is")
+	}
+	j := strings.Index(src[i:], anchor)
+	if j < 0 {
+		t.Fatal("could not find the end of the per-request disposer")
+	}
+	at := i + j + len(anchor)
+	bug := "\t\tif r.Header.Get(\"X-Oath-Bug\") != \"\" {\n" +
+		"\t\t\tpanic(\"structEq on function value\")\n\t\t}\n"
+	src = src[:at] + bug + src[at:]
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module oathprog\n\ngo 1.25\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "prog")
+	if o, err := runIn(dir, "go", "build", "-o", bin, "."); err != nil {
+		t.Fatalf("go build failed:\n%s", o)
+	}
+
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("cannot bind a local socket, so this witness did not run: %v", err)
+		}
+		t.Skipf("this environment does not permit binding a local socket: %v", err)
+	}
+	addr := probe.Addr().String()
+	probe.Close()
+
+	cmd := exec.Command(bin)
+	cmd.Env = append(os.Environ(), "OATH_HTTP_ADDR="+addr)
+	errb := &syncBuf{}
+	cmd.Stderr = errb
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("launch: %v", err)
+	}
+	stopped := false
+	stop := func() {
+		if stopped {
+			return
+		}
+		stopped = true
+		_ = cmd.Process.Kill()
+		// cmd.Wait, NOT cmd.Process.Wait: the latter waits for the process and
+		// leaves os/exec's stderr-copy goroutine still running, so a read after
+		// it can miss the very line this test asserts is absent. Only exec.Cmd's
+		// Wait joins the copiers.
+		_ = cmd.Wait()
+	}
+	defer stop()
+
+	get := func(bug bool) (*http.Response, error) {
+		req, _ := http.NewRequest("GET", "http://"+addr+"/", nil)
+		if bug {
+			req.Header.Set("X-Oath-Bug", "1")
+		}
+		return (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	}
+
+	// The server must be serving before anything is concluded from a failure.
+	deadline := time.Now().Add(15 * time.Second)
+	var resp *http.Response
+	for time.Now().Before(deadline) {
+		if resp, err = get(false); err == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("the handler never came up, so nothing below is evidence: %v\n%s", err, errb.String())
+	}
+	resp.Body.Close()
+
+	// THE BUG REQUEST. net/http recovers a handler panic and closes the
+	// connection without a response, so an error here is the CORRECT outcome —
+	// what must not happen is a clean answer, which is what "swallowed" looks
+	// like from outside.
+	if resp, err := get(true); err == nil {
+		defer resp.Body.Close()
+		t.Errorf("a compiler-bug panic produced a clean %d response — it was swallowed by "+
+			"the refusal disposer instead of being re-raised", resp.StatusCode)
+	}
+
+	// AND THE PROCESS SURVIVED, which is the half a remote party could exploit.
+	// Asked by SERVING, not by signalling: os.Process.Signal supports only Kill on
+	// Windows, so a liveness probe built on signal 0 fails there against a
+	// perfectly healthy server. Answering a request is the stronger evidence
+	// anyway — a process can be alive and no longer listening.
+	if resp, err := get(false); err != nil {
+		t.Fatalf("the server stopped answering after the panic: %v\n%s", err, errb.String())
+	} else {
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Errorf("after the panic the handler answers %d, want 200", resp.StatusCode)
+		}
+	}
+
+	// The refusal one-liner must NOT appear: this was not a refusal. Rejected
+	// UNCONDITIONALLY rather than only when no panic report accompanies it — a
+	// disposition that printed the refusal line AND re-raised would satisfy every
+	// check above (the connection drops, the process lives) while still having
+	// described a compiler defect as a semantic refusal, which is the confusion
+	// this whole split exists to remove.
+	// STOP FIRST, so the stderr copy has drained. Checking a live process's
+	// captured stderr can pass by not having seen the line yet, which is the
+	// same defect as a check that cannot tell absence from not-looking.
+	stop()
+	if strings.Contains(errb.String(), "oath: ") {
+		t.Errorf("a bug panic was reported as a refusal:\n%s", errb.String())
 	}
 }
