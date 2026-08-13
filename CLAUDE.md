@@ -622,7 +622,7 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               copies the store from its own checkout, so running
                               it as-is re-measures the OLD corpus and reproduces
                               zero forever, a trigger that can never fire
-  no CLOCK at all             #115, #169, #74, #65, #66, #165 —
+  no CLOCK at all             #115, #169, #170, #74, #65, #66, #165 —
                               open, and neither cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
