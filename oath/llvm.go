@@ -1604,8 +1604,6 @@ void o_print(OVal *v) {
 /* Keeps the provenance blob in the binary: an artifact that cannot say what it
    was built from is not carrying provenance, and the linker drops data nothing
    references. Volatile so the store cannot be optimized away. */
-static const char *volatile o_kept;
-void o_keep(const char *p) { o_kept = p; }
 
 /* ---------- capabilities ----------
 
@@ -1753,7 +1751,6 @@ declare ptr @o_closure(ptr, ptr)
 declare ptr @o_apply(ptr, ptr)
 declare ptr @o_argv(i32, ptr, i32, i32)
 declare void @o_print(ptr)
-declare void @o_keep(ptr)
 declare ptr @o_require(ptr, ptr, ptr)
 declare ptr @o_require_value(ptr, ptr, ptr)
 declare ptr @o_int(i64)
@@ -2026,7 +2023,6 @@ func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 	e.label("entry")
 	args := e.next()
 	fmt.Fprintf(&e.b, "  %s = call ptr @o_argv(i32 %%argc, ptr %%argv, i32 %d, i32 %d)\n", args, nilIdx, consIdx)
-	fmt.Fprintf(&e.b, "  call void @o_keep(ptr @oath_provenance)\n")
 	entry := e.fname[prog.EntryHash]
 	out := e.next()
 	if ent.caps {
@@ -2059,6 +2055,15 @@ func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 	src.WriteString("; Values are boxed and uniform; every operation is a runtime call.\n")
 	src.WriteString(llvmDeclarations)
 	fmt.Fprintf(&src, "\n@oath_provenance = constant [%d x i8] c\"%s\\00\"\n\n", len(blob)+1, esc.String())
+	// ANCHORED BY DIRECTIVE, NOT BY A RUNTIME SLOT (#165). The manifest must
+	// survive linking, and it used to be held by `o_keep` writing a file-scope
+	// pointer. That slot was program-lifetime and MUTABLE, so it was somewhere a
+	// capability could park request memory past the point an arena would release
+	// it — and seven rounds of scanning for ways in kept finding new ones,
+	// because the population is defined by C, not by the shapes a regex knows.
+	// @llvm.used tells the linker directly and allocates nothing, so the class is
+	// removed rather than guarded.
+	fmt.Fprintf(&src, "@llvm.used = appending global [1 x ptr] [ptr @oath_provenance], section \"llvm.metadata\"\n\n")
 	src.WriteString(e.consts.String())
 	src.WriteString("\n")
 	src.WriteString(body.String())
