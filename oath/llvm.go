@@ -885,15 +885,26 @@ func (e *llvmEmitter) emitMatch(t *Term, env string, depth int, self string) (st
 // here, and a new representation would have made a divergence ambiguous between
 // "the boundary is wrong" and "my layout is wrong".
 //
-// MEMORY IS NEVER FREED. A CLI program runs once and exits, so an arena that is
-// only ever reclaimed by process exit is honest for this slice — and stated,
-// because it is exactly the reason the handler protocol is refused below: a
-// long-running server would leak per request.
+// MEMORY IS A REQUEST ARENA WITH A NAMED RELEASE POINT (#165, step 3). Every
+// allocation a request makes comes from one region, and the region is released
+// after that request's answer has been SERIALISED — for a CLI entry, after
+// `o_print` and before `main` returns. Nothing observable changes: a CLI program
+// is one request, so the region is filled once and released once, at the moment
+// process exit would have reclaimed it anyway.
+//
+// What is new is that the release point EXISTS and is placed by the emitter, so
+// the handler protocol — refused below, and refused BECAUSE of the memory model
+// rather than the other way round — has somewhere to put per-request release.
+// The release is sound for the reason that selected this design over reference
+// counting, tracing and region inference: it happens after serialisation, so the
+// value that could have escaped is already bytes and no escape analysis over
+// VALUES is required.
 const llvmRuntimeC = `
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stddef.h>
 
 typedef struct OVal OVal;
 typedef OVal *(*OCode)(OVal **env, OVal *arg);
@@ -924,11 +935,139 @@ struct OVal {
   OVal **env;
 };
 
+/* ---------- the request arena ----------
+
+   ONE REGION, RELEASED AFTER SERIALISATION. Everything a request allocates is
+   carved from blocks held on the list below, and o_arena_release frees the whole
+   list once the answer has become octets. The emitter places that call, because
+   WHERE the release goes is a property of the entry protocol and not of the
+   allocator.
+
+   ZERO-INITIALISATION IS PRESERVED BY AN INVARIANT, NOT BY A MEMSET, and callers
+   depend on it: val leaves every field it does not assign at zero and
+   o_magalloc hands out zero limbs. A block arrives zeroed from calloc, is carved
+   STRICTLY FORWARD, and is FREED at release rather than rewound — so no byte is
+   ever handed out twice, and every byte returned is untouched since calloc
+   zeroed it. Reusing a block by resetting used would break that and would need
+   a memset; it is deliberately not done.
+
+   ALIGNMENT IS DERIVED FROM THE TARGET, NOT ASSERTED. The block base is
+   calloc's, which is suitable for any type; every carve is then rounded to
+   _Alignof(max_align_t), which is the same guarantee the C library gives and the
+   same one the old calloc-per-object had for free. A hard-coded 16 would be a
+   claim about the target rather than a property of it - right on the platforms
+   this backend has been run on and silently wrong on one where the fundamental
+   alignment is larger. The power-of-two assumption the mask below rests on is
+   checked at COMPILE TIME, because a mask over a non-power-of-two alignment
+   would misalign quietly. */
+
+typedef struct OBlock OBlock;
+struct OBlock { OBlock *next; char *base; size_t used; size_t cap; };
+
+#define O_ARENA_ALIGN ((size_t)_Alignof(max_align_t))
+#define O_ARENA_BLOCK ((size_t)65536)
+
+typedef char o_arena_align_is_a_power_of_two[
+  (O_ARENA_ALIGN != 0 && (O_ARENA_ALIGN & (O_ARENA_ALIGN - 1)) == 0) ? 1 : -1];
+
+/* THE ARENA'S SOLE OWNERSHIP ROOT, and the only object of static storage
+   duration this runtime declares.
+
+   IT DOES RETAIN REQUEST MEMORY, AND SAYING OTHERWISE WOULD BE THE WHOLE
+   ARGUMENT GOT WRONG. Every OVal, every Str buffer and every magnitude a request
+   allocates lives inside a block reachable from here through base, so this
+   pointer transitively holds the entire request. That is what an arena IS. The
+   invariant that replaces "no static storage at all" is therefore about WHEN,
+   not about WHAT:
+
+     - this ONE root may retain request allocations FOR THE DURATION of the
+       request;
+     - o_arena_release CLEARS IT and then frees, so no request pointer is
+       reachable from static storage after the release point;
+     - every OTHER static pointer stays forbidden, because nothing clears one -
+       a capability that parked a value in a second slot would hold it past the
+       release the whole design turns on.
+
+   The declaration scan in llvm_runtime_state_test.go permits this NAME AT THIS
+   TYPE and nothing else, and the clearing half is witnessed separately: an
+   exemption for a root that is never cleared would be an exemption for exactly
+   the retention this forbids. */
+static OBlock *o_arena_blocks;
+
+static void o_oom(void) { fputs("oath: out of memory\n", stderr); exit(70); }
+
+static OBlock *o_block_new(size_t cap) {
+  OBlock *nb = (OBlock *)calloc(1, sizeof(OBlock));
+  if (!nb) o_oom();
+  nb->base = (char *)calloc(1, cap);
+  if (!nb->base) { free(nb); o_oom(); }
+  nb->cap = cap;
+  return nb;
+}
+
 static void *xalloc(size_t n) {
-  void *p = calloc(1, n);
-  if (!p) { fputs("oath: out of memory\n", stderr); exit(70); }
+  /* The rounding must not wrap: a wrapped size would under-allocate silently,
+     which is a heap overflow rather than the out-of-memory exit it looks like. */
+  if (n > (size_t)-1 - (O_ARENA_ALIGN - 1)) o_oom();
+  size_t need = (n + (O_ARENA_ALIGN - 1)) & ~(O_ARENA_ALIGN - 1);
+  OBlock *b = o_arena_blocks;
+  if (!b || b->cap - b->used < need) {
+    /* A REQUEST THAT FILLS A BLOCK GETS ONE OF ITS OWN, LINKED BEHIND THE ACTIVE
+       BLOCK RATHER THAN IN FRONT OF IT. Such a block is full the instant it is
+       returned, so making it the head would hide whatever space the active block
+       still has: the next small allocation would start a fresh 64K block, and a
+       request alternating a big buffer with an OVal - a magnitude that fills a
+       block, then the OVal wrapping it - would abandon a nearly empty block per
+       result. Only the HEAD is ever carved from, so the head must stay the block
+       with room.
+
+       THE TEST IS >=, NOT >, AND THE BOUNDARY IS NOT A DETAIL. A request of
+       EXACTLY one block consumes a standard block completely; routing it through
+       the ordinary path below would put a full block at the head, which is the
+       same defect with a different spelling. Equal-to is a dedicated allocation
+       in every respect except size. */
+    if (need >= O_ARENA_BLOCK) {
+      OBlock *big = o_block_new(need);
+      big->used = need;
+      if (b) { big->next = b->next; b->next = big; }
+      else { o_arena_blocks = big; }
+      return big->base;
+    }
+    OBlock *nb = o_block_new(O_ARENA_BLOCK);
+    nb->next = o_arena_blocks;
+    o_arena_blocks = nb;
+    b = nb;
+  }
+  void *p = b->base + b->used;
+  b->used += need;
   return p;
 }
+
+/* THE RELEASE POINT, AND THE HALF THAT DISCHARGES THE ROOT'S EXEMPTION. Called
+   after the answer has been serialised and before main returns.
+
+   IT CLEARS THE ROOT BEFORE IT FREES, and the order is the discipline rather
+   than an optimisation: at no point is the static root pointing at memory that
+   has been freed, so a future traversal, sanitizer or reentrant call cannot
+   reach a released request through it. Clearing after the loop would leave the
+   post-condition the same and the window open, which is why it is pinned
+   structurally and not only by behaviour.
+
+   IDEMPOTENT, and the arena is usable again afterwards: the next xalloc starts a
+   fresh block list. Nothing else in this runtime frees - the exit(70) paths
+   leave the arena to process exit, which is the same behaviour they had before
+   an arena existed. */
+void o_arena_release(void) {
+  OBlock *b = o_arena_blocks;
+  o_arena_blocks = 0;
+  while (b) {
+    OBlock *next = b->next;
+    free(b->base);
+    free(b);
+    b = next;
+  }
+}
+
 static OVal *val(int tag) { OVal *v = (OVal *)xalloc(sizeof(OVal)); v->tag = tag; v->idx = -1; return v; }
 
 OVal *o_strn(const char *s, int n) {
@@ -1135,18 +1274,28 @@ OVal *o_int_dec(const char *s) {
 
    OWNERSHIP, stated rather than left to be discovered: the tail is a VIEW into
    the parent buffer, not a copy. That is sound because every Str buffer in this
-   runtime is immutable and outlives the program - literals are IR constants,
-   capability values come from getenv, which is stable for the process lifetime,
-   and a buffer built by o_str_cons is calloc'd and never freed or written again.
-   Nothing here frees, so a view cannot dangle. If a Str ever gains a buffer with
-   a shorter lifetime, this is the line that has to change, and it must change to
-   a copy rather than to a hope.
+   runtime is immutable and outlives every observation of a view into it -
+   literals are IR constants, capability values come from getenv, which is stable
+   for the process lifetime, and a buffer built by o_str_cons is arena memory
+   that is never freed or written again before the arena is released. Nothing
+   frees during a request, so a view cannot dangle. If a Str ever gains a buffer
+   with a shorter lifetime, this is the line that has to change, and it must
+   change to a copy rather than to a hope.
+
+   THE ARENA DOES NOT WEAKEN THIS, AND THAT IS THE PROPERTY THAT SELECTED IT. A
+   view points into the arena of the request that created it and dies WITH that
+   request, released only after the answer has been serialised - so the view and
+   the buffer it spans have exactly the same lifetime, which is what reference
+   counting, tracing collection and region inference each fail to give an
+   interior pointer for free.
 
    THE CONDITION IS ON THE BUFFER'S LIFETIME, NOT ON WHERE IT CAME FROM, which is
    why adding runtime construction added a clause here rather than a caveat: an
    allocating constructor is exactly the change that would invalidate a view if
    the allocation were ever reused, and o_str_cons is written so that it is
-   not.
+   not. Arena blocks are freed rather than rewound at release for the same
+   reason - reuse is what would turn a released view into a wrong answer instead
+   of a dangling one.
 
    STRICT DECODING, done by hand: no locale, no mbrtowc, no replacement. It
    rejects overlong encodings, surrogates and anything above 0x10FFFF, because
@@ -1352,8 +1501,10 @@ static void o_str_cons_refuse(OVal *cp, const char *why) {
    optimization left on the table: o_str_tail hands out a VIEW into its parent,
    so a Str value may be a window on a buffer someone else's value also spans,
    and a constructed Str must own contiguous bytes of its own. Every buffer here
-   is immutable and nothing frees, so both the new buffer and any view into the
-   old one stay valid for the process lifetime. The trailing NUL is for o_cstr,
+   is immutable and nothing frees within a request, so both the new buffer and
+   any view into the old one stay valid until the request's arena is released -
+   which happens after the answer has been serialised, so no observation of
+   either can outlive it. The trailing NUL is for o_cstr,
    which hands a C string to a capability; slen is what carries the real length,
    because a Str may contain U+0000.
 
@@ -1751,6 +1902,7 @@ declare ptr @o_closure(ptr, ptr)
 declare ptr @o_apply(ptr, ptr)
 declare ptr @o_argv(i32, ptr, i32, i32)
 declare void @o_print(ptr)
+declare void @o_arena_release()
 declare ptr @o_require(ptr, ptr, ptr)
 declare ptr @o_require_value(ptr, ptr, ptr)
 declare ptr @o_int(i64)
@@ -1816,9 +1968,12 @@ type llvmEntry struct {
 // capability record a handler may take changes nothing about it.
 func llvmRefuseHandler() error {
 	return llvmUnsupported(reasonHandlerProtocol, "the handler protocol\n"+
-		"  A handler is long-running, and this runtime never frees memory — it would\n"+
-		"  leak per request. That is a property of this slice's runtime, not of the\n"+
-		"  protocol")
+		"  Handler lowering is not implemented in this backend: it emits no request\n"+
+		"  loop and no response-serialization boundary. The old reason was a LIFETIME\n"+
+		"  objection — the runtime never freed, so a long-running server would leak\n"+
+		"  per request — and the request arena retired it (#165). What remains is\n"+
+		"  unwritten lowering, which is a property of this slice's backend and not of\n"+
+		"  the protocol")
 }
 
 var llvmEntries = [...]llvmEntry{
@@ -2034,7 +2189,15 @@ func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 	} else {
 		fmt.Fprintf(&e.b, "  %s = call ptr %s(ptr null, ptr %s)\n", out, entry, args)
 	}
-	fmt.Fprintf(&e.b, "  call void @o_print(ptr %s)\n  ret i32 0\n}\n", out)
+	// THE REQUEST ARENA IS RELEASED HERE, AND THE ORDER IS THE WHOLE ARGUMENT
+	// (#165). `o_print` is this entry shape's SERIALISATION: it turns the answer
+	// into octets. Only after that is nothing live, which is why the release is
+	// sound without any escape analysis over values — and why moving this call
+	// above the print would hand `o_print` freed memory. A handler entry will put
+	// its release at the same place relative to its own octet boundary, not at
+	// the same line number.
+	fmt.Fprintf(&e.b, "  call void @o_print(ptr %s)\n", out)
+	fmt.Fprintf(&e.b, "  call void @o_arena_release()\n  ret i32 0\n}\n")
 	mainFn := "define i32 @main(i32 %argc, ptr %argv) {\n" + e.b.String()
 
 	// Provenance, carried as data. Same discipline as the Go backend: not a flag

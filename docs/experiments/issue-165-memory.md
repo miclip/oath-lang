@@ -1,25 +1,38 @@
 # #165 — the memory design for the LLVM runtime
 
-**Status: DESIGN ONLY.** Nothing here is implemented, nothing is normative, and
-no wire format or SPEC text is proposed. It exists so the shape is settled while
-the evidence for it is fresh, and so the one invariant it depends on is enforced
-now rather than discovered to have been broken later.
+**Status: STEPS 1–3 IMPLEMENTED; step 4 not started.** The retention invariant
+and the explicit request arena are in the runtime and gated; the handler protocol
+is not. Nothing here is normative and no wire format or SPEC text is proposed —
+the design was written down while the evidence for it was fresh, and the parts
+that have since landed are marked at the line rather than left to be inferred
+from the order-of-work list at the end.
 
 ## The dependency runs the opposite way from how #165 filed it
 
 #165 asked whether the fork was even open, and made the answer turn on whether
 the handler protocol would ever be in the LLVM backend's scope. **That framing
-was backwards, and the code says so at the line.** Above `llvmRuntimeC`:
+was backwards, and the code said so at the line.** The comment above
+`llvmRuntimeC` **at the time this was written** — since replaced, and quoted here
+as the historical reasoning rather than as current code:
 
 > MEMORY IS NEVER FREED. A CLI program runs once and exits, so an arena that is
 > only ever reclaimed by process exit is honest for this slice — and stated,
 > because it is exactly **the reason the handler protocol is refused below**: a
 > long-running server would leak per request.
 
-So the handler protocol is not an independent question whose answer decides
-whether memory matters. **Handlers are refused BECAUSE of the memory model.**
-Memory is upstream, and settling it is what makes the handler protocol
+So the handler protocol was not an independent question whose answer decided
+whether memory mattered. **Handlers were refused BECAUSE of the memory model.**
+Memory was upstream, and settling it is what makes the handler protocol
 available.
+
+**THAT REASON IS NOW SPENT, AND THE REFUSAL IS NOT.** Step 3 landed the arena and
+its release point, so the lifetime objection no longer holds: a long-running
+entry would not leak per request for want of a release. What the LLVM backend
+still lacks is the LOWERING — it emits no request loop and no
+response-serialization boundary to release a request's arena against — and that
+is what `llvmRefuseHandler` now says. The distinction is the difference between
+*this cannot be done here* and *this has not been written here*, and only the
+second is true today.
 
 ## The design
 
@@ -29,9 +42,17 @@ Two regions, both determined by the entry protocol rather than inferred.
                        the provenance manifest
     request-lifetime   everything allocated while computing one answer
 
-For a CLI entry that is one request released at exit — which is exactly what
-`xalloc` does today, so the current runtime is the degenerate case of this
-design rather than something it replaces.
+For a CLI entry that is one request released at exit — which is what `xalloc`
+did before step 3 by never freeing at all, so the old runtime was the degenerate
+case of this design rather than something it replaced.
+
+**AS IMPLEMENTED (step 3), THE TWO REGIONS ARE ONE.** Everything `xalloc` hands
+out comes from the request arena, capability records and required values
+included: a CLI program is one request, so a separate program-lifetime region
+would be a distinction with no observable consequence and a second lifetime to
+keep straight. The split above is what a handler entry will need, not what the
+runtime carries today. String literals are IR constants and the provenance
+manifest is a linker directive, so neither was ever allocated.
 
 **The release point is after serialisation, and that is what makes it sound.**
 A handler is `(r Request) -> Response`. The runtime turns the `Response` into
@@ -40,10 +61,13 @@ to survive the request — the thing that would have escaped has already become
 bytes. **No escape analysis over VALUES is required at all.**
 
 **`Str` tail views survive untouched.** A tail shares its parent's buffer instead
-of copying, which is sound today only because nothing is freed. Under this
-design a view points into the arena of the request that created it and dies with
-it, so the condition written at that line — *the buffer's lifetime, not where it
-came from* — continues to hold. The three alternatives all break it:
+of copying, which was sound before step 3 only because nothing was freed. Under
+this design a view points into the arena of the request that created it and dies
+with it, so the condition written at that line — *the buffer's lifetime, not
+where it came from* — continues to hold. It is now written that way in the
+runtime, and the arena frees its blocks rather than rewinding them for the same
+reason: reuse would turn a released view into a WRONG ANSWER instead of a
+dangling one. The three alternatives all break it:
 reference counting (a view holds a pointer into a buffer it owns no reference
 to), tracing collection (an interior pointer must keep its whole buffer alive),
 and general region inference (the region must be proven to outlive the view).
@@ -59,19 +83,51 @@ call and returns a fresh `OVal`. `process_env` reads host memory out;
 `file_read` reads into fresh memory; `http_request` is refused by this backend.
 None retains.
 
-**And it is not left as a rule.** `TestEmittedRuntimeDeclaresNoMutableFileScopeState`
-asserts the emitted runtime declares no mutable file-scope state, so a provider
-has nowhere to put a retained pointer — retention is unavailable rather than
-forbidden. The single exception is named: `o_kept` holds a pointer to
-`@oath_provenance`, a static constant, so the linker cannot strip the embedded
-manifest, and the assertion requires it to stay `const`.
+**And it is not left as a rule.**
+`TestEmittedRuntimeDeclaresNoStaticStorageForValues` asserts that the emitted
+runtime declares **exactly one** object of static storage duration able to hold a
+pointer — the arena root, `static OBlock *o_arena_blocks`, permitted on the
+timing argument below — and **no other**. A provider therefore has nowhere of its
+own to put a retained pointer: retention is unavailable rather than forbidden.
+Before step 3 the claim was absolute, and stating it that way now would be
+describing the previous runtime.
 
 A batching or asynchronous sink would have to ADD static storage, and that is
 what the test sees.
 
+**STEP 3 CHANGED THE INVARIANT FROM A QUANTITY TO A TIMING, AND THE WEAKER
+READING OF IT IS THE ONE TO AVOID.** The arena needs an ownership root, and
+`static OBlock *o_arena_blocks` is it. That root DOES retain request memory:
+every `OVal` and every buffer a request allocates sits in a block reachable from
+it. Writing it up as harmless bookkeeping would be the whole argument got wrong —
+what makes it different from the slot this test forbids is not what it can hold
+but WHEN:
+
+- the root may retain request allocations **for the duration of the request**;
+- `o_arena_release` **clears it, then frees**, so nothing is reachable from
+  static storage after the release point;
+- every **other** static pointer stays forbidden, because nothing clears one.
+
+So the declaration scan is now half the argument. It establishes that the root is
+the only such slot, keyed on the exact declaration rather than on the name — a
+`static OVal *o_arena_blocks` is a bare slot nothing clears and must not inherit
+a permission argued for the root. `TestArenaReleaseClearsItsOwnershipRoot`
+carries the other half: a C driver that `#include`s the runtime (necessary, since
+the root has internal linkage) allocates, releases, and asserts the root is null,
+that a second release is a no-op, and that the arena is reusable; alongside a
+structural check that the clear precedes every `free`. That ordering has no
+observable consequence today, since nothing runs between, which is exactly why it
+is pinned structurally and not claimed as behaviour.
+
+**What that pair does NOT see:** a release that cleared correctly and then walked
+the list wrongly — freeing a block before reading its `next` — satisfies every
+assertion, because the reads usually still return the right bytes. That class
+needs a sanitizer and no gate in this repo runs one.
+
 **WHAT THE TEST ESTABLISHES, STATED AT THE PRECISION IT MEASURES.** It checks
-DECLARATIONS: no object of static storage duration exists that could hold a
-pointer. It does **not** establish that no capability retains request memory — a
+DECLARATIONS: the only object of static storage duration able to hold a pointer
+is the arena root, matched on its exact declaration, and no other exists. It does
+**not** establish that no capability retains request memory — a
 provider could call `putenv(o_cstr(arg))`, which keeps the buffer it is handed,
 or pass `arg` to a worker thread, declaring nothing at all. **Neither is
 visible to it.** Retention through a libc call or a thread handoff is an OPEN
@@ -83,7 +139,9 @@ file scope and inside a function, multi-word and struct types, a trailing
 comment, and a file-scope declaration with no `static` keyword at all — which C
 gives static storage duration anyway.
 
-**THE SCAN IS DEFENCE, NOT THE FIX, AND THE REAL FIX IS TO REMOVE THE SLOT.**
+**THE SCAN IS DEFENCE, NOT THE FIX, AND THE REAL FIX IS TO REMOVE THE SLOT** —
+which is still the rule for a VALUE slot, and is exactly why the arena's root had
+to earn its exemption on a clearing argument rather than on being useful.
 Five review rounds on that one test each found a different way in, and the
 pattern is worth more than any of the repairs: every version enumerated a FORM —
 column zero, then the keyword, then a single-word type, then IR call syntax —
@@ -118,25 +176,39 @@ claiming otherwise would be measuring nothing.
   says nothing about whether an allocated VALUE outlives a request, and this
   design does not need it to. Across the corpus only four parameters are marked
   `escapes`, two of them (`leak`, `stash`) deliberate exhibits.
-- **Arena growth within a request is unbounded**, exactly as today. A single
+- **Arena growth within a request is unbounded**, exactly as before. A single
   request that allocates without limit still exhausts memory; this design bounds
-  lifetime, not size.
+  lifetime, not size. Blocks are freed rather than rewound at release, so a
+  request cannot reclaim its own memory early either — deliberate, since reuse
+  is what would invalidate a `Str` tail view.
 - **Nothing is measured about cost.** No allocation profile exists because no
-  LLVM-compiled program runs long enough to produce one.
+  LLVM-compiled program runs long enough to produce one. Step 3 replaced a
+  `calloc` per object with a carve out of 64KB blocks; that is expected to be
+  cheaper and nothing here measures whether it is.
 - **Cross-request sharing is out of scope.** Any future capability that
   legitimately needs to retain — a connection pool, a cache — is a new design
   question and would trip the test above, which is the intended behaviour.
 
 ## Order of work
 
-1. **The retention invariant.** Done, and deliberately first: it is the piece
-   that becomes harder to add the more capabilities exist, and it holds today by
-   accident of how three functions are written rather than by anything stated.
-2. **This document.**
+1. **The retention invariant.** DONE, and deliberately first: it is the piece
+   that becomes harder to add the more capabilities exist, and it held at the
+   time by accident of how three functions are written rather than by anything
+   stated.
+2. **This document.** DONE.
 3. **Make the current arena explicit** — name the scope and its release point,
    changing nothing observable, so the release point exists where a handler will
-   need it.
-4. **The handler protocol in the LLVM backend**, which is what this unblocks.
+   need it. **DONE.** `xalloc` carves from blocks held on a single ownership
+   root; `o_arena_release` clears the root and frees the list; the emitter places
+   the call after `o_print` and before `main` returns. Zero-initialisation is
+   preserved by the carve-forward-and-free invariant rather than by a `memset`,
+   and alignment is derived from `_Alignof(max_align_t)` rather than assumed.
+   The order in the emitted `main` is witnessed, not documented — see
+   `TestEmittedMainReleasesTheArenaAfterSerialising`.
+4. **The handler protocol in the LLVM backend**, which is what this unblocks. NOT
+   STARTED. Its former blocker — the lifetime objection — is retired; what is
+   missing is the lowering: no request loop and no response-serialization
+   boundary. The entry shapes themselves exist and are refused by name.
 
 ## A note on the instrument, because twelve rounds is data
 
