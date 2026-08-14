@@ -3049,15 +3049,65 @@ static int o_target_authority(char *t, int n, char **out, int *olen) {
    value of NBSP + "X-Hop" + NBSP yields no valid nomination and cannot silently
    suppress a real header the handler was meant to see.
 
-   A PREDICATE OVER THE MESSAGE, NOT A COLLECTED LIST. The first version built an
-   array of nominations with a fixed capacity, which silently DROPPED later
-   options once it filled - and row 16 says the union across every Connection
-   line, with no bound. A capacity is not a disposition: a request under the
-   header limit could carry more options than the array held, and the field the
-   last one named would reach the handler. Re-scanning per candidate costs a
-   quadratic that both factors are already bounded by, and it cannot be short by
-   one. */
-static int o_nominated(OReq *r, const char *lname, int lnlen) {
+   NO BOUND ON THE OPTION COUNT. The first version built an array of nominations
+   with a fixed capacity, which silently DROPPED later options once it filled -
+   and row 16 says the union across every Connection line, with no bound. A
+   capacity is not a disposition: a request under the header limit could carry
+   more options than the array held, and the field the last one named would
+   reach the handler. The index below is grown from the message instead, so it
+   is exactly the union and cannot be short by one.
+
+   IT IS AN INDEX RATHER THAN A RESCAN BECAUSE THE FIX HAD TO BE FASTER, NOT
+   STRICTER (issue 172). Asking a rescanning predicate once per surviving field
+   costs fields x option-octets, and BOTH are bounded only by the 64 KiB header
+   allowance, so an attacker picks the split that maximises the product - about
+   2.6 x 10^8 octet steps for one well-formed request, uninterruptible, on a
+   serial serve loop. Refusing a request carrying an absurd number of options
+   would be the cheap repair and is forbidden: net/http accepts them, so a
+   strictness this backend adds alone is a SPEC 14.0 disagreement about whether
+   a Request exists. Building the union once and binary-searching it makes the
+   same answer cost option-octets + fields x log(options), which no split of the
+   budget turns back into a quadratic.
+
+   THE INDEX IS NOT A SEMANTIC OBJECT. It carries exactly what the predicate
+   read: an element that is empty or not a token is dropped while building, so
+   membership in the index and satisfaction of the old predicate are the same
+   relation. The lowercasing is done ONCE per option here rather than once per
+   comparison, which is also why the stored token is a copy rather than a view.
+
+   ITS SIZE IS BOUNDED BY THE SAME OCTETS THE OPTIONS ARE - an option costs at
+   least two of them, so the index, its doubling waste and the sort scratch are
+   all linear in a header section that is already capped, and the worst case is
+   under a megabyte of arena for a 64 KiB request. A repair for a resource
+   exhaustion must not introduce an allocation the same party controls. */
+typedef struct ONom ONom;
+struct ONom {
+  char *tok;
+  int len;
+};
+
+/* The order the index is sorted and searched in: unsigned octets, and a shorter
+   name that is a prefix of a longer one first. The same total order the row-13
+   field sort uses - one comparison rule for both, rather than two that could
+   disagree about which of x-hop and x-hop-2 comes first. */
+static int o_nom_order(const char *a, int alen, const char *b, int blen) {
+  int m = alen < blen ? alen : blen;
+  int c = m > 0 ? memcmp(a, b, (size_t)m) : 0;
+  if (c != 0) return c < 0 ? -1 : 1;
+  return alen < blen ? -1 : (alen > blen ? 1 : 0);
+}
+
+/* Every valid option in the message, lowercased and sorted.
+   A BOTTOM-UP MERGE SORT, AND THE CHOICE IS PART OF THE FIX. qsort would be
+   shorter and is quicksort in several libcs, which is quadratic on an input the
+   attacker writes - the defect this function exists to remove, reintroduced one
+   layer down and chosen by the same party. Merge sort is O(n log n) on every
+   input; it is iterative, so it adds no recursion depth to a request path; and
+   its scratch comes from the request arena, so a refusal unwinds it with
+   everything else. */
+static ONom *o_nominations(OReq *r, int *count) {
+  ONom *ix = 0;
+  int n = 0, cap = 0;
   for (int i = 0; i < r->nf; i++) {
     OField *f = &r->fs[i];
     if (!o_field_named(f, "connection")) continue;
@@ -3068,19 +3118,71 @@ static int o_nominated(OReq *r, const char *lname, int lnlen) {
       while (s0 < e0 && o_ows((unsigned char)f->value[s0])) s0++;
       while (e0 > s0 && o_ows((unsigned char)f->value[e0 - 1])) e0--;
       a = k + 1;
-      if (e0 - s0 != lnlen || !o_is_token(f->value + s0, e0 - s0)) continue;
-      int same = 1;
-      for (int q = 0; q < lnlen; q++) {
-        if (o_ascii_lower((unsigned char)f->value[s0 + q]) != lname[q]) { same = 0; break; }
+      /* An empty element is not a token, so one test discharges both
+         dispositions row 16 gives them. */
+      if (!o_is_token(f->value + s0, e0 - s0)) continue;
+      if (n == cap) {
+        int nc = cap > 0 ? cap * 2 : 16;
+        ONom *nx = (ONom *)xalloc(sizeof(ONom) * (size_t)nc);
+        if (n > 0) memcpy(nx, ix, sizeof(ONom) * (size_t)n);
+        ix = nx;
+        cap = nc;
       }
-      if (same) return 1;
+      int len = e0 - s0;
+      char *t = (char *)xalloc((size_t)len);
+      for (int q = 0; q < len; q++) {
+        t[q] = (char)o_ascii_lower((unsigned char)f->value[s0 + q]);
+      }
+      ix[n].tok = t;
+      ix[n].len = len;
+      n++;
     }
+  }
+  if (n > 1) {
+    ONom *tmp = (ONom *)xalloc(sizeof(ONom) * (size_t)n);
+    for (int w = 1; w < n; w *= 2) {
+      for (int lo = 0; lo < n; lo += 2 * w) {
+        int mid = lo + w, hi = lo + 2 * w;
+        if (mid > n) mid = n;
+        if (hi > n) hi = n;
+        int i = lo, j = mid, o = lo;
+        while (i < mid && j < hi) {
+          if (o_nom_order(ix[j].tok, ix[j].len, ix[i].tok, ix[i].len) < 0) tmp[o++] = ix[j++];
+          else tmp[o++] = ix[i++];
+        }
+        while (i < mid) tmp[o++] = ix[i++];
+        while (j < hi) tmp[o++] = ix[j++];
+      }
+      memcpy(ix, tmp, sizeof(ONom) * (size_t)n);
+    }
+  }
+  *count = n;
+  return ix;
+}
+
+/* lname is a field name, so it is already lowercase - row 8 canonicalized it at
+   the parser, and the index holds the option lowercased for the same reason. */
+static int o_nominated(const ONom *ix, int n, const char *lname, int lnlen) {
+  int lo = 0, hi = n - 1;
+  while (lo <= hi) {
+    int mid = lo + (hi - lo) / 2;
+    int c = o_nom_order(ix[mid].tok, ix[mid].len, lname, lnlen);
+    if (c == 0) return 1;
+    if (c < 0) lo = mid + 1;
+    else hi = mid - 1;
   }
   return 0;
 }
 
 static int o_http_adapt(OReq *r, OField *out, int *nout) {
   int n = 0;
+  /* ONCE PER REQUEST, BEFORE THE FIELD LOOP - which is what makes the loop's
+     lookup logarithmic instead of a second pass over the message. Building it
+     here rather than at the parser keeps the transformation a function of the
+     parser boundary alone: OReq stays the six components SPEC 14.2a names, and
+     nothing derived from them is smuggled into it. */
+  int nnom = 0;
+  ONom *nom = o_nominations(r, &nnom);
   for (int i = 0; i < r->nf; i++) {
     OField *f = &r->fs[i];
     if (o_framing_field(f)) continue;
@@ -3090,14 +3192,7 @@ static int o_http_adapt(OReq *r, OField *out, int *nout) {
        refused. The host field line is dropped here and re-enters below as the lifted
        authority. */
     if (o_field_named(f, "host")) continue;
-    /* QUADRATIC, AND KNOWN — see issue 172. This asks o_nominated per surviving
-       field and o_nominated rescans every field, so a request near the header
-       limit costs on the order of 10^8 iterations before the handler runs, with
-       the read deadline consulted only during socket I/O. A one-pass prepass
-       does NOT fix it: the cost is options x fields, and an attacker splits the
-       header budget between them. A real repair needs the option set sorted or
-       hashed, and that is filed rather than faked here. */
-    if (o_nominated(r, f->name, f->nlen)) continue;
+    if (o_nominated(nom, nnom, f->name, f->nlen)) continue;
     out[n++] = *f;
   }
 

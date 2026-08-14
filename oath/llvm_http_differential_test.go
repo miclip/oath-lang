@@ -173,11 +173,15 @@ func TestBackendsAgreeOnGeneratedRequests(t *testing.T) {
 	//             io.ReadAll. A ~70 KiB header request is 431 here and served
 	//             there. Generating requests that large would make this test
 	//             slow for one family already understood.
-	//   COST      the Connection-nomination scan is quadratic (issue 172). It
-	//             is a performance defect rather than a Request disagreement,
-	//             so it would not appear here however wide the grammar.
+	//   COST      a cost disagreement is not a Request disagreement, so it would
+	//             not appear here however wide the grammar. Issue 172's
+	//             quadratic nomination scan was one, and the bound that replaced
+	//             it is witnessed by timing in llvm_nomination_cost_test.go —
+	//             which is a separate instrument for a reason: this one compares
+	//             VALUES, and two backends can agree on every value while one of
+	//             them takes a second to say so.
 	//
-	// Both are §14.0-relevant and neither is fixed. Naming them here is the
+	// SIZE remains §14.0-relevant and unfixed. Naming both here is the
 	// difference between a gate with a stated scope and one that looks total.
 	const known = 17
 	if len(found) > known {
