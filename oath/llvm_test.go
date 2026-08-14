@@ -293,10 +293,20 @@ func TestLLVMPrimitiveBoundary(t *testing.T) {
 		{"div", `(if (== (/ 4 2) 2) "yes" "no")`, true},
 		{"mod", `(if (== (% 4 2) 0) "yes" "no")`, true},
 		{"neg", `(if (== (neg 1) -1) "yes" "no")`, false},
-		// `==` is polymorphic and only its Int instance is lowered, so this is
-		// not a stray case: it is the guard that keeps the six rows above from
-		// being read as "the operator is supported".
-		{"eq-on-str", `(if (== "a" "a") "yes" "no")`, false},
+		// `==` is polymorphic and TWO of its instances are lowered, so the guard
+		// that keeps the rows above from being read as "the operator is
+		// supported" has moved rather than gone: Str joined Int (#173) and Bool
+		// did not. Bool is the cheapest remaining instance to name; the datatype
+		// instances are pinned in llvm_str_eq_test.go.
+		//
+		// eq-on-str moved from refused to ACCEPTED, and by this file's own rule
+		// that surrenders a check unless something else pins the semantics. What
+		// pins them is TestStrEqualityAgreesThreeWays, which holds the Str
+		// comparison against `oath eval` over empty, prefix, non-ASCII,
+		// runtime-constructed and tail-view operands — strictly more than the
+		// refusal it replaced, which only witnessed that nothing was emitted.
+		{"eq-on-str", `(if (== "a" "a") "yes" "no")`, true},
+		{"eq-on-bool", `(if (== true true) "yes" "no")`, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st := llvmStore(t)

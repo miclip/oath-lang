@@ -227,11 +227,11 @@ func llvmUnsupported(reason refusalReason, what string) error {
 		Backend: llvmBackendVersion,
 		Detail:  what,
 		Help: "  This is a first slice: it covers datatypes, matching, closures, records,\n" +
-			"  Str (literals, matching, and construction from values computed at\n" +
-			"  runtime), Bool, the CLI entry protocol, and Int — arbitrary-precision,\n" +
+			"  Str (literals, matching, construction from values computed at runtime,\n" +
+			"  and `==`), Bool, the CLI entry protocol, and Int — arbitrary-precision,\n" +
 			"  literals of any magnitude, with the binary operations `+ - * / %` and\n" +
 			"  `== < <=`. Division truncates toward zero and a zero divisor fails at\n" +
-			"  runtime, matching `oath eval`.\n" +
+			"  runtime, matching `oath eval`. `==` at any OTHER type is refused.\n" +
 			"  Every entry shape is covered — the CLI ones, and both handlers,\n" +
 			"  (-> Request Response) and (-> {caps} (-> Request Response)), served\n" +
 			"  over HTTP/1.1 by the emitted runtime.\n" +
@@ -609,6 +609,15 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 		// LOWERING gap rather than a semantic one, and worth saying so instead
 		// of quietly adding a third shape for one operation. A backend subset is
 		// an honest claim only while what is outside it is named.
+		//
+		// `and` AND `or` ARE ALSO ABSENT, AND WHOEVER ADDS THEM INHERITS A
+		// SEMANTIC OBLIGATION RATHER THAN A CHOICE: they DO NOT SHORT-CIRCUIT.
+		// Measured against the reference, `(and false (< (/ 1 0) 1))` and
+		// `(or true (< (/ 1 0) 1))` both RAISE — the second operand is evaluated
+		// even when the first has already decided the result. So a lowering that
+		// branches around the second operand fails to raise where `oath eval`
+		// raises, and it passes every test whose second operand happens to be
+		// total, which is most of them. Lower them STRICT, or not at all.
 		intArith := map[string]string{
 			"+": "o_int_add", "-": "o_int_sub", "*": "o_int_mul",
 			"/": "o_int_div", "%": "o_int_mod",
@@ -616,16 +625,21 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 		intOrder := map[string]string{"==": "o_int_eq", "<": "o_int_lt", "<=": "o_int_le"}
 		arith, isArith := intArith[t.Op]
 		order, isOrder := intOrder[t.Op]
-		if len(t.Args) == 2 && (isArith || isOrder) {
+		if len(t.Args) == 2 {
 			// THE TYPE GUARD IS LOAD-BEARING, not a formality. `+ - * < <=` are
 			// numeric-OVERLOADED in the language — the same op spells Rat and
 			// Float arithmetic — and `==` is polymorphic over everything. So the
 			// operand types decide whether this is the Int lowering at all, and
 			// a Rat addition must fall through to the refusal below rather than
 			// be handed to an integer runtime.
+			//
+			// The synthesis is hoisted out of the Int branch because `==` now has
+			// TWO lowerings selected by operand type, and asking the checker twice
+			// would let the two guards drift apart while each stayed readable.
 			at, aerr := e.chk.synth(e.ctx, &t.Args[0])
 			bt, berr := e.chk.synth(e.ctx, &t.Args[1])
-			if aerr == nil && berr == nil && at != nil && bt != nil && at.K == "int" && bt.K == "int" {
+			typed := aerr == nil && berr == nil && at != nil && bt != nil
+			if typed && at.K == "int" && bt.K == "int" && (isArith || isOrder) {
 				a, err := e.expr(&t.Args[0], env, depth, self)
 				if err != nil {
 					return "", err
@@ -641,6 +655,62 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 				}
 				r := e.next()
 				fmt.Fprintf(&e.b, "  %s = call i32 @%s(ptr %s, ptr %s)\n", r, order, a, b)
+				v := e.next()
+				fmt.Fprintf(&e.b, "  %s = call ptr @o_bool(i32 %s)\n", v, r)
+				return v, nil
+			}
+			// `==` AT Str.
+			//
+			// A SECOND INSTANCE OF ONE POLYMORPHIC OPERATION, not a second
+			// operation: `==` is structural equality at every type, and Str is a
+			// datatype whose values are codepoint sequences. So the obligation is
+			// the interpreter's `structEq` over the SCons/SNil spine, and the only
+			// question a backend answers is how to compute it over ITS
+			// representation.
+			//
+			// Both operands are required to be Str rather than one of them, even
+			// though the checker already makes `==` homogeneous: the guard's job is
+			// to select a lowering, and a guard that trusts a neighbouring
+			// component's invariant selects on something it cannot see.
+			//
+			// The narrowness is deliberate and it is not a claim that `==` is hard
+			// elsewhere. A ctor-chain equality is a recursive walk over o_idx and
+			// o_field and would be a fine next slice; it is refused today because
+			// what is lowered here is what a program actually demanded, and a
+			// refusal that names the operation is how the next demand arrives.
+			//
+			// AND WHEN THAT SLICE COMES, THE QUESTION IT TURNS ON IS ALREADY
+			// ANSWERED, so it is written down rather than re-derived. A single
+			// structural walk over the runtime representation matches the
+			// reference at every type IF AND ONLY IF every representation is
+			// CANONICAL — otherwise two equal values differ bytewise and the walk
+			// answers a silently wrong `false` instead of refusing. Measured
+			// against `oath eval`, all three numeric representations qualify:
+			//
+			//	Int    sign-magnitude with ONE normalizer (o_int_wrap): no leading
+			//	       zero limb, isign zero iff the value is, so bytes are unique
+			//	Rat    reduced with the sign in the numerator, so structural
+			//	       equality IS numeric equality
+			//	Float  binary64 with a canonical NaN, and bit comparison is
+			//	       REQUIRED rather than hazardous — docs/floats.md makes `==`
+			//	       SMT `=`, NOT fp.eq, so `+0.0 == -0.0` is FALSE and a walk
+			//	       that "helpfully" used IEEE equality would be the wrong one
+			//
+			// Str is the type that would NOT fall out of such a walk, because its
+			// runtime form is not its structural form: the walk would see packed
+			// bytes where the language sees a SCons spine. So this case survives a
+			// generalisation rather than being replaced by it.
+			if typed && t.Op == "==" && e.isStrTy(at) && e.isStrTy(bt) {
+				a, err := e.expr(&t.Args[0], env, depth, self)
+				if err != nil {
+					return "", err
+				}
+				b, err := e.expr(&t.Args[1], env, depth, self)
+				if err != nil {
+					return "", err
+				}
+				r := e.next()
+				fmt.Fprintf(&e.b, "  %s = call i32 @o_str_eq(ptr %s, ptr %s)\n", r, a, b)
 				v := e.next()
 				fmt.Fprintf(&e.b, "  %s = call ptr @o_bool(i32 %s)\n", v, r)
 				return v, nil
@@ -800,6 +870,17 @@ func (e *llvmEmitter) emitStrMatch(t *Term, env string, depth int, self string) 
 func intTy() *Ty { return &Ty{K: "int"} }
 
 func strTy(hash string) *Ty { return &Ty{K: "data", Hash: hash} }
+
+// isStrTy reports whether a synthesised type is THIS store's Str.
+//
+// The hash is the whole test, for the same reason emitMatch dispatches on it:
+// Str is a datatype like any other and its identity is its content hash, so a
+// name comparison would accept a different type someone else called Str and
+// reject this one under an alias. An empty strHash means the store has no Str
+// at all, and then nothing is one.
+func (e *llvmEmitter) isStrTy(t *Ty) bool {
+	return t != nil && t.K == "data" && t.Hash == e.strHash && e.strHash != ""
+}
 
 func (e *llvmEmitter) emitMatch(t *Term, env string, depth int, self string) (string, error) {
 	if t.Hash == e.strHash && e.strHash != "" {
@@ -1566,6 +1647,45 @@ OVal *o_str_tail(OVal *v) {
   if (n == 0) o_bug("tail of an empty Str");
   return o_strn(v->s + n, v->slen - n);
 }
+
+/* EQUALITY AT Str IS STRUCTURAL CODEPOINT EQUALITY, COMPUTED AS A BYTE COMPARE.
+
+   THE COMPARISON IS OVER CODEPOINTS AND THE IMPLEMENTATION LOOKS AT BYTES, so
+   the two coincide only because the packing is INJECTIVE: distinct codepoint
+   sequences have distinct UTF-8 encodings exactly when every buffer holds
+   canonical UTF-8. That is an invariant of this runtime, not of UTF-8 - overlong
+   forms encode the same scalar differently - and it is established at every
+   place a T_STR buffer can come into existence:
+
+     an IR literal      the emitter folds only Unicode scalars (strLiteral) and
+                        Go's string(rune) emits the canonical form
+     o_str_cons         refuses non-scalars by class and encodes canonically
+     o_str_tail         a view starting at a decode boundary of a valid buffer
+     o_strn_host        o_utf8_valid, at ingestion, for argv/getenv/file reads
+     a Request field    SPEC 14.2 row 9 admits printable US-ASCII (plus HTAB in
+                        a field value), where the scalar IS the octet
+
+   So there is no path by which two buffers denote one Str value while differing
+   in bytes, and none by which one buffer denotes two. If a future source of Str
+   bytes skips validation, THIS is the function that silently starts answering a
+   different question - a decode-and-compare loop would fail loudly instead, and
+   is the repair, not a second validation somewhere upstream.
+
+   TOTAL, and deliberately so. Comparing is not observing: equality answers for
+   malformed storage where a match would refuse it, which keeps equality out of
+   the business of adjudicating bytes it did not admit.
+
+   The length test first is not an optimisation - memcmp over differing lengths
+   would read past the shorter buffer. slen carries the real length because a
+   Str may contain U+0000, and a tail is a VIEW whose bytes are not NUL
+   terminated at its own end. */
+int o_str_eq(OVal *a, OVal *b) {
+  if (!a || a->tag != T_STR || !b || b->tag != T_STR) o_bug("== at Str applied to a value that is not a Str");
+  if (a->slen != b->slen) return 0;
+  if (a->slen == 0) return 1;
+  return memcmp(a->s, b->s, (size_t)a->slen) == 0;
+}
+
 static OVal *o_int_arg(OVal *v) {
   if (!v || v->tag != T_INT) o_bug("not an Int");
   return v;
@@ -4008,6 +4128,7 @@ declare i32 @o_str_idx(ptr)
 declare ptr @o_str_head(ptr)
 declare ptr @o_str_tail(ptr)
 declare ptr @o_str_cons(ptr, ptr)
+declare i32 @o_str_eq(ptr, ptr)
 declare ptr @o_int_dec(ptr)
 declare ptr @o_int_add(ptr, ptr)
 declare ptr @o_int_sub(ptr, ptr)

@@ -70,6 +70,15 @@ constructs a `Str` at runtime.**
 > snapshot, not as the live boundary. `oath/llvm.go` is the authority on what is
 > refused today; every line number here is from the time of writing.
 
+> **The `prim` row is superseded the same way, and by #173.** `==` is lowered at
+> **two** types now, `Int` and `Str` — the Str instance as a byte comparison over
+> the packed UTF-8 — so the operation count and the "both arguments synthesize to
+> `Int`" clause describe the backend as enumerated, not as it is. Every other
+> named instance is still refused as `reasonPrim`: `Bool`, `Rat`, `Float`, and
+> any OTHER datatype — `List`, `Option`, `Pair` — `Str` being a datatype itself.
+> The authority is
+> `llvmUnsupported`'s help text and the guard beside it, which move together.
+
 Capabilities are not the constraint. `llvmProviders` (`74-78`) supplies
 `process_env`, `file_read` and `record_sink`; `capabilityVocabulary`
 (`program.go:209-230`) declares four kinds, so the only one absent is
