@@ -2351,6 +2351,7 @@ static int o_http_chunked(int fd, long long deadline, OBuf *b, int *pos, OBuf *o
      bounded like the header section it resembles, and refused with the same
      status. */
   int tstart = *pos;
+  int tfields = 0;
   for (;;) {
     char *ln;
     int ll;
@@ -2358,18 +2359,53 @@ static int o_http_chunked(int fd, long long deadline, OBuf *b, int *pos, OBuf *o
     int rc = o_http_line(fd, deadline, b, pos, &ln, &ll);
     if (rc) return rc;
     if (ll == 0) return 0;
+    /* A FOLD IS LEGAL HERE FOR THE SAME REASON IT IS LEGAL IN THE HEADER
+       SECTION, and refusing it was a SPEC 14.0 divergence - the largest family
+       in the differential ratchet, thirteen of seventeen. The trailer section
+       is field lines, so row 12's obsolete line folding applies to it, and
+       net/http reads trailers with the same reader it reads headers with:
+       measured, a chunked message ending "0 CRLF X-T: a CRLF SP b CRLF CRLF"
+       is served there and was refused here.
+
+       DISCARDED, NOT RECONSTITUTED. Row 17 drops the trailer section entirely,
+       so there is no value to continue and nothing to append to - the fold is
+       checked for legality and its octets are dropped. The two conditions are
+       the header section's, character for character, because agreement is the
+       obligation and a second fold rule could only drift from the first: a
+       fold with no field line to continue is malformed, and a control octet is
+       malformed. Both were measured to be net/http's boundary too, and obs-text
+       is accepted by both. */
+    if (o_ows((unsigned char)ln[0])) {
+      if (tfields == 0) return 400;
+      for (int i = 0; i < ll; i++) {
+        unsigned char c = (unsigned char)ln[i];
+        if ((c < 0x20 && c != 0x09) || c == 0x7F) return 400;
+      }
+      continue;
+    }
     /* DISCARDED IS NOT UNPARSED. A trailer that is not a field line makes the
-       MESSAGE malformed, and the Go backend's parser refuses it - so accepting
-       it here would have the two backends disagree about whether a Request
-       exists at all, which is the one thing SPEC 14.0 asks of them. Row 17
-       says these fields do not become headers; it does not say the octets
-       after the body need not be HTTP. */
+       MESSAGE malformed. Row 17 says these fields do not become headers; it
+       does not say the octets after the body need not be HTTP. */
     if (!o_http_field_line_ok(ln, ll)) return 400;
+    tfields++;
     /* AND IT MAY NOT BE A FRAMING FIELD. RFC 9110 6.5.1 forbids these in a
        trailer section - a Content-Length that arrives AFTER the body would be
        describing a message already framed, which is the shape smuggling is
-       built on, and Go refuses it before its handler runs. Row 17 discards
-       trailers; it does not admit ones HTTP does not permit. */
+       built on. Row 17 discards trailers; it does not admit ones HTTP does not
+       permit.
+
+       AND THIS BACKEND IS ALONE IN REFUSING THEM, WHICH IS A KNOWN 14.0
+       DIVERGENCE RATHER THAN A SETTLED RULE. An earlier version of this comment
+       claimed "Go refuses it before its handler runs", and that was measured
+       and is FALSE: net/http serves a chunked message whose trailer section
+       carries Content-Length, Transfer-Encoding, Connection or Host, and serves
+       a trailer whose name is not a token. It reads trailers into a map and
+       does not police them. So four shapes are refused here and served there.
+       The refusal is KEPT because relaxing it is a decision about smuggling
+       exposure and not a comment fix, and it is recorded here so the next
+       reader meets the measurement instead of the claim that was wrong.
+       This family is outside the differential generator's grammar, so the
+       ratchet does not see it. */
     OField tf;
     int tcolon = 0;
     while (ln[tcolon] != ':') tcolon++;
@@ -2449,11 +2485,39 @@ static int o_http_parse(int fd, long long deadline, OReq *r) {
   r->target = ln + sp1 + 1;
   r->tlen = sp2 - sp1 - 1;
   /* RFC 9112 3.2 gives a request target FOUR forms and no others: origin,
-     absolute, authority (CONNECT only) and asterisk (OPTIONS only). A target
-     that is none of them is a malformed request line, which is row 24 - and the
-     Go backend's parser refuses it, so accepting it here would have the two
-     backends disagree about whether a Request exists. Row 2 keeps the target
-     VERBATIM; it does not make every octet sequence a target. */
+     absolute, authority (CONNECT only) and asterisk. A target that is none of
+     them is a malformed request line, which is row 24. Row 2 keeps the target
+     VERBATIM; it does not make every octet sequence a target.
+
+     THE ASTERISK FORM IS NOT RESTRICTED TO OPTIONS HERE, AND THAT IS NOT A
+     CONCESSION TO THE OTHER BACKEND. RFC 9112 3.2.4 is read as forbidding
+     "PUT *" because of its opening sentence - the asterisk form "is only used
+     for a server-wide OPTIONS request" - but that sentence DESCRIBES sender
+     usage. Every normative MUST in the section binds the CLIENT that sends the
+     target or the PROXY that forwards it. None binds a recipient to reject one.
+
+     WE ARE THE RECIPIENT. A constraint on what a client may SEND is not a
+     licence for a server to REFUSE what arrives; treating it as one adds
+     recipient strictness, which is the exact divergence class this parser keeps
+     producing - a rule read off a grammar coming out stricter than the
+     reference. There is no server-side conformance cost in either direction, so
+     nothing here trades HTTP conformance for agreement, and SPEC 14.0 decides
+     it unopposed: net/http parses "PUT *" into a Request with RequestURI "*"
+     and runs the handler on it, measured, so this backend must build the same
+     Request from the same octets.
+
+     THE RESTRICTION SURVIVED THIS LONG BEHIND AN AGREEMENT FOR THE WRONG
+     REASON. The earlier comment justified it with "the Go backend's parser
+     refuses it". What actually answered 400 there was net/http's ServeMux
+     REDIRECTING an uncleanable path - a routing decision from a layer SPEC 14
+     does not describe. Removing the mux (the other backend is now the whole
+     server) made the real parser behaviour visible and this branch wrong.
+
+     THE FORM IS STILL EXACTLY ONE ASTERISK. "**", "*x" and "x*" are refused by
+     both backends and llvm_http_agreement_test.go holds them there, because
+     admitting the asterisk FORM is not admitting anything asterisk-shaped. What
+     a handler does with a target of "*" is the handler's decision, and it
+     receives the octets verbatim either way. */
   {
     char *ta;
     int tal;
@@ -2465,8 +2529,7 @@ static int o_http_parse(int fd, long long deadline, OReq *r) {
     else if (r->mlen == 7 && memcmp(ln, "CONNECT", 7) == 0) {
       form_ok = o_target_authority_ok(r->target, r->tlen);
     }
-    else if (r->tlen == 1 && r->target[0] == '*' && r->mlen == 7 &&
-             memcmp(ln, "OPTIONS", 7) == 0) {
+    else if (r->tlen == 1 && r->target[0] == '*') {
       form_ok = 1;
     }
     if (!form_ok) return 400;

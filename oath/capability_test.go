@@ -405,8 +405,19 @@ func TestHandlerDoesNotCarryTheOutboundClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("emitProgram: %v", err)
 	}
-	if !strings.Contains(src, "http.ListenAndServe") {
-		t.Fatal("a handler must serve; this one does not, so the test proves nothing")
+	// REPLACED, NOT WEAKENED. This pinned "http.ListenAndServe" while the
+	// handler was a route on DefaultServeMux. It is now an explicit http.Server
+	// with the Oath entry as its whole Handler, because the mux made routing
+	// decisions SPEC 14 does not describe and net/http's general OPTIONS
+	// handler answered "OPTIONS *" without ever calling the entry — both
+	// measured as §14.0 divergences. The replacement pins MORE than the old
+	// one: that it serves, that it serves through a server this program
+	// constructs, and that the interception is off.
+	for _, want := range []string{"&http.Server{", "DisableGeneralOptionsHandler: true", "srv.ListenAndServe()"} {
+		if !strings.Contains(src, want) {
+			t.Fatalf("a handler must serve, through its own http.Server with the general "+
+				"OPTIONS interception disabled; %q is absent, so the test proves nothing", want)
+		}
 	}
 	if strings.Contains(src, "http.Get") {
 		t.Error("a handler declaring no fetch references the outbound HTTP client")

@@ -1355,7 +1355,12 @@ func main() {
 	if addr == "" {
 		addr = ":8080"
 	}
-%s	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+%s	// THE HANDLER IS THE WHOLE SERVER, NOT A ROUTE ON A MUX. SPEC 14.2 hands
+	// every request to the entry and asks for one Request value from the octets;
+	// a ServeMux sits in front of that and makes decisions of its own, and two
+	// of them were measured as 14.0 divergences against the other backend.
+	// Routing is not part of the protocol, so nothing here should be routing.
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// THE REQUEST-SCOPED DISPOSITION OF A REFUSAL, and the reason a refusal
 		// is a travelling value rather than an exit.
 		//
@@ -1558,8 +1563,22 @@ func main() {
 		w.WriteHeader(status)
 		w.Write(out)
 	})
+	// DisableGeneralOptionsHandler: SPEC 14.0 BINDS THIS BACKEND TO THE OTHER,
+	// AND net/http ANSWERS "OPTIONS *" ITSELF. Its general handler replies 200
+	// with an empty body without ever calling the registered handler, so an
+	// Oath entry that would have built a Request from those octets never runs —
+	// while the LLVM backend, which has no such interception, invokes it and
+	// answers whatever the handler returns. Measured: four of seventeen
+	// recorded divergences were exactly this.
+	//
+	// The repair is to REMOVE the interception rather than to reproduce it in
+	// the other backend. "OPTIONS *" is a legal request with a Request value;
+	// the alternative would be a second transport-only response path in the
+	// emitted C, which is a rule about HTTP added to a backend rather than a
+	// rule of the language, and 14.2 gives that request no such disposition.
+	srv := &http.Server{Addr: addr, Handler: handler, DisableGeneralOptionsHandler: true}
 	fmt.Fprintf(os.Stderr, "oath handler listening on %%s\n", addr)
-	if err := http.ListenAndServe(addr, nil); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		oathListenFailed(err)
 	}
 }

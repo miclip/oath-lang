@@ -71,6 +71,9 @@ func TestBackendsAgreeOnGeneratedRequests(t *testing.T) {
 
 	type mismatch struct{ req, ll, gg string }
 	var found []mismatch
+	// Requests whose rendering did not end in a plausible received-at. Not
+	// divergences — see the note at the check below.
+	var badTime []string
 
 	const cases = 300
 	for i := 0; i < cases; i++ {
@@ -88,8 +91,10 @@ func TestBackendsAgreeOnGeneratedRequests(t *testing.T) {
 		}
 		raw := m + " " + tg + " HTTP/1.1\r\n" + hostLine + ex + "\r\n" + body
 
+		lo := time.Now().Unix()
 		llStatus, llBody := sendFinal(t, llAddr, raw)
 		goStatus, goBody := sendFinal(t, goAddr, raw)
+		hi := time.Now().Unix()
 
 		// THE COMPARISON IS THE Request VALUE, NOT THE RESPONSE BYTES. A first
 		// version compared bodies unconditionally and reported 99 of 300 —
@@ -112,9 +117,50 @@ func TestBackendsAgreeOnGeneratedRequests(t *testing.T) {
 			}
 			return false
 		}
+		// AND received-at IS EXCLUDED FROM THAT COMPARISON, because it is the one
+		// component of the value that is NOT a function of the octets. Row 20
+		// makes it an OBSERVATION: each server reads its own clock as the request
+		// arrives, and these two requests are sent one after the other, so a pair
+		// straddling a second boundary would be reported as a framing divergence.
+		// At a ceiling of 17 that surfaced as an eighteenth; at zero it is a
+		// failing gate on a green tree. Found in review before it fired.
+		//
+		// SPLIT, NOT TRIMMED. splitReceivedAt requires the tail to be a non-empty
+		// digit run, so a rendering that lost its timestamp still fails — and the
+		// two observations are compared for PROXIMITY below, which is the real
+		// obligation: they must be two readings of one arrival, not equal.
 		disagree := llStatus != goStatus
-		if invoked(llBody) || invoked(goBody) {
-			disagree = disagree || llBody != goBody
+		llInv, goInv := invoked(llBody), invoked(goBody)
+		if llInv != goInv {
+			// One built a Request and the other did not, which is the sharpest
+			// form of the disagreement §14.0 forbids.
+			disagree = true
+		}
+		if llInv && goInv {
+			llHead, llAt, llOK := splitReceivedAt(llBody)
+			goHead, goAt, goOK := splitReceivedAt(goBody)
+			// A MISSING OR IMPLAUSIBLE TIMESTAMP IS AN INSTRUMENT FAILURE, NOT A
+			// DIVERGENCE, and it must not be folded into the count. Both
+			// renderings losing it would make the heads agree and the two zeroes
+			// agree — a green gate measuring something other than its claim.
+			// Reported after the loop instead, where it says what actually
+			// happened. Two review findings landed here in turn: the first
+			// version tested llOK != goOK, which cannot see BOTH going wrong
+			// together; the second checked the two observations only against
+			// EACH OTHER, which cannot tell a receipt time from any constant
+			// both renderings end in. The window below is the external clock
+			// that closes it.
+			timely := func(at int64) bool { return at >= lo-1 && at <= hi+1 }
+			if !llOK || !goOK || !timely(llAt) || !timely(goAt) {
+				badTime = append(badTime, raw)
+			}
+			disagree = disagree || llHead != goHead
+			// Two READINGS of one arrival, not two equal integers. Far apart
+			// means one of them is not a receipt time, which is a real
+			// divergence; one second apart is two clocks read in sequence.
+			if d := llAt - goAt; d > 5 || d < -5 {
+				disagree = true
+			}
 		}
 		if disagree {
 			found = append(found, mismatch{
@@ -123,6 +169,18 @@ func TestBackendsAgreeOnGeneratedRequests(t *testing.T) {
 				gg:  fmt.Sprintf("%d %q", goStatus, goBody),
 			})
 		}
+	}
+
+	// THE INSTRUMENT BEFORE THE MEASUREMENT. If a rendering stopped ending in a
+	// received-at — or ended in an integer that is not one — the comparison
+	// above was stripping part of the Request value and the count below means
+	// nothing. So this is fatal rather than counted, and it names a request
+	// instead of a total.
+	if len(badTime) > 0 {
+		t.Fatalf("%d of %d renderings did not end in a received-at inside the window their "+
+			"exchange happened in (first: %q). The handler fixture's output shape changed, so "+
+			"the divergence count below is not a measurement of anything",
+			len(badTime), cases, badTime[0])
 	}
 
 	// THE CONTROL: the generator must reach requests both backends SERVE, or a
@@ -139,12 +197,30 @@ func TestBackendsAgreeOnGeneratedRequests(t *testing.T) {
 			"agreement about refusals and says nothing about the Request value")
 	}
 
-	// A RATCHET, NOT A PASS/FAIL ON ZERO — and the distinction is deliberate.
+	// A RATCHET. It is now at ZERO over these 300 requests, and that is a
+	// MEASUREMENT, not a target that was aimed at.
 	//
-	// 17 real divergences over 300 generated requests. The dominant family is an
-	// absolute-form authority carrying an explicit port (`http://host:80/hook`),
-	// which this backend refuses and net/http serves. Fixing them is its own
-	// piece of work.
+	// It was 17, and the recorded diagnosis was wrong in a way worth keeping:
+	// the dominant family was said to be an absolute-form authority carrying an
+	// explicit port. Re-measuring by forcing the constant to zero and reading
+	// every mismatch found TWO families and neither was that one — 13 chunked
+	// messages whose discarded trailer section carried an obs-fold continuation,
+	// and 4 `OPTIONS *` requests net/http answered itself. The ports were
+	// incidental: every one of those requests also carried the folded trailer,
+	// and the authority validator already accepted them. A count cannot say
+	// WHY, so a prose diagnosis attached to one goes stale silently — which is
+	// the argument for the three named witnesses in llvm_http_agreement_test.go
+	// rather than for a smaller number here.
+	//
+	// A THIRD FAMILY WAS EXPOSED BY REPAIRING THE SECOND, and it had been hiding
+	// behind an agreement for the wrong reason. The Go handler was a route on
+	// DefaultServeMux; taking it off the mux (which is what lets the general
+	// OPTIONS interception be disabled) revealed that net/http parses `PUT *`
+	// into a Request and serves it, while this backend refused the asterisk form
+	// for any method but OPTIONS. Before, the mux answered 400 for an
+	// uncleanable path and the two backends agreed by coincidence. TWO WRONG
+	// ANSWERS THAT MATCH ARE INDISTINGUISHABLE FROM AGREEMENT HERE, and only
+	// changing one of them shows it.
 	//
 	// THE FIRST MEASUREMENT SAID 40, AND 23 OF THOSE WERE THE INSTRUMENT. The
 	// sender returned the interim 100 for `Expect: 100-continue` requests, so
@@ -153,26 +229,53 @@ func TestBackendsAgreeOnGeneratedRequests(t *testing.T) {
 	// meant to be trusted by whoever changes it next, and a ceiling inflated by
 	// a client bug would have made 23 phantom divergences look like debt.
 	//
-	// Asserting zero today would mean not landing the instrument at all, and the
-	// instrument is what found the family — review had produced four in three
-	// sittings, one at a time. Asserting NO INCREASE keeps it a real gate: a
-	// change that widens the gap fails here immediately, while the existing gap
-	// is recorded rather than hidden. The number comes down as they are fixed,
-	// and this line is the thing that makes each fix visible.
+	// ZERO HERE IS NOT "THE BACKENDS AGREE". It is a CEILING on a fixed seed and
+	// a fixed grammar, so it measures those 300 requests and nothing more — a
+	// different seed finds different requests, and a wider grammar would almost
+	// certainly find more families. One is known already: the trailer section is
+	// still stricter here than in net/http for a framing field or a non-token
+	// trailer name (measured), and the generator does not produce those.
 	//
-	// It is a CEILING on a fixed seed and a fixed grammar, so it measures those
-	// 300 requests and nothing more. It is not a claim about HTTP in general —
-	// a different seed finds different requests, and a wider grammar would
-	// almost certainly find more families.
+	// The gate keeps working unchanged at zero: a change that widens the gap
+	// fails immediately, and the constant must come down with any further fix.
 	//
-	// TWO FAMILIES ARE KNOWN AND DELIBERATELY OUT OF THIS GRAMMAR, so the
+	// FOUR FAMILIES ARE KNOWN AND DELIBERATELY OUT OF THIS GRAMMAR, so the
 	// ceiling is not mistaken for coverage:
 	//
+	//   TRAILER   a trailer section carrying a framing field (Content-Length,
+	//             Transfer-Encoding, Connection, Host) or a non-token name is
+	//             refused here and SERVED by net/http — measured, and the
+	//             opposite of what the comment at that code used to claim. It is
+	//             kept refused because relaxing it is a decision about request
+	//             smuggling, not a comment fix. The generator's bodies carry
+	//             only `X-T` trailers, so this never reaches the count.
 	//   SIZE      this backend caps headers at 64 KiB and bodies at 1 MiB; the
 	//             Go backend inherits net/http's allowance and an unbounded
 	//             io.ReadAll. A ~70 KiB header request is 431 here and served
 	//             there. Generating requests that large would make this test
 	//             slow for one family already understood.
+	//             THE TRAILER SECTION IS THE SAME FAMILY, and it is recorded
+	//             because review read it as new: a trailer over roughly 4 KiB
+	//             is 200 here and 400 there, net/http's reader giving up before
+	//             it finds the terminating CRLF. It is driven by SIZE and not by
+	//             folding — measured with the control that decides it, an
+	//             UNFOLDED 5 KiB trailer this backend accepted before the fold
+	//             repair and accepts now, which diverges identically. Chasing it
+	//             would mean writing another implementation's buffer size into
+	//             this parser: undocumented, non-normative, and free to change
+	//             between Go releases.
+	//   CONNECT   a 2xx answer TO a CONNECT is refused 500 here — a successful
+	//             CONNECT switches the connection to a tunnel this runtime
+	//             cannot provide — and delivered by net/http. Measured, and
+	//             measured to be a RESPONSE difference and not a Request one:
+	//             `CONNECT *` and `CONNECT h:443` reach the entry on both
+	//             backends and both answer 333 to a handler that returns one,
+	//             so §14.0's obligation is met and the disagreement is about
+	//             what can be DELIVERED. Named here because a reviewer read it
+	//             as an asterisk-form parsing bug; `*` is already a valid
+	//             reg-name authority, so the CONNECT branch accepts it and no
+	//             ordering change would alter anything. CONNECT is not in the
+	//             method list above, so this never reaches the count.
 	//   COST      a cost disagreement is not a Request disagreement, so it would
 	//             not appear here however wide the grammar. Issue 172's
 	//             quadratic nomination scan was one, and the bound that replaced
@@ -181,9 +284,11 @@ func TestBackendsAgreeOnGeneratedRequests(t *testing.T) {
 	//             VALUES, and two backends can agree on every value while one of
 	//             them takes a second to say so.
 	//
-	// SIZE remains §14.0-relevant and unfixed. Naming both here is the
-	// difference between a gate with a stated scope and one that looks total.
-	const known = 17
+	// TRAILER and SIZE remain §14.0-relevant and unfixed. Naming them here is
+	// the difference between a gate with a stated scope and one that looks
+	// total — and at zero that difference is the whole of what stops this
+	// reading as "the two backends agree".
+	const known = 0
 	if len(found) > known {
 		for _, mm := range found {
 			t.Logf("disagreement:\n%q\n  llvm: %s\n  go:   %s", mm.req, mm.ll, mm.gg)
