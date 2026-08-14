@@ -31,6 +31,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -140,16 +141,26 @@ const llvmHandlerSrc = `
     (== (match (lh-div (Req m p h (Nil [Int]) t)) ((Resp s hh b) s)) 204)))
 `
 
-// llvmHandlerCapsSrc is the shape that stays refused.
+// llvmHandlerCapsSrc is the capability-first handler, (-> {caps} (-> Request
+// Response)), which this backend refused until #173.
 //
-// It carries a property because the refusal must be reached THROUGH the build
-// gate rather than instead of it: an entry with no verified property is refused
-// by planProgram before any backend is asked, and a test reading that as the
-// subset boundary would stay green with the boundary deleted.
+// IT USES ITS AUTHORITY IN THE ANSWER, and that is what makes it a witness
+// rather than an example. A handler that merely TAKES a record and echoes its
+// request would compile and serve identically whether the record outlived the
+// first arena release or not — the closures would simply never be applied
+// again. This one calls `env` and reads `token` on every request, so a record
+// freed after the first response is a difference the second response shows.
+//
+// It carries a property because the build must be reached THROUGH the gate
+// rather than instead of it: an entry with no verified property is refused by
+// planProgram before any backend is asked, and a test reading that as evidence
+// about the backend would stay green with the backend deleted.
 const llvmHandlerCapsSrc = `
-(defn lh-caps [] [(w {env (-> Str Str)}) (r Request)] Response
-  (Resp 200 (Nil [(Pair Str Str)]) (match r ((Req m p h b t) b)))
-  (prop always-200 [(w {env (-> Str Str)}) (r Request)]
+(defn lh-caps [] [(w {token Str env (-> Str Str)}) (r Request)] Response
+  (Resp 200 (Nil [(Pair Str Str)])
+    (lh-cat (lh-bytes ((. w env) "OATH_LLVM_HANDLER_VAR"))
+            (lh-bytes (. w token))))
+  (prop always-200 [(w {token Str env (-> Str Str)}) (r Request)]
     (== (match (lh-caps w r) ((Resp s h b) s)) 200)))
 `
 
@@ -221,10 +232,9 @@ func TestLLVMHandlerMainIsAServeLoopHandoff(t *testing.T) {
 	}
 }
 
-// The subset boundary that did NOT move, and it is refused for a stated reason
-// rather than for want of code: a capability record is resolved once before the
-// listener binds, and this runtime has only the per-request arena to put it in.
-func TestLLVMRefusesACapabilityFirstHandler(t *testing.T) {
+// llvmCapsStore is llvmHandlerStore plus the capability-first entry.
+func llvmCapsStore(t *testing.T) *Store {
+	t.Helper()
 	st := llvmHandlerStore(t)
 	put(t, st, llvmHandlerCapsSrc)
 	markVerified(t, st, "lh-caps")
@@ -233,38 +243,149 @@ func TestLLVMRefusesACapabilityFirstHandler(t *testing.T) {
 		t.Fatalf("planProgram: %v", err)
 	}
 	if prog.Shape != shapeHandlerCaps {
-		t.Fatalf("lh-caps classified as %s", prog.Shape)
+		t.Fatalf("lh-caps classified as %s, so nothing below is about the capability-first "+
+			"handler", prog.Shape)
 	}
-	_, err = emitLLVM(st, prog)
-	if err == nil {
-		t.Fatal("the LLVM backend compiled a capability-first handler")
+	return st
+}
+
+// PROVISIONING HAPPENS BEFORE THE LISTENER BINDS (#173, #114).
+//
+// This is the invariant that made the shape hard rather than the lowering: a
+// host that cannot supply a declared requirement must fail to LAUNCH, not accept
+// traffic and refuse each request. The runtime's own startup line is the
+// observable — it is printed after bind and listen have both returned — so its
+// ABSENCE alongside a provisioning diagnostic is the ordering, read off the
+// artifact rather than argued from the source.
+//
+// THE CONTROL IS THE OTHER HALF AND IS NOT OPTIONAL. A binary that fails to bind
+// for any unrelated reason also prints no listening line, so the absence alone
+// witnesses nothing; the same binary with the value supplied must reach the
+// line. What is asserted is the DIFFERENCE the missing value makes.
+func TestLLVMCapabilityHandlerProvisionsBeforeBinding(t *testing.T) {
+	requireClang(t)
+	st := llvmCapsStore(t)
+	bin := buildLLVM(t, st, "lh-caps")
+
+	addr := llvmFreeAddr(t)
+	base := append(os.Environ(),
+		"OATH_HTTP_ADDR="+addr,
+		"OATH_LLVM_HANDLER_VAR=granted")
+
+	// THE MISSING VALUE. `token : Str` is a required value, so this host has not
+	// provisioned the program and it must not start.
+	//
+	// BOUNDED, BECAUSE THE REGRESSION THIS TEST HUNTS IS A PROCESS THAT DOES NOT
+	// EXIT. If provisioning is skipped, or an empty required value is accepted,
+	// the child reaches the serve loop and never returns — so an unbounded read
+	// here would HANG the suite at exactly the moment it was built to fail it,
+	// and a hang reports nothing. The deadline is therefore part of the
+	// assertion, not hygiene: exceeding it IS the failure, and it is named as
+	// such below rather than surfacing as a generic exec error.
+	const launchDeadline = 30 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), launchDeadline)
+	defer cancel()
+	unprovisioned := exec.CommandContext(ctx, bin)
+	unprovisioned.Env = append(base, "OATH_VALUE_TOKEN=")
+	out, err := unprovisioned.CombinedOutput()
+	if ctx.Err() != nil {
+		t.Fatalf("an unprovisioned handler was still running after %s: it did not refuse to "+
+			"launch, so it either bound its listener or is otherwise serving without the "+
+			"authority it declares. Output so far:\n%s", launchDeadline, out)
 	}
-	if r, ok := refusedFor(err); !ok || r != reasonHandlerProtocol {
-		t.Errorf("refused as %v, want %s", r, reasonHandlerProtocol)
+	code := 0
+	if ee, ok := err.(*exec.ExitError); ok {
+		code = ee.ExitCode()
+	} else if err != nil {
+		t.Fatalf("running the unprovisioned handler: %v", err)
 	}
-	// THE REASON MUST BE TRUE, not merely typed. The old refusal said handler
-	// lowering was unwritten, and that sentence became false the moment the
-	// plain handler compiled — a refusal that describes a state the backend has
-	// left is worse than a terse one, because it is confidently followed.
-	msg := err.Error()
-	if strings.Contains(msg, "not implemented") || strings.Contains(msg, "emits no request") {
-		t.Errorf("the refusal still claims handler lowering is unwritten: %q", msg)
+	if code != 70 {
+		t.Fatalf("an unprovisioned handler exited %d, want 70 (EX_UNAVAILABLE):\n%s", code, out)
 	}
-	for _, want := range []string{"arena", "before the listener binds"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("the refusal does not say why: %q does not mention %q", msg, want)
-		}
+	if !strings.Contains(string(out), "required capability token") {
+		t.Errorf("the failure does not name the requirement that was not met:\n%s", out)
+	}
+	if strings.Contains(string(out), "listening on") {
+		t.Errorf("the handler bound its listener and THEN discovered it was not provisioned. "+
+			"A host that cannot supply the program's authority must fail to launch, not "+
+			"accept traffic it cannot serve:\n%s", out)
 	}
 
-	// CONTROL: the same program without the record compiles, so the refusal is
-	// about the capability record and not about handlers.
-	markVerified(t, st, "lh-entry")
-	plain, err := planProgram(st, "lh-entry")
-	if err != nil {
+	// THE CONTROL. Same binary, same address, value supplied: it reaches the
+	// listening line — so the absence above is the missing value and not a bind
+	// that was never going to succeed.
+	errs := &syncBuf{}
+	provisioned := exec.Command(bin)
+	provisioned.Env = append(base, "OATH_VALUE_TOKEN=t")
+	provisioned.Stderr = errs
+	if err := provisioned.Start(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := emitLLVM(st, plain); err != nil {
-		t.Fatalf("the plain handler was refused too, so the check above is not about caps: %v", err)
+	t.Cleanup(func() {
+		_ = provisioned.Process.Kill()
+		_, _ = provisioned.Process.Wait()
+	})
+	if !awaitStderr(errs, "listening on", 15*time.Second) {
+		t.Fatalf("the provisioned handler never announced its listener, so the check above "+
+			"cannot tell a provisioning failure from a bind that always fails:\nstderr:\n%s",
+			errs.String())
+	}
+}
+
+// THE CAPABILITY IS STILL LIVE ON THE SECOND REQUEST (#173).
+//
+// THIS IS THE DEFECT THE REFUSAL NAMED, TURNED INTO A MEASUREMENT. The record is
+// resolved once, before the listener binds; every allocation in this runtime
+// used to come from the per-request arena; and the serve loop releases that
+// arena after each response. So the record and the handler closure applied to it
+// were freed by the first request that completed, and the second request applied
+// a dangling closure. The process-lifetime region is what makes that untrue.
+//
+// THE ASSERTIONS ARE PER REQUEST because "the capability never worked" and "the
+// capability stopped working" are different defects, and a test asserting only
+// that three answers AGREED cannot tell them apart. Which request first shows a
+// released record is not something to depend on either way: llvmServe detects
+// startup by connecting and closing, and that connection is accepted, refused at
+// the §14 boundary and released like any other — so under a runtime that freed
+// the record with the arena, request 1 is already reading freed memory. Measured
+// by injecting exactly that release, which failed here at request 1.
+//
+// It is a BEHAVIOURAL witness with a known limit: freed memory usually still
+// reads back, so a failure here is decisive and a pass is evidence rather than
+// proof. The structural half — that the region the record lives in is not the
+// one o_arena_release frees — is in llvm_runtime_state_test.go.
+func TestLLVMCapabilityHandlerAnswersEveryRequest(t *testing.T) {
+	requireClang(t)
+	st := llvmCapsStore(t)
+	bin := buildLLVM(t, st, "lh-caps")
+	addr, errs := llvmServeEnv(t, bin,
+		"OATH_LLVM_HANDLER_VAR=from-the-environment",
+		"OATH_VALUE_TOKEN=and-the-required-value")
+
+	// The body is the capability's answer followed by the required value, so
+	// both halves of the record are read on every request.
+	want := "from-the-environmentand-the-required-value"
+	var first string
+	for i := 1; i <= 3; i++ {
+		// Logged before the send, because llvmSend ends the test itself on a
+		// transport failure — and a dangling capability shows up as the server
+		// dying mid-answer, which without this reads as an unattributed EOF.
+		t.Logf("request %d", i)
+		status, body := llvmSend(t, addr, "GET /caps HTTP/1.1\r\nHost: "+addr+
+			"\r\nContent-Length: 0\r\n\r\n")
+		if status != 200 {
+			t.Fatalf("request %d answered %d, not 200: %q\nstderr:\n%s", i, status, body, errs.String())
+		}
+		if body != want {
+			t.Fatalf("request %d read %q from its capability record, want %q.\n"+
+				"A record resolved at launch must be live for every request this process "+
+				"serves.\nstderr:\n%s", i, body, want, errs.String())
+		}
+		if i == 1 {
+			first = body
+		} else if body != first {
+			t.Fatalf("request %d answered %q where request 1 answered %q", i, body, first)
+		}
 	}
 }
 
@@ -282,16 +403,32 @@ func TestLLVMRefusesACapabilityFirstHandler(t *testing.T) {
 // like the backend being broken.
 func llvmServe(t *testing.T, bin string) (string, *syncBuf) {
 	t.Helper()
+	return llvmServeEnv(t, bin)
+}
+
+// llvmFreeAddr claims a port and releases it, so a test names an address nothing
+// else on the machine is using rather than guessing one.
+func llvmFreeAddr(t *testing.T) string {
+	t.Helper()
 	probe, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	addr := probe.Addr().String()
 	probe.Close()
+	return addr
+}
+
+// llvmServeEnv is llvmServe with extra environment entries — what a
+// capability-first handler needs, since its authority and its required values
+// are provisioned by the host before it starts.
+func llvmServeEnv(t *testing.T, bin string, env ...string) (string, *syncBuf) {
+	t.Helper()
+	addr := llvmFreeAddr(t)
 
 	errs := &syncBuf{}
 	cmd := exec.Command(bin)
-	cmd.Env = append(os.Environ(), "OATH_HTTP_ADDR="+addr)
+	cmd.Env = append(append(os.Environ(), "OATH_HTTP_ADDR="+addr), env...)
 	cmd.Stderr = errs
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -745,9 +882,17 @@ func TestLLVMHandlerRefusalBecomesA500AndKeepsServing(t *testing.T) {
 
 // ---------- the structural claims, each with its control mutant ----------
 
-// serveBody returns o_serve's body from the emitted runtime.
+// serveBody returns the request loop's body from the emitted runtime.
+//
+// IT NAMES o_serve_loop, NOT o_serve (#173). Both entry shapes' serve functions
+// are now thin: they provision, seal the process-lifetime region and hand a
+// handler VALUE to one shared loop. Slicing `o_serve` would return the wrapper —
+// a body with no request in it — so every claim below would report "nothing was
+// checked" rather than checking. Which is what it did, loudly, when the loop
+// moved: the fail-closed default is why this was a test failure and not a
+// silently narrowed universe.
 func serveBody(src string) (string, bool) {
-	i := strings.Index(src, "int o_serve(OCode entry,")
+	i := strings.Index(src, "static int o_serve_loop(OVal *handler,")
 	if i < 0 {
 		return "", false
 	}
@@ -767,21 +912,21 @@ func releaseFollowsSerialisation(src string) error {
 	if !ok {
 		return fmt.Errorf("o_serve is not in this source, so nothing was checked")
 	}
-	inv := strings.Index(body, "entry(NULL, value)")
+	inv := strings.Index(body, "o_apply(handler, value)")
 	resp := strings.Index(body, "o_http_respond(")
 	if inv < 0 || resp < 0 {
-		return fmt.Errorf("o_serve neither invokes the handler nor serialises its answer")
+		return fmt.Errorf("the serve loop neither applies the handler nor serialises its answer")
 	}
 	if resp < inv {
-		return fmt.Errorf("o_serve serialises before it invokes the handler")
+		return fmt.Errorf("the serve loop serialises before it applies the handler")
 	}
 	if k := strings.Index(body[inv:resp], "o_arena_release()"); k >= 0 {
-		return fmt.Errorf("o_serve releases the request arena between invoking the handler and " +
-			"serialising its answer, so the response is written from freed memory")
+		return fmt.Errorf("the serve loop releases the request arena between applying the handler " +
+			"and serialising its answer, so the response is written from freed memory")
 	}
 	if !strings.Contains(body[resp:], "o_arena_release()") {
-		return fmt.Errorf("o_serve never releases the request arena after serialising, so the " +
-			"region outlives the request and a long-running server grows per request")
+		return fmt.Errorf("the serve loop never releases the request arena after serialising, so " +
+			"the region outlives the request and a long-running server grows per request")
 	}
 	return nil
 }
@@ -857,24 +1002,24 @@ func refusalBoundaryIsWellFormed(src string) error {
 
 	sb, ok := serveBody(src)
 	if !ok {
-		return fmt.Errorf("o_serve is not in this source, so nothing was checked")
+		return fmt.Errorf("the serve loop is not in this source, so nothing was checked")
 	}
 	arm := strings.Index(sb, "setjmp(o_request_jump)")
 	live := strings.Index(sb, "o_request_live = 1")
-	inv := strings.Index(sb, "entry(NULL, value)")
+	inv := strings.Index(sb, "o_apply(handler, value)")
 	resp := strings.Index(sb, "o_http_respond(")
 	if arm < 0 || live < 0 || inv < 0 || resp < 0 {
-		return fmt.Errorf("o_serve does not carry the whole boundary")
+		return fmt.Errorf("the serve loop does not carry the whole boundary")
 	}
 	if !(arm < live && live < inv) {
-		return fmt.Errorf("o_serve does not arm the continuation before the handler runs, so a " +
-			"refusal raised by Oath code would exit rather than answer 500")
+		return fmt.Errorf("the serve loop does not arm the continuation before the handler runs, " +
+			"so a refusal raised by Oath code would exit rather than answer 500")
 	}
 	// BETWEEN THE INVOCATION AND THE SERIALISATION, not merely somewhere in the
 	// body: the 400 path clears the flag too, so a scan for the first clearing
 	// would be satisfied by a refusal path and say nothing about this one.
 	if inv > resp || !strings.Contains(sb[inv:resp], "o_request_live = 0") {
-		return fmt.Errorf("o_serve leaves the request in flight through serialisation, so a " +
+		return fmt.Errorf("the serve loop leaves the request in flight through serialisation, so a " +
 			"refusal there would write a second response onto the same connection")
 	}
 	return nil
@@ -1100,9 +1245,13 @@ func TestLLVMHandlerThroughTheRealCLI(t *testing.T) {
 		}
 	}
 
-	// AND THE REFUSED SHAPE IS STILL REFUSED THROUGH THE CLI, by name. Without
-	// this the build above is equally consistent with a backend that stopped
-	// refusing anything.
+	// AND THE SHAPE THAT WAS REFUSED NOW BUILDS AND SERVES THROUGH THE SAME CLI
+	// (#173). REPLACED, NOT DELETED: this asserted that `oath build --backend
+	// llvm` refused a capability-first handler by name, and the contract it
+	// encoded deliberately changed. The replacement pins more than the refusal
+	// did — the build succeeds, the manifest DECLARES both requirements, and the
+	// artifact answers a real request from its capability record — where the old
+	// one only established that some error mentioned the words.
 	capsSrc := filepath.Join(dir, "caps.oath")
 	if err := os.WriteFile(capsSrc, []byte(llvmHandlerCapsSrc), 0o644); err != nil {
 		t.Fatal(err)
@@ -1112,19 +1261,32 @@ func TestLLVMHandlerThroughTheRealCLI(t *testing.T) {
 	}
 	capsBin := filepath.Join(dir, "caps")
 	out, err = run("build", "lh-caps", "--backend", "llvm", "-o", capsBin)
-	if err == nil {
-		t.Fatalf("the CLI compiled a capability-first handler through the LLVM backend:\n%s", out)
+	if err != nil {
+		t.Fatalf("oath build --backend llvm refused a capability-first handler: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "capability record") {
-		t.Errorf("the refusal does not name what it declined:\n%s", out)
+	// THE MANIFEST NAMES WHAT THE HOST MUST SUPPLY, and both KINDS, because a
+	// required value and an authority are provisioned differently and a build
+	// that named only one would leave a deployer short.
+	for _, want := range []string{"env (process_env)", "token (required_value)", "backend: llvm-ir/1"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the build does not declare %q:\n%s", want, out)
+		}
 	}
-	if _, err := os.Stat(capsBin); err == nil {
-		t.Error("a refused build left an executable behind")
+	capsAddr, capsErrs := llvmServeEnv(t, capsBin,
+		"OATH_LLVM_HANDLER_VAR=through-the-cli",
+		"OATH_VALUE_TOKEN=-with-a-value")
+	for i := 1; i <= 2; i++ {
+		status, body := llvmSend(t, capsAddr, "GET /caps HTTP/1.1\r\nHost: "+capsAddr+
+			"\r\nContent-Length: 0\r\n\r\n")
+		if status != 200 || body != "through-the-cli-with-a-value" {
+			t.Fatalf("request %d to the CLI-built capability handler answered %d %q\nstderr:\n%s",
+				i, status, body, capsErrs.String())
+		}
 	}
-	// CONTROL: the Go backend compiles the same entry, so this is a BACKEND
-	// subset boundary rather than a broken program.
+	// CONTROL: the Go backend builds the same entry. Both backends lowering it
+	// is what makes the differential gate mean anything for this shape.
 	if out, err := run("build", "lh-caps", "-o", filepath.Join(dir, "caps-go")); err != nil {
-		t.Errorf("the Go backend refused it too, so the refusal is not about this backend: %v\n%s", err, out)
+		t.Errorf("the Go backend refused it: %v\n%s", err, out)
 	}
 }
 

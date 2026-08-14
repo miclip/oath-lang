@@ -86,9 +86,23 @@ import (
 //	witnessed by TestRefusalBoundaryIsArmedPerRequest, exactly as the root's
 //	clearing is witnessed rather than asserted.
 //
-// The counted claim is therefore STRICTLY the old one plus a closed list: one
-// static pointer, still the arena root, still cleared at release; and exactly
-// two non-pointer continuation slots, each named and typed.
+// AND TWO MORE SINCE #173, ON A THIRD ARGUMENT — the one place where the claim
+// this file counts genuinely CHANGED rather than being extended. `static OBlock
+// *o_perm_blocks` is a second pointer root and nothing ever clears it, so the
+// arena's temporal argument is not available to it and would be false if
+// claimed. What is true instead is that it never holds a request allocation at
+// all: it is carved from only while `o_perm_state` is 1, a phase entered once
+// before any listener exists and left, one-way, before the serve loop runs.
+//
+// So the exemption is for a pointer that RETAINS FOREVER and can never retain a
+// REQUEST — which is why the phase slot is permitted alongside it rather than
+// waved through as an int, and why both halves are witnessed behaviourally by
+// TestProcessLifetimeRegionOutlivesTheArena instead of asserted here.
+//
+// The counted claim is therefore a closed list of three arguments: one static
+// pointer holding request memory, still the arena root, still cleared at
+// release; exactly two non-pointer continuation slots, each named and typed; and
+// exactly two process-lifetime slots that no request allocation can reach.
 func TestEmittedRuntimeDeclaresNoStaticStorageForValues(t *testing.T) {
 	rt := llvmRuntimeC
 	if len(rt) < 2000 {
@@ -151,11 +165,33 @@ func TestEmittedRuntimeDeclaresNoStaticStorageForValues(t *testing.T) {
 		}
 	}
 
+	// THE PROCESS-LIFETIME EXEMPTION'S OWN CONTROLS, on the same two halves. The
+	// pointer here is exempt on an argument the arena root cannot make — nothing
+	// clears it — so the probes are the two ways that argument could be
+	// borrowed: a DIFFERENT pointer wearing the permitted name, and the permitted
+	// types under names the region's phase does not govern.
+	for _, probe := range []struct{ name, line string }{
+		{"a value slot under the permitted region name", "static OVal *o_perm_blocks;"},
+		{"the region's block-list type under another name", "static OBlock *o_stash_blocks;"},
+		{"a pointer under the permitted phase name", "static OVal *o_perm_state;"},
+		{"the phase type under another name", "static int o_stash_state;"},
+	} {
+		got := staticVars(probe.line + "\n")
+		if len(got) != 1 {
+			t.Fatalf("the scanner reads %d declarations from the probe %q, so this control "+
+				"is not testing what it believes it is", len(got), probe.line)
+		}
+		if processLifetimeSlot(got[0]) {
+			t.Fatalf("the process-lifetime exemption admits %s, so it is permitting a shape "+
+				"rather than the two declarations argued for", probe.name)
+		}
+	}
+
 	// AND THE PERMITTED DECLARATIONS MUST BE PRESENT. Without this an exemption
 	// could outlive what it was argued for — the allowlist entry would sit here
 	// matching nothing, and the next declaration that happened to be spelled that
 	// way would inherit an argument nobody re-made.
-	permitted, continuation := 0, 0
+	permitted, continuation, perm := 0, 0, 0
 	for _, v := range staticVars(rt) {
 		if arenaOwnershipRoot(v) {
 			permitted++
@@ -163,6 +199,15 @@ func TestEmittedRuntimeDeclaresNoStaticStorageForValues(t *testing.T) {
 		if requestContinuationSlot(v) {
 			continuation++
 		}
+		if processLifetimeSlot(v) {
+			perm++
+		}
+	}
+	if perm != 2 {
+		t.Errorf("the runtime declares %d of the 2 permitted process-lifetime slots. The "+
+			"pointer's exemption rests on the phase slot beside it — a region carved from "+
+			"only while o_perm_state is 1 — so neither is admissible without the other, and "+
+			"an exemption matching nothing is a hole waiting for a coincidence", perm)
 	}
 	if permitted != 1 {
 		t.Errorf("the runtime declares the permitted arena ownership root %d times, want exactly 1. "+
@@ -176,7 +221,7 @@ func TestEmittedRuntimeDeclaresNoStaticStorageForValues(t *testing.T) {
 	}
 
 	for _, v := range staticVars(rt) {
-		if arenaOwnershipRoot(v) || requestContinuationSlot(v) {
+		if arenaOwnershipRoot(v) || requestContinuationSlot(v) || processLifetimeSlot(v) {
 			continue
 		}
 		if v.name == "" {
@@ -297,6 +342,134 @@ int main(void) {
 	// failure path to look green.
 	if !strings.Contains(string(out), "ok") {
 		t.Fatalf("the driver did not reach its own verdict, so its silence is not evidence:\n%s", out)
+	}
+}
+
+// THE PROCESS-LIFETIME REGION IS NOT WHAT THE RELEASE FREES, AND NO REQUEST CAN
+// REACH IT (#173).
+//
+// This is the other half of the static-storage argument above: `o_perm_blocks`
+// is a pointer root nothing clears, permitted only because a request allocation
+// can never land in it. Both directions are measured here, because either one
+// alone is satisfied by a runtime with the defect the region was added to
+// remove — a region that is never freed but that requests also allocate into is
+// a leak, and a region requests cannot reach but the release frees is the
+// dangling capability the backend used to refuse the shape over.
+//
+// THE PHASE IS THE WHOLE ARGUMENT, so the driver reads it rather than inferring
+// it: it checks WHICH ROOT each allocation grew, on both sides of the seal.
+// Asserting only that the answer survived would pass for a runtime that put
+// everything in one never-released region.
+//
+// AND THE TRANSITION IS ONE-WAY, witnessed by a second process rather than by
+// reading the guard: re-opening a sealed region is o_bug, which exits, so it
+// cannot be checked in the same run as anything after it.
+func TestProcessLifetimeRegionOutlivesTheArena(t *testing.T) {
+	requireClang(t)
+
+	// THE STRUCTURAL HALF: the serve loop refuses to run before the region is
+	// sealed. Behaviourally unreachable from a driver — o_serve_loop binds a
+	// socket and never returns — so it is pinned by reading the one function it
+	// names, which fails if that function is gone.
+	const sig = "static int o_serve_loop(OVal *handler,"
+	if i := strings.Index(llvmRuntimeC, sig); i < 0 {
+		t.Errorf("the runtime does not define %q, so this test is reading nothing", sig)
+	} else {
+		body := llvmRuntimeC[i:]
+		if j := strings.Index(body, "\n}"); j > 0 {
+			body = body[:j]
+		}
+		if !strings.Contains(body, "o_perm_state != 2") {
+			t.Error("the serve loop does not check that the process-lifetime region is sealed " +
+				"before it starts serving. Without it, a request could allocate into the " +
+				"region — which is the one thing the exemption for that root rests on")
+		}
+	}
+
+	driver := `#include "rt.c"
+
+int main(int argc, char **argv) {
+  /* THE ONE-WAY TRANSITION, in its own process because o_bug exits. */
+  if (argc > 1 && strcmp(argv[1], "reopen") == 0) {
+    o_perm_open();
+    o_perm_seal();
+    o_perm_open();
+    fputs("a sealed region was re-opened\n", stderr);
+    return 9;
+  }
+
+  /* PROVISIONING. The record and the handler closure are built here. */
+  o_perm_open();
+  OVal *cap = o_strn("capability", 10);
+  if (!cap) { fputs("provisioning allocated nothing\n", stderr); return 1; }
+  if (!o_perm_blocks) { fputs("provisioning did not grow the process-lifetime region\n", stderr); return 2; }
+  if (o_arena_blocks) { fputs("provisioning went to the request arena\n", stderr); return 3; }
+  OBlock *held = o_perm_blocks;
+  o_perm_seal();
+
+  /* A REQUEST. Everything it allocates must be arena memory. */
+  OVal *req = o_strn("request", 7);
+  if (!req || !o_arena_blocks) { fputs("a request did not grow the arena\n", stderr); return 4; }
+  if (o_perm_blocks != held) { fputs("a request grew the process-lifetime region\n", stderr); return 5; }
+  o_arena_release();
+  if (o_arena_blocks) { fputs("the release left the arena root set\n", stderr); return 6; }
+  if (o_perm_blocks != held) { fputs("the release freed or moved the process-lifetime region\n", stderr); return 7; }
+
+  /* AND THE BYTES SURVIVE REUSE. Two hundred request-sized cycles, each writing
+     over whatever the allocator hands back: a region that had been freed above
+     would almost certainly be handed out again and overwritten here. Weaker
+     evidence than the root checks and deliberately kept — reading freed memory
+     usually succeeds, so this is what catches a release that frees the blocks
+     without disturbing the root. */
+  for (int i = 0; i < 200; i++) {
+    char *scratch = (char *)xalloc(O_ARENA_BLOCK);
+    memset(scratch, 0xA5, O_ARENA_BLOCK);
+    o_arena_release();
+  }
+  if (cap->tag != T_STR || cap->slen != 10) {
+    fputs("the process-lifetime value did not survive the arena being reused\n", stderr);
+    return 8;
+  }
+  fputs("ok\n", stdout);
+  return 0;
+}
+`
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "rt.c"), []byte(llvmRuntimeC), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "driver.c"), []byte(driver), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "driver")
+	cc := exec.Command("clang", "-g", "-O1", "-o", bin, "driver.c")
+	cc.Dir = dir
+	if b, err := cc.CombinedOutput(); err != nil {
+		t.Fatalf("the driver did not compile, so nothing below ran: %v\n%s", err, b)
+	}
+	out, err := exec.Command(bin).CombinedOutput()
+	if err != nil {
+		t.Fatalf("the region driver failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "ok") {
+		t.Fatalf("the driver did not reach its own verdict, so its silence is not evidence:\n%s", out)
+	}
+
+	// The re-open must be refused as a compiler bug — 70, the status every other
+	// unrecoverable condition in this runtime uses — and not by returning.
+	reopen, err := exec.Command(bin, "reopen").CombinedOutput()
+	if err == nil {
+		t.Fatalf("re-opening a sealed region returned normally:\n%s", reopen)
+	}
+	ee, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("running the re-open probe: %v", err)
+	}
+	if ee.ExitCode() != 70 {
+		t.Errorf("re-opening a sealed region exited %d, want 70:\n%s", ee.ExitCode(), reopen)
+	}
+	if !strings.Contains(string(reopen), "process-lifetime region") {
+		t.Errorf("the re-open failure does not name what went wrong:\n%s", reopen)
 	}
 }
 
@@ -504,6 +677,31 @@ func requestContinuationSlot(v staticVar) bool {
 		return v.name == "o_request_live"
 	case "static jmp_buf o_request_jump;":
 		return v.name == "o_request_jump"
+	}
+	return false
+}
+
+// processLifetimeSlot reports whether a declaration is EXACTLY one of the
+// process-lifetime region's two: its block list and its phase (#173).
+//
+// KEYED ON THE WHOLE DECLARATION, like both predicates above. What differs is
+// the ARGUMENT the exemption rests on, and it is not the arena's: this root is
+// never cleared, so "the retention ends" is unavailable and would be false. What
+// holds instead is that the retention never BEGINS for a request — the region is
+// carved from only while o_perm_state is 1, which is reached once before any
+// listener exists and left, one-way, before the serve loop is entered.
+//
+// That makes the phase slot load-bearing rather than incidental, which is why it
+// is permitted here rather than waved through as "just an int": it is the whole
+// of the argument for the pointer above it. Both halves are witnessed by
+// TestProcessLifetimeRegionOutlivesTheArena — the region is not what
+// o_arena_release frees, and the loop cannot run before the region is sealed.
+func processLifetimeSlot(v staticVar) bool {
+	switch normalizeDecl(v.decl) {
+	case "static OBlock *o_perm_blocks;":
+		return v.name == "o_perm_blocks"
+	case "static int o_perm_state;":
+		return v.name == "o_perm_state"
 	}
 	return false
 }

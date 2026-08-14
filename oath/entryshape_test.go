@@ -28,6 +28,7 @@ package main
 // length with a middle row left at its zero value. That is (1).
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -153,53 +154,46 @@ func TestClassifyEntryInhabitsEveryShape(t *testing.T) {
 	}
 }
 
-// The LLVM backend's REFUSAL is carried by the table, so every consumer of the
-// shape refuses — not only the one that remembered to check first. That is what
-// stops handlerCtorIndices from walking the type of an entry this backend never
-// agreed to compile.
+// The LLVM backend's DECISION for an entry shape is carried by the table, so
+// every consumer of the shape reads one answer — not only the one that
+// remembered to check first. That is what stops handlerCtorIndices from walking
+// the type of an entry this backend has no row for.
 //
-// THE SUBSET BOUNDARY MOVED, AND THE ASSERTION WAS REPLACED RATHER THAN
-// WEAKENED. This test read `[]EntryShape{shapeHandler, shapeHandlerCaps}` while
-// both were refused. The plain handler is now lowered, so the contract it
-// encoded deliberately changed — and the replacement pins the new contract at
-// least as tightly: the refused shape is still refused at EVERY consumer, and
-// the shape that moved is now asserted POSITIVELY at every one of them, which a
-// narrowed refusal list alone would not do. A row silently dropped from the
-// table would fail the control below rather than pass by absence.
-func TestLLVMRefusesHandlerShapesAtEveryConsumer(t *testing.T) {
-	for _, s := range []EntryShape{shapeHandlerCaps} {
-		prog := &CompiledProgram{Shape: s}
-
-		_, err := llvmEntryFor(prog)
-		if err == nil {
-			t.Fatalf("the LLVM backend accepted %s", s)
-		}
-		if r, ok := refusedFor(err); !ok || r != reasonHandlerProtocol {
-			t.Errorf("%s was refused as %v, want %s", s, r, reasonHandlerProtocol)
-		}
-
-		// Both index derivations ask for the shape itself. They reach the store
-		// only after that, so an empty store is enough to prove the refusal comes
-		// first: a version that walked the type before asking would fail with a
-		// missing-definition error instead.
-		st := newStore(t)
-		if _, _, err := listCtorIndices(st, prog); err == nil {
-			t.Errorf("listCtorIndices accepted %s", s)
-		} else if r, ok := refusedFor(err); !ok || r != reasonHandlerProtocol {
-			t.Errorf("listCtorIndices refused %s as %v, want %s", s, r, reasonHandlerProtocol)
-		}
-		if _, err := handlerCtorIndices(st, prog); err == nil {
-			t.Errorf("handlerCtorIndices accepted %s", s)
-		} else if r, ok := refusedFor(err); !ok || r != reasonHandlerProtocol {
-			t.Errorf("handlerCtorIndices refused %s as %v, want %s", s, r, reasonHandlerProtocol)
-		}
+// THE SUBSET BOUNDARY IS GONE, AND THE ASSERTION WAS REPLACED RATHER THAN
+// DELETED (#173). This test read `[]EntryShape{shapeHandlerCaps}` while that
+// shape was refused; it is now lowered, so the contract it encoded deliberately
+// changed. The replacement pins MORE than a shortened refusal list would: every
+// shape the variant defines is asserted ACCEPTED at every consumer, and the
+// property the refusal list was really witnessing — that a consumer asks the
+// TABLE before it touches the store — is asserted directly, against a shape
+// this build defines no row for. A consumer that walked the type first would
+// fail with a missing-definition error from the empty store instead.
+func TestLLVMEntryShapeIsDecidedBeforeTheStore(t *testing.T) {
+	// UNDECIDED, not declined: no backend declines an entry shape any more, so
+	// the shape that must not reach a type walk is one outside the variant.
+	undecided := EntryShape(numEntryShapes)
+	prog := &CompiledProgram{Shape: undecided}
+	if _, err := llvmEntryFor(prog); err == nil {
+		t.Fatal("the LLVM backend answered for a shape this build does not define")
+	}
+	st := newStore(t)
+	if _, _, err := listCtorIndices(st, prog); err == nil {
+		t.Error("listCtorIndices derived indices for a shape the table has no row for")
+	} else if strings.Contains(err.Error(), "not found") {
+		t.Errorf("listCtorIndices reached the store before asking the table: %v", err)
+	}
+	if _, err := handlerCtorIndices(st, prog); err == nil {
+		t.Error("handlerCtorIndices derived indices for a shape the table has no row for")
+	} else if strings.Contains(err.Error(), "not found") {
+		t.Errorf("handlerCtorIndices reached the store before asking the table: %v", err)
 	}
 
-	// CONTROL: the shapes this backend lowers are not refused by the table, or
-	// the check above would pass for a backend that refused everything.
-	for _, s := range []EntryShape{shapeCLI, shapeCLICaps, shapeHandler} {
+	// EVERY DEFINED SHAPE IS LOWERED. Positive, and over the whole variant
+	// rather than a written-down list, so a shape added to the variant without a
+	// decision here fails rather than passing by not being mentioned.
+	for _, s := range entryShapes() {
 		if _, err := llvmEntryFor(&CompiledProgram{Shape: s}); err != nil {
-			t.Errorf("the LLVM backend refused %s: %v", s, err)
+			t.Errorf("the LLVM backend has no answer for %s: %v", s, err)
 		}
 	}
 
@@ -208,7 +202,6 @@ func TestLLVMRefusesHandlerShapesAtEveryConsumer(t *testing.T) {
 	// one must say so rather than walk a type it was not written for — which is
 	// how "Request does not declare Nil and Cons" would have been reported as
 	// the error instead of as the symptom.
-	st := newStore(t)
 	if _, _, err := listCtorIndices(st, &CompiledProgram{Shape: shapeHandler}); err == nil {
 		t.Error("listCtorIndices derived argv indices for a handler")
 	}
@@ -217,25 +210,36 @@ func TestLLVMRefusesHandlerShapesAtEveryConsumer(t *testing.T) {
 	}
 }
 
-// The argv depth is a fact about the SHAPE, and it must match where the entry
-// type actually puts the argv parameter. A depth that disagreed would build argv
-// against the capability record's own type — no type error anywhere, and a
-// program that reverses or mistypes its own arguments.
-func TestLLVMArgvDepthMatchesTheEntryType(t *testing.T) {
-	want := map[EntryShape]int{shapeCLI: 0, shapeCLICaps: 1}
-	for s, depth := range want {
+// The input depth is a fact about the SHAPE, and it must match where the entry
+// type actually puts the entry's own parameter. A depth that disagreed would
+// read the capability record's own type as the input — no type error anywhere,
+// and a program that mistypes its own arguments or looks for Request's
+// constructors in a record.
+//
+// ALL FOUR SHAPES, since #173 made the depth answer for the handler protocol
+// too. It was `argvDepth` over the two CLI shapes while the handler derivation
+// did its own walk; covering only the shapes that existed when a field was
+// introduced is how the two walks drifted apart in the first place.
+func TestLLVMInputDepthMatchesTheEntryType(t *testing.T) {
+	want := map[EntryShape]int{shapeCLI: 0, shapeCLICaps: 1, shapeHandler: 0, shapeHandlerCaps: 1}
+	for _, s := range entryShapes() {
+		depth, ok := want[s]
+		if !ok {
+			t.Errorf("no input depth is given for %s", s)
+			continue
+		}
 		ent, err := llvmEntryFor(&CompiledProgram{Shape: s})
 		if err != nil {
 			t.Fatalf("%s: %v", s, err)
 		}
-		if ent.argvDepth != depth {
-			t.Errorf("%s has argvDepth %d, want %d", s, ent.argvDepth, depth)
+		if ent.inputDepth != depth {
+			t.Errorf("%s has inputDepth %d, want %d", s, ent.inputDepth, depth)
 		}
 		// caps and depth are the same fact stated twice within one row; a row
 		// where they disagree would resolve a capability record and then look
-		// for argv in the wrong place.
+		// for the entry's input in the wrong place.
 		if ent.caps != (depth > 0) {
-			t.Errorf("%s: caps=%v with argvDepth %d", s, ent.caps, ent.argvDepth)
+			t.Errorf("%s: caps=%v with inputDepth %d", s, ent.caps, ent.inputDepth)
 		}
 	}
 }

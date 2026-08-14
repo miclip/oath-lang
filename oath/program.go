@@ -1149,8 +1149,10 @@ const (
 	// Backend-specific lowering limits.
 	//
 	// RETIRED, AND SAID SO RATHER THAN QUIETLY LEFT: no backend emits
-	// reasonIntRange (#166 made Int arbitrary-precision) or reasonDynamicStr
-	// (#164 lowered runtime Str construction). They stay in the vocabulary
+	// reasonIntRange (#166 made Int arbitrary-precision), reasonDynamicStr
+	// (#164 lowered runtime Str construction) or reasonHandlerProtocol (#173
+	// lowered the capability-first handler, which was the last entry shape any
+	// backend declined). They stay in the vocabulary
 	// because a reason is a published contract term and removing one silently
 	// changes what a caller's `==` means — but a caller branching on either
 	// today is writing a branch that can never be taken, which is the same

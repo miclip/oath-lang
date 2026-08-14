@@ -28,15 +28,15 @@ package main
 // backend emits Go and invokes `go build`. Nothing links LLVM into the kernel.
 //
 // HONEST SUBSET. This backend refuses far more than it accepts — the rest of the
-// numeric tower, native containers, a handler that takes a capability record,
-// and the http_request capability. Refusals are explicit and name what is
-// missing.
+// numeric tower, native containers, and the http_request capability. Refusals
+// are explicit and name what is missing.
 //
-// BOTH ENTRY PROTOCOLS ARE NOW LOWERED, which is why this list names a SHAPE
-// rather than the handler protocol: `(-> Request Response)` compiles, with a
-// dependency-free HTTP/1.1 server and SPEC §14.2's transformation written into
-// the emitted runtime, and `(-> {caps} (-> Request Response))` is refused for a
-// reason that is a property of the arena rather than of unwritten code. A backend that
+// EVERY ENTRY SHAPE IS NOW LOWERED, which is why that list names no shape at
+// all: `(-> Request Response)` compiles, with a dependency-free HTTP/1.1 server
+// and SPEC §14.2's transformation written into the emitted runtime, and
+// `(-> {caps} (-> Request Response))` compiles onto a process-lifetime
+// allocation region beside the request arena (#173). What is still refused is a
+// capability KIND and a set of language constructs, never an entry protocol. A backend that
 // silently miscompiled what it did not understand would be worse than one that
 // compiles almost nothing, because the differential gate is what makes any of
 // this trustworthy.
@@ -232,11 +232,11 @@ func llvmUnsupported(reason refusalReason, what string) error {
 			"  literals of any magnitude, with the binary operations `+ - * / %` and\n" +
 			"  `== < <=`. Division truncates toward zero and a zero divisor fails at\n" +
 			"  runtime, matching `oath eval`.\n" +
-			"  Both entry protocols are covered — the CLI one and the plain handler\n" +
-			"  (-> Request Response), served over HTTP/1.1 by the emitted runtime.\n" +
-			"  `neg` is refused by name (use `(- 0 x)`), as are Rat and Float,\n" +
-			"  Set/Map and a handler that takes a capability record. Build with the Go\n" +
-			"  backend for full coverage.",
+			"  Every entry shape is covered — the CLI ones, and both handlers,\n" +
+			"  (-> Request Response) and (-> {caps} (-> Request Response)), served\n" +
+			"  over HTTP/1.1 by the emitted runtime.\n" +
+			"  `neg` is refused by name (use `(- 0 x)`), as are Rat and Float and\n" +
+			"  Set/Map. Build with the Go backend for full coverage.",
 	}
 }
 
@@ -1002,8 +1002,7 @@ struct OBlock { OBlock *next; char *base; size_t used; size_t cap; };
 typedef char o_arena_align_is_a_power_of_two[
   (O_ARENA_ALIGN != 0 && (O_ARENA_ALIGN & (O_ARENA_ALIGN - 1)) == 0) ? 1 : -1];
 
-/* THE ARENA'S SOLE OWNERSHIP ROOT, and the only object of static storage
-   duration this runtime declares.
+/* THE REQUEST ARENA'S OWNERSHIP ROOT.
 
    IT DOES RETAIN REQUEST MEMORY, AND SAYING OTHERWISE WOULD BE THE WHOLE
    ARGUMENT GOT WRONG. Every OVal, every Str buffer and every magnitude a request
@@ -1016,15 +1015,57 @@ typedef char o_arena_align_is_a_power_of_two[
        request;
      - o_arena_release CLEARS IT and then frees, so no request pointer is
        reachable from static storage after the release point;
-     - every OTHER static pointer stays forbidden, because nothing clears one -
-       a capability that parked a value in a second slot would hold it past the
-       release the whole design turns on.
+     - every OTHER static pointer stays forbidden unless it can be shown never
+       to hold a request allocation at all, because nothing clears one - a
+       capability that parked a value in an unaccounted slot would hold it past
+       the release the whole design turns on.
 
    The declaration scan in llvm_runtime_state_test.go permits this NAME AT THIS
    TYPE and nothing else, and the clearing half is witnessed separately: an
    exemption for a root that is never cleared would be an exemption for exactly
    the retention this forbids. */
 static OBlock *o_arena_blocks;
+
+/* ---------- the process-lifetime region (#173) ----------
+
+   A SECOND REGION, NEVER RELEASED, AND THE EXEMPTION IT NEEDS IS A DIFFERENT
+   ONE FROM THE ARENA'S. The arena root is permitted because its retention ENDS;
+   this root's retention never ends, so what has to be true instead is that it
+   NEVER HOLDS A REQUEST ALLOCATION. That is a claim about WHEN it can be carved
+   from, and o_perm_state is the whole of it.
+
+   WHY IT EXISTS. A capability-first handler is (-> {caps} (-> Request
+   Response)). SPEC 14 and the launch gate both require the capability record to
+   be resolved ONCE, before the listener binds, so a host that cannot supply the
+   program's authority fails to launch rather than accepting traffic it cannot
+   serve. The closures in that record - and the handler closure obtained by
+   applying the entry to it - are therefore live for every request the process
+   ever answers. Allocating them in the request arena would free them at the end
+   of the FIRST request and apply a dangling closure on the second, which is why
+   this backend refused the shape until this region existed. Asserting that the
+   record must outlive the request does not create anywhere to put it.
+
+   THE STATE MACHINE IS THE ARGUMENT, and it is one-way:
+
+     0 CLOSED  the region cannot be carved from. The state at process start, and
+               the state every CLI entry stays in for its whole run.
+     1 OPEN    provisioning. Reached once, by o_perm_open, before any listener
+               exists; xalloc carves from o_perm_blocks while it lasts.
+     2 SEALED  terminal. o_serve_loop is entered only from here, so every
+               allocation any request makes is an arena allocation, and no
+               request pointer can reach this root.
+
+   Both transitions are guarded and a violation is o_bug, not a silent fallback:
+   an unexpected state means this compiler emitted a sequence the runtime does
+   not implement, and continuing would put request memory somewhere nothing
+   frees.
+
+   WHAT IT DOES NOT ESTABLISH, for the same reason the arena's scan does not: a
+   capability that hands a request pointer to libc, or writes one into a
+   perm-allocated object it still holds, is invisible here. This governs where
+   allocations LAND, not what a provider does with one afterwards. */
+static OBlock *o_perm_blocks;
+static int o_perm_state;
 
 /* NOT ROUTED THROUGH THE REFUSAL DOOR BELOW, deliberately. Every other refusal
    leaves the process able to serve the next request; an allocator that cannot
@@ -1099,12 +1140,16 @@ static OBlock *o_block_new(size_t cap) {
   return nb;
 }
 
-static void *xalloc(size_t n) {
+/* THE CARVE, over WHICHEVER region's block list it is handed. Parameterised
+   rather than duplicated: the two regions differ in WHEN they are freed and in
+   nothing else, and a second copy of this is where the oversized-block rule
+   below would silently hold for one region and not the other. */
+static void *o_carve(OBlock **head, size_t n) {
   /* The rounding must not wrap: a wrapped size would under-allocate silently,
      which is a heap overflow rather than the out-of-memory exit it looks like. */
   if (n > (size_t)-1 - (O_ARENA_ALIGN - 1)) o_oom();
   size_t need = (n + (O_ARENA_ALIGN - 1)) & ~(O_ARENA_ALIGN - 1);
-  OBlock *b = o_arena_blocks;
+  OBlock *b = *head;
   if (!b || b->cap - b->used < need) {
     /* A REQUEST THAT FILLS A BLOCK GETS ONE OF ITS OWN, LINKED BEHIND THE ACTIVE
        BLOCK RATHER THAN IN FRONT OF IT. Such a block is full the instant it is
@@ -1124,17 +1169,37 @@ static void *xalloc(size_t n) {
       OBlock *big = o_block_new(need);
       big->used = need;
       if (b) { big->next = b->next; b->next = big; }
-      else { o_arena_blocks = big; }
+      else { *head = big; }
       return big->base;
     }
     OBlock *nb = o_block_new(O_ARENA_BLOCK);
-    nb->next = o_arena_blocks;
-    o_arena_blocks = nb;
+    nb->next = *head;
+    *head = nb;
     b = nb;
   }
   void *p = b->base + b->used;
   b->used += need;
   return p;
+}
+
+/* THE ONE PLACE THE REGION IS CHOSEN. Every allocation in this runtime reaches
+   the allocator through here, so the region an allocation belongs to is decided
+   by the process's phase rather than by each call site remembering which one it
+   is in - which is what makes "no request allocation is in the perm region" a
+   property of one function instead of an audit of every caller. */
+static void *xalloc(size_t n) {
+  return o_carve(o_perm_state == 1 ? &o_perm_blocks : &o_arena_blocks, n);
+}
+
+/* THE TWO TRANSITIONS. One-way, guarded, and a violation is a compiler bug
+   rather than a condition of the program - see the region's header. */
+static void o_perm_open(void) {
+  if (o_perm_state != 0) o_bug("the process-lifetime region was opened twice");
+  o_perm_state = 1;
+}
+static void o_perm_seal(void) {
+  if (o_perm_state != 1) o_bug("the process-lifetime region was sealed without being opened");
+  o_perm_state = 2;
 }
 
 /* THE RELEASE POINT, AND THE HALF THAT DISCHARGES THE ROOT'S EXEMPTION. Called
@@ -1150,7 +1215,12 @@ static void *xalloc(size_t n) {
    IDEMPOTENT, and the arena is usable again afterwards: the next xalloc starts a
    fresh block list. Nothing else in this runtime frees - the exit(70) paths
    leave the arena to process exit, which is the same behaviour they had before
-   an arena existed. */
+   an arena existed.
+
+   IT RELEASES ONE REGION, AND THE OMISSION IS THE POINT. o_perm_blocks is
+   deliberately untouched: it holds the capability record and the handler
+   closure, which are live for every request this process will ever answer.
+   Freeing both here would be the defect this region was added to remove. */
 void o_arena_release(void) {
   OBlock *b = o_arena_blocks;
   o_arena_blocks = 0;
@@ -3699,8 +3769,20 @@ static int o_http_listen(void) {
 
 /* THE SERVE LOOP. One connection at a time, one request per connection.
    Returns only if the listening socket fails; a handler is a long-lived server
-   and there is no other way out that is not a bug or a signal. */
-int o_serve(OCode entry, int nil_, int cons_, int pair_, int req_, int resp_) {
+   and there is no other way out that is not a bug or a signal.
+
+   IT APPLIES A HANDLER VALUE, NOT A CODE POINTER, AND BOTH ENTRY SHAPES REACH
+   IT THAT WAY. A capability-first handler's handler IS a closure - the result of
+   applying the entry to the resolved record - and a plain handler's is that same
+   closure over a null environment. Carrying an OCode and an OVal and choosing
+   between them per request would make "which one is live" a state this loop had
+   to be right about on every iteration; there is one value and one call instead.
+
+   THE HANDLER IS PROCESS-LIFETIME MEMORY. It is built before this is entered,
+   while the perm region is open, and this loop runs only after it is sealed - so
+   the arena release below cannot reach it however many requests are served. */
+static int o_serve_loop(OVal *handler, int nil_, int cons_, int pair_, int req_, int resp_) {
+  if (o_perm_state != 2) o_bug("the serve loop was entered before the process-lifetime region was sealed");
   /* A client that vanishes mid-write must not take the process with it. This is
      the same class as a refusal: a remote party cannot be permitted to end a
      server, so the failed write is reported by send() and answered by closing
@@ -3789,7 +3871,7 @@ int o_serve(OCode entry, int nil_, int cons_, int pair_, int req_, int resp_) {
     }
 
     OVal *value = o_http_value(&r, hs, nh, nil_, cons_, pair_, req_);
-    OVal *out = entry(NULL, value);
+    OVal *out = o_apply(handler, value);
     /* The handler has returned, so a refusal can no longer arrive from Oath
        code; clearing here means serialisation cannot re-enter the boundary and
        write a second response onto the same connection. */
@@ -3816,6 +3898,47 @@ int o_serve(OCode entry, int nil_, int cons_, int pair_, int req_, int resp_) {
   }
 }
 
+/* THE PLAIN HANDLER'S ENTRY POINT. Its handler needs no authority, so the only
+   thing provisioning does is box the entry's code as a closure over an empty
+   environment - in the perm region, because that box is applied by every
+   request and the arena would free it after the first. */
+int o_serve(OCode entry, int nil_, int cons_, int pair_, int req_, int resp_) {
+  o_perm_open();
+  OVal *handler = o_closure(entry, NULL);
+  o_perm_seal();
+  return o_serve_loop(handler, nil_, cons_, pair_, req_, resp_);
+}
+
+/* THE CAPABILITY-FIRST HANDLER'S ENTRY POINT (#173), AND THE ORDER IS THE WHOLE
+   OF IT.
+
+   Resolution runs HERE, before o_serve_loop and therefore before o_http_listen:
+   a host that cannot supply a declared requirement exits 70 from o_require or
+   o_require_value with no socket ever bound, so "provisioned" and "listening"
+   cannot come apart. That is the launch invariant #114 states, and putting the
+   resolve call inside the loop's caller rather than inside the loop is what
+   makes it structural rather than a comment.
+
+   THE ENTRY IS APPLIED ONCE, not per request. Applying (-> {caps} (-> Request
+   Response)) to the record yields the handler closure, and everything that
+   application allocates - the record, its capability closures, the environment
+   the returned closure captures - is perm memory because the region is still
+   open. Sealing before the loop is what makes every LATER allocation a request
+   allocation.
+
+   The resolver is a function POINTER rather than a call the emitter inlines
+   here, for the reason the loop is in C at all: what to resolve is the
+   emitter's business and WHEN is this runtime's, and a sequence split across
+   the two is one nobody owns. */
+int o_serve_caps(OVal *(*resolve)(void), OCode entry, int nil_, int cons_, int pair_, int req_, int resp_) {
+  o_perm_open();
+  OVal *caps = resolve();
+  OVal *handler = entry(NULL, caps);
+  if (!handler || handler->tag != T_CLOS) o_bug("a capability-first entry did not return a handler");
+  o_perm_seal();
+  return o_serve_loop(handler, nil_, cons_, pair_, req_, resp_);
+}
+
 #else
 
 /* THE HANDLER PROTOCOL ON A HOST THIS SLICE HAS NO SOCKET LAYER FOR. Refused by
@@ -3823,6 +3946,12 @@ int o_serve(OCode entry, int nil_, int cons_, int pair_, int req_, int resp_) {
    property of the HOST and not of the program: the same artifact's source
    compiles here and serves on a POSIX host. Exit 70, the status every other
    host refusal in this runtime uses, so a supervisor reads it the same way. */
+static int o_no_socket_layer(void) {
+  fputs("oath: this host has no socket layer in the LLVM backend, so the handler protocol "
+        "cannot be served here; build this entry with the Go backend\n", stderr);
+  return 70;
+}
+
 int o_serve(OCode entry, int nil_, int cons_, int pair_, int req_, int resp_) {
   (void)entry;
   (void)nil_;
@@ -3830,9 +3959,21 @@ int o_serve(OCode entry, int nil_, int cons_, int pair_, int req_, int resp_) {
   (void)pair_;
   (void)req_;
   (void)resp_;
-  fputs("oath: this host has no socket layer in the LLVM backend, so the handler protocol "
-        "cannot be served here; build this entry with the Go backend\n", stderr);
-  return 70;
+  return o_no_socket_layer();
+}
+
+/* REFUSED BEFORE RESOLVING, deliberately: this host cannot serve whatever the
+   record contains, and provisioning first would report a missing capability as
+   the reason a program that could never have served did not start. */
+int o_serve_caps(OVal *(*resolve)(void), OCode entry, int nil_, int cons_, int pair_, int req_, int resp_) {
+  (void)resolve;
+  (void)entry;
+  (void)nil_;
+  (void)cons_;
+  (void)pair_;
+  (void)req_;
+  (void)resp_;
+  return o_no_socket_layer();
 }
 
 #endif
@@ -3857,6 +3998,7 @@ declare ptr @o_closure(ptr, ptr)
 declare ptr @o_apply(ptr, ptr)
 declare ptr @o_argv(i32, ptr, i32, i32)
 declare i32 @o_serve(ptr, i32, i32, i32, i32, i32)
+declare i32 @o_serve_caps(ptr, ptr, i32, i32, i32, i32, i32)
 declare void @o_print(ptr)
 declare void @o_arena_release()
 declare ptr @o_require(ptr, ptr, ptr)
@@ -3884,12 +4026,16 @@ declare ptr @o_cap_emit(ptr)
 
 // llvmEntry is the LLVM backend's DECISION for one EntryShape.
 //
-// A REFUSAL IS A CASE. This backend covers a subset, and the shapes it declines
-// are written into the same table as the ones it lowers — so declining is
-// something the table says rather than something an early `if` in emitLLVM
-// remembers to do. That is what makes every consumer of the shape refuse
-// consistently: listCtorIndices cannot walk an entry type this backend never
-// agreed to compile, because asking for the shape is what surfaces the refusal.
+// A DECISION IS A ROW. This backend answers every shape from this table rather
+// than from an early `if` in emitLLVM, which is what makes every consumer read
+// one fact: listCtorIndices and handlerCtorIndices both ask the table where the
+// entry's input is, so they cannot disagree about it.
+//
+// IT NO LONGER CARRIES A REFUSAL, and the field was removed rather than left
+// matching nothing (#173): every shape the variant defines is now lowered here.
+// A shape this build does not define is still an error — entryShapeCase reports
+// it — so the "ask the table first" discipline that kept a declined shape from
+// being walked as a type survives the last refusal being retired.
 type llvmEntry struct {
 	// shape is the case this row decides, and it must equal the row's own index.
 	// The array's LENGTH is checked by the compiler; this is what makes a row
@@ -3899,69 +4045,37 @@ type llvmEntry struct {
 	// otherwise be indistinguishable from a decision.
 	shape EntryShape
 
-	// refuse, when non-nil, CONSTRUCTS this backend's refusal of the shape. The
-	// remaining fields are then unreachable, because llvmEntryFor turns the row
-	// into an error rather than a case.
-	//
-	// It is a constructor rather than a stored refusalReason so that the reason
-	// constant appears literally at the construction site: the refusal
-	// vocabulary is closed by tracing assignments to declared constants
-	// (TestEveryRefusalUsesADeclaredReason), and a reason carried through a
-	// struct field is not traceable — correctly, since a computed reason is not
-	// vocabulary.
-	refuse func() error
-
-	// caps: resolve a capability record and apply it before the argv argument.
+	// caps: resolve a capability record and apply it before the entry's own
+	// input.
 	caps bool
-	// argvDepth is how many leading arrows to step past in the entry's TYPE
-	// before reaching the parameter argv is built for. A capability-first entry
-	// is (-> {caps} (-> (List Str) Str)), so its argv parameter is one arrow in.
-	argvDepth int
+	// inputDepth is how many leading arrows to step past in the entry's TYPE
+	// before reaching the parameter the entry's INPUT is built for. A
+	// capability-first entry is (-> {caps} (-> in out)), so its input parameter
+	// is one arrow in, whichever protocol `in` belongs to.
+	//
+	// ONE NUMBER FOR BOTH PROTOCOLS, deliberately. It was `argvDepth` while only
+	// the CLI shapes needed it, and the handler derivation then hardcoded a walk
+	// of its own — which was correct for exactly as long as no handler took a
+	// capability record. Where the input is and which protocol it belongs to are
+	// different questions with different answers, and this is the first.
+	inputDepth int
 
 	// handler: the entry's input is a Request VALUE built by the runtime's
 	// SPEC §14 adapter rather than an argv list, and main is a serve loop
 	// rather than one call and a print.
 	//
-	// It is a SEPARATE field from argvDepth rather than a sentinel value of it,
-	// because the two answer different questions — where argv is, and whether
-	// there is argv at all — and a shape that answered both with one number
+	// It is a SEPARATE field from inputDepth rather than a sentinel value of it,
+	// because the two answer different questions — where the input is, and which
+	// protocol it belongs to — and a shape that answered both with one number
 	// would make "no argv" and "argv at depth 0" the same state.
 	handler bool
 }
 
-// llvmRefuseHandlerCaps is this backend's refusal of the CAPABILITY-FIRST
-// handler, and it is no longer shared with the plain one: the plain handler
-// compiles.
-//
-// THE REASON IS A PROPERTY OF THE ARENA, NOT UNWRITTEN CODE, which is why the
-// refusal survives the request loop landing. A capability record is resolved
-// ONCE before the listener binds — that is #114's invariant and the launch gate
-// depends on it — so the closures in it must live for the PROCESS. Every
-// allocation in this runtime comes from the request arena, and the serve loop
-// releases that arena after each response, so a record resolved at launch is
-// freed by the first request that completes and the second request applies a
-// dangling closure.
-//
-// The repairs are both real work and neither is a lowering detail: a
-// program-lifetime region alongside the request arena, or per-request
-// resolution — which would move authority provisioning after the port is bound
-// and destroy the property the launch gate exists to state. Refusing is the
-// honest answer until one of them is designed.
-func llvmRefuseHandlerCaps() error {
-	return llvmUnsupported(reasonHandlerProtocol, "a handler that takes a capability record\n"+
-		"  The plain handler protocol (-> Request Response) IS lowered by this backend.\n"+
-		"  What is refused is (-> {caps} (-> Request Response)): a capability record is\n"+
-		"  resolved once before the listener binds, so its closures must outlive every\n"+
-		"  request — and every allocation in this runtime belongs to the per-request\n"+
-		"  arena, which is released after each response. Compiling it would hand the\n"+
-		"  second request a freed capability. Build this entry with the Go backend")
-}
-
 var llvmEntries = [...]llvmEntry{
-	shapeCLI:         {shape: shapeCLI, caps: false, argvDepth: 0},
-	shapeCLICaps:     {shape: shapeCLICaps, caps: true, argvDepth: 1},
-	shapeHandler:     {shape: shapeHandler, handler: true},
-	shapeHandlerCaps: {shape: shapeHandlerCaps, refuse: llvmRefuseHandlerCaps},
+	shapeCLI:         {shape: shapeCLI, caps: false, inputDepth: 0},
+	shapeCLICaps:     {shape: shapeCLICaps, caps: true, inputDepth: 1},
+	shapeHandler:     {shape: shapeHandler, handler: true, inputDepth: 0},
+	shapeHandlerCaps: {shape: shapeHandlerCaps, caps: true, handler: true, inputDepth: 1},
 }
 
 // EXHAUSTIVENESS, at compile time. Adding a shape to the variant makes this a
@@ -3969,19 +4083,31 @@ var llvmEntries = [...]llvmEntry{
 // assertion — two backends, two failures, neither derived from the other.
 var _ entryShapeTable = [len(llvmEntries)]struct{}{}
 
-// llvmEntryFor is the ONE way this backend learns an entry's shape. It reports
-// an undecided shape and a declined one as errors of the appropriate kinds — an
-// undecided shape is a defect in this backend, a declined one is this backend's
-// subset boundary and carries a typed refusal reason (#134).
+// llvmEntryFor is the ONE way this backend learns an entry's shape. A shape this
+// build does not define is an error — a defect in this backend rather than a
+// subset boundary — and it is reported here so that no consumer walks the type
+// of an entry the table has no row for.
 func llvmEntryFor(prog *CompiledProgram) (llvmEntry, error) {
-	ent, err := entryShapeCase("the LLVM backend", &llvmEntries, prog.Shape)
-	if err != nil {
-		return llvmEntry{}, err
+	return entryShapeCase("the LLVM backend", &llvmEntries, prog.Shape)
+}
+
+// entryInputTy walks an entry's type to the ARROW WHOSE ARGUMENT IS THE ENTRY'S
+// OWN INPUT, stepping past the capability record when the shape says the entry
+// takes one.
+//
+// ONE WALK FOR BOTH PROTOCOLS. The CLI derivation and the handler derivation
+// each need this and each used to do it their own way — the CLI one by the
+// shape's depth, the handler one by assuming the entry's type was already the
+// (-> in out) arrow, which was true only while no handler could take a record.
+// Two answers to one question is where they drifted apart, so there is one.
+func entryInputTy(ty *Ty, ent llvmEntry, shape EntryShape) (*Ty, error) {
+	for i := 0; i < ent.inputDepth; i++ {
+		if ty == nil || ty.K != "fun" {
+			return nil, fmt.Errorf("entry is not %s: it has fewer than %d leading arrows", shape, ent.inputDepth+1)
+		}
+		ty = ty.B
 	}
-	if ent.refuse != nil {
-		return llvmEntry{}, ent.refuse()
-	}
-	return ent, nil
+	return ty, nil
 }
 
 // listCtorIndices reports the constructor indices of Nil and Cons for the List
@@ -3993,9 +4119,10 @@ func llvmEntryFor(prog *CompiledProgram) (llvmEntry, error) {
 // failure would be a program that reverses its own arguments, which no type error
 // catches.
 func listCtorIndices(st *Store, prog *CompiledProgram) (nil_, cons int, err error) {
-	// The shape decides where argv is, and whether this backend lowers the entry
-	// at all — asked BEFORE the store, so a declined shape is refused as a subset
-	// boundary rather than reported as whatever the type walk happens to trip on.
+	// The shape decides where the entry's input is, and whether this backend has
+	// a row for the entry at all — asked BEFORE the store, so an undecided shape
+	// is reported as one rather than as whatever the type walk happens to trip
+	// on.
 	//
 	// The depth comes from the shape rather than from the capability record's
 	// nil-ness so that this walk and the capability construction below cannot
@@ -4004,12 +4131,11 @@ func listCtorIndices(st *Store, prog *CompiledProgram) (nil_, cons int, err erro
 	if err != nil {
 		return 0, 0, err
 	}
-	// A HANDLER HAS NO ARGV, and this is the same discipline the refusal above
-	// carries: a consumer that answers for a shape it was not written for
-	// answers wrongly rather than not at all. Asked here, before the store, so
-	// the diagnostic names the mismatch instead of reporting whatever the type
-	// walk trips on first — for a handler that would be "Request does not
-	// declare Nil and Cons", which describes a symptom and not the error.
+	// A HANDLER HAS NO ARGV: a consumer that answers for a protocol it was not
+	// written for answers wrongly rather than not at all. Asked here, before the
+	// store, so the diagnostic names the mismatch instead of reporting whatever
+	// the type walk trips on first — for a handler that would be "Request does
+	// not declare Nil and Cons", which describes a symptom and not the error.
 	if ent.handler {
 		return 0, 0, fmt.Errorf("%s takes a Request, not an argv list; its constructor "+
 			"indices come from handlerCtorIndices", prog.Shape)
@@ -4024,12 +4150,9 @@ func listCtorIndices(st *Store, prog *CompiledProgram) (nil_, cons int, err erro
 	// List would hand this program constructor indices for a different datatype —
 	// argv silently reversed, or arms selected wrongly, with no type error
 	// anywhere.
-	ty := d.Ty
-	for i := 0; i < ent.argvDepth; i++ {
-		if ty == nil || ty.K != "fun" {
-			return 0, 0, fmt.Errorf("entry is not %s: it has fewer than %d leading arrows", prog.Shape, ent.argvDepth+1)
-		}
-		ty = ty.B
+	ty, err := entryInputTy(d.Ty, ent, prog.Shape)
+	if err != nil {
+		return 0, 0, err
 	}
 	if ty == nil || ty.A == nil || ty.A.K != "data" {
 		return 0, 0, fmt.Errorf("entry does not take a datatype argument")
@@ -4116,7 +4239,14 @@ func handlerCtorIndices(st *Store, prog *CompiledProgram) (handlerCtors, error) 
 	if err != nil {
 		return hc, err
 	}
-	ty := d.Ty
+	// Past the capability record when the shape says there is one, by the same
+	// walk the CLI derivation uses. A capability-first handler is
+	// (-> {caps} (-> Request Response)), and reading its FIRST arrow would find a
+	// record where the protocol types are expected.
+	ty, err := entryInputTy(d.Ty, ent, prog.Shape)
+	if err != nil {
+		return hc, err
+	}
 	if ty == nil || ty.K != "fun" || ty.A == nil || ty.A.K != "data" || ty.B == nil || ty.B.K != "data" {
 		return hc, fmt.Errorf("entry is not %s: it is not a function between two datatypes", prog.Shape)
 	}
@@ -4171,9 +4301,8 @@ func handlerCtorIndices(st *Store, prog *CompiledProgram) (handlerCtors, error) 
 
 // emitLLVM lowers a compiled program to textual LLVM IR.
 func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
-	// The shape decides everything about the entry's interface, including whether
-	// this backend lowers it at all. Asked first, so a declined shape refuses
-	// before the artifact is stamped.
+	// The shape decides everything about the entry's interface. Asked first, so
+	// an undecided shape is reported before the artifact is stamped.
 	ent, err := llvmEntryFor(prog)
 	if err != nil {
 		return "", err
@@ -4277,14 +4406,33 @@ func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 	// the handler call, and a frame this function called and returned from is
 	// not one. What the emitter keeps is what the emitter owns — WHICH entry to
 	// call, and the constructor indices derived from this store.
+	//
+	// A CAPABILITY-FIRST HANDLER HANDS OVER ONE THING MORE (#173): its resolver,
+	// so the runtime can provision before it binds and place the record in the
+	// process-lifetime region. The two handoffs differ only in that argument,
+	// which is why they are one branch and not two mains.
 	if ent.handler {
 		e.label("entry")
 		entry := e.fname[prog.EntryHash]
 		out := e.next()
-		fmt.Fprintf(&e.b, "  %s = call i32 @o_serve(ptr %s, i32 %d, i32 %d, i32 %d, i32 %d, i32 %d)\n",
-			out, entry, hc.nilIdx, hc.consIdx, hc.pairIdx, hc.reqIdx, hc.respIdx)
+		idx := fmt.Sprintf("i32 %d, i32 %d, i32 %d, i32 %d, i32 %d", hc.nilIdx, hc.consIdx, hc.pairIdx, hc.reqIdx, hc.respIdx)
+		if ent.caps {
+			// THE RESOLVER IS HANDED OVER, NOT CALLED HERE (#173). A
+			// capability-first handler's record must be resolved before the
+			// listener binds AND must outlive every request, and both are
+			// properties of the SEQUENCE rather than of the resolution — so the
+			// runtime owns the sequence and is given the two pieces it cannot
+			// know: what to resolve, and which entry to apply it to. Calling
+			// @o_resolve_caps here instead would allocate the record in whichever
+			// region happened to be open, which is exactly the mistake the region
+			// exists to make impossible.
+			fmt.Fprintf(&e.b, "  %s = call i32 @o_serve_caps(ptr @o_resolve_caps, ptr %s, %s)\n",
+				out, entry, idx)
+		} else {
+			fmt.Fprintf(&e.b, "  %s = call i32 @o_serve(ptr %s, %s)\n", out, entry, idx)
+		}
 		fmt.Fprintf(&e.b, "  ret i32 %s\n}\n", out)
-		return llvmAssemble(prog, e, &body, "", "define i32 @main(i32 %argc, ptr %argv) {\n"+e.b.String())
+		return llvmAssemble(prog, e, &body, caps, "define i32 @main(i32 %argc, ptr %argv) {\n"+e.b.String())
 	}
 	e.label("entry")
 	args := e.next()

@@ -1,20 +1,20 @@
 # #165 — the memory design for the LLVM runtime
 
-**Status: STEPS 1–3 IMPLEMENTED; STEP 4 IMPLEMENTED FOR THE PLAIN HANDLER
-ONLY.** The retention invariant and the explicit request arena are in the runtime
-and gated, and `(-> Request Response)` is now lowered against that release point:
-a serve loop, the SPEC §14.2 boundary, and the arena released after each
-response has been serialised.
+**Status: STEPS 1–4 IMPLEMENTED.** The retention invariant and the explicit
+request arena are in the runtime and gated, and both handler shapes are now
+lowered against that release point: a serve loop, the SPEC §14.2 boundary, and
+the arena released after each response has been serialised.
 
-**`(-> {caps} (-> Request Response))` REMAINS REFUSED, AND THIS DOCUMENT IS THE
-REASON.** A capability record is resolved ONCE before the listener binds — that
-is #114's invariant and what the launch gate states — so the values in it must
-live for the PROCESS. The runtime still allocates everything from the request
-arena, which is released after each response, so a record resolved at launch
-would be freed by the first request that completes. The two regions below are
-designed and only one of them is built; until the program-lifetime region
-exists, the capability-first shape is refused by name rather than compiled into
-a program whose second request applies a freed closure.
+**THE SECOND REGION EXISTS (#173), WHICH IS WHAT THE REST OF THIS DOCUMENT
+DESIGNED.** `(-> {caps} (-> Request Response))` was refused here for one reason —
+a capability record is resolved ONCE before the listener binds, so its values
+must live for the PROCESS, and everything came from the request arena. The
+program-lifetime region below was built rather than the refusal being argued
+away: the record is resolved and the entry applied to it while the region is
+open, the region is then sealed one-way, and the serve loop runs only after the
+seal — so no request allocation can reach it and the release cannot free it.
+**Passages below that describe the two regions as one, or the capability-first
+shape as refused, are the state before that and are left as written.**
 
 Nothing here is normative and no wire format or SPEC text is proposed —
 the design was written down while the evidence for it was fresh, and the parts
