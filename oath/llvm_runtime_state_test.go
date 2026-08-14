@@ -60,6 +60,35 @@ import (
 // written, and which has static storage duration all the same — passed it. The
 // claim is about what outlives a call, so the scan is about `static`, at any
 // indentation.
+//
+// TWO MORE DECLARATIONS ARE PERMITTED, ON A DIFFERENT ARGUMENT, AND THE
+// POINTER RULE IS UNCHANGED. SPEC §14.2 requires a runtime refusal inside a
+// handler to become a 500 rather than an exit — a remote party must never be
+// able to end the process — so the refusal has to unwind from arbitrary depth
+// to the serve loop. In C that is `setjmp`/`longjmp`, the jump target must live
+// in a frame that stays live across the handler call, and the door that raises
+// it takes no context, so the target and the in-flight flag are reachable only
+// through static storage. There is no arrangement of this runtime that avoids
+// them; asserting the obligation harder would not create the structure it
+// needs.
+//
+// What keeps this from being a hole in the argument above:
+//
+//	NEITHER IS A POINTER, so neither can be the slot a capability parks a
+//	request value in — which is the retention this test exists to forbid, and
+//	the same reasoning the scanner already applies to non-pointer `const`
+//	storage. The exemptions are exact declarations, and a `*` appearing in
+//	either is a failure below.
+//	THE JUMP TARGET IS RE-ESTABLISHED PER REQUEST, at the top of the loop,
+//	after the previous request's arena has been released and before anything is
+//	allocated for the next one — so no live arena pointer is in scope at the
+//	moment its register image is saved. That half is structural and is
+//	witnessed by TestRefusalBoundaryIsArmedPerRequest, exactly as the root's
+//	clearing is witnessed rather than asserted.
+//
+// The counted claim is therefore STRICTLY the old one plus a closed list: one
+// static pointer, still the arena root, still cleared at release; and exactly
+// two non-pointer continuation slots, each named and typed.
 func TestEmittedRuntimeDeclaresNoStaticStorageForValues(t *testing.T) {
 	rt := llvmRuntimeC
 	if len(rt) < 2000 {
@@ -100,14 +129,39 @@ func TestEmittedRuntimeDeclaresNoStaticStorageForValues(t *testing.T) {
 		}
 	}
 
-	// AND THE PERMITTED DECLARATION MUST BE PRESENT. Without this the exemption
-	// could outlive the arena — the allowlist entry would sit here matching
-	// nothing, and the next declaration that happened to be spelled that way
-	// would inherit an argument nobody re-made.
-	permitted := 0
+	// THE CONTINUATION EXEMPTION'S OWN CONTROLS, on the same two halves. A
+	// POINTER wearing a permitted name is the way this hole would actually be
+	// walked through — the whole argument for these two is that they cannot hold
+	// one — and a permitted type under another name would make the exemption a
+	// shape rather than a declaration.
+	for _, probe := range []struct{ name, line string }{
+		{"a pointer under the permitted flag name", "static OVal *o_request_live;"},
+		{"a pointer under the permitted target name", "static OVal *o_request_jump;"},
+		{"the permitted flag type under another name", "static int o_stash_live;"},
+		{"the permitted target type under another name", "static jmp_buf o_stash_jump;"},
+	} {
+		got := staticVars(probe.line + "\n")
+		if len(got) != 1 {
+			t.Fatalf("the scanner reads %d declarations from the probe %q, so this control "+
+				"is not testing what it believes it is", len(got), probe.line)
+		}
+		if requestContinuationSlot(got[0]) {
+			t.Fatalf("the continuation exemption admits %s, so it is permitting a shape "+
+				"rather than the two declarations argued for", probe.name)
+		}
+	}
+
+	// AND THE PERMITTED DECLARATIONS MUST BE PRESENT. Without this an exemption
+	// could outlive what it was argued for — the allowlist entry would sit here
+	// matching nothing, and the next declaration that happened to be spelled that
+	// way would inherit an argument nobody re-made.
+	permitted, continuation := 0, 0
 	for _, v := range staticVars(rt) {
 		if arenaOwnershipRoot(v) {
 			permitted++
+		}
+		if requestContinuationSlot(v) {
+			continuation++
 		}
 	}
 	if permitted != 1 {
@@ -115,9 +169,14 @@ func TestEmittedRuntimeDeclaresNoStaticStorageForValues(t *testing.T) {
 			"An exemption matching nothing is a hole waiting for a coincidence; matching twice "+
 			"means the block list has been duplicated and one of them is unaccounted for", permitted)
 	}
+	if continuation != 2 {
+		t.Errorf("the runtime declares %d of the 2 permitted refusal-continuation slots. "+
+			"Fewer means an exemption matches nothing and is waiting for a coincidence; "+
+			"more means the boundary has been duplicated and one copy is unaccounted for", continuation)
+	}
 
 	for _, v := range staticVars(rt) {
-		if arenaOwnershipRoot(v) {
+		if arenaOwnershipRoot(v) || requestContinuationSlot(v) {
 			continue
 		}
 		if v.name == "" {
@@ -428,6 +487,25 @@ type staticVar struct{ name, decl string }
 // which for an allowlist means the declaration is REPORTED rather than admitted.
 func arenaOwnershipRoot(v staticVar) bool {
 	return v.name == "o_arena_blocks" && normalizeDecl(v.decl) == "static OBlock *o_arena_blocks;"
+}
+
+// requestContinuationSlot reports whether a declaration is EXACTLY one of the
+// refusal boundary's two slots: the in-flight flag and the jump target SPEC
+// §14.2's 500-and-keep-serving disposition needs (see this file's header).
+//
+// KEYED ON THE WHOLE DECLARATION for the reason arenaOwnershipRoot gives, and
+// with one addition that is the entire argument for these two: the permitted
+// types carry NO POINTER, so neither can be the slot that outlives a release
+// holding request memory. A `*` in either spelling is a different declaration
+// and is reported, which is why the type is matched rather than the name.
+func requestContinuationSlot(v staticVar) bool {
+	switch normalizeDecl(v.decl) {
+	case "static int o_request_live;":
+		return v.name == "o_request_live"
+	case "static jmp_buf o_request_jump;":
+		return v.name == "o_request_jump"
+	}
+	return false
 }
 
 func normalizeDecl(decl string) string {

@@ -1,8 +1,22 @@
 # #165 — the memory design for the LLVM runtime
 
-**Status: STEPS 1–3 IMPLEMENTED; step 4 not started.** The retention invariant
-and the explicit request arena are in the runtime and gated; the handler protocol
-is not. Nothing here is normative and no wire format or SPEC text is proposed —
+**Status: STEPS 1–3 IMPLEMENTED; STEP 4 IMPLEMENTED FOR THE PLAIN HANDLER
+ONLY.** The retention invariant and the explicit request arena are in the runtime
+and gated, and `(-> Request Response)` is now lowered against that release point:
+a serve loop, the SPEC §14.2 boundary, and the arena released after each
+response has been serialised.
+
+**`(-> {caps} (-> Request Response))` REMAINS REFUSED, AND THIS DOCUMENT IS THE
+REASON.** A capability record is resolved ONCE before the listener binds — that
+is #114's invariant and what the launch gate states — so the values in it must
+live for the PROCESS. The runtime still allocates everything from the request
+arena, which is released after each response, so a record resolved at launch
+would be freed by the first request that completes. The two regions below are
+designed and only one of them is built; until the program-lifetime region
+exists, the capability-first shape is refused by name rather than compiled into
+a program whose second request applies a freed closure.
+
+Nothing here is normative and no wire format or SPEC text is proposed —
 the design was written down while the evidence for it was fresh, and the parts
 that have since landed are marked at the line rather than left to be inferred
 from the order-of-work list at the end.
@@ -25,14 +39,23 @@ whether memory mattered. **Handlers were refused BECAUSE of the memory model.**
 Memory was upstream, and settling it is what makes the handler protocol
 available.
 
-**THAT REASON IS NOW SPENT, AND THE REFUSAL IS NOT.** Step 3 landed the arena and
-its release point, so the lifetime objection no longer holds: a long-running
-entry would not leak per request for want of a release. What the LLVM backend
-still lacks is the LOWERING — it emits no request loop and no
-response-serialization boundary to release a request's arena against — and that
-is what `llvmRefuseHandler` now says. The distinction is the difference between
-*this cannot be done here* and *this has not been written here*, and only the
-second is true today.
+**THAT REASON IS NOW SPENT, AND SO IS THE REFUSAL IT SUPPORTED.** Step 3 landed
+the arena and its release point, so the per-request lifetime objection no longer
+holds: a long-running entry does not leak per request for want of a release.
+What remained after that was the LOWERING — no request loop, no
+response-serialization boundary to release a request's arena against — which was
+*this has not been written here* rather than *this cannot be done here*. It has
+since been written, and the plain handler compiles.
+
+**A DIFFERENT LIFETIME OBJECTION IS WHAT NOW REFUSES THE CAPABILITY-FIRST
+SHAPE, and the two are worth keeping apart because they read alike.** The first
+was about memory a request never gives back; this one is about memory a request
+takes away from something that outlives it. A capability record resolved before
+the listener binds must survive every request, and the only region this runtime
+has is released after each one — so `llvmRefuseHandlerCaps` states a property of
+the ALLOCATOR, not an unwritten function. That is *this cannot be done here*,
+truthfully, until the region below exists: the missing thing is a structure, and
+no amount of lowering supplies it.
 
 ## The design
 
@@ -205,10 +228,27 @@ claiming otherwise would be measuring nothing.
    and alignment is derived from `_Alignof(max_align_t)` rather than assumed.
    The order in the emitted `main` is witnessed, not documented — see
    `TestEmittedMainReleasesTheArenaAfterSerialising`.
-4. **The handler protocol in the LLVM backend**, which is what this unblocks. NOT
-   STARTED. Its former blocker — the lifetime objection — is retired; what is
-   missing is the lowering: no request loop and no response-serialization
-   boundary. The entry shapes themselves exist and are refused by name.
+4. **The handler protocol in the LLVM backend**, which is what this unblocks.
+   **DONE FOR `(-> Request Response)`; NOT DONE FOR THE CAPABILITY-FIRST SHAPE,
+   and the second half is a REGION that does not exist rather than code nobody
+   has written.**
+
+   What landed: a dependency-free HTTP/1.1 serve loop in the emitted runtime,
+   the SPEC §14.2 transformation, and the arena released after each response has
+   been serialised — the release point step 3 built, used at the boundary it was
+   built for. A runtime refusal inside a handler becomes one stderr line and a
+   500 rather than an exit, which SPEC §14.2 requires and which the arena is
+   what makes cheap: unwinding abandons every intermediate frame, and a runtime
+   that freed per value would leak exactly what a refused request allocated.
+
+   What did not: `(-> {caps} (-> Request Response))`. A capability record is
+   resolved once before the listener binds, so its values need PROGRAM-LIFETIME
+   storage; everything here comes from the request arena, which is released
+   after each response, so the first completed request would free the record and
+   the second would apply a freed closure. Building the program-lifetime region
+   of the design above is the work, and per-request resolution is not a
+   substitute — it would move authority provisioning after the port is bound and
+   destroy the property the launch gate exists to state.
 
 ## A note on the instrument, because twelve rounds is data
 

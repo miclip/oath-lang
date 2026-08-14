@@ -28,8 +28,15 @@ package main
 // backend emits Go and invokes `go build`. Nothing links LLVM into the kernel.
 //
 // HONEST SUBSET. This backend refuses far more than it accepts — the rest of the
-// numeric tower, native containers, the handler protocol, and the http_request
-// capability. Refusals are explicit and name what is missing. A backend that
+// numeric tower, native containers, a handler that takes a capability record,
+// and the http_request capability. Refusals are explicit and name what is
+// missing.
+//
+// BOTH ENTRY PROTOCOLS ARE NOW LOWERED, which is why this list names a SHAPE
+// rather than the handler protocol: `(-> Request Response)` compiles, with a
+// dependency-free HTTP/1.1 server and SPEC §14.2's transformation written into
+// the emitted runtime, and `(-> {caps} (-> Request Response))` is refused for a
+// reason that is a property of the arena rather than of unwritten code. A backend that
 // silently miscompiled what it did not understand would be worse than one that
 // compiles almost nothing, because the differential gate is what makes any of
 // this trustworthy.
@@ -225,9 +232,11 @@ func llvmUnsupported(reason refusalReason, what string) error {
 			"  literals of any magnitude, with the binary operations `+ - * / %` and\n" +
 			"  `== < <=`. Division truncates toward zero and a zero divisor fails at\n" +
 			"  runtime, matching `oath eval`.\n" +
+			"  Both entry protocols are covered — the CLI one and the plain handler\n" +
+			"  (-> Request Response), served over HTTP/1.1 by the emitted runtime.\n" +
 			"  `neg` is refused by name (use `(- 0 x)`), as are Rat and Float,\n" +
-			"  Set/Map and the handler protocol. Build with the Go backend for full\n" +
-			"  coverage.",
+			"  Set/Map and a handler that takes a capability record. Build with the Go\n" +
+			"  backend for full coverage.",
 	}
 }
 
@@ -892,19 +901,42 @@ func (e *llvmEmitter) emitMatch(t *Term, env string, depth int, self string) (st
 // is one request, so the region is filled once and released once, at the moment
 // process exit would have reclaimed it anyway.
 //
-// What is new is that the release point EXISTS and is placed by the emitter, so
-// the handler protocol — refused below, and refused BECAUSE of the memory model
-// rather than the other way round — has somewhere to put per-request release.
-// The release is sound for the reason that selected this design over reference
-// counting, tracing and region inference: it happens after serialisation, so the
-// value that could have escaped is already bytes and no escape analysis over
-// VALUES is required.
+// THE HANDLER PROTOCOL IS WHAT THE RELEASE POINT WAS FOR, and it now uses it:
+// o_serve releases after each response is serialised, so a long-running server
+// is flat rather than growing per request. The release is sound for the reason
+// that selected this design over reference counting, tracing and region
+// inference: it happens after serialisation, so the value that could have
+// escaped is already bytes and no escape analysis over VALUES is required.
+//
+// The arena is also what makes a REFUSAL cheap to unwind. A refusal inside a
+// handler must become a 500 rather than an exit, so it abandons every frame
+// between the condition and the serve loop — and a runtime that freed per value
+// would leak exactly what a refused request allocated. Here the whole region
+// goes at the release point whichever way the request ended.
 const llvmRuntimeC = `
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include <setjmp.h>
+#include <errno.h>
+#include <time.h>
+/* THE SOCKET LAYER IS THE ONLY PART OF THIS RUNTIME THAT IS NOT PORTABLE C, and
+   it is guarded rather than assumed. Every program this backend emits links
+   this one file, CLI entries included, so an unconditional POSIX include would
+   have made a build through this backend fail on Windows for programs that never
+   open a socket - a platform this project publishes a binary for. What is
+   refused there is the handler protocol, named, at the one place it is
+   reachable. */
+#if !defined(_WIN32)
+#include <signal.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#endif
 
 typedef struct OVal OVal;
 typedef OVal *(*OCode)(OVal **env, OVal *arg);
@@ -994,7 +1026,69 @@ typedef char o_arena_align_is_a_power_of_two[
    the retention this forbids. */
 static OBlock *o_arena_blocks;
 
+/* NOT ROUTED THROUGH THE REFUSAL DOOR BELOW, deliberately. Every other refusal
+   leaves the process able to serve the next request; an allocator that cannot
+   satisfy a 64K block has already lost the ability to answer anything, and
+   turning that into a 500-and-continue would produce a server that accepts
+   traffic it can never serve. It is a host-resource failure, not a condition of
+   the program. */
 static void o_oom(void) { fputs("oath: out of memory\n", stderr); exit(70); }
+
+/* ---------- the refusal boundary ----------
+
+   THIS RUNTIME ENDS A COMPUTATION IN EXACTLY TWO WAYS, and the two are told
+   apart HERE rather than at each site, so that the classification is structural:
+
+     o_refused   a HOST-SIDE REFUSAL. A condition a WELL-TYPED Oath program can
+                 reach at run time - a zero divisor, a codepoint outside the
+                 Unicode scalars, octets from outside the language that are not
+                 text. These are the artifact's contract with its host.
+     o_bug       a condition unreachable unless this compiler is WRONG - a field
+                 access off the end of a constructor, an unbound variable, an
+                 applied non-function. Not a refusal the artifact offers its
+                 supervisor; a bug report.
+
+   WHY A REFUSAL TRAVELS INSTEAD OF EXITING WHERE IT IS DETECTED. The CONDITION
+   is a fact about the language; what should HAPPEN to it is a fact about the
+   BOUNDARY the artifact runs under, and only the boundary knows. A standalone
+   program has nothing left to do, so it exits 70. A handler is a long-lived
+   server whose input is chosen by a remote party, and SPEC 14.2 is explicit
+   that a remote party must never be able to end the process - so there the
+   disposition is one stderr line, a 500, and a server that keeps serving. Same
+   door, two dispositions. This is the same design the Go backend's runtime
+   arrived at (oathRefuse / oathRefusalOf), reached independently because the
+   obligation is the specification's rather than either language's.
+
+   A BUG IS DELIBERATELY NOT CAUGHT. Converting a compiler defect into an
+   orderly 500 would make it indistinguishable from the host declining to do
+   something, which is the collapse this split exists to undo.
+
+   THE MESSAGE IS ALREADY ON STDERR when o_refused is called. Every refusal site
+   here formats its own diagnostic with its own operands, and routing those
+   through one message-taking door would mean rebuilding each of them into a
+   buffer for nothing - the classification is what has to be central, not the
+   printing.
+
+   LONGJMP IS SAFE HERE BECAUSE OF THE ARENA, and that is not a coincidence.
+   Unwinding abandons every intermediate frame, so a runtime that freed per
+   value would leak exactly the allocations a refused request made; every
+   allocation here belongs to the request arena instead, and the serve loop
+   releases the whole region after it has answered. Nothing else in this runtime
+   holds a resource across a call that can refuse. */
+static int o_request_live;
+static jmp_buf o_request_jump;
+
+static void o_refused(void) {
+  /* Cleared BEFORE the jump, so the loop cannot re-enter this door while it is
+     disposing of the refusal it is already handling. */
+  if (o_request_live) { o_request_live = 0; longjmp(o_request_jump, 1); }
+  exit(70);
+}
+
+static void o_bug(const char *what) {
+  fprintf(stderr, "oath: %s\n", what);
+  exit(70);
+}
 
 static OBlock *o_block_new(size_t cap) {
   OBlock *nb = (OBlock *)calloc(1, sizeof(OBlock));
@@ -1234,16 +1328,14 @@ OVal *o_int_dec(const char *s) {
   const char *p = s ? s : "";
   if (*p == '-') { sign = -1; p++; }
   else if (*p == '+') { p++; }
-  if (!*p) {
-    fputs("oath: the compiler emitted an Int literal with no digits\n", stderr);
-    exit(70);
-  }
+  if (!*p) o_bug("the compiler emitted an Int literal with no digits");
   int cap = 4, n = 0;
   o_u32 *d = o_magalloc(cap);
   for (; *p; p++) {
     if (*p < '0' || *p > '9') {
-      fprintf(stderr, "oath: the compiler emitted a malformed Int literal '%s'\n", s);
-      exit(70);
+      char m[192];
+      snprintf(m, sizeof m, "the compiler emitted a malformed Int literal '%.120s'", s ? s : "");
+      o_bug(m);
     }
     o_u64 carry = (o_u64)(*p - '0');
     for (int i = 0; i < n; i++) {
@@ -1330,7 +1422,7 @@ static int o_utf8_next(const unsigned char *p, int n, long long *cp) {
 static void o_str_malformed(void) {
   fputs("oath: a Str holds bytes that are not valid UTF-8; this backend packs Str as UTF-8 "
         "and refuses to decode malformed storage rather than replace or guess it\n", stderr);
-  exit(70);
+  o_refused();
 }
 
 /* ADMITTING EXTERNAL BYTES AS A Str.
@@ -1353,7 +1445,7 @@ static void o_str_host_refuse(const char *what) {
   fprintf(stderr, "oath: %s is not valid UTF-8, so it has no Str value; refusing rather than "
                   "substituting U+FFFD, which would make distinct inputs identical. "
                   "Arbitrary octets need a bytes-typed channel, not Str.\n", what);
-  exit(70);
+  o_refused();
 }
 
 /* One scan, and the length is taken ONCE: computing it per codepoint makes
@@ -1382,7 +1474,7 @@ static OVal *o_str_host(const char *s, const char *what) {
 }
 
 static int o_str_step(OVal *v, long long *cp) {
-  if (!v || v->tag != T_STR) { fputs("oath: not a Str\n", stderr); exit(70); }
+  if (!v || v->tag != T_STR) o_bug("not a Str");
   if (v->slen <= 0) return 0;
   int n = o_utf8_next((const unsigned char *)v->s, v->slen, cp);
   if (n == 0) o_str_malformed();
@@ -1395,17 +1487,17 @@ int o_str_idx(OVal *v) { long long cp; return o_str_step(v, &cp) == 0 ? 0 : 1; }
 
 OVal *o_str_head(OVal *v) {
   long long cp; int n = o_str_step(v, &cp);
-  if (n == 0) { fputs("oath: head of an empty Str\n", stderr); exit(70); }
+  if (n == 0) o_bug("head of an empty Str");
   return o_int(cp);
 }
 
 OVal *o_str_tail(OVal *v) {
   long long cp; int n = o_str_step(v, &cp);
-  if (n == 0) { fputs("oath: tail of an empty Str\n", stderr); exit(70); }
+  if (n == 0) o_bug("tail of an empty Str");
   return o_strn(v->s + n, v->slen - n);
 }
 static OVal *o_int_arg(OVal *v) {
-  if (!v || v->tag != T_INT) { fputs("oath: not an Int\n", stderr); exit(70); }
+  if (!v || v->tag != T_INT) o_bug("not an Int");
   return v;
 }
 
@@ -1478,7 +1570,7 @@ static void o_str_cons_refuse(OVal *cp, const char *why) {
                   "UTF-8, which encodes only Unicode scalar values. Refusing rather than "
                   "substituting U+FFFD, which would make distinct Str values identical.\n",
           o_int_decimal(cp), why);
-  exit(70);
+  o_refused();
 }
 
 /* BUILDING A Str AT RUNTIME. This is SCons for a chain the compiler could not
@@ -1519,10 +1611,7 @@ OVal *o_str_cons(OVal *cpv, OVal *rest) {
   long long cp = cpv->ilen == 0 ? 0 : (long long)cpv->imag[0];
   if (cp > 0x10FFFF) o_str_cons_refuse(cpv, "above the maximum scalar 0x10FFFF");
   if (cp >= 0xD800 && cp <= 0xDFFF) o_str_cons_refuse(cpv, "a surrogate, 0xD800..0xDFFF");
-  if (!rest || rest->tag != T_STR) {
-    fputs("oath: the tail of a Str constructor is not a Str\n", stderr);
-    exit(70);
-  }
+  if (!rest || rest->tag != T_STR) o_bug("the tail of a Str constructor is not a Str");
   unsigned char enc[4];
   int k = o_utf8_encode(cp, enc);
   int n = rest->slen;
@@ -1653,7 +1742,7 @@ static void o_magdivmod(const o_u32 *a, int na, const o_u32 *b, int nb,
 static void o_int_divzero(const char *what) {
   fprintf(stderr, "oath: %s: the divisor evaluated to 0, which has no quotient in Z. "
                   "Refusing rather than answering.\n", what);
-  exit(70);
+  o_refused();
 }
 
 /* Sign, and it is the whole of what distinguishes these from the magnitudes.
@@ -1701,7 +1790,7 @@ OVal *o_ctor(int idx, int n, OVal **f) {
   OVal *v = val(T_CTOR); v->idx = idx; v->n = n; v->f = f; return v;
 }
 OVal *o_field(OVal *v, int i) {
-  if (!v || v->tag != T_CTOR || i >= v->n) { fputs("oath: bad field access\n", stderr); exit(70); }
+  if (!v || v->tag != T_CTOR || i >= v->n) o_bug("bad field access");
   return v->f[i];
 }
 
@@ -1719,7 +1808,7 @@ OVal **o_env_push(OVal **e, OVal *v) {
 }
 OVal **o_env1(OVal *v) { return o_env_push(NULL, v); }
 OVal *o_env_get(OVal **e, int i) {
-  if (i < 0 || i >= env_len(e)) { fputs("oath: unbound variable\n", stderr); exit(70); }
+  if (i < 0 || i >= env_len(e)) o_bug("unbound variable");
   return e[i + 1];
 }
 
@@ -1727,7 +1816,7 @@ OVal *o_closure(OCode code, OVal **env) {
   OVal *v = val(T_CLOS); v->code = code; v->env = env; return v;
 }
 OVal *o_apply(OVal *f, OVal *a) {
-  if (!f || f->tag != T_CLOS) { fputs("oath: applied a non-function\n", stderr); exit(70); }
+  if (!f || f->tag != T_CLOS) o_bug("applied a non-function");
   return f->code(f->env, a);
 }
 
@@ -1848,13 +1937,13 @@ OVal *o_require_value(const char *field, const char *kind, const char *envvar) {
     fprintf(stderr, "oath: this host cannot provide required capability %s (%s): "
                     "required value %s is not provided; set %s\n",
             field, kind, field, envvar);
-    exit(70);
+    o_refused();
   }
   if (!*v) {
     fprintf(stderr, "oath: this host cannot provide required capability %s (%s): "
                     "required value %s is provided but empty (%s)\n",
             field, kind, field, envvar);
-    exit(70);
+    o_refused();
   }
   /* A required value is ADMITted like any other external octets (#133), and
      refuses through the PROVISION channel: this runs before the entry point, so
@@ -1866,7 +1955,7 @@ OVal *o_require_value(const char *field, const char *kind, const char *envvar) {
                     "required value %s is not valid UTF-8, so it has no Str value (%s); "
                     "refusing rather than substituting U+FFFD\n",
             field, kind, field, envvar);
-    exit(70);
+    o_refused();
   }
   return o_str(v);
 }
@@ -1877,10 +1966,1718 @@ OVal *o_require(OVal *(*provide)(char **), const char *field, const char *kind) 
   if (!v) {
     fprintf(stderr, "oath: this host cannot provide required capability %s (%s): %s\n",
             field, kind, err ? err : "unavailable");
-    exit(70);
+    o_refused();
   }
   return v;
 }
+
+#if !defined(_WIN32)
+
+/* ---------- SPEC 14: the handler protocol ----------
+
+   WHAT THIS IS. A handler entry is (-> Request Response): a PURE FUNCTION from
+   a request VALUE to a response value. Everything between a socket and that
+   value is this adapter, and SPEC 14.2's table is what it must produce - one
+   total transformation in which every distinction the transport can supply has
+   exactly one disposition.
+
+   DEPENDENCY-FREE, like the rest of this runtime. IR is emitted as text and
+   clang is invoked; nothing links a server library, so HTTP/1.1 is spoken here
+   in about the space the Go backend spends configuring net/http. The cost is
+   real and is stated rather than hidden: this speaks HTTP/1.1 ONLY, serves one
+   connection at a time, and answers Connection: close to every request.
+
+   WHY THE LOOP IS HERE AND NOT IN THE EMITTED IR. Everywhere else in this
+   backend the emitter decides the shape of main, and the CLI entry places its
+   own arena release for exactly that reason. A handler cannot: SPEC 14.2
+   requires a runtime refusal to become a 500 rather than an exit, which in C
+   means the refusal must unwind to a frame that is STILL LIVE while the handler
+   runs - and a setjmp whose frame has returned is undefined behaviour, so that
+   frame cannot be a function the emitter calls and returns from. The loop is
+   the frame. What the emitter still owns is the neutral description: the entry
+   to call and the constructor indices to build with.
+
+   WHERE THE ARENA IS RELEASED, WHICH IS THE SAME ARGUMENT ONE PROTOCOL OVER.
+   The CLI entry releases after o_print, because that is where the answer
+   becomes octets. A request's answer becomes octets in o_http_respond, so the
+   release is the statement after it - never before, or the response is
+   serialised from freed memory. Every path out of a request reaches exactly one
+   release: the answered path, the refused-with-400 path, and the
+   refusal-unwound-to-500 path. */
+
+#define O_HTTP_HDRMAX  65536
+/* THE BODY LIMIT IS A LIMIT ON THE VALUE, NOT ON THE WIRE, and it is DERIVED
+   rather than picked. A body becomes (List Int): every octet costs a boxed Int
+   (an OVal plus a magnitude), a two-pointer field array, and a boxed Cons -
+   about 190 arena bytes per octet on a 64-bit target. So the wire limit and the
+   memory it commits differ by more than two orders of magnitude, and a limit
+   written against the wire is not a limit on anything that matters: 8 MiB of
+   octets is roughly 1.5 GiB of arena, which a small host answers by killing the
+   process, which is a remote party ending the server with one legal request.
+   1 MiB is about 190 MiB of arena. Raising it is a REPRESENTATION change - a
+   compact body would move this by the same factor - and not a constant to
+   nudge. */
+#define O_HTTP_BODYMAX (1024 * 1024)
+#define O_HTTP_LINEMAX 8192
+#define O_HTTP_IOSECS  15
+#define O_HTTP_REQSECS 30
+#define O_HTTP_BACKLOG 64
+#define O_HTTP_BUFMAX  (1024 * 1024 * 1024)
+
+/* A growable byte buffer in the REQUEST ARENA. Nothing here frees; the whole
+   region goes at the release point, which is what makes an unwound refusal
+   leak-free without any cleanup on the unwinding path. */
+typedef struct OBuf OBuf;
+struct OBuf {
+  char *p;
+  int n;
+  int cap;
+};
+
+static void o_buf_put(OBuf *b, const char *s, int n) {
+  if (n <= 0) return;
+  /* AN OVERFLOW GUARD, NOT A POLICY LIMIT, and the distinction is what stops a
+     remote party from ending the server. o_oom EXITS - it is a host-resource
+     failure with nothing left to serve - so a size POLICY enforced here would
+     turn an oversized request into a process exit rather than a refusal. The
+     policy limits live at the call sites, where each has a status: a header
+     section answers 431 and a body answers 413, both per request. What remains
+     here is the arithmetic: a length that wrapped would under-allocate, which
+     is a heap overflow wearing an out-of-memory costume. */
+  if (n > O_HTTP_BUFMAX - b->n) o_oom();
+  if (b->n + n > b->cap) {
+    int nc = b->cap ? b->cap : 256;
+    while (nc < b->n + n) nc *= 2;
+    char *np = (char *)xalloc((size_t)nc);
+    if (b->n) memcpy(np, b->p, (size_t)b->n);
+    b->p = np;
+    b->cap = nc;
+  }
+  memcpy(b->p + b->n, s, (size_t)n);
+  b->n += n;
+}
+
+/* One field line, AFTER row 8 has lowercased the name and rows 11-12 have
+   resolved folding and stripped the surrounding OWS. Values are not
+   NUL-terminated: a field value may legally contain no NUL, but the length is
+   what this code carries everywhere else and one representation is fewer places
+   to disagree. */
+typedef struct OField OField;
+struct OField {
+  char *name;
+  int nlen;
+  char *value;
+  int vlen;
+};
+
+/* The PARSER BOUNDARY of SPEC 14.2a, as a value: the six components the
+   transformation is a function of, and nothing else. */
+typedef struct OReq OReq;
+struct OReq {
+  char *method;
+  int mlen;
+  char *target;
+  int tlen;
+  OField *fs;
+  int nf;
+  char *body;
+  int blen;
+  long long at;
+};
+
+static int o_ascii_lower(int c) { return (c >= 'A' && c <= 'Z') ? c + 32 : c; }
+static int o_ows(int c) { return c == ' ' || c == '\t'; }
+
+/* An RFC 9110 5.6.2 token character. Written as byte values for the
+   punctuation, which is the same reason the Go backend spells it that way:
+   the set is  ! # $ % & ' * + - . ^ _ backtick | ~  and several of those are
+   hazards inside the template this source lives in. */
+static int o_is_tchar(int c) {
+  if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) return 1;
+  switch (c) {
+    case 0x21: case 0x23: case 0x24: case 0x25: case 0x26: case 0x27:
+    case 0x2A: case 0x2B: case 0x2D: case 0x2E: case 0x5E: case 0x5F:
+    case 0x60: case 0x7C: case 0x7E:
+      return 1;
+  }
+  return 0;
+}
+
+static int o_is_token(const char *s, int n) {
+  if (n <= 0) return 0;
+  for (int i = 0; i < n; i++) if (!o_is_tchar((unsigned char)s[i])) return 0;
+  return 1;
+}
+
+/* SPEC 14.2 row 9, REQ-TEXT-OCTETS-ARE-ASCII. Any octet outside 0x20-0x7E -
+   other than HTAB, permitted inside a field VALUE and a lifted authority and
+   nowhere else - gives 400 with the handler NOT invoked. Str is a sequence of
+   Unicode scalars; for printable US-ASCII the scalar IS the octet, and outside
+   it the type cannot represent what arrived. Refusing rather than transcoding
+   is the whole point: a repaired value would make a handler verify a signature
+   over bytes that never arrived. */
+static int o_txt_ok(const char *s, int n, int htab_ok) {
+  for (int i = 0; i < n; i++) {
+    unsigned char c = (unsigned char)s[i];
+    if (c >= 0x20 && c <= 0x7E) continue;
+    if (htab_ok && c == 0x09) continue;
+    return 0;
+  }
+  return 1;
+}
+
+static int o_field_named(const OField *f, const char *lit) {
+  int n = (int)strlen(lit);
+  return f->nlen == n && memcmp(f->name, lit, (size_t)n) == 0;
+}
+
+/* SPEC 14.2 row 15, REQ-FRAMING-FIELDS-EXCLUDED. These describe the
+   TRANSMISSION and are discharged once the body is octets. content-length in
+   particular: body is authoritative on how many octets arrived, and trusting a
+   field that disagrees with it is what request smuggling is built on. */
+static int o_framing_field(const OField *f) {
+  return o_field_named(f, "connection") || o_field_named(f, "keep-alive") ||
+         o_field_named(f, "proxy-authenticate") || o_field_named(f, "proxy-authorization") ||
+         o_field_named(f, "te") || o_field_named(f, "trailer") ||
+         o_field_named(f, "transfer-encoding") || o_field_named(f, "upgrade") ||
+         o_field_named(f, "content-length");
+}
+
+/* -2 IS THE DEADLINE, and it is a different answer from -1 because the two are
+   different facts about the peer: one stopped talking, the other is still
+   talking and has been doing so for too long.
+
+   AN INACTIVITY TIMEOUT IS NOT A DEADLINE. SO_RCVTIMEO applies to each recv
+   INDEPENDENTLY, so a client sending one octet every fourteen seconds resets it
+   forever and holds this serial server for as long as it likes - reaching the
+   size limits after days, having accepted nothing else in the meantime. The
+   socket option stays because it ends a peer that says nothing at all; what
+   bounds a peer that says something is this. */
+/* A DURATION IS MEASURED WITH A MONOTONIC CLOCK, NOT WITH CIVIL TIME. This
+   bounds how long one peer may hold a serial server, and a civil clock is
+   ADJUSTABLE: a step backwards during a request extends that hold by the step,
+   and a step forwards refuses a request that was inside its budget. Neither is
+   a decision anyone made about this server.
+
+   The receipt-time observation is the OPPOSITE case and stays on time(): SPEC
+   14.2 row 20 asks for seconds since the Unix epoch, which is civil time by
+   definition. Two clocks, two questions - when did this arrive, and how long
+   has this been going on.
+
+   MILLISECONDS, because the deadline is compared against itself. Whole seconds
+   put a one-second budget and a read that expires after one second on the SAME
+   value, so "has the deadline passed" is false at the moment it has - which
+   reports an expired read as a dead peer and answers 400 where 408 is true. */
+static long long o_now_ms(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (long long)ts.tv_sec * 1000 + (long long)ts.tv_nsec / 1000000;
+}
+
+/* ONE PLACE THAT SAYS WHAT A FIELD LINE IS. The header section and the trailer
+   section are the same grammar (RFC 9110 6.5), and a second copy is where the
+   two would drift - a trailer accepted by rules the headers refuse is a message
+   two parsers disagree about. A name is a token, a colon ends it, and the value
+   is field-content: VCHAR, SP, HTAB and obs-text, with no other control. */
+static int o_http_field_line_ok(const char *ln, int ll) {
+  int colon = -1;
+  for (int i = 0; i < ll; i++) {
+    if (ln[i] == ':') { colon = i; break; }
+  }
+  if (colon <= 0 || !o_is_token(ln, colon)) return 0;
+  for (int i = colon + 1; i < ll; i++) {
+    unsigned char c = (unsigned char)ln[i];
+    if ((c < 0x20 && c != 0x09) || c == 0x7F) return 0;
+  }
+  return 1;
+}
+
+static int o_recv_some(int fd, long long deadline, char *p, int n) {
+  for (;;) {
+    long long now = o_now_ms();
+    if (deadline && now > deadline) return -2;
+    /* THE SOCKET TIMEOUT IS NARROWED TO WHAT IS LEFT, because a check before
+       the call does not bound the call. With a budget shorter than the
+       inactivity timeout, a peer that sends one octet and then stops would sit
+       inside this recv for the full O_HTTP_IOSECS - past the deadline that was
+       just checked, and holding a serial server while it does. */
+    if (deadline) {
+      long long left = deadline - now;
+      if (left < (long long)O_HTTP_IOSECS * 1000) {
+        if (left < 20) left = 20;
+        struct timeval tv;
+        tv.tv_sec = (time_t)(left / 1000);
+        tv.tv_usec = (left % 1000) * 1000;
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+      }
+    }
+    ssize_t k = recv(fd, p, (size_t)n, 0);
+    if (k < 0 && errno == EINTR) continue;
+    /* AN EXPIRED READ IS A TIMEOUT, NOT A DEAD PEER, AND NOT ONLY WHEN THE
+       BUDGET HAS RUN OUT. Reporting it as -1 answers 400 - a claim that the
+       message was malformed - when what happened is that this backend stopped
+       waiting. Both clocks say the same thing about the peer: it stopped
+       talking mid-message. The default budget is longer than the inactivity
+       timeout, so an unconditional classification is the ordinary case rather
+       than the corner one, and making it conditional on the deadline is what
+       produced a 400 for it. */
+    if (k < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return -2;
+    return (int)k;
+  }
+}
+
+/* THE WRITE IS BOUNDED FOR THE REASON THE READ IS. SO_SNDTIMEO applies to each
+   send INDEPENDENTLY, so a client that reads a few octets and stalls resets it
+   every time - each call makes progress, no call ever times out, and this
+   serial server is held for as long as the client cares to keep trickling. The
+   deadline is absolute and covers the whole response. */
+static int o_send_all(int fd, long long deadline, const char *p, int n) {
+  int sent = 0;
+  while (sent < n) {
+    long long now = o_now_ms();
+    if (deadline && now > deadline) return 0;
+    if (deadline) {
+      long long left = deadline - now;
+      if (left < (long long)O_HTTP_IOSECS * 1000) {
+        if (left < 20) left = 20;
+        struct timeval tv;
+        tv.tv_sec = (time_t)(left / 1000);
+        tv.tv_usec = (left % 1000) * 1000;
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
+      }
+    }
+    ssize_t k = send(fd, p + sent, (size_t)(n - sent), 0);
+    if (k < 0 && errno == EINTR) continue;
+    if (k <= 0) return 0;
+    sent += (int)k;
+  }
+  return 1;
+}
+
+/* Ensure n octets are available from pos. A stream that ends first is SPEC 14.2
+   row 24's "a body shorter than its declared length": the message cannot be
+   framed, so it is refused rather than delivered in part. Constructing a
+   Request from a partial body would hand the handler a message that was never
+   fully sent - which a signature over that body would then verify against the
+   wrong octets. */
+static int o_http_need(int fd, long long deadline, OBuf *b, int pos, int n) {
+  char chunk[4096];
+  while (b->n - pos < n) {
+    int k = o_recv_some(fd, deadline, chunk, (int)sizeof chunk);
+    if (k == -2) return 408;
+    if (k <= 0) return 400;
+    o_buf_put(b, chunk, k);
+  }
+  return 0;
+}
+
+static int o_http_line(int fd, long long deadline, OBuf *b, int *pos, char **line, int *llen) {
+  for (;;) {
+    for (int i = *pos; i + 1 < b->n; i++) {
+      if (b->p[i] == '\r' && b->p[i + 1] == '\n') {
+        /* THE LIMIT IS CHECKED WHERE THE LINE IS ACCEPTED, not only where more
+           octets are requested. A read returns up to a whole chunk, so a line
+           just under the bound can come back with its CRLF well past it - and
+           the loop below would never run again, because the terminator is
+           already buffered. A bound that only guards the growth path is not a
+           bound on the result. */
+        if (i - *pos > O_HTTP_LINEMAX) return 400;
+        *line = b->p + *pos;
+        *llen = i - *pos;
+        *pos = i + 2;
+        return 0;
+      }
+    }
+    if (b->n - *pos > O_HTTP_LINEMAX) return 400;
+    char chunk[2048];
+    int k = o_recv_some(fd, deadline, chunk, (int)sizeof chunk);
+    if (k == -2) return 408;
+    if (k <= 0) return 400;
+    o_buf_put(b, chunk, k);
+  }
+}
+
+/* SPEC 14.2 row 19: a transfer coding is DISCARDED, discharged once body is
+   octets - which requires actually decoding it. Refusing a chunked request
+   would refuse a legal message, and answering 400 to a message this backend
+   simply cannot read would report a fact about the tool as a fact about the
+   request. Row 17's trailer section is read and dropped. */
+static int o_http_chunked(int fd, long long deadline, OBuf *b, int *pos, OBuf *out) {
+  int start = *pos;
+  for (;;) {
+    char *ln;
+    int ll;
+    /* THE FRAMING IS BOUNDED, not just the DATA. Only the decoded octets land
+       in out, so a limit on the body alone leaves the chunk-size lines and
+       their CRLFs unbounded - and every one of them is buffered here. The
+       receive deadline does not close that: it is per read, and a peer that
+       keeps sending resets it forever. */
+    if (*pos - start > O_HTTP_BODYMAX + O_HTTP_HDRMAX) return 413;
+    int rc = o_http_line(fd, deadline, b, pos, &ln, &ll);
+    if (rc) return rc;
+    long long sz = 0;
+    int digits = 0;
+    for (int i = 0; i < ll; i++) {
+      int c = (unsigned char)ln[i];
+      int v;
+      if (c == ';') break;
+      if (c >= '0' && c <= '9') v = c - '0';
+      else if (c >= 'a' && c <= 'f') v = c - 'a' + 10;
+      else if (c >= 'A' && c <= 'F') v = c - 'A' + 10;
+      else return 400;
+      /* THE BOUND IS TESTED BEFORE THE MULTIPLICATION, not after it. A
+         chunk-size line is remote input of unbounded length, and enough hex
+         digits overflow a signed long long - which is undefined behaviour, and
+         the value that comes out of it can be NEGATIVE, sail past a later
+         "greater than the maximum" test and reach the indexing below. A limit
+         checked after the arithmetic that breaks it is not a limit. */
+      if (sz > (long long)O_HTTP_BODYMAX / 16) return 413;
+      sz = sz * 16 + v;
+      digits++;
+      if (sz > (long long)O_HTTP_BODYMAX) return 413;
+    }
+    if (digits == 0) return 400;
+    if (sz == 0) break;
+    if ((long long)out->n + sz > (long long)O_HTTP_BODYMAX) return 413;
+    rc = o_http_need(fd, deadline, b, *pos, (int)sz + 2);
+    if (rc) return rc;
+    if (b->p[*pos + (int)sz] != '\r' || b->p[*pos + (int)sz + 1] != '\n') return 400;
+    o_buf_put(out, b->p + *pos, (int)sz);
+    *pos += (int)sz + 2;
+  }
+  /* The trailer section is DISCARDED (row 17), and discarding is not the same
+     as ignoring: these octets are still read, still buffered, and a peer can
+     send them without ever sending the empty line that ends them. It is
+     bounded like the header section it resembles, and refused with the same
+     status. */
+  int tstart = *pos;
+  for (;;) {
+    char *ln;
+    int ll;
+    if (*pos - tstart > O_HTTP_HDRMAX) return 431;
+    int rc = o_http_line(fd, deadline, b, pos, &ln, &ll);
+    if (rc) return rc;
+    if (ll == 0) return 0;
+    /* DISCARDED IS NOT UNPARSED. A trailer that is not a field line makes the
+       MESSAGE malformed, and the Go backend's parser refuses it - so accepting
+       it here would have the two backends disagree about whether a Request
+       exists at all, which is the one thing SPEC 14.0 asks of them. Row 17
+       says these fields do not become headers; it does not say the octets
+       after the body need not be HTTP. */
+    if (!o_http_field_line_ok(ln, ll)) return 400;
+    /* AND IT MAY NOT BE A FRAMING FIELD. RFC 9110 6.5.1 forbids these in a
+       trailer section - a Content-Length that arrives AFTER the body would be
+       describing a message already framed, which is the shape smuggling is
+       built on, and Go refuses it before its handler runs. Row 17 discards
+       trailers; it does not admit ones HTTP does not permit. */
+    OField tf;
+    int tcolon = 0;
+    while (ln[tcolon] != ':') tcolon++;
+    char tname[64];
+    if (tcolon < (int)sizeof tname) {
+      for (int k = 0; k < tcolon; k++) tname[k] = (char)o_ascii_lower((unsigned char)ln[k]);
+      tf.name = tname;
+      tf.nlen = tcolon;
+      tf.value = ln;
+      tf.vlen = 0;
+      if (o_framing_field(&tf) || o_field_named(&tf, "host") ||
+          o_field_named(&tf, "expect") || o_field_named(&tf, "content-type")) {
+        return 400;
+      }
+    }
+  }
+}
+
+/* THE PARSER. Produces SPEC 14.2a's six components, or an HTTP status to answer
+   with. A negative return means the peer sent nothing at all, which is not a
+   request and gets no response.
+
+   The rows discharged HERE are exactly the ones 14.2 marks 'parser': 11 (OWS
+   around a value), 12 (obsolete line folding), 17 (trailers), 19 (transfer
+   coding), 20 (the receipt time), 21 (the version), 24 (unframeable) and 27 (an
+   HTTP/1.1 request with no Host). Everything else is the adapter's, below. */
+static int o_target_authority(char *t, int n, char **out, int *olen);
+static int o_authority_ok(const char *a, int n);
+static int o_target_authority_ok(const char *a, int n);
+
+static int o_http_parse(int fd, long long deadline, OReq *r) {
+  OBuf b;
+  memset(&b, 0, sizeof b);
+  int pos = 0;
+
+  char *ln;
+  int ll;
+  {
+    char chunk[2048];
+    int k = o_recv_some(fd, deadline, chunk, (int)sizeof chunk);
+    if (k == -2) return 408;
+    if (k <= 0) return -1;
+    o_buf_put(&b, chunk, k);
+  }
+  int rc = o_http_line(fd, deadline, &b, &pos, &ln, &ll);
+  if (rc) return rc;
+
+  /* THE REQUEST LINE. Exactly two SP, per RFC 9112 3: a target containing a
+     space is a malformed request line and not a target with a space in it. */
+  int sp1 = -1, sp2 = -1, sps = 0;
+  for (int i = 0; i < ll; i++) {
+    if (ln[i] != ' ') continue;
+    sps++;
+    if (sp1 < 0) sp1 = i;
+    else if (sp2 < 0) sp2 = i;
+  }
+  if (sps != 2 || sp1 <= 0 || sp2 <= sp1 + 1 || sp2 + 1 >= ll) return 400;
+  if (!o_is_token(ln, sp1)) return 400;
+  int vlen = ll - sp2 - 1;
+  const char *ver = ln + sp2 + 1;
+  /* THE METHOD IS RECORDED BEFORE THE VERSION IS JUDGED, so a 505 for HEAD is
+     still bodiless. o_http_status suppresses the body for HEAD by reading
+     r->method, and returning 505 before this assignment left it unset — the
+     error path then sent a diagnostic body on a HEAD response, breaking the
+     rule the same function states about itself. An early return that skips a
+     fact the error path needs is the shape to watch for. */
+  r->method = ln;
+  r->mlen = sp1;
+  if (vlen != 8 || memcmp(ver, "HTTP/1.1", 8) != 0) {
+    /* SPEC 14.2 row 21 DISCARDS the version, which presumes a version this
+       backend speaks. It speaks one. Answering 505 rather than 400 keeps "I do
+       not implement this" distinct from "this message is malformed" - the
+       tool-versus-world distinction, in a status code. */
+    if (vlen > 5 && memcmp(ver, "HTTP/", 5) == 0) return 505;
+    return 400;
+  }
+  r->target = ln + sp1 + 1;
+  r->tlen = sp2 - sp1 - 1;
+  /* RFC 9112 3.2 gives a request target FOUR forms and no others: origin,
+     absolute, authority (CONNECT only) and asterisk (OPTIONS only). A target
+     that is none of them is a malformed request line, which is row 24 - and the
+     Go backend's parser refuses it, so accepting it here would have the two
+     backends disagree about whether a Request exists. Row 2 keeps the target
+     VERBATIM; it does not make every octet sequence a target. */
+  {
+    char *ta;
+    int tal;
+    int form_ok = 0;
+    int abs_form = o_target_authority(r->target, r->tlen, &ta, &tal);
+    if (abs_form < 0) return 400;
+    if (r->target[0] == '/') form_ok = 1;
+    else if (abs_form > 0) form_ok = 1;
+    else if (r->mlen == 7 && memcmp(ln, "CONNECT", 7) == 0) {
+      form_ok = o_target_authority_ok(r->target, r->tlen);
+    }
+    else if (r->tlen == 1 && r->target[0] == '*' && r->mlen == 7 &&
+             memcmp(ln, "OPTIONS", 7) == 0) {
+      form_ok = 1;
+    }
+    if (!form_ok) return 400;
+    /* ROW 2 KEEPS THE TARGET RAW; IT DOES NOT MAKE EVERY OCTET SEQUENCE A
+       TARGET. A percent that is not followed by two hex digits is not an escape
+       and the target is not a URI - Go's parser refuses it, so admitting it
+       would have the two backends disagree about whether a Request exists, on
+       an input that reaches routing and signatures. Not DECODED here: checking
+       the escape is well-formed and leaving the octets alone are different
+       acts, and row 2 forbids only the second. */
+    for (int i = 0; i < r->tlen; i++) {
+      if (r->target[i] != '%') continue;
+      if (i + 2 >= r->tlen) return 400;
+      for (int k = 1; k <= 2; k++) {
+        char c = r->target[i + k];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
+          return 400;
+        }
+      }
+    }
+  }
+
+  /* THE FIELD LINES. */
+  /* THE ONLY BOUND IS THE BYTE BOUND. A separate cap on the field COUNT
+     refused a request the Go backend serves - 257 small field lines, far under
+     the header-section limit - and two backends answering differently for one
+     message is the single thing SPEC 14.0 asks them not to do. The header
+     limit already bounds the count: every field line costs at least a name, a
+     colon and a CRLF, so the arrays cannot grow without the octets that pay
+     for them. */
+  int fcap = 64;
+  r->fs = (OField *)xalloc(sizeof(OField) * fcap);
+  r->nf = 0;
+  OBuf *vals = (OBuf *)xalloc(sizeof(OBuf) * fcap);
+  memset(vals, 0, sizeof(OBuf) * fcap);
+  /* Where the LAST appended line's content starts, per field. A fold's trailing
+     run is the MESSAGE's whitespace, and the SP a previous fold contributed is
+     this code's - so the right-trim below must stop here rather than eat it. */
+  int *vmark = (int *)xalloc(sizeof(int) * fcap);
+  memset(vmark, 0, sizeof(int) * fcap);
+  for (;;) {
+    rc = o_http_line(fd, deadline, &b, &pos, &ln, &ll);
+    if (rc) return rc;
+    /* THE HEADER SECTION IS BOUNDED, and it is bounded by OCTETS rather than by
+       field count: a continuation line adds no field, so a count alone leaves a
+       message that folds forever unbounded - and unbounded here means the
+       allocator's exit, which is a remote party ending the server. pos is the
+       octets consumed so far, so this is the whole section including folds. */
+    if (pos > O_HTTP_HDRMAX) return 431;
+    if (ll == 0) break;
+    if (o_ows((unsigned char)ln[0])) {
+      /* SPEC 14.2 row 12, PROTO-OBS-FOLD-IS-ONE-SPACE. Each fold becomes
+         EXACTLY ONE SP, and the whitespace consumed is the run on BOTH sides -
+         the trailing run before the CRLF and the leading run after it. A fold
+         with no field to continue is a malformed message, not a field. */
+      if (r->nf == 0) return 400;
+      for (int i = 0; i < ll; i++) {
+        unsigned char c = (unsigned char)ln[i];
+        if ((c < 0x20 && c != 0x09) || c == 0x7F) return 400;
+      }
+      OBuf *v = &vals[r->nf - 1];
+      /* EACH FOLD BECOMES EXACTLY ONE SP, and CONSECUTIVE folds therefore
+         become one SP EACH. The trim stops at the last line's content mark, so
+         a fold whose continuation line is empty still contributes its own
+         space: a value continued twice, the first continuation carrying nothing
+         but whitespace, is TWO folds and yields two spaces - which is what the
+         Go backend produces from the same octets. Trimming
+         the whole buffer instead ate the previous fold's space and made the two
+         backends build different Str values from one message. */
+      int floor = vmark[r->nf - 1];
+      while (v->n > floor && o_ows((unsigned char)v->p[v->n - 1])) v->n--;
+      int i = 0;
+      while (i < ll && o_ows((unsigned char)ln[i])) i++;
+      o_buf_put(v, " ", 1);
+      vmark[r->nf - 1] = v->n;
+      o_buf_put(v, ln + i, ll - i);
+      continue;
+    }
+    if (r->nf == fcap) {
+      /* Grown together, because the three arrays are one record split three
+         ways and an index into any of them means the same field. */
+      int nc = fcap * 2;
+      OField *nf2 = (OField *)xalloc(sizeof(OField) * nc);
+      OBuf *nv = (OBuf *)xalloc(sizeof(OBuf) * nc);
+      int *nm = (int *)xalloc(sizeof(int) * nc);
+      memset(nv, 0, sizeof(OBuf) * nc);
+      memset(nm, 0, sizeof(int) * nc);
+      for (int k = 0; k < fcap; k++) {
+        nf2[k] = r->fs[k];
+        nv[k] = vals[k];
+        nm[k] = vmark[k];
+      }
+      r->fs = nf2;
+      vals = nv;
+      vmark = nm;
+      fcap = nc;
+    }
+    int colon = -1;
+    for (int i = 0; i < ll; i++) {
+      if (ln[i] == ':') { colon = i; break; }
+    }
+    /* SPEC 14.2 row 24, PROTO-UNFRAMEABLE-IS-REFUSED: no colon in a field
+       line, and SP or HTAB before the colon - a name ends at the colon and may
+       not contain either (RFC 9112 5.1), so 'X-A : v' is malformed rather than
+       a field named 'x-a ' with a trailing space. */
+    if (colon <= 0) return 400;
+    /* THE WHOLE LINE IS HTTP BEFORE ANY OF IT IS OATH, and the two questions
+       are different rows. A name is a token (RFC 9112 5.1), which subsumes row
+       24's named instance about SP and HTAB before the colon; a value is
+       field-content, so a control octet other than HTAB makes the MESSAGE
+       malformed - row 24, not row 9.
+       THE DISTINCTION DECIDES A CASE SPEC 14.3.2 PINS. Row 9 asks what a Str
+       can carry and is applied AFTER exclusions, so an EXCLUDED field's
+       obs-text must NOT refuse the request. HTTP syntax is not conditional on
+       the value surviving into the Oath value: a control octet is malformed
+       whether or not anybody delivers the field, and the Go backend's parser
+       refuses the same message. So obs-text passes here and meets row 9 later,
+       while a control octet stops here. */
+    if (!o_http_field_line_ok(ln, ll)) return 400;
+    /* SPEC 14.2 row 8, REQ-HEADER-NAMES-LOWERCASE: ASCII only, A-Z to a-z,
+       every other octet unchanged. NOT Unicode case folding, which can change
+       a name's LENGTH. */
+    char *nm = (char *)xalloc((size_t)colon);
+    for (int i = 0; i < colon; i++) nm[i] = (char)o_ascii_lower((unsigned char)ln[i]);
+    r->fs[r->nf].name = nm;
+    r->fs[r->nf].nlen = colon;
+    o_buf_put(&vals[r->nf], ln + colon + 1, ll - colon - 1);
+    r->nf++;
+  }
+  /* SPEC 14.2 row 11: surrounding OWS is removed by the PARSER, on the
+     reconstituted value - so it is applied AFTER row 12 rather than to each
+     folded line. */
+  for (int i = 0; i < r->nf; i++) {
+    OBuf *v = &vals[i];
+    int a = 0, z = v->n;
+    while (a < z && o_ows((unsigned char)v->p[a])) a++;
+    while (z > a && o_ows((unsigned char)v->p[z - 1])) z--;
+    r->fs[i].value = v->p ? v->p + a : (char *)"";
+    r->fs[i].vlen = z - a;
+  }
+
+  /* SPEC 14.2 row 20, REQ-TIME-IS-DATA and PROTO-TIME-IS-INTEGRAL. Whole
+     seconds since the Unix epoch, taken BEFORE the body is consumed: reading
+     first and stamping after would record body-COMPLETION time, which for a
+     slow upload differs from receipt by seconds or more. */
+  r->at = (long long)time(NULL);
+
+  /* SPEC 14.2 row 27: an HTTP/1.1 request with NO Host field is refused.
+     Discharged here, where the version is known, which is the same reason rows
+     22-23 sit at the parser and row 21 can discard the version at all. Row 22:
+     more than one Host field line is refused, and it is refused BEFORE the
+     adapter resolves precedence, because resolving DESTROYS the losing
+     candidates. */
+  int hosts = 0;
+  for (int i = 0; i < r->nf; i++) {
+    if (!o_field_named(&r->fs[i], "host")) continue;
+    hosts++;
+    /* AND ITS VALUE MUST BE AN AUTHORITY. Row 5 lifts this field into the
+       value's host entry, so an unvalidated one is nonsense delivered as the
+       authority - and Go refuses the same message, so the two backends would
+       disagree on exactly the input a handler is most likely to trust. Empty
+       is allowed here and handled by row 26, which says present-empty and
+       absent are the same outcome. */
+    if (r->fs[i].vlen > 0 && !o_authority_ok(r->fs[i].value, r->fs[i].vlen)) return 400;
+  }
+  if (hosts == 0) return 400;
+  if (hosts > 1) return 400;
+
+  /* THE BODY. Transfer-Encoding OVERRIDES Content-Length when both are present
+     (RFC 9112 6.3 rule 3), and the message is processed rather than refused.
+
+     6.1 permits either: "A server MAY reject a request that contains both
+     Content-Length and Transfer-Encoding or process such a request in
+     accordance with the Transfer-Encoding alone." This backend refused, the Go
+     backend processes, and BOTH were conformant — but SPEC 14.0 says two
+     backends produce the SAME Request from the same octets, and a handler's
+     properties are proven against that value, so a disagreement here stops a
+     proof transferring between artifacts. Processing was chosen because the
+     other backend inherits it from net/http and is the one people arrive with.
+
+     WHAT IS NOT INHERITED IS THE CONNECTION HANDLING. 6.1 continues:
+     "Regardless, the server MUST close the connection after responding to such
+     a request to avoid the potential attacks." Reuse is the smuggling vector —
+     a desynchronised connection carrying a second, attacker-framed request —
+     so processing the shape is the MAY and closing after it is the MUST.
+     Measured: net/http does neither signal nor close, which is the half of its
+     behaviour this backend does not copy. Nothing extra is needed HERE to
+     satisfy that MUST — this serve loop calls o_http_close on every path, so
+     the connection is per-request by construction and cannot be reused after
+     any response, smuggling-shaped or not. It is stated rather than left
+     implicit because a future keep-alive would silently retire the guarantee. */
+  int has_cl = 0, chunked = 0, has_te = 0, cl_too_big = 0;
+  int te_codings = 0, te_last_chunked = 0, te_other = 0;
+  long long clen = 0;
+  const char *cltext = NULL;
+  int cltext_len = 0;
+  for (int i = 0; i < r->nf; i++) {
+    OField *f = &r->fs[i];
+    if (o_field_named(f, "content-length")) {
+      /* REPEATED AND IDENTICAL IS ONE LENGTH; repeated and DIFFERENT is the
+         smuggling shape. RFC 9110 8.6 permits the list form, and net/http
+         accepts it - so refusing outright made the Go backend serve a request
+         this one refused, which is exactly the disagreement SPEC 14.0 forbids.
+         The comparison is on the parsed VALUE, so 5 and 005 agree, as they
+         must: they are the same length written twice. */
+      if (has_cl) {
+        /* IDENTICAL SPELLINGS, not merely equal values. Comparing the parsed
+           numbers would accept 5 beside 005, and net/http refuses that pair -
+           so the looser rule is the one that breaks backend agreement, which
+           is the only reason this case is admitted at all. RFC 9110 8.6's list
+           form is about a value repeated, and a repeated value is written the
+           same way twice. */
+        if (f->vlen != cltext_len || memcmp(f->value, cltext, (size_t)f->vlen) != 0) return 400;
+        continue;
+      }
+      has_cl = 1;
+      cltext = f->value;
+      cltext_len = f->vlen;
+      /* ANY NON-EMPTY RUN OF DIGITS (RFC 9110 8.6), which is not the same as a
+         short one: nineteen leading zeroes followed by a 1 is a valid
+         Content-Length of 1, and a limit on the TEXT length refuses a frame the
+         Go backend accepts. The bound belongs on the VALUE, and it is applied
+         before each multiplication so an absurd run of digits cannot overflow
+         its way past the test that was supposed to stop it. */
+      if (f->vlen == 0) return 400;
+      /* THE VERDICT IS DEFERRED, NOT THE MEASUREMENT. A Transfer-Encoding
+         discards this field entirely (RFC 9112 6.3 rule 3), so answering 413
+         here refused a request the other backend frames from its chunks and
+         serves — a 14.0 divergence created by judging a value that was about to
+         be thrown away. The overflow guard still runs per digit, because an
+         absurd run of digits must not multiply its way past the test; it now
+         records the excess instead of returning on it. */
+      for (int k = 0; k < f->vlen; k++) {
+        if (f->value[k] < '0' || f->value[k] > '9') return 400;
+        if (clen > (long long)O_HTTP_BODYMAX) { cl_too_big = 1; break; }
+        clen = clen * 10 + (f->value[k] - '0');
+      }
+      if (clen > (long long)O_HTTP_BODYMAX) cl_too_big = 1;
+    } else if (o_field_named(f, "transfer-encoding")) {
+      /* SPEC 14.2 row 19 discards the transfer coding, which requires reading
+         the WHOLE ordered list rather than looking for one name in it. Two
+         separate readings were wrong here and each was wrong in a different
+         direction: a substring test made "gzip, chunked" decode as chunked and
+         hand the handler compressed octets as its body, and a case-sensitive
+         one answered 501 to a legal "Chunked". The list is comma-separated,
+         each element is trimmed of OWS, an empty element is ignored, and the
+         comparison is after ASCII lowercasing - the same element rules row 16
+         applies to a connection option. */
+      has_te = 1;
+      int a = 0;
+      for (int k = 0; k <= f->vlen; k++) {
+        if (k < f->vlen && f->value[k] != ',') continue;
+        int s0 = a, e0 = k;
+        while (s0 < e0 && o_ows((unsigned char)f->value[s0])) s0++;
+        while (e0 > s0 && o_ows((unsigned char)f->value[e0 - 1])) e0--;
+        a = k + 1;
+        /* AN EMPTY ELEMENT IS REFUSED HERE AND IGNORED IN A Connection VALUE,
+           and the two loops looking identical is exactly why this is written
+           down. Row 16 makes ignoring NORMATIVE for connection options; nothing
+           says that about a transfer coding, so the governing rule is HTTP's -
+           and net/http refuses these spellings, so ignoring one would decode a
+           body the Go backend never delivers. Same shape, different question,
+           different disposition. */
+        if (e0 <= s0) return 400;
+        te_codings++;
+        int isch = (e0 - s0 == 7);
+        for (int j = 0; isch && j < 7; j++) {
+          if (o_ascii_lower((unsigned char)f->value[s0 + j]) != "chunked"[j]) isch = 0;
+        }
+        te_last_chunked = isch;
+        if (!isch) te_other = 1;
+      }
+    }
+  }
+  /* TE WINS AND THE CONTENT-LENGTH IS DISCARDED, rather than the two being
+     reconciled: 6.3 rule 3 makes the override unconditional, and row 15 already
+     says body is authoritative on how many octets arrived. */
+  if (has_te && has_cl) {
+    has_cl = 0;
+    clen = 0;
+    cltext = NULL;
+    cltext_len = 0;
+    cl_too_big = 0; /* discarded, so its size is not a reason to refuse */
+  }
+  if (cl_too_big) return 413;
+  if (has_te) {
+    /* RFC 9112 6.1: if chunked is not the FINAL coding of a request, the body
+       length cannot be determined reliably and the server MUST answer 400 -
+       which is row 24's unframeable message under another name. A coding this
+       backend cannot decode is a different answer: the message is framed, the
+       tool cannot read it, and 501 says so rather than blaming the request. */
+    if (te_codings == 0 || !te_last_chunked) return 400;
+    if (te_other) return 501;
+    /* RFC 9112 6.1: a sender MUST NOT apply the chunked coding more than once.
+       A doubly chunked value passes both tests above - every coding IS chunked
+       and the last one is - and decoding it once would hand the handler the
+       inner framing as body octets. Refused, not partly decoded. */
+    if (te_codings != 1) return 400;
+    chunked = 1;
+  }
+  /* THE EXPECTATION IS THE ADAPTER'S, AND IT IS ANSWERED BEFORE THE BODY IS
+     READ. A client sending Expect: 100-continue does not send its body until it
+     is told to, so reading first is a deadlock that ends in this server's own
+     timeout - a legal request answered 408 while both sides wait for the other.
+
+     THIS IS ALSO THE ONE INTERIM RESPONSE THIS BOUNDARY EMITS, and it is not a
+     contradiction of refusing a 1xx from the HANDLER. The two are different
+     parties: the adapter knows a final response is still to come because it is
+     the one that will send it, and a Response value cannot say that about
+     itself. Any OTHER expectation is 417 (RFC 9110 10.1.1) - unknown, so
+     refused by name rather than ignored, since ignoring it would have the
+     client believe a condition was honoured. */
+  int expects = 0;
+  for (int i = 0; i < r->nf; i++) {
+    OField *f = &r->fs[i];
+    if (!o_field_named(f, "expect")) continue;
+    int is100 = (f->vlen == 12);
+    for (int j = 0; is100 && j < 12; j++) {
+      if (o_ascii_lower((unsigned char)f->value[j]) != "100-continue"[j]) is100 = 0;
+    }
+    /* EVERY Expect FIELD IS INSPECTED BEFORE ANY INTERIM IS SENT. Stopping at
+       the first recognised one would send 100 and then proceed as though a
+       LATER expectation this backend does not support had been honoured -
+       which is the one thing 417 exists to prevent it believing. */
+    if (!is100) return 417;
+    expects = 1;
+  }
+  if (expects && !o_send_all(fd, deadline, "HTTP/1.1 100 Continue\r\n\r\n", 25)) return -1;
+
+  OBuf body;
+  memset(&body, 0, sizeof body);
+  if (chunked) {
+    rc = o_http_chunked(fd, deadline, &b, &pos, &body);
+    if (rc) return rc;
+  } else if (clen > 0) {
+    rc = o_http_need(fd, deadline, &b, pos, (int)clen);
+    if (rc) return rc;
+    o_buf_put(&body, b.p + pos, (int)clen);
+    pos += (int)clen;
+  }
+  r->body = body.p;
+  r->blen = body.n;
+  return 0;
+}
+
+/* SPEC 14.2 row 3, PROTO-TARGET-AUTHORITY. The octets after the scheme's
+   colon-slash-slash separator, up to the first slash, query mark, hash, or end
+   of target, with any userinfo prefix EXCLUDED.
+   Asterisk-form and authority-form lift nothing. The scheme must be a real
+   scheme (RFC 3986 3.1) or a network-path reference in an origin-form target
+   would be read as an
+   authority. */
+/* THE IPv6 GRAMMAR, STRUCTURALLY. A character whitelist admits things that are
+   not addresses at all - four colons in a row, nine groups, a five-digit group -
+   and Go's parser refuses those, so the whitelist was a backend disagreement
+   dressed as a validation. The shape is eight groups of one to four hex digits,
+   at most ONE elision, and an optional dotted-quad tail standing for the last
+   two groups (RFC 3986 3.2.2, RFC 4291 2.2).
+
+   THE WHITELIST WAS NOT TOO PERMISSIVE BY ACCIDENT; IT WAS THE WRONG KIND OF
+   CHECK. Each round of narrowing it by character class would have admitted the
+   next malformed spelling, because the property is about STRUCTURE and no set
+   of legal characters can express it. */
+static int o_ipv4_ok(const char *a, int n) {
+  int parts = 0, i = 0;
+  while (i < n) {
+    int v = 0, d = 0;
+    while (i < n && a[i] >= '0' && a[i] <= '9') {
+      v = v * 10 + (a[i] - '0');
+      d++;
+      i++;
+      if (d > 3) return 0;
+    }
+    if (d == 0 || v > 255) return 0;
+    parts++;
+    if (i == n) break;
+    if (a[i] != '.') return 0;
+    i++;
+    if (i == n) return 0;
+  }
+  return parts == 4;
+}
+
+static int o_ipv6_ok(const char *a, int n) {
+  if (n == 0) return 0;
+  int groups = 0, elision = 0, i = 0;
+  if (a[0] == ':') {
+    if (n < 2 || a[1] != ':') return 0;
+    elision = 1;
+    i = 2;
+    if (i == n) return 1;
+  }
+  for (;;) {
+    int j = i, dotted = 0;
+    while (j < n && a[j] != ':') {
+      if (a[j] == '.') dotted = 1;
+      j++;
+    }
+    if (j == i) return 0;
+    if (dotted) {
+      /* A dotted quad stands for the last two groups and must END the address. */
+      if (j != n || !o_ipv4_ok(a + i, j - i)) return 0;
+      groups += 2;
+      i = j;
+      break;
+    }
+    if (j - i > 4) return 0;
+    for (int k = i; k < j; k++) {
+      char c = a[k];
+      if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return 0;
+    }
+    groups++;
+    i = j;
+    if (i == n) break;
+    i++;
+    if (i < n && a[i] == ':') {
+      if (elision) return 0;
+      elision = 1;
+      i++;
+      if (i == n) break;
+    } else if (i == n) {
+      return 0;
+    }
+  }
+  if (elision) return groups <= 7;
+  return groups == 8;
+}
+
+/* AN AUTHORITY IS host [ ":" port ], with an optional userinfo already removed
+   by the caller (RFC 3986 3.2). Validated rather than assumed, because a target
+   that merely BEGINS with a scheme and slashes is not thereby absolute-form -
+   and Go's parser refuses the malformed ones, so admitting them here would have
+   the two backends disagree about whether a Request exists. */
+/* THE TARGET'S AUTHORITY IS VALIDATED STRUCTURALLY, AND THE HOST FIELD IS NOT,
+   because that is what the other backend does and SPEC 14.0 asks the two to
+   agree. Measured against net/http: an absolute-form target with a non-numeric
+   port is refused 400 with the handler never invoked, while a Host field of
+   [1::2::3] or [v1.] is delivered unchanged. One validator served both sites
+   and made the header case diverge. */
+static int o_target_authority_ok(const char *a, int n) {
+  if (n <= 0) return 0;
+  int i = 0;
+  if (a[0] == '[') {
+    int close = -1;
+    for (int k = 1; k < n; k++) {
+      if (a[k] == ']') { close = k; break; }
+    }
+    if (close < 2) return 0;
+    /* AN IP-LITERAL IS IPv6address OR IPvFuture (RFC 3986 3.2.2), and a
+       validator that knew only the first refused a host net/http accepts -
+       different outcomes for one request, which is the one thing SPEC 14.0
+       asks two backends not to do. IPvFuture is v <hex> . <at least one
+       unreserved / sub-delim / colon>, so both the version digits and the
+       address part must be non-empty. */
+    if (a[1] == 'v' || a[1] == 'V') {
+      int k = 2, ver = 0;
+      while (k < close && ((a[k] >= '0' && a[k] <= '9') || (a[k] >= 'a' && a[k] <= 'f') ||
+                           (a[k] >= 'A' && a[k] <= 'F'))) {
+        k++;
+        ver++;
+      }
+      if (ver == 0 || k >= close || a[k] != '.') return 0;
+      k++;
+      if (k >= close) return 0;
+      for (; k < close; k++) {
+        unsigned char c = (unsigned char)a[k];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+              c == '-' || c == '.' || c == '_' || c == '~' || c == '!' || c == '$' ||
+              c == '&' || c == 0x27 || c == '(' || c == ')' || c == '*' || c == '+' ||
+              c == ',' || c == ';' || c == '=' || c == ':')) {
+        return 0;
+        }
+      }
+    } else if (!o_ipv6_ok(a + 1, close - 1)) {
+      return 0;
+    }
+    i = close + 1;
+  } else {
+    while (i < n && a[i] != ':') {
+      unsigned char c = (unsigned char)a[i];
+      if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+            c == '-' || c == '.' || c == '_' || c == '~' || c == '%' || c == '!' ||
+            c == '$' || c == '&' || c == 0x27 || c == '(' || c == ')' || c == '*' ||
+            c == '+' || c == ',' || c == ';' || c == '=')) {
+        return 0;
+      }
+      i++;
+    }
+    if (i == 0) return 0;
+  }
+  if (i == n) return 1;
+  if (a[i] != ':') return 0;
+  /* An empty port is legal; anything in it must be a digit. */
+  for (i++; i < n; i++) {
+    if (a[i] < '0' || a[i] > '9') return 0;
+  }
+  return 1;
+}
+
+static int o_authority_ok(const char *a, int n) {
+  /* CHARACTER-BASED, BECAUSE THAT IS WHAT THE OTHER BACKEND DOES — and SPEC
+     14.0 asks the two to agree on every request, not to be individually
+     defensible. Row 5 only LIFTS this field into the value's host entry; it
+     asks for no structural validation, so validating structure here is a
+     rejection the specification never requested.
+
+     An earlier version parsed the authority per RFC 3986 — IPv6address and
+     IPvFuture — and refused hosts net/http accepts, a divergence on exactly
+     the field a handler is most likely to trust. Its comment had already been
+     corrected once for IPvFuture alone; the class outlived the instance.
+
+     The permitted set was MEASURED against net/http rather than read off a
+     grammar: it accepts every printable ASCII byte except these thirteen and
+     refuses DEL and above. [1::2::3] and [::::] are nonsense as addresses
+     and both backends now deliver them unchanged, which is the agreement the
+     three-way gate exists to keep. */
+  if (n <= 0) return 0;
+  for (int i = 0; i < n; i++) {
+    unsigned char c = (unsigned char)a[i];
+    if (c <= 0x20 || c >= 0x7f) return 0;
+    if (c == 0x22 || c == '#' || c == '/' || c == '<' || c == '>' || c == '?' ||
+        c == '@' || c == 0x5c || c == '^' || c == 0x60 || c == '{' || c == '|' ||
+        c == '}') {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+/* Returns 1 for absolute-form with a well-formed authority, -1 for absolute-form
+   whose authority is malformed, and 0 for a target that is not absolute-form at
+   all. The three are different answers: the middle one is a refusal, and
+   collapsing it into "not absolute-form" would let a CONNECT smuggle one
+   through the authority-form branch. */
+static int o_target_authority(char *t, int n, char **out, int *olen) {
+  int i = 0;
+  if (n == 0) return 0;
+  if (!((t[0] >= 'a' && t[0] <= 'z') || (t[0] >= 'A' && t[0] <= 'Z'))) return 0;
+  while (i < n && ((t[i] >= 'a' && t[i] <= 'z') || (t[i] >= 'A' && t[i] <= 'Z') ||
+                   (t[i] >= '0' && t[i] <= '9') || t[i] == '+' || t[i] == '-' || t[i] == '.')) i++;
+  if (i + 2 >= n || t[i] != ':' || t[i + 1] != '/' || t[i + 2] != '/') return 0;
+  int a = i + 3, z = a;
+  while (z < n && t[z] != '/' && t[z] != '?' && t[z] != '#') z++;
+  /* THE LAST @ ENDS THE USERINFO, not the first. RFC 3986 3.2 makes userinfo
+     everything before the final delimiter, and net/http agrees: measured,
+     http://u@v@host/path is served with host "host". Stopping at the first left
+     "v@host" as the authority, which then failed validation and answered 400 to
+     a request the other backend serves — a 14.0 divergence produced by being
+     stricter than the reference rather than by disagreeing with the RFC. */
+  for (int k = z - 1; k >= a; k--) {
+    if (t[k] == '@') { a = k + 1; break; }
+  }
+  if (!o_target_authority_ok(t + a, z - a)) return -1;
+  *out = t + a;
+  *olen = z - a;
+  return 1;
+}
+
+/* THE ADAPTER: SPEC 14.2's transformation, in the order the section makes
+   normative.
+
+	 canonicalize names             (row 8, at the parser above)
+	 discard transport-only facts   (rows 15-17)
+	 refuse conflicting authority   (rows 22-23, at the parser above)
+	 lift what arrives elsewhere    (rows 3-5)
+	 validate representability      (row 9)
+	 canonicalize the remainder     (rows 13-14)
+	 construct Request
+
+   Two orderings in that list are load-bearing and each was got wrong in a draft
+   of the section itself: DISCARD precedes VALIDATE, or an unrepresentable octet
+   in a field nobody delivers refuses a request that could have been served; and
+   LIFT precedes VALIDATE, or row 9 cannot inspect the authority it is required
+   to cover. */
+/* SPEC 14.2 row 16, PROTO-NOMINATION-BY-PRESENCE. The value is a
+   comma-separated list of connection OPTIONS: split on the comma, strip SP and
+   HTAB from both ends, ignore an empty element, ignore an element that is not a
+   token. Compared AFTER row 8's lowercasing, so a nomination of x-hop reaches a
+   field line spelled X-Hop. Parsed as OCTETS: HTTP OWS is SP and HTAB only, so a
+   value of NBSP + "X-Hop" + NBSP yields no valid nomination and cannot silently
+   suppress a real header the handler was meant to see.
+
+   A PREDICATE OVER THE MESSAGE, NOT A COLLECTED LIST. The first version built an
+   array of nominations with a fixed capacity, which silently DROPPED later
+   options once it filled - and row 16 says the union across every Connection
+   line, with no bound. A capacity is not a disposition: a request under the
+   header limit could carry more options than the array held, and the field the
+   last one named would reach the handler. Re-scanning per candidate costs a
+   quadratic that both factors are already bounded by, and it cannot be short by
+   one. */
+static int o_nominated(OReq *r, const char *lname, int lnlen) {
+  for (int i = 0; i < r->nf; i++) {
+    OField *f = &r->fs[i];
+    if (!o_field_named(f, "connection")) continue;
+    int a = 0;
+    for (int k = 0; k <= f->vlen; k++) {
+      if (k < f->vlen && f->value[k] != ',') continue;
+      int s0 = a, e0 = k;
+      while (s0 < e0 && o_ows((unsigned char)f->value[s0])) s0++;
+      while (e0 > s0 && o_ows((unsigned char)f->value[e0 - 1])) e0--;
+      a = k + 1;
+      if (e0 - s0 != lnlen || !o_is_token(f->value + s0, e0 - s0)) continue;
+      int same = 1;
+      for (int q = 0; q < lnlen; q++) {
+        if (o_ascii_lower((unsigned char)f->value[s0 + q]) != lname[q]) { same = 0; break; }
+      }
+      if (same) return 1;
+    }
+  }
+  return 0;
+}
+
+static int o_http_adapt(OReq *r, OField *out, int *nout) {
+  int n = 0;
+  for (int i = 0; i < r->nf; i++) {
+    OField *f = &r->fs[i];
+    if (o_framing_field(f)) continue;
+    /* SPEC 14.2 row 5 is UNCONDITIONAL, so a nomination cannot reach the host entry:
+       honouring one would let a client delete a mandatory field from the Oath
+       value and change how the handler behaves. The nomination is IGNORED, not
+       refused. The host field line is dropped here and re-enters below as the lifted
+       authority. */
+    if (o_field_named(f, "host")) continue;
+    /* QUADRATIC, AND KNOWN — see issue 172. This asks o_nominated per surviving
+       field and o_nominated rescans every field, so a request near the header
+       limit costs on the order of 10^8 iterations before the handler runs, with
+       the read deadline consulted only during socket I/O. A one-pass prepass
+       does NOT fix it: the cost is options x fields, and an attacker splits the
+       header budget between them. A real repair needs the option set sorted or
+       hashed, and that is filed rather than faked here. */
+    if (o_nominated(r, f->name, f->nlen)) continue;
+    out[n++] = *f;
+  }
+
+  /* SPEC 14.2 rows 4 and 5, PROTO-AUTHORITY-SOURCE and REQ-HOST-IS-A-HEADER.
+     Precedence over HTTP/1.1 is: absolute-form target, then the Host field
+     line - there is no authority pseudo-header here, since this backend speaks 1.1 only.
+     Row 26: a present but EMPTY authority supplies nothing and produces NO
+     host entry, because an authority of zero length identifies nothing.
+     AT MOST ONE host entry, and never synthesized. */
+  char *auth = NULL;
+  int alen = 0;
+  if (o_target_authority(r->target, r->tlen, &auth, &alen) != 1) {
+    for (int i = 0; i < r->nf; i++) {
+      if (!o_field_named(&r->fs[i], "host")) continue;
+      auth = r->fs[i].value;
+      alen = r->fs[i].vlen;
+      break;
+    }
+  }
+  if (alen > 0) {
+    out[n].name = (char *)"host";
+    out[n].nlen = 4;
+    out[n].value = auth;
+    out[n].vlen = alen;
+    n++;
+  }
+
+  /* SPEC 14.2 row 9, applied AFTER rows 15-17 and after the lift, over
+     everything that becomes a Str: the method, the raw target, every surviving
+     field name and value, and the lifted authority - which is covered by
+     construction, since it is now an entry value. HTAB is permitted inside a
+     field VALUE and a lifted authority and nowhere else. */
+  if (!o_txt_ok(r->method, r->mlen, 0) || !o_txt_ok(r->target, r->tlen, 0)) return 400;
+  for (int i = 0; i < n; i++) {
+    if (!o_txt_ok(out[i].name, out[i].nlen, 0)) return 400;
+    if (!o_txt_ok(out[i].value, out[i].vlen, 1)) return 400;
+  }
+
+  /* SPEC 14.2 rows 13 and 14. Ascending by lowercase name as UNSIGNED octets,
+     a shorter name that is a prefix sorting first; repeats under one name keep
+     their ARRIVAL order, are never reordered, deduplicated, dropped or
+     comma-joined. An insertion sort, because it is stable by construction and
+     the input is bounded - a stability bug here would silently reorder repeats,
+     which is exactly what row 14 forbids and what no type would catch. */
+  for (int i = 1; i < n; i++) {
+    OField key = out[i];
+    int j = i - 1;
+    while (j >= 0) {
+      int m = out[j].nlen < key.nlen ? out[j].nlen : key.nlen;
+      int c = memcmp(out[j].name, key.name, (size_t)m);
+      if (c == 0) c = out[j].nlen < key.nlen ? -1 : (out[j].nlen > key.nlen ? 1 : 0);
+      if (c <= 0) break;
+      out[j + 1] = out[j];
+      j--;
+    }
+    out[j + 1] = key;
+  }
+  *nout = n;
+  return 0;
+}
+
+/* The Request VALUE. Constructor indices are passed in rather than assumed:
+   they are facts about the protocol types in THIS store and the compiler knows
+   them. */
+static OVal *o_http_value(OReq *r, OField *hs, int nh,
+                          int nil_, int cons_, int pair_, int req_) {
+  OVal *body = o_ctor(nil_, 0, o_fields(0));
+  for (int i = r->blen - 1; i >= 0; i--) {
+    OVal **f = o_fields(2);
+    f[0] = o_int((long long)(unsigned char)r->body[i]);
+    f[1] = body;
+    body = o_ctor(cons_, 2, f);
+  }
+  OVal *hdrs = o_ctor(nil_, 0, o_fields(0));
+  for (int i = nh - 1; i >= 0; i--) {
+    OVal **pf = o_fields(2);
+    pf[0] = o_strn(hs[i].name, hs[i].nlen);
+    pf[1] = o_strn(hs[i].value, hs[i].vlen);
+    OVal **f = o_fields(2);
+    f[0] = o_ctor(pair_, 2, pf);
+    f[1] = hdrs;
+    hdrs = o_ctor(cons_, 2, f);
+  }
+  OVal **f = o_fields(5);
+  f[0] = o_strn(r->method, r->mlen);
+  f[1] = o_strn(r->target, r->tlen);
+  f[2] = hdrs;
+  f[3] = body;
+  f[4] = o_int(r->at);
+  return o_ctor(req_, 5, f);
+}
+
+static const char *o_http_reason(int status) {
+  switch (status) {
+    case 200: return "OK";
+    case 400: return "Bad Request";
+    case 413: return "Content Too Large";
+    case 431: return "Request Header Fields Too Large";
+    case 500: return "Internal Server Error";
+    case 501: return "Not Implemented";
+    case 408: return "Request Timeout";
+    case 417: return "Expectation Failed";
+    case 505: return "HTTP Version Not Supported";
+    case 201: return "Created";
+    case 202: return "Accepted";
+    case 204: return "No Content";
+    case 304: return "Not Modified";
+    case 401: return "Unauthorized";
+    case 403: return "Forbidden";
+    case 404: return "Not Found";
+    case 405: return "Method Not Allowed";
+    case 409: return "Conflict";
+    case 422: return "Unprocessable Content";
+    case 429: return "Too Many Requests";
+    case 503: return "Service Unavailable";
+  }
+  /* RFC 9110 15: the reason phrase carries no meaning and a client MUST NOT act
+     on it, so an unlisted status gets a placeholder rather than an invented
+     name that could read as authoritative. */
+  return "Status";
+}
+
+/* The adapter's own answers: a refusal the handler never saw, and the 500 a
+   refusal unwound to. Plain text, one line, no body framing surprises. */
+static void o_http_status(int fd, long long deadline, int head_only, int status, const char *why) {
+  /* A HEAD RESPONSE CARRIES NO CONTENT WHATEVER ITS STATUS. The rule is about
+     the request's method, not about success, so a diagnostic body here would be
+     invalid framing on exactly the paths that are already reporting a problem -
+     the header still states the length the body would have had. */
+  char head[512];
+  int n = head_only
+              ? snprintf(head, sizeof head,
+                         "HTTP/1.1 %d %s\r\nContent-Type: text/plain; charset=utf-8\r\n"
+                         "Content-Length: %d\r\nConnection: close\r\n\r\n",
+                         status, o_http_reason(status), (int)strlen(why) + 1)
+              : snprintf(head, sizeof head,
+                         "HTTP/1.1 %d %s\r\nContent-Type: text/plain; charset=utf-8\r\n"
+                         "Content-Length: %d\r\nConnection: close\r\n\r\n%s\n",
+                         status, o_http_reason(status), (int)strlen(why) + 1, why);
+  if (n > 0) o_send_all(fd, deadline, head, n < (int)sizeof head ? n : (int)sizeof head - 1);
+}
+
+/* CLOSING ON A REFUSAL WITHOUT LOSING THE ANSWER. A close() with octets still
+   unread in the receive buffer sends RST on Linux, and an RST can discard the
+   response this code just wrote - so the client sees a connection error where a
+   400 was actually served, and the refusal becomes indistinguishable from a
+   crash. A bounded drain with a short deadline retires that: it reads what the
+   peer already sent, it cannot be held open by a peer that keeps sending, and
+   the bound is what stops the drain from becoming the denial the timeout above
+   exists to prevent. */
+static void o_http_close(int fd) {
+  /* HALF-CLOSE FIRST, then drain. The peer sees EOF and stops waiting on us, so
+     the drain below ends at its close rather than at the deadline - which is
+     what keeps a lingering close from costing every successful request the full
+     timeout. */
+  shutdown(fd, SHUT_WR);
+  struct timeval tv;
+  tv.tv_sec = 0;
+  tv.tv_usec = 250000;
+  setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+  /* THE DRAIN'S CLOCK IS ITS OWN, and it is derived from the socket timeout
+     just set rather than handed in. A wider deadline passed from the caller
+     would be used by o_recv_some to WIDEN that timeout again - the linger would
+     then take the caller's second instead of this quarter of one, on every
+     connection whose peer keeps its write side open. */
+  long long linger = o_now_ms() + 250;
+  char sink[4096];
+  int drained = 0;
+  while (drained < O_HTTP_HDRMAX) {
+    int k = o_recv_some(fd, linger, sink, (int)sizeof sink);
+    if (k <= 0) break;
+    drained += k;
+  }
+  close(fd);
+}
+
+/* AN OUTBOUND HEADER MUST BE A HEADER, and this is checked rather than hoped
+   for. Unlike everything above, these are octets the HANDLER chose - and SPEC
+   14.4 deliberately does not constrain a Response, so nothing upstream has
+   looked at them.
+
+   CR, LF and NUL are the injection case: a value carrying one would SPLIT this
+   response and let a handler inject a message of its own. They are not the only
+   case, and a first version of this checked only them - a name of "X Bad" or
+   "X: Bad", or a value carrying 0x01, produced a line no HTTP parser can read,
+   which is a malformed response emitted rather than the malformed-Response 500
+   this code promises. So the rule is the grammar's: a name is a token (RFC 9110
+   5.6.2) and a value is printable US-ASCII with HTAB (RFC 9110 5.5).
+
+   REFUSED AND NAMED, NEVER SANITIZED. A repaired header is a header the handler
+   did not write, which is the substitution this backend declines everywhere
+   else. */
+static int o_hdr_name_out_ok(OVal *v) {
+  return v && v->tag == T_STR && o_is_token(v->s, v->slen);
+}
+
+static int o_hdr_value_out_ok(OVal *v) {
+  if (!v || v->tag != T_STR) return 0;
+  /* FIELD-CONTENT, not row 9's ASCII. Row 9 governs what a Str can carry INTO
+     the language, where the answer must be the same on every backend; this is
+     the way OUT, where HTTP permits obs-text - so a handler answering with a
+     non-ASCII header value is emitting a legal field value, and the Go backend
+     emits it. Refusing it here would make the two backends disagree about a
+     Response neither specification constrains. */
+  for (int i = 0; i < v->slen; i++) {
+    unsigned char c = (unsigned char)v->s[i];
+    if ((c < 0x20 && c != 0x09) || c == 0x7F) return 0;
+  }
+  return 1;
+}
+
+/* THE ADAPTER OWNS FRAMING, so a handler's own copy of one of these is dropped
+   rather than emitted a second time beside the one this code states. Compared
+   case-insensitively, because these names are HTTP's rather than the handler's
+   and HTTP does not distinguish their case. */
+static int o_hdr_is_framing(OVal *k) {
+  const char *own[3];
+  own[0] = "content-length";
+  own[1] = "connection";
+  own[2] = "transfer-encoding";
+  for (int j = 0; j < 3; j++) {
+    int ol = (int)strlen(own[j]);
+    if (k->slen != ol) continue;
+    int same = 1;
+    for (int q = 0; q < ol; q++) {
+      if (o_ascii_lower((unsigned char)k->s[q]) != own[j][q]) { same = 0; break; }
+    }
+    if (same) return 1;
+  }
+  return 0;
+}
+
+/* SERIALISATION. This is where a Response becomes octets, and the arena release
+   is the statement after the call to it.
+
+   SPEC 14.4: the RESPONSE is deliberately not constrained - a handler's header
+   names are its own choice and HTTP compares them case-insensitively - so
+   nothing here canonicalizes them. What this DOES own is framing:
+   content-length, connection and transfer-encoding are the adapter's to state,
+   so a handler's own copy of one is dropped rather than emitted twice.
+
+   A MALFORMED Response is a 500, not a crash and not a guess. It is
+   unreachable for a well-typed program, which is why the class exists at all:
+   the checker admits only (Resp Int (List (Pair Str Str)) (List Int)), so
+   anything else here means this compiler is wrong - and answering the client
+   while saying so is better than either serving nonsense or ending the
+   process. */
+static int o_http_respond(int fd, long long deadline, OReq *r, OVal *resp, int nil_, int cons_, int pair_, int resp_) {
+  int head_only = r && r->mlen == 4 && memcmp(r->method, "HEAD", 4) == 0;
+  int is_connect = r && r->mlen == 7 && memcmp(r->method, "CONNECT", 7) == 0;
+  if (!resp || resp->tag != T_CTOR || resp->idx != resp_ || resp->n != 3) {
+    o_http_status(fd, deadline, head_only, 500, "the handler returned a malformed Response");
+    return 0;
+  }
+  OVal *sv = resp->f[0];
+  if (!sv || sv->tag != T_INT || sv->isign < 0 || sv->ilen > 1) {
+    o_http_status(fd, deadline, head_only, 500, "the handler returned a status that is not a whole number in 200..599");
+    return 0;
+  }
+  long long status = sv->ilen == 0 ? 0 : (long long)sv->imag[0];
+  /* 200 AND NOT 100 IS THE FLOOR, and that is a statement about the protocol
+     rather than a tighter range for its own sake. A 1xx is an INTERIM response:
+     it is followed by a final one on the same connection, and Response has no
+     way to say what that final one is. Emitting it and closing would leave a
+     client reading EOF where a completed exchange was promised, so it is
+     refused and named - the same disposition as any other Response this
+     boundary cannot deliver. */
+  if (status < 200 || status > 599) {
+    o_http_status(fd, deadline, head_only, 500, "the handler returned a status this boundary cannot deliver "
+                           "(1xx is interim, and a Response cannot say what follows it)");
+    return 0;
+  }
+
+  OBuf body;
+  memset(&body, 0, sizeof body);
+  OVal *c = resp->f[2];
+  for (; c && c->tag == T_CTOR && c->idx == cons_ && c->n == 2; c = c->f[1]) {
+    OVal *e = c->f[0];
+    if (!e || e->tag != T_INT || e->isign < 0 || e->ilen > 1 ||
+        (e->ilen == 1 && e->imag[0] > 255u)) {
+      /* NAMED, not truncated. Reducing 300 to 44 would make two distinct
+         response bodies identical, which is the U+FFFD defect this runtime
+         refuses at every other boundary. */
+      o_http_status(fd, deadline, head_only, 500, "the handler returned a body element outside 0..255");
+      return 0;
+    }
+    char b0 = (char)(e->ilen == 0 ? 0 : (int)e->imag[0]);
+    o_buf_put(&body, &b0, 1);
+  }
+  /* THE TERMINATOR IS CHECKED, not assumed. A walk that stops at "not a Cons"
+     accepts a truncated list as a complete one, so a body this code could not
+     read would be served as a SHORTER body rather than reported. */
+  if (!c || c->tag != T_CTOR || c->idx != nil_) {
+    o_http_status(fd, deadline, head_only, 500, "the handler returned a malformed Response body");
+    return 0;
+  }
+
+  OBuf head;
+  memset(&head, 0, sizeof head);
+  char line[128];
+  int n = snprintf(line, sizeof line, "HTTP/1.1 %d %s\r\n", (int)status, o_http_reason((int)status));
+  o_buf_put(&head, line, n);
+  OVal *hc = resp->f[1];
+  for (; hc && hc->tag == T_CTOR && hc->idx == cons_ && hc->n == 2; hc = hc->f[1]) {
+    OVal *p = hc->f[0];
+    if (!p || p->tag != T_CTOR || p->idx != pair_ || p->n != 2) {
+      o_http_status(fd, deadline, head_only, 500, "the handler returned a malformed Response header");
+      return 0;
+    }
+    OVal *k = p->f[0], *v = p->f[1];
+    if (!o_hdr_name_out_ok(k)) {
+      o_http_status(fd, deadline, head_only, 500, "a Response header name is not an HTTP token");
+      return 0;
+    }
+    if (!o_hdr_value_out_ok(v)) {
+      o_http_status(fd, deadline, head_only, 500, "a Response header value carries an octet no HTTP field value may hold");
+      return 0;
+    }
+    if (o_hdr_is_framing(k)) continue;
+    o_buf_put(&head, k->s, k->slen);
+    o_buf_put(&head, ": ", 2);
+    o_buf_put(&head, v->s, v->slen);
+    o_buf_put(&head, "\r\n", 2);
+  }
+  if (!hc || hc->tag != T_CTOR || hc->idx != nil_) {
+    o_http_status(fd, deadline, head_only, 500, "the handler returned a malformed Response header list");
+    return 0;
+  }
+  /* THE FRAMING RULES ARE HTTP'S, AND THIS CODE OWNS FRAMING. RFC 9110 6.4.1:
+     a 1xx, 204 or 304 response has no content and carries no Content-Length,
+     and a response to HEAD has the same header fields as the GET would and no
+     body.
+
+     THE TWO CASES ARE NOT THE SAME KIND OF THING, so they are answered
+     differently. HEAD is a property of the REQUEST: the handler answered the
+     resource correctly and this method simply does not carry the body, so the
+     length is stated and the octets are withheld - suppressing it is required
+     rather than a repair. A body under a bodiless STATUS is a contradiction
+     inside the Response itself, and it is refused and named for the same reason
+     a body element outside 0..255 is: emitting a message HTTP forbids, or
+     silently dropping octets the handler produced, are both substitutions. */
+  /* RFC 9110 6.4.1 and 15.3.6: 204, 205 and 304 carry no content. 1xx is not
+     in this list because it never reaches here - it is refused above. */
+  /* A SUCCESSFUL CONNECT SWITCHES THE CONNECTION TO A TUNNEL (RFC 9110 9.3.6),
+     which this runtime has no way to provide - so it is refused rather than
+     answered with ordinary framing a client would then try to tunnel through.
+     Refusing a method/status combination is the same fail-closed answer this
+     boundary gives every other Response it cannot deliver. */
+  if (is_connect && status >= 200 && status < 300) {
+    o_http_status(fd, deadline, head_only, 500,
+                  "a successful CONNECT needs a tunnel this backend cannot provide");
+    return 0;
+  }
+  int bodiless = status == 204 || status == 205 || status == 304;
+  if (bodiless && body.n > 0) {
+    o_http_status(fd, deadline, head_only, 500, "the handler returned content under a status that carries none");
+    return 0;
+  }
+  if (bodiless) {
+    n = snprintf(line, sizeof line, "Connection: close\r\n\r\n");
+  } else {
+    n = snprintf(line, sizeof line, "Content-Length: %d\r\nConnection: close\r\n\r\n", body.n);
+  }
+  o_buf_put(&head, line, n);
+  if (!o_send_all(fd, deadline, head.p, head.n)) return 0;
+  if (body.n > 0 && !head_only) o_send_all(fd, deadline, body.p, body.n);
+  return 1;
+}
+
+static int o_http_listen(void) {
+  const char *addr = getenv("OATH_HTTP_ADDR");
+  if (!addr || !*addr) addr = ":8080";
+  const char *colon = strrchr(addr, ':');
+  if (!colon) {
+    fprintf(stderr, "oath: OATH_HTTP_ADDR (%s) has no port; use host:port or :port\n", addr);
+    exit(1);
+  }
+  /* EVERY OCTET OF THE SUFFIX IS A DIGIT, checked BEFORE the conversion. atoi
+     stopped at the first non-digit and reported nothing, so a trailing typo
+     bound the digits before it; strtol reported the tail but still ACCEPTED a
+     leading sign and leading whitespace of its own accord, so a plus or a space
+     was normalised away and the same wrong endpoint was bound by a validator
+     that believed it had rejected it. A conversion that repairs its input
+     cannot also be the thing that validates it. */
+  const char *pd = colon + 1;
+  int digits = 0;
+  for (const char *q = pd; *q; q++) {
+    if (*q < '0' || *q > '9') { digits = -1; break; }
+    digits++;
+  }
+  char *pend = NULL;
+  long port = digits > 0 ? strtol(pd, &pend, 10) : -1;
+  if (digits <= 0 || !pend || *pend != 0 || port <= 0 || port > 65535) {
+    fprintf(stderr, "oath: OATH_HTTP_ADDR (%s) does not name a port in 1..65535\n", addr);
+    exit(1);
+  }
+  char host[128];
+  size_t hl = (size_t)(colon - addr);
+  if (hl >= sizeof host) {
+    fprintf(stderr, "oath: OATH_HTTP_ADDR (%s) has an unreasonably long host\n", addr);
+    exit(1);
+  }
+  memcpy(host, addr, hl);
+  host[hl] = 0;
+  struct sockaddr_in sa;
+  memset(&sa, 0, sizeof sa);
+  sa.sin_family = AF_INET;
+  sa.sin_port = htons((unsigned short)port);
+  if (hl == 0) sa.sin_addr.s_addr = htonl(INADDR_ANY);
+  else if (strcmp(host, "localhost") == 0) sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  else if (inet_pton(AF_INET, host, &sa.sin_addr) != 1) {
+    /* NAMED AND REFUSED rather than resolved. A name lookup would make where
+       this artifact listens depend on the host's resolver, and this backend's
+       whole position is that what it does not implement it declines by name. */
+    fprintf(stderr, "oath: OATH_HTTP_ADDR host %s is not an IPv4 literal; this backend "
+                    "binds IPv4 literals and localhost only\n", host);
+    exit(1);
+  }
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (fd < 0) {
+    fprintf(stderr, "oath: cannot create a socket: %s\n", strerror(errno));
+    exit(1);
+  }
+  int one = 1;
+  setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+  if (bind(fd, (struct sockaddr *)&sa, sizeof sa) != 0) {
+    fprintf(stderr, "oath: cannot bind %s: %s\n", addr, strerror(errno));
+    exit(1);
+  }
+  if (listen(fd, O_HTTP_BACKLOG) != 0) {
+    fprintf(stderr, "oath: cannot listen on %s: %s\n", addr, strerror(errno));
+    exit(1);
+  }
+  /* AFTER the bind, so the line is a statement about OBSERVABLE STARTUP rather
+     than about an intention. A supervisor that waits for it is then waiting for
+     something true. */
+  fprintf(stderr, "oath handler listening on %s\n", addr);
+  fflush(stderr);
+  return fd;
+}
+
+/* THE SERVE LOOP. One connection at a time, one request per connection.
+   Returns only if the listening socket fails; a handler is a long-lived server
+   and there is no other way out that is not a bug or a signal. */
+int o_serve(OCode entry, int nil_, int cons_, int pair_, int req_, int resp_) {
+  /* A client that vanishes mid-write must not take the process with it. This is
+     the same class as a refusal: a remote party cannot be permitted to end a
+     server, so the failed write is reported by send() and answered by closing
+     the connection. */
+  signal(SIGPIPE, SIG_IGN);
+  int lfd = o_http_listen();
+  for (;;) {
+    int fd = accept(lfd, NULL, NULL);
+    if (fd < 0) {
+      if (errno == EINTR || errno == ECONNABORTED || errno == EAGAIN) continue;
+      fprintf(stderr, "oath: the listening socket failed: %s\n", strerror(errno));
+      return 70;
+    }
+    /* A SERIAL SERVER MUST NOT BE HOLDABLE. Without a receive deadline one peer
+       that connects and says nothing blocks every other client forever, which
+       is a remote party ending the service by other means. */
+    /* ONE DEADLINE FOR THE WHOLE REQUEST, taken at accept. It is configurable
+       for the same reason the listen address is: a bound nobody can observe
+       firing is a hypothesis, and a thirty-second default cannot be witnessed
+       inside a test suite. The floor of one second is what stops a
+       configuration from disabling it. */
+    long long budget = O_HTTP_REQSECS;
+    const char *bs = getenv("OATH_HTTP_REQUEST_TIMEOUT");
+    if (bs && *bs) {
+      char *bend = NULL;
+      long v = strtol(bs, &bend, 10);
+      if (bend && *bend == 0 && v >= 1 && v <= 86400) budget = v;
+    }
+    long long deadline = o_now_ms() + budget * 1000;
+    struct timeval tv;
+    tv.tv_sec = O_HTTP_IOSECS;
+    tv.tv_usec = 0;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
+
+    /* THE REFUSAL BOUNDARY FOR ONE REQUEST, established BEFORE anything is
+       allocated for it - so the jump target is a frame that stays live for the
+       whole of the handler's evaluation, and so nothing this iteration
+       allocated is live at the moment the target is saved. */
+    volatile int cfd = fd;
+    /* VOLATILE, like the descriptor, and for the same reason: it is assigned
+       between the setjmp and the longjmp, so a non-volatile local's value is
+       indeterminate on the way back. A HEAD request whose handler refused must
+       still get a bodiless 500. */
+    volatile int chead = 0;
+    if (setjmp(o_request_jump) != 0) {
+      /* A refusal travelled here. Its line is already on stderr - the operator
+         needs to see WHICH operand refused, and a 500 naming nothing is the
+         silent failure this repo keeps finding. SPEC 14.2 settles the
+         disposition for a malformed request field (400, handler not invoked);
+         this is the same principle one step later, when the handler WAS invoked
+         and could not complete. */
+      o_http_status((int)cfd, o_now_ms() + budget * 1000, chead, 500,
+                    "the handler could not complete this request");
+      o_http_close((int)cfd);
+      o_arena_release();
+      continue;
+    }
+    o_request_live = 1;
+
+    OReq r;
+    memset(&r, 0, sizeof r);
+    int status = o_http_parse(fd, deadline, &r);
+    chead = r.mlen == 4 && memcmp(r.method, "HEAD", 4) == 0;
+    OField *hs = NULL;
+    int nh = 0;
+    if (status == 0) {
+      /* One row per surviving field plus the lifted host entry. Derived from
+         the request rather than from a constant, so it cannot be short. */
+      hs = (OField *)xalloc(sizeof(OField) * (r.nf + 1));
+      status = o_http_adapt(&r, hs, &nh);
+    }
+    if (status != 0) {
+      /* THE HANDLER IS NOT INVOKED. That is row 9's words and row 24's, and it
+         is the half that matters: a refused request must not reach Oath code at
+         all, so no partial or repaired value can be observed by it. */
+      o_request_live = 0;
+      if (status > 0) {
+        o_http_status(fd, o_now_ms() + budget * 1000,
+                      r.mlen == 4 && memcmp(r.method, "HEAD", 4) == 0, status,
+                      "this request was refused at the SPEC 14 boundary");
+      }
+      o_http_close(fd);
+      o_arena_release();
+      continue;
+    }
+
+    OVal *value = o_http_value(&r, hs, nh, nil_, cons_, pair_, req_);
+    OVal *out = entry(NULL, value);
+    /* The handler has returned, so a refusal can no longer arrive from Oath
+       code; clearing here means serialisation cannot re-enter the boundary and
+       write a second response onto the same connection. */
+    o_request_live = 0;
+    /* A FRESH WINDOW FOR THE ANSWER, not the remainder of the read budget. The
+       request deadline may already have expired - that is exactly how a 408 is
+       reached - and a write bounded by an expired deadline could not send the
+       refusal it was called to send. What each bound is FOR differs: one stops
+       a peer from holding this server while it talks, the other while it
+       listens. */
+    o_http_respond(fd, o_now_ms() + budget * 1000, &r,
+                   out, nil_, cons_, pair_, resp_);
+    /* THE SAME LINGERING CLOSE THE REFUSAL PATHS USE. A client that pipelined a
+       second request, or sent a body this answer did not read, leaves octets
+       unread - and a close with unread octets sends RST on Linux, which can
+       discard the response already written. A successful answer is exactly as
+       losable that way as a refusal. */
+    o_http_close(fd);
+    /* THE RELEASE POINT. After serialisation, and the order is the whole
+       argument: the response is written from Str buffers and byte lists that
+       live in this region, so moving this above o_http_respond would serialise
+       freed memory. */
+    o_arena_release();
+  }
+}
+
+#else
+
+/* THE HANDLER PROTOCOL ON A HOST THIS SLICE HAS NO SOCKET LAYER FOR. Refused by
+   name, at run time rather than at compile time, because the refusal is a
+   property of the HOST and not of the program: the same artifact's source
+   compiles here and serves on a POSIX host. Exit 70, the status every other
+   host refusal in this runtime uses, so a supervisor reads it the same way. */
+int o_serve(OCode entry, int nil_, int cons_, int pair_, int req_, int resp_) {
+  (void)entry;
+  (void)nil_;
+  (void)cons_;
+  (void)pair_;
+  (void)req_;
+  (void)resp_;
+  fputs("oath: this host has no socket layer in the LLVM backend, so the handler protocol "
+        "cannot be served here; build this entry with the Go backend\n", stderr);
+  return 70;
+}
+
+#endif
 `
 
 // ---------- program assembly ----------
@@ -1901,6 +3698,7 @@ declare ptr @o_env_get(ptr, i32)
 declare ptr @o_closure(ptr, ptr)
 declare ptr @o_apply(ptr, ptr)
 declare ptr @o_argv(i32, ptr, i32, i32)
+declare i32 @o_serve(ptr, i32, i32, i32, i32, i32)
 declare void @o_print(ptr)
 declare void @o_arena_release()
 declare ptr @o_require(ptr, ptr, ptr)
@@ -1961,26 +3759,51 @@ type llvmEntry struct {
 	// before reaching the parameter argv is built for. A capability-first entry
 	// is (-> {caps} (-> (List Str) Str)), so its argv parameter is one arrow in.
 	argvDepth int
+
+	// handler: the entry's input is a Request VALUE built by the runtime's
+	// SPEC §14 adapter rather than an argv list, and main is a serve loop
+	// rather than one call and a print.
+	//
+	// It is a SEPARATE field from argvDepth rather than a sentinel value of it,
+	// because the two answer different questions — where argv is, and whether
+	// there is argv at all — and a shape that answered both with one number
+	// would make "no argv" and "argv at depth 0" the same state.
+	handler bool
 }
 
-// llvmRefuseHandler is this backend's refusal of both handler shapes. Shared,
-// because the reason is the same fact about this runtime in both cases — the
-// capability record a handler may take changes nothing about it.
-func llvmRefuseHandler() error {
-	return llvmUnsupported(reasonHandlerProtocol, "the handler protocol\n"+
-		"  Handler lowering is not implemented in this backend: it emits no request\n"+
-		"  loop and no response-serialization boundary. The old reason was a LIFETIME\n"+
-		"  objection — the runtime never freed, so a long-running server would leak\n"+
-		"  per request — and the request arena retired it (#165). What remains is\n"+
-		"  unwritten lowering, which is a property of this slice's backend and not of\n"+
-		"  the protocol")
+// llvmRefuseHandlerCaps is this backend's refusal of the CAPABILITY-FIRST
+// handler, and it is no longer shared with the plain one: the plain handler
+// compiles.
+//
+// THE REASON IS A PROPERTY OF THE ARENA, NOT UNWRITTEN CODE, which is why the
+// refusal survives the request loop landing. A capability record is resolved
+// ONCE before the listener binds — that is #114's invariant and the launch gate
+// depends on it — so the closures in it must live for the PROCESS. Every
+// allocation in this runtime comes from the request arena, and the serve loop
+// releases that arena after each response, so a record resolved at launch is
+// freed by the first request that completes and the second request applies a
+// dangling closure.
+//
+// The repairs are both real work and neither is a lowering detail: a
+// program-lifetime region alongside the request arena, or per-request
+// resolution — which would move authority provisioning after the port is bound
+// and destroy the property the launch gate exists to state. Refusing is the
+// honest answer until one of them is designed.
+func llvmRefuseHandlerCaps() error {
+	return llvmUnsupported(reasonHandlerProtocol, "a handler that takes a capability record\n"+
+		"  The plain handler protocol (-> Request Response) IS lowered by this backend.\n"+
+		"  What is refused is (-> {caps} (-> Request Response)): a capability record is\n"+
+		"  resolved once before the listener binds, so its closures must outlive every\n"+
+		"  request — and every allocation in this runtime belongs to the per-request\n"+
+		"  arena, which is released after each response. Compiling it would hand the\n"+
+		"  second request a freed capability. Build this entry with the Go backend")
 }
 
 var llvmEntries = [...]llvmEntry{
 	shapeCLI:         {shape: shapeCLI, caps: false, argvDepth: 0},
 	shapeCLICaps:     {shape: shapeCLICaps, caps: true, argvDepth: 1},
-	shapeHandler:     {shape: shapeHandler, refuse: llvmRefuseHandler},
-	shapeHandlerCaps: {shape: shapeHandlerCaps, refuse: llvmRefuseHandler},
+	shapeHandler:     {shape: shapeHandler, handler: true},
+	shapeHandlerCaps: {shape: shapeHandlerCaps, refuse: llvmRefuseHandlerCaps},
 }
 
 // EXHAUSTIVENESS, at compile time. Adding a shape to the variant makes this a
@@ -2022,6 +3845,16 @@ func listCtorIndices(st *Store, prog *CompiledProgram) (nil_, cons int, err erro
 	ent, err := llvmEntryFor(prog)
 	if err != nil {
 		return 0, 0, err
+	}
+	// A HANDLER HAS NO ARGV, and this is the same discipline the refusal above
+	// carries: a consumer that answers for a shape it was not written for
+	// answers wrongly rather than not at all. Asked here, before the store, so
+	// the diagnostic names the mismatch instead of reporting whatever the type
+	// walk trips on first — for a handler that would be "Request does not
+	// declare Nil and Cons", which describes a symptom and not the error.
+	if ent.handler {
+		return 0, 0, fmt.Errorf("%s takes a Request, not an argv list; its constructor "+
+			"indices come from handlerCtorIndices", prog.Shape)
 	}
 	d, err := st.GetDef(prog.EntryHash)
 	if err != nil {
@@ -2084,6 +3917,100 @@ func listCtorIndices(st *Store, prog *CompiledProgram) (nil_, cons int, err erro
 	return nil_, cons, nil
 }
 
+// handlerCtors is what the SPEC §14 adapter needs in order to BUILD the values
+// the protocol is defined over: one constructor index per protocol type.
+//
+// The runtime is handed these rather than assuming 0 and 1, for the reason
+// listCtorIndices gives about argv — a hardcoded index is right today and
+// silently wrong for any store whose declaration order differs, and the failure
+// is a handler reading its own path as its method with no type error anywhere.
+type handlerCtors struct{ nilIdx, consIdx, pairIdx, reqIdx, respIdx int }
+
+// handlerCtorIndices derives those indices from the ENTRY'S OWN TYPE.
+//
+// DERIVED BY ARITY, NOT BY NAME, and that is forced rather than preferred:
+// SPEC §14.1a's PROTO-TYPES-BY-IDENTITY says a store MAY bind these types to
+// any name or to NONE, so a lookup keyed on "List" or "Nil" would fail on a
+// perfectly conformant store. What identity pins instead is the declaration,
+// and the declaration makes each constructor unambiguous by field count: List
+// has one nullary and one binary constructor, and each of Pair, Request and
+// Response has exactly one.
+//
+// The arity checks are therefore also the validation. They cannot fail for an
+// entry classifyEntry accepted — it compares HASHES against the §14.1a
+// declarations — which is exactly why they are cheap to keep: they turn a
+// future change in that classification into an error here rather than into a
+// value built with an index from a different datatype.
+func handlerCtorIndices(st *Store, prog *CompiledProgram) (handlerCtors, error) {
+	var hc handlerCtors
+	// The shape decides whether this backend lowers the entry at all, and it is
+	// asked FIRST for the same reason listCtorIndices asks first: a declined
+	// shape must refuse as a subset boundary rather than as whatever the type
+	// walk trips on.
+	ent, err := llvmEntryFor(prog)
+	if err != nil {
+		return hc, err
+	}
+	if !ent.handler {
+		return hc, fmt.Errorf("%s is not a handler, so it has no protocol types to build", prog.Shape)
+	}
+	d, err := st.GetDef(prog.EntryHash)
+	if err != nil {
+		return hc, err
+	}
+	ty := d.Ty
+	if ty == nil || ty.K != "fun" || ty.A == nil || ty.A.K != "data" || ty.B == nil || ty.B.K != "data" {
+		return hc, fmt.Errorf("entry is not %s: it is not a function between two datatypes", prog.Shape)
+	}
+	sole := func(h string, fields int, what string) (int, []Ty, error) {
+		def, err := st.GetDef(h)
+		if err != nil {
+			return 0, nil, err
+		}
+		if len(def.Ctors) != 1 || len(def.Ctors[0]) != fields {
+			return 0, nil, fmt.Errorf("%s does not have the single %d-field constructor SPEC §14.1a declares", what, fields)
+		}
+		return 0, def.Ctors[0], nil
+	}
+	reqFields := []Ty(nil)
+	if hc.reqIdx, reqFields, err = sole(ty.A.Hash, 5, "the entry's Request type"); err != nil {
+		return hc, err
+	}
+	if hc.respIdx, _, err = sole(ty.B.Hash, 3, "the entry's Response type"); err != nil {
+		return hc, err
+	}
+	// The header list carries BOTH remaining types: `(List (Pair Str Str))` is
+	// Request's third field, so reading it is how this reaches List and Pair
+	// without resolving a name or hardcoding a hash.
+	hdrs := reqFields[2]
+	if hdrs.K != "data" || len(hdrs.Args) != 1 {
+		return hc, fmt.Errorf("Request's headers field is not a list of pairs")
+	}
+	if hc.pairIdx, _, err = sole(hdrs.Args[0].Hash, 2, "the header entry type"); err != nil {
+		return hc, err
+	}
+	listDef, err := st.GetDef(hdrs.Hash)
+	if err != nil {
+		return hc, err
+	}
+	hc.nilIdx, hc.consIdx = -1, -1
+	if len(listDef.Ctors) == 2 {
+		for i, fields := range listDef.Ctors {
+			switch len(fields) {
+			case 0:
+				hc.nilIdx = i
+			case 2:
+				hc.consIdx = i
+			}
+		}
+	}
+	if hc.nilIdx < 0 || hc.consIdx < 0 {
+		return hc, fmt.Errorf("the header list type does not have the empty and two-field " +
+			"constructors SPEC §14.1a declares")
+	}
+	return hc, nil
+}
+
 // emitLLVM lowers a compiled program to textual LLVM IR.
 func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 	// The shape decides everything about the entry's interface, including whether
@@ -2107,7 +4034,17 @@ func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 		}
 		providers[i] = p
 	}
-	nilIdx, consIdx, err := listCtorIndices(st, prog)
+	// TWO ENTRY PROTOCOLS, TWO DERIVATIONS, and the shape chooses. Neither is a
+	// special case of the other: a CLI entry's argument is a (List Str) and a
+	// handler's is a Request, so asking one derivation for the other's indices
+	// is a category error rather than a missing branch.
+	var nilIdx, consIdx int
+	var hc handlerCtors
+	if ent.handler {
+		hc, err = handlerCtorIndices(st, prog)
+	} else {
+		nilIdx, consIdx, err = listCtorIndices(st, prog)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -2175,6 +4112,22 @@ func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 	}
 
 	// main.
+	//
+	// A HANDLER'S main IS A HANDOFF, not a loop written here, and the reason is
+	// on o_serve: SPEC §14.2 requires a runtime refusal to become a 500 rather
+	// than an exit, the C that unwinds it needs a frame that stays live across
+	// the handler call, and a frame this function called and returned from is
+	// not one. What the emitter keeps is what the emitter owns — WHICH entry to
+	// call, and the constructor indices derived from this store.
+	if ent.handler {
+		e.label("entry")
+		entry := e.fname[prog.EntryHash]
+		out := e.next()
+		fmt.Fprintf(&e.b, "  %s = call i32 @o_serve(ptr %s, i32 %d, i32 %d, i32 %d, i32 %d, i32 %d)\n",
+			out, entry, hc.nilIdx, hc.consIdx, hc.pairIdx, hc.reqIdx, hc.respIdx)
+		fmt.Fprintf(&e.b, "  ret i32 %s\n}\n", out)
+		return llvmAssemble(prog, e, &body, "", "define i32 @main(i32 %argc, ptr %argv) {\n"+e.b.String())
+	}
 	e.label("entry")
 	args := e.next()
 	fmt.Fprintf(&e.b, "  %s = call ptr @o_argv(i32 %%argc, ptr %%argv, i32 %d, i32 %d)\n", args, nilIdx, consIdx)
@@ -2199,7 +4152,15 @@ func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 	fmt.Fprintf(&e.b, "  call void @o_print(ptr %s)\n", out)
 	fmt.Fprintf(&e.b, "  call void @o_arena_release()\n  ret i32 0\n}\n")
 	mainFn := "define i32 @main(i32 %argc, ptr %argv) {\n" + e.b.String()
+	return llvmAssemble(prog, e, &body, caps, mainFn)
+}
 
+// llvmAssemble writes the module around whatever main the entry protocol
+// produced. Shared by both protocols DELIBERATELY: provenance, the linker
+// anchor, the constant pool and the emission order are facts about the
+// ARTIFACT, and a second copy for the handler is where an artifact that carries
+// no manifest would come from.
+func llvmAssemble(prog *CompiledProgram, e *llvmEmitter, body *strings.Builder, caps, mainFn string) (string, error) {
 	// Provenance, carried as data. Same discipline as the Go backend: not a flag
 	// and not an environment variable, because argv IS this program's input and
 	// the environment belongs to any program holding `env`.

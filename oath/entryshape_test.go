@@ -155,10 +155,19 @@ func TestClassifyEntryInhabitsEveryShape(t *testing.T) {
 
 // The LLVM backend's REFUSAL is carried by the table, so every consumer of the
 // shape refuses — not only the one that remembered to check first. That is what
-// stops listCtorIndices from walking the type of an entry this backend never
+// stops handlerCtorIndices from walking the type of an entry this backend never
 // agreed to compile.
+//
+// THE SUBSET BOUNDARY MOVED, AND THE ASSERTION WAS REPLACED RATHER THAN
+// WEAKENED. This test read `[]EntryShape{shapeHandler, shapeHandlerCaps}` while
+// both were refused. The plain handler is now lowered, so the contract it
+// encoded deliberately changed — and the replacement pins the new contract at
+// least as tightly: the refused shape is still refused at EVERY consumer, and
+// the shape that moved is now asserted POSITIVELY at every one of them, which a
+// narrowed refusal list alone would not do. A row silently dropped from the
+// table would fail the control below rather than pass by absence.
 func TestLLVMRefusesHandlerShapesAtEveryConsumer(t *testing.T) {
-	for _, s := range []EntryShape{shapeHandler, shapeHandlerCaps} {
+	for _, s := range []EntryShape{shapeHandlerCaps} {
 		prog := &CompiledProgram{Shape: s}
 
 		_, err := llvmEntryFor(prog)
@@ -169,8 +178,8 @@ func TestLLVMRefusesHandlerShapesAtEveryConsumer(t *testing.T) {
 			t.Errorf("%s was refused as %v, want %s", s, r, reasonHandlerProtocol)
 		}
 
-		// listCtorIndices asks for the shape itself. It reaches the store only
-		// after that, so an empty store is enough to prove the refusal comes
+		// Both index derivations ask for the shape itself. They reach the store
+		// only after that, so an empty store is enough to prove the refusal comes
 		// first: a version that walked the type before asking would fail with a
 		// missing-definition error instead.
 		st := newStore(t)
@@ -179,14 +188,32 @@ func TestLLVMRefusesHandlerShapesAtEveryConsumer(t *testing.T) {
 		} else if r, ok := refusedFor(err); !ok || r != reasonHandlerProtocol {
 			t.Errorf("listCtorIndices refused %s as %v, want %s", s, r, reasonHandlerProtocol)
 		}
+		if _, err := handlerCtorIndices(st, prog); err == nil {
+			t.Errorf("handlerCtorIndices accepted %s", s)
+		} else if r, ok := refusedFor(err); !ok || r != reasonHandlerProtocol {
+			t.Errorf("handlerCtorIndices refused %s as %v, want %s", s, r, reasonHandlerProtocol)
+		}
 	}
 
-	// CONTROL: the CLI shapes are not refused by the table, or the check above
-	// would pass for a backend that refused everything.
-	for _, s := range []EntryShape{shapeCLI, shapeCLICaps} {
+	// CONTROL: the shapes this backend lowers are not refused by the table, or
+	// the check above would pass for a backend that refused everything.
+	for _, s := range []EntryShape{shapeCLI, shapeCLICaps, shapeHandler} {
 		if _, err := llvmEntryFor(&CompiledProgram{Shape: s}); err != nil {
 			t.Errorf("the LLVM backend refused %s: %v", s, err)
 		}
+	}
+
+	// AND EACH DERIVATION ANSWERS FOR ITS OWN PROTOCOL ONLY. A handler has no
+	// argv and a CLI entry has no Request, so a consumer asked for the other
+	// one must say so rather than walk a type it was not written for — which is
+	// how "Request does not declare Nil and Cons" would have been reported as
+	// the error instead of as the symptom.
+	st := newStore(t)
+	if _, _, err := listCtorIndices(st, &CompiledProgram{Shape: shapeHandler}); err == nil {
+		t.Error("listCtorIndices derived argv indices for a handler")
+	}
+	if _, err := handlerCtorIndices(st, &CompiledProgram{Shape: shapeCLI}); err == nil {
+		t.Error("handlerCtorIndices derived protocol indices for a CLI entry")
 	}
 }
 
