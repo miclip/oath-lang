@@ -597,7 +597,12 @@ missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   (empty)
+  more EXPENSIVE if delayed   #172 — a remote CPU-exhaustion path in the
+                              handler this project intends to make the
+                              production backend, introduced by 433cdba.
+                              Retires when nomination lookup is sublinear and
+                              the fix is FASTER rather than stricter, since
+                              strictness is itself a §14.0 divergence
   more VALUABLE if delayed    #134, #139/#140, #138, #38 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128,
@@ -622,7 +627,7 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               copies the store from its own checkout, so running
                               it as-is re-measures the OLD corpus and reproduces
                               zero forever, a trigger that can never fire
-  no CLOCK at all             #115, #169, #170, #74, #65, #66, #165 —
+  no CLOCK at all             #115, #169, #171, #74, #65, #66, #165 —
                               open, and neither cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
