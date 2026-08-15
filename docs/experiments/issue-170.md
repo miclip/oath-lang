@@ -29,11 +29,23 @@ against declining — that a witness must be chosen by someone who already knows
 the defect exists — is *an argument*, and that the falsifier exists to make it
 face a measurement. It has now faced one, and the measurement does not rescue it:
 
-- **Under standard A** (a property that would have caught the mistake that
-  actually happened is writable) explicit witnesses recover every known defect.
+**THE "STANDARD A / STANDARD B" VOCABULARY BELOW IS RETIRED IN `issue-169.md`,
+AND THIS FILE'S CONCLUSION SURVIVES ITS RETIREMENT.** Those two readings were
+that document's invention; it now applies #169's own sentence — *closed by a
+property over the existing types* — and reports its per-row result and verdict
+there. **Read them there rather than here: this file records no verdict of its
+own about #169 and any restatement would go stale.** The two rows below are kept
+because they are what THIS file measured, and both are about GENERATION, which
+is a question about evidence rather than about closure — so the retirement
+changes no number and no conclusion in this document.
+
+- **Where a property that would have caught the actual mistake is enough**
+  ("standard A" in the old vocabulary), explicit witnesses recover every known
+  defect **for which an Oath-level property can be written at all** — every
+  failure #169 cites except #167's, whose subject is a host diagnostic.
   They do it today, in four unrelated definitions, as ordinary practice.
-- **Under standard B** (that property is discharged, so a wrong body cannot carry
-  the name) witnesses fail — and so does every finite generation, at any range.
+- **Where that property must also be DISCHARGED so no wrong body can carry the
+  name** ("standard B"), witnesses fail — and so does every finite generation, at any range.
   A body can special-case exactly the values a generator draws precisely as it
   can special-case exactly the values a person chose. Widening the draw raises the
   cost of cheating; it does not close the class.
@@ -48,16 +60,30 @@ accepts a real, named cost: a class-B defect nobody has thought of stays
 undetected, and a witness list cannot find what nobody suspects. That cost is not
 removed by this decision; it is recorded as the price of it.
 
-**What this file does not do.** It does not settle #169's A-versus-B choice —
-that is a judgment, not a measurement, and `issue-169.md` says so. It measures
-what a generator change could and could not deliver under each.
+**What this file does not do.** It does not settle what "closed" means for
+#169; it measures what a generator change could and could not deliver. That
+question is answered elsewhere — `issue-169.md` applies #169's own sentence over
+five failure modes and reaches one categorical result. Read its exhaustive table
+rather than this sentence.
 
 ## The falsifier, reproduced
 
 `docs/experiments/issue-169.md` is a runnable document: every fenced `lisp` block
 is a file, and putting them in order into a store copied fresh from `codebase/`
-reproduces the run. Twelve blocks are extracted, `block00` through `block11`.
-`oath put` exits 2 on any file containing a falsified definition.
+reproduces the run. `oath put` exits 2 on any file containing a falsified
+definition.
+
+**THE TABLE BELOW IS PINNED TO `77c1e15`, WHERE THAT DOCUMENT HELD TWELVE
+BLOCKS.** It has since grown parts 9–12 and extracts **twenty-seven**, so the
+replay script at the end of this file — which reads the CURRENT document — now
+executes `block00` through `block26`, renumbers the blocks this table names, and
+reports six more exit-2 blocks than it lists. That is not a divergence: it is a measurement of a different,
+larger document. To reproduce exactly what is tabulated here, pin the source:
+
+    git show 77c1e15:docs/experiments/issue-169.md > /tmp/issue-169-at-77c1e15.md
+
+and point the extractor at that file. For the current document's own manifest and
+exit codes, read its Reproduction section rather than this table.
 
 Replayed at `77c1e15` against a fresh copy of `codebase/`:
 
@@ -268,8 +294,11 @@ binder list is a closed property — a literal witness with nothing generated.
 - **#169's Cyrillic and Latin-1 closures**, parts 5 and 6 —
   `decodes-cyrillic` (`"ключ"`), `decodes-e-acute` (`"é"`) and
   `decodes-a-mixed-string` (`"a-é-ключ"`), stated as class-B witnesses. Those
-  witnesses close F3 and F1 under standard A. They are also what `block09` and
-  `block11` cheat against.
+  witnesses are what part 5's and part 6's closures rest on. They are also what
+  `block09` and `block11` cheat against. (`issue-169.md` marks F3 CLOSED on
+  part 6's `cyrillic-repo-round-trips`, and records the cost: any such property
+  works only by encoding which reading of the bytes was intended, a fact the
+  types do not carry. Read it there.)
 
 The practice is narrow and it shows in the corpus profile: **literals ≥ 128
 appear in exactly 8 definitions across 5 files**, and every one is an HTTP status
@@ -282,10 +311,12 @@ corpus already does. That is the ground for declining.
 
 ## The judgment, made explicit
 
-**Standard A — witnesses recover any KNOWN defect, and require prior knowledge.**
-#169's table records `yes` for all three failures under this standard: a property
-over the existing types is writable that would have caught what actually
-happened. For F3 and F1 the closing evidence includes a hand-chosen class-B
+**Witnesses recover any KNOWN defect, and require prior knowledge.** A property
+that would have caught what actually happened is writable for every failure #169
+cites except #167's, whose subject is a host diagnostic rather than an Oath
+value. **How far that gets, per row, is `issue-169.md`'s table and is not
+restated here.** What follows is about witnesses and generation.
+For F3 and F1 the closing evidence includes a hand-chosen class-B
 literal, because the generator never enters that region. The generator
 contributes nothing to those closures; crediting it would credit the tester with
 exclusions a person made. The cost of this route is exactly its mechanism:
@@ -299,8 +330,32 @@ human's witness list; the same construction aimed at the generator is if anythin
 easier, since the draw is a pure function of the definition's hash and therefore
 knowable in advance. Widening `[-20, 20]` to anything changes which finite set is
 sampled. It does not make the set infinite.
-**Only proof reaches standard B, and #169 records that the two universal
-properties which would carry it were never submitted to the prover at all.**
+**Only proof reaches standard B.** When this was written, #169 recorded that the
+two universal properties which would carry it had never been submitted to the
+prover at all. **That is no longer true and the result went the other way:**
+#169's parts 9 and 12 submit them, and several prove — `usable-encodes` by
+induction in three seconds among them. **Proving them did not settle the question,
+and #169's exhaustive table is the authority on where each row lands; it is not
+restated here, because a duplicated verdict is what goes stale.** The reason
+proof was not sufficient generalises, and is the part worth carrying: a store
+policy gates a NAME, so an obligation reaches a failure only when the gated name
+is where that failure enters — and `require_proven` reads only the properties the
+SUBMITTED definition carries, so it does not preserve an obligation across a
+repoint at all.
+
+#169's part 12 measures both. Read that document rather than this summary.
+
+**Read #169's part 12 for the condition, because the bare timings mislead.** The
+gate consults only the properties the GUARDED NAME carries, so F2's 14-second
+proof of the standalone `faithful-under-shipped-p` is not what gates anything —
+the load-bearing evidence is `guard-ascii-both`, the guard carrying the
+obligation on its own name, at 121 seconds, against a byte-range guard that
+proves `usable-encodes` in 7 seconds and would otherwise bind while still
+mismatching the digest.
+
+Nothing in THIS file's argument changes — generation still cannot reach standard
+B, for the reason above — but the sentence that proof had never been tried is
+superseded.
 
 **And without a type/domain distinction the generator cannot choose a regime.**
 The `Int` arm serves array indices, loop counters, codepoints, bytes and HTTP
@@ -367,11 +422,18 @@ citations and the corpus's above-127 literal profile.
   a generator reaching that region would kill it. That is a fact about this body,
   established by `oath eval` on four expressions — not a measurement of any
   generator, and not evidence about a body written to defeat one.
-- **No class-B obligation was proven.** `multibyte-shrinks` and `usable-encodes`
-  were not submitted to the prover in #169 and were not submitted here. "Proof
-  does not reach this" remains established for one goal and assumed for the rest.
-- **The A-versus-B choice is not settled by any of this.** It is a judgment about
-  what a `tested` verdict is supposed to mean, and no measurement decides it.
+- **No class-B obligation was proven HERE, and that is now the only half of this
+  bullet that stands.** `usable-encodes` was not submitted in this file, and when
+  this was written it had not been submitted in #169 either. It since was:
+  #169's part 9 proves it in 3 seconds, and `multibyte-shrinks` is the one that
+  still returns no verdict. So "proof does not reach this" is established for
+  `multibyte-shrinks` and REFUTED for `usable-encodes`; read #169 for the current
+  state rather than this line.
+- **What "closed" means is not settled by any of this, and is no longer open.**
+  This file treated it as a judgment about what a `tested` verdict should mean.
+  `issue-169.md` now settles it from #169's own text rather than by judgment, and
+  reaches a categorical verdict; nothing measured HERE decides that question
+  either way.
 - **The 30 objects with no mutation points and the 4 with no properties were not
   investigated.** They sit outside the mutation baseline and inside the binder
   universe or neither, depending on which; nothing here characterises them.
