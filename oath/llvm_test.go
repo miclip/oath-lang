@@ -270,7 +270,14 @@ func TestLLVMRefusesAKindItCannotLower(t *testing.T) {
 //
 // Hence the table. Every operation named `accepted` must emit, every operation
 // named `refused` must be refused BY NAME, and the two lists together are the
-// claim. `neg` is unary and unlowered, so it is the remaining Int boundary.
+// claim.
+//
+// `neg` USED TO BE THE REMAINING Int BOUNDARY AND IS NOW LOWERED, so the Int
+// boundary is no longer an OPERATION at all — every Int primitive the language
+// has is inside. What marks the edge instead is the OPERAND TYPE: neg-on-rat
+// below is the same operator refused for its argument, which is the shape the
+// numeric overloading gives this backend and the shape a name-keyed lowering
+// would get wrong.
 //
 // #173's second slice moves `and`, `or` and `not` inside — the operators
 // webhook.oath uses in compiled bodies. They are spelled with COMPARISON
@@ -300,12 +307,25 @@ func TestLLVMPrimitiveBoundary(t *testing.T) {
 		{"le", `(if (<= 1 2) "yes" "no")`, true},
 		{"div", `(if (== (/ 4 2) 2) "yes" "no")`, true},
 		{"mod", `(if (== (% 4 2) 0) "yes" "no")`, true},
-		{"neg", `(if (== (neg 1) -1) "yes" "no")`, false},
-		// `==` is polymorphic and TWO of its instances are lowered, so the guard
-		// that keeps the rows above from being read as "the operator is
-		// supported" has moved rather than gone: Str joined Int (#173) and Bool
-		// did not. Bool is the cheapest remaining instance to name; the datatype
-		// instances are pinned in llvm_str_eq_test.go.
+		// `neg` moved from refused to ACCEPTED, and the surrendered check is
+		// replaced by TestIntNegationAgreesThreeWays, which holds it against
+		// `oath eval` over positive, negative, zero and beyond-64-bit operands
+		// computed at run time. What REPLACES the boundary it used to mark is
+		// neg-on-rat below: `neg` is numeric-overloaded, so the row that says
+		// where this backend stops is now a row about the OPERAND TYPE.
+		{"neg", `(if (== (neg 1) -1) "yes" "no")`, true},
+		// THE TYPE GUARD, FROM THE OUTSIDE. `neg` at Rat must still be refused by
+		// name, and a lowering that keyed on the operator alone would hand a Rat
+		// to the integer runtime and pass every row above. The `let` is what makes
+		// this reach `neg` at all: spelled inside a comparison, the Rat would be
+		// refused at the comparison instead and this row would witness nothing
+		// about `neg`.
+		{"neg-on-rat", `(let (x Rat (neg 1/2)) "yes")`, false},
+		// `==` is polymorphic and THREE of its instances are lowered, so the
+		// guard that keeps the rows above from being read as "the operator is
+		// supported" has moved rather than gone: Str joined Int (#173), and Bool
+		// has now joined both. The datatype instance is the cheapest remaining
+		// one to name.
 		//
 		// eq-on-str moved from refused to ACCEPTED, and by this file's own rule
 		// that surrenders a check unless something else pins the semantics. What
@@ -314,7 +334,15 @@ func TestLLVMPrimitiveBoundary(t *testing.T) {
 		// runtime-constructed and tail-view operands — strictly more than the
 		// refusal it replaced, which only witnessed that nothing was emitted.
 		{"eq-on-str", `(if (== "a" "a") "yes" "no")`, true},
-		{"eq-on-bool", `(if (== true true) "yes" "no")`, false},
+		// eq-on-bool moved the same way, and TestBooleanEqualityAgreesThreeWays
+		// is what pins it: the full two-by-two table with both operands computed
+		// from argv, so nothing here rests on a constant the emitter could fold.
+		{"eq-on-bool", `(if (== true true) "yes" "no")`, true},
+		// THE REPLACEMENT CONTROL FOR `==`. A datatype instance is still refused,
+		// so the accepted rows above cannot be read as "the operator is
+		// supported"; without a refused instance left, a lowering that stopped
+		// selecting on operand type would keep this table green.
+		{"eq-on-data", `(if (== (Nil [Str]) (Nil [Str])) "yes" "no")`, false},
 		// THE BOOLEAN OPERATORS. Acceptance is the weaker half of each of these
 		// rows too, and what pins their semantics is llvm_bool_test.go —
 		// three-way agreement over the full truth table, and, because the truth

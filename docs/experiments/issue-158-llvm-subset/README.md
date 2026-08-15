@@ -159,19 +159,22 @@ name by the LLVM backend. Without it, a green run would be equally consistent
 with the refusals having been removed rather than with the programs having been
 written inside them.
 
-**AND IT HAS MOVED THREE TIMES SINCE, WHICH IS THE PART WORTH KEEPING.** It was
+**AND IT HAS MOVED FOUR TIMES SINCE, WHICH IS THE PART WORTH KEEPING.** It was
 `line-count-report`, which needs `+`, while the backend had only `==`. #166's
 checked-`+` prototype moved `+` inside, so it became `line-pair-report`, which
 needs `*`. #166's arbitrary-precision `Int` moved `+ - * == < <=` inside, so it
-became `int-halved`, which needs `/` — and then `/` and `%` were lowered too, so
-it is now `int-negated`, which needs `neg`. Each move was forced by the same rule: an
+became `int-halved`, which needs `/`; then `/` and `%` were lowered too, so it
+became `int-negated`, which needs `neg`; and `neg` was lowered in turn — the
+demand came from `show-int` in `examples/circle.oath` — so it is now
+`rat-floored`, which needs `floor` over a `Rat`. Each move was forced by the same rule: an
 assertion may be replaced when the contract it encodes deliberately changed, but
 the replacement must pin the new contract at least as tightly — and a refusal
 alone cannot, because it witnesses that something is still outside the boundary
 without witnessing that the boundary MOVED. So each move added the positive
 half: every operation that came inside is now checked three ways, and the entry
-that used to be refused is required to compile and agree. The script grew from
-22 checks to 67 across the three moves.
+that used to be refused is required to compile and agree. The script has grown
+several times over across those moves — its own summary line is the count, and
+a number written here would be one more thing to keep in step by hand.
 
 **THE CONTROL'S OPERATION IS NOT A FIXED CHOICE, AND THAT IS THE DURABLE
 LESSON.** A fail-closed control has to name something the backend still refuses,

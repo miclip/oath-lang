@@ -232,16 +232,16 @@ func llvmUnsupported(reason refusalReason, what string) error {
 			"  `bytes-eq-ct`, written out in the emitted runtime rather than linked from\n" +
 			"  a host library), Bool (`and`, `or`, `not` — STRICT, so both operands of a\n" +
 			"  binary operator are evaluated even when the first decides the result,\n" +
-			"  matching `oath eval`), the CLI entry protocol, and Int —\n" +
+			"  matching `oath eval` — and `==`), the CLI entry protocol, and Int —\n" +
 			"  arbitrary-precision, literals of any magnitude, with the binary\n" +
-			"  operations `+ - * / %` and `== < <=`. Division truncates toward zero\n" +
-			"  and a zero divisor fails at runtime, matching `oath eval`. `==` at any\n" +
-			"  OTHER type is refused.\n" +
+			"  operations `+ - * / %` and `== < <=` and unary `neg`. Division\n" +
+			"  truncates toward zero and a zero divisor fails at runtime, matching\n" +
+			"  `oath eval`. `==` at any type OTHER than Int, Str and Bool is refused.\n" +
 			"  Every entry shape is covered — the CLI ones, and both handlers,\n" +
 			"  (-> Request Response) and (-> {caps} (-> Request Response)), served\n" +
 			"  over HTTP/1.1 by the emitted runtime.\n" +
-			"  `neg` is refused by name (use `(- 0 x)`), as are Rat and Float and\n" +
-			"  Set/Map. Build with the Go backend for full coverage.",
+			"  Rat and Float and Set/Map are refused, so `neg` at Rat or Float is\n" +
+			"  refused with them. Build with the Go backend for full coverage.",
 	}
 }
 
@@ -609,11 +609,24 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 		// return type is what separates them: an ARITHMETIC op returns an Int,
 		// an ORDERING op returns an i32 that o_bool lifts to a Bool.
 		//
-		// `neg` stays refused BY NAME. It is unary, so it does not fit either
-		// shape here, and `(- 0 x)` already reaches it — which makes it a
-		// LOWERING gap rather than a semantic one, and worth saying so instead
-		// of quietly adding a third shape for one operation. A backend subset is
-		// an honest claim only while what is outside it is named.
+		// `neg` IS NOW LOWERED, and it is unary, so it lives BELOW this table
+		// rather than in it — the second occupant of the third shape `not` opened.
+		//
+		// WHAT MOVED IS DEMAND, NOT EXPRESSIBILITY, and saying which is the whole
+		// justification. `(- 0 x)` still reaches the same value through the binary
+		// table above, so this adds nothing a program could not already say; the
+		// comment that used to sit here declined a third shape on exactly that
+		// ground, and it was right to. What overturns it is a CONCRETE CORPUS
+		// PROGRAM: `show-int` in examples/circle.oath spells the sign flip
+		// `(neg n)`, and circle.oath is the tutorial's worked compiled example.
+		// Refusing the corpus's own spelling of an operation this backend already
+		// implements makes the user rewrite a definition to suit the compiler,
+		// which is the wrong way round — `(- 0 x)` being equivalent is what makes
+		// the lowering CHEAP (one runtime function over the existing normalizer),
+		// not what makes the demand illegitimate.
+		//
+		// So the boundary did not move because a better argument was found. It
+		// moved because something asked, which is the same reason `not` is here.
 		//
 		// `and`, `or` AND `not` ARE LOWERED, AND THE OBLIGATION THAT CAME WITH
 		// THEM WAS SEMANTIC RATHER THAN A CHOICE: THEY DO NOT SHORT-CIRCUIT.
@@ -648,8 +661,9 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 			// be handed to an integer runtime.
 			//
 			// The synthesis is hoisted out of the Int branch because `==` now has
-			// TWO lowerings selected by operand type, and asking the checker twice
-			// would let the two guards drift apart while each stayed readable.
+			// THREE lowerings selected by operand type, and asking the checker
+			// once per case would let the guards drift apart while each stayed
+			// readable.
 			at, aerr := e.chk.synth(e.ctx, &t.Args[0])
 			bt, berr := e.chk.synth(e.ctx, &t.Args[1])
 			typed := aerr == nil && berr == nil && at != nil && bt != nil
@@ -729,6 +743,41 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 				fmt.Fprintf(&e.b, "  %s = call ptr @o_bool(i32 %s)\n", v, r)
 				return v, nil
 			}
+			// `==` AT Bool — THE THIRD INSTANCE OF THE SAME POLYMORPHIC OPERATION.
+			//
+			// A Bool carries no payload, so structural equality at this type is
+			// equality of the two truth values and there is nothing to walk. It is
+			// therefore the one instance that needs no runtime support at all:
+			// o_truth is already the extractor `if` and `and`/`or` use, and `icmp
+			// eq i1` is total on i1, so there is no bit pattern where this can
+			// disagree with the reference's structEq.
+			//
+			// IT IS NOT LOWERED AS `xor`+`not` OR AS AN Int COMPARISON ON THE TAG.
+			// Both would work today and both would be reading a REPRESENTATION —
+			// the second especially, since it would depend on the runtime storing
+			// a Bool's truth in the same field an Int uses. Comparing the two
+			// truths is the lowering that stays correct if that ever changes.
+			//
+			// STRICT, AND FOR THE SAME STRUCTURAL REASON `and` AND `or` ARE: both
+			// operands are emitted before either truth is read, and there is no
+			// `br` for a short-circuit to hide behind. `==` has no short-circuiting
+			// reading anyone would reach for, but the shape is the one that makes
+			// that unrepresentable rather than merely unattempted.
+			if typed && t.Op == "==" && at.K == "bool" && bt.K == "bool" {
+				a, err := e.expr(&t.Args[0], env, depth, self)
+				if err != nil {
+					return "", err
+				}
+				b, err := e.expr(&t.Args[1], env, depth, self)
+				if err != nil {
+					return "", err
+				}
+				// combineBool takes two ALREADY-EMITTED operands, which is exactly
+				// the invariant this case needs, and `icmp eq` is an operator over
+				// two i1 registers like `and` and `or` are. Reusing it is what keeps
+				// one place responsible for "both operands have run by now".
+				return e.combineBool("icmp eq", a, b), nil
+			}
 			// THE CRYPTO PRIMITIVES (#78) — `hmac-sha256` AND `bytes-eq-ct`.
 			//
 			// These are the only primitives whose arguments are an ADT rather
@@ -806,17 +855,19 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 				return e.combineBool(boolOp, a, b), nil
 			}
 		}
-		// `not` AT Bool. Unary, so it is outside the arity-2 block above rather
-		// than inside it — the one place this backend has a third shape.
+		// THE UNARY SHAPE — `not` AT Bool AND `neg` AT Int. Outside the arity-2
+		// block above rather than inside it, because neither returns a value of
+		// the shape that block's two tables describe.
 		//
-		// IT IS HERE BECAUSE THIS SLICE WAS ASKED FOR IT, WHICH IS THE WHOLE
-		// REASON, AND `neg` IS STILL REFUSED BECAUSE NOTHING HAS ASKED. The
-		// asymmetry is DEMAND, not expressibility: `(not x)` is `(if x false
-		// true)` and reaches the same answer through constructs this backend
-		// already lowers, exactly as `(- 0 x)` reaches `neg`. Saying otherwise —
-		// that `not` had no other spelling — would be a claim about the LANGUAGE
-		// standing in for a fact about this backend's scope, and the two stop
-		// agreeing the moment someone checks.
+		// BOTH ARE HERE BECAUSE SOMETHING ASKED, WHICH IS THE WHOLE REASON, AND
+		// NEITHER IS HERE BECAUSE IT HAD NO OTHER SPELLING. `(not x)` is `(if x
+		// false true)` and `(neg n)` is `(- 0 n)`; both reach the same value
+		// through constructs this backend already lowers. Claiming otherwise
+		// would put a statement about the LANGUAGE where a fact about this
+		// backend's scope belongs, and the two stop agreeing the moment someone
+		// checks. What is true is narrower and enough: a compiled program in this
+		// repo's own corpus uses each spelling, so refusing either makes the
+		// backend reject Oath that the rest of the toolchain accepts.
 		if t.Op == "not" && len(t.Args) == 1 {
 			if at, err := e.chk.synth(e.ctx, &t.Args[0]); err == nil && at != nil && at.K == "bool" {
 				a, err := e.expr(&t.Args[0], env, depth, self)
@@ -831,6 +882,28 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 				n := e.next()
 				fmt.Fprintf(&e.b, "  %s = xor i1 %s, true\n", n, ta)
 				return e.liftBool(n), nil
+			}
+		}
+		// `neg` AT Int, AND THE TYPE GUARD IS WHAT KEEPS IT AT Int. `neg`'s
+		// typing rule (check.go's numericTy) admits Rat and Float as well, and
+		// this backend lowers neither — so an operand that synthesises to
+		// anything but Int falls through to the refusal below, exactly as a Rat
+		// addition falls out of the binary Int table above. A guard on the
+		// OPERATOR NAME alone would hand a Rat to an integer runtime.
+		if t.Op == "neg" && len(t.Args) == 1 {
+			if at, err := e.chk.synth(e.ctx, &t.Args[0]); err == nil && at != nil && at.K == "int" {
+				a, err := e.expr(&t.Args[0], env, depth, self)
+				if err != nil {
+					return "", err
+				}
+				// o_int_neg RATHER THAN A SUBTRACTION FROM AN EMITTED ZERO. The
+				// two agree — o_int_sub already reduces to a sign flip when its
+				// left operand is zero — but emitting a literal here would put a
+				// value in the program that the source does not contain, and it
+				// would allocate one Int per negation to compute nothing.
+				v := e.next()
+				fmt.Fprintf(&e.b, "  %s = call ptr @o_int_neg(ptr %s)\n", v, a)
+				return v, nil
 			}
 		}
 		return "", llvmUnsupported(reasonPrim, fmt.Sprintf("the primitive operation %q", t.Op))
@@ -2004,6 +2077,18 @@ static OVal *o_int_addsub(OVal *a, OVal *b, int bs) {
 
 OVal *o_int_add(OVal *a, OVal *b) { return o_int_addsub(a, b, 1); }
 OVal *o_int_sub(OVal *a, OVal *b) { return o_int_addsub(a, b, -1); }
+
+/* UNARY NEGATION. It flips the sign and SHARES the magnitude, which is safe for
+   the reason o_int_wrap states: values are immutable and nothing here frees, so
+   two Ints pointing at one limb array cannot observe each other.
+
+   It routes through the wrapper rather than assigning isign directly, which is
+   what keeps zero out of trouble: -0 is 0 in C, but it is the wrapper that
+   decides isign is 0 exactly when the value is, and a hand-filled T_INT here
+   would be a second place that had to know that. */
+OVal *o_int_neg(OVal *a) {
+  return o_int_wrap(-o_int_arg(a)->isign, a->imag, a->ilen);
+}
 
 OVal *o_int_mul(OVal *a, OVal *b) {
   int n;
@@ -4596,6 +4681,7 @@ declare ptr @o_int_dec(ptr)
 declare ptr @o_int_add(ptr, ptr)
 declare ptr @o_int_sub(ptr, ptr)
 declare ptr @o_int_mul(ptr, ptr)
+declare ptr @o_int_neg(ptr)
 declare ptr @o_int_div(ptr, ptr)
 declare ptr @o_int_mod(ptr, ptr)
 declare i32 @o_bytes_eq_ct(ptr, ptr, i32)

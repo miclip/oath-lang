@@ -106,8 +106,9 @@
 ; #166 moved `+ - *` and the ordering operations INSIDE the subset, so the
 ; contract that assertion encoded changed deliberately. The replacement has to
 ; pin the new contract at least as tightly, which takes two entries rather than
-; one: the fail-closed control is now `int-negated` in int-arithmetic.oath,
-; which needs `neg` and must still be refused BY NAME — and `line-count-report` stays
+; one: the fail-closed control is now `rat-floored` in int-arithmetic.oath,
+; which needs `floor` over a Rat and must still be refused BY NAME — and
+; `line-count-report` stays
 ; HERE as the positive half, the entry that used to be refused and must now
 ; compile and agree three ways. Keeping only the refusal would be weaker than
 ; what was here before: it would no longer witness that the boundary MOVED, only

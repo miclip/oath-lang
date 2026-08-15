@@ -171,40 +171,62 @@ check "the LLVM backend names its lowering" "1" \
 check "the artifact declares the file_read requirement" "1" \
       "$(grep -c 'requires: readfile (file_read)' "$work/build-llvm.txt" || true)"
 
-# 3. THE FAIL-CLOSED CONTROL. `int-halved` is verified, compiles under the Go
-#    backend, and needs `/` — the one thing separating it from everything the
-#    subset now reaches. The LLVM backend must refuse it BY NAME. Without this,
-#    everything above is equally consistent with the subset's refusals having
-#    been removed rather than with the programs having been written inside them.
+# 3. THE FAIL-CLOSED CONTROL. `rat-floored` is verified, compiles under the Go
+#    backend, and needs `floor` over a Rat — the one thing separating it from
+#    everything the subset now reaches. The LLVM backend must refuse it BY NAME.
+#    Without this, everything above is equally consistent with the subset's
+#    refusals having been removed rather than with the programs having been
+#    written inside them.
 #
-#    THE CONTROL HAS MOVED THREE TIMES, and every move was forced by the same
+#    THE CONTROL HAS MOVED FOUR TIMES, and every move was forced by the same
 #    rule. It was `line-count-report` (needs `+`) while the backend had only
 #    `==`; #166's checked-`+` prototype moved `+` inside, so it became
 #    `line-pair-report` (needs `*`); arbitrary-precision Int moved
-#    `+ - * == < <=` inside, so it became `int-halved` (needs `/`); and `/` and
-#    `%` then landed too, so it is now `neg`. Each time the contract changed
+#    `+ - * == < <=` inside, so it became `int-halved` (needs `/`); `/` and `%`
+#    then landed too, so it became `int-negated` (needs `neg`); and `neg` has
+#    now landed, so it is `rat-floored`. Each time the contract changed
 #    deliberately and the replacement had to pin the new one AT LEAST AS TIGHTLY
 #    — which a refusal alone cannot do. A refusal witnesses that something is
 #    still outside the boundary; it does not witness that the boundary MOVED.
 #    So every operation that came inside is checked POSITIVELY, three ways,
-#    below.
+#    below — `int-negated` among them, as of this move.
 #
-#    `neg` IS A WEAKER BOUNDARY THAN `/` WAS, and the script says so rather than
-#    presenting it as an equal replacement. It is unary, so the emitter has no
-#    shape for it, and `(- 0 x)` already reaches the same value — so what it
-#    excludes is a lowering gap, not a semantic one. It is still the only thing
-#    separating "the subset grew" from "the refusals were deleted".
-if ! "$oath" build int-negated -o "$work/go-control" > "$work/build-control-go.txt" 2>&1; then
+#    THIS CONTROL IS STRONGER THAN THE ONE IT REPLACES, which is worth saying
+#    because the previous move had to admit the opposite. `neg` was a LOWERING
+#    gap — `(- 0 x)` reached the same value inside the subset — so refusing it
+#    excluded a spelling rather than a semantics. Rat has no equivalent
+#    spelling: the emitted runtime has no rational, and there is nothing inside
+#    the subset that computes `(floor (to-rat n))`.
+#
+#    AND A SECOND CONTROL SITS BESIDE IT, on the TYPE GUARD rather than on the
+#    operation. `neg` admits Int, Rat and Float and only Int is lowered, so a
+#    backend that keyed the new lowering on the operator NAME would pass every
+#    check in this script — including `int-negated` — while handing a Rat to an
+#    integer runtime. `rat-negated` is the entry that tells the two apart.
+if ! "$oath" build rat-floored -o "$work/go-control" > "$work/build-control-go.txt" 2>&1; then
   echo "FAIL setup: the Go backend refused the control, so it is not a BACKEND-SUBSET boundary"
   cat "$work/build-control-go.txt"; exit 1
 fi
-"$oath" build int-negated --backend llvm -o "$work/llvm-control" > "$work/build-control.txt" 2>&1 && rc=0 || rc=$?
+"$oath" build rat-floored --backend llvm -o "$work/llvm-control" > "$work/build-control.txt" 2>&1 && rc=0 || rc=$?
 check "the LLVM backend still refuses what it cannot lower" "1" \
       "$([ "$rc" != "0" ] && echo 1 || echo 0)"
 check "  ...and names the primitive it lacks" "1" \
-      "$(grep -c 'primitive operation "neg"' "$work/build-control.txt" || true)"
+      "$(grep -c 'primitive operation "floor"' "$work/build-control.txt" || true)"
 check "  ...and emitted no executable" "0" \
       "$([ -e "$work/llvm-control" ] && echo 1 || echo 0)"
+
+if ! "$oath" build rat-negated -o "$work/go-guard" > "$work/build-guard-go.txt" 2>&1; then
+  echo "FAIL setup: the Go backend refused the type-guard control"
+  cat "$work/build-guard-go.txt"; exit 1
+fi
+"$oath" build rat-negated --backend llvm -o "$work/llvm-guard" > "$work/build-guard.txt" 2>&1 && rc=0 || rc=$?
+check "the LLVM backend refuses 'neg' at Rat" "1" \
+      "$([ "$rc" != "0" ] && echo 1 || echo 0)"
+# BY NAME, and the name is the point: a refusal naming `==` or `<` would mean
+# the Rat was caught by a neighbouring operator and this control witnessed
+# nothing about the guard on `neg` itself.
+check "  ...and names 'neg' rather than a neighbouring operator" "1" \
+      "$(grep -c 'primitive operation "neg"' "$work/build-guard.txt" || true)"
 
 # 3b. THE OTHER HALF: the entry that needs `+` must now COMPILE and agree three
 #     ways. A refusal here would mean checked `+` never reached the emitter, and
@@ -306,7 +328,7 @@ check "  ...and it really counted, rather than defaulting"     "has newlines" \
 caps=""
 for n in int-large-literals int-carry int-sign int-cancellation int-multiplication int-ordering \
          int-halved int-division-exactness int-division-signs int-division-boundaries \
-         int-divmod-identity; do
+         int-divmod-identity int-negated; do
   if ! "$oath" build "$n" -o "$work/go-$n" > "$work/b-go-$n.txt" 2>&1; then
     echo "FAIL setup: the Go backend refused $n"; cat "$work/b-go-$n.txt"; exit 1
   fi
@@ -383,11 +405,11 @@ done
 # literal in the program and are not a suffix of any argument, so a backend still
 # folding cannot produce them by accident.
 #
-# `int-negated` above REMAINS the fail-closed control and did not move. That is
-# the point: #164 widened Str construction, not the primitive vocabulary, so the
-# thing separating "the subset grew" from "the refusals were deleted" is still
-# `neg` and needed no replacement. A control that moves whenever anything lands
-# is not measuring a boundary.
+# The fail-closed control did not move for #164, and that was the point: #164
+# widened Str construction, not the primitive vocabulary, so the thing
+# separating "the subset grew" from "the refusals were deleted" needed no
+# replacement. A control that moves whenever anything lands is not measuring a
+# boundary. It moved for `neg` because `neg` is what it excluded.
 for n in str-report str-shifted str-mirrored str-held-tail; do
   if ! "$oath" build "$n" -o "$work/go-$n" > "$work/b-go-$n.txt" 2>&1; then
     echo "FAIL setup: the Go backend refused $n"; cat "$work/b-go-$n.txt"; exit 1

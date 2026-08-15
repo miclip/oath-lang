@@ -281,17 +281,53 @@
           (if (== (% 100 (- c c)) 0) "unreachable-zero" "unreachable-other")))))
   (prop no-argument [] (== (int-modulo-by-zero (Nil [Str])) "no-argument")))
 
-; ---------- the fail-closed control ----------
+; ---------- `neg`, WHICH USED TO BE THE FAIL-CLOSED CONTROL ----------
 ;
-; `neg` IS WHAT IS LEFT OUTSIDE, and it is a LOWERING gap rather than a semantic
-; one: it is unary, so it does not fit either shape the emitter handles, and
-; `(- 0 x)` already reaches the same value. That makes it a weaker boundary than
-; `/` was — worth saying, because a control's value depends on what it excludes.
-; It is still the thing that distinguishes "the subset grew" from "the refusals
-; were deleted": the LLVM backend must refuse this entry BY NAME while the Go
-; backend compiles it.
+; It was the control while it was the one Int operation left outside, and it was
+; always the weakest one this file has had: `(- 0 x)` reaches the same value, so
+; what it excluded was a LOWERING gap rather than a semantic one. That is the
+; reason it did not survive contact with a real program — `show-int` in
+; examples/circle.oath spells its sign branch `(neg n)`, so the tutorial's own
+; compiled example was refused for a spelling.
+;
+; So it moved INSIDE, and by this experiment's own rule the entry stays: an
+; operation that crosses the boundary is checked POSITIVELY, three ways,
+; because a refusal that is merely deleted leaves nothing behind that would
+; notice a wrong answer. The magnitude is beyond int64 in both directions, so
+; this also witnesses that the flip is performed on the bignum and not on a
+; machine word.
 (defn int-negated [] [(args (List Str))] Str
   (if (== (neg 340282366920938463463374607431768211456)
           -340282366920938463463374607431768211456)
     "ok" "wrong-negated")
   (prop ok [] (== (int-negated (Nil [Str])) "ok")))
+
+; ---------- the fail-closed control ----------
+;
+; Rat IS WHAT IS LEFT OUTSIDE, and it is a stronger boundary than `neg` was: the
+; LLVM runtime has no rational at all, so this is a SEMANTIC exclusion with no
+; equivalent spelling inside the subset, where `neg` had one. It is what
+; distinguishes "the subset grew" from "the refusals were deleted": the LLVM
+; backend must refuse this entry BY NAME while the Go backend compiles it.
+;
+; `floor` is the operation named because it is the one a real program hits
+; first: `oath build circle --backend llvm` refuses here, after `neg` stopped
+; refusing it.
+(defn rat-floored [] [(args (List Str))] Str
+  (if (== (floor (to-rat 7)) 7) "ok" "wrong-floored")
+  (prop ok [] (== (rat-floored (Nil [Str])) "ok")))
+
+; ---------- the control on the TYPE GUARD, not on the operation ----------
+;
+; `neg` is numeric-overloaded — its typing rule admits Int, Rat and Float — and
+; only the Int instance is lowered. So a backend that keyed its new lowering on
+; the OPERATOR NAME would hand a Rat to an integer runtime and still pass every
+; check above, including the one that just moved inside. This is the entry that
+; says which of the two happened.
+;
+; The `let` is load-bearing. Spelled inside a comparison the Rat would be
+; refused AT THE COMPARISON, and the check below would be reading a refusal
+; about `==` while claiming one about `neg`.
+(defn rat-negated [] [(args (List Str))] Str
+  (let (x Rat (neg 1/2)) (if (< x 0/1) "ok" "wrong-rat-negated"))
+  (prop ok [] (== (rat-negated (Nil [Str])) "ok")))
