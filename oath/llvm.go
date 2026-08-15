@@ -228,7 +228,9 @@ func llvmUnsupported(reason refusalReason, what string) error {
 		Detail:  what,
 		Help: "  This is a first slice: it covers datatypes, matching, closures, records,\n" +
 			"  Str (literals, matching, construction from values computed at runtime,\n" +
-			"  and `==`), Bool (`and`, `or`, `not` — STRICT, so both operands of a\n" +
+			"  and `==`), the #78 crypto boundary over byte lists (`hmac-sha256` and\n" +
+			"  `bytes-eq-ct`, written out in the emitted runtime rather than linked from\n" +
+			"  a host library), Bool (`and`, `or`, `not` — STRICT, so both operands of a\n" +
 			"  binary operator are evaluated even when the first decides the result,\n" +
 			"  matching `oath eval`), the CLI entry protocol, and Int —\n" +
 			"  arbitrary-precision, literals of any magnitude, with the binary\n" +
@@ -726,6 +728,56 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 				v := e.next()
 				fmt.Fprintf(&e.b, "  %s = call ptr @o_bool(i32 %s)\n", v, r)
 				return v, nil
+			}
+			// THE CRYPTO PRIMITIVES (#78) — `hmac-sha256` AND `bytes-eq-ct`.
+			//
+			// These are the only primitives whose arguments are an ADT rather
+			// than a scalar (SPEC §1), so they are the only ones whose lowering
+			// needs to know a DATATYPE's shape: the operands are walked as a cons
+			// list and the digest is built back into one.
+			//
+			// THE INDICES COME FROM THE TYPE IN THE TERM, NOT FROM THE NAME
+			// "List". Resolving the name would read the store's CURRENT binding,
+			// and a store that had since rebound List would hand this program
+			// constructor indices for a different datatype — a digest built with
+			// the wrong tag, matched against arms that do not fit it, with no type
+			// error anywhere. byteListCtors reads the declaration the checker
+			// already typed these arguments against.
+			//
+			// A shape it cannot recognise is an ERROR and not a backend refusal.
+			// A refusal says "valid Oath, outside this backend's subset", and the
+			// checker has already established that these operands are (List Int);
+			// what is left is a datatype whose declaration does not match its own
+			// type, which is a broken invariant rather than a subset boundary.
+			if t.Op == "hmac-sha256" || t.Op == "bytes-eq-ct" {
+				if typed && at.K == "data" && bt.K == "data" && at.Hash == bt.Hash {
+					nilIdx, consIdx, cerr := e.byteListCtors(at)
+					if cerr != nil {
+						return "", cerr
+					}
+					// LEFT TO RIGHT, and it is observable rather than cosmetic:
+					// an out-of-range element in EITHER operand is a runtime
+					// error, the reference converts argument 0 in full before
+					// argument 1, and emission order is evaluation order here.
+					a, err := e.expr(&t.Args[0], env, depth, self)
+					if err != nil {
+						return "", err
+					}
+					b, err := e.expr(&t.Args[1], env, depth, self)
+					if err != nil {
+						return "", err
+					}
+					if t.Op == "bytes-eq-ct" {
+						r := e.next()
+						fmt.Fprintf(&e.b, "  %s = call i32 @o_bytes_eq_ct(ptr %s, ptr %s, i32 %d)\n", r, a, b, consIdx)
+						v := e.next()
+						fmt.Fprintf(&e.b, "  %s = call ptr @o_bool(i32 %s)\n", v, r)
+						return v, nil
+					}
+					v := e.next()
+					fmt.Fprintf(&e.b, "  %s = call ptr @o_hmac_sha256(ptr %s, ptr %s, i32 %d, i32 %d)\n", v, a, b, nilIdx, consIdx)
+					return v, nil
+				}
 			}
 			// `and` AND `or` AT Bool — STRICT, AND STRUCTURALLY SO.
 			//
@@ -1453,6 +1505,15 @@ OVal *o_bool(int b) { OVal *v = val(T_BOOL); v->idx = b ? 1 : 0; return v; }
 typedef unsigned int o_u32;
 typedef unsigned long long o_u64;
 
+/* THE WIDTH IS CHECKED, NOT ASSUMED, because two unrelated things here depend on
+   it and both fail silently if it is wrong. The arithmetic above is base 2^32 and
+   relies on every limb product fitting an o_u64; SHA-256 below relies on exact
+   32-bit wraparound, and on a target where an unsigned int were 64 bits it would
+   compute a different function and still produce 32 plausible bytes. Same
+   discipline as the arena's alignment assertion: derived at COMPILE time rather
+   than believed. */
+typedef char o_u32_is_exactly_32_bits[(sizeof(o_u32) == 4) ? 1 : -1];
+
 static o_u32 *o_magalloc(int n) {
   return (o_u32 *)xalloc(sizeof(o_u32) * (size_t)(n > 0 ? n : 1));
 }
@@ -2082,6 +2143,308 @@ OVal *o_ctor(int idx, int n, OVal **f) {
 OVal *o_field(OVal *v, int i) {
   if (!v || v->tag != T_CTOR || i >= v->n) o_bug("bad field access");
   return v->f[i];
+}
+
+/* ---------- the crypto boundary (#78), HAND-WRITTEN ----------
+
+   THE TWO BACKENDS SATISFY ONE CONTRACT BY OPPOSITE MEANS, AND THAT IS THE
+   ARRANGEMENT RATHER THAN AN INCONSISTENCY. compile.go lowers hmac-sha256 to
+   crypto/hmac and bytes-eq-ct to crypto/subtle, commented "the trusted crypto
+   boundary, compiled to the host's library" - the Go backend TRUSTS the host.
+   This backend cannot: it emits textual IR, hands it to clang, and links nothing
+   but libc. That zero-dependency property is what makes "two independent
+   backends" a fact about the artifacts instead of a packaging detail, so SHA-256,
+   HMAC and the constant-time compare are written out here. A primitive names an
+   OPERATION and a backend lowers it; nothing obliges two backends to lower it the
+   same way, exactly as nothing obliges them to supply a capability KIND the same
+   way (#114).
+
+   CORRECTNESS IS CHECKED AGAINST PUBLISHED ANSWERS, NOT AGAINST THE OTHER
+   BACKEND. llvm_crypto_test.go runs the FIPS 180-2 SHA-256 examples against this
+   compress function directly and the RFC 4231 HMAC-SHA256 vectors through the
+   language. Two implementations of a fixed algorithm agreeing with each other is
+   weaker evidence than either agreeing with the number a standards body printed,
+   and the printed number is free. */
+
+typedef struct OSha OSha;
+struct OSha { o_u32 h[8]; unsigned char blk[64]; int used; o_u64 total; };
+
+static o_u32 o_rotr32(o_u32 x, int n) { return (x >> n) | (x << (32 - n)); }
+
+/* SHA-256's compression function, FIPS 180-4 6.2.2.
+
+   THE ROUND CONSTANTS ARE AN AUTOMATIC LOCAL, NOT A FILE-SCOPE TABLE, and that
+   is #165's no-static-storage rule rather than a style choice: the emitted
+   runtime declares no object of static storage duration outside three argued
+   exemptions, and llvm_runtime_state_test.go fails on a fourth whether or not it
+   is const. Asking for an exemption would cost that argument to save a table.
+
+   AND NOTHING HERE DEPENDS ON WHICH WAY A COMPILER TAKES IT. The constants are
+   read-only and their address does not escape, so a compiler may keep them in
+   .rodata and reference them in place - clang -O1 does - and even a per-call
+   copy of 256 bytes would be immaterial beside the 64 rounds below. Stated as a
+   cost bound rather than as a claim about an implementation, because a claim
+   about an implementation would need a gate and would rot without one. */
+static void o_sha_compress(o_u32 *h, const unsigned char *p) {
+  const o_u32 k[64] = {
+    0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u,
+    0x3956c25bu, 0x59f111f1u, 0x923f82a4u, 0xab1c5ed5u,
+    0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u,
+    0x72be5d74u, 0x80deb1feu, 0x9bdc06a7u, 0xc19bf174u,
+    0xe49b69c1u, 0xefbe4786u, 0x0fc19dc6u, 0x240ca1ccu,
+    0x2de92c6fu, 0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau,
+    0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u,
+    0xc6e00bf3u, 0xd5a79147u, 0x06ca6351u, 0x14292967u,
+    0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu, 0x53380d13u,
+    0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u,
+    0xa2bfe8a1u, 0xa81a664bu, 0xc24b8b70u, 0xc76c51a3u,
+    0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u,
+    0x19a4c116u, 0x1e376c08u, 0x2748774cu, 0x34b0bcb5u,
+    0x391c0cb3u, 0x4ed8aa4au, 0x5b9cca4fu, 0x682e6ff3u,
+    0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u,
+    0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u };
+  o_u32 w[64];
+  for (int i = 0; i < 16; i++)
+    w[i] = ((o_u32)p[4 * i] << 24) | ((o_u32)p[4 * i + 1] << 16) |
+           ((o_u32)p[4 * i + 2] << 8) | (o_u32)p[4 * i + 3];
+  for (int i = 16; i < 64; i++) {
+    o_u32 s0 = o_rotr32(w[i - 15], 7) ^ o_rotr32(w[i - 15], 18) ^ (w[i - 15] >> 3);
+    o_u32 s1 = o_rotr32(w[i - 2], 17) ^ o_rotr32(w[i - 2], 19) ^ (w[i - 2] >> 10);
+    w[i] = w[i - 16] + s0 + w[i - 7] + s1;
+  }
+  o_u32 a = h[0], b = h[1], c = h[2], d = h[3];
+  o_u32 e = h[4], f = h[5], g = h[6], hh = h[7];
+  for (int i = 0; i < 64; i++) {
+    o_u32 S1 = o_rotr32(e, 6) ^ o_rotr32(e, 11) ^ o_rotr32(e, 25);
+    o_u32 ch = (e & f) ^ ((~e) & g);
+    o_u32 t1 = hh + S1 + ch + k[i] + w[i];
+    o_u32 S0 = o_rotr32(a, 2) ^ o_rotr32(a, 13) ^ o_rotr32(a, 22);
+    o_u32 maj = (a & b) ^ (a & c) ^ (b & c);
+    o_u32 t2 = S0 + maj;
+    hh = g; g = f; f = e; e = d + t1;
+    d = c; c = b; b = a; a = t1 + t2;
+  }
+  h[0] += a; h[1] += b; h[2] += c; h[3] += d;
+  h[4] += e; h[5] += f; h[6] += g; h[7] += hh;
+}
+
+static void o_sha_init(OSha *s) {
+  const o_u32 iv[8] = { 0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
+                        0x510e527fu, 0x9b05688cu, 0x1f83d9abu, 0x5be0cd19u };
+  for (int i = 0; i < 8; i++) s->h[i] = iv[i];
+  s->used = 0;
+  s->total = 0;
+}
+
+/* STREAMING, BECAUSE HMAC NEEDS IT. The inner hash is over ipad || msg with the
+   two in different buffers, and concatenating them would mean allocating a copy
+   of every message this runtime ever authenticates. */
+static void o_sha_update(OSha *s, const unsigned char *p, size_t n) {
+  s->total += (o_u64)n;
+  while (n > 0) {
+    size_t take = (size_t)(64 - s->used);
+    if (take > n) take = n;
+    memcpy(s->blk + s->used, p, take);
+    s->used += (int)take;
+    p += take;
+    n -= take;
+    if (s->used == 64) { o_sha_compress(s->h, s->blk); s->used = 0; }
+  }
+}
+
+/* FIPS 180-4 5.1.1: append 0x80, then zeros until the block has 56 bytes, then
+   the length in BITS as a 64-bit big-endian word.
+
+   The bit count is captured BEFORE any padding is appended, because the padding
+   goes through the same update path and would otherwise be counted as message.
+   That is the whole of the 55/56/64-byte boundary this function is tested at:
+   at 55 the length still fits the block, at 56 it does not and a second block is
+   compressed, and at 64 the message ends exactly on a block edge and the padding
+   block is entirely padding. */
+static void o_sha_final(OSha *s, unsigned char *out) {
+  o_u64 bits = s->total * (o_u64)8;
+  unsigned char pad = 0x80, zero = 0, len[8];
+  o_sha_update(s, &pad, 1);
+  while (s->used != 56) o_sha_update(s, &zero, 1);
+  for (int i = 0; i < 8; i++) len[i] = (unsigned char)(bits >> (56 - 8 * i));
+  o_sha_update(s, len, 8);
+  for (int i = 0; i < 8; i++) {
+    out[4 * i]     = (unsigned char)(s->h[i] >> 24);
+    out[4 * i + 1] = (unsigned char)(s->h[i] >> 16);
+    out[4 * i + 2] = (unsigned char)(s->h[i] >> 8);
+    out[4 * i + 3] = (unsigned char)(s->h[i]);
+  }
+}
+
+static void o_sha256(const unsigned char *p, size_t n, unsigned char *out) {
+  OSha s;
+  o_sha_init(&s);
+  o_sha_update(&s, p, n);
+  o_sha_final(&s, out);
+}
+
+/* HMAC-SHA256, RFC 2104 with SHA-256 as the hash - which is what SPEC 1 names.
+
+   A key LONGER than the 64-byte block is replaced by its own digest and then
+   zero-padded, which is the clause RFC 4231's test cases 6 and 7 exist to
+   exercise and the one an implementation is most likely to get wrong, because
+   every shorter key takes the other path. */
+static void o_hmac_sha256_raw(const unsigned char *key, size_t klen,
+                              const unsigned char *msg, size_t mlen,
+                              unsigned char *out) {
+  unsigned char k[64], ipad[64], opad[64], inner[32];
+  OSha s;
+  memset(k, 0, sizeof k);
+  if (klen > 64) o_sha256(key, klen, k);
+  else if (klen > 0) memcpy(k, key, klen);
+  for (int i = 0; i < 64; i++) {
+    ipad[i] = (unsigned char)(k[i] ^ 0x36);
+    opad[i] = (unsigned char)(k[i] ^ 0x5c);
+  }
+  o_sha_init(&s);
+  o_sha_update(&s, ipad, 64);
+  o_sha_update(&s, msg, mlen);
+  o_sha_final(&s, inner);
+  o_sha_init(&s);
+  o_sha_update(&s, opad, 64);
+  o_sha_update(&s, inner, 32);
+  o_sha_final(&s, out);
+}
+
+/* ---------- (List Int) as octets ----------
+
+   SPEC 1: an element outside 0..255 is a RUNTIME ERROR, and a kernel MUST NOT
+   truncate or reduce modulo 256 - a digest over silently altered input would
+   verify against a message nobody sent. So this refuses, with the message the Go
+   backend's oBytes prints, and it refuses BEFORE any length is compared: the
+   reference converts argument 0 in full, then argument 1 in full, and only then
+   compares, so a bad element in either operand errors even when the lengths
+   already differ. Measured against oath eval rather than assumed. */
+static void o_byte_range_refuse(void) {
+  fputs("oath: byte list element out of range 0..255\n", stderr);
+  o_refused();
+}
+
+static int o_byte_list_len(OVal *v, int cons_idx) {
+  int n = 0;
+  for (OVal *cur = v; cur && cur->tag == T_CTOR && cur->idx == cons_idx; cur = cur->f[1]) {
+    if (cur->n != 2) o_bug("a byte list Cons does not carry two fields");
+    n++;
+  }
+  return n;
+}
+
+/* TWO WALKS, one to size the buffer and one to fill it. Values are immutable, so
+   the second walk sees exactly what the first counted, and the arena carves
+   forward with no realloc to grow into. */
+static unsigned char *o_byte_list(OVal *v, int cons_idx, int *nout) {
+  int n = o_byte_list_len(v, cons_idx);
+  unsigned char *out = (unsigned char *)xalloc((size_t)(n > 0 ? n : 1));
+  int i = 0;
+  for (OVal *cur = v; cur && cur->tag == T_CTOR && cur->idx == cons_idx; cur = cur->f[1]) {
+    OVal *el = cur->f[0];
+    /* TWO CONDITIONS, TWO CLASSES, exactly as the Go backend separates them: a
+       (List Int) whose element is not an Int is a broken representation and so a
+       compiler bug, while the RANGE is something a well-typed program reaches. */
+    if (!el || el->tag != T_INT) o_bug("a byte list element is not an Int");
+    if (el->isign < 0 || el->ilen > 1 || (el->ilen == 1 && el->imag[0] > 255u))
+      o_byte_range_refuse();
+    out[i++] = (unsigned char)(el->ilen == 0 ? 0u : el->imag[0]);
+  }
+  *nout = n;
+  return out;
+}
+
+/* bytes-eq-ct: EQUALITY THAT EXAMINES EVERY BYTE (SPEC 1, #78).
+
+   THE EVIDENCE FOR THIS FUNCTION IS AN ARGUMENT ABOUT THE CODE, NOT A TEST, and
+   the difference is the reason the comment is this long. For every input, this
+   returns what memcmp returns; only the TIMING differs. So no value test
+   discriminates a leaking lowering from this one - the three-way gate, the
+   differential ratchet and every property in the corpus would all stay green
+   over a memcmp. Timing here is ARGUED, and it has not been measured.
+
+   WHAT THE CODE DOES
+
+     LENGTH IS NOT SECRET, so a mismatch returns at once without reading a byte.
+     That is the reference's behaviour, derived rather than assumed: oath eval
+     routes this through subtle.ConstantTimeCompare, which answers 0 for
+     differing lengths, and SPEC 1 makes differing lengths compare unequal rather
+     than error. The corpus depends on it - malformed hex decodes to the empty
+     list, which must simply not match a 32-byte digest.
+
+     For equal lengths every byte is read, in index order, and the difference is
+     OR-ed into one accumulator. No early exit, no data-dependent branch, and no
+     memory access indexed by a byte's VALUE, so neither the branch predictor nor
+     the cache is told anything about the secret.
+
+     The reduction is ARITHMETIC, not a comparison: for an accumulator d in
+     0..255, (d - 1) >> 8 has bit 0 set exactly when d is zero. Spelled d == 0 a
+     compiler is free to emit a branch; spelled this way there is nothing to
+     branch on.
+
+   WHY THE ACCUMULATOR IS volatile. Without it a compiler may recognise the loop
+   as memcmp and call it - LLVM does exactly this class of idiom rewrite - and
+   libc memcmp stops at the first differing byte. A volatile object's reads and
+   writes are side effects the abstract machine requires to happen, in order, so
+   the loop cannot be replaced or exited early. The cost is one store per byte,
+   over a 32-byte digest.
+
+   WHAT WOULD INVALIDATE IT
+
+     Dropping volatile, or a later edit that accumulates into a plain local and
+     reduces it with != 0.
+
+     VECTORISING IS FINE and an EARLY EXIT IS NOT: the work must stay
+     input-independent, not stay scalar. volatile is what forbids the exit, so a
+     toolchain or flag combination that weakens volatile semantics reopens this.
+
+     THE CONVERSION ABOVE IS NOT COVERED AND IS NOT CONSTANT TIME. o_byte_list
+     walks a cons list and allocates, so the call as a whole takes time
+     proportional to each operand's LENGTH. Length is public and the walk's cost
+     does not depend on the byte VALUES, so the secret is still not leaked - but
+     the honest claim is about the comparison, not about the call.
+
+     A SECRET-DEPENDENT LENGTH would break the first premise. In the corpus's use
+     the operands are a 32-byte digest and a candidate decoded from a request
+     header, and neither length is secret.
+
+     THIS IS A CLAIM ABOUT EMITTED CODE, NOT ABOUT A MACHINE. A core with
+     data-dependent memory or arithmetic timing can leak from an instruction
+     stream that is constant-time by construction. The code is the layer a
+     compiler backend can answer for. */
+int o_bytes_eq_ct(OVal *av, OVal *bv, int cons_idx) {
+  int na = 0, nb = 0;
+  const unsigned char *a = o_byte_list(av, cons_idx, &na);
+  const unsigned char *b = o_byte_list(bv, cons_idx, &nb);
+  if (na != nb) return 0;
+  volatile unsigned char acc = 0;
+  for (int i = 0; i < na; i++) acc = (unsigned char)(acc | (unsigned char)(a[i] ^ b[i]));
+  o_u32 d = (o_u32)acc;
+  return (int)(1u & ((d - 1u) >> 8));
+}
+
+/* hmac-sha256: the digest as a (List Int), built tail-first.
+
+   The constructor indices are passed in for the reason o_argv gives: they are a
+   fact about the List datatype in THIS store, the compiler knows them, and a
+   hardcoded 0 and 1 would be silently wrong for a store whose declaration order
+   differs. SPEC 1 types both arguments and the result at the same (List Int), so
+   the indices that walk the operands are the ones that build the answer. */
+OVal *o_hmac_sha256(OVal *kv, OVal *mv, int nil_idx, int cons_idx) {
+  int nk = 0, nm = 0;
+  const unsigned char *k = o_byte_list(kv, cons_idx, &nk);
+  const unsigned char *m = o_byte_list(mv, cons_idx, &nm);
+  unsigned char mac[32];
+  o_hmac_sha256_raw(k, (size_t)nk, m, (size_t)nm, mac);
+  OVal *acc = o_ctor(nil_idx, 0, o_fields(0));
+  for (int i = 31; i >= 0; i--) {
+    OVal **f = o_fields(2);
+    f[0] = o_int((long long)mac[i]);
+    f[1] = acc;
+    acc = o_ctor(cons_idx, 2, f);
+  }
+  return acc;
 }
 
 /* Environments are immutable arrays; extending copies. The evaluator's env is a
@@ -4235,6 +4598,8 @@ declare ptr @o_int_sub(ptr, ptr)
 declare ptr @o_int_mul(ptr, ptr)
 declare ptr @o_int_div(ptr, ptr)
 declare ptr @o_int_mod(ptr, ptr)
+declare i32 @o_bytes_eq_ct(ptr, ptr, i32)
+declare ptr @o_hmac_sha256(ptr, ptr, i32, i32)
 declare i32 @o_int_eq(ptr, ptr)
 declare i32 @o_int_lt(ptr, ptr)
 declare i32 @o_int_le(ptr, ptr)
@@ -4329,6 +4694,76 @@ func entryInputTy(ty *Ty, ent llvmEntry, shape EntryShape) (*Ty, error) {
 		ty = ty.B
 	}
 	return ty, nil
+}
+
+// byteListCtors reports the empty and cons constructor indices of the (List Int)
+// the crypto primitives (#78) are typed at.
+//
+// DERIVED BY ARITY AND FIELD TYPE, NOT BY NAME. listCtorIndices reads the names
+// "Nil" and "Cons" because argv's list is the one the entry protocol names; here
+// nothing names anything — SPEC §1 says only that both operands are `(List Int)`,
+// a byte list, and the checker admits whatever datatype is bound to List in this
+// store. What the declaration makes unambiguous instead is the SHAPE: one nullary
+// constructor and one binary constructor carrying (Int, the list itself). That is
+// the same move handlerCtorIndices makes for the protocol types, and for the same
+// reason — a lookup keyed on a spelling fails on a store that spells it
+// differently, while the shape is what the operation actually needs.
+//
+// THE REFERENCE IS LESS CAREFUL HERE AND THIS DOES NOT COPY IT. `bytesOfList` in
+// eval.go walks while the constructor index is 1, i.e. it assumes Cons is
+// declared second. For the corpus's List — (Nil) then (Cons a (List a)) — that is
+// this function's answer too, so the two agree on every program in it. A store
+// declaring the constructors the other way round would make `oath eval` read
+// every byte list as empty while this backend read it correctly, which is a
+// divergence in the REFERENCE's favour by construction and not something a
+// backend should reproduce.
+func (e *llvmEmitter) byteListCtors(ty *Ty) (nil_, cons int, err error) {
+	if ty == nil || ty.K != "data" || len(ty.Args) != 1 || ty.Args[0].K != "int" {
+		return 0, 0, fmt.Errorf("a crypto primitive's operand is %s, not a byte list", debugTy(ty))
+	}
+	ad, err := e.st.GetDef(ty.Hash)
+	if err != nil {
+		return 0, 0, err
+	}
+	nil_, cons = -1, -1
+	for i, fields := range ad.Ctors {
+		switch len(fields) {
+		case 0:
+			if nil_ >= 0 {
+				return 0, 0, fmt.Errorf("the byte list's datatype declares more than one nullary constructor, so its empty case is ambiguous")
+			}
+			nil_ = i
+		case 2:
+			if cons >= 0 {
+				return 0, 0, fmt.Errorf("the byte list's datatype declares more than one binary constructor, so its cons case is ambiguous")
+			}
+			cons = i
+		}
+	}
+	if nil_ < 0 || cons < 0 || len(ad.Ctors) != 2 {
+		return 0, 0, fmt.Errorf("the byte list's datatype is not one nullary and one binary constructor, so this backend cannot walk it as a list")
+	}
+	// AND THE FIELD TYPES, not just their count — the same check listCtorIndices
+	// makes about argv. A datatype shaped `Cons Bool (List Bool)` has the right
+	// arities and would have this runtime read a Bool as an octet.
+	fields := instCtorFields(ad, ty.Hash, ty.Args, cons)
+	// THE TAIL IS COMPARED AS A WHOLE TYPE, NOT BY DATATYPE HASH. A hash-only
+	// test answers "is the tail the same DATATYPE", and the question here is "is
+	// the tail THIS TYPE" — which differ exactly when the arguments differ. A
+	// legal declaration like `(data List [a] (Nil) (Cons a (List Bool)))`
+	// instantiated at Int has a cons tail of `(List Bool)`: same hash, same
+	// arities, and octets that are not octets. It would pass emission and die
+	// inside the runtime at o_bug, which is the one disposition this backend
+	// does not permit — unsupported shapes are refused BY NAME, here, never
+	// discovered by the emitted program.
+	//
+	// tyEq is the checker's own equality and compares Args recursively, so this
+	// stays aligned with what the kernel calls the same type instead of being a
+	// second opinion about it.
+	if len(fields) != 2 || fields[0] == nil || fields[0].K != "int" || !tyEq(fields[1], ty) {
+		return 0, 0, fmt.Errorf("the byte list's cons constructor is not (Int, itself), so this backend cannot read it as octets")
+	}
+	return nil_, cons, nil
 }
 
 // listCtorIndices reports the constructor indices of Nil and Cons for the List
