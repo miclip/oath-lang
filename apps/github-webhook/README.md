@@ -14,8 +14,17 @@ apps/github-webhook/
   hdr-probe.oath  a runnable witness for the header-canonicalization finding
   deliver.sh      an INDEPENDENT sender — openssl + curl, no Oath
   report.sh       the dependent: reads the log, dedups redeliveries
-  acceptance.sh   28 end-to-end checks; `make check-app`, and CI runs it
+  acceptance.sh   end-to-end checks; `make check-app`, and CI runs it
 ```
+
+`acceptance.sh` runs its whole sequence ONCE PER BACKEND — `go` and `llvm` —
+against a binary each built by `oath build gh-webhook --backend <backend>` into
+its own work directory on its own freshly allocated port triple. The two passes
+must execute the SAME NUMBER of checks or the suite fails: a pass that died
+early or took a setup-failure fork would otherwise report zero failures and
+look exactly like a complete run. The count is deliberately not written down
+here — it is derived and reported by the script, and a number in prose would be
+correct exactly once. (This line said 28 while the script ran 34.)
 
 The friction it produced is `docs/experiments/webhook-friction.md`. That log is
 the deliverable; this is the thing that generated it.
