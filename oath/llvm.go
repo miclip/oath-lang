@@ -228,10 +228,13 @@ func llvmUnsupported(reason refusalReason, what string) error {
 		Detail:  what,
 		Help: "  This is a first slice: it covers datatypes, matching, closures, records,\n" +
 			"  Str (literals, matching, construction from values computed at runtime,\n" +
-			"  and `==`), Bool, the CLI entry protocol, and Int — arbitrary-precision,\n" +
-			"  literals of any magnitude, with the binary operations `+ - * / %` and\n" +
-			"  `== < <=`. Division truncates toward zero and a zero divisor fails at\n" +
-			"  runtime, matching `oath eval`. `==` at any OTHER type is refused.\n" +
+			"  and `==`), Bool (`and`, `or`, `not` — STRICT, so both operands of a\n" +
+			"  binary operator are evaluated even when the first decides the result,\n" +
+			"  matching `oath eval`), the CLI entry protocol, and Int —\n" +
+			"  arbitrary-precision, literals of any magnitude, with the binary\n" +
+			"  operations `+ - * / %` and `== < <=`. Division truncates toward zero\n" +
+			"  and a zero divisor fails at runtime, matching `oath eval`. `==` at any\n" +
+			"  OTHER type is refused.\n" +
 			"  Every entry shape is covered — the CLI ones, and both handlers,\n" +
 			"  (-> Request Response) and (-> {caps} (-> Request Response)), served\n" +
 			"  over HTTP/1.1 by the emitted runtime.\n" +
@@ -610,14 +613,23 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 		// of quietly adding a third shape for one operation. A backend subset is
 		// an honest claim only while what is outside it is named.
 		//
-		// `and` AND `or` ARE ALSO ABSENT, AND WHOEVER ADDS THEM INHERITS A
-		// SEMANTIC OBLIGATION RATHER THAN A CHOICE: they DO NOT SHORT-CIRCUIT.
+		// `and`, `or` AND `not` ARE LOWERED, AND THE OBLIGATION THAT CAME WITH
+		// THEM WAS SEMANTIC RATHER THAN A CHOICE: THEY DO NOT SHORT-CIRCUIT.
 		// Measured against the reference, `(and false (< (/ 1 0) 1))` and
 		// `(or true (< (/ 1 0) 1))` both RAISE — the second operand is evaluated
-		// even when the first has already decided the result. So a lowering that
-		// branches around the second operand fails to raise where `oath eval`
-		// raises, and it passes every test whose second operand happens to be
-		// total, which is most of them. Lower them STRICT, or not at all.
+		// even when the first has already decided the result. A lowering that
+		// branched around the second operand would fail to raise where `oath
+		// eval` raises, and would pass every test whose second operand happens
+		// to be total, which is most of them.
+		//
+		// SO THE LOWERING BELOW EMITS NO BRANCH AT ALL. Both operands are
+		// emitted unconditionally and in source order, exactly as the Int
+		// operations above emit theirs, and only then are the two i1 truths
+		// combined by a single `and`/`or` instruction. That is not merely one
+		// correct way to do it — it is the shape that makes short-circuiting
+		// UNREPRESENTABLE here, because there is no control flow to skip
+		// anything with. A `br`-based lowering is the thing to refuse in review;
+		// llvm_bool_test.go is where it fails.
 		intArith := map[string]string{
 			"+": "o_int_add", "-": "o_int_sub", "*": "o_int_mul",
 			"/": "o_int_div", "%": "o_int_mod",
@@ -715,10 +727,98 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 				fmt.Fprintf(&e.b, "  %s = call ptr @o_bool(i32 %s)\n", v, r)
 				return v, nil
 			}
+			// `and` AND `or` AT Bool — STRICT, AND STRUCTURALLY SO.
+			//
+			// The two operands are emitted before either truth is read, which is
+			// the whole semantic content of this case: `e.expr` writes the
+			// operand's instructions into the current block, so by the time the
+			// combining instruction is reached both operands have already run.
+			// There is no `br`, no second basic block and no phi, so there is
+			// nothing a short-circuit could skip.
+			//
+			// The type guard is the same one the Int and Str cases use, and for
+			// the same reason: the checker's `allBool` already makes these
+			// operators Bool-only, but a guard that rests on a neighbouring
+			// component's invariant is selecting on something it cannot see. An
+			// operand that does not synthesise falls through to the refusal.
+			if boolOp, ok := map[string]string{"and": "and", "or": "or"}[t.Op]; ok &&
+				typed && at.K == "bool" && bt.K == "bool" {
+				a, err := e.expr(&t.Args[0], env, depth, self)
+				if err != nil {
+					return "", err
+				}
+				b, err := e.expr(&t.Args[1], env, depth, self)
+				if err != nil {
+					return "", err
+				}
+				return e.combineBool(boolOp, a, b), nil
+			}
+		}
+		// `not` AT Bool. Unary, so it is outside the arity-2 block above rather
+		// than inside it — the one place this backend has a third shape.
+		//
+		// IT IS HERE BECAUSE THIS SLICE WAS ASKED FOR IT, WHICH IS THE WHOLE
+		// REASON, AND `neg` IS STILL REFUSED BECAUSE NOTHING HAS ASKED. The
+		// asymmetry is DEMAND, not expressibility: `(not x)` is `(if x false
+		// true)` and reaches the same answer through constructs this backend
+		// already lowers, exactly as `(- 0 x)` reaches `neg`. Saying otherwise —
+		// that `not` had no other spelling — would be a claim about the LANGUAGE
+		// standing in for a fact about this backend's scope, and the two stop
+		// agreeing the moment someone checks.
+		if t.Op == "not" && len(t.Args) == 1 {
+			if at, err := e.chk.synth(e.ctx, &t.Args[0]); err == nil && at != nil && at.K == "bool" {
+				a, err := e.expr(&t.Args[0], env, depth, self)
+				if err != nil {
+					return "", err
+				}
+				// XOR WITH true RATHER THAN A COMPARISON WITH false. `not` is
+				// negation of the truth value, and `xor i1 x, true` is total on
+				// i1 — there is no third bit pattern for it to disagree with the
+				// reference about.
+				ta := e.truth(a)
+				n := e.next()
+				fmt.Fprintf(&e.b, "  %s = xor i1 %s, true\n", n, ta)
+				return e.liftBool(n), nil
+			}
 		}
 		return "", llvmUnsupported(reasonPrim, fmt.Sprintf("the primitive operation %q", t.Op))
 	}
 	return "", llvmUnsupported(reasonTermKind, fmt.Sprintf("%q terms", t.K))
+}
+
+// truth reads the i1 truth of a Bool value.
+//
+// It is the SAME extractor `if` uses (emitIf), and deliberately so: two ways to
+// ask whether a Bool is true are two things that can disagree, and the language
+// has one answer. o_truth is total — it answers 0 for anything that is not a
+// true Bool — so a malformed value cannot trap here; what keeps a non-Bool from
+// reaching it at all is the type guard at each call site.
+func (e *llvmEmitter) truth(v string) string {
+	r := e.next()
+	fmt.Fprintf(&e.b, "  %s = call i1 @o_truth(ptr %s)\n", r, v)
+	return r
+}
+
+// liftBool wraps an i1 back into a Bool value, through the same o_bool the
+// ordering comparisons use.
+func (e *llvmEmitter) liftBool(b string) string {
+	z := e.next()
+	fmt.Fprintf(&e.b, "  %s = zext i1 %s to i32\n", z, b)
+	v := e.next()
+	fmt.Fprintf(&e.b, "  %s = call ptr @o_bool(i32 %s)\n", v, z)
+	return v
+}
+
+// combineBool emits `op` over the truths of two operands that have ALREADY been
+// emitted — which is the point, and the reason the operands are not emitted
+// here. A helper that took two Terms and emitted them itself would be a place
+// where a later edit could make one of them conditional; taking two registers
+// means the caller has already committed to evaluating both.
+func (e *llvmEmitter) combineBool(op, a, b string) string {
+	ta, tb := e.truth(a), e.truth(b)
+	r := e.next()
+	fmt.Fprintf(&e.b, "  %s = %s i1 %s, %s\n", r, op, ta, tb)
+	return e.liftBool(r)
 }
 
 // build constructs a ctorV-shaped value: allocate a field array, fill it, wrap it.

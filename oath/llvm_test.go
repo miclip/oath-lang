@@ -272,6 +272,14 @@ func TestLLVMRefusesAKindItCannotLower(t *testing.T) {
 // named `refused` must be refused BY NAME, and the two lists together are the
 // claim. `neg` is unary and unlowered, so it is the remaining Int boundary.
 //
+// #173's second slice moves `and`, `or` and `not` inside — the operators
+// webhook.oath uses in compiled bodies. They are spelled with COMPARISON
+// operands rather than Bool literals on purpose: canon.go drops `and`'s `true`
+// leaves and `or`'s `false` leaves and collapses `op(x, x)` for both, so a
+// literal spelling risks a row that passes because the operator was rewritten
+// away rather than because it was lowered. `(< 1 2)` and `(< 2 1)` are neither
+// identity elements nor equal to each other.
+//
 // ACCEPTANCE IS THE WEAKER HALF OF EACH ROW AND IS NOT LEFT TO CARRY THE CLAIM.
 // This asserts only that an operation LOWERS; it says nothing about the value
 // produced, so a row moved from refused to accepted has surrendered a check
@@ -307,6 +315,16 @@ func TestLLVMPrimitiveBoundary(t *testing.T) {
 		// refusal it replaced, which only witnessed that nothing was emitted.
 		{"eq-on-str", `(if (== "a" "a") "yes" "no")`, true},
 		{"eq-on-bool", `(if (== true true) "yes" "no")`, false},
+		// THE BOOLEAN OPERATORS. Acceptance is the weaker half of each of these
+		// rows too, and what pins their semantics is llvm_bool_test.go —
+		// three-way agreement over the full truth table, and, because the truth
+		// table is the half any lowering gets right, strictness witnesses in
+		// which `(and false (/ 1 0)-shaped operand)` must FAIL rather than
+		// answer false. A short-circuiting lowering satisfies these three rows
+		// completely.
+		{"and", `(if (and (< 1 2) (< 2 1)) "yes" "no")`, true},
+		{"or", `(if (or (< 1 2) (< 2 1)) "yes" "no")`, true},
+		{"not", `(if (not (< 1 2)) "yes" "no")`, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st := llvmStore(t)
