@@ -517,7 +517,13 @@ hatch, and nothing proposed here removes them.
 
 ---
 
-## Conclusion: NARROW, then proceed to design on what remains
+## Conclusion: NARROW
+
+One disposition, deliberately. An earlier heading read "NARROW, then proceed to
+design on what remains", which is two verdicts wearing one sentence: it narrows
+the issue AND rules on what to do next. The scope that survives is described
+below as scope — what #74 still asks that the corpus does not answer — and
+whether to design against it is not this file's call.
 
 **F2 is not satisfied.** Over 7 scored eligible intents, 4 were SURFACED and 2
 were SATISFIED. Of the 5 not satisfied: two (3a, 6) are blocked by the provable
