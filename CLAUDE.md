@@ -615,7 +615,7 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               run that campaign without reproducing zero forever
                               is ON THE ISSUE, in detail, because it is a
                               procedure that goes stale and a pointer does not
-  no CLOCK at all             #115, #169, #171, #174, #74, #65, #66 —
+  no CLOCK at all             #115, #171, #174, #74, #65, #66 —
                               open, and neither cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
@@ -712,6 +712,30 @@ MODEL, not whether it is cheap in the current backend.** One defined as an Oath
 datatype costs a future backend a representation choice; one that smuggles in a
 primitive with no structural model costs it a semantic obligation forever. That
 is the guard, and it is cheaper than any ledger of accumulated debt.
+
+**AND A SECOND GUARD, FOR ANY CAPABILITY WHOSE POINT IS TO PREVENT A MISUSE:
+OPACITY RESTRICTS WHO MAY CONSTRUCT A VALUE, SO WHETHER IT PREVENTS ANYTHING IS
+DECIDED BY ITS EXPORTS — EACH ONE, AND EACH IN COMPOSITION WITH THE OTHERS.**
+Ask whether the reachable compositions RECONSTRUCT the protected representation.
+Two exports that each look harmless can expose separate halves, so checking them
+singly approves what they jointly defeat. An INVERTIBLE decoder defeats a seal by
+itself — where `encode(decode(x)) = x`, its output re-encodes through ordinary
+definitions and hands back the original. Normalization does not by itself save a seal: it
+helps only if it CHANGES some admitted input, and where the admitted values are
+already canonical a normalizing decoder round-trips exactly and defeats the seal
+too. So what must be established, rather than assumed, is invertibility over the
+ADMITTED domain — not a property of the decoder in general. A digest is not a
+total payload view — which is the most that can be said for it, and NOT that a
+holder learns nothing: against a low-entropy or enumerable body, hashing
+candidates recovers it, so an export's safety depends on its input domain and
+not on its width alone.
+
+That makes the hazard specific rather than universal, and it bites hardest where
+the export is the abstraction's whole purpose: a type sealed to stop a value
+being READ WRONG must hand out a way to read it, and that way out is the escape.
+So state which exports are invertible before claiming a seal, and treat *this
+value cannot be misused* as a claim about COMPOSITION rather than about
+visibility — shown, not assumed.
 
 **Read the friction log before ranking language work.**
 `docs/experiments/webhook-friction.md` is a demand list produced by BUILDING
