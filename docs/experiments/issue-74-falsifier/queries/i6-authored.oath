@@ -1,0 +1,3 @@
+(defn wanted [] [(s Str)] Str s
+  (prop output-is-printable [(s Str)]
+    (all [Int] (fn [(b Int)] (and (<= 32 b) (<= b 126))) (str-bytes (wanted s)))))

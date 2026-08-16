@@ -1,0 +1,5 @@
+(defn wanted [] [(have (List Str)) (need (List Str))] (List Str) (Nil [Str])
+  (prop nothing-needed-nothing-missing [(have (List Str))]
+    (== (wanted have (Nil [Str])) (Nil [Str])))
+  (prop a-missing-key-is-reported [(k Str)]
+    (== (wanted (Nil [Str]) (Cons [Str] k (Nil [Str]))) (Cons [Str] k (Nil [Str])))))

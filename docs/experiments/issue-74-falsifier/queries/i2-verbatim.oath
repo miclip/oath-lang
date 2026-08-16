@@ -1,0 +1,5 @@
+(defn wanted [] [(hs (List (Pair Str Str))) (name Str) (fallback Str)] Str fallback
+  (prop absent-yields-fallback [(name Str) (fallback Str)]
+    (== (wanted (Nil [(Pair Str Str)]) name fallback) fallback))
+  (prop present-yields-value [(name Str) (v Str) (fallback Str)]
+    (== (wanted (Cons [(Pair Str Str)] (Pair [Str Str] name v) (Nil [(Pair Str Str)])) name fallback) v)))

@@ -1,0 +1,3 @@
+(defn wanted [] [(sig Str) (event Str) (path Str) (ctype Str) (body (List Int))] Request (Req SNil path (Nil [(Pair Str Str)]) body 0)
+  (prop the-body-i-passed-comes-back [(sig Str) (event Str) (path Str) (ctype Str) (body (List Int))]
+    (== (req-body (wanted sig event path ctype body)) body)))

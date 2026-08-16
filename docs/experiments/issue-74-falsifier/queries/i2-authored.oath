@@ -1,0 +1,3 @@
+(defn wanted [] [(hs (List (Pair Str Str))) (name Str) (fallback Str)] Str fallback
+  (prop no-headers-means-the-default [(hs (List (Pair Str Str))) (name Str) (d Str)]
+    (if (== hs (Nil [(Pair Str Str)])) (== (wanted hs name d) d) true)))

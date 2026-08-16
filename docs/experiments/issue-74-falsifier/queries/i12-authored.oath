@@ -1,0 +1,3 @@
+(defn wanted [] [(p (-> Int Bool)) (xs (List Int))] (List Int) (Nil [Int])
+  (prop every-kept-byte-passes [(p (-> Int Bool)) (xs (List Int))]
+    (all [Int] p (wanted p xs))))

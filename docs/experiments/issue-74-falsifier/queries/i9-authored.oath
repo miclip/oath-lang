@@ -1,0 +1,5 @@
+(defn wanted [] [(want Str) (got Str)] Bool false
+  (prop identical-is-a-match [(x Str)]
+    (== (wanted x x) true))
+  (prop an-extra-letter-breaks-the-match [(x Str)]
+    (== (wanted x (str-append x (SCons 112 SNil))) false)))

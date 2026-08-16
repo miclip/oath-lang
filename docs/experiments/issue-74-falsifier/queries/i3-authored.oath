@@ -1,0 +1,3 @@
+(defn wanted [] [(bs (List Int))] (List Int) (Nil [Int])
+  (prop result-holds-no-quote [(bs (List Int))]
+    (== (count 34 (wanted bs)) 0)))

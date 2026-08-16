@@ -1,0 +1,5 @@
+(defn wanted [] [(bs (List Int))] (List Int) (Nil [Int])
+  (prop no-quote-survives [(bs (List Int))]
+    (not (contains 34 (wanted bs))))
+  (prop no-control-byte-survives [(bs (List Int))]
+    (not (contains 10 (wanted bs)))))

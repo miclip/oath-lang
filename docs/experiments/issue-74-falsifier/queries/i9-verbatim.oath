@@ -1,0 +1,5 @@
+(defn wanted [] [(want Str) (got Str)] Bool false
+  (prop exact-matches [(x Str)]
+    (wanted x x))
+  (prop a-longer-value-is-not-a-match [(x Str) (y Str)]
+    (if (== y SNil) true (if (str-prefix (SCons 59 SNil) y) true (not (wanted x (str-append x y)))))))

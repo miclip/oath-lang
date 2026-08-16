@@ -1,0 +1,5 @@
+(defn wanted [] [(x Int) (xs (List Int))] Bool false
+  (prop empty-has-no-members [(x Int)]
+    (== (wanted x (Nil [Int])) false))
+  (prop a-member-of-the-tail-is-a-member [(x Int) (y Int) (xs (List Int))]
+    (if (wanted x xs) (wanted x (Cons [Int] y xs)) true)))

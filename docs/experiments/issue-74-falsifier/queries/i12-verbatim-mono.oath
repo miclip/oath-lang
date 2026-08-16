@@ -1,0 +1,6 @@
+(defn wanted [] [(p (-> Int Bool)) (xs (List Int))] (List Int) (Nil [Int])
+  (prop empty-is-empty [(p (-> Int Bool))]
+    (== (wanted p (Nil [Int])) (Nil [Int])))
+  (prop cons-step [(p (-> Int Bool)) (x Int) (xs (List Int))]
+    (== (wanted p (Cons [Int] x xs))
+        (if (p x) (Cons [Int] x (wanted p xs)) (Nil [Int])))))

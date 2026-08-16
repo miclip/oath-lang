@@ -1,0 +1,3 @@
+(defn wanted [] [(s Str)] Str s
+  (prop never-contains-a-tab [(s Str)]
+    (not (contains 9 (str-bytes (wanted s))))))

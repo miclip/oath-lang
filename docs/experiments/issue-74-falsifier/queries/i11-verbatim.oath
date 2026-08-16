@@ -1,0 +1,5 @@
+(defn wanted [] [(x Int) (xs (List Int))] Bool false
+  (prop head-is-a-member [(x Int) (xs (List Int))]
+    (wanted x (Cons [Int] x xs)))
+  (prop nothing-is-in-empty [(x Int)]
+    (not (wanted x (Nil [Int])))))

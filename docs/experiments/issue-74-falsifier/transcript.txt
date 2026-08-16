@@ -1,0 +1,333 @@
+Transcript of ./docs/experiments/issue-74-falsifier/run.sh at commit 3d2ba4a.
+Produced with FAST=1; the two long --implies runs it skips are appended at the end,
+with the timings the report cites.
+
+########## there is no intent front door ##########
+error: no definition named "take the longest prefix of a list satisfying a predicate"
+error: no definition named "prefix while predicate holds"
+
+########## modes 1 and 4 take a name ##########
+properties of take-while, and which other definitions satisfy each (matched by content hash up to operand types, not name):
+
+  · empty-is-empty [proven here]  #126dc643c88a
+      drop-while         (proven as "empty-is-empty")  ← proven on both: interchangeable for this law
+      filter             (proven as "empty-is-empty")  ← proven on both: interchangeable for this law
+
+  · cons-step [proven here]  #81c7bdb13d5d
+      no definition states this law as written (matched by property content hash)
+      2 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+      query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+      type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+        drop-while         PROVEN (all 2 properties, Z3 over unbounded ints)
+        filter             PROVEN (all 2 properties, Z3 over unbounded ints)
+      Try `get <name>` to read how each states its properties, or find --implies to
+      search by PROOF rather than by shape.
+definitions equivalent to take-while (#0160610e8287) — same function up to the rewrite rules, distinct identities:
+  eHash edf7f9dbef4a
+  (no other definition normalizes to the same form)
+definitions equivalent to record-field (#d7f475762489) — same function up to the rewrite rules, distinct identities:
+  eHash 976851adafab
+  (no other definition normalizes to the same form)
+
+########## oath find --spec i1-authored  ##########
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · nothing-needed-nothing-missing [tested here]  #1e3bc4d2b7eb
+      no definition states this law as written (matched by property content hash)
+
+  · a-missing-key-is-reported [tested here]  #40614a6364dd
+      no definition states this law as written (matched by property content hash)
+
+########## oath find --implies i1-authored --details ##########
+spec query "wanted" — which definitions PROVABLY satisfy it (proof-implication, not shape match):
+
+  · nothing-needed-nothing-missing
+      (no definition provably satisfies this — in the signature-compatible, provable set)
+
+  · a-missing-key-is-reported
+      (no definition provably satisfies this — in the signature-compatible, provable set)
+
+########## oath find --spec i1-authored-shape-corrected  ##########
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · nothing-needed-nothing-missing [tested here]  #bec005a1f799
+      config-missing     (proven as "nothing-required-is-complete")  ← a proven implementation of this spec
+
+  · a-missing-key-is-reported [tested here]  #677807ef7e91
+      no definition states this law as written (matched by property content hash)
+      1 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+      query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+      type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+        config-missing     PROVEN (all 3 properties, Z3 over unbounded ints)
+      Try `get <name>` to read how each states its properties, or find --implies to
+      search by PROOF rather than by shape.
+
+########## oath find --implies i1-authored-shape-corrected --details ##########
+spec query "wanted" — which definitions PROVABLY satisfy it (proof-implication, not shape match):
+
+  · nothing-needed-nothing-missing
+      config-missing     ← provably satisfies it (direct (lemma-free))
+
+  · a-missing-key-is-reported
+      config-missing     ← provably satisfies it (direct (lemma-free))
+
+########## oath find --spec i2-verbatim  ##########
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · absent-yields-fallback [tested here]  #20489bac9e4b
+      header-or          (tested as "absent-yields-fallback")
+
+  · present-yields-value [tested here]  #6c7fbb4f1771
+      header-or          (tested as "present-yields-value")
+
+########## oath find --spec i2-authored  ##########
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · no-headers-means-the-default [tested here]  #f40dbe05fe12
+      no definition states this law as written (matched by property content hash)
+      1 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+      query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+      type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+        header-or          tested (200 cases per property)
+      Try `get <name>` to read how each states its properties, or find --implies to
+      search by PROOF rather than by shape.
+
+########## oath find --implies i2-authored --details ##########
+spec query "wanted" — which definitions PROVABLY satisfy it (proof-implication, not shape match):
+
+  · no-headers-means-the-default
+      header-or          ← provably satisfies it (direct (lemma-free))
+
+########## oath find --spec i3-verbatim  ##########
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · no-quote-survives [tested here]  #64006ff40b87
+      json-string-value  (tested as "no-quote")
+
+  · no-control-byte-survives [tested here]  #a1466e8f8f72
+      json-string-value  (tested as "no-newline")
+
+########## oath find --spec i3-authored  ##########
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · result-holds-no-quote [tested here]  #f81a76dcdc55
+      no definition states this law as written (matched by property content hash)
+      5 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+      query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+      type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+        bad-reverse        FALSIFIED: antidistributes-over-append
+        init               PROVEN (all 3 properties, Z3 over unbounded ints)
+        json-string-value  tested (200 cases per property)
+        reverse            PROVEN (all 2 properties, Z3 over unbounded ints)
+        sort               PROVEN (all 7 properties, Z3 over unbounded ints)
+      Try `get <name>` to read how each states its properties, or find --implies to
+      search by PROOF rather than by shape.
+
+########## oath find --spec i5-authored  ##########
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · the-body-i-passed-comes-back [tested here]  #92c6889586ed
+      gh-request         (tested as "keeps-the-body")
+
+########## oath find --implies i5-authored --details ##########
+spec query "wanted" — which definitions PROVABLY satisfy it (proof-implication, not shape match):
+
+  · the-body-i-passed-comes-back
+      gh-request         ← provably satisfies it (direct (lemma-free))
+
+########## oath find --spec i6-verbatim  ##########
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · never-contains-a-tab [tested here]  #968def4dbf2a
+      record-field       (tested as "never-contains-a-tab")
+
+########## oath find --spec i6-authored  ##########
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · output-is-printable [tested here]  #9511f8150ad1
+      no definition states this law as written (matched by property content hash)
+      3 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+      query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+      type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+        config-key         PROVEN (all 3 properties, Z3 over unbounded ints)
+        record-field       tested (200 cases per property)
+        shout              PROVEN (all 2 properties, Z3 over unbounded ints)
+      Try `get <name>` to read how each states its properties, or find --implies to
+      search by PROOF rather than by shape.
+
+########## oath find --implies i6-authored --details ##########
+spec query "wanted" — which definitions PROVABLY satisfy it (proof-implication, not shape match):
+
+  · output-is-printable
+      2 REFUTED — proved NOT to satisfy it (a countermodel exists)
+          config-key         countermodel (by evaluation): (SCons -9 SNil)
+          shout              countermodel (by evaluation): (SCons -9 SNil)
+      1 NO VERDICT — the prover did not settle it (a limit of this prover, NOT a fact about the definition)
+          record-field       "lam" terms are outside the provable fragment
+
+########## oath find --spec i9-verbatim  ##########
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · exact-matches [tested here]  #88ed602d0559
+      media-type-is      (tested as "exact-matches")
+      path-is            (tested as "exact-matches")
+      str-prefix         (proven as "self")  ← a proven implementation of this spec
+
+  · a-longer-value-is-not-a-match [tested here]  #a65eee3c122c
+      media-type-is      (tested as "a-longer-type-is-not-a-match")
+
+########## oath find --spec i9-authored  ##########
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · identical-is-a-match [tested here]  #1e771036de76
+      no definition states this law as written (matched by property content hash)
+      3 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+      query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+      type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+        media-type-is      tested (200 cases per property)
+        path-is            tested (200 cases per property)
+        str-prefix         PROVEN (all 3 properties, Z3 over unbounded ints)
+      Try `get <name>` to read how each states its properties, or find --implies to
+      search by PROOF rather than by shape.
+
+  · an-extra-letter-breaks-the-match [tested here]  #eb1ad21394df
+      no definition states this law as written (matched by property content hash)
+      3 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+      query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+      type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+        media-type-is      tested (200 cases per property)
+        path-is            tested (200 cases per property)
+        str-prefix         PROVEN (all 3 properties, Z3 over unbounded ints)
+      Try `get <name>` to read how each states its properties, or find --implies to
+      search by PROOF rather than by shape.
+
+########## oath find --implies i9-authored --details ##########
+spec query "wanted" — which definitions PROVABLY satisfy it (proof-implication, not shape match):
+
+  · identical-is-a-match
+      media-type-is      ← provably satisfies it (direct (lemma-free))
+      path-is            ← provably satisfies it (direct (lemma-free))
+      str-prefix         ← provably satisfies it (direct)
+
+  · an-extra-letter-breaks-the-match
+      media-type-is      ← provably satisfies it (induction on binder 0)
+      path-is            ← provably satisfies it (induction on binder 0)
+      1 REFUTED — proved NOT to satisfy it (a countermodel exists)
+          str-prefix         countermodel (by evaluation): SNil
+
+########## oath find --spec i11-verbatim  ##########
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · head-is-a-member [tested here]  #b58ca49c928b
+      contains           (proven as "found-at-head")  ← a proven implementation of this spec
+
+  · nothing-is-in-empty [tested here]  #70a724c706da
+      contains           (proven as "absent-from-empty")  ← a proven implementation of this spec
+      si-member          (proven as "empty-has-none")  ← a proven implementation of this spec
+
+########## oath find --spec i11-authored  ##########
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · head-is-a-member [tested here]  #73d04dee3586
+      no definition states this law as written (matched by property content hash)
+
+  · nothing-is-in-empty [tested here]  #2cfe06b2a88d
+      no definition states this law as written (matched by property content hash)
+
+########## oath find --implies i11-authored --details ##########
+spec query "wanted" — which definitions PROVABLY satisfy it (proof-implication, not shape match):
+
+  · head-is-a-member
+      (no definition provably satisfies this — in the signature-compatible, provable set)
+
+  · nothing-is-in-empty
+      (no definition provably satisfies this — in the signature-compatible, provable set)
+
+########## oath find --spec i12-authored  ##########
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · every-kept-byte-passes [tested here]  #9ce6312d4f75
+      no definition states this law as written (matched by property content hash)
+
+########## oath find --implies i12-authored --details ##########
+spec query "wanted" — which definitions PROVABLY satisfy it (proof-implication, not shape match):
+
+  · every-kept-byte-passes
+      (no definition provably satisfies this — in the signature-compatible, provable set)
+
+########## oath find --spec i12-verbatim-mono  ##########
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · empty-is-empty [tested here]  #63e28ffbfab6
+      no definition states this law as written (matched by property content hash)
+
+  · cons-step [tested here]  #1646dbcdbb82
+      no definition states this law as written (matched by property content hash)
+
+########## oath find --spec i12-verbatim-poly  ##########
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · empty-is-empty [tested here]  #126dc643c88a
+      drop-while         (proven as "empty-is-empty")  ← a proven implementation of this spec
+      filter             (proven as "empty-is-empty")  ← a proven implementation of this spec
+      take-while         (proven as "empty-is-empty")  ← a proven implementation of this spec
+
+  · cons-step [tested here]  #81c7bdb13d5d
+      take-while         (proven as "cons-step")  ← a proven implementation of this spec
+
+########## oath find --spec c1-contains-int-authored  ##########
+spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
+
+  · empty-has-no-members [tested here]  #ba79a170443d
+      no definition states this law as written (matched by property content hash)
+      2 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+      query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+      type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+        contains           PROVEN (all 3 properties, Z3 over unbounded ints)
+        si-member          PROVEN (all 1 properties, Z3 over unbounded ints)
+      Try `get <name>` to read how each states its properties, or find --implies to
+      search by PROOF rather than by shape.
+
+  · a-member-of-the-tail-is-a-member [tested here]  #e459a6985ba8
+      no definition states this law as written (matched by property content hash)
+      2 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+      query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+      type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+        contains           PROVEN (all 3 properties, Z3 over unbounded ints)
+        si-member          PROVEN (all 1 properties, Z3 over unbounded ints)
+      Try `get <name>` to read how each states its properties, or find --implies to
+      search by PROOF rather than by shape.
+
+########## the corpus does answer intent 11, by composition ##########
+true : Bool
+
+########## the store must be unchanged ##########
+(empty above = find did not mutate)
+
+########## oath find --implies c1-contains-int-authored --details ##########
+spec query "wanted" — which definitions PROVABLY satisfy it (proof-implication, not shape match):
+
+  · empty-has-no-members
+      contains           ← provably satisfies it (direct (lemma-free))
+      si-member          ← provably satisfies it (direct (lemma-free))
+
+  · a-member-of-the-tail-is-a-member
+      contains           ← provably satisfies it (direct (lemma-free))
+      1 NO VERDICT — the prover did not settle it (a limit of this prover, NOT a fact about the definition)
+          si-member          no direct proof; induction did not discharge
+real 48.41
+user 48.24
+sys 0.11
+
+########## oath find --implies i3-authored --details ##########
+spec query "wanted" — which definitions PROVABLY satisfy it (proof-implication, not shape match):
+
+  · result-holds-no-quote
+      2 NO VERDICT — the prover did not settle it (a limit of this prover, NOT a fact about the definition)
+          json-string-value  "lam" terms are outside the provable fragment
+          sort               no direct proof; induction did not discharge
+real 992.26
+user 979.55
+sys 9.51
+
+(the 'real/user/sys' lines are /usr/bin/time -p output for the run above them)
