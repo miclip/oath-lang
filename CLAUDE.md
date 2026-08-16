@@ -340,11 +340,22 @@ standard everything else here is:**
   it too: it would be agreeing with the author rather than reading.
 
 **WEIGH ITS OUTPUT ASYMMETRICALLY: AGREEMENT IS WEAK EVIDENCE, DISAGREEMENT IS
-WORTH CHECKING.** There are THREE contamination channels, they close by
+WORTH CHECKING.** There are FOUR contamination channels, they close by
 different means, and only the first is closed today:
 
     CONTEXT   what the reader is handed before it opens this file.
               CLOSED by the dispatch rule above; verified per run by question 1.
+    PROMPT    what the DISPATCH ITSELF says. It must name the file to read and
+              ask the three questions — the reader has not inherited this file
+              and cannot find it otherwise — and **BEYOND THAT, NOTHING: no
+              paraphrase of these instructions, no section names, and no list of
+              the forbidden categories the reader is being asked to check for.** Doing so makes the reader
+              RECOGNISE the startup sequence instead of finding it, which is
+              precisely what question 2 exists to measure. This channel is
+              written fresh every run, by the party who already knows what the
+              file means to say, and NO PREFLIGHT CAN SEE IT — question 1 cannot
+              catch it either, because the prompt carries no work state. Closed
+              only by writing the dispatch narrowly, every time.
     GUIDANCE  prior conclusions surviving INSIDE this file as paraphrases
               attached to the rules they motivated — stripping the run RECORDS
               does not strip these. Closed only to the extent the file has
@@ -410,12 +421,13 @@ drop the interpretation, and repair whatever the count justifies. Keeping both �
 the number as evidence and the judgment as its conclusion — is the same defect
 as reporting a corpus figure as a statement about programs in general.
 
-**FOR A READER-BASED JUDGMENT CLAIM — the third row only — ALL THREE CHANNELS
+**FOR A READER-BASED JUDGMENT CLAIM — the third row only — ALL FOUR CHANNELS
 MUST BE CLEAR, AND A DIFFERENT-MODEL READER CLOSES ONLY ONE.** Decidable and
 quantitative claims are unaffected: the artefact and the measurement settle
 those whatever any reader inherits, which is exactly why reducing a judgment to
 one of them is the escape. A different-model reader closes MODEL. CONTEXT still has to be closed by dispatching it the
-same way. And GUIDANCE is closed by NO reader, because the residue lives INSIDE
+same way, and PROMPT by writing the dispatch narrowly — a different model asked
+a leading question answers the leading question. And GUIDANCE is closed by NO reader, because the residue lives INSIDE
 the artefact under test — every reader of this file inherits it, whatever model
 they are. There is no reader who has read this file and not read what it still
 carries.
@@ -604,8 +616,8 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               #116 — the reproducibility premise is MEASURED
                               and fails; the disposition is recorded. Trigger:
                               a party that needs to verify an artifact it did
-                              not build. Not an argument that attestation
-                              would be good,
+                              not build — NOT an argument that attestation would
+                              be good.
                               #162 — designed, measured, PARKED: it detects what
                               uniform widening cannot, and buys nothing in THIS
                               corpus (survived->killed = 0 over 3,319 mutants).
@@ -682,11 +694,17 @@ thing to read before reusing any of this — records, opaque types and distinct
 datatypes were outside the construction tested and are not refuted by it.
 
 **THE FIRST BUCKET'S ADMISSION AND ITS RETIREMENT ARE THE SAME ACT, AND
-RETIRING IS THE HALF THAT GETS SKIPPED.** To admit an item, say what makes it
-cheaper NOW than later AND what will make it stop belonging. **WHEN THE BUCKET
-HOLDS SEVERAL, EACH CARRIES ITS OWN RETIREMENT CONDITION AND IS CHECKED ALONE** —
-a shared condition keeps a spent item sitting here looking urgent until its
-neighbour lands, which is how the bucket loses its meaning.
+RETIRING IS THE HALF THAT GETS SKIPPED.** A stated window that is not re-read
+when the work lands leaves the queue urgent about something already done — so
+the bucket loses its meaning by keeping a spent item, not by admitting a weak
+one. To admit one, say what makes it cheaper NOW than later AND what will make
+it stop belonging. **WHEN THE BUCKET HOLDS SEVERAL, EACH CARRIES ITS OWN
+RETIREMENT CONDITION AND IS CHECKED ALONE** — a shared condition keeps a spent
+item sitting here looking urgent until its neighbour lands. **And if the
+argument for admitting is an ANALOGY to another item, MEASURE the analogy
+first**, because an item admitted by inheriting a neighbour's failure mode never
+has a clock of its own, and nothing prompts anyone to establish one later. It
+just sits there looking urgent.
 
 **State #164 at that precision and not one word wider.** The runtime builds
 `Str` VALUES at runtime constantly — from argv, from file reads, from tails —
@@ -762,18 +780,7 @@ octets cross; refinement types would move it into ARTIFACT IDENTITY. Those are
 different CLASSES of guarantee, not different amounts of one. SPEC §3 settles
 what a kernel does here; read it there.
 
-**ADMITTING TO THE EXPENSIVE-IF-DELAYED BUCKET AND RETIRING FROM IT ARE THE SAME
-ACT — and retiring is the one that gets skipped.** A stated window that is not
-re-read when the work lands leaves the queue looking urgent about something
-already done, and that is how the bucket loses its meaning: not by admitting a
-weak item, but by keeping a spent one. To admit one, say what makes it cheaper
-NOW than later and what will make it stop belonging — **and if the argument is
-an ANALOGY to another item, MEASURE the analogy first**, because an item
-admitted by inheriting a neighbour's failure mode never has a clock of its own,
-and nothing prompts anyone to establish one later. It just sits there looking
-urgent.
-
-**Three rules the retired entries paid for, kept because each generalises past
+**Four rules the retired entries paid for, kept because each generalises past
 the queue:**
 
 - **A DESCRIPTION here must be re-verified every time anything lands; a POINTER

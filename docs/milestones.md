@@ -1186,3 +1186,54 @@ experiment, independent, and deliberately out of scope. Cross-machine
 reproducibility is untouched. And no corpus entry compiles under the LLVM
 backend today — the LLVM half of the byte-identity witness runs on the fixture
 only.
+
+## The startup read, run against a dispatched reader — and the channel that leaked
+
+The stateless read prescribed by `CLAUDE.md`'s step 1 was run against the
+read-only search target. Its context audit came back clean on all four forbidden
+categories: no work item or queue, no memory index, no commit digest or branch
+state, no handoff summary. The target receives none of them, as the sequence
+claims.
+
+**And the run was contaminated anyway, through a channel the sequence does not
+name.** The dispatch prompt paraphrased the file's own step 1 — including its
+list of forbidden categories, nearly verbatim — so the reader recognised the
+startup sequence rather than met it, and said so unprompted:
+
+> when I reached that passage I recognised it rather than met it … my answer is
+> **not** independent evidence that the startup sequence is what a cold reader
+> finds first.
+
+The file's calibration already named three — CONTEXT, closed by the dispatch
+target; GUIDANCE, living inside the artefact and closable by no reader; and
+MODEL, closable only by a reader that does not share these priors. The PROMPT is
+a FOURTH: written fresh each run by the party who already knows what the file
+means to say, invisible to any preflight, and invisible to question 1 as well,
+since a leading prompt carries no work state. The rule that follows is in
+`CLAUDE.md`; it is not restated here.
+
+**What the run established, and it is the decidable class only.** Three defects
+were confirmed by inspection and repaired: a bucket entry whose sentence ended on
+a bare comma and ran into the next issue with no separator, so the boundary
+between `#116`'s trigger and `#162`'s entry was unreadable; a list introduced as
+"Three rules" carrying four bullets; and the first bucket's retirement rule
+stated twice, eighty lines apart, each copy carrying something the other lacked
+(the per-item retirement condition, and the measure-the-analogy requirement).
+The two copies were merged into one and the second deleted. Those hold whatever
+the reader was primed with, because the artefact settles them.
+
+**What it did not establish.** The reader's account of what the file says to do
+first is void for the reason above. Its structural observation — that the bucket
+the rule sends an unforced session to carries eight bare issue numbers while the
+buckets it tells you to justify overriding carry every elaboration in the
+section — is a JUDGMENT about presentation, reduces to a count nobody has taken,
+and stays provisional. So does its report that `## PHASE 5 — READ THIS BEFORE
+PICKING WORK` competes for the first slot despite the parenthetical that defuses
+it 250 lines earlier.
+
+**One QUANTITATIVE observation** — settled by a measurement rather than by the
+artefact, and nobody had taken it: the file did not fit a single read. The reader's first `Read`
+returned 948 of 1896 lines against a token cap. The queue sits inside that first
+page; the naming rules, the conformance-mode warning and the `codebase/` reset
+hazards do not. A reader that stopped at the cap would have the work list and
+none of the operational hazards.
