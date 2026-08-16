@@ -34,8 +34,24 @@ type PolicyRule struct {
 	RequireTotal                bool     `json:"require_total,omitempty"`
 	ForbidFalsified             bool     `json:"forbid_falsified,omitempty"`
 	MinMutationScore            float64  `json:"min_mutation_score,omitempty"` // 0..1; runs the mutation engine if the object is unscored
-	RequireProven               bool     `json:"require_proven,omitempty"`     // name only binds once EVERY property is SMT-proven (#14)
-	OwnerPubkey                 string   `json:"owner_pubkey,omitempty"`       // hex Ed25519 key; only this principal may repoint the name (#14)
+	// RequireProven holds the name until EVERY property declared by the
+	// SUBMITTED definition is SMT-proven (#14). The universe is the incoming
+	// def's own props — it deliberately does NOT require the new object to
+	// retain the properties the previous binding proved. A revision may change
+	// its contract, including weakening it; that is ordinary evolution, and the
+	// regression is made VISIBLE through the append-only journal rather than
+	// prohibited here.
+	//
+	// AND THE VISIBILITY IS WEAKER ON THIS EXACT PATH THAN ELSEWHERE. A name
+	// held `pending` here is journalled before `apiPutSigned` copies `auth`
+	// into the entry, and `ProofJob` carries no envelope, so the worker's later
+	// `accepted` put has no `AuthorSig`. The hashes are recorded; the
+	// publisher's signature is not. So a weakened contract admitted through the
+	// proof queue is auditable by CONTENT and not by AUTHORSHIP, which is less
+	// than the ordinary signed path gives and is not what "visible" would
+	// normally promise.
+	RequireProven bool   `json:"require_proven,omitempty"`
+	OwnerPubkey   string `json:"owner_pubkey,omitempty"` // hex Ed25519 key; only this principal may repoint the name (#14)
 	// TrustOnFirstPublish derives ownership from the journal when OwnerPubkey is
 	// unset: the first principal to publish a name owns it, and only that principal
 	// may repoint it (#84). OPT-IN, and deliberately so — switching it on is a
