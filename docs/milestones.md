@@ -1237,3 +1237,46 @@ returned 948 of 1896 lines against a token cap. The queue sits inside that first
 page; the naming rules, the conformance-mode warning and the `codebase/` reset
 hazards do not. A reader that stopped at the cap would have the work list and
 none of the operational hazards.
+
+### The second read, and the limit the instrument cannot escape
+
+The read was re-run against the same target with a deliberately narrow prompt:
+name the file, ask the three questions, nothing else. The forbidden-category
+check moved out of the dispatch and onto the operator, where it cannot prime
+anything.
+
+**It leaked anyway, and the reason is structural.** The three questions are
+SPECIFIED IN THE FILE. Any faithful dispatch quotes them, so the reader meets
+its own task written down in the artefact and recognises step 1 rather than
+finding it:
+
+> when I reached lines 120-127 I **recognised** the startup sequence as the
+> thing I was already executing rather than discovering it cold … Discount my
+> answer to question 2 accordingly: it is evidence the sequence is findable, but
+> weaker evidence than a clean run would give.
+
+That calibration is right and is the disposition to keep: question 2 is WEAK
+evidence by construction, not void. A reader still has to locate the sequence in
+1,900 lines; recognising the questions does not say where the answer lives. But
+no dispatch through this route can make it strong, and no rule about prompt
+wording changes that.
+
+**Question 3 is unaffected**, because its findings are decidable from the
+artefact. Both runs converged on several independently — two readers, different
+prompts, same defects — which clears "not one reader's say-so" without either
+run's priming mattering, since the artefact settles them either way.
+
+**What was repaired.** The file forbade recording a run's findings or their
+provenance, and carried both: a paragraph narrating a falsifier firing and the
+diagnosis that preceded it; a count attributed to "a primed reader"; three
+sentences recording that an earlier draft of the surrounding prose had been
+wrong. Each is the GUIDANCE channel the file names as closable by no reader,
+self-inflicted. The rules were kept and the stories deleted.
+
+**What was NOT repaired, and is left for a session with the appetite.** Both
+readers reported, decidably: closed issues occupying top-level sections against
+the file's own instruction; long parked-experiment descriptions where it demands
+pointers; issues elaborated as live work that the bucket table does not hold;
+and six of seven bucket-4 items appearing nowhere else in the file, so the bucket
+an unforced session is steered to is the one the file describes least. These are
+checkable and were not acted on here.

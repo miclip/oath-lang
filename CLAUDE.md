@@ -293,23 +293,13 @@ correctness.** It is the same criterion as the conformance work, applied to
 prose: not *is the document short*, but *does it produce the intended behaviour
 in an independent reader* — which is why it must be run by the reader whose
 behaviour is being measured and never by the author, who already knows what the
-file meant to say. **The prohibition is on the AUTHOR, not on delegation**, and
-the first version of this paragraph conflated the two — it said the read "cannot
-be delegated", which ruled out the only subject that can actually run it.
+file meant to say. **The prohibition is on the AUTHOR, not on delegation** — the two are
+easily conflated, and forbidding delegation would rule out the only subject that
+can actually run it.
 
-**THE FALSIFIER FIRED, AND STEP 1 WAS REDEFINED RATHER THAN RETIRED. WHAT WAS
-WRONG WAS THE SUBJECT, NOT THE MEASUREMENT.** The falsifier's letter offered
-retirement or redefinition "around the first genuinely unseen artefact"; what was
-done instead was to redefine around an unseen READER, which is a wider move than
-the text licensed — recorded here rather than smoothed over, because the next
-person to stretch a falsifier should see one stretched. The read had been VOID
-for several consecutive sessions and the diagnosis on record blamed session
-continuity — a handoff prompt naming the next task, a compaction summary carrying
-the queue, `/compact` being automatic on any long session. That made it sound
-like a discipline problem with a lucky-session cure. **It is structural: THE
-SESSION'S OWN FIRST ACT IS NOT IN THE CLAIM'S UNIVERSE AND CANNOT BE PUT
-THERE.** Three
-independent injections land before step 1 can run, none of them under a
+**THE SESSION'S OWN FIRST ACT IS NOT IN THE CLAIM'S UNIVERSE AND CANNOT BE PUT
+THERE.** This is structural, not a discipline problem with a start-fresh cure.
+Three independent injections land before step 1 can run, none of them under a
 session's control:
 
     a SessionStart hook digest   named the exact issue last looked at
@@ -358,7 +348,7 @@ different means, and only the first is closed today:
               only by writing the dispatch narrowly, every time.
     GUIDANCE  prior conclusions surviving INSIDE this file as paraphrases
               attached to the rules they motivated — stripping the run RECORDS
-              does not strip these. Closed only to the extent the file has
+              does not strip these paraphrases. Closed only to the extent the file has
               actually been cleaned, and NOT closable by any reader.
     MODEL     the reader shares this one's priors, so it cannot witness what
               those priors hide. Closed only by a genuinely different reader;
@@ -413,9 +403,10 @@ is a property of the CLAIM, never of the activity that produced the evidence:
 
 **REDUCING MEANS REPLACING, NOT VALIDATING — and getting this backwards is how a
 judgment gets laundered into a fact.** A measurement establishes ITSELF and
-nothing above it. Counting that 130 lines elaborate an empty bucket establishes
+nothing above it. Counting the lines that elaborate an empty bucket establishes
 exactly that; it does NOT establish that the passage is the most misleading in
-the file, and the choice of what to count was made by a primed reader anyway. So
+the file, and the choice of WHAT to count is itself a judgment made by whoever
+chose it. So
 when a judgment is reduced, the measured claim SUPERSEDES it: record the count,
 drop the interpretation, and repair whatever the count justifies. Keeping both —
 the number as evidence and the judgment as its conclusion — is the same defect
@@ -502,9 +493,9 @@ written BY the repair. Nothing about recording a finding feels like leaking one.
 **AND THE LEAK HAS A SECOND FORM THAT SURVIVES DELETING THE RECORD.** Writing up
 a run elsewhere is not enough if its conclusions are then PARAPHRASED into the
 prose — *"a stateless reader found this section confusing"* is the finding, minus
-the citation, still sitting in the artefact under test. Six such sentences had to
-be removed after the block-quoted rule above was already written. When repairing
-something a run found, state the RULE and delete the discovery: the next reader
+the citation, still sitting in the artefact under test. Writing the rule down
+does not prevent this; the paraphrases arrive with the repairs that follow it.
+When repairing something a run found, state the RULE and delete the discovery: the next reader
 must meet the repaired file, not the story of its repair.
 
 The one worked example of the parent rule so far: "verify the measuring instrument before
@@ -672,8 +663,7 @@ one value, so any such predicate admits or excludes it in BOTH roles and there i
 no third option.
 
 **THE CRITERION IS AN EXCLUSION TEST, NOT A SUFFICIENCY TEST, and stating it the
-other way is the overclaim this file keeps having to correct** — including in the
-first draft of this very paragraph:
+other way is the overclaim this file keeps having to correct:**
 
 > a mechanism is OUTSIDE that result iff how it classifies a value is not solely
 > a function of the ORIGINAL, UNCHANGED `(List Int)`
