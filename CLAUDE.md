@@ -615,7 +615,7 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               run that campaign without reproducing zero forever
                               is ON THE ISSUE, in detail, because it is a
                               procedure that goes stale and a pointer does not
-  no CLOCK at all             #171, #174, #74, #65, #66 —
+  no CLOCK at all             #115, #171, #174, #74, #65, #66 —
                               open, and neither cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
