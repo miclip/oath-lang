@@ -609,22 +609,12 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               a party that needs to verify an artifact it did
                               not build — NOT an argument that attestation would
                               be good.
-                              #162 — designed, measured, PARKED: it detects what
-                              uniform widening cannot, and buys nothing in THIS
-                              corpus (survived->killed = 0 over 3,319 mutants).
-                              TRIGGER IS A MEASUREMENT, NOT A FEELING: land it
-                              only if the step-2 campaign shows survived->killed
-                              > 0. "A corpus that parses text" does NOT qualify —
-                              config.oath already splits on `=` and yielded zero.
-                              THE RUNNABLE REVISION IS 20a24cc, NOT THE BRANCH
-                              TIP: the tip (ad5b2c8) deletes the step-2 campaign
-                              and the helpers it calls, so restoring the test
-                              alone will not compile. And MERGE CURRENT main INTO
-                              A THROWAWAY COPY of 20a24cc before running — that
-                              revision carries a frozen codebase/ and the campaign
-                              copies the store from its own checkout, so running
-                              it as-is re-measures the OLD corpus and reproduces
-                              zero forever, a trigger that can never fire
+                              #162 — designed, measured, PARKED. TRIGGER IS A
+                              MEASUREMENT, NOT A FEELING: land it only if the
+                              step-2 campaign shows survived->killed > 0. How to
+                              run that campaign without reproducing zero forever
+                              is ON THE ISSUE, in detail, because it is a
+                              procedure that goes stale and a pointer does not
   no CLOCK at all             #115, #169, #171, #174, #74, #65, #66 —
                               open, and neither cheaper nor dearer for waiting
 
@@ -655,12 +645,10 @@ audit cannot catch contamination living inside the artefact under test.
 The rule survives the table changing; the answer would not.
 
 **A PREDICATE OVER A VALUE CANNOT SEPARATE TWO ROLES THAT ONE VALUE CARRIES.**
-#159 asked whether Oath needs a type separating bytes from text. It is NOT
-answered — no verdict was reached on whether a type is required — but one shape
-of the design space was closed by measurement rather than taste: refinements of
-the form `{v : (List Int) | P v}` cannot do it, because both roles are carried by
-one value, so any such predicate admits or excludes it in BOTH roles and there is
-no third option.
+Refinements of the form `{v : (List Int) | P v}` cannot separate bytes from
+text, because both roles are carried by one value, so any such predicate admits
+or excludes it in BOTH roles and there is no third option. Measured, not argued
+(#159).
 
 **THE CRITERION IS AN EXCLUSION TEST, NOT A SUFFICIENCY TEST, and stating it the
 other way is the overclaim this file keeps having to correct:**
@@ -696,16 +684,9 @@ first**, because an item admitted by inheriting a neighbour's failure mode never
 has a clock of its own, and nothing prompts anyone to establish one later. It
 just sits there looking urgent.
 
-**State #164 at that precision and not one word wider.** The runtime builds
-`Str` VALUES at runtime constantly — from argv, from file reads, from tails —
-so "cannot construct a `Str` at runtime" is false as written and would make the
-retirement predicate already satisfied. What is refused is one TERM FORM. (The
-same overstatement is in `docs/experiments/issue-158-llvm-subset/README.md`;
-prefer the issue.)
-
-**AND THE REASON THAT CLOCK IS SLOW RATHER THAN URGENT IS A PATTERN WORTH KNOWING
-BEFORE RANKING ANY LANGUAGE WORK: PROVE OVER THE STRUCTURAL MODEL, RUN OVER A
-NATIVE REPRESENTATION.** `Str` is a codepoint datatype proven inductively and
+**A PATTERN WORTH KNOWING BEFORE RANKING ANY LANGUAGE WORK — it is why such
+work rarely belongs in the first bucket: PROVE OVER THE STRUCTURAL MODEL, RUN
+OVER A NATIVE REPRESENTATION.** `Str` is a codepoint datatype proven inductively and
 compiled to a host string; `Set` and `Map` are canonical sorted lists (#37)
 refined AT COMPILE TIME ONLY into native hash maps. The prover never sees the
 host type. So a backend's representation choices bind NOTHING — the obligation is

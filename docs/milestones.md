@@ -1280,3 +1280,32 @@ pointers; issues elaborated as live work that the bucket table does not hold;
 and six of seven bucket-4 items appearing nowhere else in the file, so the bucket
 an unforced session is steered to is the one the file describes least. These are
 checkable and were not acted on here.
+
+### The queue's descriptions, replaced by the pointers its own rule demands
+
+Two readers converged on the queue's buckets being informationally lopsided:
+the bucket an unforced session is steered to carries seven bare issue numbers,
+while the buckets whose stated reason to wait must be overridden carry every
+elaboration in the section. Both framed it as bucket 4 being under-described.
+
+**The file's own rule says the repair runs the other way.** It prefers a POINTER
+over a description "because a pointer cannot go stale in this direction", and
+says a description "must be re-verified every time anything lands". By that rule
+the bare numbers are correct and the elaborations are the defect. Removed:
+sixteen lines of runbook for a parked experiment, a closed issue's precision
+correction, and a status sentence claiming an issue was unanswered that had since
+been closed.
+
+**One deletion was wrong and review caught it.** The runbook was removed on the
+strength of a keyword grep against the issue — `20a24cc`, `throwaway`, `frozen
+codebase` all matched, so the content looked present. It was not: the issue named
+the revisions without carrying the procedure, so the pointer would have led to a
+trigger nobody could evaluate. The measurement confirmed that TOKENS appeared, not
+that the PROCEDURE did. The procedure is now on the issue, with the two traps that
+make the trigger unfireable if missed, and the pointer is honest.
+
+**A tooling note that cost three separate mistakes in one session.** This file is
+hard-wrapped near 78 columns, so any multi-word `grep` silently misses a phrase
+that spans a line break. It reported no duplicate paragraph where one existed, and
+no parent rule where one existed. Normalise first — `tr '\n' ' '` — before
+concluding a phrase is absent.
