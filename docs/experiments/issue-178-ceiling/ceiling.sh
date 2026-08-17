@@ -124,7 +124,25 @@ llout=$(mktemp)
 # — unlimited, say — 400000 could SUCCEED, and a warning that still exits 0
 # would let a reproduction omit the silent-failure evidence this document rests
 # on. An unexpected success is a hard failure of the harness.
-if ( ulimit -s 8176 2>/dev/null || exit 111; exec 2>/dev/null; "$out/depth-probe-ll" 400000 ) >"$llout" 2>&1; then rc=0; else rc=$?; fi
+# CAPTURING THE ARTIFACT'S STDERR REQUIRES `exec`, AND THIS TOOK TWO WRONG
+# DRAFTS IN OPPOSITE DIRECTIONS.
+#
+#   exec 2>/dev/null; "$bin"   discards the artifact's stderr INSIDE the
+#                              subshell, so "zero bytes" was true whatever the
+#                              artifact emitted
+#   "$bin"                     the subshell has SEVERAL commands, so it forks
+#                              rather than implicitly exec-ing, SURVIVES its
+#                              child's crash, and writes its own "Segmentation
+#                              fault" notice into the captured stream — 55 bytes
+#                              of SHELL output read as ARTIFACT output
+#   exec "$bin"                the subshell is REPLACED by the artifact, so no
+#                              shell remains to narrate, and the only bytes that
+#                              can reach the file are the artifact's own
+#
+# Verified by running all three against a deliberately crashing C program. Note
+# that a single-command subshell exec's implicitly and would have hidden this,
+# which is why the isolation test had to reproduce the multi-command shape.
+if ( ulimit -s 8176 2>/dev/null || exit 111; exec "$out/depth-probe-ll" 400000 ) >"$llout" 2>&1; then rc=0; else rc=$?; fi
 if [ "$rc" = 0 ]; then
   echo "  FAILED: depth 400000 SUCCEEDED under an 8176KB stack — the ceiling" >&2
   echo "  moved, so this run does not reproduce the reported silent failure" >&2

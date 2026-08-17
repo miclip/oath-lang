@@ -95,15 +95,63 @@ a persisted source rather than being copied from a terminal. **No gate ties the
 two together** — a compiler or runtime change could make the table stale while
 the repository stays green, and re-running `ceiling.sh` is the only check.
 
+## The decline condition, answered: the ceiling is NOT above realistic use
+
+The table above is two SYNTHETIC recursions. It establishes the model and
+cannot answer the issue's decline condition, because a synthetic frame is not
+the application's frame. So `app-ceiling.sh` measures the artifact #178 was
+actually opened on, `apps/github-webhook/report.oath`, sweeping DISTINCT
+delivery ids in a well-formed log:
+
+| backend | max distinct records | stack per record |
+|---|---:|---:|
+| LLVM (8,176 KB default) | **4,011** | 2,087 bytes |
+| LLVM (16,352 KB) | 7,975 | 2,100 bytes |
+| Go (1 GB goroutine stack) | **24,797** | — |
+
+Doubling the stack doubles the record count (ratio 1.988) and bytes-per-record
+is stable across both limits, so the application obeys the same
+`stack ÷ frame` model the probes do — at ~2,090 bytes per record, about 43x a
+simple recursion's 48-byte frame, because the per-record work nests.
+
+**An earlier draft of this file said the 5,500 figure "belongs to that
+program's shape, not to the backend", contrasting it with depth. That framing
+was wrong** and is corrected here: it IS depth. The per-record frame is what
+makes ~4,000 rather than ~174,000 the limit, and the two are the same
+phenomenon with different constants.
+
+The Go/LLVM ratio on the real program is **6.2x**, inside the 4.1x-12.0x band
+the two probes bracketed — so the model predicts the application rather than
+merely coexisting with it.
+
+**And this is what closes the decline condition.** The question was whether the
+ceiling sits far above any realistic deployment. It does not, on either
+backend: a verified consumer of an APPEND-ONLY event log stops at ~4,000
+records compiled with LLVM and ~24,800 with Go. Twenty-five thousand webhook
+deliveries is an ordinary lifetime volume for one repository, not an
+adversarial input, and neither figure is a limit an operator would think to
+check for. **The LLVM artifact reaches it silently — exit 139, zero bytes on
+stdout and stderr** — which is the same failure-mode finding the probes gave,
+now on the committed application.
+
+## Reproducing the application figures
+
+`app-ceiling.sh` beside `ceiling.sh`, with `app-transcript.txt` as one run.
+It builds `gh-report-main` on both backends from a COPY of the committed
+corpus, generates N lines with N distinct ids, and bisects N with both
+endpoints validated.
+
+**Its success predicate is not exit 0.** The entry point answers one of three
+things and a usage string or a refusal also exits 0, so a bisection accepting
+those would converge on the largest log the program can REFUSE and report it
+as the largest it can PROCESS. It requires the repository line in the output.
+An earlier terminal-derived set of figures did not check this and sat a few
+percent away; the persisted run supersedes it.
+
 ## What this does NOT establish
 
-- **That 48 and 64 bytes generalise.** Two shapes on one platform, one compiler.
-  A shape holding more live values per frame will sit lower, and the formula is
-  the claim rather than the constants.
+- **That 48, 64 and 2,090 bytes generalise.** Three shapes on one platform, one
+  compiler. The formula is the claim; the constants are not, and another
+  consumer will have its own per-record cost.
 - **Anything about heap growth.** Only stack depth was varied. `report.oath`'s
   quadratic set walk is a separate cost that was not measured here.
-- **Where a realistic deployment sits.** The issue's decline condition asks
-  whether the ceiling is above realistic use. ~174,000 frames is far above any
-  webhook log, and `report.oath` still failed at 5,500 records — so depth alone
-  does not answer it, and the program's access pattern is what needs measuring
-  to close that question.

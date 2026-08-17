@@ -1,0 +1,15 @@
+platform: Darwin arm64   default stack: 8176 KB
+oath source: a96eb35 +MODIFIED
+clang: Apple clang version 21.0.0 (clang-2100.1.1.101)
+go: go version go1.25.6 darwin/arm64
+
+llvm  max distinct records @  8176KB: 4011
+llvm  max distinct records @ 16352KB: 7975
+      ratio 16352/8176: 1.988   bytes of stack per record: 2087  2100
+
+go    max distinct records (1 GB goroutine stack): 24797
+      go/llvm ratio at the 8176KB default: 6.2x
+
+./docs/experiments/issue-178-ceiling/app-ceiling.sh: line 151: 12126 Segmentation fault: 11  ( ulimit -s 8176 2> /dev/null || exit 111; exec "$out/report-ll" "$log" ) > "$llout" 2>&1
+llvm past ceiling: exit 139, zero bytes on stdout and stderr
+go   at the same size: exit 0 (its own ceiling is far higher)
