@@ -1,0 +1,35 @@
+; Two shapes of the same recursion, differing only in how many live locals the
+; emitted C frame must hold. If the ceiling is stack/frame, the wider one fails
+; sooner, in proportion.
+(defn count-down [] [(n Int)] Int
+  (if (<= n 0) 0 (+ 1 (count-down (- n 1))))
+  (prop zero [] (== (count-down 0) 0)))
+
+; THE LOCALS MUST OUTLIVE THE CALL, which is the whole point of this shape.
+; An earlier version put them in the LEFT operand of `+`; both backends evaluate
+; left-to-right, so they were consumed BEFORE the recursion and were never live
+; across it — the frame difference came from extra arithmetic instead, and the
+; control was not testing what it claimed. Binding the recursive result FIRST
+; and consuming a..d after it is what forces them to survive the call.
+(defn count-down-wide [] [(n Int)] Int
+  (if (<= n 0) 0
+      (let (a Int (+ n 1))
+        (let (b Int (+ n 2))
+          (let (c Int (+ n 3))
+            (let (d Int (+ n 4))
+              (let (r Int (count-down-wide (- n 1)))
+                (+ (+ 1 r)
+                   (+ (+ (- a a) (- b b)) (+ (- c c) (- d d))))))))))
+  (prop zero [] (== (count-down-wide 0) 0)))
+
+(defn depth-probe [] [(args (List Str))] Str
+  (match args
+    ((Nil) "usage: depth-probe <n>")
+    ((Cons s rest) (if (== (count-down (parse-nat s)) (parse-nat s)) "ok" "bad")))
+  (prop usage [] (== (depth-probe (Nil [Str])) "usage: depth-probe <n>")))
+
+(defn depth-probe-wide [] [(args (List Str))] Str
+  (match args
+    ((Nil) "usage: depth-probe-wide <n>")
+    ((Cons s rest) (if (== (count-down-wide (parse-nat s)) (parse-nat s)) "ok" "bad")))
+  (prop usage [] (== (depth-probe-wide (Nil [Str])) "usage: depth-probe-wide <n>")))

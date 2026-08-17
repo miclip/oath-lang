@@ -1,0 +1,14 @@
+platform: Darwin arm64   default stack: 8176 KB
+oath source: 7739dab
+clang: Apple clang version 21.0.0 (clang-2100.1.1.101)
+go: go version go1.25.6 darwin/arm64
+
+shape        8176KB    16352KB   ratio
+narrow       174270     348691   2.001
+wide         130702     261518   2.001
+
+Go backend (runtime 1 GB goroutine-stack limit, not ulimit):
+  narrow max depth ~= 2097138
+  wide   max depth ~= 541196
+  diagnostic: runtime: goroutine stack exceeds 1000000000-byte limit
+  llvm past ceiling: exit 139, zero bytes on stdout and stderr
