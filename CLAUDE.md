@@ -600,7 +600,11 @@ missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   (empty)
+  more EXPENSIVE if delayed   #178 — a shipped backend has a correctness
+                              ceiling a committed application reaches in
+                              ordinary use. Retires when the ceiling is
+                              removed, or when it is measured and shown to
+                              sit above any deployment this backend serves
   more VALUABLE if delayed    #134, #139/#140, #138, #38 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128,
