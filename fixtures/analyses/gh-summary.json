@@ -1,0 +1,12 @@
+{
+  "name": "gh-summary",
+  "hash": "e4b3d10616ab85743f5b990dbab45e35e64d6bb5de654198d91051e24c76f037",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

@@ -1,0 +1,12 @@
+{
+  "name": "gh-counts",
+  "hash": "ae09e70ae58547c85e425a9633f803e24f364356970e7c357820d527fae20fa5",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

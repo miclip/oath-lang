@@ -1,0 +1,12 @@
+{
+  "name": "gh-refusal",
+  "hash": "e2e129fadb31446f3512f748d42349883405afbb04fd8a1298a5de10ab35a03e",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

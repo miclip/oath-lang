@@ -1,0 +1,27 @@
+{
+  "name": "gh-field",
+  "prop_names": [
+    "the-tag-is-field-zero",
+    "the-delivery-is-field-one",
+    "the-event-is-field-two",
+    "the-repository-is-field-three",
+    "past-the-end-is-empty",
+    "it-reads-the-receivers-columns"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "i",
+    "line"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

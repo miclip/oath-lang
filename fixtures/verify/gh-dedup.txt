@@ -1,0 +1,7 @@
+✓ prop nothing-in-nothing-out   passed 200 cases
+✓ prop it-never-grows           passed 200 cases
+✓ prop a-seen-delivery-is-dropped passed 200 cases
+✓ prop an-unseen-delivery-is-kept passed 200 cases
+✓ prop a-redelivery-collapses   passed 200 cases
+✓ prop two-deliveries-both-survive passed 200 cases
+✓ prop only-the-delivery-id-decides passed 200 cases

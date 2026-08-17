@@ -1,0 +1,666 @@
+; THE EVENT-LOG CONSUMER, IN OATH — the Oath half of `report.sh`.
+;
+;   oath build gh-report-main -o gh-report && ./gh-report events.log
+;
+; `report.sh` is the DEPENDENT that made this an application rather than an
+; example: it is what broke when the record gained a field, and it is where the
+; at-least-once property of the log is paid for. This file is the same consumer
+; written as verified definitions, so the three things the shell script argues
+; for in comments — refuse a format you do not understand, deduplicate before
+; you aggregate, and read the columns in the order the record actually has them
+; — become claims a machine checks rather than claims a reader trusts.
+;
+; CAPABILITY-FIRST. The entry requires exactly one authority, `readfile`. No
+; `env`, no `emit`, no `fetch`. Per #114 the undeclared ones are ABSENT from the
+; compiled binary rather than merely unused: this artifact contains no HTTP
+; client and no way to write anywhere.
+;
+; WHY EVERYTHING IS KEYED THROUGH AN Int. `Set` and `Map` are `Set of Int` and
+; `Int -> Int` (docs/native-containers.md) — the compiler refines them into
+; native hash maps, and that refinement is only sound for a type it recognises.
+; A consumer that must deduplicate on a delivery ID and count `(repository,
+; event)` groups therefore needs an injective `Str -> Int`, which `str-code`
+; below supplies. `Int` is unbounded (ℤ), so the encoding is exact rather than a
+; hash: there is no collision to reason about, and nothing here degrades on a
+; long delivery ID. That is a fact about the LANGUAGE, not about this app — a
+; machine-width Int would have made the same code a probabilistic dedup.
+;
+; TWO DELIBERATE DIFFERENCES FROM `report.sh`, both stated rather than hidden.
+; A THIRD is NOT deliberate and is recorded at the entry point below: a file
+; that cannot be read is indistinguishable from an empty one, because the
+; capability CALL-failure protocol is the empty string.
+;
+;   - THE EXIT STATUS. `report.sh` writes the refusal to stderr and exits 1.
+;     Oath's CLI entry protocol is `(-> {caps} (-> (List Str) Str))`: the
+;     returned Str is printed and the process exits 0. There is no exit-code
+;     channel and no stderr channel in the protocol, and the only nonzero exit a
+;     compiled artifact has is the HOST-REFUSAL status (70), which is
+;     classified for conditions the host could not satisfy — not for input the
+;     program read and judged. Forcing 70 from here would report an application
+;     verdict as a host failure, so this refuses in the one channel it has: the
+;     refusal text is returned verbatim, with the count, on stdout.
+;   - THE TIE ORDER. `report.sh` ends in `sort -rn`, whose order among equal
+;     counts is a last-resort whole-line comparison and differs between sort
+;     implementations. This orders equal counts by FIRST APPEARANCE in the log,
+;     which is deterministic and does not depend on anyone's sort.
+
+; ---------------------------------------------------------------------------
+; NAMING THE DOMAIN `str-code` IS INJECTIVE ON.
+;
+; The property that makes keying sound cannot be stated without a name for the
+; set it quantifies over — the `hex-valid` move. `str-scalars` carries no logic
+; `str-code` does not already have; its whole job is to BE the set, so that
+; "distinct strings have distinct codes" is expressible at all instead of being
+; a claim about how the encoding recurses.
+(defn str-scalars [] [(s Str)] Bool
+  (match s
+    ((SNil) true)
+    ((SCons c rest) (and (and (<= 0 c) (< c 1114112)) (str-scalars rest))))
+
+  (prop the-empty-string-qualifies [] (str-scalars (SNil)))
+  (prop a-negative-codepoint-does-not [(s Str)]
+    (not (str-scalars (SCons -1 s))))
+  (prop one-above-the-maximum-does-not [(s Str)]
+    (not (str-scalars (SCons 1114112 s))))
+  (prop the-maximum-scalar-qualifies [] (str-scalars (SCons 1114111 (SNil))))
+  (prop it-is-hereditary [(c Int) (s Str)]
+    (if (str-scalars (SCons c s)) (str-scalars s) true)))
+
+; AN INJECTIVE Str -> Int, so a string can be a `Set` element or a `Map` key.
+;
+; This is BIJECTIVE BASE-1114112 numeration: the digits are `c + 1`, drawn from
+; 1..1114112 rather than 0..1114111, and every non-negative integer then has
+; exactly one such representation. The `+ 1` is the whole of it — without it
+; "a", "aa" and "aaa" would all encode leading zeros and collide.
+;
+; NOT A HASH. `Int` is ℤ, so this is a total order-preserving-free bijection
+; onto the naturals with no collision to bound. The digit is recovered as
+; `((n - 1) % 1114112)`, which is why the head-recovery property below subtracts
+; one before taking the remainder: at `c = 1114111` the digit EQUALS the base
+; and a bare `% base` answers 0.
+(defn str-code [] [(s Str)] Int
+  (match s
+    ((SNil) 0)
+    ((SCons c rest) (+ (+ c 1) (* 1114112 (str-code rest)))))
+
+  (prop the-empty-string-is-zero [] (== (str-code (SNil)) 0))
+  (prop a-code-is-never-negative [(s Str)]
+    (if (str-scalars s) (<= 0 (str-code s)) true))
+  (prop only-the-empty-string-codes-zero [(s Str)]
+    (if (str-scalars s) (if (== (str-code s) 0) (== s (SNil)) true) true))
+  (prop a-head-is-recoverable [(c Int) (s Str)]
+    (if (and (str-scalars (SCons c s)) (str-scalars s))
+        (== (% (- (str-code (SCons c s)) 1) 1114112) c)
+        true))
+  ; THE KEYING ASSUMPTION, STATED WHERE IT IS MADE. Deduplicating on a delivery
+  ; ID and grouping by (repository, event) are both sound exactly when this
+  ; holds; if it is ever falsified, this consumer silently merges two distinct
+  ; deliveries, which is the failure the log's at-least-once nature makes
+  ; expensive.
+  (prop distinct-strings-have-distinct-codes [(a Str) (b Str)]
+    (if (and (str-scalars a) (str-scalars b))
+        (if (== (str-code a) (str-code b)) (== a b) true)
+        true))
+  ; THE CONTROLS. The general property above is guarded, and the deterministic
+  ; tester draws `Str` codepoints from [-20,20] (#162) — so it cannot produce
+  ; the printable ASCII these keys are actually made of, and its evidence for
+  ; the guarded claim is drawn from a different alphabet than production. These
+  ; three are the real keys, concretely, so the claim is witnessed on the values
+  ; the consumer will see rather than only on the ones the generator can reach.
+  (prop it-separates-two-delivery-ids []
+    (not (== (str-code "d-1") (str-code "d-2"))))
+  (prop it-separates-a-string-from-its-prefix []
+    (not (== (str-code "push") (str-code "pushes"))))
+  (prop it-separates-two-groups []
+    (not (== (str-code "miclip/oath-lang\tpush")
+             (str-code "miclip/oath-lang\tissues")))))
+
+; DISTINCT STRINGS, FIRST-APPEARANCE ORDER — the `Set` doing the remembering.
+(defn str-nub [] [(seen Set) (xs (List Str))] (List Str)
+  (match xs
+    ((Nil) (Nil [Str]))
+    ((Cons x rest)
+      (if (set-member (str-code x) seen)
+          (str-nub seen rest)
+          (Cons [Str] x (str-nub (set-add (str-code x) seen) rest)))))
+
+  (prop nothing-in-nothing-out [(seen Set)]
+    (== (str-nub seen (Nil [Str])) (Nil [Str])))
+  (prop it-never-grows [(seen Set) (xs (List Str))]
+    (<= (length [Str] (str-nub seen xs)) (length [Str] xs)))
+  (prop an-already-seen-head-is-dropped [(seen Set) (x Str) (rest (List Str))]
+    (if (set-member (str-code x) seen)
+        (== (str-nub seen (Cons [Str] x rest)) (str-nub seen rest))
+        true))
+  (prop an-unseen-head-is-kept [(seen Set) (x Str) (rest (List Str))]
+    (if (set-member (str-code x) seen)
+        true
+        (== (str-nub seen (Cons [Str] x rest))
+            (Cons [Str] x (str-nub (set-add (str-code x) seen) rest)))))
+  (prop it-drops-an-immediate-repeat [(x Str) (rest (List Str))]
+    (== (str-nub set-empty (Cons [Str] x (Cons [Str] x rest)))
+        (str-nub set-empty (Cons [Str] x rest)))))
+
+; RIGHT-ALIGNMENT, because `uniq -c` right-aligns its count in a four-wide
+; field and the report shape includes that column.
+;
+; SPLIT IN TWO FOR TERMINATION, not for reuse. The obvious single definition —
+; cons a space and recurse while `w > (str-len s)` — needs `str-len s >= 0` as
+; a lemma before `w` is a ranking function, and the analyser answers `unknown`
+; without it. Counting down to zero is a ranking function on its own, so
+; `str-pad-left` becomes non-recursive and both are `total`. The reported
+; verdict propagates: with the recursive form, every definition downstream of
+; the renderer read `termination unproven`, which is a fact about the analyser
+; rather than about the report.
+(defn str-spaces [] [(n Int)] Str
+  (if (<= n 0) (SNil) (SCons 32 (str-spaces (- n 1))))
+
+  (prop none-is-empty [] (== (str-spaces 0) (SNil)))
+  (prop a-negative-count-is-empty [(n Int)]
+    (if (<= n 0) (== (str-spaces n) (SNil)) true))
+  (prop it-has-the-requested-length [(n Int)]
+    (if (<= 0 n) (== (str-len (str-spaces n)) n) true))
+  (prop three-is-three-spaces [] (== (str-spaces 3) "   ")))
+
+(defn str-pad-left [] [(w Int) (s Str)] Str
+  (str-append (str-spaces (- w (str-len s))) s)
+
+  (prop it-never-shortens [(w Int) (s Str)]
+    (<= (str-len s) (str-len (str-pad-left w s))))
+  (prop it-reaches-the-width [(w Int) (s Str)]
+    (if (<= 0 w) (<= w (str-len (str-pad-left w s))) true))
+  (prop a-wide-enough-string-is-untouched [(w Int) (s Str)]
+    (if (<= w (str-len s)) (== (str-pad-left w s) s) true))
+  (prop it-pads-to-four [] (== (str-pad-left 4 "12") "  12"))
+  (prop it-leaves-five-alone [] (== (str-pad-left 4 "12345") "12345")))
+
+; ---------------------------------------------------------------------------
+; THE RECORD FORMAT.
+;
+; ONE AUTHORITY FOR THE TAG, and it is checked against the PRODUCER rather than
+; written down twice: the property below reads the first field of a record the
+; receiver actually builds. A copy of "oath-gh/1" here would be correct exactly
+; once, and nothing would announce when `gh-record` moved.
+(defn gh-schema [] [] Str
+  "oath-gh/1"
+
+  (prop it-is-the-tag-the-receiver-writes []
+    (== (first-or "" (str-split 9 (record-under "d-1" "push" "miclip/oath-lang")))
+        (gh-schema))))
+
+; Field `i`, zero-based, of a tab-separated record; "" past the end. The
+; columns are schema, delivery, EVENT, REPOSITORY, received-at — the order the
+; shell script's comment warns about, and the reason the report swaps them.
+(defn gh-field [] [(i Int) (line Str)] Str
+  (first-or "" (drop [Str] i (str-split 9 line)))
+
+  (prop the-tag-is-field-zero [] (== (gh-field 0 "a\tb\tc\td\te") "a"))
+  (prop the-delivery-is-field-one [] (== (gh-field 1 "a\tb\tc\td\te") "b"))
+  (prop the-event-is-field-two [] (== (gh-field 2 "a\tb\tc\td\te") "c"))
+  (prop the-repository-is-field-three [] (== (gh-field 3 "a\tb\tc\td\te") "d"))
+  (prop past-the-end-is-empty [] (== (gh-field 9 "a\tb") ""))
+  ; Against the producer, so the column assignment is derived rather than
+  ; asserted: these are the values `record-under` was given.
+  (prop it-reads-the-receivers-columns []
+    (let (r Str (record-under "d-1" "push" "miclip/oath-lang"))
+      (and (== (gh-field 1 r) "d-1")
+           (and (== (gh-field 2 r) "push")
+                (== (gh-field 3 r) "miclip/oath-lang"))))))
+
+; REFUSE A FORMAT WE DO NOT UNDERSTAND — both halves, for the reason the shell
+; script gives: the tag alone would let a truncated line carrying `oath-gh/1`
+; through, and the aggregation would report a shifted repository. That is the
+; silent misreading the tag exists to prevent, recreated one field along.
+(defn gh-line-ok [] [(line Str)] Bool
+  (and (== (gh-field 0 line) (gh-schema))
+       (== (length [Str] (str-split 9 line)) 5))
+
+  (prop a-receiver-record-is-accepted []
+    (gh-line-ok (record-under "d-1" "push" "miclip/oath-lang")))
+  ; The two halves, separately, so deleting either conjunct falsifies something.
+  (prop an-accepted-line-carries-the-tag [(line Str)]
+    (if (gh-line-ok line) (== (gh-field 0 line) (gh-schema)) true))
+  (prop an-accepted-line-has-five-fields [(line Str)]
+    (if (gh-line-ok line) (== (length [Str] (str-split 9 line)) 5) true))
+  ; The three shapes the shell script names, concretely.
+  (prop the-old-four-field-record-is-refused []
+    (not (gh-line-ok "oath-gh/1\td-1\tpush\t0")))
+  (prop an-over-split-record-is-refused []
+    (not (gh-line-ok "oath-gh/1\td-1\tpush\tmiclip/oath-lang\t0\textra")))
+  (prop a-blank-line-is-refused [] (not (gh-line-ok "")))
+  ; A FOREIGN TAG IS REFUSED WHATEVER THE OTHER FIELDS ARE — unguarded, so the
+  ; generator may put tabs anywhere in them: field zero is still not ours.
+  (prop a-foreign-tag-is-refused [(a Str) (b Str) (c Str) (d Str)]
+    (not (gh-line-ok
+           (str-join 9 (Cons [Str] "other/1"
+                        (Cons [Str] a (Cons [Str] b (Cons [Str] c
+                          (Cons [Str] d (Nil [Str])))))))))))
+
+; ---------------------------------------------------------------------------
+; READING THE FILE INTO RECORDS.
+;
+; A trailing newline ENDS the last record rather than starting an empty one —
+; `awk` sees no record after it, and a consumer that saw one would refuse every
+; well-formed log ever written. An INTERIOR blank line is a record, and a
+; malformed one; that too is what `awk` sees, and it is a real corruption.
+(defn gh-drop-final-empty [] [(ls (List Str))] (List Str)
+  (match ls
+    ((Nil) (Nil [Str]))
+    ((Cons h t)
+      (match t
+        ((Nil) (if (== h "") (Nil [Str]) (Cons [Str] h (Nil [Str]))))
+        ((Cons h2 t2) (Cons [Str] h (gh-drop-final-empty t))))))
+
+  (prop empty-stays-empty [] (== (gh-drop-final-empty (Nil [Str])) (Nil [Str])))
+  (prop a-lone-empty-goes []
+    (== (gh-drop-final-empty (Cons [Str] "" (Nil [Str]))) (Nil [Str])))
+  (prop only-the-final-one-goes []
+    (== (gh-drop-final-empty (Cons [Str] "" (Cons [Str] "a" (Cons [Str] "" (Nil [Str])))))
+        (Cons [Str] "" (Cons [Str] "a" (Nil [Str])))))
+  (prop it-never-grows [(ls (List Str))]
+    (<= (length [Str] (gh-drop-final-empty ls)) (length [Str] ls)))
+  (prop it-drops-at-most-one [(ls (List Str))]
+    (<= (- (length [Str] ls) 1) (length [Str] (gh-drop-final-empty ls))))
+  (prop a-non-empty-tail-is-kept [(h Str) (ls (List Str))]
+    (if (== h "") true
+        (== (length [Str] (gh-drop-final-empty (Cons [Str] h (Nil [Str])))) 1))))
+
+(defn gh-log-lines [] [(text Str)] (List Str)
+  (gh-drop-final-empty (str-split 10 text))
+
+  (prop an-empty-file-has-no-records [] (== (gh-log-lines "") (Nil [Str])))
+  (prop a-trailing-newline-adds-no-record []
+    (== (gh-log-lines "a\nb\n") (gh-log-lines "a\nb")))
+  (prop it-counts-the-records [] (== (length [Str] (gh-log-lines "a\nb\nc\n")) 3))
+  (prop an-interior-blank-line-is-a-record []
+    (== (length [Str] (gh-log-lines "a\n\nb\n")) 3)))
+
+; ---------------------------------------------------------------------------
+; REFUSAL.
+(defn gh-rejected [] [(ls (List Str))] Int
+  (match ls
+    ((Nil) 0)
+    ((Cons l rest) (+ (if (gh-line-ok l) 0 1) (gh-rejected rest))))
+
+  (prop nothing-rejects-nothing [] (== (gh-rejected (Nil [Str])) 0))
+  (prop it-is-never-negative [(ls (List Str))] (<= 0 (gh-rejected ls)))
+  (prop it-is-bounded-by-the-line-count [(ls (List Str))]
+    (<= (gh-rejected ls) (length [Str] ls)))
+  (prop the-cons-ledger [(l Str) (rest (List Str))]
+    (== (gh-rejected (Cons [Str] l rest))
+        (+ (gh-rejected rest) (if (gh-line-ok l) 0 1))))
+  ; THE REFUSAL CLAIM, in the direction that matters: ONE bad line anywhere is
+  ; enough to make the count nonzero, whatever else the log contains.
+  (prop one-bad-line-is-enough [(good (List Str)) (bad Str)]
+    (if (gh-line-ok bad) true (< 0 (gh-rejected (Cons [Str] bad good)))))
+  (prop a-bad-line-deeper-in-is-enough [(l Str) (good (List Str)) (bad Str)]
+    (if (gh-line-ok bad) true
+        (< 0 (gh-rejected (Cons [Str] l (Cons [Str] bad good))))))
+  ; And the converse: zero rejected means every line passed. Stated through
+  ; `all`, so it is a claim about the combinator as well as about this count.
+  (prop zero-rejected-means-every-line-passed [(ls (List Str))]
+    (== (== (gh-rejected ls) 0)
+        (all [Str] (fn [(l Str)] (gh-line-ok l)) ls))))
+
+; The offending lines, indented, exactly as the shell script echoes them.
+(defn gh-refused-lines [] [(ls (List Str))] (List Str)
+  (match ls
+    ((Nil) (Nil [Str]))
+    ((Cons l rest)
+      (if (gh-line-ok l)
+          (gh-refused-lines rest)
+          (Cons [Str] (str-append "  " l) (gh-refused-lines rest)))))
+
+  (prop it-lists-exactly-the-rejected [(ls (List Str))]
+    (== (length [Str] (gh-refused-lines ls)) (gh-rejected ls)))
+  (prop a-clean-log-lists-nothing [(ls (List Str))]
+    (if (== (gh-rejected ls) 0) (== (gh-refused-lines ls) (Nil [Str])) true)))
+
+(defn gh-refusal [] [(path Str) (ls (List Str))] (List Str)
+  (Cons [Str]
+    (str-append "refusing: "
+      (str-append (show-int (gh-rejected ls))
+        (str-append " line(s) in "
+          (str-append path
+            (str-append " are not " (str-append (gh-schema) " with 5 fields"))))))
+    (gh-refused-lines ls))
+
+  ; The count in the headline and the number of lines under it are the same
+  ; fact, and reporting them from two places is how they drift apart.
+  (prop the-headline-count-matches-the-listing [(path Str) (ls (List Str))]
+    (== (- (length [Str] (gh-refusal path ls)) 1) (gh-rejected ls)))
+  (prop it-names-the-refusal [(path Str) (ls (List Str))]
+    (str-prefix "refusing: " (first-or "" (gh-refusal path ls)))))
+
+; ---------------------------------------------------------------------------
+; DEDUPLICATION — the whole of the at-least-once workaround.
+;
+; Field 1 is the delivery ID: what GitHub asserted about this event's identity,
+; and the only field a consumer may treat as one. The receiver is a pure
+; function with no state, so it cannot be idempotent; every consumer inherits
+; that, and this is where it is paid.
+(defn gh-dedup [] [(seen Set) (ls (List Str))] (List Str)
+  (match ls
+    ((Nil) (Nil [Str]))
+    ((Cons l rest)
+      (if (set-member (str-code (gh-field 1 l)) seen)
+          (gh-dedup seen rest)
+          (Cons [Str] l (gh-dedup (set-add (str-code (gh-field 1 l)) seen) rest)))))
+
+  (prop nothing-in-nothing-out [(seen Set)]
+    (== (gh-dedup seen (Nil [Str])) (Nil [Str])))
+  (prop it-never-grows [(seen Set) (ls (List Str))]
+    (<= (length [Str] (gh-dedup seen ls)) (length [Str] ls)))
+  (prop a-seen-delivery-is-dropped [(seen Set) (l Str) (rest (List Str))]
+    (if (set-member (str-code (gh-field 1 l)) seen)
+        (== (gh-dedup seen (Cons [Str] l rest)) (gh-dedup seen rest))
+        true))
+  (prop an-unseen-delivery-is-kept [(seen Set) (l Str) (rest (List Str))]
+    (if (set-member (str-code (gh-field 1 l)) seen)
+        true
+        (== (gh-dedup seen (Cons [Str] l rest))
+            (Cons [Str] l (gh-dedup (set-add (str-code (gh-field 1 l)) seen) rest)))))
+  ; A REDELIVERY IS COUNTED ONCE. Two records with the same delivery ID and
+  ; DIFFERENT received-at timestamps — which is exactly what a redelivery looks
+  ; like — collapse to one.
+  (prop a-redelivery-collapses []
+    (== (length [Str]
+          (gh-dedup set-empty
+            (Cons [Str] "oath-gh/1\td-1\tpush\tmiclip/oath-lang\t1000"
+              (Cons [Str] "oath-gh/1\td-1\tpush\tmiclip/oath-lang\t2000"
+                (Nil [Str])))))
+        1))
+  (prop two-deliveries-both-survive []
+    (== (length [Str]
+          (gh-dedup set-empty
+            (Cons [Str] "oath-gh/1\td-1\tpush\tmiclip/oath-lang\t1000"
+              (Cons [Str] "oath-gh/1\td-2\tpush\tmiclip/oath-lang\t2000"
+                (Nil [Str])))))
+        2))
+  ; The delivery ID is the ONLY field consulted: a record differing in every
+  ; other field is still a repeat.
+  (prop only-the-delivery-id-decides [(rest (List Str))]
+    (== (gh-dedup set-empty
+          (Cons [Str] "oath-gh/1\td-1\tpush\ta/a\t1"
+            (Cons [Str] "oath-gh/1\td-1\tissues\tb/b\t2" (Nil [Str]))))
+        (Cons [Str] "oath-gh/1\td-1\tpush\ta/a\t1" (Nil [Str])))))
+
+; ---------------------------------------------------------------------------
+; AGGREGATION — `Map` from group key to count.
+;
+; The group label is REPOSITORY then EVENT, in that order, because that is the
+; heading. Reading the fields in file order would print the event where a
+; reader expects the repository — the mistake the shell script's `cut` comment
+; is about.
+(defn gh-group [] [(line Str)] Str
+  (str-append (gh-field 3 line) (SCons 9 (gh-field 2 line)))
+
+  (prop it-is-repository-then-event []
+    (== (gh-group "oath-gh/1\td-1\tpush\tmiclip/oath-lang\t0")
+        "miclip/oath-lang\tpush"))
+  (prop it-reads-the-receivers-record []
+    (== (gh-group (record-under "d-1" "push" "miclip/oath-lang"))
+        "miclip/oath-lang\tpush"))
+  (prop it-separates-two-events []
+    (not (== (gh-group "oath-gh/1\td-1\tpush\tr/r\t0")
+             (gh-group "oath-gh/1\td-1\tissues\tr/r\t0"))))
+  (prop it-separates-two-repositories []
+    (not (== (gh-group "oath-gh/1\td-1\tpush\ta/a\t0")
+             (gh-group "oath-gh/1\td-1\tpush\tb/b\t0")))))
+
+(defn gh-group-labels [] [(ls (List Str))] (List Str)
+  (match ls
+    ((Nil) (Nil [Str]))
+    ((Cons l rest) (Cons [Str] (gh-group l) (gh-group-labels rest))))
+
+  (prop it-preserves-length [(ls (List Str))]
+    (== (length [Str] (gh-group-labels ls)) (length [Str] ls)))
+  (prop nothing-in-nothing-out [] (== (gh-group-labels (Nil [Str])) (Nil [Str]))))
+
+(defn gh-counts [] [(m Map) (ls (List Str))] Map
+  (match ls
+    ((Nil) m)
+    ((Cons l rest)
+      (gh-counts
+        (map-insert (str-code (gh-group l))
+                    (+ 1 (match (map-lookup (str-code (gh-group l)) m)
+                           ((None) 0)
+                           ((Some n) n)))
+                    m)
+        rest)))
+
+  (prop an-empty-log-changes-nothing [(m Map)]
+    (== (gh-counts m (Nil [Str])) m))
+  (prop every-group-is-present [(m Map) (l Str) (rest (List Str))]
+    (map-has (str-code (gh-group l)) (gh-counts m (Cons [Str] l rest))))
+  ; One line yields a count of one for its own group.
+  (prop one-line-counts-one [(l Str)]
+    (== (match (map-lookup (str-code (gh-group l))
+                 (gh-counts map-empty (Cons [Str] l (Nil [Str]))))
+          ((None) 0) ((Some n) n))
+        1))
+  ; Two lines in the SAME group count two, and the map holds one key.
+  (prop the-same-group-twice-counts-two []
+    (== (match (map-lookup (str-code "miclip/oath-lang\tpush")
+                 (gh-counts map-empty
+                   (Cons [Str] "oath-gh/1\td-1\tpush\tmiclip/oath-lang\t1"
+                     (Cons [Str] "oath-gh/1\td-2\tpush\tmiclip/oath-lang\t2"
+                       (Nil [Str])))))
+          ((None) 0) ((Some n) n))
+        2))
+  (prop two-different-groups-stay-apart []
+    (== (map-size
+          (gh-counts map-empty
+            (Cons [Str] "oath-gh/1\td-1\tpush\tmiclip/oath-lang\t1"
+              (Cons [Str] "oath-gh/1\td-2\tissues\tmiclip/oath-lang\t2"
+                (Nil [Str])))))
+        2))
+  ; The ledger: the map holds as many keys as there are DISTINCT groups.
+  (prop the-key-count-is-the-distinct-group-count [(ls (List Str))]
+    (== (map-size (gh-counts map-empty ls))
+        (length [Str] (str-nub set-empty (gh-group-labels ls))))))
+
+; ---------------------------------------------------------------------------
+; RANKING.
+(defn gh-count-of [] [(p (Pair Str Int))] Int
+  (match p ((Pair g n) n))
+  (prop it-projects-the-count [(g Str) (n Int)]
+    (== (gh-count-of (Pair [Str Int] g n)) n)))
+
+(defn gh-label-of [] [(p (Pair Str Int))] Str
+  (match p ((Pair g n) g))
+  (prop it-projects-the-label [(g Str) (n Int)]
+    (== (gh-label-of (Pair [Str Int] g n)) g)))
+
+; DESCENDING BY COUNT. `insert-by` places a new element before the first one it
+; is NOT `lt`-after, so equal counts keep first-appearance order — which is the
+; deliberate difference from `sort -rn` recorded at the top of this file.
+(defn gh-by-count [] [] {lt (-> (Pair Str Int) (Pair Str Int) Bool)}
+  {lt (fn [(a (Pair Str Int)) (b (Pair Str Int))]
+        (< (gh-count-of b) (gh-count-of a)))}
+
+  (prop a-larger-count-comes-first [(x Str) (y Str)]
+    ((. (gh-by-count) lt) (Pair [Str Int] x 2) (Pair [Str Int] y 1)))
+  (prop a-smaller-count-does-not [(x Str) (y Str)]
+    (not ((. (gh-by-count) lt) (Pair [Str Int] x 1) (Pair [Str Int] y 2))))
+  (prop equal-counts-are-unordered [(x Str) (y Str) (n Int)]
+    (not ((. (gh-by-count) lt) (Pair [Str Int] x n) (Pair [Str Int] y n)))))
+
+(defn gh-tally [] [(m Map) (gs (List Str))] (List (Pair Str Int))
+  (match gs
+    ((Nil) (Nil [(Pair Str Int)]))
+    ((Cons g rest)
+      (Cons [(Pair Str Int)]
+        (Pair [Str Int] g (match (map-lookup (str-code g) m) ((None) 0) ((Some n) n)))
+        (gh-tally m rest))))
+
+  (prop it-preserves-length [(m Map) (gs (List Str))]
+    (== (length [(Pair Str Int)] (gh-tally m gs)) (length [Str] gs)))
+  (prop nothing-in-nothing-out [(m Map)]
+    (== (gh-tally m (Nil [Str])) (Nil [(Pair Str Int)])))
+  ; The head of the tally is the head group, with the map's count for it — the
+  ; pairing, not just the shape. Written with `match` rather than through a
+  ; head-with-default helper: that helper would have been a PERMANENT public
+  ; name whose only reader was this property, and a name is the one thing in
+  ; this store there is no operation to take back.
+  (prop it-pairs-each-label-with-its-count [(m Map) (g Str) (gs (List Str))]
+    (match (gh-tally m (Cons [Str] g gs))
+      ((Nil) false)
+      ((Cons p rest)
+        (and (== (gh-label-of p) g)
+             (== (gh-count-of p)
+                 (match (map-lookup (str-code g) m) ((None) 0) ((Some n) n))))))))
+
+; ---------------------------------------------------------------------------
+; RENDERING.
+(defn gh-render-group [] [(p (Pair Str Int))] Str
+  (str-append "  "
+    (str-append (str-pad-left 4 (show-int (gh-count-of p)))
+      (str-append " " (gh-label-of p))))
+
+  (prop it-matches-the-uniq-c-shape []
+    (== (gh-render-group (Pair [Str Int] "miclip/oath-lang\tpush" 2))
+        "     2 miclip/oath-lang\tpush"))
+  (prop a-wide-count-still-renders []
+    (== (gh-render-group (Pair [Str Int] "r/r\tpush" 12345))
+        "  12345 r/r\tpush")))
+
+(defn gh-render-groups [] [(ps (List (Pair Str Int)))] (List Str)
+  (match ps
+    ((Nil) (Nil [Str]))
+    ((Cons p rest) (Cons [Str] (gh-render-group p) (gh-render-groups rest))))
+
+  (prop it-preserves-length [(ps (List (Pair Str Int)))]
+    (== (length [Str] (gh-render-groups ps)) (length [(Pair Str Int)] ps)))
+  (prop nothing-in-nothing-out [] (== (gh-render-groups (Nil [(Pair Str Int)])) (Nil [Str]))))
+
+(defn gh-header-line [] [(path Str) (total Int) (unique Int)] Str
+  (str-append path
+    (str-append ": "
+      (str-append (show-int total)
+        (str-append " record(s), " (str-append (show-int unique) " distinct deliver(ies)")))))
+
+  (prop it-matches-the-shell-header []
+    (== (gh-header-line "events.log" 5 4)
+        "events.log: 5 record(s), 4 distinct deliver(ies)"))
+  (prop it-names-the-path [(path Str) (t Int) (u Int)]
+    (str-prefix path (gh-header-line path t u))))
+
+(defn gh-header [] [(path Str) (total Int) (unique Int)] (List Str)
+  (if (== total unique)
+      (Cons [Str] (gh-header-line path total unique) (Nil [Str]))
+      (Cons [Str] (gh-header-line path total unique)
+        (Cons [Str]
+          (str-append "  ("
+            (str-append (show-int (- total unique)) " redelivered, counted once below)"))
+          (Nil [Str]))))
+
+  (prop no-redeliveries-is-one-line [(path Str) (n Int)]
+    (== (length [Str] (gh-header path n n)) 1))
+  (prop a-redelivery-adds-the-note [(path Str)]
+    (== (length [Str] (gh-header path 5 4)) 2))
+  (prop the-note-reports-the-difference [(path Str)]
+    (== (first-or "" (drop [Str] 1 (gh-header path 5 4)))
+        "  (1 redelivered, counted once below)")))
+
+; ---------------------------------------------------------------------------
+; THE REPORT.
+(defn gh-summary [] [(path Str) (ls (List Str))] (List Str)
+  (let (u (List Str) (gh-dedup set-empty ls))
+    (append [Str]
+      (gh-header path (length [Str] ls) (length [Str] u))
+      (Cons [Str] ""
+        (Cons [Str] "by repository and event:"
+          (gh-render-groups
+            (sort-by [(Pair Str Int)] (gh-by-count)
+              (gh-tally (gh-counts map-empty u)
+                        (str-nub set-empty (gh-group-labels u)))))))))
+
+  (prop it-always-has-a-heading [(path Str) (ls (List Str))]
+    (== (first-or "" (drop [Str] (- (length [Str] (gh-summary path ls))
+                                    (+ 1 (length [Str] (str-nub set-empty (gh-group-labels (gh-dedup set-empty ls))))))
+                            (gh-summary path ls)))
+        "by repository and event:"))
+  ; THE COUNTS COME FROM THE DEDUPLICATED LOG, pinned CONCRETELY — because the
+  ; general shape property below does NOT discriminate this, and that was
+  ; measured rather than assumed: rewriting this definition to tally the raw
+  ; lines falsified nothing until this property existed. The generator cannot
+  ; reach the distinguishing case (a redelivery that is the only member of its
+  ; group) because random `Str` lines share a delivery field and collapse
+  ; together. Two records, one delivery id: the group must count ONE.
+  (prop the-counts-come-from-the-deduplicated-log []
+    (== (gh-summary "log"
+          (Cons [Str] "oath-gh/1\td-1\tpush\tr/r\t1"
+            (Cons [Str] "oath-gh/1\td-1\tpush\tr/r\t2" (Nil [Str]))))
+        (Cons [Str] "log: 2 record(s), 1 distinct deliver(ies)"
+          (Cons [Str] "  (1 redelivered, counted once below)"
+            (Cons [Str] ""
+              (Cons [Str] "by repository and event:"
+                (Cons [Str] "     1 r/r\tpush" (Nil [Str]))))))))
+  ; One rendered line per DISTINCT group of the DEDUPLICATED log — the claim
+  ; that binds the two halves together. Counting raw lines here while the
+  ; header said "deduplicated" is the failure the shell script's comment names.
+  (prop one-line-per-distinct-deduplicated-group [(path Str) (ls (List Str))]
+    (== (length [Str] (gh-summary path ls))
+        (+ (length [Str] (gh-header path (length [Str] ls)
+                                         (length [Str] (gh-dedup set-empty ls))))
+           (+ 2 (length [Str] (str-nub set-empty
+                                (gh-group-labels (gh-dedup set-empty ls)))))))))
+
+(defn gh-report [] [(path Str) (text Str)] Str
+  (let (ls (List Str) (gh-log-lines text))
+    (str-join 10
+      (if (< 0 (gh-rejected ls)) (gh-refusal path ls) (gh-summary path ls))))
+
+  ; THE DISPOSITION IS TOTAL: every input is either refused or summarised, and
+  ; a reader can tell which from the first bytes.
+  (prop a-clean-log-is-summarised [(path Str) (text Str)]
+    (if (== (gh-rejected (gh-log-lines text)) 0)
+        (str-prefix path (gh-report path text))
+        true))
+  (prop any-bad-line-refuses [(path Str) (text Str)]
+    (if (< 0 (gh-rejected (gh-log-lines text)))
+        (str-prefix "refusing: " (gh-report path text))
+        true))
+  (prop an-empty-file-is-not-a-refusal [(path Str)]
+    (not (str-prefix "refusing: " (gh-report path ""))))
+  (prop a-foreign-log-is-refused [(path Str)]
+    (str-prefix "refusing: " (gh-report path "other/1\ta\tb\tc\td\n")))
+  ; THE GOLDEN REPORT, end to end and byte for byte — five records, one of them
+  ; a redelivery, three groups, ties in first-appearance order. This is the
+  ; whole shape `report.sh` prints, including the four-wide count column
+  ; `uniq -c` produces, and it is the property that fails if ANY stage of the
+  ; pipeline is rewired.
+  (prop it-reproduces-the-shell-report []
+    (== (gh-report "events.log"
+          "oath-gh/1\td-1\tpush\tmiclip/oath-lang\t1000\noath-gh/1\td-2\tpush\tmiclip/oath-lang\t1001\noath-gh/1\td-3\tissues\tmiclip/oath-lang\t1002\noath-gh/1\td-2\tpush\tmiclip/oath-lang\t1003\noath-gh/1\td-4\tpush\tother/repo\t1004\n")
+        "events.log: 5 record(s), 4 distinct deliver(ies)\n  (1 redelivered, counted once below)\n\nby repository and event:\n     2 miclip/oath-lang\tpush\n     1 miclip/oath-lang\tissues\n     1 other/repo\tpush"))
+  ; And the refusal, likewise: the count, the path, the tag, and the offending
+  ; line indented under it.
+  (prop it-reproduces-the-shell-refusal []
+    (== (gh-report "events.log"
+          "oath-gh/1\td-1\tpush\tmiclip/oath-lang\t1000\nother/1\td-2\tpush\tmiclip/oath-lang\t1001\n")
+        "refusing: 1 line(s) in events.log are not oath-gh/1 with 5 fields\n  other/1\td-2\tpush\tmiclip/oath-lang\t1001")))
+
+; THE ENTRY POINT.
+;
+; ONE AUTHORITY: `readfile`. Note what this artifact cannot distinguish, stated
+; because the alternative is to let it look like an empty log — the capability
+; CALL-failure protocol is the empty string, so a missing or unreadable file
+; arrives here as "" and is reported as a log with no records. `report.sh` gets
+; a nonzero status from the shell instead. That is a real gap in this consumer,
+; and it belongs to the capability protocol rather than to this file.
+(defn gh-report-main [] [(caps {readfile (-> Str Str)}) (args (List Str))] Str
+  (match args
+    ((Nil) "usage: gh-report <events.log>")
+    ((Cons path rest) (gh-report path ((. caps readfile) path))))
+
+  (prop no-arguments-is-usage [(caps {readfile (-> Str Str)})]
+    (== (gh-report-main caps (Nil [Str])) "usage: gh-report <events.log>"))
+  ; The response is one of three known shapes for EVERY world the capability
+  ; could be — a usage line, a refusal, or a report naming the path.
+  (prop the-answer-is-always-one-of-three [(caps {readfile (-> Str Str)}) (args (List Str))]
+    (let (r Str (gh-report-main caps args))
+      (or (== r "usage: gh-report <events.log>")
+          (or (str-prefix "refusing: " r)
+              (str-prefix (first-or "" args) r))))))

@@ -1,0 +1,8 @@
+✓ prop the-empty-string-is-zero passed 200 cases
+✓ prop a-code-is-never-negative passed 200 cases
+✓ prop only-the-empty-string-codes-zero passed 200 cases
+✓ prop a-head-is-recoverable    passed 200 cases
+✓ prop distinct-strings-have-distinct-codes passed 200 cases
+✓ prop it-separates-two-delivery-ids passed 200 cases
+✓ prop it-separates-a-string-from-its-prefix passed 200 cases
+✓ prop it-separates-two-groups  passed 200 cases

@@ -1,0 +1,12 @@
+{
+  "name": "gh-field",
+  "hash": "b79708d33499db5dfe812855820a5ce888d8c80a0c10895e021799660ad4d6d7",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

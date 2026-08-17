@@ -1,0 +1,6 @@
+✓ prop empty-stays-empty        passed 200 cases
+✓ prop a-lone-empty-goes        passed 200 cases
+✓ prop only-the-final-one-goes  passed 200 cases
+✓ prop it-never-grows           passed 200 cases
+✓ prop it-drops-at-most-one     passed 200 cases
+✓ prop a-non-empty-tail-is-kept passed 200 cases

@@ -1,0 +1,23 @@
+{
+  "name": "str-spaces",
+  "prop_names": [
+    "none-is-empty",
+    "a-negative-count-is-empty",
+    "it-has-the-requested-length",
+    "three-is-three-spaces"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "measure",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "n"
+  ],
+  "confinement": [
+    ""
+  ]
+}

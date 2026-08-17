@@ -1,0 +1,3 @@
+✓ prop no-redeliveries-is-one-line passed 200 cases
+✓ prop a-redelivery-adds-the-note passed 200 cases
+✓ prop the-note-reports-the-difference passed 200 cases

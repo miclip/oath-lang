@@ -1,0 +1,25 @@
+{
+  "name": "gh-drop-final-empty",
+  "prop_names": [
+    "empty-stays-empty",
+    "a-lone-empty-goes",
+    "only-the-final-one-goes",
+    "it-never-grows",
+    "it-drops-at-most-one",
+    "a-non-empty-tail-is-kept"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "ls"
+  ],
+  "confinement": [
+    ""
+  ]
+}

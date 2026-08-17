@@ -1,0 +1,8 @@
+{
+  "name": "gh-by-count",
+  "hash": "7afc4e8147297b18cf7aa981c9f0027d09d2ddf40aef1cd3baf3e869d3fa966a",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "level": "tested",
+  "cases": 200
+}

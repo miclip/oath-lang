@@ -1,0 +1,11 @@
+{
+  "name": "gh-refused-lines",
+  "hash": "4239a1ac8d1d5825d0a822cb50a45893db931eafe8142bb4ea1d344c286bfb87",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

@@ -1,0 +1,26 @@
+{
+  "name": "str-nub",
+  "prop_names": [
+    "nothing-in-nothing-out",
+    "it-never-grows",
+    "an-already-seen-head-is-dropped",
+    "an-unseen-head-is-kept",
+    "it-drops-an-immediate-repeat"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "seen",
+    "xs"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

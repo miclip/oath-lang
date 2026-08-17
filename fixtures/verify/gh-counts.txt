@@ -1,0 +1,6 @@
+✓ prop an-empty-log-changes-nothing passed 200 cases
+✓ prop every-group-is-present   passed 200 cases
+✓ prop one-line-counts-one      passed 200 cases
+✓ prop the-same-group-twice-counts-two passed 200 cases
+✓ prop two-different-groups-stay-apart passed 200 cases
+✓ prop the-key-count-is-the-distinct-group-count passed 200 cases

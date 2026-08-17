@@ -1,0 +1,27 @@
+{
+  "name": "str-code",
+  "prop_names": [
+    "the-empty-string-is-zero",
+    "a-code-is-never-negative",
+    "only-the-empty-string-codes-zero",
+    "a-head-is-recoverable",
+    "distinct-strings-have-distinct-codes",
+    "it-separates-two-delivery-ids",
+    "it-separates-a-string-from-its-prefix",
+    "it-separates-two-groups"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "s"
+  ],
+  "confinement": [
+    ""
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "name": "gh-dedup",
+  "prop_names": [
+    "nothing-in-nothing-out",
+    "it-never-grows",
+    "a-seen-delivery-is-dropped",
+    "an-unseen-delivery-is-kept",
+    "a-redelivery-collapses",
+    "two-deliveries-both-survive",
+    "only-the-delivery-id-decides"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "seen",
+    "ls"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

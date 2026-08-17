@@ -1,0 +1,26 @@
+{
+  "name": "gh-header",
+  "prop_names": [
+    "no-redeliveries-is-one-line",
+    "a-redelivery-adds-the-note",
+    "the-note-reports-the-difference"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "path",
+    "total",
+    "unique"
+  ],
+  "confinement": [
+    "",
+    "",
+    ""
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "str-nub",
+  "hash": "16d57ea2081f98743a73ac913eb8939c9cdb90de88fdf9695badd6e914b754fc",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

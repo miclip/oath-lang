@@ -1,0 +1,8 @@
+{
+  "name": "gh-schema",
+  "hash": "67177f89dde634878290afc77cd15b796ca7cc5bab8528618a5f884a4c8136d4",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "level": "tested",
+  "cases": 200
+}

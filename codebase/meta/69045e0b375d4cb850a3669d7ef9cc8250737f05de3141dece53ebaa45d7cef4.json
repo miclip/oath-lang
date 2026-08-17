@@ -1,0 +1,26 @@
+{
+  "name": "gh-line-ok",
+  "prop_names": [
+    "a-receiver-record-is-accepted",
+    "an-accepted-line-carries-the-tag",
+    "an-accepted-line-has-five-fields",
+    "the-old-four-field-record-is-refused",
+    "an-over-split-record-is-refused",
+    "a-blank-line-is-refused",
+    "a-foreign-tag-is-refused"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "line"
+  ],
+  "confinement": [
+    ""
+  ]
+}

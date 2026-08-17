@@ -1,0 +1,16 @@
+{
+  "name": "gh-by-count",
+  "prop_names": [
+    "a-larger-count-comes-first",
+    "a-smaller-count-does-not",
+    "equal-counts-are-unordered"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main"
+}

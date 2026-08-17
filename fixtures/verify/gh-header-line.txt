@@ -1,0 +1,2 @@
+✓ prop it-matches-the-shell-header passed 200 cases
+✓ prop it-names-the-path        passed 200 cases

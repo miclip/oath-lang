@@ -1,0 +1,1 @@
+✓ prop it-is-the-tag-the-receiver-writes passed 200 cases

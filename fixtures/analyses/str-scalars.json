@@ -1,0 +1,11 @@
+{
+  "name": "str-scalars",
+  "hash": "47093590174ac96e5f9dc709b3783e92a3fb3e2c0bf443e79dcedadef0de3cc8",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

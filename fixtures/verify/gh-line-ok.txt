@@ -1,0 +1,7 @@
+✓ prop a-receiver-record-is-accepted passed 200 cases
+✓ prop an-accepted-line-carries-the-tag passed 200 cases
+✓ prop an-accepted-line-has-five-fields passed 200 cases
+✓ prop the-old-four-field-record-is-refused passed 200 cases
+✓ prop an-over-split-record-is-refused passed 200 cases
+✓ prop a-blank-line-is-refused  passed 200 cases
+✓ prop a-foreign-tag-is-refused passed 200 cases

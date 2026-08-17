@@ -1,0 +1,11 @@
+{
+  "name": "gh-drop-final-empty",
+  "hash": "a7f2a44f5057002f4567d08145488a1d50074bf51429e9fd55155f450c6a1a61",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

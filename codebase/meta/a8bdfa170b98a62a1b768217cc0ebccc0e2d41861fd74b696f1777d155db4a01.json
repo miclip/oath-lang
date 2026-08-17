@@ -1,0 +1,23 @@
+{
+  "name": "gh-log-lines",
+  "prop_names": [
+    "an-empty-file-has-no-records",
+    "a-trailing-newline-adds-no-record",
+    "it-counts-the-records",
+    "an-interior-blank-line-is-a-record"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "text"
+  ],
+  "confinement": [
+    ""
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "gh-render-groups",
+  "hash": "641843f4c8731cc4f7ad0fe0592fc66ee4c0f31de97843bd142c3b3fc4e2a760",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

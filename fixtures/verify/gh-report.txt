@@ -1,0 +1,6 @@
+✓ prop a-clean-log-is-summarised passed 200 cases
+✓ prop any-bad-line-refuses     passed 200 cases
+✓ prop an-empty-file-is-not-a-refusal passed 200 cases
+✓ prop a-foreign-log-is-refused passed 200 cases
+✓ prop it-reproduces-the-shell-report passed 200 cases
+✓ prop it-reproduces-the-shell-refusal passed 200 cases

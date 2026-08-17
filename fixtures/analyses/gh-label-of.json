@@ -1,0 +1,11 @@
+{
+  "name": "gh-label-of",
+  "hash": "37d6d885d1bd8220a311b4dec43034c8a9ca8c106a5108083c56582904664c4b",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

@@ -1,0 +1,24 @@
+{
+  "name": "gh-tally",
+  "prop_names": [
+    "it-preserves-length",
+    "nothing-in-nothing-out",
+    "it-pairs-each-label-with-its-count"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "m",
+    "gs"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

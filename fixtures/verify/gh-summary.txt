@@ -1,0 +1,3 @@
+✓ prop it-always-has-a-heading  passed 200 cases
+✓ prop the-counts-come-from-the-deduplicated-log passed 200 cases
+✓ prop one-line-per-distinct-deduplicated-group passed 200 cases

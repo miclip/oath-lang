@@ -1,0 +1,11 @@
+{
+  "name": "gh-count-of",
+  "hash": "0e6f6eb2186308e0b2db4abad55dea6a276ab58df5cebd3a5b680a04a6528073",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

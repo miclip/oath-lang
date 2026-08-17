@@ -1,0 +1,12 @@
+{
+  "name": "str-pad-left",
+  "hash": "ce94c1da7a9cc50d0c0050227eac0dae8e34d68295bd53bf2c2ee6ecd20691a1",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

@@ -1,0 +1,5 @@
+✓ prop the-empty-string-qualifies passed 200 cases
+✓ prop a-negative-codepoint-does-not passed 200 cases
+✓ prop one-above-the-maximum-does-not passed 200 cases
+✓ prop the-maximum-scalar-qualifies passed 200 cases
+✓ prop it-is-hereditary         passed 200 cases

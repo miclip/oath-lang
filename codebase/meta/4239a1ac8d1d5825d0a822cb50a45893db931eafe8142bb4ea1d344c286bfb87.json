@@ -1,0 +1,21 @@
+{
+  "name": "gh-refused-lines",
+  "prop_names": [
+    "it-lists-exactly-the-rejected",
+    "a-clean-log-lists-nothing"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "ls"
+  ],
+  "confinement": [
+    ""
+  ]
+}

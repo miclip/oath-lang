@@ -1,0 +1,2 @@
+✓ prop it-lists-exactly-the-rejected passed 200 cases
+✓ prop a-clean-log-lists-nothing passed 200 cases

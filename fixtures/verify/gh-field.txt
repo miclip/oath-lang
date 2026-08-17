@@ -1,0 +1,6 @@
+✓ prop the-tag-is-field-zero    passed 200 cases
+✓ prop the-delivery-is-field-one passed 200 cases
+✓ prop the-event-is-field-two   passed 200 cases
+✓ prop the-repository-is-field-three passed 200 cases
+✓ prop past-the-end-is-empty    passed 200 cases
+✓ prop it-reads-the-receivers-columns passed 200 cases

@@ -1,0 +1,7 @@
+✓ prop nothing-rejects-nothing  passed 200 cases
+✓ prop it-is-never-negative     passed 200 cases
+✓ prop it-is-bounded-by-the-line-count passed 200 cases
+✓ prop the-cons-ledger          passed 200 cases
+✓ prop one-bad-line-is-enough   passed 200 cases
+✓ prop a-bad-line-deeper-in-is-enough passed 200 cases
+✓ prop zero-rejected-means-every-line-passed passed 200 cases

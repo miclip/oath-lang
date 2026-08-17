@@ -1,0 +1,26 @@
+{
+  "name": "str-pad-left",
+  "prop_names": [
+    "it-never-shortens",
+    "it-reaches-the-width",
+    "a-wide-enough-string-is-untouched",
+    "it-pads-to-four",
+    "it-leaves-five-alone"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "w",
+    "s"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

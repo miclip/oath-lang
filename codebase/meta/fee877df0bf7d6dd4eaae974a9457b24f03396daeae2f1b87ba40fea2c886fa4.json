@@ -1,0 +1,23 @@
+{
+  "name": "gh-group",
+  "prop_names": [
+    "it-is-repository-then-event",
+    "it-reads-the-receivers-record",
+    "it-separates-two-events",
+    "it-separates-two-repositories"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "line"
+  ],
+  "confinement": [
+    ""
+  ]
+}

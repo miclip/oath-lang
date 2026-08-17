@@ -1,0 +1,12 @@
+{
+  "name": "gh-dedup",
+  "hash": "075ffb16e999bab5dfe2bc18768ef2b2b4ae1329886394f247328c8b781672b5",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

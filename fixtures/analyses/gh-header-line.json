@@ -1,0 +1,13 @@
+{
+  "name": "gh-header-line",
+  "hash": "b1a9986033b3056e4f620fe3cae13ff283d703a652ce65c0e1354cb9d733c930",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

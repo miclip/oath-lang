@@ -33,7 +33,8 @@ EXHIBITS = undertested nontotal bad_reverse float
 # omitted it would produce a store the committed fixtures no longer describe,
 # which is precisely how rat/convert/circle rotted out of this list once before.
 # Listed AFTER the examples, whose definitions it depends on.
-APPS = apps/github-webhook/webhook.oath apps/github-webhook/hdr-probe.oath
+APPS = apps/github-webhook/webhook.oath apps/github-webhook/hdr-probe.oath \
+       apps/github-webhook/report.oath
 PROVABLE = length append sum count reverse map filter foldr foldl \
            reverse-onto flatten all any snoc find last init \
            product maximum minimum take-while drop-while count-matching zip zip-with \

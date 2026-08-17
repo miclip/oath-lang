@@ -1,0 +1,3 @@
+✓ prop a-larger-count-comes-first passed 200 cases
+✓ prop a-smaller-count-does-not passed 200 cases
+✓ prop equal-counts-are-unordered passed 200 cases

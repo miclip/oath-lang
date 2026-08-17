@@ -1,0 +1,2 @@
+✓ prop the-headline-count-matches-the-listing passed 200 cases
+✓ prop it-names-the-refusal     passed 200 cases

@@ -1,0 +1,11 @@
+{
+  "name": "str-code",
+  "hash": "11cfe6a203105f28eab3960b370c70cf8dacc3d5f4feb870ba94ec73a9f5edcb",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

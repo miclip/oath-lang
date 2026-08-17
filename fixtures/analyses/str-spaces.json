@@ -1,0 +1,11 @@
+{
+  "name": "str-spaces",
+  "hash": "2e37d30753bb5443fa3269532b8d94e46e695938ef529141210208af5cd5fe7e",
+  "kind": "func",
+  "termination": "measure",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

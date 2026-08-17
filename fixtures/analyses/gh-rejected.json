@@ -1,0 +1,11 @@
+{
+  "name": "gh-rejected",
+  "hash": "993306c77c69e8319e82c5246ec5d2acd0a6605b95c9144958986060da79cd68",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

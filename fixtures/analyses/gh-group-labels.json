@@ -1,0 +1,11 @@
+{
+  "name": "gh-group-labels",
+  "hash": "f5386ab88f45e5b272824695d854a0c94dfd13fc4fb8af63a39920a99b1c875b",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

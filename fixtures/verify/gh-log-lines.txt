@@ -1,0 +1,4 @@
+✓ prop an-empty-file-has-no-records passed 200 cases
+✓ prop a-trailing-newline-adds-no-record passed 200 cases
+✓ prop it-counts-the-records    passed 200 cases
+✓ prop an-interior-blank-line-is-a-record passed 200 cases

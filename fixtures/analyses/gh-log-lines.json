@@ -1,0 +1,11 @@
+{
+  "name": "gh-log-lines",
+  "hash": "a8bdfa170b98a62a1b768217cc0ebccc0e2d41861fd74b696f1777d155db4a01",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

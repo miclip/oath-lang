@@ -1,0 +1,25 @@
+{
+  "name": "gh-header-line",
+  "prop_names": [
+    "it-matches-the-shell-header",
+    "it-names-the-path"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "path",
+    "total",
+    "unique"
+  ],
+  "confinement": [
+    "",
+    "",
+    ""
+  ]
+}

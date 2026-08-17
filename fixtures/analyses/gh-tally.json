@@ -1,0 +1,12 @@
+{
+  "name": "gh-tally",
+  "hash": "c55959a1bb734166c61743a463a789ef52d675611b0dc80d3b43ab736d323fbe",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

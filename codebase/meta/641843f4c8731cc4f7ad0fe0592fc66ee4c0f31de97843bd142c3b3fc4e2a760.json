@@ -1,0 +1,21 @@
+{
+  "name": "gh-render-groups",
+  "prop_names": [
+    "it-preserves-length",
+    "nothing-in-nothing-out"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "ps"
+  ],
+  "confinement": [
+    ""
+  ]
+}

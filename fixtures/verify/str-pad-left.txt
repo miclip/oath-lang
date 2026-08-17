@@ -1,0 +1,5 @@
+✓ prop it-never-shortens        passed 200 cases
+✓ prop it-reaches-the-width     passed 200 cases
+✓ prop a-wide-enough-string-is-untouched passed 200 cases
+✓ prop it-pads-to-four          passed 200 cases
+✓ prop it-leaves-five-alone     passed 200 cases

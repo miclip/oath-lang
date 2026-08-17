@@ -1,0 +1,12 @@
+{
+  "name": "gh-report-main",
+  "hash": "0e5c6867f2610768f775c7941100f496c6718bdc831560bf317e4d7fb4e3e5cb",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "confined",
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

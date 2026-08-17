@@ -1,0 +1,4 @@
+✓ prop it-is-repository-then-event passed 200 cases
+✓ prop it-reads-the-receivers-record passed 200 cases
+✓ prop it-separates-two-events  passed 200 cases
+✓ prop it-separates-two-repositories passed 200 cases

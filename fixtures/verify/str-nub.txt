@@ -1,0 +1,5 @@
+✓ prop nothing-in-nothing-out   passed 200 cases
+✓ prop it-never-grows           passed 200 cases
+✓ prop an-already-seen-head-is-dropped passed 200 cases
+✓ prop an-unseen-head-is-kept   passed 200 cases
+✓ prop it-drops-an-immediate-repeat passed 200 cases

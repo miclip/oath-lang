@@ -1,0 +1,4 @@
+✓ prop none-is-empty            passed 200 cases
+✓ prop a-negative-count-is-empty passed 200 cases
+✓ prop it-has-the-requested-length passed 200 cases
+✓ prop three-is-three-spaces    passed 200 cases
