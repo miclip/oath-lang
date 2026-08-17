@@ -1,0 +1,144 @@
+repo   : /Users/miclip/workspace/oath-lang
+commit : 17dc95e
+out    : /private/tmp/claude-501/-Users-miclip-workspace-oath-lang/3b6fa389-1d6c-4fe9-a9cf-dccfd73d8d0c/scratchpad/final-t
+go     : go version go1.25.6 darwin/arm64
+python : Python 3.14.5
+
+--- git status --short codebase/ fixtures/ BEFORE ---
+(clean)
+content digest: 1253 files under codebase/ and fixtures/
+
+[PASS] the corpus census ran
+[PASS] the census emitted a non-empty report
+[PASS] the fragment probe ran (its own controls are assertions inside the test)
+[PASS] the probe emitted a non-empty report
+[PASS] the probe reports PASS, not SKIP
+[PASS] the join ran and every one of its controls passed
+[PASS] the join emitted a non-empty report
+
+--- git status --short codebase/ fixtures/ AFTER ---
+(clean)
+
+[PASS] the content digest is non-empty (the check has something to compare)
+[PASS] no file under codebase/ or fixtures/ changed content, was added, or was removed
+[PASS] git status for codebase/ and fixtures/ is unchanged
+
+=============================== JOIN OUTPUT ===============================
+
+Derived from the corpus census (`oath/corpus_census_test.go`) joined onto the prover's live enumeration seam (`oath/fragment_probe_test.go`). NO SOLVER RAN; nothing was written to the store.
+
+Universe: **210 live names** over **208 live objects**, from `codebase/names.json`, carrying **506 properties** per-object (**513** per-name).
+
+## The blind spot — what `oath find --implies` cannot reach
+
+`apiFindImplies` appends the CALLER'S query property to each candidate and proves that synthetic property with `self` bound to the candidate (`oath/api.go:1195-1256`). So the question is not whether a candidate's own laws translate — it is whether ANY query mentioning the candidate can be translated, which turns on the candidate's BODY, since a mentioning query inlines it. That is what the probe measures: the minimal mentioning query, `(let [x (self b…)] true)`, cross-checked against `(== (self b…) (self b…))` wherever the return type is equatable.
+
+| class | per-object | per-name |
+|---|---:|---:|
+| **unreachable** | 12 | 12 |
+| **inconclusive-polymorphic** | 0 | 0 |
+| **reachable** | 182 | 183 |
+| **not-a-candidate** | 14 | 15 |
+| **total** | **208** | **210** |
+
+`not-a-candidate` is a `data` declaration: `apiFindImplies` skips every non-`func` object before any proving happens, so it is outside the mode's universe rather than unreached within it. `inconclusive-polymorphic` is a polymorphic definition that bailed at the probe's concrete instantiation — which does not establish that every instantiation bails, so it is held out of the blind-spot count rather than counted with a caveat.
+
+### Members — unreachable (12 objects)
+
+| object | live names | level | properties | the translator's refusal |
+|---|---|---|---:|---|
+| `gh-record` | `gh-record` | tested | 3 | `"lam" terms are outside the provable fragment` |
+| `gh-sign` | `gh-sign` | tested | 2 | `hmac-sha256 is outside the provable fragment (trusted crypto primitive)` |
+| `gh-webhook` | `gh-webhook` | tested | 14 | `"lam" terms are outside the provable fragment` |
+| `hmac-kat-rfc4231-2` | `hmac-kat-rfc4231-2` | tested | 3 | `hmac-sha256 is outside the provable fragment (trusted crypto primitive)` |
+| `json-scoped-string` | `json-scoped-string` | tested | 3 | `"lam" terms are outside the provable fragment` |
+| `json-string-value` | `json-string-value` | tested | 3 | `"lam" terms are outside the provable fragment` |
+| `no-field-can-inject` | `no-field-can-inject` | tested | 4 | `"lam" terms are outside the provable fragment` |
+| `record-field` | `record-field` | tested | 4 | `"lam" terms are outside the provable fragment` |
+| `record-under` | `record-under` | tested | 3 | `"lam" terms are outside the provable fragment` |
+| `secret-is-usable` | `secret-is-usable` | tested | 5 | `"lam" terms are outside the provable fragment` |
+| `spin-partial` | `spin-partial` | asserted | 0 | `apply2 must be fully applied to inline` |
+| `webhook` | `webhook` | tested | 5 | `hmac-sha256 is outside the provable fragment (trusted crypto primitive)` |
+
+### How this differs from the stored-property view
+
+The set below is NOT the set of definitions whose own properties fail to translate. The two differ in both directions on this corpus, which is why the second is reported separately rather than as an approximation of the first.
+
+| | members |
+|---|---|
+| unreachable, yet **some or all of its own properties translate** | `spin-partial` |
+| **none of its own properties translate**, yet a query CAN reach it | `gh-spec-secret` |
+| both | `gh-record`, `gh-sign`, `gh-webhook`, `hmac-kat-rfc4231-2`, `json-scoped-string`, `json-string-value`, `no-field-can-inject`, `record-field`, `record-under`, `secret-is-usable`, `webhook` |
+
+## Properties the translator cannot build a goal for
+
+A separate statistic, and the one `docs/experiments/issue-68.md` §6 counts: which of a definition's OWN laws the prover can reason about at all. It does not decide `--implies` reachability, per the table above.
+
+| | per-object | per-name |
+|---|---:|---:|
+| **bailed in translation — no script, so this law is one the prover cannot reason about at all** | 51 | 51 |
+| translated — at least one script emitted | 455 | 462 |
+| **total** | **506** | **513** |
+
+### The causes, verbatim from the prover
+
+| cause | tag | site | per-object properties |
+|---|---|---|---:|
+| `"lam" terms are outside the provable fragment` | unsupported-term-form | prove.go:1012 | 34 |
+| `hmac-sha256 is outside the provable fragment (trusted crypto primitive)` | opaque-primitive | prove.go:828 | 16 |
+| `apply2 must be fully applied to inline` | partial-application | prove.go:1047 | 1 |
+
+### Definitions grouped by how many of their own properties translate
+
+| class | per-object | per-name |
+|---|---:|---:|
+| **none-translate** | 12 | 12 |
+| **some-translate** | 1 | 1 |
+| **all-translate** | 177 | 178 |
+| **no-properties** | 18 | 19 |
+| **total** | **208** | **210** |
+
+#### Members — none-translate (12 objects)
+
+| object | live names | level | properties | bailed | causes | `--implies` |
+|---|---|---|---:|---:|---|---|
+| `gh-record` | `gh-record` | tested | 3 | 3 | unsupported-term-form | unreachable |
+| `gh-sign` | `gh-sign` | tested | 2 | 2 | opaque-primitive | unreachable |
+| `gh-spec-secret` | `gh-spec-secret` | tested | 1 | 1 | unsupported-term-form | reachable |
+| `gh-webhook` | `gh-webhook` | tested | 14 | 14 | opaque-primitive, unsupported-term-form | unreachable |
+| `hmac-kat-rfc4231-2` | `hmac-kat-rfc4231-2` | tested | 3 | 3 | opaque-primitive | unreachable |
+| `json-scoped-string` | `json-scoped-string` | tested | 3 | 3 | unsupported-term-form | unreachable |
+| `json-string-value` | `json-string-value` | tested | 3 | 3 | unsupported-term-form | unreachable |
+| `no-field-can-inject` | `no-field-can-inject` | tested | 4 | 4 | unsupported-term-form | unreachable |
+| `record-field` | `record-field` | tested | 4 | 4 | unsupported-term-form | unreachable |
+| `record-under` | `record-under` | tested | 3 | 3 | unsupported-term-form | unreachable |
+| `secret-is-usable` | `secret-is-usable` | tested | 5 | 5 | unsupported-term-form | unreachable |
+| `webhook` | `webhook` | tested | 5 | 5 | opaque-primitive | unreachable |
+
+#### Members — some-translate (1 objects)
+
+| object | live names | level | properties | bailed | causes | `--implies` |
+|---|---|---|---:|---:|---|---|
+| `excluded-witness` | `excluded-witness` | tested | 2 | 1 | partial-application | reachable |
+
+#### Members — no-properties (18 objects)
+
+`Flaky`, `KV`, `List`, `Map`, `Option`, `Pair`, `Queue`, `Request`, `Response`, `Result`, `Run`, `Set`, `Str`, `Tree`, `apply2`, `leak`, `spin-partial`, `stash`
+
+## Reconciliation with `fixtures/prove/attempts.txt`
+
+The committed fixture pins 2937 candidate scripts. It records a row only where a script exists, so its no-row set is a PROXY for the bail set; the live enumeration above is the authority. Both disagreement directions are reported because they indict different things.
+
+| direction | count | members |
+|---|---:|---|
+| live emits scripts, fixture pins none (fixture is STALE or incomplete) | 0 | — |
+| live bails, fixture pins scripts (fixture is AHEAD of the store) | 0 | — |
+| fixture pins a row the live corpus has no property for (a REMOVED definition or property) | 0 | — |
+
+**The two agree exactly.** The fixture's no-row set and the live bail set are the same set, so §6 of `docs/experiments/issue-68.md` may be read as a translation-bail count at this commit rather than only as a no-script count.
+
+
+--- the join's control channel ---
+All controls passed.
+
+SUMMARY: PASS — 10 checks, 0 failures
