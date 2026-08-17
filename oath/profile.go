@@ -18,7 +18,7 @@ import "fmt"
 //
 //	                     corpus max   profile   headroom
 //	syntax nesting               17       512        30x
-//	canonical nodes/def       1,293    65,536        50x
+//	canonical nodes/def       1,406    65,536        46x
 //
 // The deepest real canonical structure is 68 (`hmac-kat-rfc4231-2`, whose depth
 // is the SCons spine of a hex literal) against a syntax nesting of far less —

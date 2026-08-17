@@ -931,6 +931,202 @@
     "infer_entries": 0
   },
   {
+    "name": "corpus:report.oath#0:str-scalars",
+    "outcome": "accepted",
+    "hash_before": "47093590174ac96e5f9dc709b3783e92a3fb3e2c0bf443e79dcedadef0de3cc8",
+    "hash_after": "47093590174ac96e5f9dc709b3783e92a3fb3e2c0bf443e79dcedadef0de3cc8",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#10:gh-rejected",
+    "outcome": "accepted",
+    "hash_before": "993306c77c69e8319e82c5246ec5d2acd0a6605b95c9144958986060da79cd68",
+    "hash_after": "993306c77c69e8319e82c5246ec5d2acd0a6605b95c9144958986060da79cd68",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#11:gh-refused-lines",
+    "outcome": "accepted",
+    "hash_before": "4239a1ac8d1d5825d0a822cb50a45893db931eafe8142bb4ea1d344c286bfb87",
+    "hash_after": "4239a1ac8d1d5825d0a822cb50a45893db931eafe8142bb4ea1d344c286bfb87",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#12:gh-refusal",
+    "outcome": "accepted",
+    "hash_before": "e2e129fadb31446f3512f748d42349883405afbb04fd8a1298a5de10ab35a03e",
+    "hash_after": "e2e129fadb31446f3512f748d42349883405afbb04fd8a1298a5de10ab35a03e",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#13:gh-dedup",
+    "outcome": "accepted",
+    "hash_before": "075ffb16e999bab5dfe2bc18768ef2b2b4ae1329886394f247328c8b781672b5",
+    "hash_after": "075ffb16e999bab5dfe2bc18768ef2b2b4ae1329886394f247328c8b781672b5",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#14:gh-group",
+    "outcome": "accepted",
+    "hash_before": "fee877df0bf7d6dd4eaae974a9457b24f03396daeae2f1b87ba40fea2c886fa4",
+    "hash_after": "fee877df0bf7d6dd4eaae974a9457b24f03396daeae2f1b87ba40fea2c886fa4",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#15:gh-group-labels",
+    "outcome": "accepted",
+    "hash_before": "f5386ab88f45e5b272824695d854a0c94dfd13fc4fb8af63a39920a99b1c875b",
+    "hash_after": "f5386ab88f45e5b272824695d854a0c94dfd13fc4fb8af63a39920a99b1c875b",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#16:gh-counts",
+    "outcome": "accepted",
+    "hash_before": "ae09e70ae58547c85e425a9633f803e24f364356970e7c357820d527fae20fa5",
+    "hash_after": "ae09e70ae58547c85e425a9633f803e24f364356970e7c357820d527fae20fa5",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#17:gh-count-of",
+    "outcome": "accepted",
+    "hash_before": "0e6f6eb2186308e0b2db4abad55dea6a276ab58df5cebd3a5b680a04a6528073",
+    "hash_after": "0e6f6eb2186308e0b2db4abad55dea6a276ab58df5cebd3a5b680a04a6528073",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#18:gh-label-of",
+    "outcome": "accepted",
+    "hash_before": "37d6d885d1bd8220a311b4dec43034c8a9ca8c106a5108083c56582904664c4b",
+    "hash_after": "37d6d885d1bd8220a311b4dec43034c8a9ca8c106a5108083c56582904664c4b",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#19:gh-by-count",
+    "outcome": "accepted",
+    "hash_before": "7afc4e8147297b18cf7aa981c9f0027d09d2ddf40aef1cd3baf3e869d3fa966a",
+    "hash_after": "7afc4e8147297b18cf7aa981c9f0027d09d2ddf40aef1cd3baf3e869d3fa966a",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#1:str-code",
+    "outcome": "accepted",
+    "hash_before": "11cfe6a203105f28eab3960b370c70cf8dacc3d5f4feb870ba94ec73a9f5edcb",
+    "hash_after": "11cfe6a203105f28eab3960b370c70cf8dacc3d5f4feb870ba94ec73a9f5edcb",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#20:gh-tally",
+    "outcome": "accepted",
+    "hash_before": "c55959a1bb734166c61743a463a789ef52d675611b0dc80d3b43ab736d323fbe",
+    "hash_after": "c55959a1bb734166c61743a463a789ef52d675611b0dc80d3b43ab736d323fbe",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#21:gh-render-group",
+    "outcome": "accepted",
+    "hash_before": "588e22d19a1a6e13533e9183af403db3147e633c48dc121968810be58499ed8a",
+    "hash_after": "588e22d19a1a6e13533e9183af403db3147e633c48dc121968810be58499ed8a",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#22:gh-render-groups",
+    "outcome": "accepted",
+    "hash_before": "641843f4c8731cc4f7ad0fe0592fc66ee4c0f31de97843bd142c3b3fc4e2a760",
+    "hash_after": "641843f4c8731cc4f7ad0fe0592fc66ee4c0f31de97843bd142c3b3fc4e2a760",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#23:gh-header-line",
+    "outcome": "accepted",
+    "hash_before": "b1a9986033b3056e4f620fe3cae13ff283d703a652ce65c0e1354cb9d733c930",
+    "hash_after": "b1a9986033b3056e4f620fe3cae13ff283d703a652ce65c0e1354cb9d733c930",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#24:gh-header",
+    "outcome": "accepted",
+    "hash_before": "8bf79c158aadafbb5a09f8218b4bc52100f77b299fa47dcaa157bef83f598208",
+    "hash_after": "8bf79c158aadafbb5a09f8218b4bc52100f77b299fa47dcaa157bef83f598208",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#25:gh-summary",
+    "outcome": "accepted",
+    "hash_before": "e4b3d10616ab85743f5b990dbab45e35e64d6bb5de654198d91051e24c76f037",
+    "hash_after": "e4b3d10616ab85743f5b990dbab45e35e64d6bb5de654198d91051e24c76f037",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#26:gh-report",
+    "outcome": "accepted",
+    "hash_before": "328a51f6c5c9d8e3c91a5a23a99f785e2d2f4f5dbce74dc20224099688025338",
+    "hash_after": "328a51f6c5c9d8e3c91a5a23a99f785e2d2f4f5dbce74dc20224099688025338",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#27:gh-report-main",
+    "outcome": "accepted",
+    "hash_before": "0e5c6867f2610768f775c7941100f496c6718bdc831560bf317e4d7fb4e3e5cb",
+    "hash_after": "0e5c6867f2610768f775c7941100f496c6718bdc831560bf317e4d7fb4e3e5cb",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#2:str-nub",
+    "outcome": "accepted",
+    "hash_before": "16d57ea2081f98743a73ac913eb8939c9cdb90de88fdf9695badd6e914b754fc",
+    "hash_after": "16d57ea2081f98743a73ac913eb8939c9cdb90de88fdf9695badd6e914b754fc",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#3:str-spaces",
+    "outcome": "accepted",
+    "hash_before": "2e37d30753bb5443fa3269532b8d94e46e695938ef529141210208af5cd5fe7e",
+    "hash_after": "2e37d30753bb5443fa3269532b8d94e46e695938ef529141210208af5cd5fe7e",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#4:str-pad-left",
+    "outcome": "accepted",
+    "hash_before": "ce94c1da7a9cc50d0c0050227eac0dae8e34d68295bd53bf2c2ee6ecd20691a1",
+    "hash_after": "ce94c1da7a9cc50d0c0050227eac0dae8e34d68295bd53bf2c2ee6ecd20691a1",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#5:gh-schema",
+    "outcome": "accepted",
+    "hash_before": "67177f89dde634878290afc77cd15b796ca7cc5bab8528618a5f884a4c8136d4",
+    "hash_after": "67177f89dde634878290afc77cd15b796ca7cc5bab8528618a5f884a4c8136d4",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#6:gh-field",
+    "outcome": "accepted",
+    "hash_before": "b79708d33499db5dfe812855820a5ce888d8c80a0c10895e021799660ad4d6d7",
+    "hash_after": "b79708d33499db5dfe812855820a5ce888d8c80a0c10895e021799660ad4d6d7",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#7:gh-line-ok",
+    "outcome": "accepted",
+    "hash_before": "69045e0b375d4cb850a3669d7ef9cc8250737f05de3141dece53ebaa45d7cef4",
+    "hash_after": "69045e0b375d4cb850a3669d7ef9cc8250737f05de3141dece53ebaa45d7cef4",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#8:gh-drop-final-empty",
+    "outcome": "accepted",
+    "hash_before": "a7f2a44f5057002f4567d08145488a1d50074bf51429e9fd55155f450c6a1a61",
+    "hash_after": "a7f2a44f5057002f4567d08145488a1d50074bf51429e9fd55155f450c6a1a61",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:report.oath#9:gh-log-lines",
+    "outcome": "accepted",
+    "hash_before": "a8bdfa170b98a62a1b768217cc0ebccc0e2d41861fd74b696f1777d155db4a01",
+    "hash_after": "a8bdfa170b98a62a1b768217cc0ebccc0e2d41861fd74b696f1777d155db4a01",
+    "infer_entries": 0
+  },
+  {
     "name": "corpus:rle.oath#0:Run",
     "outcome": "accepted",
     "hash_before": "f103d27ee151cbc8bdc68e1aa63b9b1fdecbeaa3938c084fbb1e7f1ba36fcac3",
