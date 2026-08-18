@@ -1,0 +1,7 @@
+; Intent 1, SHAPE B — the RETURN axis: one element rather than the collection.
+; Both laws otherwise identical in meaning to shape A.
+(defn wanted [] [(have (List Str)) (need (List Str))] Str SNil
+  (prop nothing-needed-nothing-missing [(have (List Str))]
+    (== (wanted have (Nil [Str])) SNil))
+  (prop a-missing-key-is-reported [(k Str)]
+    (== (wanted (Nil [Str]) (Cons [Str] k (Nil [Str]))) k)))

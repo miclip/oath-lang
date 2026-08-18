@@ -290,6 +290,15 @@ mismatch is an extra function parameter, not a leaf type. This is a gap distinct
 from law-statement and it survives any improvement to how laws are written — the
 answer to "does this list contain x" is a *composition*, not a definition.
 
+> **THE LAST SENTENCE IS FALSIFIED, and by #175's own falsifier rather than by
+> argument.** Re-asked in the higher-order shape — the same intent, a law in the
+> author's own words, no tool change — `--implies` PROVES `any` satisfies it and
+> refutes `all` with a countermodel. What this run varied was the LAW; what
+> reaches `any` is varying the SHAPE, and this paragraph treated the two as one
+> thing. The narrower claim survives: generalizing primitive leaves does not
+> bridge an extra parameter. Record: `docs/experiments/issue-175-shapes.md`.
+> The table above is left as it was run.
+
 ### Intent 6 — the strongest mode reports only the wrong definitions
 
 Entry 6's fix was `record-field`. Paraphrased intent — "the output is printable

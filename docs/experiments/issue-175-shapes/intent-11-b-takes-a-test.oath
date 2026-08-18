@@ -1,0 +1,12 @@
+; Intent 11, SHAPE B — the ABSTRACTION axis: the value generalized to a TEST.
+;
+; The first law is deliberately NOT `any`'s own cons-step. Stating
+; (== (wanted p (Cons x xs)) (or (p x) (wanted p xs))) is AST-identical to it
+; under self-substitution, so a hit would be the query reproducing the target's
+; law rather than discovery finding anything — the exclusion the baseline record
+; applied to its intent 5.
+(defn wanted [a] [(p (-> a Bool)) (xs (List a))] Bool false
+  (prop a-passing-head-makes-it-true [(p (-> Int Bool)) (x Int) (xs (List Int))]
+    (or (not (p x)) (wanted [Int] p (Cons [Int] x xs))))
+  (prop nothing-passes-in-empty [(p (-> Int Bool))]
+    (not (wanted [Int] p (Nil [Int])))))

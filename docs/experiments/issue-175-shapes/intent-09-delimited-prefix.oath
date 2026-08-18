@@ -1,0 +1,16 @@
+; Intent 9: "a prefix match that only matches at a delimiter".
+;
+; The other POSITIVE CONTROL, and the one that also shows --implies
+; DISCRIMINATING: --spec matched str-prefix on the verbatim first law, and proof
+; refutes it on the second — a longer value does match a bare prefix, which is
+; the defect this intent was about.
+;
+; ARGUMENT ORDER IS LOAD-BEARING HERE. Written the other way round — asking
+; whether (want = s+letter) matches (got = s) — the law is true of str-prefix
+; TOO and discriminates nothing, which is how a first draft of this file
+; "reproduced" the hits while losing the refutation that is the point.
+(defn wanted [] [(want Str) (got Str)] Bool false
+  (prop identical-is-a-match [(s Str)]
+    (wanted s s))
+  (prop an-extra-letter-breaks-the-match [(s Str)]
+    (not (wanted s (str-append s (SCons 97 SNil))))))

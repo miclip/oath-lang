@@ -1,0 +1,7 @@
+; Intent 6: "make a field safe to splice into a delimited record", in the
+; author's own words. The target (record-field) is outside the provable
+; fragment, so this is expected to produce refutations and a NO VERDICT rather
+; than a hit — the control showing shape is not what blocks these two.
+(defn wanted [] [(s Str)] Str SNil
+  (prop output-carries-no-tab [(s Str)]
+    (not (contains 9 (str-bytes (wanted s))))))

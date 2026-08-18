@@ -1,0 +1,11 @@
+; Intent 2: "read a request header by name, with a fallback".
+;
+; A POSITIVE CONTROL. It was SATISFIED at the baseline and must stay so: this
+; directory's headline is a NUMERATOR (5 of 7), and a reproduction that omits
+; the intents already passing cannot verify it — nor notice one of them
+; regressing against a later tool or corpus.
+;
+; The law is stated in a form header-or does not use.
+(defn wanted [] [(hs (List (Pair Str Str))) (name Str) (fallback Str)] Str SNil
+  (prop no-headers-means-the-default [(name Str) (fallback Str)]
+    (== (wanted (Nil [(Pair Str Str)]) name fallback) fallback)))

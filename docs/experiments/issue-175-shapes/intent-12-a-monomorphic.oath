@@ -1,0 +1,5 @@
+; Intent 12: "take the longest prefix whose elements pass a test".
+; SHAPE A — monomorphic query definition.
+(defn wanted [] [(p (-> Int Bool)) (xs (List Int))] (List Int) (Nil [Int])
+  (prop every-kept-element-passes [(p (-> Int Bool)) (xs (List Int))]
+    (all [Int] p (wanted p xs))))

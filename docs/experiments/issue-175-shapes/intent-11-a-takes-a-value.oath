@@ -1,0 +1,5 @@
+; Intent 11: "test whether a list of Str contains an element".
+; SHAPE A — the author's first guess: the thing sought is a VALUE.
+(defn wanted [] [(x Str) (xs (List Str))] Bool false
+  (prop head-is-a-member [(x Str) (xs (List Str))] (wanted x (Cons [Str] x xs)))
+  (prop nothing-is-in-empty [(x Str)] (not (wanted x (Nil [Str])))))

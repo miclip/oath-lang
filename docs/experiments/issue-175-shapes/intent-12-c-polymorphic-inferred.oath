@@ -1,0 +1,8 @@
+; Intent 12, SHAPE C — [a] on the definition, type application OMITTED.
+;
+; This is the third row of the 2x2 and it is the one that decides which half of
+; the axis matters. It must behave IDENTICALLY to shape B: the application is
+; inferred, so the definition's polymorphism is the whole difference from A.
+(defn wanted [a] [(p (-> a Bool)) (xs (List a))] (List a) (Nil [a])
+  (prop every-kept-element-passes [(p (-> Int Bool)) (xs (List Int))]
+    (all [Int] p (wanted p xs))))

@@ -1,0 +1,9 @@
+; Intent 3a: "scan a byte body for a JSON string value, stopping at a quote".
+;
+; NOTE THE COINCIDENCE, which is why this is scored on --implies: the natural
+; phrasing comes out AST-identical to json-string-value's own `no-quote`, so
+; --spec would hit it circularly. That is the query reproducing the target's
+; law, not discovery.
+(defn wanted [] [(bs (List Int))] (List Int) (Nil [Int])
+  (prop no-quote-is-kept [(bs (List Int))]
+    (not (contains 34 (wanted bs)))))

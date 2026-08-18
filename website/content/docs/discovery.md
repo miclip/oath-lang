@@ -204,3 +204,155 @@ The rungs compose: content-hash match (up to type) for the fast common case,
 proof-implication for the semantic cases it misses, and the e-graph for
 body-equivalence — every step loosening name-dependence further, and every one
 of them drawing edges *over* the hash graph, none touching identity.
+
+## When a query returns nothing: check the SHAPE before concluding absence
+
+**An empty result and an empty corpus are the same output.** This bites on the
+two modes that take a LAW, and it reaches them differently:
+
+- `--implies` PREFILTERS on signature compatibility, so a definition whose
+  signature does not match your query's up to primitive leaves is never
+  considered, whatever its body proves.
+- `--spec` applies no signature test at all — it compares generalized property
+  hashes across every definition. Shape reaches it only THROUGH the property: a
+  law that applies `self` embeds that application in its hash, so a
+  differently-shaped query hashes differently and misses. A law that never
+  mentions `self` carries no shape at all and can match a definition of any
+  signature, which is worth knowing before reading a `--spec` hit as evidence
+  that your shape was close.
+
+Either way structure does not bridge, so a wrong shape and a missing artifact
+look identical from outside — and the shape is the half you control. The
+name-keyed modes (`find <name>` and `--equiv`) are not affected: they ask for a
+name rather than a shape.
+
+**And primitive leaves generalize LESS than the headline suggests.** `--implies`
+re-types the property's BINDERS to each candidate, which is what lets an `Int`
+law reach its `Rat` counterpart; `--spec` likewise generalizes only the binders
+and hashes the property BODY unchanged. So a primitive written into the body —
+in a type application, a constructor, an annotation — does not generalize at
+all: laws that are otherwise identical but say `(Nil [Int])` and `(Nil [Rat])`
+miss each other. Keep concrete types in the binders where you can.
+
+Measured on seven intents drawn from an application's friction log: as
+originally phrased **2 of 7** found their artifact; re-phrased across the three
+axes below, **5 of 7** did, with no change to the tool.
+`docs/experiments/issue-175-shapes.md` is the record.
+
+**That is a result about those seven, and it is not a general likelihood.** They
+were selected because the corpus was already known to hold a satisfying
+artifact, so "the corpus has nothing" was impossible there by construction —
+which is exactly the case a real query cannot rule out. What the sample supports
+is that shape failures are real, common enough to dominate a set like this, and
+cheap to test. It does not support "your empty result is probably a shape
+problem", and this section should not be read that way.
+
+### The three axes, each with a measured example
+
+| axis | the guess that finds nothing | the shape the corpus used |
+|---|---|---|
+| **return** | the operation returns the whole collection — `(List Str)` | it returns ONE element — `Str` |
+| **abstraction** | it takes a VALUE — `(x Str)` | it takes a TEST — `(p (-> a Bool))` |
+| **polymorphism** | a monomorphic definition | `[a]` on the definition — the corpus's combinators are `forall a` |
+
+**Return.** "Report a required key the host did not supply" was written to return
+`(List Str)`, the missing keys. `config-missing` returns `Str`, the first one.
+Both laws missed, with no signature-compatible fallback — indistinguishable from
+an empty corpus. Changing only the return type, keeping both laws otherwise
+identical in meaning, proved `config-missing` twice.
+
+**Abstraction.** "Does this list of `Str` contain an element" was written as
+`(-> Str (List Str) Bool)`. The corpus answers it with `any`, which is
+`(-> (-> a Bool) (List a) Bool)` — the fixed value is generalized to a
+*predicate*. The mismatch is an extra parameter, not a leaf type, so nothing
+bridges it. Restated in the higher-order shape, `--implies` proves `any`
+satisfies the law and REFUTES `all` with a countermodel.
+
+**Polymorphism.** "Take the longest prefix whose elements pass a test" written
+monomorphically finds nothing, even when the law is copied verbatim from
+`take-while`'s own. Declaring the query definition `[a]` proves `take-while` AND
+`filter`, and refutes `drop-while`.
+
+**It is the DEFINITION's polymorphism that matters, not type application in the
+law.** Measured as a 2x2 on one query:
+
+| query definition | the law's recursive call | result |
+|---|---|---|
+| monomorphic | `(wanted p xs)` | nothing |
+| `[a]` | `(wanted [Int] p xs)` | `filter`, `take-while` proved |
+| `[a]` | `(wanted p xs)` | `filter`, `take-while` proved |
+
+The application is inferred, so writing it changes nothing. Only the first row
+is a different query.
+
+### Writing a polymorphic query
+
+A definition's type variables are **not in scope in its property binders** —
+declare the definition polymorphic and state the law at a concrete type, which
+is how the corpus's own polymorphic definitions state theirs:
+
+```
+(defn wanted [a] [(p (-> a Bool)) (xs (List a))] (List a) (Nil [a])
+  (prop every-kept-element-passes [(p (-> Int Bool)) (xs (List Int))]
+    (all [Int] p (wanted p xs))))
+```
+
+### The procedure
+
+1. State the law in your own words. Do not try to guess how the target states
+   it: `--implies` proves rather than matches, so a differently-worded law is
+   fine, and `--spec` reports a content-hash match that a paraphrase will miss.
+2. Run `--spec` first. It is fast, and its fallback list of
+   **signature-compatible** definitions is the cheapest signal you have: if it
+   names candidates, your signature is close and the law is worded differently.
+   `get <name>` then shows you how they state it. (The fallback list is
+   signature-derived; a `--spec` MATCH is not, so read the two differently.)
+3. If it names nothing, try `--implies` before changing anything. **An empty
+   fallback list does not mean no signature matched:** the neighbour list is
+   built only from definitions that carry properties of their own, so a
+   compatible definition with no stated laws is silently absent from it —
+   and `--implies` can still prove your query against that body.
+4. If that also finds nothing, vary the SHAPE. The three axes above are where to
+   start; they are the ones measured, not a complete list, and exhausting them
+   does not establish that the corpus has nothing.
+5. On any shape that surfaced candidates, run `--implies`. It proves, so it
+   finds definitions whose own laws look nothing like yours.
+6. **`NO VERDICT` is not absence.** It reports a limit of the prover, not a fact
+   about the definition — a body outside the provable fragment (`lam` terms,
+   trusted crypto primitives) yields no goal to solve. Roughly 6% of this
+   corpus's candidates are unreachable this way, measured in
+   `docs/experiments/issue-177-fragment.md`, and they are not peripheral.
+7. **When you see one, re-run with `--details`.** It NAMES each unsettled
+   candidate and says why:
+
+   ```
+   1 NO VERDICT — the prover did not settle it (a limit of this prover, ...)
+       record-field       "lam" terms are outside the provable fragment
+   ```
+
+   That is a name you can `get` and read. In the falsifier's terms the artifact
+   is SURFACED rather than SATISFIED — nothing was proved — but a name and a
+   reason is most of what you came for, and it costs one flag.
+8. Only if that leaves you with nothing, `--equiv` is the remaining route — **with two things worth
+   naming.** It takes an IMPLEMENTATION where `--spec` and `--implies` take a
+   LAW, so if you can already write the implementation you have solved much of
+   what you were searching for; it is a fallback, not an equal fourth option.
+   And it is not known to reach every fragment-blind candidate: it matches
+   implementations sharing an eHash under a limited rewrite system, and
+   `issue-177-fragment.md` tested 2 of the 12 and says so. Reaching those two is
+   evidence that the blindness is not structural, not a guarantee of coverage.
+
+### What this does not fix
+
+Two of the seven stayed unfound at every shape, both for the same reason: the
+target's body is outside the provable fragment, so **`--implies` returns no
+verdict however the query is written.** The obstacle is the CANDIDATE's body,
+not your signature, which is why varying the shape does not help.
+
+**That is a statement about `--implies`, not about every mode.** `--spec` can
+still hit such a target — it matches property content hashes and never invokes
+the prover — but only if your law happens to hash-equal the target's own, which
+is not something you can aim at. One of the two intents above did exactly that
+by coincidence and was scored unsatisfied for it, since a query that reproduces
+the target's own law is not evidence that discovery found anything. Trying
+`--spec` costs nothing; relying on it is relying on a coincidence.

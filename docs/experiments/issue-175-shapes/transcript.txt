@@ -1,0 +1,119 @@
+oath source: 9ff5065 +MODIFIED
+
+########## the two intents already SATISFIED at the baseline (controls)
+=== intent-02-header-fallback.oath  [--implies]
+    expect: header-or proves it
+  
+    · no-headers-means-the-default
+        header-or          ← provably satisfies it (direct (lemma-free))
+
+=== intent-09-delimited-prefix.oath  [--implies]
+    expect: media-type-is + path-is proved; str-prefix REFUTED
+  
+    · identical-is-a-match
+        media-type-is      ← provably satisfies it (direct (lemma-free))
+        path-is            ← provably satisfies it (direct (lemma-free))
+        str-prefix         ← provably satisfies it (direct)
+  
+    · an-extra-letter-breaks-the-match
+        media-type-is      ← provably satisfies it (induction on binder 0)
+        path-is            ← provably satisfies it (induction on binder 0)
+        1 REFUTED — proved NOT to satisfy it (a countermodel exists)
+            str-prefix         countermodel (by evaluation): SNil
+
+########## the RETURN axis (intent 1)
+=== intent-01-a-returns-collection.oath  [--spec]
+    expect: nothing, and NO signature-compatible fallback
+  
+    · nothing-needed-nothing-missing [tested here]  #1e3bc4d2b7eb
+        no definition states this law as written (matched by property content hash)
+  
+    · a-missing-key-is-reported [tested here]  #40614a6364dd
+        no definition states this law as written (matched by property content hash)
+
+=== intent-01-b-returns-one.oath  [--implies]
+    expect: config-missing proves BOTH laws
+  
+    · nothing-needed-nothing-missing
+        config-missing     ← provably satisfies it (direct (lemma-free))
+  
+    · a-missing-key-is-reported
+        config-missing     ← provably satisfies it (direct (lemma-free))
+
+########## the ABSTRACTION axis (intent 11)
+=== intent-11-a-takes-a-value.oath  [--implies]
+    expect: nothing provably satisfies it
+  
+    · head-is-a-member
+        (no definition provably satisfies this — in the signature-compatible, provable set)
+  
+    · nothing-is-in-empty
+        (no definition provably satisfies this — in the signature-compatible, provable set)
+
+=== intent-11-b-takes-a-test.oath  [--implies]
+    expect: any PROVES both; all REFUTED with a countermodel
+  
+    · a-passing-head-makes-it-true
+        any                ← provably satisfies it (direct (lemma-free))
+        1 REFUTED — proved NOT to satisfy it (a countermodel exists)
+            all                countermodel (by evaluation): <fn {20→false 0→false -2→false} else true>, 13, (Cons 0 Nil)
+  
+    · nothing-passes-in-empty
+        any                ← provably satisfies it (direct (lemma-free))
+        1 REFUTED — proved NOT to satisfy it (a countermodel exists)
+            all                countermodel (by evaluation): <fn {19→false} else true>
+
+########## the POLYMORPHISM axis (intent 12) — the 2x2
+=== intent-12-a-monomorphic.oath  [--implies]
+    expect: nothing
+  
+    · every-kept-element-passes
+        (no definition provably satisfies this — in the signature-compatible, provable set)
+
+=== intent-12-b-polymorphic-explicit.oath  [--implies]
+    expect: filter + take-while proved; drop-while refuted
+  
+    · every-kept-element-passes
+        filter             ← provably satisfies it (induction on binder 1)
+        take-while         ← provably satisfies it (induction on binder 1)
+        1 REFUTED — proved NOT to satisfy it (a countermodel exists)
+            drop-while         countermodel (by evaluation): <fn {-2→false -14→true 19→true} else false>, (Cons 4 (Cons 8 (Cons -2 Nil)))
+
+=== intent-12-c-polymorphic-inferred.oath  [--implies]
+    expect: IDENTICAL to the row above — the application is inferred
+  
+    · every-kept-element-passes
+        filter             ← provably satisfies it (induction on binder 1)
+        take-while         ← provably satisfies it (induction on binder 1)
+        1 REFUTED — proved NOT to satisfy it (a countermodel exists)
+            drop-while         countermodel (by evaluation): <fn {-2→false -14→true 19→true} else false>, (Cons 4 (Cons 8 (Cons -2 Nil)))
+
+########## the fragment limit (intents 6, 3a) — shape does not reach these
+=== intent-06-record-field.oath  [--implies]
+    expect: refutations plus NO VERDICT on the target
+  
+    · output-carries-no-tab
+        3 REFUTED — proved NOT to satisfy it (a countermodel exists)
+            config-key         countermodel (by evaluation): (SCons 9 (SCons -6 (SCons 1 SNil)))
+            gh-group           countermodel (by evaluation): SNil
+            shout              countermodel (by evaluation): (SCons 9 (SCons -6 (SCons 1 SNil)))
+        1 NO VERDICT — the prover did not settle it (a limit of this prover, NOT a fact about the definition)
+
+=== intent-03a-json-scan.oath  [--implies]
+    expect: NO VERDICT only (slow: ~10 min)
+  
+    · no-quote-is-kept
+        2 NO VERDICT — the prover did not settle it (a limit of this prover, NOT a fact about the definition)
+
+########## and --details NAMES an unsettled candidate
+=== intent-06-record-field.oath  [--implies --details]
+    expect: record-field named, with the reason
+  
+    · output-carries-no-tab
+        3 REFUTED — proved NOT to satisfy it (a countermodel exists)
+            config-key         countermodel (by evaluation): (SCons 9 (SCons -6 (SCons 1 SNil)))
+            gh-group           countermodel (by evaluation): SNil
+            shout              countermodel (by evaluation): (SCons 9 (SCons -6 (SCons 1 SNil)))
+        1 NO VERDICT — the prover did not settle it (a limit of this prover, NOT a fact about the definition)
+            record-field       "lam" terms are outside the provable fragment
+

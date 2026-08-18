@@ -1,0 +1,7 @@
+; Intent 1: "report a required config key the host did not supply".
+; SHAPE A — the author's first guess: the operation returns the missing keys.
+(defn wanted [] [(have (List Str)) (need (List Str))] (List Str) (Nil [Str])
+  (prop nothing-needed-nothing-missing [(have (List Str))]
+    (== (wanted have (Nil [Str])) (Nil [Str])))
+  (prop a-missing-key-is-reported [(k Str)]
+    (== (wanted (Nil [Str]) (Cons [Str] k (Nil [Str]))) (Cons [Str] k (Nil [Str])))))
