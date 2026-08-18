@@ -115,6 +115,13 @@ func TestEmittedRuntimeDeclaresNoStaticStorageForValues(t *testing.T) {
 	for _, probe := range []struct{ name, line string }{
 		{"file-scope with a trailing comment", "static OVal *o_stash;   /* a batching sink */"},
 		{"function-local static", "  static OVal *stash = 0;"},
+		// WITHOUT THE KEYWORD. A file-scope object has static storage duration
+		// whether or not it is spelled `static`, and this scanner's universe has
+		// always said so — but its regex required the keyword, so this arrived
+		// as an unparseable line rather than a named one. It must be reported
+		// BY NAME, which is what makes it exemptible with an argument instead of
+		// merely failing.
+		{"file-scope without the keyword", "OVal *o_stash_plain;"},
 	} {
 		got := staticVars(rt + "\n" + probe.line + "\n")
 		if len(got) == 0 || got[len(got)-1].name == "" {
@@ -187,11 +194,35 @@ func TestEmittedRuntimeDeclaresNoStaticStorageForValues(t *testing.T) {
 		}
 	}
 
+	// THE STACK GUARD EXEMPTION'S OWN CONTROLS, on the same two halves. The
+	// argument for these three is that their types cannot carry a pointer, so
+	// the probes are: a POINTER wearing each permitted name — which is exactly
+	// how the hole would be walked through, since renaming is cheaper than
+	// arguing — and a permitted type under another name.
+	for _, probe := range []struct{ name, line string }{
+		{"a pointer under the permitted floor name", "OVal *o_stack_floor;"},
+		{"a pointer under the permitted budget name", "static OVal *o_stack_budget;"},
+		{"a pointer under the permitted rlimit-flag name", "static OVal *o_stack_from_rlimit;"},
+		{"the floor's type under another name", "uintptr_t o_stash_floor;"},
+		{"the budget's type under another name", "static size_t o_stash_budget;"},
+		{"the flag's type under another name", "static int o_stash_from_rlimit;"},
+	} {
+		got := staticVars(probe.line + "\n")
+		if len(got) != 1 {
+			t.Fatalf("the scanner reads %d declarations from the probe %q, so this control "+
+				"is not testing what it believes it is", len(got), probe.line)
+		}
+		if stackGuardSlot(got[0]) {
+			t.Fatalf("the stack-guard exemption admits %s, so it is permitting a shape "+
+				"rather than the three declarations argued for", probe.name)
+		}
+	}
+
 	// AND THE PERMITTED DECLARATIONS MUST BE PRESENT. Without this an exemption
 	// could outlive what it was argued for — the allowlist entry would sit here
 	// matching nothing, and the next declaration that happened to be spelled that
 	// way would inherit an argument nobody re-made.
-	permitted, continuation, perm := 0, 0, 0
+	permitted, continuation, perm, guard := 0, 0, 0, 0
 	for _, v := range staticVars(rt) {
 		if arenaOwnershipRoot(v) {
 			permitted++
@@ -202,6 +233,15 @@ func TestEmittedRuntimeDeclaresNoStaticStorageForValues(t *testing.T) {
 		if processLifetimeSlot(v) {
 			perm++
 		}
+		if stackGuardSlot(v) {
+			guard++
+		}
+	}
+	if guard != 3 {
+		t.Errorf("the runtime declares %d of the 3 permitted stack-guard slots. The floor "+
+			"is what the emitted IR loads at every function entry and the other two are "+
+			"what the diagnostic reports, so none is admissible without the others; and an "+
+			"exemption matching nothing is a hole waiting for a coincidence", guard)
 	}
 	if perm != 2 {
 		t.Errorf("the runtime declares %d of the 2 permitted process-lifetime slots. The "+
@@ -221,7 +261,8 @@ func TestEmittedRuntimeDeclaresNoStaticStorageForValues(t *testing.T) {
 	}
 
 	for _, v := range staticVars(rt) {
-		if arenaOwnershipRoot(v) || requestContinuationSlot(v) || processLifetimeSlot(v) {
+		if arenaOwnershipRoot(v) || requestContinuationSlot(v) ||
+			processLifetimeSlot(v) || stackGuardSlot(v) {
 			continue
 		}
 		if v.name == "" {
@@ -719,8 +760,48 @@ func normalizeDecl(decl string) string {
 // staticVars finds declarations with STATIC STORAGE DURATION in C source, at any
 // indentation: `static <type> <name>` that is not a function. A scanner rather
 // than a parser, which is why the callers inject before trusting its silence.
+// stackGuardSlot reports whether a declaration is EXACTLY one of the stack
+// guard's three: the floor the emitted IR loads at every function entry, the
+// budget the diagnostic reports, and whether that budget was MEASURED from an
+// rlimit or fell back to a constant.
+//
+// KEYED ON THE WHOLE DECLARATION, like all three predicates above. The ARGUMENT
+// differs again, and it is the simplest of the four: NONE OF THESE TYPES CAN
+// HOLD A POINTER. uintptr_t, size_t and int are integers, so no capability can
+// leave request memory in one — which is the hazard this test exists to prevent,
+// and it is unreachable here by the type rather than by a lifetime argument that
+// would have to be re-made. That is why the type is matched and not only the
+// name: a `*` in any of these spellings is a different declaration and is
+// reported.
+//
+// o_stack_floor is deliberately NOT static — the emitted IR loads it as an
+// external global — so it reaches this scanner through the file-scope half of
+// its universe rather than the keyword half. It is exempt on the same argument.
+func stackGuardSlot(v staticVar) bool {
+	switch normalizeDecl(v.decl) {
+	case "uintptr_t o_stack_floor;":
+		return v.name == "o_stack_floor"
+	case "static size_t o_stack_budget;":
+		return v.name == "o_stack_budget"
+	case "static int o_stack_from_rlimit;":
+		return v.name == "o_stack_from_rlimit"
+	}
+	return false
+}
+
 func staticVars(src string) []staticVar {
-	decl := regexp.MustCompile(`^static\s+(?:const\s+)?[A-Za-z_][A-Za-z0-9_]*[\s*]+(?:volatile\s+)?\**([A-Za-z_][A-Za-z0-9_]*)\s*(?:=[^;]*)?(?:\[[^\]]*\])?\s*;`)
+	// `static` IS OPTIONAL HERE BECAUSE THE UNIVERSE BELOW ALREADY IS. This
+	// scanner's population is "anything with the keyword at any indentation,
+	// PLUS anything declared at file scope at all" — but the regex used to
+	// require the keyword, so it could SEE a file-scope declaration without it
+	// and not read it. Every such line came back with an empty name and was
+	// reported as unparseable: a correct failure with a useless message, and one
+	// that could not be exempted even with an argument, since an exemption keys
+	// on a name the scanner never extracted.
+	//
+	// Nothing widens here: a line without the keyword had to be at file scope to
+	// reach this point, and function declarators are removed before it.
+	decl := regexp.MustCompile(`^(?:static\s+)?(?:const\s+)?[A-Za-z_][A-Za-z0-9_]*[\s*]+(?:volatile\s+)?\**([A-Za-z_][A-Za-z0-9_]*)\s*(?:=[^;]*)?(?:\[[^\]]*\])?\s*;`)
 	strip := func(l string) string {
 		if i := strings.Index(l, "/*"); i >= 0 {
 			l = l[:i]

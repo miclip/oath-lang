@@ -123,6 +123,7 @@ type llvmEmitter struct {
 	tmp     int      // SSA temporary counter
 	lam     int      // hoisted lambda counter
 	str     int      // string constant counter
+	guard   int      // stack-guard block counter, unique per module
 	block   string   // the label of the block currently being emitted
 	pending []string // hoisted lambda bodies, appended after the current function
 	// Type tracking for record field resolution, threaded exactly as the kernel's
@@ -141,6 +142,49 @@ func (e *llvmEmitter) next() string { e.tmp++; return fmt.Sprintf("%%t%d", e.tmp
 func (e *llvmEmitter) label(name string) {
 	fmt.Fprintf(&e.b, "%s:\n", name)
 	e.block = name
+}
+
+// openOathFunc emits the header of an emitted OATH function: the define line,
+// the entry block, and the stack-guard prologue.
+//
+// IT EXISTS TO MAKE THE GUARD EXCLUSIVE, which is the whole reason the two call
+// sites do not just each emit their own prologue. The claim is "every Oath
+// function this backend emits checks the stack before descending", and its
+// universe is Oath function bodies — so the guard belongs at the one place a
+// body's header is written, not at a list of sites someone enumerated. A list is
+// exactly the proxy population this repo keeps getting caught by: it is correct
+// when written and silently incomplete when a third shape is added.
+// llvm_stackguard_test.go holds it to that by compiling a program and requiring
+// every emitted body to carry the check.
+//
+// @o_resolve_caps is deliberately NOT routed through here. It is runtime
+// plumbing, emitted once, called once before the entry point, and it is not an
+// Oath body — it cannot appear in a recursive cycle, so guarding it would widen
+// the claim past what it says.
+func (e *llvmEmitter) openOathFunc(header string) {
+	e.b.WriteString(header)
+	e.label("entry")
+	// THE FRAME POINTER, NOT AN ALLOCA. Taking the address of a local reads the
+	// stack just as well and MEASURABLY COSTS MORE: an alloca whose address
+	// escapes through ptrtoint enlarged every frame enough to cut the corpus
+	// application's ceiling from ~4,000 records to ~2,970 — a guard that made
+	// exhaustion legible by making it arrive 26% sooner. llvm.frameaddress
+	// reads a register the ABI already maintains.
+	sp, spi, floor, low, ok, fail := e.next(), e.next(), e.next(), e.next(),
+		fmt.Sprintf("sgok%d", e.guard), fmt.Sprintf("sgfail%d", e.guard)
+	e.guard++
+	fmt.Fprintf(&e.b, "  %s = call ptr @llvm.frameaddress.p0(i32 0)\n", sp)
+	fmt.Fprintf(&e.b, "  %s = ptrtoint ptr %s to i64\n", spi, sp)
+	fmt.Fprintf(&e.b, "  %s = load i64, ptr @o_stack_floor\n", floor)
+	// UNSIGNED. Addresses are not signed quantities, and `slt` would invert the
+	// comparison for any stack mapped above 0x7fff_ffff_ffff_ffff — the guard
+	// would then fire on every call instead of none, which is at least loud,
+	// but it would be wrong on a host nobody here tests.
+	fmt.Fprintf(&e.b, "  %s = icmp ult i64 %s, %s\n", low, spi, floor)
+	fmt.Fprintf(&e.b, "  br i1 %s, label %%%s, label %%%s\n", low, fail, ok)
+	e.label(fail)
+	fmt.Fprintf(&e.b, "  call void @o_stack_exhausted()\n  unreachable\n")
+	e.label(ok)
 }
 
 // strConst interns a NUL-terminated string constant and returns a pointer to it.
@@ -378,8 +422,7 @@ func (e *llvmEmitter) emitDef(h string) error {
 	e.chk = &checkerMachine{st: e.st, selfTyVars: d.TyVars, selfTy: d.Ty}
 	e.ctx = nil
 	name := e.fname[h]
-	fmt.Fprintf(&e.b, "; %s\ndefine ptr %s(ptr %%env, ptr %%arg) {\n", e.st.NameOf(h), name)
-	e.label("entry")
+	e.openOathFunc(fmt.Sprintf("; %s\ndefine ptr %s(ptr %%env, ptr %%arg) {\n", e.st.NameOf(h), name))
 	if d.Body.K == "lam" {
 		// A def whose body is a lam is entered with its argument already bound:
 		// env becomes exactly [arg], as the Go backend's `env = []any{arg}`.
@@ -977,8 +1020,7 @@ func (e *llvmEmitter) emitLam(t *Term, env string, depth int, self string) (stri
 	// current one is mid-block.
 	outer, outerBlock := e.b, e.block
 	e.b = strings.Builder{}
-	fmt.Fprintf(&e.b, "define ptr %s(ptr %%env, ptr %%arg) {\n", name)
-	e.label("entry")
+	e.openOathFunc(fmt.Sprintf("define ptr %s(ptr %%env, ptr %%arg) {\n", name))
 	e2 := e.next()
 	fmt.Fprintf(&e.b, "  %s = call ptr @o_env_push(ptr %%env, ptr %%arg)\n", e2)
 	e.ctx = append(e.ctx, t.Ty)
@@ -1238,6 +1280,10 @@ const llvmRuntimeC = `
 #if !defined(_WIN32)
 #include <signal.h>
 #include <unistd.h>
+/* getrlimit, for the stack guard's budget. Inside the POSIX block for the same
+   reason the sockets are: the CLI entry links this file on Windows too, and the
+   guard falls back to a compiled-in budget there rather than failing to build. */
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <netinet/in.h>
@@ -1435,6 +1481,273 @@ static void o_refused(void) {
 static void o_bug(const char *what) {
   fprintf(stderr, "oath: %s\n", what);
   exit(70);
+}
+
+/* ---------- the stack guard ----------
+
+   WHAT THIS IS FOR, and it is NOT a nicer diagnostic. Oath recursion becomes C
+   recursion here, so a deep enough structure exhausts the process stack. Before
+   this guard that was a SIGSEGV: exit 139, zero bytes on stdout and stderr,
+   measured. Two consequences, and the second is a conformance failure rather
+   than an ergonomics complaint:
+
+     - a standalone program died with no way to tell exhaustion from a compiler
+       bug or a host fault;
+     - a HANDLER died, and its input is chosen by a remote party. SPEC 14.2
+       answers 400 for an unrepresentable request field precisely "because a
+       remote party must not be able to halt a host" - and a body deep enough to
+       exhaust the stack halted it. The guarantee was already normative; this
+       backend just could not keep it.
+
+   Routing through o_refused is therefore the whole point, not an implementation
+   convenience: it is the door that already knows a standalone program exits 70
+   and a handler answers 500 and keeps serving. The arena is what makes the
+   longjmp sound, for the reason recorded at that door - every allocation the
+   abandoned frames made belongs to the request region.
+
+   WHY A POINTER COMPARISON AND NOT A FRAME COUNTER. A counter must be
+   DECREMENTED, which needs an epilogue at every return edge; the address of a
+   local is exact, costs no bookkeeping, and cannot get out of step with the
+   real stack. It also measures what actually runs out - BYTES - rather than a
+   proxy for it, so a function with a large frame consumes the budget faster,
+   which is the truth a counter would hide.
+
+   THE BUDGET IS DERIVED FROM THE HOST, NOT COMPILED IN. The evaluator's depth
+   guard records what happens otherwise: a constant calibrated on a developer
+   machine survived as a comment that read correctly while the deployed
+   container was OOM-killed before the guard could fire. getrlimit answers for
+   the process actually running, so 'ulimit -s' raises this ceiling with no
+   rebuild - which is also what keeps the refusal HONEST, since the limit is a
+   fact about this artifact's environment and not about the program.
+
+   ITS OWN FALSIFIER: if the guard ever fires on a program that would have
+   COMPLETED within the real stack, the margin is wrong and the guard is worse
+   than the crash it replaces - it would be reporting a limit the host does not
+   have. That is why the margin is subtracted from a MEASURED limit rather than
+   guessed, and why the diagnostic REPORTS the budget it derived: the test reads
+   it back from there and pins it to the limit it imposed. */
+
+/* Reserved below the floor so the refusal path can still run: the guard fires
+   with this much stack left, and fprintf and longjmp need frames. A guard that
+   fires with no room to report IS the crash it was meant to replace. */
+#define O_STACK_MARGIN ((size_t)131072)
+
+/* WHAT THE MARGIN ASSUMES, stated because it is the guard's one unclosed edge.
+   The check runs as the first IR instruction of a body, but the machine-code
+   PROLOGUE has already reserved that body's frame by then. So the guard is sound
+   only while no emitted frame exceeds the margin: a single frame larger than
+   128K would fault in its own prologue, before the check it is about to run.
+
+   This backend's bodies are ptr f(ptr env, ptr arg) and every Oath value lives
+   in the arena, so a frame holds spilled SSA temporaries and nothing else - 128K
+   is 16,384 pointers in ONE function. Nothing in this corpus is within three
+   orders of magnitude of that. It is a BOUND, not a proof, and the honest form
+   of the claim is: exhaustion is caught for any program whose largest single
+   frame fits in the margin. Closing it properly means a pre-frame probe, which
+   is a different piece of work. */
+
+/* TWO FALLBACKS, NOT ONE, BECAUSE THE TWO CASES PULL OPPOSITE WAYS. Both are
+   used where getrlimit cannot answer, and the asymmetry that decides them is:
+   erring SMALL costs an early refusal, which is legible; erring LARGE puts the
+   floor BELOW the real stack boundary, so the fault arrives before the guard
+   and the silent crash is back. A fallback is only safe if it cannot exceed the
+   real stack.
+
+     UNLIMITED rlimit   the real stack is at least this big by construction, so
+                        a few megabytes is conservative.
+     WINDOWS            the PE default stack RESERVE is 1 MB, and this runtime
+                        cannot ask for it without pulling in windows.h. Half a
+                        megabyte fits inside that with room for the margin. It
+                        is deliberately pessimistic: a Windows CLI artifact will
+                        refuse deeper recursion than it strictly must, and that
+                        is the direction to be wrong in. Querying
+                        GetCurrentThreadStackLimits would remove the guess. */
+#define O_STACK_FALLBACK_UNLIMITED ((size_t)(4 * 1024 * 1024))
+#define O_STACK_FALLBACK_WIN       ((size_t)(512 * 1024))
+
+/* Not static: the emitted IR loads this at every function entry. */
+uintptr_t o_stack_floor;
+static size_t o_stack_budget;
+/* Whether the budget came from a MEASURED rlimit or from a fallback. The
+   diagnostic's remediation depends on it: 'raise ulimit -s' is true only in the
+   first case, and is actively misleading in the second - Windows has no such
+   command, and setting a POSIX limit to UNLIMITED selects the fallback and
+   LOWERS the budget. Advice that is wrong in the direction of "try this" costs
+   more than no advice. */
+static int o_stack_from_rlimit;
+
+/* A CONSTRUCTOR, so no entry protocol can forget it. main is emitted as IR and
+   there are two shapes of it (CLI and serve); initialising from either would
+   put the guard's correctness in the emitter, where a third shape would silently
+   omit it. A constructor runs before main on the same stack, so the base it
+   records is main's to within a frame - immaterial against the margin. */
+/* THE STARTUP BLOCK, MEASURED RATHER THAN ASSUMED AWAY.
+
+   argv and the environment are laid down at the stack TOP before any user code
+   runs, so a constructor's own frame is already below it. Subtracting a whole
+   RLIMIT_STACK from that frame puts the floor PAST THE END, and a process
+   started with a large environment - ARG_MAX is megabytes on both supported
+   platforms - faults before the guard can fire. Nothing about the failure would
+   point here, and the invocation is legal rather than exotic.
+
+   Both vectors are scanned and each string's END is taken, not its start: an
+   earlier draft used the pointer alone, which under-measures by the length of
+   the highest string and leaves exactly the same hole for one large variable.
+   And argv is scanned rather than only environ, because an empty environment
+   with a large argument vector has the same shape.
+
+   glibc and dyld both pass (argc, argv, envp) to a constructor. Where that is
+   not honoured the parameters are garbage, so every address is admitted only if
+   it lies ABOVE our frame and within a sane distance of it - which also rejects
+   a heap-allocated variable left by a setenv. A rejected vector costs the old
+   under-measurement, never a floor further past the end. */
+static void o_stack_top(uintptr_t *top, char **v, int n) {
+  if (!v) return;
+  for (int i = 0; (n < 0 || i < n) && v[i]; i++) {
+    uintptr_t a = (uintptr_t)v[i];
+    if (a <= *top || a - *top >= (uintptr_t)(64 * 1024 * 1024)) continue;
+    *top = a + (uintptr_t)strlen(v[i]) + 1;
+  }
+}
+
+/* THE THREE-ARGUMENT CONSTRUCTOR IS NOT PORTABLE, AND WHAT REPLACES IT NEEDS AN
+   ALLOWANCE RATHER THAN AN APOLOGY. glibc and dyld both pass (argc, argv, envp)
+   to an .init_array entry; the C and POSIX guarantee is only void(void), and a
+   runtime honouring just that - musl, for instance - would leave those
+   parameters INDETERMINATE. Reading them is harmless; passing them to a scan
+   that DEREFERENCES the vector is a startup crash in a guard whose whole purpose
+   is to prevent a crash.
+
+   So the parameterised form is used only where the ABI is documented. Elsewhere
+   the constructor takes no arguments and reads 'environ', which POSIX guarantees
+   is valid here - and ARGV IS THEN UNMEASURED.
+
+   AN EARLIER DRAFT CALLED THAT "the safe direction". IT IS THE OPPOSITE, and the
+   error is easy to make because the words point the wrong way: failing to see
+   the startup block leaves the measured top LOWER, so the floor computed from it
+   is lower too, which is FURTHER PAST THE END. Unmeasured startup consumption
+   makes the guard fire LATE or not at all - exactly the silent crash.
+
+   The allowance closes it with a bound rather than a guess: Linux caps args and
+   environment together at RLIMIT_STACK/4, so a quarter of the budget is an upper
+   bound on what could not be seen. Where the block is smaller the guard refuses
+   early, and THAT is the safe direction. */
+static void o_stack_init_from(int argc, char **argv, char **envp, int startup_seen);
+
+#if defined(_WIN32)
+/* The command line arrives through the PEB, not on the stack, so there is no
+   unmeasured stack-resident startup block here: startup_seen is 1. */
+__attribute__((constructor))
+static void o_stack_ctor(void) { o_stack_init_from(0, (char **)0, (char **)0, 1); }
+#elif defined(__GLIBC__) || defined(__APPLE__)
+__attribute__((constructor))
+static void o_stack_ctor(int argc, char **argv, char **envp) {
+  o_stack_init_from(argc, argv, envp, 1);
+}
+#else
+__attribute__((constructor))
+static void o_stack_ctor(void) {
+  /* BLOCK SCOPE. This is the host C runtime's object, so nothing is allocated
+     here - and keeping the declaration inside the one function that needs it
+     also keeps it off the emitted runtime's file-scope surface, which
+     TestEmittedRuntimeDeclaresNoStaticStorageForValues reads in full. */
+  extern char **environ;
+  o_stack_init_from(0, (char **)0, environ, 0);
+}
+#endif
+
+static void o_stack_init_from(int argc, char **argv, char **envp, int startup_seen) {
+  char probe;
+  uintptr_t base = (uintptr_t)&probe;
+  size_t budget;
+#if !defined(_WIN32)
+  o_stack_top(&base, argv, argc > 0 ? argc : 0);
+  o_stack_top(&base, envp, -1);
+#else
+  (void)argc; (void)argv; (void)envp;
+#endif
+#if defined(_WIN32)
+  budget = O_STACK_FALLBACK_WIN;
+#else
+  struct rlimit rl;
+  if (getrlimit(RLIMIT_STACK, &rl) == 0 && rl.rlim_cur != RLIM_INFINITY &&
+      rl.rlim_cur > 0)
+    { budget = (size_t)rl.rlim_cur; o_stack_from_rlimit = 1; }
+  else
+    budget = O_STACK_FALLBACK_UNLIMITED;
+#endif
+  /* THE MARGIN IS PROPORTIONAL WHERE THE STACK IS SMALL, and an earlier draft
+     got this backwards: it REPLACED any limit at or below twice the margin with
+     the fallback, which on a host with a 256K stack substituted a 4M budget and
+     put the floor megabytes past the end. A measured limit is never enlarged
+     here - it is only ever reduced. */
+  size_t margin = O_STACK_MARGIN;
+  if (margin > budget / 4) margin = budget / 4;
+  if (margin == 0) margin = 1;
+  o_stack_budget = budget - margin;
+  if (!startup_seen) {
+    /* An UPPER BOUND on what could not be seen, not an estimate: see the header
+       above. Halved rather than skipped if it would consume the whole budget,
+       so a pathological limit still leaves the guard able to fire. */
+    size_t allow = budget / 4;
+    /* AND A FLOOR UNDER THE ALLOWANCE. Linux permits at least 32 pages of
+       arguments and environment (MIN_ARG_PAGES) REGARDLESS of RLIMIT_STACK/4,
+       so on a small stack a quarter of the budget is not an upper bound on what
+       could not be seen - and an allowance that is not an upper bound is not an
+       allowance, it is a smaller version of the same hole. */
+    if (allow < (size_t)(128 * 1024)) allow = (size_t)(128 * 1024);
+    if (allow >= o_stack_budget) {
+      /* THE ALLOWANCE IS AN UPPER BOUND OR IT IS NOTHING. Where the startup
+         block could legally be the whole stack, no floor computed here is
+         guaranteed to sit inside it - and an earlier draft HALVED the allowance
+         to make the arithmetic fit, which produces a number rather than a bound
+         and puts the silent crash back on exactly the hosts least able to
+         absorb it.
+
+         So this refuses on the first call instead of guessing. A refusal naming
+         a tiny budget is legible and points at 'ulimit -s'; a floor nobody can
+         justify is the defect this guard exists to remove. */
+      o_stack_budget = 4096;
+    } else {
+      o_stack_budget -= allow;
+    }
+  }
+  /* Computed in uintptr_t, not by pointer arithmetic: '&probe - budget' is
+     undefined once it leaves the object, and the comparison it feeds is the
+     thing this guard rests on. The clamp is for a base below the budget, which
+     no supported host presents and which would otherwise WRAP - turning the
+     floor into a huge address and making every call refuse. */
+  o_stack_floor = (o_stack_budget < base) ? base - (uintptr_t)o_stack_budget : (uintptr_t)1;
+}
+
+
+void o_stack_exhausted(void) {
+  /* THE MESSAGE IS ABOUT THIS ARTIFACT, NOT ABOUT THE PROGRAM. Exhausting a
+     budget is an implementation limit; saying "this program does not terminate"
+     would promote a fact about the tool into a claim about the world, and the
+     two are not distinguishable from here - a terminating program simply deeper
+     than the budget reaches this same line. */
+  fprintf(stderr,
+      "oath: this artifact exhausted its stack budget of %zu bytes. That is a "
+      "limit of THIS compiled artifact, not a property of the program: %s"
+      "'oath eval' runs the same definition on its own budget. If the recursion "
+      "has no base case the program does not terminate, but reaching this line "
+      "is not evidence either way.\n",
+      o_stack_budget,
+      o_stack_from_rlimit
+          ? "a larger 'ulimit -s' raises it with no rebuild, and "
+          /* No rlimit was readable, so the budget is compiled in and no host
+             setting moves it. Saying otherwise would send an operator to a
+             control that does nothing - or, where the limit is UNLIMITED, to
+             one that already selected this smaller fallback. */
+          : "this host reports no stack limit this runtime can read, so the "
+            "budget above is the compiled-in fallback and no host setting "
+            "raises it; "
+      );
+  o_refused();
+  /* o_refused exits or longjmps; it never returns. Declared noreturn to the IR,
+     so the emitted prologue can end its failure block with 'unreachable'. */
+  abort();
 }
 
 static OBlock *o_block_new(size_t cap) {
@@ -4651,6 +4964,9 @@ int o_serve_caps(OVal *(*resolve)(void), OCode entry, int nil_, int cons_, int p
 
 // llvmDeclarations is the runtime's interface as LLVM sees it.
 const llvmDeclarations = `
+@o_stack_floor = external global i64
+declare ptr @llvm.frameaddress.p0(i32)
+declare void @o_stack_exhausted() noreturn
 declare ptr @o_strn(ptr, i32)
 declare ptr @o_bool(i32)
 declare i1 @o_truth(ptr)

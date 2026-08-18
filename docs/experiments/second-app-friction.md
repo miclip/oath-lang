@@ -45,8 +45,15 @@ the set stays small — so the failure is a function of DISTINCT deliveries, and
 **So the native-container refinement is not only a performance choice on this
 backend; without it the structural fallback has a correctness ceiling.** A
 program can be built, verified, proven where the fragment allows, agree with the
-other backend on every test log — and still segfault on the seven-thousandth
+other backend on every test log — and still fail on the seven-thousandth
 webhook. Nothing in the guarantee ladder is measuring that.
+
+**THE EXIT CODE ABOVE IS NOW HISTORICAL AND THE CEILING IS NOT.** A stack guard
+turned 139-and-silence into exit 70 with a diagnostic, and made the same
+condition a 500 in a handler instead of a dead process. It did not raise the
+ceiling: `docs/experiments/issue-178-ceiling.md` measures the artifact at ~3,950
+distinct records on LLVM and ~24,800 on Go, so the demand this section records
+stands unchanged. Only the failure's legibility moved.
 
 ## The demand: THE ENTRY PROTOCOL CANNOT EXPRESS A FAILING EXIT
 

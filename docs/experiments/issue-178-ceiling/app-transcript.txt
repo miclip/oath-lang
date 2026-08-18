@@ -1,15 +1,19 @@
 platform: Darwin arm64   default stack: 8176 KB
-oath source: a96eb35 +MODIFIED
+oath source: 2875519 +MODIFIED
 clang: Apple clang version 21.0.0 (clang-2100.1.1.101)
 go: go version go1.25.6 darwin/arm64
 
-llvm  max distinct records @  8176KB: 4011
-llvm  max distinct records @ 16352KB: 7975
-      ratio 16352/8176: 1.988   bytes of stack per record: 2087  2100
+llvm  max distinct records @  8176KB: 3949
+llvm  max distinct records @ 16352KB: 7913
+      ratio 16352/8176: 2.004   bytes of stack per record: 2120  2116
 
 go    max distinct records (1 GB goroutine stack): 24797
-      go/llvm ratio at the 8176KB default: 6.2x
+      go/llvm ratio at the 8176KB default: 6.3x
 
-./docs/experiments/issue-178-ceiling/app-ceiling.sh: line 151: 12126 Segmentation fault: 11  ( ulimit -s 8176 2> /dev/null || exit 111; exec "$out/report-ll" "$log" ) > "$llout" 2>&1
-llvm past ceiling: exit 139, zero bytes on stdout and stderr
+llvm past ceiling: exit 70 and a diagnostic (was 139, silent):
+    oath: this artifact exhausted its stack budget of 8241152 bytes. That is a 
+    limit of THIS compiled artifact, not a property of the program: a larger 
+    'ulimit -s' raises it with no rebuild, and 'oath eval' runs the same 
+    definition on its own budget. If the recursion has no base case the program 
+    does not terminate, but reaching this line is not evidence either way.
 go   at the same size: exit 0 (its own ceiling is far higher)

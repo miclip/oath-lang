@@ -149,10 +149,26 @@ if ( ulimit -s 8176 2>/dev/null || exit 111; exec "$out/report-ll" "$log" ) >"$l
   echo "  moved, so this run does not reproduce the reported failure" >&2
   rm -f "$llout" "$log"; exit 1
 else rc=$?; fi
-if [ -s "$llout" ]; then
-  echo "llvm past ceiling: exit $rc, and it DID emit output:"; sed 's/^/  /' "$llout"
+# THE CONTRACT IS NOW A REFUSAL, SO THIS ASSERTS IT RATHER THAN REPORTING IT.
+# Until the stack guard landed this printed "exit 139, zero bytes on stdout and
+# stderr" and that WAS the finding. An artifact that goes back to crashing
+# silently is a regression, and a probe that merely describes whatever happened
+# cannot say so.
+if [ "$rc" = 139 ]; then
+  echo "FAILED: the artifact crashed (139) instead of refusing — the stack" >&2
+  echo "  guard did not fire, which is the defect it was built to remove" >&2
+  rm -f "$llout"; exit 1
+elif [ "$rc" != 70 ]; then
+  echo "FAILED: expected exit 70, this backend's runtime-refusal code; got $rc" >&2
+  rm -f "$llout"; exit 1
+elif ! grep -q "exhausted its stack budget" "$llout"; then
+  echo "FAILED: exit 70 with no stack diagnostic. 70 is also the" >&2
+  echo "  provisioning-failure code, so without the message an operator" >&2
+  echo "  cannot tell the two apart" >&2
+  rm -f "$llout"; exit 1
 else
-  echo "llvm past ceiling: exit $rc, zero bytes on stdout and stderr"
+  echo "llvm past ceiling: exit 70 and a diagnostic (was 139, silent):"
+  fold -w 76 -s "$llout" | sed 's/^/    /'
 fi
 if "$out/report-go" "$log" >"$llout" 2>&1; then
   echo "go   at the same size: exit 0 (its own ceiling is far higher)"

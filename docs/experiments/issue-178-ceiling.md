@@ -27,15 +27,15 @@ than a bound:
 
 | shape | 8,176 KB stack | 16,352 KB stack | ratio | bytes/frame |
 |---|---:|---:|---:|---:|
-| narrow | 174,270 | 348,691 | 2.001 | 48.0 → 48.0 |
-| wide | 130,702 | 261,518 | 2.001 | 64.1 → 64.0 |
+| narrow | 171,558 | 345,979 | 2.017 | 48.8 → 48.4 |
+| wide | 128,668 | 259,484 | 2.017 | 65.1 → 64.5 |
 
 Doubling the stack doubles the depth to within 0.5%, and bytes-per-frame is
 stable across both limits. **So the threshold is not mysterious and does not
 need to be discovered per program**: it is the stack limit divided by the
 frame the shape emits, and the frames here are 48 and 64 bytes.
 
-At the 8,176 KB default that is ~174,000 frames for a simple recursion — which
+At the 8,176 KB default that is ~172,000 frames for a simple recursion — which
 is why `report.oath` failing at 5,500 deliveries is not a bare depth limit.
 `set-member` walks the accumulated set once per record, so the work is
 quadratic in distinct ids while the DEPTH per call is what overflows; the 5,500
@@ -45,13 +45,18 @@ figure belongs to that program's shape, not to the backend.
 
 | shape | LLVM (8 MB default) | Go | Go ÷ LLVM |
 |---|---:|---:|---:|
-| narrow | 174,270 | 2,097,138 | **12.0x** |
-| wide | 130,702 | 541,196 | **4.1x** |
+| narrow | 171,558 | 2,097,138 | **12.2x** |
+| wide | 128,668 | 541,196 | **4.2x** |
 
-LLVM exits **139** with no diagnostic; Go exits **2** printing `goroutine stack
-exceeds 1000000000-byte limit` / `fatal error: stack overflow`. Go's limit is
-the runtime's 1 GB goroutine stack rather than `ulimit`, and **it is not
-unbounded**.
+Go exits **2** printing `goroutine stack exceeds 1000000000-byte limit` /
+`fatal error: stack overflow`. Go's limit is the runtime's 1 GB goroutine stack
+rather than `ulimit`, and **it is not unbounded**.
+
+**LLVM USED TO EXIT 139 WITH NO DIAGNOSTIC. It now exits 70 and says why** — the
+stack guard, described in its own section below. Every figure in this file was
+first measured against the silent artifact and re-measured against the guarded
+one; the ceilings moved by ~1%, which is the guard's margin and not its frame
+cost.
 
 **THE RATIO IS NOT A CONSTANT, and an earlier draft of this file reported it as
 one.** Twelve-fold is the narrow shape; the wide shape is 4.1x, because Go's
@@ -62,7 +67,7 @@ frames on both.
 
 **So "the LLVM backend has a correctness ceiling" is true and incomplete** —
 both backends do — **but the disparity #178 was opened on is real and is not
-dissolved by that.** Between ~174,000 and ~2,097,000 frames the LLVM artifact
+dissolved by that.** Between ~172,000 and ~2,097,000 frames the LLVM artifact
 crashes while the Go artifact returns an answer, and `report.oath` fails inside
 that band today. An earlier draft of this file concluded the issue should drop
 its LLVM framing; that was an overcorrection, caught by review. A shared
@@ -71,16 +76,13 @@ backend works and the other does not, and programs live there.
 
 ## The difference that survives the correction
 
-**Failure mode, not depth.** Go prints what happened and exits 2. LLVM exits 139
-with nothing at all. A user whose program exceeds the depth learns *"fatal error:
-stack overflow"* on one backend and gets a bare segfault on the other.
+**Failure mode, not depth.** Go printed what happened and exited 2. LLVM exited
+139 with nothing at all. A user whose program exceeded the depth learned *"fatal
+error: stack overflow"* on one backend and got a bare segfault on the other.
 
-That is the part worth acting on, and it is much cheaper than any of #178's four
-listed dispositions: a guard that detects exhaustion and reports it does not
-raise the ceiling, does not need native containers, and turns an
-undiagnosable crash into a message. This file does not propose one — naming a
-direction is not a plan — but it is the disposition the measurement supports,
-and it is not among the four the issue lists.
+That was the part worth acting on, and it was much cheaper than any of #178's
+four listed dispositions. **It has been done** — see the next section. It does
+not raise the ceiling and does not close #178.
 
 ## Reproducing
 
@@ -105,34 +107,35 @@ delivery ids in a well-formed log:
 
 | backend | max distinct records | stack per record |
 |---|---:|---:|
-| LLVM (8,176 KB default) | **4,011** | 2,087 bytes |
-| LLVM (16,352 KB) | 7,975 | 2,100 bytes |
+| LLVM (8,176 KB default) | **3,949** | 2,120 bytes |
+| LLVM (16,352 KB) | 7,913 | 2,116 bytes |
 | Go (1 GB goroutine stack) | **24,797** | — |
 
-Doubling the stack doubles the record count (ratio 1.988) and bytes-per-record
+Doubling the stack doubles the record count (ratio 2.004) and bytes-per-record
 is stable across both limits, so the application obeys the same
-`stack ÷ frame` model the probes do — at ~2,090 bytes per record, about 43x a
+`stack ÷ frame` model the probes do — at ~2,120 bytes per record, about 44x a
 simple recursion's 48-byte frame, because the per-record work nests.
 
 **An earlier draft of this file said the 5,500 figure "belongs to that
 program's shape, not to the backend", contrasting it with depth. That framing
 was wrong** and is corrected here: it IS depth. The per-record frame is what
-makes ~4,000 rather than ~174,000 the limit, and the two are the same
+makes ~4,000 rather than ~172,000 the limit, and the two are the same
 phenomenon with different constants.
 
-The Go/LLVM ratio on the real program is **6.2x**, inside the 4.1x-12.0x band
+The Go/LLVM ratio on the real program is **6.3x**, inside the 4.2x-12.2x band
 the two probes bracketed — so the model predicts the application rather than
 merely coexisting with it.
 
 **And this is what closes the decline condition.** The question was whether the
 ceiling sits far above any realistic deployment. It does not, on either
-backend: a verified consumer of an APPEND-ONLY event log stops at ~4,000
+backend: a verified consumer of an APPEND-ONLY event log stops at ~3,950
 records compiled with LLVM and ~24,800 with Go. Twenty-five thousand webhook
 deliveries is an ordinary lifetime volume for one repository, not an
 adversarial input, and neither figure is a limit an operator would think to
-check for. **The LLVM artifact reaches it silently — exit 139, zero bytes on
-stdout and stderr** — which is the same failure-mode finding the probes gave,
-now on the committed application.
+check for.
+
+**The guard does not change that.** It changes what reaching the ceiling LOOKS
+like, and the ~1% the figures moved is its margin. #178 stays open.
 
 ## Reproducing the application figures
 
@@ -148,9 +151,67 @@ as the largest it can PROCESS. It requires the repository line in the output.
 An earlier terminal-derived set of figures did not check this and sat a few
 percent away; the persisted run supersedes it.
 
+## The disposition that was taken: a stack guard
+
+Not one of #178's four listed dispositions, and it does NOT close the issue —
+the ceiling is unchanged. What changed is that reaching it is now legible, and
+that a HANDLER survives it.
+
+Every emitted Oath body checks the stack before descending: it reads the frame
+pointer, compares it against a floor, and on failure calls a runtime door that
+already knows the two dispositions this backend has — a standalone program
+exits **70** with a diagnostic, a handler answers **500** and keeps serving.
+
+**THE HANDLER HALF IS A CONFORMANCE FIX, NOT AN ERGONOMIC ONE.** SPEC §14.2
+answers 400 for an unrepresentable request field *"because a remote party must
+not be able to halt a host"*. A body deep enough to exhaust the stack halted it.
+Measured before and after, same program, same 8 MB stack:
+
+| | control (500 B body) | 400,000 B body | control again |
+|---|---|---|---|
+| before | 200 OK | connection closed, **process dead** | connection refused |
+| after | 200 OK | 500, one stderr line | 200 OK |
+
+The obligation was already normative; this backend could not keep it. That is
+why the guard routes through the existing refusal door rather than exiting
+where it is detected — the door, not the guard, is what knows a server must
+survive its input.
+
+**THE BUDGET IS READ FROM THE HOST** (`getrlimit(RLIMIT_STACK)`), so a larger
+`ulimit -s` raises the ceiling with no rebuild — verified against one binary at
+8, 16 and 32 MB. That is also what keeps the message honest: the limit is a fact
+about this artifact's environment, so the diagnostic says so rather than
+claiming the program diverges. *No proof is not disproof*, one layer down.
+
+**Two measurements that changed the implementation.** The first attempt read the
+stack by taking the address of a local. That works and costs: an `alloca` whose
+address escapes through `ptrtoint` enlarged every frame enough to cut the
+application's ceiling from ~4,000 records to **~2,970** — a guard that made
+exhaustion legible by making it arrive 26% sooner. Reading the frame pointer
+instead (`llvm.frameaddress`) leaves frames unchanged; the ~1% that remains is
+the 128 KB margin. Run time, median of 7 at three workload sizes, is inside
+run-to-run variance:
+
+| records | unguarded | guarded | |
+|---:|---:|---:|---|
+| 300 | 22.58 ms | 21.62 ms | −4.3% |
+| 1,000 | 93.08 ms | 92.85 ms | −0.2% |
+| 2,500 | 416.53 ms | 424.80 ms | +2.0% |
+
+A single earlier run reported +13.6%; repeating it across sizes did not
+reproduce that, and the honest statement is that the cost is not distinguishable
+from noise here rather than that it is zero.
+
 ## What this does NOT establish
 
-- **That 48, 64 and 2,090 bytes generalise.** Three shapes on one platform, one
+- **That the guard catches EVERY exhaustion.** The check is the first
+  instruction of a body, but the machine-code prologue has already reserved
+  that body's frame by then — so a single frame larger than the 128 KB margin
+  would fault before its own check. 128 KB is 16,384 spilled pointers in one
+  function and nothing in this corpus approaches it, but that is a bound rather
+  than a proof, and the supported claim is: exhaustion is caught for any
+  program whose largest single frame fits in the margin.
+- **That 48, 64 and 2,120 bytes generalise.** Three shapes on one platform, one
   compiler. The formula is the claim; the constants are not, and another
   consumer will have its own per-record cost.
 - **Anything about heap growth.** Only stack depth was varied. `report.oath`'s
