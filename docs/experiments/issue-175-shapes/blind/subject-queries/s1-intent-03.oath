@@ -1,0 +1,7 @@
+; Subject 1, intent 3 ("scan a byte body for a JSON string value, stopping at a
+; quote or a control byte"). Also its first shape.
+(defn wanted [] [(bs (List Int))] (List Int) (Nil [Int])
+  (prop stops-before-a-quote [(x0 (List Int))]
+    (not (contains 34 (wanted x0))))
+  (prop stops-before-a-newline [(x0 (List Int))]
+    (not (contains 10 (wanted x0)))))

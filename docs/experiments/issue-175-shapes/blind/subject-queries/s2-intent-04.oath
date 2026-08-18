@@ -1,0 +1,6 @@
+; Subject 2, intent 4. Unlike subject 1 this one probed for candidates first, so
+; it is WEAKER evidence of convergence — it may have read the target's law before
+; stating its own. Committed so the two can be told apart rather than pooled.
+(defn wanted [] [(s Str)] Str s
+  (prop never-contains-a-tab [(x0 Str)]
+    (not (contains 9 (str-bytes (wanted x0))))))

@@ -1,0 +1,110 @@
+oath source: 1d96317 +MODIFIED
+
+########## the two the ORACLE run wrote off, reached by BOTH blind subjects
+########## — so BOTH subjects' own queries are re-asked, not one subject's twice
+=== s1-intent-03.oath  [--spec]
+    CLAIM: subject 1: json-string-value states both laws (hash match)
+  
+    · stops-before-a-quote [tested here]  #64006ff40b87
+        json-string-value  (tested as "no-quote")
+  
+    · stops-before-a-newline [tested here]  #a1466e8f8f72
+        json-string-value  (tested as "no-newline")
+
+=== s1-intent-04.oath  [--spec]
+    CLAIM: subject 1: record-field, hash match under a DIFFERENT property name
+  
+    · never-contains-the-separator [tested here]  #968def4dbf2a
+        record-field       (tested as "never-contains-a-tab")
+  
+    · never-contains-a-newline [tested here]  #0e619b705c28
+        no definition states this law as written (matched by property content hash)
+        4 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+        query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+        type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+          config-key         PROVEN (all 3 properties, Z3 over unbounded ints)
+          gh-group           tested (200 cases per property)
+          record-field       tested (200 cases per property)
+          shout              PROVEN (all 2 properties, Z3 over unbounded ints)
+        Try `get <name>` to read how each states its properties, or find --implies to
+        search by PROOF rather than by shape.
+
+=== s2-intent-03.oath  [--spec]
+    CLAIM: subject 2: the same target, its own wording, names differing again
+  
+    · stops-at-a-quote [tested here]  #64006ff40b87
+        json-string-value  (tested as "no-quote")
+  
+    · stops-at-a-control-byte [tested here]  #cbf26057f8d2
+        json-string-value  (tested as "no-tab")
+
+=== s2-intent-04.oath  [--spec]
+    CLAIM: subject 2: same target (weaker — it probed for candidates first)
+  
+    · never-contains-a-tab [tested here]  #968def4dbf2a
+        record-field       (tested as "never-contains-a-tab")
+
+########## the technique the CLEAN run found, which the guidance did not describe
+=== signature-probe.oath  [--spec]
+    CLAIM: a reflexive law enumerates the corpus at this shape
+  
+    · refl [tested here]  #70641378db6f
+        no definition states this law as written (matched by property content hash)
+        4 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+        query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+        type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+          config-key         PROVEN (all 3 properties, Z3 over unbounded ints)
+          gh-group           tested (200 cases per property)
+          record-field       tested (200 cases per property)
+          shout              PROVEN (all 2 properties, Z3 over unbounded ints)
+        Try `get <name>` to read how each states its properties, or find --implies to
+        search by PROOF rather than by shape.
+
+########## the axes
+=== s1-intent-01.oath  [--implies]
+    CLAIM: config-missing proves both laws
+  
+    · nothing-required-is-nothing-missing
+        config-missing     ← provably satisfies it (direct (lemma-free))
+  
+    · empty-config-reports-the-first-required-key
+        config-missing     ← provably satisfies it (direct (lemma-free))
+
+=== s1-intent-06.oath  [--implies]
+    CLAIM: any proves both laws; all REFUTED
+  
+    · empty-satisfies-nothing
+        any                ← provably satisfies it (direct (lemma-free))
+        1 REFUTED — proved NOT to satisfy it (a countermodel exists)
+            all                countermodel (by evaluation): <fn {SNil→true} else false>
+  
+    · a-passing-head-is-enough
+        any                ← provably satisfies it (direct (lemma-free))
+        1 REFUTED — proved NOT to satisfy it (a countermodel exists)
+            all                countermodel (by evaluation): <fn {SNil→false SNil→false SNil→false} else true>, (SCons -11 SNil), (Cons SNil Nil)
+
+=== s1-intent-07.oath  [--implies]
+    CLAIM: take-while proves both; drop-while REFUTED
+  
+    · empty-stays-empty
+        drop-while         ← provably satisfies it (direct (lemma-free))
+        filter             ← provably satisfies it (direct (lemma-free))
+        take-while         ← provably satisfies it (direct (lemma-free))
+  
+    · keeps-a-passing-head
+        take-while         ← provably satisfies it (direct (lemma-free))
+        1 REFUTED — proved NOT to satisfy it (a countermodel exists)
+            drop-while         countermodel (by evaluation): <fn {19→false} else true>, 11, Nil
+        1 NO VERDICT — a strategy attempt was environmentally aborted, so no negative verdict is valid (SPEC §7.2)
+
+########## subject 2's own positive control, at Int
+=== s2-intent-06-control.oath  [--spec]
+    CLAIM: the same membership laws find contains at Int — so the Str absence is real
+  
+    · found-at-head [tested here]  #b58ca49c928b
+        contains           (proven as "found-at-head")  ← a proven implementation of this spec
+  
+    · absent-from-empty [tested here]  #70a724c706da
+        contains           (proven as "absent-from-empty")  ← a proven implementation of this spec
+        si-member          (proven as "empty-has-none")  ← a proven implementation of this spec
+

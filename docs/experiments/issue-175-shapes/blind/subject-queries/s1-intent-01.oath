@@ -1,0 +1,6 @@
+; Subject 1, intent 1, RETURN axis. Its first and only shape.
+(defn wanted [] [(lines (List Str)) (required (List Str))] Str SNil
+  (prop nothing-required-is-nothing-missing [(x0 (List Str))]
+    (== (wanted x0 (Nil [Str])) SNil))
+  (prop empty-config-reports-the-first-required-key [(x0 Str) (x1 (List Str))]
+    (== (wanted (Nil [Str]) (Cons [Str] x0 x1)) x0)))

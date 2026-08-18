@@ -1,0 +1,7 @@
+; Subject 1, intent 7, POLYMORPHISM axis. Its first and only shape.
+(defn wanted [a] [(p (-> a Bool)) (xs (List a))] (List a) (Nil [a])
+  (prop empty-stays-empty [(x0 (-> Int Bool))]
+    (== (wanted [Int] x0 (Nil [Int])) (Nil [Int])))
+  (prop keeps-a-passing-head [(x0 (-> Int Bool)) (x1 Int) (x2 (List Int))]
+    (== (wanted [Int] x0 (Cons [Int] x1 x2))
+        (if (x0 x1) (Cons [Int] x1 (wanted [Int] x0 x2)) (Nil [Int])))))

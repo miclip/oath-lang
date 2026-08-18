@@ -1,0 +1,10 @@
+; Subject 1, intent 6, ABSTRACTION axis — the fixed value generalized to a test.
+; Subject 1 reported `any` as the reachable artifact; subject 2 produced the same
+; evidence and DECLINED to report it, calling it a composition rather than a
+; definition. The disagreement is about what SATISFIED means, not about whether
+; discovery worked.
+(defn wanted [a] [(p (-> a Bool)) (xs (List a))] Bool false
+  (prop empty-satisfies-nothing [(x0 (-> Str Bool))]
+    (not (wanted [Str] x0 (Nil [Str]))))
+  (prop a-passing-head-is-enough [(x0 (-> Str Bool)) (x1 Str) (x2 (List Str))]
+    (if (x0 x1) (wanted [Str] x0 (Cons [Str] x1 x2)) true)))

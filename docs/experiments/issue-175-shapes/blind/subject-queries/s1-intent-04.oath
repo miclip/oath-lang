@@ -1,0 +1,11 @@
+; Subject 1, intent 4 ("make a field safe to splice into a delimited record").
+; Its FIRST and only shape. The property NAME differs from record-field's own
+; (`never-contains-a-tab`) while the law hashes identically — and a property's
+; name is not part of its hash. That is the evidence of CONVERGENT PHRASING
+; rather than copying, and it is what defeats the circularity exclusion for a
+; caller who does not know the target.
+(defn wanted [] [(field Str)] Str SNil
+  (prop never-contains-the-separator [(x0 Str)]
+    (not (contains 9 (str-bytes (wanted x0)))))
+  (prop never-contains-a-newline [(x0 Str)]
+    (not (contains 10 (str-bytes (wanted x0))))))

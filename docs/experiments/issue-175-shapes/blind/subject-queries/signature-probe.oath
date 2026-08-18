@@ -1,0 +1,8 @@
+; THE TECHNIQUE THE CLEAN RUN FOUND, and the one the guidance did not describe.
+;
+; The law is reflexive, so it can never hash-match anything. That is the point:
+; --spec falls through to its compatible-signature list and ENUMERATES the corpus
+; at this shape. Subjects in both arms invented this independently; one built
+; seventeen of them and called it "the cheapest map of the corpus".
+(defn wanted [] [(s Str)] Str s
+  (prop refl [(x Str)] (== (wanted x) (wanted x))))

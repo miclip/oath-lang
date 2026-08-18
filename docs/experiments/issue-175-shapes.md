@@ -1,15 +1,21 @@
 # #175 — can documentation lift the SATISFIED rate, or is machinery needed?
 
-**Status: MEASURED, AND THE FALSIFIER IS NOT DISCHARGED. The recommendation is
-to SHIP THE DOCUMENTATION and leave #175 OPEN** pending the one measurement that
-would settle it.
+**Status: MEASURED, INCLUDING A CONTROLLED BLIND RUN. The recommendation is
+DECLINE #175 — but NOT on the ground the issue offers.**
 
-The evidence is consistent with declining — the rate more than doubles through
-phrasing alone with the tool unchanged — but it does not establish the issue's
-condition, and the gap is not a technicality. See "The verdict, narrowed" at the
-end.
+The issue's falsifier asks whether DOCUMENTATION lifts the hit rate. Measured
+against a control, it does not: guided and unguided readers both averaged 6 of 7
+and the unguided ones were cheaper. So that condition is NOT met.
 
-Nothing was built. No new mode, no ranking layer, no translation machinery.
+What the run establishes instead undercuts the issue's premise directly. The two
+CONTROL subjects — given the seven intents, the corpus, and nothing but the mode
+list and query syntax — reached 6 of 7 each, with no translation layer and no
+change to the tool. That is exactly the situation #175 describes. All four
+subjects averaged 6 of 7 whether guided or not; the 2-of-7 baseline was one
+author's single pass, not a ceiling.
+
+**Decline because the gap #175 was opened to close is not there**, not because a
+page fixed it.
 
 ## The falsifier, quoted rather than paraphrased
 
@@ -104,7 +110,11 @@ The type application is INFERRED, so writing it changes nothing. A first draft
 of the documentation taught it as mandatory — a made-up rule, derived from
 reading the baseline rather than from running the third row.
 
-## The two that stayed, and why no phrasing reaches them
+## The two that stayed for the ORACLE run — and did not stay for the blind one
+
+**Superseded by "The blind run" below: both blind subjects reached both targets
+on `--spec`, first try.** What survives is the narrower fact this section
+measures, which is about `--implies` only.
 
 Both are #177's measured blind spot. `--implies` appends the query law to a
 candidate and proves it; a body the translator cannot build never reaches a
@@ -135,6 +145,10 @@ the caller gets a name to read. The procedure in `discovery.md` puts `--details`
 ahead of `--equiv` for exactly this reason.
 
 ## Circularity, excluded the way the baseline excluded it
+
+**And the exclusion turned out to be wrong for a caller who does not know the
+target — see the blind run below.** It is right for the runs in THIS section,
+whose author did. Kept as recorded, because that is what was done here.
 
 The baseline dropped intent 5 because "the query came out AST-identical to the
 target's own law". The same rule is applied here, and it cost one result:
@@ -170,17 +184,167 @@ artifact is decidable and is what the documentation's claims rest on. Whether a
 caller who does not know the target arrives at that shape is the open half, and
 no script settles it.
 
+## The blind run — the measurement that decides the issue
+
+The oracle run above had a defect it stated plainly: every query was written by
+someone who had read the baseline record and therefore knew each target. The
+condition is about a CALLER, so it needed a caller.
+
+**Two subjects, dispatched to a target that inherits no project instructions, no
+memory index and no commit digest**, each into its own copy of an isolated
+export: the `oath` binary, a corpus copy, the seven intents, and a guide. No
+`.git`, no `docs/`, no `CLAUDE.md`. Both were asked what context they had
+received before opening the task, and both answered clean; one disclosed two
+weak DOMAIN signals (the working directory is named `oath-lang`, and MCP tool
+names implying the mode names) which carry no work state and no part of the
+answer key.
+
+**THE GUIDE THEY READ IS NOT THE SHIPPED PAGE, and that is a real narrowing.**
+The shipped section names four of the seven targets in its worked examples — the
+examples ARE these intents — so it hands a reader of exactly these seven their
+answer. What was exported is the transferable content: the three axes and the
+procedure, stated generically, with no definition names and no signatures. A
+preflight confirmed it; the only hits were "any" and "contains" as ordinary
+English quantifiers.
+
+| # | artifact | baseline | oracle | subject 1 | subject 2 |
+|---|---|---|---|---|---|
+| 1 | `config-missing` | no | yes | yes (`--implies`) | yes (`--implies`) |
+| 2 | `header-or` | yes | yes | yes | yes |
+| 3 | `json-string-value` | no | **no** | **yes** (`--spec`) | **yes** (`--spec`) |
+| 4 | `record-field` | no | **no** | **yes** (`--spec`) | **yes** (`--spec`) |
+| 5 | `media-type-is`/`path-is` | yes | yes | yes, BOTH | yes, BOTH |
+| 6 | `any` | no | yes | yes | reached, **declined** |
+| 7 | `take-while` | no | yes | yes | yes |
+| | | **2 of 7** | **5 of 7** | **7 of 7** | **6 of 7** |
+
+### The blind readers beat the oracle, on the two it had written off
+
+Intents 3 and 4 are #177's fragment-blind pair. The oracle run scored them
+unreachable because `--implies` returns NO VERDICT, and excluded the `--spec`
+route as CIRCULAR — the author knew the target's law, so a hash match proved
+nothing. Both blind subjects reached both targets on `--spec`, first try.
+
+**And the circularity exclusion is wrong for a blind caller, which is
+established mechanically rather than argued.** A property's NAME is not part of
+its hash (`propHashGeneral` encodes generalized binders and the body, nothing
+else). Subject 1 named its intent-4 law `never-contains-the-separator`;
+`record-field` names its own `never-contains-a-tab`; both hash to
+`#968def4dbf2a`. Different name, identical law, written by a reader who had
+never seen the definition — that is CONVERGENT PHRASING, not copying, and it is
+exactly what a content-hash surface exists to exploit.
+
+The exclusion was built to stop an author who knows the answer from writing it
+down. Applied to a caller who does not, it discards real finds. The oracle run
+inherited it from the baseline and was wrong to.
+
+### The one disagreement, and it is not about discovery
+
+Intent 6 split. Subject 1 reported `any` as the reachable artifact. Subject 2
+FOUND `any`, confirmed it with `--spec`, quoted it — and declined to report it:
+a caller must write `(any [Str] (fn [(s Str)] (== s y)) xs)`, which it called
+"a composition, not a definition satisfying the intent."
+
+That is the baseline record's own reasoning, reached independently by a reader
+who had never seen it. So both subjects reached the same artifact and disagreed
+about whether reaching it counts. **The disagreement is about what SATISFIED
+means, not about whether discovery worked** — and it is the same question the
+oracle run answered one way and the baseline the other.
+
+### What the subjects did that the oracle run did not
+
+Both ran positive CONTROLS before reporting an absence: the same membership laws
+at `Int` find `contains`, at `Str` find nothing — establishing their own method
+was not silently broken. Neither was asked to. Subject 2 additionally refuted
+the one unsettled candidate by evaluation. Subject 1 found that intent 5 has TWO
+valid artifacts and that no delimiter-parametric version exists, and read
+`filter`'s NO VERDICT on intent 7 correctly as SPEC §7.2's environmentally
+aborted strategy rather than as a negative.
+
+## The controlled run — and the null result
+
+The first blind pair was compromised: this tool runs each command as
+`bash -c '<whole script>'`, so everything the MEASURER runs is visible in `ps`,
+and both control subjects independently reported seeing a script of mine whose
+text named the targets. That is the answer key, leaked by the experimenter. Both
+disclosed it unprompted; neither was asked about `ps`.
+
+The run was repeated with the channel closed from both ends — the task forbids
+inspecting other processes, and the measurer ran NO commands while any subject
+was live. Four subjects, two per arm, differing only in whether they received
+the three axes and the procedure.
+
+| intent | artifact | t3 (guide) | t4 (guide) | c3 (none) | c4 (none) |
+|---|---|---|---|---|---|
+| 1 | `config-missing` | yes | **MISS** | yes | yes |
+| 2 | `header-or` | yes | yes | yes | yes |
+| 3 | `json-string-value` | yes | yes | yes | yes |
+| 4 | `record-field` | yes | yes | yes | yes |
+| 5 | `media-type-is`/`path-is` | yes | yes | yes | yes |
+| 6 | `any` | yes | declined | declined | declined |
+| 7 | `take-while` | yes | yes | yes | yes |
+| | **score** | **7** | **5** | **6** | **6** |
+| | tool calls | 61 | 70 | 55 | 47 |
+| | tokens | 89K | 93K | 71K | 88K |
+
+    TREATMENT  mean 6.0 of 7   65.5 calls   91.0K tokens
+    CONTROL    mean 6.0 of 7   51.0 calls   79.5K tokens
+
+**The guide made no difference to what was found, and the unguided arm was
+cheaper.** Everything the earlier runs attributed to it reproduces without it.
+
+## What actually found the artifacts, none of which was in the guide
+
+- **THE SIGNATURE PROBE.** A query whose only law is reflexive —
+  `(== (wanted x) (wanted x))` — matches nothing in THIS corpus, because nothing
+  in it states such a law (checked). So `--spec` falls through to
+  "N definition(s) have a COMPATIBLE SIGNATURE" and lists the definitions at that
+  shape. Not universal: a stored reflexive property would hash-match and suppress
+  the list, and the list omits definitions carrying no properties of their own. t3 wrote seventeen of them and called it "the cheapest
+  map of the corpus and what surfaced most of the answers". Subjects in both
+  arms invented it independently. The guidance never described it; it only said
+  the fallback list was a useful signal when it happened to appear.
+- **Reading the corpus.** c3 read all 238 names from `codebase/names.json`; c4
+  and c1 ran `oath ls`. Every one disclosed it unprompted as possibly biasing
+  their query shapes. (Two described `ls` as giving names AND signatures; it
+  gives names, hashes, kinds and guarantees only — they were pairing it with
+  `oath get`. Checked, because the write-up had repeated their wording.)
+- **`oath dependents`.** t3 reached `config-missing` through
+  `dependents config-key` — not through any find mode.
+
+## The finding that indicts the documentation
+
+t4 is the only subject that missed an artifact, and it is the one that followed
+the law-writing procedure most faithfully:
+
+> "I deliberately did not grep or read the full `ls` name list, `names.json`, or
+> the object store for intent keywords — every candidate below was surfaced by a
+> `find` mode's own output."
+
+It then tried NINETEEN signature shapes for intent 1 and never guessed
+`(List Str) x (List Str) -> Str`. Both unguided subjects read the names and had
+it immediately.
+
+The page framed discovery as law-writing and never mentioned that the corpus has
+a readable index. On this evidence that framing cost a find. `docs/discovery.md`
+now leads with probing and enumeration and demotes the axes to a diagnostic —
+a repair the falsifier produced, aimed at the document rather than the issue.
+
 ## What this does NOT establish
 
-- **That an author who does not know the target will follow the procedure.**
-  This is the load-bearing limit and it is not a small one. The runs above were
-  performed by someone who had read the baseline record and therefore knew which
-  artifact each intent was supposed to reach. What is established is that the
-  shapes exist, that the search over them is FINITE and directed, and that it
-  terminates in a proof for 3 of the 5 previously-failing intents. What is NOT
-  established is the behavioural claim — that a caller starting from the intent
-  alone arrives there. Discharging that needs a reader who has not seen the
-  targets, and it is the natural next measurement if this issue is reopened.
+- **ANYTHING ABOUT THE SHIPPED PAGE AS IT NOW STANDS.** This is the sharpest
+  limit and it got stronger, not weaker, as the work went on. The treatment
+  subjects read the axes and the law-writing procedure. The page now LEADS with
+  signature probing, `oath ls` and `oath dependents` — the three things the run
+  identified as what actually worked, and all three were ABSENT from what the
+  subjects were given. So no arm of this experiment tested the current page.
+  Its repair is motivated by the run and unmeasured by it; testing it needs
+  fresh intents, because these seven are now worked examples in the text.
+- **That two readers are independent of each other.** They share a model and its
+  priors, so agreement between them separates a systematic effect from a one-off
+  and does not corroborate a judgment. What carries the verdict here is not
+  their agreement: it is that each produced tool output naming the artifact,
+  which is decidable from the artefact and settles itself.
 - **That 5 of 7 generalizes, or that an empty result is USUALLY a shape
   problem.** Seven intents from one application's friction log, chosen BECAUSE
   they had artifacts to find — so "the corpus has nothing" was impossible here
@@ -192,32 +356,3 @@ no script settles it.
   failures. Nothing here samples for a fourth, so exhausting them does not
   establish that a corpus has no artifact — and the documentation says so
   rather than presenting them as a closed search.
-
-## The verdict, narrowed
-
-**The issue's condition is about a CALLER, and this run had an ORACLE.** It asks
-whether the SATISFIED rate can be lifted *by documentation*; documentation acts
-on someone who does not know the answer, and every query above was written by
-someone who had read the baseline record and therefore knew which artifact each
-intent should reach. What was measured is that the right shapes EXIST, are
-reachable with no tool change, and are found by varying three named axes. What
-the condition asks is whether a caller starting from the intent alone gets
-there. Those are different populations, and reporting the first as the second is
-the substitution this repository's own guidance is built around.
-
-So:
-
-    ESTABLISHED    3 of the 5 previously-failing intents are reachable by
-                   re-shaping the query, with the tool unchanged and every hit
-                   proved rather than hash-matched. The two that remain are
-                   #177's fragment limit and no phrasing reaches them through
-                   `--implies`.
-    NOT ESTABLISHED that documentation lifts the rate. That needs a reader who
-                   has not seen the targets, given the intents and the new
-                   section, scored the same way.
-
-**Ship the documentation regardless** — it is correct, it is derived from
-measurement, and two of its claims were wrong until review caught them. **Leave
-#175 open**, because a blind-reader run is a cheap measurement and it is the one
-that decides the issue. Closing it on this run would be closing it on the
-evidence the run explicitly says it does not have.

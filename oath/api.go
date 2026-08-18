@@ -418,8 +418,8 @@ func findFromDef(st *Store, qd *Def, qm *Meta, excludeHash, header string) strin
 			// deliberately dropped.
 			recordMiss(st, q.hash, querySignature(st, qd), time.Now())
 			b.WriteString("      no definition states this law as written (matched by property content hash)\n")
-			if near := signatureNeighbours(st, qd, excludeHash); len(near) > 0 {
-				fmt.Fprintf(&b, "      %d definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your\n", len(near))
+			if near, total := signatureNeighboursN(st, qd, excludeHash); len(near) > 0 {
+				fmt.Fprintf(&b, "      %d definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your\n", total)
 				b.WriteString("      query may be shaped differently (a call to a POLYMORPHIC definition needs explicit\n")
 				b.WriteString("      type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):\n")
 				for _, n := range near {
@@ -1446,8 +1446,18 @@ func apiLog(st *Store, filter string) string {
 // They are not matches — they are where to look next when a spec query comes back
 // empty, which is otherwise indistinguishable from an empty registry.
 func signatureNeighbours(st *Store, qd *Def, excludeHash string) []string {
+	out, _ := signatureNeighboursN(st, qd, excludeHash)
+	return out
+}
+
+// signatureNeighboursN also returns how many definitions MATCHED, which is not
+// len(rows): the rows are capped, and the last one may be the "and N more"
+// notice rather than a definition. A caller rendering a count must use this,
+// or a truncated list reports its own length as the population — which is the
+// silent cap again, one layer up.
+func signatureNeighboursN(st *Store, qd *Def, excludeHash string) ([]string, int) {
 	if qd == nil || qd.Ty == nil {
-		return nil
+		return nil, 0
 	}
 	want := debugTy(&generalizeTypes([]Ty{*qd.Ty})[0])
 	names := st.Names()
@@ -1457,6 +1467,7 @@ func signatureNeighbours(st *Store, qd *Def, excludeHash string) []string {
 	}
 	sort.Strings(keys)
 	var out []string
+	matched := 0
 	for _, k := range keys {
 		h := names[k]
 		if h == excludeHash {
@@ -1470,13 +1481,27 @@ func signatureNeighbours(st *Store, qd *Def, excludeHash string) []string {
 			continue
 		}
 		m, _ := st.GetMeta(h)
-		out = append(out, fmt.Sprintf("%-18s %s", k, guaranteeString(m.Guarantee)))
-		if len(out) >= 8 {
-			break
+		matched++
+		if len(out) < neighbourCap {
+			out = append(out, fmt.Sprintf("%-18s %s", k, guaranteeString(m.Guarantee)))
 		}
 	}
-	return out
+	// SAY WHAT WAS DROPPED. This list used to stop at the cap and print nothing
+	// about the rest, so a caller reading eight names could not tell a complete
+	// answer from a truncated one — and the definition they wanted might be the
+	// ninth. Silent truncation reads as "that is all there is", which is the one
+	// thing an empty-or-short discovery result must never be allowed to imply.
+	if matched > len(out) {
+		out = append(out, fmt.Sprintf("... and %d more at this signature (this list is capped at %d)",
+			matched-len(out), neighbourCap))
+	}
+	return out, matched
 }
+
+// neighbourCap bounds how many signature-compatible names are PRINTED. The
+// count of matches is not bounded, so the caller is always told how many were
+// withheld.
+const neighbourCap = 8
 
 // querySignature renders the sought function's type, generalized the same way
 // the property matcher generalizes, so a recorded demand signal reads as a

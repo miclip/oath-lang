@@ -1,0 +1,7 @@
+; Subject 2, intent 3 — its own wording, reached first try. Named differently
+; again ("stops-at-a-control-byte" for the target's "no-tab"), same hashes.
+(defn wanted [] [(bs (List Int))] (List Int) (Nil [Int])
+  (prop stops-at-a-quote [(x0 (List Int))]
+    (not (contains 34 (wanted x0))))
+  (prop stops-at-a-control-byte [(x0 (List Int))]
+    (not (contains 9 (wanted x0)))))

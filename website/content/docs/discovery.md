@@ -234,20 +234,61 @@ in a type application, a constructor, an annotation — does not generalize at
 all: laws that are otherwise identical but say `(Nil [Int])` and `(Nil [Rat])`
 miss each other. Keep concrete types in the binders where you can.
 
-Measured on seven intents drawn from an application's friction log: as
-originally phrased **2 of 7** found their artifact; re-phrased across the three
-axes below, **5 of 7** did, with no change to the tool.
-`docs/experiments/issue-175-shapes.md` is the record.
+### Start with a SIGNATURE PROBE, not with a law
 
-**That is a result about those seven, and it is not a general likelihood.** They
-were selected because the corpus was already known to hold a satisfying
-artifact, so "the corpus has nothing" was impossible there by construction —
-which is exactly the case a real query cannot rule out. What the sample supports
-is that shape failures are real, common enough to dominate a set like this, and
-cheap to test. It does not support "your empty result is probably a shape
-problem", and this section should not be read that way.
+This is the cheapest move available and it is worth making first.
 
-### The three axes, each with a measured example
+A query's law only matches if it hash-equals a definition's own. But when it
+*doesn't* match, `--spec` falls through to listing every definition whose
+SIGNATURE is compatible — so a law you know will never match is a way of asking
+"what does this corpus have at this shape?"
+
+```
+(defn wanted [] [(s Str)] Str s
+  (prop refl [(x Str)] (== (wanted x) (wanted x))))
+```
+
+```
+· refl  — no definition states this law as written
+  4 definition(s) have a COMPATIBLE SIGNATURE:
+    config-key         PROVEN ...
+    gh-group           tested ...
+    record-field       tested ...
+    shout              PROVEN ...
+```
+
+Nothing about that query says what you want. It lists the corpus's definitions
+at `(-> Str Str)` anyway. Probe a few shapes, read the names with `oath get`,
+and only then write the real law — you will be writing it against a definition
+you have seen rather than one you are guessing at.
+
+**It is a map, not a census, in two ways.** The list is built only from
+definitions that carry properties of their own, so one with no stated laws is
+silently absent — an empty list is not proof that the shape is empty, and
+`--implies` can still prove your query against such a body. And the list is
+capped at eight names; past that it tells you how many more share the signature,
+so widen your probe rather than reading eight as all of them.
+
+**One caveat on the probe, and it is not fatal.** The reflexive law is only a
+probe because nothing in the corpus states it. If some definition ever did,
+`--spec` would report that content-hash match and print no neighbour list — you
+would get a hit instead of a map. Nothing in this corpus states one today, and
+if it happens the failure is legible rather than silent: you see a match you did
+not expect.
+
+**Two more moves in the same spirit**, both cheaper than guessing a law:
+
+- `oath ls` lists every name with its hash, kind and guarantee — **not its
+  signature**, so pair it with `oath get <name>` to see shapes. The corpus is
+  small enough to read.
+- `oath dependents <name>` walks from a name you found to its neighbours; a
+  definition adjacent to a near-miss is often the one you want.
+
+### The three axes, for when you have a shape and it still finds nothing
+
+**These describe real gaps that nothing bridges. They are not, on the evidence
+below, what finds artifacts** — probing and reading the corpus is. Reach for
+them when a probe has told you the shape exists and your law still misses.
 
 | axis | the guess that finds nothing | the shape the corpus used |
 |---|---|---|
@@ -342,6 +383,32 @@ is how the corpus's own polymorphic definitions state theirs:
    `issue-177-fragment.md` tested 2 of the 12 and says so. Reaching those two is
    evidence that the blindness is not structural, not a guarantee of coverage.
 
+### What this section is measured against, including where it was wrong
+
+The three axes came from re-phrasing seven intents drawn from an application's
+friction log: one author's first pass found **2 of 7**, and re-shaped queries
+found 5 of 7.
+
+**That was then tested against readers, and the axes did not survive as the
+explanation.** Four subjects who had never seen the corpus were given the seven
+intents; two got this section's guidance, two got only the mode list and the
+query syntax. Both groups averaged **6 of 7**, and the group WITHOUT the
+guidance used fewer tool calls and fewer tokens to get there.
+
+So the honest claims are narrower than the first version of this page made:
+
+- A capable caller reaches most of these artifacts whether or not they read
+  this. The 2-of-7 baseline reflects one author's single pass, not a ceiling.
+- What the subjects actually used was signature probing, `oath ls` and
+  `oath dependents` — which is why those now come first. Every one of them was
+  invented independently by subjects; none was in the guidance.
+- The one subject that missed an artifact was the one that followed the
+  law-writing procedure most faithfully and deliberately avoided reading the
+  corpus's names. That is a warning about how this page was previously framed.
+
+The axes below remain true — they describe gaps nothing bridges — but they are a
+diagnostic for a query that will not land, not a search strategy.
+
 ### What this does not fix
 
 Two of the seven stayed unfound at every shape, both for the same reason: the
@@ -349,10 +416,19 @@ target's body is outside the provable fragment, so **`--implies` returns no
 verdict however the query is written.** The obstacle is the CANDIDATE's body,
 not your signature, which is why varying the shape does not help.
 
-**That is a statement about `--implies`, not about every mode.** `--spec` can
-still hit such a target — it matches property content hashes and never invokes
-the prover — but only if your law happens to hash-equal the target's own, which
-is not something you can aim at. One of the two intents above did exactly that
-by coincidence and was scored unsatisfied for it, since a query that reproduces
-the target's own law is not evidence that discovery found anything. Trying
-`--spec` costs nothing; relying on it is relying on a coincidence.
+**That is a statement about `--implies`, not about every mode — and `--spec`
+reaches these more often than you would expect.** It matches property content
+hashes and never invokes the prover, so it is unaffected by the fragment. The
+catch is that your law has to hash-equal the target's own.
+
+**That happens more than "coincidence" suggests.** Two readers who had never
+seen this corpus were given the intents behind both fragment-blind definitions
+and reached both on `--spec`, first try, writing the law from the intent
+sentence alone. A property's NAME is not part of its hash, so one of them naming
+its law `never-contains-the-separator` where the target names its own
+`never-contains-a-tab` is evidence they wrote the SAME law independently rather
+than copying it. For a sharply worded intent the obvious law is often the law
+the author wrote.
+
+So: always try `--spec`, especially after a `NO VERDICT`. It is fast, and a hit
+is a real find — a definition that literally states your law.

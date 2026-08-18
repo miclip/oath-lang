@@ -1,0 +1,8 @@
+; Subject 2's unprompted POSITIVE CONTROL for intent 6, run before it reported
+; an absence: the identical laws at Int find `contains`; at Str they find
+; nothing. Neither subject was asked to do this.
+(defn wanted [] [(x Int) (xs (List Int))] Bool false
+  (prop found-at-head [(x0 Int) (x1 (List Int))]
+    (wanted x0 (Cons [Int] x0 x1)))
+  (prop absent-from-empty [(x0 Int)]
+    (not (wanted x0 (Nil [Int])))))
