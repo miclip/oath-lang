@@ -1714,11 +1714,26 @@ milestone shipped a SUBSET of an issue that remains open.
   every step, and REFUSES on one it does not recognise — so a step added to CI
   cannot silently escape it.
 
-  **IT RUNS A SUBSET AND SAYS SO IN ITS OWN OUTPUT — roughly half the steps.**
-  Action steps, the cloud/Postgres integration job, the wasm target, the
-  nine-hour cold re-derivation and the one MUTATING step (`make verify`) are
-  skipped with reasons. So "ci-local green" is not "CI green", and the honest
-  claim after running it is the one the script itself prints.
+  **IT RUNS A SUBSET AND SAYS SO IN ITS OWN OUTPUT.** Action steps (checkout,
+  setup, upload), the nine-hour cold re-derivation, the PR-context steps and the
+  one MUTATING step (`make verify`) are skipped with reasons. So "ci-local
+  green" is not "CI green", and the honest claim after running it is the one the
+  script itself prints — **read the count it reports rather than repeating a
+  fraction from here**, which is the mistake the paragraph below documents five
+  times over.
+
+  **A SKIP THAT NAMES A PREREQUISITE MUST TEST FOR IT.** Several steps were
+  skipped on assumptions — *"wasm32-wasip1 may not be installed"*, *"cloud build
+  tag"* — that were FALSE on the machine that wrote them, so real gates had
+  never run locally for no reason. They are probed now, and a probe that finds
+  the prerequisite absent says PROBED and how to supply it. The Postgres
+  integration step is DESTRUCTIVE — the cloud tests truncate their tables — so
+  reachability is not consent: it also requires `OATH_CI_LOCAL_PG=1`, meaning
+  the database at that DSN is disposable. Finding a server proves one EXISTS,
+  never that anyone agreed to lose it.
+  An untested reason ages into a fact nobody rechecks, and the sweep quietly
+  covers less than it claims — a silent cap in the one script whose entire job
+  is reporting what it did not do.
 
   This paragraph has now been wrong FIVE times, and the fifth is a different
   mode from the first four. It first named three gates from memory, then four,

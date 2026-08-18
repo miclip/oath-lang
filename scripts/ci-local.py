@@ -36,6 +36,7 @@ need a machine this is not, are reported as skipped WITH THEIR REASON — so
 from __future__ import annotations
 
 import argparse
+import os
 import hashlib
 import re
 import subprocess
@@ -62,6 +63,14 @@ WORKFLOWS = ROOT / ".github/workflows"
 # ---------------------------------------------------------------------------
 
 RUN: set[tuple[str, str]] = {
+    # PROBE-GATED. These four are runnable HERE when their prerequisite is
+    # actually present, and the probes beside main() demote them when it is not.
+    # They sat in NEEDS_ENV on an assumption ("may not be installed") that was
+    # false on the machine that wrote it.
+    ("conformance", "build library + CLI for wasm (prove feature excluded)", "d0acc6880fc4"),
+    ("conformance", "build cloud driver (compile guard; stays dependency-free)", "a8e480713521"),
+    ("conformance", "cloud build stays compilable", "a8e480713521"),
+    ("conformance", "Postgres + GCS integration tests", "3d70b5e119a4"),
     ("conformance", "build", "824452667570"),
     ("conformance", "unit tests", "230135e255a8"),
     ("conformance", "playground corpus mirrors the committed store (#145)", "b119401a74f0"),
@@ -109,14 +118,6 @@ NEEDS_ENV: dict[tuple[str, str], str] = {
         "provisions the runner's z3",
     ("conformance", "six-check conformance (cold prove at the SPEC budget)", "1dc431d452c0"):
         "the 9+ hour cold re-derivation; schedule/dispatch only",
-    ("conformance", "build library + CLI for wasm (prove feature excluded)", "d0acc6880fc4"):
-        "wasm32-wasip1 target may not be installed locally",
-    ("conformance", "build cloud driver (compile guard; stays dependency-free)", "a8e480713521"):
-        "cloud build tag; the integration job's setup",
-    ("conformance", "cloud build stays compilable", "a8e480713521"):
-        "cloud build tag; the integration job's setup",
-    ("conformance", "Postgres + GCS integration tests", "3d70b5e119a4"):
-        "needs Postgres and GCS services",
     ("stdlib-pr", "Compute the proposed registry delta", "41f545e50141"):
         "needs origin/<base_ref> and PR context",
     ("stdlib-pr", "Dry-run publication plan (unsigned)", "de22e02100ad"):
@@ -259,11 +260,74 @@ def steps(wf: Path) -> list[tuple[str, str]]:
     return out
 
 
+def step_env(meta: str) -> dict[str, str] | None:
+    """A step's `env:` block as a dict — or None if its metadata is not env-ONLY.
+
+    THE NARROWING THIS RELAXES, AND EXACTLY HOW FAR. Review found three ways
+    local execution diverged from CI's: shell fail-fast, env, and working
+    directory. The repair refused every step carrying ANY of the three, which was
+    right as one rule and is coarser than it needs to be: `env:` is a set of
+    key/value pairs this runner can reproduce EXACTLY, while `shell:` and
+    `working-directory:` change semantics it does not implement.
+
+    So env-only steps become runnable WITH their env applied, and anything
+    carrying shell or working-directory stays refused. A step that gains
+    `shell:` later falls back to refused automatically, because this returns
+    None the moment it sees one.
+    """
+    out: dict[str, str] = {}
+    for line in [l for l in meta.splitlines() if l.strip()]:
+        if re.match(r"-?\s*(shell|working-directory):", line.strip()):
+            return None
+        st = line.strip()
+        if re.match(r"-?\s*env:", st):
+            # BLOCK FORM ONLY. `env: {FOO: bar}` is a valid Actions flow mapping
+            # and this parser cannot read it — left to the key/value branch it
+            # yielded a variable literally named "env", and the step would then
+            # run WITHOUT its real variables while being reported as
+            # CI-equivalent. An unrecognised shape is refused, not guessed.
+            if re.match(r"-?\s*env:\s*$", st):
+                continue
+            return None
+        m = re.match(r'([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$', line.strip())
+        if not m:
+            return None          # a shape this parser does not understand: refuse
+        out[m.group(1)] = m.group(2).strip().strip('"\'')
+    return out or None
+
+
+# THE PARSER'S OWN CONTROL, run before any sweep reports anything.
+#
+# step_env is the one place this script RELAXES a reviewed refusal, so its
+# refusals are what keep the relaxation honest: a step gaining `shell:` or
+# `working-directory:` must fall back to not-runnable, silently and
+# automatically. That is a property of a regex, and a regex edit can lose it
+# without any test noticing — so the check runs at startup rather than living
+# in a suite nobody invokes before pushing.
+STEP_ENV_CASES: list[tuple[str, str, dict[str, str] | None]] = [
+    ("env only", 'env:\nOATH_TEST_PG_DSN: "postgres://x"', {"OATH_TEST_PG_DSN": "postgres://x"}),
+    ("env + shell", "env:\nFOO: bar\nshell: bash", None),
+    ("env + working-directory", "env:\nFOO: bar\nworking-directory: oath", None),
+    ("shell alone", "shell: bash", None),
+    ("working-directory alone", "working-directory: oath", None),
+    ("a line this parser cannot read", "env:\n- something odd", None),
+    ("env as an inline flow mapping", "env: {FOO: bar}", None),
+    ("an empty inline mapping", "env: {}", None),
+    ("no metadata", "", None),
+]
+
+
+def step_env_selftest() -> list[str]:
+    return [f"step_env({meta!r}) = {step_env(meta)!r}, want {want!r}"
+            for name, meta, want in STEP_ENV_CASES if step_env(meta) != want]
+
+
 def digest(body: str) -> str:
     return hashlib.sha256(body.encode()).hexdigest()[:12]
 
 
-def classify(key: tuple[str, str], body: str, has_meta: bool = False) -> tuple[str, str]:
+def classify(key: tuple[str, str], body: str, has_meta: bool = False,
+             env_only: dict[str, str] | None = None) -> tuple[str, str]:
     d = digest(body)
     if body.startswith("#uses#"):
         # STRUCTURALLY not runnable, whatever the table says. This script runs
@@ -280,7 +344,7 @@ def classify(key: tuple[str, str], body: str, has_meta: bool = False) -> tuple[s
     if full in NEEDS_ENV:
         return "needs-ci", NEEDS_ENV[full]
     if full in RUN:
-        if has_meta:
+        if has_meta and env_only is None:
             # NARROWED DELIBERATELY, after review found three separate ways local
             # execution diverged from CI's (shell fail-fast, env, working
             # directory). Reproducing a GitHub Actions runner is an unbounded
@@ -337,6 +401,118 @@ def pinned_solver_present() -> bool:
     return "4.16.0" in (out.stdout + out.stderr)
 
 
+# CAPABILITY-PROBED STEPS. These were SKIPPED ON AN ASSUMPTION — "wasm32-wasip1
+# may not be installed", "cloud build tag" — and on this machine every one of
+# those assumptions was false: the target was installed and the cloud tag
+# compiled. They had never run locally, for no reason.
+#
+# A skip that names a PREREQUISITE must test for it. Otherwise the reason ages
+# into a fact nobody rechecks, and the sweep quietly covers less than it says —
+# which is the same defect as a silent cap, in the one script whose whole job is
+# reporting what it did not do.
+WASM_STEPS = {("conformance", "build library + CLI for wasm (prove feature excluded)")}
+CLOUD_BUILD_STEPS = {
+    ("conformance", "build cloud driver (compile guard; stays dependency-free)"),
+    ("conformance", "cloud build stays compilable"),
+}
+PG_STEPS = {("conformance", "Postgres + GCS integration tests")}
+
+
+def wasm_target_present() -> bool:
+    """CI installs wasm32-wasip1 via an action this sweep skips."""
+    try:
+        out = subprocess.run(["rustup", "target", "list", "--installed"],
+                             capture_output=True, text=True, timeout=30)
+    except Exception:
+        return False
+    return "wasm32-wasip1" in out.stdout
+
+
+def cloud_deps_present() -> bool:
+    """`-tags cloud` pulls a Postgres driver; without the module cached this
+    needs the network, and a sweep that silently fetches is not a local gate."""
+    try:
+        out = subprocess.run(["go", "list", "-tags", "cloud", "-deps", "./..."],
+                             capture_output=True, text=True, timeout=120,
+                             cwd=str(ROOT / "oath"),
+                             # READ-ONLY, and GOFLAGS is set rather than
+                             # inherited: `-mod=mod` lets `go list` WRITE go.sum,
+                             # so a probe — reached even by `--list` — could dirty
+                             # tracked files before a single gate ran.
+                             env={**os.environ, "GOFLAGS": "-mod=readonly", "GOPROXY": "off"})
+    except Exception:
+        return False
+    return out.returncode == 0
+
+
+def postgres_present(dsn: str | None) -> bool:
+    """Is a DISPOSABLE PostgreSQL that accepts this DSN listening?
+
+    OPT-IN IS REQUIRED, AND REACHABILITY IS NOT CONSENT. This step is
+    DESTRUCTIVE: the cloud tests truncate `names`, `journal` and `proofq` with
+    RESTART IDENTITY. The DSN is hard-coded in the workflow, so a developer who
+    happens to keep a `postgres` role and an `oathtest` database on localhost —
+    an unremarkable thing to have — would have its contents destroyed by a sweep
+    that advertises itself as the safe subset. Finding a server is evidence that
+    one EXISTS, never that anyone agreed to lose it.
+
+    So OATH_CI_LOCAL_PG=1 must be set, and it means "the database at this DSN is
+    disposable". This is the same line `make verify` sits on: correct in CI,
+    destructive here, and therefore never automatic.
+
+    THE DSN PROBED MUST BE THE ONE THE STEP RUNS AGAINST. The step carries its
+    own `env:` block, which this runner applies — so probing the ambient
+    OATH_TEST_PG_DSN would green-light the step against a database it never
+    connects to, and the failure would read as a broken gate rather than a
+    misread probe.
+
+    A TCP CONNECT IS NOT A READINESS CHECK, and using one turned three different
+    situations into "ready": some unrelated process holding 5432, a server still
+    starting, and a Postgres that rejects this user or database. Each would have
+    promoted the step and produced an apparent gate FAILURE from a missing
+    prerequisite — the exact confusion the probes exist to remove.
+
+    So this speaks the protocol: a StartupMessage, then one byte of reply. 'R' is
+    an authentication request, which only a Postgres past startup sends, and
+    reaching it means the server accepted this USER and DATABASE. 'E' is an error
+    response — a real Postgres that REFUSED this DSN (no such role, no such
+    database) — a missing prerequisite, not a gate to run. Anything else is not
+    Postgres. No client tools are needed, and neither psql nor pg_isready is on
+    every dev machine.
+
+    WHAT IT DOES NOT CHECK, stated rather than implied: the PASSWORD. That 'R' is
+    the challenge, not its outcome, so a server that would reject these
+    credentials still promotes the step and the failure surfaces as a red gate
+    rather than a skip. Completing SCRAM would be a client implementation inside
+    a probe. This is deliberately the SAME BAR CI USES — its service container is
+    health-checked with `pg_isready`, which also stops at "accepting connections"
+    and never authenticates.
+    """
+    if not dsn or os.environ.get("OATH_CI_LOCAL_PG") != "1":
+        return False
+    try:
+        import socket
+        import struct
+        from urllib.parse import urlparse
+    except Exception:
+        return False
+    try:
+        u = urlparse(dsn)
+        host, port = u.hostname or "localhost", u.port or 5432
+        user = u.username or "postgres"
+        db = (u.path or "/postgres").lstrip("/") or "postgres"
+        payload = b"".join(k.encode() + b"\x00" + v.encode() + b"\x00"
+                           for k, v in (("user", user), ("database", db))) + b"\x00"
+        msg = struct.pack("!ii", len(payload) + 8, 196608) + payload
+        with socket.create_connection((host, port), timeout=3) as sock:
+            sock.settimeout(3)
+            sock.sendall(msg)
+            first = sock.recv(1)
+        return first == b"R"
+    except Exception:
+        return False
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -346,22 +522,35 @@ def main() -> int:
                     help="print each step's current body digest, for updating the table")
     args = ap.parse_args()
 
+    broken = step_env_selftest()
+    if broken:
+        print("REFUSING TO RUN — this script's own metadata parser is wrong:\n",
+              file=sys.stderr)
+        for b in broken:
+            print(f"    {b}", file=sys.stderr)
+        print("\nstep_env decides which steps run WITH their env and which stay\n"
+              "refused. If it stops rejecting `shell:` or `working-directory:`,\n"
+              "this sweep would run steps whose execution context it does not\n"
+              "reproduce, and report them as CI-equivalent.", file=sys.stderr)
+        return 2
+
     wfs = gate_workflows()
     if not wfs:
         print("VOID — no workflow triggers on pull_request; this check did NOT run",
               file=sys.stderr)
         return 2
 
-    plan: list[tuple[tuple[str, str], str, str, str]] = []
+    plan: list[tuple[tuple[str, str], str, str, str, dict[str, str] | None]] = []
     for wf in wfs:
         for name, body, meta in steps(wf):
             key = (wf.stem, name)
             # The digest covers the body AND its execution metadata: identity is
             # what the step DOES, and env/shell/working-directory change that
             # without touching a character of the command.
+            senv = step_env(meta) if meta else None
             kind, why = classify(key, body + ("\n#meta#\n" + meta if meta else ""),
-                                 has_meta=bool(meta))
-            plan.append((key, kind, why, body))
+                                 has_meta=bool(meta), env_only=senv)
+            plan.append((key, kind, why, body, senv))
 
     if args.digests:
         for wf in wfs:
@@ -370,28 +559,53 @@ def main() -> int:
                 print(f'    ("{wf.stem}", "{name}", "{d}"),')
         return 0
 
-    if not pinned_solver_present():
-        # Compare on (workflow, step): plan keys carry no digest, but writing the
-        # comparison against a differently-shaped constant is how this silently
-        # never fired in an earlier version — always false, always runnable.
-        plan = [(k, ("needs-ci" if k[:2] == SOLVER_STEP[:2] else kind),
-                 ("local z3 is not the pinned 4.16.0, and this gate's outcome is "
-                  "solver-version-sensitive" if k[:2] == SOLVER_STEP[:2] else why), body)
-                for k, kind, why, body in plan]
+    # The DSN the PG step will actually run against: its own `env:` if it has
+    # one (it does — the workflow hard-codes it), else whatever is exported here.
+    pg_dsn = next((senv.get("OATH_TEST_PG_DSN") for k, _, _, _, senv in plan
+                   if k[:2] in PG_STEPS and senv), None) or os.environ.get("OATH_TEST_PG_DSN")
 
-    if not node_ok():
-        plan = [(k, ("needs-ci" if k[:2] in NODE_STEPS else kind),
-                 ("local Node is older than the 22.7 CI pins; these gates import the "
-                  "playground's ESM modules" if k[:2] in NODE_STEPS else why), body)
-                for k, kind, why, body in plan]
+    # A PROBE PER PREREQUISITE, all demoting through one path. Written as five
+    # near-identical list comprehensions this drifted: the node block appeared
+    # TWICE, doing its work a second time for nothing, which is what a copied
+    # block does when there is no shared route.
+    #
+    # Compare on (workflow, step): plan keys carry no digest, and writing the
+    # comparison against a differently-shaped constant is how an earlier version
+    # silently never fired — always false, always runnable.
+    def demote(plan, names, reason):
+        # ONLY `run` IS DEMOTED. Rewriting every matching entry would also
+        # rewrite `unknown` — the classification that makes this script REFUSE
+        # when a step's body changed — turning a required refusal into a silent
+        # skip for exactly the steps a probe governs. A fail-open in the guard
+        # against fail-opens; it was latent in the solver and node demotions
+        # before the probes made it reachable.
+        return [(k, ("needs-ci" if (kind == "run" and k[:2] in names) else kind),
+                 (reason if (kind == "run" and k[:2] in names) else why), body, senv)
+                for k, kind, why, body, senv in plan]
 
-    if not node_ok():
-        plan = [(k, ("needs-ci" if k[:2] in NODE_STEPS else kind),
-                 ("local Node is older than the 22.7 CI pins; these gates import the "
-                  "playground's ESM modules" if k[:2] in NODE_STEPS else why), body)
-                for k, kind, why, body in plan]
+    for present, names, reason in (
+        (pinned_solver_present(), {SOLVER_STEP[:2]},
+         "local z3 is not the pinned 4.16.0, and this gate's outcome is "
+         "solver-version-sensitive"),
+        (node_ok(), NODE_STEPS,
+         "local Node is older than the 22.7 CI pins; these gates import the "
+         "playground's ESM modules"),
+        (wasm_target_present(), WASM_STEPS,
+         "PROBED: rustup does not have wasm32-wasip1 installed here"),
+        (cloud_deps_present(), CLOUD_BUILD_STEPS | PG_STEPS,
+         "PROBED: the cloud build tag's module deps are not resolvable offline"),
+        (postgres_present(pg_dsn), PG_STEPS,
+         "DESTRUCTIVE (truncates names/journal/proofq) and opt-in: set "
+         "OATH_CI_LOCAL_PG=1 to affirm the database is disposable, and have one "
+         "reachable. A throwaway matching CI:\n"
+         "             docker run -d --name oath-ci-pg -e POSTGRES_PASSWORD=postgres "
+         "-e POSTGRES_DB=oathtest -p 5432:5432 postgres:15\n"
+         "             export OATH_CI_LOCAL_PG=1"),
+    ):
+        if not present:
+            plan = demote(plan, names, reason)
 
-    unknown = [k for k, kind, _, _ in plan if kind == "unknown"]
+    unknown = [k for k, kind, _, _, _ in plan if kind == "unknown"]
     if unknown:
         print("REFUSING TO RUN — these CI steps are not classified:\n", file=sys.stderr)
         for wfname, step in unknown:
@@ -403,13 +617,13 @@ def main() -> int:
         return 2
 
     if args.list:
-        for (wfname, step), kind, why, _ in plan:
+        for (wfname, step), kind, why, _, _ in plan:
             print(f"  {kind:9s} {wfname:12s} {step[:56]:58s}{why}")
         return 0
 
     failures: list[str] = []
     ran = 0
-    for (wfname, step), kind, _, body in plan:
+    for (wfname, step), kind, _, body, senv in plan:
         if kind != "run":
             continue
         ran += 1
@@ -418,8 +632,12 @@ def main() -> int:
         # shell=True is /bin/sh WITHOUT fail-fast, so a multi-command block whose
         # early check fails and whose last command succeeds would exit 0 and be
         # reported green while CI failed it — a fail-open in the runner itself.
+        # THE STEP'S OWN `env:` IS APPLIED, and nothing else about the runner is
+        # reproduced. An env-only step is the one slice of execution context this
+        # script can honour exactly; step_env refuses anything more.
         proc = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail",
                                "-c", body], cwd=ROOT,
+                              env={**os.environ, **(senv or {})},
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         secs = time.monotonic() - start
         ok = proc.returncode == 0
@@ -434,7 +652,7 @@ def main() -> int:
             print()
 
     print()
-    for (wfname, step), kind, why, _ in plan:
+    for (wfname, step), kind, why, _, _ in plan:
         if kind != "run":
             print(f"  skipped ({kind}) {wfname}: {step} — {why}")
 
