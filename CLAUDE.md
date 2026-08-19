@@ -606,7 +606,7 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               realistic use. NOTHING IS FORCED. The heap
                               constraint that fix revealed is #180, below, and
                               is above realistic use — not forcing
-  more VALUABLE if delayed    #134, #139/#140, #138, #38 — after more evidence
+  more VALUABLE if delayed    #139/#140, #138, #38 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128,
                               #116 — the reproducibility premise is MEASURED
@@ -812,8 +812,7 @@ the queue:**
 **Feedback/tooling — the window is NOT closing.** Improves confidence in future
 work; nothing depends on it immediately.
 
-  1. **#134** typed refusal reasons
-  2. **#139 SCOPING THE RE-DERIVATION with #140** (prove-worker delta) — one
+  1. **#139 SCOPING THE RE-DERIVATION with #140** (prove-worker delta) — one
      item, deliberately: both are *do not redo work whose answer is already
      determined*, one for re-deriving and one for proving, and neither can be
      judged without the other's answer. Doing them apart means deciding twice
@@ -828,7 +827,7 @@ work; nothing depends on it immediately.
 
 **Research — needs runway, not a slot.**
 
-  3. **#138** ACL2 comparative review. It is a REGISTERED EXPERIMENT with a
+  2. **#138** ACL2 comparative review. It is a REGISTERED EXPERIMENT with a
      falsifier, not a reading task, and its value depends on the reading not
      being rushed: a hurried pass would find transformations everywhere, which
      is the outcome the falsifier exists to prevent. Read the issue for the
@@ -836,7 +835,7 @@ work; nothing depends on it immediately.
 
 **Documentation hygiene.**
 
-  4. **#128** — DEFERRED UNTIL AFTER THE NEXT EXTERNALLY-VISIBLE MILESTONE. It
+  3. **#128** — DEFERRED UNTIL AFTER THE NEXT EXTERNALLY-VISIBLE MILESTONE. It
      has a TRIGGER, not a position. It changes no semantics, unblocks no user,
      and closes no narrowing window — and it is small and easy, which is
      precisely why it would interrupt architectural momentum if it sat in the
