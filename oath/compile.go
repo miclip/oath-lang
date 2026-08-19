@@ -340,55 +340,37 @@ type emitter struct {
 	b       strings.Builder
 	fname   map[string]string // def hash → emitted Go function name
 	order   []string          // emission order, from the neutral emissionOrder
-	strHash string           // hash of the Str datatype; its values compile to Go strings
-	setHash string           // hash of the Set datatype; its values compile to native osets
-	mapHash string           // hash of the Map datatype; its values compile to native omaps
-	setOps  map[string]setOp // recognized Set/Map-op hashes → native helper + arity
+	strHash string            // hash of the Str datatype; its values compile to Go strings
+	nc      nativeContainers  // neutral Set/Map recognition; ops lower to oset/omap helpers
 	// Type tracking for record field resolution: the kernel's own checker,
 	// threaded alongside compilation. ctx mirrors the de Bruijn env.
 	chk *checkerMachine
 	ctx []*Ty
 }
 
-// setOp names the native Go helper a recognized Set operation lowers to and its
-// arity (so only a SATURATED application is intercepted).
-type setOp struct {
-	helper string
-	arity  int
+// goSetHelpers maps each neutral Set/Map operation name (program.go's
+// nativeOpArity) to the Go runtime helper it lowers to. A Set flows at runtime
+// as an oset and a Map as an omap; these helpers keep values in that form.
+var goSetHelpers = map[string]string{
+	"set-empty": "osetEmpty", "set-member": "osetMember", "set-add": "osetAdd",
+	"set-union": "osetUnion", "set-inter": "osetInter", "set-size": "osetSize",
+	"set-elems": "osetElems",
+	"map-empty": "omapEmpty", "map-insert": "omapInsert", "map-lookup": "omapLookup",
+	"map-has": "omapHas", "map-keys": "omapKeys", "map-values": "omapValues",
+	"map-size": "omapSize", "map-merge": "omapMerge",
 }
 
-// setOpTable maps the recognized Set/Map-operation names to their native
-// lowering. A Set flows at runtime as an oset and a Map as an omap; these
-// helpers keep values in that form. Arity is the SATURATED argument count.
-var setOpTable = map[string]setOp{
-	"set-empty":  {"osetEmpty", 0},
-	"set-member": {"osetMember", 2},
-	"set-add":    {"osetAdd", 2},
-	"set-union":  {"osetUnion", 2},
-	"set-inter":  {"osetInter", 2},
-	"set-size":   {"osetSize", 1},
-	"set-elems":  {"osetElems", 1},
-	"map-empty":  {"omapEmpty", 0},
-	"map-insert": {"omapInsert", 3},
-	"map-lookup": {"omapLookup", 2},
-	"map-has":    {"omapHas", 2},
-	"map-keys":   {"omapKeys", 1},
-	"map-values": {"omapValues", 1},
-	"map-size":   {"omapSize", 1},
-	"map-merge":  {"omapMerge", 2},
-}
-
-// resolveNativeContainers records the Set/Map datatype hashes and the recognized
-// operation hashes, so the compiler can lower them to native oset/omap code.
-func (e *emitter) resolveNativeContainers() {
-	e.setHash, _ = e.st.Resolve("Set")
-	e.mapHash, _ = e.st.Resolve("Map")
-	e.setOps = map[string]setOp{}
-	for name, op := range setOpTable {
-		if h, ok := e.st.Resolve(name); ok {
-			e.setOps[h] = op
-		}
+// goSetHelperNames is the set of container operations THIS backend lowers — the
+// keys of goSetHelpers. resolveNativeContainers recognizes only these, so the
+// Go backend cannot prune an operation it has no helper for. Every operation in
+// nativeOpArity currently has a helper; the filter keeps that a checked fact
+// rather than an assumption, and stays correct if either table changes.
+func goSetHelperNames() map[string]bool {
+	out := make(map[string]bool, len(goSetHelpers))
+	for name := range goSetHelpers {
+		out[name] = true
 	}
+	return out
 }
 
 // checkValueBindings refuses a program whose required values would collide in
@@ -557,7 +539,7 @@ func emitProgram(st *Store, prog *CompiledProgram) (string, error) {
 		return "", err
 	}
 	e := &emitter{st: st, fname: map[string]string{}, strHash: strTypeHash(st)}
-	e.resolveNativeContainers()
+	e.nc = resolveNativeContainers(e.st, goSetHelperNames())
 	if err := e.plan(prog.EntryHash); err != nil {
 		return "", err
 	}
@@ -1627,9 +1609,9 @@ func main() {
 // nor the sorted-list helpers it is defined in terms of are emitted. Passing
 // them to emissionOrder prunes them; nothing here walks the closure itself.
 func (e *emitter) plan(entry string) error {
-	native := make(map[string]bool, len(e.setOps))
-	for h := range e.setOps {
-		native[h] = true
+	native, err := e.nc.prunableOps(e.st, entry)
+	if err != nil {
+		return err
 	}
 	order, err := emissionOrder(e.st, entry, native)
 	if err != nil {
@@ -1681,8 +1663,8 @@ func (e *emitter) recognizeSetOp(t *Term, depth int, self string) (string, bool,
 	if head.K != "ref" {
 		return "", false, nil
 	}
-	op, ok := e.setOps[head.Hash]
-	if !ok || len(args) != op.arity {
+	op, ok := e.nc.Ops[head.Hash]
+	if !ok || len(args) != op.Arity {
 		return "", false, nil
 	}
 	parts := make([]string, len(args))
@@ -1693,7 +1675,7 @@ func (e *emitter) recognizeSetOp(t *Term, depth int, self string) (string, bool,
 		}
 		parts[i] = a
 	}
-	return fmt.Sprintf("%s(%s)", op.helper, strings.Join(parts, ", ")), true, nil
+	return fmt.Sprintf("%s(%s)", goSetHelpers[op.Name], strings.Join(parts, ", ")), true, nil
 }
 
 // expr compiles a term to a Go expression. depth = number of binders in
@@ -1796,10 +1778,10 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 		// Set/Map values are native osets/omaps: the MkSet/MkMap constructor wraps
 		// a list, so build the native map from it (keeping the representation
 		// uniform even when constructed directly rather than via an operation).
-		if t.Hash == e.setHash && e.setHash != "" {
+		if t.Hash == e.nc.SetHash && e.nc.SetHash != "" {
 			return fmt.Sprintf("osetFromList(%s)", parts[0]), nil
 		}
-		if t.Hash == e.mapHash && e.mapHash != "" {
+		if t.Hash == e.nc.MapHash && e.nc.MapHash != "" {
 			return fmt.Sprintf("omapFromList(%s)", parts[0]), nil
 		}
 		return fmt.Sprintf("(&ctorV{idx: %d, fields: []any{%s}})", t.Idx, strings.Join(parts, ", ")), nil
@@ -1816,7 +1798,7 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 		// Match on a Set: one constructor (MkSet), irrefutable. Its bound
 		// variable is the (List Int) of sorted elements, materialized from the
 		// native oset scrutinee.
-		if t.Hash == e.setHash && e.setHash != "" {
+		if t.Hash == e.nc.SetHash && e.nc.SetHash != "" {
 			e.ctx = append(e.ctx, &Ty{K: "data"}) // placeholder for the bound List
 			arm, err := e.expr(&t.Arms[0], depth+1, self)
 			e.ctx = e.ctx[:len(e.ctx)-1]
@@ -1827,7 +1809,7 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 		}
 		// Match on a Map: one constructor (MkMap), irrefutable; its bound var is
 		// the key-sorted (List (Pair Int Int)) materialized from the omap.
-		if t.Hash == e.mapHash && e.mapHash != "" {
+		if t.Hash == e.nc.MapHash && e.nc.MapHash != "" {
 			e.ctx = append(e.ctx, &Ty{K: "data"})
 			arm, err := e.expr(&t.Arms[0], depth+1, self)
 			e.ctx = e.ctx[:len(e.ctx)-1]

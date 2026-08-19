@@ -925,6 +925,538 @@ func programClosure(st *Store, entry string) ([]string, error) {
 // leave the emitted code referring to functions that were never written. Which
 // definitions are native is the one thing here that is a backend decision; the
 // ORDER is not, which is why the argument comes in and the walk does not go out.
+// Native containers (#13, #178): `Set` and `Map` are ordinary Oath datatypes
+// proven over the structural model, but a backend MAY refine them at compile
+// time into a native hash representation — the prover never sees the host type.
+// Which definitions are the container types and their operations is a NEUTRAL
+// fact: it is the same for every backend, derived from the store by name. What
+// each recognized operation LOWERS TO is backend-specific, so this layer names
+// the operation (its canonical name) and its saturated arity, and each backend
+// maps that name to its own helper. Lifting this here keeps the two backends
+// from maintaining two copies of "which hash is set-member" — the same
+// consolidation as capabilityKinds().
+//
+// nativeOp is a recognized container operation: its canonical name (the key a
+// backend maps to a helper) and the argument count at which a call is saturated
+// and may be intercepted.
+type nativeOp struct {
+	Name  string
+	Arity int
+}
+
+// ncKind is the expected kind of a recognized operation's parameter or result.
+// It is what lets recognition VALIDATE that a name is the canonical container
+// operation and not an unrelated function that happens to share the name: a
+// store may define its own `set-member : Int -> Int -> Bool`, and lowering that
+// call to the native helper would misread its second argument as a Set.
+type ncKind uint8
+
+const (
+	ncInt ncKind = iota
+	ncBool
+	ncSet
+	ncMap
+	ncListInt
+	ncOptInt
+)
+
+// nativeOpShape is the canonical signature of each recognized operation. An
+// operation is admitted only if its declared type matches this shape AND every
+// Set/Map argument resolves to ONE datatype consistent across its whole family.
+var nativeOpShape = map[string]struct {
+	params []ncKind
+	result ncKind
+}{
+	"set-empty":  {nil, ncSet},
+	"set-member": {[]ncKind{ncInt, ncSet}, ncBool},
+	"set-add":    {[]ncKind{ncInt, ncSet}, ncSet},
+	"set-union":  {[]ncKind{ncSet, ncSet}, ncSet},
+	"set-inter":  {[]ncKind{ncSet, ncSet}, ncSet},
+	"set-size":   {[]ncKind{ncSet}, ncInt},
+	"set-elems":  {[]ncKind{ncSet}, ncListInt},
+	"map-empty":  {nil, ncMap},
+	"map-insert": {[]ncKind{ncInt, ncInt, ncMap}, ncMap},
+	"map-lookup": {[]ncKind{ncInt, ncMap}, ncOptInt},
+	"map-has":    {[]ncKind{ncInt, ncMap}, ncBool},
+	"map-keys":   {[]ncKind{ncMap}, ncListInt},
+	"map-values": {[]ncKind{ncMap}, ncListInt},
+	"map-size":   {[]ncKind{ncMap}, ncInt},
+	"map-merge":  {[]ncKind{ncMap, ncMap}, ncMap},
+}
+
+var setOpNames = []string{"set-empty", "set-member", "set-add", "set-union", "set-inter", "set-size", "set-elems"}
+var mapOpNames = []string{"map-empty", "map-insert", "map-lookup", "map-has", "map-keys", "map-values", "map-size", "map-merge"}
+
+// nativeOpNames is every operation the vocabulary defines — the set a backend
+// that lowers all of them passes as `supported`.
+func nativeOpNames() map[string]bool {
+	out := make(map[string]bool, len(nativeOpShape))
+	for name := range nativeOpShape {
+		out[name] = true
+	}
+	return out
+}
+
+// nativeContainers is the store-resolved, VALIDATED recognition. Every hash is
+// derived from the operations' canonical types, never from a mutable name, and a
+// family is admitted only as a coherent whole (see validateFamily). A backend
+// consults Ops at a call site and the datatype/list hashes at a constructor or
+// match; the Go backend ignores the list/option/pair hashes (its runtime carries
+// them), the LLVM backend resolves constructor indices from them.
+type nativeContainers struct {
+	SetHash     string
+	MapHash     string
+	SetListHash string // the List datatype MkSet wraps and set-elems builds
+	MapListHash string // the List datatype map-keys/values/pairs build
+	OptionHash  string // the Option map-lookup returns
+	PairHash    string // the Pair a Map match materializes
+	Ops         map[string]nativeOp
+}
+
+// TWO ASSUMPTIONS THIS RECOGNITION INHERITS FROM THE #13 NATIVE-CONTAINER
+// REFINEMENT, shared by every backend that lowers containers (the Go backend
+// included), and latent because the corpus only ever builds a Set/Map through
+// the operations:
+//
+//   - NAME-AND-SHAPE TRUST. A definition is admitted from its canonical signature
+//     and datatype shape, which does not prove its BODY computes the operation.
+//     A conforming-but-wrong `set-member` that always returns false would be
+//     replaced by the native helper and diverge from `oath eval`. The stdlib
+//     operations are held to the contract by the differential gate; an arbitrary
+//     definition under the same name is trusted, not verified.
+//   - CANONICALIZING CONSTRUCTION. The native representation is a sorted,
+//     duplicate-free array, so a DIRECT `MkSet [2,1,1]` materializes as `[1,2]`,
+//     matching the type's own invariant and the Go backend but differing from the
+//     structural evaluation of a non-canonical constructor. Programs that build
+//     sets through the operations never observe this.
+//
+// Both are properties of the refinement, not of this recognizer, and narrowing
+// them is a #13-scope question about the trust model, not a backend change.
+//
+// resolveNativeContainers derives the recognition for a backend that lowers the
+// operations named in `supported`. It validates the Set and Map families
+// INDEPENDENTLY and FAIL-CLOSED: a family's operations are admitted only if every
+// one present matches its canonical signature over one consistent datatype. A
+// single mismatch — an unrelated function under a recognized name, or operations
+// tied to two different datatype versions — drops the whole family to the
+// structural path, because a native value and a structurally-built one of the
+// same type cannot coexist. A backend supporting no operations recognizes none.
+func resolveNativeContainers(st *Store, supported map[string]bool) nativeContainers {
+	nc := nativeContainers{Ops: map[string]nativeOp{}}
+	nc.validateFamily(st, supported, setOpNames, false)
+	nc.validateFamily(st, supported, mapOpNames, true)
+	return nc
+}
+
+// validateFamily admits a container family only if every present, supported
+// operation matches its canonical signature over one consistent datatype. The
+// operations are processed in a fixed order, so the outcome is deterministic
+// regardless of map iteration. On any mismatch nothing in the family is admitted.
+func (nc *nativeContainers) validateFamily(st *Store, supported map[string]bool, names []string, isMap bool) {
+	ctx := ncCtx{}
+	type admitted struct{ name, hash string }
+	var admit []admitted
+	for _, name := range names {
+		if !supported[name] {
+			continue
+		}
+		h, ok := st.Resolve(name)
+		if !ok {
+			continue // an absent operation is fine; a family may be partial
+		}
+		d, err := st.GetDef(h)
+		if err != nil || d.K != "func" || d.Ty == nil {
+			return
+		}
+		shape := nativeOpShape[name]
+		params, result := unfoldFun(d.Ty)
+		if len(params) != len(shape.params) {
+			return
+		}
+		for i, k := range shape.params {
+			if !ncMatch(st, params[i], k, &ctx) {
+				return
+			}
+		}
+		if !ncMatch(st, result, shape.result, &ctx) {
+			return
+		}
+		admit = append(admit, admitted{name, h})
+	}
+	if len(admit) == 0 {
+		return
+	}
+	// The runtime represents a container as its single wrapped List; a datatype
+	// with an extra constructor or a non-List field would make constructor lowering
+	// index a missing argument or a match refuse. So admit the family only if the
+	// container's COMPLETE shape matches that assumption, not merely that it has a
+	// constructor of the right name.
+	ctorName := "MkSet"
+	if isMap {
+		ctorName = "MkMap"
+	}
+	if !containerShapeOK(st, ctx.container, ctorName, isMap) {
+		return
+	}
+	// A List-returning operation (set-elems, map-keys, map-values) must return the
+	// SAME List datatype the container wraps — the lowering materializes its result
+	// with that List's constructor indices, so a different declared result List
+	// would be encoded under the wrong type. An empty ctx.list means no such
+	// operation is present, which is fine.
+	if ctx.list != "" && ctx.list != containerListHash(st, ctx.container) {
+		return
+	}
+	for _, a := range admit {
+		nc.Ops[a.hash] = nativeOp{Name: a.name, Arity: len(nativeOpShape[a.name].params)}
+	}
+	if isMap {
+		nc.MapHash = ctx.container
+		nc.MapListHash = containerListHash(st, ctx.container)
+		nc.OptionHash = ctx.option
+		nc.PairHash = containerPairHash(st, ctx.container)
+	} else {
+		nc.SetHash = ctx.container
+		nc.SetListHash = containerListHash(st, ctx.container)
+	}
+}
+
+// ncCtx threads the datatype hashes a family must agree on: the container (Set or
+// Map) every operation shares, and the Option map-lookup returns.
+type ncCtx struct {
+	container string
+	option    string
+	list      string // the List datatype every List-returning operation shares
+}
+
+// ncMatch reports whether t is a type of the expected kind, recording and
+// enforcing datatype consistency in ctx. A Set/Map must be the SAME datatype
+// across the family; an Int/Bool must be exactly that primitive; a List/Option
+// must have the right constructors and Int element.
+func ncMatch(st *Store, t *Ty, k ncKind, ctx *ncCtx) bool {
+	switch k {
+	case ncInt:
+		return t != nil && t.K == "int"
+	case ncBool:
+		return t != nil && t.K == "bool"
+	case ncSet:
+		return ncData(st, t, "MkSet") && ncPin(&ctx.container, t.Hash)
+	case ncMap:
+		return ncData(st, t, "MkMap") && ncPin(&ctx.container, t.Hash)
+	case ncListInt:
+		return t != nil && t.K == "data" && isCanonicalList(st, t.Hash) &&
+			len(t.Args) == 1 && t.Args[0].K == "int" && ncPin(&ctx.list, t.Hash)
+	case ncOptInt:
+		return t != nil && t.K == "data" && isCanonicalOption(st, t.Hash) &&
+			len(t.Args) == 1 && t.Args[0].K == "int" && ncPin(&ctx.option, t.Hash)
+	}
+	return false
+}
+
+// ncPin records a datatype hash the first time and requires equality thereafter,
+// so a family whose operations disagree on their container is rejected.
+func ncPin(slot *string, h string) bool {
+	if *slot == "" {
+		*slot = h
+		return true
+	}
+	return *slot == h
+}
+
+func ncData(st *Store, t *Ty, ctor string) bool {
+	return t != nil && t.K == "data" && t.Hash != "" && ncHasCtor(st, t.Hash, ctor)
+}
+
+func ncHasCtor(st *Store, hash, ctor string) bool {
+	m, err := st.GetMeta(hash)
+	if err != nil {
+		return false
+	}
+	for _, n := range m.CtorNames {
+		if n == ctor {
+			return true
+		}
+	}
+	return false
+}
+
+// unfoldFun splits a curried function type into its parameter types and result.
+// A nullary operation's type is the result itself (no fun wrapper).
+func unfoldFun(t *Ty) (params []*Ty, result *Ty) {
+	cur := t
+	for cur != nil && cur.K == "fun" {
+		params = append(params, cur.A)
+		cur = cur.B
+	}
+	return params, cur
+}
+
+// containerShapeOK reports whether a container datatype has exactly the single
+// representation the native runtime assumes: one constructor of the given name,
+// with one field that is a List of Int (Set) or of (Pair Int Int) (Map). Anything
+// else — a second constructor, a non-List field, a wrong element type — is
+// rejected, because the lowering indexes that one field and materializes that one
+// List and would otherwise miscompile or fail to build.
+func containerShapeOK(st *Store, hash, ctorName string, isMap bool) bool {
+	if hash == "" {
+		return false
+	}
+	d, err := st.GetDef(hash)
+	if err != nil || d.K != "data" || len(d.Ctors) != 1 || len(d.Ctors[0]) != 1 {
+		return false
+	}
+	m, err := st.GetMeta(hash)
+	if err != nil || len(m.CtorNames) != 1 || m.CtorNames[0] != ctorName {
+		return false
+	}
+	field := d.Ctors[0][0]
+	if field.K != "data" || len(field.Args) != 1 || !isCanonicalList(st, field.Hash) {
+		return false
+	}
+	el := field.Args[0]
+	if isMap {
+		return el.K == "data" && isCanonicalPair(st, el.Hash) && len(el.Args) == 2 && el.Args[0].K == "int" && el.Args[1].K == "int"
+	}
+	return el.K == "int"
+}
+
+// ctorIdxOf returns the index of constructor `ctor` in datatype `hash`, or -1.
+func ctorIdxOf(st *Store, hash, ctor string) int {
+	m, err := st.GetMeta(hash)
+	if err != nil {
+		return -1
+	}
+	for i, n := range m.CtorNames {
+		if n == ctor {
+			return i
+		}
+	}
+	return -1
+}
+
+// isTyVar reports whether t is exactly the type variable with index n.
+func isTyVar(t Ty, n int) bool { return t.K == "var" && t.Var == n }
+
+// isCanonicalList checks that `hash` is (data List [a] (Nil) (Cons a (List a))):
+// one type parameter, exactly Nil (no fields) and Cons (the parameter, then the
+// recursive tail typed at the same parameter). Field TYPES matter, not only
+// arities — a List whose Cons head were Bool would place Int values into a Bool
+// binder. The recursion is pinned to `hash` itself, so only the genuine List is
+// accepted.
+func isCanonicalList(st *Store, hash string) bool {
+	d, err := st.GetDef(hash)
+	if err != nil || d.K != "data" || d.TyVars != 1 || len(d.Ctors) != 2 {
+		return false
+	}
+	ni, ci := ctorIdxOf(st, hash, "Nil"), ctorIdxOf(st, hash, "Cons")
+	if ni < 0 || ci < 0 || len(d.Ctors[ni]) != 0 || len(d.Ctors[ci]) != 2 {
+		return false
+	}
+	// The recursive tail (List a) is encoded as the self-ADT marker "rec" (the
+	// hash is not knowable while the type is being defined), applied to the same
+	// parameter.
+	c := d.Ctors[ci]
+	return isTyVar(c[0], 0) && c[1].K == "rec" && len(c[1].Args) == 1 && isTyVar(c[1].Args[0], 0)
+}
+
+// isCanonicalOption checks (data Option [a] (None) (Some a)).
+func isCanonicalOption(st *Store, hash string) bool {
+	d, err := st.GetDef(hash)
+	if err != nil || d.K != "data" || d.TyVars != 1 || len(d.Ctors) != 2 {
+		return false
+	}
+	ni, si := ctorIdxOf(st, hash, "None"), ctorIdxOf(st, hash, "Some")
+	if ni < 0 || si < 0 || len(d.Ctors[ni]) != 0 || len(d.Ctors[si]) != 1 {
+		return false
+	}
+	return isTyVar(d.Ctors[si][0], 0)
+}
+
+// isCanonicalPair checks (data Pair [a b] (Pair a b)).
+func isCanonicalPair(st *Store, hash string) bool {
+	d, err := st.GetDef(hash)
+	if err != nil || d.K != "data" || d.TyVars != 2 || len(d.Ctors) != 1 {
+		return false
+	}
+	pi := ctorIdxOf(st, hash, "Pair")
+	if pi < 0 || len(d.Ctors[pi]) != 2 {
+		return false
+	}
+	return isTyVar(d.Ctors[pi][0], 0) && isTyVar(d.Ctors[pi][1], 1)
+}
+
+// ctorArityIs reports whether datatype `hash` declares a constructor `ctor` with
+// exactly `n` fields. The native runtime constructs and destructures these
+// constructors at fixed arities (Nil/0, Cons/2, Pair/2, None/0, Some/1), so a
+// datatype whose constructor has a different field count would read or write out
+// of bounds and must not be lowered natively.
+func ctorArityIs(st *Store, hash, ctor string, n int) bool {
+	if hash == "" {
+		return false
+	}
+	d, err := st.GetDef(hash)
+	if err != nil || d.K != "data" {
+		return false
+	}
+	m, err := st.GetMeta(hash)
+	if err != nil {
+		return false
+	}
+	for i, name := range m.CtorNames {
+		if name == ctor {
+			return i < len(d.Ctors) && len(d.Ctors[i]) == n
+		}
+	}
+	return false
+}
+
+// containerListHash returns the hash of the List datatype a container's single
+// field wraps (MkSet's (List Int), MkMap's (List (Pair Int Int))), derived from
+// the container's CANONICAL constructor rather than the name "List".
+func containerListHash(st *Store, containerHash string) string {
+	if containerHash == "" {
+		return ""
+	}
+	d, err := st.GetDef(containerHash)
+	if err != nil {
+		return ""
+	}
+	for _, fields := range d.Ctors {
+		if len(fields) == 1 && fields[0].K == "data" {
+			return fields[0].Hash
+		}
+	}
+	return ""
+}
+
+// containerPairHash returns the hash of the Pair datatype inside a Map's field
+// type (List (Pair Int Int)), for the Map match bridge.
+func containerPairHash(st *Store, mapHash string) string {
+	if mapHash == "" {
+		return ""
+	}
+	d, err := st.GetDef(mapHash)
+	if err != nil {
+		return ""
+	}
+	for _, fields := range d.Ctors {
+		if len(fields) == 1 {
+			return dataHashWithCtor(st, &fields[0], "Pair")
+		}
+	}
+	return ""
+}
+
+// dataHashWithCtor returns the hash of the first datatype appearing in ty whose
+// constructors include ctorName, or "" if none. It recovers a datatype hash from
+// a CANONICAL type — a field type here — rather than from a name.
+func dataHashWithCtor(st *Store, ty *Ty, ctorName string) string {
+	seen := map[string]bool{}
+	var walk func(t *Ty) string
+	walk = func(t *Ty) string {
+		if t == nil {
+			return ""
+		}
+		if t.K == "data" && t.Hash != "" && !seen[t.Hash] {
+			seen[t.Hash] = true
+			if ncHasCtor(st, t.Hash, ctorName) {
+				return t.Hash
+			}
+		}
+		if r := walk(t.A); r != "" {
+			return r
+		}
+		if r := walk(t.B); r != "" {
+			return r
+		}
+		for i := range t.Args {
+			if r := walk(&t.Args[i]); r != "" {
+				return r
+			}
+		}
+		return ""
+	}
+	return walk(ty)
+}
+
+// FIRST-CLASS USE FALLS BACK TO THE STRUCTURAL DEFINITION, DELIBERATELY. A
+// saturated call is intercepted and lowered to the iterative native helper; an
+// operation passed as a value or applied partially keeps its structural
+// definition (see below) and runs the ordinary recursive body. That body has the
+// same guarded stack behavior as any structural recursion on the LLVM backend —
+// it is not a new failure mode, it is the #178 ceiling that native lowering
+// removes for the COMMON (saturated) case and leaves for the rare higher-order
+// one. Synthesizing a native closure per operation would close that too; it is
+// not worth the complexity for a pattern the corpus never uses, and the fallback
+// is correct.
+//
+// prunableOps returns the recognized operations that may be pruned from
+// structural emission: those EVERY reference to which, across the entry's
+// closure, is a SATURATED application — the only form recognizeSetOp /
+// recognizeContainerOp intercepts. An operation used as a first-class value or
+// applied partially is NOT pruned, so its structural definition stays available
+// for that use; its saturated calls are still lowered natively, and its
+// structural body still produces native values through the intercepted MkSet/
+// MkMap constructor and match, so the two paths agree. SetHash/MapHash are never
+// pruned — a constructor or match still needs the datatype's shape.
+func (nc nativeContainers) prunableOps(st *Store, entryHash string) (map[string]bool, error) {
+	if len(nc.Ops) == 0 {
+		return nil, nil
+	}
+	closure, err := programClosure(st, entryHash)
+	if err != nil {
+		return nil, err
+	}
+	total := map[string]int{}
+	sat := map[string]int{}
+	var scan func(t *Term)
+	scan = func(t *Term) {
+		if t == nil {
+			return
+		}
+		if t.K == "ref" {
+			if _, ok := nc.Ops[t.Hash]; ok {
+				total[t.Hash]++
+			}
+		}
+		if t.K == "app" {
+			if head, args := unwindApp(t); head.K == "ref" {
+				if op, ok := nc.Ops[head.Hash]; ok && len(args) == op.Arity {
+					sat[head.Hash]++
+				}
+			}
+		}
+		scan(t.A)
+		scan(t.B)
+		scan(t.C)
+		for i := range t.Args {
+			scan(&t.Args[i])
+		}
+		for i := range t.Arms {
+			scan(&t.Arms[i])
+		}
+	}
+	for _, h := range closure {
+		d, err := st.GetDef(h)
+		if err != nil {
+			return nil, err
+		}
+		if d.K == "func" && d.Body != nil {
+			scan(d.Body)
+		}
+	}
+	// An operation is prunable iff every reference to it was the head of a
+	// saturated call: each such call contributes one to both counts (the ref via
+	// the walk, the saturation via unwindApp), while a partial or first-class
+	// reference contributes to `total` alone.
+	prune := map[string]bool{}
+	for h := range nc.Ops {
+		if total[h] == sat[h] {
+			prune[h] = true
+		}
+	}
+	return prune, nil
+}
+
 func emissionOrder(st *Store, entry string, native map[string]bool) ([]string, error) {
 	seen := map[string]bool{}
 	var order []string

@@ -118,14 +118,29 @@ type llvmEmitter struct {
 	fname   map[string]string
 	order   []string // emission order, from the neutral emissionOrder
 	strHash string
-	strNil  int      // SNil's constructor index in THIS store's Str
-	strCons int      // SCons's index
-	tmp     int      // SSA temporary counter
-	lam     int      // hoisted lambda counter
-	str     int      // string constant counter
-	guard   int      // stack-guard block counter, unique per module
-	block   string   // the label of the block currently being emitted
-	pending []string // hoisted lambda bodies, appended after the current function
+	strNil  int // SNil's constructor index in THIS store's Str
+	strCons int // SCons's index
+	// Native containers (#178): Set/Map lower to native sorted-array osets/omaps
+	// (T_SET/T_MAP), so their operations are iterative and cannot overflow the
+	// host stack the way the structural list walk does. nc is the neutral
+	// recognition; the ctor indices below build/traverse the datatype at a
+	// constructor or match, resolved per store like the Str ctors.
+	nc          nativeContainers
+	setCtor     int // MkSet's index in this store's Set
+	mapCtor     int // MkMap's index in this store's Map
+	setListNil  int // Nil / Cons of the List MkSet wraps — set-elems / set match build one
+	setListCons int
+	mapListNil  int // Nil / Cons of the List MkMap wraps — map-keys / values / map match
+	mapListCons int
+	optNone     int // None / Some in Option — map-lookup returns one
+	optSome     int
+	pairCtor    int      // Pair's index — a Map match materializes (List (Pair Int Int))
+	tmp         int      // SSA temporary counter
+	lam         int      // hoisted lambda counter
+	str         int      // string constant counter
+	guard       int      // stack-guard block counter, unique per module
+	block       string   // the label of the block currently being emitted
+	pending     []string // hoisted lambda bodies, appended after the current function
 	// Type tracking for record field resolution, threaded exactly as the kernel's
 	// checker is elsewhere: a field projection needs the record's type to know
 	// which slot a name refers to.
@@ -396,6 +411,216 @@ func (e *llvmEmitter) resolveStrCtors() error {
 	return nil
 }
 
+// llvmSetHelperNames is the set of container operations THIS backend lowers.
+// Every operation in nativeOpArity has a native oset/omap helper, so all are
+// supported; resolveNativeContainers filters recognition to these, so a future
+// operation added to the neutral table is not pruned before a helper exists.
+func llvmSetHelperNames() map[string]bool {
+	return nativeOpNames()
+}
+
+// ctorIndexByName finds a constructor's index in a datatype by name. -1 if the
+// datatype hash is empty (the type is absent from this store).
+func (e *llvmEmitter) ctorIndexByName(hash, ctorName string) (int, error) {
+	if hash == "" {
+		return -1, nil
+	}
+	m, err := e.st.GetMeta(hash)
+	if err != nil {
+		return -1, err
+	}
+	for i, n := range m.CtorNames {
+		if n == ctorName {
+			return i, nil
+		}
+	}
+	return -1, fmt.Errorf("%s does not declare constructor %s (found %v)", e.st.NameOf(hash), ctorName, m.CtorNames)
+}
+
+// resolveSetMapCtors resolves the constructor indices the native container
+// lowering needs. With no container operation recognized it does nothing and
+// every index stays -1. Each index is validated at its use, so a corpus missing
+// (say) Option only fails if a map-lookup is actually lowered.
+func (e *llvmEmitter) resolveSetMapCtors() error {
+	e.setCtor, e.mapCtor = -1, -1
+	e.setListNil, e.setListCons = -1, -1
+	e.mapListNil, e.mapListCons = -1, -1
+	e.optNone, e.optSome = -1, -1
+	e.pairCtor = -1
+	if len(e.nc.Ops) == 0 {
+		return nil
+	}
+	// Every hash was derived and validated in the neutral layer from the
+	// operations' canonical types; here we only resolve constructor INDICES. Set
+	// and Map each carry their OWN List, resolved separately — a store defining two
+	// different List datatypes must not build Map results with Set's indices.
+	var err error
+	if e.setCtor, err = e.ctorIndexByName(e.nc.SetHash, "MkSet"); err != nil {
+		return err
+	}
+	if e.mapCtor, err = e.ctorIndexByName(e.nc.MapHash, "MkMap"); err != nil {
+		return err
+	}
+	if e.setListNil, err = e.ctorIndexByName(e.nc.SetListHash, "Nil"); err != nil {
+		return err
+	}
+	if e.setListCons, err = e.ctorIndexByName(e.nc.SetListHash, "Cons"); err != nil {
+		return err
+	}
+	if e.mapListNil, err = e.ctorIndexByName(e.nc.MapListHash, "Nil"); err != nil {
+		return err
+	}
+	if e.mapListCons, err = e.ctorIndexByName(e.nc.MapListHash, "Cons"); err != nil {
+		return err
+	}
+	if e.optNone, err = e.ctorIndexByName(e.nc.OptionHash, "None"); err != nil {
+		return err
+	}
+	if e.optSome, err = e.ctorIndexByName(e.nc.OptionHash, "Some"); err != nil {
+		return err
+	}
+	if e.pairCtor, err = e.ctorIndexByName(e.nc.PairHash, "Pair"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// recognizeContainerOp intercepts a SATURATED call of a recognized Set/Map
+// operation, lowering it to the native helper — the analog of the Go backend's
+// recognizeSetOp. ok=false for anything else, so normal lowering proceeds.
+func (e *llvmEmitter) recognizeContainerOp(t *Term, env string, depth int, self string) (string, bool, error) {
+	head, args := unwindApp(t)
+	if head.K != "ref" {
+		return "", false, nil
+	}
+	op, ok := e.nc.Ops[head.Hash]
+	if !ok || len(args) != op.Arity {
+		return "", false, nil
+	}
+	vals := make([]string, len(args))
+	for i := range args {
+		v, err := e.expr(args[i], env, depth, self)
+		if err != nil {
+			return "", false, err
+		}
+		vals[i] = v
+	}
+	v, err := e.emitContainerCall(op.Name, vals)
+	if err != nil {
+		return "", false, err
+	}
+	return v, true, nil
+}
+
+// emitContainerCall emits the native helper for one recognized operation. Every
+// helper returns an OVal* (ptr); operations producing a List or Option take the
+// relevant constructor indices as i32 immediates, resolved per store.
+func (e *llvmEmitter) emitContainerCall(name string, a []string) (string, error) {
+	needList := func(nilIdx, consIdx int) error {
+		if nilIdx < 0 || consIdx < 0 {
+			return fmt.Errorf("%s: the wrapped List does not declare Nil and Cons", name)
+		}
+		return nil
+	}
+	v := e.next()
+	switch name {
+	case "set-empty":
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_set_empty()\n", v)
+	case "set-member":
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_set_member(ptr %s, ptr %s)\n", v, a[0], a[1])
+	case "set-add":
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_set_add(ptr %s, ptr %s)\n", v, a[0], a[1])
+	case "set-union":
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_set_union(ptr %s, ptr %s)\n", v, a[0], a[1])
+	case "set-inter":
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_set_inter(ptr %s, ptr %s)\n", v, a[0], a[1])
+	case "set-size":
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_set_size(ptr %s)\n", v, a[0])
+	case "set-elems":
+		if err := needList(e.setListNil, e.setListCons); err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_set_elems(ptr %s, i32 %d, i32 %d)\n", v, a[0], e.setListNil, e.setListCons)
+	case "map-empty":
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_map_empty()\n", v)
+	case "map-insert":
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_map_insert(ptr %s, ptr %s, ptr %s)\n", v, a[0], a[1], a[2])
+	case "map-lookup":
+		if e.optNone < 0 || e.optSome < 0 {
+			return "", fmt.Errorf("map-lookup: this store's Option does not declare None and Some")
+		}
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_map_lookup(ptr %s, ptr %s, i32 %d, i32 %d)\n", v, a[0], a[1], e.optNone, e.optSome)
+	case "map-has":
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_map_has(ptr %s, ptr %s)\n", v, a[0], a[1])
+	case "map-keys":
+		if err := needList(e.mapListNil, e.mapListCons); err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_map_keys(ptr %s, i32 %d, i32 %d)\n", v, a[0], e.mapListNil, e.mapListCons)
+	case "map-values":
+		if err := needList(e.mapListNil, e.mapListCons); err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_map_values(ptr %s, i32 %d, i32 %d)\n", v, a[0], e.mapListNil, e.mapListCons)
+	case "map-size":
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_map_size(ptr %s)\n", v, a[0])
+	case "map-merge":
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_map_merge(ptr %s, ptr %s)\n", v, a[0], a[1])
+	default:
+		return "", fmt.Errorf("unrecognized native container operation %q", name)
+	}
+	return v, nil
+}
+
+// emitContainerMatch lowers a match on a Set or Map. Both have a single,
+// irrefutable constructor, so there is no discrimination: the native value is
+// materialized into the sorted (List Int) / (List (Pair Int Int)) it wraps,
+// bound as the arm's single binder, and the arm is emitted — the analog of the
+// Go backend's osetElems/omapPairs match bridge.
+func (e *llvmEmitter) emitContainerMatch(t *Term, env string, depth int, self string, isMap bool) (string, error) {
+	if len(t.Arms) != 1 {
+		return "", llvmUnsupported(reasonMatchOnStrArms, "a match on Set/Map whose arms are not the single MkSet/MkMap constructor")
+	}
+	s, err := e.expr(t.A, env, depth, self)
+	if err != nil {
+		return "", err
+	}
+	lst := e.next()
+	var boundTy *Ty
+	if isMap {
+		if e.mapListNil < 0 || e.mapListCons < 0 || e.pairCtor < 0 {
+			return "", fmt.Errorf("match on Map: this store's List/Pair are not fully declared")
+		}
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_map_pairs(ptr %s, i32 %d, i32 %d, i32 %d)\n", lst, s, e.mapListNil, e.mapListCons, e.pairCtor)
+		boundTy = e.ctorFieldTy(e.nc.MapHash, e.mapCtor)
+	} else {
+		if e.setListNil < 0 || e.setListCons < 0 {
+			return "", fmt.Errorf("match on Set: this store's List does not declare Nil and Cons")
+		}
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_set_elems(ptr %s, i32 %d, i32 %d)\n", lst, s, e.setListNil, e.setListCons)
+		boundTy = e.ctorFieldTy(e.nc.SetHash, e.setCtor)
+	}
+	e2 := e.next()
+	fmt.Fprintf(&e.b, "  %s = call ptr @o_env_push(ptr %s, ptr %s)\n", e2, env, lst)
+	e.ctx = append(e.ctx, boundTy)
+	v, err := e.expr(&t.Arms[0], e2, depth+1, self)
+	e.ctx = e.ctx[:len(e.ctx)-1]
+	return v, err
+}
+
+// ctorFieldTy returns a single-field constructor's field type (MkSet's
+// (List Int), MkMap's (List (Pair Int Int))) for a match arm's checker context.
+// Falls back to a bare data type, which suffices because a container's wrapped
+// list is never projected as a record.
+func (e *llvmEmitter) ctorFieldTy(hash string, ctor int) *Ty {
+	d, err := e.st.GetDef(hash)
+	if err != nil || ctor < 0 || ctor >= len(d.Ctors) || len(d.Ctors[ctor]) != 1 {
+		return &Ty{K: "data"}
+	}
+	ft := d.Ctors[ctor][0]
+	return &ft
+}
+
 // plan fixes what this backend emits and in what order, by asking the neutral
 // layer for the entry's dependency-first order.
 //
@@ -404,7 +629,11 @@ func (e *llvmEmitter) resolveStrCtors() error {
 // itself lives in program.go: it was duplicated here once, and the copy ordered
 // siblings by map iteration (#168).
 func (e *llvmEmitter) plan(entry string) error {
-	order, err := emissionOrder(e.st, entry, nil)
+	native, err := e.nc.prunableOps(e.st, entry)
+	if err != nil {
+		return err
+	}
+	order, err := emissionOrder(e.st, entry, native)
 	if err != nil {
 		return err
 	}
@@ -468,6 +697,12 @@ func (e *llvmEmitter) defValue(h string) (string, error) {
 // returning the SSA value holding its result. env is the SSA value of the current
 // environment; depth is its length, so a de Bruijn index resolves statically.
 func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string, error) {
+	// A saturated Set/Map operation lowers to its native helper (#178).
+	if v, ok, err := e.recognizeContainerOp(t, env, depth, self); err != nil {
+		return "", err
+	} else if ok {
+		return v, nil
+	}
 	switch t.K {
 	case "var":
 		v := e.next()
@@ -547,6 +782,30 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 			}
 			v := e.next()
 			fmt.Fprintf(&e.b, "  %s = call ptr @o_str_cons(ptr %s, ptr %s)\n", v, head, rest)
+			return v, nil
+		}
+		if t.Hash == e.nc.SetHash && e.setCtor >= 0 {
+			lst, err := e.expr(&t.Args[0], env, depth, self)
+			if err != nil {
+				return "", err
+			}
+			if e.setListCons < 0 {
+				return "", fmt.Errorf("MkSet: this store's List does not declare Cons")
+			}
+			v := e.next()
+			fmt.Fprintf(&e.b, "  %s = call ptr @o_set_from_list(ptr %s, i32 %d)\n", v, lst, e.setListCons)
+			return v, nil
+		}
+		if t.Hash == e.nc.MapHash && e.mapCtor >= 0 {
+			lst, err := e.expr(&t.Args[0], env, depth, self)
+			if err != nil {
+				return "", err
+			}
+			if e.mapListCons < 0 {
+				return "", fmt.Errorf("MkMap: this store's List does not declare Cons")
+			}
+			v := e.next()
+			fmt.Fprintf(&e.b, "  %s = call ptr @o_map_from_list(ptr %s, i32 %d)\n", v, lst, e.mapListCons)
 			return v, nil
 		}
 		return e.build(t.Idx, t.Args, env, depth, self)
@@ -1153,6 +1412,12 @@ func (e *llvmEmitter) emitMatch(t *Term, env string, depth int, self string) (st
 	if t.Hash == e.strHash && e.strHash != "" {
 		return e.emitStrMatch(t, env, depth, self)
 	}
+	if t.Hash == e.nc.SetHash && e.setCtor >= 0 {
+		return e.emitContainerMatch(t, env, depth, self, false)
+	}
+	if t.Hash == e.nc.MapHash && e.mapCtor >= 0 {
+		return e.emitContainerMatch(t, env, depth, self, true)
+	}
 	d, err := e.st.GetDef(t.Hash)
 	if err != nil {
 		return "", err
@@ -1293,7 +1558,7 @@ const llvmRuntimeC = `
 typedef struct OVal OVal;
 typedef OVal *(*OCode)(OVal **env, OVal *arg);
 
-enum { T_CTOR = 0, T_STR = 1, T_CLOS = 2, T_BOOL = 3, T_INT = 4 };
+enum { T_CTOR = 0, T_STR = 1, T_CLOS = 2, T_BOOL = 3, T_INT = 4, T_SET = 5, T_MAP = 6 };
 
 /* The capability protocol's CALL-failure value: a capability that was provided,
    was invoked, and could not complete. Provision failure is not a value — see
@@ -2541,6 +2806,181 @@ OVal *o_ctor(int idx, int n, OVal **f) {
 OVal *o_field(OVal *v, int i) {
   if (!v || v->tag != T_CTOR || i >= v->n) o_bug("bad field access");
   return v->f[i];
+}
+
+/* ---------- native Set / Map (#178) ----------
+
+   A structural Set is (MkSet (List Int)) and set-member walks that list one
+   recursive C call per element; on this backend's fixed stack a set of a few
+   thousand distinct elements overflowed (issue #178). These are the native
+   refinement: a Set is a sorted, duplicate-free array of Int (tag T_SET); a Map
+   is an array of (key,value) sorted by key (tag T_MAP). EVERY operation is
+   ITERATIVE — binary search, memmove-style insert, sorted merge — so a container
+   of any size costs O(1) stack. Ordering is o_int_cmp ascending, matching the
+   structural si-insert / set-elems order so the three-way differential (oath
+   eval, Go, LLVM) agrees. Values are immutable and arena-allocated (xalloc, no
+   free); an update copies. A Set stores its n elements in f[0..n); a Map stores
+   n entries interleaved in f[0..2n) as k0,v0,k1,v1,... */
+
+static OVal *o_mkset(OVal **elems, int n) {
+  OVal *v = val(T_SET); v->n = n; v->f = elems; return v;
+}
+/* index of x, or -(insertpos+1) if absent. */
+static int o_set_find(OVal *s, OVal *x) {
+  int lo = 0, hi = s->n;
+  while (lo < hi) {
+    int mid = lo + (hi - lo) / 2;
+    int c = o_int_cmp(s->f[mid], x);
+    if (c == 0) return mid;
+    if (c < 0) lo = mid + 1; else hi = mid;
+  }
+  return -(lo + 1);
+}
+OVal *o_set_empty(void) { return o_mkset(o_fields(0), 0); }
+OVal *o_set_member(OVal *x, OVal *s) { return o_bool(o_set_find(s, x) >= 0); }
+OVal *o_set_size(OVal *s) { return o_int((long long)s->n); }
+OVal *o_set_add(OVal *x, OVal *s) {
+  int p = o_set_find(s, x);
+  if (p >= 0) return s;
+  int at = -(p + 1);
+  OVal **f = o_fields(s->n + 1);
+  for (int i = 0; i < at; i++) f[i] = s->f[i];
+  f[at] = x;
+  for (int i = at; i < s->n; i++) f[i + 1] = s->f[i];
+  return o_mkset(f, s->n + 1);
+}
+OVal *o_set_union(OVal *a, OVal *b) {
+  OVal **f = o_fields(a->n + b->n > 0 ? a->n + b->n : 1);
+  int i = 0, j = 0, k = 0;
+  while (i < a->n && j < b->n) {
+    int c = o_int_cmp(a->f[i], b->f[j]);
+    if (c < 0) f[k++] = a->f[i++];
+    else if (c > 0) f[k++] = b->f[j++];
+    else { f[k++] = a->f[i++]; j++; }
+  }
+  while (i < a->n) f[k++] = a->f[i++];
+  while (j < b->n) f[k++] = b->f[j++];
+  return o_mkset(f, k);
+}
+OVal *o_set_inter(OVal *a, OVal *b) {
+  int m = a->n < b->n ? a->n : b->n;
+  OVal **f = o_fields(m > 0 ? m : 1);
+  int i = 0, j = 0, k = 0;
+  while (i < a->n && j < b->n) {
+    int c = o_int_cmp(a->f[i], b->f[j]);
+    if (c < 0) i++;
+    else if (c > 0) j++;
+    else { f[k++] = a->f[i++]; j++; }
+  }
+  return o_mkset(f, k);
+}
+/* (List Int) from the sorted elems, tail-first. */
+OVal *o_set_elems(OVal *s, int nil_idx, int cons_idx) {
+  OVal *acc = o_ctor(nil_idx, 0, o_fields(0));
+  for (int i = s->n - 1; i >= 0; i--) {
+    OVal **f = o_fields(2);
+    f[0] = s->f[i]; f[1] = acc;
+    acc = o_ctor(cons_idx, 2, f);
+  }
+  return acc;
+}
+/* Set from a (List Int) — MkSet direct construction; add keeps it sorted/dedup'd
+   whatever the input order. */
+OVal *o_set_from_list(OVal *l, int cons_idx) {
+  OVal *s = o_set_empty();
+  for (OVal *c = l; c && o_idx(c) == cons_idx; c = c->f[1]) s = o_set_add(c->f[0], s);
+  return s;
+}
+
+static OVal *o_mkmap(OVal **kv, int n) {
+  OVal *v = val(T_MAP); v->n = n; v->f = kv; return v;
+}
+/* entry index for key k, or -(insertpos+1). */
+static int o_map_find(OVal *m, OVal *k) {
+  int lo = 0, hi = m->n;
+  while (lo < hi) {
+    int mid = lo + (hi - lo) / 2;
+    int c = o_int_cmp(m->f[2 * mid], k);
+    if (c == 0) return mid;
+    if (c < 0) lo = mid + 1; else hi = mid;
+  }
+  return -(lo + 1);
+}
+OVal *o_map_empty(void) { return o_mkmap(o_fields(0), 0); }
+OVal *o_map_size(OVal *m) { return o_int((long long)m->n); }
+OVal *o_map_has(OVal *k, OVal *m) { return o_bool(o_map_find(m, k) >= 0); }
+OVal *o_map_lookup(OVal *k, OVal *m, int none_idx, int some_idx) {
+  int p = o_map_find(m, k);
+  if (p < 0) return o_ctor(none_idx, 0, o_fields(0));
+  OVal **f = o_fields(1); f[0] = m->f[2 * p + 1];
+  return o_ctor(some_idx, 1, f);
+}
+OVal *o_map_insert(OVal *k, OVal *v, OVal *m) {
+  int p = o_map_find(m, k);
+  if (p >= 0) {
+    OVal **f = o_fields(2 * m->n);
+    for (int i = 0; i < 2 * m->n; i++) f[i] = m->f[i];
+    f[2 * p + 1] = v;
+    return o_mkmap(f, m->n);
+  }
+  int at = -(p + 1);
+  OVal **f = o_fields(2 * (m->n + 1));
+  for (int i = 0; i < at; i++) { f[2 * i] = m->f[2 * i]; f[2 * i + 1] = m->f[2 * i + 1]; }
+  f[2 * at] = k; f[2 * at + 1] = v;
+  for (int i = at; i < m->n; i++) { f[2 * (i + 1)] = m->f[2 * i]; f[2 * (i + 1) + 1] = m->f[2 * i + 1]; }
+  return o_mkmap(f, m->n + 1);
+}
+OVal *o_map_keys(OVal *m, int nil_idx, int cons_idx) {
+  OVal *acc = o_ctor(nil_idx, 0, o_fields(0));
+  for (int i = m->n - 1; i >= 0; i--) {
+    OVal **f = o_fields(2); f[0] = m->f[2 * i]; f[1] = acc;
+    acc = o_ctor(cons_idx, 2, f);
+  }
+  return acc;
+}
+OVal *o_map_values(OVal *m, int nil_idx, int cons_idx) {
+  OVal *acc = o_ctor(nil_idx, 0, o_fields(0));
+  for (int i = m->n - 1; i >= 0; i--) {
+    OVal **f = o_fields(2); f[0] = m->f[2 * i + 1]; f[1] = acc;
+    acc = o_ctor(cons_idx, 2, f);
+  }
+  return acc;
+}
+/* (List (Pair Int Int)) key-sorted, tail-first — the Map match bridge. */
+OVal *o_map_pairs(OVal *m, int nil_idx, int cons_idx, int pair_idx) {
+  OVal *acc = o_ctor(nil_idx, 0, o_fields(0));
+  for (int i = m->n - 1; i >= 0; i--) {
+    OVal **pf = o_fields(2); pf[0] = m->f[2 * i]; pf[1] = m->f[2 * i + 1];
+    OVal *pair = o_ctor(pair_idx, 2, pf);
+    OVal **f = o_fields(2); f[0] = pair; f[1] = acc;
+    acc = o_ctor(cons_idx, 2, f);
+  }
+  return acc;
+}
+/* left-biased merge: a wins on key collision. Both inputs are already sorted by
+   key, so a two-pointer merge is linear; the earlier repeated-insert form copied
+   the growing map on every step, quadratic in the arena. */
+OVal *o_map_merge(OVal *a, OVal *b) {
+  int cap = a->n + b->n; if (cap < 1) cap = 1;
+  OVal **f = o_fields(2 * cap);
+  int i = 0, j = 0, k = 0;
+  while (i < a->n && j < b->n) {
+    int c = o_int_cmp(a->f[2 * i], b->f[2 * j]);
+    if (c < 0) { f[2 * k] = a->f[2 * i]; f[2 * k + 1] = a->f[2 * i + 1]; i++; k++; }
+    else if (c > 0) { f[2 * k] = b->f[2 * j]; f[2 * k + 1] = b->f[2 * j + 1]; j++; k++; }
+    else { f[2 * k] = a->f[2 * i]; f[2 * k + 1] = a->f[2 * i + 1]; i++; j++; k++; }
+  }
+  while (i < a->n) { f[2 * k] = a->f[2 * i]; f[2 * k + 1] = a->f[2 * i + 1]; i++; k++; }
+  while (j < b->n) { f[2 * k] = b->f[2 * j]; f[2 * k + 1] = b->f[2 * j + 1]; j++; k++; }
+  return o_mkmap(f, k);
+}
+OVal *o_map_from_list(OVal *l, int cons_idx) {
+  OVal *m = o_map_empty();
+  for (OVal *c = l; c && o_idx(c) == cons_idx; c = c->f[1]) {
+    OVal *pr = c->f[0];
+    m = o_map_insert(pr->f[0], pr->f[1], m);
+  }
+  return m;
 }
 
 /* ---------- the crypto boundary (#78), HAND-WRITTEN ----------
@@ -4980,6 +5420,24 @@ declare ptr @o_fields(i32)
 declare void @o_set(ptr, i32, ptr)
 declare ptr @o_ctor(i32, i32, ptr)
 declare ptr @o_field(ptr, i32)
+declare ptr @o_set_empty()
+declare ptr @o_set_member(ptr, ptr)
+declare ptr @o_set_add(ptr, ptr)
+declare ptr @o_set_union(ptr, ptr)
+declare ptr @o_set_inter(ptr, ptr)
+declare ptr @o_set_size(ptr)
+declare ptr @o_set_elems(ptr, i32, i32)
+declare ptr @o_set_from_list(ptr, i32)
+declare ptr @o_map_empty()
+declare ptr @o_map_insert(ptr, ptr, ptr)
+declare ptr @o_map_lookup(ptr, ptr, i32, i32)
+declare ptr @o_map_has(ptr, ptr)
+declare ptr @o_map_keys(ptr, i32, i32)
+declare ptr @o_map_values(ptr, i32, i32)
+declare ptr @o_map_size(ptr)
+declare ptr @o_map_merge(ptr, ptr)
+declare ptr @o_map_pairs(ptr, i32, i32, i32)
+declare ptr @o_map_from_list(ptr, i32)
 declare ptr @o_env_push(ptr, ptr)
 declare ptr @o_env1(ptr)
 declare ptr @o_env_get(ptr, i32)
@@ -5408,6 +5866,12 @@ func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 		if err := e.resolveStrCtors(); err != nil {
 			return "", err
 		}
+	}
+	// Native container recognition, before plan(): plan prunes the recognized
+	// operations from structural emission, so nc must be resolved first.
+	e.nc = resolveNativeContainers(st, llvmSetHelperNames())
+	if err := e.resolveSetMapCtors(); err != nil {
+		return "", err
 	}
 	if err := e.plan(prog.EntryHash); err != nil {
 		return "", err

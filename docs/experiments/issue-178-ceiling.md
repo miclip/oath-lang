@@ -202,6 +202,46 @@ A single earlier run reported +13.6%; repeating it across sizes did not
 reproduce that, and the honest statement is that the cost is not distinguishable
 from noise here rather than that it is zero.
 
+## Native containers landed — and the app ceiling did NOT move (#178 re-diagnosed)
+
+The LLVM backend now lowers `Set`/`Map` operations to iterative native helpers
+(`docs/native-containers.md`), removing the structural `set-member`/`si-*`
+recursion this file's early drafts and #178's title blamed. Re-running
+`app-ceiling.sh` on the artifact with native containers active:
+
+| backend | max distinct records | before native containers |
+|---|---:|---:|
+| LLVM (8,176 KB) | **3,949** | 3,949 |
+| Go | 24,797 | 24,797 |
+
+**Zero change**, bytes-per-record identical. The structural container functions
+are confirmed pruned (`f_si_member`/`f_set_member`/`f_set_add`/`f_map_insert` are
+absent from the binary), so native lowering IS active — it simply is not what
+bounds the app.
+
+**The binding recursion is the RECORD-LIST fold, not the set.** `gh-dedup` and
+`str-nub` recurse over the `(List Str)` of N records, and their kept-record
+branch is `(Cons l (gh-dedup … rest))` — the recursive call is an ARGUMENT to
+`Cons`, so it is NON-TAIL: N frames stay live. The `set-member`/`set-add` calls
+at each frame compute and unwind BEFORE the recursion descends, so they never
+contributed to peak depth. Native containers made them iterative and the peak
+was never theirs.
+
+Two consequences that redirect the issue:
+
+- **Tail-call optimization would not fix it either** — these folds build a result
+  list via `Cons`, so they are not in tail position.
+- **The driver is the `List` representation.** Closing #178 for `report.oath`
+  means native/iterative lists (a large change touching the most fundamental
+  datatype and the prove-over-structural-model guarantee) or bounded input. The
+  stack guard remains the mitigation: reaching the ceiling is a legible exit 70
+  with a diagnostic, and a handler answers 500 rather than dying.
+
+So native containers is a correct backend-faithfulness improvement that removes a
+real (non-binding) recursion and closes the ceiling for a program whose set/map
+operations ARE its deepest recursion — `report.oath`'s are not. #178 stays open,
+re-diagnosed: its ceiling is list recursion, and the set was never the cause.
+
 ## What this does NOT establish
 
 - **That the guard catches EVERY exhaustion.** The check is the first
