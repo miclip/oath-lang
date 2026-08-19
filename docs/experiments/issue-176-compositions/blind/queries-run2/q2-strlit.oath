@@ -1,0 +1,2 @@
+(defn wanted [] [(s Str)] Bool (path-is "/hook" s)
+  (prop refl [(s Str)] (== (wanted s) (wanted s))))

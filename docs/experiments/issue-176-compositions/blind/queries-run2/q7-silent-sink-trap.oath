@@ -1,0 +1,10 @@
+(defn wanted [] [(caps {emit (-> Str Str) secret Str}) (r Request)] Response
+  (Resp 500 (Nil [(Pair Str Str)]) (Nil [Int]))
+  (prop a-non-ping-does-record [(body (List Int))]
+    (if (bytes-ok body)
+      (== (match (wanted (caps-with (fn [(s Str)] SNil) gh-spec-secret)
+                         (gh-request (gh-sign gh-spec-secret body)
+                                     "push" "/hook" "application/json" body))
+            ((Resp s h b) s))
+          500)
+      true)))

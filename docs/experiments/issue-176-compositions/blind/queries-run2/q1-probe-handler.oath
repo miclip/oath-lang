@@ -1,0 +1,4 @@
+(defn wanted [] [(caps {emit (-> Str Str) secret Str}) (r Request)] Response
+  (Resp 500 (Nil [(Pair Str Str)]) (Nil [Int]))
+  (prop refl [(caps {emit (-> Str Str) secret Str}) (r Request)]
+    (== (wanted caps r) (wanted caps r))))

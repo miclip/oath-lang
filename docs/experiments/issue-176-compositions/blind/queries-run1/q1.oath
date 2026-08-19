@@ -1,0 +1,2 @@
+(defn wanted [] [(secret Str) (body (List Int))] Str secret
+  (prop refl [(s Str) (b (List Int))] (== (wanted s b) (wanted s b))))

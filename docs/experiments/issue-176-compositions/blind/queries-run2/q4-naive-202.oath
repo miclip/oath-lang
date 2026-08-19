@@ -1,0 +1,10 @@
+(defn wanted [] [(caps {emit (-> Str Str) secret Str}) (r Request)] Response
+  (Resp 500 (Nil [(Pair Str Str)]) (Nil [Int]))
+  (prop a-signed-push-is-always-202 [(sink (-> Str Str)) (body (List Int))]
+    (if (bytes-ok body)
+      (== (match (wanted (caps-with sink gh-spec-secret)
+                         (gh-request (gh-sign gh-spec-secret body)
+                                     "push" "/hook" "application/json" body))
+            ((Resp s h b) s))
+          202)
+      true)))

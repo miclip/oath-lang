@@ -1,0 +1,8 @@
+(defn wanted [] [(sig Str) (event Str) (path Str) (ctype Str) (body (List Int))] Request
+  (Req SNil SNil (Nil [(Pair Str Str)]) (Nil [Int]) 0)
+  (prop keeps-the-body [(a Str) (b Str) (c Str) (d Str) (e (List Int))]
+    (== (req-body (wanted a b c d e)) e))
+  (prop is-a-post [(a Str) (b Str) (c Str) (d Str) (e (List Int))]
+    (== (req-method (wanted a b c d e)) "POST"))
+  (prop carries-the-signature-header [(a Str) (b Str) (c Str) (d Str) (e (List Int))]
+    (== (header-first (req-headers (wanted a b c d e)) "x-hub-signature-256") (Some [Str] a))))

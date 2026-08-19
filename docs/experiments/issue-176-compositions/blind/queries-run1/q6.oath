@@ -1,0 +1,6 @@
+(defn wanted [] [(secret Str) (body (List Int))] Str secret
+  (prop survives-gh-signature [(s Str) (b (List Int))]
+    (if (and (bytes-ok (str-bytes s)) (bytes-ok b))
+      (== (gh-signature (Cons [(Pair Str Str)] (Pair [Str Str] "x-hub-signature-256" (wanted s b)) (Nil [(Pair Str Str)])))
+          (Some [Str] (hex-encode (hmac-sha256 (str-bytes s) b))))
+      true)))

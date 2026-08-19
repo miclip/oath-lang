@@ -1,0 +1,8 @@
+(defn wanted [] [(secret Str) (body (List Int))] Str secret
+  (prop signed-request-is-accepted [(b (List Int))]
+    (if (bytes-ok b)
+      (== (match (gh-webhook (caps-with (fn [(s Str)] "ok") gh-spec-secret)
+                   (gh-request (wanted gh-spec-secret b) "push" "/hook" "application/json" b))
+            ((Resp code hs bd) code))
+          202)
+      true)))

@@ -1,0 +1,4 @@
+(defn wanted [] [(secret Str) (body (List Int))] Str secret
+  (prop deliberately-false [(s Str) (b (List Int))]
+    (== (gh-signature (Cons [(Pair Str Str)] (Pair [Str Str] "x-hub-signature-256" (gh-sign s b)) (Nil [(Pair Str Str)])))
+        (None [Str]))))

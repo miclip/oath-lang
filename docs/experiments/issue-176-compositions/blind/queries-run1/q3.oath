@@ -1,0 +1,3 @@
+(defn wanted [] [(sig Str) (event Str) (path Str) (ctype Str) (body (List Int))] Request
+  (Req SNil SNil (Nil [(Pair Str Str)]) (Nil [Int]) 0)
+  (prop refl [(a Str) (b Str) (c Str) (d Str) (e (List Int))] (== (wanted a b c d e) (wanted a b c d e))))

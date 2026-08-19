@@ -1,0 +1,6 @@
+(defn wanted [] [(secret Str) (body (List Int))] Str secret
+  (prop signature-header-verifies [(s Str) (b (List Int))]
+    (if (and (bytes-ok (str-bytes s)) (bytes-ok b))
+      (== (gh-signature (req-headers (gh-request (wanted s b) "push" "/hook" "application/json" b)))
+          (Some [Str] (hex-encode (hmac-sha256 (str-bytes s) b))))
+      true)))

@@ -1,0 +1,186 @@
+oath source: 2b7fe11 +MODIFIED
+
+########## RUN 2 — the three content-hash matches the verdict rests on
+=== queries-run2/q3-accept.oath
+    CLAIM: the accept law, written from the intent, hits gh-webhook's own accepts-github-signed
+  
+    · a-correctly-signed-push-is-accepted [tested here]  #984388904cfc
+        gh-webhook         (tested as "accepts-github-signed")
+
+=== queries-run2/q6-ping-trap.oath
+    CLAIM: the ping trap hits gh-webhook's own ping-does-not-record
+  
+    · ping-does-not-record [tested here]  #ed89fbd89995
+        gh-webhook         (tested as "ping-does-not-record")
+
+=== queries-run2/q7-silent-sink-trap.oath
+    CLAIM: the empty-sink trap hits gh-webhook's own a-non-ping-does-record
+  
+    · a-non-ping-does-record [tested here]  #6f3ec1679e15
+        gh-webhook         (tested as "a-non-ping-does-record")
+
+########## RUN 2 — the rest, in the order the subject wrote them
+=== queries-run2/q1-probe-handler.oath
+    CLAIM: a reflexive law at the handler's shape names gh-webhook
+  
+    · refl [tested here]  #de9de5fc0da0
+        no definition states this law as written (matched by property content hash)
+        1 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+        query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+        type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+          gh-webhook         tested (200 cases per property)
+        Try `get <name>` to read how each states its properties, or find --implies to
+        search by PROOF rather than by shape.
+
+=== queries-run2/q2-strlit.oath
+    CLAIM: string literals elaborate; this probe was a syntax check
+  
+    · refl [tested here]  #70641378db6f
+        no definition states this law as written (matched by property content hash)
+        8 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+        query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+        type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+          gh-line-ok         tested (200 cases per property)
+          hex-valid          PROVEN (all 7 properties, Z3 over unbounded ints)
+          parse-nat          tested (200 cases per property)
+          record-is-well-formed tested (200 cases per property)
+          secret-is-usable   tested (200 cases per property)
+          str-code           tested (200 cases per property)
+          str-len            PROVEN (all 1 properties, Z3 over unbounded ints)
+          str-scalars        tested (200 cases per property)
+        Try `get <name>` to read how each states its properties, or find --implies to
+        search by PROOF rather than by shape.
+
+=== queries-run2/q4-naive-202.oath
+    CLAIM: a flat 202 assertion is NOT stated by the corpus
+  
+    · a-signed-push-is-always-202 [tested here]  #afd64289f517
+        no definition states this law as written (matched by property content hash)
+        1 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+        query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+        type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+          gh-webhook         tested (200 cases per property)
+        Try `get <name>` to read how each states its properties, or find --implies to
+        search by PROOF rather than by shape.
+
+=== queries-run2/q5-naive-ping.oath
+    CLAIM: asserting 202 for a ping is NOT stated either
+  
+    · a-signed-ping-is-202 [tested here]  #7d752aaa7340
+        no definition states this law as written (matched by property content hash)
+        1 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+        query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+        type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+          gh-webhook         tested (200 cases per property)
+        Try `get <name>` to read how each states its properties, or find --implies to
+        search by PROOF rather than by shape.
+
+=== queries-run2/q8-any-usable-secret.oath
+    CLAIM: generalising off the fixture secret is NOT stated
+  
+    · accepts-with-any-usable-secret [tested here]  #12ebea3770fc
+        no definition states this law as written (matched by property content hash)
+        1 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+        query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+        type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+          gh-webhook         tested (200 cases per property)
+        Try `get <name>` to read how each states its properties, or find --implies to
+        search by PROOF rather than by shape.
+
+########## RUN 1 — every query, in order
+=== queries-run1/q1.oath
+    CLAIM: a probe at (-> Str (List Int) Str) names gh-sign
+  
+    · refl [tested here]  #c1879a41b1d3
+        no definition states this law as written (matched by property content hash)
+        1 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+        query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+        type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+          gh-sign            tested (200 cases per property)
+        Try `get <name>` to read how each states its properties, or find --implies to
+        search by PROOF rather than by shape.
+
+=== queries-run1/q2.oath
+    CLAIM: a probe at (-> Str (List Int) Request) names nothing
+  
+    · refl [tested here]  #c1879a41b1d3
+        no definition states this law as written (matched by property content hash)
+
+=== queries-run1/q3.oath
+    CLAIM: a probe at the five-argument shape names gh-request
+  
+    · refl [tested here]  #139f4af11b16
+        no definition states this law as written (matched by property content hash)
+        1 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+        query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+        type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+          gh-request         tested (200 cases per property)
+        Try `get <name>` to read how each states its properties, or find --implies to
+        search by PROOF rather than by shape.
+
+=== queries-run1/q4.oath
+    CLAIM: an end-to-end wording that did NOT hash-match
+  
+    · signed-request-is-accepted [tested here]  #6546d6f0cd52
+        no definition states this law as written (matched by property content hash)
+        1 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+        query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+        type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+          gh-sign            tested (200 cases per property)
+        Try `get <name>` to read how each states its properties, or find --implies to
+        search by PROOF rather than by shape.
+
+=== queries-run1/q5.oath
+    CLAIM: the same, with the lam removed
+  
+    · signature-header-verifies [tested here]  #946fbb8b0f07
+        no definition states this law as written (matched by property content hash)
+        1 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+        query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+        type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+          gh-sign            tested (200 cases per property)
+        Try `get <name>` to read how each states its properties, or find --implies to
+        search by PROOF rather than by shape.
+
+=== queries-run1/q6.oath
+    CLAIM: the signing law hits gh-sign's own survives-gh-signature
+  
+    · survives-gh-signature [tested here]  #01c18414ce98
+        gh-sign            (tested as "survives-gh-signature")
+
+=== queries-run1/q7.oath
+    CLAIM: the request-builder laws hit gh-request
+  
+    · keeps-the-body [tested here]  #92c6889586ed
+        gh-request         (tested as "keeps-the-body")
+  
+    · is-a-post [tested here]  #3c1d7ca44ae4
+        gh-request         (tested as "is-a-post")
+  
+    · carries-the-signature-header [tested here]  #c57eff0b6073
+        no definition states this law as written (matched by property content hash)
+        1 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+        query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+        type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+          gh-request         tested (200 cases per property)
+        Try `get <name>` to read how each states its properties, or find --implies to
+        search by PROOF rather than by shape.
+
+=== queries-run1/q8.oath
+    CLAIM: the subject's CALIBRATION control: a deliberately false law
+  
+    · deliberately-false [tested here]  #ba9ff7527365
+        no definition states this law as written (matched by property content hash)
+        1 definition(s) have a COMPATIBLE SIGNATURE — the law may be stated differently, or your
+        query may be shaped differently (a call to a POLYMORPHIC definition needs explicit
+        type application, e.g. (q [Int] (q [Int] xs)) rather than (q (q xs))):
+          gh-sign            tested (200 cases per property)
+        Try `get <name>` to read how each states its properties, or find --implies to
+        search by PROOF rather than by shape.
+
+=== queries-run1/q9.oath
+    CLAIM: is a one-call builder hiding? no
+  
+    · signs-the-body-with-the-secret [tested here]  #e2083a6dd5e0
+        no definition states this law as written (matched by property content hash)
+

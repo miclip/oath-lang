@@ -1,0 +1,8 @@
+(defn wanted [] [(secret Str) (body (List Int))] Request
+  (Req SNil SNil (Nil [(Pair Str Str)]) (Nil [Int]) 0)
+  (prop signs-the-body-with-the-secret [(s Str) (b (List Int))]
+    (if (and (bytes-ok (str-bytes s)) (bytes-ok b))
+      (and (== (req-body (wanted s b)) b)
+           (== (header-first (req-headers (wanted s b)) "x-hub-signature-256")
+               (Some [Str] (gh-sign s b))))
+      true)))
