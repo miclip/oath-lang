@@ -1577,6 +1577,21 @@ func main() {
 	// emitted C, which is a rule about HTTP added to a backend rather than a
 	// rule of the language, and 14.2 gives that request no such disposition.
 	srv := &http.Server{Addr: addr, Handler: handler, DisableGeneralOptionsHandler: true}
+	// RFC 9112 §6.1: a request carrying both Transfer-Encoding and Content-Length
+	// MUST have its connection closed after the response — a desynchronised
+	// connection is the request-smuggling vector. net/http processes such a
+	// request and REUSES the connection (golang/go#80942), and STRIPS both
+	// headers before the handler, so the conflict is invisible from the parsed
+	// Request; detecting it precisely means reimplementing net/http's request
+	// framing in a conn wrapper (across pipelining, obs-fold and bare-LF), which
+	// is exactly what this backend delegates to net/http to avoid. So this backend
+	// takes the complete, robust disposition instead: NO keep-alive. Every
+	// response closes its connection and answers Connection: close, which makes
+	// the §6.1 conflict — and every other reuse — impossible by construction, the
+	// same posture the LLVM backend has always held. It is a per-request
+	// connection model; keep-alive is a future optimization for both backends
+	// (#179), where the §6.1 conflict would have to be handled explicitly.
+	srv.SetKeepAlivesEnabled(false)
 	fmt.Fprintf(os.Stderr, "oath handler listening on %%s\n", addr)
 	if err := srv.ListenAndServe(); err != nil {
 		oathListenFailed(err)

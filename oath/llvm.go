@@ -3766,12 +3766,16 @@ static int o_http_parse(int fd, long long deadline, OReq *r) {
      a request to avoid the potential attacks." Reuse is the smuggling vector —
      a desynchronised connection carrying a second, attacker-framed request —
      so processing the shape is the MAY and closing after it is the MUST.
-     Measured: net/http does neither signal nor close, which is the half of its
-     behaviour this backend does not copy. Nothing extra is needed HERE to
-     satisfy that MUST — this serve loop calls o_http_close on every path, so
-     the connection is per-request by construction and cannot be reused after
-     any response, smuggling-shaped or not. It is stated rather than left
-     implicit because a future keep-alive would silently retire the guarantee. */
+     Measured: net/http does neither signal nor close, and the Go backend
+     inherited that — a real RFC violation (golang/go#80942). Both backends now
+     hold the SAME per-request posture: the Go backend disables keep-alive (#171)
+     and this one calls o_http_close on every path, and each answers Connection:
+     close, so a connection is per-request by construction and cannot be reused
+     after any response — smuggling-shaped or not. Keep-alive for either backend
+     is filed as an optimization (#179) precisely because it would retire this
+     by-construction guarantee and must then reproduce the §6.1 close explicitly,
+     which needs the request framing net/http hid from a wire sniffer. That is
+     why the guarantee is stated rather than left implicit. */
   int has_cl = 0, chunked = 0, has_te = 0, cl_too_big = 0;
   int te_codings = 0, te_last_chunked = 0, te_other = 0;
   long long clen = 0;

@@ -405,15 +405,15 @@ func TestHandlerDoesNotCarryTheOutboundClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("emitProgram: %v", err)
 	}
-	// REPLACED, NOT WEAKENED. This pinned "http.ListenAndServe" while the
-	// handler was a route on DefaultServeMux. It is now an explicit http.Server
-	// with the Oath entry as its whole Handler, because the mux made routing
-	// decisions SPEC 14 does not describe and net/http's general OPTIONS
-	// handler answered "OPTIONS *" without ever calling the entry — both
-	// measured as §14.0 divergences. The replacement pins MORE than the old
-	// one: that it serves, that it serves through a server this program
-	// constructs, and that the interception is off.
-	for _, want := range []string{"&http.Server{", "DisableGeneralOptionsHandler: true", "srv.ListenAndServe()"} {
+	// REPLACED, NOT WEAKENED. This first pinned "http.ListenAndServe" while the
+	// handler was a route on DefaultServeMux; it is now an explicit http.Server
+	// with the Oath entry as its whole Handler (the mux made routing decisions
+	// SPEC 14 does not describe, and net/http's general OPTIONS handler answered
+	// "OPTIONS *" without calling the entry — both §14.0 divergences). It also
+	// pins SetKeepAlivesEnabled(false): a per-request connection model, which is
+	// what makes the RFC 9112 §6.1 Transfer-Encoding+Content-Length close hold by
+	// construction (#171) rather than by reimplementing net/http's framing.
+	for _, want := range []string{"&http.Server{", "DisableGeneralOptionsHandler: true", "srv.SetKeepAlivesEnabled(false)", "srv.ListenAndServe()"} {
 		if !strings.Contains(src, want) {
 			t.Fatalf("a handler must serve, through its own http.Server with the general "+
 				"OPTIONS interception disabled; %q is absent, so the test proves nothing", want)
