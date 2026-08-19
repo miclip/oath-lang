@@ -600,17 +600,12 @@ missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   #178 — a shipped backend has a correctness
-                              ceiling. Its retirement condition has two routes
-                              and the measuring one was RUN AT d0f4b34 and
-                              came back the wrong way — inside ordinary use;
-                              the figures are on the issue. So it is still here
-                              because it was measured, not because nobody
-                              looked. **That does not retire the route**: the
-                              result is a fact about d0f4b34 and nothing later,
-                              so anything RAISING the ceiling without removing
-                              it — one of the issue's own dispositions — makes
-                              re-measuring the legitimate way out
+  more EXPENSIVE if delayed   (none) — the last item on this clock landed:
+                              084531c ran the compiled program on a large
+                              dedicated stack, raising the LLVM ceiling above
+                              realistic use. NOTHING IS FORCED. The heap
+                              constraint that fix revealed is #180, below, and
+                              is above realistic use — not forcing
   more VALUABLE if delayed    #134, #139/#140, #138, #38 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128,
@@ -625,6 +620,14 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               run that campaign without reproducing zero forever
                               is ON THE ISSUE, in detail, because it is a
                               procedure that goes stale and a pointer does not
+                              #180 — the HEAP ceiling the stack-ceiling
+                              fix (084531c) revealed:
+                              immutable native containers allocate O(N²) into a
+                              never-freed arena, OOM-killing a batch consumer
+                              past ~50K records. ABOVE realistic use, so not
+                              forcing. Trigger: a consumer needing unbounded
+                              batch, or a decision to add a heap guard so
+                              exhaustion refuses legibly instead of an OS kill
   no CLOCK at all             #65, #66 —
                               open, and neither cheaper nor dearer for waiting
 
