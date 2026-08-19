@@ -192,7 +192,7 @@ func TestEveryRefusalUsesADeclaredReason(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parsing build-excluded %s: %v", n, err)
 		}
-		for _, f := range scanUnauditedFile(fset, ef, aliasNames) {
+		for _, f := range scanUnauditedFile(fset, ef, aliasNames, got.forwarders) {
 			t.Errorf("%s: %s — the closure audit cannot type-check this file under the "+
 				"default build context, so the vocabulary is not closed under every "+
 				"build of this package", n, f)
@@ -209,8 +209,16 @@ func TestEveryRefusalUsesADeclaredReason(t *testing.T) {
 	if got.sites == 0 {
 		t.Fatal("no backendRefusal constructions found; the scan did not work")
 	}
-	t.Logf("%d declared reasons; %d construction sites, every Reason traced to a constant",
-		got.declared, got.sites)
+	// NON-VACUITY of the forwarder closure: the derivation must find at least the
+	// known forwarder, or the excluded-file scan's forwarder-name check is
+	// silently checking nothing — the very forever-passing failure this whole
+	// audit exists to prevent, one level up.
+	if !got.forwarders["llvmUnsupported"] {
+		t.Errorf("the forwarder derivation did not find llvmUnsupported (a function taking a "+
+			"refusalReason); the excluded-file forwarder-name check is vacuous. got: %v", got.forwarders)
+	}
+	t.Logf("%d declared reasons; %d construction sites; forwarders %v; every Reason traced to a constant",
+		got.declared, got.sites, got.forwarders)
 }
 
 // WHAT THIS AUDIT REFUSES CONSERVATIVELY — declared, so that a refusal on one
@@ -245,11 +253,13 @@ func TestEveryRefusalUsesADeclaredReason(t *testing.T) {
 //	                                   — this over-refuses a by-value return
 //	                                   type and a nested `[]backendRefusal{{…}}`
 //
-// One boundary is NOT fail-closed and is stated where it lives: a
-// build-excluded file passing an untyped string constant to an audited
-// forwarder converts implicitly and names nothing the parse-only fallback scan
-// can see (see scanUnauditedFile). Type-checking every tagged configuration is
-// what would close it.
+// The former open boundary — a build-excluded file passing an untyped string
+// constant to an audited forwarder, which converts implicitly and names no TYPE
+// — is now closed: scanUnauditedFile also flags a mention of the FORWARDER's
+// name (derived from the type-checked package), so calling or valuing one in an
+// excluded file is caught. The only residue is a forwarder reached without ever
+// naming it (reflection, or an interface method), which no parse-only scan sees;
+// type-checking every tagged configuration is what would close that.
 
 // reasonAudit is what one run of the closure audit observed.
 type reasonAudit struct {
@@ -257,6 +267,12 @@ type reasonAudit struct {
 	sites    int             // backendRefusal constructions seen
 	declared int             // package-scope refusalReason constants
 	aliases  map[string]bool // package-scope aliases of either refusal type
+	// forwarders are package-scope functions with a refusalReason parameter —
+	// the constructions an excluded file could reach WITHOUT naming a refusal
+	// type, by passing an untyped string constant that converts implicitly. Their
+	// names let the parse-only scan flag such a call, closing the boundary the
+	// scan otherwise leaves open.
+	forwarders map[string]bool
 }
 
 // auditReasonClosure is the audit as a PURE FUNCTION over a parsed package, so
@@ -305,6 +321,59 @@ func auditReasonClosure(fset *gotoken.FileSet, files []*ast.File, pkgName string
 				if n := named.Obj().Name(); n == "backendRefusal" || n == "refusalReason" {
 					out.aliases[name] = true
 				}
+			}
+		}
+	}
+
+	// Forwarder names: any package-scope function taking a refusalReason
+	// parameter constructs (or forwards to a construction of) a refusal. An
+	// excluded file calling one reaches the vocabulary even when it passes an
+	// untyped string constant that names no type — so scanUnauditedFile flags a
+	// mention of the name, which also catches the forwarder taken as a value
+	// (`fwd := llvmUnsupported`). Derived, not hardcoded, so a new forwarder is
+	// covered without anyone remembering to add it.
+	out.forwarders = map[string]bool{}
+	for _, name := range scope.Names() {
+		fn, ok := scope.Lookup(name).(*types.Func)
+		if !ok {
+			continue
+		}
+		sig, ok := fn.Type().(*types.Signature)
+		if !ok {
+			continue
+		}
+		for i := 0; i < sig.Params().Len(); i++ {
+			if named, ok := types.Unalias(sig.Params().At(i).Type()).(*types.Named); ok && named.Obj().Name() == "refusalReason" {
+				out.forwarders[name] = true
+				break
+			}
+		}
+	}
+	// METHOD forwarders too: the audit follows concrete method forwarders, and a
+	// method taking a refusalReason is reachable from an excluded file as
+	// `x.reject("invented")`. Its name appears as a selector's Sel identifier,
+	// which the scan's Ident case visits, so recording the method name is enough.
+	sigHasReason := func(sig *types.Signature) bool {
+		for j := 0; j < sig.Params().Len(); j++ {
+			if named, ok := types.Unalias(sig.Params().At(j).Type()).(*types.Named); ok && named.Obj().Name() == "refusalReason" {
+				return true
+			}
+		}
+		return false
+	}
+	for _, name := range scope.Names() {
+		tn, ok := scope.Lookup(name).(*types.TypeName)
+		if !ok {
+			continue
+		}
+		named, ok := tn.Type().(*types.Named)
+		if !ok {
+			continue
+		}
+		for i := 0; i < named.NumMethods(); i++ {
+			m := named.Method(i)
+			if sig, ok := m.Type().(*types.Signature); ok && sigHasReason(sig) {
+				out.forwarders[m.Name()] = true
 			}
 		}
 	}
@@ -1469,7 +1538,7 @@ func TestReasonAuditControlScaffoldingIsInert(t *testing.T) {
 // backendRefusal at all. A false positive here costs one line — bring the file
 // into a configuration the audit can type-check, or rename the field — while a
 // false negative silently exempts a whole build.
-func scanUnauditedFile(fset *gotoken.FileSet, f *ast.File, aliases map[string]bool) []string {
+func scanUnauditedFile(fset *gotoken.FileSet, f *ast.File, aliases, forwarders map[string]bool) []string {
 	var found []string
 	at := func(n ast.Node, what string) {
 		found = append(found, fmt.Sprintf("%s: %s", fset.Position(n.Pos()), what))
@@ -1481,14 +1550,22 @@ func scanUnauditedFile(fset *gotoken.FileSet, f *ast.File, aliases map[string]bo
 			// mentions neither backendRefusal nor a Reason field, and
 			// `refusalReason("invented")` is how it would mint an ad-hoc value.
 			//
-			// RESIDUAL BOUNDARY, stated rather than papered over: an excluded
-			// file passing an untyped string constant to an audited forwarder
-			// converts implicitly and names nothing this parse-only scan can
-			// see. Type-checking every tagged configuration is what would close
-			// it; until then this is an approximation, and it is the reason the
-			// count of excluded files is logged rather than assumed to be zero.
+			// A forwarder passed an untyped string constant converts implicitly
+			// and names no TYPE — but it still names the FORWARDER, which the
+			// `forwarders` check above flags. The only residue left is a forwarder
+			// reached without ever naming it (through reflection or an interface
+			// method in an excluded file), which no parse-only scan can see; the
+			// count of excluded files is logged rather than assumed zero for that
+			// vanishing case.
 			if x.Name == "backendRefusal" || x.Name == "refusalReason" || aliases[x.Name] {
 				at(x, "mentions "+x.Name)
+			}
+			// A refusal forwarder (a function taking a refusalReason) named here —
+			// called, or taken as a value — reaches the vocabulary even with an
+			// untyped string argument that names no type. This is what closes the
+			// residual boundary the comment below used to leave open.
+			if forwarders[x.Name] {
+				at(x, "names the refusal forwarder "+x.Name)
 			}
 		case *ast.CompositeLit:
 			for _, el := range x.Elts {
@@ -1548,6 +1625,14 @@ func f() interface{} { return mk(refusalReason("invented")) }`, true},
 var _ = myRefusalAlias{}`, true},
 		{"a bare mention", `package p
 func f() *backendRefusal { return nil }`, true},
+		{"calls a forwarder with an untyped string", `package p
+func f() interface{} { return llvmUnsupported("invented") }`, true},
+		{"takes a forwarder as a value", `package p
+var alias = llvmUnsupported`, true},
+		{"calls a method forwarder", `package p
+func f(x T) interface{} { return x.reject("invented") }`, true},
+		{"an unrelated call by a different name", `package p
+func f() { somethingElse("fine") }`, false},
 		{"nothing refusal-related", `package p
 type other struct{ Cause string }
 func f(x *other) { x.Cause = "fine" }`, false},
@@ -1561,7 +1646,7 @@ func f(x *other) { x.Cause = "fine" }`, false},
 			if err != nil {
 				t.Fatalf("the control does not parse: %v", err)
 			}
-			got := scanUnauditedFile(fset, f, map[string]bool{"myRefusalAlias": true})
+			got := scanUnauditedFile(fset, f, map[string]bool{"myRefusalAlias": true}, map[string]bool{"llvmUnsupported": true, "reject": true})
 			if c.flag && len(got) == 0 {
 				t.Errorf("scan missed refusal traffic it must flag")
 			}
