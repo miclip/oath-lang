@@ -432,37 +432,45 @@ func TestFindImpliesCrossType(t *testing.T) {
 	//     mean anything.
 	//   - MAKE crossTypeCompatible ARITY-BLIND. The add3-r control fires, and it
 	//     is the only assertion here that can catch it.
+	// RUNG 3 (#65): a property whose BODY carries a type is now matched cross-type
+	// too. The law commutes q, wrapped in an Int-annotated identity lambda that
+	// lives in the BODY, and the candidate is plus-r2 : (Rat,Rat)->Rat. Before
+	// rung 3 only the binders were re-typed, so the body's `(fn [(x Int)] x)`
+	// kept its Int annotation, the augmentation was ill-typed against Rat binders,
+	// and checkDef dropped it — a documented ASYMMETRY (binders generalized,
+	// bodies did not). Rung 3 threads the same Int->Rat substitution through the
+	// body, so the augmentation typechecks and plus-r2 is PROVED — a TRUE
+	// cross-type proof, because commutativity holds at Rat.
+	//
+	// THE CONTRACT INVERTED, AND THE NEW ONE IS PINNED AT LEAST AS TIGHTLY (#156):
+	// the old test asserted checkDef REJECTED the augmentation and plus-r2 was in
+	// NO classification; this asserts checkDef ACCEPTS it and plus-r2 is in the
+	// SATISFIED classification. Soundness is unchanged: checkDef still gates
+	// well-typedness and Z3 still gates truth, so a re-typed law FALSE at the new
+	// type would be refuted, never proved — the same filter the binder-only path
+	// has always relied on.
 	const annotatedQuery = `(defn q [] [(a Int) (b Int)] Int (+ a b)
 		(prop annotated [(a Int) (b Int)] (== ((fn [(x Int)] x) (q a b)) (q b a))))`
 	st2 := newStore(t)
 	put(t, st2, `(defn plus-r2 [] [(a Rat) (b Rat)] Rat (+ a b))`)
 
-	// THE DECISION. The compatibility half is the vacuity guard and it is not
-	// optional: without it "checkDef rejected the augmentation" is unfalsifiable
-	// against a world where the candidate never got far enough to be checked, and
-	// the whole control would keep passing while the gate it names was dead code.
+	// The augmentation now TYPECHECKS — direct evidence that the body's Int
+	// annotation was re-typed to Rat. The vacuity guard is unchanged: a
+	// signature that was never compatible would make this witness nothing.
 	compatible, checkErr := crossTypeAugmentForTest(t, st2, annotatedQuery, "plus-r2")
 	if !compatible {
 		t.Fatalf("plus-r2's signature is no longer cross-type compatible with the query, so the " +
-			"checkDef gate is never reached and this control witnesses nothing about it")
+			"body-retyping path is never reached and this control witnesses nothing about it")
 	}
-	if checkErr == nil {
-		t.Fatal("checkDef ACCEPTED the re-typed augmentation: only binders are re-typed, so the " +
-			"property body's own Int annotation still disagrees with the Rat binders, and an " +
-			"augmentation that does not typecheck must not reach the prover")
+	if checkErr != nil {
+		t.Fatalf("checkDef REJECTED the re-typed augmentation: rung 3 re-types the body's own Int "+
+			"annotation to Rat, so the augmentation must typecheck. If it does not, body retyping "+
+			"is not being applied: %v", checkErr)
 	}
-	// TWO-WAY CONTROL ON THE GUARD ABOVE. The guard pins the TRUE direction and
-	// this pins the FALSE one, and they are broken by different things — which is
-	// why both are here rather than one standing in for the other:
-	//
-	//	the guard   fires when the FIXTURE drifts. Give plus-r2 a third Rat
-	//	            argument and it is no longer signature-compatible, the gate is
-	//	            never reached, and the guard stops the test before checkErr is
-	//	            examined at all. Verified by making exactly that edit.
-	//	this        fires when the RELATION loses discrimination. Make
-	//	            crossTypeCompatible arity-blind and it calls a 3-argument
-	//	            candidate compatible with a 2-argument query, which no fixture
-	//	            change can reveal.
+
+	// TWO-WAY CONTROL ON THE COMPATIBILITY GUARD. A 3-argument candidate must NOT
+	// be called compatible with the 2-argument query — otherwise the guard above
+	// is dead and could pass on an arity-blind relation no fixture change reveals.
 	if compat, _ := crossTypeAugmentForTest(t, st, `(defn q [] [(a Int) (b Int)] Int (+ a b)
 		(prop comm [(a Int) (b Int)] (== (q a b) (q b a))))`, "add3-r"); compat {
 		t.Fatal("crossTypeAugmentForTest calls a 3-argument candidate signature-compatible with a " +
@@ -470,37 +478,22 @@ func TestFindImpliesCrossType(t *testing.T) {
 			"vacuity guard above is dead")
 	}
 
-	// THE REPORT, in DETAIL mode so that every classification names its members.
-	// The four dispositions are checked as one negative and one positive: plus-r2
-	// appears nowhere, and the fallback FIRES — which says the classified set was
-	// empty rather than merely that this name is not in it. Without the fallback
-	// assertion a renderer that dropped the name while still classifying the
-	// candidate would satisfy the negative half.
+	// THE REPORT, in DETAIL mode. plus-r2 must now appear in the SATISFIED
+	// classification — the body-carrying law is provably satisfied cross-type —
+	// and the empty-answer fallback must NOT fire, since the classified set is
+	// non-empty.
 	residue, err := apiFindImplies(st2, annotatedQuery, findImpliesDetailed)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hit := satisfyingLineFor(residue, "plus-r2"); hit != "" {
-		t.Fatalf("a property body carrying Int must not be proved against a Rat definition (checkDef gate):\n%s", hit)
+	if hit := satisfyingLineFor(residue, "plus-r2"); hit == "" {
+		t.Fatalf("plus-r2 was NOT reported as provably satisfying the body-carrying law; rung 3 "+
+			"should prove it cross-type (commutativity holds at Rat):\n%s", residue)
 	}
-	if strings.Contains(residue, "plus-r2") {
-		t.Fatalf("plus-r2 was dropped by the checkDef gate, so it must appear in NO classification — "+
-			"reporting it as refuted or unsettled would claim a verdict about a goal that never "+
-			"typechecked:\n%s", residue)
+	if strings.Contains(residue, "no definition provably satisfies this") {
+		t.Fatalf("the empty-answer fallback fired even though plus-r2 satisfies the query — the "+
+			"classified set was wrongly empty:\n%s", residue)
 	}
-	if !strings.Contains(residue, "no definition provably satisfies this") {
-		t.Fatalf("the empty-answer fallback did not fire, so something WAS classified for a query "+
-			"whose only candidate is ill-typed:\n%s", residue)
-	}
-	// THE OLD SUMMARY-MODE CHECK IS NOT RETAINED, AND KEEPING IT WOULD HAVE BEEN
-	// THE MISTAKE. It is the same whole-output shape being removed here, so
-	// carrying it along "for coverage" would preserve the defect under the name of
-	// preserving the contract. It is also redundant for a structural reason rather
-	// than a probable one: `mode` reaches nothing in apiFindImplies except the
-	// final renderImplyResults call, and the fallback is gated on
-	// `len(results) == 0` — so asserting the fallback fired ESTABLISHES that the
-	// classified set is empty, which is a fact about the classification and holds
-	// in every mode. A summary render of an empty result set cannot name plus-r2.
 }
 
 // crossTypeAugmentForTest rebuilds, for ONE named candidate, exactly the
@@ -519,8 +512,8 @@ func TestFindImpliesCrossType(t *testing.T) {
 // was rejected by checkDef", which is the claim the residue control is making.
 //
 // It uses the SHIPPED predicates (crossTypeCompatible, crossTypeRetypeBinders,
-// checkDef) rather than re-implementing the decision, so it cannot pass on a
-// re-implementation that has drifted from the path under test.
+// crossTypeRetypeBody, checkDef) rather than re-implementing the decision, so it
+// cannot pass on a re-implementation that has drifted from the path under test.
 func crossTypeAugmentForTest(t *testing.T, st *Store, query, name string) (bool, error) {
 	t.Helper()
 	forms, err := parseForms(query)
@@ -545,7 +538,8 @@ func crossTypeAugmentForTest(t *testing.T, st *Store, query, name string) (bool,
 		if !ok {
 			return false, nil
 		}
-		qp = Prop{Binders: crossTypeRetypeBinders(qp.Binders, sub), Body: qp.Body}
+		qp = Prop{Binders: crossTypeRetypeBinders(qp.Binders, sub),
+			Body: *crossTypeRetypeBody(&qp.Body, sub)}
 	}
 	aug := *d
 	aug.Props = append(append([]Prop{}, d.Props...), qp)

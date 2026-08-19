@@ -91,13 +91,21 @@ generalizes the primitive leaf types in the binders to positional type
 variables, so commutativity over `Int` and over `Rat` both become `[t0, t0]`
 and match). What remains:
 
-- **Body-embedded types aren't generalized yet.** Generalization today covers
-  binder types, which is complete for the pure algebraic laws whose bodies
-  carry no types (commutativity, associativity, idempotence). A law whose *body*
-  mentions a type — a generic callee's type arguments, a `(Nil [Int])` in the
-  statement — still matches only same-type (it's safe, never a false match,
-  just not yet cross-type). *Next:* thread the same type-generalization through
-  the body's `ctor`/`ref`/`self` type arguments.
+- **Body-embedded types: cross-type on `--implies`, deliberately binder-only on
+  the `--spec` key.** For the pure algebraic laws whose bodies carry no types
+  (commutativity, associativity, idempotence), binder generalization is the whole
+  story. For a law whose *body* mentions a type — a generic callee's type
+  arguments, a `(Nil [Int])` in the statement — the two surfaces differ on
+  purpose. `find --implies` DOES match it cross-type: it threads the substitution
+  through the body and lets the prover decide, so a body-embedded `Int` can reach
+  a `Rat`/`Float` definition and be proved there (#65 rung 3). The `--spec`
+  content-hash key (`propHashGeneral`) does NOT generalize body types: it stays
+  binder-only, so such a law matches same-type only (safe, never a false match).
+  That is a decided limit, not a pending task — `propHashGeneral` is a *persisted*
+  key (`discovery-demand` records are keyed by it), and generalizing body types
+  measured **zero** new matches on the committed corpus, so churning the key was
+  not worth the demand-history migration. A corpus that actually contained a
+  cross-type law twin would re-open it on evidence.
 - **Query by fresh spec** is now supported alongside query-by-example:
   `oath find --spec <file>` (and the `find_spec` MCP tool) elaborate a `(defn
   ...)` whose `(prop ...)` clauses are the query — the sought function is

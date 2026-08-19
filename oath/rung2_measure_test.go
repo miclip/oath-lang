@@ -970,3 +970,75 @@ func TestRung3UpperBound(t *testing.T) {
 			"got %d of %d", withBodyTypes, illTyped)
 	}
 }
+
+// TestRung3ProofHalfConnects measures rung 3's PROOF half directly: of the delta
+// pairs that were ill-typed under binder-only re-typing (the census's 247), how
+// many become WELL-TYPED once the substitution is also threaded through the
+// property BODY (crossTypeRetypeBody). Those are the pairs rung 3 newly lets
+// REACH the prover — the real population, versus TestRung3UpperBound's necessary-
+// but-not-sufficient ceiling of 21.
+//
+// checkDef is still the gate: this counts newly well-typed augmentations, not
+// newly proven ones. A pair that typechecks may still be refuted or unknown.
+func TestRung3ProofHalfConnects(t *testing.T) {
+	st := openCorpusCopy(t)
+	corpus := rung2Corpus(t, st)
+
+	illUnderBinders, wellUnderBody := 0, 0
+	type pair struct{ q, c string }
+	var connected []pair
+	for _, q := range corpus {
+		for pi := range q.def.Props {
+			p := q.def.Props[pi]
+			qsig := tyBytes(q.def.Ty)
+			for _, c := range corpus {
+				if c.hash == q.hash || bytes.Equal(tyBytes(c.def.Ty), qsig) {
+					continue
+				}
+				sub, ok := rung2Compatible(q.def.Ty, c.def.Ty)
+				if !ok {
+					continue
+				}
+				// binder-only (the census's path)
+				bp := Prop{Binders: crossTypeRetypeBinders(p.Binders, sub), Body: p.Body}
+				ba := *c.def
+				ba.Props = append(append([]Prop{}, c.def.Props...), bp)
+				if checkDef(st, &ba) == nil {
+					continue // already well-typed under binders alone — not a rung-3 pair
+				}
+				illUnderBinders++
+				// binders + body (rung 3)
+				rp := Prop{Binders: crossTypeRetypeBinders(p.Binders, sub),
+					Body: *crossTypeRetypeBody(&p.Body, sub)}
+				ra := *c.def
+				ra.Props = append(append([]Prop{}, c.def.Props...), rp)
+				if checkDef(st, &ra) == nil {
+					wellUnderBody++
+					if len(connected) < 12 {
+						connected = append(connected, pair{q.name, c.name})
+					}
+				}
+			}
+		}
+	}
+	t.Logf("ill-typed under binder-only re-typing (census's residue): %d", illUnderBinders)
+	t.Logf("  now WELL-TYPED with body re-typing — rung 3's proof-half yield: %d", wellUnderBody)
+	for _, pr := range connected {
+		t.Logf("    %s -> %s", pr.q, pr.c)
+	}
+	// The bound must hold: newly-well-typed <= ill-typed.
+	if wellUnderBody > illUnderBinders {
+		t.Errorf("more pairs well-typed (%d) than were ill-typed (%d): impossible", wellUnderBody, illUnderBinders)
+	}
+	// PIN the measured value, not just the bound (CLAUDE.md's authority rule: a
+	// figure the docs hard-code must be derived, not restated). The proof half
+	// connects ZERO pairs on this corpus — no ill-typed delta pair is repaired by
+	// body re-typing, because the 21 that carry body types all fail the
+	// binder-concreteness obstacle too. If a corpus change makes this non-zero
+	// that is a real event: update docs/experiments/issue-65-rungs.md, which
+	// records 0, rather than relaxing this assertion.
+	if wellUnderBody != 0 {
+		t.Errorf("rung 3's proof half now connects %d pair(s); the experiment doc records 0. "+
+			"A corpus change made body re-typing productive — update the doc, do not loosen this.", wellUnderBody)
+	}
+}

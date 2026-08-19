@@ -569,32 +569,123 @@ func crossTypeCompatible(qTy, cTy *Ty) (crossTypeSub, bool) {
 // is dropped, which is why checkDef on the augmented definition is a required
 // gate here and not an optimisation. Threading the substitution through bodies
 // is a separate, larger change.
-func crossTypeRetypeBinders(binders []Ty, sub crossTypeSub) []Ty {
-	var gen func(t *Ty) Ty
-	gen = func(t *Ty) Ty {
-		switch t.K {
+// retypeTyBySub rewrites a type under a primitive-leaf substitution — the shared
+// core of cross-type re-typing, applied to BOTH a property's binders and (rung
+// 3) the types embedded in its body.
+func retypeTyBySub(sub crossTypeSub, root *Ty) Ty {
+	// ITERATIVE, not recursive: TyArgs can carry types INFERRED by checkDef from a
+	// stored/imported definition, which are bounded by the admission cap
+	// (maxCanonicalNodes) rather than by source nesting, so descending one on the
+	// host stack would be a #149-class overflow reachable from find --implies.
+	out := new(Ty)
+	type item struct{ src, dst *Ty }
+	stack := []item{{root, out}}
+	for len(stack) > 0 {
+		it := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		s, d := it.src, it.dst
+		switch s.K {
 		case "int", "rat", "float", "bool":
-			if to, ok := sub[t.K]; ok {
-				return to
+			if to, ok := sub[s.K]; ok {
+				*d = to
+			} else {
+				*d = *s
 			}
-			return *t
 		case "fun":
-			return *tFun(ptrTy(gen(t.A)), ptrTy(gen(t.B)))
-		case "data":
-			return *tDataTy(t.Hash, genArgs(t.Args, gen))
-		case "rec":
-			return *tRec(genArgs(t.Args, gen))
-		case "record":
-			out := *t
-			out.Args = genArgs(t.Args, gen)
-			return out
+			*d = *s
+			d.A = new(Ty)
+			d.B = new(Ty)
+			stack = append(stack, item{s.A, d.A}, item{s.B, d.B})
+		case "data", "rec", "record":
+			*d = *s // K, Hash, and (for record) Names; Args rebuilt below
+			if len(s.Args) > 0 {
+				d.Args = make([]Ty, len(s.Args))
+				for k := range s.Args {
+					stack = append(stack, item{&s.Args[k], &d.Args[k]})
+				}
+			}
 		default:
-			return *t
+			*d = *s
 		}
 	}
+	return *out
+}
+
+func crossTypeRetypeBinders(binders []Ty, sub crossTypeSub) []Ty {
 	out := make([]Ty, len(binders))
 	for i := range binders {
-		out[i] = gen(&binders[i])
+		out[i] = retypeTyBySub(sub, &binders[i])
+	}
+	return out
+}
+
+// crossTypeRetypeBody is RUNG 3 (#65). A cross-type candidate is admitted by
+// re-typing the query property's BINDERS to it; but a body carrying its own type
+// arguments — a `(Nil [Int])`, a polymorphic callee's `[Int]` — kept those, so
+// the re-typed property was ill-typed against the candidate and checkDef dropped
+// it before the prover. Threading the SAME substitution through the body's type
+// annotations and type-application arguments removes that asymmetry, so a law
+// whose body mentions a type reaches the prover cross-type exactly as one whose
+// only types are in its binders always has.
+//
+// checkDef remains the filter: this makes more augmentations WELL-TYPED, never
+// more PROVEN. A substitution that produced something ill-typed still fails
+// checkDef, precisely as before rung 3.
+func crossTypeRetypeBody(root *Term, sub crossTypeSub) *Term {
+	// Deep-copies the term, applying the cross-type substitution to every embedded
+	// type (the lam/let annotation t.Ty and the ref/self/ctor type arguments
+	// t.TyArgs) and copying structure verbatim. ITERATIVE on an explicit work
+	// stack, not recursive: a query property may carry a deep canonical term — a
+	// long string literal is a chain of SCons ctors, each with TyArgs — and
+	// descending it on the host stack would reintroduce the #149 overflow that
+	// admitted 5,000-node terms trigger. retypeTyBySub is likewise iterative,
+	// since inferred TyArgs can carry admitted (not source-bounded) type depth.
+	if root == nil {
+		return nil
+	}
+	type item struct{ src, dst *Term }
+	out := new(Term)
+	stack := []item{{root, out}}
+	for len(stack) > 0 {
+		it := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		s, d := it.src, it.dst
+		*d = *s // scalars, K, Op, Hash, Idx, Names, Bool, Int, Rat, Float, and the
+		// child pointers/slices — the ones with children are overwritten below.
+		if s.Ty != nil {
+			ty := retypeTyBySub(sub, s.Ty)
+			d.Ty = &ty
+		}
+		if len(s.TyArgs) > 0 {
+			d.TyArgs = make([]Ty, len(s.TyArgs))
+			for i := range s.TyArgs {
+				d.TyArgs[i] = retypeTyBySub(sub, &s.TyArgs[i])
+			}
+		}
+		if s.A != nil {
+			d.A = new(Term)
+			stack = append(stack, item{s.A, d.A})
+		}
+		if s.B != nil {
+			d.B = new(Term)
+			stack = append(stack, item{s.B, d.B})
+		}
+		if s.C != nil {
+			d.C = new(Term)
+			stack = append(stack, item{s.C, d.C})
+		}
+		if len(s.Args) > 0 {
+			d.Args = make([]Term, len(s.Args))
+			for i := range s.Args {
+				stack = append(stack, item{&s.Args[i], &d.Args[i]})
+			}
+		}
+		if len(s.Arms) > 0 {
+			d.Arms = make([]Term, len(s.Arms))
+			for i := range s.Arms {
+				stack = append(stack, item{&s.Arms[i], &d.Arms[i]})
+			}
+		}
 	}
 	return out
 }
@@ -1187,7 +1278,7 @@ func apiFindImplies(st *Store, src string, mode findImpliesMode) (string, error)
 				if !ok {
 					continue
 				}
-				qp = Prop{Binders: crossTypeRetypeBinders(qp.Binders, sub), Body: qp.Body}
+				qp = Prop{Binders: crossTypeRetypeBinders(qp.Binders, sub), Body: *crossTypeRetypeBody(&qp.Body, sub)}
 				crossSig = printTy(st, d.Ty, nil)
 			}
 			m, err := st.GetMeta(h)

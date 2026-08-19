@@ -1,12 +1,17 @@
 # #65 — which of the four rungs is actually left?
 
-**Status: MEASURED. The recommendation is NARROW #65 SHARPLY.** One rung is
-already shipped, **every rule the
-centerpiece lists as remaining is already implemented**, and that rung's
-motivating case is already served by a different mode. What is genuinely left is
-the e-graph data structure itself, and this corpus cannot show it working.
+**Status: MEASURED, then RUNG 3 MEASURED AND DISPOSED. The recommendation
+stands — NARROW #65 SHARPLY — and building rung 3 CONFIRMED it: both halves
+connect ZERO pairs on the committed corpus.** Its PROOF half (`find --implies`)
+shipped, because the prover filters that surface so liberal cross-type matching
+is free of downside; its HASH half (`find --spec`) was DECLINED, because it
+would churn a PERSISTED discovery/demand key for zero measured yield. One rung
+was already shipped, **every rule the centerpiece lists as remaining was already
+implemented**, and what is genuinely left after this is the e-graph data
+structure itself, which this corpus cannot show working.
 
-Nothing was built. The issue states no falsifier — the standing instruction
+The "BUILT" subsection below records both dispositions and why they differ. The
+issue states no falsifier — the standing instruction
 requires one before starting architectural work — so this supplies one per rung:
 **what would this rung buy, measured on the committed corpus?**
 
@@ -185,6 +190,59 @@ reports 353 properties. The committed test traverses the AST; the draft grepped
 printed output. The committed number is the authority and the draft's is
 withdrawn.)
 
+
+### BUILT — proof half shipped; hash half DECLINED, both measured at ZERO
+
+Rung 3 splits across two surfaces, and the two get different dispositions
+because they carry different costs. Both were measured at zero yield on this
+corpus; only one is worth shipping.
+
+- **Proof half — SHIPPED** (`oath/api.go`). `apiFindImplies` threads the
+  cross-type substitution through the query property's BODY
+  (`crossTypeRetypeBody`), not only its binders, so a body-embedded `Int`
+  annotation retypes to a candidate's `Rat`/`Float` and the augmentation
+  typechecks. `checkDef` still gates well-typedness and Z3 still gates truth, so
+  this admits more WELL-TYPED augmentations, never more proofs — the PROVER is
+  the filter, which is exactly why this surface can afford liberal cross-type
+  admission. `TestRung3ProofHalfConnects` pins how many of the 247 ill-typed
+  delta pairs become well-typed with body retyping: **0** (the 21 that carry
+  body types all fail the binder-concreteness obstacle too). Both new body
+  traversals are iterative — `crossTypeRetypeBody` over the term and
+  `retypeTyBySub` over inferred `TyArgs`, which `checkDef` can populate from
+  admitted (not source-bounded) stored types — so a deep query cannot overflow
+  the host stack (`TestRung3DeepInputIsIterative`, #149 class).
+
+- **Hash half — DECLINED** (`propHashGeneral`, `find --spec`). It would
+  generalize types embedded in a property BODY so two laws identical up to a
+  body-embedded type share one content-hash key. It was BUILT and measured
+  first: `TestRung2CorpusCensus` reported **0** typed delta pairs surfaced —
+  the corpus has no cross-type LAW TWINS (the same law stated at two primitive
+  types), so nothing collides. Then two costs surfaced that the zero yield does
+  not justify paying:
+  - **`propHashGeneral` is a PERSISTED key.** `demandRecord` (SPEC/#75's
+    coverage instrument, enabled on the hosted store) keys `discovery-demand` by
+    it. Changing the encoding strands historical demand counts — an identical
+    future miss creates a new record instead of incrementing the old, splitting
+    rankings and dropping established demand below the reporting floor.
+  - **It reopens a false-collision.** Generalizing body types brings scoped type
+    variables into scope alongside generalized primitives, and keeping them in
+    one variable namespace makes `[Int, Int]` collide with `[var0, Rat]` — a
+    false `find --spec` match. Fixing that needs a distinct encoding, which is
+    itself the persisted-key change above.
+
+  So the disposition is not "not yet" but "not here": a raw persisted hash key
+  should not churn for zero measured yield. `docs/discovery.md` records the
+  `--spec` surface as deliberately binder-only for this reason.
+
+**The asymmetry between the two surfaces is PRINCIPLED, not a gap.** The
+`--implies` surface is filtered by the prover, so admitting more cross-type
+candidates costs at most solver time and never a false result — liberal
+matching belongs there. The `--spec` surface is a raw content-hash key,
+persisted and used for demand aggregation, so stability is worth more than the
+extra reach — especially at zero measured yield. Both were built far enough to
+MEASURE (0 and 0); one shipped, one was declined on cost, and neither was
+decided by taste.
+
 ## Rung 4, fresh-spec ergonomics: measured non-friction
 
 The rung calls the dummy body "a little ironic". Across the blind runs this
@@ -213,12 +271,13 @@ measured demand behind it.
   containing redundancy, or an external candidate to dedup against. Its
   motivating example is already served by `--implies`, and its remaining
   argument is scale, which 223 non-redundant definitions cannot exercise;
-- rung 3 — **PARTLY BOUNDED: its proof half is at most 21 pairs**, not the 247
-  the census reports and not the zero a name-based reading suggested; its hash
-  half is unmeasured. Rung 2's prior is 12 proven of 89
-  with 74 unsettled, so expect roughly three finds over a ceiling that may
-  itself overstate the reachable set. Neither a decline nor a prototype is
-  forced; it is a number to decide against, on the record instead of argued;
+- rung 3 — **proof half SHIPPED, hash half DECLINED; both measured at ZERO.**
+  The proof half (`find --implies`) connects 0 of the 247 ill-typed delta pairs
+  (`TestRung3ProofHalfConnects` pins 0) and is worth shipping because the prover
+  filters that surface. The hash half (`find --spec`) surfaces 0 too, and was
+  declined: `propHashGeneral` is a persisted demand key, so churning it for zero
+  yield costs more than the extra reach. The "BUILT" subsection above is the
+  record; the split is principled, not effort;
 - rung 4 — **keep as small**, with the note that seventeen blind queries
   produced no complaint.
 
@@ -227,12 +286,20 @@ measured demand behind it.
 - **That the e-graph is not worth building.** It establishes that this corpus
   cannot show it working, which is a different claim and is the reason the
   recommendation is a trigger rather than a decline.
-- **Rung 3's HASH half at all.** The ≤21 covers the proof path only.
-- **What rung 3's ≤21 proof-path pairs would YIELD, or that 21 is reachable.** The population is measured; the
-  payoff is not, and cannot be until the rung exists. Rung 2's 12-of-89 is a
-  prior from a population that differs in kind, not a forecast. Note also that
-  74 of those 89 came back `unknown` — a delta population is dominated by goals
-  the solver declines, so the ceiling on 21 is well below 21.
+- **Rung 3's HASH half as a FORECAST for other corpora.** It is now BUILT and
+  measured at 0 on THIS corpus (no cross-type law twins), but that is a fact
+  about the committed exhibits, not a claim that body-type cross-type matches
+  are rare in general — a corpus with a law stated at two primitive types would
+  exercise it. The ≤21 proof-path bound is superseded by the built measurement
+  (proof half connects 0).
+- **That the ZERO yield generalizes beyond this corpus.** Both halves are
+  measured at 0 HERE — the proof half shipped and pinned, the hash half
+  measured before being declined — because the corpus has no cross-type law
+  twins. That is a fact about the committed exhibits, not a claim that such
+  twins are rare in general. Were one to appear, the proof surface would already
+  reach it; the spec surface would need the declined hash change, whose cost
+  (a persisted-key migration) is what the decline weighs against, and which a
+  real twin would re-open on evidence rather than on taste.
 - **That the seven rules tested are all the rules.** They are the ones the issue
   names. A rule it does not name could still be missing, and nothing here
   samples for that.
