@@ -169,9 +169,26 @@ reasons instead of prose).
 > another developer can independently discover, verify, and consume it.
 
 Every PIECE of it exists — signed publication, licence assertion and evaluation,
-namespaces, cryptographic ownership, discovery, `explain`. What has never been
-tested is a SECOND PRINCIPAL, so the cryptography, ownership model and licensing
-semantics are validated while the SOCIAL model is not.
+namespaces, cryptographic ownership, discovery, `explain`. The AUTHORITY chain
+for a second principal is now integration-tested end to end
+(`TestNonOperatorKeyReservesPublishesLicensedAndIsThirdPartyVerifiable`): a key
+never named in any policy reserves a namespace, publishes an Apache-2.0 artifact
+into it, a different self-generated key is refused at the AUTHORITY gate (citing
+the namespace, not an authentication failure), and a third party DISCOVERS the
+artifact by its law, resolves it to the exact published bytes, verifies the
+journal, and reads the Apache-2.0 grants — from the store alone.
+
+Two boundaries that test does NOT cross, each covered elsewhere, stated so the
+claim is not overread:
+- the HOSTED auth boundary (`authenticatePrincipal`, the `--authorized-keys`
+  allowlist) — the "no operator action" half rests on that allowlist being
+  absent, which is a deployment fact and is tested by the gate's own tests, not
+  re-proven here (the test exercises the core acceptance path directly);
+- the SOCIAL model — a real person doing this unaided. That walkthrough belongs
+  to the first external contributor and is deliberately not a scheduled step: a
+  mechanism test proves the paths work, not that a stranger can find them, and
+  simulating one would manufacture exactly the reassurance the real thing exists
+  to withhold.
 
 **#66 IS NOT THE GATE — verify the deployment, not this file.** The live registry
 runs NO `--authorized-keys` allowlist (checked 2026-08-01 against the Cloud Run
@@ -181,8 +198,10 @@ service: no such arg, and only `OATH_STORE`, `OATH_STORE_LOCK`,
 earlier version of this claimed the registry had exactly one authorized key and
 that #66 blocked the milestone; that was never the deployed configuration.
 
-So the finish line is probably reachable TODAY with no operator action. The
-method, recorded so nobody re-derives it: a fresh key, `reserve`, a fresh key,
+The authority chain is demonstrated in-process by the test named above, and the
+live registry runs no allowlist, so the finish line is reachable TODAY with no
+operator action. The METHOD against the live
+registry, recorded so nobody re-derives it: a fresh key, `reserve`, a fresh key,
 `reserve`, `publish --key`, then independent `find` / `explain` / `license` /
 `verify`. Two cautions — a reservation is PERMANENT, so the namespace name must
 satisfy `CLAUDE.md`'s naming rules; and the ownership freeze means creation
