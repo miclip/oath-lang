@@ -1545,6 +1545,7 @@ const llvmRuntimeC = `
 #if !defined(_WIN32)
 #include <signal.h>
 #include <unistd.h>
+#include <pthread.h>
 /* getrlimit, for the stack guard's budget. Inside the POSIX block for the same
    reason the sockets are: the CLI entry links this file on Windows too, and the
    guard falls back to a compiled-in budget there rather than failing to build. */
@@ -1840,6 +1841,9 @@ static size_t o_stack_budget;
    LOWERS the budget. Advice that is wrong in the direction of "try this" costs
    more than no advice. */
 static int o_stack_from_rlimit;
+/* Set when the program runs on the large dedicated worker stack (Option A,
+   #178): the budget is then this artifact's own stack, not a host rlimit. */
+static int o_stack_worker;
 
 /* A CONSTRUCTOR, so no entry protocol can forget it. main is emitted as IR and
    there are two shapes of it (CLI and serve); initialising from either would
@@ -1992,27 +1996,110 @@ void o_stack_exhausted(void) {
      would promote a fact about the tool into a claim about the world, and the
      two are not distinguishable from here - a terminating program simply deeper
      than the budget reaches this same line. */
+  const char *how =
+      o_stack_worker
+          /* The program ran on this artifact's own large stack (Option A,
+             #178), so no host setting raised or lowered this budget - it is a
+             build-time choice, and reaching it means a recursion deeper than a
+             gibibyte of frames. */
+          ? "this artifact runs on its own dedicated stack, chosen at build time, "
+            "so no host setting moves this budget; "
+          : o_stack_from_rlimit
+              ? "a larger 'ulimit -s' raises it with no rebuild, and "
+              /* No rlimit was readable, so the budget is compiled in and no host
+                 setting moves it. Saying otherwise would send an operator to a
+                 control that does nothing - or, where the limit is UNLIMITED, to
+                 one that already selected this smaller fallback. */
+              : "this host reports no stack limit this runtime can read, so the "
+                "budget above is the compiled-in fallback and no host setting "
+                "raises it; ";
   fprintf(stderr,
       "oath: this artifact exhausted its stack budget of %zu bytes. That is a "
       "limit of THIS compiled artifact, not a property of the program: %s"
       "'oath eval' runs the same definition on its own budget. If the recursion "
       "has no base case the program does not terminate, but reaching this line "
       "is not evidence either way.\n",
-      o_stack_budget,
-      o_stack_from_rlimit
-          ? "a larger 'ulimit -s' raises it with no rebuild, and "
-          /* No rlimit was readable, so the budget is compiled in and no host
-             setting moves it. Saying otherwise would send an operator to a
-             control that does nothing - or, where the limit is UNLIMITED, to
-             one that already selected this smaller fallback. */
-          : "this host reports no stack limit this runtime can read, so the "
-            "budget above is the compiled-in fallback and no host setting "
-            "raises it; "
-      );
+      o_stack_budget, how);
   o_refused();
   /* o_refused exits or longjmps; it never returns. Declared noreturn to the IR,
      so the emitted prologue can end its failure block with 'unreachable'. */
   abort();
+}
+
+/* OPTION A (#178): the emitted entry logic is @o_program, and it runs on a large
+   DEDICATED stack rather than the process's default one, the same choice Go's
+   goroutine stacks make - so the compiled recursion ceiling sits far above
+   realistic use (~1 GiB / per-frame bytes). The stack guard's floor is
+   re-derived from THIS worker thread's own bounds: the constructor above measured
+   the MAIN thread, and with a worker thread the program never runs there, so its
+   frame-pointer comparison would otherwise be against an unrelated region. If a
+   thread cannot be created the program runs on the main thread under the
+   constructor's (smaller) floor - a lower ceiling, never a lost guard. */
+#ifndef O_WORKER_STACK
+#define O_WORKER_STACK ((size_t)(1024 * 1024 * 1024)) /* 1 GiB; -D overrides for tests */
+#endif
+
+static void o_stack_init_worker(size_t stacksize) {
+  char probe;
+  /* &probe is within a frame of this thread's stack top, exactly as the main
+     constructor uses &probe - the difference is immaterial against the margin. */
+  uintptr_t base = (uintptr_t)&probe;
+  size_t margin = O_STACK_MARGIN;
+  if (margin > stacksize / 4) margin = stacksize / 4;
+  if (margin == 0) margin = 1;
+  o_stack_budget = stacksize - margin;
+  o_stack_from_rlimit = 0;
+  o_stack_worker = 1;
+  o_stack_floor = (o_stack_budget < base) ? base - (uintptr_t)o_stack_budget : (uintptr_t)1;
+}
+
+/* o_run runs the emitted entry (@o_program, passed as prog) on the large stack.
+   It is a LIBRARY function, not main: the emitted IR provides a thin @main that
+   calls it, so the runtime stays a library that test drivers can include and give
+   their own main. Every failure to obtain the large stack falls back to running
+   prog on the calling (main) thread under the constructor's floor - a smaller
+   ceiling, never a lost guard. */
+typedef int (*o_prog_fn)(int, char **);
+
+#if !defined(_WIN32)
+struct o_prog_args { o_prog_fn prog; int argc; char **argv; int rc; };
+
+static void *o_prog_thread(void *p) {
+  struct o_prog_args *a = (struct o_prog_args *)p;
+  o_stack_init_worker(O_WORKER_STACK);
+  a->rc = a->prog(a->argc, a->argv);
+  return (void *)0;
+}
+#endif
+
+int o_run(o_prog_fn prog, int argc, char **argv) {
+#if defined(_WIN32)
+  /* No pthreads here; run on the main thread under the constructor's floor. */
+  return prog(argc, argv);
+#else
+  /* O_WORKER_STACK == 0 selects the main thread deliberately (a memory-constrained
+     deployment, or a test exercising the constructor's rlimit-derived floor). */
+  if ((size_t)O_WORKER_STACK == 0) return prog(argc, argv);
+  pthread_attr_t attr;
+  pthread_t th;
+  struct o_prog_args a;
+  a.prog = prog;
+  a.argc = argc;
+  a.argv = argv;
+  a.rc = 70;
+  if (pthread_attr_init(&attr) != 0) return prog(argc, argv);
+  if (pthread_attr_setstacksize(&attr, O_WORKER_STACK) != 0) {
+    pthread_attr_destroy(&attr);
+    return prog(argc, argv);
+  }
+  if (pthread_create(&th, &attr, o_prog_thread, &a) != 0) {
+    pthread_attr_destroy(&attr);
+    return prog(argc, argv);
+  }
+  pthread_attr_destroy(&attr);
+  pthread_join(th, (void **)0);
+  return a.rc;
+#endif
 }
 
 static OBlock *o_block_new(size_t cap) {
@@ -5448,6 +5535,7 @@ declare i32 @o_serve(ptr, i32, i32, i32, i32, i32)
 declare i32 @o_serve_caps(ptr, ptr, i32, i32, i32, i32, i32)
 declare void @o_print(ptr)
 declare void @o_arena_release()
+declare i32 @o_run(ptr, i32, ptr)
 declare ptr @o_require(ptr, ptr, ptr)
 declare ptr @o_require_value(ptr, ptr, ptr)
 declare ptr @o_int(i64)
@@ -5959,7 +6047,7 @@ func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 			fmt.Fprintf(&e.b, "  %s = call i32 @o_serve(ptr %s, %s)\n", out, entry, idx)
 		}
 		fmt.Fprintf(&e.b, "  ret i32 %s\n}\n", out)
-		return llvmAssemble(prog, e, &body, caps, "define i32 @main(i32 %argc, ptr %argv) {\n"+e.b.String())
+		return llvmAssemble(prog, e, &body, caps, "define i32 @o_program(i32 %argc, ptr %argv) {\n"+e.b.String()+thinMain)
 	}
 	e.label("entry")
 	args := e.next()
@@ -5984,9 +6072,18 @@ func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 	// the same line number.
 	fmt.Fprintf(&e.b, "  call void @o_print(ptr %s)\n", out)
 	fmt.Fprintf(&e.b, "  call void @o_arena_release()\n  ret i32 0\n}\n")
-	mainFn := "define i32 @main(i32 %argc, ptr %argv) {\n" + e.b.String()
+	mainFn := "define i32 @o_program(i32 %argc, ptr %argv) {\n" + e.b.String() + thinMain
 	return llvmAssemble(prog, e, &body, caps, mainFn)
 }
+
+// thinMain is the IR entry point: it runs the emitted program body on a large
+// dedicated stack via the runtime's o_run (Option A, #178).
+const thinMain = `
+define i32 @main(i32 %argc, ptr %argv) {
+  %r = call i32 @o_run(ptr @o_program, i32 %argc, ptr %argv)
+  ret i32 %r
+}
+`
 
 // llvmAssemble writes the module around whatever main the entry protocol
 // produced. Shared by both protocols DELIBERATELY: provenance, the linker
@@ -6030,6 +6127,11 @@ func llvmAssemble(prog *CompiledProgram, e *llvmEmitter, body *strings.Builder, 
 }
 
 // llvmBuild compiles a program through this backend and writes the executable.
+// llvmExtraCFlags is appended to the clang invocation. Empty in production; tests
+// set it (e.g. -DO_WORKER_STACK=...) to control the worker stack size, and reset
+// it with defer.
+var llvmExtraCFlags []string
+
 func llvmBuild(st *Store, prog *CompiledProgram, out string) error {
 	if _, err := exec.LookPath("clang"); err != nil {
 		return fmt.Errorf("clang is not on PATH; the %s backend emits textual IR and lets clang assemble it", llvmBackendVersion)
@@ -6053,7 +6155,9 @@ func llvmBuild(st *Store, prog *CompiledProgram, out string) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command("clang", "-O1", "-o", abs, "rt.c", "prog.ll")
+	args := append([]string{"-O1", "-pthread"}, llvmExtraCFlags...)
+	args = append(args, "-o", abs, "rt.c", "prog.ll")
+	cmd := exec.Command("clang", args...)
 	cmd.Dir = tmp
 	if b, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("clang failed:\n%s\n--- IR ---\n%s", string(b), ir)

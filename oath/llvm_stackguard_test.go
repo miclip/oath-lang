@@ -153,11 +153,42 @@ func sgDeepStore(t *testing.T) *Store {
 // constant that happens to be in range. A constant would refuse just as loudly
 // and be wrong on every other machine, and that is precisely the defect the
 // evaluator's depth guard was once found to have.
-func TestLLVMDeepRecursionRefusesInsteadOfCrashing(t *testing.T) {
-	bin := buildLLVM(t, sgDeepStore(t), "sg-deep")
+// sgBuildWorker builds with a chosen worker-stack size (Option A, #178).
+// workerBytes > 0 exercises the WORKER path with a controllable budget;
+// workerBytes == 0 forces the MAIN-THREAD fallback, where `ulimit -s` applies and
+// the constructor's rlimit-derived floor is what the guard uses.
+func sgBuildWorker(t *testing.T, st *Store, name string, workerBytes int) string {
+	t.Helper()
+	old := llvmExtraCFlags
+	llvmExtraCFlags = []string{fmt.Sprintf("-DO_WORKER_STACK=%d", workerBytes)}
+	defer func() { llvmExtraCFlags = old }()
+	return buildLLVM(t, st, name)
+}
 
+// sgRun execs the binary directly — no imposed rlimit, because on the worker path
+// the stack is the compiled-in worker stack, not `ulimit -s`.
+func sgRun(t *testing.T, bin string, args ...string) (string, int) {
+	t.Helper()
+	b, err := exec.Command(bin, args...).CombinedOutput()
+	code := 0
+	if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			code = ee.ExitCode()
+		} else {
+			code = -1
+		}
+	}
+	return string(b), code
+}
+
+func TestLLVMDeepRecursionRefusesInsteadOfCrashing(t *testing.T) {
+	// The WORKER path (Option A, #178): a 2 MB dedicated worker stack, so the guard
+	// fires at a known budget without depending on `ulimit -s`, which the worker
+	// stack ignores. 2 MB is the same figure the old ulimit imposed, so the budget
+	// assertion below is unchanged.
 	const stackKB = 2048
-	out, code := sgRunWithStack(t, bin, stackKB, "go-deep")
+	bin := sgBuildWorker(t, sgDeepStore(t), "sg-deep", stackKB*1024)
+	out, code := sgRun(t, bin, "go-deep")
 	if code == 139 || code == -1 {
 		t.Fatalf("the artifact crashed (exit %d) instead of refusing; the "+
 			"guard did not fire:\n%s", code, out)
@@ -171,20 +202,20 @@ func TestLLVMDeepRecursionRefusesInsteadOfCrashing(t *testing.T) {
 			"provisioning-failure code, so without the message this test "+
 			"cannot tell the two apart:\n%s", out)
 	}
-	// The imposed limit minus O_STACK_MARGIN (128 KB).
+	// The worker stack minus O_STACK_MARGIN (128 KB). On the worker path the budget
+	// IS compiled in (the dedicated stack), so this pins that it equals the chosen
+	// worker size rather than some larger ambient stack.
 	want := fmt.Sprintf("%d bytes", stackKB*1024-131072)
 	if !strings.Contains(out, want) {
-		t.Errorf("the guard reported a budget that is not the one imposed "+
-			"(wanted %q). A guard using a compiled-in constant rather than "+
-			"getrlimit would still refuse here, and would be wrong "+
-			"everywhere else:\n%s", want, out)
+		t.Errorf("the guard reported a budget that is not the worker stack "+
+			"(wanted %q):\n%s", want, out)
 	}
 
 	// THE OTHER DIRECTION, FROM THE SAME BINARY. A guard that refused
 	// unconditionally would pass every assertion above. Same artifact, same
 	// budget, only the argument differs — so nothing but depth can explain the
 	// difference.
-	out2, code2 := sgRunWithStack(t, bin, stackKB)
+	out2, code2 := sgRun(t, bin)
 	if code2 != 0 || !strings.Contains(out2, "shallow") {
 		t.Fatalf("the same binary with no argument must run normally under "+
 			"the same budget, or the guard is refusing unconditionally: "+
@@ -206,7 +237,10 @@ func TestLLVMDeepRecursionRefusesInsteadOfCrashing(t *testing.T) {
 // imposed limit. A guard that reported more than the host gave it would be
 // describing a stack that does not exist.
 func TestLLVMStackGuardOnASmallStackStillRefuses(t *testing.T) {
-	bin := buildLLVM(t, sgDeepStore(t), "sg-deep")
+	// The MAIN-THREAD fallback path (worker stack disabled): `ulimit -s` applies
+	// and the constructor's rlimit-derived floor is what the guard uses, which is
+	// exactly what this test exercises across two small limits with one binary.
+	bin := sgBuildWorker(t, sgDeepStore(t), "sg-deep", 0)
 	// 256 KB AND BELOW, CHOSEN BY MEASUREMENT RATHER THAN BY FEEL. The broken
 	// draft substituted the fallback only when the limit was at or below twice
 	// the 128 KB margin, so a 512 KB or 1 MB stack — the sizes this test tried
@@ -284,7 +318,10 @@ const sgStartupPad = `p=$(head -c 61440 /dev/zero | tr "\000" p) || exit 112; `
 // otherwise a correction in the safe direction: it can only move the measured
 // top UP, never down.
 func TestLLVMStackGuardSurvivesALargeEnvironment(t *testing.T) {
-	bin := buildLLVM(t, sgDeepStore(t), "sg-deep")
+	// Main-thread fallback: the startup-block accounting this witnesses lives on
+	// the main thread; the worker thread's freshly-allocated stack has no argv/env
+	// block below it, so this hazard is a fallback-path concern.
+	bin := sgBuildWorker(t, sgDeepStore(t), "sg-deep", 0)
 	const stackKB = 2048
 	// `env -i` so the pad is the whole environment and is therefore what sits
 	// at the top. Appending to the inherited environment left some other
@@ -302,7 +339,7 @@ func TestLLVMStackGuardSurvivesALargeEnvironment(t *testing.T) {
 // An EMPTY environment with a large argument vector has the same shape, and a
 // guard that scans only the environment misses it entirely.
 func TestLLVMStackGuardSurvivesALargeArgv(t *testing.T) {
-	bin := buildLLVM(t, sgDeepStore(t), "sg-deep")
+	bin := sgBuildWorker(t, sgDeepStore(t), "sg-deep", 0) // main-thread fallback
 	const stackKB = 2048
 	script := fmt.Sprintf("ulimit -s %d 2>/dev/null || exit 111; %s"+
 		"exec env -i %q go-deep \"$p\" \"$p\" \"$p\" \"$p\"",
@@ -410,7 +447,9 @@ func TestLLVMStackExhaustionInAHandlerIsA500AndKeepsServing(t *testing.T) {
 	  (prop always-200 [(r Request)]
 	    (== (match (sg-deep-handler r) ((Resp s h b) s)) 200)))`)
 
-	bin := buildLLVM(t, st, "sg-deep-handler")
+	// The WORKER path: a 2 MB dedicated worker stack (Option A, #178), so a
+	// 400,000-frame body exhausts it regardless of the ambient `ulimit`.
+	bin := sgBuildWorker(t, st, "sg-deep-handler", 2048*1024)
 	// THE SERVED PROCESS'S STACK IS PINNED, and an earlier draft did not pin it.
 	// llvmServe starts the artifact with whatever limit the harness inherited,
 	// so how deep 400,000 body octets can go was a property of the SHELL that
@@ -581,5 +620,58 @@ func TestLLVMStackGuardRuntimeCompilesWithoutPOSIX(t *testing.T) {
 		t.Skipf("this host's headers do not survive -D_WIN32 for unrelated "+
 			"reasons, so the guard's own branch could not be isolated:\n%s",
 			firstLines(string(b), 6))
+	}
+}
+
+// TestLLVMLargeStackRaisesCeilingAndStillRefuses is the Option A (#178)
+// falsifier, run on the DEFAULT build (the ~1 GiB worker stack). Two directions
+// from one store:
+//   - the ceiling ROSE: a recursion ~1,000,000 deep exhausted the old 8 MB
+//     default and now completes, so the artifact processes far more than the
+//     ~3,949 records #178's decline condition failed at;
+//   - the guard STILL FIRES LEGIBLY: a recursion deeper than any 1 GiB stack
+//     exits 70 with a diagnostic, never SIGSEGV (139) — the safety property must
+//     survive the larger stack, which is where the worker-thread floor
+//     re-derivation could have gone wrong.
+func TestLLVMLargeStackRaisesCeilingAndStillRefuses(t *testing.T) {
+	requireClang(t)
+	st := sgDeepStore(t)
+	// ~1,000,000 non-tail frames: well past the old 8 MB default, comfortably
+	// inside 1 GiB.
+	put(t, st, `(defn sg-mid [] [(args (List Str))] Str
+	  (match args
+	    ((Nil) "shallow")
+	    ((Cons a rest) (if (== 0 (sg-down 1000000)) "zero" "deep")))
+	  (prop no-args-is-shallow [] (== (sg-mid (Nil [Str])) "shallow")))`)
+	// Deeper than any 1 GiB stack, so the guard must fire whatever the frame size.
+	put(t, st, `(defn sg-vdeep [] [(args (List Str))] Str
+	  (match args
+	    ((Nil) "shallow")
+	    ((Cons a rest) (if (== 0 (sg-down 200000000)) "zero" "deep")))
+	  (prop no-args-is-shallow [] (== (sg-vdeep (Nil [Str])) "shallow")))`)
+
+	// Default worker stack (no -D): the real ~1 GiB path.
+	midBin := buildLLVM(t, st, "sg-mid")
+	out, code := sgRun(t, midBin, "go")
+	if code == 139 || code == -1 {
+		t.Fatalf("~1,000,000 frames CRASHED (exit %d) on the large-stack build; "+
+			"the ceiling did not rise as Option A requires:\n%s", code, out)
+	}
+	if code != 0 || !strings.Contains(out, "deep") {
+		t.Fatalf("~1,000,000 frames did not complete on the ~1 GiB stack "+
+			"(exit %d) — this depth crashed the old 8 MB default and must now "+
+			"succeed:\n%s", code, out)
+	}
+
+	vBin := buildLLVM(t, st, "sg-vdeep")
+	out2, code2 := sgRun(t, vBin, "go")
+	if code2 == 139 || code2 == -1 {
+		t.Fatalf("a recursion past 1 GiB SIGSEGV'd (exit %d) instead of "+
+			"refusing; the worker-thread guard floor is mis-derived and the "+
+			"legible-refusal discipline was lost — the falsifier fires:\n%s", code2, out2)
+	}
+	if code2 != 70 || !strings.Contains(out2, "exhausted its stack budget") {
+		t.Fatalf("a recursion past 1 GiB did not refuse legibly (exit %d); "+
+			"expected exit 70 with the stack diagnostic:\n%s", code2, out2)
 	}
 }

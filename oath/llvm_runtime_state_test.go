@@ -237,11 +237,12 @@ func TestEmittedRuntimeDeclaresNoStaticStorageForValues(t *testing.T) {
 			guard++
 		}
 	}
-	if guard != 3 {
-		t.Errorf("the runtime declares %d of the 3 permitted stack-guard slots. The floor "+
-			"is what the emitted IR loads at every function entry and the other two are "+
-			"what the diagnostic reports, so none is admissible without the others; and an "+
-			"exemption matching nothing is a hole waiting for a coincidence", guard)
+	if guard != 4 {
+		t.Errorf("the runtime declares %d of the 4 permitted stack-guard slots. The floor "+
+			"is what the emitted IR loads at every function entry, and the budget, the rlimit "+
+			"flag and the worker-stack flag are what the diagnostic reports, so none is "+
+			"admissible without the others; and an exemption matching nothing is a hole "+
+			"waiting for a coincidence", guard)
 	}
 	if perm != 2 {
 		t.Errorf("the runtime declares %d of the 2 permitted process-lifetime slots. The "+
@@ -651,9 +652,11 @@ func TestEmittedMainReleasesTheArenaAfterSerialising(t *testing.T) {
 			"fail at link rather than release anything")
 	}
 
-	i := strings.Index(ir, "define i32 @main(")
+	// The serialise-then-release logic is in @o_program (the program body); @main
+	// is now a thin wrapper handing it to o_run for the large stack (#178).
+	i := strings.Index(ir, "define i32 @o_program(")
 	if i < 0 {
-		t.Fatal("the emitted module has no main, so this test is reading nothing")
+		t.Fatal("the emitted module has no @o_program, so this test is reading nothing")
 	}
 	main := ir[i:]
 
@@ -785,6 +788,8 @@ func stackGuardSlot(v staticVar) bool {
 		return v.name == "o_stack_budget"
 	case "static int o_stack_from_rlimit;":
 		return v.name == "o_stack_from_rlimit"
+	case "static int o_stack_worker;":
+		return v.name == "o_stack_worker"
 	}
 	return false
 }

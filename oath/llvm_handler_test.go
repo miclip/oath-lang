@@ -192,9 +192,16 @@ func TestLLVMHandlerMainIsAServeLoopHandoff(t *testing.T) {
 	if err != nil {
 		t.Fatalf("emitLLVM: %v", err)
 	}
-	i := strings.Index(ir, "define i32 @main(")
+	// The entry point is a thin @main that hands the program body (@o_program) to
+	// the runtime's o_run (which runs it on a large stack, #178); the serve-loop
+	// handoff itself lives in @o_program. Check both links.
+	if mi := strings.Index(ir, "define i32 @main("); mi < 0 ||
+		!strings.Contains(ir[mi:], "call i32 @o_run(ptr @o_program,") {
+		t.Fatal("the entry @main does not hand @o_program to @o_run")
+	}
+	i := strings.Index(ir, "define i32 @o_program(")
 	if i < 0 {
-		t.Fatal("the emitted module has no main")
+		t.Fatal("the emitted module has no @o_program")
 	}
 	main := ir[i:]
 

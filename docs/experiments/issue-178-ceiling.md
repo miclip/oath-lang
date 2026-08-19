@@ -242,6 +242,46 @@ real (non-binding) recursion and closes the ceiling for a program whose set/map
 operations ARE its deepest recursion — `report.oath`'s are not. #178 stays open,
 re-diagnosed: its ceiling is list recursion, and the set was never the cause.
 
+## Option A landed: the stack ceiling is fixed, and the heap is the next constraint
+
+The compiled program now runs on a large dedicated worker stack (~1 GiB pthread,
+the same choice Go's goroutine stacks make), with the stack guard's floor
+re-derived from that thread's bounds. The emitted `@main` is a thin wrapper that
+hands the program body (`@o_program`) to the runtime's `o_run`; failure to obtain
+the large stack falls back to the main thread under the constructor's floor.
+
+**The stack ceiling is fixed.** A pure recursion past 1 GiB refuses legibly (exit
+70, a diagnostic) and never SIGSEGVs; the guard's floor derivation on the worker
+thread is verified (`TestLLVMLargeStackRaisesCeilingAndStillRefuses`). For
+`report.oath` specifically:
+
+| N distinct records | LLVM (before) | LLVM (Option A) | Go |
+|---:|---|---|---|
+| 3,949 | segfault (ceiling) | **exit 0** | exit 0 |
+| 20,000 | — | **exit 0** | exit 0 |
+| 25,000 | — | **exit 0** | **exit 2** (goroutine-stack overflow) |
+| 40,000 | — | **exit 0** | exit 2 |
+| 60,000 | — | exit 137 (OOM) | exit 2 |
+
+Two things this shows. #178's decline condition — *ceiling above realistic use
+(~25,000 deliveries)* — is **met**: `report.oath` processes 40,000 records where it
+crashed at 3,949. And the LLVM backend now outlasts the **Go** backend, whose
+~1 GB goroutine stack overflows at ~25,000 because its per-frame cost (~43 KB) is
+~20× the emitted C frame (~2,120 B). The two executors simply carry different
+resource bounds and now both refuse legibly at theirs — the accepted state of the
+system, not a semantic divergence.
+
+**The next binding constraint is the HEAP, not the stack.** Past ~50,000 records
+the LLVM artifact is OOM-killed (exit 137). This is not recursion depth — 50,000
+frames fit 1 GiB with room to spare — it is the arena: the native `Set` is
+immutable and `set-add` copies the whole array, so N incremental adds allocate
+O(N²) slots into a request arena that is not freed until the program exits. That
+limit was ALWAYS there (the structural list had the same O(N²) rebuild); the
+stack crash at 3,949 simply masked it. Fixing the stack revealed it, the same way
+native containers revealed the list recursion. It sits above realistic use, and
+its ungraceful SIGKILL (versus the stack guard's legible exit 70) is a separate,
+heap-shaped concern — filed apart from #178, which was about the stack.
+
 ## What this does NOT establish
 
 - **That the guard catches EVERY exhaustion.** The check is the first
