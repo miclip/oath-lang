@@ -1,0 +1,3 @@
+(defn wanted [] [(a Int) (b Int) (c Int)] Int 0
+  (prop factored-equals-expanded [(a Int) (b Int) (c Int)]
+    (== (wanted a b c) (* a (+ b c)))))

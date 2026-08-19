@@ -1,0 +1,4 @@
+(defn eta-base [] [(f (-> Int Int)) (xs (List Int))] (List Int) (map [Int Int] f xs)
+  (prop t [(f (-> Int Int)) (xs (List Int))] (== (eta-base f xs) (map [Int Int] f xs))))
+(defn eta-wrap [] [(f (-> Int Int)) (xs (List Int))] (List Int) (map [Int Int] (fn [(x Int)] (f x)) xs)
+  (prop t [(f (-> Int Int)) (xs (List Int))] (== (eta-wrap f xs) (map [Int Int] (fn [(x Int)] (f x)) xs))))

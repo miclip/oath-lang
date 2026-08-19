@@ -875,3 +875,98 @@ func elabFuncSrc(t *testing.T, st *Store, src string) (*Def, *Meta, error) {
 	}
 	return d, m, nil
 }
+
+// TestRung3UpperBound bounds ONE HALF of rung 3's population from above.
+//
+// SCOPE, because the number is easy to overread. Rung 3 threads type
+// generalization through a property body's type arguments, and that reaches TWO
+// surfaces: the PROOF path (`--implies`, whose cross-type candidates are
+// rejected by checkDef today) and the HASH path (`propHashGeneral`, where a
+// body-embedded type keeps a law same-type-only even when nothing is
+// ill-typed). This measures the PROOF half only. The hash half is a different
+// population — pairs that typecheck fine and simply never collide — and nothing
+// here counts it.
+//
+// THE CENSUS COUNTS WHAT `checkDef` REFUSED; THAT IS NOT RUNG 3'S POPULATION.
+// #65's rung 3 proposes threading type generalization through a property BODY's
+// own type arguments. It can only unblock a pair whose body carries such
+// arguments. A pair rejected for anything else — an incompatible numeric
+// literal, a monomorphic reference — stays rejected however that threading is
+// implemented.
+//
+// Reading the rejection total as the rung's population is the exact substitution
+// this repo keeps having to correct: a number the IMPLEMENTATION produces, read
+// as a fact about the CLAIM. Sizing a prototype from it would overstate the
+// reachable set by whatever fraction fails for unrelated reasons — which is the
+// thing this test measures instead of assuming.
+// WHY AN UPPER BOUND AND NOT THE POPULATION. Carrying body type arguments is
+// NECESSARY for rung 3 to help and is not SUFFICIENT: a pair can carry them and
+// still fail for a reason the threading cannot repair — a substitution mapping
+// Int to a candidate's type VARIABLE leaves binders non-concrete, and retyped
+// Bool binders feeding `if`/`not` still require Bool. Deciding which of the
+// counted pairs actually become well-typed means APPLYING the substitution,
+// which is implementing the rung. So this counts the set rung 3 could not
+// exceed, and the true figure is somewhere at or below it — possibly zero.
+func TestRung3UpperBound(t *testing.T) {
+	st := openCorpusCopy(t)
+	corpus := rung2Corpus(t, st)
+
+	illTyped, withBodyTypes := 0, 0
+	for _, q := range corpus {
+		for pi := range q.def.Props {
+			p := q.def.Props[pi]
+			qsig := tyBytes(q.def.Ty)
+			for _, c := range corpus {
+				if c.hash == q.hash || bytes.Equal(tyBytes(c.def.Ty), qsig) {
+					continue
+				}
+				sub, ok := rung2Compatible(q.def.Ty, c.def.Ty)
+				if !ok {
+					continue
+				}
+				rp := Prop{Binders: rung2Retype(p.Binders, sub), Body: p.Body}
+				aug := *c.def
+				aug.Props = append(append([]Prop{}, c.def.Props...), rp)
+				if err := checkDef(st, &aug); err == nil {
+					continue
+				}
+				illTyped++
+				if bodyCarriesTypes(&p.Body) {
+					withBodyTypes++
+				}
+			}
+		}
+	}
+	if illTyped == 0 {
+		t.Fatal("no ill-typed delta pairs at all, so this test measures nothing")
+	}
+	t.Logf("ill-typed delta pairs (the census's number): %d", illTyped)
+	t.Logf("  query body carries type arguments — RUNG 3 UPPER BOUND: %d", withBodyTypes)
+	t.Logf("  rejected for other reasons — rung 3 certainly cannot help: %d", illTyped-withBodyTypes)
+	t.Logf("  NOTE: the bound is not the population. Carrying body types is")
+	t.Logf("  necessary, not sufficient; deciding the rest requires implementing")
+	t.Logf("  the substitution and re-running checkDef.")
+	// PINNED, so prose cannot outlive the measurement. These exact figures are
+	// quoted in docs/experiments/issue-65-rungs.md, which sizes rung 3 from
+	// them. A corpus change that moves them must fail HERE — a logged number
+	// nothing asserts is a number the documentation can silently outlive, which
+	// is the drift check-doc-numbers exists to stop for prose and this stops for
+	// a test's own output.
+	const (
+		wantIllTyped      = 247
+		wantWithBodyTypes = 21
+	)
+	if illTyped != wantIllTyped || withBodyTypes != wantWithBodyTypes {
+		t.Errorf("the rung-3 population moved: ill-typed %d (want %d), "+
+			"upper bound %d (want %d).\nIf that is a legitimate corpus change, "+
+			"update BOTH these constants and the figures in "+
+			"docs/experiments/issue-65-rungs.md, which sizes the rung from them.",
+			illTyped, wantIllTyped, withBodyTypes, wantWithBodyTypes)
+	}
+
+	if withBodyTypes >= illTyped {
+		t.Errorf("every ill-typed pair carries body types, which would make this "+
+			"bound vacuous and the census number safe to read as the population; "+
+			"got %d of %d", withBodyTypes, illTyped)
+	}
+}

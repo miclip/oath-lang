@@ -1,0 +1,4 @@
+(defn d-fact [] [(a Int) (b Int) (c Int)] Int (* a (+ b c))
+  (prop t [(a Int) (b Int) (c Int)] (== (d-fact a b c) (* a (+ b c)))))
+(defn d-expand [] [(a Int) (b Int) (c Int)] Int (+ (* a b) (* a c))
+  (prop t [(a Int) (b Int) (c Int)] (== (d-expand a b c) (+ (* a b) (* a c)))))

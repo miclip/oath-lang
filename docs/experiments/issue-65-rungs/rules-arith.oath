@@ -1,0 +1,12 @@
+; A baseline and four variants, each equivalent to it, each targeting a rule the
+; issue names. None is in the corpus; they are put into a THROWAWAY store.
+(defn e-base [] [(a Int) (b Int)] Int (+ (* 2 a) b)
+  (prop t [(a Int) (b Int)] (== (e-base a b) (+ (* 2 a) b))))
+(defn e-comm [] [(a Int) (b Int)] Int (+ b (* a 2))
+  (prop t [(a Int) (b Int)] (== (e-comm a b) (+ b (* a 2)))))
+(defn e-unit [] [(a Int) (b Int)] Int (+ (+ (* 2 a) b) 0)
+  (prop t [(a Int) (b Int)] (== (e-unit a b) (+ (+ (* 2 a) b) 0))))
+(defn e-distrib [] [(a Int) (b Int)] Int (+ (* 2 a) (* 1 b))
+  (prop t [(a Int) (b Int)] (== (e-distrib a b) (+ (* 2 a) (* 1 b)))))
+(defn e-ifsame [] [(a Int) (b Int)] Int (if (< a b) (+ (* 2 a) b) (+ (* 2 a) b))
+  (prop t [(a Int) (b Int)] (== (e-ifsame a b) (if (< a b) (+ (* 2 a) b) (+ (* 2 a) b)))))

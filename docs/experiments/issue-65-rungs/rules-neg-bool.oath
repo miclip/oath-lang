@@ -1,0 +1,12 @@
+(defn n-base [] [(a Int)] Int a
+  (prop t [(a Int)] (== (n-base a) a)))
+(defn n-negneg [] [(a Int)] Int (neg (neg a))
+  (prop t [(a Int)] (== (n-negneg a) (neg (neg a)))))
+(defn n-ifsame [] [(a Int)] Int (if (< a 0) a a)
+  (prop t [(a Int)] (== (n-ifsame a) (if (< a 0) a a))))
+(defn b-base [] [(p Bool)] Bool p
+  (prop t [(p Bool)] (== (b-base p) p)))
+(defn b-idem [] [(p Bool)] Bool (and p p)
+  (prop t [(p Bool)] (== (b-idem p) (and p p))))
+(defn b-orid [] [(p Bool)] Bool (or p false)
+  (prop t [(p Bool)] (== (b-orid p) (or p false))))

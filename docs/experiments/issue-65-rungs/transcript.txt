@@ -1,0 +1,27 @@
+oath source: 3fe365b +MODIFIED
+
+########## rules #65 lists as REMAINING for rung 1
+  e-unit       connected       (rule present)
+  e-distrib    connected       (rule present)
+  b-idem       connected       (rule present)
+  b-orid       connected       (rule present)
+  n-negneg     connected       (rule present)
+  eta-wrap     connected       (rule present)
+  if-same      connected       (rule present)
+########## and the SAME rule with a COMPUTED condition — restricted on purpose:
+########## canon.go: dropping a divergent computation would remove divergence,
+########## not preserve meaning. NOT connected here is CORRECT.
+  n-ifsame     NOT connected   (rule absent)
+
+########## the control: commutativity, known present before this run
+  e-comm       connected       (rule present)
+
+########## DISTRIBUTIVITY — --equiv misses it, as #65 says
+  d-fact       NOT connected   (rule absent)
+########## but --implies proves BOTH directions in one query:
+  
+    · factored-equals-expanded
+        d-expand           ← provably satisfies it (direct (lemma-free))
+        d-fact             ← provably satisfies it (direct (lemma-free))
+        1 REFUTED — proved NOT to satisfy it (a countermodel exists)
+            clamp              countermodel (by evaluation): 2, 0, -7

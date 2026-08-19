@@ -1,0 +1,4 @@
+(defn if-base [] [(c Bool) (a Int)] Int a
+  (prop t [(c Bool) (a Int)] (== (if-base c a) a)))
+(defn if-same [] [(c Bool) (a Int)] Int (if c a a)
+  (prop t [(c Bool) (a Int)] (== (if-same c a) (if c a a))))
