@@ -6,7 +6,7 @@ set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-BIN="$HERE/target/release/oathrs"
+BIN=""  # resolved from cargo output below (#139)
 FIX="$ROOT/fixtures"
 EX="$ROOT/examples"
 # The corpus is not only examples/. `oath fixtures` derives fixtures from the
@@ -20,10 +20,60 @@ SRC="$(ls "$EX"/*.oath) $(ls "$ROOT"/apps/*/*.oath 2>/dev/null)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-if [ ! -x "$BIN" ]; then
-  echo "building oathrs..."
-  ( cd "$HERE" && cargo build --release >/dev/null 2>&1 ) || { echo "BUILD FAILED"; exit 1; }
-fi
+# ALWAYS rebuild (cargo is incremental) AND resolve the artifact cargo wrote, so
+# the binary this harness runs is exactly the one built from the current source —
+# what the fingerprint gate below hashes. A hardcoded target/release path could
+# run a stale binary and let a full run record a PASS for source it never ran.
+echo "building oathrs (incremental)..." >&2
+BIN="$( cd "$HERE" && cargo build --release --message-format=json 2>/dev/null | python3 -c '
+import sys, json
+found = ""
+for line in sys.stdin:
+    try:
+        m = json.loads(line)
+    except Exception:
+        continue
+    if m.get("reason") == "compiler-artifact" and m.get("executable") and m.get("target", {}).get("name") == "oathrs":
+        found = m["executable"]
+print(found)
+' )"
+[ -n "$BIN" ] && [ -x "$BIN" ] || { echo "BUILD FAILED or the oathrs artifact was not found"; exit 1; }
+
+# ---------------------------------------------------------------------------
+# The full-derivation fingerprint (#139). The full run's result is a pure function
+# of these; a gate that skips must hash ALL of them or it reports a false PASS —
+# so `--print-fingerprint` exists and `conformance_fp_test.sh` asserts the
+# fingerprint is idempotent and sensitive to each input.
+# ---------------------------------------------------------------------------
+FP_FILE="$FIX/prove/full-derivation.fp"
+_c139_sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d" " -f1; }
+_c139_sha_stdin() { if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi | cut -d" " -f1; }
+conformance_fingerprint() {
+  _c139_entry() { printf "%s " "${1#"$ROOT"/}"; _c139_sha "$1"; }
+  {
+    # corpus (input), then every committed fixture (the gate skips check 5, which
+    # compares analyses/*.json), each as relative-path + content-hash so a rename
+    # invalidates. Paths relative to ROOT so the fingerprint is checkout-location
+    # independent.
+    for f in $SRC; do _c139_entry "$f"; done
+    find "$FIX" -type f ! -name "full-derivation.fp" | LC_ALL=C sort | while IFS= read -r f; do _c139_entry "$f"; done
+    # the built kernel binary itself subsumes source, Cargo.lock, RUSTFLAGS,
+    # .cargo/config, toolchain, target and platform; a no-op build leaves it
+    # byte-identical, so the gate still skips when nothing changed.
+    _c139_sha "$BIN"
+    _c139_entry "$HERE/conformance.sh"
+    # every run-controlling override: RLIMIT is a §7.2 determinism pin; a tighter
+    # WALL_CAP_MS / MEMORY_MB can ABORT the run, so a cached PASS must not stand in
+    # for one those would fail.
+    printf "OATHRS_Z3_RLIMIT=%s\n" "${OATHRS_Z3_RLIMIT:-}"
+    printf "OATHRS_Z3_WALL_CAP_MS=%s\n" "${OATHRS_Z3_WALL_CAP_MS:-}"
+    printf "OATHRS_Z3_MEMORY_MB=%s\n" "${OATHRS_Z3_MEMORY_MB:-}"
+    # the z3 executable bytes, not just its version text.
+    z3bin="$(command -v z3 2>/dev/null)"; [ -n "$z3bin" ] && _c139_sha "$z3bin"
+    z3 --version | head -1
+  } | _c139_sha_stdin
+}
+if [ "${1:-}" = "--print-fingerprint" ]; then conformance_fingerprint; exit 0; fi
 
 fail=0
 
@@ -226,6 +276,25 @@ if [ "$MODE" = "oracle" ]; then
   exit $fail
 fi
 
+# FINGERPRINT GATE (#139): skip the SLOW proving when every determinism pin above
+# is unchanged since the last full run recorded a PASS. Only gates the proving;
+# checks 1-4 have already run. Seeding: a full run writes the fingerprint (below),
+# so an unchanged tree is a no-op next time. LOCAL benefit is immediate; the CI
+# benefit needs a committed seed, which needs the derivation to fit the job window
+# (the separate --shard work), so this composes with sharding rather than replaces
+# it.
+CONF_FP="$(conformance_fingerprint)"
+if [ $fail -eq 0 ] && [ -n "$CONF_FP" ] && [ -f "$FP_FILE" ] && [ "$(head -1 "$FP_FILE")" = "$CONF_FP" ]; then
+  echo "== Full re-derivation SKIPPED (#139): every determinism pin is unchanged =="
+  echo "  The full run's result is a pure function of (corpus, recorded proof state,"
+  echo "  built kernel, harness, run overrides, z3) — SPEC §7.2 — and all match the"
+  echo "  last recorded full run. Re-deriving recomputes an answer the bytes fixed."
+  echo "  Force one with: rm $FP_FILE   (or change any pin)"
+  echo
+  echo "CONFORMANCE: PASS (checks 1-4; full re-derivation gated — pins unchanged, #139)"
+  exit 0
+fi
+
 echo "== Proving (z3) — shared by checks 5-6, this is the slow step =="
 # Author hints (#67, SPEC §7.2/§10) are store METADATA — not in `.oath` source
 # and not in any hash — so a kernel that elaborates only source cannot know
@@ -352,6 +421,14 @@ done
 echo
 if [ $fail -eq 0 ]; then
   echo "CONFORMANCE: PASS (checks 1-6)"
+  # Record the fingerprint so an unchanged tree skips the full re-derivation next
+  # time (#139). Commit it with the fixtures.
+  {
+    printf "%s\n" "$CONF_FP"
+    echo "# conformance.sh full mode: the corpus reproduced the fixtures under this"
+    echo "# (corpus, proof state, built kernel, harness, overrides, z3) fingerprint."
+  } > "$FP_FILE"
+  echo "  full-derivation fingerprint recorded to $FP_FILE — commit it with the fixtures."
 else
   echo "CONFORMANCE: FAIL"
 fi

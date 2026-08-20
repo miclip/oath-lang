@@ -73,6 +73,7 @@ RUN: set[tuple[str, str]] = {
     ("conformance", "Postgres + GCS integration tests", "3d70b5e119a4"),
     ("conformance", "build", "824452667570"),
     ("conformance", "unit tests", "230135e255a8"),
+    ("conformance", "fingerprint instrument check (#139)", "58a5a527a296"),
     ("conformance", "playground corpus mirrors the committed store (#145)", "b119401a74f0"),
     ("conformance", "mutation boundary (release binary contains no rule-disable path)", "a5ac2d616a34"),
     ("conformance", "documented numbers match the machine's ledger (#96)", "4d2da9c20b5b"),

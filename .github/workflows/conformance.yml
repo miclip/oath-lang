@@ -244,6 +244,14 @@ jobs:
           z3 --version
           OATHRS_CONFORMANCE_PROVE=oracle ./oathrs/conformance.sh
 
+      # The full-derivation fingerprint gate (#139) skips the scheduled cold
+      # re-derivation when nothing changed; a fingerprint that missed an input
+      # would skip a CHANGED state and report a false PASS. This asserts the gate's
+      # fingerprint is idempotent and sensitive to its inputs — the instrument
+      # check that keeps the skip honest. oathrs is already built above.
+      - name: fingerprint instrument check (#139)
+        run: ./oathrs/conformance_fp_test.sh
+
       # §7.4's cross-kernel claim, and it runs HERE rather than inside
       # conformance.sh on purpose. That script ships to blind subjects as part of
       # the oathrs/ surface, and this check IMPLEMENTS the rule it tests — it
