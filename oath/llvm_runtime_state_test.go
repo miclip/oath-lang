@@ -263,7 +263,7 @@ func TestEmittedRuntimeDeclaresNoStaticStorageForValues(t *testing.T) {
 
 	for _, v := range staticVars(rt) {
 		if arenaOwnershipRoot(v) || requestContinuationSlot(v) ||
-			processLifetimeSlot(v) || stackGuardSlot(v) {
+			processLifetimeSlot(v) || stackGuardSlot(v) || heapGuardSlot(v) {
 			continue
 		}
 		if v.name == "" {
@@ -790,6 +790,24 @@ func stackGuardSlot(v staticVar) bool {
 		return v.name == "o_stack_from_rlimit"
 	case "static int o_stack_worker;":
 		return v.name == "o_stack_worker"
+	}
+	return false
+}
+
+// heapGuardSlot exempts the #180 heap-guard's bookkeeping, the exact analogue of
+// stackGuardSlot: resource accounting (live bytes, the declared budget, whether
+// it came from the environment), NEVER an Oath value. None can hold an OVal, so
+// none can retain a request's memory across the arena's release - the lifetime
+// argument the scan demands. Exact decl + name, so a value-bearing pointer under
+// one of these names would not match.
+func heapGuardSlot(v staticVar) bool {
+	switch normalizeDecl(v.decl) {
+	case "static size_t o_heap_used;":
+		return v.name == "o_heap_used"
+	case "static size_t o_heap_budget;":
+		return v.name == "o_heap_budget"
+	case "static int o_heap_from_env;":
+		return v.name == "o_heap_from_env"
 	}
 	return false
 }

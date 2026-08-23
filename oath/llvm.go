@@ -2102,12 +2102,92 @@ int o_run(o_prog_fn prog, int argc, char **argv) {
 #endif
 }
 
+/* ---------- the heap guard (#180), OPT-IN ----------
+   The stack guard turns unbounded RECURSION into a legible exit-70 refusal; this
+   is its heap analogue, for unbounded ALLOCATION. An immutable native container
+   built incrementally - set-add in a fold - copies the whole array on every add,
+   so N adds allocate O(N^2) element-slots into the request arena, which a batch
+   CLI entry never releases mid-run. On an overcommitting host malloc keeps
+   succeeding until the kernel OOM-killer SIGKILLs the process (exit 137, with
+   nothing an operator can act on). A PROACTIVE budget check at the single growth
+   point - o_block_new, the one place bytes are obtained from the host - refuses
+   instead: a diagnostic, then o_refused (exit 70 standalone, a 500 in a handler),
+   exactly as the stack floor. Purely runtime: NO emitted IR changes, because the
+   check lives where allocation lives, not in the prologue.
+
+   OPT-IN, and deliberately so. The stack guard reads an OS-declared limit
+   (RLIMIT_STACK); the heap has NO portable equivalent - a container's cgroup
+   memory cap is not visible through getrlimit - so the budget is DECLARED by the
+   deployment via OATH_HEAP_BUDGET (bytes), or compiled in with -DO_HEAP_BUDGET.
+   Unset, the budget is 0 and the check does nothing: default behaviour is
+   unchanged, no artifact gains a ceiling it did not ask for, and a deeply
+   recursive program still reaches the STACK guard rather than a heap one. A
+   deployment that sets OATH_HEAP_BUDGET to its memory limit converts that limit's
+   OS SIGKILL into this legible refusal.
+
+   o_heap_used is LIVE bytes: o_block_new adds, o_arena_release subtracts. So a
+   budget bounds a single request's live footprint - a handler releasing per
+   request never accumulates; the CLI batch entry (the #180 case) grows
+   monotonically and reaches the budget. Perm-region blocks stay counted: they
+   ARE live for the process. */
+#ifndef O_HEAP_BUDGET
+#define O_HEAP_BUDGET ((size_t)0) /* 0 = disabled; opt in via OATH_HEAP_BUDGET or -D */
+#endif
+static size_t o_heap_used;
+static size_t o_heap_budget;
+static int o_heap_from_env;
+
+static void o_heap_init(void) {
+  const char *e = getenv("OATH_HEAP_BUDGET");
+  if (e && *e) {
+    char *end;
+    unsigned long long v = strtoull(e, &end, 10);
+    if (end != e && *end == '\0' && v > 0) {
+      o_heap_budget = (size_t)v;
+      o_heap_from_env = 1;
+      return;
+    }
+  }
+  o_heap_budget = (size_t)O_HEAP_BUDGET; /* the compiled default, 0 unless -D set one */
+}
+__attribute__((constructor))
+static void o_heap_ctor(void) { o_heap_init(); }
+
+/* NOT called from emitted IR - only from o_block_new - so unlike o_stack_exhausted
+   it needs no IR declaration. Mirrors o_oom's shape: control reaches here only on
+   the failing branch, and o_refused never returns. */
+void o_heap_exhausted(size_t want) {
+  const char *how =
+      o_heap_from_env
+          ? "the 'OATH_HEAP_BUDGET' environment variable set this budget; raise "
+            "it (in bytes) to admit a larger run, with no rebuild; "
+          : "this budget was compiled into the artifact (-DO_HEAP_BUDGET); "
+            "OATH_HEAP_BUDGET (in bytes) raises it at run time with no rebuild; ";
+  fprintf(stderr,
+      "oath: this artifact exhausted its heap budget of %zu bytes (a further %zu "
+      "requested). That is a limit of THIS run, not a property of the program: "
+      "%san immutable container built incrementally (set-add in a fold over N "
+      "records) copies O(N^2) into a request arena that is not freed until the "
+      "run ends, so a large batch reaches this line. 'oath eval' runs the same "
+      "definition unbudgeted.\n",
+      o_heap_budget, want, how);
+  o_refused();
+}
+
 static OBlock *o_block_new(size_t cap) {
+  /* Heap guard (#180): refuse legibly BEFORE the host OOM-killer fires, but only
+     when a budget was declared (o_heap_budget != 0). The subtraction cannot
+     underflow: o_heap_used <= o_heap_budget is the invariant this check
+     maintains, since it runs before every increment below. The ctor set the
+     budget pre-main from OATH_HEAP_BUDGET or -DO_HEAP_BUDGET; unset, this branch
+     is never taken and default behaviour is unchanged. */
+  if (o_heap_budget != 0 && cap > o_heap_budget - o_heap_used) o_heap_exhausted(cap);
   OBlock *nb = (OBlock *)calloc(1, sizeof(OBlock));
   if (!nb) o_oom();
   nb->base = (char *)calloc(1, cap);
   if (!nb->base) { free(nb); o_oom(); }
   nb->cap = cap;
+  o_heap_used += cap;
   return nb;
 }
 
@@ -2197,6 +2277,7 @@ void o_arena_release(void) {
   o_arena_blocks = 0;
   while (b) {
     OBlock *next = b->next;
+    o_heap_used -= b->cap; /* live-bytes tracking for the #180 heap guard */
     free(b->base);
     free(b);
     b = next;
