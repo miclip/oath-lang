@@ -2642,3 +2642,67 @@ in the §7.4 dispatch root, because `campaign.rs` does `include_str!` on
 subject verified its tests in a scratch copy instead. A blind subject that cannot
 run the existing suite is a weaker subject than one that can; the surface should
 carry that fixture.
+
+## 87. Sharded verification (#98, §7.5) — IMPLEMENTED as an OPTIONAL capability; the semantics are well pinned, but four operational points are choices §7.5 does not force
+
+§7.5 is unusually precise about the SOUNDNESS core — seed from S, one application
+of F, carry-forward-on-abort, the loud `union == S` self-check — and those needed
+no guessing. What it leaves open is operational, and each was resolved toward the
+reading that keeps `n = 1` exactly equal to the unsharded seeded verifier.
+
+1. **The falsified set is recomputed globally, not carried in S.** §7.5 says
+   "only proof EXECUTION is partitioned" and is silent on §7.3 falsification. A
+   falsified definition is never proved (§7.3), and the from-empty driver skips
+   it; the seeded verifier must skip it too or `n = 1` would diverge from the
+   unsharded seeded run. Choice: run the tester once, globally (like the plain
+   `prove` path), and skip falsified definitions in every shard. **UNTESTED** by
+   any fixture — no corpus member carries both a falsified property and a shard
+   split that would expose a disagreement.
+
+2. **`first_64_bits` = the first 16 HEX characters of the stored hash.** The O1
+   identity hash is 32 raw bytes (§1); this kernel stores it as 64 lowercase hex
+   chars, so its leading 8 bytes big-endian are `u64::from_str_radix(&hash[..16],
+   16)`. A kernel holding the hash as raw bytes would read the same 8 bytes big-
+   endian — same value — but the hex-string route is a representation choice a
+   second kernel must match at the VALUE level, not the byte-layout level.
+   *Settled by construction* (agreement of `shard_of` across n in the unit tests,
+   and a real-corpus partition that covers every definition exactly once).
+
+3. **The seed identity's serialization is not pinned, only its VISIBILITY is.**
+   §7.5 requires "the seed S's identity … visible, so two runs cannot claim the
+   same verification from different seeds," but does not fix how to hash S.
+   Choice: `sha256_hex` of the canonically-sorted proven set emitted as
+   `hash\tpi\n` lines. This satisfies the two stated requirements (a function of
+   S; changes when S changes) but is NOT cross-kernel identical — a second kernel
+   free to choose its own serialization would print a different identity for the
+   same S. **UNTESTED** cross-kernel; §10 does not pin it, so this is read as a
+   local campaign-identity value rather than a conformance byte.
+
+4. **The union self-check has two entry points, and the parallel one needed a
+   WIRE FORMAT the spec does not pin.** §7.5 mandates that the union of the
+   shards' verdicts be compared to S and fail loudly on mismatch, but not the
+   mechanism, and #98's point is PARALLEL throughput — shards as independent
+   jobs. So a shard emission must round-trip: `--shard i/n` writes the
+   `oath-sharded-verification/v1` format on stdout — a `#` banner stating
+   CONTRIBUTION ONLY (a single shard is not verified until merged), a
+   `shard\ti\tn` line, a `campaign\t<identity>` line, then one
+   `def_hash\tprop_index\tverdict[\treason]` line per attempted property, keyed by
+   HASH (validated as a 64-char lowercase-hex O1 hash on parse) and sorted.
+   `--merge-shards n --shard-in <file>…` reads the emissions, reconstructs each
+   `ShardOutcome`, and runs the same `merge_and_check`; `--verify-shards n` is the
+   single-process equivalent (serial, no throughput). The format's exact bytes are
+   an implementation choice §10 does not pin: a second kernel is free to choose
+   another, since §7.5 requires the union be checked, not that the interchange be
+   cross-kernel identical.
+
+   The admission gate binds the FULL determinism context, not just S. §7.2/§10.5
+   make a proof outcome — hence `F(S)` — a function of (S, the author hints, the
+   solver version, the effective rlimit), so the `campaign` id is a hash over all
+   four (not the seed hash alone, which cannot see the other three). `--merge-
+   shards` recomputes its OWN campaign id and REJECTS any emission whose id or
+   declared `n` differs, and requires EXACTLY ONE emission per shard index
+   (`{0,…,n-1}`, no missing/duplicate/out-of-range — an omitted shard that owns no
+   property-bearing def would otherwise slip past the partition check). So a set
+   of green `--shard` jobs run under different hints, a different z3, a different
+   rlimit, or a different partition cannot be assembled into an unsound hybrid no
+   single application of `F` produced.

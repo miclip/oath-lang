@@ -345,3 +345,88 @@ jobs:
         env:
           OATH_TEST_PG_DSN: "postgres://postgres:postgres@localhost:5432/oathtest?sslmode=disable"
         run: cd oath && go test -tags cloud -run 'TestPG|TestGCS' ./...
+
+  # #98 sharded verification — the PARALLEL path that makes the union == S check
+  # fit CI's window. The serial in-process --verify-shards is as slow as the cold
+  # re-derivation, so it is the MATRIX, not that mode, that delivers throughput:
+  # each shard proves ~1/8 of the corpus on its own runner (the slow tail — 26
+  # goals, 94% of solver time — spread across the 8), emits its verdicts in the
+  # oath-sharded-verification/v1 wire format, and the merge job below runs the
+  # mandated union == S self-check over all emissions. Every job pins the SAME z3
+  # and leaves OATHRS_Z3_RLIMIT at its default, so their campaign identities match
+  # and the merge admits them; a shard produced under a different solver or budget
+  # would be rejected before the self-check (SPEC §7.5). Scheduled/dispatch only —
+  # 8 runners for a few hours each is not a per-push cost.
+  rust-conformance-sharded:
+    name: independent kernel (Rust) — sharded verification (shard ${{ matrix.shard }}/8)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: pin z3 4.16.0
+        run: |
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 \
+               -o z3.zip https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip
+          echo "7288c49a5bd6dbafd7b0b0d1f65956b91672da24b08f09242919af159be3418e  z3.zip" \
+            | sha256sum -c - || { echo "z3 archive is not the pinned build"; exit 1; }
+          unzip -q z3.zip
+          echo "$PWD/z3-4.16.0-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
+      - name: build oathrs
+        run: cargo build --release --manifest-path oathrs/Cargo.toml
+      - name: prove shard ${{ matrix.shard }} of 8
+        # Wall cap is safety-only and NOT part of the campaign identity (rlimit is),
+        # so setting it here while the merge omits it does not desync the two.
+        env:
+          OATHRS_Z3_WALL_CAP_MS: "3600000"
+        run: |
+          z3 --version
+          ./oathrs/target/release/oathrs prove --shard ${{ matrix.shard }}/8 \
+            --hints fixtures/prove/outcomes.json \
+            examples/*.oath apps/*/*.oath > "shard-${{ matrix.shard }}.txt"
+          head -4 "shard-${{ matrix.shard }}.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shard-${{ matrix.shard }}
+          path: shard-${{ matrix.shard }}.txt
+          if-no-files-found: error
+
+  rust-conformance-sharded-merge:
+    name: independent kernel (Rust) — merge shards, verify union == S
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: rust-conformance-sharded
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: pin z3 4.16.0
+        # The merge does not prove, but it recomputes the campaign identity — which
+        # binds the z3 --version string — so it needs the SAME pinned z3 as the
+        # shards, or it would reject its own campaign's emissions.
+        run: |
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 \
+               -o z3.zip https://github.com/Z3Prover/z3/releases/download/z3-4.16.0/z3-4.16.0-x64-glibc-2.39.zip
+          echo "7288c49a5bd6dbafd7b0b0d1f65956b91672da24b08f09242919af159be3418e  z3.zip" \
+            | sha256sum -c - || { echo "z3 archive is not the pinned build"; exit 1; }
+          unzip -q z3.zip
+          echo "$PWD/z3-4.16.0-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
+      - name: build oathrs
+        run: cargo build --release --manifest-path oathrs/Cargo.toml
+      - uses: actions/download-artifact@v4
+        with:
+          path: shards
+      - name: merge and verify union == S
+        run: |
+          z3 --version
+          args=""
+          for i in 0 1 2 3 4 5 6 7; do
+            args="$args --shard-in shards/shard-$i/shard-$i.txt"
+          done
+          ./oathrs/target/release/oathrs prove --merge-shards 8 \
+            --hints fixtures/prove/outcomes.json \
+            $args examples/*.oath apps/*/*.oath

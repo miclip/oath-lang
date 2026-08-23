@@ -119,6 +119,16 @@ NEEDS_ENV: dict[tuple[str, str], str] = {
         "provisions the runner's z3",
     ("conformance", "six-check conformance (cold prove at the SPEC budget)", "1dc431d452c0"):
         "the 9+ hour cold re-derivation; schedule/dispatch only",
+    # #98 sharded verification (matrix + merge). Schedule/dispatch only, and each
+    # needs a CI runner with the pinned z3 — the same class as the full job above.
+    ("conformance", "pin z3 4.16.0", "74f95be38960"):
+        "provisions the runner's z3 for the sharded matrix; schedule/dispatch only",
+    ("conformance", "build oathrs", "4111ddfccb69"):
+        "builds the release kernel on the runner for the sharded matrix; schedule/dispatch only",
+    ("conformance", "prove shard ${{ matrix.shard }} of 8", "9e49e31aaf36"):
+        "one parallel shard of the union==S check; schedule/dispatch only, needs CI runners",
+    ("conformance", "merge and verify union == S", "db0f8707ae9e"):
+        "merges the shard emissions and runs the union==S gate; schedule/dispatch only",
     ("stdlib-pr", "Compute the proposed registry delta", "41f545e50141"):
         "needs origin/<base_ref> and PR context",
     ("stdlib-pr", "Dry-run publication plan (unsigned)", "de22e02100ad"):

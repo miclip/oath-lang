@@ -2357,6 +2357,854 @@ pub fn scripts_for(
     out
 }
 
+// ===========================================================================
+// SPEC §7.5 — Sharded verification (OPTIONAL capability, #98)
+//
+// A THROUGHPUT feature that changes NO verdict. It verifies ONLY the
+// run-stability property F(S) = S of a GIVEN seed set S (the recorded proven
+// set carried by prove/outcomes.json), with the single application of F
+// partitioned across shards. It does NOT re-establish §7.2's from-empty limit.
+//
+// Why a single pass with no rounds and no within-shard ordering suffices: with
+// the proven state held FIXED at S, `candidate_lemmas(goal)` is a pure function
+// of (S, corpus, hints) — it never reads this run's own progress — so a goal's
+// candidate set (hence its script bytes, hence its verdict) is identical in any
+// order, in any shard. F(S) is therefore one independent attempt per property.
+//
+// The self-check IS the mode: the union of the shards' verdicts is compared to
+// S property-by-property and the run FAILS LOUDLY on any mismatch (a valid
+// verdict differing from S, a definition proved by no shard, or one attempted by
+// more than one). A sharded run that merely completes is not a pass.
+// ===========================================================================
+
+/// SPEC §7.5 shard-assignment key: `first_64_bits(definition_hash) mod n`, where
+/// `first_64_bits` is the leading 8 bytes of the O1 identity hash read
+/// big-endian. The hash is 64 lowercase hex chars (§1), so the leading 8 bytes
+/// are its first 16 hex characters. Assignment depends ONLY on identity — never
+/// on input-file position or elaboration order, which are unstable across file
+/// moves and unreproducible by an independent runner. `n = 1` sends every
+/// definition to shard 0 (the unsharded seeded verifier).
+pub fn shard_of(def_hash: &str, n: u64) -> u64 {
+    assert!(n >= 1, "shard count n must be >= 1");
+    // A well-formed identity hash is 64 hex chars; anything shorter is not a
+    // real O1 hash. Fall back to 0 rather than panicking on malformed input —
+    // the partition self-check would surface any resulting anomaly loudly.
+    // `get(..16)` is None if the string is shorter than 16 bytes OR byte 16 is
+    // not a char boundary (a malformed non-ASCII hash), so this never slices
+    // mid-character — it falls back to 0 as the comment promises.
+    let lead = def_hash
+        .get(..16)
+        .and_then(|h| u64::from_str_radix(h, 16).ok())
+        .unwrap_or(0);
+    lead % n
+}
+
+/// The raw outcome of ONE shard of the seeded single-pass verifier (SPEC §7.5).
+/// `verdicts` are the untouched per-property attempt results — carry-forward is
+/// NOT applied here so the record stays a faithful account of what the attempt
+/// returned; the merge applies it against S. `defs` is the set of
+/// property-bearing, non-falsified function definitions this shard attempted,
+/// carried so the merge can verify the partition (exactly one shard per def).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShardOutcome {
+    pub shard: u64,
+    pub defs: BTreeSet<String>,
+    pub verdicts: BTreeMap<(String, usize), PropVerdict>,
+}
+
+/// The result of merging every shard's outcome and self-checking it against the
+/// seed `S` (SPEC §7.5). `ok()` is the pass; `mismatches` is empty exactly when
+/// the run passes. `seed_id` makes the seed's identity visible so two runs
+/// cannot claim the same verification from different seeds.
+#[derive(Debug, Clone)]
+pub struct MergeReport {
+    /// The effective proven set after carry-forward — what the union established.
+    pub proven: BTreeSet<(String, usize)>,
+    /// Properties whose PRIOR proof in S was carried forward through an
+    /// environmental abort this run (not a mismatch), with the reason.
+    pub carried: BTreeMap<(String, usize), String>,
+    /// Loud, human-readable descriptions of every mismatch. Empty iff the run
+    /// passes.
+    pub mismatches: Vec<String>,
+    /// Campaign identity of the seed S (a hash of the proven set).
+    pub seed_id: String,
+}
+
+impl MergeReport {
+    pub fn ok(&self) -> bool {
+        self.mismatches.is_empty()
+    }
+}
+
+/// Identity of a seed set S alone: a hash of the proven set, reported for humans
+/// so a `MergeReport` names which S it checked. The set is emitted in its
+/// canonical sorted order (`BTreeSet` iteration) as `hash\tpi\n` lines. NOTE: this
+/// binds ONLY S — it is NOT sufficient to gate a distributed merge, because a
+/// proof outcome (hence F(S)) is a function of (S, hints, solver, rlimit) per
+/// §7.2/§10.5. Use `campaign_identity` for the merge admission check.
+pub fn seed_identity(seed: &BTreeSet<(String, usize)>) -> String {
+    let mut buf = String::new();
+    for (h, pi) in seed {
+        buf.push_str(h);
+        buf.push('\t');
+        buf.push_str(&pi.to_string());
+        buf.push('\n');
+    }
+    sha256_hex(buf.as_bytes())
+}
+
+/// The FULL determinism context of a sharded campaign (SPEC §7.2/§10.5): a hash
+/// over (proven set S, the author hints, the solver version string, the effective
+/// rlimit). §7.2 pins a proof outcome as `f(script bytes, solver version, rlimit)`
+/// and §7.2's candidate construction folds the hints into the script bytes, so
+/// `F(S)` — the whole thing a sharded merge reconstructs — is a function of these
+/// four. Two shards that agree on S but ran under different hints, a different z3,
+/// or a different rlimit did NOT compute the same `F`, and their union is an
+/// unsound hybrid no single application of `F` ever produced. `--merge-shards`
+/// therefore admits an emission only when its campaign identity equals the merge's
+/// own recomputed one; the seed hash alone cannot see the other three inputs.
+///
+/// Canonical serialization: a versioned header, then `solver` and `rlimit` lines,
+/// then S (sorted), then the hints (sorted, each target list sorted) — so
+/// logically equal contexts hash equal and any difference in any input changes the
+/// id.
+pub fn campaign_identity(
+    seed: &BTreeSet<(String, usize)>,
+    hints: &Hints,
+    solver_version: &str,
+    rlimit: u64,
+) -> String {
+    let mut buf = String::new();
+    buf.push_str("oath-campaign/v1\n");
+    buf.push_str("solver\t");
+    buf.push_str(solver_version);
+    buf.push('\n');
+    buf.push_str(&format!("rlimit\t{}\n", rlimit));
+    buf.push_str("seed\n");
+    for (h, pi) in seed {
+        buf.push_str(&format!("{}\t{}\n", h, pi));
+    }
+    buf.push_str("hints\n");
+    // `hints` is a BTreeMap, so keys iterate sorted; sort each target list too so
+    // the identity does not depend on the order the fixture happened to list them.
+    for ((h, pi), targets) in hints {
+        let mut ts = targets.clone();
+        ts.sort();
+        buf.push_str(&format!("{}\t{}", h, pi));
+        for (th, tpi) in &ts {
+            buf.push_str(&format!("\t{}:{}", th, tpi));
+        }
+        buf.push('\n');
+    }
+    sha256_hex(buf.as_bytes())
+}
+
+/// The effective z3 rlimit (SPEC §7.2 budget), reading `OATHRS_Z3_RLIMIT`. Public
+/// so the CLI can fold it into the campaign identity.
+pub fn effective_z3_rlimit() -> u64 {
+    z3_rlimit()
+}
+
+/// A short, UTF-8-SAFE prefix of a hash for diagnostics. Never byte-slice a hash:
+/// an untrusted emission may carry a multibyte string, and `&h[..8]` panics at a
+/// non-char boundary. `chars().take(8)` fails cleanly on anything.
+fn short_hash(h: &str) -> String {
+    h.chars().take(8).collect()
+}
+
+/// The property-bearing, non-falsified function definitions of a store — the
+/// universe the §7.5 partition quantifies over. Derived from the store (the
+/// claim's owner), NOT from any shard's membership.
+fn shardable_defs(store: &Store, falsified: &BTreeSet<String>) -> BTreeSet<String> {
+    store
+        .def_by_hash
+        .iter()
+        .filter(|(h, d)| match d {
+            Def::Func { props, .. } => !props.is_empty() && !falsified.contains(*h),
+            _ => false,
+        })
+        .map(|(h, _)| h.clone())
+        .collect()
+}
+
+/// Run ONE shard of the seeded single-pass verifier (SPEC §7.5). Attempts each
+/// property of every non-falsified, property-bearing function definition
+/// assigned to this shard EXACTLY ONCE, with candidate lemmas drawn from the
+/// FIXED seed `S`. No rounds and no within-shard dependency ordering: with the
+/// proven state fixed at S each goal is independent.
+///
+/// `assign(hash)` decides shard membership; passing an arbitrary deterministic
+/// `assign` lets a second assignment function be exercised (the normative one is
+/// `|h| shard_of(h, n)`). The real driver passes `Prover::prove_prop` as
+/// `attempt`; tests pass a deterministic oracle, the only way to exercise the
+/// abort/carry-forward semantics without a solver or a clock.
+pub fn prove_shard_with<A, F>(
+    store: &Store,
+    falsified: &BTreeSet<String>,
+    hints: &Hints,
+    seed: &BTreeSet<(String, usize)>,
+    assign: A,
+    i: u64,
+    mut attempt: F,
+) -> ShardOutcome
+where
+    A: Fn(&str) -> u64,
+    F: FnMut(&str, usize, &Prop, &[(String, usize, bool)]) -> PropVerdict,
+{
+    let mut defs = BTreeSet::new();
+    let mut verdicts = BTreeMap::new();
+    // Iterate in a stable (definition-hash) order; the partition is by `assign`,
+    // never by this order, but a deterministic walk keeps output reproducible.
+    for (hash, def) in &store.def_by_hash {
+        let props = match def {
+            Def::Func { props, .. } if !props.is_empty() => props,
+            _ => continue,
+        };
+        // §7.3: a falsified definition is never proved (upgrade requires tested),
+        // exactly as the from-empty driver skips it — so the seeded verifier must
+        // skip it too, or `n = 1` would diverge from the unsharded seeded run.
+        if falsified.contains(hash) {
+            continue;
+        }
+        if assign(hash) != i {
+            continue;
+        }
+        defs.insert(hash.clone());
+        for (pi, prop) in props.iter().enumerate() {
+            let cands = candidate_lemmas(store, hash, pi, prop, seed, hints);
+            let verdict = attempt(hash, pi, prop, &cands);
+            verdicts.insert((hash.clone(), pi), verdict);
+        }
+    }
+    ShardOutcome { shard: i, defs, verdicts }
+}
+
+/// The unsharded seeded verifier (SPEC §7.5, the `n = 1` reference): one
+/// application of §7.2's F with the recorded proven state held FIXED at the seed
+/// S — every non-falsified property attempted once, candidates drawn from S.
+/// This is NOT `prove_all_with`'s from-empty iteration; it is a single pass, and
+/// it is written as an INDEPENDENT loop (not a call to `prove_shard_with`) so
+/// that "`n = 1` sharded == the unsharded seeded verifier" is a real cross-check
+/// of two code paths rather than a tautology.
+pub fn seeded_verify_all<F>(
+    store: &Store,
+    falsified: &BTreeSet<String>,
+    hints: &Hints,
+    seed: &BTreeSet<(String, usize)>,
+    mut attempt: F,
+) -> BTreeMap<(String, usize), PropVerdict>
+where
+    F: FnMut(&str, usize, &Prop, &[(String, usize, bool)]) -> PropVerdict,
+{
+    let mut verdicts = BTreeMap::new();
+    for (hash, def) in &store.def_by_hash {
+        let props = match def {
+            Def::Func { props, .. } if !props.is_empty() => props,
+            _ => continue,
+        };
+        if falsified.contains(hash) {
+            continue;
+        }
+        for (pi, prop) in props.iter().enumerate() {
+            let cands = candidate_lemmas(store, hash, pi, prop, seed, hints);
+            verdicts.insert((hash.clone(), pi), attempt(hash, pi, prop, &cands));
+        }
+    }
+    verdicts
+}
+
+/// The self-check (SPEC §7.5): given the raw per-property verdicts from a run and
+/// which shard attempted each definition, compare the union against the seed `S`
+/// property-by-property and report every mismatch loudly. This is the whole
+/// verifier — a run that merely completes is not a pass, the equality is.
+///
+/// `union == S` is checked in BOTH directions, so neither side can hide a member
+/// the other lacks: the universe loop covers every property the run should have
+/// attempted (catching S ⊋ union and union ⊋ S over the corpus, and any assigned
+/// property left unattempted), and the trailing seed loop covers every member of
+/// S the universe loop could not reach — a proof S records for a definition this
+/// run cannot even pose (absent, falsified, non-shardable, or an out-of-range
+/// index). Skipping either direction would verify `union == S ∩ universe`, which
+/// is not the property.
+///
+/// `owners` maps each definition hash to the shard indices that attempted it;
+/// exactly one is required. `raw` is the union of the shards' raw verdicts.
+fn check_against_seed(
+    store: &Store,
+    falsified: &BTreeSet<String>,
+    seed: &BTreeSet<(String, usize)>,
+    raw: &BTreeMap<(String, usize), PropVerdict>,
+    owners: &BTreeMap<String, Vec<u64>>,
+) -> MergeReport {
+    let universe = shardable_defs(store, falsified);
+    let mut proven = BTreeSet::new();
+    let mut carried = BTreeMap::new();
+    let mut mismatches = Vec::new();
+    let name_of = |hash: &str| -> String {
+        store
+            .func_by_hash
+            .get(hash)
+            .map(|fi| fi.name.clone())
+            .unwrap_or_else(|| short_hash(hash))
+    };
+
+    // Partition self-check (§7.5): every definition in the universe must have
+    // been attempted by EXACTLY ONE shard. Zero is "proved by no shard"; more
+    // than one is "attempted by more than one shard".
+    for hash in &universe {
+        match owners.get(hash).map(|v| v.len()).unwrap_or(0) {
+            1 => {}
+            0 => mismatches.push(format!(
+                "PARTITION: definition {} ({}) was attempted by NO shard",
+                name_of(hash),
+                short_hash(hash)
+            )),
+            k => mismatches.push(format!(
+                "PARTITION: definition {} ({}) was attempted by {} shards {:?} — must be exactly one",
+                name_of(hash),
+                short_hash(hash),
+                k,
+                owners.get(hash).unwrap()
+            )),
+        }
+    }
+    // A shard that attempted a definition OUTSIDE the universe (falsified, or not
+    // a property-bearing func) is itself an error worth surfacing.
+    for hash in owners.keys() {
+        if !universe.contains(hash) {
+            mismatches.push(format!(
+                "PARTITION: a shard attempted {} ({}), which is not a shardable definition",
+                name_of(hash),
+                short_hash(hash)
+            ));
+        }
+    }
+
+    // Per-property verdict check (§7.5) over the universe's properties.
+    for hash in &universe {
+        let props = match store.def_by_hash.get(hash) {
+            Some(Def::Func { props, .. }) => props.len(),
+            _ => 0,
+        };
+        for pi in 0..props {
+            let key = (hash.clone(), pi);
+            let in_s = seed.contains(&key);
+            match raw.get(&key) {
+                Some(PropVerdict::Proven) => {
+                    proven.insert(key.clone());
+                    if !in_s {
+                        // F(S) proved a property S does not record: S is not a
+                        // fixpoint (F(S) ⊋ S).
+                        mismatches.push(format!(
+                            "VERDICT: {} prop {} was PROVEN by the seeded re-derivation but is NOT in the seed S",
+                            name_of(hash),
+                            pi
+                        ));
+                    }
+                }
+                Some(PropVerdict::Unproven) => {
+                    if in_s {
+                        // A VALID verdict differing from S (§7.5): S is not
+                        // run-stable — a member it records proven cannot be
+                        // re-derived from S. This is the only mechanism in the
+                        // system that catches a non-self-consistent seed.
+                        mismatches.push(format!(
+                            "VERDICT: {} prop {} is in the seed S but the seeded re-derivation returned UNPROVEN (S is not run-stable)",
+                            name_of(hash),
+                            pi
+                        ));
+                    }
+                }
+                Some(PropVerdict::Aborted(reason)) => {
+                    if in_s {
+                        // Carry-forward on abort (§7.5): a property that aborts
+                        // environmentally AND is in S carries S's verdict — NOT a
+                        // mismatch. Mirrors §7.2's run-stability carry-forward.
+                        proven.insert(key.clone());
+                        carried.insert(key.clone(), reason.clone());
+                    }
+                    // An abort on a NON-member is not a valid verdict differing
+                    // from S (S records it unproven, and an abort is "no verdict"
+                    // — consistent with non-membership), so it is not a mismatch.
+                }
+                None => {
+                    // No shard produced a verdict for this property of an OWNED
+                    // (universe) definition. §7.5 requires every assigned property
+                    // to be attempted EXACTLY ONCE, so a missing verdict is ALWAYS
+                    // a mismatch — regardless of seed membership. A def attempted
+                    // by exactly one shard always yields a verdict for every one of
+                    // its properties (the shard attempts them all), so a `None`
+                    // here means the def went unattempted (also flagged by the
+                    // partition check) or the shard outcome was truncated/malformed
+                    // — a property never attempted, which a PASS must never hide.
+                    mismatches.push(format!(
+                        "VERDICT: {} prop {} was NOT attempted — no shard produced a verdict for this assigned property{}",
+                        name_of(hash),
+                        pi,
+                        if in_s { " (and it is recorded proven in the seed S)" } else { "" }
+                    ));
+                }
+            }
+        }
+    }
+
+    // §7.5 "the union … MUST be compared to S property by property": the loop
+    // above visits every property of the UNIVERSE, which is `union == S ∩
+    // universe`, not `union == S`. Every member of S must be accounted for, so a
+    // seed member the run cannot attempt — its definition absent from the corpus,
+    // newly falsified, or otherwise non-shardable, or a property index the
+    // definition does not have — is a MISMATCH: S records a proof this run cannot
+    // even pose, so it cannot have verified `union == S`.
+    for (h, pi) in seed {
+        let props = match store.def_by_hash.get(h) {
+            Some(Def::Func { props, .. }) => props.len(),
+            _ => 0,
+        };
+        if !universe.contains(h) {
+            let why = if store.def_by_hash.get(h).is_none() {
+                "its definition is not in this run (absent from the corpus)"
+            } else if falsified.contains(h) {
+                "its definition is FALSIFIED, so it is never proved (§7.3)"
+            } else {
+                "its definition is not a shardable definition (no properties)"
+            };
+            mismatches.push(format!(
+                "SEED: {} prop {} is recorded proven in the seed S, but {} — the run cannot attempt it",
+                name_of(h),
+                pi,
+                why
+            ));
+        } else if *pi >= props {
+            // In the universe but the index is out of range — a malformed seed
+            // claiming a property the definition does not have.
+            mismatches.push(format!(
+                "SEED: {} prop {} is recorded proven in the seed S, but the definition has only {} propert{} — the run cannot attempt it",
+                name_of(h),
+                pi,
+                props,
+                if props == 1 { "y" } else { "ies" }
+            ));
+        }
+    }
+
+    MergeReport { proven, carried, mismatches, seed_id: seed_identity(seed) }
+}
+
+/// Merge every shard's outcome and self-check it against the seed `S`
+/// (SPEC §7.5). Returns a `MergeReport` whose `ok()` is the pass.
+///
+/// The outcomes are UNTRUSTED input — this is the external-merge path, fed the
+/// `--shard i/n` emissions collected from separate processes — so this trusts
+/// NOTHING in an outcome's self-reported metadata. Every verdict `(def_hash, pi)`
+/// an outcome contributes is validated against the CANONICAL source (`shard_of`
+/// plus the elaborated store), not against the outcome's own `defs` list, and is
+/// unioned ONLY when all three hold; any violation is a loud mismatch and the
+/// verdict is never unioned:
+///   1. `pi < property_count(def_hash)` in the store — an out-of-range index is a
+///      mismatch, not a silently-ignored extra key.
+///   2. `shard_of(def_hash, n) == out.shard` — the definition is genuinely
+///      assigned to the emitting outcome's shard, so a swapped/relabelled shard,
+///      an arbitrary reassignment, or a verdict for a def that hashes elsewhere
+///      all fail. (Ownership for the partition check is taken from these VALID
+///      contributions, keyed by outcome POSITION so two outcomes sharing a shard
+///      label are still two owners.)
+///   3. `def_hash` is a shardable definition in the store (exists, property-
+///      bearing, non-falsified) — a verdict for an absent/falsified/non-shardable
+///      def is a mismatch.
+/// It also owns SHARD-INDEX COMPLETENESS: the outcomes' declared indices must be
+/// EXACTLY `{0,…,n-1}` — no missing, duplicate, or out-of-range shard. This lives
+/// HERE, not only in the CLI wrapper, so a direct caller cannot get a vacuous PASS
+/// from an empty or incomplete campaign (`outcomes = []`, or a missing shard that
+/// owns no property-bearing def, which the per-def partition check alone cannot
+/// see).
+/// This closes the whole class of malformed-outcome vectors at the structural
+/// owner: after it, every invariant §7.5 pins on a shard outcome is checked
+/// against the canonical source, so the external-merge path cannot false-PASS on
+/// any malformed input. The in-process `verify_sharded` path is unchanged: its
+/// outcomes satisfy all of this by construction.
+pub fn merge_and_check(
+    store: &Store,
+    falsified: &BTreeSet<String>,
+    seed: &BTreeSet<(String, usize)>,
+    outcomes: &[ShardOutcome],
+    n: u64,
+) -> MergeReport {
+    // §7.5: `n >= 1`. `shard_of`'s `mod n` cannot be evaluated at n = 0, and a
+    // zero-shard partition defines nothing — fail up front rather than merge a
+    // vacuous PASS.
+    if n == 0 {
+        return MergeReport {
+            proven: BTreeSet::new(),
+            carried: BTreeMap::new(),
+            mismatches: vec![
+                "SHARDING: shard count n must be >= 1 (SPEC §7.5); n = 0 defines no partition".to_string(),
+            ],
+            seed_id: seed_identity(seed),
+        };
+    }
+
+    // SHARD-INDEX COMPLETENESS (§7.5): exactly one outcome per index {0,…,n-1}.
+    // Owned here so no caller can bypass it — an empty or incomplete campaign is a
+    // FAIL, never a vacuous PASS. Counted from each outcome's DECLARED index; the
+    // per-verdict `shard_of == out.shard` check below separately proves that index
+    // is not a lie, so the two together pin both "every shard is present exactly
+    // once" and "every shard carries the definitions it should".
+    let mut index_mismatches: Vec<String> = Vec::new();
+    let mut index_counts: BTreeMap<u64, usize> = BTreeMap::new();
+    for out in outcomes {
+        *index_counts.entry(out.shard).or_insert(0) += 1;
+        if out.shard >= n {
+            index_mismatches.push(format!(
+                "SHARD-INDEX: an outcome declares shard {}, out of range for n={} (valid 0..{})",
+                out.shard, n, n
+            ));
+        }
+    }
+    for (idx, count) in &index_counts {
+        if *idx < n && *count > 1 {
+            index_mismatches.push(format!(
+                "SHARD-INDEX: shard {} was supplied {} times — exactly one emission per index is required",
+                idx, count
+            ));
+        }
+    }
+    for i in 0..n {
+        if !index_counts.contains_key(&i) {
+            index_mismatches.push(format!(
+                "SHARD-INDEX: shard {} is missing — one emission per index {{0..{}}} is required",
+                i,
+                n - 1
+            ));
+        }
+    }
+
+    let universe = shardable_defs(store, falsified);
+    let prop_count = |hash: &str| -> usize {
+        match store.def_by_hash.get(hash) {
+            Some(Def::Func { props, .. }) => props.len(),
+            _ => 0,
+        }
+    };
+    let name_of = |hash: &str| -> String {
+        store
+            .func_by_hash
+            .get(hash)
+            .map(|fi| fi.name.clone())
+            .unwrap_or_else(|| short_hash(hash))
+    };
+
+    let mut raw: BTreeMap<(String, usize), PropVerdict> = BTreeMap::new();
+    // owners: def -> the shard labels of the outcomes that VALIDLY contributed a
+    // verdict for it. Recorded once per (def, outcome position) so a def is not
+    // double-counted for its several properties, but two DISTINCT outcomes wearing
+    // the same shard label both count — that is a real double attempt.
+    let mut owners: BTreeMap<String, Vec<u64>> = BTreeMap::new();
+    let mut provenance: Vec<String> = Vec::new();
+
+    for out in outcomes {
+        let mut counted: BTreeSet<&String> = BTreeSet::new();
+        for (key, v) in &out.verdicts {
+            let (h, pi) = (&key.0, key.1);
+            // (3) shardable & present in the store.
+            if !universe.contains(h) {
+                provenance.push(format!(
+                    "PROVENANCE: shard {} contributed a verdict for {} prop {}, which is not a shardable definition in the store (absent, falsified, or property-free)",
+                    out.shard,
+                    name_of(h),
+                    pi
+                ));
+                continue;
+            }
+            // (1) property index in range.
+            let pc = prop_count(h);
+            if pi >= pc {
+                provenance.push(format!(
+                    "PROVENANCE: shard {} contributed a verdict for {} prop {}, but that definition has only {} propert{} (index out of range)",
+                    out.shard,
+                    name_of(h),
+                    pi,
+                    pc,
+                    if pc == 1 { "y" } else { "ies" }
+                ));
+                continue;
+            }
+            // (2) canonical assignment: the def must hash to THIS outcome's shard.
+            let canonical = shard_of(h, n);
+            if canonical != out.shard {
+                provenance.push(format!(
+                    "PROVENANCE: shard {} contributed a verdict for {} prop {}, but that definition is canonically assigned to shard {} (shard_of), not {}",
+                    out.shard,
+                    name_of(h),
+                    pi,
+                    canonical,
+                    out.shard
+                ));
+                continue;
+            }
+            // Valid contribution: union it and record ownership once per outcome.
+            raw.entry(key.clone()).or_insert_with(|| v.clone());
+            if counted.insert(h) {
+                owners.entry(h.clone()).or_default().push(out.shard);
+            }
+        }
+    }
+    // Sort each def's owner list so the >1 diagnostic is deterministic.
+    for v in owners.values_mut() {
+        v.sort_unstable();
+    }
+    let mut report = check_against_seed(store, falsified, seed, &raw, &owners);
+    report.mismatches.extend(index_mismatches);
+    report.mismatches.extend(provenance);
+    report
+}
+
+/// Run every shard 0..n of the seeded verifier and self-check the union against
+/// S (SPEC §7.5). The complete verifier as a single call: it partitions with the
+/// normative `shard_of` key, attempts each property once, merges, and returns a
+/// `MergeReport` whose `ok()` is the pass. `attempt` is the per-property oracle
+/// (z3 in production, a deterministic oracle in tests).
+pub fn verify_sharded<F>(
+    store: &Store,
+    falsified: &BTreeSet<String>,
+    hints: &Hints,
+    seed: &BTreeSet<(String, usize)>,
+    n: u64,
+    mut attempt: F,
+) -> MergeReport
+where
+    F: FnMut(&str, usize, &Prop, &[(String, usize, bool)]) -> PropVerdict,
+{
+    // §7.5: `n >= 1`. Reject `n = 0` up front, BEFORE constructing any outcome —
+    // otherwise the `0..0` loop attempts nothing and merges to a vacuous "success"
+    // on an empty corpus, and `shard_of`'s `mod n` would panic on a non-empty one.
+    // A verifier that reports PASS for an impossible shard count is the exact class
+    // of silent-pass this self-check exists to prevent, so it must fail loudly.
+    if n == 0 {
+        return MergeReport {
+            proven: BTreeSet::new(),
+            carried: BTreeMap::new(),
+            mismatches: vec![
+                "SHARDING: shard count n must be >= 1 (SPEC §7.5); n = 0 defines no partition".to_string(),
+            ],
+            seed_id: seed_identity(seed),
+        };
+    }
+    let mut outcomes = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        outcomes.push(prove_shard_with(
+            store,
+            falsified,
+            hints,
+            seed,
+            |h| shard_of(h, n),
+            i,
+            &mut attempt,
+        ));
+    }
+    merge_and_check(store, falsified, seed, &outcomes, n)
+}
+
+/// Run ONE shard i of n with the real z3 driver (SPEC §7.5). The z3 counterpart
+/// of `prove_shard_with`, building the `Prover` internally exactly as `prove_all`
+/// wraps `prove_all_with`, so callers need no access to the private `Prover`.
+pub fn prove_shard(
+    store: &Store,
+    falsified: &BTreeSet<String>,
+    hints: &Hints,
+    seed: &BTreeSet<(String, usize)>,
+    i: u64,
+    n: u64,
+) -> ShardOutcome {
+    let prover = Prover { store };
+    prove_shard_with(store, falsified, hints, seed, |h| shard_of(h, n), i, |hash, _pi, prop, cands| {
+        prover.prove_prop(hash, prop, cands)
+    })
+}
+
+/// Run all n shards with the real z3 driver and self-check the union against S
+/// (SPEC §7.5) — the z3 counterpart of `verify_sharded`.
+pub fn verify_sharded_z3(
+    store: &Store,
+    falsified: &BTreeSet<String>,
+    hints: &Hints,
+    seed: &BTreeSet<(String, usize)>,
+    n: u64,
+) -> MergeReport {
+    let prover = Prover { store };
+    verify_sharded(store, falsified, hints, seed, n, |hash, _pi, prop, cands| {
+        prover.prove_prop(hash, prop, cands)
+    })
+}
+
+// ===========================================================================
+// SPEC §7.5 — the shard-emission WIRE FORMAT (#98 parallel campaign).
+//
+// A parallel campaign runs `--shard 0/n … (n-1)/n` as independent jobs, collects
+// their stdout, and self-checks the UNION with `--merge-shards`. Each job's
+// stdout must therefore round-trip: what one shard emits is exactly what the
+// merge needs to reconstruct that shard's `ShardOutcome`, keyed by definition
+// HASH (identity, reproducible across runners) rather than display name.
+//
+// Format (`oath-sharded-verification/v1`), line-based, tab-separated, UTF-8:
+//
+//   # oath-sharded-verification/v1 — CONTRIBUTION ONLY (shard i of n) …
+//   shard<TAB>{i}<TAB>{n}
+//   campaign<TAB>{campaign_identity}
+//   {def_hash}<TAB>{prop_index}<TAB>proven
+//   {def_hash}<TAB>{prop_index}<TAB>unproven
+//   {def_hash}<TAB>{prop_index}<TAB>aborted<TAB>{reason...}
+//
+// Lines beginning `#` are comments (the human "not verified until merged"
+// banner is one). The `shard` and `campaign` control lines appear once each. The
+// `campaign` id binds the FULL determinism context (S, hints, solver, rlimit) —
+// see `campaign_identity` — so a merge admits only emissions that ran the same F.
+// Every other line is one attempted property's verdict, emitted sorted by
+// (def_hash, prop_index); the `def_hash` is 64 lowercase hex characters (an O1
+// identity hash, §1) and is validated as such on parse. For an `aborted` verdict
+// the reason is the remainder of the line after the fourth field, so a reason
+// containing tabs survives; a reason must not contain a newline (abort reasons
+// are single-line by construction). The parser recovers the shard's `defs` as the
+// set of definition hashes carrying a verdict — every shardable def has ≥1
+// property, so this reconstructs the attempted-definition set exactly.
+// ===========================================================================
+
+/// The parsed content of one `--shard i/n` emission: enough to reconstruct the
+/// `ShardOutcome`, plus the `i`/`n`/campaign-identity the shard declared. The
+/// merge validates all three against its own (`n`, and the campaign identity it
+/// recomputes from its hints/solver/rlimit) so a shard computed against a
+/// different partition or a different determinism context cannot be merged in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedShard {
+    pub i: u64,
+    pub n: u64,
+    pub campaign_id: String,
+    pub outcome: ShardOutcome,
+}
+
+/// True iff `s` is a well-formed O1 identity hash: exactly 64 lowercase hex
+/// characters (SPEC §1). Used to reject a malformed emission on parse — before any
+/// untrusted string reaches code that indexes or hashes it.
+fn is_identity_hash(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// Render one shard's `ShardOutcome` as the `oath-sharded-verification/v1` wire
+/// format (see the module comment above). `campaign_id` is the caller-computed
+/// `campaign_identity` (which binds S, hints, solver and rlimit); it is emitted so
+/// a merge can reject a shard that ran a different `F`. The leading `#` banner
+/// states, in the bytes themselves, that a single shard is a CONTRIBUTION and not
+/// a verified result until merged.
+pub fn format_shard_emission(out: &ShardOutcome, n: u64, campaign_id: &str) -> String {
+    let mut s = String::new();
+    s.push_str(&format!(
+        "# oath-sharded-verification/v1 — CONTRIBUTION ONLY (shard {} of {}); NOT verified until merged with `oath prove --merge-shards`\n",
+        out.shard, n
+    ));
+    s.push_str(&format!("shard\t{}\t{}\n", out.shard, n));
+    s.push_str(&format!("campaign\t{}\n", campaign_id));
+    // `verdicts` is a BTreeMap, so iteration is already sorted by (hash, pi).
+    for ((hash, pi), v) in &out.verdicts {
+        match v {
+            PropVerdict::Proven => s.push_str(&format!("{}\t{}\tproven\n", hash, pi)),
+            PropVerdict::Unproven => s.push_str(&format!("{}\t{}\tunproven\n", hash, pi)),
+            PropVerdict::Aborted(reason) => {
+                s.push_str(&format!("{}\t{}\taborted\t{}\n", hash, pi, reason))
+            }
+        }
+    }
+    s
+}
+
+/// Parse one `oath-sharded-verification/v1` emission back into a `ParsedShard`.
+/// The inverse of `format_shard_emission`: `parse_shard_emission(format(out, n,
+/// campaign_id))` recovers `i`, `n`, the campaign identity, and a `ShardOutcome`
+/// equal to `out`. Malformed input — including a `def_hash` that is not a 64-char
+/// lowercase-hex identity hash — is a hard error (the merge treats a shard it
+/// cannot parse as a failed campaign, never as an empty-but-fine one).
+pub fn parse_shard_emission(text: &str) -> Result<ParsedShard, String> {
+    let mut shard_hdr: Option<(u64, u64)> = None;
+    let mut campaign_id: Option<String> = None;
+    let mut verdicts: BTreeMap<(String, usize), PropVerdict> = BTreeMap::new();
+    let mut defs: BTreeSet<String> = BTreeSet::new();
+    for (lineno, raw) in text.lines().enumerate() {
+        let line = raw.strip_suffix('\r').unwrap_or(raw); // tolerate CRLF
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut fields = line.split('\t');
+        let tag = fields.next().unwrap_or("");
+        match tag {
+            "shard" => {
+                let i = fields
+                    .next()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .ok_or_else(|| format!("line {}: malformed `shard` index", lineno + 1))?;
+                let n = fields
+                    .next()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .ok_or_else(|| format!("line {}: malformed `shard` count", lineno + 1))?;
+                shard_hdr = Some((i, n));
+            }
+            "campaign" => {
+                let id = fields
+                    .next()
+                    .ok_or_else(|| format!("line {}: missing campaign identity", lineno + 1))?;
+                campaign_id = Some(id.to_string());
+            }
+            hash => {
+                // A verdict line: {def_hash}\t{pi}\t{verdict}[\t{reason}]. The
+                // def_hash is UNTRUSTED — validate it as an O1 identity hash
+                // BEFORE it is stored, so nothing downstream ever indexes or
+                // slices a non-hex/multibyte string.
+                if !is_identity_hash(hash) {
+                    return Err(format!(
+                        "line {}: `{}` is not a 64-char lowercase-hex identity hash",
+                        lineno + 1,
+                        short_hash(hash)
+                    ));
+                }
+                let pi = fields
+                    .next()
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .ok_or_else(|| format!("line {}: malformed property index", lineno + 1))?;
+                let verdict = fields
+                    .next()
+                    .ok_or_else(|| format!("line {}: missing verdict", lineno + 1))?;
+                let v = match verdict {
+                    "proven" => PropVerdict::Proven,
+                    "unproven" => PropVerdict::Unproven,
+                    "aborted" => {
+                        // The reason is the remainder of the line, tabs and all.
+                        // `splitn(4, …)` on the ORIGINAL line yields it as the 4th
+                        // part; an aborted verdict with no reason is tolerated.
+                        let reason = line.splitn(4, '\t').nth(3).unwrap_or("").to_string();
+                        PropVerdict::Aborted(reason)
+                    }
+                    other => {
+                        return Err(format!(
+                            "line {}: unknown verdict `{}` (want proven|unproven|aborted)",
+                            lineno + 1,
+                            other
+                        ))
+                    }
+                };
+                defs.insert(hash.to_string());
+                if verdicts.insert((hash.to_string(), pi), v).is_some() {
+                    return Err(format!(
+                        "line {}: duplicate verdict for {} prop {}",
+                        lineno + 1,
+                        short_hash(hash),
+                        pi
+                    ));
+                }
+            }
+        }
+    }
+    let (i, n) = shard_hdr.ok_or("missing `shard i n` header line")?;
+    let campaign_id = campaign_id.ok_or("missing `campaign <identity>` header line")?;
+    Ok(ParsedShard { i, n, campaign_id, outcome: ShardOutcome { shard: i, defs, verdicts } })
+}
+
 pub struct ProofResult {
     pub proven: Vec<bool>, // per prop index
     /// SPEC §7.2 (#72): per prop index, whether the property ABORTED — an
@@ -2471,7 +3319,7 @@ where
     let progress = std::env::var("OATHRS_PROVE_PROGRESS").is_ok();
     let total_defs = order.len();
     let name_of = |hash: &str| -> String {
-        store.func_by_hash.get(hash).map(|fi| fi.name.clone()).unwrap_or_else(|| hash[..8.min(hash.len())].to_string())
+        store.func_by_hash.get(hash).map(|fi| fi.name.clone()).unwrap_or_else(|| short_hash(hash))
     };
 
     let mut recorded: BTreeSet<(String, usize)> = BTreeSet::new();
@@ -3543,6 +4391,692 @@ mod tests {
             r[&f.quad].aborted,
             vec![false, false],
             "an abort superseded by a valid proof is no longer the property's state"
+        );
+    }
+
+    // =======================================================================
+    // SPEC §7.5 — Sharded verification (#98).
+    //
+    // These test the seeded single-pass verifier and its self-check with a
+    // DETERMINISTIC oracle — no z3, no clock — exactly as the #72 abort tests
+    // do, and for the same reason: the rules govern verdict RECORDING and the
+    // union/self-check, which no fixture generated from a clean run exercises.
+    // Everything below the injection point (assignment, the single pass, the
+    // carry-forward merge, the loud self-check) is the real code.
+    // =======================================================================
+
+    /// An oracle that models LEMMA DEPENDENCE, so the self-check can be exercised
+    /// against a seed that is (or is not) run-stable. A property proves iff every
+    /// lemma it `requires` is present AND admissible in its candidate set (which
+    /// is drawn from the fixed seed S) — remove that lemma from S and the
+    /// dependent can no longer prove. A property in `abort` returns an
+    /// environmental abort regardless. Everything else proves.
+    struct DepOracle {
+        requires: BTreeMap<(String, usize), Vec<(String, usize)>>,
+        abort: BTreeSet<(String, usize)>,
+    }
+    impl DepOracle {
+        fn new() -> Self {
+            DepOracle { requires: BTreeMap::new(), abort: BTreeSet::new() }
+        }
+        fn require(mut self, goal: (&str, usize), lemma: (&str, usize)) -> Self {
+            self.requires
+                .entry((goal.0.to_string(), goal.1))
+                .or_default()
+                .push((lemma.0.to_string(), lemma.1));
+            self
+        }
+        fn aborting(mut self, goal: (&str, usize)) -> Self {
+            self.abort.insert((goal.0.to_string(), goal.1));
+            self
+        }
+        fn verdict(&self, hash: &str, pi: usize, cands: &[(String, usize, bool)]) -> PropVerdict {
+            let key = (hash.to_string(), pi);
+            if self.abort.contains(&key) {
+                return PropVerdict::Aborted("simulated environmental abort (wall cap)".to_string());
+            }
+            if let Some(reqs) = self.requires.get(&key) {
+                for (rh, rj) in reqs {
+                    let admitted = cands.iter().any(|(h, j, adm)| h == rh && j == rj && *adm);
+                    if !admitted {
+                        return PropVerdict::Unproven;
+                    }
+                }
+            }
+            PropVerdict::Proven
+        }
+    }
+
+    /// A second, DETERMINISTIC assignment function distinct from the normative
+    /// `shard_of` (it reads the TRAILING 16 hex digits, not the leading): the
+    /// union over any partition must equal the unsharded seeded result, so a
+    /// different partition is a genuine independent check of that invariant.
+    fn alt_shard(def_hash: &str, n: u64) -> u64 {
+        let tail = &def_hash[def_hash.len() - 16..];
+        u64::from_str_radix(tail, 16).unwrap_or(0) % n
+    }
+
+    /// Run every shard 0..n with a given assignment function and oracle.
+    fn shards_with(
+        store: &Store,
+        seed: &BTreeSet<(String, usize)>,
+        n: u64,
+        assign: fn(&str, u64) -> u64,
+        o: &DepOracle,
+    ) -> Vec<ShardOutcome> {
+        let falsified = BTreeSet::new();
+        (0..n)
+            .map(|i| {
+                prove_shard_with(store, &falsified, &Hints::new(), seed, |h| assign(h, n), i, |h, pi, _p, c| {
+                    o.verdict(h, pi, c)
+                })
+            })
+            .collect()
+    }
+
+    /// The union of shard verdicts, per property (with diagnostics).
+    fn union_raw(outs: &[ShardOutcome]) -> BTreeMap<(String, usize), PropVerdict> {
+        let mut m = BTreeMap::new();
+        for o in outs {
+            for (k, v) in &o.verdicts {
+                m.insert(k.clone(), v.clone());
+            }
+        }
+        m
+    }
+
+    /// A mixed oracle producing all three verdict kinds against the full seed, so
+    /// a per-property equality is not vacuously over one verdict: quad prop 0
+    /// requires the (admissible) `twice` lemma → PROVEN; `unrelated` aborts →
+    /// ABORTED; quad prop 1 requires `unrelated` prop 0, which is never a
+    /// candidate for a quad goal → UNPROVEN.
+    fn mixed_oracle(f: &Fix) -> DepOracle {
+        DepOracle::new()
+            .require((&f.quad, 0), (&f.twice, 0))
+            .require((&f.quad, 1), (&f.unrelated, 0))
+            .aborting((&f.unrelated, 0))
+    }
+
+    /// §7.5 test 1 — assignment is DETERMINISTIC and PARTITIONS every definition
+    /// exactly once across shards, for several n. `shard_of` reads only the
+    /// identity hash, so it cannot depend on file position or elaboration order.
+    #[test]
+    fn assignment_is_deterministic_and_partitions_every_definition() {
+        let f = fixture();
+        let defs: Vec<String> = shardable_defs(&f.store, &BTreeSet::new()).into_iter().collect();
+        assert_eq!(defs.len(), 3, "twice, unrelated, quad are the shardable defs");
+        for n in 1..=6u64 {
+            for h in &defs {
+                // Deterministic: same input, same output, every call.
+                assert_eq!(shard_of(h, n), shard_of(h, n));
+                // In range 0..n.
+                assert!(shard_of(h, n) < n);
+            }
+            // Partition: run all shards and confirm each def is attempted by
+            // exactly one, and every def is covered.
+            let seed: BTreeSet<(String, usize)> = f.proven.clone();
+            let outs = shards_with(&f.store, &seed, n, shard_of, &DepOracle::new());
+            let mut owner_count: BTreeMap<&String, usize> = defs.iter().map(|d| (d, 0)).collect();
+            for o in &outs {
+                for d in &o.defs {
+                    *owner_count.get_mut(d).unwrap() += 1;
+                }
+            }
+            assert!(
+                owner_count.values().all(|&c| c == 1),
+                "n={}: every definition is attempted by exactly one shard, got {:?}",
+                n,
+                owner_count
+            );
+            let covered: BTreeSet<String> = outs.iter().flat_map(|o| o.defs.iter().cloned()).collect();
+            assert_eq!(
+                covered,
+                defs.iter().cloned().collect::<BTreeSet<_>>(),
+                "n={}: the shards cover every definition",
+                n
+            );
+        }
+    }
+
+    /// §7.5 test 2 — `n = 1` sharded equals the unsharded seeded verifier, per
+    /// property including diagnostics. The two are computed by DIFFERENT code
+    /// paths (`prove_shard_with` vs the independent `seeded_verify_all`), so the
+    /// equality is a real cross-check, not a tautology. The mixed oracle makes it
+    /// non-vacuous: PROVEN, UNPROVEN and ABORTED all appear.
+    #[test]
+    fn n1_sharded_equals_the_unsharded_seeded_verifier() {
+        let f = fixture();
+        let o = mixed_oracle(&f);
+        let seed = f.proven.clone();
+        let seeded = seeded_verify_all(&f.store, &BTreeSet::new(), &Hints::new(), &seed, |h, pi, _p, c| {
+            o.verdict(h, pi, c)
+        });
+        let shard_union = union_raw(&shards_with(&f.store, &seed, 1, shard_of, &o));
+        assert_eq!(shard_union, seeded, "n=1 union equals the unsharded seeded verdicts, diagnostics included");
+        // Sanity: the mixed oracle really did produce all three kinds.
+        let kinds: BTreeSet<&str> = seeded
+            .values()
+            .map(|v| match v {
+                PropVerdict::Proven => "p",
+                PropVerdict::Unproven => "u",
+                PropVerdict::Aborted(_) => "a",
+            })
+            .collect();
+        assert_eq!(kinds.len(), 3, "the fixture exercises all three verdict kinds");
+    }
+
+    /// §7.5 test 3 — the union over several n AND a second assignment function
+    /// equals the seeded unsharded result, per property including diagnostics.
+    /// This is the acceptance test's core invariant: HOW the definitions are
+    /// partitioned never changes what F(S) computes.
+    #[test]
+    fn union_over_n_and_a_second_assignment_equals_the_seeded_result() {
+        let f = fixture();
+        let o = mixed_oracle(&f);
+        let seed = f.proven.clone();
+        let seeded = seeded_verify_all(&f.store, &BTreeSet::new(), &Hints::new(), &seed, |h, pi, _p, c| {
+            o.verdict(h, pi, c)
+        });
+        for n in [1u64, 2, 3] {
+            let by_shard_of = union_raw(&shards_with(&f.store, &seed, n, shard_of, &o));
+            assert_eq!(by_shard_of, seeded, "n={} (shard_of) union equals the seeded result", n);
+            let by_alt = union_raw(&shards_with(&f.store, &seed, n, alt_shard, &o));
+            assert_eq!(by_alt, seeded, "n={} (second assignment) union equals the seeded result", n);
+        }
+    }
+
+    /// §7.5 test 5 — a NON-self-consistent seed makes the self-check FAIL LOUDLY.
+    /// `quad` prop 0 depends on `twice` prop 0 for its proof; removing `twice`
+    /// prop 0 from S leaves an S that is not run-stable. A verifier that ASSUMED
+    /// S rather than recomputing F(S) would pass this; the self-check must not.
+    /// The control (full S) passes with the same oracle, proving the failure is
+    /// the seed's, not the harness's.
+    #[test]
+    fn a_non_self_consistent_seed_fails_the_self_check_loudly() {
+        let f = fixture();
+        let o = DepOracle::new().require((&f.quad, 0), (&f.twice, 0));
+        // Control: the full seed IS run-stable under this oracle.
+        let full = f.proven.clone();
+        let ok_report =
+            verify_sharded(&f.store, &BTreeSet::new(), &Hints::new(), &full, 3, |h, pi, _p, c| o.verdict(h, pi, c));
+        assert!(ok_report.ok(), "the full seed is self-consistent: {:?}", ok_report.mismatches);
+        assert_eq!(ok_report.proven, full, "the union equals S");
+
+        // Remove the depended-on member. Now `quad` prop 0 cannot re-derive.
+        let mut broken = f.proven.clone();
+        broken.remove(&(f.twice.clone(), 0));
+        let bad =
+            verify_sharded(&f.store, &BTreeSet::new(), &Hints::new(), &broken, 3, |h, pi, _p, c| o.verdict(h, pi, c));
+        assert!(!bad.ok(), "a non-run-stable seed must FAIL the self-check");
+        assert!(
+            bad.mismatches.iter().any(|m| m.contains("quad") && m.contains("UNPROVEN")),
+            "the dependent's failure to re-derive is reported loudly: {:?}",
+            bad.mismatches
+        );
+        assert!(
+            bad.mismatches.iter().any(|m| m.contains("twice") && m.contains("NOT in the seed")),
+            "and the removed member re-proving itself is flagged too: {:?}",
+            bad.mismatches
+        );
+    }
+
+    /// §7.5 test 6 — an environmental abort on an S-member is CARRIED FORWARD and
+    /// is NOT a mismatch (mirrors §7.2's run-stability carry-forward). `unrelated`
+    /// prop 0 is in S and aborts this run; the union must still equal S, the run
+    /// must pass, and the property must be reported as carried, never as a
+    /// verdict mismatch.
+    #[test]
+    fn an_environmental_abort_on_an_s_member_carries_forward() {
+        let f = fixture();
+        let o = DepOracle::new()
+            .require((&f.quad, 0), (&f.twice, 0))
+            .aborting((&f.unrelated, 0));
+        let seed = f.proven.clone();
+        let report =
+            verify_sharded(&f.store, &BTreeSet::new(), &Hints::new(), &seed, 2, |h, pi, _p, c| o.verdict(h, pi, c));
+        assert!(report.ok(), "an abort on an S-member is not a mismatch: {:?}", report.mismatches);
+        assert_eq!(report.proven, seed, "the carried-forward member keeps its place in the union");
+        assert!(
+            report.carried.contains_key(&(f.unrelated.clone(), 0)),
+            "the aborted S-member is reported as carried forward"
+        );
+        assert!(
+            !report.mismatches.iter().any(|m| m.contains("unrelated")),
+            "the carried-forward member is never reported as a mismatch: {:?}",
+            report.mismatches
+        );
+    }
+
+    /// §7.5 partition self-check — a definition attempted by MORE THAN ONE shard
+    /// is caught. (The complement, attempted by NO shard, is caught by the same
+    /// code path; both are the load-bearing partition guard.) Built by DUPLICATING
+    /// a canonical outcome under its own (valid) shard label, so a definition is
+    /// validly contributed by two distinct outcomes — both pass the canonical
+    /// assignment check, and the partition count is 2.
+    #[test]
+    fn a_definition_attempted_by_two_shards_is_caught() {
+        let f = fixture();
+        let seed = f.proven.clone();
+        let o = DepOracle::new();
+        let outs = shards_with(&f.store, &seed, 2, shard_of, &o);
+        let victim = outs
+            .iter()
+            .find(|out| !out.defs.is_empty())
+            .expect("some shard owns a definition")
+            .clone();
+        let mut all = outs.clone();
+        all.push(victim); // a second outcome wearing the same, valid shard label
+        let report = merge_and_check(&f.store, &BTreeSet::new(), &seed, &all, 2);
+        assert!(!report.ok(), "a def attempted by two shards must fail the partition check");
+        assert!(
+            report.mismatches.iter().any(|m| m.contains("PARTITION") && m.contains("must be exactly one")),
+            "the double-attempt is reported: {:?}",
+            report.mismatches
+        );
+    }
+
+    /// §7.5 — the seed's identity is a function of S, so mutating S changes the
+    /// reported campaign identity (acceptance test 7). Two runs cannot claim the
+    /// same verification from different seeds.
+    #[test]
+    fn mutating_the_seed_changes_the_reported_identity() {
+        let f = fixture();
+        let full = f.proven.clone();
+        let mut reduced = full.clone();
+        reduced.remove(&(f.twice.clone(), 0));
+        assert_ne!(seed_identity(&full), seed_identity(&reduced));
+        // And it is stable for an unchanged seed.
+        assert_eq!(seed_identity(&full), seed_identity(&f.proven));
+    }
+
+    /// §7.5 completeness [P1] — a seed member OUTSIDE the shard universe must fail
+    /// loudly, not be silently ignored. The universe loop alone verifies
+    /// `union == S ∩ universe`; a proven seed entry whose definition the run
+    /// cannot attempt (absent from the corpus, falsified, non-shardable, or an
+    /// out-of-range index) is a genuine `union != S` and must be reported.
+    #[test]
+    fn seed_members_outside_the_universe_fail_loudly() {
+        // (a) A NONEMPTY seed over an EMPTY corpus: the exact concrete regression —
+        // it used to report `PASS union == S` with zero proven properties.
+        let empty = elaborate_corpus(&[]).expect("empty corpus elaborates to an empty store");
+        let mut seed = BTreeSet::new();
+        seed.insert(("00".repeat(32), 0)); // a fabricated, absent definition hash
+        let r = verify_sharded(&empty, &BTreeSet::new(), &Hints::new(), &seed, 1, |_h, _pi, _p, _c| {
+            PropVerdict::Proven
+        });
+        assert!(!r.ok(), "a nonempty seed over an empty corpus cannot have verified union == S");
+        assert!(
+            r.mismatches.iter().any(|m| m.contains("SEED") && m.contains("absent from the corpus")),
+            "the unaccounted seed member is flagged loudly: {:?}",
+            r.mismatches
+        );
+        assert!(r.proven.is_empty(), "and nothing was actually proven");
+
+        // (b) A seed member whose definition is FALSIFIED (so never proved, §7.3)
+        // is outside the universe and must fail — the real corpus still runs.
+        let f = fixture();
+        let falsified: BTreeSet<String> = [f.twice.clone()].into_iter().collect();
+        let o = DepOracle::new();
+        let r = verify_sharded(&f.store, &falsified, &Hints::new(), &f.proven, 2, |h, pi, _p, c| {
+            o.verdict(h, pi, c)
+        });
+        assert!(!r.ok(), "a seed member for a falsified definition must FAIL");
+        assert!(
+            r.mismatches.iter().any(|m| m.contains("twice") && m.contains("FALSIFIED")),
+            "the falsified seed member is flagged: {:?}",
+            r.mismatches
+        );
+
+        // (c) An ABSENT definition in an otherwise-valid, otherwise-passing run.
+        let mut seed = f.proven.clone();
+        seed.insert(("11".repeat(32), 0));
+        let r = verify_sharded(&f.store, &BTreeSet::new(), &Hints::new(), &seed, 3, |h, pi, _p, c| {
+            o.verdict(h, pi, c)
+        });
+        assert!(!r.ok(), "an absent seed member must FAIL even when every real member checks out");
+        assert!(
+            r.mismatches.iter().any(|m| m.contains("absent from the corpus")),
+            "the absent member is flagged: {:?}",
+            r.mismatches
+        );
+
+        // (d) A malformed seed naming a property index the definition lacks
+        // (`unrelated` has exactly one property).
+        let mut seed = f.proven.clone();
+        seed.insert((f.unrelated.clone(), 5));
+        let r = verify_sharded(&f.store, &BTreeSet::new(), &Hints::new(), &seed, 1, |h, pi, _p, c| {
+            o.verdict(h, pi, c)
+        });
+        assert!(!r.ok(), "an out-of-range seed index must FAIL");
+        assert!(
+            r.mismatches.iter().any(|m| m.contains("unrelated") && m.contains("only 1 propert")),
+            "the out-of-range index is flagged: {:?}",
+            r.mismatches
+        );
+    }
+
+    /// §7.5 completeness [P2] — a missing verdict for an OWNED (assigned)
+    /// property must fail even when that property is NOT in S. §7.5 requires every
+    /// assigned property attempted exactly once; a truncated/malformed shard
+    /// outcome that drops a property verdict left it un-attempted, which a PASS
+    /// must never hide — regardless of seed membership.
+    #[test]
+    fn a_missing_verdict_for_an_owned_property_fails_even_when_not_in_s() {
+        let f = fixture();
+        // Put `quad` prop 1 OUTSIDE the seed and make it (validly) UNPROVEN, so a
+        // complete run PASSES — quad1 unproven and not in S is no mismatch. This
+        // isolates the P2 fix: only the MISSING verdict can flip the result.
+        let mut seed = f.proven.clone();
+        seed.remove(&(f.quad.clone(), 1));
+        let o = DepOracle::new().require((&f.quad, 1), (&f.unrelated, 0)); // quad1 -> Unproven
+        let outs = shards_with(&f.store, &seed, 2, shard_of, &o);
+
+        // Control: with every assigned property attempted, the run passes.
+        let control = merge_and_check(&f.store, &BTreeSet::new(), &seed, &outs, 2);
+        assert!(control.ok(), "control passes: quad1 is unproven and not in S: {:?}", control.mismatches);
+        assert!(!seed.contains(&(f.quad.clone(), 1)), "quad1 is deliberately NOT in the seed");
+
+        // Truncate the owning shard's outcome: drop quad prop 1's verdict.
+        let mut truncated = outs.clone();
+        for out in truncated.iter_mut() {
+            out.verdicts.remove(&(f.quad.clone(), 1));
+        }
+        let r = merge_and_check(&f.store, &BTreeSet::new(), &seed, &truncated, 2);
+        assert!(
+            !r.ok(),
+            "a truncated shard outcome must FAIL — an assigned property went un-attempted"
+        );
+        assert!(
+            r.mismatches.iter().any(|m| m.contains("quad") && m.contains("NOT attempted")),
+            "the un-attempted assigned property is flagged even though it is not in S: {:?}",
+            r.mismatches
+        );
+    }
+
+    /// §7.5 provenance — `merge_and_check` treats its outcomes as UNTRUSTED
+    /// (the external-merge path). An outcome may only contribute verdicts for the
+    /// definitions it CLAIMS to own; a verdict smuggled in for a definition another
+    /// outcome legitimately owns must FAIL the self-check, not slip through with an
+    /// ownership count of exactly one. Without the provenance guard the foreign
+    /// verdict would be unioned and the partition check would read a false PASS.
+    #[test]
+    fn a_foreign_verdict_from_an_unowning_outcome_fails_the_merge() {
+        let f = fixture();
+        let seed = f.proven.clone();
+        let o = DepOracle::new();
+        // Legitimate split: shard A (i=0) owns whatever `shard_of` assigns to 0,
+        // shard B (i=1) the rest. Whichever owns `quad`, we make the OTHER outcome
+        // smuggle a verdict for `quad` — an ownership it never lists in `defs`.
+        let outs = shards_with(&f.store, &seed, 2, shard_of, &o);
+        // Control: the honest merge passes.
+        let control = merge_and_check(&f.store, &BTreeSet::new(), &seed, &outs, 2);
+        assert!(control.ok(), "the honest merge passes: {:?}", control.mismatches);
+
+        // Find the outcome that does NOT own `quad`, and smuggle a verdict for
+        // `quad` prop 0 into it (a verdict from the wrong shard).
+        let quad_key = (f.quad.clone(), 0usize);
+        let mut tampered = outs.clone();
+        let non_owner = tampered
+            .iter_mut()
+            .find(|out| !out.defs.contains(&f.quad))
+            .expect("with 2 shards some outcome does not own quad");
+        non_owner.verdicts.insert(quad_key.clone(), PropVerdict::Proven);
+        assert!(
+            !non_owner.defs.contains(&f.quad),
+            "the smuggling outcome does NOT list quad in its defs — that is the point"
+        );
+
+        let r = merge_and_check(&f.store, &BTreeSet::new(), &seed, &tampered, 2);
+        assert!(!r.ok(), "a foreign verdict for an unowned definition must FAIL the merge");
+        assert!(
+            r.mismatches.iter().any(|m| m.contains("PROVENANCE") && m.contains("quad") && m.contains("canonically assigned")),
+            "the foreign verdict is rejected with a provenance mismatch: {:?}",
+            r.mismatches
+        );
+    }
+
+    /// §7.5 provenance vector (a) — an OUT-OF-RANGE property index in an OWNED
+    /// outcome fails. `quad` has exactly two properties; a verdict for `quad`
+    /// prop 5 is inserted into the outcome that legitimately owns `quad` (so the
+    /// canonical-assignment check passes and ONLY the range check can fire),
+    /// validated against `property_count` in the store rather than trusted.
+    #[test]
+    fn an_out_of_range_property_index_in_an_owned_outcome_fails() {
+        let f = fixture();
+        let seed = f.proven.clone();
+        let o = DepOracle::new();
+        let mut outs = shards_with(&f.store, &seed, 2, shard_of, &o);
+        let owner = outs
+            .iter_mut()
+            .find(|out| out.defs.contains(&f.quad))
+            .expect("some outcome owns quad");
+        owner.verdicts.insert((f.quad.clone(), 5), PropVerdict::Proven);
+        let r = merge_and_check(&f.store, &BTreeSet::new(), &seed, &outs, 2);
+        assert!(!r.ok(), "an out-of-range property index must FAIL the merge");
+        assert!(
+            r.mismatches.iter().any(|m| m.contains("PROVENANCE") && m.contains("quad") && m.contains("out of range")),
+            "the out-of-range index is rejected against the store's property count: {:?}",
+            r.mismatches
+        );
+    }
+
+    /// §7.5 provenance vector (b) — an outcome whose declared `shard` does not
+    /// equal `shard_of(def, n)` for a definition it lists fails. A canonical
+    /// outcome's label is flipped to the wrong index; every def it carries now
+    /// hashes to its OLD shard, not the new label, so each verdict fails the
+    /// canonical-assignment check. The truth comes from `shard_of`, never from the
+    /// outcome's self-reported `shard`.
+    #[test]
+    fn an_outcome_with_a_mislabelled_shard_fails() {
+        let f = fixture();
+        let seed = f.proven.clone();
+        let o = DepOracle::new();
+        let mut outs = shards_with(&f.store, &seed, 2, shard_of, &o);
+        let victim = outs
+            .iter_mut()
+            .find(|out| !out.defs.is_empty())
+            .expect("some shard owns a definition");
+        victim.shard = 1 - victim.shard; // n = 2: flip the label to the wrong shard
+        let r = merge_and_check(&f.store, &BTreeSet::new(), &seed, &outs, 2);
+        assert!(!r.ok(), "a mislabelled shard must FAIL the merge");
+        assert!(
+            r.mismatches.iter().any(|m| m.contains("PROVENANCE") && m.contains("canonically assigned")),
+            "the relabelled shard's verdicts are rejected against shard_of: {:?}",
+            r.mismatches
+        );
+    }
+
+    /// §7.5 wire format — `format_shard_emission` and `parse_shard_emission` are
+    /// exact inverses: every shard's emission round-trips to a `ShardOutcome`
+    /// equal to the original, carrying `i`, `n`, and the campaign identity. The
+    /// emission is keyed by definition HASH and includes an ABORT reason string.
+    #[test]
+    fn shard_emission_round_trips() {
+        let f = fixture();
+        let seed = f.proven.clone();
+        let cid = campaign_identity(&seed, &Hints::new(), "Z3 version 4.16.0 - 64 bit", 400_000_000);
+        // An oracle producing all three verdict kinds (so the round-trip covers
+        // proven, unproven, AND an aborted reason string with spaces).
+        let o = mixed_oracle(&f);
+        let n = 3u64;
+        for i in 0..n {
+            let out = prove_shard_with(&f.store, &BTreeSet::new(), &Hints::new(), &seed, |h| shard_of(h, n), i, |h, pi, _p, c| {
+                o.verdict(h, pi, c)
+            });
+            let text = format_shard_emission(&out, n, &cid);
+            let parsed = parse_shard_emission(&text).expect("emission parses");
+            assert_eq!(parsed.i, i, "shard index round-trips");
+            assert_eq!(parsed.n, n, "shard count round-trips");
+            assert_eq!(parsed.campaign_id, cid, "campaign identity round-trips");
+            assert_eq!(parsed.outcome, out, "the ShardOutcome round-trips exactly (defs + verdicts)");
+        }
+        // The banner names the emission as a contribution, not a verified result.
+        let out0 = prove_shard_with(&f.store, &BTreeSet::new(), &Hints::new(), &seed, |h| shard_of(h, n), 0, |h, pi, _p, c| o.verdict(h, pi, c));
+        let text = format_shard_emission(&out0, n, &cid);
+        assert!(
+            text.lines().next().unwrap().starts_with('#') && text.contains("CONTRIBUTION ONLY"),
+            "the emission states it is a contribution, not verified: {}",
+            text.lines().next().unwrap()
+        );
+    }
+
+    /// §7.2/§10.5 — the campaign identity binds the FULL determinism context. Any
+    /// change to S, the hints, the solver version, or the rlimit changes it; an
+    /// unchanged context reproduces it. This is what makes a merge able to reject
+    /// an emission that ran a different `F`.
+    #[test]
+    fn campaign_identity_binds_s_hints_solver_and_rlimit() {
+        let f = fixture();
+        let seed = f.proven.clone();
+        let hints0 = Hints::new();
+        let base = campaign_identity(&seed, &hints0, "Z3 4.16.0", 400_000_000);
+        // Stable for an identical context.
+        assert_eq!(base, campaign_identity(&seed, &hints0, "Z3 4.16.0", 400_000_000));
+        // Different S.
+        let mut seed2 = seed.clone();
+        seed2.remove(&(f.twice.clone(), 0));
+        assert_ne!(base, campaign_identity(&seed2, &hints0, "Z3 4.16.0", 400_000_000), "S changes the id");
+        // Different hints.
+        let mut hints1 = Hints::new();
+        hints1.insert((f.quad.clone(), 1), vec![(f.unrelated.clone(), 0)]);
+        assert_ne!(base, campaign_identity(&seed, &hints1, "Z3 4.16.0", 400_000_000), "hints change the id");
+        // Different solver version.
+        assert_ne!(base, campaign_identity(&seed, &hints0, "Z3 4.15.0", 400_000_000), "solver version changes the id");
+        // Different rlimit.
+        assert_ne!(base, campaign_identity(&seed, &hints0, "Z3 4.16.0", 4_000_000), "rlimit changes the id");
+    }
+
+    /// §7.5 — a shard's emission fed through the wire format and merged equals the
+    /// in-process `verify_sharded` result. This is the ROUND-TRIP acceptance at the
+    /// library level: emit every shard, parse each back, `merge_and_check` the
+    /// reconstructed outcomes, and assert the same proven set and PASS as running
+    /// all shards in-process.
+    #[test]
+    fn emit_parse_merge_equals_in_process_verify() {
+        let f = fixture();
+        let seed = f.proven.clone();
+        // A self-consistent oracle: quad prop 0 needs the twice lemma (present in
+        // the full seed), everything proves — so both paths PASS.
+        let o = DepOracle::new().require((&f.quad, 0), (&f.twice, 0));
+        let n = 3u64;
+
+        // In-process reference.
+        let reference = verify_sharded(&f.store, &BTreeSet::new(), &Hints::new(), &seed, n, |h, pi, _p, c| {
+            o.verdict(h, pi, c)
+        });
+        assert!(reference.ok(), "the in-process verify passes: {:?}", reference.mismatches);
+
+        // Emit -> parse -> merge.
+        let cid = campaign_identity(&seed, &Hints::new(), "Z3 test", 400_000_000);
+        let mut reconstructed = Vec::new();
+        for i in 0..n {
+            let out = prove_shard_with(&f.store, &BTreeSet::new(), &Hints::new(), &seed, |h| shard_of(h, n), i, |h, pi, _p, c| {
+                o.verdict(h, pi, c)
+            });
+            let text = format_shard_emission(&out, n, &cid);
+            reconstructed.push(parse_shard_emission(&text).expect("parses").outcome);
+        }
+        let merged = merge_and_check(&f.store, &BTreeSet::new(), &seed, &reconstructed, n);
+        assert!(merged.ok(), "the emit->parse->merge pipeline passes: {:?}", merged.mismatches);
+        assert_eq!(merged.proven, reference.proven, "the merged proven set equals the in-process one");
+        assert_eq!(merged.seed_id, reference.seed_id, "and reports the same seed identity");
+    }
+
+    /// §7.5 issue 3 — a non-hex or MULTIBYTE "hash" in an emission fails to parse
+    /// CLEANLY (an error, never a panic). Untrusted hashes are validated as
+    /// 64-char lowercase hex before anything stores or slices them, and the error
+    /// path builds its prefix with a char-safe helper.
+    #[test]
+    fn a_malformed_hash_in_an_emission_fails_cleanly() {
+        // A multibyte, non-hex "hash" — byte-slicing this at index 8 would panic.
+        let text = "shard\t0\t2\ncampaign\tabc\nnötaöreally0hash\t0\tproven\n";
+        assert!(parse_shard_emission(text).is_err(), "a multibyte non-hex hash is rejected, not panicked on");
+        // Hex but wrong length.
+        let short = "shard\t0\t2\ncampaign\tabc\ndeadbeef\t0\tproven\n";
+        assert!(parse_shard_emission(short).is_err(), "a too-short hash is rejected");
+        // Uppercase hex is not the canonical lowercase identity form.
+        let upper = format!("shard\t0\t2\ncampaign\tabc\n{}\t0\tproven\n", "A".repeat(64));
+        assert!(parse_shard_emission(&upper).is_err(), "uppercase hex is rejected");
+        // A well-formed 64-char lowercase-hex hash parses.
+        let good = format!("shard\t0\t2\ncampaign\tabc\n{}\t0\tproven\n", "a".repeat(64));
+        assert!(parse_shard_emission(&good).is_ok(), "a well-formed identity hash parses");
+    }
+
+    /// §7.5 — `n >= 1`. `verify_sharded` must reject `n = 0` rather than merge an
+    /// empty run to a vacuous PASS (a partition into zero shards defines nothing),
+    /// keeping the public API consistent with the CLI's own `n >= 1` check.
+    #[test]
+    fn n_zero_does_not_report_success() {
+        let f = fixture();
+        let r = verify_sharded(&f.store, &BTreeSet::new(), &Hints::new(), &f.proven, 0, |_h, _pi, _p, _c| {
+            PropVerdict::Proven
+        });
+        assert!(!r.ok(), "n = 0 must NOT report success");
+        assert!(
+            r.mismatches.iter().any(|m| m.contains("n must be >= 1")),
+            "n = 0 is rejected with a clear reason: {:?}",
+            r.mismatches
+        );
+        assert!(r.proven.is_empty(), "nothing is proven under an impossible shard count");
+        // The seed identity is still reported, so the failing run names its seed.
+        assert_eq!(r.seed_id, seed_identity(&f.proven));
+    }
+
+    /// §7.5 — SHARD-INDEX completeness is owned by `merge_and_check` ITSELF, not
+    /// the CLI wrapper, so a direct caller cannot get a vacuous PASS from an empty
+    /// or incomplete campaign. Called directly, without the CLI.
+    #[test]
+    fn merge_and_check_owns_shard_index_completeness() {
+        let f = fixture();
+        let seed = f.proven.clone();
+        let o = DepOracle::new();
+
+        // (a) EMPTY outcomes with n >= 1 must FAIL, not vacuously pass.
+        let empty = merge_and_check(&f.store, &BTreeSet::new(), &seed, &[], 2);
+        assert!(!empty.ok(), "an empty campaign must FAIL, not vacuously pass");
+        assert!(
+            empty.mismatches.iter().any(|m| m.contains("SHARD-INDEX") && m.contains("missing")),
+            "every missing shard index is reported: {:?}",
+            empty.mismatches
+        );
+
+        // Canonical n=2 outcomes (indices {0,1}) — the complete, valid baseline.
+        let outs = shards_with(&f.store, &seed, 2, shard_of, &o);
+        assert!(
+            merge_and_check(&f.store, &BTreeSet::new(), &seed, &outs, 2).ok(),
+            "the complete, valid campaign passes"
+        );
+
+        // (b) MISSING an index: drop shard 1.
+        let only0: Vec<_> = outs.iter().filter(|out| out.shard == 0).cloned().collect();
+        let missing = merge_and_check(&f.store, &BTreeSet::new(), &seed, &only0, 2);
+        assert!(!missing.ok(), "a missing shard index must FAIL");
+        assert!(
+            missing.mismatches.iter().any(|m| m.contains("SHARD-INDEX") && m.contains("shard 1 is missing")),
+            "the missing index is named: {:?}",
+            missing.mismatches
+        );
+
+        // (c) DUPLICATE index: two outcomes both labelled 0.
+        let s0 = outs.iter().find(|out| out.shard == 0).expect("shard 0").clone();
+        let dup = vec![s0.clone(), s0, outs.iter().find(|out| out.shard == 1).unwrap().clone()];
+        let duped = merge_and_check(&f.store, &BTreeSet::new(), &seed, &dup, 2);
+        assert!(!duped.ok(), "a duplicate shard index must FAIL");
+        assert!(
+            duped.mismatches.iter().any(|m| m.contains("SHARD-INDEX") && m.contains("supplied 2 times")),
+            "the duplicate index is named: {:?}",
+            duped.mismatches
+        );
+
+        // (d) OUT-OF-RANGE index: an outcome declaring shard 5 for n=2.
+        let mut oor = outs.clone();
+        oor[0].shard = 5;
+        let ranged = merge_and_check(&f.store, &BTreeSet::new(), &seed, &oor, 2);
+        assert!(!ranged.ok(), "an out-of-range shard index must FAIL");
+        assert!(
+            ranged.mismatches.iter().any(|m| m.contains("SHARD-INDEX") && m.contains("out of range")),
+            "the out-of-range index is named: {:?}",
+            ranged.mismatches
         );
     }
 }

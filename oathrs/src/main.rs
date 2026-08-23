@@ -193,6 +193,297 @@ fn cmd_analyze(paths: &[String], out_dir: Option<&str>, proofs_path: Option<&str
 }
 
 #[cfg(feature = "prove")]
+/// The falsified set: a definition any of whose properties is falsified under
+/// testing. SPEC §5 — only a `falsified` property removes a proof; an
+/// `indeterminate` one does not, because a case the tester could not evaluate
+/// refuted nothing. Shared by the plain and the sharded prove paths so a
+/// falsified definition is skipped identically in both.
+fn compute_falsified(store: &oathrs::elaborate::Store) -> std::collections::BTreeSet<String> {
+    let mut falsified = std::collections::BTreeSet::new();
+    for (name, def) in &store.def_by_name {
+        if let Def::Func { props, .. } = def {
+            if props.is_empty() {
+                continue;
+            }
+            let hash = &store.func_by_name.get(name).unwrap().hash;
+            for (pi, prop) in props.iter().enumerate() {
+                if let verify::PropResult::Falsified { .. } = verify::run_prop(
+                    &store,
+                    hash,
+                    pi as u64,
+                    prop,
+                    verify::VERIFY_CASES,
+                    verify::VERIFY_FUEL,
+                ) {
+                    falsified.insert(hash.clone());
+                    break;
+                }
+            }
+        }
+    }
+    falsified
+}
+
+#[cfg(feature = "prove")]
+/// The solver's own version string (`z3 --version`), one of the four inputs a
+/// proof outcome is a function of (SPEC §7.2). Folded into the campaign identity
+/// so a shard proved under a different z3 cannot be merged. If z3 cannot be run,
+/// a distinct sentinel is returned — a shard that could not invoke z3 proved
+/// nothing, and the sentinel makes its campaign id differ from any real one.
+fn z3_version_string() -> String {
+    match std::process::Command::new("z3").arg("--version").output() {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        _ => "z3-version-unavailable".to_string(),
+    }
+}
+
+#[cfg(feature = "prove")]
+/// Parse the `i/n` argument of `--shard` into `(i, n)`. Both must be unsigned
+/// integers separated by a single slash; anything else is rejected.
+fn parse_shard(s: &str) -> Option<(u64, u64)> {
+    let (i, n) = s.split_once('/')?;
+    Some((i.parse::<u64>().ok()?, n.parse::<u64>().ok()?))
+}
+
+#[cfg(feature = "prove")]
+/// SPEC §7.5 sharded verification. Three shapes, all requiring `--hints` (the seed
+/// S is the `proven` set that file carries):
+///   * `--shard i/n`  — run ONE shard i of n (a parallel-campaign job) and emit
+///     its contribution on stdout in the `oath-sharded-verification/v1` wire
+///     format (hash-keyed, round-trippable). A single shard CANNOT self-check —
+///     the union does — so its output is labelled "CONTRIBUTION ONLY … NOT
+///     verified until merged" and it exits 0 once the shard runs. Emit-success is
+///     not a passing self-check.
+///   * `--merge-shards n --shard-in <file> …` — the real parallel-campaign gate:
+///     read the n `--shard i/n` emissions (one per `--shard-in` file), reconstruct
+///     their `ShardOutcome`s, and self-check the union against S property-by-
+///     property. Exits non-zero on ANY mismatch, a malformed/foreign emission, or
+///     a shard whose declared n or seed identity does not match this merge.
+///   * `--verify-shards n` — run ALL n shards in-process (serial) and self-check
+///     the union. The single-process equivalent of the shard+merge pipeline;
+///     convenient, but without the parallel throughput. Exits non-zero on any
+///     mismatch.
+/// Elaboration is GLOBAL in every mode: every file is elaborated regardless of
+/// shard, and an elaboration failure fails the whole run, from every shard.
+fn cmd_prove_shard(
+    paths: &[String],
+    hints_path: Option<&str>,
+    shard: Option<(u64, u64)>,
+    verify_n: Option<u64>,
+    merge_n: Option<u64>,
+    shard_ins: &[String],
+) -> i32 {
+    use oathrs::prove;
+    // The seed S and the author hints both come from the outcomes fixture.
+    let hints_path = match hints_path {
+        Some(p) => p,
+        None => {
+            eprintln!("error: sharded verification requires --hints <outcomes.json> (the seed S)");
+            return 1;
+        }
+    };
+    let (seed, hints) = match read_outcomes(hints_path) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("error: {}", e);
+            return 1;
+        }
+    };
+    let files = match read_files(paths) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("error: {}", e);
+            return 1;
+        }
+    };
+    // Elaboration is GLOBAL (SPEC §7.5): an elaboration failure fails the whole
+    // run regardless of which shard is requested — a shard MUST NOT be able to
+    // suppress an elaboration error because the broken definition falls outside
+    // it, which would turn a broken corpus into a green run.
+    let store = match elaborate_corpus(&files) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error (elaboration failed, whole run fails from every shard): {}", e);
+            return 1;
+        }
+    };
+    let falsified = compute_falsified(&store);
+    let name_of = |hash: &str| -> String {
+        store.func_by_hash.get(hash).map(|fi| fi.name.clone()).unwrap_or_else(|| hash.to_string())
+    };
+
+    if let Some((i, n)) = shard {
+        if n == 0 || i >= n {
+            eprintln!("error: --shard i/n requires n >= 1 and 0 <= i < n (got {}/{})", i, n);
+            return 1;
+        }
+        let out = prove::prove_shard(&store, &falsified, &hints, &seed, i, n);
+        // Bind the FULL determinism context (S, hints, solver, rlimit) so a merge
+        // can reject a shard that ran a different F (SPEC §7.2/§10.5).
+        let campaign = prove::campaign_identity(&seed, &hints, &z3_version_string(), prove::effective_z3_rlimit());
+        // Emit the round-trippable, hash-keyed wire format. The leading banner
+        // states in the bytes themselves that this is a CONTRIBUTION, not a
+        // verified result — a campaign must run `--merge-shards` to verify.
+        print!("{}", prove::format_shard_emission(&out, n, &campaign));
+        return 0;
+    }
+
+    if let Some(n) = merge_n {
+        return merge_shards(&store, &falsified, &hints, &seed, n, shard_ins, &name_of);
+    }
+
+    if let Some(n) = verify_n {
+        if n == 0 {
+            eprintln!("error: --verify-shards n requires n >= 1");
+            return 1;
+        }
+        let report = prove::verify_sharded_z3(&store, &falsified, &hints, &seed, n);
+        eprintln!("# sharded verification (SPEC §7.5), n={} shards", n);
+        eprintln!("# seed S identity: {}", report.seed_id);
+        for ((hash, pi), reason) in &report.carried {
+            eprintln!(
+                "carried-forward (aborted, prior PROVEN in S kept): {} prop {} — {}",
+                name_of(hash),
+                pi,
+                reason
+            );
+        }
+        if report.ok() {
+            println!("PASS\tunion == S\t{} proven properties\tseed {}", report.proven.len(), report.seed_id);
+            return 0;
+        }
+        eprintln!("FAIL: the union of shard verdicts does NOT equal the seed S ({} mismatch(es)):", report.mismatches.len());
+        for m in &report.mismatches {
+            eprintln!("  {}", m);
+        }
+        println!("FAIL\tunion != S\t{} mismatch(es)\tseed {}", report.mismatches.len(), report.seed_id);
+        return 1;
+    }
+
+    eprintln!("error: sharded prove needs --shard i/n, --merge-shards n, or --verify-shards n");
+    1
+}
+
+#[cfg(feature = "prove")]
+/// SPEC §7.5 parallel-campaign gate: collect the `--shard i/n` emissions, rebuild
+/// their `ShardOutcome`s, and self-check the union against S. This is where a set
+/// of green `--shard` jobs actually becomes a verified result — a shard's own
+/// exit 0 means only that it emitted its contribution.
+///
+/// The seed S and the corpus (hence `store`/`falsified`) are the merge's OWN,
+/// derived from `--hints` and the corpus files. The merge recomputes its OWN
+/// campaign identity from (S, hints, this machine's z3 version, this run's
+/// rlimit) and REJECTS any emission whose declared `n` or campaign identity does
+/// not match — so a shard proved under different hints, a different z3, or a
+/// different rlimit cannot be assembled into an unsound hybrid (SPEC §7.2/§10.5).
+/// It also requires EXACTLY ONE emission per shard index — indices `{0,…,n-1}`,
+/// no missing, duplicate, or out-of-range — closing the gap where an omitted
+/// shard that owns no property-bearing definition slips past the partition check.
+/// Every remaining structural check is the canonical validation already inside
+/// `merge_and_check` (assignment, range, shardability, one-owner partition,
+/// `union == S`).
+fn merge_shards(
+    store: &oathrs::elaborate::Store,
+    falsified: &std::collections::BTreeSet<String>,
+    hints: &oathrs::prove::Hints,
+    seed: &std::collections::BTreeSet<(String, usize)>,
+    n: u64,
+    shard_ins: &[String],
+    name_of: &dyn Fn(&str) -> String,
+) -> i32 {
+    use oathrs::prove;
+    if n == 0 {
+        eprintln!("error: --merge-shards n requires n >= 1");
+        return 1;
+    }
+    if shard_ins.is_empty() {
+        eprintln!("error: --merge-shards needs the shard emissions via --shard-in <file> (one per shard)");
+        return 1;
+    }
+    // The merge's OWN determinism context: (S, hints, this z3, this rlimit).
+    let expected_campaign =
+        prove::campaign_identity(seed, hints, &z3_version_string(), prove::effective_z3_rlimit());
+    let mut outcomes: Vec<prove::ShardOutcome> = Vec::with_capacity(shard_ins.len());
+    let mut seen_indices: std::collections::BTreeSet<u64> = std::collections::BTreeSet::new();
+    for path in shard_ins {
+        let text = match std::fs::read_to_string(path) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("error: reading shard emission {}: {}", path, e);
+                return 1;
+            }
+        };
+        let parsed = match prove::parse_shard_emission(&text) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("FAIL: shard emission {} is malformed: {}", path, e);
+                return 1;
+            }
+        };
+        // A shard that ran against a different partition or a different
+        // determinism context cannot count toward THIS verification.
+        if parsed.n != n {
+            eprintln!(
+                "FAIL: shard emission {} declares n={}, but this merge is n={}",
+                path, parsed.n, n
+            );
+            return 1;
+        }
+        if parsed.campaign_id != expected_campaign {
+            eprintln!(
+                "FAIL: shard emission {} ran under campaign {}, but this merge's campaign is {} — different (S, hints, solver, rlimit) cannot be merged",
+                path, parsed.campaign_id, expected_campaign
+            );
+            return 1;
+        }
+        // EXACTLY ONE emission per shard index: in range, and no duplicate.
+        if parsed.i >= n {
+            eprintln!("FAIL: shard emission {} declares shard {} which is out of range 0..{}", path, parsed.i, n);
+            return 1;
+        }
+        if !seen_indices.insert(parsed.i) {
+            eprintln!("FAIL: shard index {} was supplied more than once (from {})", parsed.i, path);
+            return 1;
+        }
+        outcomes.push(parsed.outcome);
+    }
+    // The collected indices must be exactly {0, 1, …, n-1} — a missing shard is a
+    // loud failure, not a silent pass (an omitted shard that owns no property-
+    // bearing definition would otherwise slip past the partition check).
+    let missing: Vec<String> = (0..n).filter(|i| !seen_indices.contains(i)).map(|i| i.to_string()).collect();
+    if !missing.is_empty() {
+        eprintln!(
+            "FAIL: --merge-shards {} requires one emission per shard; missing shard(s): {}",
+            n,
+            missing.join(", ")
+        );
+        return 1;
+    }
+
+    let report = prove::merge_and_check(store, falsified, seed, &outcomes, n);
+    eprintln!("# sharded MERGE (SPEC §7.5), n={} shards, {} emission(s)", n, shard_ins.len());
+    eprintln!("# seed S identity: {}", report.seed_id);
+    for ((hash, pi), reason) in &report.carried {
+        eprintln!(
+            "carried-forward (aborted, prior PROVEN in S kept): {} prop {} — {}",
+            name_of(hash),
+            pi,
+            reason
+        );
+    }
+    if report.ok() {
+        println!("PASS\tunion == S\t{} proven properties\tseed {}", report.proven.len(), report.seed_id);
+        return 0;
+    }
+    eprintln!("FAIL: the union of shard verdicts does NOT equal the seed S ({} mismatch(es)):", report.mismatches.len());
+    for m in &report.mismatches {
+        eprintln!("  {}", m);
+    }
+    println!("FAIL\tunion != S\t{} mismatch(es)\tseed {}", report.mismatches.len(), report.seed_id);
+    1
+}
+
+#[cfg(feature = "prove")]
 /// `--hints <outcomes.json>` (optional) supplies the author hints (#67) for the
 /// run. Hints are store metadata: they are not in `.oath` source and not in the
 /// hash, so a kernel that elaborates only source has none — the fixture channel
@@ -223,31 +514,7 @@ fn cmd_prove(paths: &[String], hints_path: Option<&str>) -> i32 {
             return 1;
         }
     };
-    // falsified set: any prop falsified under testing. SPEC §5 — only a
-    // `falsified` property removes a proof; an `indeterminate` one does not,
-    // because a case the tester could not evaluate refuted nothing.
-    let mut falsified = std::collections::BTreeSet::new();
-    for (name, def) in &store.def_by_name {
-        if let Def::Func { props, .. } = def {
-            if props.is_empty() {
-                continue;
-            }
-            let hash = &store.func_by_name.get(name).unwrap().hash;
-            for (pi, prop) in props.iter().enumerate() {
-                if let verify::PropResult::Falsified { .. } = verify::run_prop(
-                    &store,
-                    hash,
-                    pi as u64,
-                    prop,
-                    verify::VERIFY_CASES,
-                    verify::VERIFY_FUEL,
-                ) {
-                    falsified.insert(hash.clone());
-                    break;
-                }
-            }
-        }
-    }
+    let falsified = compute_falsified(&store);
     let results = prove::prove_all(&store, &falsified, &hints);
     // print keyed by name, sorted
     let mut by_name: Vec<(&String, &String)> = store
@@ -848,12 +1115,64 @@ fn run() -> i32 {
         #[cfg(feature = "prove")]
         "prove" => {
             let mut hints: Option<String> = None;
+            let mut shard: Option<(u64, u64)> = None;
+            let mut verify_shards: Option<u64> = None;
+            let mut merge_shards: Option<u64> = None;
+            let mut shard_ins: Vec<String> = Vec::new();
             let mut files: Vec<String> = Vec::new();
             let mut i = 2;
+            let mut bad = false;
             while i < args.len() {
                 match args[i].as_str() {
                     "--hints" => {
                         hints = args.get(i + 1).cloned();
+                        i += 2;
+                    }
+                    // SPEC §7.5: `--shard i/n` runs one shard; parsed as two
+                    // slash-separated unsigned integers.
+                    "--shard" => {
+                        match args.get(i + 1).and_then(|s| parse_shard(s)) {
+                            Some(pair) => shard = Some(pair),
+                            None => {
+                                eprintln!("error: --shard expects i/n (e.g. 0/8)");
+                                bad = true;
+                            }
+                        }
+                        i += 2;
+                    }
+                    // SPEC §7.5 self-check: run all n shards in-process and
+                    // compare the union to the seed S.
+                    "--verify-shards" => {
+                        match args.get(i + 1).and_then(|s| s.parse::<u64>().ok()) {
+                            Some(n) => verify_shards = Some(n),
+                            None => {
+                                eprintln!("error: --verify-shards expects an integer n");
+                                bad = true;
+                            }
+                        }
+                        i += 2;
+                    }
+                    // SPEC §7.5 parallel-campaign gate: merge the n `--shard`
+                    // emissions supplied via `--shard-in` and self-check the union.
+                    "--merge-shards" => {
+                        match args.get(i + 1).and_then(|s| s.parse::<u64>().ok()) {
+                            Some(n) => merge_shards = Some(n),
+                            None => {
+                                eprintln!("error: --merge-shards expects an integer n");
+                                bad = true;
+                            }
+                        }
+                        i += 2;
+                    }
+                    // One shard emission file; repeatable (one per shard).
+                    "--shard-in" => {
+                        match args.get(i + 1) {
+                            Some(p) => shard_ins.push(p.clone()),
+                            None => {
+                                eprintln!("error: --shard-in expects a file path");
+                                bad = true;
+                            }
+                        }
                         i += 2;
                     }
                     _ => {
@@ -862,7 +1181,20 @@ fn run() -> i32 {
                     }
                 }
             }
-            cmd_prove(&files, hints.as_deref())
+            let modes = shard.is_some() as u8 + verify_shards.is_some() as u8 + merge_shards.is_some() as u8;
+            if bad {
+                1
+            } else if modes > 1 {
+                eprintln!("error: --shard, --merge-shards and --verify-shards are mutually exclusive");
+                1
+            } else if !shard_ins.is_empty() && merge_shards.is_none() {
+                eprintln!("error: --shard-in is only used with --merge-shards");
+                1
+            } else if modes == 1 {
+                cmd_prove_shard(&files, hints.as_deref(), shard, verify_shards, merge_shards, &shard_ins)
+            } else {
+                cmd_prove(&files, hints.as_deref())
+            }
         }
         #[cfg(feature = "prove")]
         "scripts" => {

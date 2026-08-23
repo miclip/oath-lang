@@ -2128,6 +2128,81 @@ rlimit, since §7.2 already makes an outcome a function of (script bytes, solver
 version, rlimit) — an outcome quoted without the last two is not comparable to
 anything.
 
+### 7.5 Sharded verification (OPTIONAL capability, #98)
+
+A kernel MAY provide a sharded verification mode. **A kernel that does not is NOT
+deficient** — like §7.4 and `prove/attempts.txt`, this is an OPTIONAL capability,
+pinned once offered. It is a THROUGHPUT feature and changes NO verdict: its result either equals the pinned proven set `S` exactly (verifying `S` is
+run-stable) or the run FAILS. This is NOT the same as re-establishing the §7.2
+cold-from-empty limit — see "What it verifies, and what it does NOT" below.
+
+**What it verifies, and what it does NOT.** §7.2 requires the recorded proven set
+`S` to be run-stable — `F(S) = S` — and defines the conformance outcome as the
+limit of `F` from the empty state. Sharded mode verifies ONLY the run-stability
+property `F(S) = S` of a GIVEN `S`, with the single application of `F` partitioned
+across shards. It does NOT re-establish the from-empty limit, which remains §7.2's
+serial obligation. This distinction is normative because more than one
+self-consistent state can exist (which is why §7.2 pins the iteration scheme): a
+kernel offering sharded mode MUST NOT present a passing sharded run as
+establishing the §7.2 outcome from cold. It establishes that the pinned `S` is a
+fixpoint, not that it is THE fixpoint the cold iteration reaches.
+
+**Seed (normative once offered).** The recorded proof state is INITIALISED from the
+pinned proven set `S` carried by `prove/outcomes.json` — the same fixture that
+carries author hints — NOT accumulated during the run. §7.2's candidate-lemma
+construction reads the proven state as a whole set filtered by a goal's static
+dependency closure; with the state fixed at `S`, each goal's candidate set — hence
+its script bytes, hence its verdict — is a pure function of `(S, corpus, hints)`,
+independent of iteration order or partition.
+
+**Assignment (normative once offered).** Each function definition is assigned to
+shard `first_64_bits(definition_hash) mod n`, where `definition_hash` is the O1
+identity hash (§1) and `first_64_bits` is its leading 8 bytes read big-endian;
+`n ≥ 1`, shard index `i ∈ 0..n`. Every property-bearing function definition belongs to exactly one shard; a definition with no properties has no proof work and lies outside the partition (it can contribute nothing to `S`).
+Assignment MUST NOT depend on input-file position or elaboration order — those are
+unstable across file moves and cannot be reproduced by an independent runner.
+`n = 1` is exactly the unsharded seeded verifier.
+
+**Elaboration is GLOBAL.** All input definitions are parsed and elaborated
+regardless of shard. An elaboration failure fails the whole run, from every shard.
+A shard MUST NOT suppress an elaboration error because the affected definition
+lies outside it — doing so would turn a broken corpus into a green run.
+
+**Attempt.** Shard `i` attempts each property of its assigned definitions exactly
+once, with candidate lemmas drawn from `S` per §7.2. No rounds and no
+within-shard dependency ordering are required, because a goal's candidate set does
+not depend on this run's own progress.
+
+**Carry-forward on abort (normative once offered).** A property whose attempt
+ABORTS (§7.2 #72 — any environmental invalidating condition, not only a wall-cap
+timeout) and that is recorded proven in the seed `S` carries `S`'s verdict
+unchanged; it is NOT a mismatch. This mirrors §7.2's run-stability carry-forward.
+Only a VALID verdict (proven or unproven) that DIFFERS from `S` is a mismatch.
+
+**The self-check IS the mode (normative once offered).** Sharded verification is a
+VERIFIER, not a recomputation taken on trust. The union of all shards' verdicts
+MUST be compared to `S` property by property, and the run MUST FAIL LOUDLY on any
+mismatch: a valid verdict differing from `S`, a definition proved by no shard, or
+a definition attempted by more than one. A sharded run that merely completes is
+not a pass — the equality is the pass. As a consequence this self-check is the
+only mechanism in the system that detects a seed `S` that is not run-stable
+(`F(S) ≠ S`); §7.2's producer does not itself record convergence.
+
+**Campaign identity across parallel shards (normative once offered).** The
+throughput of this mode comes from running the shards as SEPARATE parallel jobs
+and merging their emitted results. An emitted shard result MUST carry a CAMPAIGN
+IDENTITY binding the FULL determinism context — the proven set `S`, the author
+hints, the solver version, and the effective rlimit (the inputs §7.2/§10.5 make a
+proof outcome a function of). A merge MUST reject any emission whose campaign
+identity differs from its own BEFORE running the self-check: verdicts produced
+under different hints, a different solver, or a different budget are not one
+application of `F`, and their union verifies nothing. The merge MUST also require
+exactly one emission per shard index `0..n` — a missing, duplicate, or
+out-of-range shard is a loud failure, never a silent partial pass. A single
+identity, recomputed by the merge, is what stops two runs from claiming the same
+verification from different contexts.
+
+
 ## 8. The journal
 
 Append-only, one JSON object per line: `seq`, `time` (RFC3339 UTC),
