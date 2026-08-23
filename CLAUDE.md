@@ -1066,6 +1066,45 @@ The asymmetry is the point, and it is the one the protocol exists to make you
 feel: publishing is one command, and permanence is the guarantee. If a name is
 not worth defending in a year, do not bind it.
 
+## Publishing to the LIVE registry — never bulk-sync; publish per name, as the right authority
+
+**THE LIVE REGISTRY'S CORPUS DRIFTS FROM `codebase/`, AND THAT IS EXPECTED — NOT A
+DEFECT TO "FIX" BY SYNCING.** `deploy.yml` ships the SERVER and deliberately
+PRESERVES the store (it snapshots and refuses to deploy without store custody); it
+never pushes the corpus. So after a stretch of kernel work the live corpus lags —
+the server is current, the changed definitions are not. A stale-but-internally-
+consistent corpus that nobody resolves wrongly is FINE; leave it. Verify drift by
+comparing `oath-registry` hashes to `codebase/names.json`, never by assuming.
+
+**A BULK SYNC OF `codebase/` INTO PROD IS THE `oath/*`-naming mistake AT SCALE,
+AND WORSE.** Prod is governed by SEVERAL distinct authority keys — the audit
+behind this rule found three: `oath/*` the GCP-KMS PROJECT key (+ a delegate),
+`michael/*` a personal key, `sandbox/*` a third — so a bulk push writes across
+owners it does not hold. The live write gate has NO allowlist, so a wrong key is
+not REFUSED, it CLOBBERS: names are permanent, repointing is irreversible, and no
+one is watching. The drift is almost entirely in `michael/*` and legacy bare
+names — one person's namespace, theirs to update with their key — while the
+governed `oath/*` library is project-signed and current for its unchanged members.
+
+**SO PUBLISH TO PROD ONLY DELIBERATELY, ONE NAME AT A TIME, AS THE AUTHORITY THAT
+OWNS THAT NAME:**
+
+- **`oath/*` is published as the PROJECT key, never a personal one** — the GCP-KMS
+  authority `stdlib/oath-stdlib.json` declares (`authority_kms`, pubkey
+  `4ecd572d…`) or its delegate, through the PR flow. Stdlib membership is a
+  manifest entry, not a push.
+- **Prefer `referenced` membership over republishing.** The library RECOMMENDS a
+  definition living in its author's namespace (`map → referenced → alice/map`); it
+  does not copy others' work under `oath/*`. Referencing is the default and a
+  complete endorsement; `project-publication` is the exception, for core code the
+  project itself owns.
+- **Personal or experimental work stays in a personal namespace under a personal
+  key** — never `oath/*` (naming rule 1 above), never a bulk shove of the corpus.
+
+`docs/publishing.md` is the how and `docs/authority.md` is the why; this states
+only the prohibition and who-signs-what, which is what a session about to "just
+sync prod" needs and would not find in a mechanism guide.
+
 ## The compiler boundary (#114, closed 2026-08-02)
 
 `oath/program.go` is BACKEND-NEUTRAL and `oath/compile.go` is the Go backend. The
