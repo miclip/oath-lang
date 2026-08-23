@@ -117,7 +117,7 @@ NEEDS_ENV: dict[tuple[str, str], str] = {
         "provisions the runner's z3; the gate itself pins the version it used",
     ("conformance", "pin z3 4.16.0", "947e3becff78"):
         "provisions the runner's z3",
-    ("conformance", "six-check conformance (cold prove at the SPEC budget)", "1dc431d452c0"):
+    ("conformance", "six-check conformance (cold prove at the SPEC budget)", "bd65366a170a"):
         "the 9+ hour cold re-derivation; schedule/dispatch only",
     # #98 sharded verification (matrix + merge). Schedule/dispatch only, and each
     # needs a CI runner with the pinned z3 — the same class as the full job above.
@@ -125,7 +125,7 @@ NEEDS_ENV: dict[tuple[str, str], str] = {
         "provisions the runner's z3 for the sharded matrix; schedule/dispatch only",
     ("conformance", "build oathrs", "4111ddfccb69"):
         "builds the release kernel on the runner for the sharded matrix; schedule/dispatch only",
-    ("conformance", "prove shard ${{ matrix.shard }} of 8", "9e49e31aaf36"):
+    ("conformance", "prove shard ${{ matrix.shard }} of 8", "99f96a9e8191"):
         "one parallel shard of the union==S check; schedule/dispatch only, needs CI runners",
     ("conformance", "merge and verify union == S", "db0f8707ae9e"):
         "merges the shard emissions and runs the union==S gate; schedule/dispatch only",

@@ -299,8 +299,12 @@ jobs:
         # fixed by script bytes + solver + rlimit). GitHub runners burn the
         # rlimit slower than dev hardware — first dispatch invalidated at
         # the 600s default ~21 min in — so give each goal ample wall room.
+        # Cap z3 memory too: the cold run has the same uncapped-OOM exposure the
+        # sharded jobs hit, and a memout is a clean invalidation, never a wrong
+        # verdict.
         env:
           OATHRS_Z3_WALL_CAP_MS: "3600000"
+          OATHRS_Z3_MEMORY_MB: "6000"
         run: |
           z3 --version
           ./oathrs/conformance.sh
@@ -382,8 +386,15 @@ jobs:
       - name: prove shard ${{ matrix.shard }} of 8
         # Wall cap is safety-only and NOT part of the campaign identity (rlimit is),
         # so setting it here while the merge omits it does not desync the two.
+        # The MEMORY cap is the same kind of thing and just as necessary: without
+        # it one memory-hungry goal balloons z3 with no ceiling and the runner
+        # OOM-kills the job (that is what failed shard 5 of the first dispatch).
+        # memory_max_size is never outcome-determining — it converts an OS death
+        # into a clean memout — and is NOT in the campaign identity, so shards
+        # (capped) and the merge (uncapped, it never proves) stay in sync.
         env:
           OATHRS_Z3_WALL_CAP_MS: "3600000"
+          OATHRS_Z3_MEMORY_MB: "6000"
         run: |
           z3 --version
           ./oathrs/target/release/oathrs prove --shard ${{ matrix.shard }}/8 \
