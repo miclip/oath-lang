@@ -358,6 +358,16 @@ func TestEmittedRuntimeHasOneRefusalPath(t *testing.T) {
 			{"oathExitOnRefusal", "oathExitRefusal"}: true,
 			{"oathDone", "0"}:                        true,
 			{"oathListenFailed", "1"}:                true,
+			// oathExitResult is the PROGRAM's own disposition (#120 exit-result
+			// protocol), the one authority whose status is NOT a fixed literal:
+			// a (Fail Int Str) entry chose the code, clamped to [1,255]. That is
+			// the feature, so this site is a variable rather than a constant. Its
+			// SUCCESS arm still leaves through oathDone(0), so the only exit here
+			// is the program-chosen failure code. A supervisor's contract is
+			// therefore: 0 clean, 70 runtime refusal, 1 handler listen-fail, and
+			// a program-chosen 1..255 via oathExitResult; a program that picks 70
+			// or 1 overlaps a runtime status, which is the program's own call.
+			{"oathExitResult", "c"}: true,
 		}
 		// THE RAISE AND THE RE-RAISE are the only panics whose operand is not a
 		// classified literal, and each has exactly one home. oathRefuse raises a

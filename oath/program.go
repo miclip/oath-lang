@@ -91,6 +91,8 @@ const (
 	shapeCLICaps
 	shapeHandler
 	shapeHandlerCaps
+	shapeCLIResult
+	shapeCLICapsResult
 
 	// numEntryShapes is the TERMINAL SENTINEL and the single authority on the
 	// variant's size. It must stay last: a shape declared after it would not be
@@ -120,10 +122,12 @@ func entryShapes() []EntryShape {
 // name fails to compile rather than printing as a bare integer at the moment
 // someone is trying to read an error about it.
 var shapeNames = [...]string{
-	shapeCLI:         "cli",
-	shapeCLICaps:     "cli-with-capabilities",
-	shapeHandler:     "handler",
-	shapeHandlerCaps: "handler-with-capabilities",
+	shapeCLI:           "cli",
+	shapeCLICaps:       "cli-with-capabilities",
+	shapeHandler:       "handler",
+	shapeHandlerCaps:   "handler-with-capabilities",
+	shapeCLIResult:     "cli-result",
+	shapeCLICapsResult: "cli-result-with-capabilities",
 }
 
 // entryShapeTable is the COMPILE-TIME exhaustiveness assertion every shape-keyed
@@ -197,12 +201,18 @@ func classifyEntry(st *Store, t *Ty) (*Ty, EntryShape, bool) {
 	if isPureEntry(st, t) {
 		return nil, shapeCLI, true
 	}
+	if isResultEntry(st, t) {
+		return nil, shapeCLIResult, true
+	}
 	if isHandlerEntry(st, t) {
 		return nil, shapeHandler, true
 	}
 	if t != nil && t.K == "fun" && t.A != nil && t.A.K == "record" {
 		if isPureEntry(st, t.B) {
 			return t.A, shapeCLICaps, true
+		}
+		if isResultEntry(st, t.B) {
+			return t.A, shapeCLICapsResult, true
 		}
 		if isHandlerEntry(st, t.B) {
 			return t.A, shapeHandlerCaps, true
@@ -244,17 +254,54 @@ func isStrTy(strHash string, t *Ty) bool {
 
 func isPureEntry(st *Store, t *Ty) bool {
 	sh := strTypeHash(st)
-	if t == nil || t.K != "fun" || !isStrTy(sh, t.B) {
+	return t != nil && t.K == "fun" && isStrTy(sh, t.B) && isListStrArg(st, t.A)
+}
+
+// isListStrArg reports whether a is (List Str) — the argument every CLI entry
+// shape takes. Extracted so the CLI, capability, and exit-result shapes share
+// ONE definition of "the argument is the command line" rather than three copies
+// that could drift.
+func isListStrArg(st *Store, a *Ty) bool {
+	protoInit()
+	sh := strTypeHash(st)
+	// a.Hash == protoList requires the CANONICAL List structure — Nil at index 0,
+	// Cons at index 1 — which is exactly what the emitted argv construction
+	// assumes (both the CLI and the exit-result mains build Nil=0/Cons=1
+	// directly, while the LLVM backend derives the indices). A store that
+	// reordered List's constructors, or bound the name `List` to some other
+	// datatype, hashes differently and is REJECTED here rather than lowered into
+	// an argv the two backends would build differently. This is the same
+	// structural-over-by-name recognition the handler uses (isProtoData), for the
+	// same reason: a by-name check accepted a wrong shape and a right shape under
+	// another name, both defects.
+	return a != nil && a.K == "data" && a.Hash == protoList &&
+		len(a.Args) == 1 && isStrTy(sh, &a.Args[0])
+}
+
+// isResultTy recognises the CLI exit-result datatype (data _ [] (Ok Str)
+// (Fail Int Str)) in EITHER constructor order, with Str being the STORE'S ACTIVE
+// Str — the identity both backends lower as a native string (strTypeHash), not
+// the canonical Str prototype. Matching the prototype instead would accept a
+// result whose message the backends then lower as a CONSTRUCTOR (a panic on the
+// Go backend, an empty line on LLVM — a divergence) whenever Str is repointed
+// while the canonical datatype survives under an alias. The arms differ in
+// shape, so declaration order does not change their meaning.
+func isResultTy(st *Store, t *Ty) bool {
+	sh := strTypeHash(st)
+	if sh == "" {
 		return false
 	}
-	a := t.A
-	if a == nil || a.K != "data" || len(a.Args) != 1 || !isStrTy(sh, &a.Args[0]) {
-		return false
-	}
-	if m, err := st.GetMeta(a.Hash); err == nil {
-		return m.Name == "List"
-	}
-	return false
+	str := Ty{K: "data", Hash: sh}
+	okFirst := hashDef(&Def{K: "data", Ctors: [][]Ty{{str}, {*tInt(), str}}})
+	failFirst := hashDef(&Def{K: "data", Ctors: [][]Ty{{*tInt(), str}, {str}}})
+	return isProtoData(t, okFirst) || isProtoData(t, failFirst)
+}
+
+// isResultEntry recognises (-> (List Str) Result): the CLI entry that MAY exit
+// non-zero with its own diagnostic (#120 second-app friction). Same argument as
+// isPureEntry; the result is the exit-result type instead of Str.
+func isResultEntry(st *Store, t *Ty) bool {
+	return t != nil && t.K == "fun" && isResultTy(st, t.B) && isListStrArg(st, t.A)
 }
 
 // ---------- capability vocabulary (LANGUAGE-LEVEL) ----------
@@ -486,10 +533,12 @@ func knownCapabilityFields() []string {
 // Making the protocol word a table rather than an `if` is what stops a new
 // protocol from silently being recorded as "cli".
 var entryProtocolNames = [...]string{
-	shapeCLI:         "cli",
-	shapeCLICaps:     "cli",
-	shapeHandler:     "handler",
-	shapeHandlerCaps: "handler",
+	shapeCLI:           "cli",
+	shapeCLICaps:       "cli",
+	shapeHandler:       "handler",
+	shapeHandlerCaps:   "handler",
+	shapeCLIResult:     "cli",
+	shapeCLICapsResult: "cli",
 }
 
 var _ entryShapeTable = [len(entryProtocolNames)]struct{}{}
@@ -1530,7 +1579,7 @@ func planProgram(st *Store, name string) (*CompiledProgram, error) {
 
 	capTy, shape, ok := classifyEntry(st, d.Ty)
 	if !ok {
-		return nil, fmt.Errorf("%s : %s — entry protocol requires (-> (List Str) Str), (-> Request Response), or either with a leading {caps} record",
+		return nil, fmt.Errorf("%s : %s — entry protocol requires (-> (List Str) Str), (-> (List Str) Result) with Result = (Ok Str | Fail Int Str), (-> Request Response), or any of these with a leading {caps} record",
 			name, debugTy(d.Ty))
 	}
 	protocol, err := entryProtocolName(shape)

@@ -112,6 +112,7 @@ func TestClassifyEntryInhabitsEveryShape(t *testing.T) {
 	put(t, st, `(data Pair [a b] (Pair a b))`)
 	put(t, st, `(data Request [] (Req Str Str (List (Pair Str Str)) (List Int) Int))`)
 	put(t, st, `(data Response [] (Resp Int (List (Pair Str Str)) (List Int)))`)
+	put(t, st, `(data Res [] (Ok Str) (Fail Int Str))`)
 
 	strTy := Ty{K: "data", Hash: mustResolve(t, st, "Str")}
 	argv := Ty{K: "data", Hash: mustResolve(t, st, "List"), Args: []Ty{strTy}}
@@ -120,15 +121,19 @@ func TestClassifyEntryInhabitsEveryShape(t *testing.T) {
 	caps := Ty{K: "record", Names: []string{"fetch"},
 		Args: []Ty{{K: "fun", A: &strTy, B: &strTy}}}
 
+	resTy := Ty{K: "data", Hash: mustResolve(t, st, "Res")}
 	cli := Ty{K: "fun", A: &argv, B: &strTy}
+	cliResult := Ty{K: "fun", A: &argv, B: &resTy}
 	handler := Ty{K: "fun", A: &req, B: &resp}
 	withCaps := func(inner *Ty) *Ty { return &Ty{K: "fun", A: &caps, B: inner} }
 
 	cases := map[EntryShape]*Ty{
-		shapeCLI:         &cli,
-		shapeCLICaps:     withCaps(&cli),
-		shapeHandler:     &handler,
-		shapeHandlerCaps: withCaps(&handler),
+		shapeCLI:           &cli,
+		shapeCLICaps:       withCaps(&cli),
+		shapeHandler:       &handler,
+		shapeHandlerCaps:   withCaps(&handler),
+		shapeCLIResult:     &cliResult,
+		shapeCLICapsResult: withCaps(&cliResult),
 	}
 	for _, s := range entryShapes() {
 		ty, ok := cases[s]
@@ -147,7 +152,7 @@ func TestClassifyEntryInhabitsEveryShape(t *testing.T) {
 		// The record is returned exactly when the shape says one is taken —
 		// they are the same fact, and nothing downstream may find them
 		// disagreeing.
-		wantRec := s == shapeCLICaps || s == shapeHandlerCaps
+		wantRec := s == shapeCLICaps || s == shapeHandlerCaps || s == shapeCLICapsResult
 		if (capTy != nil) != wantRec {
 			t.Errorf("%s: capability record %v, want present=%v", s, capTy, wantRec)
 		}
@@ -221,7 +226,7 @@ func TestLLVMEntryShapeIsDecidedBeforeTheStore(t *testing.T) {
 // did its own walk; covering only the shapes that existed when a field was
 // introduced is how the two walks drifted apart in the first place.
 func TestLLVMInputDepthMatchesTheEntryType(t *testing.T) {
-	want := map[EntryShape]int{shapeCLI: 0, shapeCLICaps: 1, shapeHandler: 0, shapeHandlerCaps: 1}
+	want := map[EntryShape]int{shapeCLI: 0, shapeCLICaps: 1, shapeHandler: 0, shapeHandlerCaps: 1, shapeCLIResult: 0, shapeCLICapsResult: 1}
 	for _, s := range entryShapes() {
 		depth, ok := want[s]
 		if !ok {

@@ -57,6 +57,17 @@ stands unchanged. Only the failure's legibility moved.
 
 ## The demand: THE ENTRY PROTOCOL CANNOT EXPRESS A FAILING EXIT
 
+**RESOLVED.** The CLI entry may now return the exit-result datatype
+`(Ok Str) | (Fail Int Str)` (a new backend entry shape, lowered on BOTH the Go
+and LLVM backends): `Ok s` prints to stdout and exits 0; `Fail code msg` prints
+`msg` to stderr and exits `code` (clamped to 1..255). So a compiled program can
+compute a refusal AND report it to its caller — the gap below is closed. The
+arms are told apart by shape, so declaration order does not matter. `report.oath`
+can now be rewired to `Fail 1 "…"` on a malformed log and wired into
+`acceptance.sh` as a replacement for `report.sh` — a follow-up this protocol
+unblocks. The original demand is preserved below as the record of what forced it.
+
+
 This is the one real gap, it was found by the acceptance contract rather than by
 inspection, and it is not a backend issue.
 

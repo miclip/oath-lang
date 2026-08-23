@@ -429,6 +429,7 @@ type goEntry struct {
 	arg     string   // what main binds the entry's own input to
 	caps    bool     // resolve the capability record and apply it before the input
 	handler bool     // emit the HTTP adapter rather than the argv main
+	result  bool     // the entry returns an exit-result; match it for stdout/stderr + exit code
 	imports []string // imports the PROTOCOL needs; capability imports are separate
 }
 
@@ -438,10 +439,12 @@ type goEntry struct {
 var goHandlerImports = []string{"net/http", "io", "time"}
 
 var goEntries = [...]goEntry{
-	shapeCLI:         {shape: shapeCLI, arg: "args", caps: false, handler: false},
-	shapeCLICaps:     {shape: shapeCLICaps, arg: "args", caps: true, handler: false},
-	shapeHandler:     {shape: shapeHandler, arg: "req", caps: false, handler: true, imports: goHandlerImports},
-	shapeHandlerCaps: {shape: shapeHandlerCaps, arg: "req", caps: true, handler: true, imports: goHandlerImports},
+	shapeCLI:           {shape: shapeCLI, arg: "args", caps: false, handler: false},
+	shapeCLICaps:       {shape: shapeCLICaps, arg: "args", caps: true, handler: false},
+	shapeHandler:       {shape: shapeHandler, arg: "req", caps: false, handler: true, imports: goHandlerImports},
+	shapeHandlerCaps:   {shape: shapeHandlerCaps, arg: "req", caps: true, handler: true, imports: goHandlerImports},
+	shapeCLIResult:     {shape: shapeCLIResult, arg: "args", caps: false, result: true},
+	shapeCLICapsResult: {shape: shapeCLICapsResult, arg: "args", caps: true, result: true},
 }
 
 // EXHAUSTIVENESS, at compile time. Adding a shape to the variant makes this a
@@ -602,6 +605,40 @@ const oathExitRefusal = %d
 // while bypassing the refusal path entirely.
 func oathDone() {
 	os.Exit(0)
+}
+
+// oathExitResult dispatches the CLI exit-result protocol (#120 second-app
+// friction): a compiled program that can COMPUTE a refusal can now REPORT it to
+// its caller. The entry returned a value of the exit-result datatype — (Ok Str)
+// or (Fail Int Str) — and the arms are told apart by FIELD COUNT, not
+// constructor index, so EITHER declaration order lowers to the same disposition.
+// One field is the success message: stdout, exit 0. Two fields are a
+// program-chosen failure: the Str to stderr, the Int as the exit code, clamped
+// to [1,255] so a Fail can never masquerade as success (0) nor overflow the byte
+// a shell reads. This routes through neither oathDone nor oathRefuse: it is the
+// program's own disposition, not the runtime's, which is the whole point.
+func oathExitResult(v any) {
+	r := v.(*ctorV)
+	if len(r.fields) == 1 {
+		fmt.Println(r.fields[0].(string))
+		oathDone() // the exit-0 authority; never returns
+		return
+	}
+	fmt.Fprintln(os.Stderr, r.fields[1].(string))
+	// Clamp by SIGN and MAGNITUDE, not by "fits an int64": a code <= 0 is a Fail
+	// with no positive status, so exit 1; a code >= 255 (however large — Int is
+	// arbitrary precision) exits 255; anything in [1,254] exits itself. Reading
+	// the low bits of a huge value instead would exit some arbitrary byte and
+	// disagree with the LLVM backend, which the differential gate forbids.
+	c := 1
+	if code, ok := r.fields[0].(*big.Int); ok && code.Sign() > 0 {
+		if code.Cmp(big.NewInt(255)) >= 0 {
+			c = 255
+		} else {
+			c = int(code.Int64())
+		}
+	}
+	os.Exit(c)
 }
 
 func oathListenFailed(err error) {
@@ -1578,6 +1615,24 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil {
 		oathListenFailed(err)
 	}
+}
+`, caps, entryCall)
+		return e.b.String(), nil
+	}
+	if ent.result {
+		// EXIT-RESULT protocol (#120): same argv admission as the CLI main, but
+		// the entry's value is matched for stdout/stderr and an exit code rather
+		// than printed as a string. oathExitResult is the whole disposition.
+		fmt.Fprintf(&e.b, `
+func main() {
+	defer oathExitOnRefusal()
+	var args any = &ctorV{idx: 0} // Nil
+	for i := len(os.Args) - 1; i >= 1; i-- {
+		args = &ctorV{idx: 1, fields: []any{
+			oathStrFromHost(fmt.Sprintf("command-line argument %%d", i), os.Args[i]), args}} // Cons
+	}
+%s	out := %s
+	oathExitResult(out)
 }
 `, caps, entryCall)
 		return e.b.String(), nil

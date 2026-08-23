@@ -3500,6 +3500,38 @@ void o_print(OVal *v) {
   fputc('\n', stdout);
 }
 
+/* The CLI exit-result protocol (#120 second-app friction): a compiled program
+   that can COMPUTE a refusal can now REPORT it to its caller. The entry returned
+   a value of the exit-result datatype - (Ok Str) or (Fail Int Str) - and the
+   arms are told apart by FIELD COUNT (v->n), not constructor index, so EITHER
+   declaration order lowers here identically. One field is the success message:
+   stdout, exit 0. Two fields are a program-chosen failure: the Str to stderr,
+   the Int as the exit code, clamped to [1,255] so a Fail can never masquerade as
+   success (0) nor overflow the byte a shell reads. This is the PROGRAM's
+   disposition, distinct from o_refused (exit 70, the runtime's). It never
+   returns, so its IR caller ends the block with a dead terminator. */
+void o_exit_result(OVal *v) {
+  if (v && v->tag == T_CTOR && v->n == 1) {
+    o_print(v->f[0]); /* success: stdout + newline */
+    exit(0);
+  }
+  OVal *msg = (v && v->tag == T_CTOR && v->n >= 2) ? v->f[1] : 0;
+  if (msg && msg->tag == T_STR && msg->slen > 0) fwrite(msg->s, 1, (size_t)msg->slen, stderr);
+  fputc('\n', stderr);
+  /* Clamp by SIGN and MAGNITUDE (matching the Go backend, or the differential
+     gate breaks): a code <= 0 exits 1; a code >= 255 exits 255 whatever its
+     size; [1,254] exits itself. A magnitude is >= 255 if it has more than one
+     base-2^32 limb, or its single limb is >= 255 - so only a genuinely small
+     positive code is read from imag[0], and a huge one never wraps to a byte. */
+  int c = 1;
+  OVal *code = (v && v->tag == T_CTOR && v->n >= 1) ? v->f[0] : 0;
+  if (code && code->tag == T_INT && code->isign > 0) {
+    if (code->ilen > 1 || code->imag[0] >= 255) c = 255;
+    else c = (int)code->imag[0];
+  }
+  exit(c);
+}
+
 /* Keeps the provenance blob in the binary: an artifact that cannot say what it
    was built from is not carrying provenance, and the linker drops data nothing
    references. Volatile so the store cannot be optimized away. */
@@ -5615,6 +5647,7 @@ declare ptr @o_argv(i32, ptr, i32, i32)
 declare i32 @o_serve(ptr, i32, i32, i32, i32, i32)
 declare i32 @o_serve_caps(ptr, ptr, i32, i32, i32, i32, i32)
 declare void @o_print(ptr)
+declare void @o_exit_result(ptr)
 declare void @o_arena_release()
 declare i32 @o_run(ptr, i32, ptr)
 declare ptr @o_require(ptr, ptr, ptr)
@@ -5689,13 +5722,20 @@ type llvmEntry struct {
 	// protocol it belongs to — and a shape that answered both with one number
 	// would make "no argv" and "argv at depth 0" the same state.
 	handler bool
+
+	// result: the entry returns an exit-result datatype ((Ok Str) or
+	// (Fail Int Str)) rather than a Str, so main matches it for stdout/stderr and
+	// an exit code (o_exit_result) instead of printing it (o_print).
+	result bool
 }
 
 var llvmEntries = [...]llvmEntry{
-	shapeCLI:         {shape: shapeCLI, caps: false, inputDepth: 0},
-	shapeCLICaps:     {shape: shapeCLICaps, caps: true, inputDepth: 1},
-	shapeHandler:     {shape: shapeHandler, handler: true, inputDepth: 0},
-	shapeHandlerCaps: {shape: shapeHandlerCaps, caps: true, handler: true, inputDepth: 1},
+	shapeCLI:           {shape: shapeCLI, caps: false, inputDepth: 0},
+	shapeCLICaps:       {shape: shapeCLICaps, caps: true, inputDepth: 1},
+	shapeHandler:       {shape: shapeHandler, handler: true, inputDepth: 0},
+	shapeHandlerCaps:   {shape: shapeHandlerCaps, caps: true, handler: true, inputDepth: 1},
+	shapeCLIResult:     {shape: shapeCLIResult, inputDepth: 0, result: true},
+	shapeCLICapsResult: {shape: shapeCLICapsResult, caps: true, inputDepth: 1, result: true},
 }
 
 // EXHAUSTIVENESS, at compile time. Adding a shape to the variant makes this a
@@ -5851,30 +5891,35 @@ func listCtorIndices(st *Store, prog *CompiledProgram) (nil_, cons int, err erro
 	if err != nil {
 		return 0, 0, err
 	}
-	nil_, cons = -1, -1
-	for i, n := range m.CtorNames {
-		switch n {
-		case "Nil":
-			nil_ = i
-		case "Cons":
-			cons = i
-		}
-	}
-	if nil_ < 0 || cons < 0 {
-		return 0, 0, fmt.Errorf("the entry's argument type %s does not declare Nil and Cons (found %v)", m.Name, m.CtorNames)
-	}
-	// The runtime builds Nil with no fields and Cons with [head, tail]. That is an
-	// assumption about LAYOUT, not just about naming, so it is checked: a datatype
-	// that happens to be called List with a different shape would otherwise get
-	// argv values that do not match the type the entry was verified against, and
-	// nothing downstream would notice.
 	ad, err := st.GetDef(ty.A.Hash)
 	if err != nil {
 		return 0, 0, err
 	}
-	if len(ad.Ctors[nil_]) != 0 || len(ad.Ctors[cons]) != 2 {
-		return 0, 0, fmt.Errorf("%s has an unexpected shape (Nil/%d, Cons/%d); this backend builds argv as Nil and Cons(head, tail)",
-			m.Name, len(ad.Ctors[nil_]), len(ad.Ctors[cons]))
+	// Derive Nil/Cons BY SHAPE — one nullary constructor, one binary — not by the
+	// names "Nil"/"Cons". Constructor names are metadata, not identity, so the
+	// canonical list structure can be published under an alias whose constructors
+	// are renamed; the Go backend builds argv from the structure (Nil=0, Cons=1)
+	// and this backend must AGREE rather than plan and then fail only at emission
+	// on the missing names. This is the derivation byteListCtors uses, and it is
+	// exactly the structure program.go's isListStrArg requires (one nullary at
+	// index 0, one binary at 1), so an accepted argv type always resolves here.
+	nil_, cons = -1, -1
+	for i, fields := range ad.Ctors {
+		switch len(fields) {
+		case 0:
+			if nil_ >= 0 {
+				return 0, 0, fmt.Errorf("the entry's argument type %s declares more than one nullary constructor, so its empty case is ambiguous", m.Name)
+			}
+			nil_ = i
+		case 2:
+			if cons >= 0 {
+				return 0, 0, fmt.Errorf("the entry's argument type %s declares more than one binary constructor, so its cons case is ambiguous", m.Name)
+			}
+			cons = i
+		}
+	}
+	if nil_ < 0 || cons < 0 || len(ad.Ctors) != 2 {
+		return 0, 0, fmt.Errorf("the entry's argument type %s is not one nullary and one binary constructor, so this backend cannot build argv for it", m.Name)
 	}
 	// And the FIELD TYPES, not just their count: o_argv injects a Str head and a
 	// tail of the same list type. A datatype shaped Cons Bool (List a) would take
@@ -6151,8 +6196,18 @@ func emitLLVM(st *Store, prog *CompiledProgram) (string, error) {
 	// above the print would hand `o_print` freed memory. A handler entry will put
 	// its release at the same place relative to its own octet boundary, not at
 	// the same line number.
-	fmt.Fprintf(&e.b, "  call void @o_print(ptr %s)\n", out)
-	fmt.Fprintf(&e.b, "  call void @o_arena_release()\n  ret i32 0\n}\n")
+	if ent.result {
+		// The EXIT-RESULT protocol (#120): o_exit_result reads the answer (so it
+		// runs before any release, exactly like o_print), matches its arm, writes
+		// stdout or stderr, and exits with the program's own code. It never
+		// returns, so no arena release follows and the `ret` is a dead but
+		// required terminator; the process exits inside the call.
+		fmt.Fprintf(&e.b, "  call void @o_exit_result(ptr %s)\n", out)
+		fmt.Fprintf(&e.b, "  ret i32 0\n}\n")
+	} else {
+		fmt.Fprintf(&e.b, "  call void @o_print(ptr %s)\n", out)
+		fmt.Fprintf(&e.b, "  call void @o_arena_release()\n  ret i32 0\n}\n")
+	}
 	mainFn := "define i32 @o_program(i32 %argc, ptr %argv) {\n" + e.b.String() + thinMain
 	return llvmAssemble(prog, e, &body, caps, mainFn)
 }
