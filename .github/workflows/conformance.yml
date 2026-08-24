@@ -363,7 +363,7 @@ jobs:
   # 8 runners for a few hours each is not a per-push cost.
   rust-conformance-sharded:
     name: independent kernel (Rust) — sharded verification (shard ${{ matrix.shard }}/8)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch'  # dispatch-only: 8-way sharding times out on the heavy tail (see #98); needs 16-way or cost-aware assignment to fit a scheduled run, deferred
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
@@ -409,7 +409,7 @@ jobs:
 
   rust-conformance-sharded-merge:
     name: independent kernel (Rust) — merge shards, verify union == S
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch'  # dispatch-only: 8-way sharding times out on the heavy tail (see #98); needs 16-way or cost-aware assignment to fit a scheduled run, deferred
     needs: rust-conformance-sharded
     runs-on: ubuntu-latest
     steps:
