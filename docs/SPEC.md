@@ -1232,7 +1232,13 @@ reproducibility (given the same solver):
   re-derivable from exactly the state the store records, and warm/cold
   runs converge to the same self-consistent verdicts. Conformance
   outcomes (`prove/outcomes.json`) are the limit of F from the empty
-  state.
+  state. If a kernel's bound is reached with S still changing (S ≠ F(S)),
+  no fixpoint was found and there is NO conformance outcome: the kernel
+  MUST fail rather than record the non-fixpoint state, since "the recorded
+  set MUST be a fixpoint of F" admits no exception for a truncated run. The
+  bound is an implementation safety limit, not a licence to record a
+  non-fixpoint — a corpus that legitimately needs more rounds requires a
+  larger bound, never a recorded approximation.
 - **Lemma relevance (normative).** A goal's *footprint* is the smallest set
   of definition hashes containing the definition under proof and every
   definition referenced by the property's binders and body, closed

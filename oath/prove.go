@@ -2209,6 +2209,12 @@ func apiProveHash(st *Store, h string, display string) (string, error) {
 	// loss #72 exists to prevent. (The blind Rust kernel read the rule this way
 	// and was right; the reference did not. SPEC §7.2 now pins the referent.)
 	origProven := map[int]bool{}
+	// #181: the loop advances m.ProvenProps IN PLACE, and m aliases the store's
+	// cached Meta (GetMeta returns the cached pointer). If the run fails to
+	// converge below and returns without SetMeta, the cache would still hold the
+	// last provisional (non-fixpoint) set for a later scan to consume as lemmas.
+	// Snapshot the pre-run set so the failure path can restore it.
+	provenPropsAtRunStart := append([]int(nil), m.ProvenProps...)
 	for round := 0; ; round++ {
 		c := newSmtCtx(st, d, h)
 		lemmaCount, ownProven = loadLemmaLibrary(c, st, d, h, m, -1)
@@ -2319,10 +2325,22 @@ func apiProveHash(st *Store, h string, display string) (string, error) {
 			}
 		}
 		if round >= 7 {
-			// Never observed; a cycle here would itself be deterministic,
-			// but be honest about recording a state we couldn't stabilize.
-			fmt.Fprintf(&b, "⚠ run-level fixpoint did not stabilize in %d rounds; recording the last result\n", round+1)
-			break
+			// #181: SPEC §7.2 requires the recorded proven set to BE a fixpoint of
+			// F. Reaching the bound with S still changing means S != F(S), and
+			// recording it would publish a non-fixpoint indistinguishable
+			// downstream from a genuine one (the earlier "record the last result"
+			// warning did exactly that, violating the MUST). Fail closed instead —
+			// this matches oathrs and can only fire on a corpus that genuinely
+			// needs more rounds than the bound (the committed corpus converges by
+			// round 3), so raising the bound is the response, never recording.
+			// Restore the pre-run set first: m aliases the store's cache, and a
+			// failed run must leave no non-fixpoint state behind (see snapshot above).
+			m.ProvenProps = provenPropsAtRunStart
+			return "", fmt.Errorf(
+				"SPEC §7.2 run-stability fixpoint did not converge within %d rounds for %s: "+
+					"the recorded proven set is not F(S), so there is no valid conformance outcome "+
+					"(raise the bound or investigate a deepening/oscillating corpus)",
+				round+1, display)
 		}
 		m.ProvenProps = newIdx
 	}

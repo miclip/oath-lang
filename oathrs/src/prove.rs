@@ -3216,6 +3216,13 @@ pub struct ProofResult {
     pub aborted: Vec<bool>,
 }
 
+/// SPEC §7.2 run-stability round cap. The from-empty iteration of F is bounded
+/// so a pathological (or oscillating) corpus cannot loop forever. The committed
+/// corpus converges at round 2 (#181, measured), so this leaves wide margin —
+/// the cap exists to FAIL LOUD on a corpus that needs more, never to silently
+/// truncate one (which is exactly the defect #181 fixed).
+const RUN_STABILITY_ROUND_CAP: usize = 8;
+
 /// Prove all properties of every func definition; returns per-def results and
 /// records proven props so later definitions can use them as lemmas.
 pub fn prove_all(
@@ -3233,10 +3240,38 @@ pub fn prove_all(
 /// the caller. The real driver passes `Prover::prove_prop` (z3); tests pass a
 /// deterministic oracle, which is the only way to exercise the #72 abort
 /// semantics without depending on timing or on a solver that happens to die.
+///
+/// Iterates F from the empty state to a fixpoint under the standard round cap;
+/// PANICS if it does not converge within the cap (see `prove_all_with_rounds`).
 pub fn prove_all_with<F>(
     store: &Store,
     falsified: &BTreeSet<String>,
     hints: &Hints,
+    attempt: F,
+) -> BTreeMap<String, ProofResult>
+where
+    F: FnMut(&str, usize, &Prop, &[(String, usize, bool)]) -> PropVerdict,
+{
+    prove_all_with_rounds(store, falsified, hints, RUN_STABILITY_ROUND_CAP, attempt)
+}
+
+/// `prove_all_with` with the round cap made explicit, so a test can force
+/// NON-CONVERGENCE on a small corpus (a cap below what the corpus needs) rather
+/// than having to build a backward-lemma chain longer than the real cap.
+///
+/// #181: the from-empty iteration of F (SPEC §7.2) is the run-stability fixpoint,
+/// and the recorded proven set is only a valid conformance outcome once it
+/// satisfies F(S) = S. Reaching the cap while S is still growing means NO fixpoint
+/// was proved — the last round's set is not run-stable, and committing it silently
+/// (the pre-#181 behaviour) hands every downstream consumer (the cross-kernel
+/// oracle, the #139 fingerprint, the sharded verifier) a truncation it cannot
+/// distinguish from a genuine fixpoint. So this fails LOUD instead of returning
+/// an unstable set.
+fn prove_all_with_rounds<F>(
+    store: &Store,
+    falsified: &BTreeSet<String>,
+    hints: &Hints,
+    max_rounds: usize,
     mut attempt: F,
 ) -> BTreeMap<String, ProofResult>
 where
@@ -3332,7 +3367,10 @@ where
     // long the run takes.
     let mut cache: BTreeMap<(String, usize), (Vec<(String, usize, bool)>, PropVerdict)> =
         BTreeMap::new();
-    for round in 0..8 {
+    // Whether F(S) = S was actually reached (Some(round)) or the cap was hit
+    // while S was still growing (None). #181: the latter must NOT commit silently.
+    let mut converged_at: Option<usize> = None;
+    for round in 0..max_rounds {
         if progress {
             eprintln!("[prove] === round {} start ({} defs) ===", round, total_defs);
         }
@@ -3442,9 +3480,26 @@ where
             if progress {
                 eprintln!("[prove] converged after round {}", round);
             }
+            converged_at = Some(round);
             break;
         }
         recorded = in_run;
+    }
+
+    // #181: a non-converged S is not the §7.2 fixpoint. `recorded` here holds the
+    // last round's in_run, never confirmed run-stable — the pre-fix code returned
+    // it silently. Refuse: a loud abort is the only honest outcome, and it can only
+    // fire on a corpus that genuinely needs more than `max_rounds` rounds (the
+    // committed corpus converges at round 2), so raising the cap is the response,
+    // never suppressing the check.
+    if converged_at.is_none() {
+        panic!(
+            "SPEC §7.2 run-stability fixpoint did NOT converge within {} rounds: the recorded \
+             proven set is still growing, so F(S) != S and it is not a valid conformance outcome. \
+             Committing it would be indistinguishable from a genuine fixpoint downstream (#181). \
+             Investigate an oscillating/deepening corpus or raise RUN_STABILITY_ROUND_CAP.",
+            max_rounds
+        );
     }
 
     let mut results: BTreeMap<String, ProofResult> = BTreeMap::new();
@@ -4297,6 +4352,59 @@ mod tests {
             quad.aborted,
             vec![false, true],
             "the abort is still reported, on top of the standing proof"
+        );
+    }
+
+    /// #181: the from-empty iteration of F (SPEC §7.2) must not COMMIT a proven
+    /// set it never proved run-stable. Reaching the round cap while S is still
+    /// growing means F(S) != S, and the pre-fix code returned that unstable set
+    /// silently — indistinguishable downstream from a genuine fixpoint. It now
+    /// aborts loudly instead.
+    ///
+    /// An all-proving oracle grows S from empty in round 0, so a ONE-round cap
+    /// cannot even reach the confirming round (a fixpoint needs a second identical
+    /// round to be recognised). That is "the corpus needs more rounds than the cap
+    /// allows" in its smallest deterministic form — no lemma-ordering subtlety, so
+    /// the only mutation that makes this pass silently is deleting the check.
+    #[test]
+    #[should_panic(expected = "did NOT converge")]
+    fn non_convergence_within_the_round_cap_aborts_loudly() {
+        let f = fixture();
+        let _ = prove_all_with_rounds(&f.store, &BTreeSet::new(), &Hints::new(), 1, |_, _, _, _| {
+            PropVerdict::Proven
+        });
+    }
+
+    /// The CONTROL for the abort above: the identical corpus and oracle converge
+    /// as soon as the cap admits the confirming round (round 0 grows S from empty,
+    /// round 1 confirms), so the panic is the CAP, not the corpus — and every
+    /// property is recorded proven, so the abort is not masking a real inability to
+    /// compute the fixpoint. The standard entry point (real cap) agrees.
+    #[test]
+    fn a_sufficient_round_cap_converges_and_records_every_proof() {
+        let f = fixture();
+        let two = prove_all_with_rounds(&f.store, &BTreeSet::new(), &Hints::new(), 2, |_, _, _, _| {
+            PropVerdict::Proven
+        });
+        assert!(
+            two.values().all(|p| p.proven.iter().all(|b| *b)),
+            "every property is recorded proven under a sufficient cap"
+        );
+        assert!(
+            two.values().all(|p| p.aborted.iter().all(|a| !*a)),
+            "no property aborts"
+        );
+        let standard = prove_all_with(&f.store, &BTreeSet::new(), &Hints::new(), |_, _, _, _| {
+            PropVerdict::Proven
+        });
+        // ProofResult carries no Debug/PartialEq, so compare the recorded shape.
+        let shape = |m: &BTreeMap<String, ProofResult>| -> BTreeMap<String, (Vec<bool>, Vec<bool>)> {
+            m.iter().map(|(k, v)| (k.clone(), (v.proven.clone(), v.aborted.clone()))).collect()
+        };
+        assert_eq!(
+            shape(&two),
+            shape(&standard),
+            "the minimal sufficient cap and the standard cap reach the same fixpoint"
         );
     }
 

@@ -124,8 +124,13 @@ func scanBulkProve(st *Store, author string) {
 	if who == "" {
 		who = "prove-worker"
 	}
-	var out sync.Mutex // serializes the count, log line, and journal append
+	var out sync.Mutex // serializes the count, log line, journal append, failures
 	proved := 0
+	// #181: a genuine apiProveHash error (e.g. the run-stability fixpoint not
+	// converging within the bound — a MUST-fail per SPEC §7.2) must NOT be swept
+	// under "scan complete". Collect them; if any occurred, the fixpoint
+	// fingerprint is NOT recorded, so the scan is not falsely marked settled.
+	var failures []string
 	for lv := range levels {
 		sem := make(chan struct{}, conc)
 		var wg sync.WaitGroup
@@ -146,8 +151,13 @@ func scanBulkProve(st *Store, author string) {
 				defer wg.Done()
 				defer func() { <-sem }()
 				if _, err := apiProveHash(st, h, name); err != nil {
-					return // genuine failure; an ABORTED property is no longer one of
-					// these (#72 records per-property partial results instead)
+					// Genuine failure; an ABORTED property is no longer one of these
+					// (#72 records per-property partial results instead). Record it so
+					// the scan does not falsely report completion (#181).
+					out.Lock()
+					failures = append(failures, fmt.Sprintf("%s #%s: %v", name, shortHash(h), err))
+					out.Unlock()
+					return
 				}
 				m2, err := st.GetMeta(h)
 				if err != nil || len(m2.ProvenProps) <= before {
@@ -182,6 +192,18 @@ func scanBulkProve(st *Store, author string) {
 		for i := range pending {
 			_ = st.AppendLog(&pending[i])
 		}
+	}
+	// #181: if any definition failed to prove (a genuine error, e.g. the
+	// run-stability fixpoint not converging within the bound), the scan is NOT
+	// settled. Do not record the fixpoint fingerprint — recording it would let the
+	// next scan see an unchanged state and skip the failed def forever — and report
+	// the failures rather than "scan complete".
+	if len(failures) > 0 {
+		fmt.Printf("prove-worker: scan did NOT complete — %d definition(s) advanced, %d FAILED; fingerprint NOT recorded so the next scan retries:\n", proved, len(failures))
+		for _, f := range failures {
+			fmt.Printf("  ✗ %s\n", f)
+		}
+		return
 	}
 	// Record the new fixpoint. Newly-landed proofs move the fingerprint, so the
 	// NEXT scan re-runs and lets any def that needed them as lemmas prove; once a
