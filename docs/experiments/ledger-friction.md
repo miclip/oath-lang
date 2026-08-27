@@ -27,7 +27,8 @@ consumer would feel it.
    **the native containers are unreachable for the single most common shape,
    a string-keyed aggregate that must be reported.** DEMAND: a native
    `Str`-keyed map, or a `str-decode` inverse so a program can key on `Int` and
-   still recover the string.
+   still recover the string. **Filed as #184**, with a structural model for the
+   `Str`-keyed map so it clears the language-capability guard.
 
 2. **`parse-nat` has no signed sibling.** Money is signed; `parse-nat` is
    `Str → Int` over non-negative values only, so `parse-amount` peels a leading
