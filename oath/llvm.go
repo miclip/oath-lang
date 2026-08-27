@@ -120,9 +120,11 @@ type llvmEmitter struct {
 	strHash string
 	strNil  int // SNil's constructor index in THIS store's Str
 	strCons int // SCons's index
-	// Native containers (#178): Set/Map lower to native sorted-array osets/omaps
-	// (T_SET/T_MAP), so their operations are iterative and cannot overflow the
-	// host stack the way the structural list walk does. nc is the neutral
+	// Native containers (#178): Set/Map lower to native persistent balanced
+	// trees (T_SET/T_MAP), so an operation descends O(log N) frames where the
+	// structural list walk spent one per ELEMENT — and, since the tree shares
+	// what an update does not touch, an incremental build retains O(N log N)
+	// rather than the sorted array's O(N^2) (#180). nc is the neutral
 	// recognition; the ctor indices below build/traverse the datatype at a
 	// constructor or match, resolved per store like the Str ctors.
 	nc          nativeContainers
@@ -2976,171 +2978,324 @@ OVal *o_field(OVal *v, int i) {
   return v->f[i];
 }
 
-/* ---------- native Set / Map (#178) ----------
+/* ---------- native Set / Map (#178; the tree representation is #180) ----------
 
    A structural Set is (MkSet (List Int)) and set-member walks that list one
    recursive C call per element; on this backend's fixed stack a set of a few
    thousand distinct elements overflowed (issue #178). These are the native
-   refinement: a Set is a sorted, duplicate-free array of Int (tag T_SET); a Map
-   is an array of (key,value) sorted by key (tag T_MAP). EVERY operation is
-   ITERATIVE — binary search, memmove-style insert, sorted merge — so a container
-   of any size costs O(1) stack. Ordering is o_int_cmp ascending, matching the
-   structural si-insert / set-elems order so the three-way differential (oath
-   eval, Go, LLVM) agrees. Values are immutable and arena-allocated (xalloc, no
-   free); an update copies. A Set stores its n elements in f[0..n); a Map stores
-   n entries interleaved in f[0..2n) as k0,v0,k1,v1,... */
+   refinement: a Set is a PERSISTENT WEIGHT-BALANCED SEARCH TREE over Int (tag
+   T_SET); a Map is the same tree carrying a value beside each key (tag T_MAP).
+   Ordering is o_int_cmp ASCENDING, matching the structural si-insert /
+   set-elems order, so the three-way differential (oath eval, Go, LLVM) agrees.
 
-static OVal *o_mkset(OVal **elems, int n) {
-  OVal *v = val(T_SET); v->n = n; v->f = elems; return v;
+   WHY A TREE AND NOT THE SORTED ARRAY THIS STARTED AS (#180). Values are
+   immutable and arena-allocated, and the arena has no mid-run release for a
+   batch CLI entry - so what an update COPIES is what the whole run retains. A
+   sorted array copies all N elements per insert, so N incremental adds allocate
+   1+2+...+N element slots, and a 50,000-record consumer was OOM-killed by the
+   host. A persistent tree SHARES every subtree the update did not touch: an
+   insert rebuilds the path to the leaf and the nodes a rotation rebalances, and
+   nothing else. That is O(log N) nodes per add and O(N log N) retained over N
+   of them, in place of O(N^2).
+
+   NOTHING OBSERVABLE CHANGES. The element order, the answers, the left-bias of
+   merge and the identity of the Int values handed back are the array's; this is
+   a representation change underneath one, which is why it needs no new
+   normative text and no new differential expectations.
+
+   ONE NODE LAYOUT SERVES BOTH CONTAINERS, deliberately. Rebalancing is the part
+   that is easy to get subtly wrong, and two copies of it would be two chances
+   to. A Set node simply carries no value.
+
+     n     the SUBTREE's element count. 0 means the EMPTY tree, and an empty
+           node's f is NULL - so every accessor checks n before touching f.
+     f[0]  key (an Int)
+     f[1]  value, for a Map; NULL for a Set
+     f[2]  left subtree, or NULL
+     f[3]  right subtree, or NULL
+
+   Interior child pointers may be NULL; a tree that is handed back to Oath code
+   never is, which is what o_troot establishes. set-size and map-size read n
+   directly, as they read the array length before.
+
+   BALANCE IS ADAMS' WEIGHT CONDITION (delta 3, ratio 2) - the scheme Haskell's
+   Data.Map uses. It is chosen because its invariant is stated in the SIZES this
+   representation already stores for set-size; a height-balanced scheme would
+   need a second field per node to buy the same thing.
+
+   STACK COST IS O(log N) RATHER THAN THE ARRAY'S O(1), AND THAT IS A REAL
+   CHANGE TO #178's CLAIM rather than a detail to gloss. The array operations
+   were loops; these descend. A weight-balanced tree of N elements has height
+   below log base 4/3 of N, so a set holding every element an int can index is
+   under a hundred frames deep - three orders of magnitude inside the stack
+   guard's budget, where the structural list walk it replaced was one frame per
+   ELEMENT. The traversals below recurse on one side and tail-call the other for
+   the same reason. */
+
+#define O_WB_DELTA 3
+#define O_WB_RATIO 2
+
+static int o_tsize(OVal *t) { return t ? t->n : 0; }
+
+/* The four accessors are the only places f is read, and the two that reach a
+   node's own payload REFUSE an empty node rather than dereferencing NULL: every
+   caller below establishes non-emptiness first, so reaching one of these with a
+   leaf is a defect in this runtime and should say so. */
+static OVal *o_tkey(OVal *t) {
+  if (!t || t->n == 0) o_bug("native container: key of an empty node");
+  return t->f[0];
 }
-/* index of x, or -(insertpos+1) if absent. */
-static int o_set_find(OVal *s, OVal *x) {
-  int lo = 0, hi = s->n;
-  while (lo < hi) {
-    int mid = lo + (hi - lo) / 2;
-    int c = o_int_cmp(s->f[mid], x);
-    if (c == 0) return mid;
-    if (c < 0) lo = mid + 1; else hi = mid;
+static OVal *o_tval(OVal *t) {
+  if (!t || t->n == 0) o_bug("native container: value of an empty node");
+  return t->f[1];
+}
+static OVal *o_tleft(OVal *t) { return (t && t->n > 0) ? t->f[2] : 0; }
+static OVal *o_tright(OVal *t) { return (t && t->n > 0) ? t->f[3] : 0; }
+
+static OVal *o_tempty(int tag) { return val(tag); } /* n = 0, f = NULL */
+static OVal *o_tnode(int tag, OVal *k, OVal *v, OVal *l, OVal *r) {
+  OVal *t = val(tag);
+  OVal **f = o_fields(4);
+  f[0] = k; f[1] = v; f[2] = l; f[3] = r;
+  t->f = f;
+  t->n = 1 + o_tsize(l) + o_tsize(r);
+  return t;
+}
+/* A NULL tree is legal INSIDE the structure and never outside it. */
+static OVal *o_troot(int tag, OVal *t) { return t ? t : o_tempty(tag); }
+
+/* The four rotations. Each is written as "the new root, and the two children it
+   needs" rather than as pointer surgery, because these nodes are immutable -
+   there is nothing to rewire, only nodes to build. */
+static OVal *o_tsingle_l(int tag, OVal *k, OVal *v, OVal *l, OVal *r) {
+  return o_tnode(tag, o_tkey(r), o_tval(r),
+                 o_tnode(tag, k, v, l, o_tleft(r)), o_tright(r));
+}
+static OVal *o_tdouble_l(int tag, OVal *k, OVal *v, OVal *l, OVal *r) {
+  OVal *rl = o_tleft(r);
+  return o_tnode(tag, o_tkey(rl), o_tval(rl),
+                 o_tnode(tag, k, v, l, o_tleft(rl)),
+                 o_tnode(tag, o_tkey(r), o_tval(r), o_tright(rl), o_tright(r)));
+}
+static OVal *o_tsingle_r(int tag, OVal *k, OVal *v, OVal *l, OVal *r) {
+  return o_tnode(tag, o_tkey(l), o_tval(l),
+                 o_tleft(l), o_tnode(tag, k, v, o_tright(l), r));
+}
+static OVal *o_tdouble_r(int tag, OVal *k, OVal *v, OVal *l, OVal *r) {
+  OVal *lr = o_tright(l);
+  return o_tnode(tag, o_tkey(lr), o_tval(lr),
+                 o_tnode(tag, o_tkey(l), o_tval(l), o_tleft(l), o_tleft(lr)),
+                 o_tnode(tag, k, v, o_tright(lr), r));
+}
+
+/* Rebuild one node whose subtrees are each internally balanced but whose WEIGHTS
+   may now differ by one insertion. Adams: a pair totalling one element or fewer
+   is balanced by construction; otherwise the heavier side is rotated, singly
+   when its own weight sits on the outside and doubly when it sits on the
+   inside. */
+static OVal *o_tbalance(int tag, OVal *k, OVal *v, OVal *l, OVal *r) {
+  int ln = o_tsize(l), rn = o_tsize(r);
+  if (ln + rn > 1) {
+    if (rn > O_WB_DELTA * ln) {
+      if (o_tsize(o_tleft(r)) < O_WB_RATIO * o_tsize(o_tright(r)))
+        return o_tsingle_l(tag, k, v, l, r);
+      return o_tdouble_l(tag, k, v, l, r);
+    }
+    if (ln > O_WB_DELTA * rn) {
+      if (o_tsize(o_tright(l)) < O_WB_RATIO * o_tsize(o_tleft(l)))
+        return o_tsingle_r(tag, k, v, l, r);
+      return o_tdouble_r(tag, k, v, l, r);
+    }
   }
-  return -(lo + 1);
+  return o_tnode(tag, k, v, l, r);
 }
-OVal *o_set_empty(void) { return o_mkset(o_fields(0), 0); }
-OVal *o_set_member(OVal *x, OVal *s) { return o_bool(o_set_find(s, x) >= 0); }
-OVal *o_set_size(OVal *s) { return o_int((long long)s->n); }
+
+/* The node holding k, or NULL. ITERATIVE: a lookup allocates nothing and needs
+   no frame per level, and member / has / lookup are all this one descent. */
+static OVal *o_tfind(OVal *t, OVal *k) {
+  while (t && t->n > 0) {
+    int c = o_int_cmp(k, t->f[0]);
+    if (c == 0) return t;
+    t = c < 0 ? t->f[2] : t->f[3];
+  }
+  return 0;
+}
+
+/* Insert a key the caller has ESTABLISHED IS ABSENT. Splitting insertion in two
+   is what keeps each half's allocation exact: this one grows the tree and may
+   rebalance, and its counterpart below changes a value without touching shape.
+   A present key here would mean the caller skipped its own precondition, so it
+   is a bug report rather than a silent duplicate. */
+static OVal *o_tinsert(int tag, OVal *t, OVal *k, OVal *v) {
+  if (!t || t->n == 0) return o_tnode(tag, k, v, 0, 0);
+  int c = o_int_cmp(k, t->f[0]);
+  if (c == 0) o_bug("native container: insert of a key already present");
+  if (c < 0)
+    return o_tbalance(tag, t->f[0], t->f[1], o_tinsert(tag, t->f[2], k, v), t->f[3]);
+  return o_tbalance(tag, t->f[0], t->f[1], t->f[2], o_tinsert(tag, t->f[3], k, v));
+}
+
+/* Replace the value under a key the caller has ESTABLISHED IS PRESENT. No size
+   changes, so no node can go out of balance and o_tnode is used directly - the
+   O(log N) nodes on the path and not one more. The ORIGINAL key object is kept,
+   as the array form kept the key already in the slot it overwrote. */
+static OVal *o_treplace(int tag, OVal *t, OVal *k, OVal *v) {
+  if (!t || t->n == 0) o_bug("native container: replace of an absent key");
+  int c = o_int_cmp(k, t->f[0]);
+  if (c == 0) return o_tnode(tag, t->f[0], v, t->f[2], t->f[3]);
+  if (c < 0) return o_tnode(tag, t->f[0], t->f[1], o_treplace(tag, t->f[2], k, v), t->f[3]);
+  return o_tnode(tag, t->f[0], t->f[1], t->f[2], o_treplace(tag, t->f[3], k, v));
+}
+
+/* In-order into ks (and vs, when the caller wants values) starting at at;
+   returns the next free index. Ascending by construction. */
+static int o_tfill(OVal *t, OVal **ks, OVal **vs, int at) {
+  if (!t || t->n == 0) return at;
+  at = o_tfill(t->f[2], ks, vs, at);
+  ks[at] = t->f[0];
+  if (vs) vs[at] = t->f[1];
+  at++;
+  return o_tfill(t->f[3], ks, vs, at);
+}
+
+/* The inverse: a perfectly balanced tree over the sorted range [lo,hi). The
+   halves differ in size by at most one, which satisfies the weight condition at
+   every node, so nothing built here needs rebalancing. This is what makes the
+   bulk operations below LINEAR - they merge two ascending sequences and hand
+   the result here, rather than inserting one element at a time. */
+static OVal *o_tbuild(int tag, OVal **ks, OVal **vs, int lo, int hi) {
+  if (lo >= hi) return 0;
+  int mid = lo + (hi - lo) / 2;
+  return o_tnode(tag, ks[mid], vs ? vs[mid] : 0,
+                 o_tbuild(tag, ks, vs, lo, mid),
+                 o_tbuild(tag, ks, vs, mid + 1, hi));
+}
+
+/* (List ...) from the tree, ASCENDING, built tail-first: the right subtree is
+   consed onto acc first, so the leftmost element ends up at the head. */
+#define O_TL_KEY 0
+#define O_TL_VAL 1
+#define O_TL_PAIR 2
+static OVal *o_tlist(OVal *t, OVal *acc, int mode, int cons_idx, int pair_idx) {
+  if (!t || t->n == 0) return acc;
+  acc = o_tlist(t->f[3], acc, mode, cons_idx, pair_idx);
+  OVal *item;
+  if (mode == O_TL_PAIR) {
+    OVal **pf = o_fields(2); pf[0] = t->f[0]; pf[1] = t->f[1];
+    item = o_ctor(pair_idx, 2, pf);
+  } else {
+    item = (mode == O_TL_VAL) ? t->f[1] : t->f[0];
+  }
+  OVal **f = o_fields(2); f[0] = item; f[1] = acc;
+  acc = o_ctor(cons_idx, 2, f);
+  return o_tlist(t->f[2], acc, mode, cons_idx, pair_idx);
+}
+
+OVal *o_set_empty(void) { return o_tempty(T_SET); }
+OVal *o_set_member(OVal *x, OVal *s) { return o_bool(o_tfind(s, x) != 0); }
+OVal *o_set_size(OVal *s) { return o_int((long long)o_tsize(s)); }
+/* A member that is already present returns the SAME set and allocates nothing,
+   which the array form also did and which the fold idiom in #180 leans on. */
 OVal *o_set_add(OVal *x, OVal *s) {
-  int p = o_set_find(s, x);
-  if (p >= 0) return s;
-  int at = -(p + 1);
-  OVal **f = o_fields(s->n + 1);
-  for (int i = 0; i < at; i++) f[i] = s->f[i];
-  f[at] = x;
-  for (int i = at; i < s->n; i++) f[i + 1] = s->f[i];
-  return o_mkset(f, s->n + 1);
+  if (o_tfind(s, x)) return s;
+  return o_tinsert(T_SET, s, x, 0);
 }
 OVal *o_set_union(OVal *a, OVal *b) {
-  OVal **f = o_fields(a->n + b->n > 0 ? a->n + b->n : 1);
+  int an = o_tsize(a), bn = o_tsize(b);
+  if (an == 0) return b;
+  if (bn == 0) return a;
+  OVal **ka = o_fields(an), **kb = o_fields(bn), **out = o_fields(an + bn);
+  o_tfill(a, ka, 0, 0);
+  o_tfill(b, kb, 0, 0);
   int i = 0, j = 0, k = 0;
-  while (i < a->n && j < b->n) {
-    int c = o_int_cmp(a->f[i], b->f[j]);
-    if (c < 0) f[k++] = a->f[i++];
-    else if (c > 0) f[k++] = b->f[j++];
-    else { f[k++] = a->f[i++]; j++; }
+  while (i < an && j < bn) {
+    int c = o_int_cmp(ka[i], kb[j]);
+    if (c < 0) out[k++] = ka[i++];
+    else if (c > 0) out[k++] = kb[j++];
+    else { out[k++] = ka[i++]; j++; }
   }
-  while (i < a->n) f[k++] = a->f[i++];
-  while (j < b->n) f[k++] = b->f[j++];
-  return o_mkset(f, k);
+  while (i < an) out[k++] = ka[i++];
+  while (j < bn) out[k++] = kb[j++];
+  return o_troot(T_SET, o_tbuild(T_SET, out, 0, 0, k));
 }
 OVal *o_set_inter(OVal *a, OVal *b) {
-  int m = a->n < b->n ? a->n : b->n;
-  OVal **f = o_fields(m > 0 ? m : 1);
+  int an = o_tsize(a), bn = o_tsize(b);
+  if (an == 0) return a;
+  if (bn == 0) return b;
+  int m = an < bn ? an : bn;
+  OVal **ka = o_fields(an), **kb = o_fields(bn), **out = o_fields(m);
+  o_tfill(a, ka, 0, 0);
+  o_tfill(b, kb, 0, 0);
   int i = 0, j = 0, k = 0;
-  while (i < a->n && j < b->n) {
-    int c = o_int_cmp(a->f[i], b->f[j]);
+  while (i < an && j < bn) {
+    int c = o_int_cmp(ka[i], kb[j]);
     if (c < 0) i++;
     else if (c > 0) j++;
-    else { f[k++] = a->f[i++]; j++; }
+    else { out[k++] = ka[i++]; j++; }
   }
-  return o_mkset(f, k);
+  return o_troot(T_SET, o_tbuild(T_SET, out, 0, 0, k));
 }
 /* (List Int) from the sorted elems, tail-first. */
 OVal *o_set_elems(OVal *s, int nil_idx, int cons_idx) {
-  OVal *acc = o_ctor(nil_idx, 0, o_fields(0));
-  for (int i = s->n - 1; i >= 0; i--) {
-    OVal **f = o_fields(2);
-    f[0] = s->f[i]; f[1] = acc;
-    acc = o_ctor(cons_idx, 2, f);
-  }
-  return acc;
+  return o_tlist(s, o_ctor(nil_idx, 0, o_fields(0)), O_TL_KEY, cons_idx, 0);
 }
-/* Set from a (List Int) — MkSet direct construction; add keeps it sorted/dedup'd
-   whatever the input order. */
+/* Set from a (List Int) - MkSet direct construction; add keeps it sorted and
+   duplicate-free whatever the input order, and a duplicate keeps the element
+   already in the set, as the array form did. */
 OVal *o_set_from_list(OVal *l, int cons_idx) {
   OVal *s = o_set_empty();
   for (OVal *c = l; c && o_idx(c) == cons_idx; c = c->f[1]) s = o_set_add(c->f[0], s);
   return s;
 }
 
-static OVal *o_mkmap(OVal **kv, int n) {
-  OVal *v = val(T_MAP); v->n = n; v->f = kv; return v;
-}
-/* entry index for key k, or -(insertpos+1). */
-static int o_map_find(OVal *m, OVal *k) {
-  int lo = 0, hi = m->n;
-  while (lo < hi) {
-    int mid = lo + (hi - lo) / 2;
-    int c = o_int_cmp(m->f[2 * mid], k);
-    if (c == 0) return mid;
-    if (c < 0) lo = mid + 1; else hi = mid;
-  }
-  return -(lo + 1);
-}
-OVal *o_map_empty(void) { return o_mkmap(o_fields(0), 0); }
-OVal *o_map_size(OVal *m) { return o_int((long long)m->n); }
-OVal *o_map_has(OVal *k, OVal *m) { return o_bool(o_map_find(m, k) >= 0); }
+OVal *o_map_empty(void) { return o_tempty(T_MAP); }
+OVal *o_map_size(OVal *m) { return o_int((long long)o_tsize(m)); }
+OVal *o_map_has(OVal *k, OVal *m) { return o_bool(o_tfind(m, k) != 0); }
 OVal *o_map_lookup(OVal *k, OVal *m, int none_idx, int some_idx) {
-  int p = o_map_find(m, k);
-  if (p < 0) return o_ctor(none_idx, 0, o_fields(0));
-  OVal **f = o_fields(1); f[0] = m->f[2 * p + 1];
+  OVal *e = o_tfind(m, k);
+  if (!e) return o_ctor(none_idx, 0, o_fields(0));
+  OVal **f = o_fields(1); f[0] = e->f[1];
   return o_ctor(some_idx, 1, f);
 }
+/* A key already present takes the shape-preserving path, so an overwrite costs
+   the path and no rotation; an absent key takes the growing one. Both are
+   O(log N) nodes, where the array form rewrote the whole map either way. */
 OVal *o_map_insert(OVal *k, OVal *v, OVal *m) {
-  int p = o_map_find(m, k);
-  if (p >= 0) {
-    OVal **f = o_fields(2 * m->n);
-    for (int i = 0; i < 2 * m->n; i++) f[i] = m->f[i];
-    f[2 * p + 1] = v;
-    return o_mkmap(f, m->n);
-  }
-  int at = -(p + 1);
-  OVal **f = o_fields(2 * (m->n + 1));
-  for (int i = 0; i < at; i++) { f[2 * i] = m->f[2 * i]; f[2 * i + 1] = m->f[2 * i + 1]; }
-  f[2 * at] = k; f[2 * at + 1] = v;
-  for (int i = at; i < m->n; i++) { f[2 * (i + 1)] = m->f[2 * i]; f[2 * (i + 1) + 1] = m->f[2 * i + 1]; }
-  return o_mkmap(f, m->n + 1);
+  if (o_tfind(m, k)) return o_treplace(T_MAP, m, k, v);
+  return o_tinsert(T_MAP, m, k, v);
 }
 OVal *o_map_keys(OVal *m, int nil_idx, int cons_idx) {
-  OVal *acc = o_ctor(nil_idx, 0, o_fields(0));
-  for (int i = m->n - 1; i >= 0; i--) {
-    OVal **f = o_fields(2); f[0] = m->f[2 * i]; f[1] = acc;
-    acc = o_ctor(cons_idx, 2, f);
-  }
-  return acc;
+  return o_tlist(m, o_ctor(nil_idx, 0, o_fields(0)), O_TL_KEY, cons_idx, 0);
 }
 OVal *o_map_values(OVal *m, int nil_idx, int cons_idx) {
-  OVal *acc = o_ctor(nil_idx, 0, o_fields(0));
-  for (int i = m->n - 1; i >= 0; i--) {
-    OVal **f = o_fields(2); f[0] = m->f[2 * i + 1]; f[1] = acc;
-    acc = o_ctor(cons_idx, 2, f);
-  }
-  return acc;
+  return o_tlist(m, o_ctor(nil_idx, 0, o_fields(0)), O_TL_VAL, cons_idx, 0);
 }
-/* (List (Pair Int Int)) key-sorted, tail-first — the Map match bridge. */
+/* (List (Pair Int Int)) key-sorted, tail-first - the Map match bridge. */
 OVal *o_map_pairs(OVal *m, int nil_idx, int cons_idx, int pair_idx) {
-  OVal *acc = o_ctor(nil_idx, 0, o_fields(0));
-  for (int i = m->n - 1; i >= 0; i--) {
-    OVal **pf = o_fields(2); pf[0] = m->f[2 * i]; pf[1] = m->f[2 * i + 1];
-    OVal *pair = o_ctor(pair_idx, 2, pf);
-    OVal **f = o_fields(2); f[0] = pair; f[1] = acc;
-    acc = o_ctor(cons_idx, 2, f);
-  }
-  return acc;
+  return o_tlist(m, o_ctor(nil_idx, 0, o_fields(0)), O_TL_PAIR, cons_idx, pair_idx);
 }
-/* left-biased merge: a wins on key collision. Both inputs are already sorted by
-   key, so a two-pointer merge is linear; the earlier repeated-insert form copied
-   the growing map on every step, quadratic in the arena. */
+/* left-biased merge: a wins on key collision. Both inputs are already ordered,
+   so flattening them and merging is linear; inserting b's entries into a one at
+   a time would cost O(M log N) nodes instead of O(N+M). */
 OVal *o_map_merge(OVal *a, OVal *b) {
-  int cap = a->n + b->n; if (cap < 1) cap = 1;
-  OVal **f = o_fields(2 * cap);
+  int an = o_tsize(a), bn = o_tsize(b);
+  if (an == 0) return b;
+  if (bn == 0) return a;
+  OVal **ka = o_fields(an), **va = o_fields(an);
+  OVal **kb = o_fields(bn), **vb = o_fields(bn);
+  OVal **ok = o_fields(an + bn), **ov = o_fields(an + bn);
+  o_tfill(a, ka, va, 0);
+  o_tfill(b, kb, vb, 0);
   int i = 0, j = 0, k = 0;
-  while (i < a->n && j < b->n) {
-    int c = o_int_cmp(a->f[2 * i], b->f[2 * j]);
-    if (c < 0) { f[2 * k] = a->f[2 * i]; f[2 * k + 1] = a->f[2 * i + 1]; i++; k++; }
-    else if (c > 0) { f[2 * k] = b->f[2 * j]; f[2 * k + 1] = b->f[2 * j + 1]; j++; k++; }
-    else { f[2 * k] = a->f[2 * i]; f[2 * k + 1] = a->f[2 * i + 1]; i++; j++; k++; }
+  while (i < an && j < bn) {
+    int c = o_int_cmp(ka[i], kb[j]);
+    if (c < 0) { ok[k] = ka[i]; ov[k] = va[i]; i++; k++; }
+    else if (c > 0) { ok[k] = kb[j]; ov[k] = vb[j]; j++; k++; }
+    else { ok[k] = ka[i]; ov[k] = va[i]; i++; j++; k++; }
   }
-  while (i < a->n) { f[2 * k] = a->f[2 * i]; f[2 * k + 1] = a->f[2 * i + 1]; i++; k++; }
-  while (j < b->n) { f[2 * k] = b->f[2 * j]; f[2 * k + 1] = b->f[2 * j + 1]; j++; k++; }
-  return o_mkmap(f, k);
+  while (i < an) { ok[k] = ka[i]; ov[k] = va[i]; i++; k++; }
+  while (j < bn) { ok[k] = kb[j]; ov[k] = vb[j]; j++; k++; }
+  return o_troot(T_MAP, o_tbuild(T_MAP, ok, ov, 0, k));
 }
 OVal *o_map_from_list(OVal *l, int cons_idx) {
   OVal *m = o_map_empty();

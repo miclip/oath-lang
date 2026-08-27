@@ -6,15 +6,21 @@ import (
 	"testing"
 )
 
-// The heap guard (#180) is the allocation analogue of the stack guard (#178). An
-// immutable native container built incrementally — set-add in a fold — copies
-// the whole array on every add, so N adds allocate O(N^2) element-slots into a
-// request arena that a batch CLI entry never releases. On an overcommitting host
-// malloc keeps succeeding until the kernel OOM-killer SIGKILLs the process (exit
-// 137, with nothing on stdout or stderr an operator can act on). A proactive
-// budget check at the single growth point (o_block_new) turns that into a
-// legible exit-70 refusal that names the budget, exactly as the stack floor
-// turns a 139 into a 70.
+// The heap guard (#180) is the allocation analogue of the stack guard (#178).
+// Any program can outrun the request arena a batch CLI entry never releases: on
+// an overcommitting host malloc keeps succeeding until the kernel OOM-killer
+// SIGKILLs the process (exit 137, with nothing on stdout or stderr an operator
+// can act on). A proactive budget check at the single growth point
+// (o_block_new) turns that into a legible exit-70 refusal that names the
+// budget, exactly as the stack floor turns a 139 into a 70.
+//
+// WHAT MOTIVATED IT IS NO LONGER WHAT REACHES IT, and the guard is unaffected by
+// that: the case #180 was filed on was an immutable native container built
+// incrementally — set-add in a fold — copying the whole sorted array on every
+// add, so N adds retained O(N^2) element-slots. The native containers are
+// persistent balanced trees now and retain O(N log N), so the guard's own
+// witness below uses an ordinary O(N) structural build instead. A budget is a
+// budget whatever spends it.
 //
 // The claim is held in two halves, mirroring the stack-guard tests: the artifact
 // REFUSES (exit 70 + a diagnostic) rather than being killed, and a control
@@ -26,8 +32,9 @@ import (
 // argument, so verification (a closed, binder-free property over the empty-args
 // branch) never builds the list — only the running binary, when given an arg,
 // does. The built list is a structural (List Int): ordinary O(N) arena
-// allocation, not a native Set. The guard fires on any allocation past budget;
-// the O(N^2) set idiom #180 names is the MOTIVATING case, not a precondition.
+// allocation, not a native Set. The guard fires on any allocation past budget,
+// which is why this witness survived the representation change above — the set
+// idiom #180 was filed on was the MOTIVATING case, never a precondition.
 func hgStore(t *testing.T) *Store {
 	t.Helper()
 	st := llvmStore(t)

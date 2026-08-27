@@ -76,14 +76,29 @@ The recursion (and thus the termination proofs and the deep induction) lives in
 the `si-*`/`mi-*` helpers, which descend on `List` subterms and are total; the
 `set-*`/`map-*` wrappers are non-recursive over the newtype.
 
-## The LLVM backend (#178)
+## The LLVM backend (#178, #180)
 
-The LLVM backend represents a `Set` as a sorted, duplicate-free array of `Int`
-(tag `T_SET`) and a `Map` as a key-sorted array of entries (`T_MAP`), and lowers
-each recognized operation to an ITERATIVE C helper — binary-search membership,
-memmove insert, two-pointer union/inter/merge. So a container of any size costs
-O(1) host stack, where the structural `(List Int)` walk it replaces recursed
-once per element and overflowed a fixed stack (the LLVM half of #178's ceiling).
+The LLVM backend represents a `Set` as a PERSISTENT WEIGHT-BALANCED SEARCH TREE
+over `Int` (tag `T_SET`) and a `Map` as the same tree carrying a value beside
+each key (`T_MAP`), and lowers each recognized operation to a C helper over it —
+an iterative descent for membership, a path rebuild for insert, and a linear
+flatten-merge-rebuild for union/inter/merge. A container of any size costs
+O(log N) host stack, where the structural `(List Int)` walk it replaces recursed
+once per ELEMENT and overflowed a fixed stack (the LLVM half of #178's ceiling).
+
+The tree is #180's answer rather than #178's. Values are immutable and the
+runtime's arena has no mid-run release for a batch CLI entry, so what an update
+COPIES is what the whole run retains: the sorted array this started as copied
+all N elements per insert, and N incremental adds retained O(N²) element slots
+— enough to get a 50,000-record consumer OOM-killed. A persistent tree shares
+every subtree an update does not touch, so an insert retains O(log N) nodes and
+N of them retain O(N log N). Balance is Adams' weight condition (delta 3, ratio
+2), chosen because its invariant is stated in the subtree SIZES the
+representation already stores to answer `set-size` in O(1).
+
+Nothing observable changed with it: the element order, the answers, and the
+left-bias of `map-merge` are the array's, which is why the three-way
+differential needed no new expectations.
 
 Recognition is validated and derived from CANONICAL types, not names: a family is
 admitted only if every operation matches its expected signature over one
