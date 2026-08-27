@@ -1328,3 +1328,50 @@ hard-wrapped near 78 columns, so any multi-word `grep` silently misses a phrase
 that spans a line break. It reported no duplicate paragraph where one existed, and
 no parent rule where one existed. Normalise first — `tr '\n' ' '` — before
 concluding a phrase is absent.
+
+## #181 — the run-stability fixpoint stops committing a non-fixpoint
+
+SPEC §7.2 already required the recorded proven set to BE a fixpoint of F, and
+both kernels violated it at the one place the requirement is hardest to keep:
+when the round bound is reached while S is still changing. oathrs committed the
+last (non-fixpoint) set SILENTLY; the Go reference committed it with a warning.
+Either way, `outcomes.json` could carry a truncation indistinguishable
+downstream — the cross-kernel oracle, the #139 fingerprint, the #98 sharded
+verifier all trust S to be F(S).
+
+Measured before touching anything, and the measurement set the fix's shape: the
+committed corpus converges at ROUND 2 of the 8-round bound, and NO member of S is
+present only via abort carry-forward. Latent-with-margin — so the response is to
+fail LOUD on bound-exhaustion (a corpus that needs more rounds raises the bound),
+not to quietly raise it. The measurement itself was only cheap because the round
+structure is driven solely by the PROVING properties: a reduced z3 rlimit makes
+the ~145 futile goals abort fast while every genuine proof (reached far below the
+budget) survives, turning a nine-hour derivation into a two-minute one — verified
+faithful by the proven set matching, and the budget-starved inductive proofs all
+recovering at round 0 under a higher budget.
+
+Both kernels now REFUSE instead of recording, and one clause of §7.2 makes the
+only conformant option explicit. The durable lesson is NOT new: it is the
+universe-from-the-claim rule again. #181 was filed against `oathrs/src/prove.rs`,
+and an oathrs-only fix passed its own tests — but the CLAIM is a §7.2 rule whose
+structural owners are BOTH kernels and the spec, so hardening one file created a
+deterministic cross-kernel divergence. Review caught that, then two more defects
+the first fix introduced reaching for the same too-narrow universe: the Go error
+path left the non-fixpoint set in the store's CACHED `Meta` pointer (restored
+now), and `scanBulkProve` swept the error under "scan complete" and recorded the
+done-fingerprint (withheld now, so a failed scan retries). Three consecutive
+repairs failing for the same reason — routing around a claim wider than the file
+named — is the tell the file already documents.
+
+The new normative sentence had a scoped blind round. A clean read-only reader,
+given the exported SPEC alone (no kernel, no CLAUDE.md, `.git`-free,
+preflight-verified) and a neutral prompt, reconstructed the required behaviour
+from the text exactly — MUST fail, MUST NOT record, no outcome — and found no
+second defensible reading, noting the clause names and forecloses every
+alternative. It volunteered two underspecifications, both acceptable: the bound
+VALUE is deliberately the reference's choice (larger allowed), and the operational
+mechanics of "fail" are unpinned — but the only conformance-observable half of
+that (writing a partial `outcomes.json`) is already forbidden by "MUST NOT record
+the non-fixpoint state," leaving just the exit-code, which is ordinary impl
+latitude. A single clean-target read, so weighed as such; the volunteered gaps are
+evidence it read rather than agreed.
