@@ -1,0 +1,147 @@
+; apps/ledger — a double-entry ledger checker, and the second real dependent of
+; the kernel (after apps/github-webhook, #120). Its whole point is to be BUILT
+; and to surface the next demand list, the way the webhook produced
+; docs/experiments/webhook-friction.md. Read that log for what this exercise
+; found; this file is the artefact it was found by building.
+;
+; WHY A LEDGER. Money is the domain where "exact, and PROVEN to balance" is not a
+; slogan. Amounts here are exact ℤ minor units (cents), so no float rounding can
+; hide an imbalance, and the accumulation's conservation is a PROVEN property,
+; not a tested one: the per-account balances sum to exactly the total of every
+; posting. A ledger whose postings do not net to zero is REFUSED with a legible
+; failing exit (the #120 exit-result protocol), never silently reported.
+;
+; INPUT is a file, one "account amount" posting per line (amount a signed
+; integer of minor units); blank and malformed lines are skipped. OUTPUT is the
+; per-account balances, or a refusal naming the net imbalance.
+
+; The CLI exit protocol (#120): the one-field arm prints to stdout and exits 0;
+; the two-field arm prints its message to stderr and exits its code. The compiler
+; recognizes the shape by FIELD COUNT, not by constructor name, so these are named
+; for what they do (`Emit`/`Refuse`) rather than reusing `Ok`, which the corpus's
+; `Result` already binds — names are permanent, so a second `Ok` would be a trap.
+(data CliResult [] (Emit Str) (Refuse Int Str))
+
+; A posting and a running balance are both (account, amount). They are kept as an
+; ASSOCIATION LIST of (Pair Str Int), NOT the native Map — the native Set/Map are
+; Int-keyed (str-code), so a Map could accumulate balances but could never carry
+; the account NAME back out to the report. Carrying (Str, Int) pairs keeps the
+; names. (Friction #1 — see ledger-friction.md.)
+
+; A signed integer: "-1250" -> -1250, "1250" -> 1250. parse-nat is non-negative,
+; so the sign is peeled here. (Friction #2: parse-nat has no signed sibling.)
+(defn parse-amount [] [(s Str)] Int
+  (match s
+    ((SNil) 0)
+    ((SCons c rest) (if (== c 45) (- 0 (parse-nat rest)) (parse-nat s))))
+  ; A leading '-' negates the rest. Stated as a property so the sign handling is
+  ; part of the artefact's identity, not just its code.
+  (prop minus-negates [(s Str)]
+    (== (parse-amount (SCons 45 s)) (- 0 (parse-nat s)))))
+
+; The amount of a posting.
+(defn amount-of [] [(p (Pair Str Int))] Int
+  (match p ((Pair a n) n)))
+
+; Parse one "account amount" line into a posting; a line without exactly an
+; account and an amount is None (skipped).
+(defn parse-posting [] [(line Str)] (Option (Pair Str Int))
+  (match (str-split 32 line)
+    ((Nil) (None [(Pair Str Int)]))
+    ((Cons acct rest)
+      (match rest
+        ((Nil) (None [(Pair Str Int)]))
+        ((Cons amt more) (Some [(Pair Str Int)] (Pair [Str Int] acct (parse-amount amt))))))))
+
+; Parse every line, dropping the ones that are not postings.
+(defn parse-lines [] [(lines (List Str))] (List (Pair Str Int))
+  (match lines
+    ((Nil) (Nil [(Pair Str Int)]))
+    ((Cons l rest)
+      (match (parse-posting l)
+        ((None) (parse-lines rest))
+        ((Some p) (Cons [(Pair Str Int)] p (parse-lines rest)))))))
+
+; The net of every posting: the number that MUST be zero for the ledger to
+; balance.
+(defn ledger-total [] [(ps (List (Pair Str Int)))] Int
+  (match ps
+    ((Nil) 0)
+    ((Cons p rest) (+ (amount-of p) (ledger-total rest))))
+  (prop empty-nets-zero [] (== (ledger-total (Nil [(Pair Str Int)])) 0)))
+
+; The sum of every balance in the assoc list. Defined BEFORE bal-add: a single
+; put processes definitions top-to-bottom and has no forward references, so a
+; file is written in dependency order. (Friction #3.)
+(defn sum-amounts [] [(bs (List (Pair Str Int)))] Int
+  (match bs
+    ((Nil) 0)
+    ((Cons b rest) (+ (amount-of b) (sum-amounts rest)))))
+
+; Add an amount to an account's running balance in the assoc list, creating the
+; account if absent. Keyed on str-code, which is injective on scalar strings.
+(defn bal-add [] [(acct Str) (amt Int) (bs (List (Pair Str Int)))] (List (Pair Str Int))
+  (match bs
+    ((Nil) (Cons [(Pair Str Int)] (Pair [Str Int] acct amt) (Nil [(Pair Str Int)])))
+    ((Cons b rest)
+      (match b
+        ((Pair ba bn)
+          (if (== (str-code ba) (str-code acct))
+              (Cons [(Pair Str Int)] (Pair [Str Int] ba (+ bn amt)) rest)
+              (Cons [(Pair Str Int)] b (bal-add acct amt rest)))))))
+  ; CONSERVATION, one posting: adding an amount changes the assoc list's sum by
+  ; exactly that amount — nothing is created or dropped, whichever branch runs.
+  (prop preserves-sum [(acct Str) (amt Int) (bs (List (Pair Str Int)))]
+    (== (sum-amounts (bal-add acct amt bs)) (+ amt (sum-amounts bs)))))
+
+; Fold the postings into per-account balances.
+(defn balances [] [(ps (List (Pair Str Int)))] (List (Pair Str Int))
+  (match ps
+    ((Nil) (Nil [(Pair Str Int)]))
+    ((Cons p rest)
+      (match p ((Pair a n) (bal-add a n (balances rest))))))
+  ; THE PAYOFF: the reported balances sum to EXACTLY the total of every posting.
+  ; A dropped, doubled, or mis-bucketed posting would break this — proven over ℤ,
+  ; so it holds for every ledger, not the ones a test happened to draw.
+  (prop conserves-value [(ps (List (Pair Str Int)))]
+    (== (sum-amounts (balances ps)) (ledger-total ps))))
+
+; Render one balance line "account: amount".
+(defn show-bal [] [(b (Pair Str Int))] Str
+  (match b ((Pair a n) (str-append a (str-append ": " (show-int n))))))
+
+; Render all balances, newline-separated.
+(defn show-balances [] [(bs (List (Pair Str Int)))] Str
+  (match bs
+    ((Nil) "")
+    ((Cons b rest) (str-append (show-bal b) (str-append "\n" (show-balances rest))))))
+
+; Adjudicate a parsed ledger: balance -> report; imbalance -> refuse, naming the
+; net. The refusal is the WHOLE reason the exit protocol exists — a consumer that
+; silently reported an unbalanced ledger would be the bug.
+(defn ledger-check [] [(ps (List (Pair Str Int)))] CliResult
+  (if (== (ledger-total ps) 0)
+      (Emit (show-balances (balances ps)))
+      (Refuse 1 (str-append "ledger does not balance; net = " (show-int (ledger-total ps)))))
+  ; A balanced ledger is always accepted; an unbalanced one is always refused.
+  ; This is the safety claim of the whole tool, stated as a property.
+  (prop accepts-iff-balanced [(ps (List (Pair Str Int)))]
+    (match (ledger-check ps)
+      ((Emit r) (== (ledger-total ps) 0))
+      ((Refuse c m) (not (== (ledger-total ps) 0))))))
+
+; The entry: read the ledger file through the readfile capability, split into
+; lines, parse, and adjudicate.
+(defn ledger-main [] [(caps {readfile (-> Str Str)}) (args (List Str))] CliResult
+  (match args
+    ((Nil) (Refuse 2 "usage: ledger <file>"))
+    ((Cons path rest)
+      (ledger-check (parse-lines (str-split 10 ((. caps readfile) path))))))
+  ; `build` requires an entry to carry a verified property ("swear an oath")
+  ; before it will compile — you must claim SOMETHING about the program. The
+  ; claim here: invoked with no file argument, the tool always refuses, and never
+  ; touches the readfile capability to do so. (Friction #4: the build gate.)
+  (prop no-args-refuses [(caps {readfile (-> Str Str)})]
+    (match (ledger-main caps (Nil [Str]))
+      ((Emit r) false)
+      ((Refuse c m) true))))
