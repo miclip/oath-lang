@@ -483,9 +483,27 @@ is about the goal). Same rule, two registers.
 
 ## Status and honesty ledger
 
-Filed as the review's single extracted issue (#183): the typed proof-failure
-taxonomy above. The pre-registered falsifiers fired as follows — recorded so the
-review is falsifiable in retrospect, not narrated into agreement:
+**Resolution of the extracted issue — it already existed, DERIVED, and that is
+the finding.** #183 was filed and then, on implementing it, found to duplicate
+`scripts/prove-reasons.py` (#68), which already classifies every non-proven
+property into a MORE complete vocabulary — `refuted`, `countermodel-withheld`,
+`translation-bail` (this review's `outside-fragment`), `late-translation-bail`,
+`environmentally-invalidated`, `budget-exhausted`, `solver-unknown` — as a pure
+function of the goal and the per-attempt solver telemetry. Crucially it DERIVES the
+reason on demand; it does not store it. That is the correction this very review
+made for centrality in §2 ("derive, don't store") arriving one layer over: #183's
+own framing — *replace the recorded bit with a recorded typed reason* — reached for
+storage where the project's rule says derive, and the derived artifact already
+existed. A first stored-field implementation was written and reverted once #68 was
+found. So the extracted issue's honest outcome is not a new mechanism but a
+vindication of the review's own principle: the failure reason is a derived graph-
+of-telemetry fact, and it was already being derived. #183 is closed as addressed by
+#68; the only residue is minor (surfacing #68's derived category in a single `oath
+prove` transcript, reusing its vocabulary rather than a second one), recorded there
+rather than built here.
+
+The pre-registered falsifiers fired as follows — recorded so the review is
+falsifiable in retrospect, not narrated into agreement:
 
 | § | pre-registered falsifier | outcome |
 |---|---|---|
