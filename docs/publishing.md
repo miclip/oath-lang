@@ -102,15 +102,23 @@ oath publish --license Apache-2.0 sort.oath        # binds alice/sort
 oath publish --license Apache-2.0 --namespace team sort.oath   # binds team/sort
 ```
 
-`--namespace` is a **prefix**, not a rename. The source declares one name and the
-namespace says where it goes, so a recursive definition never has to repeat the
-prefix inside its own body. `alice` and `alice/*` mean the same thing. If the
-source already declares a prefix AND you pass `--namespace`, publication is
-refused — a name has one source of truth.
+`--namespace` writes the prefix into the source for you before it is signed — it
+is not a display label. The registry re-elaborates the source it receives and
+derives the bound name from it, so binding `team/sort` means the SOURCE has to say
+`team/sort`. `--namespace` performs that rewrite: it qualifies the declared name
+**and every reference to another name being published in the same batch** —
+recursive self-references and calls between the definitions in the file alike.
+External dependencies and constructors stay bare (they resolve on their own). So
+you write ordinary bare names and publish under any prefix; `alice` and `alice/*`
+mean the same thing. If the source already declares a prefix AND you pass
+`--namespace`, publication is refused — a name has one source of truth.
 
-One definition per publication — a single signature must not cover several
-independent name transitions — and dependencies must be published before the
-things that use them.
+A file may hold a whole **closure** — a definition together with the helpers it
+calls. `--namespace` publishes each definition as its **own** signed envelope (a
+single signature must not cover several independent name transitions), in
+**dependency order**, so a helper is bound before the definition that uses it. You
+do not split the file or order it yourself; the ordering is derived, and a
+dependency cycle is reported rather than published half-way.
 
 The licence is an **assertion you sign**, not something the registry checks.
 Omitting it records the explicit "said nothing" sentinel rather than an empty

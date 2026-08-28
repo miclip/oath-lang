@@ -184,7 +184,18 @@ func cmdPublish(local *Store, endpoint, keyPath, kmsKey, file, license, namespac
 	pubHex := hex.EncodeToString(pubRaw)
 	clientSigner, clientPub = signer, pubHex
 
-	plan, env, err := buildPublishPlan(local, endpoint, pubHex, string(src), license, namespace)
+	// A --namespace publish is NOT a display prefix: binding X/name is a source
+	// TRANSFORMATION the server must see, because it re-elaborates the source and
+	// derives the name from it. So the namespaced path qualifies the source (the
+	// declared name AND every intra-batch reference), publishes each definition as
+	// its own signed envelope in dependency order, and seeds client elaboration
+	// from the definitions already processed. #185.
+	if namespace != "" {
+		cmdPublishClosure(ctx, signer, pubHex, local, endpoint, string(src), license, namespace, dryRun, jsonOut, assumeYes)
+		return
+	}
+
+	plan, _, err := buildPublishPlan(local, endpoint, pubHex, string(src), license, namespace)
 	if err != nil {
 		fail(err)
 	}
@@ -209,33 +220,45 @@ func cmdPublish(local *Store, endpoint, keyPath, kmsKey, file, license, namespac
 		}
 	}
 
-	// The EXACT bytes in the plan are what gets signed and what gets sent. Signing
-	// `env` again here would re-encode, and a re-encoding that differed by one byte
-	// would produce a signature over something the registry never sees.
-	sig, err := signStatement(ctx, signer, []byte(plan.Bytes), pubHex, jsonOut)
-	if err != nil {
+	if err := finalizePublish(ctx, signer, string(src), plan, endpoint, jsonOut); err != nil {
 		fail(err)
 	}
-	_ = env
-	// The bytes signed are the bytes sent: plan.Bytes, not a re-encoding of env.
-	out, err := remotePutSigned(endpoint, string(src), plan.Bytes, sig, pubHex)
+}
+
+// finalizePublish signs the plan's EXACT bytes, transmits them unchanged, and
+// verifies the registry persisted the same bytes. `source` is the definition text
+// the server re-elaborates. It returns an error rather than calling fail() so a
+// closure publish can stop cleanly mid-batch; the single-def path turns that error
+// into fail(). The bytes signed are plan.Bytes, not a re-encoding of the envelope:
+// a re-encoding that differed by one byte would sign something the registry never
+// sees.
+func finalizePublish(ctx context.Context, signer Signer, source string, plan publishPlan, endpoint string, jsonOut bool) error {
+	sig, err := signStatement(ctx, signer, []byte(plan.Bytes), plan.Author, jsonOut)
+	if err != nil {
+		return err
+	}
+	out, err := remotePutSigned(endpoint, source, plan.Bytes, sig, plan.Author)
 	if err != nil {
 		// A stale parent/revision is the one failure with a specific remedy, and the
 		// remedy is deliberately NOT automatic — see the file comment.
 		if newParent, newRev, rerr := remoteNameRevision(endpoint, plan.Name); rerr == nil &&
 			(newParent != plan.Parent || fmt.Sprintf("%d", newRev) != plan.ParentRev) {
-			fmt.Printf("\nCONFLICT: %q moved while this envelope was being prepared.\n", plan.Name)
-			fmt.Printf("  signed against  parent %s (revision %s)\n", plan.Parent, plan.ParentRev)
-			fmt.Printf("  now at          parent %s (revision %d)\n", newParent, newRev)
-			fmt.Printf("\nThe signature is still valid for the transition it describes, which is no\n")
-			fmt.Printf("longer the transition available. It has NOT been re-signed automatically:\n")
-			fmt.Printf("that would sign different bytes and authorize a different state change than\n")
-			fmt.Printf("the one shown above. Re-run to review the new transition and sign it.\n")
-			fail(fmt.Errorf("stale parent: publication not applied"))
+			if !jsonOut {
+				fmt.Printf("\nCONFLICT: %q moved while this envelope was being prepared.\n", plan.Name)
+				fmt.Printf("  signed against  parent %s (revision %s)\n", plan.Parent, plan.ParentRev)
+				fmt.Printf("  now at          parent %s (revision %d)\n", newParent, newRev)
+				fmt.Printf("\nThe signature is still valid for the transition it describes, which is no\n")
+				fmt.Printf("longer the transition available. It has NOT been re-signed automatically:\n")
+				fmt.Printf("that would sign different bytes and authorize a different state change than\n")
+				fmt.Printf("the one shown above. Re-run to review the new transition and sign it.\n")
+			}
+			return fmt.Errorf("stale parent: publication not applied")
 		}
-		fail(err)
+		return err
 	}
-	fmt.Print(out)
+	if !jsonOut {
+		fmt.Print(out)
+	}
 
 	// A BLOCKED publication still stores the object and journals the refusal — the
 	// name simply does not move (docs/teamstore.md). So the persistence check below
@@ -245,32 +268,39 @@ func cmdPublish(local *Store, endpoint, keyPath, kmsKey, file, license, namespac
 	// answer, and inventing an integrity alarm on top of it trains the reader to
 	// distrust the one check that matters.
 	if strings.Contains(out, "BLOCKED:") {
-		fail(fmt.Errorf("publication refused by the registry; the name was not moved"))
+		return fmt.Errorf("publication refused by the registry; the name was not moved")
 	}
 
 	// Verify the registry persisted the exact bytes signed. Without this the client
 	// takes the registry's word that the record it accepted is the statement made.
 	if got, err := remoteEnvelopeOf(endpoint, plan.Artifact); err == nil {
 		if got == "" {
-			fmt.Printf("\nWARNING: the registry accepted the publication but records no author\n")
-			fmt.Printf("envelope for %s. The attribution is not independently verifiable.\n", shortHash(plan.Artifact))
+			if !jsonOut {
+				fmt.Printf("\nWARNING: the registry accepted the publication but records no author\n")
+				fmt.Printf("envelope for %s. The attribution is not independently verifiable.\n", shortHash(plan.Artifact))
+			}
 		} else if octets, derr := decodeEnvelopeB64(got); derr != nil {
 			// The registry stores envelope OCTETS base64-encoded (SPEC §8.6.3). Comparing
 			// the encoded text against the signed octets always differs, which is what
 			// this check did after storage moved to base64 — reporting a mismatch on
 			// every honest publication. A verification that cries wolf is worse than
 			// none: it trains the reader to ignore the one case that matters.
-			fmt.Printf("\nWARNING: the registry's stored envelope does not decode: %v\n", derr)
-			fail(fmt.Errorf("persisted envelope is not canonical base64"))
+			if !jsonOut {
+				fmt.Printf("\nWARNING: the registry's stored envelope does not decode: %v\n", derr)
+			}
+			return fmt.Errorf("persisted envelope is not canonical base64")
 		} else if string(octets) != plan.Bytes {
-			fmt.Printf("\nWARNING: the registry persisted DIFFERENT envelope bytes than were signed.\n")
-			fmt.Printf("  signed:    %q\n  persisted: %q\n", plan.Bytes, string(octets))
-			fmt.Printf("The signature will not verify against the stored record.\n")
-			fail(fmt.Errorf("persisted envelope differs from the signed bytes"))
-		} else {
+			if !jsonOut {
+				fmt.Printf("\nWARNING: the registry persisted DIFFERENT envelope bytes than were signed.\n")
+				fmt.Printf("  signed:    %q\n  persisted: %q\n", plan.Bytes, string(octets))
+				fmt.Printf("The signature will not verify against the stored record.\n")
+			}
+			return fmt.Errorf("persisted envelope differs from the signed bytes")
+		} else if !jsonOut {
 			fmt.Printf("\nverified: the registry persisted the exact %d bytes that were signed.\n", len(plan.Bytes))
 		}
 	}
+	return nil
 }
 
 func confirm(prompt string) bool {
