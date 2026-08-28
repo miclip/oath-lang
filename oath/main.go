@@ -1001,10 +1001,19 @@ func main() {
 		}
 		cmdFixtures(st, args[1])
 	case "eval":
-		if len(args) != 2 {
-			fail(fmt.Errorf("usage: oath eval \"<expr>\""))
+		text := false
+		var exprs []string
+		for _, a := range args[1:] {
+			if a == "--text" {
+				text = true
+			} else {
+				exprs = append(exprs, a)
+			}
 		}
-		cmdEval(st, args[1])
+		if len(exprs) != 1 {
+			fail(fmt.Errorf("usage: oath eval [--text] \"<expr>\""))
+		}
+		cmdEval(st, exprs[0], text)
 	default:
 		fmt.Println(usage)
 		os.Exit(1)
@@ -1430,8 +1439,17 @@ func cmdVerify(st *Store, name string) {
 	fmt.Print(out)
 }
 
-func cmdEval(st *Store, src string) {
-	out, err := apiEval(st, src)
+func cmdEval(st *Store, src string, text bool) {
+	// The DEFAULT output is structural — a Str as its SCons/SNil tower — because it
+	// is a parsed contract: the differential-test oracle, the LLVM acceptance
+	// script's decoder, and the MCP tool all read it. --text opts into the
+	// human-readable rendering (a Str as "cat"; see evalDisplay/printValueEval),
+	// which is not machine-parsed.
+	render := apiEval
+	if text {
+		render = evalDisplay
+	}
+	out, err := render(st, src)
 	if err != nil {
 		fail(err)
 	}
@@ -1490,6 +1508,7 @@ var knownFlags = map[string]map[string]bool{
 	"log":       set("--remote", "--key", "--kms-key", "--local"),
 	"plugin":    set("--codex", "--claude-code", "--user", "--dir", "--registry", "--dry-run"),
 	"build":     set("--backend", "--emit-source"),
+	"eval":      set("--text"),
 	// DERIVED from the grammar in parseFindArgs, not restated beside it: the
 	// guard above and the parser must agree about which flags `find` accepts, and
 	// a hand-copied list is correct exactly once.

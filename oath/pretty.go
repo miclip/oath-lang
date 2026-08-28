@@ -230,7 +230,109 @@ func (p *printer) term(t *Term, selfName string) string {
 	return "?"
 }
 
+// strDecoder decodes values of the ACTIVE Str datatype to text for `oath eval`.
+// It resolves the Str's constructor indices ONCE, by SHAPE, not by name: the
+// object hash already fixes the structure — a nullary constructor and a binary
+// (codepoint, rest) one — so it identifies them by arity. That is why it survives
+// two hazards a name match does not: a structurally identical datatype put later
+// under different constructor names (which shares the hash and flips the primary
+// names ctorName/CtorNames report), and a noncanonical Str whose nil constructor
+// carries a field (a different hash entirely, whose arities do not match, so it
+// declines and the value renders structurally). A nil decoder renders everything
+// structurally.
+type strDecoder struct {
+	hash            string
+	nilIdx, consIdx int
+}
+
+func newStrDecoder(st *Store) *strDecoder {
+	h := strTypeHash(st)
+	if h == "" {
+		return nil
+	}
+	d, err := st.GetDef(h)
+	if err != nil || d.K != "data" || len(d.Ctors) != 2 {
+		return nil
+	}
+	sd := &strDecoder{hash: h, nilIdx: -1, consIdx: -1}
+	for i, fields := range d.Ctors {
+		switch len(fields) {
+		case 0:
+			sd.nilIdx = i
+		case 2:
+			// The binary constructor must be (codepoint : Int, rest : this ADT) —
+			// arity alone is not enough. A datatype bound as Str whose second field
+			// is not the recursive self (e.g. (More Int Int)) is not a string, and
+			// decoding it would render (Empty) as "" and lose information.
+			if fields[0].K != "int" || fields[1].K != "rec" {
+				return nil
+			}
+			sd.consIdx = i
+		default:
+			return nil // a constructor of unexpected arity — not the Str shape
+		}
+	}
+	if sd.nilIdx < 0 || sd.consIdx < 0 {
+		return nil
+	}
+	return sd
+}
+
+// text decodes v to its Str text, or ok=false if v is not this Str or carries a
+// non-scalar codepoint — the type does not (yet, #69) enforce the Unicode scalar
+// range, and WriteRune would collapse -1, a surrogate, or a value past U+10FFFF to
+// U+FFFD, rendering structurally distinct values identically. On ok=false the
+// caller renders the whole value structurally, so nothing is silently lost.
+func (sd *strDecoder) text(v Value) (string, bool) {
+	if sd == nil || v.K != "data" || v.Hash != sd.hash {
+		return "", false
+	}
+	var sb strings.Builder
+	for {
+		if v.K != "data" || v.Hash != sd.hash {
+			return "", false
+		}
+		switch v.Idx {
+		case sd.nilIdx:
+			if len(v.Fields) != 0 {
+				return "", false
+			}
+			return sb.String(), true
+		case sd.consIdx:
+			if len(v.Fields) != 2 || v.Fields[0].K != "int" || v.Fields[0].Int == nil {
+				return "", false
+			}
+			cp := v.Fields[0].Int
+			if !cp.IsInt64() || !isUnicodeScalar(cp.Int64()) {
+				return "", false
+			}
+			sb.WriteRune(rune(cp.Int64()))
+			v = v.Fields[1]
+		default:
+			return "", false
+		}
+	}
+}
+
+// printValue renders a value structurally — a Str as its SCons/SNil tower. This
+// is the form the VERIFY transcripts carry (counterexamples), which is part of the
+// cross-kernel conformance surface, so it must NOT change. `oath eval` uses
+// printValueEval instead, which renders Str as text; see below.
 func printValue(st *Store, v Value) string {
+	return printValueMode(st, v, nil)
+}
+
+// printValueEval is printValue for `oath eval` output ONLY: it renders a value of
+// the active Str datatype as its text ("cat") rather than the codepoint tower, and
+// because the walk recurses, a Str nested in a (List Str), a (Pair Str Int), or a
+// record field is text too. It is deliberately NOT used where the rendering is
+// compared across kernels (verify counterexamples), so this ergonomic change stays
+// out of the normative surface.
+func printValueEval(st *Store, v Value) string {
+	return printValueMode(st, v, newStrDecoder(st))
+}
+
+func printValueMode(st *Store, v Value, sd *strDecoder) string {
 	switch v.K {
 	case "int":
 		return fmt.Sprintf("%d", v.Int)
@@ -245,17 +347,29 @@ func printValue(st *Store, v Value) string {
 	case "record":
 		parts := make([]string, 0, len(v.Names))
 		for i, n := range v.Names {
-			parts = append(parts, n+" "+printValue(st, v.Fields[i]))
+			parts = append(parts, n+" "+printValueMode(st, v.Fields[i], sd))
 		}
 		return "{" + strings.Join(parts, " ") + "}"
 	case "data":
+		if sd != nil {
+			if s, ok := sd.text(v); ok {
+				return strconv.Quote(s)
+			}
+			// A Str that is not cleanly scalar text renders its WHOLE chain
+			// structurally — never a mix of codepoints and "" empty-tails — so drop
+			// the decoder for this subtree. A non-Str datatype keeps it, so a Str
+			// nested inside it still renders as text.
+			if v.Hash == sd.hash {
+				sd = nil
+			}
+		}
 		name := ctorName(st, v.Hash, v.Idx)
 		if len(v.Fields) == 0 {
 			return name
 		}
 		parts := []string{name}
 		for _, f := range v.Fields {
-			parts = append(parts, printValue(st, f))
+			parts = append(parts, printValueMode(st, f, sd))
 		}
 		return "(" + strings.Join(parts, " ") + ")"
 	case "closure":
@@ -267,13 +381,13 @@ func printValue(st *Store, v Value) string {
 		case "affine":
 			return fmt.Sprintf("<fn x. %d*x + %d>", v.NA, v.NB)
 		case "const":
-			return fmt.Sprintf("<fn _. %s>", printValue(st, *v.NVal))
+			return fmt.Sprintf("<fn _. %s>", printValueMode(st, *v.NVal, sd))
 		case "table":
 			var pairs []string
 			for i := range v.Fields {
-				pairs = append(pairs, printValue(st, v.Fields[i])+"→"+printValue(st, v.TVals[i]))
+				pairs = append(pairs, printValueMode(st, v.Fields[i], sd)+"→"+printValueMode(st, v.TVals[i], sd))
 			}
-			return fmt.Sprintf("<fn {%s} else %s>", strings.Join(pairs, " "), printValue(st, *v.NVal))
+			return fmt.Sprintf("<fn {%s} else %s>", strings.Join(pairs, " "), printValueMode(st, *v.NVal, sd))
 		}
 	}
 	return "?"

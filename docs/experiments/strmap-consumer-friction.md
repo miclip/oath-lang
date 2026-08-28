@@ -95,6 +95,23 @@ program this is a real tax: every "what does it print?" is a full native build.
 Two small artefacts would remove it — a `Str` renderer in `eval`'s output, and/or
 an interpreted `oath run`.
 
+**Half resolved.** `oath eval --text` renders a value of the active Str datatype
+as its text, recursively — so a `Str`, a `(List Str)`, a `(Pair Str Int)`, and Str
+record fields all read as `"cat"` / `(Cons "a" Nil)` instead of codepoint towers.
+
+It is an OPT-IN flag, not the new default, because the default output turned out to
+be a parsed contract in three places — the differential-test oracle
+(`evalDenotation`), the LLVM acceptance script's `decode_str`, and the MCP eval
+tool all read the `(SCons …)` form, and the structural output is load-bearing for
+the eval-vs-compiled comparison. So the default (and `apiEval`) stays structural
+and machine-readable; `--text` is the human view. The decoder identifies Str by the
+datatype's SHAPE — a nullary constructor and a binary `(Int, self)` one — so it
+survives same-hash aliases and declines a non-Str bound as `Str`; a non-scalar
+codepoint makes the whole value fall back to structural, losing nothing. It is also
+kept out of the verify counterexample renderer, whose transcripts are byte-compared
+across kernels. The second half — an interpreted `oath run <name> -- args` so
+seeing output does not require a native build — is still open.
+
 ## 4. No module/import system; dependency provenance is folklore
 
 `wordcount` depends on `show-int` (defined in `circle.oath`), `str-append` /

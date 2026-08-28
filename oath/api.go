@@ -1420,18 +1420,45 @@ func apiFindEquiv(st *Store, name string) (string, error) {
 	return b.String(), nil
 }
 
+// apiEval renders a value STRUCTURALLY — a Str as its SCons/SNil tower. This is a
+// programmatic contract: the differential-test oracle (evalDenotation) and the MCP
+// eval tool parse this text, so it must not change. The CLI `oath eval` renders a
+// Str as text instead, via cmdEval + printValueEval; both share evalExpr.
 func apiEval(st *Store, src string) (string, error) {
-	forms, err := parseForms(src)
+	v, tyStr, err := evalExpr(st, src)
 	if err != nil {
 		return "", err
 	}
+	return fmt.Sprintf("%s : %s", printValue(st, v), tyStr), nil
+}
+
+// evalDisplay is the CLI rendering of `oath eval`: like apiEval, but a Str value
+// reads as text ("cat") rather than its codepoint tower. It is kept distinct from
+// apiEval, whose structural output is a parsed contract (the differential oracle
+// and the MCP tool).
+func evalDisplay(st *Store, src string) (string, error) {
+	v, tyStr, err := evalExpr(st, src)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s : %s", printValueEval(st, v), tyStr), nil
+}
+
+// evalExpr elaborates, checks and evaluates a single expression, returning the
+// value and its rendered type. The value is left unrendered so the CLI can render
+// a Str as text while apiEval renders it structurally.
+func evalExpr(st *Store, src string) (Value, string, error) {
+	forms, err := parseForms(src)
+	if err != nil {
+		return Value{}, "", err
+	}
 	if len(forms) != 1 {
-		return "", fmt.Errorf("eval expects exactly one expression")
+		return Value{}, "", fmt.Errorf("eval expects exactly one expression")
 	}
 	e := &elab{st: st}
 	term, err := e.elabTerm(forms[0])
 	if err != nil {
-		return "", err
+		return Value{}, "", err
 	}
 	// `eval` builds a bare Term rather than a Def, so it needs admission of its
 	// own — the same budget, applied to the same kind of structure.
@@ -1442,23 +1469,23 @@ func apiEval(st *Store, src string) (string, error) {
 	// 65,536. A budget stated as an exact boundary has to be exact at the
 	// boundary, or the number in the documentation is not the number enforced.
 	if err := admitTerm(term); err != nil {
-		return "", err
+		return Value{}, "", err
 	}
 	// The explicit machine (#149), not the recursive checker. NOTE the narrow
-	// scope: this makes the CHECKING step stack-safe, and apiEval still reaches
+	// scope: this makes the CHECKING step stack-safe, and eval still reaches
 	// elabTerm and printValue, which recurse. `oath eval` is not yet stack-safe
 	// end to end — only its checker call is migrated.
 	c := &checkerMachine{st: st}
 	ty, err := c.run(checkerStep{mode: modeSynth, term: term})
 	if err != nil {
-		return "", err
+		return Value{}, "", err
 	}
 	ev := &evaluator{st: st, fuel: propFuel}
 	v, err := ev.eval(nil, "", term)
 	if err != nil {
-		return "", err
+		return Value{}, "", err
 	}
-	return fmt.Sprintf("%s : %s", printValue(st, v), printTy(st, ty, nil)), nil
+	return v, printTy(st, ty, nil), nil
 }
 
 func apiVerify(st *Store, name string) (string, error) {
