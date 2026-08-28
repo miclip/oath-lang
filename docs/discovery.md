@@ -57,10 +57,10 @@ $ oath find rat-add
 ```
 
 **Query by fresh spec** — write the property you want; the sought function is
-`self`, the body is any trivial placeholder of the right type:
+`self`. A spec query needs no body — write just the signature and the property:
 ```
 $ cat spec.oath
-(defn wanted [] [(a Int) (b Int)] Int (+ a b)
+(defn wanted [] [(a Int) (b Int)] Int
   (prop commutative [(a Int) (b Int)] (== (wanted a b) (wanted b a))))
 $ oath find --spec spec.oath
 spec query "wanted" — which proven definitions satisfy it (by content hash, no name, no example):
@@ -109,12 +109,16 @@ and match). What remains:
 - **Query by fresh spec** is now supported alongside query-by-example:
   `oath find --spec <file>` (and the `find_spec` MCP tool) elaborate a `(defn
   ...)` whose `(prop ...)` clauses are the query — the sought function is
-  `self`, the body is any trivial well-typed placeholder — and return every
-  proven definition that satisfies them. This is "I have a spec; who has proven
-  an implementation?", the core commons interaction, with no name and no example
-  needed. The dummy body is the one wart (you must write a well-typed
-  placeholder to give `self` a signature); auto-synthesizing an inhabitant of
-  the return type would remove it.
+  `self` — and return every proven definition that satisfies them. This is "I
+  have a spec; who has proven an implementation?", the core commons interaction,
+  with no name and no example needed. A query needs no body: it is JUST the
+  signature and the property (#65 rung 4). Because the body is a placeholder the
+  find never inspects — it matches on the property's content hash — one is
+  synthesized internally: a parameter whose type is the return type, reused by
+  reference. That handles a polymorphic return (which an inhabitant could not)
+  and, being a bare reference rather than a self-call, is immune to a query named
+  like a special form or primitive; a query whose return type matches no
+  parameter still asks for an explicit body.
 - **Proof-implication** is now available alongside the content-hash surface:
   `oath find --implies <file>` (and the `find_implies` MCP tool) finds every
   definition that PROVABLY satisfies the spec — via Z3, not by shape. Because a

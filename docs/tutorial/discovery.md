@@ -29,12 +29,13 @@ are de Bruijn, so "commutativity" has one canonical hash wherever it appears.
 ## 2. By a fresh spec — "who proved *this*?"
 
 You usually don't have an example — you have a spec. Write it as a `(defn ...)`
-whose property is the query (`self` is the sought function; the body is any
-trivial placeholder):
+whose property is the query (`self` is the sought function). A spec query needs no
+body — you are querying BECAUSE you have no implementation — so write just the
+signature and the property:
 
 ```console
 $ cat commutative.oath
-(defn wanted [] [(a Int) (b Int)] Int (+ a b)
+(defn wanted [] [(a Int) (b Int)] Int
   (prop commutative [(a Int) (b Int)] (== (wanted a b) (wanted b a))))
 
 $ oath find --spec commutative.oath
@@ -55,7 +56,7 @@ operands of `==` flipped — and the hash surface misses it:
 
 ```console
 $ cat flipped.oath
-(defn wanted [] [(a Rat) (b Rat)] Rat (+ a b)
+(defn wanted [] [(a Rat) (b Rat)] Rat
   (prop flipped [(a Rat) (b Rat)] (== (wanted b a) (wanted a b))))
 
 $ oath find --spec flipped.oath

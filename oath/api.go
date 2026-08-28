@@ -469,6 +469,111 @@ func apiFind(st *Store, name string) (string, error) {
 // trivial expression of the right type), then find every definition that
 // satisfies them. This is "I have a spec — who has proven an implementation?",
 // the core commons interaction, with no name and no example needed.
+// reparsesAsLiteral reports whether a symbol is read as a value literal before
+// local/self lookup — the only such symbols are the two Booleans (every other
+// literal is a distinct token kind, so no binder can be named one).
+func reparsesAsLiteral(s string) bool { return s == "true" || s == "false" }
+
+// isPropForm reports whether x has the SHAPE of a property clause —
+// (prop <name> [<params>] <body>) — not merely a list headed by `prop`. Function
+// names are not reserved against `prop`, so an explicit body that CALLS a function
+// named prop (e.g. (prop x)) must not be mistaken for a property clause and treated
+// as an omitted body. A clause has a symbol name and a bracketed parameter list; a
+// call does not.
+func isPropForm(x sx) bool {
+	return x.K == "list" && len(x.Kids) >= 4 && x.Kids[0].isSym("prop") &&
+		x.Kids[1].K == "sym" && x.Kids[2].K == "brack"
+}
+
+// ensureQueryBody gives a spec-query (defn ...) a synthesized body when it omits
+// one, so a query can be written as JUST its properties — the point of a SPEC query
+// is that you have no implementation to write. The find matches on the property's
+// CONTENT HASH, never the body, so the body only has to TYPE-CHECK.
+//
+// The synthesized body is a PARAMETER whose type is the return type, referenced by
+// name. This is deliberately not a self-call: a bare parameter reference is never in
+// head position, so it never routes through special-form or primitive dispatch and
+// never mentions the function's own name — the two things that make a synthesized
+// self-call collide with a query named `if`/`+`, a parameter that shadows it, and so
+// on. Algebraic-law queries almost always have such a parameter (a commutative law
+// over Int takes Int parameters; an involution over (List a) takes a (List a)), and
+// this also handles a POLYMORPHIC return, which no inhabitant synthesizer could. When
+// no parameter has the return type — a query returning Bool from Int parameters, a
+// nullary query — a body genuinely cannot be reused, and an explicit one is required.
+//
+// A body is ABSENT iff the element after the return type is a property clause: a real
+// body is an expression, which is never one (isPropForm matches the clause SHAPE, so
+// a body that merely CALLS a function named prop is not mistaken for one).
+func ensureQueryBody(st *Store, f sx) (sx, error) {
+	if f.K != "list" || len(f.Kids) < 5 || !f.Kids[0].isSym("defn") || f.Kids[1].K != "sym" ||
+		f.Kids[2].K != "brack" || f.Kids[3].K != "brack" {
+		return f, nil // not a well-formed query defn; let elabFunc report it
+	}
+	if len(f.Kids) >= 6 && !isPropForm(f.Kids[5]) {
+		return f, nil // a body is already present
+	}
+	// Match a parameter to the return type by CANONICAL IDENTITY, not surface
+	// spelling: record fields are canonicalized independent of author order, a name
+	// and its alias resolve to one data hash, and arrow nestings that curry
+	// differently are the same type — all of which sxEqual-style syntax comparison
+	// would miss. So elaborate the return type and each parameter type and compare
+	// tyBytes, the same canonical encoding the rest of discovery uses. A type that
+	// does not elaborate is left for elabFunc to report.
+	tvs, err := tyvarNames(f.Kids[2])
+	if err != nil {
+		return f, nil
+	}
+	e := &elab{st: st, tyvars: tvs}
+	retTy, err := e.parseTy(f.Kids[4])
+	if err != nil {
+		return f, nil
+	}
+	want := tyBytes(retTy)
+	params := f.Kids[3].Kids
+	// A parameter is LEXICALLY VISIBLE iff no later parameter reuses its name — a
+	// bare reference resolves to the LAST binding of a name. Record each name's last
+	// index, then take the FIRST visible parameter whose type is the return type.
+	lastIdx := map[string]int{}
+	for i, p := range params {
+		if p.K == "list" && len(p.Kids) > 0 && p.Kids[0].K == "sym" {
+			lastIdx[p.Kids[0].Sym] = i
+		}
+	}
+	var body sx
+	found := false
+	for i, p := range params {
+		if p.K != "list" || len(p.Kids) < 2 || p.Kids[0].K != "sym" {
+			continue
+		}
+		pn := p.Kids[0].Sym
+		if lastIdx[pn] != i {
+			continue // shadowed by a later parameter of the same name
+		}
+		// A bare `true`/`false` reparses as a Boolean literal rather than the
+		// parameter, so it cannot be used as the reference.
+		if reparsesAsLiteral(pn) {
+			continue
+		}
+		pty, perr := e.parseTy(p.Kids[1])
+		if perr != nil {
+			continue
+		}
+		if bytes.Equal(tyBytes(pty), want) {
+			body, found = p.Kids[0], true
+			break
+		}
+	}
+	if !found {
+		return f, fmt.Errorf("spec query %q needs an explicit body: no parameter has the return type to reuse as a placeholder — write any well-typed expression of the return type", f.Kids[1].Sym)
+	}
+	out := f
+	out.Kids = make([]sx, 0, len(f.Kids)+1)
+	out.Kids = append(out.Kids, f.Kids[:5]...)
+	out.Kids = append(out.Kids, body)
+	out.Kids = append(out.Kids, f.Kids[5:]...) // the properties
+	return out, nil
+}
+
 func apiFindSpec(st *Store, src string) (string, error) {
 	forms, err := parseForms(src)
 	if err != nil {
@@ -481,6 +586,10 @@ func apiFindSpec(st *Store, src string) (string, error) {
 	for _, f := range forms {
 		if f.K != "list" || len(f.Kids) == 0 || !f.Kids[0].isSym("defn") {
 			return "", fmt.Errorf("a spec query must be a (defn ...) whose properties are the query")
+		}
+		f, err = ensureQueryBody(st, f)
+		if err != nil {
+			return "", err
 		}
 		def, meta, err := elabFunc(st, f)
 		if err != nil {
@@ -1238,7 +1347,11 @@ func apiFindImplies(st *Store, src string, mode findImpliesMode) (string, error)
 	if len(forms) != 1 || forms[0].K != "list" || len(forms[0].Kids) == 0 || !forms[0].Kids[0].isSym("defn") {
 		return "", fmt.Errorf("a proof-implication query must be a single (defn ...) whose properties are the query")
 	}
-	qd, qm, err := elabFunc(st, forms[0])
+	qf, err := ensureQueryBody(st, forms[0])
+	if err != nil {
+		return "", err
+	}
+	qd, qm, err := elabFunc(st, qf)
 	if err != nil {
 		return "", err
 	}
