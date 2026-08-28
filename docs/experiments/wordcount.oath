@@ -1,0 +1,30 @@
+; wordcount — tally command-line words into a native Str-keyed map and print the
+; counts in str-lt-sorted key order. A real consumer of the #184 str-map: the
+; increment path (lookup-or-zero, then insert) is exactly what a native map is
+; for, so this exercises str-map-lookup + str-map-insert at run time, not just in
+; a proof. Depends on str-map-* (strmap.oath), str-append/str-join (str.oath) and
+; show-int (circle.oath) — all resolved from the one store.
+
+; bump: +1 to w's count, reading the current value out of the native map.
+(defn wc-bump [] [(w Str) (m StrMap)] StrMap
+  (str-map-insert w (+ 1 (match (str-map-lookup w m) ((None) 0) ((Some c) c))) m))
+
+; tally: fold the whole word list into a map.
+(defn wc-tally [] [(ws (List Str)) (m StrMap)] StrMap
+  (match ws ((Nil) m) ((Cons h t) (wc-tally t (wc-bump h m)))))
+
+; one "word count" line.
+(defn wc-line [] [(w Str) (m StrMap)] Str
+  (str-append (str-append w (SCons 32 (SNil)))
+              (show-int (match (str-map-lookup w m) ((None) 0) ((Some c) c)))))
+
+(defn wc-lines [] [(ks (List Str)) (m StrMap)] (List Str)
+  (match ks ((Nil) (Nil [Str])) ((Cons h t) (Cons [Str] (wc-line h m) (wc-lines t m)))))
+
+; the program: args are the words; keys come back str-lt-sorted from the map.
+(defn wordcount [] [(args (List Str))] Str
+  (let (m StrMap (wc-tally args str-map-empty))
+    (str-join 10 (wc-lines (str-map-keys m) m)))
+  (prop counts-and-sorts [(x Int)]
+    (== (wordcount (Cons [Str] "the" (Cons [Str] "cat" (Cons [Str] "the" (Nil [Str])))))
+        (str-append (str-append "cat 1" (SCons 10 (SNil))) "the 2"))))
