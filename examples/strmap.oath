@@ -1,0 +1,97 @@
+; StrMap: the Str-keyed analog of Map (examples/map.oath) — a DISTINCT type
+; (Str keys → Int values) backed by a strictly-sorted-by-key, duplicate-free
+; List (Pair Str Int). Making it a type is what lets a backend recognize the
+; str-map-* vocabulary and lower it to a native string-keyed container (a Go map
+; on the Go backend, a persistent tree keyed by o_str_cmp on LLVM) — proven
+; correct against this structural model by the differential gate (#184).
+;
+; The ORDER on keys is not a primitive here as it is for Int: it is str-lt, a
+; lexicographic order defined by structural recursion over the Str datatype, with
+; str-eq derived from it (antisymmetry: neither below the other). Recursion and
+; the deep proofs live in the raw sorted-assoc-list helpers smi-*; the str-map-*
+; operations are thin, non-recursive wrappers over the MkStrMap newtype — the
+; vocabulary the compiler recognizes.
+
+(defn str-lt [] [(a Str) (b Str)] Bool
+  (match a
+    ((SNil) (match b ((SNil) false) ((SCons cb rb) true)))
+    ((SCons ca ra) (match b ((SNil) false)
+      ((SCons cb rb) (if (< ca cb) true (if (== ca cb) (str-lt ra rb) false))))))
+  (prop irreflexive [(a Str)] (not (str-lt a a))))
+
+(defn str-eq [] [(a Str) (b Str)] Bool
+  (if (str-lt a b) false (if (str-lt b a) false true))
+  (prop reflexive [(a Str)] (str-eq a a)))
+
+(data StrMap [] (MkStrMap (List (Pair Str Int))))
+
+(defn smi-lookup [] [(k Str) (m (List (Pair Str Int)))] (Option Int)
+  (match m
+    ((Nil) (None [Int]))
+    ((Cons p t) (match p ((Pair pk pv)
+      (if (str-eq k pk) (Some [Int] pv) (if (str-lt k pk) (None [Int]) (smi-lookup k t)))))))
+  (prop empty [(k Str)] (== (smi-lookup k (Nil [(Pair Str Int)])) (None [Int]))))
+
+(defn smi-insert [] [(k Str) (v Int) (m (List (Pair Str Int)))] (List (Pair Str Int))
+  (match m
+    ((Nil) (Cons [(Pair Str Int)] (Pair [Str Int] k v) (Nil [(Pair Str Int)])))
+    ((Cons p t) (match p ((Pair pk pv)
+      (if (str-lt k pk) (Cons [(Pair Str Int)] (Pair [Str Int] k v) m)
+          (if (str-eq k pk) (Cons [(Pair Str Int)] (Pair [Str Int] k v) t)
+              (Cons [(Pair Str Int)] p (smi-insert k v t))))))))
+  (prop finds [(k Str) (v Int) (m (List (Pair Str Int)))]
+    (== (smi-lookup k (smi-insert k v m)) (Some [Int] v))))
+
+(defn smi-keys [] [(m (List (Pair Str Int)))] (List Str)
+  (match m
+    ((Nil) (Nil [Str]))
+    ((Cons p t) (match p ((Pair pk pv) (Cons [Str] pk (smi-keys t))))))
+  (prop preserves-length [(m (List (Pair Str Int)))]
+    (== (length [Str] (smi-keys m)) (length [(Pair Str Int)] m))))
+
+(defn smi-values [] [(m (List (Pair Str Int)))] (List Int)
+  (match m
+    ((Nil) (Nil [Int]))
+    ((Cons p t) (match p ((Pair pk pv) (Cons [Int] pv (smi-values t))))))
+  (prop preserves-length [(m (List (Pair Str Int)))]
+    (== (length [Int] (smi-values m)) (length [(Pair Str Int)] m))))
+
+; left-biased merge: entries of the first argument win on a key collision.
+(defn smi-merge [] [(xs (List (Pair Str Int))) (ys (List (Pair Str Int)))] (List (Pair Str Int))
+  (match xs
+    ((Nil) ys)
+    ((Cons p t) (match p ((Pair k v) (smi-insert k v (smi-merge t ys))))))
+  (prop empty-left [(ys (List (Pair Str Int)))] (== (smi-merge (Nil [(Pair Str Int)]) ys) ys)))
+
+(defn str-map-empty [] [] StrMap
+  (MkStrMap (Nil [(Pair Str Int)]))
+  (prop is-empty [(k Str)] (== (smi-lookup k (Nil [(Pair Str Int)])) (None [Int]))))
+
+(defn str-map-lookup [] [(k Str) (m StrMap)] (Option Int)
+  (match m ((MkStrMap ps) (smi-lookup k ps)))
+  (prop empty-has-none [(k Str)]
+    (== (str-map-lookup k (MkStrMap (Nil [(Pair Str Int)]))) (None [Int]))))
+
+(defn str-map-insert [] [(k Str) (v Int) (m StrMap)] StrMap
+  (match m ((MkStrMap ps) (MkStrMap (smi-insert k v ps))))
+  (prop finds-inserted [(k Str) (v Int) (m StrMap)]
+    (== (str-map-lookup k (str-map-insert k v m)) (Some [Int] v))))
+
+(defn str-map-has [] [(k Str) (m StrMap)] Bool
+  (match (str-map-lookup k m) ((None) false) ((Some v) true))
+  (prop present-after-insert [(k Str) (v Int) (m StrMap)]
+    (str-map-has k (str-map-insert k v m))))
+
+(defn str-map-keys [] [(m StrMap)] (List Str)
+  (match m ((MkStrMap ps) (smi-keys ps))))
+
+(defn str-map-values [] [(m StrMap)] (List Int)
+  (match m ((MkStrMap ps) (smi-values ps))))
+
+(defn str-map-size [] [(m StrMap)] Int
+  (match m ((MkStrMap ps) (length [(Pair Str Int)] ps)))
+  (prop non-negative [(m StrMap)] (<= 0 (str-map-size m))))
+
+(defn str-map-merge [] [(a StrMap) (b StrMap)] StrMap
+  (match a ((MkStrMap xs) (match b ((MkStrMap ys) (MkStrMap (smi-merge xs ys))))))
+  (prop empty-left [(b StrMap)] (== (str-map-merge str-map-empty b) b)))

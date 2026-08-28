@@ -1,0 +1,12 @@
+{
+  "name": "smi-keys",
+  "hash": "759837d793af563901c7f42afc82ed06b5ace80e4ecb506f11349742a16502fb",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

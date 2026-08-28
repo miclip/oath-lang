@@ -1,0 +1,13 @@
+{
+  "name": "str-map-lookup",
+  "hash": "81ccf1d0ccd21ab306cb1e6d223794d8e86df662a30e3852cd55b13307aa38c8",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

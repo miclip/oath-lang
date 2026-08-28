@@ -1,0 +1,13 @@
+{
+  "name": "smi-lookup",
+  "hash": "3e9a0bd29ca905234579d0fb1ed014e10e8374fea4c98fbad036f5ce7e5dfebd",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

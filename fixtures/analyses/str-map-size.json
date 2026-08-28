@@ -1,0 +1,11 @@
+{
+  "name": "str-map-size",
+  "hash": "0ee52d97a1d15277301107b83176df1ccfb01a9f267731e0776343f94697a2bc",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

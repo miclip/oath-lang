@@ -3783,6 +3783,71 @@
       ]
     },
     {
+      "name": "smi-insert",
+      "hash": "0909cbe247797773f04949fcbf77d4916998e956160c997c09804da436806999",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "finds",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "smi-keys",
+      "hash": "759837d793af563901c7f42afc82ed06b5ace80e4ecb506f11349742a16502fb",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "preserves-length",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "smi-lookup",
+      "hash": "3e9a0bd29ca905234579d0fb1ed014e10e8374fea4c98fbad036f5ce7e5dfebd",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "empty",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "smi-merge",
+      "hash": "7bde501d14a226350cdf4ffbfbcb7e8be3da359ddd553163a74bbd07a6784587",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "empty-left",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "smi-values",
+      "hash": "17328a7892c9322c7041fe3678f8b07d1afe2b1c9c1e56b272d40cb556be623b",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "preserves-length",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "snoc",
       "hash": "2248e151c30adcaa8c23ce5a9ba21fc8cd53f36454b1b5afe4762c96dfc8e9a6",
       "level": "proven",
@@ -3967,6 +4032,19 @@
       ]
     },
     {
+      "name": "str-eq",
+      "hash": "780dcca70c1334783ed6d71fd35180990eb65e3aefc707c8d08795fa3e5fa094",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "reflexive",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "str-join",
       "hash": "b41104b62aae86b49c4644688f01ac9e2d56c36f475b8b304b834f3804467f8b",
       "level": "proven",
@@ -3989,6 +4067,97 @@
         {
           "name": "nonneg",
           "proven": true
+        }
+      ]
+    },
+    {
+      "name": "str-lt",
+      "hash": "7663d6a3c2272fc403113cb861fea8cf3dadca0779b17d1f5e5cbe3d50919519",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "irreflexive",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "str-map-empty",
+      "hash": "833a4f5fb6a9c0b0d470f832e8e8594ea1785477127c0dfc40da390d26dc7b64",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "is-empty",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "str-map-has",
+      "hash": "df41274ad5fc6b35fe839c1bbfc2333c2ad8e8a9be94a608eb479b58a2c7c2c2",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "present-after-insert",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "str-map-insert",
+      "hash": "045a5eadc8cab60e95cf219f60f88c1769d32f779e0331dcd3941c3610e14b93",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "finds-inserted",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "str-map-lookup",
+      "hash": "81ccf1d0ccd21ab306cb1e6d223794d8e86df662a30e3852cd55b13307aa38c8",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "empty-has-none",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "str-map-merge",
+      "hash": "0320f2f589519eca225768f085a6d0e16aa0b39379615ee91102c1eb256ca1af",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "empty-left",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "str-map-size",
+      "hash": "0ee52d97a1d15277301107b83176df1ccfb01a9f267731e0776343f94697a2bc",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "non-negative",
+          "proven": false
         }
       ]
     },

@@ -1,0 +1,14 @@
+{
+  "name": "str-map-insert",
+  "hash": "045a5eadc8cab60e95cf219f60f88c1769d32f779e0331dcd3941c3610e14b93",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

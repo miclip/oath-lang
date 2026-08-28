@@ -1,0 +1,10 @@
+{
+  "name": "str-map-values",
+  "hash": "97722ef020d4c611258ebf5b869cd64ffbbc02c84bc25e2aa24fdbff846cad03",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "asserted"
+}

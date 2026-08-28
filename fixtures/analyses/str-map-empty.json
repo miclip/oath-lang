@@ -1,0 +1,9 @@
+{
+  "name": "str-map-empty",
+  "hash": "833a4f5fb6a9c0b0d470f832e8e8594ea1785477127c0dfc40da390d26dc7b64",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

@@ -1,0 +1,13 @@
+{
+  "name": "smi-merge",
+  "hash": "7bde501d14a226350cdf4ffbfbcb7e8be3da359ddd553163a74bbd07a6784587",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

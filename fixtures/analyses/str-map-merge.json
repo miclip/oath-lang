@@ -1,0 +1,13 @@
+{
+  "name": "str-map-merge",
+  "hash": "0320f2f589519eca225768f085a6d0e16aa0b39379615ee91102c1eb256ca1af",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

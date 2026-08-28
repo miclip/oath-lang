@@ -1,0 +1,13 @@
+{
+  "name": "str-map-has",
+  "hash": "df41274ad5fc6b35fe839c1bbfc2333c2ad8e8a9be94a608eb479b58a2c7c2c2",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

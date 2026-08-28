@@ -1,0 +1,13 @@
+{
+  "name": "str-lt",
+  "hash": "7663d6a3c2272fc403113cb861fea8cf3dadca0779b17d1f5e5cbe3d50919519",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

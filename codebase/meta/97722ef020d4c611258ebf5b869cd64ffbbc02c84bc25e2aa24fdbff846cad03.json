@@ -1,0 +1,16 @@
+{
+  "name": "str-map-values",
+  "guarantee": {
+    "level": "asserted"
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "m"
+  ],
+  "confinement": [
+    ""
+  ]
+}

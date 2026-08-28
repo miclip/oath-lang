@@ -1,0 +1,13 @@
+{
+  "name": "str-eq",
+  "hash": "780dcca70c1334783ed6d71fd35180990eb65e3aefc707c8d08795fa3e5fa094",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

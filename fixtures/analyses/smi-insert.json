@@ -1,0 +1,14 @@
+{
+  "name": "smi-insert",
+  "hash": "0909cbe247797773f04949fcbf77d4916998e956160c997c09804da436806999",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}
