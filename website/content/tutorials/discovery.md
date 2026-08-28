@@ -69,16 +69,16 @@ misses, ask the *prover*: `find --implies` appends your spec to each
 signature-compatible definition and proves it (via Z3), so it finds anything
 that **provably satisfies** the spec, however that definition wrote its own. A
 candidate whose signature matches only *up to operand types* is admitted too,
-with your binders re-typed to it, and the hit says which signature it was proved
-at:
+with your whole query property re-typed to it — binders and body-embedded types
+alike — and the hit says which signature it was proved at:
 
 ```console
 $ oath find --implies flipped.oath
 spec query "wanted" — which definitions PROVABLY satisfy it (proof-implication, not shape match):
 
   · flipped
-      apply2             ← provably satisfies it at (-> Int Int Int) (direct (lemma-free), cross-type: query binders re-typed)
-      max2               ← provably satisfies it at (-> Int Int Int) (direct (lemma-free), cross-type: query binders re-typed)
+      apply2             ← provably satisfies it at (-> Int Int Int) (direct (lemma-free), cross-type: query property re-typed)
+      max2               ← provably satisfies it at (-> Int Int Int) (direct (lemma-free), cross-type: query property re-typed)
       rat-add            ← provably satisfies it (direct (lemma-free))
       rat-mul            ← provably satisfies it (direct (lemma-free))
       4 REFUTED — proved NOT to satisfy it (a countermodel exists)
@@ -91,7 +91,7 @@ integers — and Z3 knows all four, so the flipped statement discharges directly
 in every case. Syntactic when it can, semantic when it must.
 
 Look at the two labelled hits. Your spec is over `Rat`; `apply2` and `max2` are
-over `Int`, so they were proved with your binders re-typed to *their* signature
+over `Int`, so they were proved with your property re-typed to *their* signature
 — that is what the `at (-> Int Int Int)` and the `cross-type` label report.
 `max2` is the one worth pausing on: it is `(if (< a b) b a)`, and it states no
 commutativity law anywhere. Nothing about it *says* commutative. It came back
@@ -121,8 +121,8 @@ $ oath find --implies flipped.oath --details
 spec query "wanted" — which definitions PROVABLY satisfy it (proof-implication, not shape match):
 
   · flipped
-      apply2             ← provably satisfies it at (-> Int Int Int) (direct (lemma-free), cross-type: query binders re-typed)
-      max2               ← provably satisfies it at (-> Int Int Int) (direct (lemma-free), cross-type: query binders re-typed)
+      apply2             ← provably satisfies it at (-> Int Int Int) (direct (lemma-free), cross-type: query property re-typed)
+      max2               ← provably satisfies it at (-> Int Int Int) (direct (lemma-free), cross-type: query property re-typed)
       rat-add            ← provably satisfies it (direct (lemma-free))
       rat-mul            ← provably satisfies it (direct (lemma-free))
       4 REFUTED — proved NOT to satisfy it (a countermodel exists)

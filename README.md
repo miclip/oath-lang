@@ -276,9 +276,10 @@ function), matched *up to operand types* (Int and Rat commutativity match), and 
 because a property is portable — by **proof-implication**: append your spec to
 each signature-compatible definition and prove it, so commutativity written
 `(== (self b a) (self a b))` still finds `+` even though its AST differs, and an
-`Int` law finds its `Rat` counterpart with your binders re-typed to it. This is
-the layer that makes the commons real: pull proven code by property, rebuild
-nothing. Full rationale in [docs/discovery.md](docs/discovery.md).
+`Int` law finds its `Rat` counterpart with your whole query property re-typed to
+it (binders and body-embedded types alike). This is the layer that makes the
+commons real: pull proven code by property, rebuild nothing. Full rationale in
+[docs/discovery.md](docs/discovery.md).
 
 **It also reports what it did *not* find, and keeps the reasons apart.** A
 `REFUTED` candidate was proved *not* to satisfy your spec — a finding about the

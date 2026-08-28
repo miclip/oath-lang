@@ -132,13 +132,18 @@ and match). What remains:
 
   Candidates are **signature-compatible, not same-signature**: a definition
   whose signature equals the query's *up to primitive leaves* is admitted with
-  the query's binders re-typed to it, so an `Int` law reaches its `Rat`, `Float`
+  the query PROPERTY re-typed to it, so an `Int` law reaches its `Rat`, `Float`
   and `Bool` counterparts and the hit reports the signature it was proved at.
   Admission is deliberately wider than truth — `(Int,Int)->Int` and
   `(Bool,Bool)->Bool` generalize alike — because the PROOF is the filter, not
-  the signature. Only the property's BINDERS are re-typed; a property whose
-  BODY carries its own type annotations no longer typechecks against the
-  candidate and is rejected rather than approximated. Cost on the committed
+  the signature. The whole property is re-typed — its BINDERS *and* the types
+  embedded in its BODY (annotations, type applications, constructor
+  instantiations) — so a law whose body mentions a type reaches the prover
+  cross-type exactly as one whose only types are in its binders. Re-typing
+  rewrites the primitive leaves of the query's SIGNATURE and nothing else, so a
+  re-typed property can still fail to typecheck against the candidate (a body
+  calling a monomorphic `Int` definition carries no type argument to rewrite);
+  that candidate is rejected rather than approximated. Cost on the committed
   corpus, measured before this widened: half again as many candidates
   (6 -> 9), a third more solver calls (12 -> 16), and no measurable change in
   wall clock (5m44.257s -> 5m44.981s median), because the run is dominated by
@@ -238,13 +243,15 @@ look identical from outside — and the shape is the half you control. The
 name-keyed modes (`find <name>` and `--equiv`) are not affected: they ask for a
 name rather than a shape.
 
-**And primitive leaves generalize LESS than the headline suggests.** `--implies`
-re-types the property's BINDERS to each candidate, which is what lets an `Int`
-law reach its `Rat` counterpart; `--spec` likewise generalizes only the binders
-and hashes the property BODY unchanged. So a primitive written into the body —
-in a type application, a constructor, an annotation — does not generalize at
-all: laws that are otherwise identical but say `(Nil [Int])` and `(Nil [Rat])`
-miss each other. Keep concrete types in the binders where you can.
+**And primitive leaves generalize LESS than the headline suggests — for
+`--spec`.** `--implies` re-types the whole property (binders *and* body-embedded
+types) to each candidate, which is what lets an `Int` law reach its `Rat`
+counterpart however the law was written. `--spec` generalizes only the binders
+and hashes the property BODY unchanged, so on that surface a primitive written
+into the body — in a type application, a constructor, an annotation — does not
+generalize at all: laws that are otherwise identical but say `(Nil [Int])` and
+`(Nil [Rat])` miss each other. Keep concrete types in the binders where you can,
+or reach for `--implies`, which pays a proof per candidate and does not care.
 
 ### Start with a SIGNATURE PROBE, not with a law
 

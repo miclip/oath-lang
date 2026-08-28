@@ -383,12 +383,12 @@ func TestFindImpliesCrossType(t *testing.T) {
 		t.Fatalf("the exact-signature path must still find plus-i:\n%s", exact)
 	}
 
-	// THE checkDef GATE, witnessed. Only BINDERS are re-typed, so a property
-	// whose BODY carries its own type annotation still says Int after the
-	// binders say Rat. That augmentation is ill-typed and must be dropped —
+	// THE checkDef GATE, witnessed. Re-typing rewrites the primitive leaves of
+	// the query's SIGNATURE and nothing else, so a re-typed property can still be
+	// ill-typed against the candidate; that augmentation must be dropped —
 	// dropping the gate instead makes this same query report plus-r as
 	// `provably satisfies it`, because the prover does not re-typecheck what it
-	// is handed. This is the rung-3 residue: rejected, not silently approximated.
+	// is handed. Rejected, not silently approximated.
 	//
 	// THE OLD ASSERTION WAS `!Contains(residue, "plus-r2")` OVER SUMMARY OUTPUT,
 	// AND IT NAMED A CAUSE IT COULD NOT SEE. Summary mode counts the residue
@@ -486,9 +486,28 @@ func TestFindImpliesCrossType(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hit := satisfyingLineFor(residue, "plus-r2"); hit == "" {
+	hit := satisfyingLineFor(residue, "plus-r2")
+	if hit == "" {
 		t.Fatalf("plus-r2 was NOT reported as provably satisfying the body-carrying law; rung 3 "+
 			"should prove it cross-type (commutativity holds at Rat):\n%s", residue)
+	}
+	// THE LABEL AND THE SIGNATURE, ON plus-r2's OWN LINE. Being reported as a hit
+	// does not say the report described the hit correctly, and those are separate
+	// failures: a body-carrying law proved at Rat that is rendered with no
+	// cross-type label, or with the query's own (-> Int Int Int), tells a reader
+	// it was an exact match. `query binders re-typed` was the label BEFORE rung 3
+	// and was left in place after it, so it is asserted here NEGATIVELY as well —
+	// otherwise the corrected wording has no witness and can silently regress to
+	// a claim the code stopped making.
+	for _, want := range []string{"cross-type: query property re-typed", "(-> Rat Rat Rat)"} {
+		if !strings.Contains(hit, want) {
+			t.Fatalf("plus-r2's hit must carry %q — the property (binders AND body) was re-typed to "+
+				"Rat, and the line is where a reader learns that:\n%s", want, hit)
+		}
+	}
+	if strings.Contains(hit, "binders re-typed") {
+		t.Fatalf("the hit still says only BINDERS were re-typed, which understates what admitted "+
+			"this candidate — its body's Int annotation was re-typed too:\n%s", hit)
 	}
 	if strings.Contains(residue, "no definition provably satisfies this") {
 		t.Fatalf("the empty-answer fallback fired even though plus-r2 satisfies the query — the "+

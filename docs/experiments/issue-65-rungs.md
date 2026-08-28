@@ -19,17 +19,25 @@ requires one before starting architectural work — so this supplies one per run
 
 The issue says `find --implies` "currently restricts candidates to an EXACT
 signature match". It does not. `apiFindImplies` admits any candidate whose
-signature is equal up to primitive leaves and re-types the query's binders to
-it:
+signature is equal up to primitive leaves and re-types the query property to it:
 
 ```go
 if !bytes.Equal(tyBytes(d.Ty), qsig) {
     sub, ok := crossTypeCompatible(qd.Ty, d.Ty)
     if !ok { continue }
-    qp = Prop{Binders: crossTypeRetypeBinders(qp.Binders, sub), Body: qp.Body}
+    qp = Prop{Binders: crossTypeRetypeBinders(qp.Binders, sub),
+              Body:    *crossTypeRetypeBody(&qp.Body, sub)}
 ```
 
 `docs/discovery.md` documents it as shipped. The rung is stale.
+
+**The `Body` half of that snippet is RUNG 3, not rung 2, and it landed after
+this measurement was taken.** When rung 2 was assessed the line read
+`Body: qp.Body` — binders only — which is precisely the asymmetry the rung 3
+sections below measure and dispose of. The snippet is shown in its CURRENT form
+because a reader checking the claim reads the code, not this file's timestamp;
+what the measurement established is unchanged either way, since rung 2's
+question was whether cross-type admission existed at all, and it did.
 
 ## Rung 1's rule list: FOUR OF FIVE ALREADY DONE
 

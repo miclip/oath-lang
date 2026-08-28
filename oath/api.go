@@ -728,8 +728,8 @@ func crossTypeRetypeBinders(binders []Ty, sub crossTypeSub) []Ty {
 	return out
 }
 
-// crossTypeRetypeBody is RUNG 3 (#65). A cross-type candidate is admitted by
-// re-typing the query property's BINDERS to it; but a body carrying its own type
+// crossTypeRetypeBody is RUNG 3 (#65). A cross-type candidate used to be admitted
+// by re-typing the query property's BINDERS alone; a body carrying its own type
 // arguments — a `(Nil [Int])`, a polymorphic callee's `[Int]` — kept those, so
 // the re-typed property was ill-typed against the candidate and checkDef dropped
 // it before the prover. Threading the SAME substitution through the body's type
@@ -812,9 +812,11 @@ func crossTypeRetypeBody(root *Term, sub crossTypeSub) *Term {
 //
 // The candidate set is signature-compatible, NOT same-signature: a definition
 // whose signature equals the query's up to primitive leaves is admitted with the
-// query's binders re-typed to it, so an Int law finds its Rat, Float and Bool
-// counterparts. Exact matches are unaffected — they are proved with the query
-// property verbatim.
+// query PROPERTY re-typed to it — its binders AND the types embedded in its body
+// (lam/let annotations, ref/self/ctor type arguments) — so an Int law finds its
+// Rat, Float and Bool counterparts whether or not its body mentions a type.
+// Exact matches are unaffected — they are proved with the query property
+// verbatim.
 //
 // COST, measured on the committed corpus before this was widened (one real
 // query, alternating order, three repetitions per mode): candidates 6 -> 9
@@ -1105,7 +1107,7 @@ func renderImplyResults(b *strings.Builder, results []implyResult, mode findImpl
 	// The answer first, named in both modes and in the format it has always had.
 	for _, r := range byStatus[implyProven] {
 		if r.crossSig != "" {
-			fmt.Fprintf(b, "      %-18s %s at %s (%s, cross-type: query binders re-typed)\n", r.name, implySatisfiesMarker, r.crossSig, r.method)
+			fmt.Fprintf(b, "      %-18s %s at %s (%s, cross-type: query property re-typed)\n", r.name, implySatisfiesMarker, r.crossSig, r.method)
 		} else {
 			fmt.Fprintf(b, "      %-18s %s (%s)\n", r.name, implySatisfiesMarker, r.method)
 		}
@@ -1383,8 +1385,8 @@ func apiFindImplies(st *Store, src string, mode findImpliesMode) (string, error)
 			}
 			// Exact signature: the query property is portable (self + de Bruijn)
 			// and is appended verbatim. Otherwise admit the candidate only if its
-			// signature is equal up to primitive leaves, and re-type the query's
-			// binders to it.
+			// signature is equal up to primitive leaves, and re-type the query
+			// property to it — binders and body-embedded types alike.
 			qp, crossSig := qd.Props[pqi], ""
 			if !bytes.Equal(tyBytes(d.Ty), qsig) {
 				sub, ok := crossTypeCompatible(qd.Ty, d.Ty)
@@ -1401,9 +1403,12 @@ func apiFindImplies(st *Store, src string, mode findImpliesMode) (string, error)
 			aug := *d
 			aug.Props = append(append([]Prop{}, d.Props...), qp)
 			// REQUIRED GATE, UNCONDITIONAL, and the unconditional part is the
-			// load-bearing half. Only binders are re-typed, so a property body
-			// carrying its own types can disagree with them — that disagreement
-			// must reject the candidate rather than reach the prover.
+			// load-bearing half. The substitution rewrites the primitive leaves of
+			// the query's SIGNATURE and nothing else, so a re-typed property can
+			// still be ill-typed against the candidate — a body calling a
+			// monomorphic Int-typed definition carries no type argument for the
+			// substitution to reach, and now sees a Rat argument. That
+			// disagreement must reject the candidate rather than reach the prover.
 			//
 			// It must also run on the EXACT path, which is not obvious. `tyBytes`
 			// excludes `Def.TyVars`, so a candidate declaring an unused type
