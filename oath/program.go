@@ -1005,7 +1005,10 @@ const (
 	ncBool
 	ncSet
 	ncMap
+	ncStr
+	ncStrMap
 	ncListInt
+	ncListStr
 	ncOptInt
 )
 
@@ -1031,10 +1034,25 @@ var nativeOpShape = map[string]struct {
 	"map-values": {[]ncKind{ncMap}, ncListInt},
 	"map-size":   {[]ncKind{ncMap}, ncInt},
 	"map-merge":  {[]ncKind{ncMap, ncMap}, ncMap},
+	// The Str-keyed map is a SEPARATE family under DISTINCT names, not a
+	// polymorphic reading of map-*. A store resolves one hash per name, so
+	// `map-insert` is either the Int-keyed operation or the Str-keyed one and
+	// cannot be both; distinct names are what lets the two families coexist in
+	// one program. Values stay Int, so map-values and str-map-values share a
+	// result kind while the KEY kind is what distinguishes the families.
+	"str-map-empty":  {nil, ncStrMap},
+	"str-map-insert": {[]ncKind{ncStr, ncInt, ncStrMap}, ncStrMap},
+	"str-map-lookup": {[]ncKind{ncStr, ncStrMap}, ncOptInt},
+	"str-map-has":    {[]ncKind{ncStr, ncStrMap}, ncBool},
+	"str-map-keys":   {[]ncKind{ncStrMap}, ncListStr},
+	"str-map-values": {[]ncKind{ncStrMap}, ncListInt},
+	"str-map-size":   {[]ncKind{ncStrMap}, ncInt},
+	"str-map-merge":  {[]ncKind{ncStrMap, ncStrMap}, ncStrMap},
 }
 
 var setOpNames = []string{"set-empty", "set-member", "set-add", "set-union", "set-inter", "set-size", "set-elems"}
 var mapOpNames = []string{"map-empty", "map-insert", "map-lookup", "map-has", "map-keys", "map-values", "map-size", "map-merge"}
+var strMapOpNames = []string{"str-map-empty", "str-map-insert", "str-map-lookup", "str-map-has", "str-map-keys", "str-map-values", "str-map-size", "str-map-merge"}
 
 // nativeOpNames is every operation the vocabulary defines — the set a backend
 // that lowers all of them passes as `supported`.
@@ -1059,7 +1077,18 @@ type nativeContainers struct {
 	MapListHash string // the List datatype map-keys/values/pairs build
 	OptionHash  string // the Option map-lookup returns
 	PairHash    string // the Pair a Map match materializes
-	Ops         map[string]nativeOp
+	// The Str-keyed map family, recorded separately because it is a separate
+	// datatype under separate names and may be present when the Int-keyed one is
+	// not (and vice versa). StrMapKeyHash is the Str identity its keys carry —
+	// the store's ACTIVE Str, the one both backends lower as a native string —
+	// so a backend comparing keys knows which datatype it is handling and does
+	// not have to re-resolve a name the recognizer already pinned.
+	StrMapHash     string
+	StrMapListHash string // the List datatype MkStrMap wraps and str-map-keys/values build
+	StrMapPairHash string // the Pair a StrMap match materializes
+	StrMapOptHash  string // the Option str-map-lookup returns
+	StrMapKeyHash  string // the Str datatype the keys are
+	Ops            map[string]nativeOp
 }
 
 // TWO ASSUMPTIONS THIS RECOGNITION INHERITS FROM THE #13 NATIVE-CONTAINER
@@ -1083,7 +1112,7 @@ type nativeContainers struct {
 // them is a #13-scope question about the trust model, not a backend change.
 //
 // resolveNativeContainers derives the recognition for a backend that lowers the
-// operations named in `supported`. It validates the Set and Map families
+// operations named in `supported`. It validates each family in ncFamilyTable
 // INDEPENDENTLY and FAIL-CLOSED: a family's operations are admitted only if every
 // one present matches its canonical signature over one consistent datatype. A
 // single mismatch — an unrelated function under a recognized name, or operations
@@ -1092,20 +1121,114 @@ type nativeContainers struct {
 // same type cannot coexist. A backend supporting no operations recognizes none.
 func resolveNativeContainers(st *Store, supported map[string]bool) nativeContainers {
 	nc := nativeContainers{Ops: map[string]nativeOp{}}
-	nc.validateFamily(st, supported, setOpNames, false)
-	nc.validateFamily(st, supported, mapOpNames, true)
+	for i := range ncFamilyTable {
+		nc.validateFamily(st, supported, &ncFamilyTable[i])
+	}
 	return nc
+}
+
+// ncFamily describes one container family AS DATA: the operations it admits, the
+// single constructor its datatype must declare, the element shape the wrapped
+// List must carry, and where the validated hashes are recorded. Adding a family
+// is a table entry rather than a new branch in validateFamily — the same reason
+// nativeOpShape is a table and not a switch.
+type ncFamily struct {
+	names    []string
+	ctorName string
+	// elem reports whether the wrapped List's ELEMENT type is the one this
+	// family's runtime assumes: Int for a Set, (Pair Int Int) for a Map,
+	// (Pair Str Int) for a Str-keyed map.
+	elem func(st *Store, el *Ty) bool
+	// record writes the validated hashes into nativeContainers.
+	record func(nc *nativeContainers, st *Store, ctx *ncCtx)
+}
+
+var ncFamilyTable = []ncFamily{
+	{
+		names:    setOpNames,
+		ctorName: "MkSet",
+		elem:     func(st *Store, el *Ty) bool { return el != nil && el.K == "int" },
+		record: func(nc *nativeContainers, st *Store, ctx *ncCtx) {
+			nc.SetHash = ctx.container
+			nc.SetListHash = containerListHash(st, ctx.container)
+		},
+	},
+	{
+		names:    mapOpNames,
+		ctorName: "MkMap",
+		elem: func(st *Store, el *Ty) bool {
+			return ncPairElem(st, el, func(k *Ty) bool { return k.K == "int" })
+		},
+		record: func(nc *nativeContainers, st *Store, ctx *ncCtx) {
+			nc.MapHash = ctx.container
+			nc.MapListHash = containerListHash(st, ctx.container)
+			nc.OptionHash = ctx.option
+			nc.PairHash = containerPairHash(st, ctx.container)
+		},
+	},
+	{
+		names:    strMapOpNames,
+		ctorName: "MkStrMap",
+		elem: func(st *Store, el *Ty) bool {
+			return ncPairElem(st, el, func(k *Ty) bool { return ncIsActiveStr(st, k) })
+		},
+		record: func(nc *nativeContainers, st *Store, ctx *ncCtx) {
+			nc.StrMapHash = ctx.container
+			nc.StrMapListHash = containerListHash(st, ctx.container)
+			nc.StrMapOptHash = ctx.option
+			nc.StrMapPairHash = containerPairHash(st, ctx.container)
+			nc.StrMapKeyHash = containerKeyHash(st, ctx.container)
+		},
+	},
+}
+
+// ncPairElem reports whether el is (Pair K Int) for a key type accepted by
+// keyOK — the element every map family's wrapped List carries. The VALUE is Int
+// in both families; only the key differs.
+func ncPairElem(st *Store, el *Ty, keyOK func(*Ty) bool) bool {
+	return el != nil && el.K == "data" && isCanonicalPair(st, el.Hash) &&
+		len(el.Args) == 2 && keyOK(&el.Args[0]) && el.Args[1].K == "int"
+}
+
+// ncIsActiveStr reports whether t is the store's ACTIVE Str — the datatype the
+// name `Str` resolves to AND whose shape is (SNil) (SCons Int Str). That
+// identity, not a structurally-equal alias, is what both backends lower as a
+// native host string, so it is the only key type a native Str comparison would
+// receive. A store whose `Str` names some other shape admits no Str-keyed
+// family: the keys would reach the backend as ordinary constructors.
+func ncIsActiveStr(st *Store, t *Ty) bool {
+	sh := strTypeHash(st)
+	return isStrTy(sh, t) && len(t.Args) == 0 && isCanonicalStrData(st, sh)
+}
+
+// isCanonicalStrData checks (data Str [] (SNil) (SCons Int Str)): no type
+// parameters, SNil with no fields, SCons carrying a codepoint and the recursive
+// tail (encoded as the self-ADT marker "rec", as in isCanonicalList).
+func isCanonicalStrData(st *Store, hash string) bool {
+	if hash == "" {
+		return false
+	}
+	d, err := st.GetDef(hash)
+	if err != nil || d.K != "data" || d.TyVars != 0 || len(d.Ctors) != 2 {
+		return false
+	}
+	ni, ci := ctorIdxOf(st, hash, "SNil"), ctorIdxOf(st, hash, "SCons")
+	if ni < 0 || ci < 0 || len(d.Ctors[ni]) != 0 || len(d.Ctors[ci]) != 2 {
+		return false
+	}
+	c := d.Ctors[ci]
+	return c[0].K == "int" && c[1].K == "rec" && len(c[1].Args) == 0
 }
 
 // validateFamily admits a container family only if every present, supported
 // operation matches its canonical signature over one consistent datatype. The
 // operations are processed in a fixed order, so the outcome is deterministic
 // regardless of map iteration. On any mismatch nothing in the family is admitted.
-func (nc *nativeContainers) validateFamily(st *Store, supported map[string]bool, names []string, isMap bool) {
+func (nc *nativeContainers) validateFamily(st *Store, supported map[string]bool, fam *ncFamily) {
 	ctx := ncCtx{}
 	type admitted struct{ name, hash string }
 	var admit []admitted
-	for _, name := range names {
+	for _, name := range fam.names {
 		if !supported[name] {
 			continue
 		}
@@ -1140,11 +1263,7 @@ func (nc *nativeContainers) validateFamily(st *Store, supported map[string]bool,
 	// index a missing argument or a match refuse. So admit the family only if the
 	// container's COMPLETE shape matches that assumption, not merely that it has a
 	// constructor of the right name.
-	ctorName := "MkSet"
-	if isMap {
-		ctorName = "MkMap"
-	}
-	if !containerShapeOK(st, ctx.container, ctorName, isMap) {
+	if !containerShapeOK(st, ctx.container, fam) {
 		return
 	}
 	// A List-returning operation (set-elems, map-keys, map-values) must return the
@@ -1158,19 +1277,12 @@ func (nc *nativeContainers) validateFamily(st *Store, supported map[string]bool,
 	for _, a := range admit {
 		nc.Ops[a.hash] = nativeOp{Name: a.name, Arity: len(nativeOpShape[a.name].params)}
 	}
-	if isMap {
-		nc.MapHash = ctx.container
-		nc.MapListHash = containerListHash(st, ctx.container)
-		nc.OptionHash = ctx.option
-		nc.PairHash = containerPairHash(st, ctx.container)
-	} else {
-		nc.SetHash = ctx.container
-		nc.SetListHash = containerListHash(st, ctx.container)
-	}
+	fam.record(nc, st, &ctx)
 }
 
-// ncCtx threads the datatype hashes a family must agree on: the container (Set or
-// Map) every operation shares, and the Option map-lookup returns.
+// ncCtx threads the datatype hashes a family must agree on: the container every
+// operation shares, the Option a lookup returns, the List a List-returning
+// operation builds, and (for a Str-keyed family) the Str its keys are.
 type ncCtx struct {
 	container string
 	option    string
@@ -1191,9 +1303,21 @@ func ncMatch(st *Store, t *Ty, k ncKind, ctx *ncCtx) bool {
 		return ncData(st, t, "MkSet") && ncPin(&ctx.container, t.Hash)
 	case ncMap:
 		return ncData(st, t, "MkMap") && ncPin(&ctx.container, t.Hash)
+	case ncStr:
+		// No pin: ncIsActiveStr already forces every key position to the ONE
+		// active Str, so no two positions can disagree and a pin here could never
+		// fire — a mutation control confirmed that. The key hash a backend needs
+		// is derived from the admitted CONTAINER (containerKeyHash), which is
+		// present even for a family whose operations never mention the key type.
+		return ncIsActiveStr(st, t)
+	case ncStrMap:
+		return ncData(st, t, "MkStrMap") && ncPin(&ctx.container, t.Hash)
 	case ncListInt:
 		return t != nil && t.K == "data" && isCanonicalList(st, t.Hash) &&
 			len(t.Args) == 1 && t.Args[0].K == "int" && ncPin(&ctx.list, t.Hash)
+	case ncListStr:
+		return t != nil && t.K == "data" && isCanonicalList(st, t.Hash) &&
+			len(t.Args) == 1 && ncIsActiveStr(st, &t.Args[0]) && ncPin(&ctx.list, t.Hash)
 	case ncOptInt:
 		return t != nil && t.K == "data" && isCanonicalOption(st, t.Hash) &&
 			len(t.Args) == 1 && t.Args[0].K == "int" && ncPin(&ctx.option, t.Hash)
@@ -1240,12 +1364,13 @@ func unfoldFun(t *Ty) (params []*Ty, result *Ty) {
 }
 
 // containerShapeOK reports whether a container datatype has exactly the single
-// representation the native runtime assumes: one constructor of the given name,
-// with one field that is a List of Int (Set) or of (Pair Int Int) (Map). Anything
+// representation the native runtime assumes: one constructor of the family's
+// name, with one field that is a List whose element type the family accepts —
+// Int (Set), (Pair Int Int) (Map), (Pair Str Int) (StrMap). Anything
 // else — a second constructor, a non-List field, a wrong element type — is
 // rejected, because the lowering indexes that one field and materializes that one
 // List and would otherwise miscompile or fail to build.
-func containerShapeOK(st *Store, hash, ctorName string, isMap bool) bool {
+func containerShapeOK(st *Store, hash string, fam *ncFamily) bool {
 	if hash == "" {
 		return false
 	}
@@ -1254,18 +1379,14 @@ func containerShapeOK(st *Store, hash, ctorName string, isMap bool) bool {
 		return false
 	}
 	m, err := st.GetMeta(hash)
-	if err != nil || len(m.CtorNames) != 1 || m.CtorNames[0] != ctorName {
+	if err != nil || len(m.CtorNames) != 1 || m.CtorNames[0] != fam.ctorName {
 		return false
 	}
 	field := d.Ctors[0][0]
 	if field.K != "data" || len(field.Args) != 1 || !isCanonicalList(st, field.Hash) {
 		return false
 	}
-	el := field.Args[0]
-	if isMap {
-		return el.K == "data" && isCanonicalPair(st, el.Hash) && len(el.Args) == 2 && el.Args[0].K == "int" && el.Args[1].K == "int"
-	}
-	return el.K == "int"
+	return fam.elem(st, &field.Args[0])
 }
 
 // ctorIdxOf returns the index of constructor `ctor` in datatype `hash`, or -1.
@@ -1296,14 +1417,18 @@ func isCanonicalList(st *Store, hash string) bool {
 	if err != nil || d.K != "data" || d.TyVars != 1 || len(d.Ctors) != 2 {
 		return false
 	}
+	// Require the CANONICAL constructor ORDER (Nil at 0, Cons at 1), for the same
+	// reason as isCanonicalOption: the backends materialize lists with
+	// `&ctorV{idx:0}` for Nil and `idx:1` for Cons directly, so a reordered List
+	// would misencode keys/values/elems. A reordered List is not lowered natively.
 	ni, ci := ctorIdxOf(st, hash, "Nil"), ctorIdxOf(st, hash, "Cons")
-	if ni < 0 || ci < 0 || len(d.Ctors[ni]) != 0 || len(d.Ctors[ci]) != 2 {
+	if ni != 0 || ci != 1 || len(d.Ctors[0]) != 0 || len(d.Ctors[1]) != 2 {
 		return false
 	}
 	// The recursive tail (List a) is encoded as the self-ADT marker "rec" (the
 	// hash is not knowable while the type is being defined), applied to the same
 	// parameter.
-	c := d.Ctors[ci]
+	c := d.Ctors[1]
 	return isTyVar(c[0], 0) && c[1].K == "rec" && len(c[1].Args) == 1 && isTyVar(c[1].Args[0], 0)
 }
 
@@ -1313,11 +1438,17 @@ func isCanonicalOption(st *Store, hash string) bool {
 	if err != nil || d.K != "data" || d.TyVars != 1 || len(d.Ctors) != 2 {
 		return false
 	}
+	// Require the CANONICAL constructor ORDER (None at 0, Some at 1), not merely
+	// the names: the backends' omap/smap lowerings emit `&ctorV{idx:0}` for None
+	// and `idx:1` for Some directly, so a reordered `(data Option [a] (Some a)
+	// (None))` — which passes a names-only check — would misencode a lookup
+	// result. Requiring the order makes the recognizer's admission match what the
+	// codegen assumes; a reordered Option is simply not lowered natively.
 	ni, si := ctorIdxOf(st, hash, "None"), ctorIdxOf(st, hash, "Some")
-	if ni < 0 || si < 0 || len(d.Ctors[ni]) != 0 || len(d.Ctors[si]) != 1 {
+	if ni != 0 || si != 1 || len(d.Ctors[0]) != 0 || len(d.Ctors[1]) != 1 {
 		return false
 	}
-	return isTyVar(d.Ctors[si][0], 0)
+	return isTyVar(d.Ctors[1][0], 0)
 }
 
 // isCanonicalPair checks (data Pair [a b] (Pair a b)).
@@ -1372,6 +1503,33 @@ func containerListHash(st *Store, containerHash string) string {
 	for _, fields := range d.Ctors {
 		if len(fields) == 1 && fields[0].K == "data" {
 			return fields[0].Hash
+		}
+	}
+	return ""
+}
+
+// containerKeyHash returns the hash of the KEY datatype in a map container's
+// element type (List (Pair K Int)), or "" when the key is a primitive and has no
+// datatype hash. It is derived from the CONTAINER's own validated shape rather
+// than from whichever operation happened to mention the key type, because a
+// family may be PARTIAL: one holding only str-map-empty/size/merge names no key
+// anywhere in its signatures, and a backend lowering merge still has to compare
+// keys. Reading it off the container makes the recorded identity available for
+// every admitted family rather than for the ones that happen to spell it out.
+func containerKeyHash(st *Store, containerHash string) string {
+	if containerHash == "" {
+		return ""
+	}
+	d, err := st.GetDef(containerHash)
+	if err != nil {
+		return ""
+	}
+	for _, fields := range d.Ctors {
+		if len(fields) == 1 && fields[0].K == "data" && len(fields[0].Args) == 1 {
+			el := fields[0].Args[0]
+			if el.K == "data" && len(el.Args) == 2 {
+				return el.Args[0].Hash
+			}
 		}
 	}
 	return ""

@@ -358,6 +358,10 @@ var goSetHelpers = map[string]string{
 	"map-empty": "omapEmpty", "map-insert": "omapInsert", "map-lookup": "omapLookup",
 	"map-has": "omapHas", "map-keys": "omapKeys", "map-values": "omapValues",
 	"map-size": "omapSize", "map-merge": "omapMerge",
+	// Str-keyed map (#184): the same operations over smap (native string-keyed).
+	"str-map-empty": "smapEmpty", "str-map-insert": "smapInsert", "str-map-lookup": "smapLookup",
+	"str-map-has": "smapHas", "str-map-keys": "smapKeys", "str-map-values": "smapValues",
+	"str-map-size": "smapSize", "str-map-merge": "smapMerge",
 }
 
 // goSetHelperNames is the set of container operations THIS backend lowers — the
@@ -1137,6 +1141,92 @@ func omapFromList(l any) any {
 	return any(n)
 }
 
+// smap is the native representation of a Str-keyed Map (#184): a hash map keyed
+// by the key STRING itself (Str compiles to a native Go string), mapping to the
+// (key, value) entry. Boundaries (keys/values/match) materialize entries in the
+// structural model's LEXICOGRAPHIC key order; Go's string comparison is byte
+// order, which equals the codepoint order str-lt defines because Str is UTF-8 and
+// UTF-8 is order-preserving. The three-way differential is what keeps that true.
+type smapEnt struct {
+	k string
+	v any
+}
+type smap = map[string]smapEnt
+
+func smapEmpty() any { return smap{} }
+func smapInsert(k, v, m any) any {
+	old := m.(smap)
+	n := make(smap, len(old)+1)
+	for kk, vv := range old {
+		n[kk] = vv
+	}
+	ks := k.(string)
+	n[ks] = smapEnt{ks, v}
+	return any(n)
+}
+func smapLookup(k, m any) any {
+	if e, ok := m.(smap)[k.(string)]; ok {
+		return &ctorV{idx: 1, fields: []any{e.v}} // Some v
+	}
+	return &ctorV{idx: 0} // None
+}
+func smapHas(k, m any) any { _, ok := m.(smap)[k.(string)]; return any(ok) }
+func smapSize(m any) any   { return any(big.NewInt(int64(len(m.(smap))))) }
+func smapSorted(m any) []smapEnt {
+	mm := m.(smap)
+	es := make([]smapEnt, 0, len(mm))
+	for _, e := range mm {
+		es = append(es, e)
+	}
+	sort.Slice(es, func(i, j int) bool { return es[i].k < es[j].k })
+	return es
+}
+func smapKeys(m any) any {
+	var lst any = &ctorV{idx: 0}
+	es := smapSorted(m)
+	for i := len(es) - 1; i >= 0; i-- {
+		lst = &ctorV{idx: 1, fields: []any{es[i].k, lst}}
+	}
+	return lst
+}
+func smapValues(m any) any {
+	var lst any = &ctorV{idx: 0}
+	es := smapSorted(m)
+	for i := len(es) - 1; i >= 0; i-- {
+		lst = &ctorV{idx: 1, fields: []any{es[i].v, lst}}
+	}
+	return lst
+}
+func smapPairs(m any) any {
+	var lst any = &ctorV{idx: 0}
+	es := smapSorted(m)
+	for i := len(es) - 1; i >= 0; i-- {
+		pair := &ctorV{idx: 0, fields: []any{es[i].k, es[i].v}}
+		lst = &ctorV{idx: 1, fields: []any{pair, lst}}
+	}
+	return lst
+}
+func smapMerge(a, b any) any {
+	// left-biased: entries of a win on a key collision.
+	n := make(smap)
+	for k, e := range b.(smap) {
+		n[k] = e
+	}
+	for k, e := range a.(smap) {
+		n[k] = e
+	}
+	return any(n)
+}
+func smapFromList(l any) any {
+	n := smap{}
+	for c := l.(*ctorV); c.idx == 1; c = c.fields[1].(*ctorV) {
+		p := c.fields[0].(*ctorV) // Pair k v
+		ks := p.fields[0].(string)
+		n[ks] = smapEnt{ks, p.fields[1]}
+	}
+	return any(n)
+}
+
 `)
 	for _, h := range e.order {
 		if err := e.emitDef(h); err != nil {
@@ -1839,6 +1929,9 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 		if t.Hash == e.nc.MapHash && e.nc.MapHash != "" {
 			return fmt.Sprintf("omapFromList(%s)", parts[0]), nil
 		}
+		if t.Hash == e.nc.StrMapHash && e.nc.StrMapHash != "" {
+			return fmt.Sprintf("smapFromList(%s)", parts[0]), nil
+		}
 		return fmt.Sprintf("(&ctorV{idx: %d, fields: []any{%s}})", t.Idx, strings.Join(parts, ", ")), nil
 	case "match":
 		s, err := e.expr(t.A, depth, self)
@@ -1872,6 +1965,18 @@ func (e *emitter) expr(t *Term, depth int, self string) (string, error) {
 				return "", err
 			}
 			return fmt.Sprintf("(func(env []any) any { return %s }(append(append([]any{}, env...), omapPairs(%s))))", arm, s), nil
+		}
+		// Match on a Str-keyed Map (#184): MkStrMap, irrefutable; its bound var is
+		// the key-sorted (List (Pair Str Int)) materialized from the smap, in
+		// str-lt order.
+		if t.Hash == e.nc.StrMapHash && e.nc.StrMapHash != "" {
+			e.ctx = append(e.ctx, &Ty{K: "data"})
+			arm, err := e.expr(&t.Arms[0], depth+1, self)
+			e.ctx = e.ctx[:len(e.ctx)-1]
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("(func(env []any) any { return %s }(append(append([]any{}, env...), smapPairs(%s))))", arm, s), nil
 		}
 		md, err := e.st.GetDef(t.Hash)
 		if err != nil {

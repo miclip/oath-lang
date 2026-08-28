@@ -413,12 +413,30 @@ func (e *llvmEmitter) resolveStrCtors() error {
 	return nil
 }
 
+// llvmContainerHelperNames is the set of container operations THIS backend
+// lowers — exactly the names emitContainerCall has a case for. It used to be
+// `nativeOpNames()`, the whole neutral vocabulary, which was true only while
+// every neutral operation happened to have a helper: adding a family to the
+// neutral table would have made this backend CLAIM to lower it, and the claim
+// is what resolveNativeContainers uses to decide whether to prune the
+// structural definition. Listing the names explicitly makes the claim match the
+// switch, and TestLLVMContainerHelperNamesMatchEmitter checks the two agree in
+// BOTH directions rather than trusting this comment.
+var llvmContainerHelperNames = []string{
+	"set-empty", "set-member", "set-add", "set-union", "set-inter", "set-size", "set-elems",
+	"map-empty", "map-insert", "map-lookup", "map-has", "map-keys", "map-values", "map-size", "map-merge",
+}
+
 // llvmSetHelperNames is the set of container operations THIS backend lowers.
-// Every operation in nativeOpArity has a native oset/omap helper, so all are
-// supported; resolveNativeContainers filters recognition to these, so a future
-// operation added to the neutral table is not pruned before a helper exists.
+// resolveNativeContainers filters recognition to these, so an operation added
+// to the neutral table is not recognized (and its structural definition not
+// pruned) before a helper exists here.
 func llvmSetHelperNames() map[string]bool {
-	return nativeOpNames()
+	out := make(map[string]bool, len(llvmContainerHelperNames))
+	for _, n := range llvmContainerHelperNames {
+		out[n] = true
+	}
+	return out
 }
 
 // ctorIndexByName finds a constructor's index in a datatype by name. -1 if the
