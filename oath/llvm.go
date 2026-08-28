@@ -136,8 +136,17 @@ type llvmEmitter struct {
 	mapListCons int
 	optNone     int // None / Some in Option — map-lookup returns one
 	optSome     int
-	pairCtor    int      // Pair's index — a Map match materializes (List (Pair Int Int))
-	tmp         int      // SSA temporary counter
+	pairCtor    int // Pair's index — a Map match materializes (List (Pair Int Int))
+	// Str-keyed map (#184): its own List/Option/Pair ctor indices, resolved
+	// separately for the same reason the Set and Map ones are — a store may define
+	// str-map without an Int-keyed map, so its datatype hashes cannot be borrowed.
+	strMapCtor     int // MkStrMap's index
+	strMapListNil  int
+	strMapListCons int
+	strMapOptNone  int
+	strMapOptSome  int
+	strMapPairCtor int
+	tmp            int // SSA temporary counter
 	lam         int      // hoisted lambda counter
 	str         int      // string constant counter
 	guard       int      // stack-guard block counter, unique per module
@@ -425,6 +434,10 @@ func (e *llvmEmitter) resolveStrCtors() error {
 var llvmContainerHelperNames = []string{
 	"set-empty", "set-member", "set-add", "set-union", "set-inter", "set-size", "set-elems",
 	"map-empty", "map-insert", "map-lookup", "map-has", "map-keys", "map-values", "map-size", "map-merge",
+	// Str-keyed map (#184): the LLVM backend now lowers it natively (the shared
+	// persistent tree tagged T_STRMAP, keyed by o_str_cmp).
+	"str-map-empty", "str-map-insert", "str-map-lookup", "str-map-has",
+	"str-map-keys", "str-map-values", "str-map-size", "str-map-merge",
 }
 
 // llvmSetHelperNames is the set of container operations THIS backend lowers.
@@ -467,6 +480,8 @@ func (e *llvmEmitter) resolveSetMapCtors() error {
 	e.mapListNil, e.mapListCons = -1, -1
 	e.optNone, e.optSome = -1, -1
 	e.pairCtor = -1
+	e.strMapCtor, e.strMapListNil, e.strMapListCons = -1, -1, -1
+	e.strMapOptNone, e.strMapOptSome, e.strMapPairCtor = -1, -1, -1
 	if len(e.nc.Ops) == 0 {
 		return nil
 	}
@@ -500,6 +515,25 @@ func (e *llvmEmitter) resolveSetMapCtors() error {
 		return err
 	}
 	if e.pairCtor, err = e.ctorIndexByName(e.nc.PairHash, "Pair"); err != nil {
+		return err
+	}
+	// Str-keyed map (#184): its own MkStrMap / List / Option / Pair indices.
+	if e.strMapCtor, err = e.ctorIndexByName(e.nc.StrMapHash, "MkStrMap"); err != nil {
+		return err
+	}
+	if e.strMapListNil, err = e.ctorIndexByName(e.nc.StrMapListHash, "Nil"); err != nil {
+		return err
+	}
+	if e.strMapListCons, err = e.ctorIndexByName(e.nc.StrMapListHash, "Cons"); err != nil {
+		return err
+	}
+	if e.strMapOptNone, err = e.ctorIndexByName(e.nc.StrMapOptHash, "None"); err != nil {
+		return err
+	}
+	if e.strMapOptSome, err = e.ctorIndexByName(e.nc.StrMapOptHash, "Some"); err != nil {
+		return err
+	}
+	if e.strMapPairCtor, err = e.ctorIndexByName(e.nc.StrMapPairHash, "Pair"); err != nil {
 		return err
 	}
 	return nil
@@ -586,6 +620,31 @@ func (e *llvmEmitter) emitContainerCall(name string, a []string) (string, error)
 		fmt.Fprintf(&e.b, "  %s = call ptr @o_map_size(ptr %s)\n", v, a[0])
 	case "map-merge":
 		fmt.Fprintf(&e.b, "  %s = call ptr @o_map_merge(ptr %s, ptr %s)\n", v, a[0], a[1])
+	case "str-map-empty":
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_strmap_empty()\n", v)
+	case "str-map-insert":
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_strmap_insert(ptr %s, ptr %s, ptr %s)\n", v, a[0], a[1], a[2])
+	case "str-map-lookup":
+		if e.strMapOptNone < 0 || e.strMapOptSome < 0 {
+			return "", fmt.Errorf("str-map-lookup: this store's Option does not declare None and Some")
+		}
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_strmap_lookup(ptr %s, ptr %s, i32 %d, i32 %d)\n", v, a[0], a[1], e.strMapOptNone, e.strMapOptSome)
+	case "str-map-has":
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_strmap_has(ptr %s, ptr %s)\n", v, a[0], a[1])
+	case "str-map-keys":
+		if err := needList(e.strMapListNil, e.strMapListCons); err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_strmap_keys(ptr %s, i32 %d, i32 %d)\n", v, a[0], e.strMapListNil, e.strMapListCons)
+	case "str-map-values":
+		if err := needList(e.strMapListNil, e.strMapListCons); err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_strmap_values(ptr %s, i32 %d, i32 %d)\n", v, a[0], e.strMapListNil, e.strMapListCons)
+	case "str-map-size":
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_strmap_size(ptr %s)\n", v, a[0])
+	case "str-map-merge":
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_strmap_merge(ptr %s, ptr %s)\n", v, a[0], a[1])
 	default:
 		return "", fmt.Errorf("unrecognized native container operation %q", name)
 	}
@@ -597,7 +656,7 @@ func (e *llvmEmitter) emitContainerCall(name string, a []string) (string, error)
 // materialized into the sorted (List Int) / (List (Pair Int Int)) it wraps,
 // bound as the arm's single binder, and the arm is emitted — the analog of the
 // Go backend's osetElems/omapPairs match bridge.
-func (e *llvmEmitter) emitContainerMatch(t *Term, env string, depth int, self string, isMap bool) (string, error) {
+func (e *llvmEmitter) emitContainerMatch(t *Term, env string, depth int, self string, kind string) (string, error) {
 	if len(t.Arms) != 1 {
 		return "", llvmUnsupported(reasonMatchOnStrArms, "a match on Set/Map whose arms are not the single MkSet/MkMap constructor")
 	}
@@ -607,13 +666,20 @@ func (e *llvmEmitter) emitContainerMatch(t *Term, env string, depth int, self st
 	}
 	lst := e.next()
 	var boundTy *Ty
-	if isMap {
+	switch kind {
+	case "map":
 		if e.mapListNil < 0 || e.mapListCons < 0 || e.pairCtor < 0 {
 			return "", fmt.Errorf("match on Map: this store's List/Pair are not fully declared")
 		}
 		fmt.Fprintf(&e.b, "  %s = call ptr @o_map_pairs(ptr %s, i32 %d, i32 %d, i32 %d)\n", lst, s, e.mapListNil, e.mapListCons, e.pairCtor)
 		boundTy = e.ctorFieldTy(e.nc.MapHash, e.mapCtor)
-	} else {
+	case "strmap":
+		if e.strMapListNil < 0 || e.strMapListCons < 0 || e.strMapPairCtor < 0 {
+			return "", fmt.Errorf("match on StrMap: this store's List/Pair are not fully declared")
+		}
+		fmt.Fprintf(&e.b, "  %s = call ptr @o_strmap_pairs(ptr %s, i32 %d, i32 %d, i32 %d)\n", lst, s, e.strMapListNil, e.strMapListCons, e.strMapPairCtor)
+		boundTy = e.ctorFieldTy(e.nc.StrMapHash, e.strMapCtor)
+	default: // set
 		if e.setListNil < 0 || e.setListCons < 0 {
 			return "", fmt.Errorf("match on Set: this store's List does not declare Nil and Cons")
 		}
@@ -826,6 +892,18 @@ func (e *llvmEmitter) expr(t *Term, env string, depth int, self string) (string,
 			}
 			v := e.next()
 			fmt.Fprintf(&e.b, "  %s = call ptr @o_map_from_list(ptr %s, i32 %d)\n", v, lst, e.mapListCons)
+			return v, nil
+		}
+		if t.Hash == e.nc.StrMapHash && e.strMapCtor >= 0 {
+			lst, err := e.expr(&t.Args[0], env, depth, self)
+			if err != nil {
+				return "", err
+			}
+			if e.strMapListCons < 0 {
+				return "", fmt.Errorf("MkStrMap: this store's List does not declare Cons")
+			}
+			v := e.next()
+			fmt.Fprintf(&e.b, "  %s = call ptr @o_strmap_from_list(ptr %s, i32 %d)\n", v, lst, e.strMapListCons)
 			return v, nil
 		}
 		return e.build(t.Idx, t.Args, env, depth, self)
@@ -1433,10 +1511,13 @@ func (e *llvmEmitter) emitMatch(t *Term, env string, depth int, self string) (st
 		return e.emitStrMatch(t, env, depth, self)
 	}
 	if t.Hash == e.nc.SetHash && e.setCtor >= 0 {
-		return e.emitContainerMatch(t, env, depth, self, false)
+		return e.emitContainerMatch(t, env, depth, self, "set")
 	}
 	if t.Hash == e.nc.MapHash && e.mapCtor >= 0 {
-		return e.emitContainerMatch(t, env, depth, self, true)
+		return e.emitContainerMatch(t, env, depth, self, "map")
+	}
+	if t.Hash == e.nc.StrMapHash && e.strMapCtor >= 0 {
+		return e.emitContainerMatch(t, env, depth, self, "strmap")
 	}
 	d, err := e.st.GetDef(t.Hash)
 	if err != nil {
@@ -1579,7 +1660,7 @@ const llvmRuntimeC = `
 typedef struct OVal OVal;
 typedef OVal *(*OCode)(OVal **env, OVal *arg);
 
-enum { T_CTOR = 0, T_STR = 1, T_CLOS = 2, T_BOOL = 3, T_INT = 4, T_SET = 5, T_MAP = 6 };
+enum { T_CTOR = 0, T_STR = 1, T_CLOS = 2, T_BOOL = 3, T_INT = 4, T_SET = 5, T_MAP = 6, T_STRMAP = 7 };
 
 /* The capability protocol's CALL-failure value: a capability that was provided,
    was invoked, and could not complete. Provision failure is not a value — see
@@ -2686,6 +2767,19 @@ int o_str_eq(OVal *a, OVal *b) {
   return memcmp(a->s, b->s, (size_t)a->slen) == 0;
 }
 
+/* Lexicographic order on Str, matching the structural str-lt EXACTLY (#184): Str
+   is UTF-8 and UTF-8 is order-preserving, so comparing the bytes gives the same
+   order str-lt gives comparing codepoints, and shorter-is-less on a shared prefix
+   is the SNil-below-SCons base case. This is the ONLY thing that differs between a
+   Str-keyed native map and an Int-keyed one; the tree code is shared. */
+int o_str_cmp(OVal *a, OVal *b) {
+  int n = a->slen < b->slen ? a->slen : b->slen;
+  int c = n > 0 ? memcmp(a->s, b->s, (size_t)n) : 0;
+  if (c != 0) return c < 0 ? -1 : 1;
+  if (a->slen == b->slen) return 0;
+  return a->slen < b->slen ? -1 : 1;
+}
+
 static OVal *o_int_arg(OVal *v) {
   if (!v || v->tag != T_INT) o_bug("not an Int");
   return v;
@@ -2877,6 +2971,15 @@ int o_int_cmp(OVal *a, OVal *b) {
 int o_int_eq(OVal *a, OVal *b) { return o_int_cmp(a, b) == 0; }
 int o_int_lt(OVal *a, OVal *b) { return o_int_cmp(a, b) < 0; }
 int o_int_le(OVal *a, OVal *b) { return o_int_cmp(a, b) <= 0; }
+
+/* The key order for a native container, selected by its TAG (#184). T_STRMAP keys
+   are Str and order by o_str_cmp; every other native container keys on Int.
+   Threading the tag rather than a function pointer keeps the tree nodes plain and
+   the choice at the one place that knows the container's kind, and leaves the
+   Int-keyed Set/Map byte-for-byte unchanged (they pass their own tag). */
+static int o_key_cmp(int tag, OVal *a, OVal *b) {
+  return tag == T_STRMAP ? o_str_cmp(a, b) : o_int_cmp(a, b);
+}
 
 /* ---------- division ----------
 
@@ -3130,9 +3233,9 @@ static OVal *o_tbalance(int tag, OVal *k, OVal *v, OVal *l, OVal *r) {
 
 /* The node holding k, or NULL. ITERATIVE: a lookup allocates nothing and needs
    no frame per level, and member / has / lookup are all this one descent. */
-static OVal *o_tfind(OVal *t, OVal *k) {
+static OVal *o_tfind(int tag, OVal *t, OVal *k) {
   while (t && t->n > 0) {
-    int c = o_int_cmp(k, t->f[0]);
+    int c = o_key_cmp(tag, k, t->f[0]);
     if (c == 0) return t;
     t = c < 0 ? t->f[2] : t->f[3];
   }
@@ -3146,7 +3249,7 @@ static OVal *o_tfind(OVal *t, OVal *k) {
    is a bug report rather than a silent duplicate. */
 static OVal *o_tinsert(int tag, OVal *t, OVal *k, OVal *v) {
   if (!t || t->n == 0) return o_tnode(tag, k, v, 0, 0);
-  int c = o_int_cmp(k, t->f[0]);
+  int c = o_key_cmp(tag, k, t->f[0]);
   if (c == 0) o_bug("native container: insert of a key already present");
   if (c < 0)
     return o_tbalance(tag, t->f[0], t->f[1], o_tinsert(tag, t->f[2], k, v), t->f[3]);
@@ -3159,7 +3262,7 @@ static OVal *o_tinsert(int tag, OVal *t, OVal *k, OVal *v) {
    as the array form kept the key already in the slot it overwrote. */
 static OVal *o_treplace(int tag, OVal *t, OVal *k, OVal *v) {
   if (!t || t->n == 0) o_bug("native container: replace of an absent key");
-  int c = o_int_cmp(k, t->f[0]);
+  int c = o_key_cmp(tag, k, t->f[0]);
   if (c == 0) return o_tnode(tag, t->f[0], v, t->f[2], t->f[3]);
   if (c < 0) return o_tnode(tag, t->f[0], t->f[1], o_treplace(tag, t->f[2], k, v), t->f[3]);
   return o_tnode(tag, t->f[0], t->f[1], t->f[2], o_treplace(tag, t->f[3], k, v));
@@ -3210,12 +3313,12 @@ static OVal *o_tlist(OVal *t, OVal *acc, int mode, int cons_idx, int pair_idx) {
 }
 
 OVal *o_set_empty(void) { return o_tempty(T_SET); }
-OVal *o_set_member(OVal *x, OVal *s) { return o_bool(o_tfind(s, x) != 0); }
+OVal *o_set_member(OVal *x, OVal *s) { return o_bool(o_tfind(T_SET, s, x) != 0); }
 OVal *o_set_size(OVal *s) { return o_int((long long)o_tsize(s)); }
 /* A member that is already present returns the SAME set and allocates nothing,
    which the array form also did and which the fold idiom in #180 leans on. */
 OVal *o_set_add(OVal *x, OVal *s) {
-  if (o_tfind(s, x)) return s;
+  if (o_tfind(T_SET, s, x)) return s;
   return o_tinsert(T_SET, s, x, 0);
 }
 OVal *o_set_union(OVal *a, OVal *b) {
@@ -3268,9 +3371,9 @@ OVal *o_set_from_list(OVal *l, int cons_idx) {
 
 OVal *o_map_empty(void) { return o_tempty(T_MAP); }
 OVal *o_map_size(OVal *m) { return o_int((long long)o_tsize(m)); }
-OVal *o_map_has(OVal *k, OVal *m) { return o_bool(o_tfind(m, k) != 0); }
+OVal *o_map_has(OVal *k, OVal *m) { return o_bool(o_tfind(T_MAP, m, k) != 0); }
 OVal *o_map_lookup(OVal *k, OVal *m, int none_idx, int some_idx) {
-  OVal *e = o_tfind(m, k);
+  OVal *e = o_tfind(T_MAP, m, k);
   if (!e) return o_ctor(none_idx, 0, o_fields(0));
   OVal **f = o_fields(1); f[0] = e->f[1];
   return o_ctor(some_idx, 1, f);
@@ -3279,7 +3382,7 @@ OVal *o_map_lookup(OVal *k, OVal *m, int none_idx, int some_idx) {
    the path and no rotation; an absent key takes the growing one. Both are
    O(log N) nodes, where the array form rewrote the whole map either way. */
 OVal *o_map_insert(OVal *k, OVal *v, OVal *m) {
-  if (o_tfind(m, k)) return o_treplace(T_MAP, m, k, v);
+  if (o_tfind(T_MAP, m, k)) return o_treplace(T_MAP, m, k, v);
   return o_tinsert(T_MAP, m, k, v);
 }
 OVal *o_map_keys(OVal *m, int nil_idx, int cons_idx) {
@@ -3314,6 +3417,66 @@ OVal *o_map_merge(OVal *a, OVal *b) {
   while (i < an) { ok[k] = ka[i]; ov[k] = va[i]; i++; k++; }
   while (j < bn) { ok[k] = kb[j]; ov[k] = vb[j]; j++; k++; }
   return o_troot(T_MAP, o_tbuild(T_MAP, ok, ov, 0, k));
+}
+
+/* Str-keyed Map (#184): the SAME persistent tree as o_map_*, tagged T_STRMAP so
+   every key comparison routes through o_str_cmp. The keys are Str OVals; the
+   values Int. Ascending is str-lt order (== o_str_cmp == UTF-8 byte order), which
+   the three-way differential pins against the structural model and the Go
+   backend. */
+OVal *o_strmap_empty(void) { return o_tempty(T_STRMAP); }
+OVal *o_strmap_size(OVal *m) { return o_int((long long)o_tsize(m)); }
+OVal *o_strmap_has(OVal *k, OVal *m) { return o_bool(o_tfind(T_STRMAP, m, k) != 0); }
+OVal *o_strmap_lookup(OVal *k, OVal *m, int none_idx, int some_idx) {
+  OVal *e = o_tfind(T_STRMAP, m, k);
+  if (!e) return o_ctor(none_idx, 0, o_fields(0));
+  OVal **f = o_fields(1); f[0] = e->f[1];
+  return o_ctor(some_idx, 1, f);
+}
+OVal *o_strmap_insert(OVal *k, OVal *v, OVal *m) {
+  if (o_tfind(T_STRMAP, m, k)) return o_treplace(T_STRMAP, m, k, v);
+  return o_tinsert(T_STRMAP, m, k, v);
+}
+OVal *o_strmap_keys(OVal *m, int nil_idx, int cons_idx) {
+  return o_tlist(m, o_ctor(nil_idx, 0, o_fields(0)), O_TL_KEY, cons_idx, 0);
+}
+OVal *o_strmap_values(OVal *m, int nil_idx, int cons_idx) {
+  return o_tlist(m, o_ctor(nil_idx, 0, o_fields(0)), O_TL_VAL, cons_idx, 0);
+}
+OVal *o_strmap_merge(OVal *a, OVal *b) {
+  int an = o_tsize(a), bn = o_tsize(b);
+  if (an == 0) return b;
+  if (bn == 0) return a;
+  OVal **ka = o_fields(an), **va = o_fields(an);
+  OVal **kb = o_fields(bn), **vb = o_fields(bn);
+  OVal **ok = o_fields(an + bn), **ov = o_fields(an + bn);
+  o_tfill(a, ka, va, 0);
+  o_tfill(b, kb, vb, 0);
+  int i = 0, j = 0, k = 0;
+  while (i < an && j < bn) {
+    int c = o_str_cmp(ka[i], kb[j]);
+    if (c < 0) { ok[k] = ka[i]; ov[k] = va[i]; i++; k++; }
+    else if (c > 0) { ok[k] = kb[j]; ov[k] = vb[j]; j++; k++; }
+    else { ok[k] = ka[i]; ov[k] = va[i]; i++; j++; k++; }
+  }
+  while (i < an) { ok[k] = ka[i]; ov[k] = va[i]; i++; k++; }
+  while (j < bn) { ok[k] = kb[j]; ov[k] = vb[j]; j++; k++; }
+  return o_troot(T_STRMAP, o_tbuild(T_STRMAP, ok, ov, 0, k));
+}
+/* Materialize a str-map as a key-sorted (List (Pair Str Int)) — the match bridge,
+   and from a list — a direct MkStrMap construction. Both mirror the Int-keyed
+   map so a program that builds or matches a StrMap outside the recognized ops
+   still meets the native tree, never a raw ctorV. */
+OVal *o_strmap_pairs(OVal *m, int nil_idx, int cons_idx, int pair_idx) {
+  return o_tlist(m, o_ctor(nil_idx, 0, o_fields(0)), O_TL_PAIR, cons_idx, pair_idx);
+}
+OVal *o_strmap_from_list(OVal *l, int cons_idx) {
+  OVal *m = o_strmap_empty();
+  for (OVal *c = l; c && o_idx(c) == cons_idx; c = c->f[1]) {
+    OVal *pr = c->f[0];
+    m = o_strmap_insert(pr->f[0], pr->f[1], m);
+  }
+  return m;
 }
 OVal *o_map_from_list(OVal *l, int cons_idx) {
   OVal *m = o_map_empty();
@@ -5811,6 +5974,16 @@ declare ptr @o_map_size(ptr)
 declare ptr @o_map_merge(ptr, ptr)
 declare ptr @o_map_pairs(ptr, i32, i32, i32)
 declare ptr @o_map_from_list(ptr, i32)
+declare ptr @o_strmap_empty()
+declare ptr @o_strmap_insert(ptr, ptr, ptr)
+declare ptr @o_strmap_lookup(ptr, ptr, i32, i32)
+declare ptr @o_strmap_has(ptr, ptr)
+declare ptr @o_strmap_keys(ptr, i32, i32)
+declare ptr @o_strmap_values(ptr, i32, i32)
+declare ptr @o_strmap_size(ptr)
+declare ptr @o_strmap_merge(ptr, ptr)
+declare ptr @o_strmap_pairs(ptr, i32, i32, i32)
+declare ptr @o_strmap_from_list(ptr, i32)
 declare ptr @o_env_push(ptr, ptr)
 declare ptr @o_env1(ptr)
 declare ptr @o_env_get(ptr, i32)

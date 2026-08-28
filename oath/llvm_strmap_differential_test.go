@@ -45,6 +45,14 @@ func TestStrMapThreeWayDifferential(t *testing.T) {
 			((Cons k rest) (if (str-map-has k (sm-build rest str-map-empty)) "y" "n"))))`)
 	markVerified(t, st, "sm-has")
 
+	// A DIRECT match on a StrMap value (MkStrMap ps), not a str-map-* op: exercises
+	// the native o_strmap_pairs materialization (LLVM) / smapPairs (Go) — the path
+	// that mishandles the native tree if the backend treats StrMap as a plain ctor.
+	put(t, st, `(defn sm-match [] [(args (List Str))] Str
+		(match (sm-build args str-map-empty)
+			((MkStrMap ps) (str-join 44 (smi-keys ps)))))`)
+	markVerified(t, st, "sm-match")
+
 	// Scrambled, duplicate-heavy, order-adversarial key sets — including keys that
 	// share prefixes ("a"/"ab"/"abc") where a shorter-is-less comparison and a
 	// codepoint comparison must agree, and mixed-length/interleaved insert orders.
@@ -62,5 +70,10 @@ func TestStrMapThreeWayDifferential(t *testing.T) {
 		{"z", "a", "b", "c"},        // absent
 		{"ab", "a", "abc"},          // prefix-adjacent, absent (ab not in {a,abc})
 		{"only"},                    // present-in-empty-rest -> absent
+	})
+	threeWay(t, st, "sm-match", [][]string{
+		{},
+		{"carol", "alice", "bob", "alice"},
+		{"abc", "ab", "a", "abcd"},
 	})
 }

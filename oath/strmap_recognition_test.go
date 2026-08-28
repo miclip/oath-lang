@@ -289,15 +289,14 @@ func TestStrMapRequiresActiveStr(t *testing.T) {
 	}
 }
 
-// TestStrMapClaimedByGoBackendNotLLVM pins the per-backend SCOPE (#184): the
-// neutral recognizer knows the Str-keyed family, the GO backend lowers it
-// natively (smap helpers) and so claims + recognizes it, while the LLVM backend
-// has no str-map helper yet and so must NOT claim it — recognition is filtered by
-// that claim, so a backend claiming an operation it cannot emit would prune the
-// structural definition and have nothing to emit, whereas NOT claiming leaves
-// str-map STRUCTURAL for LLVM (correct, O(N)). When LLVM gains a native str-map
-// tree, this test is the one that must be updated deliberately.
-func TestStrMapClaimedByGoBackendNotLLVM(t *testing.T) {
+// TestStrMapClaimedByBothBackends pins the per-backend SCOPE (#184): the neutral
+// recognizer knows the Str-keyed family and BOTH backends now lower it natively —
+// the Go backend to a native string-keyed map, the LLVM backend to the shared
+// persistent tree tagged T_STRMAP (keyed by o_str_cmp). Recognition is filtered by
+// each backend's claim, so a backend claiming an operation it cannot emit would
+// prune the structural definition and have nothing left to emit; both claim the
+// full str-map family and lower every operation.
+func TestStrMapClaimedByBothBackends(t *testing.T) {
 	for _, b := range []struct {
 		name       string
 		supported  map[string]bool
@@ -308,7 +307,7 @@ func TestStrMapClaimedByGoBackendNotLLVM(t *testing.T) {
 		// STRUCTURAL for LLVM (correct, O(N)) rather than pruning it to a helper
 		// that does not exist.
 		{"go", goSetHelperNames(), true},
-		{"llvm", llvmSetHelperNames(), false},
+		{"llvm", llvmSetHelperNames(), true},
 	} {
 		for _, n := range strMapOpNames {
 			if got := b.supported[n]; got != b.wantStrMap {
@@ -331,7 +330,7 @@ func TestStrMapClaimedByGoBackendNotLLVM(t *testing.T) {
 		wantStrMap bool
 	}{
 		{"go", goSetHelperNames(), true},
-		{"llvm", llvmSetHelperNames(), false},
+		{"llvm", llvmSetHelperNames(), true},
 	} {
 		nc := resolveNativeContainers(st, b.supported)
 		ops := strMapOpsAdmitted(nc)
