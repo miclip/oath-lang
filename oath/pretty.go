@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"sort"
 	"strconv"
 	"strings"
@@ -283,6 +284,20 @@ func newStrDecoder(st *Store) *strDecoder {
 // range, and WriteRune would collapse -1, a surrogate, or a value past U+10FFFF to
 // U+FFFD, rendering structurally distinct values identically. On ok=false the
 // caller renders the whole value structurally, so nothing is silently lost.
+// encode builds a Str value from a Go string — the inverse of text — using the
+// same shape-resolved constructor INDICES, so feeding a command-line argument to an
+// interpreted program is name-independent (it survives a same-hash List/Str alias).
+// The caller has established the string is valid UTF-8.
+func (sd *strDecoder) encode(s string) Value {
+	out := Value{K: "data", Hash: sd.hash, Idx: sd.nilIdx}
+	rs := []rune(s)
+	for i := len(rs) - 1; i >= 0; i-- {
+		out = Value{K: "data", Hash: sd.hash, Idx: sd.consIdx,
+			Fields: []Value{{K: "int", Int: big.NewInt(int64(rs[i]))}, out}}
+	}
+	return out
+}
+
 func (sd *strDecoder) text(v Value) (string, bool) {
 	if sd == nil || v.K != "data" || v.Hash != sd.hash {
 		return "", false

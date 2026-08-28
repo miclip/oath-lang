@@ -22,10 +22,12 @@ $ /tmp/circle 100
 area(r=100) ~ 31415
 ```
 
-To inspect the lowering instead of running it, `oath build circle --emit-source`
-writes the Go a compiler would assemble to stdout (add `--backend llvm` for the
-textual IR); it needs no toolchain and is the quickest way to see how a definition
-compiles.
+To run it without building — no toolchain, no binary — `oath run circle -- 5`
+interprets the program on its arguments and prints `area(r=5) ~ 78`; the output is
+byte-identical to the compiled binary. And to inspect the lowering instead,
+`oath build circle --emit-source` writes the Go a compiler would assemble to stdout
+(add `--backend llvm` for the textual IR); it needs no toolchain either and is the
+quickest way to see how a definition compiles.
 
 That last line is worth a pause: `π·100² ≈ 31415.9`, floored to `31415`, over an
 `Int` that is arbitrary precision — nothing overflows, and the intermediate

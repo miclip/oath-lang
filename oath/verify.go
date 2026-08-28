@@ -10,6 +10,14 @@ import (
 const propCases = 200
 const propFuel = 2_000_000
 
+// execFuel is the budget for `oath run` — EXECUTION, not verification. It is far
+// larger than propFuel because a real program on real input does far more work
+// than a single bounded property case. The interpreter stays bounded (fuel and
+// recursion depth): a truly unbounded or deeply recursive program needs
+// `oath build`, which runs natively without these limits — but a runaway program
+// stops in seconds here rather than hanging.
+const execFuel = 1_000_000_000
+
 // PropOutcome is the three-way result of checking one property.
 //
 // THE DISTINCTION IS THE POINT, AND IT IS THE ONE THIS PROJECT KEEPS NAMING:

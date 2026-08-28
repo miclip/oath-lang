@@ -57,6 +57,8 @@ usage:
   oath hint <name>                    list a definition's proof hints
   oath hint --clear <name> [<prop>]   remove hints (all, or one property's)
   oath eval "<expr>"                  typecheck and evaluate an expression
+  oath run <name> [-- args...]        interpret a (-> (List Str) Str) program on args
+                                      and print its output — no build, no toolchain
   oath serve                          MCP server over stdio (tools for agent sessions)
   oath serve --http <addr> --tokens <file>
                                       team store: MCP over HTTP with authenticated principals;
@@ -169,6 +171,11 @@ func main() {
 	// every read command can actually reach a registry.
 	if !remoteCapable[args[0]] {
 		for _, a := range args[1:] {
+			if args[0] == "run" && a == "--" {
+				break // ONLY `run` treats `--` as a separator: everything after it is a
+				// program argument, not a flag. For any other command `--remote` after a
+				// `--` is still a misused location flag, and the guard must catch it.
+			}
 			if a == "--remote" {
 				fail(fmt.Errorf("`oath %s` has no remote path: it can only read the LOCAL store, "+
 					"so --remote would be silently ignored and the answer would come from "+
@@ -1014,6 +1021,29 @@ func main() {
 			fail(fmt.Errorf("usage: oath eval [--text] \"<expr>\""))
 		}
 		cmdEval(st, exprs[0], text)
+	case "run":
+		rest := args[1:]
+		if len(rest) == 0 {
+			fail(fmt.Errorf("usage: oath run <name> [-- args...]"))
+		}
+		name := rest[0]
+		// Split on the first `--`: everything after it is a program argument, even
+		// if it begins with '-'. BEFORE it, a `--`-prefixed token is a mistyped oath
+		// option, not a silently-swallowed program argument — reject it so a typo
+		// cannot quietly change what runs. (`oath run` has no flags of its own.)
+		var progArgs []string
+		seenSep := false
+		for _, a := range rest[1:] {
+			if !seenSep && a == "--" {
+				seenSep = true
+				continue
+			}
+			if !seenSep && strings.HasPrefix(a, "--") {
+				fail(fmt.Errorf("`oath run` has no flag %q; pass a program argument that begins with '-' after `--` (oath run %s -- %s ...)", a, name, a))
+			}
+			progArgs = append(progArgs, a)
+		}
+		cmdRun(st, name, progArgs)
 	default:
 		fmt.Println(usage)
 		os.Exit(1)
@@ -1437,6 +1467,124 @@ func cmdVerify(st *Store, name string) {
 		fail(err)
 	}
 	fmt.Print(out)
+}
+
+// cmdRun interprets a pure (-> (List Str) Str) program on its arguments and prints
+// the output as text, with no build and no toolchain — the interpreted counterpart
+// of `oath build` + run. It reuses the eval pipeline: the arguments become a
+// (List Str) literal exactly as a compiled program would receive them (each a Str,
+// UTF-8 required), the entry is applied to that list, and the resulting Str is
+// printed raw — the same disposition the compiled shapeCLI main uses (fmt.Println).
+// Programs that take capabilities, a request, or return a Result are refused: those
+// need the host provisioning only a real build gives them.
+func cmdRun(st *Store, name string, progArgs []string) {
+	out, err := runProgram(st, name, progArgs)
+	if err != nil {
+		fail(err)
+	}
+	fmt.Println(out) // the compiled shapeCLI main prints its Str result with Println too
+}
+
+// runProgram is cmdRun without the process effects: it returns the program's
+// output rather than printing it, so it is testable and so cmdRun stays a thin
+// shell. See cmdRun for the semantics.
+func runProgram(st *Store, name string, progArgs []string) (string, error) {
+	h, ok := st.Resolve(name)
+	if !ok {
+		return "", fmt.Errorf("no definition named %q", name)
+	}
+	d, err := st.GetDef(h)
+	if err != nil {
+		return "", err
+	}
+	if d.K != "func" {
+		return "", fmt.Errorf("%s is not a function; `oath run` needs a program entry (-> (List Str) Str)", name)
+	}
+	_, shape, isEntry := classifyEntry(st, d.Ty)
+	if !isEntry {
+		return "", fmt.Errorf("%s : %s is not a program entry", name, debugTy(d.Ty))
+	}
+	if shape != shapeCLI {
+		return "", fmt.Errorf("`oath run` interprets a pure (-> (List Str) Str) program; %s takes capabilities, a request, or returns a Result — build and run it with `oath build`", name)
+	}
+	// Take the List and Str types FROM the entry (-> (List Str) Str), so the
+	// argument value is built with the exact datatypes the program expects.
+	if d.Ty == nil || d.Ty.A == nil || d.Ty.A.K != "data" || len(d.Ty.A.Args) != 1 {
+		return "", fmt.Errorf("internal: %s does not have a (List Str) argument", name)
+	}
+	listHash, strHash := d.Ty.A.Hash, d.Ty.A.Args[0].Hash
+	// Build the (List Str) exactly as a compiled program would: a non-UTF-8
+	// argument has no Str value (oathStrFromHost refuses it rather than substitute
+	// U+FFFD), so refuse here too instead of running something the binary rejects.
+	for i, a := range progArgs {
+		if !utf8.ValidString(a) {
+			return "", fmt.Errorf("command-line argument %d is not valid UTF-8, so it has no Str value; a compiled program would refuse it too", i+1)
+		}
+	}
+	sd := newStrDecoder(st)
+	if sd == nil || sd.hash != strHash {
+		return "", fmt.Errorf("the store's active Str is not %s's argument type; cannot build its arguments", name)
+	}
+	listVal, err := buildArgList(st, sd, listHash, progArgs)
+	if err != nil {
+		return "", err
+	}
+	// Evaluate the RESOLVED definition to its closure — the same way the evaluator's
+	// "ref" case does — and apply it to the argument list. Evaluating d.Body rather
+	// than re-parsing `name` matters: an entry legally named `true` or `false` would
+	// reparse as a Bool literal. Building the value and applying directly (rather
+	// than re-lexing a source literal) also keeps run independent of constructor
+	// NAMES, so it works even when List/Str are bound under a same-hash alias.
+	// execFuel, not propFuel: this is EXECUTION, not verification, so the budget is
+	// an execution budget. The interpreter is still bounded (fuel + recursion
+	// depth) where a compiled program is not, so a resource limit points at build.
+	ev := &evaluator{st: st, fuel: execFuel}
+	fnVal, err := ev.eval(nil, h, d.Body)
+	if err != nil {
+		return "", err
+	}
+	out, err := ev.apply(fnVal, listVal)
+	if err != nil {
+		if strings.Contains(err.Error(), "non-termination") {
+			return "", fmt.Errorf("%s: %w — `oath run` interprets within a bound; if the program is correct but long-running or deeply recursive, `oath build` runs it natively without that bound", name, err)
+		}
+		return "", err
+	}
+	s, ok := sd.text(out)
+	if !ok {
+		return "", fmt.Errorf("%s produced a Str this run cannot render (a non-scalar codepoint?); a compiled program would refuse it too", name)
+	}
+	return s, nil
+}
+
+// buildArgList constructs a (List Str) value from the command-line arguments,
+// resolving the list's Nil/Cons constructor INDICES by shape (arity 0 and 2) so it
+// does not depend on their names. Each argument becomes a Str via the decoder's
+// encode.
+func buildArgList(st *Store, sd *strDecoder, listHash string, args []string) (Value, error) {
+	d, err := st.GetDef(listHash)
+	if err != nil || d.K != "data" || len(d.Ctors) != 2 {
+		return Value{}, fmt.Errorf("the entry's argument is not a two-constructor list")
+	}
+	nilIdx, consIdx := -1, -1
+	for i, f := range d.Ctors {
+		switch len(f) {
+		case 0:
+			nilIdx = i
+		case 2:
+			consIdx = i
+		default:
+			return Value{}, fmt.Errorf("the entry's list has an unexpected constructor shape")
+		}
+	}
+	if nilIdx < 0 || consIdx < 0 {
+		return Value{}, fmt.Errorf("the entry's list is not Nil/Cons-shaped")
+	}
+	out := Value{K: "data", Hash: listHash, Idx: nilIdx}
+	for i := len(args) - 1; i >= 0; i-- {
+		out = Value{K: "data", Hash: listHash, Idx: consIdx, Fields: []Value{sd.encode(args[i]), out}}
+	}
+	return out, nil
 }
 
 func cmdEval(st *Store, src string, text bool) {

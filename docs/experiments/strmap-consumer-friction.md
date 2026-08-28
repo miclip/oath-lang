@@ -109,8 +109,21 @@ datatype's SHAPE — a nullary constructor and a binary `(Int, self)` one — so
 survives same-hash aliases and declines a non-Str bound as `Str`; a non-scalar
 codepoint makes the whole value fall back to structural, losing nothing. It is also
 kept out of the verify counterexample renderer, whose transcripts are byte-compared
-across kernels. The second half — an interpreted `oath run <name> -- args` so
-seeing output does not require a native build — is still open.
+across kernels.
+
+**And the second half is resolved too.** `oath run <name> [-- args...]` interprets a
+pure `(-> (List Str) Str)` program on its arguments and prints the output — no
+build, no toolchain. It reuses the eval pipeline: the arguments become a
+`(List Str)` exactly as a compiled program would receive them (each a Str, UTF-8
+required, refused otherwise as `oathStrFromHost` refuses), the entry is applied,
+and the resulting Str is printed raw with the same disposition the compiled
+shapeCLI main uses. Output is byte-identical to the built binary — verified on
+Unicode input — for any program within the interpreter's bounds. Those bounds are
+real: the interpreter is fuel- and recursion-depth-limited where a native binary
+is not, so a long-running or deeply recursive program stops with a resource error
+that points at `oath build`. Programs that take capabilities, a request, or return
+a Result are refused outright — those need host provisioning only a real build
+supplies.
 
 ## 4. No module/import system; dependency provenance is folklore
 
