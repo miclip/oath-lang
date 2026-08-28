@@ -76,6 +76,14 @@ path at all required racing the temp directory to copy `main.go` before cleanup.
 The missing artefact is a one-line flag to emit the lowered source next to, or
 instead of, the binary.
 
+**Resolved.** `oath build <name> --emit-source` now writes the backend source a
+compiler would have assembled — the Go `go build` input, or the LLVM textual IR —
+and stops before invoking the toolchain (so it needs neither `go` nor `clang`).
+No `-o` writes to stdout, which is exactly the debugging use case:
+`oath build wordcount --emit-source | grep smapInsert` answers "did it lower
+natively?" in one line. `-o file` writes the file and reports on stderr. It runs
+the same gates as a build, so an unverified entry is still refused.
+
 ## 3. `oath eval` prints a `Str` as codepoints, and there is no lightweight "run"
 
 `oath eval '(wordcount …)'` returns the result as the raw `Str` datatype —

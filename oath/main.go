@@ -931,6 +931,7 @@ func main() {
 		}
 	case "build":
 		outPath, backend := "", "go"
+		emitSource := false
 		var names []string
 		rest := args[1:]
 		for i := 0; i < len(rest); i++ {
@@ -941,17 +942,19 @@ func main() {
 			case rest[i] == "--backend" && i+1 < len(rest):
 				backend = rest[i+1]
 				i++
+			case rest[i] == "--emit-source":
+				emitSource = true
 			default:
 				names = append(names, rest[i])
 			}
 		}
 		if len(names) != 1 {
-			fail(fmt.Errorf("usage: oath build <name> [-o out] [--backend go|llvm]"))
+			fail(fmt.Errorf("usage: oath build <name> [-o out] [--backend go|llvm] [--emit-source]"))
 		}
 		if backend != "go" && backend != "llvm" {
 			fail(fmt.Errorf("unknown backend %q (go, llvm)", backend))
 		}
-		cmdBuild(st, names[0], outPath, backend)
+		cmdBuild(st, names[0], outPath, backend, emitSource)
 	case "export":
 		outPath := ""
 		var names []string
@@ -1486,7 +1489,7 @@ var knownFlags = map[string]map[string]bool{
 	"ls":        set("--remote", "--key", "--kms-key", "--local"),
 	"log":       set("--remote", "--key", "--kms-key", "--local"),
 	"plugin":    set("--codex", "--claude-code", "--user", "--dir", "--registry", "--dry-run"),
-	"build":     set("--backend"),
+	"build":     set("--backend", "--emit-source"),
 	// DERIVED from the grammar in parseFindArgs, not restated beside it: the
 	// guard above and the parser must agree about which flags `find` accepts, and
 	// a hand-copied list is correct exactly once.

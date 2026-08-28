@@ -40,7 +40,17 @@ import (
 // recursion. Not fast-path native — but genuinely compiled, and the
 // differential gate (`compiled output == oath eval output`) keeps it honest.
 
-func cmdBuild(st *Store, name, out, backend string) {
+// emitSourceFor lowers prog to the named backend's source text WITHOUT invoking
+// the toolchain — the body of `oath build --emit-source`. The Go backend hands
+// back the `go build` input, the LLVM backend the textual IR clang would assemble.
+func emitSourceFor(st *Store, prog *CompiledProgram, backend string) (string, error) {
+	if backend == "llvm" {
+		return emitLLVM(st, prog)
+	}
+	return emitProgram(st, prog)
+}
+
+func cmdBuild(st *Store, name, out, backend string, emitSource bool) {
 	// The front half is backend-neutral: gates, entry classification, required
 	// authority, provenance. See program.go — nothing there knows Go exists, and
 	// both backends below consume exactly this.
@@ -48,6 +58,31 @@ func cmdBuild(st *Store, name, out, backend string) {
 	if err != nil {
 		fail(err)
 	}
+
+	// --emit-source stops after lowering: write the backend source a compiler would
+	// have handed to `go build` / `clang`, and do NOT invoke the toolchain. It is
+	// the debugging primitive for "did this actually lower the way I expect?" — the
+	// only way, otherwise, to see whether a str-map became a native map or the
+	// structural fallback, since a normal build deletes the source in a temp dir.
+	// It runs the same gates as a build (an unverified entry is refused above), and
+	// needs neither go nor clang installed. No -o means stdout, so it composes with
+	// a pipe; -o writes the file and reports on stderr, keeping stdout clean.
+	if emitSource {
+		src, err := emitSourceFor(st, prog, backend)
+		if err != nil {
+			fail(err)
+		}
+		if out == "" {
+			fmt.Print(src)
+		} else {
+			if err := os.WriteFile(out, []byte(src), 0o644); err != nil {
+				fail(err)
+			}
+			fmt.Fprintf(os.Stderr, "emitted %s source for %s → %s (%d bytes; not compiled)\n", backend, prog.Entry, out, len(src))
+		}
+		return
+	}
+
 	if out == "" {
 		out = name
 	}
