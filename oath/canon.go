@@ -913,12 +913,25 @@ func eNormalize(chk *checkerMachine, ctx []*Ty, t *Term) *Term {
 // e-normalized body. Two definitions with the same eHash compute the same
 // function up to the rewrite rules — the same equivalence class, though (by
 // design) DIFFERENT identities.
+//
+// TWO PASSES, AND THEY ARE DIFFERENT KINDS OF THING. eNormalize applies the
+// CONFLUENT rules directly to a normal form. eCanonicalArith (egraph.go) then
+// runs the rules that have no confluent orientation — distributivity and its
+// inverse, over Int and Rat — through a real e-graph, and extracts the cheapest
+// representative of the root class. It returns its input unchanged whenever the
+// e-graph finds nothing to do or cannot afford to run, so a body with no
+// arithmetic redex hashes exactly the bytes it did before.
 func eHash(st *Store, d *Def) string {
 	chk := &checkerMachine{st: st, selfTyVars: d.TyVars, selfTy: d.Ty}
 	e := &enc{}
 	e.ty(d.Ty)
 	if d.Body != nil {
-		e.term(eNormalize(chk, nil, d.Body))
+		// A COPY, NEVER THE STORED BODY. eNormalize calls chk.synth on the
+		// ORIGINAL subterm and the checker publishes inferred type arguments
+		// into the term it is given; Store.GetDef caches, so that write would
+		// reach every later consumer of a definition whose bytes are its
+		// identity. Discovery must be unable to move what it is reading.
+		e.term(eCanonicalArith(chk, eNormalize(chk, nil, cloneTerm(d.Body))))
 	}
 	s := sha256.Sum256(e.b)
 	return hex.EncodeToString(s[:])

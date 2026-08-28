@@ -2,10 +2,13 @@
 
 **Status:** shipped (2026-07) — commutativity + type-directed associativity;
 extended (2026-08, "rung 1a") with identity elements, Bool idempotence, `neg`
-involution, and the control-flow and binding rules. The last rung of the discovery
-ladder (docs/discovery.md): find definitions that are the SAME FUNCTION even when
-their bodies differ — body-equivalence, not just same-property (rung 2) or
-provably-satisfies-my-spec (proof-implication).
+involution, and the control-flow and binding rules; extended again (2026-08,
+"rung 1b") with a REAL E-GRAPH — hash-consed e-nodes, union-find e-classes,
+congruence closure, bidirectional distributivity over `Int`/`Rat` saturated to a
+fixpoint under explicit budgets, and cost-based extraction. The last rung of the
+discovery ladder (docs/discovery.md): find definitions that are the SAME FUNCTION
+even when their bodies differ — body-equivalence, not just same-property (rung 2)
+or provably-satisfies-my-spec (proof-implication).
 
 ## What it is, and the honest ceiling
 
@@ -67,7 +70,9 @@ The first, soundest rules are the algebraic ones for the built-in operators:
   each rule is allowed to fire.
 `eNormalize` walks a term applying the confluent rules directly to a normal form
 (a full e-graph data structure isn't needed while the rules are confluent);
-`eHash(def)` = hash of the definition's signature plus its normalized body.
+`eCanonicalArith` then runs the NON-confluent rules through a real e-graph and
+extracts a representative (see "Rung 1b" below); `eHash(def)` = hash of the
+definition's signature plus that representative.
 `oath find --equiv <name>` returns the definitions sharing an `eHash` —
 different identities, same equivalence class.
 
@@ -269,30 +274,192 @@ That is accepted deliberately, not overlooked:
   require implementing it there, BLIND from `docs/SPEC.md` — never by copying
   from `oath/`.
 
-**Revisit this before rung 1b.** Equality saturation and extraction will move
-the normal form far more than rung 1a did, and the decision above is what
-determines whether that work has a witness or only a proxy.
+**Rung 1b did not close it either, and chose a different witness.** Equality
+saturation and extraction moved the normal form far more than rung 1a did, so
+the gap above would have widened. What was added instead of a golden is a
+CORPUS-WIDE INERTNESS check (`TestEgraphIsInertWithoutArithRulesOnTheCorpus`):
+the e-graph is forced to run on every committed body, and wherever no rule fires
+its extraction must reproduce the e-normalized bytes exactly. That witnesses the
+extractor against the real population rather than against synthetic pairs — but
+it is silent about bodies where a rule DOES fire, and on this corpus none does.
 
-## What rung 1a is NOT
+## Rung 1b: the real e-graph
 
-Named explicitly, because "the e-graph" invites all four:
+Rung 1a's four bullets — no distributivity, no e-classes, no saturation, no
+extraction — described exactly what a CONFLUENT rule set does not need. All four
+are now present, because distributivity is the rule that ends confluence:
+`a*(b+c)` and `a*b + a*c` are equal, neither is canonically smaller in the sense
+a rewriter needs, and expanding one can enable a factoring that re-creates the
+other. There is no orientation to pick, so the class cannot be decided by
+rewriting a term in place.
 
-- **No distributivity.** `a * (b + c)` and `(a * b) + (a * c)` remain distinct.
-  Distribution is not confluent as a rewrite in either direction — it needs a
-  cost function to choose a direction, which is an extraction problem, not a
-  normalization one.
-- **No e-class data structure.** There is no union-find over terms; `eNormalize`
-  rewrites directly to a normal form, which is all a confluent rule set needs.
-- **No equality saturation.** Rules are applied once, bottom-up, to a fixed
-  normal form. Nothing runs to a fixpoint over a growing set of equalities.
-- **No extraction.** With no e-classes and no cost function there is nothing to
-  extract a best representative from; the normal form IS the representative.
+`eHash` therefore runs TWO passes, and they are different kinds of thing:
 
-Those four are what a real saturating engine (egg-style) buys, and they are the
-deeper version still to come — tracked, with the other discovery rungs, in issue
-#65. Adding a non-confluent rule such as distributivity is precisely the point at
-which the direct-normalization shortcut stops working and the data structure has
-to arrive.
+    eNormalize        the confluent rules, applied directly to a normal form
+                      (everything above; unchanged)
+    eCanonicalArith   the non-confluent rules, run through an e-graph and
+                      resolved by extraction (oath/egraph.go)
+
+### The structure
+
+- **e-node** — an operator symbol plus the e-CLASSES of its children, never
+  child terms. The symbol is the canonical encoding of the node with every child
+  slot replaced by one fixed placeholder, so two nodes have one symbol exactly
+  when the canonical encoder does not distinguish them. It is derived from the
+  real encoder rather than from a hand-written field comparison, for the reason
+  that rule exists: a hand-written key compares the fields its author
+  remembered.
+- **e-class** — a set of e-nodes asserted equal, with union-find owning the
+  relation. The SMALLER class id always survives a merge, so a class's
+  representative is a function of which classes exist and never of the order
+  they were merged in.
+- **congruence closure** — after a union, two nodes with the same symbol whose
+  children are now in the same classes denote the same value, so their classes
+  merge too. Restored to a fixpoint after every saturation round; a merge can
+  make a further pair congruent one level up.
+- **AC nodes** — `+` and `*` over `Int`/`Rat` enter as ONE n-ary node over the
+  flattened chain, with children held as a sorted MULTISET (sorted for
+  hash-consing, never deduplicated: `a + a` is `2a`, and neither operator is
+  idempotent). Every other term node is an ordinary structural node. `and`/`or`
+  are deliberately left binary: no rule here touches them, and the narrower
+  representation cannot perturb what rung 1a already decided.
+
+### The rules, and where they are allowed to fire
+
+All three are confined to `+` and `*` over `Int` and `Rat`. Both types are
+EXACT — `Int` is ℤ and `Rat` is ℚ — so there is no overflow and no rounding for
+a re-association or a re-distribution to expose.
+
+| rule | fires on | note |
+| --- | --- | --- |
+| `x*(y+z)` ≡ `x*y + x*z` | `Int`, `Rat` | products and sums of ANY arity, since both are flattened |
+| `x*y + x*z + w` ≡ `x*(y+z) + w` | `Int`, `Rat` | the inverse direction; the factor comes out of every addend that can supply it |
+| `op(x, op(y, z))` ≡ `op(x, y, z)` | `Int`, `Rat` | associativity ACROSS A MERGED CLASS — see below |
+
+**`Float` is excluded, and it is the same exclusion associativity already
+carries.** `a*(b+c)` and `a*b + a*c` differ in binary64 for real inputs, so
+distributing over `Float` would merge definitions that disagree on an input.
+The type direction is read from `isACPrim` — the existing authority for "may
+this operator be re-associated at this operand type" — narrowed to the two exact
+numeric kinds, rather than from a second list that could drift from it. Operand
+types are synthesized against a THROWAWAY COPY of the body, because the checker
+publishes inferred type arguments into the term it is given and `eHash` must not
+move as a side effect of type inference.
+
+**Why associativity is a RULE here when the representation is already flat.**
+Flattening happens at INSERTION, on syntax. Once a rewrite has merged classes, a
+child class can come to CONTAIN a same-operator node without any term ever
+having been written that way, and the flattened form of that is a node nothing
+else would create. It takes TWO nested sums to observe: with one, the nested
+chain sorts last and right-nesting reproduces the flat chain by accident.
+
+### Extraction: which term becomes the `eHash`
+
+Saturation produces a set of equal terms; extraction picks one.
+
+- **Cost is TREE SIZE of the REBUILT AST** — summed over children, so the
+  extractor prefers `a*(b+c)` (5 nodes) to `a*b + a*c` (7). The most-factored
+  form is the canonical one. An n-ary AC node charges **`n-1`**, not 1, because
+  that is how many `prim` nodes it rebuilds into: a flattened 4-way sum is three
+  `+` nodes in the extracted term. Charging it as one made the cost function
+  disagree with the AST it names, and since extraction MINIMISES that cost the
+  disagreement decides which representative a class settles on.
+- **Ties break on CANONICAL BYTES, never on class ids.** Ids are assigned in
+  insertion order, so a tie broken on them would make `eHash` depend on how a
+  definition happened to be written rather than on what it means — and equal
+  costs are not a corner case: `a*b + a*c + d*b` has two different cheapest
+  factorings.
+- **AC chains are rebuilt by `acRebuild`**, the same function `eNormalize` uses,
+  so the ordering, the right-nesting and the unit rules cannot drift into a
+  second version of themselves.
+- The relaxation is iterated to a fixpoint and is cycle-safe; a class whose best
+  term is not yet known simply contributes nothing that round.
+
+### Budgets, and what happens at the cap
+
+Equality saturation is unbounded in general — a product of `n` sums expands
+exponentially — so three explicit limits apply, all in `oath/egraph.go`:
+
+| limit | value | what happens when it is reached |
+| --- | --- | --- |
+| term size | 2048 nodes | the e-graph is not built; the e-normalized term is hashed exactly as before |
+| e-nodes | 8192 | saturation stops; extraction runs on the graph as it stands |
+| saturation rounds | 12 | the same |
+
+**Exceeding a limit is not an error and never produces a wrong answer.** Every
+node in a class is equal to every other, so any representative is a correct one:
+what a budget costs is COMPLETENESS — two definitions that would have been found
+equivalent under a larger budget may not be. Stopping is also DETERMINISTIC: rule
+application, unions and extraction ties are all decided without reading a Go
+map's iteration order, so the same input under the same budget produces the same
+bytes every time.
+
+**The bound is regression-tested by NODE COUNT, not by timing or by scaling.**
+`TestEgraphEngineCostIsBoundedBelowTheCap` runs a term dense with distributivity
+redexes and asserts the graph never exceeds the declared node budget — and that
+some row actually REACHES it, so the assertion is satisfied by the guard rather
+than by arithmetic. A scaling ratio was tried first and does not witness this:
+re-run under a 25x budget the cost-per-doubling ratios stay in the same band
+while absolute cost goes from 60 MB to 2.7 GB, so a missing bound is invisible
+to a scaling test and obvious to a node count.
+
+A **syntactic pre-check** runs first and skips the whole machine for a body with
+no distributivity or factoring match. It is **conservative, and only one
+direction of that matters**: it has no FALSE NEGATIVES — it never skips a term a
+rule could fire on, because at insertion every class is a singleton, so a rule
+can only match a shape the term already has, and only a rule firing creates new
+matches.
+
+It does admit FALSE POSITIVES, deliberately. The factoring test asks whether a
+sum has two PRODUCTS under it, not whether those products share a factor —
+deciding that here would be a second copy of the factoring rule's own matching,
+free to drift from it — and operand types are not consulted, so a `Float` chain
+passes the pre-check and is stopped later by the annotation. Measured on the
+committed corpus: **34 bodies are admitted and 0 fire a rule.**
+
+**It sizes the term BEFORE it matches, and each maximal AC chain is flattened
+once.** Both are load-bearing rather than tidy: matching walks chains, so a
+survey that flattened at every level was quadratic in chain depth, and running
+it before consulting the node cap meant the cap could not protect the case it
+exists for — a 65,536-node arithmetic chain that the portable profile admits and
+`find --equiv` reaches. Measured at 4 GB allocated for a 16,000-node chain
+before the split, 47 MB after; `TestEgraphSurveyScalesOnDeepChainsAboveTheCap`
+holds the line by scaling rather than by a wall-clock bound. A body with no
+arithmetic redex therefore hashes precisely the bytes it hashed before rung 1b —
+measured over the committed corpus, where the pass fires on nothing and moves no
+`eHash`.
+
+### Completeness limits, stated so nobody re-derives them
+
+- **Factoring takes the MAXIMAL support**: a factor comes out of every addend
+  that can supply it, not out of each subset of them. Subsets are exponential;
+  the maximal choice is the one that inverts distribution.
+- **A budget truncation is silent by design.** It loses equivalences, never
+  invents them.
+- **The rule set is the ceiling.** Full extensional equivalence is undecidable;
+  this collapses what the rules reach and nothing else. `--implies` remains the
+  complementary mechanism — general over the decidable fragment, pairwise, and
+  blind to recursion.
+
+### The invariant, now regression-tested rather than argued
+
+`oath/discovery_identity_test.go` snapshots the canonical ENCODING, the
+IDENTITY, every property's `propHash` and `propHashGeneral`, and the store's
+name resolution — over the committed corpus and over a constructed store
+carrying the polymorphic and arithmetic shapes the corpus lacks — and re-checks
+them after EVERY `eHash` and `find --equiv` call, then again through a freshly
+opened store.
+
+Per-call rather than end-to-end for a measured reason: an endpoint comparison
+cannot see a write that undoes itself over an even number of calls, and a mutant
+that swapped a commutative primitive's operands on every `eHash` passed the
+endpoint form of that test.
+
+The hazard it guards is real, not decorative. `Store.GetDef` CACHES, so every
+call for one hash returns the same `*Def` pointer — a mutation made while
+hashing would be published to every later consumer in the process — and
+`eNormalize` calls `chk.synth` on the original subterm, which is a live write
+path into the structure whose bytes ARE the identity.
 
 ## Why this is the right shape
 
@@ -300,5 +467,5 @@ Everything here draws edges over the hash graph and leaves identity alone; the
 rule set is a knob that only ever *adds* recognized equivalences; and each rule
 is sound by construction (we apply a law only where it holds — hence the
 type-direction for associativity, learned straight from the numeric tower). The
-commons gets a canonical-form dedup key that starts modest (AC) and grows toward
-the full saturating engine, without ever forking reality.
+commons gets a canonical-form dedup key that started modest (AC), reached the
+saturating engine, and never forked reality on the way.

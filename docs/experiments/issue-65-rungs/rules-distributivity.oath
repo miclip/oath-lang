@@ -2,3 +2,19 @@
   (prop t [(a Int) (b Int) (c Int)] (== (d-fact a b c) (* a (+ b c)))))
 (defn d-expand [] [(a Int) (b Int) (c Int)] Int (+ (* a b) (* a c))
   (prop t [(a Int) (b Int) (c Int)] (== (d-expand a b c) (+ (* a b) (* a c)))))
+; RUNG 1b CONTROLS. The rule connects d-fact and d-expand; these say what it must
+; NOT connect, and without them a run cannot tell a working rule from one that
+; collapses arithmetic wholesale.
+;
+; FLOAT is the soundness control: binary64 rounds, so a*(b+c) and a*b+a*c
+; disagree on real inputs and must stay in different classes. It is the same
+; exclusion associativity already carries.
+(defn df-fact [] [(a Float) (b Float) (c Float)] Float (* a (+ b c))
+  (prop t [(a Float) (b Float) (c Float)] (== (df-fact a b c) (* a (+ b c)))))
+(defn df-expand [] [(a Float) (b Float) (c Float)] Float (+ (* a b) (* a c))
+  (prop t [(a Float) (b Float) (c Float)] (== (df-expand a b c) (+ (* a b) (* a c)))))
+; And a DIFFERENT FUNCTION with the same signature as d-fact: a*b + b*c. A rule
+; keyed on "two products under a sum" rather than on a shared factor connects
+; this one, and every collapse row above would still pass.
+(defn d-other [] [(a Int) (b Int) (c Int)] Int (+ (* a b) (* b c))
+  (prop t [(a Int) (b Int) (c Int)] (== (d-other a b c) (+ (* a b) (* b c)))))

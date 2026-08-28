@@ -7,8 +7,16 @@ shipped, because the prover filters that surface so liberal cross-type matching
 is free of downside; its HASH half (`find --spec`) was DECLINED, because it
 would churn a PERSISTED discovery/demand key for zero measured yield. One rung
 was already shipped, **every rule the centerpiece lists as remaining was already
-implemented**, and what is genuinely left after this is the e-graph data
+implemented**, and what was genuinely left after this was the e-graph data
 structure itself, which this corpus cannot show working.
+
+**That last piece has since been built (rung 1b, 2026-08): e-classes, congruence
+closure, bidirectional `Int`/`Rat` distributivity saturated under explicit
+budgets, and cost-based extraction — `oath/egraph.go`, described in
+docs/egraph.md.** It did not change this record's recommendation and it did not
+change the corpus measurement, which is the honest outcome for a mechanism whose
+payoff is store-wide dedup: it needs a corpus with redundancy in it, and this one
+has none.
 
 The "BUILT" subsection below records both dispositions and why they differ. The
 issue states no falsifier — the standing instruction
@@ -72,7 +80,7 @@ carries the variants and `run.sh`, which re-asks every row above and includes
 commutativity as a CONTROL — a rule known present before this run, so a script
 that reported "connected" for everything would be visibly wrong.
 
-## Rung 1's real e-graph: its motivating case is served by `--implies`
+## Rung 1's real e-graph: SHIPPED — and its motivating case was already served by `--implies`
 
 The issue's argument for the full technique rests on distributivity:
 
@@ -80,19 +88,34 @@ The issue's argument for the full technique rests on distributivity:
 > (`a*(b+c) ≡ a*b + a*c`) runs both directions with no obvious normal form.
 > This forces the real technique (egg).
 
-`--equiv` does miss it, as stated. **`--implies` does not.** One query, both
-directions, lemma-free:
+**When this record was first written `--equiv` did miss it, and `--implies` did
+not.** That finding stands as history and is what shaped the rung: the
+equivalence was reachable before the engine existed, so the engine had to be
+justified on SCALE — O(1) dedup across a whole store against a solver call per
+candidate — rather than on capability.
+
+**The engine has since landed (rung 1b, `oath/egraph.go`), and `--equiv` now
+connects the pair.** `run.sh` asks both mechanisms in one pass, so the two rows
+sit beside each other rather than in two records written months apart:
 
 ```
-· factored-equals-expanded
-    d-expand           ← provably satisfies it (direct (lemma-free))
-    d-fact             ← provably satisfies it (direct (lemma-free))
+########## DISTRIBUTIVITY — rung 1b: the e-graph now connects it
+  d-fact       connected       (rule present)
+  df-fact      NOT connected   (correctly refused)
+  d-other      NOT connected   (correctly refused)
 ```
 
-So the equivalence the rung exists to reach is reachable today. What survives is
-the issue's own tradeoff paragraph — the e-graph is O(1) dedup across a whole
-store where SMT is a solver call per candidate — and that is an argument about
-SCALE, not capability.
+The two refusals are what make the first row mean something. `df-fact` is the
+same shape over `Float`, where binary64 rounding makes the law false; `d-other`
+is `a*b + b*c`, a different function with the same signature, which a rule keyed
+on "two products under a sum" would wrongly connect. And the `--implies` half of
+the same run REFUTES `df-expand` with the countermodel `(-inf, 0, 5)` — the
+prover independently establishing the very exclusion the e-graph's type
+direction encodes.
+
+**The scale argument is still unmeasured on this corpus, and rung 1b did not
+change that.** Re-running `--equiv` over every function name after the engine
+landed finds the same thing the pre-engine run did.
 
 **The scale argument cannot be measured on this corpus.** `--equiv` was run
 against all 238 live names: **223 functions, ZERO equivalences found.** That is
@@ -100,6 +123,14 @@ not a defect — a curated corpus has no redundant definitions, which is exactly
 the condition under which store-wide dedup buys nothing. The use case is "is my
 NEW implementation already in the commons?", and the candidate comes from
 outside.
+
+**Re-measured after rung 1b landed: 238 function names queried, still ZERO.**
+Consistent with the corpus-inertness check in `oath/egraph_test.go`, which
+forces the e-graph onto every committed body and reports that no rule fires on
+any of them — so the engine moved no `eHash` in the corpus at all. The zero is a
+fact about THESE exhibits, not about Oath programs: `examples/` and `apps/` are
+the definitions this project chose to commit, and a corpus assembled from
+independent contributors is the population the scale argument is about.
 
 ## Rung 3, body-embedded-type cross-type matching: its PROOF half is at most 21 pairs
 

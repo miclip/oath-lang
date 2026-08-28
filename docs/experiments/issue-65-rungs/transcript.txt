@@ -1,4 +1,4 @@
-oath source: 3fe365b +MODIFIED
+oath source: 5c79f63 +MODIFIED
 
 ########## rules #65 lists as REMAINING for rung 1
   e-unit       connected       (rule present)
@@ -11,17 +11,26 @@ oath source: 3fe365b +MODIFIED
 ########## and the SAME rule with a COMPUTED condition — restricted on purpose:
 ########## canon.go: dropping a divergent computation would remove divergence,
 ########## not preserve meaning. NOT connected here is CORRECT.
-  n-ifsame     NOT connected   (rule absent)
+  n-ifsame     NOT connected   (correctly refused)
 
 ########## the control: commutativity, known present before this run
   e-comm       connected       (rule present)
 
-########## DISTRIBUTIVITY — --equiv misses it, as #65 says
-  d-fact       NOT connected   (rule absent)
-########## but --implies proves BOTH directions in one query:
+########## DISTRIBUTIVITY — rung 1b: the e-graph now connects it
+  d-fact       connected       (rule present)
+########## and the two controls that tell the rule from a wholesale collapse.
+########## Float: binary64 rounds, so the two forms disagree on real inputs.
+########## d-other (a*b + b*c) is simply a DIFFERENT function from d-fact.
+########## NOT connected is CORRECT for both.
+  df-fact      NOT connected   (correctly refused)
+  d-other      NOT connected   (correctly refused)
+########## --implies proves the Int case too, by a different mechanism:
   
     · factored-equals-expanded
         d-expand           ← provably satisfies it (direct (lemma-free))
         d-fact             ← provably satisfies it (direct (lemma-free))
-        1 REFUTED — proved NOT to satisfy it (a countermodel exists)
+        df-fact            ← provably satisfies it at (-> Float Float Float Float) (direct (lemma-free), cross-type: query property re-typed)
+        3 REFUTED — proved NOT to satisfy it (a countermodel exists)
             clamp              countermodel (by evaluation): 2, 0, -7
+            d-other            countermodel (by evaluation): 2, 0, -7
+            df-expand          countermodel (by evaluation): -inff, 0f, 5f at (-> Float Float Float Float)

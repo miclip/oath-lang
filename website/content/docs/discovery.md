@@ -38,9 +38,10 @@ last and each further from name-dependence:
    latent in the proofs we store — it just had no query surface. If two defs
    share a law and both **prove** it, they are interchangeable *for that law*.
 3. **Rewriting-equivalent (e-graph)** — different *bodies* that are provably
-   equal under a rule set, collapsed to one canonical form. The deepest dedup;
-   the biggest build; roadmap (DESIGN.md flags egg/e-graphs). Its hard
-   constraint is below.
+   equal under a rule set, collapsed to one canonical form. The deepest dedup
+   and the biggest build; **shipped**, up to and including the saturating engine
+   (e-classes, congruence closure, bidirectional distributivity over `Int`/`Rat`,
+   cost-based extraction — docs/egraph.md). Its hard constraint is below.
 
 ## `oath find` (rung 2, today)
 
@@ -210,11 +211,20 @@ and match). What remains:
     is already a value, and **eta** over a `var` or `ref` head. These last are
     restricted by strict evaluation order rather than by type: dropping a
     divergent `if` condition would remove divergence, and eta over a computed
-    head would move it.
+    head would move it;
+  - **distributivity and factoring, in both directions, over `Int` and `Rat`** —
+    `a*(b+c)` ≡ `a*b + a*c` — which is where the rules stop being confluent and
+    a real e-graph starts. Bodies are hash-consed into e-nodes over union-find
+    e-classes, congruence is closed after every round, the rules are saturated
+    to a fixpoint under explicit budgets, and a representative is EXTRACTED by
+    minimum tree cost with ties broken on canonical bytes. `Float` is excluded
+    for the same reason it is excluded from associativity: binary64 rounds, so
+    the two forms disagree on real inputs.
 
-  A full saturating engine — distributivity, e-classes, equality saturation,
-  extraction — is the deeper version, and none of it is present today. Full
-  extensional equivalence is undecidable, so this collapses things equal *under
+  The budgets (2048-node bodies, 8192 e-nodes, 12 rounds) can stop saturation
+  early. That costs equivalences and never invents one — every node in a class
+  is equal to every other, so any representative is correct. Full extensional
+  equivalence is undecidable in any case, so this collapses things equal *under
   the rules*, never all equal functions.
 
 The rungs compose: content-hash match (up to type) for the fast common case,
@@ -398,8 +408,9 @@ is how the corpus's own polymorphic definitions state theirs:
    LAW, so if you can already write the implementation you have solved much of
    what you were searching for; it is a fallback, not an equal fourth option.
    And it is not known to reach every fragment-blind candidate: it matches
-   implementations sharing an eHash under a limited rewrite system, and
-   `issue-177-fragment.md` tested 2 of the 12 and says so. Reaching those two is
+   implementations sharing an eHash under a limited rewrite system — wider since
+   distributivity landed, but still a rule set rather than a decision procedure —
+   and `issue-177-fragment.md` tested 2 of the 12 and says so. Reaching those two is
    evidence that the blindness is not structural, not a guarantee of coverage.
 
 ### What this section is measured against, including where it was wrong
