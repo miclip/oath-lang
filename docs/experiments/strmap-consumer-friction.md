@@ -56,6 +56,15 @@ names present) gets native lowering even while referencing the namespaced copy,
 because recognition is by hash. The failure is specific to a pure-registry
 consumer — which is exactly the consumer the registry exists to serve.
 
+**Resolved (#186).** Discovery now resolves each operation preferring the bare
+name and falling back to a namespaced alias (`opNameIndex` / `resolveOp` in
+`program.go`), so the same object the bare name would find is discovered under
+`michael/oath/str-map-insert` too. The falsifier this finding proposed now holds:
+a program depending ONLY on the namespaced str-map, built against a store with no
+bare names, emits the native `smap*` helpers (measured: 8) instead of the
+structural fallback. Bare-name behaviour is byte-identical, and the fix is generic
+across the Set/Map/StrMap families.
+
 ## 2. There is no way to see the emitted backend source
 
 `oath build` writes `main.go` (or the LLVM IR + C runtime) into an

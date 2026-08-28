@@ -1121,10 +1121,62 @@ type nativeContainers struct {
 // same type cannot coexist. A backend supporting no operations recognizes none.
 func resolveNativeContainers(st *Store, supported map[string]bool) nativeContainers {
 	nc := nativeContainers{Ops: map[string]nativeOp{}}
+	idx := opNameIndex(st)
 	for i := range ncFamilyTable {
-		nc.validateFamily(st, supported, &ncFamilyTable[i])
+		nc.validateFamily(st, supported, &ncFamilyTable[i], idx)
 	}
 	return nc
+}
+
+// opNameIndex maps the FINAL path segment of every bound name to the distinct
+// object hashes bound under it. Discovery consults this instead of resolving a
+// bare name, because the recognized container vocabulary is reserved by its last
+// segment, not by one unversioned spelling. The emitter already recognizes an
+// operation by its object HASH (recognizeSetOp keys on head.Hash), so a namespaced
+// alias — michael/oath/str-map-insert, the shape a registry hands a consumer — must
+// be DISCOVERED exactly as the bare name is; otherwise a program depending on the
+// published copy silently loses native lowering and falls back to the O(N)
+// structural body (#186).
+func opNameIndex(st *Store) map[string][]string {
+	bySeg := map[string]map[string]bool{}
+	for full, h := range st.Names() {
+		seg := full
+		if i := strings.LastIndex(full, "/"); i >= 0 {
+			seg = full[i+1:]
+		}
+		if bySeg[seg] == nil {
+			bySeg[seg] = map[string]bool{}
+		}
+		bySeg[seg][h] = true
+	}
+	out := make(map[string][]string, len(bySeg))
+	for seg, hs := range bySeg {
+		for h := range hs {
+			out[seg] = append(out[seg], h)
+		}
+		sort.Strings(out[seg]) // deterministic; every valid candidate shares the canonical container
+	}
+	return out
+}
+
+// resolveOp finds the object that PROVIDES a native operation, preferring the bare
+// name and falling back to a namespaced alias. The bare preference keeps the
+// corpus and every existing behaviour byte-identical (bare present -> bare wins),
+// and the fallback is the whole fix: when a consumer's store carries str-map only
+// as michael/oath/str-map-insert, that alias resolves the SAME object the bare
+// name would, and the family is discovered. Distinct implementations of one
+// operation is not a case the vocabulary supports; the sorted index makes the pick
+// deterministic rather than correct in that case, and a broken op still rejects
+// the whole family through validateFamily's shape checks, falling back to the
+// verified structural body.
+func resolveOp(st *Store, idx map[string][]string, name string) (string, bool) {
+	if h, ok := st.Resolve(name); ok {
+		return h, true
+	}
+	if hs := idx[name]; len(hs) > 0 {
+		return hs[0], true
+	}
+	return "", false
 }
 
 // ncFamily describes one container family AS DATA: the operations it admits, the
@@ -1224,7 +1276,7 @@ func isCanonicalStrData(st *Store, hash string) bool {
 // operation matches its canonical signature over one consistent datatype. The
 // operations are processed in a fixed order, so the outcome is deterministic
 // regardless of map iteration. On any mismatch nothing in the family is admitted.
-func (nc *nativeContainers) validateFamily(st *Store, supported map[string]bool, fam *ncFamily) {
+func (nc *nativeContainers) validateFamily(st *Store, supported map[string]bool, fam *ncFamily, idx map[string][]string) {
 	ctx := ncCtx{}
 	type admitted struct{ name, hash string }
 	var admit []admitted
@@ -1232,7 +1284,7 @@ func (nc *nativeContainers) validateFamily(st *Store, supported map[string]bool,
 		if !supported[name] {
 			continue
 		}
-		h, ok := st.Resolve(name)
+		h, ok := resolveOp(st, idx, name)
 		if !ok {
 			continue // an absent operation is fine; a family may be partial
 		}
