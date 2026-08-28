@@ -36,6 +36,7 @@ func TestFindSpecBodilessMatchesWithBody(t *testing.T) {
 // The same for proof-implication, which also elaborates the query and so needs the
 // synthesized body.
 func TestFindImpliesBodilessWorks(t *testing.T) {
+	requireZ3(t) // proof-implication proves via z3
 	st := newStore(t)
 	put(t, st, `(defn add2 [] [(a Int) (b Int)] Int (+ a b)
 		(prop comm [(a Int) (b Int)] (== (add2 a b) (add2 b a))))`)
