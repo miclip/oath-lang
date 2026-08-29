@@ -1,0 +1,7 @@
+; SIGNATURE PROBE at (-> Int (List Str) Str) — the shape the joining need has.
+; Same reflexive-law trick as probe-list-shape.oath. A body is required here
+; because no parameter has the return type Str for the kernel to reuse as a
+; placeholder, so (SNil) is supplied; find never inspects it.
+(defn wanted [] [(d Int) (pieces (List Str))] Str (SNil)
+  (prop refl [(d Int) (pieces (List Str))]
+    (== (wanted d pieces) (wanted d pieces))))

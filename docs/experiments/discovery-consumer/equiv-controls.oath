@@ -1,0 +1,33 @@
+; POSITIVE AND NEGATIVE CONTROLS FOR THE --equiv SWEEP.
+;
+; The sweep over the committed corpus reports ZERO equivalent pairs. Zero is
+; also what a broken sweep reports, so on its own it establishes nothing. These
+; five definitions are put into the THROWAWAY store afterwards and make the
+; measurement discriminate: two that must be connected to the CLI, one that must
+; not be, and a pair that must be connected to each other by the newest and
+; least trivial rule in the set.
+;
+; None of them is a corpus member and none is ever committed.
+
+; --- POSITIVE: the CLI's own body with the delimiter written differently.
+; Both differ from args-in-reverse by an IDENTITY-ELEMENT rewrite — beyond
+; commutativity and associativity, which is the class the sweep is being asked
+; about. Both must land in args-in-reverse's e-class.
+(defn ctl-delimiter-plus-zero [] [(args (List Str))] Str
+  (str-join (+ 44 0) (reverse [Str] args)))
+(defn ctl-delimiter-times-one [] [(args (List Str))] Str
+  (str-join (* 44 1) (reverse [Str] args)))
+
+; --- NEGATIVE: a DIFFERENT function — it joins on ';' (45 is '-'), not ','.
+; If this one is connected the sweep is collapsing rather than rewriting, and
+; every positive row above would still have passed.
+(defn ctl-delimiter-other [] [(args (List Str))] Str
+  (str-join 45 (reverse [Str] args)))
+
+; --- POSITIVE, distributivity: a*(b+c) against a*b + a*c, in the CLI's own
+; shape rather than as bare arithmetic. These must be connected to EACH OTHER
+; and to nothing else — their signature differs from the CLI's.
+(defn ctl-distributed-factored [] [(a Int) (b Int) (c Int) (args (List Str))] Str
+  (str-join (* a (+ b c)) (reverse [Str] args)))
+(defn ctl-distributed-expanded [] [(a Int) (b Int) (c Int) (args (List Str))] Str
+  (str-join (+ (* a b) (* a c)) (reverse [Str] args)))

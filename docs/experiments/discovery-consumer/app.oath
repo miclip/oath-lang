@@ -1,0 +1,26 @@
+; THE CONSUMER. A (-> (List Str) Str) command-line program: print the arguments
+; in reverse order, comma-separated.
+;
+;     $ args-in-reverse alpha beta gamma
+;     gamma,beta,alpha
+;
+; Its body is TWO CALLS AND NOTHING ELSE. Neither reversal nor delimiter-joining
+; is written here — both are references to definitions already in the store,
+; found by `oath find` (run.sh) rather than by knowing their names. `oath put`
+; resolves each reference to a HASH, so this file reuses those objects; it does
+; not copy them. run.sh asserts the resolved hashes against the committed corpus.
+;
+; 44 is the codepoint for ','. str-join's delimiter is an Int codepoint because
+; Str is an inductive datatype of codepoints (SPEC §3), not an opaque host type.
+(defn args-in-reverse [] [(args (List Str))] Str
+  (str-join 44 (reverse [Str] args))
+
+  ; The three laws the CLI is required to satisfy. They are stated here, over
+  ; the CLI, and proved here — they are not inherited from reverse or str-join.
+  (prop no-args-is-empty []
+    (== (args-in-reverse (Nil [Str])) (SNil)))
+  (prop one-arg-is-echoed [(s Str)]
+    (== (args-in-reverse (Cons [Str] s (Nil [Str]))) s))
+  (prop two-args-are-swapped-and-separated [(a Str) (b Str)]
+    (== (args-in-reverse (Cons [Str] a (Cons [Str] b (Nil [Str]))))
+        (str-append b (SCons 44 a)))))

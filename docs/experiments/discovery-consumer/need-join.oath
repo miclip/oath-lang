@@ -1,0 +1,17 @@
+; THE DELIMITER-JOINING NEED, written from the intent and NOT from the target.
+;
+; str-join states exactly one law of its own — that joining a single piece
+; returns it. Neither law below is that law, and neither was copied from it:
+; they say what this CLI actually requires, which is that an empty argument list
+; produces empty output and that two pieces come back separated by the delimiter.
+;
+; So --spec MISSES: a content-hash surface matches a law written the same way,
+; and these are not. Its signature-compatible fallback still names str-join and
+; reports it PROVEN. --implies then proves both laws against str-join's body.
+; That is the division of labour between the two surfaces, on a real need.
+(defn wanted [] [(d Int) (pieces (List Str))] Str (SNil)
+  (prop empty-joins-to-empty [(d Int)]
+    (== (wanted d (Nil [Str])) (SNil)))
+  (prop two-pieces-are-separated [(d Int) (a Str) (b Str)]
+    (== (wanted d (Cons [Str] a (Cons [Str] b (Nil [Str]))))
+        (str-append a (SCons d b)))))

@@ -1,0 +1,16 @@
+; THE FIRST ATTEMPT AT THE REVERSAL NEED, WRITTEN THE WAY THE CONSUMER THINKS.
+;
+; The CLI's arguments are a (List Str), so the obvious query is monomorphic over
+; (List Str). It finds NOTHING — and it is kept because the failure is the
+; measurement. The corpus's list combinators are `forall a`, and a monomorphic
+; query cannot apply one: the re-typed property would have to pass a type
+; argument the candidate does not take, so every polymorphic definition is
+; rejected before the prover is asked. This is the POLYMORPHISM axis in
+; docs/discovery.md, met in the wild rather than described.
+;
+; What it does return is three refutations, which are findings in their own
+; right: three (-> (List Str) (List Str)) definitions are proved NOT to be
+; involutions, each with a countermodel.
+(defn wanted [] [(xs (List Str))] (List Str)
+  (prop involution [(xs (List Str))]
+    (== (wanted (wanted xs)) xs)))

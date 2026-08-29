@@ -1,0 +1,11 @@
+; SIGNATURE PROBE at (-> (List a) (List a)) — the shape the reversal need has.
+;
+; The law is reflexive and therefore states nothing: no definition in the corpus
+; carries it, so --spec cannot match it and falls through to LISTING every
+; definition whose signature is compatible. That fallback list is the point. It
+; answers "what does this corpus hold at this shape?" before any real law is
+; written, and it prints each candidate's GUARANTEE — which is how the falsified
+; twin announces itself.
+(defn wanted [a] [(xs (List a))] (List a)
+  (prop refl [(xs (List Int))]
+    (== (wanted [Int] xs) (wanted [Int] xs))))

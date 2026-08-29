@@ -1,0 +1,33 @@
+; THE REVERSAL NEED, RESTATED POLYMORPHICALLY — the only change from
+; need-reverse-monomorphic.oath that matters.
+;
+; TWO laws, deliberately. Involution alone does not pin reversal: the identity
+; function is an involution, and the corpus contains one that says so
+; (bad-reverse). The second law — reversal antidistributes over append — is what
+; separates them, but ONLY on the --implies surface:
+;
+;   --spec     does NOT separate them. bad-reverse STATES both laws, so the
+;              content-hash surface returns it under BOTH, rendered "tested as",
+;              with no guarantee column to rank it against reverse. This is
+;              exactly finding #1 in the friction log: --spec cannot tell you
+;              bad-reverse is FALSIFIED. (Its definition-level guarantee is
+;              visible only via `oath ls` or the signature-probe fallback —
+;              a different surface, not this one.)
+;   --implies  IS what separates them: reverse is PROVEN on both laws;
+;              bad-reverse is REFUTED on this one with a concrete countermodel.
+;              Proof, not a label.
+;
+; The laws are stated at Int because that is the type this corpus's list laws
+; are written at, and it makes the DISCOVERY cheap. What it does NOT do is prove
+; reverse holds at Str: reverse is proven at List Int only (its own laws are
+; Int-stated) and is not discharged parametrically, so an Int proof does not
+; transfer to Str — see §11.2 of docs/experiments/issue-68.md, and finding #4 of
+; the friction log. This query DISCOVERS the object (reverse is one hash whatever
+; type you ask at); it does not license its use at Str. The consumer proves its
+; OWN Str behavior separately, and only for the argument lengths it enumerates.
+(defn wanted [a] [(xs (List a))] (List a)
+  (prop involution [(xs (List Int))]
+    (== (wanted [Int] (wanted [Int] xs)) xs))
+  (prop antidistributes-over-append [(xs (List Int)) (ys (List Int))]
+    (== (wanted [Int] (append [Int] xs ys))
+        (append [Int] (wanted [Int] ys) (wanted [Int] xs)))))

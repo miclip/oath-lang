@@ -1,0 +1,377 @@
+# Friction log: building a consumer that DISCOVERS its dependencies
+
+The instrument is [`discovery-consumer/run.sh`](discovery-consumer/run.sh), which
+asserts the discovery-layer behaviour behind these findings and exits 0 on 46/46
+checks in about seven seconds (the §4 timings are the one exception — see there). It
+builds `args-in-reverse : (-> (List Str) Str)` — print the arguments reversed and
+comma-separated — whose entire body is `(str-join 44 (reverse [Str] args))`.
+Neither algorithm is written in the app; both were found by asking the commons
+what it can prove, with no name assumed, and then referenced.
+
+This is the demand list that fell out of doing it. Ranked most valuable first,
+which is **not** the order in which the frictions were met.
+
+Every number here was produced against the corpus **as of commit `18401fa`**
+(238 function names, 237 distinct objects, in a store holding 342 objects), and —
+with ONE class of exception — is asserted by `run.sh` on every run. The counts
+are pinned to that immutable commit deliberately: `run.sh` re-derives them live
+from `HEAD:codebase`, so a reader on a later corpus gets that corpus's numbers
+from the script while this prose stays a faithful record of the run it describes.
+The exception is the **timings in §4** (`1.8 s`, `0.08 s`, the two-minute kill):
+those are hand-measured wall-clock observations from building this, NOT among the
+script's 46 checks — `run.sh` contains no timing assertion and no `Str`-typed
+reversal query, and it is marked as such where it appears. Everything else is a
+measurement of THIS corpus, not of programs in general.
+
+---
+
+## 1. `oath find --spec` has no way to say FALSIFIED — and it stayed silent on the one law that matters
+
+This is the sharpest finding of the exercise, and it is the one a consumer is
+most likely to be hurt by, because it appears at the moment of choosing.
+
+The corpus contains `bad-reverse`, which is the identity function. It **states**
+both of `reverse`'s laws and is recorded `FALSIFIED: antidistributes-over-append`.
+Query `--spec` with those two laws and the report is:
+
+```
+  · antidistributes-over-append [tested here]  #2f9879ad154e
+      bad-reverse        (tested as "antidistributes-over-append")
+      reverse            (proven as "antidistributes-over-append")  ← a proven implementation of this spec
+```
+
+`bad-reverse` is rendered **`tested as`** for the very property it was refuted on,
+under a header that reads *"which proven definitions satisfy it"*. Meanwhile
+`oath ls` says, of the same object:
+
+```
+bad-reverse      #af6b61e2180a  func  FALSIFIED: antidistributes-over-append · total
+```
+
+This is not a rendering nit — it is a missing state. `api.go`'s renderer maps a
+per-property boolean through
+
+```go
+mark := func(proven bool) string {
+    if proven { return "proven" }
+    return "tested"
+}
+```
+
+so the vocabulary is two-valued and a refuted property is structurally
+indistinguishable from one that merely passed generated tests. A consumer
+reading `--spec` alone gets *"a definition that has been tested against your
+law"* about a definition that has been **disproved** against it.
+
+The distinction the rest of this project is careful about — *no proof is not
+disproof* — is present in `--implies`, which keeps four outcomes apart and
+reports refutations as findings. It is absent from `--spec`, and `--spec` is the
+cheap surface everyone reaches for first.
+
+**What would fix it:** a third mark. `mark()` should read the property's recorded
+verdict rather than a boolean, and `refuted` should render as `REFUTED as "..."`,
+loudly, ideally sorted last or flagged in the same visual register `--implies`
+uses. The information already exists in the store — `oath ls` prints it — so this
+is a reporting gap, not a verification gap.
+
+Two independent things saved the consumer here, and a caller with less
+discipline would have had neither: the signature-probe fallback list *does* print
+the definition-level guarantee (`bad-reverse  FALSIFIED: ...`), and `--implies`
+refuted it with a countermodel. Both are luck relative to what `--spec` said.
+
+---
+
+## 2. There is no import: reuse rides entirely on ambient store names
+
+Discovery hands back a **name and a hash**. The consumer can use neither as a
+dependency declaration.
+
+`app.oath` says `(str-join 44 (reverse [Str] args))`. Those are bare identifiers
+resolved by `oath put` against whatever `$OATH_STORE` happens to be at the moment
+of the put. The file cannot say:
+
+- *"my reversal is `#7bb6285884d068b0...`"* — there is no syntax to pin a hash;
+- *"fetch `reverse` from this registry"* — there is no fetch in the source path;
+  the definition must already be in the store the put runs against.
+
+So the whole discovery story — *no name trusted* — terminates one step before the
+artifact. Everything up to selection is name-independent; the act of USING the
+selection is name-keyed, against an ambient, mutable, per-store binding. If two
+stores spell `reverse` differently, or one has been repointed, the same source
+file elaborates to a different object with no diagnostic.
+
+Evidence is available **after** the fact — `oath explain` prints
+`DEPENDENCIES (5, exact by hash)` and the script asserts those against
+`names.json` at HEAD — but that is verification, not specification. It tells you
+what you got, not what you asked for. Nothing in the source expressed an
+intention that could have been violated.
+
+**What would fix it:** a way for a definition to pin a dependency by hash, with
+the name as a hint rather than the authority — the same inversion the registry
+already applies everywhere else. Failing that, a `--expect <name>=<hash>` flag on
+`put` would at least make the intention checkable at elaboration time instead of
+inspectable afterwards.
+
+This is the single largest gap between what the discovery layer promises and what
+a consumer can actually hold onto.
+
+---
+
+## 3. The natural query is the wrong query, and finding that out costs a round trip
+
+The CLI's arguments are a `(List Str)`, so the first reversal query was written
+monomorphically over `(List Str)`. It finds **nothing**:
+
+```
+  · involution
+      3 REFUTED — proved NOT to satisfy it (a countermodel exists)
+          gh-drop-final-empty countermodel (by evaluation): (Cons SNil Nil)
+          gh-group-labels    countermodel (by evaluation): (Cons SNil Nil)
+          gh-refused-lines   countermodel (by evaluation): (Cons SNil Nil)
+```
+
+`reverse` is never considered. The reason is structural and invisible from the
+query: `reverse` is `forall a`, the re-typed property would have to pass a type
+argument the candidate does not take, so every polymorphic definition is rejected
+before the prover is asked. The corpus's list combinators are *all* `forall a`.
+Restating the query as `[a]` with explicit `[Int]` applications reaches `reverse`
+immediately.
+
+`docs/discovery.md` documents this as the "polymorphism axis", and the doc is
+right. The friction is that **nothing in the failing output points at it**. Three
+refutations is a confident-looking report. It reads like *"the corpus has three
+candidates at this shape and all three are wrong"*, which is true and useless;
+what the consumer needed to know is *"and N polymorphic definitions at this shape
+were never examined."*
+
+Two smaller pieces of the same friction:
+
+- **The shape probe is an idiom, not a command.** The move that actually works —
+  write a reflexive law that states nothing, so `--spec` falls through to listing
+  every signature-compatible definition with its guarantee — is a documented
+  trick that depends on no definition in the corpus ever stating reflexivity.
+  It is genuinely the most useful single query in this whole exercise (it is what
+  surfaced `str-join`, and it is where `bad-reverse`'s FALSIFIED label appeared),
+  and it is spelled as a hack. `oath ls` prints names but not signatures, so
+  there is no first-class way to ask *"what does this corpus hold at this
+  shape?"*.
+- **The probe answered a question that had not been asked.** It reported
+  `str-join : (-> Int (List Str) Str)` — the delimiter is an `Int` codepoint, not
+  a `Str`. The consumer's mental model was wrong and the probe corrected it for
+  free. That is a point in the probe's favour and an argument for making it a
+  command rather than a trick.
+
+**What would fix it:** report the count of candidates excluded by the
+polymorphism mismatch — *"4 definitions at a compatible shape were not admitted:
+they are polymorphic and your query is not"* — and give the signature probe a
+name.
+
+---
+
+## 4. `--implies` cost is shape-dependent by two orders of magnitude, with no warning
+
+*The timings in this section are hand-measured wall-clock, not part of `run.sh`'s
+asserted checks — the script uses the fast `Int`-typed query and contains no
+`Str` reversal query or timing assertion. They are the one class of number in
+this log the instrument does not reproduce; everything else it does.*
+
+The reversal laws stated over `Int` prove in **1.8 s**. The *same two laws*,
+stated over `Str` — which is the type the consumer actually cares about — ran for
+over two minutes without completing and were killed. Nothing in the interface
+distinguishes the two: same modes, same flags, same-looking query.
+
+The join query, over `(-> Int (List Str) Str)`, returns in **0.08 s**.
+
+There is no progress output, no candidate counter, no time budget flag, and no
+way to ask for a cheap pass first. A consumer's reasonable instinct — state the
+law at the type you will use it at — is the expensive one, and it fails by
+appearing to hang rather than by reporting a limit.
+
+**What would fix it:** stream per-candidate progress (`n of m`), and accept a
+wall-clock budget that ends in a reported `NO VERDICT (aborted)` rather than in
+the user's `Ctrl-C`. The four-outcome vocabulary already has the right word for
+this; the tool just cannot reach it under an external kill.
+
+Mitigation found and used: state the query at the type the corpus's own laws use
+(`Int` here) to DISCOVER the candidate cheaply. This is sound **as discovery** —
+`reverse` is one content-addressed object whatever type you query at, so an `Int`
+query finds the same `#7bb6285884d0` the CLI calls at `Str`. What it does **not**
+do is prove `reverse`'s laws hold at `Str`: `reverse` is proven at `List Int`
+only (its own properties are `Int`-stated, `examples/list.oath`), it is **not**
+discharged parametrically, and this project's own §11.2 of
+`docs/experiments/issue-68.md` records that licensing another instantiation from
+an `Int`-only proof is unsound absent a parametric argument. So the trick buys a
+cheap *find*, not a *proof at your type* — and the gap is real: the consumer
+closes it only for the argument-list lengths its own three laws enumerate (0, 1,
+2, proven at `Str` by unfolding), and nothing here proves the reversal correct
+for an arbitrary-length `Str` argument list. A consumer has to know both halves.
+
+---
+
+## 5. Two verdict classes never appeared, and saying why is part of the result
+
+`--implies --details` promises four outcomes. The real searches produced two.
+
+**No `NO VERDICT`, in either search.** Both queries landed on bodies inside the
+provable fragment. `docs/experiments/issue-177-fragment.md` measures roughly 6% of
+this corpus's candidates as fragment-blind; this consumer's two needs did not hit
+any of them. That is a fact about which definitions these queries reached, not
+evidence that the class is rare — and `run.sh` asserts the absence rather than
+leaving it unstated, so a future corpus that does produce one will fail the check
+loudly instead of silently changing the story.
+
+**No cross-type hit, and the two queries fail to produce one for *different*
+reasons.** This is worth separating, because one is decidable and the other is a
+corpus fact:
+
+| query | signature | why no cross-type |
+|---|---|---|
+| reversal | `(-> (List a) (List a))` | **Impossible.** The re-typing substitution (`crossTypeSub`, api.go) is keyed on *primitive* kinds — `int`/`rat`/`float`/`bool`. This signature contains no primitive leaf at all; `Str` and `List` are datatypes. There is nothing to substitute. |
+| joining | `(-> Int (List Str) Str)` | **Possible, absent.** The delimiter IS a primitive leaf, so a `(-> Rat (List Str) Str)` or `(-> Bool (List Str) Str)` definition would be admitted and the query re-typed to it. This corpus holds no such definition. |
+
+I tried to exhibit the joining case directly by writing the query with a `Rat`
+delimiter. It does not typecheck: `SCons` pins the delimiter to `Int`, so the law
+cannot even be *stated* at another numeric type. Constructing a cross-type
+demonstration would have meant inventing a definition for the purpose, which
+would demonstrate the feature and nothing about this consumer.
+
+So the honest report is: **a `(List Str) -> Str` CLI's needs have no cross-type
+surface to exercise in this corpus**, half by construction and half by absence,
+and `run.sh` checks for the label rather than claiming none could appear.
+
+---
+
+## 6. Corpus-wide `--equiv` finds nothing — and that is a statement about the corpus
+
+Sweeping `find --equiv` over **every one of the 238 function names** in the corpus
+(237 distinct objects; see the pinning note at the top) returns **zero** definitions with an equivalent
+partner. Not a nontrivial one; not a commutativity or associativity one either.
+
+Zero is also what a broken sweep prints, so the run puts five throwaway
+definitions in afterwards and asserts what happens to them:
+
+| control | expected | result |
+|---|---|---|
+| `(str-join (+ 44 0) ...)` vs the CLI | connected — additive identity | connected |
+| `(str-join (* 44 1) ...)` vs the CLI | connected — multiplicative identity | connected |
+| `(str-join 45 ...)` vs the CLI | **not** connected — different function | correctly refused |
+| `(* a (+ b c))` vs `(* a b) + (* a c)` | connected — distributivity | connected |
+
+The rules fire, including two beyond commutativity and associativity, and the
+negative control is refused. **So the zero is a gap in the CORPUS, not a limit of
+the layer.** A curated corpus contains no redundant definitions, which is exactly
+what you would hope and exactly what makes `--equiv` unexercised here.
+
+Two limits of the sweep, stated so the zero is not overread:
+
+- **It is name-addressed.** `find --equiv` takes a name, and the store holds 342
+  objects against 237 live function objects — roughly 90 superseded objects that
+  no live name reaches are outside the sweep *and* outside the tool. The claim is
+  about what the corpus **offers**, not about every object it has ever held.
+- **It takes an implementation, not a law.** By the time you can write the body,
+  you have solved most of what you were searching for. It is a fallback, and this
+  exercise never had cause to reach for it as a discovery route.
+
+**One unexplained observation, recorded because it was measured and not chased:**
+the distributivity rule connected `(* a (+ b c))` to `(+ (* a b) (* a c))` with
+*variable* operands, but did **not** connect the same two forms with *literal*
+operands — `(* 4 (+ 10 1))` against `(+ (* 4 10) (* 4 1))`, which the elaborator
+stores unfolded. Whether that is a deliberate restriction, a budget, or a gap in
+the factoring pass was not established. It is a question, not a defect claim.
+
+---
+
+## 7. A dependency arrived through a LAW, not through the body
+
+`app.oath` calls exactly two definitions. `oath explain` reports five
+dependencies, and one of them — `str-append #7d158d0455d3` — is there only
+because the CLI's third property is stated in terms of it.
+
+Nothing is wrong with this, and the resolution is exact. But it means **the set of
+things a consumer must discover is not the set of things it calls.** Writing the
+specification pulled in a third definition that no discovery query had been aimed
+at, resolved silently against an ambient name, with all of §2's exposure and none
+of §2's deliberation. Property-side dependencies deserve the same scrutiny as
+body-side ones and are much easier to acquire by accident.
+
+---
+
+## 8. Smaller things, mostly good
+
+- **Bodyless spec queries work and matter.** `--spec` on a query with no body is
+  the right default — you are querying *because* you have no implementation. When
+  the return type matches no parameter the kernel cannot synthesize a
+  placeholder, and the error says exactly that: *"needs an explicit body: no
+  parameter has the return type to reuse as a placeholder — write any well-typed
+  expression of the return type."* One of the better error messages in the
+  toolchain; the fix took ten seconds.
+- **`oath run` is the right first-class citizen.** Being able to execute a
+  `(List Str) -> Str` program with no toolchain made the whole run cheap, and the
+  compiled binary's stdout is byte-identical to the interpreter's — asserted with
+  `cmp`, not with `$(...)`, which strips trailing newlines and would have passed
+  regardless.
+- **`--details` is not optional.** Without it the countermodels are counts. The
+  single most useful line in the entire session was
+  `bad-reverse  countermodel (by evaluation): (Cons -16 (Cons -13 (Cons 12 Nil))), (Cons 0 Nil)`,
+  and it is behind a flag.
+
+---
+
+## 9. What worked well
+
+Stated plainly, because a friction log that only lists friction misrepresents the
+experience. This consumer was built in one session and nothing about the
+substrate had to be worked around.
+
+- **Refutations are findings, and they are actionable.** The commons did not just
+  fail to recommend `bad-reverse`; it **disproved** it, on a concrete pair of
+  lists, in under two seconds. That is a different and better product than a
+  ranked search result.
+- **The second law did the whole job.** Involution alone does not pin reversal —
+  the identity function is an involution, and `--implies` shows `bad-reverse`
+  *satisfying* it. Antidistribution separates them. The lesson generalizes: one
+  law is a filter, two laws are a specification, and the tool made the difference
+  visible rather than leaving it to taste.
+- **The signature fallback is the best-designed part of `--spec`.** A miss that
+  returns a map of the neighbourhood, with guarantees attached, is far more useful
+  than a miss that returns nothing — and it is what made both needs findable.
+- **Dependency evidence is hash-exact and checkable.** `oath explain` gave short
+  hashes that `run.sh` compares against `names.json` at HEAD. The evidence is
+  weaker than an import (§2) but it is real, and it is more than most ecosystems
+  offer.
+- **The consumer is itself PROVEN.** Three properties, `direct (lemma-free)`, in
+  0.06 s, on top of two proven dependencies. Proof-carrying composition is not
+  aspirational here; it is the default and it is fast.
+- **Nothing had to be copied.** The original goal — reuse the store's objects
+  rather than duplicate their bodies — was met, and is asserted by hash.
+
+---
+
+## Not exercised
+
+Named so the log is not read as covering them:
+
+- **MCP surfaces.** `find`, `find_spec`, `find_implies` and `find_equiv` are
+  exposed over MCP and agents are the intended consumers. This exercise used the
+  CLI throughout and says nothing about the MCP path.
+- **The live registry.** Everything ran against throwaway stores extracted from
+  `HEAD:codebase`. No name was published anywhere, and the committed store and
+  fixtures are asserted byte-identical before and after the run.
+- **`--implies` at scale.** The largest search admitted a handful of candidates.
+  Nothing here speaks to how the report reads when a registry buries four hits
+  under two hundred unsettled candidates.
+
+---
+
+## Reproducing
+
+```console
+$ docs/experiments/discovery-consumer/run.sh
+...
+ALL CHECKS PASSED — 46 checks, 0 failures
+```
+
+Needs Go on `PATH` (it builds the kernel and compiles the consumer with the Go
+backend) and `z3`. It extracts its stores from `HEAD:codebase` rather than from
+the worktree, so it reports on the committed corpus even on a dirty tree, and it
+re-hashes `codebase/` and `fixtures/` at the end to prove it changed neither.
