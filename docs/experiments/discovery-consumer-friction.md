@@ -173,22 +173,24 @@ Two smaller pieces of the same friction:
   trick that depends on no definition in the corpus ever stating reflexivity.
   It is genuinely the most useful single query in this whole exercise (it is what
   surfaced `str-join`, and it is where `bad-reverse`'s FALSIFIED label appeared),
-  and it is spelled as a hack. `oath ls` prints names but not signatures, so
-  there is no first-class way to ask *"what does this corpus hold at this
-  shape?"*.
+  and it is spelled as a hack. **Half-fixed:** `oath ls` now prints each
+  function's signature (`reverse … :: (-> (List a) (List a))`), so
+  *"what does this corpus hold at this shape?"* is answerable with
+  `oath ls | grep '(-> (List'` — a grep, not a probe. A dedicated `find --shape`
+  query is the part still missing.
 - **The probe answered a question that had not been asked.** It reported
   `str-join : (-> Int (List Str) Str)` — the delimiter is an `Int` codepoint, not
   a `Str`. The consumer's mental model was wrong and the probe corrected it for
   free. That is a point in the probe's favour and an argument for making it a
   command rather than a trick.
 
-**Still open (the secondary half):** give the signature probe a first-class name.
-The polymorphism diagnostic above closes the round-trip for a query you already
-wrote; the shape probe is the move BEFORE you have a query — and it is still an
-idiom, not a command. A `find --shape` (or `oath ls` printing signatures) would
-make *"what does this corpus hold at this shape?"* a question you can ask directly
-rather than by writing a reflexive law and reading the `--spec` fallthrough. It is
-a separate command surface, deferred until a consumer needs it.
+**Mostly fixed (the secondary half):** the polymorphism diagnostic above closes
+the round-trip for a query you already wrote; the shape probe is the move BEFORE
+you have a query. `oath ls` now prints each function's signature, so the corpus is
+searchable by shape with a grep — *"what does this corpus hold at this shape?"* is
+a first-class question now, not a reflexive-law hack. What remains is a dedicated
+`find --shape` query (matching by structural signature the way `find --spec`
+matches by property), a separate command surface left until a consumer needs it.
 
 ---
 

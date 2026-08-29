@@ -34,7 +34,7 @@ usage:
                                       bind require_proven names once proven (#14). --scan seeds the
                                       queue from every tested-but-unproven def; --key signs verdicts
   oath log [name]                     append-only submission journal (all attempts, incl. rejections)
-  oath ls                             list named definitions and their guarantees
+  oath ls                             list named definitions with their signatures and guarantees
   oath get <name>                     print the human projection of a definition
   oath find <name>                    find definitions that satisfy the same PROPERTY (by content hash, not name)
   oath find --spec <file>             find definitions that satisfy a FRESH spec (a defn whose props are the query)

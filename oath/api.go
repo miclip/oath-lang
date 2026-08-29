@@ -284,6 +284,24 @@ func renderPutReports(results []putReport) string {
 	return b.String()
 }
 
+// aliasTyVarNames returns the type-variable names for the name k AS IT RESOLVES:
+// the object's top-level names when k is its most recent name, else k's own alias
+// naming block (#19 per-alias vocabulary — the same selection store.go makes for
+// constructor names). A polymorphic object published under two names with
+// different type-variable spellings must render each row with ITS name's spelling,
+// not the newest alias's.
+func aliasTyVarNames(m *Meta, k string) []string {
+	if m == nil {
+		return nil
+	}
+	if m.Name != k {
+		if a, ok := m.Aliases[k]; ok {
+			return a.TyVarNames
+		}
+	}
+	return m.TyVarNames
+}
+
 func apiLs(st *Store) string {
 	names := st.Names()
 	keys := make([]string, 0, len(names))
@@ -308,7 +326,17 @@ func apiLs(st *Store) string {
 			kind = "data"
 			g = fmt.Sprintf("%d constructors", len(d.Ctors))
 		}
-		fmt.Fprintf(&b, "%-16s #%s  %-5s %s\n", k, shortHash(h), kind, g)
+		// A function's SIGNATURE, so `oath ls` answers "what does this corpus hold
+		// at this shape?" directly — `oath ls | grep '(-> (List'` finds the list
+		// operations without writing a probe query. It trails the guarantee (rather
+		// than sitting between the aligned columns) so the existing name/hash/kind/
+		// guarantee layout is unchanged; the `::` marks it. Rendered with the alias's
+		// own type-variable names, so a polymorphic type reads `(List a)`, not `t0`.
+		line := fmt.Sprintf("%-16s #%s  %-5s %s", k, shortHash(h), kind, g)
+		if d.K == "func" && d.Ty != nil {
+			line += "  ::  " + printTy(st, d.Ty, aliasTyVarNames(m, k))
+		}
+		fmt.Fprintf(&b, "%s\n", line)
 	}
 	return b.String()
 }
