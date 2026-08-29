@@ -139,11 +139,7 @@ func verifyReports(st *Store, h string) ([]PropReport, *Def, *Meta, error) {
 	base := caseSeedBase(h)
 	var reports []PropReport
 	for pi := range d.Props {
-		name := fmt.Sprintf("prop%d", pi)
-		if pi < len(m.PropNames) {
-			name = m.PropNames[pi]
-		}
-		reports = append(reports, runProp(st, h, &d.Props[pi], name, base, pi, propCases, propFuel))
+		reports = append(reports, runProp(st, h, &d.Props[pi], storedPropName(m, pi), base, pi, propCases, propFuel))
 	}
 	return reports, d, m, nil
 }

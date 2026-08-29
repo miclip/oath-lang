@@ -941,3 +941,133 @@ func mustDef(t *testing.T, st *Store, name string) *Def {
 	}
 	return d
 }
+
+// Finding #1 of the discovery-consumer experiment: `find --spec` must keep a
+// REFUTED candidate distinct from a merely-tested one. A two-valued mark rendered
+// a falsified definition as an ordinary "tested as", so a caller reading --spec
+// alone could pick the one implementation the store had DISPROVED against the law.
+func TestFindSpecMarksRefutedDistinctly(t *testing.T) {
+	st := newStore(t)
+	// A definition that STATES commutativity but does not satisfy it.
+	put(t, st, `(defn victim [] [(a Int) (b Int)] Int (+ a 1)
+		(prop comm [(a Int) (b Int)] (== (victim a b) (victim b a))))`)
+	// Record the refutation the way the guarantee pipeline does — the same
+	// Guarantee.Falsified field `oath ls` prints — so this tests the renderer, not
+	// the tester.
+	h, ok := st.Resolve("victim")
+	if !ok {
+		t.Fatal("victim not resolvable")
+	}
+	m, err := st.GetMeta(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Guarantee.Level = "falsified"
+	m.Guarantee.Falsified = []string{"comm"}
+	if err := st.SetMeta(h, m); err != nil {
+		t.Fatal(err)
+	}
+
+	// The query states the SAME law over a different body — matched by property
+	// content hash, not by name or body.
+	out, err := apiFindSpec(st, `(defn wanted [] [(a Int) (b Int)] Int (+ a b)
+		(prop comm [(a Int) (b Int)] (== (wanted a b) (wanted b a))))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "victim") {
+		t.Fatalf("victim should match the commutativity query by content hash:\n%s", out)
+	}
+	if !strings.Contains(out, `victim             (REFUTED as "comm")`) {
+		t.Errorf("a refuted match must render REFUTED, loudly:\n%s", out)
+	}
+	if strings.Contains(out, `(tested as "comm")`) {
+		t.Errorf("a refuted match must NOT be rendered as merely tested:\n%s", out)
+	}
+	if !strings.Contains(out, "DISPROVED for this law") {
+		t.Errorf("a refuted match must carry the disproved flag:\n%s", out)
+	}
+}
+
+// The control: a genuinely-tested (not refuted) match still renders "tested as".
+// Without it the test above could pass on a renderer that labels EVERYTHING
+// REFUTED — the "what makes it fire" companion to "what makes it fail".
+func TestFindSpecTestedStaysTested(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(defn plain [] [(a Int) (b Int)] Int (+ a b)
+		(prop comm [(a Int) (b Int)] (== (plain a b) (plain b a))))`)
+	out, err := apiFindSpec(st, `(defn wanted [] [(a Int) (b Int)] Int (+ a b)
+		(prop comm [(a Int) (b Int)] (== (wanted a b) (wanted b a))))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `plain              (tested as "comm")`) {
+		t.Errorf("a tested (unproven, unrefuted) match must render as tested:\n%s", out)
+	}
+	if strings.Contains(out, "REFUTED") || strings.Contains(out, "DISPROVED") {
+		t.Errorf("a merely-tested match must not be marked refuted:\n%s", out)
+	}
+}
+
+// The duplicate-property-name guard: elaboration does not force property names to
+// be unique, and Guarantee.Falsified is name-based, so a passing property must
+// NOT be marked REFUTED merely because a differently-lawed sibling with the same
+// name was falsified. Attribution requires every sibling of that name to be
+// falsified.
+func TestFindSpecRefutedGuardsDuplicateNames(t *testing.T) {
+	m := &Meta{
+		PropNames: []string{"law", "law"},
+		Guarantee: Guarantee{Level: "falsified", Falsified: []string{"law"}},
+	}
+	// Only ONE of the two "law" properties is falsified — neither index may be
+	// attributed the refutation, because the name cannot disambiguate them.
+	if refutedContains(m, 0, 2) || refutedContains(m, 1, 2) {
+		t.Errorf("a partial name collision must not mark either sibling refuted: got 0=%v 1=%v",
+			refutedContains(m, 0, 2), refutedContains(m, 1, 2))
+	}
+	// When BOTH share the name and BOTH are falsified, attribution is unambiguous.
+	m2 := &Meta{
+		PropNames: []string{"law", "law"},
+		Guarantee: Guarantee{Level: "falsified", Falsified: []string{"law", "law"}},
+	}
+	if !refutedContains(m2, 0, 2) || !refutedContains(m2, 1, 2) {
+		t.Errorf("when every sibling of a name is falsified, both are refuted")
+	}
+	// The ordinary unique-name case is unaffected.
+	m3 := &Meta{
+		PropNames: []string{"a", "b"},
+		Guarantee: Guarantee{Level: "falsified", Falsified: []string{"b"}},
+	}
+	if refutedContains(m3, 0, 2) || !refutedContains(m3, 1, 2) {
+		t.Errorf("unique names: only the falsified one is refuted")
+	}
+}
+
+// The verifier records an unnamed property's falsification under "prop%d" (no
+// space); refutedContains must match that exact spelling, not propNameOf's
+// human-readable "prop %d". storedPropName is the single source both use.
+func TestRefutedMatchesVerifierFallbackName(t *testing.T) {
+	// PropNames absent (legacy/hand-built meta): the falsified name is positional.
+	m := &Meta{Guarantee: Guarantee{Level: "falsified", Falsified: []string{"prop0"}}}
+	if !refutedContains(m, 0, 1) {
+		t.Errorf("a falsified unnamed property (verifier name %q) must be recognised", "prop0")
+	}
+	if refutedContains(m, 1, 2) {
+		t.Errorf("index 1 is not falsified and must not be marked so")
+	}
+	if got := storedPropName(m, 0); got != "prop0" {
+		t.Errorf("storedPropName fallback = %q, want %q (must match the verifier)", got, "prop0")
+	}
+}
+
+// P2 (short metadata): an explicit early name can equal a LATER index's positional
+// fallback. With PropNames=["prop1"] over TWO properties, index 1's stored name is
+// also "prop1"; a single falsified "prop1" must not mark BOTH refuted. Counting
+// over the true property count (nProps=2), not len(PropNames), keeps it conservative.
+func TestRefutedShortMetadataCollision(t *testing.T) {
+	m := &Meta{PropNames: []string{"prop1"}, Guarantee: Guarantee{Level: "falsified", Falsified: []string{"prop1"}}}
+	if refutedContains(m, 0, 2) || refutedContains(m, 1, 2) {
+		t.Errorf("ambiguous short-metadata collision must not mark either refuted: 0=%v 1=%v",
+			refutedContains(m, 0, 2), refutedContains(m, 1, 2))
+	}
+}

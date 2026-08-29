@@ -1594,10 +1594,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 	if lf, lfCap := c.solve("lemma-free", "", buildScript(nil, nil, goal, !c.quantified, false),
 		func(sc string) (string, bool) { return runZ3Budget(sc, c.budget(lemmaFreeRlimit())) }); !lfCap {
 		if os.Getenv("OATH_PROVE_SPLIT") != "" {
-			pname := fmt.Sprintf("prop%d", pi)
-			if pi < len(m.PropNames) {
-				pname = m.PropNames[pi]
-			}
+			pname := storedPropName(m, pi)
 			v := "unknown"
 			if strings.HasPrefix(lf, "unsat") {
 				v = "unsat"
@@ -1662,10 +1659,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 		out, capHit = c.solve("direct", "", directScript, c.runFull)
 	}
 	if os.Getenv("OATH_PROVE_SPLIT") != "" {
-		pname := fmt.Sprintf("prop%d", pi)
-		if pi < len(m.PropNames) {
-			pname = m.PropNames[pi]
-		}
+		pname := storedPropName(m, pi)
 		v := "unknown"
 		switch {
 		case capHit:

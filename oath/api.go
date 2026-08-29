@@ -333,6 +333,71 @@ func provenContains(m *Meta, i int) bool {
 	return false
 }
 
+// storedPropName is the name the verifier and prover RECORD for property index i:
+// the surface name when present, else a positional fallback. Guarantee.Falsified
+// is keyed on exactly this spelling, so anything matching against it (the
+// spec-query refutation renderer) MUST derive the name here rather than
+// re-inventing the fallback — the two differ from propNameOf's human-readable
+// "prop %d", and that space was exactly the drift that let a refuted property
+// with a short PropNames list render as "tested". One function, no drift.
+func storedPropName(m *Meta, i int) string {
+	if m != nil && i < len(m.PropNames) {
+		return m.PropNames[i]
+	}
+	return fmt.Sprintf("prop%d", i)
+}
+
+// refutedContains reports whether property index i was REFUTED for this def — a
+// concrete countermodel exists. Guarantee level "falsified" records the NAMES of
+// the refuted properties (the same field `oath ls` prints), not their indices, so
+// attribution to a specific index is by name. This is the third verdict the
+// spec-query renderer must keep distinct from a bare "tested": a definition
+// DISPROVED against a law is the one a caller must not pick for it, and a
+// two-valued mark hid it as an ordinary pass (finding #1 of the discovery-consumer
+// experiment).
+//
+// Property names are NOT guaranteed unique within a def (elaboration does not
+// enforce it), so a name-only match would wrongly mark a PASSING property refuted
+// when it shares a name with a falsified sibling. Guard against that: attribute a
+// refutation to index i only when EVERY property sharing its name is falsified —
+// the name appears at least as often in the falsified list as among the def's
+// properties. That covers the ordinary unique-name case exactly, and in an
+// ambiguous partial collision falls back to "tested" rather than ever labelling a
+// passing property REFUTED. The caller additionally excludes proven indices, so
+// the sort and flag below are never driven by a stale refuted flag.
+//
+// nProps is the def's TRUE property count, not len(PropNames): the two differ for
+// short/absent metadata, where later indices take a positional fallback name that
+// can collide with an explicit earlier name — counting only PropNames would miss
+// those and re-open the false-positive. A verdict/PropNames desync across a re-put
+// cannot arise: a put re-verifies and rewrites Falsified under the current names in
+// the same pipeline that records them, so the two are always consistent (measured).
+func refutedContains(m *Meta, i, nProps int) bool {
+	if m == nil || len(m.Guarantee.Falsified) == 0 {
+		return false
+	}
+	name := storedPropName(m, i)
+	inFalsified := 0
+	for _, n := range m.Guarantee.Falsified {
+		if n == name {
+			inFalsified++
+		}
+	}
+	if inFalsified == 0 {
+		return false
+	}
+	inProps := 0
+	for j := 0; j < nProps; j++ {
+		if storedPropName(m, j) == name {
+			inProps++
+		}
+	}
+	if inProps == 0 { // nProps unknown (0): treat the single index as its own
+		inProps = 1
+	}
+	return inFalsified >= inProps
+}
+
 func propNameOf(m *Meta, i int) string {
 	if m != nil && i < len(m.PropNames) && m.PropNames[i] != "" {
 		return m.PropNames[i]
@@ -347,9 +412,10 @@ func propNameOf(m *Meta, i int) string {
 // excludeHash omits the query def itself (empty for an ephemeral spec).
 func findFromDef(st *Store, qd *Def, qm *Meta, excludeHash, header string) string {
 	type qprop struct {
-		name   string
-		hash   string
-		proven bool
+		name    string
+		hash    string
+		proven  bool
+		refuted bool
 	}
 	var queries []qprop
 	qidx := map[string]int{}
@@ -359,13 +425,15 @@ func findFromDef(st *Store, qd *Def, qm *Meta, excludeHash, header string) strin
 			continue
 		}
 		qidx[ph] = len(queries)
-		queries = append(queries, qprop{propNameOf(qm, i), ph, provenContains(qm, i)})
+		pv := provenContains(qm, i)
+		queries = append(queries, qprop{propNameOf(qm, i), ph, pv, !pv && refutedContains(qm, i, len(qd.Props))})
 	}
 
 	type match struct {
 		def      string
 		propName string
 		proven   bool
+		refuted  bool
 	}
 	matches := make([][]match, len(queries))
 	names := st.Names()
@@ -386,22 +454,32 @@ func findFromDef(st *Store, qd *Def, qm *Meta, excludeHash, header string) strin
 		m, _ := st.GetMeta(h)
 		for i := range d.Props {
 			if j, ok := qidx[propHashGeneral(&d.Props[i])]; ok {
-				matches[j] = append(matches[j], match{k, propNameOf(m, i), provenContains(m, i)})
+				pv := provenContains(m, i)
+				matches[j] = append(matches[j], match{k, propNameOf(m, i), pv, !pv && refutedContains(m, i, len(d.Props))})
 			}
 		}
 	}
 
-	mark := func(proven bool) string {
-		if proven {
+	// A THREE-VALUED verdict, not two. "tested" and "REFUTED" are opposite
+	// findings — a law that PASSED generated cases versus one DISPROVED by a
+	// countermodel — and collapsing them to a single "tested" tells a caller a
+	// falsified candidate is a viable choice. --implies already keeps refutation
+	// distinct; --spec is the cheaper surface reached first, and must too.
+	mark := func(proven, refuted bool) string {
+		switch {
+		case proven:
 			return "proven"
+		case refuted:
+			return "REFUTED"
+		default:
+			return "tested"
 		}
-		return "tested"
 	}
 	var b strings.Builder
 	b.WriteString(header)
 	for _, q := range queries {
 		j := qidx[q.hash]
-		fmt.Fprintf(&b, "\n  · %s [%s]  #%s\n", q.name, mark(q.proven)+" here", shortHash(q.hash))
+		fmt.Fprintf(&b, "\n  · %s [%s]  #%s\n", q.name, mark(q.proven, q.refuted)+" here", shortHash(q.hash))
 		if len(matches[j]) == 0 {
 			// An empty result is the most dangerous output this tool has. It reads
 			// as "the registry has nothing", and a caller that believes it will
@@ -430,14 +508,23 @@ func findFromDef(st *Store, qd *Def, qm *Meta, excludeHash, header string) strin
 			}
 			continue
 		}
+		// Refuted candidates render LOUDLY and sort LAST: a definition disproved
+		// against this law is the one a caller must not pick, so it belongs at the
+		// bottom of the group flagged, not interleaved as an ordinary "tested".
+		sort.SliceStable(matches[j], func(a, b int) bool {
+			return !matches[j][a].refuted && matches[j][b].refuted
+		})
 		for _, m := range matches[j] {
 			flag := ""
-			if m.proven && q.proven {
+			switch {
+			case m.refuted:
+				flag = "  ← DISPROVED for this law: a countermodel exists (find --implies --details shows it)"
+			case m.proven && q.proven:
 				flag = "  ← proven on both: interchangeable for this law"
-			} else if m.proven {
+			case m.proven:
 				flag = "  ← a proven implementation of this spec"
 			}
-			fmt.Fprintf(&b, "      %-18s (%s as %q)%s\n", m.def, mark(m.proven), m.propName, flag)
+			fmt.Fprintf(&b, "      %-18s (%s as %q)%s\n", m.def, mark(m.proven, m.refuted), m.propName, flag)
 		}
 	}
 	return b.String()

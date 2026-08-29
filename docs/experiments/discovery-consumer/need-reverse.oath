@@ -4,18 +4,18 @@
 ; TWO laws, deliberately. Involution alone does not pin reversal: the identity
 ; function is an involution, and the corpus contains one that says so
 ; (bad-reverse). The second law — reversal antidistributes over append — is what
-; separates them, but ONLY on the --implies surface:
+; separates them, and BOTH surfaces now show it (finding #1, fixed):
 ;
-;   --spec     does NOT separate them. bad-reverse STATES both laws, so the
-;              content-hash surface returns it under BOTH, rendered "tested as",
-;              with no guarantee column to rank it against reverse. This is
-;              exactly finding #1 in the friction log: --spec cannot tell you
-;              bad-reverse is FALSIFIED. (Its definition-level guarantee is
-;              visible only via `oath ls` or the signature-probe fallback —
-;              a different surface, not this one.)
-;   --implies  IS what separates them: reverse is PROVEN on both laws;
-;              bad-reverse is REFUTED on this one with a concrete countermodel.
-;              Proof, not a label.
+;   --spec     returns bad-reverse under BOTH laws (it STATES both), but with a
+;              THREE-valued mark: "tested as" under involution — which it really
+;              does satisfy, identity is an involution — and "REFUTED as" under
+;              antidistribution, the law it fails. Before finding #1's fix this
+;              surface rendered both as a flat "tested as" and could not rank the
+;              disproved twin; now it reads the same falsified verdict `oath ls`
+;              carries.
+;   --implies  separates them by PROOF: reverse is PROVEN on both laws;
+;              bad-reverse is REFUTED on this one with a concrete countermodel —
+;              a label on --spec, the countermodel itself here.
 ;
 ; The laws are stated at Int because that is the type this corpus's list laws
 ; are written at, and it makes the DISCOVERY cheap. What it does NOT do is prove

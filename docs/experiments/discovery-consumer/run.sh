@@ -219,16 +219,21 @@ spec_anti=$(section antidistributes-over-append "$OUT")
 [ -n "$spec_inv" ] && [ -n "$spec_anti" ] || { echo "SETUP FAILED: could not slice the --spec report by property" >&2; exit 1; }
 has "--spec matches reverse on involution, by content hash alone"  "reverse            (proven as \"involution\")" "$spec_inv"
 has "--spec matches reverse on antidistribution too"               "reverse            (proven as \"antidistributes-over-append\")" "$spec_anti"
-# Finding #1: --spec renders the FALSIFIED twin as "tested as", indistinguishable
-# from a merely-tested pass. Assert the exact mark, not just the name — if --spec
-# is ever fixed to expose the refutation, these fail and force the log's headline
-# finding to be re-checked instead of silently going stale.
-has "--spec ALSO returns the falsified twin under involution, marked \"tested as\" (finding #1)"      "bad-reverse        (tested as \"involution\")" "$spec_inv"
-has "--spec ALSO returns it under antidistribution, marked \"tested as\" (finding #1)"                "bad-reverse        (tested as \"antidistributes-over-append\")" "$spec_anti"
+# Finding #1, RESOLVED: --spec now carries a THREE-valued verdict. bad-reverse is
+# an involution (identity is), so it is honestly "tested as" the first law — but
+# it is DISPROVED on antidistribution, and --spec now says REFUTED there instead
+# of hiding it as an ordinary "tested". Assert the exact marks: the involution row
+# stays "tested as" (correct — not refuted), the antidistribution row must be
+# REFUTED. If the renderer regresses to two-valued, the second assertion fails.
+has "--spec returns the twin under involution as \"tested as\" — it genuinely satisfies that law"   "bad-reverse        (tested as \"involution\")" "$spec_inv"
+has "--spec marks the twin REFUTED under antidistribution — finding #1, now fixed" "bad-reverse        (REFUTED as \"antidistributes-over-append\")" "$spec_anti"
+has "  ...and flags it as disproved, not merely unproven"                          "DISPROVED for this law" "$spec_anti"
 say ""
-say "  Both are returned, and the hash surface cannot rank them — it matched a"
-say "  law, and bad-reverse genuinely STATES that law. What separates them is"
-say "  the guarantee, and, below, a proof."
+say "  Both are returned, but the hash surface now RANKS them: bad-reverse is"
+say "  \"tested as\" the law it satisfies (involution — identity is one) and REFUTED"
+say "  on the law it fails (antidistribution). The three-valued mark closes"
+say "  finding #1 — a caller reading --spec alone no longer mistakes the disproved"
+say "  twin for a viable choice. --implies below confirms it with the countermodel."
 say ""
 say "--- surface B: --implies, one Z3 proof per candidate"
 oath_run find --implies "$here/need-reverse.oath" --details
