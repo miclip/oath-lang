@@ -754,6 +754,61 @@ func crossTypeCompatible(qTy, cTy *Ty) (crossTypeSub, bool) {
 	return sub, true
 }
 
+// typeSubsumes reports whether the candidate type cTy, with its type PARAMETERS
+// (k="var") free to be instantiated, can be made structurally equal to qTy — i.e.
+// cTy is at least as general as qTy, so a query at qTy's exact types would reach a
+// polymorphic definition of type cTy if only it were phrased polymorphically. It
+// is DIAGNOSTIC ONLY: `find --implies` lines up types up to primitive leaves, so a
+// monomorphic query silently skips these more-general candidates, and this lets
+// the report say how many were skipped and why (finding #3). It changes no verdict.
+//
+// This is a one-sided match (candidate vars bind to query subterms; query vars, if
+// any, are treated as ordinary leaves), NOT crossTypeCompatible's symmetric
+// primitive-leaf equality — a different question, so a different walk. subst
+// accumulates the instantiation and enforces that one candidate var maps to one
+// query type.
+func typeSubsumes(cTy, qTy *Ty, subst map[int]*Ty) bool {
+	if cTy == nil || qTy == nil {
+		return cTy == qTy
+	}
+	if cTy.K == "var" {
+		if prev, ok := subst[cTy.Var]; ok {
+			return bytes.Equal(tyBytes(prev), tyBytes(qTy))
+		}
+		subst[cTy.Var] = qTy
+		return true
+	}
+	if cTy.K != qTy.K {
+		return false
+	}
+	switch cTy.K {
+	case "fun":
+		return typeSubsumes(cTy.A, qTy.A, subst) && typeSubsumes(cTy.B, qTy.B, subst)
+	case "data", "rec", "record":
+		if cTy.Hash != qTy.Hash || len(cTy.Args) != len(qTy.Args) {
+			return false
+		}
+		if cTy.K == "record" {
+			if len(cTy.Names) != len(qTy.Names) {
+				return false
+			}
+			for i := range cTy.Names {
+				if cTy.Names[i] != qTy.Names[i] {
+					return false
+				}
+			}
+		}
+		for i := range cTy.Args {
+			if !typeSubsumes(&cTy.Args[i], &qTy.Args[i], subst) {
+				return false
+			}
+		}
+		return true
+	default: // int, rat, float, bool, str, and any other leaf: equal iff same kind
+		return bytes.Equal(tyBytes(cTy), tyBytes(qTy))
+	}
+}
+
 // crossTypeRetypeBinders applies the substitution to a query property's BINDER
 // types. Binder kinds absent from the signature are left unchanged (there is
 // nothing to map them to), which is sound: an unmapped binder either still
@@ -1524,6 +1579,17 @@ func apiFindImpliesOpts(st *Store, src string, mode findImpliesMode, budget time
 	// a partial number that would misreport as the corpus size. A running count
 	// needs no denominator and cannot lie about a total it never claimed.
 	examined, aborted := 0, false
+	// excludedPolyHashes is the SET of polymorphic definitions a MONOMORPHIC query
+	// skipped (see the diagnostic below), keyed by content HASH so aliases of one
+	// object count once, and accumulated across ALL query properties: whether a
+	// candidate is skipped can depend on the property (a self-free law typechecks
+	// against a poly candidate; a self-referencing one does not), so counting only
+	// the first property would make the diagnostic depend on property order.
+	// anyProven records whether the query succeeded
+	// anywhere, so the diagnostic fires only when the query came up empty and the
+	// round trip it warns about is real.
+	excludedPolyHashes := map[string]bool{}
+	anyProven := false
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "spec query %q — which definitions PROVABLY satisfy it (proof-implication, not shape match):\n", qm.Name)
@@ -1556,6 +1622,13 @@ func apiFindImpliesOpts(st *Store, src string, mode findImpliesMode, budget time
 			if !bytes.Equal(tyBytes(d.Ty), qsig) {
 				sub, ok := crossTypeCompatible(qd.Ty, d.Ty)
 				if !ok {
+					// finding #3: a monomorphic query silently skips a polymorphic
+					// definition whose shape SUBSUMES it (reverse : forall a. (List a)
+					// is never reached by a (List Str) query). Record it so an empty
+					// result can say WHY and how to fix it; the set dedups across props.
+					if qd.TyVars == 0 && d.TyVars > 0 && typeSubsumes(d.Ty, qd.Ty, map[int]*Ty{}) {
+						excludedPolyHashes[h] = true
+					}
 					continue
 				}
 				qp = Prop{Binders: crossTypeRetypeBinders(qp.Binders, sub), Body: *crossTypeRetypeBody(&qp.Body, sub)}
@@ -1587,6 +1660,15 @@ func apiFindImpliesOpts(st *Store, src string, mode findImpliesMode, budget time
 			// gate at all, so the case reached the prover unchecked — widening
 			// the search is what made the hole visible, not what created it.
 			if err := checkDef(st, &aug); err != nil {
+				// finding #3, the primitive-typed twin of the count above: a mono
+				// query over a PRIMITIVE (Int->Int) passes crossTypeCompatible against
+				// a polymorphic (a->a) — both generalize to var->var — but the appended
+				// self then carries no type argument the candidate needs, so checkDef
+				// rejects it here rather than at admission. Same mismatch, same fix, so
+				// count it the same way.
+				if qd.TyVars == 0 && d.TyVars > 0 && typeSubsumes(d.Ty, qd.Ty, map[int]*Ty{}) {
+					excludedPolyHashes[h] = true
+				}
 				continue
 			}
 			// #80/#156. A goal with a concrete countermodel cannot be proven, so
@@ -1648,6 +1730,9 @@ func apiFindImpliesOpts(st *Store, src string, mode findImpliesMode, budget time
 				// status, so the degradation is legible rather than inferred.
 				detail = fmt.Sprintf("unrecognised prover status %q: %s", o.status, o.detail)
 			}
+			if status == implyProven {
+				anyProven = true
+			}
 			results = append(results, implyResult{
 				name: k, status: status, method: o.method,
 				crossSig: crossSig, evidence: detail,
@@ -1668,6 +1753,18 @@ func apiFindImpliesOpts(st *Store, src string, mode findImpliesMode, budget time
 	clearImpliesProgress(progress)
 	if aborted {
 		writeImpliesAbort(&b, budget, examined)
+	}
+	// finding #3: when a MONOMORPHIC query proved nothing anywhere, say WHY the
+	// obvious candidates were missed. A polymorphic definition whose shape subsumes
+	// the query is never admitted — the query fixes a type it ranges over — so the
+	// report reads as "the corpus has nothing" when the real issue is the query's
+	// shape. Only on a complete, empty search: an abort or a hit speaks for itself.
+	if !aborted && !anyProven && len(excludedPolyHashes) > 0 {
+		fmt.Fprintf(&b, "\n  %d polymorphic definition(s) share this shape but could not be lined up: proof-implication\n", len(excludedPolyHashes))
+		b.WriteString("  matches types, and THIS query is monomorphic while they range over one or more type\n")
+		b.WriteString("  parameters. Restate the query polymorphically — declare the SAME type parameters they\n")
+		b.WriteString("  have and pass them explicitly in the property (e.g. `[a]` in the signature and\n")
+		b.WriteString("  `(wanted [a] xs)` in the law) — to reach them.\n")
 	}
 	return b.String(), nil
 }

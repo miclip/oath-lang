@@ -140,11 +140,30 @@ Restating the query as `[a]` with explicit `[Int]` applications reaches `reverse
 immediately.
 
 `docs/discovery.md` documents this as the "polymorphism axis", and the doc is
-right. The friction is that **nothing in the failing output points at it**. Three
-refutations is a confident-looking report. It reads like *"the corpus has three
-candidates at this shape and all three are wrong"*, which is true and useless;
-what the consumer needed to know is *"and N polymorphic definitions at this shape
-were never examined."*
+right. The friction was that **nothing in the failing output pointed at it** —
+three refutations read like *"the corpus has three candidates at this shape and
+all three are wrong"*, which is true and useless; what the consumer needed was
+*"and N polymorphic definitions at this shape were never examined."*
+
+**FIXED (the primary half).** `find --implies` now says exactly that when a
+monomorphic query proves nothing and a polymorphic definition whose shape
+*subsumes* it was skipped:
+
+```
+  3 polymorphic definition(s) share this shape but could not be lined up: proof-implication
+  matches types, and THIS query is monomorphic while they range over one or more type
+  parameters. Restate the query polymorphically — declare the SAME type parameters they
+  have and pass them explicitly in the property (e.g. `[a]` in the signature and
+  `(wanted [a] xs)` in the law) — to reach them.
+```
+
+A monomorphic query silently skipped these because `generalizeTypes` frees only
+primitive leaves, so `(List Str)` and `(List a)` are genuinely different shapes; a
+one-sided subsumption match (`typeSubsumes`) recognises that the polymorphic
+`reverse` *would* match if the query were phrased polymorphically. The note is a
+diagnostic only — it changes no verdict — and appears only on a complete search
+that proved nothing, so a hit or an abort still speaks for itself. The round trip
+is now guided rather than blind.
 
 Two smaller pieces of the same friction:
 
@@ -163,10 +182,13 @@ Two smaller pieces of the same friction:
   free. That is a point in the probe's favour and an argument for making it a
   command rather than a trick.
 
-**What would fix it:** report the count of candidates excluded by the
-polymorphism mismatch — *"4 definitions at a compatible shape were not admitted:
-they are polymorphic and your query is not"* — and give the signature probe a
-name.
+**Still open (the secondary half):** give the signature probe a first-class name.
+The polymorphism diagnostic above closes the round-trip for a query you already
+wrote; the shape probe is the move BEFORE you have a query — and it is still an
+idiom, not a command. A `find --shape` (or `oath ls` printing signatures) would
+make *"what does this corpus hold at this shape?"* a question you can ask directly
+rather than by writing a reflexive law and reading the `--spec` fallthrough. It is
+a separate command surface, deferred until a consumer needs it.
 
 ---
 

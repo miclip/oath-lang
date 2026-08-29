@@ -1071,3 +1071,107 @@ func TestRefutedShortMetadataCollision(t *testing.T) {
 			refutedContains(m, 0, 2), refutedContains(m, 1, 2))
 	}
 }
+
+// typeSubsumes: can a candidate's type parameters be instantiated to equal the
+// query type? (Used only to diagnose why a monomorphic --implies query missed a
+// more-general polymorphic definition.)
+func TestTypeSubsumes(t *testing.T) {
+	sub := func() map[int]*Ty { return map[int]*Ty{} }
+	if !typeSubsumes(tFun(tVar(0), tVar(0)), tFun(tInt(), tInt()), sub()) {
+		t.Error("(a -> a) should subsume (Int -> Int)")
+	}
+	if typeSubsumes(tFun(tVar(0), tVar(0)), tFun(tInt(), tBool()), sub()) {
+		t.Error("(a -> a) must NOT subsume (Int -> Bool): one var cannot be two types")
+	}
+	if !typeSubsumes(tFun(tVar(0), tVar(1)), tFun(tInt(), tBool()), sub()) {
+		t.Error("(a -> b) should subsume (Int -> Bool)")
+	}
+	if typeSubsumes(tInt(), tBool(), sub()) {
+		t.Error("Int must not subsume Bool")
+	}
+	if !typeSubsumes(tInt(), tInt(), sub()) {
+		t.Error("Int should subsume Int")
+	}
+}
+
+// finding #3: a MONOMORPHIC query fixes a datatype a polymorphic definition ranges
+// over, so the definition is never admitted and the query looks like it found
+// nothing. The report must name the mismatch and how to fix it.
+func TestFindImpliesDiagnosesPolymorphismMismatch(t *testing.T) {
+	requireZ3(t)
+	st := newStore(t)
+	put(t, st, `(data Unit [] (U))`)
+	put(t, st, `(data D [a] (Mk a))`)
+	put(t, st, `(defn poly [a] [(x (D a))] (D a) x
+		(prop refl [(x (D Int))] (== (poly [Int] x) x)))`)
+	// (D Unit) fixes the datatype poly ranges over — poly subsumes it but is skipped.
+	out, err := apiFindImplies(st, `(defn wanted [] [(x (D Unit))] (D Unit) x
+		(prop p [(x (D Unit))] (== (wanted x) x)))`, findImpliesSummary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "polymorphic definition(s) share this shape") {
+		t.Errorf("a monomorphic query that reached no polymorphic candidate must diagnose it:\n%s", out)
+	}
+	if !strings.Contains(out, "Restate the query polymorphically") {
+		t.Errorf("the diagnostic must tell the user how to fix it:\n%s", out)
+	}
+}
+
+// The control: a POLYMORPHIC query already reaches those definitions, so there is
+// no round trip and no diagnostic. Without this, the assertion above passes for a
+// build that prints the note unconditionally.
+func TestFindImpliesNoPolyDiagnosticWhenQueryIsPolymorphic(t *testing.T) {
+	requireZ3(t)
+	st := newStore(t)
+	put(t, st, `(data D [a] (Mk a))`)
+	put(t, st, `(defn poly [a] [(x (D a))] (D a) x
+		(prop refl [(x (D Int))] (== (poly [Int] x) x)))`)
+	out, err := apiFindImplies(st, `(defn wanted [a] [(x (D a))] (D a) x
+		(prop p [(x (D Int))] (== (wanted [Int] x) x)))`, findImpliesSummary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "polymorphic definition(s) share this shape") {
+		t.Errorf("a polymorphic query already reaches these; no diagnostic should appear:\n%s", out)
+	}
+}
+
+// The primitive-typed twin: a mono (Int -> Int) query passes crossTypeCompatible
+// against poly (a -> a) but is rejected at checkDef (the appended self carries no
+// type argument). The diagnostic must still fire.
+func TestFindImpliesDiagnosesPolymorphismMismatchPrimitive(t *testing.T) {
+	requireZ3(t)
+	st := newStore(t)
+	put(t, st, `(defn poly-id [a] [(x a)] a x
+		(prop refl [(x Int)] (== (poly-id [Int] x) x)))`)
+	out, err := apiFindImplies(st, `(defn wanted [] [(x Int)] Int x
+		(prop p [(x Int)] (== (wanted x) x)))`, findImpliesSummary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "polymorphic definition(s) share this shape") {
+		t.Errorf("a monomorphic primitive-typed query must also diagnose the poly mismatch:\n%s", out)
+	}
+}
+
+// Aliases of one polymorphic object must count ONCE: the set keys on content
+// hash, not name, so two names for the same skipped object do not inflate the
+// diagnostic (structurally identical defs are one object, per the naming model).
+func TestFindImpliesPolyDiagnosticDedupsAliases(t *testing.T) {
+	requireZ3(t)
+	st := newStore(t)
+	put(t, st, `(data Unit [] (U))`)
+	put(t, st, `(data D [a] (Mk a))`)
+	// Two NAMES, structurally identical bodies+laws → one object, two aliases.
+	put(t, st, `(defn poly-a [a] [(x (D a))] (D a) x (prop p [(x (D Int))] (== (poly-a [Int] x) x)))`)
+	put(t, st, `(defn poly-b [a] [(x (D a))] (D a) x (prop p [(x (D Int))] (== (poly-b [Int] x) x)))`)
+	out, err := apiFindImplies(st, `(defn wanted [] [(x (D Unit))] (D Unit) x
+		(prop p [(x (D Unit))] (== (wanted x) x)))`, findImpliesSummary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "1 polymorphic definition(s) share this shape") {
+		t.Errorf("two aliases of one skipped object must count as 1, not 2:\n%s", out)
+	}
+}
