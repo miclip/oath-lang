@@ -34,6 +34,11 @@ type Store struct {
 	// authorship, so the host is not the root of trust. Unset = unattributed
 	// (unsigned) puts.
 	signer ed25519.PrivateKey
+	// resolveLog, when non-nil, records every (name -> hash) that Resolve returns
+	// — the dependency resolver arms it around elaboration to capture the surface
+	// names a source references. Nil in every other context, so ordinary resolution
+	// is unaffected.
+	resolveLog map[string]string
 }
 
 // SetSigner attaches an Ed25519 private key so subsequent AppendLog calls sign
@@ -122,6 +127,14 @@ func (s *Store) Names() map[string]string {
 
 func (s *Store) Resolve(name string) (string, bool) {
 	h, ok := s.Names()[name]
+	// When a resolution log is armed (only by `oath resolve`/put --lock during
+	// elaboration), record the NAME the caller actually used and the hash it
+	// resolved to. This is how the resolver pins the surface names a source
+	// references, rather than reconstructing them from hashes — an object can have
+	// several aliases, and only the one written in the source is the dependency.
+	if ok && s.resolveLog != nil {
+		s.resolveLog[name] = h
+	}
 	return h, ok
 }
 
@@ -420,6 +433,14 @@ func (s *Store) FindCtor(name string) (string, int, bool) {
 		}
 		for i, cn := range ctors {
 			if cn == name {
+				// Record the owning DATATYPE (name k, hash h) so the dependency
+				// resolver captures datatypes reached through constructors — string
+				// and list literals, `(Cons ...)`, match arms — not only those
+				// written as explicit type applications. Same guard as Resolve: nil
+				// outside a resolve.
+				if s.resolveLog != nil {
+					s.resolveLog[k] = h
+				}
 				return h, i, true
 			}
 		}

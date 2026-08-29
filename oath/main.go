@@ -43,6 +43,7 @@ usage:
   oath find --implies <f> --timeout D  ...bounded by wall-clock D (e.g. 30s); the unreached candidates report NO VERDICT
   oath find --equiv <name>            find definitions that are the SAME FUNCTION up to rewrite rules (the e-graph)
   oath find --shape <file>            list definitions at a SIGNATURE (a defn, no property needed), up to operand types
+  oath resolve <file> [--from <store>] pin a file's external deps to hashes in a lockfile (fetch from --from); put --lock verifies it
   oath context <name...> [--budget N] spec-only slice of the named defs + transitive deps (no bodies)
   oath dependents <name>              list definitions that reference a definition
   oath verify <name>                  re-run a definition's properties
@@ -188,6 +189,28 @@ func main() {
 		}
 	}
 	switch args[0] {
+	case "resolve":
+		file, fromDir, out := "", "", ""
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			switch {
+			case rest[i] == "--from" && i+1 < len(rest):
+				fromDir = rest[i+1]
+				i++
+			case rest[i] == "-o" && i+1 < len(rest):
+				out = rest[i+1]
+				i++
+			default:
+				if file != "" {
+					fail(fmt.Errorf("usage: oath resolve <file.oath> [--from <store>] [-o <lock>]"))
+				}
+				file = rest[i]
+			}
+		}
+		if file == "" {
+			fail(fmt.Errorf("usage: oath resolve <file.oath> [--from <store>] [-o <lock>]"))
+		}
+		cmdResolve(st, file, fromDir, out)
 	case "put":
 		jsonMode := false
 		author := os.Getenv("OATH_AUTHOR")
@@ -195,6 +218,7 @@ func main() {
 		keyFile := os.Getenv("OATH_KEY")
 		remote := os.Getenv("OATH_REGISTRY")
 		allowNew := false
+		lockFile := ""
 		var files []string
 		rest := args[1:]
 		for i := 0; i < len(rest); i++ {
@@ -203,6 +227,9 @@ func main() {
 				jsonMode = true
 			case rest[i] == "--new":
 				allowNew = true
+			case rest[i] == "--lock" && i+1 < len(rest):
+				lockFile = rest[i+1]
+				i++
 			case rest[i] == "--author" && i+1 < len(rest):
 				author = rest[i+1]
 				i++
@@ -218,6 +245,10 @@ func main() {
 			default:
 				files = append(files, rest[i])
 			}
+		}
+		if lockFile != "" && remote != "" {
+			fail(fmt.Errorf("--lock is not supported with --remote: a lock is verified against a LOCAL store, " +
+				"and remote lock verification is not yet implemented — resolve and put locally, then publish"))
 		}
 		// --remote publishes to a REGISTRY instead of the local store, signed. It
 		// takes several files because publication order is load-bearing on a cold
@@ -245,7 +276,33 @@ func main() {
 			author = "unattributed"
 		}
 		if len(files) != 1 {
-			fail(fmt.Errorf("usage: oath put [--json] [--author <id>] [--context <hash>] [--key <file>] [--remote <url>] <file.oath>"))
+			fail(fmt.Errorf("usage: oath put [--json] [--author <id>] [--context <hash>] [--key <file>] [--remote <url>] [--lock <lock>] <file.oath>"))
+		}
+		// --lock verifies the store resolves this file's dependencies exactly as
+		// pinned, BEFORE elaborating — the #187 guard that makes ambient resolution
+		// checkable. It never changes what gets put, only whether the put proceeds.
+		if lockFile != "" {
+			// A LOCAL-store reproducibility guard, verified immediately before the
+			// put. It is not atomic with the elaboration that follows, so a store
+			// shared with other writers could be repointed in between — which is why
+			// a cloud-backed store (shared by construction) is refused here, and a
+			// remote put above. On a single-author local store there is no such
+			// writer, and that is the case --lock targets.
+			if os.Getenv("OATH_BACKEND") == "cloud" {
+				fail(fmt.Errorf("--lock is not supported on a cloud-backed store: a concurrent repoint could defeat a non-atomic verify-then-put — use --lock on a local store"))
+			}
+			lock, err := readLock(lockFile)
+			if err != nil {
+				fail(err)
+			}
+			// Read the source ONCE and both verify and submit those exact bytes: a
+			// re-read for the put could see a concurrent edit the lock never checked.
+			src := readSourceFile(files[0])
+			if err := verifyLock(st, src, lock); err != nil {
+				fail(err)
+			}
+			cmdPutSrc(st, src, jsonMode, author, ctxHash, allowNew)
+			return
 		}
 		cmdPut(st, files[0], jsonMode, author, ctxHash, allowNew)
 	case "config":
@@ -1132,7 +1189,13 @@ func readSourceFile(path string) string {
 }
 
 func cmdPut(st *Store, path string, jsonMode bool, author string, ctxHash string, allowNew bool) {
-	src := readSourceFile(path)
+	cmdPutSrc(st, readSourceFile(path), jsonMode, author, ctxHash, allowNew)
+}
+
+// cmdPutSrc puts already-read source bytes, so a caller that must inspect the
+// source first (put --lock verifies against it) submits the EXACT bytes it
+// checked — not a re-read that a concurrent edit could have changed underneath.
+func cmdPutSrc(st *Store, src string, jsonMode bool, author string, ctxHash string, allowNew bool) {
 	if err := guardNewNames(st, src, allowNew); err != nil {
 		fail(err)
 	}
@@ -1711,7 +1774,8 @@ const defaultStoreDir = "codebase"
 
 var knownFlags = map[string]map[string]bool{
 	"publish":   set("--remote", "--key", "--kms-key", "--license", "--namespace", "--dry-run", "--json", "--yes", "-y"),
-	"put":       set("--remote", "--key", "--author", "--context", "--json", "--new"),
+	"put":       set("--remote", "--key", "--author", "--context", "--json", "--new", "--lock"),
+	"resolve":   set("--from", "-o"),
 	"reserve":   set("--remote", "--key", "--kms-key", "--dry-run", "--yes", "-y"),
 	"delegate":  set("--remote", "--key", "--kms-key", "--to", "--dry-run", "--yes", "-y"),
 	"revoke":    set("--remote", "--key", "--kms-key", "--from", "--dry-run", "--yes", "-y"),

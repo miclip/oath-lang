@@ -164,6 +164,51 @@ reproducibility need, met against a real consumer, that the lockfile cannot serv
 without changing what a definition means or hashes to. None is known; the burden is
 on the counterexample.
 
+### Result — the tool is built, and the falsifier PASSED
+
+`oath/resolve.go` implements `oath resolve <file> --from <store> [-o <lock>]` and
+`oath put --lock <lock>`, using only the mechanisms above (elaboration to find the
+external set, `StoreObject`/`Repoint` to fetch, a JSON lockfile). Run against the
+real consumer:
+
+- **PASS arm.** `oath resolve app.oath --from codebase` into a **fresh empty store**
+  pinned 5 external names (`List`, `Str`, `reverse`, `str-append`, `str-join`),
+  fetched an 8-object closure, and wrote the lock. `oath put --lock` then elaborated
+  `args-in-reverse` in that fresh store to **`#84bdbbcba9b4`** — byte-identical to a
+  put against the full corpus. Cross-store hash identity holds; no language, SPEC,
+  or identity change was touched.
+- **Stress arm.** Repointing `reverse` in the target to `bad-reverse` made
+  `oath put --lock` **refuse early** — *"reverse locked to #7bb628…, but the store
+  binds it to #af6b61…"* (exit 1) — where a plain `put` silently elaborates the
+  wrong closure. The lockfile makes the ambient binding checkable, which is exactly
+  the property finding #2 said was missing.
+
+So the "no change required" path is not just open in principle; it is **demonstrated**.
+
+**Scope of the demonstrator** (none of it a language question — all are the
+incremental hardening a production version would finish):
+- Fetch is from a local `--from` store (the corpus standing in as the registry),
+  opened with an explicit filesystem backend. A `--remote` fetch is the identical
+  shape over `remoteEnvelopeOf`/`remoteNameRevision`.
+- `resolve --from` writes into a **local working store** only — it refuses the
+  canonical corpus and any cloud-backed target, so it cannot pollute a tracked or
+  shared store.
+- `put --lock` is a **local-store** guard: it reads the source once and verifies
+  those exact bytes, but verify-then-put is not atomic, so a cloud-backed store
+  (shared by construction) is refused rather than raced.
+- Fetching a dependency into a **non-empty** target that already holds that object
+  under a different alias is not handled (the alias's constructor vocabulary can be
+  lost on the merge); the demonstrated flow resolves into a fresh store, where this
+  cannot arise. Closing it is per-alias metadata plumbing, not a language change.
+- The classification assumes a working store **without repoint policies**: it
+  elaborates the batch in a scratch store that binds each earlier form
+  unconditionally, whereas a policy-governed store (`require_proven`,
+  `forbid_falsified`, …) could block an earlier form and leave a later reference
+  resolving to the ambient binding instead. The local single-author authoring case
+  the tool targets has no such policy; a production version would mirror apiPut's
+  name-transition gates (or reject a batch it cannot classify) before trusting the
+  lock. Not a language question — the same re-implementation of an existing gate.
+
 ## 5. Explicitly out of scope (and why)
 
 - **A source `import`/`require` keyword.** It would put resolution *in* the file,
@@ -182,11 +227,18 @@ on the counterexample.
 
 ## 6. Recommendation
 
-Build the minimal tool — `oath resolve` (compute external set, pin, fetch, write
-lock) and `oath put --lock` (verify then elaborate) — and run the §4 falsifier
-against `app.oath`. The expected result closes #187 with **no** change to the
-language, the SPEC, or any hash. Do not add a source import form, a package object,
-or a hash-in-source syntax unless the falsifier fails.
+The minimal tool is built (`oath/resolve.go`: `oath resolve` + `oath put --lock`)
+and the §4 falsifier **passed** — so #187 is answered **no change to the language,
+the SPEC, or any hash**, demonstrated rather than argued. What remains is
+incremental and optional, none of it a language question:
+
+- a `--remote` fetch (the same shape over the existing registry primitives);
+- generating the lock as part of `oath put` when absent, so the common path is one
+  command;
+- surfacing ambiguity when a registry offers several candidates for a name.
+
+Do **not** add a source `import` form, a package object, or a hash-in-source syntax
+unless a future consumer produces the falsifier this design could not meet.
 
 This keeps #187 in the class the project prefers: an architectural question
-answered **no**, with the "no" made checkable rather than asserted.
+answered **no**, with the "no" made checkable — and here, checked.
