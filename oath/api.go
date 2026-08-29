@@ -837,6 +837,44 @@ func typeSubsumes(cTy, qTy *Ty, subst map[int]*Ty) bool {
 	}
 }
 
+// shapeKey is the SIGNATURE identity `find --shape` matches on: two types share a
+// key iff they are equal after freeing primitive operand leaves — so `(-> Int Int)`
+// and `(-> Rat Rat)` coincide (up to operand types) but `(-> Int Int)` and
+// `(-> Int Bool)` do not. A type's DECLARED type parameters are kept in a disjoint
+// index range from the freed-primitive variables, so a universally polymorphic
+// `(-> a a)` is NOT the same shape as a monomorphic `(-> Int Int)` — the mono
+// definition is less general, not "at" the poly shape (it shows up, if at all, only
+// for a mono query, and a poly definition surfaces for a mono query via subsumption
+// instead). Without the disjoint range generalizeTypes numbers both from 0 and the
+// two collide.
+func shapeKey(ty *Ty) []byte {
+	hoisted := hoistVars(ty, 1<<20)
+	g := generalizeTypes([]Ty{hoisted})[0]
+	return tyBytes(&g)
+}
+
+// hoistVars shifts every declared type variable index up by base, moving them out
+// of the [0, ...) range generalizeTypes assigns to freed primitive leaves.
+func hoistVars(t *Ty, base int) Ty {
+	switch t.K {
+	case "var":
+		return *tVar(t.Var + base)
+	case "fun":
+		a := hoistVars(t.A, base)
+		b := hoistVars(t.B, base)
+		return *tFun(&a, &b)
+	case "data", "rec", "record":
+		out := *t
+		out.Args = make([]Ty, len(t.Args))
+		for i := range t.Args {
+			out.Args[i] = hoistVars(&t.Args[i], base)
+		}
+		return out
+	default:
+		return *t
+	}
+}
+
 // crossTypeRetypeBinders applies the substitution to a query property's BINDER
 // types. Binder kinds absent from the signature are left unchanged (there is
 // nothing to map them to), which is sound: an unmapped binder either still
@@ -1901,6 +1939,102 @@ func apiFindEquiv(st *Store, name string) (string, error) {
 		b.WriteString("  (no other definition normalizes to the same form)\n")
 	} else {
 		b.WriteString("\n" + strings.Join(matches, "\n") + "\n")
+	}
+	return b.String(), nil
+}
+
+// apiFindShape is the first-class shape probe (finding #3): given a SIGNATURE — a
+// (defn ...) needing no properties and no body of its own — list every definition
+// the corpus holds at that shape. Matching is by generalizeTypes, up to primitive
+// operand types (so `(-> Int Int)` also finds `(-> Rat Rat)`), the same notion the
+// `--spec` signature fallthrough uses — made a command instead of a reflexive-law
+// idiom. A second group names the polymorphic definitions that are MORE GENERAL
+// than the query and could be used at its shape by instantiation (the finding #3
+// insight: `(List Str)` reaches `reverse : forall a. (List a)`). No name is
+// trusted; the answer is by shape, and every row carries its guarantee.
+func apiFindShape(st *Store, src string) (string, error) {
+	forms, err := parseForms(src)
+	if err != nil {
+		return "", err
+	}
+	if len(forms) != 1 {
+		return "", fmt.Errorf("a shape query must be a single (defn name [tyvars] [(param ty) ...] ret-ty ...) giving the signature to match")
+	}
+	f := forms[0]
+	if f.K != "list" || len(f.Kids) < 5 || !f.Kids[0].isSym("defn") ||
+		f.Kids[2].K != "brack" || f.Kids[3].K != "brack" {
+		return "", fmt.Errorf("a shape query must be a single (defn name [tyvars] [(param ty) ...] ret-ty ...) giving the signature to match")
+	}
+	// The SIGNATURE ONLY — no body, no property. Building the function type from
+	// the params and return type directly (rather than through elabFunc, which
+	// needs a body) is what lets a shape query be exactly a signature, including a
+	// nullary one or a return type no parameter inhabits.
+	tvs, err := tyvarNames(f.Kids[2])
+	if err != nil {
+		return "", err
+	}
+	e := &elab{st: st, tyvars: tvs}
+	_, ptys, err := e.parseParams(f.Kids[3])
+	if err != nil {
+		return "", fmt.Errorf("shape query parameters: %w", err)
+	}
+	retTy, err := e.parseTy(f.Kids[4])
+	if err != nil {
+		return "", fmt.Errorf("shape query return type: %w", err)
+	}
+	qTy := retTy
+	for i := len(ptys) - 1; i >= 0; i-- {
+		qTy = tFun(ptys[i], qTy)
+	}
+	qKey := shapeKey(qTy)
+
+	names := st.Names()
+	keys := make([]string, 0, len(names))
+	for k := range names {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var atShape, moreGeneral []string
+	for _, k := range keys {
+		h := names[k]
+		d, err := st.GetDef(h)
+		if err != nil || d.K != "func" || d.Ty == nil {
+			continue
+		}
+		m, _ := st.GetMeta(h)
+		sig := printTy(st, d.Ty, aliasTyVarNames(m, k))
+		guar := "asserted"
+		if m != nil {
+			guar = guaranteeString(m.Guarantee) + termSuffix(m)
+		}
+		row := fmt.Sprintf("      %-18s #%s  %-30s %s", k, shortHash(h), sig, guar)
+		switch {
+		case bytes.Equal(shapeKey(d.Ty), qKey):
+			atShape = append(atShape, row)
+		case d.TyVars > 0 && typeSubsumes(d.Ty, qTy, map[int]*Ty{}):
+			moreGeneral = append(moreGeneral, row)
+		}
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "shape query — definitions at %s (matched up to operand types, no name, no property):\n",
+		printTy(st, qTy, tvs))
+	if len(atShape) == 0 && len(moreGeneral) == 0 {
+		b.WriteString("      (no definition in the store has this shape)\n")
+		return b.String(), nil
+	}
+	if len(atShape) == 0 {
+		b.WriteString("      (nothing at this shape exactly; see the more-general definitions below)\n")
+	}
+	for _, r := range atShape {
+		b.WriteString(r + "\n")
+	}
+	if len(moreGeneral) > 0 {
+		b.WriteString("\n  MORE GENERAL — a type parameter subsumes this shape (usable here by instantiation):\n")
+		for _, r := range moreGeneral {
+			b.WriteString(r + "\n")
+		}
 	}
 	return b.String(), nil
 }

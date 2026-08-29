@@ -42,6 +42,7 @@ usage:
   oath find --implies <f> --details   ...and NAME the candidates refuted or left without a verdict, with the evidence
   oath find --implies <f> --timeout D  ...bounded by wall-clock D (e.g. 30s); the unreached candidates report NO VERDICT
   oath find --equiv <name>            find definitions that are the SAME FUNCTION up to rewrite rules (the e-graph)
+  oath find --shape <file>            list definitions at a SIGNATURE (a defn, no property needed), up to operand types
   oath context <name...> [--budget N] spec-only slice of the named defs + transitive deps (no bodies)
   oath dependents <name>              list definitions that reference a definition
   oath verify <name>                  re-run a definition's properties
@@ -1331,6 +1332,8 @@ func runFind(st *Store, args []string) {
 		cmdFindImplies(st, fa.target, fa.mode, fa.budget)
 	case findFormEquiv:
 		cmdFindEquiv(st, fa.target)
+	case findFormShape:
+		cmdFindShape(st, fa.target)
 	default:
 		cmdFind(st, fa.target)
 	}
@@ -1346,6 +1349,7 @@ const (
 	findFormSpec
 	findFormImplies
 	findFormEquiv
+	findFormShape
 )
 
 // findSelectors maps each selector flag to the form it selects, and it is the
@@ -1358,6 +1362,7 @@ var findSelectors = map[string]findForm{
 	"--spec":    findFormSpec,
 	"--implies": findFormImplies,
 	"--equiv":   findFormEquiv,
+	"--shape":   findFormShape,
 }
 
 // findDetailsFlag selects the detailed report from apiFindImplies: the
@@ -1373,7 +1378,7 @@ const findDetailsFlag = "--details"
 // never a proof.
 const findTimeoutFlag = "--timeout"
 
-const findUsage = "usage: oath find <name> | --spec <file> | --implies <file> [--details] [--timeout <dur>] | --equiv <name>"
+const findUsage = "usage: oath find <name> | --spec <file> | --implies <file> [--details] [--timeout <dur>] | --equiv <name> | --shape <file>"
 
 // findArgs is a parsed `oath find` command line.
 type findArgs struct {
@@ -1507,6 +1512,14 @@ func findKnownFlags() map[string]bool {
 
 func cmdFindEquiv(st *Store, name string) {
 	out, err := apiFindEquiv(st, name)
+	if err != nil {
+		fail(err)
+	}
+	fmt.Print(out)
+}
+
+func cmdFindShape(st *Store, path string) {
+	out, err := apiFindShape(st, readSourceFile(path))
 	if err != nil {
 		fail(err)
 	}

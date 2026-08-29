@@ -36,6 +36,7 @@ func TestParseFindArgsAcceptsEveryForm(t *testing.T) {
 		{[]string{"--spec", "q.oath"}, findFormSpec, "q.oath", findImpliesSummary},
 		{[]string{"--implies", "q.oath"}, findFormImplies, "q.oath", findImpliesSummary},
 		{[]string{"--equiv", "sum-ab"}, findFormEquiv, "sum-ab", findImpliesSummary},
+		{[]string{"--shape", "q.oath"}, findFormShape, "q.oath", findImpliesSummary},
 		{[]string{"--implies", "q.oath", "--details"}, findFormImplies, "q.oath", findImpliesDetailed},
 		// Order must not matter: the flag is a switch, not a suffix.
 		{[]string{"--details", "--implies", "q.oath"}, findFormImplies, "q.oath", findImpliesDetailed},
@@ -106,6 +107,8 @@ func TestParseFindArgsRefusals(t *testing.T) {
 		{"timeout not a duration", []string{"--implies", "q.oath", "--timeout", "soon"}, "is not a duration"},
 		{"timeout non-positive", []string{"--implies", "q.oath", "--timeout", "0s"}, "positive"},
 		{"timeout twice", []string{"--implies", "q.oath", "--timeout", "1s", "--timeout", "2s"}, "twice"},
+		{"details with --shape", []string{"--shape", "q.oath", "--details"}, "--implies form only"},
+		{"timeout with --shape", []string{"--shape", "q.oath", "--timeout", "5s"}, "--implies form only"},
 	} {
 		got, err := parseFindArgs(c.args)
 		if err == nil {

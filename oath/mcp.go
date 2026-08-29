@@ -124,6 +124,11 @@ func mcpTools() []map[string]any {
 			"inputSchema": obj(map[string]any{"name": str("definition name to find equivalents of")}, "name"),
 		},
 		{
+			"name":        "find_shape",
+			"description": "Discovery by SIGNATURE — 'what does the corpus hold at this shape?'. Send a (defn ...) giving only the signature (no property and no body needed); get back every definition whose type matches it UP TO OPERAND TYPES (so `(-> Int Int)` also lists `(-> Rat Rat)`), each with its guarantee. This is a SHAPE match, not a proof or a property match: it is cheap (no solver), and it does not tell you a definition satisfies any law — call `explain` before choosing. A monomorphic query also gets a MORE GENERAL group: polymorphic definitions that range over a type parameter you fixed and are usable at your shape by instantiation (a `(List Str)` query surfaces `reverse : forall a. (List a)`). Use it BEFORE you have a spec, to see what exists at a shape; use find_spec/find_implies once you can state the law.",
+			"inputSchema": obj(map[string]any{"source": str("an Oath (defn ...) giving the signature to match; properties and body are optional")}, "source"),
+		},
+		{
 			"name":        "eval",
 			"description": "Typecheck and evaluate a single Oath expression, e.g. (sort (Cons [Int] 2 (Cons [Int] 1 (Nil [Int])))).",
 			"inputSchema": obj(map[string]any{"expr": str("Oath expression")}, "expr"),
@@ -423,6 +428,8 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 		return apiFindImplies(st, a.Source, findImpliesDetailed)
 	case "find_equiv":
 		return apiFindEquiv(st, a.Name)
+	case "find_shape":
+		return apiFindShape(st, a.Source)
 	case "ls":
 		return apiLs(st), nil
 	case "eval":

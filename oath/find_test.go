@@ -1175,3 +1175,93 @@ func TestFindImpliesPolyDiagnosticDedupsAliases(t *testing.T) {
 		t.Errorf("two aliases of one skipped object must count as 1, not 2:\n%s", out)
 	}
 }
+
+// find --shape is the first-class shape probe: given a signature, list the corpus
+// at that shape (up to operand types), and separately the polymorphic definitions
+// that are MORE GENERAL and usable at the shape by instantiation.
+func TestFindShapeAtShapeAndMoreGeneral(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(data Unit [] (U))`)
+	put(t, st, `(data D [a] (Mk a))`)
+	put(t, st, `(defn poly [a] [(x (D a))] (D a) x)`)
+
+	// A polymorphic query at (D a) -> (D a): poly is AT the shape (no more-general).
+	atShape, err := apiFindShape(st, `(defn wanted [a] [(x (D a))] (D a))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(atShape, "poly") {
+		t.Errorf("a shape query must list a definition at that shape:\n%s", atShape)
+	}
+	if strings.Contains(atShape, "MORE GENERAL") {
+		t.Errorf("a polymorphic query needs no more-general group:\n%s", atShape)
+	}
+
+	// A monomorphic query at (D Unit) -> (D Unit): poly SUBSUMES it, so it appears
+	// under MORE GENERAL rather than at-shape.
+	mono, err := apiFindShape(st, `(defn wanted [] [(x (D Unit))] (D Unit))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gi := strings.Index(mono, "MORE GENERAL")
+	pi := strings.Index(mono, "poly")
+	if gi < 0 || pi < 0 || pi < gi {
+		t.Errorf("a monomorphic query must list the subsuming polymorphic def under MORE GENERAL:\n%s", mono)
+	}
+}
+
+// The empty case: a shape nothing in the store has.
+func TestFindShapeEmpty(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(defn add2 [] [(a Int) (b Int)] Int (+ a b))`)
+	out, err := apiFindShape(st, `(defn wanted [] [(a Bool)] Bool a)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "no definition in the store has this shape") {
+		t.Errorf("a shape with no match must say so:\n%s", out)
+	}
+}
+
+// find --shape needs ONLY a signature: a bodyless query, including one whose
+// return type no parameter inhabits, and a nullary one, must all elaborate.
+func TestFindShapeSignatureOnly(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(defn is-pos [] [(x Int)] Bool (< 0 x))`)
+	out, err := apiFindShape(st, `(defn wanted [] [(x Int)] Bool)`) // no body, return not among params
+	if err != nil {
+		t.Fatalf("a bodyless signature must elaborate: %v", err)
+	}
+	if !strings.Contains(out, "is-pos") {
+		t.Errorf("the (Int -> Bool) shape must list is-pos:\n%s", out)
+	}
+	if _, err := apiFindShape(st, `(defn wanted [] [] Int)`); err != nil {
+		t.Errorf("a nullary signature must elaborate, not require a body: %v", err)
+	}
+}
+
+// A universally polymorphic query is NOT the same shape as a monomorphic
+// definition — the mono def is strictly less general. (It surfaces only for a
+// monomorphic query, via the more-general/subsumption path.)
+func TestFindShapePolyIsNotMono(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(defn inc [] [(x Int)] Int (+ x 1))`) // Int -> Int, monomorphic
+	out, err := apiFindShape(st, `(defn wanted [a] [(x a)] a)`) // a -> a, polymorphic
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "inc") {
+		t.Errorf("a polymorphic (a -> a) query must NOT match a monomorphic (Int -> Int) def:\n%s", out)
+	}
+}
+
+// An empty or comment-only shape query returns an error, never a panic (it must
+// not crash the CLI or terminate an MCP stdio server).
+func TestFindShapeEmptyInput(t *testing.T) {
+	st := newStore(t)
+	for _, src := range []string{"", "   ", "; just a comment\n"} {
+		if _, err := apiFindShape(st, src); err == nil {
+			t.Errorf("empty shape query %q must return an error, not succeed", src)
+		}
+	}
+}

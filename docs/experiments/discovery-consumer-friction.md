@@ -184,13 +184,25 @@ Two smaller pieces of the same friction:
   free. That is a point in the probe's favour and an argument for making it a
   command rather than a trick.
 
-**Mostly fixed (the secondary half):** the polymorphism diagnostic above closes
-the round-trip for a query you already wrote; the shape probe is the move BEFORE
-you have a query. `oath ls` now prints each function's signature, so the corpus is
-searchable by shape with a grep — *"what does this corpus hold at this shape?"* is
-a first-class question now, not a reflexive-law hack. What remains is a dedicated
-`find --shape` query (matching by structural signature the way `find --spec`
-matches by property), a separate command surface left until a consumer needs it.
+**FIXED (the secondary half).** Two changes closed it. `oath ls` now prints each
+function's signature, so the corpus is greppable by shape. And `find --shape`
+(with a `find_shape` MCP tool) makes it a real query: give a signature — a
+`(defn ...)` with no property and no body of its own — and get back every
+definition at that shape, matched up to operand types, each with its guarantee:
+
+```
+$ oath find --shape reversal.oath      # (defn wanted [] [(xs (List Str))] (List Str))
+shape query — definitions at (-> (List Str) (List Str)) (matched up to operand types, ...):
+      gh-drop-final-empty  …  (-> (List Str) (List Str))   tested …
+      …
+  MORE GENERAL — a type parameter subsumes this shape (usable here by instantiation):
+      reverse              …  (-> (List a) (List a))       PROVEN …
+```
+
+The MORE GENERAL group is the finding #3 insight made a feature: a monomorphic
+shape query surfaces the polymorphic definitions that range over the type it
+fixed. It is a SHAPE match, not a proof — cheap, no solver — so `explain` before
+choosing, exactly as with the other discovery surfaces.
 
 ---
 
