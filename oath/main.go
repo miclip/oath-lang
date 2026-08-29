@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -39,6 +40,7 @@ usage:
   oath find --spec <file>             find definitions that satisfy a FRESH spec (a defn whose props are the query)
   oath find --implies <file>          find definitions that PROVABLY satisfy a spec (Z3 proof, catches semantic matches)
   oath find --implies <f> --details   ...and NAME the candidates refuted or left without a verdict, with the evidence
+  oath find --implies <f> --timeout D  ...bounded by wall-clock D (e.g. 30s); the unreached candidates report NO VERDICT
   oath find --equiv <name>            find definitions that are the SAME FUNCTION up to rewrite rules (the e-graph)
   oath context <name...> [--budget N] spec-only slice of the named defs + transitive deps (no bodies)
   oath dependents <name>              list definitions that reference a definition
@@ -1281,13 +1283,31 @@ func cmdFindSpec(st *Store, path string) {
 	fmt.Print(out)
 }
 
-func cmdFindImplies(st *Store, path string, mode findImpliesMode) {
+func cmdFindImplies(st *Store, path string, mode findImpliesMode, budget time.Duration) {
 	src := readSourceFile(path)
-	out, err := apiFindImplies(st, src, mode)
+	// Progress goes to stderr, and ONLY when stderr is a terminal: a piped or
+	// captured run (a test, a script, `2>&1` into a file) gets the report on
+	// stdout and nothing else, so the carriage-return line never lands in output.
+	var progress io.Writer
+	if isTerminalFile(os.Stderr) {
+		progress = os.Stderr
+	}
+	out, err := apiFindImpliesOpts(st, src, mode, budget, progress)
 	if err != nil {
 		fail(err)
 	}
 	fmt.Print(out)
+}
+
+// isTerminalFile reports whether f is a character device (a terminal), without a
+// dependency: the default build is zero-deps, so this reads the file mode rather
+// than calling into golang.org/x/term.
+func isTerminalFile(f *os.File) bool {
+	fi, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
 }
 
 // ---------------------------------------------------------------------------
@@ -1308,7 +1328,7 @@ func runFind(st *Store, args []string) {
 	case findFormSpec:
 		cmdFindSpec(st, fa.target)
 	case findFormImplies:
-		cmdFindImplies(st, fa.target, fa.mode)
+		cmdFindImplies(st, fa.target, fa.mode, fa.budget)
 	case findFormEquiv:
 		cmdFindEquiv(st, fa.target)
 	default:
@@ -1346,13 +1366,21 @@ var findSelectors = map[string]findForm{
 // a large store naming every miss buries it.
 const findDetailsFlag = "--details"
 
-const findUsage = "usage: oath find <name> | --spec <file> | --implies <file> [--details] | --equiv <name>"
+// findTimeoutFlag bounds --implies by WALL-CLOCK. It is a --implies-only control
+// (like --details): the other three searches attempt no proof, so a budget on
+// them would be a flag that does nothing. Its value is a Go duration ("30s",
+// "2m"). See apiFindImpliesOpts for why a budget truncates the candidate set and
+// never a proof.
+const findTimeoutFlag = "--timeout"
+
+const findUsage = "usage: oath find <name> | --spec <file> | --implies <file> [--details] [--timeout <dur>] | --equiv <name>"
 
 // findArgs is a parsed `oath find` command line.
 type findArgs struct {
 	form   findForm
 	target string
 	mode   findImpliesMode
+	budget time.Duration // --implies wall-clock ceiling; 0 = unbounded
 }
 
 // parseFindArgs is `oath find`'s grammar as a TOTAL FUNCTION returning an error
@@ -1381,7 +1409,7 @@ type findArgs struct {
 // flag would make the derivation a lie the day the two drifted.
 func parseFindArgs(args []string) (findArgs, error) {
 	fa := findArgs{mode: findImpliesSummary}
-	selector, details := "", false
+	selector, details, timeoutSet := "", false, false
 	var positionals []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -1406,6 +1434,26 @@ func parseFindArgs(args []string) (findArgs, error) {
 					"cannot do. %s", findDetailsFlag, findUsage)
 			}
 			details = true
+		case a == findTimeoutFlag:
+			if timeoutSet {
+				return fa, fmt.Errorf("%s was given twice. %s", findTimeoutFlag, findUsage)
+			}
+			if i+1 >= len(args) {
+				return fa, fmt.Errorf("%s needs a duration and none followed it (e.g. %s 30s). %s",
+					findTimeoutFlag, findTimeoutFlag, findUsage)
+			}
+			if strings.HasPrefix(args[i+1], "--") {
+				return fa, fmt.Errorf("%s needs a duration, but %q is a flag. %s", findTimeoutFlag, args[i+1], findUsage)
+			}
+			d, err := time.ParseDuration(args[i+1])
+			if err != nil {
+				return fa, fmt.Errorf("%s %q is not a duration (try 30s, 2m): %v. %s", findTimeoutFlag, args[i+1], err, findUsage)
+			}
+			if d <= 0 {
+				return fa, fmt.Errorf("%s must be a positive duration, got %q. %s", findTimeoutFlag, args[i+1], findUsage)
+			}
+			timeoutSet, fa.budget = true, d
+			i++
 		case strings.HasPrefix(a, "--"):
 			return fa, fmt.Errorf("`oath find` has no flag %q, and silently ignoring it would let this command "+
 				"do something other than what you asked. %s", a, findUsage)
@@ -1430,6 +1478,10 @@ func parseFindArgs(args []string) (findArgs, error) {
 		}
 		fa.mode = findImpliesDetailed
 	}
+	if timeoutSet && fa.form != findFormImplies {
+		return fa, fmt.Errorf("%s belongs to the --implies form only: it bounds the PROOF search, and the "+
+			"other searches never run one. %s", findTimeoutFlag, findUsage)
+	}
 	return fa, nil
 }
 
@@ -1446,7 +1498,7 @@ func findSelectorOf(a string) *findForm {
 // findKnownFlags is knownFlags["find"], derived from the grammar above rather
 // than written out beside it.
 func findKnownFlags() map[string]bool {
-	m := map[string]bool{findDetailsFlag: true}
+	m := map[string]bool{findDetailsFlag: true, findTimeoutFlag: true}
 	for f := range findSelectors {
 		m[f] = true
 	}

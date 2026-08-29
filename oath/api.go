@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 	"time"
@@ -1030,6 +1031,15 @@ const (
 func concreteProbe(st *Store, h string, p *Prop) ceResult {
 	sawIndeterminate := false
 	for c := 0; c < findImpliesProbeCases; c++ {
+		// A budgeted `find --implies` bounds this sampling loop too, not only the
+		// solver: 64 cases at 200k fuel is finite but not free, and leaving it
+		// uncapped lets one candidate overrun --timeout in the non-solver stage.
+		// Stopping early yields ceIndeterminate — no refutation was found and none
+		// is claimed — and the candidate then meets the (capped) solver or the
+		// abort. Checked every 8 cases so the check itself costs nothing.
+		if c%8 == 0 && searchDeadlinePassed() {
+			return ceResult{outcome: ceIndeterminate}
+		}
 		r := &rng{s: findImpliesProbeSeed ^ uint64(c)*0xD1B54A32D192ED03}
 		size := c % 8
 		env := make([]Value, 0, len(p.Binders))
@@ -1186,7 +1196,7 @@ const implySatisfiesMarker = "← provably satisfies it"
 // one. That matters most for the statuses a synthetic store cannot cheaply
 // provoke: an unreachable rendering branch is indistinguishable from a correct
 // one when the only witness is an end-to-end run.
-func renderImplyResults(b *strings.Builder, results []implyResult, mode findImpliesMode) {
+func renderImplyResults(b *strings.Builder, results []implyResult, mode findImpliesMode, complete bool) {
 	byStatus := map[implyStatus][]implyResult{}
 	for _, r := range results {
 		byStatus[r.status] = append(byStatus[r.status], r)
@@ -1220,11 +1230,12 @@ func renderImplyResults(b *strings.Builder, results []implyResult, mode findImpl
 	}
 	// THE FALLBACK FIRES ONLY WHEN NOTHING WAS CLASSIFIED AT ALL. Its sentence is
 	// about the WORLD — no definition satisfies this — and it is supportable only
-	// when the signature-compatible set was empty. With a refutation on record the
-	// report already says what was established; with an unsettled candidate on
-	// record the sentence would be claiming exactly what the prover declined to
-	// decide.
-	if len(results) == 0 {
+	// when the signature-compatible set was empty AND the search actually finished.
+	// A budget that aborted the scan leaves the same empty result, but the sentence
+	// would then be a claim about the corpus made from an unfinished search — the
+	// exact overclaim this mechanism exists to prevent — so the abort banner speaks
+	// for that case instead.
+	if len(results) == 0 && complete {
 		b.WriteString("      (no definition provably satisfies this — in the signature-compatible, provable set)\n")
 	}
 }
@@ -1426,6 +1437,41 @@ func isSolverTelemetryForm(f string) bool {
 }
 
 func apiFindImplies(st *Store, src string, mode findImpliesMode) (string, error) {
+	return apiFindImpliesOpts(st, src, mode, 0, nil)
+}
+
+// apiFindImpliesOpts is find --implies with two operational controls that change
+// NEITHER a verdict nor which candidates are DETERMINISTICALLY reachable:
+//
+//   - progress (non-nil): a writer receiving a live, carriage-return-updated line
+//     per candidate, so a slow search reports movement instead of appearing to
+//     hang. It never touches the returned report — the CLI directs it to a
+//     terminal stderr only, so a piped or captured run is unchanged.
+//   - budget (>0): a WALL-CLOCK budget on the search, enforced at candidate
+//     boundaries and on the solver — the two places the cost actually lives. The
+//     scan stops before starting a new candidate (or building its solver context)
+//     once the deadline passes; those unreached candidates are NO VERDICT (search
+//     aborted). The dominant cost, a single z3 proof, is capped by
+//     setSearchWallDeadline, and the concrete-probe sampling loop checks the
+//     deadline too. What is NOT interrupted mid-operation is a candidate's finite
+//     preprocessing (type-check, context build, lemma load) once it has begun — so
+//     the bound is "roughly the budget", overrunning by at most one admitted
+//     candidate's preprocessing, not a hard sub-second ceiling. Every over-budget
+//     cut is an ENVIRONMENTAL ABORT (NO VERDICT), never a verdict — a budget can
+//     never turn a proof into a false negative — and `find` records nothing to the
+//     store, so nothing about identity or reproducibility depends on wall-clock.
+//     budget == 0 leaves the solver cap at the host safety net, so the unbounded
+//     default that conformance and every scripted run take is byte-identical to
+//     before this option existed.
+//
+//     SCOPE: the budget bounds the SEARCH — candidate scanning and proving. It
+//     does NOT bound the initial store-index read (st.Names()): that is a
+//     store-layer operation shared by every command, fast and local for the fs
+//     store the CLI uses, and uncancellable from here for a remote backend just as
+//     it is for verify/prove/ls. The deadline starts before it so its time counts,
+//     but a backend that STALLS is an infrastructure fault this flag does not
+//     claim to interrupt.
+func apiFindImpliesOpts(st *Store, src string, mode findImpliesMode, budget time.Duration, progress io.Writer) (string, error) {
 	if err := z3Available(); err != nil {
 		return "", err
 	}
@@ -1452,6 +1498,19 @@ func apiFindImplies(st *Store, src string, mode findImpliesMode) (string, error)
 	}
 	qsig := tyBytes(qd.Ty)
 
+	// START THE BUDGET BEFORE READING THE NAME INDEX: on a cloud-backed store
+	// st.Names() itself hits the backend, and the wall-clock ceiling must cover it.
+	// Also caps the in-flight proof (setSearchWallDeadline) and short-circuits z3
+	// launches once elapsed (execZ3) — a single slow attempt would otherwise
+	// overrun --timeout; a cap hit is an environmental abort (NO VERDICT), never a
+	// verdict, and `find` stores nothing, so this is identity-neutral.
+	var deadline time.Time
+	if budget > 0 {
+		deadline = time.Now().Add(budget)
+		setSearchWallDeadline(deadline)
+		defer clearSearchWallDeadline()
+	}
+
 	names := st.Names()
 	keys := make([]string, 0, len(names))
 	for k := range names {
@@ -1459,17 +1518,36 @@ func apiFindImplies(st *Store, src string, mode findImpliesMode) (string, error)
 	}
 	sort.Strings(keys)
 
+	// examined is a RUNNING count of candidate checks, shown as-is. There is no
+	// up-front total: computing one means a GetDef over every name, which on a
+	// cloud-backed store is itself expensive and, if bounded by the budget, yields
+	// a partial number that would misreport as the corpus size. A running count
+	// needs no denominator and cannot lie about a total it never claimed.
+	examined, aborted := 0, false
+
 	var b strings.Builder
 	fmt.Fprintf(&b, "spec query %q — which definitions PROVABLY satisfy it (proof-implication, not shape match):\n", qm.Name)
 	for pqi := range qd.Props {
 		fmt.Fprintf(&b, "\n  · %s\n", propNameOf(qm, pqi))
 		var results []implyResult
 		for _, k := range keys {
+			// Checked BEFORE the fetch: st.GetDef is a remote read on a cloud store,
+			// so once the deadline passes the scan must stop rather than fetch every
+			// remaining entry. A scan cut short here is genuinely INCOMPLETE — we did
+			// not finish looking — so aborted is set and the report says so rather
+			// than claiming "nothing satisfies". A candidate-less store with a budget
+			// large enough to finish never reaches this and falls through normally.
+			if budget > 0 && time.Now().After(deadline) {
+				aborted = true
+				break
+			}
 			h := names[k]
 			d, err := st.GetDef(h)
 			if err != nil || d.K != "func" {
 				continue
 			}
+			examined++
+			reportImpliesProgress(progress, examined, len(qd.Props), pqi, k)
 			// Exact signature: the query property is portable (self + de Bruijn)
 			// and is appended verbatim. Otherwise admit the candidate only if its
 			// signature is equal up to primitive leaves, and re-type the query
@@ -1540,6 +1618,20 @@ func apiFindImplies(st *Store, src string, mode findImpliesMode) (string, error)
 				})
 				continue
 			}
+			// Mid-candidate budget check: the probe above may have consumed the
+			// remaining time. Stop BEFORE building the solver context and loading the
+			// lemma library (both uncapped work) for a proof that would be capped to
+			// nothing anyway. This candidate was examined (counted, shown in progress),
+			// so record it as NO VERDICT (environmentally aborted) rather than dropping
+			// it silently — the banner then speaks only for the candidates AFTER it.
+			if budget > 0 && time.Now().After(deadline) {
+				results = append(results, implyResult{
+					name: k, status: implyInvalidated, crossSig: crossSig,
+					evidence: "the --timeout elapsed before this candidate's proof began",
+				})
+				aborted = true
+				break
+			}
 			pi := len(d.Props)
 			c := newSmtCtx(st, &aug, h)
 			// -1: the goal here is a SYNTHETIC query property appended past the
@@ -1561,9 +1653,72 @@ func apiFindImplies(st *Store, src string, mode findImpliesMode) (string, error)
 				crossSig: crossSig, evidence: detail,
 			})
 		}
-		renderImplyResults(&b, results, mode)
+		// No post-loop deadline re-check: `aborted` is set ONLY where work was left
+		// UNREACHED — the pre-candidate break (a new candidate not started) and the
+		// mid-candidate break (the solver context not built). A candidate whose proof
+		// the cap cut short is REACHED, not unreached, and is reported honestly as
+		// NO VERDICT (invalidated) in the results — so the banner would be wrong for
+		// it, and a bare time check here cannot tell that case from a final candidate
+		// that completed a nanosecond before the deadline.
+		renderImplyResults(&b, results, mode, !aborted)
+		if aborted {
+			break
+		}
+	}
+	clearImpliesProgress(progress)
+	if aborted {
+		writeImpliesAbort(&b, budget, examined)
 	}
 	return b.String(), nil
+}
+
+// reportImpliesProgress writes one carriage-return-updated line so a long search
+// shows movement. Best-effort: progress is nil unless the CLI is on a terminal,
+// and a write error is ignored — progress must never fail the search it reports.
+func reportImpliesProgress(w io.Writer, examined, nprops, pqi int, name string) {
+	if w == nil {
+		return
+	}
+	prop := ""
+	if nprops > 1 {
+		prop = fmt.Sprintf(" · property %d/%d", pqi+1, nprops)
+	}
+	fmt.Fprintf(w, "\r  proving %d%s  %-28s", examined, prop, truncateForProgress(name, 28))
+}
+
+// truncateForProgress keeps the live line from jittering as candidate names change
+// length. Cosmetic only; it never affects a name used for matching or display. n
+// is a RUNE budget: it slices []rune, never bytes, so a multibyte codepoint is
+// never split into invalid UTF-8 on the terminal stream.
+func truncateForProgress(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	if n <= 1 {
+		return string(r[:n])
+	}
+	return string(r[:n-1]) + "…"
+}
+
+// clearImpliesProgress erases the in-place line so it does not collide with the
+// report that follows (both share the terminal, report on stdout, line on stderr).
+func clearImpliesProgress(w io.Writer) {
+	if w == nil {
+		return
+	}
+	fmt.Fprintf(w, "\r%*s\r", 64, "")
+}
+
+// writeImpliesAbort states IN THE REPORT that a wall-clock budget cut the search
+// short, so "we ran out of time" cannot be read as "the corpus has nothing" or
+// "these are refuted". The unreached candidates got NO VERDICT because they were
+// never examined — a fact about the budget, not about them.
+func writeImpliesAbort(b *strings.Builder, budget time.Duration, examined int) {
+	fmt.Fprintf(b, "\n  SEARCH INCOMPLETE — the --timeout of %s elapsed after %d candidate checks.\n", budget, examined)
+	b.WriteString("  The candidates not yet reached are NO VERDICT (search aborted) — never refuted\n")
+	b.WriteString("  and never absent, only unexamined. Re-run without --timeout (or with a larger\n")
+	b.WriteString("  one) for the complete, deterministic answer.\n")
 }
 
 // apiFindEquiv is spec-query by BODY-EQUIVALENCE (the e-graph rung): find every

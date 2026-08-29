@@ -99,7 +99,7 @@ func implyMixedResults() []implyResult {
 //     buries the answer, and withholding them in detail is the original defect.
 func TestRenderImplyResultsKeepsFourStatusesDistinct(t *testing.T) {
 	var summary strings.Builder
-	renderImplyResults(&summary, implyMixedResults(), findImpliesSummary)
+	renderImplyResults(&summary, implyMixedResults(), findImpliesSummary, true)
 	s := summary.String()
 
 	// The answer is NAMED in both modes — a count of hits would be strictly less
@@ -152,7 +152,7 @@ func TestRenderImplyResultsKeepsFourStatusesDistinct(t *testing.T) {
 	// renderer that always prints all three labels with a count beside them,
 	// which reports an examined-and-cleared population that never existed.
 	var proven strings.Builder
-	renderImplyResults(&proven, []implyResult{{name: "only-hit", status: implyProven, method: "direct"}}, findImpliesSummary)
+	renderImplyResults(&proven, []implyResult{{name: "only-hit", status: implyProven, method: "direct"}}, findImpliesSummary, true)
 	if p := proven.String(); strings.Contains(p, "REFUTED") || strings.Contains(p, "NO VERDICT") {
 		t.Errorf("a population with only proven candidates reported empty status rows:\n%s", p)
 	}
@@ -162,7 +162,7 @@ func TestRenderImplyResultsKeepsFourStatusesDistinct(t *testing.T) {
 	// countermodel is an evaluation of the reference semantics and the solver's
 	// is not, and only one of them explains why the pre-solver pass may act on it.
 	var detail strings.Builder
-	renderImplyResults(&detail, implyMixedResults(), findImpliesDetailed)
+	renderImplyResults(&detail, implyMixedResults(), findImpliesDetailed, true)
 	d := detail.String()
 	for _, want := range []string{
 		"refuted-eval", "countermodel (by evaluation): 2, 0",
@@ -201,7 +201,7 @@ func TestRenderImplyResultsFallbackIsAboutTheWorld(t *testing.T) {
 	// Without this the suppression assertions below pass for a renderer that has
 	// simply lost the line.
 	var empty strings.Builder
-	renderImplyResults(&empty, nil, findImpliesSummary)
+	renderImplyResults(&empty, nil, findImpliesSummary, true)
 	if !strings.Contains(empty.String(), claim) {
 		t.Fatalf("an empty candidate set must still report that nothing satisfies the query:\n%s", empty.String())
 	}
@@ -216,7 +216,7 @@ func TestRenderImplyResultsFallbackIsAboutTheWorld(t *testing.T) {
 	} {
 		for _, mode := range []findImpliesMode{findImpliesSummary, findImpliesDetailed} {
 			var b strings.Builder
-			renderImplyResults(&b, []implyResult{c.r}, mode)
+			renderImplyResults(&b, []implyResult{c.r}, mode, true)
 			if strings.Contains(b.String(), claim) {
 				t.Errorf("%s on record, yet the report still claims nothing satisfies the query (mode %d):\n%s",
 					c.name, mode, b.String())

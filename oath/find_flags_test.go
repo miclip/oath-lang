@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+	"unicode/utf8"
 )
 
 // Tests for `oath find`'s argument grammar, and for `--details` selecting the
@@ -96,6 +98,14 @@ func TestParseFindArgsRefusals(t *testing.T) {
 		{"details with a name lookup", []string{"rat-add", "--details"}, "--implies form only"},
 		{"two names", []string{"rat-add", "rat-mul"}, "usage"},
 		{"an invented flag", []string{"--implies", "q.oath", "--verbose"}, "has no flag"},
+		// --timeout: a --implies-only, value-taking flag. Each refusal names its rule.
+		{"timeout on --spec", []string{"--spec", "q.oath", "--timeout", "5s"}, "--implies form only"},
+		{"timeout on a name lookup", []string{"rat-add", "--timeout", "5s"}, "--implies form only"},
+		{"timeout with no value", []string{"--implies", "q.oath", "--timeout"}, "needs a duration"},
+		{"timeout given a flag as its value", []string{"--implies", "q.oath", "--timeout", "--details"}, "is a flag"},
+		{"timeout not a duration", []string{"--implies", "q.oath", "--timeout", "soon"}, "is not a duration"},
+		{"timeout non-positive", []string{"--implies", "q.oath", "--timeout", "0s"}, "positive"},
+		{"timeout twice", []string{"--implies", "q.oath", "--timeout", "1s", "--timeout", "2s"}, "twice"},
 	} {
 		got, err := parseFindArgs(c.args)
 		if err == nil {
@@ -142,14 +152,16 @@ func TestFindFlagTableIsDerivedFromTheParser(t *testing.T) {
 				"is now refused before dispatch", f, f)
 		}
 	}
-	if !table[findDetailsFlag] {
-		t.Errorf("%s is absent from knownFlags, so it is refused before parseFindArgs sees it", findDetailsFlag)
+	for _, f := range []string{findDetailsFlag, findTimeoutFlag} {
+		if !table[f] {
+			t.Errorf("%s is absent from knownFlags, so it is refused before parseFindArgs sees it", f)
+		}
 	}
 	// And the table has nothing else in it: a surplus entry is a flag the guard
 	// accepts and the parser then refuses with an unrelated message.
-	if want := len(findSelectors) + 1; len(table) != want {
-		t.Errorf("knownFlags[\"find\"] has %d entries, want %d (%d selectors + %s) — a surplus entry is "+
-			"catalogued but unparsed", len(table), want, len(findSelectors), findDetailsFlag)
+	if want := len(findSelectors) + 2; len(table) != want {
+		t.Errorf("knownFlags[\"find\"] has %d entries, want %d (%d selectors + %s + %s) — a surplus entry is "+
+			"catalogued but unparsed", len(table), want, len(findSelectors), findDetailsFlag, findTimeoutFlag)
 	}
 }
 
@@ -211,5 +223,183 @@ func TestUsageDocumentsFindDetails(t *testing.T) {
 	if !strings.Contains(usage, findDetailsFlag) {
 		t.Errorf("`oath find --implies` gained %s and the usage text does not mention it:\n%s",
 			findDetailsFlag, usage)
+	}
+}
+
+// --timeout parses to a wall-clock budget, defaults to unbounded, and composes
+// with --details. The budget is what bounds the proof search in apiFindImpliesOpts.
+func TestParseFindArgsTimeout(t *testing.T) {
+	got, err := parseFindArgs([]string{"--implies", "q.oath", "--timeout", "30s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.budget != 30*time.Second {
+		t.Errorf("--timeout 30s → budget %v, want 30s", got.budget)
+	}
+	// Unbounded is the default: 0 is what apiFindImpliesOpts reads as "no ceiling",
+	// the fully deterministic mode conformance and every scripted run take.
+	if def, _ := parseFindArgs([]string{"--implies", "q.oath"}); def.budget != 0 {
+		t.Errorf("without --timeout the budget must be 0 (unbounded), got %v", def.budget)
+	}
+	// Composes with --details, order-independent.
+	both, err := parseFindArgs([]string{"--implies", "q.oath", "--details", "--timeout", "1m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if both.budget != time.Minute || both.mode != findImpliesDetailed {
+		t.Errorf("--details + --timeout must both apply: budget=%v mode=%d", both.budget, both.mode)
+	}
+}
+
+// The help text is the only place a user learns --timeout exists.
+func TestUsageDocumentsFindTimeout(t *testing.T) {
+	if !strings.Contains(usage, findTimeoutFlag) {
+		t.Errorf("`oath find --implies` gained %s and the usage text does not mention it:\n%s", findTimeoutFlag, usage)
+	}
+}
+
+// An elapsed budget must report the abort AS the report, framed NO VERDICT — the
+// unreached candidates were never examined, which is a fact about the budget, not
+// about them. A 1ns budget elapses before the first candidate, so the scan stops
+// immediately and nothing is misreported as "no definition satisfies".
+func TestFindImpliesTimeoutReportsAbort(t *testing.T) {
+	requireZ3(t)
+	st := newStore(t)
+	put(t, st, `(defn a2 [] [(x Int) (y Int)] Int (+ x y)
+		(prop c [(x Int) (y Int)] (== (a2 x y) (a2 y x))))`)
+	out, err := apiFindImpliesOpts(st, `(defn wanted [] [(x Int) (y Int)] Int (+ x y)
+		(prop c [(x Int) (y Int)] (== (wanted x y) (wanted y x))))`, findImpliesSummary, 1*time.Nanosecond, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "SEARCH INCOMPLETE") || !strings.Contains(out, "NO VERDICT") {
+		t.Errorf("an elapsed budget must report the abort as NO VERDICT:\n%s", out)
+	}
+	// And it must NOT claim the corpus is empty — the whole point of suppressing
+	// the fallback when the search did not finish.
+	if strings.Contains(out, "no definition provably satisfies this") {
+		t.Errorf("an aborted search must NOT claim nothing satisfies the query:\n%s", out)
+	}
+}
+
+// A non-nil progress writer receives a per-candidate line; an unbounded run
+// finishes with no abort banner. Nil progress (the default, and MCP) writes
+// nothing — asserted by the abort test above running with nil and not panicking.
+func TestFindImpliesProgressIsWritten(t *testing.T) {
+	requireZ3(t)
+	st := newStore(t)
+	put(t, st, `(defn a2 [] [(x Int) (y Int)] Int (+ x y)
+		(prop c [(x Int) (y Int)] (== (a2 x y) (a2 y x))))`)
+	var prog strings.Builder
+	out, err := apiFindImpliesOpts(st, `(defn wanted [] [(x Int) (y Int)] Int (+ x y)
+		(prop c [(x Int) (y Int)] (== (wanted x y) (wanted y x))))`, findImpliesSummary, 0, &prog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(prog.String(), "proving") {
+		t.Errorf("a non-nil progress writer must receive a per-candidate line, got %q", prog.String())
+	}
+	if strings.Contains(out, "SEARCH INCOMPLETE") {
+		t.Errorf("an unbounded (budget 0) run must not report an abort:\n%s", out)
+	}
+}
+
+// The fallback "nothing satisfies" is a claim about the corpus, valid only when
+// the search FINISHED. renderImplyResults must suppress it when complete=false.
+func TestRenderImplyFallbackSuppressedWhenIncomplete(t *testing.T) {
+	var b strings.Builder
+	renderImplyResults(&b, nil, findImpliesSummary, false)
+	if strings.Contains(b.String(), "no definition provably satisfies this") {
+		t.Errorf("an unfinished search must not claim the corpus is empty:\n%s", b.String())
+	}
+	// Control: the same empty results WITH complete=true does make the claim.
+	var b2 strings.Builder
+	renderImplyResults(&b2, nil, findImpliesSummary, true)
+	if !strings.Contains(b2.String(), "no definition provably satisfies this") {
+		t.Errorf("a finished empty search must still report that nothing satisfies it:\n%s", b2.String())
+	}
+}
+
+// A candidate-less store, given a budget large enough to FINISH scanning, must
+// complete and fire the "nothing satisfies" fallback — not report an abort. (A
+// budget too small to finish honestly reports INCOMPLETE, since the scan did not
+// establish the corpus is empty; that is the separate immediate-abort case.)
+func TestFindImpliesTimeoutFinishesWithoutCandidates(t *testing.T) {
+	requireZ3(t)
+	st := newStore(t)
+	put(t, st, `(data Color [] (Red) (Green))`) // no function candidates at all
+	out, err := apiFindImpliesOpts(st, `(defn wanted [] [(x Int) (y Int)] Int (+ x y)
+		(prop c [(x Int) (y Int)] (== (wanted x y) (wanted y x))))`, findImpliesSummary, 30*time.Second, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "SEARCH INCOMPLETE") {
+		t.Errorf("a candidate-less store with an ample budget must finish, not abort:\n%s", out)
+	}
+	if !strings.Contains(out, "no definition provably satisfies this") {
+		t.Errorf("with no candidates the completed-search fallback must fire:\n%s", out)
+	}
+}
+
+// The running progress count accumulates ACROSS properties (it is a running
+// number, not a per-property one that resets), and the property counter names
+// which property is being searched.
+func TestFindImpliesProgressRunsAcrossProperties(t *testing.T) {
+	requireZ3(t)
+	st := newStore(t)
+	put(t, st, `(defn a2 [] [(x Int) (y Int)] Int (+ x y)
+		(prop c1 [(x Int) (y Int)] (== (a2 x y) (a2 y x)))
+		(prop c2 [(x Int) (y Int)] (== (a2 x y) (a2 x y))))`)
+	var prog strings.Builder
+	_, err := apiFindImpliesOpts(st, `(defn wanted [] [(x Int) (y Int)] Int (+ x y)
+		(prop c1 [(x Int) (y Int)] (== (wanted x y) (wanted y x)))
+		(prop c2 [(x Int) (y Int)] (== (wanted x y) (wanted x y))))`, findImpliesSummary, 0, &prog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := prog.String()
+	if !strings.Contains(p, "proving 2") { // 1 candidate × 2 properties = a 2nd check
+		t.Errorf("the running count must accumulate across properties (want a 'proving 2'):\n%q", p)
+	}
+	if !strings.Contains(p, "property 2/2") {
+		t.Errorf("progress must name which property is being searched:\n%q", p)
+	}
+}
+
+// truncateForProgress operates on a byte-budgeted display column but must never
+// emit invalid UTF-8: a multibyte definition name cut mid-rune would corrupt the
+// terminal stream. It slices runes, not bytes.
+func TestTruncateForProgressKeepsValidUTF8(t *testing.T) {
+	name := strings.Repeat("λ", 40) // 40 two-byte runes = 80 bytes, over the budget
+	got := truncateForProgress(name, 28)
+	if !utf8.ValidString(got) {
+		t.Errorf("truncated progress name is not valid UTF-8: %q", got)
+	}
+	if n := utf8.RuneCountInString(got); n > 28 {
+		t.Errorf("truncation exceeded the rune budget: %d runes in %q", n, got)
+	}
+	// An all-ASCII name under budget is returned unchanged.
+	if got := truncateForProgress("reverse", 28); got != "reverse" {
+		t.Errorf("a short name must be unchanged, got %q", got)
+	}
+}
+
+// attemptWallCap shortens the z3 per-attempt cap to an active search budget so a
+// single slow proof cannot overrun --timeout. Unset, it must equal the host cap
+// exactly (the default/conformance path is byte-identical); past the deadline it
+// must stay positive (fail fast, never disable the cap).
+func TestAttemptWallCap(t *testing.T) {
+	clearSearchWallDeadline()
+	if got := attemptWallCap(); got != proveWallCap() {
+		t.Errorf("with no search deadline the cap must equal proveWallCap (%v), got %v", proveWallCap(), got)
+	}
+	setSearchWallDeadline(time.Now().Add(2 * time.Second))
+	defer clearSearchWallDeadline()
+	if got := attemptWallCap(); got <= 0 || got > proveWallCap() {
+		t.Errorf("a near deadline must shorten the cap into (0, proveWallCap], got %v", got)
+	}
+	setSearchWallDeadline(time.Now().Add(-time.Hour))
+	if got := attemptWallCap(); got <= 0 {
+		t.Errorf("a past deadline must still yield a positive cap, got %v", got)
 	}
 }

@@ -14,7 +14,16 @@ import (
 // is the native run step; the browser build (z3host_wasm.go) reaches z3-solver
 // through a worker bridge instead.
 func execZ3(full string) (string, bool) {
-	ctx, cancel := context.WithTimeout(context.Background(), proveWallCap())
+	// An active search budget that has already elapsed aborts WITHOUT spawning z3:
+	// proveOne runs several strategy attempts, and renewing a 1ms cap per attempt
+	// would fork a subprocess for each one past the deadline. Short-circuiting to a
+	// cap hit (an environmental abort, never a verdict) keeps the post-deadline
+	// overhead at zero. Unset, searchDeadlinePassed is always false, so the default
+	// path is unchanged.
+	if searchDeadlinePassed() {
+		return "", true
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), attemptWallCap())
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "z3", "-in")
 	cmd.Stdin = strings.NewReader(full)

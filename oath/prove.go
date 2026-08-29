@@ -90,6 +90,48 @@ func proveWallCap() time.Duration {
 	return proveWallCapDefault
 }
 
+// searchWallDeadlineNano is a process-wide wall-clock deadline (UnixNano; 0 =
+// unset) that CAPS each z3 attempt for the duration of a budgeted `find --implies`
+// search, so a single slow proof cannot overrun the user's --timeout — the
+// between-candidates check alone would let one in-flight proof run for minutes.
+// It is set only by apiFindImpliesOpts (a single-goroutine CLI path) and read by
+// attemptWallCap. UNSET, attemptWallCap == proveWallCap exactly, so the default,
+// conformance, prove/verify and MCP paths are byte-identical. Atomic to match the
+// concurrency the rest of this file already assumes around runZ3Budget.
+var searchWallDeadlineNano atomic.Int64
+
+func setSearchWallDeadline(t time.Time) { searchWallDeadlineNano.Store(t.UnixNano()) }
+func clearSearchWallDeadline()          { searchWallDeadlineNano.Store(0) }
+
+// searchDeadlinePassed reports whether an active search budget has elapsed. It
+// lets the non-solver stages of a candidate (the concrete-probe sampling loop)
+// stop early, so `--timeout` bounds the whole search and not only its z3 calls.
+// Unset (the default), it is always false, so nothing outside a budgeted search
+// changes behaviour.
+func searchDeadlinePassed() bool {
+	dl := searchWallDeadlineNano.Load()
+	return dl != 0 && time.Now().UnixNano() > dl
+}
+
+// attemptWallCap is execZ3's effective per-attempt wall-clock cap: the host safety
+// cap, shortened to whatever remains of an active search budget so an in-flight
+// proof is bounded by the user's --timeout rather than by the 10-minute safety
+// net. A cap hit is an ENVIRONMENTAL ABORT (NO VERDICT), never a verdict, and
+// `find` records nothing to the store, so shrinking this cap never changes what
+// PROVES or any stored identity — only whether a slow attempt is cut short.
+func attemptWallCap() time.Duration {
+	cap := proveWallCap()
+	if dl := searchWallDeadlineNano.Load(); dl != 0 {
+		if remaining := time.Until(time.Unix(0, dl)); remaining < cap {
+			cap = remaining
+		}
+	}
+	if cap <= 0 {
+		cap = time.Millisecond // already past the deadline: fail the attempt fast, never disable the cap
+	}
+	return cap
+}
+
 var smtNameRe = regexp.MustCompile(`[^A-Za-z0-9]`)
 
 func smtName(s string) string { return smtNameRe.ReplaceAllString(s, "_") }

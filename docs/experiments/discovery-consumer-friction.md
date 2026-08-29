@@ -1,7 +1,7 @@
 # Friction log: building a consumer that DISCOVERS its dependencies
 
 The instrument is [`discovery-consumer/run.sh`](discovery-consumer/run.sh), which
-asserts the discovery-layer behaviour behind these findings and exits 0 on 46/46
+asserts the discovery-layer behaviour behind these findings and exits 0 on 47/47
 checks in about seven seconds (the §4 timings are the one exception — see there). It
 builds `args-in-reverse : (-> (List Str) Str)` — print the arguments reversed and
 comma-separated — whose entire body is `(str-join 44 (reverse [Str] args))`.
@@ -19,20 +19,23 @@ from `HEAD:codebase`, so a reader on a later corpus gets that corpus's numbers
 from the script while this prose stays a faithful record of the run it describes.
 The exception is the **timings in §4** (`1.8 s`, `0.08 s`, the two-minute kill):
 those are hand-measured wall-clock observations from building this, NOT among the
-script's 46 checks — `run.sh` contains no timing assertion and no `Str`-typed
+script's 47 checks — `run.sh` contains no timing assertion and no `Str`-typed
 reversal query, and it is marked as such where it appears. Everything else is a
 measurement of THIS corpus, not of programs in general.
 
 ---
 
-## 1. `oath find --spec` has no way to say FALSIFIED — and it stayed silent on the one law that matters
+## 1. `oath find --spec` had no way to say FALSIFIED — FIXED
 
-This is the sharpest finding of the exercise, and it is the one a consumer is
-most likely to be hurt by, because it appears at the moment of choosing.
+This was the sharpest finding of the exercise — the one a consumer is most likely
+to be hurt by, because it appears at the moment of choosing — and it has since
+been fixed. `run.sh` now asserts the corrected behaviour, so this section records
+both the gap and its repair.
 
-The corpus contains `bad-reverse`, which is the identity function. It **states**
-both of `reverse`'s laws and is recorded `FALSIFIED: antidistributes-over-append`.
-Query `--spec` with those two laws and the report is:
+**The gap.** The corpus contains `bad-reverse`, the identity function. It
+**states** both of `reverse`'s laws and is recorded
+`FALSIFIED: antidistributes-over-append`. Querying `--spec` with those two laws
+used to report:
 
 ```
   · antidistributes-over-append [tested here]  #2f9879ad154e
@@ -40,44 +43,43 @@ Query `--spec` with those two laws and the report is:
       reverse            (proven as "antidistributes-over-append")  ← a proven implementation of this spec
 ```
 
-`bad-reverse` is rendered **`tested as`** for the very property it was refuted on,
-under a header that reads *"which proven definitions satisfy it"*. Meanwhile
-`oath ls` says, of the same object:
+`bad-reverse` was rendered **`tested as`** for the very property it was refuted
+on, under a header reading *"which proven definitions satisfy it"* — while
+`oath ls` said, of the same object,
+`bad-reverse … FALSIFIED: antidistributes-over-append`. The renderer mapped a
+per-property **boolean** (`proven ? "proven" : "tested"`) so a refuted property
+was structurally indistinguishable from one that merely passed generated tests.
+A consumer reading `--spec` alone got *"tested against your law"* about a
+definition **disproved** against it. The distinction the rest of the project is
+careful about — *no proof is not disproof* — lived in `--implies` and was absent
+from the cheaper surface reached first.
+
+**The fix.** `oath/api.go`'s spec-query renderer now carries a THREE-valued
+verdict — `proven` / `REFUTED` / `tested` — reading the same `Guarantee.Falsified`
+field `oath ls` prints. A refuted match renders loudly and sorts last:
 
 ```
-bad-reverse      #af6b61e2180a  func  FALSIFIED: antidistributes-over-append · total
+  · antidistributes-over-append [tested here]  #2f9879ad154e
+      reverse            (proven as "antidistributes-over-append")  ← a proven implementation of this spec
+      bad-reverse        (REFUTED as "antidistributes-over-append")  ← DISPROVED for this law: a countermodel exists (find --implies --details shows it)
 ```
 
-This is not a rendering nit — it is a missing state. `api.go`'s renderer maps a
-per-property boolean through
+It was a reporting gap, not a verification gap: the information was already in the
+store. Note the honest nuance the three-valued mark exposes — `bad-reverse` is
+still `(tested as "involution")` under the FIRST law, because the identity
+function genuinely IS an involution; it is REFUTED only on the law it actually
+fails. One definition, two different verdicts, each now visible.
 
-```go
-mark := func(proven bool) string {
-    if proven { return "proven" }
-    return "tested"
-}
-```
+The change covers both `oath find <name>` and `oath find --spec` (a shared
+renderer), is guarded by `TestFindSpecMarksRefutedDistinctly` (plus a
+tested-stays-tested control), and `run.sh` asserts the exact `REFUTED` row and
+its disproved flag so a regression to two-valued trips the check.
 
-so the vocabulary is two-valued and a refuted property is structurally
-indistinguishable from one that merely passed generated tests. A consumer
-reading `--spec` alone gets *"a definition that has been tested against your
-law"* about a definition that has been **disproved** against it.
-
-The distinction the rest of this project is careful about — *no proof is not
-disproof* — is present in `--implies`, which keeps four outcomes apart and
-reports refutations as findings. It is absent from `--spec`, and `--spec` is the
-cheap surface everyone reaches for first.
-
-**What would fix it:** a third mark. `mark()` should read the property's recorded
-verdict rather than a boolean, and `refuted` should render as `REFUTED as "..."`,
-loudly, ideally sorted last or flagged in the same visual register `--implies`
-uses. The information already exists in the store — `oath ls` prints it — so this
-is a reporting gap, not a verification gap.
-
-Two independent things saved the consumer here, and a caller with less
-discipline would have had neither: the signature-probe fallback list *does* print
-the definition-level guarantee (`bad-reverse  FALSIFIED: ...`), and `--implies`
-refuted it with a countermodel. Both are luck relative to what `--spec` said.
+Before the fix, two unrelated things saved the consumer, and a caller with less
+discipline would have had neither: the signature-probe fallback list printed the
+definition-level guarantee, and `--implies` refuted it with a countermodel. The
+fix means `--spec` itself now carries the verdict, rather than leaving it to those
+two backstops.
 
 ---
 
@@ -168,7 +170,7 @@ name.
 
 ---
 
-## 4. `--implies` cost is shape-dependent by two orders of magnitude, with no warning
+## 4. `--implies` cost is shape-dependent by two orders of magnitude — the HANG is FIXED
 
 *The timings in this section are hand-measured wall-clock, not part of `run.sh`'s
 asserted checks — the script uses the fast `Int`-typed query and contains no
@@ -178,19 +180,43 @@ this log the instrument does not reproduce; everything else it does.*
 The reversal laws stated over `Int` prove in **1.8 s**. The *same two laws*,
 stated over `Str` — which is the type the consumer actually cares about — ran for
 over two minutes without completing and were killed. Nothing in the interface
-distinguishes the two: same modes, same flags, same-looking query.
+distinguished the two: same modes, same flags, same-looking query.
 
 The join query, over `(-> Int (List Str) Str)`, returns in **0.08 s**.
 
-There is no progress output, no candidate counter, no time budget flag, and no
-way to ask for a cheap pass first. A consumer's reasonable instinct — state the
-law at the type you will use it at — is the expensive one, and it fails by
-appearing to hang rather than by reporting a limit.
+The underlying cost is a fact about the solver over an inductive `Str`, and it is
+not something a discovery layer can make cheap. What WAS a defect is that the
+search **appeared to hang** and could only be ended by `Ctrl-C`, with no signal
+and no partial answer. Both halves are now fixed:
 
-**What would fix it:** stream per-candidate progress (`n of m`), and accept a
-wall-clock budget that ends in a reported `NO VERDICT (aborted)` rather than in
-the user's `Ctrl-C`. The four-outcome vocabulary already has the right word for
-this; the tool just cannot reach it under an external kill.
+- **Progress.** On a terminal, `--implies` streams a per-candidate line
+  (`proving 47 · property 1/2  reverse`), so a slow search reports movement
+  instead of looking dead. It goes to stderr and only when stderr is a terminal,
+  so a piped or captured run is byte-for-byte unchanged.
+- **A wall-clock budget.** `oath find --implies q.oath --timeout 30s` bounds the
+  whole search. When it elapses the scan stops and the report says so, in exactly
+  the vocabulary this project already uses for the other unreached cases:
+
+  ```
+  SEARCH INCOMPLETE — the --timeout of 30s elapsed after 289 candidate checks.
+  The candidates not yet reached are NO VERDICT (search aborted) — never refuted
+  and never absent, only unexamined. Re-run without --timeout for the full answer.
+  ```
+
+  The budget is enforced where the cost lives: at candidate boundaries (the scan
+  stops before starting a new candidate) and on the solver (a single z3 proof is
+  capped to the remaining budget). The dominant cost is the proof, so this holds
+  the whole search to roughly the budget — measured, the `Str` reversal query that
+  used to hang for two-plus minutes now returns in ~4.3s under `--timeout 4s`. A
+  proof cut short by the cap is an environmental abort — NO VERDICT, never a false
+  negative — and `find` records nothing to the store, so no verdict, identity, or
+  reproducibility depends on wall-clock. The unbounded default (budget 0) leaves
+  the cap at the host safety net and is byte-identical to before, which is what
+  conformance runs.
+
+So the consumer's reasonable instinct — state the law at the type you will use it
+at — is still the expensive one, but it now fails LEGIBLY (bounded, with a
+reported NO VERDICT) instead of by appearing to hang.
 
 Mitigation found and used: state the query at the type the corpus's own laws use
 (`Int` here) to DISCOVER the candidate cheaply. This is sound **as discovery** —
@@ -368,7 +394,7 @@ Named so the log is not read as covering them:
 ```console
 $ docs/experiments/discovery-consumer/run.sh
 ...
-ALL CHECKS PASSED — 46 checks, 0 failures
+ALL CHECKS PASSED — 47 checks, 0 failures
 ```
 
 Needs Go on `PATH` (it builds the kernel and compiles the consumer with the Go
