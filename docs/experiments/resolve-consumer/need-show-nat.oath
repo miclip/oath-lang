@@ -1,0 +1,20 @@
+; THE NUMBER-RENDERING NEED. Concrete laws at concrete numbers, deliberately:
+; "renders 0 as the codepoint for '0'" is a statement a consumer can write
+; without knowing anything about the implementation, and it is exactly what the
+; consumer depends on. 48/55/49 are the codepoints for '0', '7' and '1'.
+;
+; These laws are all satisfied at NON-NEGATIVE inputs, which is all this
+; consumer ever supplies (its indices start at 1). They deliberately say nothing
+; about negatives — so a query answer that names more than one candidate is
+; correct, not a defect, and the choice between them is the consumer's.
+(defn wanted [] [(n Int)] Str
+  SNil
+
+  (prop zero-renders-as-zero []
+    (== (wanted 0) (SCons 48 SNil)))
+  (prop seven-renders-as-seven []
+    (== (wanted 7) (SCons 55 SNil)))
+  (prop ten-renders-as-two-digits []
+    (== (wanted 10) (SCons 49 (SCons 48 SNil))))
+  (prop single-digits-are-one-wide [(n Int)]
+    (if (and (<= 0 n) (< n 10)) (== (str-len (wanted n)) 1) true)))

@@ -1,0 +1,20 @@
+; THE SUFFIX NEED: discard the first n codepoints. This is the operation
+; lib.oath's strongest law is written with — the item is RECOVERABLE from a
+; rendered line at a computable offset — so the consumer needs the exact
+; discarding semantics, not merely something of this shape.
+;
+; The corpus holds five definitions at (-> Int Str Str) and the second law is the
+; one that separates them: a truncation from the other end, a padder and a
+; split-then-rejoin all survive the first law and die on the second.
+;
+; A fourth law — "dropping never grows the string" — was tried and MOVED OUT, to
+; need-str-drop-monotone.oath, because it does not return. See that file.
+(defn wanted [] [(n Int) (s Str)] Str
+  s
+
+  (prop dropping-nothing-changes-nothing [(s Str)]
+    (== (wanted 0 s) s))
+  (prop dropping-one-drops-the-head [(c Int) (s Str)]
+    (== (wanted 1 (SCons c s)) s))
+  (prop the-empty-string-has-nothing-to-drop [(n Int)]
+    (== (wanted n SNil) SNil)))

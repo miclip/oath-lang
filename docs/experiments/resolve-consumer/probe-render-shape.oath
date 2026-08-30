@@ -1,0 +1,6 @@
+; SIGNATURE PROBE at (-> Int Str) — "render a number as text". The shape is
+; common enough that the query is expected to return several; what it is for is
+; discovering that the corpus HAS such an operation at all, before committing to
+; laws that pin which one.
+(defn wanted [] [(n Int)] Str
+  SNil)

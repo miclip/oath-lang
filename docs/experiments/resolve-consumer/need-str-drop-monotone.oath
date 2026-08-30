@@ -1,0 +1,37 @@
+; THE LAW THAT DOES NOT RETURN — kept, like discovery-consumer's monomorphic
+; reversal query, because the failure IS the measurement.
+;
+; "Dropping codepoints never lengthens the string" is true of the target, is the
+; most natural thing a consumer would write about a suffix operation, and is the
+; only one of the four laws in need-str-drop.oath that no candidate is given a
+; verdict on. Measured, on the committed corpus, with the query in this file
+; alone:
+;
+;   oath find --implies need-str-drop-monotone.oath --timeout 20s
+;     · it-never-grows
+;         1 NO VERDICT — a strategy attempt was environmentally aborted
+;       SEARCH INCOMPLETE — the --timeout of 20s elapsed after 49 candidate
+;       checks.
+;
+; The candidate count does not move with the bound — 49 checks at 20s and 49 at
+; 90s — because the first candidate's single strategy consumes the whole budget
+; whatever it is. run.sh asserts this at the 20s bound; the 90s run is where it
+; was first measured, and it says the same thing more slowly.
+;
+; Note what that verdict is NOT. It is not "str-drop fails this law", and it is
+; not "the law is false": it is the prover's rlimit, reported as the prover's
+; rlimit (SPEC §7.2). A consumer reading it as a refutation would reject a
+; correct dependency.
+;
+; The law is a relation between TWO recursive functions over Str — the drop and
+; the length — with no concrete unfolding depth to anchor it, so nothing bounds
+; the search. The three laws that DID return in need-str-drop.oath are all
+; equalities at a fixed depth (0 dropped, 1 dropped, the empty string), and they
+; already pin the target uniquely, so this one buys the consumer nothing it does
+; not have. That is why it lives here and not there — the cost is the whole
+; timeout, whatever it is set to, and the yield is zero.
+(defn wanted [] [(n Int) (s Str)] Str
+  s
+
+  (prop it-never-grows [(n Int) (s Str)]
+    (<= (str-len (wanted n s)) (str-len s))))

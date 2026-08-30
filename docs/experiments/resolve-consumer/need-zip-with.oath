@@ -1,0 +1,15 @@
+; THE POSITIONAL-PAIRING NEED: combine two lists element by element with a
+; supplied function, stopping at the shorter one. The truncation is not an
+; accident this consumer tolerates — lib.oath's number-lines RELIES on it,
+; building the index range to exactly the list's length and letting zip-with
+; enforce the correspondence.
+(defn wanted [a b c] [(f (-> a b c)) (xs (List a)) (ys (List b))] (List c)
+  (Nil [c])
+
+  (prop nil-left [(f (-> Int Int Int)) (ys (List Int))]
+    (== (wanted [Int Int Int] f (Nil [Int]) ys) (Nil [Int])))
+  (prop nil-right [(f (-> Int Int Int)) (xs (List Int))]
+    (== (wanted [Int Int Int] f xs (Nil [Int])) (Nil [Int])))
+  (prop cons-step [(f (-> Int Int Int)) (x Int) (xs (List Int)) (y Int) (ys (List Int))]
+    (== (wanted [Int Int Int] f (Cons [Int] x xs) (Cons [Int] y ys))
+        (Cons [Int] (f x y) (wanted [Int Int Int] f xs ys)))))

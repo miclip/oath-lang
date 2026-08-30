@@ -1,0 +1,87 @@
+; THE SIBLING LIBRARY. Four helpers the CLI in main.oath needs and the corpus
+; does not have: an Ord dictionary for Str, a lexicographic sort of strings, a
+; numbered-line renderer, and the numbering pass over a whole list.
+;
+; Nothing here is a corpus member, and nothing here re-implements one. Every
+; helper is a THIN composition over definitions already in the store —
+; `str-lt`, `sort-by`, `show-nat`, `str-append`, `zip-with`, `range`, `length`
+; — each of which was located by a query in this directory (need-*.oath,
+; probe-*.oath), by asking what the commons can prove rather than by knowing a
+; name. `oath put` bakes each reference in as a HASH, so this file REUSES those
+; objects; it does not copy them.
+;
+; The point of the split is what it does to resolution: main.oath's external
+; name set is then a MIXTURE — corpus names plus these four sibling names —
+; and a lockfile has to pin both kinds, from two different stores.
+
+; --- The ordering. A type class is a capability record (docs/generics.md), so
+; "Str is ordered" is a value: the one-field dictionary sort-by consumes.
+(defn str-order [] [] {lt (-> Str Str Bool)}
+  {lt str-lt}
+
+  (prop it-is-str-lt [(a Str) (b Str)]
+    (== ((. (str-order) lt) a b) (str-lt a b)))
+  (prop it-is-irreflexive [(s Str)]
+    (not ((. (str-order) lt) s s))))
+
+; --- Lexicographic sort. sort-by is generic over ANY dictionary, lawful or
+; not; str-order is the lawful one, and these laws are stated over this
+; composition rather than inherited from sort-by's (which quantify over all
+; dictionaries and therefore say nothing about ordering).
+(defn sort-strs [] [(xs (List Str))] (List Str)
+  (sort-by [Str] (str-order) xs)
+
+  (prop empty-sorts-to-empty []
+    (== (sort-strs (Nil [Str])) (Nil [Str])))
+  (prop a-singleton-is-itself [(s Str)]
+    (== (sort-strs (Cons [Str] s (Nil [Str])))
+        (Cons [Str] s (Nil [Str]))))
+  (prop it-preserves-length [(ys (List Str))]
+    (== (length [Str] (sort-strs ys)) (length [Str] ys)))
+  ; The law that actually pins ORDERING — and the one sort-by cannot state,
+  ; because it holds only for a dictionary that means something.
+  (prop a-pair-comes-out-ordered [(a Str) (b Str)]
+    (if (str-lt a b)
+        (== (sort-strs (Cons [Str] b (Cons [Str] a (Nil [Str]))))
+            (Cons [Str] a (Cons [Str] b (Nil [Str]))))
+        true)))
+
+; --- One rendered line: "3. gamma". The separator is the two codepoints
+; ". " — a Str literal, not a codepoint, because two of them are needed.
+(defn number-line [] [(n Int) (s Str)] Str
+  (str-append (show-nat n) (str-append ". " s))
+
+  (prop the-number-leads [(n Int) (s Str)]
+    (str-prefix (show-nat n) (number-line n s)))
+  (prop the-width-accounts [(n Int) (s Str)]
+    (== (str-len (number-line n s))
+        (+ (str-len (show-nat n)) (+ 2 (str-len s)))))
+  ; The strongest of the four: the item is not merely present, it is
+  ; RECOVERABLE at an offset the caller can compute. A renderer that
+  ; truncated, escaped or reordered would fail this and pass the other three.
+  (prop the-item-survives-at-a-known-offset [(n Int) (s Str)]
+    (== (str-drop (+ 2 (str-len (show-nat n))) (number-line n s)) s))
+  (prop single-digits-render-in-three [(n Int) (s Str)]
+    (if (and (<= 0 n) (< n 10))
+        (== (str-len (number-line n s)) (+ 3 (str-len s)))
+        true)))
+
+; --- Number a whole list, from 1. The indices come from `range` and are
+; paired positionally by `zip-with`; zip-with truncates to the shorter side,
+; which is why the range is built to exactly the list's length.
+(defn number-lines [] [(xs (List Str))] (List Str)
+  (zip-with [Int Str Str] number-line (range 1 (+ 1 (length [Str] xs))) xs)
+
+  (prop empty-numbers-to-empty []
+    (== (number-lines (Nil [Str])) (Nil [Str])))
+  (prop it-preserves-length [(ys (List Str))]
+    (== (length [Str] (number-lines ys)) (length [Str] ys)))
+  (prop the-first-line-is-one [(s Str)]
+    (== (number-lines (Cons [Str] s (Nil [Str])))
+        (Cons [Str] (number-line 1 s) (Nil [Str]))))
+  ; Depth 2, deliberately: numbering from 0, or numbering in reverse, both
+  ; survive the depth-1 law above on some inputs. This one does not.
+  (prop the-second-line-is-two [(a Str) (b Str)]
+    (== (number-lines (Cons [Str] a (Cons [Str] b (Nil [Str]))))
+        (Cons [Str] (number-line 1 a)
+                    (Cons [Str] (number-line 2 b) (Nil [Str]))))))

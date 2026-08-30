@@ -1,0 +1,8 @@
+; SIGNATURE PROBE at (-> Str Str Bool). This one is kept because it FAILS to
+; discriminate, and that failure is the measurement: two of the operations this
+; consumer reuses — the lexicographic order it sorts by, and the prefix test one
+; of lib.oath's laws is written with — have the SAME signature, and so do
+; several definitions that are neither. A shape query cannot separate them. Two
+; different need-*.oath files at this one shape are what does.
+(defn wanted [] [(a Str) (b Str)] Bool
+  true)

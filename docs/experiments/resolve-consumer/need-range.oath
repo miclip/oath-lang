@@ -1,0 +1,13 @@
+; THE INDEX-SEQUENCE NEED: the half-open span [lo, hi). Half-open is the whole
+; question — an inclusive variant satisfies neither the emptiness law nor the
+; span law — and it is why lib.oath's number-lines asks for (range 1 (+ 1 n))
+; rather than (range 1 n).
+(defn wanted [] [(lo Int) (hi Int)] (List Int)
+  (Nil [Int])
+
+  (prop an-empty-span-is-empty [(n Int)]
+    (== (wanted n n) (Nil [Int])))
+  (prop it-counts-up-from-lo []
+    (== (wanted 1 4) (Cons [Int] 1 (Cons [Int] 2 (Cons [Int] 3 (Nil [Int]))))))
+  (prop its-length-is-the-span [(lo Int) (hi Int)]
+    (== (length [Int] (wanted lo hi)) (if (< lo hi) (- hi lo) 0))))

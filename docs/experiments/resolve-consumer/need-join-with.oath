@@ -1,0 +1,15 @@
+; THE JOINING NEED, with a Str separator rather than a codepoint. Note what the
+; three laws jointly exclude: a definition that appended a TRAILING separator
+; passes the empty law, fails the singleton law, and fails the two-piece law —
+; which is the mistake a consumer printing lines actually cares about, since a
+; trailing newline is invisible in the output and visible in every == against it.
+(defn wanted [] [(sep Str) (pieces (List Str))] Str
+  sep
+
+  (prop empty-joins-to-empty [(sep Str)]
+    (== (wanted sep (Nil [Str])) SNil))
+  (prop a-single-piece-is-itself [(sep Str) (s Str)]
+    (== (wanted sep (Cons [Str] s (Nil [Str]))) s))
+  (prop two-pieces-are-separated [(sep Str) (a Str) (b Str)]
+    (== (wanted sep (Cons [Str] a (Cons [Str] b (Nil [Str]))))
+        (str-append a (str-append sep b)))))

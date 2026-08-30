@@ -1,0 +1,14 @@
+; THE CONCATENATION NEED. A monoid's two unit laws, the length ledger, and one
+; unfold step that pins the ORDER of the operands — without it, a definition
+; that concatenated backwards satisfies every other law here.
+(defn wanted [] [(a Str) (b Str)] Str
+  a
+
+  (prop left-unit [(s Str)]
+    (== (wanted SNil s) s))
+  (prop right-unit [(s Str)]
+    (== (wanted s SNil) s))
+  (prop length-adds [(a Str) (b Str)]
+    (== (str-len (wanted a b)) (+ (str-len a) (str-len b))))
+  (prop the-left-operand-comes-first [(c Int) (s Str)]
+    (== (wanted (SCons c SNil) s) (SCons c s))))

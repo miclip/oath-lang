@@ -1,0 +1,19 @@
+; THE SORTING NEED. Written from the intent — "put the elements in the order the
+; dictionary describes" — and stated at Int, because that is the type this
+; corpus's list laws are written at and it makes the query cheap. Discovering
+; the OBJECT is type-agnostic (one hash whatever type you ask at); it does not
+; license its use at Str, which is why lib.oath's sort-strs proves its own
+; ordering law over the composition rather than inheriting one.
+;
+; The second law is the one that matters. Length preservation alone is satisfied
+; by the identity function, and by reverse.
+(defn wanted [a] [(ord {lt (-> a a Bool)}) (xs (List a))] (List a)
+  xs
+
+  (prop preserves-length [(ord {lt (-> Int Int Bool)}) (xs (List Int))]
+    (== (length [Int] (wanted [Int] ord xs)) (length [Int] xs)))
+  (prop a-pair-comes-out-ordered [(ord {lt (-> Int Int Bool)}) (x Int) (y Int)]
+    (if ((. ord lt) x y)
+        (== (wanted [Int] ord (Cons [Int] y (Cons [Int] x (Nil [Int]))))
+            (Cons [Int] x (Cons [Int] y (Nil [Int]))))
+        true)))

@@ -1,0 +1,11 @@
+; THE COUNTING NEED. Three laws that together determine the function on every
+; list: the base case, the step, and the sign.
+(defn wanted [a] [(xs (List a))] Int
+  0
+
+  (prop empty-is-zero []
+    (== (wanted [Int] (Nil [Int])) 0))
+  (prop cons-adds-one [(x Int) (xs (List Int))]
+    (== (wanted [Int] (Cons [Int] x xs)) (+ 1 (wanted [Int] xs))))
+  (prop never-negative [(xs (List Int))]
+    (<= 0 (wanted [Int] xs))))

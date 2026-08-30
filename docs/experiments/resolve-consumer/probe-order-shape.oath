@@ -1,0 +1,7 @@
+; SIGNATURE PROBE at (-> {lt (-> a a Bool)} (List a) (List a)) — "sort a list
+; against an ordering handed in as a dictionary". `oath find --shape` needs a
+; signature and nothing else, so this is the query to write BEFORE any law: it
+; asks what the commons holds at a shape, which is the question a consumer
+; actually has first. The body is the parameter itself; --shape never reads it.
+(defn wanted [a] [(ord {lt (-> a a Bool)}) (xs (List a))] (List a)
+  xs)

@@ -1,0 +1,12 @@
+; THE STRING-LENGTH NEED — the measure lib.oath's width and offset laws are
+; written in. Str is an inductive datatype of codepoints (SPEC §3), so "length"
+; is the structural count and the two laws below determine it outright.
+(defn wanted [] [(s Str)] Int
+  0
+
+  (prop the-empty-string-is-zero []
+    (== (wanted SNil) 0))
+  (prop a-codepoint-adds-one [(c Int) (s Str)]
+    (== (wanted (SCons c s)) (+ 1 (wanted s))))
+  (prop never-negative [(s Str)]
+    (<= 0 (wanted s))))

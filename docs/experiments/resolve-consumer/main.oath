@@ -1,0 +1,40 @@
+; THE CONSUMER. A (-> (List Str) Str) command-line program: print the
+; arguments sorted lexicographically, one per line, numbered from 1.
+;
+;     $ numbered-args gamma alpha beta
+;     1. alpha
+;     2. beta
+;     3. gamma
+;
+; Its body is THREE CALLS AND NOTHING ELSE, and they come from two different
+; places:
+;
+;   join-with                     a CORPUS definition (#dbfc0545b148), found by
+;                                 need-join-with.oath, not by knowing its name
+;   sort-strs, number-lines       SIBLING definitions, declared in lib.oath —
+;                                 external to THIS file, and absent from the
+;                                 corpus entirely
+;
+; That mixture is the whole reason this file is separate from lib.oath. A
+; single-file consumer's external names are all corpus names, so any store
+; holding the corpus resolves it; this one needs a store that holds the corpus
+; AND the sibling library, which is exactly the intention `oath resolve` records
+; and `oath put --lock` checks.
+(defn numbered-args [] [(args (List Str))] Str
+  (join-with "\n" (number-lines (sort-strs args)))
+
+  ; The three laws the CLI is required to satisfy. They are stated over the
+  ; CLI and hold here; they are not inherited from any callee.
+  (prop no-args-is-empty []
+    (== (numbered-args (Nil [Str])) (SNil)))
+  (prop one-arg-is-line-one [(s Str)]
+    (== (numbered-args (Cons [Str] s (Nil [Str]))) (number-line 1 s)))
+  ; Sorting and separation in one law: the arguments arrive in the WRONG
+  ; order and must come back ordered, numbered in the new order, newline-
+  ; separated. A pass-through, a stable no-op sort, or a numbering that
+  ; followed the input order rather than the output order all fail it.
+  (prop two-args-come-out-sorted-and-separated [(a Str) (b Str)]
+    (if (str-lt a b)
+        (== (numbered-args (Cons [Str] b (Cons [Str] a (Nil [Str]))))
+            (str-append (number-line 1 a) (str-append "\n" (number-line 2 b))))
+        true)))

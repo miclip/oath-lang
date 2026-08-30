@@ -1,0 +1,6 @@
+; SIGNATURE PROBE at (-> Str (List Str) Str) — "flatten a list of pieces with a
+; separator". Note the separator is a Str, not a codepoint: this consumer joins
+; on a newline it writes as "\n", so the codepoint-delimiter variant in the
+; corpus is the wrong shape for it and this query does not return it.
+(defn wanted [] [(sep Str) (pieces (List Str))] Str
+  sep)

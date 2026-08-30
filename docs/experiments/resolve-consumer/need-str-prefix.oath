@@ -1,0 +1,18 @@
+; THE PREFIX-TEST NEED. Same signature as need-str-lt.oath, opposite laws — the
+; pair is the argument for writing laws at all rather than trusting the shape
+; probe, since --shape returns both targets (and several others) from one query
+; and cannot rank any of them.
+;
+; The last law is what makes the test a PREFIX test and not an equality test:
+; the prefix relation must survive extra text on the right.
+(defn wanted [] [(p Str) (s Str)] Bool
+  true
+
+  (prop the-empty-string-prefixes-everything [(s Str)]
+    (wanted SNil s))
+  (prop everything-prefixes-itself [(s Str)]
+    (wanted s s))
+  (prop a-prefix-survives-appending [(a Str) (b Str)]
+    (wanted a (str-append a b)))
+  (prop nothing-nonempty-prefixes-the-empty-string [(c Int) (s Str)]
+    (not (wanted (SCons c s) SNil))))

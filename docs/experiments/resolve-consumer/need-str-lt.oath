@@ -1,0 +1,16 @@
+; THE STRING-ORDER NEED. Three laws, and none of them is any law the target
+; states — the corpus definition swears only irreflexivity, so a content-hash
+; match on the other two is impossible and --implies has to do the work.
+;
+; Irreflexivity is what separates an ORDER from the other (-> Str Str Bool)
+; definitions the shape probe returns: a prefix test and an equality test are
+; both reflexive, so both are refuted here rather than merely unranked.
+(defn wanted [] [(a Str) (b Str)] Bool
+  false
+
+  (prop irreflexive [(s Str)]
+    (not (wanted s s)))
+  (prop the-empty-string-is-least [(c Int) (s Str)]
+    (wanted SNil (SCons c s)))
+  (prop a-smaller-first-codepoint-decides [(x Int) (y Int) (s Str) (t Str)]
+    (if (< x y) (wanted (SCons x s) (SCons y t)) true)))
