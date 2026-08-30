@@ -119,6 +119,20 @@ be computed; the closure is already in the file. Naming it is as far as this log
 goes — the shape it should take is a design question, and this consumer is one
 data point, not a specification.
 
+**SATISFIED** — built as `oath hydrate <lock> --from <store>` (`cmdHydrate`,
+`oath/resolve.go`): it fetches exactly the lock's closure by hash, typechecks it
+against only that closure (so an unclosed lock is refused, not silently completed
+from the source), and binds the direct names — after which the `put --lock` that
+opens this section succeeds. The claim was attacked, not narrated:
+`resolve-consumer/hydrate-falsifier.sh` (23 checks) witnesses the gap is real, the
+reproduction is identity-neutral and idempotent, failure paths leave the target
+untouched (witnessed by STORE STATE), and the non-empty-target naming edges (#188)
+preserve every bound name's constructor vocabulary. A registry object source
+(`--remote`) is implemented but not exercised by this local-only falsifier; true
+I/O-atomicity of the commit phase is explicitly out of scope (the transactionality
+is against validation failure, not a mid-commit backend write) — both stated at the
+command.
+
 Note what this does *not* say. Reproducibility is not broken: identity is a
 function of the closure and that held everywhere it was checked. What is missing
 is the ability to reproduce **from the lock plus an object source** through a

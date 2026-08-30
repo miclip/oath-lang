@@ -44,6 +44,7 @@ usage:
   oath find --equiv <name>            find definitions that are the SAME FUNCTION up to rewrite rules (the e-graph)
   oath find --shape <file>            list definitions at a SIGNATURE (a defn, no property needed), up to operand types
   oath resolve <file> [--from <store>] pin a file's external deps to hashes in a lockfile (fetch from --from); put --lock verifies it
+  oath hydrate <lock> --from <store>  populate a store to match a lockfile (fetch its closure by hash); the inverse of resolve
   oath context <name...> [--budget N] spec-only slice of the named defs + transitive deps (no bodies)
   oath dependents <name>              list definitions that reference a definition
   oath verify <name>                  re-run a definition's properties
@@ -229,6 +230,43 @@ func main() {
 			remoteURL = ""
 		}
 		cmdResolve(st, file, fromDir, remoteURL, keyFile, out)
+	case "hydrate":
+		lockFile, fromDir := "", ""
+		remoteURL := os.Getenv("OATH_REGISTRY")
+		keyFile := os.Getenv("OATH_KEY")
+		remoteExplicit := false
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			switch {
+			case rest[i] == "--from" && i+1 < len(rest):
+				fromDir = rest[i+1]
+				i++
+			case rest[i] == "--remote" && i+1 < len(rest):
+				remoteURL = rest[i+1]
+				remoteExplicit = true
+				i++
+			case rest[i] == "--key" && i+1 < len(rest):
+				keyFile = rest[i+1]
+				i++
+			default:
+				if lockFile != "" {
+					fail(fmt.Errorf("usage: oath hydrate <file.oath.lock> [--from <store> | --remote <url> --key <file>]"))
+				}
+				lockFile = rest[i]
+			}
+		}
+		if lockFile == "" {
+			fail(fmt.Errorf("usage: oath hydrate <file.oath.lock> [--from <store> | --remote <url> --key <file>]"))
+		}
+		// An explicit --from wins over an ambient OATH_REGISTRY; reject only when
+		// BOTH were named on the line (mirrors resolve).
+		if fromDir != "" {
+			if remoteExplicit {
+				fail(fmt.Errorf("--from and --remote are two sources; give one"))
+			}
+			remoteURL = ""
+		}
+		cmdHydrate(st, lockFile, fromDir, remoteURL, keyFile)
 	case "put":
 		jsonMode := false
 		author := os.Getenv("OATH_AUTHOR")
@@ -1769,6 +1807,7 @@ var remoteCapable = map[string]bool{
 	"log":       true,
 	"authority": true,
 	"resolve":   true,
+	"hydrate":   true,
 }
 
 func remoteCapableList() string {
@@ -1795,6 +1834,7 @@ var knownFlags = map[string]map[string]bool{
 	"publish":   set("--remote", "--key", "--kms-key", "--license", "--namespace", "--dry-run", "--json", "--yes", "-y"),
 	"put":       set("--remote", "--key", "--author", "--context", "--json", "--new", "--lock"),
 	"resolve":   set("--from", "--remote", "--key", "-o"),
+	"hydrate":   set("--from", "--remote", "--key"),
 	"reserve":   set("--remote", "--key", "--kms-key", "--dry-run", "--yes", "-y"),
 	"delegate":  set("--remote", "--key", "--kms-key", "--to", "--dry-run", "--yes", "-y"),
 	"revoke":    set("--remote", "--key", "--kms-key", "--from", "--dry-run", "--yes", "-y"),

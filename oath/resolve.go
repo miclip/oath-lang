@@ -258,6 +258,219 @@ func computeExternal(elab *Store, src string) (map[string]string, []string, erro
 	return direct, hs, nil
 }
 
+// cmdHydrate is the inverse of `oath resolve`: it takes a LOCKFILE plus an object
+// source and populates the target store to match the lock. `resolve` writes a lock
+// FROM a store; `hydrate` writes a store FROM a lock — closing the gap the
+// resolve-consumer flywheel surfaced, where a consumer holding the lock (a
+// checkable record of exactly which objects it needs) had no command to obtain
+// them. Nothing is computed: the closure is already enumerated in the lock, so
+// hydrate FETCHES it and re-verifies every object by hash.
+//
+// It is transactional against VALIDATION failure: the whole closure is fetched and
+// typechecked into an in-memory scratch first, and the target is written only once
+// the lock's claims hold — so a source missing an object, a content-address
+// mismatch, or an unclosed lock leaves the target untouched rather than
+// half-populated. It is NOT transactional against a mid-commit I/O failure (a
+// backend write failing after some objects are written); that surfaces as an error
+// and may leave a partial store, the same as any other store write.
+func cmdHydrate(target *Store, lockFile, fromDir, remoteURL, keyFile string) {
+	lock, err := readLock(lockFile)
+	if err != nil {
+		fail(err)
+	}
+
+	// Hydrate WRITES objects and binds names — the same hazard as `resolve --from`,
+	// refused the same way: the canonical corpus must not be polluted, and a cloud
+	// store is shared, so a write into it would bypass gates and journalling.
+	if os.Getenv("OATH_BACKEND") == "cloud" {
+		fail(fmt.Errorf("refusing to hydrate a cloud-backed store: hydrate into a local working store (OATH_STORE=$(mktemp -d))"))
+	}
+	if isCanonicalStore(target.Root) {
+		fail(fmt.Errorf("refusing to hydrate the canonical corpus %q: hydrate into a local working store (OATH_STORE=$(mktemp -d)), not the tracked store", target.Root))
+	}
+	switch {
+	case fromDir == "" && remoteURL == "":
+		fail(fmt.Errorf("hydrate needs an object source: --from <store> or --remote <url> --key <file>"))
+	case fromDir != "" && remoteURL != "":
+		fail(fmt.Errorf("--from and --remote are two sources; give one"))
+	}
+
+	// The source is a by-HASH object provider. Fetching by hash rather than by name
+	// reproduces the pinned closure regardless of whether the source's name bindings
+	// have since moved — which is the whole reason a lock pins hashes.
+	var get func(hash string) (*Def, *Meta, error)
+	switch {
+	case remoteURL != "":
+		signer, err := resolveSigner(keyFile, "")
+		if err != nil {
+			fail(fmt.Errorf("oath hydrate --remote authenticates every read; pass --key <file>: %w", err))
+		}
+		clientSigner = signer
+		get = func(h string) (*Def, *Meta, error) {
+			return remoteObject(context.Background(), remoteURL, signer, h)
+		}
+	case fromDir != "":
+		// Explicit FILESYSTEM backend: OpenStore honours OATH_BACKEND, so on a
+		// cloud-tagged binary `--from /local/store` would read the cloud store.
+		be, err := openFSBackend(fromDir)
+		if err != nil {
+			fail(err)
+		}
+		fromStore, err := newStoreWithBackend(be, fromDir)
+		if err != nil {
+			fail(err)
+		}
+		get = func(h string) (*Def, *Meta, error) {
+			d, err := fromStore.GetDef(h)
+			if err != nil {
+				return nil, nil, err
+			}
+			m, _ := fromStore.GetMeta(h)
+			if m == nil {
+				m = &Meta{}
+			}
+			return d, m, nil
+		}
+	}
+
+	// Fetch EXACTLY the lock's closure into an in-memory scratch — no more. The
+	// closure is the WHOLE universe hydrate will commit, so it must also be the whole
+	// universe it typechecks against. Recursing into the source via collectDeps would
+	// let an INCOMPLETE lock — one omitting a transitive dependency the source still
+	// holds — pull the missing object into scratch, pass checkDef, and then commit
+	// only lock.Closure: the target would reference an uncommitted hash while hydrate
+	// reported success. So every object is stored first (StoreObject does not
+	// typecheck), then each is checked against scratch, which holds ONLY the listed
+	// closure. A dependency outside the closure is absent, so checkDef fails and the
+	// unclosed lock is refused — never silently completed from the source.
+	scratch, err := newStoreWithBackend(newMemBackend(), "hydrate-scratch")
+	if err != nil {
+		fail(err)
+	}
+	for _, h := range lock.Closure {
+		d, m, err := get(h)
+		if err != nil {
+			fail(fmt.Errorf("fetching #%s: %w", shortHash(h), err))
+		}
+		if got := hashDef(d); got != h {
+			fail(fmt.Errorf("source returned #%s for requested #%s (content-address mismatch)", shortHash(got), shortHash(h)))
+		}
+		if _, err := scratch.StoreObject(d, m); err != nil {
+			fail(err)
+		}
+	}
+	for _, h := range lock.Closure {
+		d, err := scratch.GetDef(h) // cached by StoreObject above; no re-check here
+		if err != nil {
+			fail(err)
+		}
+		if err := checkDef(scratch, d); err != nil {
+			fail(fmt.Errorf("lock closure is not closed: object #%s references a hash the closure omits: %w", shortHash(h), err))
+		}
+	}
+
+	// Every direct dependency the lock names must be among the objects we fetched.
+	for name, h := range lock.Dependencies {
+		if _, err := scratch.GetDef(h); err != nil {
+			fail(fmt.Errorf("lock names dependency %q at #%s, absent from the fetched closure (corrupt lock?)", name, shortHash(h)))
+		}
+	}
+
+	// Commit: the closure verified. Copy every object into the target, then bind the
+	// direct names — objects first, so a name never points at an absent object. Only
+	// the DIRECT names are bound; transitive objects are reachable by hash, exactly as
+	// `resolve --from` leaves them.
+	//
+	// When the target ALREADY holds an object (the non-empty-target case), preserve
+	// BOTH sides' naming by union rather than letting StoreObject's merge run:
+	// StoreObject is written for single-name source elaboration and DISCARDS an
+	// incoming Aliases map, so a lock binding a non-primary alias would lose that
+	// alias's constructor vocabulary and the later `put --lock` would fail on an
+	// unknown constructor. On a fresh target StoreObject stores the source meta as-is
+	// (no prev), which already keeps every source alias.
+	for _, h := range lock.Closure {
+		d, err := scratch.GetDef(h)
+		if err != nil {
+			fail(err)
+		}
+		sm, _ := scratch.GetMeta(h)
+		if sm == nil {
+			sm = &Meta{}
+		}
+		// Compute the merged naming BEFORE StoreObject runs: on a target that already
+		// holds this hash, StoreObject rewrites sm.Aliases to the target's, so a union
+		// taken afterwards would read the wrong side. A present meta record does NOT
+		// prove the object bytes are present and intact (a damaged store), so ALWAYS
+		// StoreObject — it (re)writes the object — and only then reassert the union
+		// naming, overriding StoreObject's put-oriented merge which would drop the
+		// source's aliases.
+		tm, terr := target.GetMeta(h)
+		var merged *Meta
+		if terr == nil && tm != nil {
+			merged = unionNaming(tm, sm)
+		}
+		if _, err := target.StoreObject(d, sm); err != nil {
+			fail(err)
+		}
+		if merged != nil {
+			if err := target.SetMeta(h, merged); err != nil {
+				fail(err)
+			}
+		}
+	}
+	names := make([]string, 0, len(lock.Dependencies))
+	for name := range lock.Dependencies {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if _, err := target.Repoint(name, lock.Dependencies[name]); err != nil {
+			fail(err)
+		}
+	}
+	fmt.Printf("hydrated %d object(s), bound %d name(s) into %s\n", len(lock.Closure), len(lock.Dependencies), target.Root)
+}
+
+// unionNaming reproduces src's naming onto the object the target already holds,
+// losing no name from either side. The NAMING is authoritative from the SOURCE,
+// because the lock was authored against it: a name the lock binds must carry the
+// source's vocabulary or the consumer's constructors fail to resolve (FindCtor reads
+// a constructor through the BOUND name's own naming block — m.CtorNames when it is
+// the primary name, else m.Aliases[name]). So src's primary name and aliases win on
+// any conflict; the target's own names are folded in as additional aliases, so
+// nothing the target could already resolve is lost. VERDICT fields are facts about
+// the hash, not the name — the target's are kept, matching StoreObject's convention
+// of not downgrading an object the store already verified.
+func unionNaming(target, src *Meta) *Meta {
+	out := *target // keep the target's verdict fields (hash-facts)
+	// Naming from the source, wholesale.
+	out.Name = src.Name
+	out.TyVarNames, out.CtorNames = src.TyVarNames, src.CtorNames
+	out.PropNames, out.ParamNames = src.PropNames, src.ParamNames
+	out.Aliases = make(map[string]*AliasNaming, len(src.Aliases)+len(target.Aliases)+1)
+	for k, v := range src.Aliases {
+		out.Aliases[k] = v
+	}
+	// Fold the target's prior naming in as aliases WITHOUT overwriting the source's —
+	// the source has already won every conflict above.
+	add := func(name string, an *AliasNaming) {
+		if name == "" || name == out.Name {
+			return
+		}
+		if _, ok := out.Aliases[name]; !ok {
+			out.Aliases[name] = an
+		}
+	}
+	add(target.Name, &AliasNaming{TyVarNames: target.TyVarNames, CtorNames: target.CtorNames, PropNames: target.PropNames, ParamNames: target.ParamNames})
+	for name, an := range target.Aliases {
+		add(name, an)
+	}
+	if len(out.Aliases) == 0 {
+		out.Aliases = nil
+	}
+	return &out
+}
+
 func writeLock(path string, lock oathLock) error {
 	b, err := json.MarshalIndent(lock, "", "  ")
 	if err != nil {
