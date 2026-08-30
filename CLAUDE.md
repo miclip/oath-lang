@@ -603,10 +603,8 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
   more EXPENSIVE if delayed   (none) — the last item on this clock landed:
                               084531c ran the compiled program on a large
                               dedicated stack, raising the LLVM ceiling above
-                              realistic use. NOTHING IS FORCED. The heap
-                              constraint that fix revealed is #180, below, and
-                              is above realistic use — not forcing
-  more VALUABLE if delayed    #139/#140, #138, #38 — after more evidence
+                              realistic use. NOTHING IS FORCED
+  more VALUABLE if delayed    #139/#140, #38 — after more evidence
                               has accumulated to calibrate them
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128,
                               #116 — the reproducibility premise is MEASURED
@@ -620,14 +618,6 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               run that campaign without reproducing zero forever
                               is ON THE ISSUE, in detail, because it is a
                               procedure that goes stale and a pointer does not
-                              #180 — the HEAP ceiling the stack-ceiling
-                              fix (084531c) revealed:
-                              immutable native containers allocate O(N²) into a
-                              never-freed arena, OOM-killing a batch consumer
-                              past ~50K records. ABOVE realistic use, so not
-                              forcing. Trigger: a consumer needing unbounded
-                              batch, or a decision to add a heap guard so
-                              exhaustion refuses legibly instead of an OS kill
                               #188 — production hardening for `oath resolve`
                               (the module/import tool, closed design-resolved):
                               the three scoped edges the demonstrator left, none
@@ -637,7 +627,7 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               store, against a policy-governed store, or a
                               constructor-only remote dep. The edges and their
                               fixes are ON THE ISSUE
-  no CLOCK at all             #65, #66 —
+  no CLOCK at all             #66 —
                               open, and neither cheaper nor dearer for waiting
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
@@ -710,9 +700,13 @@ just sits there looking urgent.
 work rarely belongs in the first bucket: PROVE OVER THE STRUCTURAL MODEL, RUN
 OVER A NATIVE REPRESENTATION.** `Str` is a codepoint datatype proven inductively and
 compiled to a host string; `Set` and `Map` are canonical sorted lists (#37)
-refined AT COMPILE TIME ONLY into native hash maps. The prover never sees the
-host type. So a backend's representation choices bind NOTHING — the obligation is
-to match `oath eval`, never to match the other backend.
+refined AT COMPILE TIME ONLY into a native representation (now a persistent tree,
+#180's O(N²)-arena fix). The prover never sees the host type. So a backend's
+representation choices bind NOTHING — the obligation is to match `oath eval`,
+never to match the other backend. One consequence of that native tree, recorded
+so a future backend inherits it rather than rediscovers it: a tree is NOT
+canonical, so a future `Set`/`Map` `==` must traverse in-order rather than compare
+bytes. `==` on Set/Map is refused today, so nothing depends on this yet.
 
 Which sorts the language's commitments into two classes, and only one of them
 constrains a future backend:
@@ -834,17 +828,9 @@ work; nothing depends on it immediately.
      ordering. This one goes late because scoping a re-derivation you cannot yet
      byte-check is scoping it on faith.
 
-**Research — needs runway, not a slot.**
-
-  2. **#138** ACL2 comparative review. It is a REGISTERED EXPERIMENT with a
-     falsifier, not a reading task, and its value depends on the reading not
-     being rushed: a hurried pass would find transformations everywhere, which
-     is the outcome the falsifier exists to prevent. Read the issue for the
-     falsifier and the method; neither is restated here.
-
 **Documentation hygiene.**
 
-  3. **#128** — DEFERRED UNTIL AFTER THE NEXT EXTERNALLY-VISIBLE MILESTONE. It
+  2. **#128** — DEFERRED UNTIL AFTER THE NEXT EXTERNALLY-VISIBLE MILESTONE. It
      has a TRIGGER, not a position. It changes no semantics, unblocks no user,
      and closes no narrowing window — and it is small and easy, which is
      precisely why it would interrupt architectural momentum if it sat in the
