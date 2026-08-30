@@ -14,7 +14,7 @@ no service-account key ever touches GitHub.
 
 | Piece | Resource | Notes |
 |---|---|---|
-| API | Cloud Run service (`oath serve`) | Bearer-token auth; **single instance** (see the constraint below) |
+| API | Cloud Run service (`oath serve`) | **Public reads** (anonymous, read-only — #189), writes signature/token-gated; **single instance** (see the constraint below). Toggle with the `public_reads` Terraform variable |
 | Store | GCS bucket, gcsfuse-mounted at `/store` | Whole filesystem store: objects, meta, `names.json`, `log.jsonl`, `proofq/`. Versioned. |
 | Proof worker | Cloud Run **Job** (`oath prove-worker`) | Ticked by Cloud Scheduler, **daily** (`0 6 * * *`); 12h task timeout; binds `require_proven` names once proven |
 | Tokens | Secret Manager | Terraform mints an initial `admin` token and outputs it |

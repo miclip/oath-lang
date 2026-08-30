@@ -162,6 +162,27 @@ jobs:
           echo "::error::registry did not return the expected 405 from /mcp after deploy"
           exit 1
 
+      - name: verify the read posture matches config (#189)
+        working-directory: terraform
+        run: |
+          API="$(terraform output -raw api_url)"
+          PUBLIC="$(terraform output -raw public_reads)"
+          # An anonymous POST to a read tool proves what the live server actually
+          # does: 200 when reads are public, 401 when they require a credential.
+          # Assert it matches the deployed configuration, so a serve image or env
+          # that silently disagrees with the intended posture fails the deploy.
+          body='{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ls","arguments":{}}}'
+          code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+            -X POST -H 'Content-Type: application/json' -d "$body" "$API/mcp" || true)"
+          echo "public_reads=$PUBLIC ; anonymous POST /mcp -> HTTP $code"
+          want=401; [ "$PUBLIC" = "true" ] && want=200
+          if [ "$code" != "$want" ]; then
+            echo "::error::read posture mismatch: public_reads=$PUBLIC expects HTTP $want, got $code."
+            echo "The serve image may predate --public-reads, or OATH_PUBLIC_READS is not set."
+            exit 1
+          fi
+          echo "read posture confirmed (public_reads=$PUBLIC)"
+
       # --- Cutover custody. docs/deploy-delta.md Phase A step 5.
       # The smoke test above proves the endpoint SERVES. It says nothing about
       # whether the new binary reinterpreted history it did not write, which is

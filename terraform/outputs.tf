@@ -3,6 +3,11 @@ output "api_url" {
   value       = google_cloud_run_v2_service.server.uri
 }
 
+output "public_reads" {
+  description = "Whether the serve container is configured to answer reads anonymously (#189). The deploy smoke test asserts the live posture matches this."
+  value       = var.public_reads
+}
+
 output "store_bucket" {
   description = "GCS bucket holding the content-addressed store (objects, meta, journal, name index)."
   value       = google_storage_bucket.objects.name

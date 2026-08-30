@@ -129,6 +129,14 @@ resource "google_cloud_run_v2_service" "server" {
         name  = "OATH_TOKENS_FILE"
         value = "/secrets/tokens/tokens.json"
       }
+      # The public registry serves READS anonymously (#189): the store is public and
+      # re-verifiable, so a consumer can hydrate/clone with no key. WRITES stay
+      # signature-gated exactly as before — this widens reads only. `oath serve`
+      # honours OATH_PUBLIC_READS=1; toggling it is a -var away, no rebuild.
+      env {
+        name  = "OATH_PUBLIC_READS"
+        value = var.public_reads ? "1" : "0"
+      }
       # Cloud backend env (OATH_BACKEND=cloud, OATH_OBJECT_BUCKET, OATH_DB_DSN) —
       # present only when enable_database=true. OATH_BACKEND=cloud makes OATH_STORE
       # and the gcsfuse mount inert.

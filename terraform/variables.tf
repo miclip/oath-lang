@@ -61,3 +61,9 @@ variable "db_tier" {
   description = "Cloud SQL machine tier (only used when enable_database = true)."
   default     = "db-f1-micro"
 }
+
+variable "public_reads" {
+  type        = bool
+  description = "Serve READS anonymously (#189): a consumer may hydrate/clone with no key, while WRITES stay signature-gated. On for the public registry. Sets OATH_PUBLIC_READS on the serve container; toggling it re-applies without an image rebuild."
+  default     = true
+}
