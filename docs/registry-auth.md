@@ -100,6 +100,16 @@ all historical provenance permanently weaker.
   you may move `@alice/foo` by signing. No accounts. The existing repoint policy
   (`forbid_falsified`, authorship separation, `require_total`, `min_mutation_
   score`) checks the *signing key* against the scope owner.
+- **Hosted reads: opt-in public (#189).** The design holds that reads need no
+  credential (below), and content-addressing makes that safe. The `oath serve` HTTP
+  layer nonetheless authenticates *every* request by default — a private team store
+  must not expose its contents to the world. `oath serve --public-reads` restores the
+  design's read posture for a PUBLIC registry: an anonymous caller may READ (so a
+  consumer runs `hydrate` / `clone` / `resolve` / `ls --remote` with no key, cloning
+  public code with nothing but a URL), while WRITES stay signature-gated exactly as
+  before. The security invariant is exact: only a request carrying NO credentials is
+  served anonymously — one that presents a signature or token which then fails to
+  validate is a hard 401, never downgraded to an anonymous read.
 
 ## Deliberately out of scope of the core
 

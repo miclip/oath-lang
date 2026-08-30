@@ -101,7 +101,16 @@ func loadAuthorizedKeys(path string) (map[string]bool, error) {
 	return set, nil
 }
 
-func cmdServeHTTP(st *Store, addr, tokensPath, authKeysPath string) {
+// anonymousReadEligible reports whether an UNAUTHENTICATED request may proceed as an
+// anonymous, read-only principal. Two conditions, both required: public reads are
+// enabled, AND the request carried NO credentials at all. A request that presented a
+// signature or a token which then FAILED to validate is NOT eligible — it is a hard
+// 401 — so a forged key or a bad token can never be laundered into anonymous access.
+func anonymousReadEligible(publicReads bool, pubkey, signature, authorization string) bool {
+	return publicReads && pubkey == "" && signature == "" && authorization == ""
+}
+
+func cmdServeHTTP(st *Store, addr, tokensPath, authKeysPath string, publicReads bool) {
 	// Demand telemetry is a REGISTRY-side aggregate: it only means anything across many
 	// callers, so the serving process is the only thing that should record it. A local
 	// `oath find` is a read, and a read that writes into a git-tracked store would make
@@ -156,8 +165,19 @@ func cmdServeHTTP(st *Store, addr, tokensPath, authKeysPath string) {
 		}
 		principal, canWrite, signed, ok := authenticatePrincipal(r, body, tokens, authKeys)
 		if !ok {
-			http.Error(w, "unauthenticated: present a valid X-Oath-Signature over the body, or a known bearer token", http.StatusUnauthorized)
-			return
+			// With --public-reads, a request carrying NO credentials at all is served
+			// as an anonymous, read-only principal: the store is public and
+			// re-verifiable, so reads need no identity. Writes stay gated — mcpCallTool
+			// refuses put/reserve/delegate/transfer for canWrite=false, signed=false.
+			// A request with credentials that FAILED to validate is never laundered
+			// into anonymous access (see anonymousReadEligible), so a forged key cannot
+			// quietly downgrade to an anonymous read.
+			if anonymousReadEligible(publicReads, r.Header.Get("X-Oath-Pubkey"), r.Header.Get("X-Oath-Signature"), r.Header.Get("Authorization")) {
+				principal, canWrite, signed = "anonymous", false, false
+			} else {
+				http.Error(w, "unauthenticated: present a valid X-Oath-Signature over the body, or a known bearer token", http.StatusUnauthorized)
+				return
+			}
 		}
 		var req rpcRequest
 		if err := json.Unmarshal(body, &req); err != nil {
@@ -184,7 +204,11 @@ func cmdServeHTTP(st *Store, addr, tokensPath, authKeysPath string) {
 	if authKeys != nil {
 		gate = fmt.Sprintf("%d authorized writer key(s)", len(authKeys))
 	}
-	fmt.Printf("oath team store: http://%s/mcp (signature auth always on; %d bearer principals; %s; store %s)\n", addr, len(tokens), gate, st.Root)
+	reads := "reads require auth"
+	if publicReads {
+		reads = "PUBLIC reads (anonymous, read-only)"
+	}
+	fmt.Printf("oath team store: http://%s/mcp (writes signed; %s; %d bearer principals; %s; store %s)\n", addr, reads, len(tokens), gate, st.Root)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		fail(err)
 	}

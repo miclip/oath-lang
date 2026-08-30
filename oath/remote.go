@@ -368,25 +368,29 @@ func mcpCallSignedBy(ctx context.Context, endpoint string, s Signer, tool string
 	if err != nil {
 		return "", err
 	}
-	pub, err := s.PublicKey(ctx)
-	if err != nil {
-		return "", err
-	}
-	// The REQUEST signature authenticates the caller; it is a different signature
-	// from the one over the envelope, and both must come from the same signer or
-	// the registry would authenticate one key while recording a statement by
-	// another.
-	sig, err := s.Sign(ctx, body)
-	if err != nil {
-		return "", err
-	}
 	req, err := http.NewRequestWithContext(ctx, "POST", strings.TrimSuffix(endpoint, "/")+"/mcp", bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Oath-Pubkey", hex.EncodeToString(pub))
-	req.Header.Set("X-Oath-Signature", hex.EncodeToString(sig))
+	// A nil signer means an ANONYMOUS request: send NO auth headers. A registry
+	// running with --public-reads serves read tools this way; one that does not
+	// answers 401, handled below. When a signer IS present, sign the whole body — the
+	// REQUEST signature authenticates the caller, a different signature from the one
+	// over an envelope, and both must come from the same signer or the registry would
+	// authenticate one key while recording a statement by another.
+	if s != nil {
+		pub, err := s.PublicKey(ctx)
+		if err != nil {
+			return "", err
+		}
+		sig, err := s.Sign(ctx, body)
+		if err != nil {
+			return "", err
+		}
+		req.Header.Set("X-Oath-Pubkey", hex.EncodeToString(pub))
+		req.Header.Set("X-Oath-Signature", hex.EncodeToString(sig))
+	}
 	resp, err := (&http.Client{Timeout: 300 * time.Second}).Do(req)
 	if err != nil {
 		return "", err
@@ -394,6 +398,9 @@ func mcpCallSignedBy(ctx context.Context, endpoint string, s Signer, tool string
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if resp.StatusCode == http.StatusUnauthorized {
+		if s == nil {
+			return "", fmt.Errorf("this registry does not serve anonymous reads (401 on %s): pass --key <file> to read it as a principal, or ask the operator to run `oath serve --public-reads`", tool)
+		}
 		return "", fmt.Errorf("registry rejected the signature (401) on %s: %s", tool, strings.TrimSpace(string(raw)))
 	}
 	if resp.StatusCode != http.StatusOK {
@@ -525,11 +532,17 @@ func resolveStoreView(endpoint, keyPath, kmsKey string, forceLocal bool) (storeV
 	if forceLocal || endpoint == "" {
 		return storeView{Label: localLabel}, nil
 	}
+	// No key is not an error: try the read ANONYMOUSLY (a nil signer sends no auth
+	// headers). A registry with --public-reads serves it; one without answers 401,
+	// which mcpCallSignedBy reports with the "pass --key" hint. Either way the read is
+	// aimed at the registry the caller asked for, never silently at the local store.
+	if keyPath == "" && kmsKey == "" {
+		return storeView{Endpoint: endpoint, Signer: nil, Label: endpoint}, nil
+	}
 	s, err := resolveSigner(keyPath, kmsKey)
 	if err != nil {
-		return storeView{}, fmt.Errorf("a registry is configured (%s) but it authenticates every read and no signing key was given.\n"+
-			"Pass --key <file> or --kms-key <resource> to read it, or --local to read %s on purpose.\n"+
-			"Refusing to show you a different store than the one you asked for: %w", endpoint, localLabel, err)
+		return storeView{}, fmt.Errorf("a registry is configured (%s) and a key was given but could not be loaded.\n"+
+			"Fix --key/--kms-key, drop it to read anonymously, or use --local to read %s on purpose: %w", endpoint, localLabel, err)
 	}
 	return storeView{Endpoint: endpoint, Signer: s, Label: endpoint}, nil
 }

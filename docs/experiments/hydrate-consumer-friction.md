@@ -127,7 +127,17 @@ URL" becomes expressible at all.
 it writes nothing, are ASSERTED by `run.sh` (section 3). `resolve --remote` and
 `ls --remote` are HAND-MEASURED only; all message texts are hand-measured.
 
----
+**RESOLVED** (#189). `oath serve --public-reads` serves READS to anonymous callers
+(the store is public and re-verifiable); WRITES stay signature-gated, unchanged. The
+client reads anonymously when no `--key` is given, so `clone`/`hydrate`/`resolve`/`ls
+--remote` need no key against such a registry — "clone public code with nothing but a
+URL" is now expressible. It is OPT-IN: a registry without the flag still 401s an
+anonymous read, and the client's error names both remedies (pass `--key`, or ask the
+operator to enable `--public-reads`). The invariant that matters is preserved and
+CI-guarded: a credential that FAILED to validate is never laundered into anonymous
+access (`anonymousReadEligible`), and an anonymous principal is refused every write
+(`put`/`reserve`/`delegate`/…). `public-reads-falsifier.sh` witnesses the end to end
+on both postures; the deployed registry would enable it with a separate deploy.
 
 ## 2. An unavailable dependency reports its HASH, not its NAME — DIAGNOSTIC LIMITATION
 

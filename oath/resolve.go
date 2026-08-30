@@ -310,9 +310,17 @@ func hydrateLockInto(target *Store, lock oathLock, fromDir, remoteURL, keyFile, 
 	var get func(hash string) (*Def, *Meta, error)
 	switch {
 	case remoteURL != "":
-		signer, err := resolveSigner(keyFile, "")
-		if err != nil {
-			fail(fmt.Errorf("oath %s --remote authenticates every read; pass --key <file>: %w", op, err))
+		// No key reads ANONYMOUSLY (a nil signer sends no auth headers): a registry
+		// with --public-reads serves the objects, and one without answers 401 with a
+		// "pass --key" hint. A key is only needed to read a closed registry, or to
+		// write — and fetching a closure is a read.
+		var signer Signer
+		if keyFile != "" {
+			s, err := resolveSigner(keyFile, "")
+			if err != nil {
+				fail(fmt.Errorf("oath %s --remote: --key was given but could not be loaded: %w", op, err))
+			}
+			signer = s
 		}
 		clientSigner = signer
 		get = func(h string) (*Def, *Meta, error) {
@@ -725,9 +733,16 @@ func cmdResolve(target *Store, file, fromDir, remoteURL, keyFile, out string) {
 	fetchErr := func() error { return nil }
 	switch {
 	case remoteURL != "":
-		signer, err := resolveSigner(keyFile, "")
-		if err != nil {
-			fail(fmt.Errorf("oath resolve --remote authenticates every read; pass --key <file>: %w", err))
+		// No key reads ANONYMOUSLY (nil signer); a --public-reads registry serves it,
+		// a closed one answers 401 with a "pass --key" hint. Resolving a closure is a
+		// read.
+		var signer Signer
+		if keyFile != "" {
+			s, err := resolveSigner(keyFile, "")
+			if err != nil {
+				fail(fmt.Errorf("oath resolve --remote: --key was given but could not be loaded: %w", err))
+			}
+			signer = s
 		}
 		clientSigner = signer
 		elab.fetcher, fetchErr = registryFetcher(remoteURL, signer, elab)

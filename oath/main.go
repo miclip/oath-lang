@@ -68,9 +68,11 @@ usage:
   oath run <name> [-- args...]        interpret a (-> (List Str) Str) program on args
                                       and print its output — no build, no toolchain
   oath serve                          MCP server over stdio (tools for agent sessions)
-  oath serve --http <addr> --tokens <file>
+  oath serve --http <addr> --tokens <file> [--public-reads]
                                       team store: MCP over HTTP with authenticated principals;
-                                      repoint policy in <store>/policy.json (docs/teamstore.md)
+                                      repoint policy in <store>/policy.json (docs/teamstore.md).
+                                      --public-reads: serve READS anonymously (writes stay signed) —
+                                      lets a consumer hydrate/clone public code with no key
   oath build <name> [-o out] [--backend go|llvm]
                                       compile a verified definition to a native executable
                                       (entry protocol: (-> (List Str) Str); refuses falsified names)
@@ -1080,6 +1082,7 @@ func main() {
 		fmt.Print(out)
 	case "serve":
 		httpAddr, tokensPath, authKeysPath := "", "", os.Getenv("OATH_AUTHORIZED_KEYS")
+		publicReads := os.Getenv("OATH_PUBLIC_READS") == "1"
 		rest := args[1:]
 		for i := 0; i < len(rest); i++ {
 			switch {
@@ -1092,12 +1095,14 @@ func main() {
 			case rest[i] == "--authorized-keys" && i+1 < len(rest):
 				authKeysPath = rest[i+1]
 				i++
+			case rest[i] == "--public-reads":
+				publicReads = true
 			default:
-				fail(fmt.Errorf("usage: oath serve [--http addr --tokens file --authorized-keys file]"))
+				fail(fmt.Errorf("usage: oath serve [--http addr --tokens file --authorized-keys file --public-reads]"))
 			}
 		}
 		if httpAddr != "" {
-			cmdServeHTTP(st, httpAddr, tokensPath, authKeysPath)
+			cmdServeHTTP(st, httpAddr, tokensPath, authKeysPath, publicReads)
 		} else {
 			cmdServe(st)
 		}
