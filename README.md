@@ -243,6 +243,19 @@ same rules as local code. Proofs are re-earned with `oath prove`, never
 imported. A registry is just a directory of bundles; all trust lives in
 the importer.
 
+Where `export`/`import` bundle a closure into a file, the **lock-driven** path
+reproduces a program from a registry. `oath resolve <file>` pins a program's
+dependency closure into a lockfile — external names at their hashes, plus the full
+transitive object closure. A fresh machine holding the program's source and lock
+rebuilds it in one command, with no dependencies pre-installed: `oath clone <file>
+--lock <lock> --from <store>` (or `--remote <url>`) fetches the closure, admits the
+program, and **re-verifies it locally**, so `oath build` then works — identity
+reproduced hash-for-hash. Reads are public, so `oath serve --public-reads` lets a
+consumer fetch the closure with no key; writes still require a signature. Underneath, `oath hydrate` populates just the closure and
+`oath put --lock` admits a program only if the store resolves its dependencies
+exactly as pinned. The [reproduction tutorial](docs/tutorial/reproduce.md) walks it
+end to end.
+
 ## Discovery: find proven code by what it does
 
 Every other lookup is by *name*, and names are the one non-authoritative layer

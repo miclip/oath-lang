@@ -40,6 +40,12 @@ export const tutorials: Tutorial[] = [
     blurb:
       "The four find modes end to end — by example, by a fresh spec, by proof, and by the e-graph — with no name trusted.",
   },
+  {
+    slug: "reproduce",
+    title: "Reproduce a program on a fresh machine",
+    blurb:
+      "resolve → clone → build: pin a program's dependency closure to a lockfile, then reconstruct it — verified, hash-for-hash — on a fresh machine that fetches the closure from a store or a URL, no dependencies pre-installed.",
+  },
 ];
 
 export function tutorialBySlug(slug: string): Tutorial | undefined {

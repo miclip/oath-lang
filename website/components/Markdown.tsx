@@ -32,6 +32,24 @@ export function Markdown({ children }: { children: string }) {
             <table>{children}</table>
           </div>
         ),
+        // The repository's markdown is written to be read on GitHub, so internal
+        // cross-links are repo-relative and end in `.md` (e.g. `discovery.md`).
+        // The site routes carry no `.md`, so those links would 404 here. Strip a
+        // trailing `.md` (keeping any `#anchor`) from relative links; browser-
+        // relative resolution then lands on the right route wherever the site
+        // layout mirrors the docs layout — which it does within a section, so a
+        // tutorial's `discovery.md` correctly reaches `/docs/tutorials/discovery`.
+        // (A cross-SECTION link like a tutorial's `../floats.md` still lands at
+        // `/docs/floats`, not `/docs/reference/floats`: the reference route does
+        // not mirror `docs/*.md`, a separate pre-existing layout gap.) Absolute
+        // URLs, `mailto:`, and bare `#anchors` are left untouched.
+        a: ({ href, children }) => {
+          let h = href ?? "";
+          if (h && !/^([a-z]+:|#|\/\/)/i.test(h)) {
+            h = h.replace(/\.md(#.*)?$/i, "$1");
+          }
+          return <a href={h}>{children}</a>;
+        },
       }}
     >
       {children}
