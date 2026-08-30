@@ -312,3 +312,21 @@ should not skip) belongs inside it.
 that `put --lock` then binds it and the build succeeds (sections 5-6). The
 transcripts, the lock contents, and the relative-path measurement above are
 HAND-MEASURED.
+
+**RESOLVED** (#191). `oath clone <app> --lock <lock> [--from | --remote --key]`
+composes the two steps: it hydrates the lock's closure AND admits+verifies the app
+in one command, so the `no definition named <app>` failure is gone — the app is
+present and proven. (clone removes the "app absent" obstacle; whether `build` then
+accepts it is build's own gate for an ENTRY, which clone does not stand in for.)
+Verification stays inside it — clone runs the same `verifyLock` + `put` the
+`put --lock` path does, because a reproduction that skipped the proof would defeat
+the point. It is transactional against VALIDATION failure and materializes a FRESH
+store: the whole admission runs in a scratch and commits to the target only once
+every definition is accepted, so a bad lock or a non-verifying app leaves the target
+untouched (a mid-commit I/O failure is the one exception — the same limit any
+multi-write on the fs store has). The target must be pristine (no bindings, no
+`policy.json`) — a governed store goes through `put --lock`, which enforces its policy. `clone-falsifier.sh` witnesses
+that the gap is real (hydrate alone leaves the app absent), that clone closes it
+over both `--from` and `--remote`, that the app is verified rather than copied, that
+a mid-app failure leaves the target untouched, and that a mismatched lock, a
+non-empty target, and an empty source are each refused.

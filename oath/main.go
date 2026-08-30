@@ -45,6 +45,9 @@ usage:
   oath find --shape <file>            list definitions at a SIGNATURE (a defn, no property needed), up to operand types
   oath resolve <file> [--from <store>] pin a file's external deps to hashes in a lockfile (fetch from --from); put --lock verifies it
   oath hydrate <lock> --from <store>  populate a store to match a lockfile (fetch its closure by hash); the inverse of resolve
+  oath clone <app.oath> --lock <lock> --from <store>
+                                      one-shot fresh-machine clone: hydrate the lock's closure, then admit+verify the app,
+                                      so it is present and proven in the store (--remote <url> --key to clone from a registry)
   oath context <name...> [--budget N] spec-only slice of the named defs + transitive deps (no bodies)
   oath dependents <name>              list definitions that reference a definition
   oath verify <name>                  re-run a definition's properties
@@ -267,6 +270,52 @@ func main() {
 			remoteURL = ""
 		}
 		cmdHydrate(st, lockFile, fromDir, remoteURL, keyFile)
+	case "clone":
+		appFile, lockFile, fromDir := "", "", ""
+		remoteURL := os.Getenv("OATH_REGISTRY")
+		keyFile := os.Getenv("OATH_KEY")
+		author := os.Getenv("OATH_AUTHOR")
+		remoteExplicit := false
+		usage := "usage: oath clone <app.oath> --lock <file.oath.lock> [--from <store> | --remote <url> --key <file>]"
+		rest := args[1:]
+		for i := 0; i < len(rest); i++ {
+			switch {
+			case rest[i] == "--lock" && i+1 < len(rest):
+				lockFile = rest[i+1]
+				i++
+			case rest[i] == "--from" && i+1 < len(rest):
+				fromDir = rest[i+1]
+				i++
+			case rest[i] == "--remote" && i+1 < len(rest):
+				remoteURL = rest[i+1]
+				remoteExplicit = true
+				i++
+			case rest[i] == "--key" && i+1 < len(rest):
+				keyFile = rest[i+1]
+				i++
+			case rest[i] == "--author" && i+1 < len(rest):
+				author = rest[i+1]
+				i++
+			default:
+				if appFile != "" {
+					fail(fmt.Errorf("%s", usage))
+				}
+				appFile = rest[i]
+			}
+		}
+		if appFile == "" || lockFile == "" {
+			fail(fmt.Errorf("%s", usage))
+		}
+		if fromDir != "" {
+			if remoteExplicit {
+				fail(fmt.Errorf("--from and --remote are two sources; give one"))
+			}
+			remoteURL = ""
+		}
+		if author == "" {
+			author = "unattributed"
+		}
+		cmdClone(st, appFile, lockFile, fromDir, remoteURL, keyFile, author)
 	case "put":
 		jsonMode := false
 		author := os.Getenv("OATH_AUTHOR")
@@ -1808,6 +1857,7 @@ var remoteCapable = map[string]bool{
 	"authority": true,
 	"resolve":   true,
 	"hydrate":   true,
+	"clone":     true,
 }
 
 func remoteCapableList() string {
@@ -1835,6 +1885,7 @@ var knownFlags = map[string]map[string]bool{
 	"put":       set("--remote", "--key", "--author", "--context", "--json", "--new", "--lock"),
 	"resolve":   set("--from", "--remote", "--key", "-o"),
 	"hydrate":   set("--from", "--remote", "--key"),
+	"clone":     set("--lock", "--from", "--remote", "--key", "--author"),
 	"reserve":   set("--remote", "--key", "--kms-key", "--dry-run", "--yes", "-y"),
 	"delegate":  set("--remote", "--key", "--kms-key", "--to", "--dry-run", "--yes", "-y"),
 	"revoke":    set("--remote", "--key", "--kms-key", "--from", "--dry-run", "--yes", "-y"),

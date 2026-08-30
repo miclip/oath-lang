@@ -278,19 +278,28 @@ func cmdHydrate(target *Store, lockFile, fromDir, remoteURL, keyFile string) {
 	if err != nil {
 		fail(err)
 	}
+	hydrateLockInto(target, lock, fromDir, remoteURL, keyFile, "hydrate")
+	fmt.Printf("hydrated %d object(s), bound %d name(s) into %s\n", len(lock.Closure), len(lock.Dependencies), target.Root)
+}
 
-	// Hydrate WRITES objects and binds names — the same hazard as `resolve --from`,
+// hydrateLockInto is the shared core of `oath hydrate` and `oath clone`: it fetches
+// the lock's closure by hash from the named source, verifies it is closed and
+// content-addressed, commits it, and binds the direct names. It does NOT print — the
+// caller reports, because `hydrate` and `clone` frame the same work differently. `op`
+// is the verb used in its refusal messages (hydrate/clone).
+func hydrateLockInto(target *Store, lock oathLock, fromDir, remoteURL, keyFile, op string) {
+	// This WRITES objects and binds names — the same hazard as `resolve --from`,
 	// refused the same way: the canonical corpus must not be polluted, and a cloud
 	// store is shared, so a write into it would bypass gates and journalling.
 	if os.Getenv("OATH_BACKEND") == "cloud" {
-		fail(fmt.Errorf("refusing to hydrate a cloud-backed store: hydrate into a local working store (OATH_STORE=$(mktemp -d))"))
+		fail(fmt.Errorf("refusing to %s into a cloud-backed store: %s into a local working store (OATH_STORE=$(mktemp -d))", op, op))
 	}
 	if isCanonicalStore(target.Root) {
-		fail(fmt.Errorf("refusing to hydrate the canonical corpus %q: hydrate into a local working store (OATH_STORE=$(mktemp -d)), not the tracked store", target.Root))
+		fail(fmt.Errorf("refusing to %s into the canonical corpus %q: %s into a local working store (OATH_STORE=$(mktemp -d)), not the tracked store", op, target.Root, op))
 	}
 	switch {
 	case fromDir == "" && remoteURL == "":
-		fail(fmt.Errorf("hydrate needs an object source: --from <store> or --remote <url> --key <file>"))
+		fail(fmt.Errorf("%s needs an object source: --from <store> or --remote <url> --key <file>", op))
 	case fromDir != "" && remoteURL != "":
 		fail(fmt.Errorf("--from and --remote are two sources; give one"))
 	}
@@ -303,7 +312,7 @@ func cmdHydrate(target *Store, lockFile, fromDir, remoteURL, keyFile string) {
 	case remoteURL != "":
 		signer, err := resolveSigner(keyFile, "")
 		if err != nil {
-			fail(fmt.Errorf("oath hydrate --remote authenticates every read; pass --key <file>: %w", err))
+			fail(fmt.Errorf("oath %s --remote authenticates every read; pass --key <file>: %w", op, err))
 		}
 		clientSigner = signer
 		get = func(h string) (*Def, *Meta, error) {
@@ -428,7 +437,142 @@ func cmdHydrate(target *Store, lockFile, fromDir, remoteURL, keyFile string) {
 			fail(err)
 		}
 	}
-	fmt.Printf("hydrated %d object(s), bound %d name(s) into %s\n", len(lock.Closure), len(lock.Dependencies), target.Root)
+}
+
+// cmdClone is the one-shot fresh-machine reproduction (#191): hydrate a lock's
+// dependency closure from a source, then admit the app source itself under that same
+// lock. `hydrate` alone leaves a store its DEPENDENCIES are satisfied in; the obvious
+// next command (`oath build <app>`) then fails, because the app is not in the store —
+// the lock pins what the app needs, not the app. This composes the two steps whose
+// split surfaced as friction, so the postcondition is "a store the app is PRESENT and
+// VERIFIED in" — which removes the `no definition named <app>` failure. It does NOT
+// promise the app is a buildable ENTRY: whether `build` then accepts it is build's own
+// gate (an entry must be entry-shaped and verified), which clone neither weakens nor
+// stands in for. The app is verified, not merely stored: clone runs the same
+// verifyLock + put the `put --lock` path runs, because a reproduction that skipped the
+// proof would defeat the point of reproducing it.
+func cmdClone(target *Store, appFile, lockFile, fromDir, remoteURL, keyFile, author string) {
+	lock, err := readLock(lockFile)
+	if err != nil {
+		fail(err)
+	}
+	// Read the app source ONCE and both verify and admit those exact bytes: a re-read
+	// for the put could see a concurrent edit the lock never checked (the `put --lock`
+	// discipline).
+	src := readSourceFile(appFile)
+
+	// Refuse the canonical corpus and a cloud store FIRST (clearer than the emptiness
+	// message), the same hazard hydrate refuses.
+	if os.Getenv("OATH_BACKEND") == "cloud" {
+		fail(fmt.Errorf("refusing to clone into a cloud-backed store: clone into a local working store (OATH_STORE=$(mktemp -d))"))
+	}
+	if isCanonicalStore(target.Root) {
+		fail(fmt.Errorf("refusing to clone into the canonical corpus %q: clone into a local working store (OATH_STORE=$(mktemp -d)), not the tracked store", target.Root))
+	}
+	// clone MATERIALIZES a fresh store, so it requires a PRISTINE target — no bindings,
+	// no objects, and no repoint policy. That is what makes it a safe SINGLE operation
+	// rather than a hydrate-then-put that can half-apply: with nothing already bound, a
+	// mid-way failure cannot repoint a name the store had. And a target with a
+	// policy.json is a GOVERNED store: clone admits through an in-memory scratch that
+	// does not carry the target's rules, so honouring the policy is `put --lock`'s job,
+	// not clone's — refuse rather than silently bypass it.
+	if len(target.Names()) > 0 || len(target.AllHashes()) > 0 {
+		fail(fmt.Errorf("refusing to clone into a non-empty store %q: clone materializes a FRESH store (OATH_STORE=$(mktemp -d)). To add a locked app to an existing store, hydrate then put --lock", target.Root))
+	}
+	// A policy that cannot be LOADED must fail closed, not fall through the discarded
+	// error into the policy-free scratch — that would bypass exactly the rules an
+	// ordinary put enforces.
+	switch p, err := LoadPolicy(target.Root); {
+	case err != nil:
+		fail(fmt.Errorf("refusing to clone into %q: its policy.json could not be loaded (%v). Use `hydrate` then `put --lock`", target.Root, err))
+	case p != nil:
+		fail(fmt.Errorf("refusing to clone into a policy-governed store %q: clone admits through a scratch that does not carry the policy. Use `hydrate` then `put --lock`, which enforce it", target.Root))
+	}
+
+	// Do the WHOLE operation in an in-memory scratch, committing to the target only
+	// once every definition is accepted — so a VALIDATION failure (a stale lock, an app
+	// that will not verify, a multi-definition app whose later form is rejected or
+	// falsified) leaves the target UNTOUCHED and a fixed source clones again in place.
+	// apiPut stores and repoints each definition as it goes — and repoints even a
+	// falsified one — so without the scratch a mid-app failure would leave dependencies
+	// and earlier names behind, which the empty-target rule would then make
+	// unretryable. The scratch starts empty (the target must be), so nothing is copied
+	// in; the source's own bytes are the only thing under test. This is transactional
+	// against VALIDATION, not against a mid-COMMIT I/O failure: if a filesystem write
+	// fails partway through the copy below, the target can be left partial, the same
+	// honest limit as any multi-write on the non-transactional fs store.
+	// The scratch's ROOT must be an isolated, empty directory: apiPut below calls
+	// LoadPolicy(store.Root), and a relative root like "clone-scratch" would read
+	// ./clone-scratch/policy.json from the CURRENT directory — an unrelated file could
+	// then block or defer the scratch admission. A fresh temp dir has no policy.json,
+	// so the scratch admits policy-free as intended. The mem backend keeps objects in
+	// memory; the dir exists only so its (absent) policy resolves to none.
+	scratchRoot, err := os.MkdirTemp("", "oath-clone-scratch-")
+	if err != nil {
+		fail(err)
+	}
+	defer os.RemoveAll(scratchRoot)
+	scratch, err := newStoreWithBackend(newMemBackend(), scratchRoot)
+	if err != nil {
+		fail(err)
+	}
+	hydrateLockInto(scratch, lock, fromDir, remoteURL, keyFile, "clone")
+
+	// The deps are present in scratch now, so the app's external set resolves.
+	// verifyLock pins it to the lock exactly (same names, same hashes).
+	if err := verifyLock(scratch, src, lock); err != nil {
+		fail(err)
+	}
+
+	// Admit + verify the app IN SCRATCH. apiPut (not cmdPutSrc) so the per-definition
+	// RESULTS are in hand: clone's postcondition is that the app is BUILDABLE, and a
+	// clean put exit is not proof of that — it exits 0 on a blocked or pending outcome.
+	results, perr := apiPut(scratch, src, author, "")
+	report := renderPutReports(results)
+	if perr != nil {
+		fmt.Print(report)
+		fail(perr)
+	}
+	if len(results) == 0 {
+		fail(fmt.Errorf("the app source %s declares no definitions — there is nothing to build", appFile))
+	}
+	// Every declaration must be ACCEPTED — any other outcome fails with the target
+	// UNTOUCHED, so a fixed source clones again in place.
+	for _, rep := range results {
+		if rep.Status != "accepted" {
+			fmt.Print(report)
+			fail(fmt.Errorf("clone did not admit %q (%s); the target is unchanged — fix the source and clone again", rep.Name, rep.Status))
+		}
+	}
+	// And each name must be bound in scratch to the object this put produced — not
+	// merely resolve, which a redeclared DEPENDENCY name would still do against the
+	// hydrated hash. A source may redeclare its OWN name across several forms (last
+	// wins), so the store is compared only against the LAST accepted report for each
+	// name, never an earlier superseded one.
+	lastHash := make(map[string]string, len(results))
+	for _, rep := range results {
+		lastHash[rep.Name] = rep.Hash
+	}
+	for name, want := range lastHash {
+		if h, ok := scratch.Resolve(name); !ok || h != want {
+			fail(fmt.Errorf("clone reported %q accepted at #%s but scratch binds it to #%s — not buildable", name, shortHash(want), shortHash(h)))
+		}
+	}
+
+	// Everything verified in scratch. COMMIT to the target: objects and names, then the
+	// journal entries apiPut recorded (hydration does not journal). AppendLog re-chains
+	// onto the target's empty journal, so the audit trail survives the reproduction.
+	if err := copyStore(scratch, target); err != nil {
+		fail(err)
+	}
+	for _, e := range scratch.ReadLog() {
+		entry := e
+		if err := target.AppendLog(&entry); err != nil {
+			fail(err)
+		}
+	}
+	fmt.Printf("cloned %d dependency object(s) from the source; admitted %s:\n", len(lock.Closure), appFile)
+	fmt.Print(report)
 }
 
 // unionNaming reproduces src's naming onto the object the target already holds,
