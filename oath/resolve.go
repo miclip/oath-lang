@@ -350,10 +350,10 @@ func cmdHydrate(target *Store, lockFile, fromDir, remoteURL, keyFile string) {
 	for _, h := range lock.Closure {
 		d, m, err := get(h)
 		if err != nil {
-			fail(fmt.Errorf("fetching #%s: %w", shortHash(h), err))
+			fail(fmt.Errorf("fetching %s: %w", hydrateFetchLabel(lock, h), err))
 		}
 		if got := hashDef(d); got != h {
-			fail(fmt.Errorf("source returned #%s for requested #%s (content-address mismatch)", shortHash(got), shortHash(h)))
+			fail(fmt.Errorf("source returned #%s for requested %s — content-address mismatch", shortHash(got), hydrateFetchLabel(lock, h)))
 		}
 		if _, err := scratch.StoreObject(d, m); err != nil {
 			fail(err)
@@ -469,6 +469,28 @@ func unionNaming(target, src *Meta) *Meta {
 		out.Aliases = nil
 	}
 	return &out
+}
+
+// hydrateFetchLabel names a closure hash for a fetch error. A bare 12-hex string is
+// not a diagnosis: on a drifted registry a consumer would have to grep the lock to
+// learn WHICH dependency is missing. The lock already binds names to hashes, so this
+// returns the binding name when there is one, and says plainly when the hash is a
+// transitive object the lock lists in the closure but binds no name to.
+func hydrateFetchLabel(lock oathLock, h string) string {
+	// Collect EVERY dependency name binding this hash, not the first Go's map
+	// iteration happens to yield: same-hash aliases are supported, so a bare
+	// first-match would name a different alias run to run and omit the others.
+	var names []string
+	for name, dh := range lock.Dependencies {
+		if dh == h {
+			names = append(names, name)
+		}
+	}
+	if len(names) > 0 {
+		sort.Strings(names)
+		return fmt.Sprintf("%s (#%s)", strings.Join(names, "/"), shortHash(h))
+	}
+	return fmt.Sprintf("transitive object #%s (the lock lists it in the closure but binds no name to it)", shortHash(h))
 }
 
 func writeLock(path string, lock oathLock) error {

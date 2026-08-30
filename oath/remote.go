@@ -111,7 +111,12 @@ func mcpCallSigned(endpoint string, priv ed25519.PrivateKey, pubHex, tool string
 		b.WriteString(c.Text)
 	}
 	if rpc.Result.IsError {
-		return b.String(), fmt.Errorf("%s", strings.TrimSpace(b.String()))
+		// The server marks tool failures with isError AND prefixes the text with
+		// "error: " (handleRPC). Surfacing that verbatim as a Go error double-prefixes
+		// once fail() adds its own "error: " — so strip the redundant server prefix
+		// here, where the isError flag already carries the "this is an error" signal.
+		msg := strings.TrimPrefix(strings.TrimSpace(b.String()), "error: ")
+		return b.String(), fmt.Errorf("%s", msg)
 	}
 	return b.String(), nil
 }
@@ -412,7 +417,12 @@ func mcpCallSignedBy(ctx context.Context, endpoint string, s Signer, tool string
 		b.WriteString(c.Text)
 	}
 	if rpc.Result.IsError {
-		return b.String(), fmt.Errorf("%s", strings.TrimSpace(b.String()))
+		// The server marks tool failures with isError AND prefixes the text with
+		// "error: " (handleRPC). Surfacing that verbatim as a Go error double-prefixes
+		// once fail() adds its own "error: " — so strip the redundant server prefix
+		// here, where the isError flag already carries the "this is an error" signal.
+		msg := strings.TrimPrefix(strings.TrimSpace(b.String()), "error: ")
+		return b.String(), fmt.Errorf("%s", msg)
 	}
 	return b.String(), nil
 }

@@ -193,6 +193,22 @@ consumer store untouched is ASSERTED by `run.sh` (section 3, via a tampered
 hash). The specific `show-nat` scenario, both message texts, and the doubled
 prefix are HAND-MEASURED.
 
+**RESOLVED** (#190). `oath hydrate` now names the failing hash's lock dependency
+and emits a single prefix — the transcripts above are the SUPERSEDED behaviour,
+kept as the measurement that motivated the fix. Current output:
+
+```
+$ oath hydrate <lock> --from <served-store>     # a direct dependency is missing
+error: fetching show-nat (#1d0a9ecfb0ea): no definition with hash 1d0a9ecfb0ea
+$ oath hydrate <lock> --remote <url> --key <k>   # same, over the wire — one prefix
+error: fetching show-nat (#1d0a9ecfb0ea): no object #1d0a9ecfb0ea in this store
+```
+
+A transitive object the lock lists in `closure` but binds no name to is now
+labelled as such rather than implying a name. `hydrateFetchLabel` names both
+branches (unit-tested) and the client no longer re-prefixes a server error
+(`mcpCallSignedBy`, unit-tested).
+
 ---
 
 ## 3. No single operation takes a lock to a store where the app runs — DESIGN GAP
