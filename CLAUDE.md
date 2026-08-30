@@ -628,6 +628,15 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               forcing. Trigger: a consumer needing unbounded
                               batch, or a decision to add a heap guard so
                               exhaustion refuses legibly instead of an OS kill
+                              #188 — production hardening for `oath resolve`
+                              (the module/import tool, closed design-resolved):
+                              the three scoped edges the demonstrator left, none
+                              touching identity/SPEC. NOT forcing — the
+                              demonstrated fresh-store local flow hits none.
+                              Trigger: a real consumer resolving into a non-empty
+                              store, against a policy-governed store, or a
+                              constructor-only remote dep. The edges and their
+                              fixes are ON THE ISSUE
   no CLOCK at all             #65, #66 —
                               open, and neither cheaper nor dearer for waiting
 
