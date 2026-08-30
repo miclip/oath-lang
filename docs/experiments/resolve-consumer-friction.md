@@ -124,14 +124,15 @@ data point, not a specification.
 against only that closure (so an unclosed lock is refused, not silently completed
 from the source), and binds the direct names — after which the `put --lock` that
 opens this section succeeds. The claim was attacked, not narrated:
-`resolve-consumer/hydrate-falsifier.sh` (23 checks) witnesses the gap is real, the
+`resolve-consumer/hydrate-falsifier.sh` witnesses that the gap is real, the
 reproduction is identity-neutral and idempotent, failure paths leave the target
 untouched (witnessed by STORE STATE), and the non-empty-target naming edges (#188)
-preserve every bound name's constructor vocabulary. A registry object source
-(`--remote`) is implemented but not exercised by this local-only falsifier; true
-I/O-atomicity of the commit phase is explicitly out of scope (the transactionality
-is against validation failure, not a mid-commit backend write) — both stated at the
-command.
+preserve every bound name's constructor vocabulary. A final arm stands up a
+throwaway `oath serve` and repeats the core claim over a **registry** object source
+(`--remote <url> --key`): the closure is fetched by signed reads, auth is required,
+and a hash the registry cannot serve fails without touching the target. Out of
+scope, and stated at the command: true I/O-atomicity of the commit phase (the
+transactionality is against validation failure, not a mid-commit backend write).
 
 Note what this does *not* say. Reproducibility is not broken: identity is a
 function of the closure and that held everywhere it was checked. What is missing

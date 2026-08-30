@@ -22,10 +22,14 @@
 #   - hydrate is identity-neutral (the put's object hash matches resolving directly)
 #     and idempotent;
 #   - a non-primary alias survives a non-empty target (no lost constructor vocabulary);
-#   - the write is refused into the canonical corpus and with no source named.
+#   - the write is refused into the canonical corpus and with no source named;
+#   - the same claim holds over a REGISTRY object source (`--remote`): a throwaway
+#     `oath serve` is stood up, the closure is fetched by signed reads, auth is
+#     required, and a hash the registry cannot serve fails without touching the target.
 #
-# Read-only against the repo: the source is a throwaway copy of codebase@HEAD, and
-# every target is a fresh mktemp -d. It builds nothing into codebase/.
+# Read-only against the repo: the source is a throwaway copy of codebase@HEAD, every
+# target is a fresh mktemp -d, and the --remote arm's server runs over a throwaway
+# store on a loopback port and is killed on exit. It builds nothing into codebase/.
 set -u
 
 root=$(cd "$(dirname "$0")/../../.." && pwd)
@@ -34,18 +38,63 @@ OATH="$root/oath/oath"
 [ -x "$OATH" ] || { echo "SETUP FAILED: build oath first (cd oath && go build -o oath .)" >&2; exit 1; }
 main="$here/main.oath"
 
-# Run in a CLEAN Oath environment. Every command sets OATH_STORE explicitly, and the
-# refusal checks depend on the ambient having NO source and NO store override — an
-# inherited OATH_REGISTRY would give "no --from" a remote source, and an exported
-# OATH_STORE would make the canonical-corpus check target something other than
-# ./codebase. Clear them so the scenarios are the ones the labels claim.
-unset OATH_STORE OATH_REGISTRY OATH_KEY OATH_BACKEND OATH_AUTHOR 2>/dev/null || true
+# Run in a CLEAN Oath environment: everything that selects a store backend, a remote,
+# a signing key, a namespace, or the served-registry's auth is cleared, so no ambient
+# configuration alters a scenario. Concretely — an inherited OATH_REGISTRY would give
+# "no --from" a remote source; an exported OATH_STORE would aim the canonical-corpus
+# check somewhere other than ./codebase; and OATH_AUTHORIZED_KEYS would silently change
+# (or, if stale, break) the --remote arm's own `oath serve`. Every command still sets
+# OATH_STORE explicitly; this just removes the ambient.
+unset OATH_STORE OATH_REGISTRY OATH_KEY OATH_KMS_KEY OATH_BACKEND OATH_AUTHOR \
+      OATH_AUTHORIZED_KEYS OATH_HTTP_ADDR OATH_NAMESPACE OATH_HOME OATH_STDLIB \
+      OATH_STORE_LOCK OATH_DB_DRIVER OATH_DB_DSN OATH_OBJECT_BUCKET 2>/dev/null || true
 
 ledger=$(mktemp)
-cleanup() { while read -r d; do [ -n "$d" ] && rm -rf "$d"; done < "$ledger"; rm -f "$ledger"; }
+SRV_PID=""   # the ONE live `oath serve` pid, if the --remote arm has one running
+cleanup() {
+  [ -n "${SRV_PID:-}" ] && kill "$SRV_PID" 2>/dev/null   # only the currently-live server, never a stale pid
+  while read -r d; do [ -n "$d" ] && rm -rf "$d"; done < "$ledger"
+  rm -f "$ledger"
+}
 trap cleanup EXIT INT TERM
 mk() { d=$(mktemp -d) || { echo "SETUP FAILED: mktemp" >&2; exit 1; }; printf '%s\n' "$d" >> "$ledger"; printf '%s' "$d"; }
 work=$(mk)  # per-run scratch for lockfiles; cleaned via the ledger, never a shared /tmp path
+
+# start_server <store> <keyfile> <marker> — launch `oath serve --http` over <store>
+# and set SRV_URL once the server that is genuinely OURS is answering. Readiness needs
+# POSITIVE evidence of ownership, not process liveness: serve prints its ready line
+# BEFORE binding (oath/http.go), and during a child's startup a probe can be answered
+# by a DIFFERENT Oath registry already on that port while our child is still alive and
+# about to fail its bind. So <store> carries a per-run unique <marker> name, and the
+# probe is a signed `ls --remote` whose output must CONTAIN that marker — a foreign
+# registry serving a different store cannot produce it. A busy port is then observed
+# as "probe never shows the marker, then our child dies", and the next port is tried.
+start_server() {
+  pstore=$(mk)   # throwaway local store for the probe command (it reads the registry)
+  attempt=0
+  while [ "$attempt" -lt 6 ]; do
+    attempt=$((attempt + 1))
+    port=$(( 20000 + ( ($$ + attempt * 251) % 20000 ) ))
+    url="http://127.0.0.1:$port"
+    OATH_STORE="$1" "$OATH" serve --http "127.0.0.1:$port" >"$work/serve.$port.log" 2>&1 &
+    p=$!
+    SRV_PID="$p"   # track IMMEDIATELY: an interrupt during the readiness loop must still reap it
+    tries=0
+    while [ "$tries" -lt 40 ]; do
+      tries=$((tries + 1))
+      if OATH_STORE="$pstore" "$OATH" ls --remote "$url" --key "$2" 2>/dev/null | grep -q "$3"; then
+        SRV_URL="$url"   # the marker proves this is OUR server, not a colliding one
+        return 0         # SRV_PID already = p
+      fi
+      kill -0 "$p" 2>/dev/null || break   # our child died (bind failed) — try the next port
+      sleep 0.25
+    done
+    kill "$p" 2>/dev/null   # reap this failed attempt NOW (still ours; not yet recycled)
+    wait "$p" 2>/dev/null
+    SRV_PID=""              # cleared so cleanup never signals this now-dead (recyclable) pid
+  done
+  return 1
+}
 
 checks=0; failures=0
 pass() { checks=$((checks + 1)); printf '  [ok]   %s\n' "$1"; }
@@ -293,9 +342,58 @@ if OATH_STORE="$dt" "$OATH" put --lock "$dlock" "$dd/usefoo.oath" --new >/dev/nu
 else bad "put --lock failed: the bound name pointed at an unreadable object"; fi
 
 # ---------------------------------------------------------------------------------
+head2 "10 — REMOTE SOURCE: hydrate over the wire from a served registry"
+# The same claim, one transport out: the object source is a registry (`oath serve
+# --http`) reached by signed reads, not a local store. remoteObject re-verifies every
+# object's content address, so the wire is not trusted. Reuses the 20-object main.oath
+# closure — a real multi-object fetch, not a toy.
+"$OATH" keygen --out "$work/k" >/dev/null 2>&1 || { echo "SETUP FAILED: keygen" >&2; exit 1; }
+key="$work/k.key"
+# A per-run unique name, put into the served store, so the readiness probe has POSITIVE
+# evidence it reached OUR server and not another registry that happened to grab the
+# port. It is not in main's closure, so it does not affect the hydrate under test; src
+# is a throwaway store, never the canonical corpus, so binding it here is safe.
+marker="HydrateProbe$$X$(awk 'BEGIN{srand();printf "%06d", int(rand()*1000000)}')"
+printf '(data %s [] (Mk%s))\n' "$marker" "$marker" > "$work/marker.oath"
+OATH_STORE="$src" "$OATH" put "$work/marker.oath" --new >/dev/null 2>&1 || { echo "SETUP FAILED: marker put" >&2; exit 1; }
+start_server "$src" "$key" "$marker" || { echo "SETUP FAILED: could not start a local registry for the --remote arm" >&2; exit 1; }
+
+rtgt=$(mk)
+rout=$(OATH_STORE="$rtgt" "$OATH" hydrate "$lock" --remote "$SRV_URL" --key "$key" 2>&1); rc=$?
+if [ "$rc" = 0 ]; then pass "hydrate --remote fetches the closure over signed reads — $rout"
+else bad "hydrate --remote failed ($rc): $rout"; fi
+robjs=0; [ -d "$rtgt/objects" ] && robjs=$(ls -A "$rtgt/objects" 2>/dev/null | wc -l | tr -d ' ')
+if [ "$robjs" = "$n_closure" ]; then pass "the remote-hydrated target holds exactly the $n_closure closure objects"
+else bad "remote target holds $robjs objects, closure is $n_closure"; fi
+if OATH_STORE="$rtgt" "$OATH" put --lock "$lock" "$main" --new >/dev/null 2>&1; then
+  pass "put --lock succeeds against the remote-hydrated target — the gap closes over the wire too"
+else bad "put --lock failed after remote hydrate"; fi
+
+# AUTH IS REQUIRED: every remote read is signed, so no --key must be refused — before
+# any object is fetched, and with nothing written.
+rnokey=$(mk)
+if OATH_STORE="$rnokey" "$OATH" hydrate "$lock" --remote "$SRV_URL" >/dev/null 2>&1; then
+  bad "hydrate --remote ran with no --key"
+else pass "hydrate --remote refuses without a signing key"; fi
+store_untouched "$rnokey" "  ...and wrote nothing"
+
+# TRANSACTIONAL over the wire: a lock naming a hash the registry cannot serve fails
+# the fetch and leaves the target untouched — the same guarantee as the local arm, now
+# depending on the remote object lookup rather than a local file read.
+rtamper=$(mk)
+if OATH_STORE="$rtamper" "$OATH" hydrate "$tamper_lock" --remote "$SRV_URL" --key "$key" >/dev/null 2>&1; then
+  bad "hydrate --remote accepted a hash the registry does not hold"
+else pass "hydrate --remote fails on a hash the registry cannot serve"; fi
+store_untouched "$rtamper" "  ...and left the target untouched"
+
+# The --remote arm is done: stop the server NOW, while its pid is still ours, so the
+# only kill happens with no reuse window. cleanup is the backstop if we exit earlier.
+kill "$SRV_PID" 2>/dev/null; wait "$SRV_PID" 2>/dev/null; SRV_PID=""
+
+# ---------------------------------------------------------------------------------
 # Completeness guard: a skipped block must not exit green with fewer checks. Bump
 # this deliberately when adding an assertion (negative-control it by editing down).
-expected_checks=23
+expected_checks=30
 head2 "RESULT"
 if [ "$checks" -ne "$expected_checks" ]; then
   printf 'INCOMPLETE — ran %d checks, expected %d: an assertion block was skipped or double-counted\n' "$checks" "$expected_checks" >&2
