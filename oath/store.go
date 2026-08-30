@@ -39,6 +39,10 @@ type Store struct {
 	// names a source references. Nil in every other context, so ordinary resolution
 	// is unaffected.
 	resolveLog map[string]string
+	// fetcher, when non-nil, is called by Resolve on a MISS to pull the name from a
+	// registry into this store (oath resolve --remote). It returns whether the name
+	// was fetched and bound. Nil in every other context.
+	fetcher func(name string) bool
 }
 
 // SetSigner attaches an Ed25519 private key so subsequent AppendLog calls sign
@@ -127,6 +131,15 @@ func (s *Store) Names() map[string]string {
 
 func (s *Store) Resolve(name string) (string, bool) {
 	h, ok := s.Names()[name]
+	// On a miss, an armed fetcher (only `oath resolve --remote` sets one, on a
+	// scratch store) pulls the name and its closure from a registry and rebinds it,
+	// so elaboration can resolve a dependency the local store never held. Nil in
+	// every other context, so ordinary resolution is untouched.
+	if !ok && s.fetcher != nil {
+		if s.fetcher(name) {
+			h, ok = s.Names()[name]
+		}
+	}
 	// When a resolution log is armed (only by `oath resolve`/put --lock during
 	// elaboration), record the NAME the caller actually used and the hash it
 	// resolved to. This is how the resolver pins the surface names a source

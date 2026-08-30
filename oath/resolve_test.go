@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -179,5 +181,40 @@ func TestExternalClosureSameHashAlias(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("the closure must include foo's object %s even though bar produces the same hash: %v", fooHash, closure)
+	}
+}
+
+
+// The object endpoint round-trips: its payload decodes back to the same object with
+// its content address preserved — the primitive oath resolve --remote fetches by.
+func TestApiObjectPayloadRoundTrips(t *testing.T) {
+	st := newStore(t)
+	put(t, st, `(defn base [] [(x Int)] Int (+ x 1))`)
+	h, _ := st.Resolve("base")
+
+	payload, err := apiObjectPayload(st, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p struct {
+		DefB64  string `json:"def_b64"`
+		MetaB64 string `json:"meta_b64"`
+	}
+	if err := json.Unmarshal([]byte(payload), &p); err != nil {
+		t.Fatalf("payload not JSON: %v\n%s", err, payload)
+	}
+	defBytes, err := base64.StdEncoding.DecodeString(p.DefB64)
+	if err != nil {
+		t.Fatalf("def_b64 not base64: %v", err)
+	}
+	d, err := decodeDef(defBytes)
+	if err != nil {
+		t.Fatalf("def did not decode: %v", err)
+	}
+	if got := hashDef(d); got != h {
+		t.Errorf("round-tripped object hashes to %s, want %s", got, h)
+	}
+	if _, err := apiObjectPayload(st, "deadbeef"); err == nil {
+		t.Error("a missing hash must error, not return a payload")
 	}
 }

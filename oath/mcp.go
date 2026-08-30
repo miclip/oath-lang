@@ -99,6 +99,11 @@ func mcpTools() []map[string]any {
 			"inputSchema": obj(map[string]any{"name": str("definition name")}, "name"),
 		},
 		{
+			"name":        "object",
+			"description": "One object's canonical bytes and metadata by HASH (base64), for pulling a dependency closure — the machine counterpart to `get`'s human rendering. `oath resolve --remote` uses it to fetch what a source needs into a local store; the client re-verifies the hash.",
+			"inputSchema": obj(map[string]any{"hash": str("content hash of the object to fetch")}, "hash"),
+		},
+		{
 			"name":        "ls",
 			"description": "List every named definition with hash, kind, and guarantee.",
 			"inputSchema": obj(map[string]any{}),
@@ -401,6 +406,14 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 		// output on purpose — a client parsing `log` prose would break on rewording.
 		parent, rev := nameRevision(st, a.Name)
 		resp := map[string]any{"name": a.Name, "parent": parent, "parent_rev": rev}
+		// The CURRENT binding, independent of publication history: a name bound in
+		// the store (even a working store with no journal transition, rev 0) resolves
+		// here, where `parent`/`parent_rev` — which drive the put replay defence —
+		// report noParent. `oath resolve --remote` fetches by this, so it can pull any
+		// name the store actually resolves.
+		if h, ok := st.Resolve(a.Name); ok {
+			resp["binding"] = h
+		}
 		if a.Hash != "" {
 			// LAST match, not first: the same artifact may be published more than once
 			// (a same-hash re-publication is a valid recorded no-op), and a client
@@ -416,6 +429,8 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 		return string(b), nil
 	case "get":
 		return apiGet(st, a.Name)
+	case "object":
+		return apiObjectPayload(st, a.Hash)
 	case "find":
 		return apiFind(st, a.Name)
 	case "find_spec":

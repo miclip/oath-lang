@@ -185,11 +185,23 @@ real consumer:
 
 So the "no change required" path is not just open in principle; it is **demonstrated**.
 
+**`--remote` is now built and demonstrated too.** `oath resolve --remote <url>
+--key <file>` pulls the closure from a registry: `app.oath` resolved from a live
+local `oath serve --http` into a fresh store elaborated to the same
+`#84bdbbcba9b4`. It needed one new registry primitive, not "the same shape over
+the existing ones" as first assumed — `head` returns the publication *statement*
+and `get` a rendering, neither the object bytes — so a small `object` MCP tool
+serves an object (def + meta, base64) by hash, and the client re-verifies the
+content address on receipt. A `Store.fetcher` hook lets elaboration pull a missing
+dependency and its closure on demand.
+
 **Scope of the demonstrator** (none of it a language question — all are the
 incremental hardening a production version would finish):
-- Fetch is from a local `--from` store (the corpus standing in as the registry),
-  opened with an explicit filesystem backend. A `--remote` fetch is the identical
-  shape over `remoteEnvelopeOf`/`remoteNameRevision`.
+- Fetch works from a local `--from` store (explicit filesystem backend) or a
+  registry (`--remote`, signed reads). A datatype reached ONLY through a
+  constructor (a bare string literal, no type application) is not pulled over
+  `--remote`, since `FindCtor` has no fetch hook; naming the type anywhere (the
+  common case) pulls it.
 - `resolve --from` writes into a **local working store** only — it refuses the
   canonical corpus and any cloud-backed target, so it cannot pollute a tracked or
   shared store.
@@ -232,7 +244,7 @@ and the §4 falsifier **passed** — so #187 is answered **no change to the lang
 the SPEC, or any hash**, demonstrated rather than argued. What remains is
 incremental and optional, none of it a language question:
 
-- a `--remote` fetch (the same shape over the existing registry primitives);
+- ~~a `--remote` fetch~~ — done (a small `object` endpoint + a fetch hook);
 - generating the lock as part of `oath put` when absent, so the common path is one
   command;
 - surfacing ambiguity when a registry offers several candidates for a name.

@@ -125,8 +125,27 @@ var clientPub string
 type headResp struct {
 	Parent       string `json:"parent"`
 	ParentRev    int    `json:"parent_rev"`
+	Binding      string `json:"binding"` // current name→hash, independent of publication history
 	EnvelopeB64  string `json:"envelope_b64"`
 	AuthorPubkey string `json:"author_pubkey"`
+}
+
+// remoteBinding returns the hash a name currently resolves to at the registry,
+// regardless of whether it has a journal transition — what a fetcher needs, versus
+// remoteNameRevision's publication-replacement view. Falls back to the parent for a
+// registry too old to report `binding`.
+func remoteBinding(endpoint, name string) (string, error) {
+	h, err := remoteHead(endpoint, name, "")
+	if err != nil {
+		return "", err
+	}
+	if h.Binding != "" {
+		return h.Binding, nil
+	}
+	if h.Parent != "" && h.Parent != noParent {
+		return h.Parent, nil
+	}
+	return "", nil
 }
 
 func remoteHead(endpoint, name, hash string) (headResp, error) {
@@ -168,6 +187,44 @@ func remoteEnvelopeOf(endpoint, hash string) (string, error) {
 		return "", err
 	}
 	return h.EnvelopeB64, nil
+}
+
+// remoteObject fetches one object's canonical bytes and metadata by hash from a
+// registry and RE-VERIFIES the content address before returning it — a registry
+// that served the wrong bytes for a hash is caught here, not trusted. Used by
+// `oath resolve --remote` to pull a dependency closure.
+func remoteObject(ctx context.Context, endpoint string, s Signer, hash string) (*Def, *Meta, error) {
+	out, err := mcpCallSignedBy(ctx, endpoint, s, "object", map[string]any{"hash": hash})
+	if err != nil {
+		return nil, nil, err
+	}
+	var payload struct {
+		DefB64  string `json:"def_b64"`
+		MetaB64 string `json:"meta_b64"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		return nil, nil, fmt.Errorf("registry object response is not JSON (is it a kernel without `object`?): %s", strings.TrimSpace(out))
+	}
+	defBytes, err := base64.StdEncoding.DecodeString(payload.DefB64)
+	if err != nil {
+		return nil, nil, fmt.Errorf("object #%s def is not base64: %w", shortHash(hash), err)
+	}
+	d, err := decodeDef(defBytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("object #%s def is malformed: %w", shortHash(hash), err)
+	}
+	if got := hashDef(d); got != hash {
+		return nil, nil, fmt.Errorf("registry served #%s for the request #%s — content-address mismatch, refusing", shortHash(got), shortHash(hash))
+	}
+	metaBytes, err := base64.StdEncoding.DecodeString(payload.MetaB64)
+	if err != nil {
+		return nil, nil, fmt.Errorf("object #%s meta is not base64: %w", shortHash(hash), err)
+	}
+	var m Meta
+	if err := json.Unmarshal(metaBytes, &m); err != nil {
+		return nil, nil, fmt.Errorf("object #%s meta is malformed: %w", shortHash(hash), err)
+	}
+	return d, &m, nil
 }
 
 // remotePutSigned publishes source with an author statement. envBytes is sent

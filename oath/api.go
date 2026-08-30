@@ -2,12 +2,39 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
 	"strings"
 	"time"
 )
+
+// apiObjectPayload serves one object's canonical bytes and metadata by HASH, so a
+// client (oath resolve --remote) can pull a dependency closure from a registry —
+// the fetch primitive the head/get surfaces did not provide (head returns the
+// publication statement, get a rendering, neither the object). It reads nothing
+// name-scoped: an object is content-addressed, and the client re-verifies the hash.
+func apiObjectPayload(st *Store, hash string) (string, error) {
+	if hash == "" {
+		return "", fmt.Errorf("object requires a hash")
+	}
+	d, err := st.GetDef(hash)
+	if err != nil {
+		return "", fmt.Errorf("no object #%s in this store", shortHash(hash))
+	}
+	m, err := st.GetMeta(hash)
+	if err != nil || m == nil {
+		m = &Meta{}
+	}
+	payload := map[string]string{
+		"def_b64":  base64.StdEncoding.EncodeToString(encodeDef(d)),
+		"meta_b64": base64.StdEncoding.EncodeToString(encodeMeta(m)),
+	}
+	b, _ := json.Marshal(payload)
+	return string(b), nil
+}
 
 // String-returning implementations of every verb, shared by the CLI (which
 // prints them) and the MCP server (which returns them as tool results).

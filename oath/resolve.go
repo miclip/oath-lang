@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -41,6 +42,14 @@ func seedStore(from *Store) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := copyStore(from, tmp); err != nil {
+		return nil, err
+	}
+	return tmp, nil
+}
+
+// copyStore copies every object and name binding from one store into another.
+func copyStore(from, into *Store) error {
 	for _, h := range from.AllHashes() {
 		d, err := from.GetDef(h)
 		if err != nil {
@@ -50,16 +59,83 @@ func seedStore(from *Store) (*Store, error) {
 		if m == nil {
 			m = &Meta{}
 		}
-		if _, err := tmp.StoreObject(d, m); err != nil {
-			return nil, err
+		if _, err := into.StoreObject(d, m); err != nil {
+			return err
 		}
 	}
 	for name, h := range from.Names() {
-		if _, err := tmp.Repoint(name, h); err != nil {
-			return nil, err
+		if _, err := into.Repoint(name, h); err != nil {
+			return err
 		}
 	}
-	return tmp, nil
+	return nil
+}
+
+// registryFetcher builds the Store.fetcher for `oath resolve --remote`: on a name
+// miss it resolves the name at the registry, pulls the object and its transitive
+// closure (each re-verified by hash in remoteObject), stores them into `into`, and
+// binds the name. clientSigner must already be set for remoteBinding.
+//
+// The Store.fetcher contract is bool, but a registry error (unreachable, auth
+// refused, no `object` tool, a content-address mismatch, a dependency that does not
+// typecheck) must not vanish into a downstream "unknown name". So the FIRST such
+// error is captured and returned by the accompanying accessor, which cmdResolve
+// surfaces when elaboration then fails. A name the registry genuinely does not hold
+// (no binding) is NOT an error — an honest "unknown name" is the right report.
+func registryFetcher(url string, s Signer, into *Store) (func(string) bool, func() error) {
+	var firstErr error
+	note := func(err error) { // remember the first real failure
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+	var fetchClosure func(hash string) error
+	fetchClosure = func(hash string) error {
+		if _, err := into.GetDef(hash); err == nil {
+			return nil // already present
+		}
+		d, m, err := remoteObject(context.Background(), url, s, hash)
+		if err != nil {
+			return err
+		}
+		// Fetch DEPENDENCIES FIRST, then typecheck this object against them before
+		// caching it. remoteObject verified the hash, but a hash-consistent yet
+		// ill-formed Def from a nonconforming registry must not be stored unchecked
+		// — GetDef would then hand it out bypassing the kernel's admission. checkDef
+		// needs the deps present, hence the bottom-up order.
+		for dep := range collectDeps(d) {
+			if err := fetchClosure(dep); err != nil {
+				return err
+			}
+		}
+		if err := checkDef(into, d); err != nil {
+			return fmt.Errorf("registry object #%s does not typecheck: %w", shortHash(hash), err)
+		}
+		if _, err := into.StoreObject(d, m); err != nil {
+			return err
+		}
+		return nil
+	}
+	fetch := func(name string) bool {
+		hash, err := remoteBinding(url, name)
+		if err != nil {
+			note(fmt.Errorf("resolving %q at the registry: %w", name, err))
+			return false
+		}
+		if hash == noParent || hash == "" {
+			return false // the registry genuinely has no such name — not an error
+		}
+		if err := fetchClosure(hash); err != nil {
+			note(fmt.Errorf("fetching %q: %w", name, err))
+			return false
+		}
+		if _, err := into.Repoint(name, hash); err != nil {
+			note(err)
+			return false
+		}
+		return true
+	}
+	return fetch, func() error { return firstErr }
 }
 
 // elaborateInto elaborates each top-level form against tmp (ELABORATION ONLY — no
@@ -136,11 +212,19 @@ func elaborateInto(tmp *Store, src string) (map[string]string, error) {
 // and returns the direct external dependencies (surface name -> hash) plus the full
 // transitive object closure of those hashes (so a fresh store can typecheck them).
 func externalClosure(from *Store, src string) (map[string]string, []string, error) {
-	tmp, err := seedStore(from)
+	elab, err := seedStore(from)
 	if err != nil {
 		return nil, nil, err
 	}
-	direct, err := elaborateInto(tmp, src)
+	return computeExternal(elab, src)
+}
+
+// computeExternal elaborates src IN `elab` — a scratch store that resolves every
+// dependency, whether by being seeded from a local store or by an on-demand
+// registry fetcher — and returns the direct external names and transitive closure.
+// The fetched/seeded objects are left in `elab` for the caller to copy out.
+func computeExternal(elab *Store, src string) (map[string]string, []string, error) {
+	direct, err := elaborateInto(elab, src)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -155,7 +239,7 @@ func externalClosure(from *Store, src string) (map[string]string, []string, erro
 			return
 		}
 		closure[h] = true
-		d, err := tmp.GetDef(h)
+		d, err := elab.GetDef(h)
 		if err != nil {
 			return
 		}
@@ -233,47 +317,79 @@ func verifyLock(st *Store, src string, lock oathLock) error {
 }
 
 // cmdResolve computes a source file's external dependency set and writes a
-// lockfile. With --from <store>, it also FETCHES the closure objects into the
-// target store and binds the direct external names, so the file can then be put
-// into a store that did not already hold its dependencies.
-func cmdResolve(target *Store, file, fromDir, out string) {
+// lockfile. With --from <store> or --remote <url> it also FETCHES the closure into
+// the target store and binds the direct external names, so the file can then be put
+// into a store that did not already hold its dependencies. Elaboration always runs
+// in a scratch in-memory store; the target is written only after it succeeds.
+func cmdResolve(target *Store, file, fromDir, remoteURL, keyFile, out string) {
 	src := readSourceFile(file)
-	from := target
-	if fromDir != "" {
-		// Fetching WRITES the dependency objects and names into the target. Refuse a
-		// target that is not a local working store: the canonical corpus must not be
-		// polluted (guardNewNames's principle), and a cloud store is shared, so a
-		// resolve into it would bypass gates and journalling.
+	fetching := fromDir != "" || remoteURL != ""
+	if fetching {
+		// Fetching WRITES objects and names into the target. Refuse anything but a
+		// local working store: the canonical corpus must not be polluted
+		// (guardNewNames's principle), and a cloud store is shared, so a resolve into
+		// it would bypass gates and journalling.
 		if os.Getenv("OATH_BACKEND") == "cloud" {
-			fail(fmt.Errorf("refusing to resolve --from into a cloud-backed store: fetch into a local working store (OATH_STORE=$(mktemp -d))"))
+			fail(fmt.Errorf("refusing to resolve into a cloud-backed store: fetch into a local working store (OATH_STORE=$(mktemp -d))"))
 		}
 		if isCanonicalStore(target.Root) {
 			fail(fmt.Errorf("refusing to fetch dependencies into the canonical corpus %q: resolve into a local working store (OATH_STORE=$(mktemp -d)), not the tracked store", target.Root))
 		}
-		// Open --from with an explicit FILESYSTEM backend: OpenStore honours
-		// OATH_BACKEND, so on a cloud-tagged binary `--from /local/store` would
-		// silently read the cloud store instead of the directory named.
+	}
+
+	// The elaboration store resolves every dependency: seeded from a local source,
+	// or fetching on demand from a registry.
+	elab, err := newStoreWithBackend(newMemBackend(), "resolve-scratch")
+	if err != nil {
+		fail(err)
+	}
+	fetchErr := func() error { return nil }
+	switch {
+	case remoteURL != "":
+		signer, err := resolveSigner(keyFile, "")
+		if err != nil {
+			fail(fmt.Errorf("oath resolve --remote authenticates every read; pass --key <file>: %w", err))
+		}
+		clientSigner = signer
+		elab.fetcher, fetchErr = registryFetcher(remoteURL, signer, elab)
+	case fromDir != "":
+		// Explicit FILESYSTEM backend: OpenStore honours OATH_BACKEND, so on a
+		// cloud-tagged binary `--from /local/store` would read the cloud store.
 		be, err := openFSBackend(fromDir)
 		if err != nil {
 			fail(err)
 		}
-		f, err := newStoreWithBackend(be, fromDir)
+		fromStore, err := newStoreWithBackend(be, fromDir)
 		if err != nil {
 			fail(err)
 		}
-		from = f
+		if err := copyStore(fromStore, elab); err != nil {
+			fail(err)
+		}
+	default:
+		// No source given: resolve against the target itself (deps already local).
+		if err := copyStore(target, elab); err != nil {
+			fail(err)
+		}
 	}
-	direct, closure, err := externalClosure(from, src)
+
+	direct, closure, err := computeExternal(elab, src)
 	if err != nil {
+		// A registry fetch failure (auth, missing `object` tool, content-address
+		// mismatch, a dependency that does not typecheck) is the real cause behind an
+		// "unknown name" here — surface it rather than the elaboration symptom.
+		if fe := fetchErr(); fe != nil {
+			fail(fmt.Errorf("resolving from the registry: %w", fe))
+		}
 		fail(err)
 	}
-	if fromDir != "" {
+	if fetching {
 		for _, h := range closure {
-			d, err := from.GetDef(h)
+			d, err := elab.GetDef(h)
 			if err != nil {
 				fail(fmt.Errorf("fetching #%s: %w", shortHash(h), err))
 			}
-			m, _ := from.GetMeta(h)
+			m, _ := elab.GetMeta(h)
 			if m == nil {
 				m = &Meta{}
 			}
@@ -294,7 +410,7 @@ func cmdResolve(target *Store, file, fromDir, out string) {
 		fail(err)
 	}
 	verb := "resolved"
-	if fromDir != "" {
+	if fetching {
 		verb = "resolved and fetched"
 	}
 	fmt.Printf("%s %d external name(s) across %d object(s) in the closure -> %s\n", verb, len(direct), len(closure), out)

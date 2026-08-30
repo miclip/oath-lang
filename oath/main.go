@@ -191,26 +191,44 @@ func main() {
 	switch args[0] {
 	case "resolve":
 		file, fromDir, out := "", "", ""
+		remoteURL := os.Getenv("OATH_REGISTRY")
+		keyFile := os.Getenv("OATH_KEY")
+		remoteExplicit := false
 		rest := args[1:]
 		for i := 0; i < len(rest); i++ {
 			switch {
 			case rest[i] == "--from" && i+1 < len(rest):
 				fromDir = rest[i+1]
 				i++
+			case rest[i] == "--remote" && i+1 < len(rest):
+				remoteURL = rest[i+1]
+				remoteExplicit = true
+				i++
+			case rest[i] == "--key" && i+1 < len(rest):
+				keyFile = rest[i+1]
+				i++
 			case rest[i] == "-o" && i+1 < len(rest):
 				out = rest[i+1]
 				i++
 			default:
 				if file != "" {
-					fail(fmt.Errorf("usage: oath resolve <file.oath> [--from <store>] [-o <lock>]"))
+					fail(fmt.Errorf("usage: oath resolve <file.oath> [--from <store> | --remote <url> --key <file>] [-o <lock>]"))
 				}
 				file = rest[i]
 			}
 		}
 		if file == "" {
-			fail(fmt.Errorf("usage: oath resolve <file.oath> [--from <store>] [-o <lock>]"))
+			fail(fmt.Errorf("usage: oath resolve <file.oath> [--from <store> | --remote <url> --key <file>] [-o <lock>]"))
 		}
-		cmdResolve(st, file, fromDir, out)
+		// An explicit --from wins over an ambient OATH_REGISTRY (the registry-
+		// configured shell). Only reject when BOTH sources were named on the line.
+		if fromDir != "" {
+			if remoteExplicit {
+				fail(fmt.Errorf("--from and --remote are two sources; give one"))
+			}
+			remoteURL = ""
+		}
+		cmdResolve(st, file, fromDir, remoteURL, keyFile, out)
 	case "put":
 		jsonMode := false
 		author := os.Getenv("OATH_AUTHOR")
@@ -1750,6 +1768,7 @@ var remoteCapable = map[string]bool{
 	"ls":        true,
 	"log":       true,
 	"authority": true,
+	"resolve":   true,
 }
 
 func remoteCapableList() string {
@@ -1775,7 +1794,7 @@ const defaultStoreDir = "codebase"
 var knownFlags = map[string]map[string]bool{
 	"publish":   set("--remote", "--key", "--kms-key", "--license", "--namespace", "--dry-run", "--json", "--yes", "-y"),
 	"put":       set("--remote", "--key", "--author", "--context", "--json", "--new", "--lock"),
-	"resolve":   set("--from", "-o"),
+	"resolve":   set("--from", "--remote", "--key", "-o"),
 	"reserve":   set("--remote", "--key", "--kms-key", "--dry-run", "--yes", "-y"),
 	"delegate":  set("--remote", "--key", "--kms-key", "--to", "--dry-run", "--yes", "-y"),
 	"revoke":    set("--remote", "--key", "--kms-key", "--from", "--dry-run", "--yes", "-y"),
