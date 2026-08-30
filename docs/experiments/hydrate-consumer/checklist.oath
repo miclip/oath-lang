@@ -1,0 +1,23 @@
+; checklist — a small runnable consumer for the hydrate flywheel. Takes its
+; arguments and prints them as a numbered checklist, one per line. It depends on
+; committed corpus definitions (show-nat, str-append) so `oath resolve` produces a
+; real closure, and it is a (-> (List Str) Str) entry point so `oath build`/`oath
+; run` exercise the whole fresh-machine reproduction loop.
+
+(defn numbered [] [(n Int) (items (List Str))] Str
+  (match items
+    ((Nil) "")
+    ((Cons h t)
+      (str-append (show-nat n)
+        (str-append ". " (str-append h (str-append "\n" (numbered (+ n 1) t)))))))
+  (prop empty-is-empty [(n Int)]
+    (== (numbered n (Nil [Str])) ""))
+  (prop one-item [(n Int) (s Str)]
+    (== (numbered n (Cons [Str] s (Nil [Str])))
+        (str-append (show-nat n) (str-append ". " (str-append s "\n"))))))
+
+(defn checklist [] [(args (List Str))] Str
+  (numbered 1 args)
+  (prop single [(s Str)]
+    (== (checklist (Cons [Str] s (Nil [Str])))
+        (str-append "1. " (str-append s "\n")))))
