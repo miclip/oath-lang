@@ -317,6 +317,21 @@ if [ "$drift" = 0 ]; then
   pass "each michael/* object is byte-identical to the bare put of the same source — the namespace is naming, not meaning"
 else bad "$drift of 4 michael/* objects differ from the bare put of the same source"; fi
 
+# FRICTION ITEM 3, RESOLVED. Publishing under a namespace leaves the PUBLISHER's
+# own store able to build on what it just published: `publish --namespace` adopts
+# each qualified name into the local store (the object is already present — only
+# the binding was missing), so a dependent published next from THIS store resolves
+# it without a round trip to fetch a name mapping the publisher authored. Contrast
+# §6, where the DELEGATE's store never published the library and so still must
+# resolve --remote.
+pub_adopted=0
+for n in text-join decimal count-items numbered-lines; do
+  [ "$(bound "$pub" "michael/$n")" = "$(bound "$oracle" "$n")" ] && pub_adopted=$((pub_adopted + 1))
+done
+if [ "$pub_adopted" = 4 ]; then
+  pass "the publisher's own store now binds all four michael/* names locally — building on what you just published needs no fetch"
+else bad "publish left the publisher's store with $pub_adopted/4 qualified names bound"; fi
+
 # ---------------------------------------------------------------------------------
 head2 "5 — DELEGATE michael/* TO AN AUTOMATION KEY: publication rights without ownership"
 if printf '%s' "$a_after" | grep -q 'publication delegated to'; then
@@ -536,7 +551,7 @@ OATH_STORE="$stranger_store" "$OATH" hydrate "$con_lock" --remote "$SRV_URL" >/d
 hij=$(OATH_STORE="$stranger_store" "$OATH" publish --remote "$SRV_URL" --key "$strangerkey" \
       --namespace michael -y "$here/unauthorized-text-join.oath" 2>&1); rc=$?
 if [ "$rc" = 0 ]; then bad "a key that neither holds nor is delegated michael/* repointed michael/text-join"
-elif printf '%s' "$hij" | grep -q 'BLOCKED' && printf '%s' "$hij" | grep -q 'neither the holder nor a current delegate'; then
+elif printf '%s' "$hij" | grep -q 'BLOCKED' && printf '%s' "$hij" | grep -q 'neither the holder nor a delegate whose scope covers this name'; then
   pass "the stranger's publication is BLOCKED by the REGISTRY, naming the holder and the submitter"
 else bad "the unauthorized publish failed, but not on authority: $(printf '%s' "$hij" | tail -1)"; fi
 
@@ -585,7 +600,7 @@ else bad "governance after the revocation is wrong: $(printf '%s' "$a_revoked" |
 exd=$(OATH_STORE="$auto_store" "$OATH" publish --remote "$SRV_URL" --key "$autokey" \
       --namespace michael -y "$here/unauthorized-text-join.oath" 2>&1); rc=$?
 if [ "$rc" = 0 ]; then bad "the EX-delegate still published under michael/* after revocation"
-elif printf '%s' "$exd" | grep -q 'BLOCKED' && printf '%s' "$exd" | grep -q 'neither the holder nor a current delegate'; then
+elif printf '%s' "$exd" | grep -q 'BLOCKED' && printf '%s' "$exd" | grep -q 'neither the holder nor a delegate whose scope covers this name'; then
   pass "the ex-delegate's next publication is BLOCKED by the REGISTRY — revocation is enforced server-side, not by the client"
 else bad "the post-revocation publish failed, but not on delegate status: $(printf '%s' "$exd" | tail -1)"; fi
 
@@ -604,7 +619,7 @@ else bad "codebase/ changed during the run: $(printf '%s' "$corpus_after" | head
 # ---------------------------------------------------------------------------------
 # Completeness guard: a skipped block must not exit green with fewer checks. Bump
 # this deliberately when adding an assertion (negative-control it by editing down).
-expected_checks=47
+expected_checks=48
 head2 "RESULT"
 if [ "$checks" -ne "$expected_checks" ]; then
   printf 'INCOMPLETE — ran %d checks, expected %d: an assertion block was skipped or double-counted\n' "$checks" "$expected_checks" >&2

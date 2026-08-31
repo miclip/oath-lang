@@ -354,6 +354,23 @@ publication is ASSERTED. Arm 3 — the identical-object-under-a-bare-name case,
 which is the sharpest evidence — is HAND-MEASURED only, as are all message texts
 and exit codes.
 
+**RESOLVED** (item 3). `publish --namespace` now leaves the publisher's own store
+able to build on what it just published, without a fetch. After each qualified
+name binds on the registry, `adoptPublished` binds `michael/<name>` to its object
+in the LOCAL store — the object is already present (it is exactly what was
+elaborated and published; `--namespace` is a purely local source transformation,
+so the bare→qualified mapping is fully known at publish time), so this binds a
+name and stores no new identity. A dependent published next from the same store
+then resolves its qualified deps locally. The publish prints the names it bound;
+a local-binding failure is non-fatal, since the registry publication is the
+authoritative act and `oath resolve --remote` remains the fallback. This does NOT
+change the DELEGATE case (§6): a store that never published the library still has
+nothing to adopt and must `resolve --remote` — which is correct, because it is
+building on someone else's publication, not its own. `run.sh` §4 now asserts the
+publisher's store binds all four `michael/*` names after the library publish; a
+Go unit test (`TestAdoptPublishedCopiesAndBinds`, `TestAdoptPublishedReusesLocalObject`)
+pins the mechanism, negative-controlled on the idempotence short-circuit.
+
 ---
 
 ## 4. A compilable CLI entry needs an ADDITIONAL binding of `Str` under that bare name — DESIGN GAP

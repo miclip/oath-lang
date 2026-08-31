@@ -219,6 +219,7 @@ func cmdPublishClosure(ctx context.Context, signer Signer, pubHex string, local 
 		return
 	}
 
+	var adopted []string
 	for i := range plans {
 		if !assumeYes && !jsonOut {
 			if !confirm(fmt.Sprintf("Sign and publish %s?", plans[i].Name)) {
@@ -237,11 +238,58 @@ func cmdPublishClosure(ctx context.Context, signer Signer, pubHex string, local 
 			die(fmt.Errorf("%s did not bind on the registry (points at %s, expected %s); stopping before its dependents",
 				plans[i].Name, shortHash(cur), shortHash(plans[i].Artifact)))
 		}
+		// Adopt the published QUALIFIED name into the LOCAL store, so the publisher
+		// can build a dependent on what they just published without a round trip to
+		// fetch a name mapping they authored (friction item 3). The object is already
+		// present — it is exactly what was elaborated and published — so this binds a
+		// name and stores no new identity; --namespace is a purely local source
+		// transformation, so the bare->qualified mapping is fully known here. A failure
+		// is non-fatal: the registry publication is the authoritative act, and
+		// `oath resolve --remote` remains the fallback.
+		if newlyBound, err := adoptPublished(local, seed, plans[i].Name, plans[i].Artifact); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: published %s but could not bind it in the local store (%v); `oath resolve --remote` will fetch it\n", plans[i].Name, err)
+		} else if newlyBound {
+			adopted = append(adopted, plans[i].Name)
+		}
 	}
 
 	if !jsonOut {
 		fmt.Printf("\nall %d definitions published under %s.\n", len(ordered), strings.TrimSuffix(namespace, "/*"))
+		if len(adopted) > 0 {
+			fmt.Printf("bound %d published name(s) into the local store so dependents resolve without a fetch: %s\n",
+				len(adopted), strings.Join(adopted, ", "))
+		}
 	}
+}
+
+// adoptPublished binds a just-published qualified name to its object in the local
+// store, so a dependent published next from the same store resolves it locally. It
+// reports whether it created a NEW binding (false when the name already pointed at
+// the same object, i.e. an idempotent re-publish). The object is copied from the
+// seed store only if the local store lacks it — in the common case the local store
+// already holds it under a bare name, and storing it again at the same hash is a
+// no-op.
+func adoptPublished(local, seed *Store, name, hash string) (bool, error) {
+	if cur, ok := local.Resolve(name); ok && cur == hash {
+		return false, nil
+	}
+	if _, err := local.GetDef(hash); err != nil {
+		d, derr := seed.GetDef(hash)
+		if derr != nil {
+			return false, derr
+		}
+		m, merr := seed.GetMeta(hash)
+		if merr != nil {
+			m = &Meta{}
+		}
+		if _, err := local.StoreObject(d, m); err != nil {
+			return false, err
+		}
+	}
+	if _, err := local.Repoint(name, hash); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // putBatch elaborates and stores a whole dependency-ordered batch into the store,
