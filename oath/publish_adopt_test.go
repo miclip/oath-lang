@@ -51,7 +51,7 @@ func TestAdoptPublishedCopiesAndBinds(t *testing.T) {
 // (the publisher put it before publishing). Adoption must bind the qualified name
 // by reusing that object, and must NOT depend on the seed still holding it.
 func TestAdoptPublishedReusesLocalObject(t *testing.T) {
-	seed := newMemStoreForTest(t)  // deliberately empty
+	seed := newMemStoreForTest(t) // deliberately empty
 	local := newMemStoreForTest(t)
 	reps, err := apiPut(local, `(defn foo [] [] Int 7)`, "tester", "")
 	if err != nil || reps[0].Status != "accepted" {

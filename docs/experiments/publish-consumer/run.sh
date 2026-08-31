@@ -263,24 +263,36 @@ if printf '%s' "$a_after" | grep -q "HELD by $hold_hex" && printf '%s' "$a_after
 else bad "authority after reserve is not the holder at revision 1: $(printf '%s' "$a_after" | head -1)"; fi
 
 # ---------------------------------------------------------------------------------
-head2 "3 — PUBLISH THE FOUNDATION: List and Str, under BARE names"
+head2 "3 — PUBLISH THE FOUNDATION: List and Str, under BARE names, in ONE operation"
 # Bare, and deliberately so — but for ONE narrow reason. String literals elaborate
 # against any Str-shaped datatype (michael/Str included — friction item 4), and the
 # entry shape's List is matched STRUCTURALLY, so michael/List already satisfies it.
 # The single thing that needs a BARE name is CLI ENTRY recognition, which resolves
 # the string type by the literal name `Str` (item 4). Publishing the foundation bare
-# is what lets a consumer build the app's (-> (List Str) Str) entry. Each is its own
-# file because a signed publication covers exactly one name transition.
-OATH_STORE="$pub" "$OATH" put "$here/base-list.oath" --new >/dev/null 2>&1
-OATH_STORE="$pub" "$OATH" put "$here/base-str.oath" --new >/dev/null 2>&1
-ok=0
-for f in base-list base-str; do
-  OATH_STORE="$pub" "$OATH" publish --remote "$SRV_URL" --key "$holderkey" -y "$here/$f.oath" >"$work/pub.$f.out" 2>&1 || ok=1
-done
+# is what lets a consumer build the app's (-> (List Str) Str) entry.
+#
+# FRICTION ITEM 5, RESOLVED. Both datatypes are two NEW bare names in ONE file,
+# published in ONE operation: `publish` routes a multi-definition bare closure
+# through the batch path — topo order, one signed envelope per name (the
+# one-signature-per-transition rule is preserved, not bypassed) — with no
+# namespace. The store never needs a separate local `put`: item 3's adoption binds
+# each published bare name back into this store, which is what lets §4's library
+# resolve List/Str.
+foundation="$work/foundation.oath"
+cat "$here/base-list.oath" "$here/base-str.oath" > "$foundation"
+OATH_STORE="$pub" "$OATH" publish --remote "$SRV_URL" --key "$holderkey" -y "$foundation" >"$work/pub.foundation.out" 2>&1; ok=$?
 reg_list=$(bound "$reg" "List"); reg_str=$(bound "$reg" "Str")
-if [ "$ok" = 0 ] && [ "$reg_list" = "$(bound "$oracle" "List")" ] && [ "$reg_str" = "$(bound "$oracle" "Str")" ]; then
-  pass "both foundation datatypes publish, and the registry binds them to the objects the source produces"
-else bad "foundation publication did not bind List/Str as the source produces them (rc=$ok)"; fi
+if [ "$ok" = 0 ] && grep -q 'all 2 definitions published' "$work/pub.foundation.out" &&
+   [ "$reg_list" = "$(bound "$oracle" "List")" ] && [ "$reg_str" = "$(bound "$oracle" "Str")" ]; then
+  pass "two new bare names publish in ONE operation, in dependency order, and the registry binds both to the objects the source produces"
+else bad "the one-operation bare-batch foundation publish did not bind List/Str as the source produces them (rc=$ok)"; fi
+
+# And the batch path leaves the publisher's own store holding both bare names —
+# item 3's adoption on the bare path — so §4's namespaced library resolves List/Str
+# without a separate put.
+if [ "$(bound "$pub" "List")" = "$reg_list" ] && [ "$(bound "$pub" "Str")" = "$reg_str" ]; then
+  pass "publishing the bare batch bound List and Str into the publisher's store too — no separate local put needed"
+else bad "the bare batch did not leave List/Str bound in the publisher's store"; fi
 
 # Identity is structural, so a datatype declared from scratch in an empty store is
 # the SAME OBJECT as the committed corpus's, with no shared provenance at all.
@@ -619,7 +631,7 @@ else bad "codebase/ changed during the run: $(printf '%s' "$corpus_after" | head
 # ---------------------------------------------------------------------------------
 # Completeness guard: a skipped block must not exit green with fewer checks. Bump
 # this deliberately when adding an assertion (negative-control it by editing down).
-expected_checks=48
+expected_checks=49
 head2 "RESULT"
 if [ "$checks" -ne "$expected_checks" ]; then
   printf 'INCOMPLETE — ran %d checks, expected %d: an assertion block was skipped or double-counted\n' "$checks" "$expected_checks" >&2

@@ -158,6 +158,16 @@ func elabForm(st *Store, f sx) (*Def, *Meta, error) {
 	return nil, nil, fmt.Errorf("line %d: unknown top-level form %q", f.Line, f.Kids[0].Sym)
 }
 
+// multiDefinition reports whether src declares more than one top-level form. It is
+// the signal that a bare `publish` (no namespace) should take the batch path
+// rather than the one-definition-per-envelope path (friction item 5). A source
+// that does not parse is NOT treated as a batch — the direct path re-parses it and
+// reports the error in context.
+func multiDefinition(src string) bool {
+	forms, err := parseForms(src)
+	return err == nil && len(forms) > 1
+}
+
 // cmdPublish is the signing publication path.
 //
 // dryRun stops after showing the plan, so an author (or a script) can inspect the
@@ -192,6 +202,17 @@ func cmdPublish(local *Store, endpoint, keyPath, kmsKey, file, license, namespac
 	// from the definitions already processed. #185.
 	if namespace != "" {
 		cmdPublishClosure(ctx, signer, pubHex, local, endpoint, string(src), license, namespace, dryRun, jsonOut, assumeYes)
+		return
+	}
+
+	// A multi-definition file with NO namespace is a closure of new BARE names.
+	// Route it through the same batch path the namespaced case uses — topo order,
+	// one signed envelope per name (the one-signature-per-transition rule is
+	// preserved, not bypassed), confirm-and-bind before each dependent — with an
+	// identity transformation, so nothing is qualified. A single definition keeps
+	// the direct path below. (friction item 5)
+	if multiDefinition(string(src)) {
+		cmdPublishClosure(ctx, signer, pubHex, local, endpoint, string(src), license, "", dryRun, jsonOut, assumeYes)
 		return
 	}
 
@@ -311,7 +332,6 @@ func confirm(prompt string) bool {
 	}
 	return s == "y" || s == "Y" || s == "yes"
 }
-
 
 // applyNamespace prefixes a declared name with a publication-time namespace.
 //

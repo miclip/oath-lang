@@ -66,22 +66,8 @@ func cmdPublishClosure(ctx context.Context, signer Signer, pubHex string, local 
 		}
 	}
 
-	// Refuse a batch name that also appears as a NON-reference symbol — a binder, a
-	// type variable, a property name, a constructor, or a record-field label.
-	// Token qualification would rewrite that occurrence too, which does not change
-	// a definition's IDENTITY (binder and field names are metadata, so the identity
-	// check below cannot see it) but DOES corrupt its naming metadata and can make
-	// two independent definitions look mutually recursive to topoOrderForms. The
-	// identity check catches collisions that change STRUCTURE (a reserved word);
-	// this catches the ones that change only metadata.
-	nonRef := map[string]bool{}
-	for _, f := range forms {
-		collectDeclared(f, nonRef)
-	}
-	for bare := range rename {
-		if nonRef[bare] {
-			fail(fmt.Errorf("%q is both a published name and a local binder, constructor, property, or record-field name in this closure; rename the local use so the published name is unambiguous", bare))
-		}
+	if err := collisionUnderQualification(forms, rename, namespace); err != nil {
+		fail(err)
 	}
 
 	qsrc := qualifyNames(src, rename)
@@ -198,13 +184,19 @@ func cmdPublishClosure(ctx context.Context, signer Signer, pubHex string, local 
 		plans[i] = plan
 	}
 
+	// "under <ns>" only when there IS a namespace; a bare batch (friction item 5)
+	// publishes new names as themselves, so the qualifier would be a lie.
+	where := ""
+	if namespace != "" {
+		where = " under " + strings.TrimSuffix(namespace, "/*")
+	}
 	if jsonOut {
 		// One valid JSON value: an array of the plans, machine-decodable. No
 		// human-only status text on stdout in JSON mode.
 		b, _ := json.MarshalIndent(plans, "", "  ")
 		fmt.Println(string(b))
 	} else {
-		fmt.Printf("Publishing %d definitions under %s, in dependency order:\n", len(ordered), strings.TrimSuffix(namespace, "/*"))
+		fmt.Printf("Publishing %d definitions%s, in dependency order:\n", len(ordered), where)
 		for i, plan := range plans {
 			fmt.Printf("\n=== [%d/%d] %s ===\n", i+1, len(plans), plan.Name)
 			fmt.Println(plan.render())
@@ -254,7 +246,7 @@ func cmdPublishClosure(ctx context.Context, signer Signer, pubHex string, local 
 	}
 
 	if !jsonOut {
-		fmt.Printf("\nall %d definitions published under %s.\n", len(ordered), strings.TrimSuffix(namespace, "/*"))
+		fmt.Printf("\nall %d definitions published%s.\n", len(ordered), where)
 		if len(adopted) > 0 {
 			fmt.Printf("bound %d published name(s) into the local store so dependents resolve without a fetch: %s\n",
 				len(adopted), strings.Join(adopted, ", "))
@@ -290,6 +282,38 @@ func adoptPublished(local, seed *Store, name, hash string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// collisionUnderQualification refuses a batch name that also appears as a
+// NON-reference symbol — a binder, a type variable, a property name, a
+// constructor, or a record-field label. Token qualification would rewrite that
+// occurrence too, which does not change a definition's IDENTITY (binder and field
+// names are metadata, so the identity check cannot see it) but DOES corrupt its
+// naming metadata and can make two independent definitions look mutually recursive
+// to topoOrderForms.
+//
+// It applies ONLY when qualifying. A bare batch (namespace == "", friction item 5)
+// rewrites no tokens, so such a collision corrupts nothing and `put` accepts it —
+// applying the check there would reject a valid closure. The worst a residual
+// collision can do on the bare path is add a FALSE dependency edge in
+// topoOrderForms (walkSyms over-collects, so a binder named like a batch member
+// reads as a reference); a false edge can only over-constrain the order or, on a
+// contrived mutual collision, surface as a cycle — never a wrong order and never
+// corruption.
+func collisionUnderQualification(forms []sx, names map[string]string, namespace string) error {
+	if namespace == "" {
+		return nil
+	}
+	nonRef := map[string]bool{}
+	for _, f := range forms {
+		collectDeclared(f, nonRef)
+	}
+	for bare := range names {
+		if nonRef[bare] {
+			return fmt.Errorf("%q is both a published name and a local binder, constructor, property, or record-field name in this closure; rename the local use so the published name is unambiguous", bare)
+		}
+	}
+	return nil
 }
 
 // putBatch elaborates and stores a whole dependency-ordered batch into the store,
@@ -632,6 +656,16 @@ func topoOrderForms(qforms []string, batch map[string]bool, ctorOwner map[string
 			return nil, err
 		}
 		names[i] = name
+		// walkSyms OVER-collects deliberately: it is flat, not scope-aware, so a batch
+		// member's name reused as a binder reads as a reference. That is the safe
+		// direction. Under-collecting (subtracting this form's binders) would DROP a
+		// genuine free reference whenever the same name is also shadowed in a nested
+		// scope, mis-ordering a closure `put` accepts. Over-collecting can only ADD an
+		// edge, which at worst reports a cycle — and the one input that produces a
+		// FALSE cycle here (two defs each naming a parameter after the other) is
+		// indistinguishable from genuine mutual recursion, which cannot be published as
+		// separate one-name envelopes at all. So a cycle here is the right answer for
+		// the case that matters and an acceptable refusal for an adversarial one.
 		refs := map[string]bool{}
 		for _, s := range walkSyms(f[0]) {
 			if s == name {

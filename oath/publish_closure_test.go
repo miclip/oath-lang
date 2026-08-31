@@ -68,6 +68,41 @@ func TestTopoOrderPublishesDependenciesFirst(t *testing.T) {
 	}
 }
 
+// A batch name reused as ONE definition's binder, with no mutual reference, still
+// orders — the false edge (the binder read as a reference) only over-constrains,
+// it does not invent a cycle. This is the realistic bare-batch collision (friction
+// item 5): `bar` takes a parameter named `foo`, and `foo` is an independent
+// definition. `put` accepts it; the bare batch path must too.
+func TestTopoOrderToleratesOneSidedBinderCollision(t *testing.T) {
+	// Bare batch names, as the bare path uses. `bar` takes a parameter named `foo`
+	// and its body mentions `foo`; `foo` is an independent batch member. walkSyms
+	// reads that `foo` as a reference (a false edge), which only over-constrains —
+	// foo has no deps, so it orders first and both appear. `put` accepts this.
+	forms := []string{
+		`(defn bar [] [(foo Int)] Int foo)`,
+		`(defn foo [] [] Int 1)`,
+	}
+	batch := map[string]bool{"foo": true, "bar": true}
+	ordered, err := topoOrderForms(forms, batch, nil)
+	if err != nil {
+		t.Fatalf("a one-sided binder collision must not be read as a cycle: %v", err)
+	}
+	if len(ordered) != 2 || ordered[0].name != "foo" {
+		t.Errorf("expected foo ordered first, got %v", []string{ordered[0].name, ordered[1].name})
+	}
+
+	// Genuinely mutual references — real mutual recursion, or an adversarial pair of
+	// parameters each named after the other — are a cycle, and correctly so: neither
+	// can be published as a separate one-name envelope before the other exists.
+	mutual := []string{
+		`(defn a [] [(b Int)] Int b)`,
+		`(defn b [] [(a Int)] Int a)`,
+	}
+	if _, err := topoOrderForms(mutual, map[string]bool{"a": true, "b": true}, nil); err == nil {
+		t.Error("a mutual reference must be reported as a cycle — it has no separate-envelope order")
+	}
+}
+
 // A definition that uses a batch datatype ONLY through its (bare, unqualified)
 // constructor still depends on the datatype, so the datatype must be ordered
 // first even though the function never names it. #185 review, P2.

@@ -517,6 +517,22 @@ question.
 one-definition files and asserts both land — it works AROUND this item rather than
 measuring it. Everything above is HAND-MEASURED.
 
+**RESOLVED** (item 5). A bare `publish` of a multi-definition file now takes the
+batch path. `cmdPublishClosure` already did exactly this work — topo sort, one
+signed envelope per name, confirm-and-bind before each dependent — and was
+reachable only with `--namespace`; a bare closure now routes to it with an
+IDENTITY transformation (nothing qualified), so the one-signature-per-transition
+rule is preserved, not bypassed. A single definition keeps the direct path.
+Combined with item 3, the bare batch also binds each new name back into the
+publisher's own store, so a cold-start bootstrap (publish the foundation, then a
+library that uses it) needs no separate `put`. `run.sh` §3 now publishes the two
+foundation datatypes as ONE bare-batch operation — measuring this item where it
+used to work around it — and asserts both land in dependency order and are bound
+locally (49/49). A Go test (`TestMultiDefinitionRouting`) pins the routing
+predicate across single/multi/unparseable sources.
+
+This closes the demand list this consumer surfaced: items 1–5 are all resolved.
+
 ---
 
 ## What is NOT friction, recorded so it is not re-derived
