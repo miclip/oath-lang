@@ -12,69 +12,52 @@ registry derives.
 ## What the evidence is, and what it is not
 
 Every verdict is MEASURED by running `oath license` against a live registry after
-real publications. The headline claim — "a licensed app on the unlicensed stdlib
-derives UNSTATED for every grant" — is decidable from that output, and its CONTROL
-is measured in the same run: relicensing the one dependency flips the whole
-composition to a determinate verdict, which isolates the finding as a property of
-the CORPUS, not of the engine.
+real publications. The licensing engine is correct and the exercise proves it: over
+an all-licensed closure it derives `commercial YES` / `modification YES` from
+Apache, propagates a GPL dependency's `share-alike` obligation up into an Apache
+application (§ below), and names the untermed culprit when a dependency is
+UNSTATED. Contagion, transparency, obligation-propagation — all work.
 
-The licensing engine is not the problem, and the exercise proves it: over an
-all-licensed closure it derives `commercial YES` / `modification YES` from Apache,
-and it propagates a GPL dependency's `share-alike` obligation up into an Apache
-application (§4 below). Contagion, transparency, obligation-propagation — all work.
+**One claim in an earlier draft of this document was WRONG, and correcting it is
+the sharpest lesson of the round** — see §1.
 
 ---
 
-## 1. The standard library asserts NO license, so the licensing evidence domain is INERT for any real program — DEMAND
+## 1. WITHDRAWN — "the stdlib asserts no license" was a fact about my LOCAL store, not the world
 
-**Worst, and it is not a bug — it is an empty foundation under a working
-mechanism.** `oath license` on any corpus definition is all-UNSTATED, because the
-stdlib was published without terms. Measured with a licensed application on top:
+An earlier draft led with a headline demand: the standard library asserts no
+terms, so UNSTATED contagion makes every composition on it indeterminate. It was
+built by publishing an unlicensed `List` to a fresh registry and watching a
+licensed `tally` derive all-UNSTATED — reproducible, and reproducing the wrong
+thing. **The finding was a fact about the store I built, reported as a fact about
+Oath's corpus** — exactly the "is this sentence about the WORLD or about my TOOL?"
+error this project keeps having to catch.
 
-```
-$ oath license tally          # tally asserts Apache-2.0; it uses List
-  commercial use           UNSTATED
-  redistribution           UNSTATED
-  modification             UNSTATED
-  patent grant             UNSTATED
-  share-alike obligation   UNSTATED
+Verified against the DEPLOYMENT, not a document: the live registry
+(`registry.oath-lang.org`) derives `commercial_use: YES` for `reverse`, with every
+assertion in the closure `Apache-2.0`. The standard library IS licensed
+(`docs/licensing.md`: 184 names, Apache-2.0, signed, since 2026-08-01). What is
+unlicensed is the committed `codebase/` store, which lags the live registry — the
+`codebase/`-vs-live drift CLAUDE.md documents as EXPECTED — and the fresh local
+store the experiment created, which reproduced that lagging state rather than the
+registry a real consumer resolves from.
 
-  assertions consumed (2):
-    tally    Apache-2.0
-    List     -   — no terms asserted
-```
+So there is no demand here. A consumer resolving from the live registry gets
+determinate verdicts; the mechanism the run.sh still demonstrates — that ONE
+unlicensed dependency is contagious, and that relicensing it flips the composition
+to a determinate `YES` — is the engine working, shown with a deliberately
+unlicensed dependency, not a claim about the stdlib.
 
-`tally` asserts Apache-2.0, which on its own grants commercial, redistribution and
-modification. The composition grants NONE of them, because `List` — one ordinary
-stdlib datatype — asserts nothing, and **UNSTATED is contagious by design**: absence
-of a prohibition is not a grant, so one unstated input makes the whole composition
-unstated. That contagion is a deliberate SAFETY property and it is correct. The
-consequence is not: **every application built on the Oath standard library inherits
-UNSTATED for every grant, so its own license is unusable.** The evidence domain is
-fully built and produces nothing determinate for real code.
+**The residual, and it is hygiene not a gap:** committing the live registry's
+license assertions back into `codebase/` would make LOCAL evaluation match live, so
+this exact mistake is harder to make. That is the same drift every other part of
+`codebase/` has, deliberately, and it is recorded here only so the withdrawn demand
+is not silently re-derived by the next consumer who tests against a local store.
 
-The CONTROL, measured in the same run, rules out a tooling defect: relicense the
-single `List` dependency as Apache-2.0 (a re-publication under new terms — the code
-and hash do not move, §12.3) and the SAME `tally` immediately derives `commercial
-YES` / `modification YES`. Nothing about the engine changed; the input did.
-
-**Consumer hurt: anyone who wants a determinate licence on anything they build.**
-Because everything routes through the stdlib (a datatype, a fold, `Str`), the floor
-for any real composition is UNSTATED until the stdlib asserts terms.
-
-**DEMAND: the standard library must assert license terms**, so a composition over
-it can be determinate. That is a LICENSING DECISION (which terms — permissive like
-Apache-2.0/BSD, or copyleft) rather than a tooling change, plus a mechanism to
-attach them: the `stdlib/oath-stdlib.json` manifest already declares membership and
-authority, and is the natural place to declare terms that the project's own
-publications assert. Until then, the honest documentation is that a licensed Oath
-application must license every stdlib definition in its closure — which the
-`referenced`-membership model makes someone else's decision to make.
-
-**Evidence class:** the all-UNSTATED verdict, the assertion list naming `List` as
-untermed, and the relicense control flipping it to YES are all MEASURED (`run.sh`
-§1–3). That the corpus is uniformly unlicensed is decidable — `oath license` on any
-corpus name shows it.
+**Evidence class:** the live-registry `commercial_use: YES` / Apache-2.0 assertions
+are MEASURED against `registry.oath-lang.org`; the `codebase/` all-UNSTATED is
+MEASURED locally; the contagion mechanic and its relicense control are MEASURED in
+`run.sh`.
 
 ---
 
@@ -105,20 +88,105 @@ BYTES checkable.
 decidable from the CLI; HAND-verified. The absence of a preview path is
 HAND-observed.
 
+**RESOLVED.** `oath license <file> --assert <SPDX>` now derives a composition's
+verdict from a PROPOSED assertion, against the local closure, before anything is
+signed:
+
+```
+$ oath license tally.oath --assert Apache-2.0
+  commercial use           UNSTATED      ...
+  assertions consumed (2):
+    tally    Apache-2.0                  # the term you are PROPOSING
+    List     (none)  — no terms asserted # its real, published terms
+PREVIEW — nothing was signed or published. ...
+```
+
+It elaborates the single definition against the local store, computes its
+dependency closure exactly as `oath license <name>` does, and evaluates with the
+proposed term standing in for the subject's not-yet-existing publication — check-
+then-publish, mirroring how `publish --dry-run` already makes the signed BYTES
+checkable, one layer up at the derived verdict. The dependencies' terms stay REAL
+(read from their publications); only the subject's is a proposal. Nothing is signed
+or published — no name binds and no journal entry is written (opening a store still
+creates its directory, as every read command does; the guarantee is about the
+irreversible act, not the filesystem). `run.sh` asserts both that the preview leaves
+its store's names, journal and objects byte-identical and that its grants MATCH the
+verdict the eventual publication derives — the preview is faithful, not an
+approximation.
+
+Scope, stated so it is not overread: the preview evaluates the LOCAL store's facts,
+exactly as `oath license <name>` does, so it predicts the verdict a publication INTO
+THIS STORE would derive. It is faithful for a fully-local publish flow, where the
+dependencies' terms are in the local journal. It is NOT the whole story for the
+common remote flow — see demand 3, which the preview work surfaced. `evaluateLicensingSubject` / `cmdLicensePreview` in
+`oath/license.go`, unit-tested in `license_preview_test.go` (the proposed term
+drives the verdict; dependency contagion still applies).
+
+**Also fixed, a pre-existing bug the preview work surfaced.** Building the preview
+made it worth checking what closure `oath license` actually evaluates, and it was
+DIRECT dependencies only: for `aay → bee → cee`, `oath license aay` listed `aay`
+and `bee` but not `cee`. A restrictive or unlicensed TRANSITIVE dependency was
+silently dropped, so the verdict could read permissive when the true composition is
+not — the exact failure a licensing check exists to prevent. Both the published
+path and the preview now evaluate the full transitive closure (`licensingClosure`),
+and the run.sh grant-match check confirms the two still agree. Found by measuring
+the tool, not reading it — `oath license aay` before the fix named two inputs where
+the composition has three.
+
+---
+
+## 3. Licensing facts do not travel with the code — a local licence verdict is blind to remote terms — DEMAND
+
+**Surfaced by building the preview, and it bites the published path too.** A licence
+is asserted in a signed PUBLICATION envelope, which lives in the journal of the
+registry it was published to. `resolve`, `hydrate` and `clone` bring a dependency's
+OBJECT and NAME into a local store, but not that signed envelope — the local journal
+they reconstruct is a chain of local `put`s, which carry no licence. So
+`assertedLicense` reads nothing for a dependency published elsewhere, and BOTH
+`oath license <name>` and the new preview report it UNSTATED, while the registry
+that holds the envelope derives the real term (e.g. Apache-2.0 → YES).
+
+The preview makes this visible because its whole purpose is to predict the eventual
+publication: for the ordinary `oath publish --remote` flow, the dependencies' terms
+are on the target registry, the local store lacks them, and there is no remote
+preview path — so the prediction is only as complete as the local licence facts.
+The verdict is never WRONG (UNSTATED is honest about missing evidence, and
+contagion keeps it safe), but it is less INFORMATIVE than the registry's.
+
+**Consumer hurt: anyone evaluating a licence locally against remotely-published
+dependencies** — which is the normal case. The measured cost is a local UNSTATED
+where the registry would give a determinate answer.
+
+**DEMAND: make the licence evidence reachable where the composition is evaluated.**
+Either (a) `resolve`/`hydrate` bring each dependency's signed publication envelope so
+local evaluation carries the same facts the registry has, or (b) a remote preview /
+evaluation path — `oath license <file> --assert <SPDX> --remote <url>` — fetches the
+dependencies' asserted terms from the registry the artifact will be published to.
+(a) makes the whole local evidence layer complete, not just licensing; (b) is
+narrower and answers the preview's exact question. Either removes the blindness; the
+preview shipped scoped to local facts and flags when it lacks them, which is the
+honest interim.
+
+**Evidence class:** that `finalizePublish`/clone reconstruct a local put-journal
+without the signed licence envelope is decidable from the code (HAND-verified); the
+resulting local UNSTATED for a remotely-Apache dependency is the mechanism §2's
+scope note and this section both describe.
+
 ---
 
 ## What is NOT friction, recorded so it is not re-derived
 
 - **Contagion is TRANSPARENT.** The verdict lists every assertion it consumed and
   marks the untermed ones "no terms asserted", so a consumer can see EXACTLY which
-  dependency made the composition UNSTATED — here, `List`. The system does not hide
-  the culprit behind a bare verdict; it names it. This is the right design and the
-  reason demand 1 is actionable at all.
+  dependency made a composition UNSTATED. The system does not hide the culprit
+  behind a bare verdict; it names it — which is also what let the withdrawn §1
+  finding be checked and retracted rather than left standing.
 - **The engine is correct and complete for what it claims.** Determinate grants
   over licensed closures, UNSTATED contagion, and share-alike obligation
-  propagation across an Apache-over-GPL composition all reproduce (`run.sh` §3–4).
-  The exercise found no defect in the evaluator — the gap is entirely that the
-  corpus it evaluates asserts nothing.
+  propagation across an Apache-over-GPL composition all reproduce (`run.sh`). The
+  exercise found no defect in the evaluator, and — verified against the live
+  registry — no gap in the corpus either: the standard library is Apache-2.0. The
+  one real thing the round produced is the preview (demand 2).
 - **UNSTATED is not NO.** The output says so and the model enforces it: an
   unlicensed dependency does not PROHIBIT reuse, it leaves the terms unknown, and
   the consumer is told to adopt their own policy (treat UNSTATED as deny, or

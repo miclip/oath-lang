@@ -457,11 +457,16 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 	case "mutate":
 		return apiMutateOpt(st, a.Name, a.Prove)
 	case "license":
-		pkg, err := buildExplain(st, a.Name)
-		if err != nil {
-			return "", err
+		if _, err := buildExplain(st, a.Name); err != nil {
+			return "", err // validates the name resolves
 		}
-		ev := evaluateLicensing(st, a.Name, pkg.depHashes)
+		subject, derr := st.GetDef(st.Names()[a.Name])
+		if derr != nil {
+			return "", derr
+		}
+		// The TRANSITIVE closure, exactly as the CLI path uses — the two entry points
+		// must not disagree about what a composition permits (one authoritative path).
+		ev := evaluateLicensing(st, a.Name, licensingClosure(st, subject))
 		// JSON, for the same reason explain is: the consumer is an agent deciding
 		// whether it may ship something, and the dimensions plus the evaluation
 		// identity are the decision — prose it has to parse is a decision it gets

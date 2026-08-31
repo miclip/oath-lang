@@ -67,6 +67,33 @@ Omitting `--license` asserts nothing, which is recorded as the explicit
 no-assertion sentinel `-` rather than as an empty field. "The publisher chose to
 say nothing" and "the format had no licence line" are different historical facts.
 
+## Previewing before you publish
+
+A publication is permanent, so the question a publisher has — *what will my users
+actually be permitted to do?* — is worth answering BEFORE signing. `--dry-run`
+above makes the signed BYTES checkable; `oath license <file> --assert <SPDX>` makes
+the derived VERDICT checkable, one layer up:
+
+```
+oath license mydef.oath --assert Apache-2.0
+```
+
+It elaborates the single definition against your local store, takes its transitive
+dependency closure exactly as `oath license <name>` does, and evaluates the
+composition with the proposed term standing in for the not-yet-existing
+publication. Only the subject's term is a proposal; the dependencies' terms are read
+from your store's publication records. Nothing is signed and nothing is published.
+
+Because it reads local facts, the preview predicts the verdict a publication INTO
+THAT STORE would derive — faithful for a fully-local publish flow, where the
+dependencies' terms are in the local journal. It is limited for the ordinary remote
+flow: a licence lives in the signed publication envelope on the registry it was
+published to, and `resolve`/`hydrate` bring a dependency's object and name but not
+that envelope, so a remotely-published dependency reads UNSTATED locally. The
+verdict is never wrong — UNSTATED is honest about missing evidence — but it is less
+informative than the registry's, and previewing against a remote registry's
+assertions is not yet wired.
+
 ## Reading the verdict
 
 ```

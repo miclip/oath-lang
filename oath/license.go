@@ -31,6 +31,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 )
@@ -223,6 +224,10 @@ type licenseInput struct {
 	Name        string `json:"name"`
 	License     string `json:"license"`
 	Reason      string `json:"reason,omitempty"` // why the model could not answer, when it could not
+	// Proposed marks a PREVIEW subject whose term has not been signed. Display-only
+	// and outside the §12.4 digest (which binds artifact, publication and license),
+	// so it cannot forge an identity.
+	Proposed bool `json:"proposed,omitempty"`
 }
 
 type licenseEvaluation struct {
@@ -237,28 +242,178 @@ type licenseEvaluation struct {
 	Digest    string
 	Result    grants
 	Inputs    []licenseInput
-	Unmodeled int // inputs the model could not interpret
+	Unmodeled int  // inputs the model could not interpret
+	Preview   bool `json:"preview,omitempty"` // a pre-publication preview: the subject term is proposed, not signed
 }
 
 // evaluateLicensing derives what an artifact's closure permits, from the terms each
 // publication asserted.
+// licensingClosure returns the TRANSITIVE dependency closure of a subject
+// definition — every artifact its composition rests on, not merely the ones it
+// names directly. A composition verdict must cover the whole closure: a permissive
+// direct dependency that itself pulls in an unlicensed or restrictive one would
+// otherwise be reported as clean, and a consumer would ship believing they were
+// permitted. The subject itself is excluded (it is evaluated separately with its
+// own — or, in a preview, proposed — terms). It takes the def object rather than a
+// hash so a PREVIEW can pass an elaborated-but-unpublished subject whose deps are in
+// the store.
+//
+// This is §12.2's composition — "the artifact together with its exact transitive
+// dependency closure", identified BY HASH — so it is a SET of hashes, exactly as
+// programClosure and every other closure in the kernel builds. The `seen` set is
+// therefore not a dedup that could hide terms: a hash is one artifact whose terms
+// are a function of the hash (nameOfHash → assertedLicense), so reaching it by two
+// branches yields the SAME license, and the permission fold is idempotent, so the
+// VERDICT is closure-multiplicity-invariant. LICENSE-INPUT-COMPLETE's "a member
+// appearing twice contributes twice" is honored where multiplicity can actually
+// arise — the EVALUATION loop in evaluateLicensingSubject consumes its input list
+// without deduping, so a caller (or a conformance vector) that supplies the same
+// (artifact, publication) triple twice gets it counted twice.
+func licensingClosure(st *Store, subject *Def) []string {
+	seen := map[string]bool{}
+	var walk func(h string)
+	walk = func(h string) {
+		if seen[h] {
+			return
+		}
+		seen[h] = true
+		d, err := st.GetDef(h)
+		if err != nil {
+			return // a dep not in the store contributes no assertion; the caller's
+			// elaboration already required the closure to resolve, so this is defensive.
+		}
+		for dep := range collectDeps(d) {
+			walk(dep)
+		}
+	}
+	for dep := range collectDeps(subject) {
+		walk(dep)
+	}
+	out := make([]string, 0, len(seen))
+	for h := range seen {
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// evaluateLicensing derives the composition verdict for a PUBLISHED name: the
+// subject's asserted terms come from its own publications, the dependencies' from
+// theirs.
 func evaluateLicensing(st *Store, name string, deps []string) licenseEvaluation {
+	art := st.Names()[name]
+	return evaluateLicensingSubject(st, name, art, assertedLicense(st, name), publicationOf(st, name, art), deps)
+}
+
+// cmdLicensePreview answers the one question a publisher choosing terms has —
+// "what will my users actually be permitted to do?" — BEFORE the permanent act of
+// publishing (license-consumer friction, demand 2). It elaborates a single
+// unpublished definition against the local store, computes its dependency closure
+// exactly as `oath license <name>` does, and evaluates the composition with the
+// PROPOSED assertion standing in for the subject's (not-yet-existing) publication.
+// Nothing is signed and nothing is written; it mirrors how `publish --dry-run`
+// makes the signed BYTES checkable, one layer up at the derived verdict.
+// shellQuote renders s as a single shell argument, so a copy-pasted suggestion
+// reproduces the exact value. A compound SPDX expression like `MIT OR Apache-2.0`
+// unquoted would be parsed as `MIT` plus stray positional words — publishing,
+// permanently, under terms other than the ones previewed.
+func shellQuote(s string) string {
+	safe := s != ""
+	for _, r := range s {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '-' || r == '.' || r == '_' || r == '+' || r == '/') {
+			safe = false
+			break
+		}
+	}
+	if safe {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func cmdLicensePreview(st *Store, file, assert string) {
+	// Reject a proposed term the PUBLICATION would refuse — a newline or control
+	// character fails pubEnvelope.validate at publish time, so previewing it would
+	// promise a verdict for a term that can never be asserted, and print a `--license`
+	// suggestion that always fails. Same check the envelope uses.
+	if !envelopeSafe(assert) {
+		fail(fmt.Errorf("the proposed term contains a newline or control character; it could not be published (envelope §8.6.1), so there is nothing to preview"))
+	}
+	src, err := os.ReadFile(file)
+	if err != nil {
+		fail(err)
+	}
+	forms, err := parseForms(string(src))
+	if err != nil {
+		fail(err)
+	}
+	if len(forms) != 1 {
+		// A preview needs ONE subject whose terms are being chosen. A closure has no
+		// single subject — its members may carry different terms — so the honest answer
+		// is to publish it and license by name, where each member's assertion is real.
+		fail(fmt.Errorf("license --assert previews a single definition (the one whose terms you are choosing); this file has %d — split it, or publish the closure and `oath license <name>`", len(forms)))
+	}
+	def, meta, err := elabForm(st, forms[0])
+	if err != nil {
+		fail(fmt.Errorf("this definition does not elaborate against the local store (its dependencies must be present to evaluate the composition): %w", err))
+	}
+	// Typecheck before hashing, exactly as buildPublishPlan does, so the previewed
+	// artifact identity is the one a publication would carry (#101).
+	if err := checkDef(st, def); err != nil {
+		fail(err)
+	}
+	h := hashDef(def)
+	deps := licensingClosure(st, def) // TRANSITIVE, matching the published path
+
+	// The proposed subject has no publication — pass the empty sentinel so its digest
+	// is not bound to some existing publication that asserted different terms.
+	ev := evaluateLicensingSubject(st, meta.Name, h, assert, "", deps)
+	ev.Preview = true
+	for i := range ev.Inputs {
+		if ev.Inputs[i].Artifact == h {
+			ev.Inputs[i].Proposed = true
+		}
+	}
+	fmt.Print(ev.render())
+	fmt.Printf("\nPREVIEW — nothing was signed or published. The subject term %q is the one you\n"+
+		"are PROPOSING; the dependencies' terms are read from THIS store's publication\n"+
+		"records. A dependency whose signed publication record is not local — e.g. one\n"+
+		"published to a remote registry and only put or resolved here — carries no terms\n"+
+		"in this store and reads UNSTATED, so this verdict matches the eventual\n"+
+		"publication only where the store already holds the dependencies' assertions\n"+
+		"(a fully-local publish flow). Previewing against a remote registry's assertions\n"+
+		"is not yet wired. Publish with `--license %s` to assert it.\n",
+		assert, shellQuote(assert))
+}
+
+// evaluateLicensingSubject is the same derivation with the subject's ARTIFACT and
+// asserted LICENSE supplied explicitly rather than read from the store. It backs
+// both the published path (evaluateLicensing) and the pre-publication PREVIEW
+// (`oath license <file> --assert <SPDX>`), where the subject has no publication yet
+// and its terms are the ones a publisher is CONSIDERING. Dependencies are always
+// read from the store — they are already published, and their terms are facts, not
+// proposals.
+func evaluateLicensingSubject(st *Store, name, subjectArtifact, subjectLicense, subjectPublication string, deps []string) licenseEvaluation {
 	ev := licenseEvaluation{Policy: licensePolicyComposition, Engine: licenseEngine,
 		Model: licenseModelVersion, ModelDigest: licenseModelDigest(),
-		Subject: st.Names()[name]}
+		Subject: subjectArtifact}
 
-	// add takes the ARTIFACT as the member identity and the name as provenance
-	// (§12.4 LICENSE-IDENTITY-ARTIFACT). The asserted expression still travels with
-	// the artifact, because a licence assertion belongs to a PUBLICATION rather
-	// than to the code — one artifact published twice under different terms is two
-	// input pairs, and correctly two evaluations.
-	add := func(artifact, n string) {
-		lic := assertedLicense(st, n)
+	// add takes the ARTIFACT as the member identity, the name as provenance
+	// (§12.4 LICENSE-IDENTITY-ARTIFACT), the asserted expression — which belongs to a
+	// PUBLICATION rather than to the code, so one artifact published twice under
+	// different terms is two input pairs and correctly two evaluations — and the
+	// PUBLICATION digest that carried it. The publication is supplied rather than
+	// looked up so a PREVIEW can pass the empty sentinel: a proposed assertion has no
+	// publication, and binding the proposal to an existing one (e.g. previewing a
+	// relicense of unchanged source) would forge a digest for terms that publication
+	// never asserted.
+	add := func(artifact, n, lic, pub string) {
 		g, reason := modelLookup(lic)
 		if lic == "" {
 			lic = "(none)"
 		}
-		in := licenseInput{Artifact: artifact, Publication: publicationOf(st, n, artifact),
+		in := licenseInput{Artifact: artifact, Publication: pub,
 			Name: n, License: lic, Reason: reason}
 		// SPEC §12.4 LICENSE-IDENTITY-UNAMBIGUOUS. A value that cannot be encoded
 		// on a digest line is not evaluated: encoding it anyway would let one
@@ -290,13 +445,24 @@ func evaluateLicensing(st *Store, name string, deps []string) licenseEvaluation 
 		}
 	}
 
-	add(st.Names()[name], name)
+	add(subjectArtifact, name, subjectLicense, subjectPublication)
 	for _, d := range deps {
 		// Dependencies arrive BY HASH, which is exactly the member identity. A name
 		// is resolved only so the evaluation reports something a reader can act on;
 		// an unnamed dependency is still a fully identified member, and no longer
-		// poisons the composition merely for lacking a name.
-		add(d, nameOfHash(st, d))
+		// poisons the composition merely for lacking a name. Their terms are always
+		// REAL (already published), so their publications are looked up.
+		//
+		// KNOWN LIMIT (pre-existing, shared by both the published and preview paths):
+		// when one hash is bound under several names whose publications assert
+		// DIFFERENT terms, nameOfHash selects one alias, so a single publication's
+		// terms govern. §12.2's model is that each publication of an artifact is its
+		// own input; realising that means carrying which alias each dependency edge
+		// resolved through, which the by-hash closure does not track. Recorded rather
+		// than papered over — the preview inherits exactly what `oath license <name>`
+		// does, which is what keeps them faithful.
+		dn := nameOfHash(st, d)
+		add(d, dn, assertedLicense(st, dn), publicationOf(st, dn, d))
 	}
 	ev.Digest = evaluationDigest(ev)
 	return ev
@@ -562,6 +728,9 @@ func (ev licenseEvaluation) render() string {
 		if i.Reason != "" {
 			note = "  — " + i.Reason
 		}
+		if i.Proposed {
+			note = "  — PROPOSED (not yet signed)" + note
+		}
 		fmt.Fprintf(&b, "    %-22s %s%s\n", trunc(i.Name, 22), i.License, note)
 	}
 	if ev.Unmodeled > 0 {
@@ -570,9 +739,16 @@ func (ev licenseEvaluation) render() string {
 		fmt.Fprintf(&b, "  prohibition is not a grant. Adopt your own policy — treat UNSTATED as deny,\n")
 		fmt.Fprintf(&b, "  or require explicit grants — the registry must not choose that for you.\n")
 	}
-	fmt.Fprintf(&b, "\n  This was COMPUTED by the named engine from the named model, over the signed\n")
-	fmt.Fprintf(&b, "  assertions listed above. The model is Oath's own and is fallible; SPDX supplies\n")
-	fmt.Fprintf(&b, "  identifiers, not semantics. It is not advice, and it is not a proof.\n")
+	if ev.Preview {
+		fmt.Fprintf(&b, "\n  This was COMPUTED by the named engine from the named model. The subject term\n")
+		fmt.Fprintf(&b, "  above is a PROPOSAL and is not signed; the dependencies' terms are their real\n")
+		fmt.Fprintf(&b, "  signed assertions. The model is Oath's own and is fallible; SPDX supplies\n")
+		fmt.Fprintf(&b, "  identifiers, not semantics. It is not advice, and it is not a proof.\n")
+	} else {
+		fmt.Fprintf(&b, "\n  This was COMPUTED by the named engine from the named model, over the signed\n")
+		fmt.Fprintf(&b, "  assertions listed above. The model is Oath's own and is fallible; SPDX supplies\n")
+		fmt.Fprintf(&b, "  identifiers, not semantics. It is not advice, and it is not a proof.\n")
+	}
 	return b.String()
 }
 

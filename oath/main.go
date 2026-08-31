@@ -747,14 +747,74 @@ func main() {
 		}
 		cmdVectors(path)
 	case "license":
-		if len(args) < 2 {
-			fail(fmt.Errorf("usage: oath license <name> — evaluates the asserted terms across the dependency closure"))
+		// Two modes: `oath license <name>` evaluates a PUBLISHED name's asserted
+		// terms; `oath license <file> --assert <SPDX>` PREVIEWS what a proposed
+		// assertion would yield for an unpublished file, against the local closure —
+		// so a publisher can check the composition verdict before the permanent act.
+		rest := args[1:]
+		assert, target := "", ""
+		sawAssert, sawTarget := false, false
+		for i := 0; i < len(rest); i++ {
+			switch {
+			case rest[i] == "--assert":
+				// A dangling --assert must not silently fall through to a published-name
+				// evaluation — the user asked to PREVIEW proposed terms, and returning an
+				// unrelated verdict for the name would answer a different question. The
+				// same applies to an explicitly EMPTY value (`--assert ''`): it is tracked
+				// as supplied so the dispatch below refuses it rather than falling back.
+				if i+1 >= len(rest) {
+					fail(fmt.Errorf("--assert needs an SPDX expression to preview, e.g. `oath license mydef.oath --assert Apache-2.0`"))
+				}
+				// A `--`-prefixed value is a following FLAG, not a term — `--assert --asert`
+				// must not swallow the typo as the proposed licence and preview it. The
+				// single-dash `-` (the explicit no-assertion sentinel) is a legitimate value.
+				if strings.HasPrefix(rest[i+1], "--") {
+					fail(fmt.Errorf("--assert needs an SPDX expression, but the next argument is the flag %q", rest[i+1]))
+				}
+				assert, sawAssert = rest[i+1], true
+				i++
+			case strings.HasPrefix(rest[i], "-"):
+				// Any other flag is refused rather than discarded. A typo like `--asert`
+				// would otherwise evaluate the published NAME instead of previewing — a
+				// plausible verdict for a different operation — and a `--remote <url>` would
+				// silently answer from the LOCAL store, since this CLI path evaluates
+				// licensing locally and has no registry fetch. Rejecting is the honest
+				// failure in both cases. (license is listed remoteCapable for the server's
+				// `license` tool; wiring the CLI to it is a separate, unbuilt path.)
+				fail(fmt.Errorf("`oath license` has no flag %q; it evaluates the LOCAL store — to preview proposed terms use --assert <SPDX>", rest[i]))
+			default:
+				// A SECOND positional is refused rather than silently overwriting the
+				// first. The usual cause is an unquoted compound expression —
+				// `--assert MIT OR Apache-2.0 app.oath` — where `OR Apache-2.0 app.oath`
+				// are stray words; previewing `MIT` for whichever word landed last, then
+				// suggesting a publish under it, is a plausible verdict for the wrong terms.
+				if sawTarget {
+					fail(fmt.Errorf("unexpected extra argument %q — `oath license` takes ONE name or file; if an SPDX expression has spaces, quote it: --assert 'MIT OR Apache-2.0'", rest[i]))
+				}
+				target, sawTarget = rest[i], true
+			}
 		}
-		pkg, err := buildExplain(st, args[1])
-		if err != nil {
-			fail(err)
+		if target == "" {
+			fail(fmt.Errorf("usage: oath license <name>            — evaluate a published name's terms across its closure\n" +
+				"       oath license <file> --assert <SPDX>  — preview a proposed assertion before publishing"))
 		}
-		fmt.Print(evaluateLicensing(st, args[1], pkg.depHashes).render())
+		if sawAssert {
+			if assert == "" {
+				fail(fmt.Errorf("--assert needs a non-empty SPDX expression; the no-assertion case is `oath publish` without --license, whose verdict you can preview with an explicit `-`"))
+			}
+			cmdLicensePreview(st, target, assert)
+		} else {
+			if _, err := buildExplain(st, target); err != nil {
+				fail(err) // validates the name resolves, and surfaces a good "no such name"
+			}
+			subject, derr := st.GetDef(st.Names()[target])
+			if derr != nil {
+				fail(derr)
+			}
+			// The TRANSITIVE closure, not buildExplain's direct-only depHashes: a
+			// composition verdict must cover every artifact the subject rests on.
+			fmt.Print(evaluateLicensing(st, target, licensingClosure(st, subject)).render())
+		}
 	case "audit":
 		mode, ref := "", ""
 		rest := args[1:]
