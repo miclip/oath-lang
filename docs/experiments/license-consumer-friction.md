@@ -172,6 +172,37 @@ without the signed licence envelope is decidable from the code (HAND-verified); 
 resulting local UNSTATED for a remotely-Apache dependency is the mechanism §2's
 scope note and this section both describe.
 
+**PARTLY ADDRESSED, and the harder half is a design not yet built — recorded so the
+dead end is not walked again.** The reading half is done: `oath license` now reads a
+member's terms BY HASH (`licenseOfHash`), the §12.2-correct identity, so a member
+whose terms ARE local but whose NAME is not bound — the shape of a transitive
+closure member — is no longer reported UNSTATED for terms the journal holds.
+
+The transport half — carrying the registry's signed publications into a local store
+via the lock — was BUILT AND REVERTED, because the obvious mechanism is wrong in a
+way worth writing down. Re-journaling a fetched publication into the local store
+gives it a NEW entry identity (fresh timestamp/seq/chain), so the §8.2.2 publication
+identity the licensing digest binds is store-specific and not reproducible; and
+authenticating a lock's carried publication against the source's CURRENT head breaks
+the moment the dependency is relicensed, refusing an unedited older lock. Both are
+one root cause: **a publication's authenticated identity is its position in the
+SOURCE's journal chain, and that cannot be reproduced by re-journaling elsewhere.**
+
+So the correct design is not journal-replay. It is a licence-EVIDENCE overlay: the
+lock carries each dependency's signed publication together with a REPRODUCIBLE
+identity (a digest of the statement, not of a journal line), a local evidence store
+that `licenseOfHash` consults ALONGSIDE the journal, and authentication against the
+source's HISTORY rather than its current head (so relicensing does not invalidate a
+pinned lock). That is a materially larger change — a new store, a registry history
+query, a reproducible publication identity — and it is the shape of the remaining
+demand.
+
+**DEMAND (remaining): a source-identity-preserving licence-evidence overlay.** Carry
+each dependency's signed publication with a reproducible identity in the lock;
+consult it via an evidence store, not the journal; authenticate against registry
+history. Until then, `oath license`/preview read only what a store already holds,
+and read it correctly by hash.
+
 ---
 
 ## What is NOT friction, recorded so it is not re-derived

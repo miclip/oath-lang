@@ -447,25 +447,67 @@ func evaluateLicensingSubject(st *Store, name, subjectArtifact, subjectLicense, 
 
 	add(subjectArtifact, name, subjectLicense, subjectPublication)
 	for _, d := range deps {
-		// Dependencies arrive BY HASH, which is exactly the member identity. A name
-		// is resolved only so the evaluation reports something a reader can act on;
-		// an unnamed dependency is still a fully identified member, and no longer
-		// poisons the composition merely for lacking a name. Their terms are always
-		// REAL (already published), so their publications are looked up.
+		// Dependencies arrive BY HASH, which is exactly the member identity (§12.2). So
+		// the terms are read from the HASH's own publication in the journal, not via a
+		// name binding: a member's licence is a fact about the artifact, and reading it
+		// by hash finds it even when the member has no local name (a transitive object
+		// is never bound — only direct dependencies are), where a name-first lookup
+		// would report UNSTATED for terms the journal actually holds. The name is
+		// recovered from that publication for display, falling back to any binding.
 		//
-		// KNOWN LIMIT (pre-existing, shared by both the published and preview paths):
-		// when one hash is bound under several names whose publications assert
-		// DIFFERENT terms, nameOfHash selects one alias, so a single publication's
-		// terms govern. §12.2's model is that each publication of an artifact is its
-		// own input; realising that means carrying which alias each dependency edge
-		// resolved through, which the by-hash closure does not track. Recorded rather
-		// than papered over — the preview inherits exactly what `oath license <name>`
-		// does, which is what keeps them faithful.
-		dn := nameOfHash(st, d)
-		add(d, dn, assertedLicense(st, dn), publicationOf(st, dn, d))
+		// KNOWN LIMIT: when one hash carries several publications asserting DIFFERENT
+		// terms, the last recorded governs. §12.2's model is that each publication is
+		// its own input; selecting among them needs the alias each dependency edge
+		// resolved through, which the by-hash closure does not track.
+		lic, dn, pubDigest := licenseOfHash(st, d)
+		if dn == "" {
+			dn = nameOfHash(st, d)
+		}
+		add(d, dn, lic, pubDigest)
 	}
 	ev.Digest = evaluationDigest(ev)
 	return ev
+}
+
+// licenseOfHash reads a dependency's asserted terms from the HASH's own publication
+// in the journal, independent of any name binding. This is what makes a member's
+// licence discoverable by its §12.2 hash identity rather than through a name — a
+// transitive closure member is never bound (only direct dependencies are), so a
+// name-keyed read would report UNSTATED for terms the journal actually holds. It
+// returns the last accepted publication's asserted expression, the name that
+// publication used (for display), and that entry's digest. Empty when the hash has
+// no publication in this store.
+func licenseOfHash(st *Store, hash string) (license, name, pubDigest string) {
+	entries := st.ReadLog()
+	for i := range entries {
+		e := &entries[i]
+		if e.Hash != hash || e.EnvelopeB64 == "" {
+			continue
+		}
+		// Only ACCEPTED publications assert terms (LICENSE-ASSERTED-BY-PUBLICATION). A
+		// refused or blocked attempt is validly journaled WITH its signed envelope, but
+		// it moved no name — nameTransitionOf reports `none` — so consuming its terms
+		// would let a rejected assertion override an accepted one. This mirrors
+		// assertedLicense's own `transitionNone` skip.
+		if e.nameTransitionOf() == transitionNone {
+			continue
+		}
+		octets, err := decodeEnvelopeB64(e.EnvelopeB64)
+		if err != nil {
+			continue
+		}
+		env, perr := envelopeParse(octets)
+		if perr != nil {
+			continue // not a publication envelope (a delegation/reserve is keyed differently)
+		}
+		license, name = env.License, env.Name // last accepted publication wins
+		if d, derr := entryDigest(e); derr == nil {
+			pubDigest = d
+		} else {
+			pubDigest = ""
+		}
+	}
+	return
 }
 
 // publicationOf returns the §8.2.2 entry digest of the publication that most
