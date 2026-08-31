@@ -268,8 +268,9 @@ def main():
             failures.append(f"UNOWNED NEW NAME `{name}` — first bound at journal {r.get('seq')} "
                             f"({(r.get('time') or '')[:19]}) by an UNSIGNED entry labelled "
                             f"{r.get('author')!r}, after the freeze at {boundary}. New names require a "
-                            f"signed principal: bearer authorization grants service access, not name "
-                            f"ownership. The legacy set is closed and may not grow")
+                            f"signed PUBLICATION (an `oath publish` envelope, not merely a signed request): "
+                            f"bearer authorization grants service access, not name ownership. The legacy "
+                            f"set is closed and may not grow")
             tally("unowned_new")
 
     # ---- required membership: every category member must be PRESENT -----------

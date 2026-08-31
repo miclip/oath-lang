@@ -339,7 +339,7 @@ func processProofJob(st *Store, job *ProofJob, author string) {
 	//
 	//	The worker COMPLETES a name-bind that was already ADMITTED. It is never
 	//	itself an admission path, and its journal writes must never be routed
-	//	through the hosted publication API without a signed principal.
+	//	through the hosted publication API without a signed publication.
 	//
 	// Admission — including the freeze on creating unowned names (legacy.go) — is
 	// decided at PUT time, before an object is ever enqueued. A `require_proven`

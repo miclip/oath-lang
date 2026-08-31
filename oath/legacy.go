@@ -93,11 +93,14 @@ func nameExists(st *Store, name string) bool {
 // bearerRefusal is the message a token-only client gets when it tries to create a
 // name. It states the boundary and the repair path, because a generic refusal
 // leaves an agent with no way forward and this one has an obvious one.
-const bearerRefusal = "new names require a signed principal. Bearer authorization grants SERVICE ACCESS, not NAME OWNERSHIP.\n" +
+const bearerRefusal = "new names require a signed publication. Bearer authorization grants SERVICE ACCESS, not NAME OWNERSHIP.\n" +
 	"  A token authorizes use of this registry; a key establishes who you are and what you may govern.\n" +
-	"  To publish %q: generate a key (`oath keygen`) and publish with `--key`, or use a key delegated\n" +
-	"  to you under a reserved namespace (`oath delegate`). Everything short of creating a name — search,\n" +
-	"  evaluate, prove, and preparing the publication itself — still works with the token alone."
+	"  To publish %q: generate a key (`oath keygen`), then\n" +
+	"    oath publish --remote <url> --key <keyfile> <file.oath>\n" +
+	"  (add `--namespace <ns>` to publish under a prefix you hold or were delegated). NOTE: `oath put --remote`\n" +
+	"  cannot create a name — it sends a signed request but no publication ENVELOPE; `oath publish` carries one.\n" +
+	"  Everything short of creating a name — search, evaluate, prove, and preparing the publication itself —\n" +
+	"  still works with the token alone."
 
 // sourceNames reports the names a put source would bind, WITHOUT elaborating it.
 //

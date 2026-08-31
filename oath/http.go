@@ -196,7 +196,7 @@ func cmdServeHTTP(st *Store, addr, tokensPath, authKeysPath string, publicReads 
 		// consistent snapshot, and the caching still pays for itself within a
 		// heavy call (a prove touches the same metadata many times).
 		st.RefreshMutable()
-		resp := handleRPC(st, &req, principal, canWrite, signed, true) // hosted: name creation requires a signed principal
+		resp := handleRPC(st, &req, principal, canWrite, signed, true) // hosted: name creation requires a signed publication
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	})

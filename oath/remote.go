@@ -293,6 +293,7 @@ func remotePut(endpoint, keyPath, source, contextHash string) (string, error) {
 	var rpc struct {
 		Result struct {
 			Content []struct{ Text string } `json:"content"`
+			IsError bool                    `json:"isError"`
 		} `json:"result"`
 		Error *struct{ Message string } `json:"error"`
 	}
@@ -305,6 +306,14 @@ func remotePut(endpoint, keyPath, source, contextHash string) (string, error) {
 	var b strings.Builder
 	for _, c := range rpc.Result.Content {
 		b.WriteString(c.Text)
+	}
+	// A tool-level refusal is HTTP 200 with isError set and the reason in the content
+	// (handleRPC). Reading only the content — as this once did — turned a refused
+	// publication into ordinary output, so cmdRemotePut printed the reason and exited
+	// 0, and a publishing script saw success. Surface it as an error, prefix stripped
+	// (the isError flag already carries "this failed"), matching mcpCallSignedBy.
+	if rpc.Result.IsError {
+		return "", fmt.Errorf("%s", strings.TrimPrefix(strings.TrimSpace(b.String()), "error: "))
 	}
 	return b.String(), nil
 }

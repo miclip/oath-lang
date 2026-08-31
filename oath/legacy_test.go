@@ -31,7 +31,7 @@ func TestFreezeRefusesTokenNameCreation(t *testing.T) {
 	if err == nil {
 		t.Fatal("a token-only request CREATED a new name — the freeze is not in force")
 	}
-	for _, want := range []string{"signed principal", "SERVICE ACCESS", "NAME OWNERSHIP", "oath keygen", "brand-new"} {
+	for _, want := range []string{"signed publication", "SERVICE ACCESS", "NAME OWNERSHIP", "oath keygen", "oath publish", "brand-new"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal is missing %q — an agent needs the boundary AND the way forward:\n%v", want, err)
 		}

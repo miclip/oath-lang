@@ -233,6 +233,16 @@ envelope-carrying mode is a separate design question; the exit code is not.
 anywhere — it publishes through `oath publish` — so nothing in this repo currently
 guards the exit code, the message, or the missing newline.
 
+**RESOLVED** (#2). `remotePut` now reads `result.isError`, so a refused publication
+returns a Go error and `put --remote` exits nonzero instead of printing the refusal
+and exiting 0 — and because the error then goes through `fail()`, the message regains
+its trailing newline (the third defect fell out of the first). The refusal itself
+(`bearerRefusal`) now names the command that succeeds: `oath publish --key <file>`,
+with an explicit note that `oath put --remote` sends a signed request but no
+publication ENVELOPE, so it cannot create a name. A Go test
+(`TestRemotePutSurfacesToolRefusal`) pins both directions — a refusal errors, a
+success does not — and is negative-controlled against removing the check.
+
 ---
 
 ## 3. Publishing a dependent definition requires fetching your own names back — TOOL LIMITATION

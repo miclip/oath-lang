@@ -146,12 +146,14 @@ a key delegated to it under a reserved namespace. The refusal says so and says
 what to do:
 
 ```
-new names require a signed principal. Bearer authorization grants SERVICE ACCESS,
+new names require a signed publication. Bearer authorization grants SERVICE ACCESS,
 not NAME OWNERSHIP.
   A token authorizes use of this registry; a key establishes who you are and what
   you may govern.
-  To publish "x": generate a key (`oath keygen`) and publish with `--key`, or use
-  a key delegated to you under a reserved namespace (`oath delegate`). …
+  To publish "x": generate a key (`oath keygen`), then
+    oath publish --remote <url> --key <keyfile> <file.oath>
+  … NOTE: `oath put --remote` cannot create a name — it sends a signed request but no
+  publication ENVELOPE; `oath publish` carries one. …
 ```
 
 **Membership is derived from a pinned boundary**, not from a query. "Every name
@@ -168,7 +170,7 @@ it past `undeclared` but not past the freeze:
 ```
 ✗ UNOWNED NEW NAME `agent-made-this` — first bound at journal 1300 by an UNSIGNED
   entry labelled 'some-token-client', after the freeze at 1266. New names require
-  a signed principal … The legacy set is closed and may not grow
+  a signed PUBLICATION … The legacy set is closed and may not grow
 ```
 
 The cost is real: token-only clients can no longer create top-level names, and
@@ -188,7 +190,7 @@ evidence-only. What makes that safe is that **admission already happened**:
 
 > Worker journal writes are the completion of an already-admitted put. The worker
 > is never itself an admission path, and its writes must never be routed through
-> the hosted publication API without a signed principal.
+> the hosted publication API without a signed publication.
 
 The freeze is decided at put time, before anything is enqueued. A name defers
 because Z3 is too heavy to run inside a submission, not because the decision was
