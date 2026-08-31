@@ -1,0 +1,47 @@
+; A generic consumer: run-length encoding over ANY Eq dictionary (#33 B1). It threads
+; an Eq dictionary exactly as the shipped combinators do, and asks which properties
+; survive being quantified over EVERY dictionary — lawful or not.
+;
+; FRICTION (recorded): match has NO nested patterns, so a run reached through a list
+; Cons must be destructured in a SECOND match — `(Cons r t)` then `(match r ((MkRun n x) ...))`
+; — rather than `(Cons (MkRun n x) t)`. Every algorithm over a list-of-structs pays this.
+;
+; FRICTION (recorded): the natural round-trip `rle-decode (rle eqd xs) = xs` is
+; FALSIFIED over all dictionaries — a LAWLESS eq groups distinct elements and decode
+; reproduces the run's element, not the original. B1 cannot say "for a lawful eq"
+; (that is B2), so the strongest property that survives is length-preservation.
+
+(data Run [a]
+  (MkRun Int a))          ; a run: `count` copies of an element
+
+(defn replicate [a] [(n Int) (x a)] (List a)
+  (if (< n 1)
+      (Nil [a])
+      (Cons [a] x (replicate [a] (- n 1) x)))
+  (prop length-is-n [(n Int) (x Int)]
+    (== (length [Int] (replicate [Int] n x)) (if (< n 1) 0 n))))
+
+(defn rle-decode [a] [(rs (List (Run a)))] (List a)
+  (match rs
+    ((Nil) (Nil [a]))
+    ((Cons r t)
+     (match r
+       ((MkRun n x) (append [a] (replicate [a] n x) (rle-decode [a] t))))))
+  (prop nil-decodes-nil [] (== (rle-decode [Int] (Nil [(Run Int)])) (Nil [Int]))))
+
+(defn rle [a] [(eqd {eq (-> a a Bool)}) (xs (List a))] (List (Run a))
+  (match xs
+    ((Nil) (Nil [(Run a)]))
+    ((Cons h t)
+     (match (rle [a] eqd t)
+       ((Nil) (Cons [(Run a)] (MkRun 1 h) (Nil [(Run a)])))
+       ((Cons r rest)
+        (match r
+          ((MkRun n x)
+           (if ((. eqd eq) h x)
+               (Cons [(Run a)] (MkRun (+ n 1) h) rest)
+               (Cons [(Run a)] (MkRun 1 h) (Cons [(Run a)] (MkRun n x) rest)))))))))
+  ; PROVABLE over ALL dictionaries: decode-after-encode preserves LENGTH, because a
+  ; run always carries the exact count grouped, whether or not eq was lawful.
+  (prop decode-preserves-length [(eqd {eq (-> Int Int Bool)}) (xs (List Int))]
+    (== (length [Int] (rle-decode [Int] (rle [Int] eqd xs))) (length [Int] xs))))
