@@ -243,10 +243,28 @@ func isNamedData(st *Store, name string, t *Ty) bool {
 	return ok && t != nil && t.K == "data" && t.Hash == h && len(t.Args) == 0
 }
 
-// strTypeHash is the hash of the `Str` datatype in this store (the string type
-// by convention), or "" if none is defined. isStrTy recognizes a type as that
-// datatype — the compiler represents such values as native Go strings.
-func strTypeHash(st *Store) string { h, _ := st.Resolve("Str"); return h }
+// strTypeHash is the hash of this store's string type — the identity both backends
+// lower as a native string, so recognition (entry shapes, str-map keys) and lowering
+// share ONE hash and cannot diverge.
+//
+// If the store NAMES a string type `Str`, that binding is authoritative: a store may
+// deliberately repoint `Str` to another shape, and the family keyed on the superseded
+// one is then no longer the active string (#184). But a store need NOT bind the bare
+// name: when nothing is called `Str`, fall back to the CANONICAL Str CONTENT HASH
+// (`(data Str [] (SNil) (SCons Int Str))`, == protoStr). That is what lets a program
+// typed entirely against a namespaced `michael/Str` — byte-identical, same hash —
+// build without ALSO binding a redundant bare `Str`, which was friction item 4. In
+// the committed corpus `Str` resolves to exactly protoStr, so the two agree and
+// nothing changes; the fallback only fires for a store that names no string type at
+// all. This mirrors how the entry's `List` is recognised structurally (protoList),
+// which likewise needs no bare `List` binding.
+func strTypeHash(st *Store) string {
+	if h, ok := st.Resolve("Str"); ok {
+		return h
+	}
+	protoInit()
+	return protoStr
+}
 
 func isStrTy(strHash string, t *Ty) bool {
 	return strHash != "" && t != nil && t.K == "data" && t.Hash == strHash
@@ -279,13 +297,12 @@ func isListStrArg(st *Store, a *Ty) bool {
 }
 
 // isResultTy recognises the CLI exit-result datatype (data _ [] (Ok Str)
-// (Fail Int Str)) in EITHER constructor order, with Str being the STORE'S ACTIVE
-// Str — the identity both backends lower as a native string (strTypeHash), not
-// the canonical Str prototype. Matching the prototype instead would accept a
-// result whose message the backends then lower as a CONSTRUCTOR (a panic on the
-// Go backend, an empty line on LLVM — a divergence) whenever Str is repointed
-// while the canonical datatype survives under an alias. The arms differ in
-// shape, so declaration order does not change their meaning.
+// (Fail Int Str)) in EITHER constructor order. Str is strTypeHash — this store's
+// string type, which is exactly what both backends lower as a native string, so
+// recognition and lowering key on ONE hash and cannot diverge. (strTypeHash is the
+// bound `Str` when the store names one, else the canonical prototype; see its
+// comment.) The arms differ in shape, so declaration order does not change their
+// meaning.
 func isResultTy(st *Store, t *Ty) bool {
 	sh := strTypeHash(st)
 	if sh == "" {

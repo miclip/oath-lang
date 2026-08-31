@@ -395,29 +395,31 @@ func nonScalarStrElement(t *Term, strHash string) (*big.Int, bool) {
 // resolveStrCtors records SNil/SCons for this store's Str and checks their shape,
 // since folding a literal assumes SCons carries (codepoint, rest).
 func (e *llvmEmitter) resolveStrCtors() error {
-	m, err := e.st.GetMeta(e.strHash)
-	if err != nil {
-		return err
-	}
 	d, err := e.st.GetDef(e.strHash)
 	if err != nil {
 		return err
 	}
+	// Derive nil/cons by SHAPE, not by metadata constructor NAMES. The string type is
+	// identified by content HASH (strTypeHash), so a canonical Str bound under an alias
+	// with renamed constructors (e.g. Empty/More) is still the string type — the Go
+	// backend and newStrDecoder both recognise it structurally, and this backend must
+	// agree, or a valid entry would build on one backend and fail on the other. Same
+	// rule as newStrDecoder: the nullary constructor is nil; the (Int, self) one is
+	// cons. The hash already guarantees this shape, so the loop is a lookup of which
+	// index is which, not a re-validation.
 	e.strNil, e.strCons = -1, -1
-	for i, n := range m.CtorNames {
-		switch n {
-		case "SNil":
-			e.strNil = i
-		case "SCons":
-			e.strCons = i
+	if d.K == "data" && d.TyVars == 0 && len(d.Ctors) == 2 {
+		for i, c := range d.Ctors {
+			switch {
+			case len(c) == 0:
+				e.strNil = i
+			case len(c) == 2 && c[0].K == "int" && c[1].K == "rec" && len(c[1].Args) == 0:
+				e.strCons = i
+			}
 		}
 	}
 	if e.strNil < 0 || e.strCons < 0 {
-		return fmt.Errorf("Str does not declare SNil and SCons (found %v)", m.CtorNames)
-	}
-	if len(d.Ctors[e.strNil]) != 0 || len(d.Ctors[e.strCons]) != 2 {
-		return fmt.Errorf("Str has an unexpected shape (SNil/%d, SCons/%d); this backend folds literals as SCons(codepoint, rest)",
-			len(d.Ctors[e.strNil]), len(d.Ctors[e.strCons]))
+		return fmt.Errorf("Str type #%s is not the canonical (SNil | SCons Int Str) shape; this backend folds literals as SCons(codepoint, rest)", shortHash(e.strHash))
 	}
 	return nil
 }

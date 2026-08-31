@@ -419,6 +419,20 @@ designation is a design question.
 and asserts it lands with the corpus's hashes; nothing in it exercises a
 namespaced foundation or the two-arm build.
 
+**RESOLVED** (item 4). `strTypeHash` no longer resolves `Str` only by name: when the
+store binds no `Str`, it falls back to the canonical Str CONTENT HASH (`protoStr` —
+the same identity `isStrTy` and both backends already use, and the structural
+recognition `List` has via `protoList`). So a program typed entirely against a
+namespaced `michael/Str` (byte-identical, same hash) now builds and runs with no bare
+`Str` bound — verified: the two-arm scenario above needs no second binding, and
+`ns-report` keeps its hash (`#9488d56d9d7a`), so this is build-time recognition, not
+identity. Recognition and lowering share the one hash, so they cannot diverge. A store
+that DOES name a `Str` still governs — the bound name wins over the fallback — which
+preserves #184 (a str-map keyed on a superseded-by-name Str stays inadmissible). A Go
+test (`TestEntryRecognisesStrWithoutBareName`) pins both the fallback and the
+bound-name-wins case, negative-controlled. What remains unaddressed is the secondary
+note above — the entry-shape error still prints types as hashes.
+
 ---
 
 ## 5. There is no way to publish several new BARE names in one operation — TOOL LIMITATION
