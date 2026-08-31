@@ -1,0 +1,7 @@
+; A tiny licensed application: count a list's elements. It uses the List datatype
+; (published separately, as the stdlib would be) and asserts its own terms.
+(defn tally [a] [(xs (List a))] Int
+  (match xs
+    ((Nil) 0)
+    ((Cons h t) (+ 1 (tally [a] t))))
+  (prop non-negative [(xs (List Int))] (<= 0 (tally [Int] xs))))
