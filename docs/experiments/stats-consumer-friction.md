@@ -81,6 +81,41 @@ lemma-count line are MEASURED and reproduced by `run.sh`. That the missing law i
 specifically `length`'s nonzero-on-cons is HAND-attributed from the shape of the
 goal.
 
+**RESOLVED.** `oath prove` now ends an unproven report with a `note:` naming the
+reused dependencies whose UNPROVEN laws are absent from the lemma library — the
+laws that would be admitted if those dependencies were proven:
+
+```
+· unproven  times-count-is-sum   no direct proof; induction did not discharge
+proven: 1/3 properties
+note: 3 reused dependencies are not fully proven, so their laws are absent from the
+      lemma library above — proving them may let a stuck goal here discharge:
+      maximum (3 unproven laws), minimum (3 ...), length (3 ...)
+```
+
+The candidates are filtered by the SAME admissibility rule the prover applies to
+real lemmas (`goalFootprint` + `lemmaAdmissible`), not mere reachability, and that
+is what makes the note honest rather than noisy in three ways:
+
+- It names only laws that, once proven, would actually be ADMITTED for a stuck
+  goal. `sum` is in the closure and the recovery goal calls it, yet `sum`'s laws
+  (`distributes-over-append`, `reverse-invariant`) mention `append`/`reverse` —
+  outside the goal's footprint — so proving `sum` would not admit them, and the
+  note does not name it. Measured: the recovery law proves with `length` alone,
+  `sum` still `tested`.
+- It excludes goals with a test counterexample (`withheld`): those are FALSE, and
+  no dependency lemma repairs a false property.
+- Decisively, once a stuck goal's admissible dependency laws are all proven the
+  note falls SILENT even though the goal is still unproven — correctly reporting
+  that what remains is an intrinsic wall (the nonlinear bounds of demand 2), not a
+  missing lemma. It is silent whenever every admissible dependency is proven, so it
+  never fires in the settled corpus.
+
+`unprovenDepLemmas` in `oath/prove.go` (built on the prover's own `goalFootprint` /
+`lemmaAdmissible` / `propMentions`), unit-tested in `prove_unproven_dep_test.go`
+including the inadmissible-law and relevance cases; `run.sh` asserts the naming, the
+`sum`-exclusion precision, and the falling-silent.
+
 ---
 
 ## 2. The most natural property of an average — that it lies between the min and the max — does not prove: it is nonlinear — TOOL LIMIT

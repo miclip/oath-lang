@@ -2387,6 +2387,7 @@ func apiProveHash(st *Store, h string, display string) (string, error) {
 	proven := 0
 	var provenIdx []int
 	anyRefuted := false
+	var unprovenPIs []int
 	for pi := range d.Props {
 		pn := metaPropName(m, pi)
 		o := outcomes[pi]
@@ -2405,6 +2406,10 @@ func apiProveHash(st *Store, h string, display string) (string, error) {
 			}
 			fmt.Fprintf(&b, "⚠ aborted   %-28s environmental abort, no valid verdict (%s)\n", pn, state)
 		case withheld[pi]:
+			// Deliberately NOT fed to the dependency-lemma note below: a withheld goal
+			// has a concrete test counterexample, so it is FALSE. No dependency lemma
+			// can discharge a false property, and advising the reader to go prove one
+			// would be actively misleading.
 			fmt.Fprintf(&b, "· unproven  %-28s SMT claim contradicts a test counterexample; withheld\n", pn)
 		case provenSet[pi]:
 			proven++
@@ -2417,10 +2422,43 @@ func apiProveHash(st *Store, h string, display string) (string, error) {
 				fmt.Fprintf(&b, "      %s\n", line)
 			}
 		default:
+			unprovenPIs = append(unprovenPIs, pi)
 			fmt.Fprintf(&b, "· unproven  %-28s %s\n", pn, o.detail)
 		}
 	}
 	fmt.Fprintf(&b, "proven: %d/%d properties\n", proven, len(d.Props))
+
+	// When a goal was left unproven, name any reused dependency whose own laws are
+	// not proven and so are ABSENT from the lemma library above. Proving them may be
+	// what a stuck goal needs — a distinction the per-goal detail cannot draw,
+	// because "induction did not discharge" looks the same whether the goal is hard
+	// or a dependency's lemma is simply missing (stats-consumer, demand 1).
+	//
+	// Restricted to the unproven goals' OWN vocabulary, which is what makes the note
+	// honest: once the dependencies a stuck goal reaches are all proven, the note
+	// falls silent even though the goal is still unproven — correctly reporting that
+	// what remains is an intrinsic wall (e.g. a nonlinear obligation), not a missing
+	// lemma. It is also silent when every dependency is proven, so it never fires as
+	// noise in the settled corpus.
+	if len(unprovenPIs) > 0 {
+		footprints := make([]map[string]bool, 0, len(unprovenPIs))
+		hinted := map[string]bool{} // "depHash#propIdx" a stuck goal hints in — admitted regardless of footprint
+		for _, pi := range unprovenPIs {
+			footprints = append(footprints, goalFootprint(st, h, d, &d.Props[pi]))
+			for _, hr := range m.Hints[pi] {
+				hinted[fmt.Sprintf("%s#%d", hr.Def, hr.Prop)] = true
+			}
+		}
+		if deps := unprovenDepLemmas(st, d, footprints, hinted); len(deps) > 0 {
+			one := len(deps) == 1
+			fmt.Fprintf(&b, "note: %d reused dependenc%s not fully proven, so %s laws are absent from the lemma\n"+
+				"      library above — proving %s may let a stuck goal here discharge: %s\n",
+				len(deps), map[bool]string{true: "y is", false: "ies are"}[one],
+				map[bool]string{true: "its", false: "their"}[one],
+				map[bool]string{true: "it", false: "them"}[one],
+				strings.Join(deps, ", "))
+		}
+	}
 
 	m.Guarantee.Proven = proven
 	m.ProvenProps = provenIdx
@@ -2484,6 +2522,154 @@ func cmdProve(st *Store, name string) {
 // script — precisely the acquisition-history dependence the fresh-context-per-
 // attempt rule exists to eliminate (the script must be a function of (goal,
 // lemma set) alone).
+// unprovenDepLemmas walks the same transitive dependency closure loadLemmaLibrary
+// draws lemmas from, and names the dependency definitions carrying properties that
+// are NOT proven — laws that WOULD be admitted as lemmas if those dependencies were
+// proven, and are silently absent because they are not.
+//
+// This closes the diagnostic gap the stats-consumer round measured (demand 1): the
+// prover's "induction did not discharge" reads identically whether a goal is
+// intrinsically hard or whether the consumer reused a `tested` dependency and so
+// lost its laws. Only the second case is repairable by the reader, and only this
+// tells them so. It returns descriptors in the same canonical (dep-hash) order the
+// lemma walk uses, so the note is deterministic; empty when every reused dependency
+// is fully proven — which is the corpus's normal state, so the note never fires as
+// noise there.
+//
+// `footprints` are the relevance sets (goalFootprint) of the UNPROVEN goals. A
+// dependency law is a candidate only if, WERE it proven, the prover would actually
+// admit it for one of those goals — i.e. its mentions lie within some stuck goal's
+// footprint (lemmaAdmissible, exactly as the real lemma walk applies it). This is
+// what keeps the note honest in both directions: it does not name a tested
+// definition no stuck goal reaches, and once the laws a goal COULD use are all
+// proven it falls silent even though the goal stays unproven — correctly reporting
+// an intrinsic wall (a nonlinear obligation) rather than a missing lemma. It is
+// therefore silent whenever every admissible dependency law is proven, which is the
+// settled corpus's normal state.
+func unprovenDepLemmas(st *Store, d *Def, footprints []map[string]bool, hinted map[string]bool) []string {
+	if len(footprints) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	var queue []string
+	enqueue := func(hh string) {
+		if !seen[hh] {
+			seen[hh] = true
+			queue = append(queue, hh)
+		}
+	}
+	for _, dep := range sortedDepHashes(d) {
+		enqueue(dep)
+	}
+	// A hint can admit a lemma from a definition OUTSIDE the goal's dependency
+	// closure (that is the whole point of a hint), so a hinted-but-regressed law
+	// would never be reached by the closure walk alone. Seed the traversal with the
+	// hinted definitions too, matching loadLemmaLibrary's out-of-closure hint route.
+	// Sorted first: map iteration order is randomized, and it would otherwise leak
+	// into the queue and the report order — this diagnostic must be deterministic.
+	hintedHashes := make([]string, 0, len(hinted))
+	for key := range hinted {
+		if dh, _, ok := strings.Cut(key, "#"); ok {
+			hintedHashes = append(hintedHashes, dh)
+		}
+	}
+	sort.Strings(hintedHashes)
+	for _, dh := range hintedHashes {
+		enqueue(dh)
+	}
+	var out []string
+	for qi := 0; qi < len(queue); qi++ {
+		dh := queue[qi]
+		dd, err := st.GetDef(dh)
+		if err != nil {
+			continue
+		}
+		for _, dep := range sortedDepHashes(dd) {
+			enqueue(dep)
+		}
+		if dd.K != "func" || len(dd.Props) == 0 {
+			continue
+		}
+		dm, err := st.GetMeta(dh)
+		if err != nil {
+			continue
+		}
+		proven := map[int]bool{}
+		for _, pi := range dm.ProvenProps {
+			proven[pi] = true
+		}
+		latent := 0
+		for pi := range dd.Props {
+			// A falsified property is not a latent lemma — proving it is impossible, so
+			// naming it would send the reader after a law that cannot exist. refutedContains
+			// excludes TESTER refutations, the only per-property refutation the store
+			// persists, and it does so per index without over-excluding an unproven sibling
+			// that merely SHARES a name with a falsified one.
+			//
+			// Two refutations it cannot exclude, both left deliberately because the miss is
+			// SELF-CORRECTING for a hint: (a) a property the tester's cases missed but SMT
+			// would refute, and (b) one of two same-NAMED siblings being falsified, where the
+			// name alone cannot say which — refutedContains conservatively reports neither, so
+			// the false one may still be counted. In both a reader who follows the hint and
+			// runs `oath prove` on the dependency meets the refutation directly, learning the
+			// reused law is broken. Over-including a self-revealing dead end is the right side
+			// to err on for a "may help" suggestion; under-reporting a genuinely provable law
+			// would not be.
+			if proven[pi] || refutedContains(dm, pi, len(dd.Props)) {
+				continue
+			}
+			// Would this law, once proven, actually be ADMITTED for a stuck goal? The
+			// prover admits a dependency lemma either when its mentions lie within the
+			// goal's footprint (lemmaAdmissible) or when the goal explicitly HINTS it
+			// (hintedLemma, which bypasses the footprint filter). A law that satisfies
+			// neither would never enter any stuck goal's script, so proving it cannot
+			// help and the note must not claim it might. Both admission routes are
+			// mirrored here so the note names exactly the dependencies whose proving
+			// could matter.
+			//
+			// One approximation, deliberately left: loadLemmaLibrary also DROPS a
+			// candidate whose formula does not translate to SMT (formulaWith errors),
+			// which this does not re-check — attempting translation needs a full solver
+			// context per candidate, disproportionate for a hint. The effect is bounded
+			// and self-correcting: at worst the count includes an untranslatable law of a
+			// dependency that has other useful ones, and a reader who runs `oath prove`
+			// on the named dependency sees that law stay unproven directly.
+			cand := lemma{defHash: dh, mentions: propMentions(dh, &dd.Props[pi])}
+			admissible := hinted[fmt.Sprintf("%s#%d", dh, pi)]
+			for _, fp := range footprints {
+				if admissible {
+					break
+				}
+				admissible = lemmaAdmissible(&cand, "", fp)
+			}
+			if admissible {
+				latent++
+			}
+		}
+		if latent == 0 {
+			continue
+		}
+		// The reader is going to type `oath prove <name>`, which resolves through the
+		// name index — so the note may only name a dependency by a name that RESOLVES to
+		// THIS exact object now. NameOf gives the best live name; if it resolves back to
+		// dh, it is actionable. If it does not (the name was repointed away and this
+		// object is superseded), there is no name the reader could prove, so the entry is
+		// omitted rather than printed as a reference `oath prove` would reject. This also
+		// subsumes the earlier hazard of naming a repointed object's stale name — that
+		// name resolves to a DIFFERENT object and is likewise rejected here.
+		name := st.NameOf(dh)
+		if resolved, ok := st.Resolve(name); !ok || resolved != dh {
+			continue
+		}
+		suffix := "s"
+		if latent == 1 {
+			suffix = ""
+		}
+		out = append(out, fmt.Sprintf("%s (%d unproven law%s)", name, latent, suffix))
+	}
+	return out
+}
+
 func loadLemmaLibrary(c *smtCtx, st *Store, d *Def, h string, m *Meta, goalPI int) (int, int) {
 	// Collect every candidate lemma (transitive-dependency proven props plus
 	// the definition's own recorded proven props), then TRANSLATE in
