@@ -1,0 +1,34 @@
+; THE APP — a (-> (List Str) Str) CLI entry that prints how many arguments it
+; received and then lists them, numbered:
+;
+;     $ item-report alpha beta gamma
+;     3 items
+;     1. alpha
+;     2. beta
+;     3. gamma
+;
+; Its body is three calls and nothing else, and every one of them names a
+; PUBLISHED definition by its published name — michael/text-join,
+; michael/decimal, michael/count-items, michael/numbered-lines. That spelling is
+; the point of keeping this file separate from the library: an app that referred
+; to the library's bare names would resolve against the author's own store and
+; nowhere else, and a consumer holding only this file and a URL could not build
+; it.
+;
+; It follows that the AUTHOR cannot build this file either until the library's
+; qualified names are in a store the author can resolve — which, for names that
+; exist only because they were published, means fetching them back from the
+; registry. run.sh asserts that failure before it fixes it.
+;
+; The declared name stays bare: `--namespace michael` qualifies it at publication
+; and refuses a source that already carries a prefix.
+(defn item-report [] [(args (List Str))] Str
+  (michael/text-join (michael/decimal (michael/count-items args))
+    (michael/text-join " items\n" (michael/numbered-lines 1 args)))
+
+  (prop no-args-reports-zero []
+    (== (item-report (Nil [Str])) "0 items\n"))
+  (prop one-arg-is-listed [(s Str)]
+    (== (item-report (Cons [Str] s (Nil [Str])))
+        (michael/text-join "1 items\n"
+          (michael/text-join "1. " (michael/text-join s "\n"))))))

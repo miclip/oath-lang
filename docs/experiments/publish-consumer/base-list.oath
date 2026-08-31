@@ -1,0 +1,20 @@
+; The List datatype, declared from scratch.
+;
+; It is here — rather than pulled from the committed corpus — because this
+; experiment's stores are all `mktemp -d`, so the registry and every client
+; start with NOTHING. Two datatypes have to exist under exactly these names
+; before anything else can be published: `Str`, because "…" surface literals
+; elaborate to its constructors, and `List`, because the CLI entry shape the
+; compiler recognises is (-> (List Str) Str) and it is matched against the
+; CANONICAL List structure — Nil at index 0, Cons at index 1.
+;
+; So these two are published under BARE names, not under michael/*: a namespaced
+; `michael/List` would not be found by either rule. That is a real constraint on
+; what a namespace can hold, not an omission.
+;
+; Identity is structural, so this file is not a copy of the corpus in any sense
+; that matters — putting it into an empty store reproduces the hash the committed
+; corpus binds, and run.sh asserts exactly that against codebase/names.json.
+(data List [a]
+  (Nil)
+  (Cons a (List a)))

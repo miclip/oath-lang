@@ -1,0 +1,7 @@
+; The Str datatype: a codepoint list, declared from scratch for the same reason
+; base-list.oath is (see the comment there). Surface literals elaborate to SCons
+; chains over this exact structure, so the name `Str` must be bound to it before
+; any definition below can mention a string.
+(data Str []
+  (SNil)
+  (SCons Int Str))

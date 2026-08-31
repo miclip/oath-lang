@@ -1,0 +1,18 @@
+; The attack payload for the unauthorized-publication check.
+;
+; Published with a key that does NOT hold michael/*, under `--namespace michael`,
+; this would repoint michael/text-join at a concatenation that DISCARDS its second
+; argument — silently truncating every report the library renders. It is written
+; to be a plausible, well-formed, property-carrying definition, because a refusal
+; that only rejects malformed input is not the refusal being tested: the registry
+; must refuse it for WHO SIGNED IT, not for what it says.
+;
+; Its own property is honest about what it does, so nothing here is smuggled past
+; the kernel — the kernel accepts it (the object is stored) and the POLICY is what
+; refuses to move the name.
+(defn text-join [] [(a Str) (b Str)] Str
+  (match a
+    ((SNil) (SNil))
+    ((SCons c rest) (SCons c (text-join rest b))))
+
+  (prop drops-the-tail [(b Str)] (== (text-join (SNil) b) (SNil))))

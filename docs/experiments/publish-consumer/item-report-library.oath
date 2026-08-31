@@ -1,0 +1,62 @@
+; THE LIBRARY. Four definitions published as one signed batch under michael/*,
+; in dependency order, one envelope per name.
+;
+; Every name here is declared BARE. `oath publish --namespace michael` is a
+; SOURCE TRANSFORMATION, not a display prefix: it rewrites each declared name and
+; every intra-batch reference to it, then signs each definition separately. It
+; refuses a source that already carries a prefix, so the qualified spelling must
+; not appear in this file — the name has one source of truth, and it is the
+; --namespace flag.
+;
+; Nothing here depends on the corpus. The only external names are `Str`, `List`
+; and `Int`, which is what lets the whole experiment run out of empty stores.
+; The properties are stated over each definition, not inherited from a callee.
+
+; --- concatenation, by structural recursion on the left argument.
+(defn text-join [] [(a Str) (b Str)] Str
+  (match a
+    ((SNil) b)
+    ((SCons c rest) (SCons c (text-join rest b))))
+
+  (prop left-unit [(b Str)] (== (text-join (SNil) b) b))
+  ; The law the unauthorized replacement in unauthorized-text-join.oath breaks:
+  ; a version that drops its second argument satisfies nothing here.
+  (prop right-unit [(a Str)] (== (text-join a (SNil)) a)))
+
+; --- a non-negative Int rendered in base ten. Recursion is on the quotient, so
+; the measure decreases; 48 is the codepoint of '0'.
+(defn decimal [] [(n Int)] Str
+  (if (< n 10)
+      (SCons (+ 48 n) (SNil))
+      (text-join (decimal (/ n 10)) (SCons (+ 48 (% n 10)) (SNil))))
+
+  (prop single-digit-is-one-codepoint [(d Int)]
+    (if (and (<= 0 d) (< d 10))
+        (== (decimal d) (SCons (+ 48 d) (SNil)))
+        true)))
+
+; --- how many arguments arrived.
+(defn count-items [] [(xs (List Str))] Int
+  (match xs
+    ((Nil) 0)
+    ((Cons h t) (+ 1 (count-items t))))
+
+  (prop empty-is-zero [] (== (count-items (Nil [Str])) 0))
+  (prop non-negative [(xs (List Str))] (<= 0 (count-items xs))))
+
+; --- the numbered body of the report: "1. alpha\n2. beta\n…", numbering from n.
+(defn numbered-lines [] [(n Int) (xs (List Str))] Str
+  (match xs
+    ((Nil) (SNil))
+    ((Cons h t)
+      (text-join (decimal n)
+        (text-join ". "
+          (text-join h
+            (text-join "\n" (numbered-lines (+ n 1) t)))))))
+
+  (prop empty-renders-empty [(n Int)] (== (numbered-lines n (Nil [Str])) (SNil)))
+  ; Depth 1 pins the shape of a line; it is deliberately stated in terms of the
+  ; two callees rather than a literal, so a change to either is a change here.
+  (prop one-item [(n Int) (s Str)]
+    (== (numbered-lines n (Cons [Str] s (Nil [Str])))
+        (text-join (decimal n) (text-join ". " (text-join s "\n"))))))
