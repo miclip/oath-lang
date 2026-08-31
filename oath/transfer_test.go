@@ -141,7 +141,7 @@ func TestTransferClearsDelegationsAndKeepsAuthorship(t *testing.T) {
 	if _, err := apiDelegate(st, goct, gsig, aHex); err != nil {
 		t.Fatal(err)
 	}
-	if !delegates(st)["co/*"][dHex] {
+	if !hasDel(st, "co/*", dHex) {
 		t.Fatal("the delegation did not take effect")
 	}
 	drevBefore := delegationRev(st, "co/*").Int64()
@@ -151,7 +151,7 @@ func TestTransferClearsDelegationsAndKeepsAuthorship(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if delegates(st)["co/*"][dHex] {
+	if hasDel(st, "co/*", dHex) {
 		t.Error("a delegation SURVIVED the transfer: the recipient inherited a publisher it never authorized")
 	}
 	if d := delegationRev(st, "co/*").Int64(); d <= drevBefore {
@@ -161,7 +161,7 @@ func TestTransferClearsDelegationsAndKeepsAuthorship(t *testing.T) {
 	if _, err := apiDelegate(st, goct, gsig, aHex); err == nil {
 		t.Error("the pre-transfer grant was replayable after the handover")
 	}
-	if delegates(st)["co/*"][dHex] {
+	if hasDel(st, "co/*", dHex) {
 		t.Error("the replayed grant re-activated a delegate under the new holder")
 	}
 }

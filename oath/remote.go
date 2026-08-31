@@ -474,8 +474,9 @@ type authorityView struct {
 	Rev           *big.Int
 	DelegationRev *big.Int
 	Delegates     []string
-	Source        string // human-readable: the endpoint, or the local store path
-	Authoritative bool   // is this the state a reservation would be evaluated against?
+	Scopes        map[string]string // delegate key -> scope (the namespace when whole-prefix)
+	Source        string            // human-readable: the endpoint, or the local store path
+	Authoritative bool              // is this the state a reservation would be evaluated against?
 }
 
 // remoteAuthorityView reads the full governance record from the registry a
@@ -486,10 +487,11 @@ func remoteAuthorityView(ctx context.Context, endpoint string, s Signer, namespa
 		return authorityView{}, err
 	}
 	var resp struct {
-		Authority string   `json:"authority"`
-		Rev       string   `json:"authority_rev"`
-		DelRev    string   `json:"delegation_rev"`
-		Delegates []string `json:"delegates"`
+		Authority string            `json:"authority"`
+		Rev       string            `json:"authority_rev"`
+		DelRev    string            `json:"delegation_rev"`
+		Delegates []string          `json:"delegates"`
+		Scopes    map[string]string `json:"delegate_scopes"`
 	}
 	if err := json.Unmarshal([]byte(out), &resp); err != nil {
 		return authorityView{}, fmt.Errorf("registry returned an unreadable authority record: %w", err)
@@ -506,7 +508,7 @@ func remoteAuthorityView(ctx context.Context, endpoint string, s Signer, namespa
 		drev = nil
 	}
 	return authorityView{Holder: resp.Authority, Rev: rev, DelegationRev: drev,
-		Delegates: resp.Delegates, Source: endpoint, Authoritative: true}, nil
+		Delegates: resp.Delegates, Scopes: resp.Scopes, Source: endpoint, Authoritative: true}, nil
 }
 
 // remoteText runs one read-only tool against the registry and returns its output

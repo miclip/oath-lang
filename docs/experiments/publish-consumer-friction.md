@@ -159,6 +159,25 @@ authority revision stays 1 are ASSERTED (`run.sh` §5, §6). The
 `michael/billing-credentials` publication, the envelope bytes, the usage line and
 every message text are HAND-MEASURED.
 
+**RESOLVED** (#66, item 1). The demand's minimum — "this key may publish
+`michael/item-report` and nothing else" — is now expressible. A grant may carry a
+SCOPE narrower than the prefix: either an exact name or a sub-prefix `p/*`, strictly
+under the granting namespace. `oath delegate <ns>/* --to <key> --scope <name|p/*>`
+signs an `oath-delegate/3` envelope that adds a `scope` line; an unscoped grant is
+still `/2` over the whole prefix, byte-unchanged, so existing records replay
+identically. Enforcement is at the bind: `mayBindUnder` admits a scoped delegate's
+name only when the scope covers it (exact-name covers that one name; `p/*` covers
+exactly `RES-SEGMENT-MATCH` under `p`), the holder is unaffected, and revocation
+recovers every scoped name the same as a whole-prefix one. One scope per (prefix,
+subject): re-granting at a different scope replaces the old. The gap that made this
+"the worst" — the envelope had no field a narrower grant could travel in — is
+closed by the new field; SPEC §8.7.7 DEL-SCOPE / DEL-SCOPE-ONE-PER-SUBJECT are the
+normative text, witnessed by `fixtures/reserve/vectors.jsonl` (`expect_scopes`,
+`expect_covers`). Building this surfaced a real defect the tests caught:
+`authorStatementKind` did not recognise `/3`, so journal replay was silent about
+every scoped grant — fixed, and the scope tests would have failed loudly without
+it.
+
 ---
 
 ## 2. `put --remote` cannot create a name, misdirects, and reports success — TOOL LIMITATION

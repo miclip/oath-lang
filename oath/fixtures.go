@@ -664,7 +664,11 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
    witness at all, and every defect it found lived in that unwitnessed region —
    encoding vectors constrain only what they mention. The "delegation" records
    witness SPEC §8.7.7 the same way: each carries a journal and the delegate set
-   replay must derive from it.
+   replay must derive from it, plus "expect_scopes" (the scope replay derives for
+   each active delegate — the whole namespace for an unscoped /1//2 grant, the
+   narrower pattern for a /3 grant) and, on the scoped records, "expect_covers"
+   (name/covered pairs pinning DEL-SCOPE: which names the scope admits and which it
+   refuses, including the segment-boundary cases a substring check gets wrong).
    authority_rev is carried as a JSON STRING: the
    arbitrary-precision vector is 2^128+1, which a float64 JSON reader decodes off by
    one, and a witness defeated by its own carrier witnesses nothing.
@@ -1882,7 +1886,7 @@ func writeReserveVectors(write func(string, []byte) error) error {
 	// disagreeing. Each case is self-validated against this kernel's own
 	// acceptance path and replay.
 	delCase := func(label string, setup func(*Store, ed25519.PrivateKey, string), holderSeed byte,
-		ns string, expectActive []string, why string) error {
+		ns string, expectActive []string, covers []map[string]any, why string) error {
 		st, err := OpenStore(fixtureTempDir())
 		if err != nil {
 			return err
@@ -1896,14 +1900,28 @@ func writeReserveVectors(write func(string, []byte) error) error {
 		}
 		setup(st, priv, hpub)
 		got := []string{}
-		for k := range delegates(st)[ns] {
+		scopes := map[string]any{} // subject -> scope pattern the replay derives (DEL-SCOPE)
+		for k, s := range delegates(st)[ns] {
 			got = append(got, k)
+			scopes[k] = s
 		}
 		sort.Strings(got)
 		want := append([]string{}, expectActive...)
 		sort.Strings(want)
 		if strings.Join(got, ",") != strings.Join(want, ",") {
 			return fmt.Errorf("delegation vector %q: kernel derives %v, vector claims %v", label, got, want)
+		}
+		// Self-validate each coverage claim against the enforcement path itself, so a
+		// scope witness cannot drift from what mayBindUnder actually admits.
+		res := reservation{Namespace: ns, Pubkey: hpub}
+		for _, c := range covers {
+			subj, _ := c["subject"].(string)
+			name, _ := c["name"].(string)
+			wantCov, _ := c["covered"].(bool)
+			if mayBindUnder(st, res, subj, name) != wantCov {
+				return fmt.Errorf("delegation vector %q: coverage of %q by %s is %v, vector claims %v",
+					label, name, shortHash(subj), !wantCov, wantCov)
+			}
 		}
 		var js []map[string]any
 		for _, e := range st.ReadLog() {
@@ -1912,8 +1930,13 @@ func writeReserveVectors(write func(string, []byte) error) error {
 					"envelope_b64": e.EnvelopeB64, "pubkey": e.AuthorPubkey, "signature": e.AuthorSig})
 			}
 		}
-		return emit(map[string]any{"kind": "delegation", "label": label, "namespace": ns,
-			"holder": hpub, "journal": js, "expect_active_delegates": want, "why": why})
+		rec := map[string]any{"kind": "delegation", "label": label, "namespace": ns,
+			"holder": hpub, "journal": js, "expect_active_delegates": want,
+			"expect_scopes": scopes, "why": why}
+		if len(covers) > 0 {
+			rec["expect_covers"] = covers
+		}
+		return emit(rec)
 	}
 	signDelFor := func(priv ed25519.PrivateKey, op, ns, subject string, rev int64, drev int64) ([]byte, string) {
 		pub := hex.EncodeToString(priv.Public().(ed25519.PublicKey))
@@ -1922,12 +1945,24 @@ func writeReserveVectors(write func(string, []byte) error) error {
 		oct := delEncode(e)
 		return oct, hex.EncodeToString(ed25519.Sign(priv, oct))
 	}
+	// signScopedDelFor grants (or re-grants) with a scope narrower than the prefix —
+	// an oath-delegate/3 envelope (DEL-SCOPE).
+	signScopedDelFor := func(priv ed25519.PrivateKey, op, ns, subject, scope string, rev int64, drev int64) ([]byte, string) {
+		pub := hex.EncodeToString(priv.Public().(ed25519.PublicKey))
+		e := delEnvelope{Op: op, Namespace: ns, Subject: subject, Scope: scope, Authority: pub,
+			AuthorityRev: big.NewInt(rev), DelegationRev: big.NewInt(drev), Pubkey: pub}
+		oct := delEncode(e)
+		return oct, hex.EncodeToString(ed25519.Sign(priv, oct))
+	}
+	cov := func(subject, name string, covered bool) map[string]any {
+		return map[string]any{"subject": subject, "name": name, "covered": covered}
+	}
 	ci, other := pubOf(0x11), pubOf(0x22)
 
 	if err := delCase("holder grants", func(st *Store, priv ed25519.PrivateKey, h string) {
 		o, sg := signDelFor(priv, opDelegate, "d1/*", ci, 1, 0)
 		_, _ = apiDelegate(st, o, sg, h)
-	}, 0x0a, "d1/*", []string{ci}, "the holder may grant publication rights"); err != nil {
+	}, 0x0a, "d1/*", []string{ci}, nil, "the holder may grant publication rights"); err != nil {
 		return err
 	}
 	if err := delCase("revocation removes the delegate", func(st *Store, priv ed25519.PrivateKey, h string) {
@@ -1935,7 +1970,7 @@ func writeReserveVectors(write func(string, []byte) error) error {
 		_, _ = apiDelegate(st, o, sg, h)
 		o, sg = signDelFor(priv, opRevoke, "d2/*", ci, 1, 1)
 		_, _ = apiDelegate(st, o, sg, h)
-	}, 0x0b, "d2/*", []string{}, "DEL-REVOCABLE: withdrawal takes effect from the point it is recorded"); err != nil {
+	}, 0x0b, "d2/*", []string{}, nil, "DEL-REVOCABLE: withdrawal takes effect from the point it is recorded"); err != nil {
 		return err
 	}
 	if err := delCase("a NON-HOLDER cannot grant", func(st *Store, _ ed25519.PrivateKey, _ string) {
@@ -1943,7 +1978,7 @@ func writeReserveVectors(write func(string, []byte) error) error {
 		ipub := hex.EncodeToString(imp.Public().(ed25519.PublicKey))
 		o, sg := signDelFor(imp, opDelegate, "d3/*", ci, 1, 0)
 		_, _ = apiDelegate(st, o, sg, ipub)
-	}, 0x0c, "d3/*", []string{}, "DEL-GRANTOR-IS-HOLDER: a grant by a key that does not hold the prefix confers nothing"); err != nil {
+	}, 0x0c, "d3/*", []string{}, nil, "DEL-GRANTOR-IS-HOLDER: a grant by a key that does not hold the prefix confers nothing"); err != nil {
 		return err
 	}
 	if err := delCase("a DELEGATE cannot delegate onward", func(st *Store, priv ed25519.PrivateKey, h string) {
@@ -1952,26 +1987,26 @@ func writeReserveVectors(write func(string, []byte) error) error {
 		d := seeded(0x11)
 		o, sg = signDelFor(d, opDelegate, "d4/*", other, 1, 0)
 		_, _ = apiDelegate(st, o, sg, ci)
-	}, 0x0d, "d4/*", []string{ci}, "DEL-PERMISSION-NOT-AUTHORITY: permission never becomes authority"); err != nil {
+	}, 0x0d, "d4/*", []string{ci}, nil, "DEL-PERMISSION-NOT-AUTHORITY: permission never becomes authority"); err != nil {
 		return err
 	}
 	if err := delCase("a STALE grant is refused", func(st *Store, priv ed25519.PrivateKey, h string) {
 		o, sg := signDelFor(priv, opDelegate, "d5/*", ci, 7, 0) // wrong authority revision
 		_, _ = apiDelegate(st, o, sg, h)
-	}, 0x0e, "d5/*", []string{}, "the compare-and-swap refuses a grant signed against an authority state the prefix has left"); err != nil {
+	}, 0x0e, "d5/*", []string{}, nil, "the compare-and-swap refuses a grant signed against an authority state the prefix has left"); err != nil {
 		return err
 	}
 	if err := delCase("an INVALID SIGNATURE is refused", func(st *Store, priv ed25519.PrivateKey, h string) {
 		o, _ := signDelFor(priv, opDelegate, "d6/*", ci, 1, 0)
 		bad := hex.EncodeToString(ed25519.Sign(priv, append(o, ' ')))
 		_, _ = apiDelegate(st, o, bad, h)
-	}, 0x0f, "d6/*", []string{}, "a signature over different bytes confers nothing"); err != nil {
+	}, 0x0f, "d6/*", []string{}, nil, "a signature over different bytes confers nothing"); err != nil {
 		return err
 	}
 	if err := delCase("a REGISTRY-AUTHORED label cannot create delegation", func(st *Store, priv ed25519.PrivateKey, h string) {
 		// An entry the registry labelled `delegate` with no signed envelope behind it.
 		_ = st.AppendLog(&LogEntry{Author: h, Name: "d7/*", Kind: kindDelegate, Status: "accepted"})
-	}, 0x10, "d7/*", []string{}, "kind and status are written by the registry and covered by no signature; only a signed envelope grants"); err != nil {
+	}, 0x10, "d7/*", []string{}, nil, "kind and status are written by the registry and covered by no signature; only a signed envelope grants"); err != nil {
 		return err
 	}
 	// AUTH-ACCEPTANCE-IS-THE-BOUNDARY. A validly signed delegation that no registry
@@ -1988,8 +2023,47 @@ func writeReserveVectors(write func(string, []byte) error) error {
 			// refusal. The signature verifies; the entry is real; the grant is not.
 			_ = st.AppendLog(&LogEntry{Author: h, Name: "d8/*", Kind: kindDelegate,
 				Status: "rejected", EnvelopeB64: encodeEnvelopeB64(o), AuthorPubkey: h, AuthorSig: sg})
-		}, 0x12, "d8/*", []string{},
+		}, 0x12, "d8/*", []string{}, nil,
 		"the signature is valid and the statement is evidence of intent; only an ACCEPTED entry creates state"); err != nil {
+		return err
+	}
+	// --- DEL-SCOPE: a grant narrower than the whole prefix ------------------------
+	//
+	// SPEC §8.7.7 DEL-SCOPE. A scoped delegate may bind only names its scope covers;
+	// the holder is unaffected. Witnessed because the coverage rule is normative and
+	// had no fixture: a second kernel could grant the whole prefix on a /3 envelope
+	// and pass every byte-reproduction test, since scope changes behaviour, not bytes
+	// a whole-prefix vector mentions.
+	if err := delCase("a scope narrows a grant to one name", func(st *Store, priv ed25519.PrivateKey, h string) {
+		o, sg := signScopedDelFor(priv, opDelegate, "d9/*", ci, "d9/report", 1, 0)
+		_, _ = apiDelegate(st, o, sg, h)
+	}, 0x13, "d9/*", []string{ci}, []map[string]any{
+		cov(ci, "d9/report", true),  // the exact scoped name
+		cov(ci, "d9/other", false),  // any other name under the prefix
+		cov(ci, "d9/report/x", false), // an exact-name scope is not a prefix
+	}, "DEL-SCOPE: an exact-name scope covers only that name"); err != nil {
+		return err
+	}
+	if err := delCase("a sub-prefix scope covers its subtree", func(st *Store, priv ed25519.PrivateKey, h string) {
+		o, sg := signScopedDelFor(priv, opDelegate, "da/*", ci, "da/tools/*", 1, 0)
+		_, _ = apiDelegate(st, o, sg, h)
+	}, 0x14, "da/*", []string{ci}, []map[string]any{
+		cov(ci, "da/tools/fmt", true),   // under the sub-prefix
+		cov(ci, "da/tools/sub/x", true), // segment-matched, any depth
+		cov(ci, "da/lib", false),        // outside the sub-prefix
+		cov(ci, "da/toolsx", false),     // segment boundary, not substring
+	}, "DEL-SCOPE: a sub-prefix scope covers exactly RES-SEGMENT-MATCH under it"); err != nil {
+		return err
+	}
+	if err := delCase("re-scoping the same subject replaces the scope", func(st *Store, priv ed25519.PrivateKey, h string) {
+		o, sg := signScopedDelFor(priv, opDelegate, "db/*", ci, "db/first", 1, 0)
+		_, _ = apiDelegate(st, o, sg, h)
+		o, sg = signScopedDelFor(priv, opDelegate, "db/*", ci, "db/second", 1, 1)
+		_, _ = apiDelegate(st, o, sg, h)
+	}, 0x15, "db/*", []string{ci}, []map[string]any{
+		cov(ci, "db/second", true), // the new scope governs
+		cov(ci, "db/first", false), // the superseded scope no longer covers
+	}, "DEL-SCOPE-ONE-PER-SUBJECT: a later grant replaces the earlier scope"); err != nil {
 		return err
 	}
 	return write("reserve/vectors.jsonl", []byte(out.String()))

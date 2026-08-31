@@ -38,6 +38,14 @@ import (
 // reading them would invalidate correct signatures rather than reject bad ones.
 const delegateVersion = "oath-delegate/2"
 
+// delegateVersion3 adds an optional SCOPE narrower than the whole prefix (#66): a
+// holder may grant a key permission to bind one exact name (`michael/item-report`)
+// or one sub-prefix (`michael/tools/*`) rather than every name under the reservation.
+// A /2 grant remains the WHOLE-prefix grant, unchanged; /3 is written only when a
+// scope is given, so old signatures keep verifying and the common case is byte-for-
+// byte what it was.
+const delegateVersion3 = "oath-delegate/3"
+
 // delegateVersionV1 predates delegation_rev. Its statements remain valid and are
 // counted by replay; what they cannot do is state which permission-state they
 // replace, which is exactly the gap /2 closes.
@@ -60,7 +68,14 @@ type delEnvelope struct {
 	// Subject is the key being granted or revoked. It is a DIFFERENT key from
 	// Pubkey, and that difference is the whole point — a statement where they were
 	// equal would be a holder granting themselves what they already have.
-	Subject      string
+	Subject string
+	// Scope narrows a grant below the whole prefix (/3 only, #66): an exact name
+	// (`michael/item-report`) or a sub-prefix (`michael/tools/*`), and it MUST lie
+	// strictly under Namespace. Empty means the whole prefix — the /1//2 grant, whose
+	// bytes are unchanged. A delegate may bind a name iff its scope covers it
+	// (patternSpecificity ≥ 0). One scope per (prefix, subject): a later grant to the
+	// same subject replaces the earlier, and a revoke removes it whatever the scope.
+	Scope        string
 	Authority    string   // the holder as of signing; must be Pubkey
 	AuthorityRev *big.Int // the prefix's authority revision at signing
 	// DelegationRev versions the DELEGATED-PERMISSION state of this prefix,
@@ -88,7 +103,13 @@ type delEnvelope struct {
 	version string
 }
 
-func delEncode(e delEnvelope) []byte { return delEncodeAs(e, delegateVersion) }
+func delEncode(e delEnvelope) []byte {
+	// A scoped grant is /3; an unscoped one stays /2, byte-identical to before.
+	if e.Scope != "" {
+		return delEncodeAs(e, delegateVersion3)
+	}
+	return delEncodeAs(e, delegateVersion)
+}
 
 // delEncodeAs renders under a SPECIFIC format version, so a historical statement
 // can be reproduced for verification rather than only re-signed under the current
@@ -104,9 +125,16 @@ func delEncodeAs(e delEnvelope, version string) []byte {
 		{"op", e.Op},
 		{"namespace", e.Namespace},
 		{"subject", e.Subject},
-		{"authority", e.Authority},
-		{"authority_rev", e.AuthorityRev.String()},
 	}
+	// /3 carries the scope, positioned right after the subject it narrows. /1 and /2
+	// have no such line, so their bytes are exactly what they always were.
+	if version == delegateVersion3 {
+		kvs = append(kvs, [2]string{"scope", e.Scope})
+	}
+	kvs = append(kvs,
+		[2]string{"authority", e.Authority},
+		[2]string{"authority_rev", e.AuthorityRev.String()},
+	)
 	if version != delegateVersionV1 {
 		kvs = append(kvs, [2]string{"delegation_rev", e.DelegationRev.String()})
 	}
@@ -166,6 +194,50 @@ func (e delEnvelope) validate() error {
 	if e.Subject == e.Pubkey {
 		return fmt.Errorf("subject and pubkey are the same key: a holder cannot delegate to itself")
 	}
+	if e.Scope != "" {
+		if err := validScopeUnder(e.Scope, e.Namespace); err != nil {
+			return err
+		}
+		// A revocation removes the subject's grant whatever its scope, so a scope on
+		// a revoke would attest to nothing and invite a false expectation of
+		// per-scope withdrawal, which this version does not have.
+		if e.Op != opDelegate {
+			return fmt.Errorf("a scope may only accompany a delegate: a revoke removes the subject's grant whatever its scope")
+		}
+	}
+	return nil
+}
+
+// validScopeUnder checks a /3 delegation scope: an exact name or a sub-prefix that
+// lies STRICTLY under the reserved namespace. Strictly, because a scope equal to the
+// whole prefix is the /2 grant and must be written as one (there is exactly one
+// encoding of "the whole prefix"), and a scope outside the prefix would purport to
+// grant what the holder does not govern.
+func validScopeUnder(scope, namespace string) error {
+	if !envelopeSafe(scope) {
+		return fmt.Errorf("scope contains a control character")
+	}
+	nsBase, ok := strings.CutSuffix(namespace, "/*")
+	if !ok || nsBase == "" {
+		return fmt.Errorf("namespace %q is not a prefix pattern", namespace)
+	}
+	if sub, isPrefix := strings.CutSuffix(scope, "/*"); isPrefix {
+		// A sub-prefix scope must itself be a well-formed prefix pattern.
+		if err := validNamespacePattern(scope); err != nil {
+			return fmt.Errorf("scope %q is not a valid sub-prefix: %w", scope, err)
+		}
+		if !strings.HasPrefix(sub, nsBase+"/") {
+			return fmt.Errorf("scope %q must lie strictly under the reserved namespace %q", scope, namespace)
+		}
+		return nil
+	}
+	// An exact-name scope: no glob, non-empty, strictly under the prefix.
+	if scope == "" || strings.Contains(scope, "*") {
+		return fmt.Errorf("scope %q must be an exact name or a sub-prefix ending in \"/*\"", scope)
+	}
+	if !strings.HasPrefix(scope, nsBase+"/") {
+		return fmt.Errorf("scope %q must lie strictly under the reserved namespace %q", scope, namespace)
+	}
 	return nil
 }
 
@@ -177,6 +249,8 @@ func parseDelegateEnvelope(b []byte) (delEnvelope, error) {
 	// closes — so replay counts it while nothing may be SUBMITTED under it.
 	var want []string
 	switch lines[0] {
+	case delegateVersion3:
+		want = []string{"op", "namespace", "subject", "scope", "authority", "authority_rev", "delegation_rev", "pubkey"}
 	case delegateVersion:
 		want = []string{"op", "namespace", "subject", "authority", "authority_rev", "delegation_rev", "pubkey"}
 	case delegateVersionV1:
@@ -206,8 +280,14 @@ func parseDelegateEnvelope(b []byte) (delEnvelope, error) {
 			return delEnvelope{}, fmt.Errorf("delegation_rev %q is not a base-10 integer", v)
 		}
 	}
+	// /3 carries a scope; /1 and /2 have no such key, so vals["scope"] is "" for them
+	// — exactly the whole-prefix meaning. A /3 with an empty scope is malformed: the
+	// whole prefix has one encoding, and it is /2.
+	if lines[0] == delegateVersion3 && vals["scope"] == "" {
+		return delEnvelope{}, fmt.Errorf("oath-delegate/3 requires a non-empty scope; the whole prefix is a /2 grant")
+	}
 	e := delEnvelope{Op: vals["op"], Namespace: vals["namespace"], Subject: vals["subject"],
-		Authority: vals["authority"], AuthorityRev: rev, DelegationRev: drev,
+		Scope: vals["scope"], Authority: vals["authority"], AuthorityRev: rev, DelegationRev: drev,
 		Pubkey: vals["pubkey"], version: lines[0]}
 	if err := e.validate(); err != nil {
 		return delEnvelope{}, err
@@ -269,8 +349,12 @@ const kindDelegate = "delegate"
 // checked against the authority state derived from the entries before it. A key
 // that briefly held a prefix cannot leave behind delegations that outlive its
 // authority.
-func delegates(st *Store) map[string]map[string]bool {
-	out := map[string]map[string]bool{}
+// The value is each subject's SCOPE: the name pattern it may bind under the prefix —
+// the whole prefix (the reservation namespace) for a /1//2 grant, or the narrower
+// exact name / sub-prefix a /3 grant carried. A subject present in the map is a
+// current delegate; its scope decides which names it may bind (mayBindUnder).
+func delegates(st *Store) map[string]map[string]string {
+	out := map[string]map[string]string{}
 	for _, e := range st.ReadLog() {
 		if e.Status != "accepted" || e.EnvelopeB64 == "" {
 			continue
@@ -316,12 +400,19 @@ func delegates(st *Store) map[string]map[string]bool {
 		}
 		set := out[env.Namespace]
 		if set == nil {
-			set = map[string]bool{}
+			set = map[string]string{}
 			out[env.Namespace] = set
 		}
 		switch env.Op {
 		case opDelegate:
-			set[env.Subject] = true
+			// A /1//2 grant carries no scope and means the whole prefix; a /3 grant
+			// carries the narrower one. A later grant to the same subject replaces the
+			// earlier — one scope per (prefix, subject).
+			scope := env.Scope
+			if scope == "" {
+				scope = env.Namespace
+			}
+			set[env.Subject] = scope
 		case opRevoke:
 			delete(set, env.Subject)
 		}
@@ -371,13 +462,18 @@ func delegationRev(st *Store, namespace string) *big.Int {
 	return n
 }
 
-// mayBindUnder reports whether `key` may bind names under the reservation
-// governing `name` — as the holder, or as a current delegate of it.
-func mayBindUnder(st *Store, r reservation, key string) bool {
+// mayBindUnder reports whether `key` may bind `name` under the reservation `r`
+// governing it — as the holder (any name under the prefix), or as a current delegate
+// whose SCOPE covers this particular name. A delegate's scope is the whole prefix for
+// a /1//2 grant, or the narrower exact name / sub-prefix a /3 grant carried;
+// patternSpecificity ≥ 0 means the scope covers the name, and it handles both an exact
+// name and a `prefix/*` pattern.
+func mayBindUnder(st *Store, r reservation, key, name string) bool {
 	if key == r.Pubkey {
 		return true
 	}
-	return delegates(st)[r.Namespace][key]
+	scope, ok := delegates(st)[r.Namespace][key]
+	return ok && patternSpecificity(scope, name) >= 0
 }
 
 // delegateReport is what a delegation attempt returns to its caller.
@@ -387,7 +483,8 @@ type delegateReport struct {
 	Subject   string
 	Holder    string
 	Rev       *big.Int
-	Active    []string // the delegate set AFTER this operation
+	Active    []string          // the delegate set AFTER this operation, keys sorted
+	Scopes    map[string]string // each active key -> its scope (the namespace when whole-prefix)
 }
 
 // apiDelegate applies a signed delegation or revocation, or refuses it.
@@ -472,12 +569,20 @@ func apiDelegate(st *Store, octets []byte, sigHex, principal string) (delegateRe
 	active := delegates(st)[env.Namespace]
 	switch env.Op {
 	case opDelegate:
-		if active[env.Subject] {
-			return refuse("%s is already a delegate of %q: re-granting would journal a record that changes nothing",
-				shortHash(env.Subject), env.Namespace)
+		// The stored scope is the grant's scope, or the whole prefix when unscoped.
+		// Re-granting the SAME subject at the SAME scope changes nothing and is
+		// refused; re-granting it at a DIFFERENT scope is a deliberate re-scoping and
+		// is allowed (one scope per subject — the new grant replaces the old).
+		newScope := env.Scope
+		if newScope == "" {
+			newScope = env.Namespace
+		}
+		if cur, ok := active[env.Subject]; ok && cur == newScope {
+			return refuse("%s is already a delegate of %q at scope %q: re-granting would journal a record that changes nothing",
+				shortHash(env.Subject), env.Namespace, newScope)
 		}
 	case opRevoke:
-		if !active[env.Subject] {
+		if _, ok := active[env.Subject]; !ok {
 			// Refused rather than treated as a no-op. A revocation that appears to
 			// succeed against a key that was never granted tells an operator they have
 			// removed access they never gave — which is exactly the wrong thing to
@@ -497,12 +602,26 @@ func apiDelegate(st *Store, octets []byte, sigHex, principal string) (delegateRe
 
 	now := delegates(st)[env.Namespace]
 	var out []string
-	for k := range now {
+	scopes := map[string]string{}
+	for k, s := range now {
 		out = append(out, k)
+		scopes[k] = s
 	}
 	sort.Strings(out)
 	return delegateReport{Op: env.Op, Namespace: env.Namespace, Subject: env.Subject,
-		Holder: holder, Rev: new(big.Int).Set(rev), Active: out}, nil
+		Holder: holder, Rev: new(big.Int).Set(rev), Active: out, Scopes: scopes}, nil
+}
+
+// scopeDescription renders a stored scope for a human: the whole prefix reads as
+// exactly that, a narrower scope names what it admits.
+func scopeDescription(scope, namespace string) string {
+	if scope == namespace || scope == "" {
+		return "the whole prefix"
+	}
+	if strings.HasSuffix(scope, "/*") {
+		return "names under " + scope
+	}
+	return "only " + scope
 }
 
 func renderDelegateReport(r delegateReport) string {
@@ -521,15 +640,15 @@ func renderDelegateReport(r delegateReport) string {
 	}
 	fmt.Fprintf(&b, "Keys that may now publish under %s (besides the holder):\n", r.Namespace)
 	for _, k := range r.Active {
-		fmt.Fprintf(&b, "  %s\n", k)
+		fmt.Fprintf(&b, "  %s  (%s)\n", k, scopeDescription(r.Scopes[k], r.Namespace))
 	}
-	fmt.Fprintf(&b, "\nEach may bind names under this prefix and nothing else. None may reserve,\n")
+	fmt.Fprintf(&b, "\nEach may bind the names shown above and nothing else. None may reserve,\n")
 	fmt.Fprintf(&b, "delegate onward, or revoke. The holder may withdraw any of them at any time.\n")
 	return b.String()
 }
 
 // cmdDelegate grants or withdraws publication rights, locally or against a registry.
-func cmdDelegate(local *Store, endpoint, keyPath, kmsKey, namespace, subject, op string, dryRun, assumeYes bool) {
+func cmdDelegate(local *Store, endpoint, keyPath, kmsKey, namespace, subject, op, scope string, dryRun, assumeYes bool) {
 	if namespace == "" || subject == "" {
 		// The flag differs by operation: you delegate TO a key and revoke FROM one.
 		// Both are accepted by the parser, but the usage message must name the one
@@ -538,10 +657,18 @@ func cmdDelegate(local *Store, endpoint, keyPath, kmsKey, namespace, subject, op
 		if op == opRevoke {
 			flag = "--from"
 		}
-		fail(fmt.Errorf("usage: oath %s <namespace>/* %s <pubkey> [--key <file> | --kms-key <res>] [--remote <url>]", op, flag))
+		fail(fmt.Errorf("usage: oath %s <namespace>/* %s <pubkey> [--scope <name|sub/*>] [--key <file> | --kms-key <res>] [--remote <url>]", op, flag))
 	}
 	if err := validNamespacePattern(namespace); err != nil {
 		fail(err)
+	}
+	if scope != "" {
+		if op == opRevoke {
+			fail(fmt.Errorf("--scope is not used with revoke: a revoke removes the delegate's grant whatever its scope"))
+		}
+		if err := validScopeUnder(scope, namespace); err != nil {
+			fail(err)
+		}
 	}
 	if _, err := hex.DecodeString(subject); err != nil || len(subject) != ed25519.PublicKeySize*2 {
 		fail(fmt.Errorf("subject %q is not a 32-byte hex Ed25519 public key", subject))
@@ -578,7 +705,7 @@ func cmdDelegate(local *Store, endpoint, keyPath, kmsKey, namespace, subject, op
 	if endpoint != "" {
 		drev = remoteDelegationRev(ctx, endpoint, signer, namespace)
 	}
-	env := delEnvelope{Op: op, Namespace: namespace, Subject: subject,
+	env := delEnvelope{Op: op, Namespace: namespace, Subject: subject, Scope: scope,
 		Authority: holder, AuthorityRev: rev, DelegationRev: drev, Pubkey: pubHex}
 	octets := delEncode(env)
 	fmt.Printf("EXACT BYTES TO BE SIGNED (this is the statement, not a summary of it):\n")
@@ -586,7 +713,11 @@ func cmdDelegate(local *Store, endpoint, keyPath, kmsKey, namespace, subject, op
 		fmt.Printf("  | %s\n", line)
 	}
 	if op == opDelegate {
-		fmt.Printf("\nThis lets %s… publish under %s. It does NOT make them the owner:\n", shortHash(subject), namespace)
+		where := namespace
+		if scope != "" {
+			where = scope + " (only)"
+		}
+		fmt.Printf("\nThis lets %s… publish %s. It does NOT make them the owner:\n", shortHash(subject), where)
 		fmt.Printf("they cannot reserve, cannot delegate onward, and you can revoke at any time.\n")
 	} else {
 		fmt.Printf("\nThis stops %s… publishing under %s from the moment it is recorded.\n", shortHash(subject), namespace)

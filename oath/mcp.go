@@ -73,7 +73,7 @@ func mcpTools() []map[string]any {
 		},
 		{
 			"name":        "delegate",
-			"description": "Grant or withdraw permission to publish under a namespace you hold (SPEC §8.7.7). Submit the exact canonical octets of a signed oath-delegate/1 envelope, base64-encoded, plus its hex signature. This grants PERMISSION, never AUTHORITY: a delegate may bind names under the prefix and may not reserve, delegate onward, or revoke, and the holder may withdraw them at any time. Requires a signed request by the current holder.",
+			"description": "Grant or withdraw permission to publish under a namespace you hold (SPEC §8.7.7). Submit the exact canonical octets of a signed delegation envelope, base64-encoded, plus its hex signature. A grant conveys the WHOLE prefix (oath-delegate/2) or, to narrow it, a single scope — an exact name or a sub-prefix strictly under the namespace (oath-delegate/3, carrying a scope line). This grants PERMISSION, never AUTHORITY: a delegate may bind the names its scope covers and may not reserve, delegate onward, or revoke, and the holder may withdraw them at any time. Requires a signed request by the current holder.",
 			"inputSchema": obj(map[string]any{
 				"envelope":  str("base64 of the exact canonical delegation octets that were signed"),
 				"signature": str("hex Ed25519 signature over those octets"),
@@ -343,11 +343,14 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 			// both, and a delegation revision without the delegates tells it
 			// something has changed while withholding what.
 			ds := []string{}
-			for k := range delegates(st)[a.Name] {
+			scopes := map[string]string{}
+			for k, s := range delegates(st)[a.Name] {
 				ds = append(ds, k)
+				scopes[k] = s // the whole prefix, or the narrower scope of a /3 grant
 			}
 			sort.Strings(ds)
 			resp["delegates"] = ds
+			resp["delegate_scopes"] = scopes
 		} else if r, ok := governingReservation(st, a.Name); ok {
 			resp["namespace"], resp["authority"], resp["authority_rev"] = r.Namespace, r.Pubkey, r.Rev.String()
 		} else {

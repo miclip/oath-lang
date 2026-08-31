@@ -268,8 +268,8 @@ func evalPolicy(st *Store, pol *Policy, name, h string, def *Def, specAuthor, bo
 			// here rather than at authentication because it is an authorization
 			// question: the delegate is fully authenticated and simply may or may
 			// not act under this prefix.
-			if !mayBindUnder(st, res, m.Author) {
-				return false, fmt.Sprintf("policy: %q lies under namespace %q, reserved to key %s… by a signed authority record; submitter %q is neither the holder nor a current delegate and may not bind names there",
+			if !mayBindUnder(st, res, m.Author, name) {
+				return false, fmt.Sprintf("policy: %q lies under namespace %q, reserved to key %s… by a signed authority record; submitter %q is neither the holder nor a delegate whose scope covers this name",
 					name, res.Namespace, shortHash(res.Pubkey), m.Author)
 			}
 		}

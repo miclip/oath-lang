@@ -581,7 +581,7 @@ func main() {
 		keyFile := os.Getenv("OATH_KEY")
 		kmsKey := os.Getenv("OATH_KMS_KEY")
 		dryRun, yes := false, false
-		namespace, subject := "", ""
+		namespace, subject, scope := "", "", ""
 		rest := args[1:]
 		for i := 0; i < len(rest); i++ {
 			switch {
@@ -596,6 +596,9 @@ func main() {
 				i++
 			case (rest[i] == "--to" || rest[i] == "--from") && i+1 < len(rest):
 				subject = rest[i+1]
+				i++
+			case rest[i] == "--scope" && i+1 < len(rest):
+				scope = rest[i+1]
 				i++
 			case rest[i] == "--dry-run":
 				dryRun = true
@@ -620,7 +623,7 @@ func main() {
 		if args[0] == "revoke" {
 			op = opRevoke
 		}
-		cmdDelegate(st, endpoint, keyFile, kmsKey, namespace, subject, op, dryRun, yes)
+		cmdDelegate(st, endpoint, keyFile, kmsKey, namespace, subject, op, scope, dryRun, yes)
 	case "publish":
 		// Signed publication (#83): show the exact bytes, sign locally, send them
 		// unchanged, then confirm the registry persisted the same bytes.
@@ -1892,8 +1895,8 @@ var knownFlags = map[string]map[string]bool{
 	"hydrate":   set("--from", "--remote", "--key"),
 	"clone":     set("--lock", "--from", "--remote", "--key", "--author"),
 	"reserve":   set("--remote", "--key", "--kms-key", "--dry-run", "--yes", "-y"),
-	"delegate":  set("--remote", "--key", "--kms-key", "--to", "--dry-run", "--yes", "-y"),
-	"revoke":    set("--remote", "--key", "--kms-key", "--from", "--dry-run", "--yes", "-y"),
+	"delegate":  set("--remote", "--key", "--kms-key", "--to", "--scope", "--dry-run", "--yes", "-y"),
+	"revoke":    set("--remote", "--key", "--kms-key", "--from", "--scope", "--dry-run", "--yes", "-y"),
 	"transfer":  set("--remote", "--key", "--kms-key", "--recipient-key", "--to", "--dry-run", "--yes", "-y"),
 	"authority": set("--remote", "--key", "--kms-key"),
 	"ls":        set("--remote", "--key", "--kms-key", "--local"),

@@ -93,7 +93,7 @@ func TestDelegateHoldsNoAuthority(t *testing.T) {
 	// Cannot delegate onward: its own grant names itself as authority, which it is not.
 	otherHex, _ := newKey(t)
 	appendDel(t, st, ci, opDelegate, "alice/*", otherHex, 1)
-	if delegates(st)["alice/*"][otherHex] {
+	if hasDel(st, "alice/*", otherHex) {
 		t.Error("a delegate granted publication rights onward — permission became authority")
 	}
 }
@@ -203,7 +203,7 @@ func TestRejectedSignedStatementIsAuthorityNeutral(t *testing.T) {
 	}
 
 	// 1. it grants no authority, and 2. replay ignores it
-	if delegates(st)["n8/*"][ciHex] {
+	if hasDel(st, "n8/*", ciHex) {
 		t.Error("a REJECTED entry granted authority — replay counted a statement no registry accepted")
 	}
 	// 3. explain reports no active delegation
@@ -385,7 +385,7 @@ func TestPreRevocationGrantIsNotReplayable(t *testing.T) {
 	if _, err := apiDelegate(st, roct, rsig, hHex); err != nil {
 		t.Fatal(err)
 	}
-	if delegates(st)["r6/*"][ciHex] {
+	if hasDel(st, "r6/*", ciHex) {
 		t.Fatal("revocation did not take effect")
 	}
 
@@ -394,7 +394,7 @@ func TestPreRevocationGrantIsNotReplayable(t *testing.T) {
 	if err == nil {
 		t.Fatal("the pre-revocation grant was ACCEPTED again — revocation is not durable")
 	}
-	if delegates(st)["r6/*"][ciHex] {
+	if hasDel(st, "r6/*", ciHex) {
 		t.Fatal("the replayed grant re-activated the delegate")
 	}
 	// And the refusal is preserved, conferring nothing.
@@ -408,7 +408,7 @@ func TestPreRevocationGrantIsNotReplayable(t *testing.T) {
 	if _, err := apiDelegate(st, foct, fsig, hHex); err != nil {
 		t.Fatalf("a fresh grant at the current state was refused: %v", err)
 	}
-	if !delegates(st)["r6/*"][ciHex] {
+	if !hasDel(st, "r6/*", ciHex) {
 		t.Error("the fresh grant did not take effect")
 	}
 	if err := st.VerifyLog(); err != nil {
@@ -448,7 +448,7 @@ func TestLegacyGrantIsNotReplayableAfterRevocation(t *testing.T) {
 	if _, err := apiDelegate(st, goct, gsig, hHex); err != nil {
 		t.Fatalf("a legacy /1 grant was refused as a first delegation: %v", err)
 	}
-	if !delegates(st)["v1/*"][ciHex] {
+	if !hasDel(st, "v1/*", ciHex) {
 		t.Fatal("the legacy grant did not take effect")
 	}
 	roct, rsig := signDel(t, h, opRevoke, "v1/*", ciHex, 1, 1)
@@ -459,7 +459,7 @@ func TestLegacyGrantIsNotReplayableAfterRevocation(t *testing.T) {
 	if _, err := apiDelegate(st, goct, gsig, hHex); err == nil {
 		t.Fatal("the legacy grant was accepted again after revocation — replay is live")
 	}
-	if delegates(st)["v1/*"][ciHex] {
+	if hasDel(st, "v1/*", ciHex) {
 		t.Fatal("the replayed legacy grant re-activated the delegate")
 	}
 	last := st.ReadLog()[len(st.ReadLog())-1]

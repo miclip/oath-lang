@@ -3417,6 +3417,31 @@ it could never undo. Delegation makes that choice unnecessary.
 delegate MUST NOT reserve any prefix, MUST NOT delegate onward, and MUST NOT
 revoke. Only the holder may grant or withdraw, and authority never moves.
 
+**DEL-SCOPE.** A grant MAY narrow the permission it conveys to a SCOPE smaller
+than the whole prefix. A scope is either an exact name or a sub-prefix `p/*`, and
+MUST lie strictly under the granting namespace: segment-matched by
+RES-SEGMENT-MATCH, and NOT equal to the namespace itself — a grant OF the whole
+prefix is an unscoped grant, not a scope equal to it. A grant carrying no scope
+conveys the whole prefix, exactly as before this version.
+
+A scoped delegate MAY bind a name only when the scope COVERS it. An exact-name
+scope covers only that one name; a sub-prefix scope `p/*` covers exactly the names
+RES-SEGMENT-MATCH admits under `p`. A name outside the scope is refused as though
+the key were not a delegate at all. The holder is unaffected by any grant's scope,
+and an unscoped delegate continues to cover every name under the prefix.
+
+A scope narrows PERMISSION, never AUTHORITY (DEL-PERMISSION-NOT-AUTHORITY is
+undiminished): a scoped delegate still may not reserve, delegate onward, or
+revoke, and the names it binds are recovered by the holder on revocation
+(DEL-REVOCATION-RECOVERS) whatever the scope was.
+
+**DEL-SCOPE-ONE-PER-SUBJECT.** A prefix carries at most one scope per subject. A
+later accepted grant to the same subject REPLACES the earlier scope rather than
+adding to it; re-granting at the SAME scope changes nothing and is refused under
+DEL-ACCEPTANCE, while re-granting at a DIFFERENT scope is a deliberate re-scoping,
+is accepted, and advances the delegation revision. A revocation removes the
+subject's grant whatever its scope.
+
 **DEL-GRANTOR-IS-HOLDER.** A delegation is counted only if its `authority` equals
 its `pubkey` AND that key is the prefix's holder as derived from the entries
 preceding it. A key that briefly held a prefix MUST NOT leave behind delegations
@@ -3491,10 +3516,53 @@ journal, never read from a stored table. A stored permission table could be
 edited to un-revoke a key; a replayed one cannot, because the withdrawal remains
 in the history.
 
-The envelope is `oath-delegate/1`, carrying `op` (`delegate` or `revoke`),
-`namespace`, `subject`, and the same `(authority, authority_rev)` compare-and-swap
-a reservation carries — a grant signed against an authority state the prefix has
-since left is a grant its signer would not make today.
+The envelope carries `op` (`delegate` or `revoke`), `namespace`, `subject`, and
+the same `(authority, authority_rev)` compare-and-swap a reservation carries — a
+grant signed against an authority state the prefix has since left is a grant its
+signer would not make today. Three versions exist, distinguished by their first
+line. The canonical signed octets, in this exact order and count, terminated by
+LF with no trailing blank line and no space around `=`:
+
+```
+oath-delegate/2
+op=<delegate | revoke>
+namespace=<prefix pattern>
+subject=<64 lowercase hex>
+authority=<64 hex | ->
+authority_rev=<decimal>
+delegation_rev=<decimal>
+pubkey=<64 hex>
+```
+
+```
+oath-delegate/3
+op=delegate
+namespace=<prefix pattern>
+subject=<64 lowercase hex>
+scope=<exact name | sub-prefix pattern>
+authority=<64 hex | ->
+authority_rev=<decimal>
+delegation_rev=<decimal>
+pubkey=<64 hex>
+```
+
+`/3` differs from `/2` in exactly one line: a `scope` line immediately after
+`subject`, carrying the DEL-SCOPE pattern. The two are otherwise byte-identical in
+field order and count. `/3` is GRANT-ONLY: its `op` MUST be `delegate`. A
+revocation removes the subject's grant whatever its scope (DEL-SCOPE-ONE-PER-SUBJECT),
+so a scoped `revoke` would attest to a per-scope withdrawal this version does not
+have — a `revoke` is therefore always a `/2` (or `/1`), never a `/3`, and a `/3`
+envelope whose `op` is `revoke` MUST be refused. Version selection is not free: a
+grant MUST be written as `/3` when and only when it is scoped — a `/3` envelope
+MUST carry a non-empty `scope`, and a whole-prefix grant MUST be a `/2` (never a
+`/3` whose scope equals the namespace). So a whole-prefix grant's wire form is
+unchanged by this version.
+
+`oath-delegate/1` is the original and carries no `delegation_rev`: its octets are
+the `/2` layout without that line. It reads as delegation state 0 — acceptable
+only as a prefix's FIRST delegation, and stale forever after (DEL-CAS). A `/1`
+grant conveys the whole prefix; there is no scoped `/1`. Existing `/1` and `/2`
+records replay identically under this version.
 
 #### 8.7.4 Authority replay and resolution
 

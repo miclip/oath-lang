@@ -261,8 +261,13 @@ func buildExplain(st *Store, name string) (*explainPkg, error) {
 	pkg.Provenance.Owner, pkg.Provenance.OwnerSource = nameOwner(st, name)
 	if r, ok := governingReservation(st, name); ok {
 		pkg.Provenance.Namespace, pkg.Provenance.NamespaceHolder = r.Namespace, r.Pubkey
-		for k := range delegates(st)[r.Namespace] {
-			pkg.Provenance.NamespaceDelegates = append(pkg.Provenance.NamespaceDelegates, k)
+		// Only delegates whose SCOPE covers THIS name can publish it — a delegate
+		// scoped to a different name under the prefix has no permission here, and
+		// listing it as one who "may bind names here" would misreport authority.
+		for k, scope := range delegates(st)[r.Namespace] {
+			if patternSpecificity(scope, name) >= 0 {
+				pkg.Provenance.NamespaceDelegates = append(pkg.Provenance.NamespaceDelegates, k)
+			}
 		}
 		sortStringsInPlace(pkg.Provenance.NamespaceDelegates)
 	}

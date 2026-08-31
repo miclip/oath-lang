@@ -459,7 +459,7 @@ func authorStatementKind(octets []byte) string {
 		return "publication"
 	case reserveVersion:
 		return "reservation"
-	case delegateVersion, delegateVersionV1:
+	case delegateVersion, delegateVersionV1, delegateVersion3:
 		return "delegation"
 	case transferVersion:
 		return "transfer"
@@ -745,12 +745,14 @@ func cmdAuthority(local *Store, endpoint, keyPath, kmsKey, query string) int {
 	localView := func() authorityView {
 		h, r := reservationRev(local, query)
 		ds := []string{}
-		for k := range delegates(local)[query] {
+		scopes := map[string]string{}
+		for k, s := range delegates(local)[query] {
 			ds = append(ds, k)
+			scopes[k] = s
 		}
 		sort.Strings(ds)
 		return authorityView{Holder: h, Rev: r, DelegationRev: delegationRev(local, query),
-			Delegates: ds, Source: localSource, Authoritative: endpoint == ""}
+			Delegates: ds, Scopes: scopes, Source: localSource, Authoritative: endpoint == ""}
 	}
 
 	// No registry configured: a reservation would be recorded locally, so the local
@@ -822,7 +824,7 @@ func renderAuthority(local *Store, query string, v authorityView, isPrefix bool)
 	}
 	fmt.Printf("%s is HELD by %s (authority revision %s)\n", query, v.Holder, v.Rev)
 	for _, k := range v.Delegates {
-		fmt.Printf("  publication delegated to %s\n", k)
+		fmt.Printf("  publication delegated to %s (%s)\n", k, scopeDescription(v.Scopes[k], query))
 	}
 	if v.DelegationRev != nil {
 		fmt.Printf("  delegation revision %s — a grant or revocation must state this value\n", v.DelegationRev)
