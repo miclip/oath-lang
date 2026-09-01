@@ -1,0 +1,67 @@
+; A verified peephole optimizer, and the prover demand it surfaces. An arithmetic
+; expression TREE, an evaluator, and a constant-folding optimizer whose PER-STEP
+; correctness proves but whose END-TO-END correctness (ev (opt e) = ev e) does not.
+; The failure is NOT a tree-induction gap — the identity rebuild's structural lemma
+; proves, and tree.oath's two-child inductions prove. It is composed-recursion: an
+; inductive goal that unfolds a recursive evaluator over terms built by another
+; recursive function. See optimizer-consumer-friction.md.
+
+(data Expr []
+  (Lit Int)
+  (Add Expr Expr)
+  (Mul Expr Expr))
+
+(defn ev [] [(e Expr)] Int
+  (match e
+    ((Lit n) n)
+    ((Add a b) (+ (ev a) (ev b)))
+    ((Mul a b) (* (ev a) (ev b)))))
+
+; Smart constructors fold two literals, else rebuild. (No wildcard patterns, so the
+; non-literal right operands are enumerated — friction in its own right.) Their PER-STEP
+; soundness — that folding preserves the value — PROVES directly.
+(defn add-s [] [(a Expr) (b Expr)] Expr
+  (match a
+    ((Lit m) (match b ((Lit n) (Lit (+ m n))) ((Add x y) (Add a b)) ((Mul x y) (Add a b))))
+    ((Add x y) (Add a b))
+    ((Mul x y) (Add a b)))
+  (prop sound [(a Expr) (b Expr)] (== (ev (add-s a b)) (+ (ev a) (ev b)))))
+
+(defn mul-s [] [(a Expr) (b Expr)] Expr
+  (match a
+    ((Lit m) (match b ((Lit n) (Lit (* m n))) ((Add x y) (Mul a b)) ((Mul x y) (Mul a b))))
+    ((Add x y) (Mul a b))
+    ((Mul x y) (Mul a b)))
+  (prop sound [(a Expr) (b Expr)] (== (ev (mul-s a b)) (* (ev a) (ev b)))))
+
+; The optimizer. Every piece it needs is proven (add-s.sound, mul-s.sound), yet its
+; END-TO-END correctness does not discharge even with both hinted — the composed
+; induction diverges (z3 returns unknown and exhausts the budget).
+(defn opt [] [(e Expr)] Expr
+  (match e
+    ((Lit n) (Lit n))
+    ((Add a b) (add-s (opt a) (opt b)))
+    ((Mul a b) (mul-s (opt a) (opt b))))
+  (prop preserves [(e Expr)] (== (ev (opt e)) (ev e))))
+
+; CONTROL 1 — the identity rebuild. Its STRUCTURAL lemma (ido e = e) proves by
+; induction, and once present, ev(ido e) = ev e proves DIRECTLY. This is the rescue
+; that a structure-preserving transformation admits — and the proof that tree
+; induction itself is not the wall.
+(defn ido [] [(e Expr)] Expr
+  (match e
+    ((Lit n) (Lit n))
+    ((Add a b) (Add (ido a) (ido b)))
+    ((Mul a b) (Mul (ido a) (ido b))))
+  (prop structure [(e Expr)] (== (ido e) e))
+  (prop preserves [(e Expr)] (== (ev (ido e)) (ev e))))
+
+; CONTROL 2 — a genuine value-preserving transformation (swap operands; correct because
+; + and * commute). It changes the tree, so NO structural lemma like ido's rescues it,
+; and its natural correctness does not prove.
+(defn swap [] [(e Expr)] Expr
+  (match e
+    ((Lit n) (Lit n))
+    ((Add a b) (Add (swap b) (swap a)))
+    ((Mul a b) (Mul (swap b) (swap a))))
+  (prop preserves [(e Expr)] (== (ev (swap e)) (ev e))))
