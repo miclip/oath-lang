@@ -100,19 +100,24 @@ batch-local, identity-less alias has no place in those pipelines. Since expansio
 identity-transparent, the published/resolved objects are identical either way, so this
 is a source-shape restriction, not a lost capability.
 
-**Three SCOPED remainders, all clean follow-ups on the same mechanism.** (1) Parametric
-aliases for the generics case: the dictionary parameter in `generic-consumer` is
-`{eq (-> a a Bool)}`, whose `a` is a type VARIABLE of the using definition; a ground
-alias cannot capture it, so naming it needs `(type Eq [a] {eq (-> a a Bool)})` used as
-`(Eq Int)`. (2) Alias-aware `oath publish` and (3) `oath resolve` — both need external
-dependencies tracked by hash rather than by surface name to carry aliases safely. The
-capability-record case (ground, via `put`) is what this consumer measured and what is
-now resolved.
+**Parametric aliases for the generics case are now DONE too.** The dictionary parameter
+in `generic-consumer` is `{eq (-> a a Bool)}`, whose `a` is a type VARIABLE of the using
+definition; a ground alias cannot capture it, so this needed `(type Eq [a] {eq (-> a a
+Bool)})`, applied as `(Eq a)` in a polymorphic def or `(Eq Int)` in a monomorphic binder.
+Measured: a generic `count-by` written with `(Eq a)` hashes IDENTICALLY to the inline
+`{eq (-> a a Bool)}` version. So both halves of demand 2 — capability records (ground)
+and dictionaries (parametric) — are resolved.
 
-**Evidence class:** the identity-transparent expansion is covered by
-`oath/type_alias_test.go` (alias vs inline → identical hash) and demonstrated in
-`ingest.oath` (same `#d2ffe2f12947` as before); the parametric remainder is decidable
-from the generics source.
+**Two SCOPED remainders, both the same shape.** Alias-aware `oath publish` and `oath
+resolve` — each needs external dependencies tracked by hash rather than by surface name
+to carry aliases safely; both refuse `(type …)` today with guidance to expand inline
+(identity-transparent, so the objects are identical). `put` is the supported path, which
+is where the friction — writing definitions — lives.
+
+**Evidence class:** the identity-transparent expansion (ground AND parametric) is covered
+by `oath/type_alias_test.go` — ground alias vs inline, and a generic `count-by` written
+with `(Eq a)` vs inline `{eq (-> a a Bool)}`, each → identical hash — and demonstrated in
+`ingest.oath` (same `#d2ffe2f12947` as before).
 
 ---
 

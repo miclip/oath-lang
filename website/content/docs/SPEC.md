@@ -259,9 +259,15 @@ input. A conforming surface elaborator MUST therefore match these rules:
   batch-scoped elaboration sugar: it stores no object and appends no journal entry, and
   it therefore MUST NOT shadow anything that carries identity — a builtin (`Int`, `Rat`,
   `Float`, `Bool`), a stored data type, or an earlier alias in the same batch; an
-  elaborator accepting aliases MUST reject such a redefinition. The body is elaborated
-  with NO type variables in scope, so an alias is a GROUND type (a `ty` mentioning a type
-  variable is an unknown-type error); an alias MAY reference an earlier alias. This form
+  elaborator accepting aliases MUST reject such a redefinition. An alias MAY reference an
+  earlier alias.
+  A PARAMETRIC alias is written `(type Name [tyvars] ty)`: `ty` is elaborated with exactly
+  those type variables in scope, and an application `(Name arg …)` (with as many arguments
+  as the alias has parameters) elaborates by substituting each argument type for the
+  corresponding variable in the body — again identically to the inline type. The ground
+  form is the zero-parameter case; a `ty` mentioning a variable outside the alias's
+  parameters is an unknown-type error, and using a parametric alias with the wrong number
+  of arguments (a bare mention of a parametric alias included) is an arity error. This form
   is OPTIONAL — **no corpus definition uses it**, so it is not required for conformance;
   a conforming elaborator MAY reject `(type …)` outright, and one that accepts it MUST
   use the identity-transparent expansion above.

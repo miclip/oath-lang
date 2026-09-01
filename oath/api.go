@@ -72,7 +72,7 @@ func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pu
 		return nil, err
 	}
 	var results []putReport
-	aliases := map[string]*Ty{}
+	aliases := map[string]*aliasDef{}
 	for _, f := range forms {
 		if f.K != "list" || len(f.Kids) == 0 || f.Kids[0].K != "sym" {
 			return results, fmt.Errorf("line %d: top-level forms must be (data ...), (defn ...) or (type ...)", f.Line)

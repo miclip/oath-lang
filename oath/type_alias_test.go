@@ -48,6 +48,67 @@ func TestTypeAliasChainsAndStaysTransparent(t *testing.T) {
 	}
 }
 
+// PARAMETRIC aliases (the generics case). A polymorphic def using (Eq a) and a
+// monomorphic binder using (Eq Int) both expand identity-transparently, so the def
+// hashes identically to one with the dictionary record spelled inline.
+func TestParametricAliasPreservesIdentity(t *testing.T) {
+	st := aliasStore(t)
+	inline := put(t, st, `(defn cnt-inline [a] [(eqd {eq (-> a a Bool)}) (x a) (xs (List a))] Int
+		(match xs ((Nil) 0) ((Cons h t) (if ((. eqd eq) x h) (+ 1 (cnt-inline [a] eqd x t)) (cnt-inline [a] eqd x t))))
+		(prop nn [(eqd {eq (-> Int Int Bool)}) (x Int) (xs (List Int))] (<= 0 (cnt-inline [Int] eqd x xs))))`)
+	aliased := put(t, st, `(type Eq [a] {eq (-> a a Bool)})
+		(defn cnt-alias [a] [(eqd (Eq a)) (x a) (xs (List a))] Int
+		(match xs ((Nil) 0) ((Cons h t) (if ((. eqd eq) x h) (+ 1 (cnt-alias [a] eqd x t)) (cnt-alias [a] eqd x t))))
+		(prop nn [(eqd (Eq Int)) (x Int) (xs (List Int))] (<= 0 (cnt-alias [Int] eqd x xs))))`)
+	if inline[0].Status != "accepted" || aliased[0].Status != "accepted" {
+		t.Fatalf("both must elaborate: inline=%s alias=%s", inline[0].Status, aliased[0].Status)
+	}
+	if inline[0].Hash != aliased[0].Hash {
+		t.Errorf("parametric alias must be identity-transparent:\n inline %s\n alias  %s", inline[0].Hash, aliased[0].Hash)
+	}
+}
+
+// A bare-type-variable body: (Id Int) must expand to exactly Int.
+func TestParametricAliasIdentityFunction(t *testing.T) {
+	st := aliasStore(t)
+	viaAlias := put(t, st, `(type Id [a] a)
+		(defn id1 [] [(x (Id Int))] Int x (prop p [(x Int)] (== (id1 x) x)))`)
+	direct := put(t, st, `(defn id2 [] [(x Int)] Int x (prop p [(x Int)] (== (id2 x) x)))`)
+	if viaAlias[0].Hash != direct[0].Hash {
+		t.Errorf("(Id Int) must expand to Int: alias %s vs direct %s", viaAlias[0].Hash, direct[0].Hash)
+	}
+}
+
+// A parametric alias may be applied inside another alias; the chain stays transparent.
+func TestParametricAliasChains(t *testing.T) {
+	st := aliasStore(t)
+	chained := put(t, st, `(type Pair [a b] {fst a snd b})
+		(type IntStr (Pair Int Str))
+		(defn g1 [] [(p IntStr)] Int 0 (prop q [] (== 0 0)))`)
+	inline := put(t, st, `(defn g2 [] [(p {fst Int snd Str})] Int 0 (prop q [] (== 0 0)))`)
+	if chained[0].Hash != inline[0].Hash {
+		t.Errorf("chained parametric alias must expand transparently: %s vs %s", chained[0].Hash, inline[0].Hash)
+	}
+}
+
+func TestParametricAliasArityErrors(t *testing.T) {
+	cases := []struct{ name, src, want string }{
+		{"bare-use", "(type Eq [a] {eq (-> a a Bool)})\n(defn f [] [(e Eq)] Int 0 (prop p [] (== 0 0)))", "takes 1 type argument"},
+		{"too-few", "(type Pair [a b] {fst a snd b})\n(defn f [] [(p (Pair Int))] Int 0 (prop p2 [] (== 0 0)))", "got 1"},
+		{"too-many", "(type Id [a] a)\n(defn f [] [(x (Id Int Int))] Int x (prop p [] (== 0 0)))", "got 2"},
+		{"open-body", "(type Bad [a] {x (-> a b Bool)})", `unknown type "b"`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			st := aliasStore(t)
+			_, err := apiPut(st, c.src, "t", "")
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("expected error containing %q; got %v", c.want, err)
+			}
+		})
+	}
+}
+
 // A non-record type aliases fine — the feature is general.
 func TestTypeAliasNonRecord(t *testing.T) {
 	st := aliasStore(t)

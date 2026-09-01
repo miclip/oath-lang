@@ -313,8 +313,17 @@ type elab struct {
 	dataSelf   string   // name of the data def being defined ("" otherwise)
 	funcSelf   string   // name of the func def being defined ("" otherwise)
 	selfTyVars int
-	gensym     int            // counter for fresh binder names introduced by desugaring
-	aliases    map[string]*Ty // batch-scoped type aliases (identity-transparent surface sugar)
+	gensym     int                  // counter for fresh binder names introduced by desugaring
+	aliases    map[string]*aliasDef // batch-scoped type aliases (identity-transparent surface sugar)
+}
+
+// aliasDef is a registered type alias. arity is the number of type parameters (0 for a
+// ground alias); body is the canonical elaboration of the alias's type, with its
+// parameters as de Bruijn type variables tVar(0..arity-1). An application substitutes the
+// supplied argument types for those variables (substTyVars); a ground alias just clones.
+type aliasDef struct {
+	arity int
+	body  *Ty
 }
 
 // cloneTy deep-copies a type so an expanded alias cannot alias (in the pointer sense)
@@ -331,6 +340,36 @@ func cloneTy(t *Ty) *Ty {
 		c.Args = make([]Ty, len(t.Args))
 		for i := range t.Args {
 			c.Args[i] = *cloneTy(&t.Args[i])
+		}
+	}
+	if t.Names != nil {
+		c.Names = append([]string(nil), t.Names...)
+	}
+	return &c
+}
+
+// substTyVars expands a parametric alias body: every type variable tVar(i) is replaced by
+// a fresh copy of args[i]. The substitution is simultaneous (one pass), and the args
+// already carry the USING context's variable indices, so this is capture-free — the
+// result is exactly the type the caller would have written inline. Out-of-range indices
+// (impossible for a well-formed alias, whose body only binds 0..arity-1) are left as-is.
+func substTyVars(t *Ty, args []Ty) *Ty {
+	if t == nil {
+		return nil
+	}
+	if t.K == "var" {
+		if t.Var >= 0 && t.Var < len(args) {
+			return cloneTy(&args[t.Var])
+		}
+		return cloneTy(t)
+	}
+	c := *t
+	c.A = substTyVars(t.A, args)
+	c.B = substTyVars(t.B, args)
+	if t.Args != nil {
+		c.Args = make([]Ty, len(t.Args))
+		for i := range t.Args {
+			c.Args[i] = *substTyVars(&t.Args[i], args)
 		}
 	}
 	if t.Names != nil {
@@ -393,8 +432,11 @@ func (e *elab) parseTy(x sx) (*Ty, error) {
 		// to one spelling the type inline. Checked after tyvars/dataSelf (a local tyvar
 		// wins) and before stored data types (an alias may not shadow one — registration
 		// rejects that).
-		if t, ok := e.aliases[x.Sym]; ok {
-			return cloneTy(t), nil
+		if a, ok := e.aliases[x.Sym]; ok {
+			if a.arity != 0 {
+				return nil, e.errAt(x, "type alias %s takes %d type arguments", x.Sym, a.arity)
+			}
+			return cloneTy(a.body), nil
 		}
 		if h, ok := e.st.Resolve(x.Sym); ok {
 			d, err := e.st.GetDef(h)
@@ -443,6 +485,15 @@ func (e *elab) parseTy(x sx) (*Ty, error) {
 				return nil, err
 			}
 			args = append(args, *t)
+		}
+		// A parametric type alias application (Name arg...) expands by substituting the
+		// arguments for the alias body's type variables — identity-transparent, exactly the
+		// type written inline. Checked before the stored-data-type path, like the bare form.
+		if a, ok := e.aliases[head.Sym]; ok {
+			if len(args) != a.arity {
+				return nil, e.errAt(x, "type alias %s takes %d type arguments, got %d", head.Sym, a.arity, len(args))
+			}
+			return substTyVars(a.body, args), nil
 		}
 		if head.Sym == e.dataSelf {
 			if len(args) != e.selfTyVars {
@@ -993,7 +1044,7 @@ func tyvarNames(b sx) ([]string, error) {
 }
 
 // elabData: (data Name [tyvars] (Ctor fieldTy ...) ...)
-func elabDataRaw(st *Store, x sx, aliases map[string]*Ty) (*Def, *Meta, error) {
+func elabDataRaw(st *Store, x sx, aliases map[string]*aliasDef) (*Def, *Meta, error) {
 	if len(x.Kids) < 3 || x.Kids[1].K != "sym" || x.Kids[2].K != "brack" {
 		return nil, nil, fmt.Errorf("line %d: data needs a name, [tyvars], and constructors", x.Line)
 	}
@@ -1026,7 +1077,7 @@ func elabDataRaw(st *Store, x sx, aliases map[string]*Ty) (*Def, *Meta, error) {
 }
 
 // elabFunc: (defn name [tyvars] [(param ty) ...] retTy body prop...)
-func elabFuncRaw(st *Store, x sx, aliases map[string]*Ty) (*Def, *Meta, error) {
+func elabFuncRaw(st *Store, x sx, aliases map[string]*aliasDef) (*Def, *Meta, error) {
 	if len(x.Kids) < 6 || x.Kids[1].K != "sym" || x.Kids[2].K != "brack" || x.Kids[3].K != "brack" {
 		return nil, nil, fmt.Errorf("line %d: defn needs name [tyvars] [(param ty)...] retTy body", x.Line)
 	}
@@ -1107,7 +1158,7 @@ func elabFunc(st *Store, x sx) (*Def, *Meta, error) { return elabFuncWith(st, x,
 // elabDataWith / elabFuncWith elaborate a form with a batch's type aliases in scope.
 // The no-alias forms above are the single-form entry points (queries, find-spec) that
 // never see a (type …) declaration; the put loop uses these.
-func elabDataWith(st *Store, x sx, aliases map[string]*Ty) (*Def, *Meta, error) {
+func elabDataWith(st *Store, x sx, aliases map[string]*aliasDef) (*Def, *Meta, error) {
 	d, m, err := elabDataRaw(st, x, aliases)
 	if err != nil {
 		return d, m, err
@@ -1115,7 +1166,7 @@ func elabDataWith(st *Store, x sx, aliases map[string]*Ty) (*Def, *Meta, error) 
 	return d, m, admitDef(d)
 }
 
-func elabFuncWith(st *Store, x sx, aliases map[string]*Ty) (*Def, *Meta, error) {
+func elabFuncWith(st *Store, x sx, aliases map[string]*aliasDef) (*Def, *Meta, error) {
 	d, m, err := elabFuncRaw(st, x, aliases)
 	if err != nil {
 		return d, m, err
@@ -1134,16 +1185,20 @@ func elabFuncWith(st *Store, x sx, aliases map[string]*Ty) (*Def, *Meta, error) 
 // silently shadow the stored data type. Registration guards the other order (an alias
 // over an existing data type). Returns nil (no line prefix) when there is no conflict;
 // callers add their own location.
-func dataNameConflict(name string, aliases map[string]*Ty) error {
+func dataNameConflict(name string, aliases map[string]*aliasDef) error {
 	if _, isAlias := aliases[name]; isAlias {
 		return fmt.Errorf("%q is already a type alias in this batch", name)
 	}
 	return nil
 }
 
-func registerTypeAlias(st *Store, x sx, aliases map[string]*Ty) error {
-	if len(x.Kids) != 3 || x.Kids[1].K != "sym" {
-		return fmt.Errorf("line %d: type alias must be (type Name ty)", x.Line)
+// registerTypeAlias handles both the ground form (type Name ty) and the parametric form
+// (type Name [tyvars] ty). The body is elaborated with exactly the alias's type variables
+// in scope (none, for the ground form), so it is closed over its parameters — a body
+// mentioning any other type variable is an unknown-type error. See parseTy for expansion.
+func registerTypeAlias(st *Store, x sx, aliases map[string]*aliasDef) error {
+	if len(x.Kids) < 3 || x.Kids[1].K != "sym" {
+		return fmt.Errorf("line %d: type alias must be (type Name ty) or (type Name [tyvars] ty)", x.Line)
 	}
 	name := x.Kids[1].Sym
 	switch name {
@@ -1158,11 +1213,25 @@ func registerTypeAlias(st *Store, x sx, aliases map[string]*Ty) error {
 			return fmt.Errorf("line %d: %q is a data type and cannot be an alias", x.Line, name)
 		}
 	}
-	e := &elab{st: st, aliases: aliases}
-	ty, err := e.parseTy(x.Kids[2])
+	// A [tyvars] bracket in the third position marks the parametric form; a type body is a
+	// sym, brace or list, never a bracket, so this is unambiguous.
+	var tvs []string
+	bodyIdx := 2
+	if x.Kids[2].K == "brack" {
+		var err error
+		if tvs, err = tyvarNames(x.Kids[2]); err != nil {
+			return err
+		}
+		bodyIdx = 3
+	}
+	if len(x.Kids) != bodyIdx+1 {
+		return fmt.Errorf("line %d: type alias must be (type Name ty) or (type Name [tyvars] ty)", x.Line)
+	}
+	e := &elab{st: st, tyvars: tvs, aliases: aliases}
+	body, err := e.parseTy(x.Kids[bodyIdx])
 	if err != nil {
 		return err
 	}
-	aliases[name] = ty
+	aliases[name] = &aliasDef{arity: len(tvs), body: body}
 	return nil
 }
