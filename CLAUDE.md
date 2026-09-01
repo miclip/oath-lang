@@ -1807,6 +1807,20 @@ milestone shipped a SUBSET of an issue that remains open.
       `OATHRS_CONFORMANCE_PROVE=oracle ./oathrs/conformance.sh` is the push gate
       (~2 min); the bare invocation is the cold re-derivation (9+ hours).
 
+- **DRIVE SUBSTANTIAL IMPLEMENTATION WORK THROUGH `conclave`, NOT SOLO.** It runs a
+  multi-agent session — advisor `codex`, implementer `claude`, you as `--operator
+  agent` — so the approach is pressure-tested by the advisor *as* it is built, which
+  catches premise and boundary errors earlier than implementing alone and reviewing
+  after. Start it with `conclave session --operator agent`; it needs a long-lived open
+  stdin, so drive it from a FIFO with a writer held open (a plain `echo >fifo` per call
+  sends EOF and ends the session). Give the goal as one message (frame multi-line input
+  with `<<EOF … EOF`), then answer pauses (`/continue`, `/rotate <reason>`, `/allow`,
+  `>advisor …`/`>implementer …`); `conclave --help` is the full driving protocol and
+  `conclave status <id>` inspects a run. `--operator agent` tells the advisor a machine
+  answers, so it escalates about premises and ambiguous criteria, not permission
+  (`.conclave/config.json` bypasses permission prompts). This does NOT replace the line
+  below: `codex` advises during the build, and a separate `codex review` still reads the
+  final diff.
 - Run `codex review --uncommitted` before committing, and iterate until clean.
   **NO REVIEW DEBT IS OPEN** (#150, closed). If the reviewer is ever unavailable
   again, say so IN THE COMMIT, keep the debt bounded to those commits, and
