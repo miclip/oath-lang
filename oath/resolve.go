@@ -162,6 +162,15 @@ func elaborateInto(tmp *Store, src string) (map[string]string, error) {
 		if f.K != "list" || len(f.Kids) == 0 {
 			return nil, fmt.Errorf("top-level form must be (defn ...) or (data ...)")
 		}
+		// Type aliases are a put-time source convenience; `oath resolve` (lockfile
+		// generation, which classifies external dependencies by surface name) does not
+		// carry them. Because an alias is identity-transparent, expanding it inline yields
+		// the identical objects, so this is a source-shape restriction — the same one
+		// `oath publish` states.
+		if f.Kids[0].isSym("type") {
+			return nil, fmt.Errorf("line %d: (type ...) aliases are not supported in oath resolve; "+
+				"expand the alias inline (the resolved objects are identical)", f.Line)
+		}
 		tmp.resolveLog = map[string]string{}
 		var d *Def
 		var m *Meta

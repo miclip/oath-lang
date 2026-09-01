@@ -77,23 +77,42 @@ DECIDABLE; the missing-vs-empty indistinguishability is MEASURED (`run.sh` check
 
 ---
 
-## 2. No named / aliased capability-record type, so the record is repeated verbatim — FRICTION
+## 2. No named / aliased capability-record type — RESOLVED (type aliases)
 
-**Ergonomic, and it compounds with generics.** Oath types are structural and inline;
-there is no type alias. So the capability record
-`{emit (-> Str Str) env (-> Str Str) readfile (-> Str Str)}` is spelled out FOUR times
-in `ingest.oath` — once in the signature and once in each property binder — and every
-edit to the capability set must be made in every copy. The same repetition afflicts
-dictionary parameters in `generic-consumer` (`{eq (-> a a Bool)}` in every prop); the
-two consumers hit one missing feature.
+**Was ergonomic friction, now shipped.** Oath types were structural and inline with no
+type alias, so the capability record
+`{emit (-> Str Str) env (-> Str Str) readfile (-> Str Str)}` was spelled out FOUR times
+in `ingest.oath` — once in the signature and once in each property binder.
 
-**DEMAND (ergonomic): a way to NAME a record type** (a type alias / synonym) that is
-identity-transparent — it must elaborate to the same structural type so hashes are
-unchanged (a capability record is its fields, per SPEC). This is presentation, not
-semantics, so it should touch the surface layer only.
+**RESOLVED — a `(type Name ty)` alias form.** `ingest.oath` now names the record ONCE
+(`(type Cap {emit … env … readfile …})`) and refers to `Cap` in the signature and every
+property binder. The alias is IDENTITY-TRANSPARENT surface sugar: it expands to the same
+canonical type before hashing, so the aliased `ingest` hashes IDENTICALLY
+(`#d2ffe2f12947`) to the earlier version that spelled the record out four times — no
+object, no journal entry, no SPEC §1 identity change (recorded in SPEC §1.4 as OPTIONAL
+sugar, like the list/string-literal sugar). An alias is batch-scoped and GROUND, and may
+not shadow a builtin, a data type, or an earlier alias.
 
-**Evidence class:** decidable from the source — the four verbatim copies in
-`ingest.oath`.
+Aliases are a `put`-time source convenience. `oath publish` and `oath resolve` — the
+paths that rewrite source into qualified names, or classify external dependencies by
+surface name — REFUSE a `(type …)` form with guidance to expand it inline, because a
+batch-local, identity-less alias has no place in those pipelines. Since expansion is
+identity-transparent, the published/resolved objects are identical either way, so this
+is a source-shape restriction, not a lost capability.
+
+**Three SCOPED remainders, all clean follow-ups on the same mechanism.** (1) Parametric
+aliases for the generics case: the dictionary parameter in `generic-consumer` is
+`{eq (-> a a Bool)}`, whose `a` is a type VARIABLE of the using definition; a ground
+alias cannot capture it, so naming it needs `(type Eq [a] {eq (-> a a Bool)})` used as
+`(Eq Int)`. (2) Alias-aware `oath publish` and (3) `oath resolve` — both need external
+dependencies tracked by hash rather than by surface name to carry aliases safely. The
+capability-record case (ground, via `put`) is what this consumer measured and what is
+now resolved.
+
+**Evidence class:** the identity-transparent expansion is covered by
+`oath/type_alias_test.go` (alias vs inline → identical hash) and demonstrated in
+`ingest.oath` (same `#d2ffe2f12947` as before); the parametric remainder is decidable
+from the generics source.
 
 ---
 

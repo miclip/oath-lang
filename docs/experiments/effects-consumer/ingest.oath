@@ -10,11 +10,15 @@
 ; get tested. The properties PROVE over ALL simulated worlds (every env/readfile/emit
 ; table at once); the frictions are recorded in effects-consumer-friction.md.
 ;
-; Note the repetition: the capability record type is spelled out in the signature AND in
-; every property binder because Oath has no named/aliased types. That is demand 2.
+; Demand 2 (no named types) is now RESOLVED: the capability record is named ONCE with a
+; type alias and referenced by name in the signature and every property binder. The
+; alias is identity-transparent surface sugar, so this file's `ingest` hashes IDENTICALLY
+; to the earlier version that spelled the record out four times.
+
+(type Cap {emit (-> Str Str) env (-> Str Str) readfile (-> Str Str)})
 
 (defn ingest []
-  [(cap {emit (-> Str Str) env (-> Str Str) readfile (-> Str Str)}) (args (List Str))]
+  [(cap Cap) (args (List Str))]
   Str
   (match args
     ((Nil) "usage: ingest <config-var>")
@@ -27,17 +31,17 @@
                  "config file empty or missing"
                  ((. cap emit) body)))))))
 
-  (prop no-args-usage [(cap {emit (-> Str Str) env (-> Str Str) readfile (-> Str Str)})]
+  (prop no-args-usage [(cap Cap)]
     (== (ingest cap (Nil [Str])) "usage: ingest <config-var>"))
 
-  (prop missing-env-reported [(cap {emit (-> Str Str) env (-> Str Str) readfile (-> Str Str)}) (v Str) (rest (List Str))]
+  (prop missing-env-reported [(cap Cap) (v Str) (rest (List Str))]
     (if (== ((. cap env) v) "")
         (== (ingest cap (Cons [Str] v rest)) "no config path in environment")
         true))
 
   ; The end-to-end contract over every world: when both reads succeed, the program's
   ; result is exactly what it handed the sink. `emit`'s own return is threaded through.
-  (prop emits-file-body [(cap {emit (-> Str Str) env (-> Str Str) readfile (-> Str Str)}) (v Str) (rest (List Str))]
+  (prop emits-file-body [(cap Cap) (v Str) (rest (List Str))]
     (let (p Str ((. cap env) v))
       (if (== p "")
           true

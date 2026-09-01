@@ -210,7 +210,8 @@ input. A conforming surface elaborator MUST therefore match these rules:
   strings are accepted and count for later line numbers.
 - Lists produce `list`, square brackets `brack`, and braces `brace`.
 - Top-level forms are `(data Name [tyvars] ctor...)` and `(defn name [tyvars]
-  [(param ty) ...] ret body prop...)`.
+  [(param ty) ...] ret body prop...)`. An elaborator MAY also accept
+  `(type Name ty)` — an OPTIONAL type-alias form; see the alias-sugar bullet below.
 - Type syntax: `Int`, `Rat`, `Float`, `Bool`, `Str`, type variables, data
   names, `(Data arg ...)`, right-associated `(-> a b c)`, and record types
   `{field Ty ...}`.
@@ -250,6 +251,20 @@ input. A conforming surface elaborator MUST therefore match these rules:
   uses it**, so it is not required for conformance; a conforming elaborator MAY
   reject nested patterns outright, and one that accepts them MUST use the
   identity-preserving desugaring above.
+- TYPE-ALIAS SUGAR (OPTIONAL): a top-level `(type Name ty)` form binds `Name`, for the
+  remainder of the elaboration batch, to the canonical elaboration of `ty`. Wherever a
+  type is expected, `Name` then elaborates to a fresh copy of that type — so a definition
+  written with the alias produces the SAME `Def` (and hash) as one spelling the type
+  inline; identity is unchanged (a record type is its sorted fields, §1.3). An alias is
+  batch-scoped elaboration sugar: it stores no object and appends no journal entry, and
+  it therefore MUST NOT shadow anything that carries identity — a builtin (`Int`, `Rat`,
+  `Float`, `Bool`), a stored data type, or an earlier alias in the same batch; an
+  elaborator accepting aliases MUST reject such a redefinition. The body is elaborated
+  with NO type variables in scope, so an alias is a GROUND type (a `ty` mentioning a type
+  variable is an unknown-type error); an alias MAY reference an earlier alias. This form
+  is OPTIONAL — **no corpus definition uses it**, so it is not required for conformance;
+  a conforming elaborator MAY reject `(type …)` outright, and one that accepts it MUST
+  use the identity-transparent expansion above.
 - Name resolution for a bare term name is, in order: local variable, the
   function currently being defined (emits `self`), constructor, stored function.
   Constructor lookup scans the current name index in ascending name order and

@@ -313,7 +313,30 @@ type elab struct {
 	dataSelf   string   // name of the data def being defined ("" otherwise)
 	funcSelf   string   // name of the func def being defined ("" otherwise)
 	selfTyVars int
-	gensym     int // counter for fresh binder names introduced by desugaring
+	gensym     int            // counter for fresh binder names introduced by desugaring
+	aliases    map[string]*Ty // batch-scoped type aliases (identity-transparent surface sugar)
+}
+
+// cloneTy deep-copies a type so an expanded alias cannot alias (in the pointer sense)
+// the stored template — the expansion must be a fresh, independent tree, structurally
+// identical to writing the type inline.
+func cloneTy(t *Ty) *Ty {
+	if t == nil {
+		return nil
+	}
+	c := *t
+	c.A = cloneTy(t.A)
+	c.B = cloneTy(t.B)
+	if t.Args != nil {
+		c.Args = make([]Ty, len(t.Args))
+		for i := range t.Args {
+			c.Args[i] = *cloneTy(&t.Args[i])
+		}
+	}
+	if t.Names != nil {
+		c.Names = append([]string(nil), t.Names...)
+	}
+	return &c
 }
 
 func (e *elab) errAt(x sx, format string, args ...any) error {
@@ -364,6 +387,14 @@ func (e *elab) parseTy(x sx) (*Ty, error) {
 				return nil, e.errAt(x, "%s takes %d type arguments", x.Sym, e.selfTyVars)
 			}
 			return tRec(nil), nil
+		}
+		// A batch-scoped type alias expands to a fresh copy of its (already canonical)
+		// type — identity-transparent sugar, so a def using the alias hashes identically
+		// to one spelling the type inline. Checked after tyvars/dataSelf (a local tyvar
+		// wins) and before stored data types (an alias may not shadow one — registration
+		// rejects that).
+		if t, ok := e.aliases[x.Sym]; ok {
+			return cloneTy(t), nil
 		}
 		if h, ok := e.st.Resolve(x.Sym); ok {
 			d, err := e.st.GetDef(h)
@@ -962,7 +993,7 @@ func tyvarNames(b sx) ([]string, error) {
 }
 
 // elabData: (data Name [tyvars] (Ctor fieldTy ...) ...)
-func elabDataRaw(st *Store, x sx) (*Def, *Meta, error) {
+func elabDataRaw(st *Store, x sx, aliases map[string]*Ty) (*Def, *Meta, error) {
 	if len(x.Kids) < 3 || x.Kids[1].K != "sym" || x.Kids[2].K != "brack" {
 		return nil, nil, fmt.Errorf("line %d: data needs a name, [tyvars], and constructors", x.Line)
 	}
@@ -971,7 +1002,7 @@ func elabDataRaw(st *Store, x sx) (*Def, *Meta, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	e := &elab{st: st, tyvars: tvs, dataSelf: name, selfTyVars: len(tvs)}
+	e := &elab{st: st, tyvars: tvs, dataSelf: name, selfTyVars: len(tvs), aliases: aliases}
 	var ctors [][]Ty
 	var ctorNames []string
 	for _, c := range x.Kids[3:] {
@@ -995,7 +1026,7 @@ func elabDataRaw(st *Store, x sx) (*Def, *Meta, error) {
 }
 
 // elabFunc: (defn name [tyvars] [(param ty) ...] retTy body prop...)
-func elabFuncRaw(st *Store, x sx) (*Def, *Meta, error) {
+func elabFuncRaw(st *Store, x sx, aliases map[string]*Ty) (*Def, *Meta, error) {
 	if len(x.Kids) < 6 || x.Kids[1].K != "sym" || x.Kids[2].K != "brack" || x.Kids[3].K != "brack" {
 		return nil, nil, fmt.Errorf("line %d: defn needs name [tyvars] [(param ty)...] retTy body", x.Line)
 	}
@@ -1004,7 +1035,7 @@ func elabFuncRaw(st *Store, x sx) (*Def, *Meta, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	e := &elab{st: st, tyvars: tvs, funcSelf: name, selfTyVars: len(tvs)}
+	e := &elab{st: st, tyvars: tvs, funcSelf: name, selfTyVars: len(tvs), aliases: aliases}
 	pnames, ptys, err := e.parseParams(x.Kids[3])
 	if err != nil {
 		return nil, nil, err
@@ -1033,7 +1064,7 @@ func elabFuncRaw(st *Store, x sx) (*Def, *Meta, error) {
 		if p.K != "list" || len(p.Kids) != 4 || !p.Kids[0].isSym("prop") || p.Kids[1].K != "sym" || p.Kids[2].K != "brack" {
 			return nil, nil, e.errAt(p, "property must be (prop name [(x ty) ...] body)")
 		}
-		pe := &elab{st: st, funcSelf: name, selfTyVars: len(tvs)}
+		pe := &elab{st: st, funcSelf: name, selfTyVars: len(tvs), aliases: aliases}
 		bnames, btys, err := pe.parseParams(p.Kids[2])
 		if err != nil {
 			return nil, nil, err
@@ -1070,18 +1101,68 @@ func elabFuncRaw(st *Store, x sx) (*Def, *Meta, error) {
 // external input. Its universe is therefore the CONSTRUCTORS, not the callers a
 // reader can enumerate — a list of call sites answers a different question and
 // answers it completely.
-func elabData(st *Store, x sx) (*Def, *Meta, error) {
-	d, m, err := elabDataRaw(st, x)
+func elabData(st *Store, x sx) (*Def, *Meta, error) { return elabDataWith(st, x, nil) }
+func elabFunc(st *Store, x sx) (*Def, *Meta, error) { return elabFuncWith(st, x, nil) }
+
+// elabDataWith / elabFuncWith elaborate a form with a batch's type aliases in scope.
+// The no-alias forms above are the single-form entry points (queries, find-spec) that
+// never see a (type …) declaration; the put loop uses these.
+func elabDataWith(st *Store, x sx, aliases map[string]*Ty) (*Def, *Meta, error) {
+	d, m, err := elabDataRaw(st, x, aliases)
 	if err != nil {
 		return d, m, err
 	}
 	return d, m, admitDef(d)
 }
 
-func elabFunc(st *Store, x sx) (*Def, *Meta, error) {
-	d, m, err := elabFuncRaw(st, x)
+func elabFuncWith(st *Store, x sx, aliases map[string]*Ty) (*Def, *Meta, error) {
+	d, m, err := elabFuncRaw(st, x, aliases)
 	if err != nil {
 		return d, m, err
 	}
 	return d, m, admitDef(d)
+}
+
+// registerTypeAlias handles a (type Name ty) top-level form: it binds Name to the
+// canonical elaboration of ty in the batch-scoped alias map. An alias is
+// identity-transparent surface sugar — it produces no stored object and no journal
+// entry — so it must not shadow anything that DOES have identity: a builtin, a stored
+// data type, or an earlier alias. The body is elaborated with no type variables in
+// scope, so it must be a GROUND type (a tyvar reference fails as an unknown type).
+// dataNameConflict rejects a (data Name ...) whose name IS an alias in the same batch:
+// bare uses of that name resolve to the alias (checked first in parseTy), which would
+// silently shadow the stored data type. Registration guards the other order (an alias
+// over an existing data type). Returns nil (no line prefix) when there is no conflict;
+// callers add their own location.
+func dataNameConflict(name string, aliases map[string]*Ty) error {
+	if _, isAlias := aliases[name]; isAlias {
+		return fmt.Errorf("%q is already a type alias in this batch", name)
+	}
+	return nil
+}
+
+func registerTypeAlias(st *Store, x sx, aliases map[string]*Ty) error {
+	if len(x.Kids) != 3 || x.Kids[1].K != "sym" {
+		return fmt.Errorf("line %d: type alias must be (type Name ty)", x.Line)
+	}
+	name := x.Kids[1].Sym
+	switch name {
+	case "Int", "Rat", "Float", "Bool":
+		return fmt.Errorf("line %d: %q is a builtin type and cannot be an alias", x.Line, name)
+	}
+	if _, ok := aliases[name]; ok {
+		return fmt.Errorf("line %d: type alias %q is already defined in this batch", x.Line, name)
+	}
+	if h, ok := st.Resolve(name); ok {
+		if d, err := st.GetDef(h); err == nil && d.K == "data" {
+			return fmt.Errorf("line %d: %q is a data type and cannot be an alias", x.Line, name)
+		}
+	}
+	e := &elab{st: st, aliases: aliases}
+	ty, err := e.parseTy(x.Kids[2])
+	if err != nil {
+		return err
+	}
+	aliases[name] = ty
+	return nil
 }

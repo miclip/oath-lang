@@ -343,6 +343,13 @@ func declaredName(f sx) (string, error) {
 			return "", fmt.Errorf("line %d: %s needs a name", f.Line, f.Kids[0].Sym)
 		}
 		return f.Kids[1].Sym, nil
+	case "type":
+		// Type aliases are batch-local elaboration sugar with no published identity, and
+		// the publish pipeline (qualification + dependency ordering) has no place to carry
+		// them. Because an alias is identity-transparent, expanding it inline yields the
+		// IDENTICAL object — so this is a source-shape restriction, not a lost capability.
+		return "", fmt.Errorf("line %d: (type ...) aliases are not supported in oath publish; "+
+			"expand the alias inline (the published object is identical)", f.Line)
 	default:
 		return "", fmt.Errorf("line %d: unknown top-level form %q", f.Line, f.Kids[0].Sym)
 	}

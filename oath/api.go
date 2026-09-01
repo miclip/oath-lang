@@ -72,21 +72,41 @@ func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pu
 		return nil, err
 	}
 	var results []putReport
+	aliases := map[string]*Ty{}
 	for _, f := range forms {
 		if f.K != "list" || len(f.Kids) == 0 || f.Kids[0].K != "sym" {
-			return results, fmt.Errorf("line %d: top-level forms must be (data ...) or (defn ...)", f.Line)
+			return results, fmt.Errorf("line %d: top-level forms must be (data ...), (defn ...) or (type ...)", f.Line)
 		}
 		formName := "?"
 		if len(f.Kids) >= 2 && f.Kids[1].K == "sym" {
 			formName = f.Kids[1].Sym
 		}
+		// A (type Name ty) alias produces no object and no journal entry — it is
+		// batch-scoped elaboration sugar — so it is registered and skipped, never stored.
+		if f.Kids[0].Sym == "type" {
+			if err := registerTypeAlias(st, f, aliases); err != nil {
+				_ = st.AppendLog(&LogEntry{Author: author, Name: formName, Status: "rejected", Error: err.Error(), Context: ctxHash})
+				return results, err
+			}
+			continue
+		}
+		// A data type declared LATER must not create an ambiguous batch name against the
+		// aliases (it is an alias, or an alias references it). Registration only guards the
+		// other order (an alias over an existing data type), so this closes the gap.
+		if f.Kids[0].Sym == "data" {
+			if conflict := dataNameConflict(formName, aliases); conflict != nil {
+				err = fmt.Errorf("line %d: %v", f.Line, conflict)
+				_ = st.AppendLog(&LogEntry{Author: author, Name: formName, Status: "rejected", Error: err.Error(), Context: ctxHash})
+				return results, err
+			}
+		}
 		var def *Def
 		var meta *Meta
 		switch f.Kids[0].Sym {
 		case "data":
-			def, meta, err = elabData(st, f)
+			def, meta, err = elabDataWith(st, f, aliases)
 		case "defn":
-			def, meta, err = elabFunc(st, f)
+			def, meta, err = elabFuncWith(st, f, aliases)
 		default:
 			err = fmt.Errorf("line %d: unknown top-level form %q", f.Line, f.Kids[0].Sym)
 		}
@@ -1595,6 +1615,7 @@ func apiFindImplies(st *Store, src string, mode findImpliesMode) (string, error)
 //     per candidate, so a slow search reports movement instead of appearing to
 //     hang. It never touches the returned report — the CLI directs it to a
 //     terminal stderr only, so a piped or captured run is unchanged.
+//
 //   - budget (>0): a WALL-CLOCK budget on the search, enforced at candidate
 //     boundaries and on the solver — the two places the cost actually lives. The
 //     scan stops before starting a new candidate (or building its solver context)

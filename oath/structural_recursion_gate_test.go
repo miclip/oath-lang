@@ -510,9 +510,12 @@ func TestEveryContinuationGoesThroughPush(t *testing.T) {
 // This is the same enforcement shape as m.push: make the seam the only legal
 // producer, so completeness is structural rather than remembered.
 func TestAdmissionCannotBeBypassed(t *testing.T) {
+	// Each raw elaborator may be called ONLY by the wrapper that adds admission (#149).
+	// elabFuncWith/elabDataWith are those wrappers (they call admitDef); elabFunc/elabData
+	// are thin no-alias entry points that delegate to them.
 	raw := map[string]string{
-		"elabFuncRaw":  "elabFunc",
-		"elabDataRaw":  "elabData",
+		"elabFuncRaw":  "elabFuncWith",
+		"elabDataRaw":  "elabDataWith",
 		"decodeDefRaw": "decodeDef",
 	}
 	files, err := filepath.Glob("*.go")
