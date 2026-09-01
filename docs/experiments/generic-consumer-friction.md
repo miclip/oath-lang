@@ -56,12 +56,40 @@ instance), so a law that depends on reflexivity/antisymmetry can be stated and
 proven over the instances that satisfy it.** `docs/generics.md` already names B2
 ("verified laws") and defers it; this consumer is the grounded reason it is worth
 the cost — not "richer would be nice", but "the property I want is FALSIFIED without
-it, while the code is correct." Whatever shape B2 takes (a lawfulness obligation on
-the dictionary, a refinement over the record, a discovery-layer relation), the test
-is whether `round-trips` becomes STATABLE and PROVABLE for lawful `Eq`.
+it, while the code is correct."
+
+**MEASURED CORRECTION — the demand's test conflated two independent walls, and RLE's
+round-trip clears neither with the laws B2 describes (`b2-measurement.md`).** The test
+as first written — "`round-trips` becomes STATABLE and PROVABLE for lawful `Eq`" —
+does not hold up:
+
+- **TRUE needs SUBSTITUTIVITY, and the equivalence laws alone do not give it.** An
+  always-equal dictionary `{eq (fn _ _ true)}` is a lawful equivalence (reflexive,
+  symmetric, transitive) and STILL breaks the round-trip:
+  `rle-decode (rle it [1,3,5]) = [1,1,1]`. RLE needs `eq a b ⇒ a = b` (fidelity to
+  kernel `==`), strictly stronger than an equivalence. `docs/generics.md` does not pin
+  `Eq`'s laws, so this constrains B2 rather than contradicting it: a lawful-`Eq` bundle
+  serving RLE must include substitutivity.
+- **PROVABLE for RLE: no, even with a fully-faithful eq.** Rewritten with the concrete
+  `==` (no dictionary), `round-trips` does not prove — `induction did not discharge`.
+  The blocker is the SAME nested-recursion induction wall §3 measures for the weaker
+  length-preservation property, INDEPENDENT of any law. B2 does not touch it; a
+  stronger induction capability would, a separate project.
+
+So B2 does not deliver RLE's round-trip. Its provability win lands elsewhere, on
+induction-REACHABLE laws with a weak requirement: list-eq reflexivity is FALSIFIED over
+all dictionaries (a non-reflexive `eq`) yet PROVEN monomorphically with a lawful `==`
+(induction on binder 0). Whether a lawful-eq HYPOTHESIS would then prove the generic
+version is a labelled design hypothesis, not a measured result — the
+quantified-hypothesis × induction interaction is exactly the unbuilt mechanism. The
+sharpened test for B2 is whether an induction-reachable law like `reflexive` becomes
+STATABLE and PROVABLE for lawful `Eq`, with the hypothesis living in the property's
+IDENTITY (a nested-`forall` term, SPEC §1), not as an out-of-band assumption.
 
 **Evidence class:** the FALSIFIED verdict with its lawless-dictionary counterexample
-and the lawful-`eq` round-trip `eval` are MEASURED (`run.sh` §2–3).
+and the lawful-`eq` round-trip `eval` are MEASURED (`run.sh` §2–3); the two-walls
+isolation (monomorphic round-trip UNPROVEN, reflexivity FALSIFIED-generic /
+PROVEN-monomorphic) is MEASURED in `b2-measurement.md`.
 
 ---
 

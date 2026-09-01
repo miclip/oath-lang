@@ -1,0 +1,32 @@
+; B2 measurement fixture — isolates the TWO walls that stop a generic property from
+; being PROVEN (lawlessness vs induction reach). Depends on list.oath, generic.oath and
+; rle.oath (put first by b2-measurement.sh). See b2-measurement.md for the analysis.
+
+; --- Measurement A: RLE round-trip with the concretely LAWFUL eq (kernel ==, no
+; dictionary). If lawlessness were the only blocker, this would prove. It does not —
+; the nested-recursion induction wall (friction §3) blocks it independent of any law.
+(defn rle-mono [] [(xs (List Int))] (List (Run Int))
+  (match xs
+    ((Nil) (Nil [(Run Int)]))
+    ((Cons h t)
+     (match (rle-mono t)
+       ((Nil) (Cons [(Run Int)] (MkRun 1 h) (Nil [(Run Int)])))
+       ((Cons (MkRun n x) rest)
+        (if (== h x)
+            (Cons [(Run Int)] (MkRun (+ n 1) h) rest)
+            (Cons [(Run Int)] (MkRun 1 h) (Cons [(Run Int)] (MkRun n x) rest)))))))
+  (prop round-trips-mono [(xs (List Int))] (== (rle-decode [Int] (rle-mono xs)) xs)))
+
+; --- Measurement B: reflexivity of list-equality is the induction-REACHABLE law that
+; demonstrates B2's value. Generic over all dictionaries it is FALSIFIED (a non-reflexive
+; eq); monomorphic with the lawful == it PROVES by ordinary list induction.
+(defn eqby-refl [] [(eqd {eq (-> Int Int Bool)}) (xs (List Int))] Bool
+  (list-eq-by [Int] eqd xs xs)
+  (prop reflexive [(eqd {eq (-> Int Int Bool)}) (xs (List Int))]
+    (== (list-eq-by [Int] eqd xs xs) true)))
+
+(defn list-eqm [] [(xs (List Int)) (ys (List Int))] Bool
+  (match xs
+    ((Nil) (match ys ((Nil) true) ((Cons a b) false)))
+    ((Cons a b) (match ys ((Nil) false) ((Cons c d) (and (== a c) (list-eqm b d))))))
+  (prop reflexive [(xs (List Int))] (== (list-eqm xs xs) true)))
