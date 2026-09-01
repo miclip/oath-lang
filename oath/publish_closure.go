@@ -363,6 +363,21 @@ func constructorNames(f sx) []string {
 	return out
 }
 
+// collectPatternBinders records the binders introduced by one match-pattern position.
+// A position is either a name (`n`) or a nested constructor pattern (`(MkRun n x)`),
+// whose head is a constructor reference and whose remaining positions are themselves
+// binder positions — so it must recurse to reach binders nested to any depth.
+func collectPatternBinders(b sx, out map[string]bool) {
+	switch {
+	case b.K == "sym":
+		out[b.Sym] = true
+	case b.K == "list" && len(b.Kids) > 0 && b.Kids[0].K == "sym":
+		for _, sub := range b.Kids[1:] {
+			collectPatternBinders(sub, out)
+		}
+	}
+}
+
 // collectDeclared gathers every symbol that is NOT a free reference: binders
 // (parameters, type variables, let/fn/match binders), property names, record
 // field labels, and constructor names. The traversal is exhaustive — it visits
@@ -462,10 +477,8 @@ func collectDeclared(x sx, out map[string]bool) {
 		}
 		for _, arm := range x.Kids[minInt(2, len(x.Kids)):] {
 			if arm.K == "list" && len(arm.Kids) >= 1 && arm.Kids[0].K == "list" {
-				for _, b := range arm.Kids[0].Kids[1:] { // Ctor is a ref; a,b are binders
-					if b.K == "sym" {
-						out[b.Sym] = true
-					}
+				for _, b := range arm.Kids[0].Kids[1:] { // Ctor is a ref; the rest are binders
+					collectPatternBinders(b, out)
 				}
 			}
 			for _, k := range arm.Kids {

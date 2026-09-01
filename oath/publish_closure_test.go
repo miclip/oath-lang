@@ -156,6 +156,29 @@ func TestCollectDeclaredReachesEveryPosition(t *testing.T) {
 	}
 }
 
+// A binder introduced inside a NESTED constructor pattern is still a binder, so
+// collectDeclared must recurse into it. Missing one lets qualifyNames rewrite that
+// local as a published reference — inventing a false dependency edge, or rejecting a
+// valid batch as cyclic when the binder name matches a top-level definition's.
+func TestCollectDeclaredReachesNestedPatternBinders(t *testing.T) {
+	f, err := parseForms(`(defn d [a] [(rs (List (Run a)))] Int
+		(match rs ((Nil) 0) ((Cons (MkRun n x) t) n)))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	collectDeclared(f[0], got)
+	for _, want := range []string{"n", "x", "t"} {
+		if !got[want] {
+			t.Errorf("nested-pattern binder %q not collected", want)
+		}
+	}
+	// The nested constructor head is a reference, not a binder.
+	if got["MkRun"] {
+		t.Error("nested constructor head MkRun was misclassified as a binder")
+	}
+}
+
 // The transform must preserve identity: qualifying a name may only remap
 // references. For a valid closure, each definition's bare and qualified forms are
 // the SAME object (same hash) — only the name differs. This backstops the collision

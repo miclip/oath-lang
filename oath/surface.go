@@ -313,6 +313,7 @@ type elab struct {
 	dataSelf   string   // name of the data def being defined ("" otherwise)
 	funcSelf   string   // name of the func def being defined ("" otherwise)
 	selfTyVars int
+	gensym     int // counter for fresh binder names introduced by desugaring
 }
 
 func (e *elab) errAt(x sx, format string, args ...any) error {
@@ -805,15 +806,101 @@ func (e *elab) elabMatch(x sx) (*Term, error) {
 		if len(pat.Kids)-1 != nFields {
 			return nil, e.errAt(pat, "constructor %s has %d fields, pattern binds %d", cname, nFields, len(pat.Kids)-1)
 		}
+		// NESTED PATTERNS desugar to a fresh binder plus an inner match, so
+		// `(Cons (MkRun n x) t)` becomes `(Cons g t)` with the body wrapped in
+		// `(match g ((MkRun n x) <body>))`. This is a pure surface rewrite — the AST it
+		// produces is identical to the hand-written two-step form, and since binder
+		// NAMES are metadata (identity is de Bruijn), the fresh name changes no hash.
+		// The inner match re-enters elabMatch, so nesting to any depth is handled by
+		// recursion. The fresh name avoids every symbol the arm body mentions and every
+		// name in scope, so it cannot capture a variable the body refers to.
+		armBody := a.Kids[1]
 		var binders []string
+		// FAST PATH: a flat pattern (all binders are names) is the overwhelming majority,
+		// and desugaring is unreachable for it — so skip building the avoidance set, which
+		// would scan the scope and walk the whole arm body/pattern on every arm and make
+		// deeply nested flat matches Θ(N²).
+		hasNested := false
 		for _, b := range pat.Kids[1:] {
 			if b.K != "sym" {
-				return nil, e.errAt(b, "pattern binders must be names")
+				hasNested = true
+				break
 			}
-			binders = append(binders, b.Sym)
+		}
+		if !hasNested {
+			for _, b := range pat.Kids[1:] {
+				binders = append(binders, b.Sym)
+			}
+		} else {
+			// NESTED PATTERNS: the avoidance set keeps a generated name from colliding with
+			// anything in scope, the arm body, or a sibling binder (which would capture the
+			// wrong field).
+			avoid := map[string]bool{}
+			for _, s := range e.scope {
+				avoid[s] = true
+			}
+			for _, s := range walkSyms(armBody) {
+				avoid[s] = true
+			}
+			for _, s := range walkSyms(pat) {
+				avoid[s] = true
+			}
+			type nestedPat struct {
+				g   string
+				pat sx
+			}
+			var nested []nestedPat
+			for _, b := range pat.Kids[1:] {
+				switch {
+				case b.K == "sym":
+					binders = append(binders, b.Sym)
+				case b.K == "list" && len(b.Kids) > 0 && b.Kids[0].K == "sym":
+					// A nested pattern desugars to a SINGLE-arm inner match, which is only
+					// exhaustive — and only free of a duplicated outer arm — when its type has
+					// exactly one constructor. A sum type would need every alternative under
+					// this outer constructor grouped into one merged inner match (pattern-matrix
+					// compilation); that is out of scope, so refuse it by name and point at the
+					// two-step form rather than emit an unsound single-arm desugaring.
+					ncn := b.Kids[0].Sym
+					nh, _, nok := e.st.FindCtor(ncn)
+					if !nok {
+						return nil, e.errAt(b, "unknown constructor %q", ncn)
+					}
+					nd, err := e.st.GetDef(nh)
+					if err != nil {
+						return nil, err
+					}
+					if len(nd.Ctors) != 1 {
+						return nil, e.errAt(b, "nested pattern %s has %d constructors; nested patterns are supported only for single-constructor (product) types — destructure %s in a separate match", ncn, len(nd.Ctors), ncn)
+					}
+					var g string
+					for {
+						e.gensym++
+						g = fmt.Sprintf("__nest%d", e.gensym)
+						if !avoid[g] {
+							break
+						}
+					}
+					avoid[g] = true
+					binders = append(binders, g)
+					nested = append(nested, nestedPat{g, b})
+				default:
+					return nil, e.errAt(b, "pattern binders must be names or nested (Ctor ...) patterns")
+				}
+			}
+			// Wrap innermost-last so the first nested field's match is outermost, which
+			// is the order the equivalent hand-written destructuring uses.
+			for i := len(nested) - 1; i >= 0; i-- {
+				np := nested[i]
+				armBody = sx{K: "list", Line: np.pat.Line, Kids: []sx{
+					{K: "sym", Sym: "match", Line: np.pat.Line},
+					{K: "sym", Sym: np.g, Line: np.pat.Line},
+					{K: "list", Line: np.pat.Line, Kids: []sx{np.pat, armBody}},
+				}}
+			}
 		}
 		e.scope = append(e.scope, binders...)
-		body, err := e.elabTerm(a.Kids[1])
+		body, err := e.elabTerm(armBody)
 		if err != nil {
 			return nil, err
 		}

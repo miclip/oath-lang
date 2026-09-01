@@ -65,28 +65,43 @@ and the lawful-`eq` round-trip `eval` are MEASURED (`run.sh` §2–3).
 
 ---
 
-## 2. `match` has no nested patterns, so any algorithm over a list-of-structs pays a double-destructure tax — FRICTION
+## 2. `match` had no nested patterns, so any algorithm over a list-of-structs paid a double-destructure tax — RESOLVED
 
-**Second, and language-level rather than generics-specific — but it compounds here.**
-A run reached through a list `Cons` cannot be destructured in one step:
-`(Cons (MkRun n x) t)` is rejected —
+**Second, and language-level rather than generics-specific — but it compounded here.**
+A run reached through a list `Cons` could not be destructured in one step:
+`(Cons (MkRun n x) t)` was rejected with `pattern binders must be names`, so every
+case became two matches, `(Cons r t)` then `(match r ((MkRun n x) ...))`. `rle` and
+`rle-decode` both carried this, and any code walking a `List` of records did.
 
-```
-error: line 18: pattern binders must be names
-```
+**RESOLVED — nested constructor patterns now elaborate.** `match` accepts a nested
+`(Ctor binders...)` in a binder position and desugars it to a fresh binder plus an
+inner `match`, so the natural `(Cons (MkRun n x) t)` is available and `rle.oath` now
+uses it. The desugaring is **identity-preserving**: it produces the SAME core AST as
+the hand-written two-step form (binder names are metadata, so the fresh name changes
+no hash), which is why `rle`/`rle-decode` keep their pre-change hashes and no corpus
+or conformance fixture moves.
 
-— so every case becomes two matches, `(Cons r t)` then `(match r ((MkRun n x) ...))`.
-`rle` and `rle-decode` both carry this, and any code walking a `List` of records does.
-It is not a correctness problem — the two-step form is mechanical — but it doubles the
-match nesting of the natural formulation and obscures the algorithm.
+**Scope, stated exactly — it is single-constructor (product) destructuring, not
+general pattern matching.** The nested constructor MUST be the sole constructor of its
+datatype (`MkRun`, `Cons`-of-record, any product). A nested pattern over a SUM type is
+REFUSED by name — `(MkWrap (Some x))`/`(MkWrap (None))` would each desugar to a
+single-arm inner match (non-exhaustive) and duplicate the outer `MkWrap` arm; merging
+sibling arms under one outer constructor is pattern-matrix compilation, deliberately
+out of scope. A literal in a pattern position (`(MkRun 5 x)`) is likewise rejected.
 
-**DEMAND (minor): nested constructor patterns in `match`**, or an acknowledgement
-that destructuring is one level and containers-of-structs need the two-step form.
-Whether nested patterns are worth the elaborator complexity is a design question; the
-cost is real and recurs in every structural walk.
+**Specification.** This is identity-preserving surface sugar, exactly like the list-
+and string-literal sugar SPEC §1.4 already documents, so it changes no hash, verdict
+or semantic — and no corpus definition uses it, so it imposes nothing on cross-kernel
+conformance. SPEC §1.4 records it as OPTIONAL surface sugar (a conforming elaborator
+MAY reject nested patterns; one that accepts them MUST use the desugaring above),
+which is why the second Rust kernel is unaffected.
 
-**Evidence class:** the exact rejection is decidable from the CLI (shown above);
-HAND-verified.
+**Evidence class:** identity preservation (flat vs nested → identical hash), deep and
+multiple-field nesting evaluating correctly, sibling-binder-capture avoidance, the
+sum-type refusal, and the literal-binder rejection are covered by
+`oath/match_nested_test.go`; the publish-transformation reaching nested binders by
+`oath/publish_closure_test.go`; and `rle.oath` exercising the nested form is MEASURED
+by `run.sh` §1.
 
 ---
 

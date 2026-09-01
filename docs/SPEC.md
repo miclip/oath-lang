@@ -234,6 +234,22 @@ input. A conforming surface elaborator MUST therefore match these rules:
   constructors must be in scope. There is no string-literal term and no string
   primitive — a literal is byte-identical to the constructor chain an author
   would write by hand.
+- NESTED-CONSTRUCTOR-PATTERN SUGAR (OPTIONAL): in a match arm `((Ctor p0 p1 …)
+  body)` a binder position `pᵢ` MAY itself be a nested constructor pattern
+  `(Ctor' q0 q1 …)` instead of a plain name. It elaborates by binding `pᵢ` to a
+  FRESH name `g` and wrapping the body in `(match g ((Ctor' q0 q1 …) body))`,
+  recursively; nested positions are wrapped first-field-outermost, matching the
+  hand-written two-step form. Because the fresh binder's name is not part of
+  identity (§1.3) this produces the SAME `Def` as writing the two matches by
+  hand, so identity is unchanged. `Ctor'` MUST be the sole constructor of its
+  datatype: a single-arm inner match is exhaustive only for a product type, and
+  a multi-constructor `Ctor'` would need every sibling arm merged under one outer
+  arm (which this sugar does not do), so an elaborator that accepts nested
+  patterns MUST refuse a multi-constructor nested pattern rather than emit a
+  non-exhaustive inner match. This form is OPTIONAL — **no corpus definition
+  uses it**, so it is not required for conformance; a conforming elaborator MAY
+  reject nested patterns outright, and one that accepts them MUST use the
+  identity-preserving desugaring above.
 - Name resolution for a bare term name is, in order: local variable, the
   function currently being defined (emits `self`), constructor, stored function.
   Constructor lookup scans the current name index in ascending name order and
