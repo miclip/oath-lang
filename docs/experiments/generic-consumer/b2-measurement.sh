@@ -11,7 +11,11 @@ OATH="$root/oath/oath"
 [ -x "$OATH" ] || { echo "SETUP FAILED: build oath first (cd oath && go build -o oath .)" >&2; exit 1; }
 here="$root/docs/experiments/generic-consumer"
 
-export OATH_STORE=$(mktemp -d)
+# Validate before exporting: an empty OATH_STORE falls back to ./codebase, and prove/put
+# would then mutate the committed, append-only corpus.
+OATH_STORE=$(mktemp -d) || { echo "SETUP FAILED: mktemp -d failed" >&2; exit 1; }
+[ -d "$OATH_STORE" ] || { echo "SETUP FAILED: temp store missing" >&2; exit 1; }
+export OATH_STORE
 trap 'rm -rf "$OATH_STORE"' EXIT
 cap() { OATH_PROVE_RLIMIT=12000000 OATH_PROVE_WALLCAP_SEC=90 OATH_PROVE_MEMORY_MB=2500 "$@"; }
 
