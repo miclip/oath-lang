@@ -1,0 +1,472 @@
+; ledger-realdata — a plaintext-accounting checker run against a REAL journal
+; (12,001 transactions / 26,819 postings / 1.4 MB, `transactions.journal` beside
+; this file), not a hand-made fixture. The predecessor exercise
+; (`docs/experiments/ledger-app/`) was a toy: one commodity, integer minor units,
+; an association list, and a dozen postings. Everything that was easy there is
+; load-bearing here, which is the point — the demand list this produces is a
+; demand list from VOLUME and from SHAPE, not from taste.
+;
+; WHAT IS DIFFERENT, and why each difference was chosen:
+;
+;   MULTIPLE COMMODITIES.  A real journal balances PER COMMODITY, not globally.
+;   USD, EUR and AAPL postings interleave inside one file and a transaction is
+;   valid iff EVERY commodity in it nets to zero. So the aggregate is keyed on
+;   (account, commodity) — a genuine composite key, which is the shape a real
+;   consumer needs and the shape `StrMap` (Str -> Int) does not directly have.
+;
+;   FRACTIONAL AMOUNTS, EXACTLY.  Amounts carry two decimals for currency and
+;   three for fractional share lots. They are represented as scaled ℤ
+;   THOUSANDTHS — exact, no float, no rounding, and an imbalance of one
+;   thousandth cannot hide in the low bits. This is the "why Oath" of the whole
+;   exercise: `assets:cash -447.170 EUR` is the integer -447170 and nothing else.
+;
+;   NATIVE StrMap, NOT AN ASSOCIATION LIST.  `ledger-friction.md` demand 1 was
+;   exactly this: the ledger's natural shape is a string-keyed aggregate that
+;   must be REPORTED, and the Int-keyed native Map could not carry the account
+;   name back out. #184 landed `StrMap`, so this program is the first consumer
+;   to use it at volume: 26,819 postings fold into 21 live keys.
+;
+;   COMMENTS AND FIELD SHAPE ARE THE FORMAT'S, NOT A FIXTURE'S.  A comment runs
+;   from the first ';' to the end of the LINE wherever it starts, and a posting
+;   is EXACTLY three fields after the comment is stripped. The predecessor
+;   recognised whole-line comments only and ignored a fourth field, which turns
+;   hledger's priced posting `10.00 USD @ 1.09 EUR` into a plain 10.00 USD
+;   posting — a number in the report that the journal never stated.
+;
+;   FAILURES ARE NAMED, NOT COUNTED.  A checker that says "3 transactions do not
+;   balance" is useless. Each failure names the transaction header, the
+;   commodity, and the exact residual in thousandths.
+;
+; The exit protocol is #120's: the one-field arm prints to stdout and exits 0,
+; the two-field arm prints to stderr and exits its code. The compiler recognizes
+; the shape by FIELD COUNT, so these are named for what they do.
+
+(data CliResult [] (Emit Str) (Refuse Int Str))
+
+; An amount is a count of THOUSANDTHS of a commodity unit. The alias is not
+; decoration: `Int` appears in this file as a codepoint, a length, a counter and
+; a money amount, and only one of those is scaled. (Aliases are identity-
+; transparent surface sugar — SPEC 1's `(type Name ty)` — so a definition
+; written with `Amount` hashes identically to one spelling `Int` inline.)
+(type Amount Int)
+(type Lines (List Str))
+(type Errors (List Str))
+
+; One posting: an account, a commodity, and a signed amount in thousandths.
+(data Posting [] (MkPosting Str Str Amount))
+
+; The whole scan state, folded across the journal in ONE pass. Three maps:
+;   bal  (account 0x1f commodity) -> Amount   the reported aggregate
+;   tot  commodity                -> Amount   the global per-commodity total
+;   cur  commodity                -> Amount   the CURRENT transaction, reset at
+;                                             each header — this is what makes
+;                                             per-transaction validation possible
+;                                             without holding the journal in memory
+; plus the current transaction's header line (so a failure can NAME it), the
+; accumulated failures, and the transaction/posting counts.
+(data Scan [] (MkScan StrMap StrMap StrMap Str Errors Int Int))
+
+; ---------------------------------------------------------------- accessors --
+; These exist so the properties below can SAY what they mean. Without them a
+; claim like "closing a transaction never moves an account balance" has no
+; vocabulary and would have to be written about the implementation instead.
+
+(defn scan-bal [] [(st Scan)] StrMap
+  (match st ((MkScan bal tot cur hdr errs nt np) bal)))
+
+(defn scan-tot [] [(st Scan)] StrMap
+  (match st ((MkScan bal tot cur hdr errs nt np) tot)))
+
+(defn scan-cur [] [(st Scan)] StrMap
+  (match st ((MkScan bal tot cur hdr errs nt np) cur)))
+
+(defn scan-errs [] [(st Scan)] Errors
+  (match st ((MkScan bal tot cur hdr errs nt np) errs)))
+
+(defn scan-txns [] [(st Scan)] Int
+  (match st ((MkScan bal tot cur hdr errs nt np) nt)))
+
+(defn scan-posts [] [(st Scan)] Int
+  (match st ((MkScan bal tot cur hdr errs nt np) np)))
+
+; ------------------------------------------------------------ map arithmetic --
+
+; The amount currently held at a key; an absent key is zero, which is the whole
+; reason a ledger can start from an empty map.
+(defn amt-of [] [(k Str) (m StrMap)] Amount
+  (match (str-map-lookup k m) ((None) 0) ((Some v) v))
+  (prop empty-is-zero [(k Str)] (== (amt-of k str-map-empty) 0)))
+
+; Add d to a key's running amount. This is the single accumulation primitive of
+; the whole program: every posting reaches the report through exactly this.
+(defn bump [] [(k Str) (d Amount) (m StrMap)] StrMap
+  (str-map-insert k (+ d (amt-of k m)) m)
+  ; The accumulation is exact and lands where it was aimed.
+  (prop adds-at-key [(k Str) (d Amount) (m StrMap)]
+    (== (amt-of k (bump k d m)) (+ d (amt-of k m)))))
+
+; The composite key. 0x1f (UNIT SEPARATOR) cannot occur in an account name or a
+; commodity, so the pair is recoverable — `render-key` splits it back for the
+; report. Concatenating with a printable separator would have been shorter and
+; would have silently merged `a b`/`USD` with `a`/`b USD`.
+(defn bal-key [] [(acct Str) (comm Str)] Str
+  (str-append acct (SCons 31 comm)))
+
+; -------------------------------------------------------------------- lexing --
+
+; A comment runs from the first ';' to the end of the LINE, wherever it starts.
+; The predecessor recognised only a whole-line comment, which is the easy half:
+; hledger's own format puts notes at the end of postings, and a checker that
+; read `10.00 USD  ; paid late` as a four-field posting would reject a valid
+; journal. Stripping happens BEFORE anything is classified, so a comment cannot
+; change what a line IS.
+(defn strip-comment [] [(s Str)] Str
+  (match s
+    ((SNil) (SNil))
+    ((SCons c t) (if (== c 59) (SNil) (SCons c (strip-comment t)))))
+  (prop empty [] (== (strip-comment (SNil)) (SNil)))
+  ; A comment marker discards everything after it, at any position — this is the
+  ; whole claim, and it is stated at the head of the string so it holds wherever
+  ; the marker falls.
+  (prop drops-from-the-marker [(t Str)] (== (strip-comment (SCons 59 t)) (SNil)))
+  (prop keeps-what-precedes []
+    (== (strip-comment "    expenses:food  10.00 USD  ; paid late")
+        "    expenses:food  10.00 USD  ")))
+
+; Is there nothing left but layout? A line that is blank AFTER its comment is
+; stripped carries no posting and is not a header — it is nothing at all.
+(defn all-space [] [(s Str)] Bool
+  (match s
+    ((SNil) true)
+    ((SCons c t) (if (or (== c 32) (== c 9)) (all-space t) false)))
+  (prop empty-is-blank [] (all-space (SNil)))
+  (prop text-is-not-blank [] (not (all-space "x"))))
+
+; Drop trailing layout. A stripped header keeps the spaces that sat before its
+; comment, and those spaces would otherwise be quoted back inside every failure
+; message that names the transaction.
+(defn trim-end [] [(s Str)] Str
+  (match s
+    ((SNil) (SNil))
+    ((SCons c t)
+      (let (r Str (trim-end t))
+        (match r
+          ((SNil) (if (or (== c 32) (== c 9)) (SNil) (SCons c (SNil))))
+          ((SCons rc rt) (SCons c r))))))
+  (prop empty [] (== (trim-end (SNil)) (SNil)))
+  (prop drops-trailing [] (== (trim-end "2023-01-01 rent   ") "2023-01-01 rent"))
+  (prop keeps-interior [] (== (trim-end "a  b") "a  b")))
+
+; The first codepoint of a line, or 0 for an empty line. Line class is decided
+; on this one byte AFTER stripping: 32/9 an indented posting, anything else a
+; transaction header.
+(defn first-code [] [(s Str)] Int
+  (match s ((SNil) 0) ((SCons c rest) c))
+  (prop empty-is-zero [] (== (first-code (SNil)) 0)))
+
+; Drop empty pieces — the journal is column-aligned, so splitting a posting line
+; on a single space yields long runs of empties between the three real fields.
+(defn nonblank [] [(xs Lines)] Lines
+  (match xs
+    ((Nil) (Nil [Str]))
+    ((Cons h t)
+      (match h ((SNil) (nonblank t)) ((SCons c r) (Cons [Str] h (nonblank t)))))))
+
+(defn words [] [(line Str)] Lines
+  (nonblank (str-split 32 line)))
+
+; ------------------------------------------------------------------ amounts --
+
+; The named domain the amount properties quantify over. Without it a claim about
+; `frac3` can only be stated over "every Str", where it is false — `parse-nat`
+; on a non-digit returns a number, it does not fail — so the property would have
+; had to talk about the parser's own recursion instead of about the set of
+; well-formed inputs. (The `hex-valid` move, applied to money.)
+(defn digits-ok [] [(s Str)] Bool
+  (match s
+    ((SNil) true)
+    ((SCons c t) (if (< c 48) false (if (< 57 c) false (digits-ok t)))))
+  (prop empty-ok [] (digits-ok (SNil))))
+
+; A fractional digit string, scaled to thousandths: "5" -> 500, "17" -> 170,
+; "170" -> 170, and anything past three digits is truncated (a journal carrying
+; more precision than thousandths is outside this representation, and silently
+; rounding it would be the bug).
+(defn frac3 [] [(f Str)] Amount
+  (let (d Str (str-take 3 f))
+    (let (n Int (str-len d))
+      (if (== n 0) 0
+        (if (== n 1) (* 100 (parse-nat d))
+          (if (== n 2) (* 10 (parse-nat d)) (parse-nat d))))))
+  (prop empty-is-zero [] (== (frac3 (SNil)) 0))
+  (prop tenths [] (== (frac3 "5") 500))
+  (prop hundredths [] (== (frac3 "17") 170))
+  (prop thousandths [] (== (frac3 "170") 170))
+  ; A well-formed fraction is a fraction: it never carries a whole unit. Stated
+  ; over `digits-ok`, which is the only vocabulary in which it is TRUE.
+  (prop is-a-fraction [(f Str)]
+    (if (digits-ok f) (and (<= 0 (frac3 f)) (< (frac3 f) 1000)) true)))
+
+; The magnitude of an amount: "50000.00" -> 50000000, "12.345" -> 12345,
+; "7" -> 7000. Exact scaled ℤ, never a float.
+(defn parse-abs [] [(s Str)] Amount
+  (match (str-split 46 s)
+    ((Nil) 0)
+    ((Cons ip rest)
+      (match rest
+        ((Nil) (* 1000 (parse-nat ip)))
+        ((Cons fp more) (+ (* 1000 (parse-nat ip)) (frac3 fp))))))
+  (prop whole-units [] (== (parse-abs "7") 7000))
+  (prop two-decimals [] (== (parse-abs "50000.00") 50000000))
+  (prop three-decimals [] (== (parse-abs "12.345") 12345)))
+
+; A signed amount. The leading '-' is peeled by hand because `parse-nat` has no
+; signed sibling — `ledger-friction.md` demand 2, still open, and still the first
+; thing every numeric-input program rewrites.
+(defn parse-amount [] [(s Str)] Amount
+  (match s
+    ((SNil) 0)
+    ((SCons c rest) (if (== c 45) (neg (parse-abs rest)) (parse-abs s))))
+  (prop minus-negates [(s Str)] (== (parse-amount (SCons 45 s)) (neg (parse-abs s))))
+  (prop reads-negative [] (== (parse-amount "-447.17") (neg 447170))))
+
+; A posting line is EXACTLY three fields — account, amount, commodity — after
+; its comment is stripped. Fewer or MORE is not skipped: it is reported. The
+; predecessor accepted a fourth field silently by ignoring the tail, which turns
+; `10.00 USD @ 1.09 EUR` (a priced posting this representation cannot carry) into
+; a plain 10.00 USD posting and puts a number in the report that the journal
+; never stated.
+(defn parse-posting [] [(line Str)] (Option Posting)
+  (match (words line)
+    ((Nil) (None [Posting]))
+    ((Cons a r1)
+      (match r1
+        ((Nil) (None [Posting]))
+        ((Cons amt r2)
+          (match r2
+            ((Nil) (None [Posting]))
+            ((Cons comm r3)
+              (match r3
+                ((Nil) (Some [Posting] (MkPosting a comm (parse-amount amt))))
+                ((Cons extra more) (None [Posting])))))))))
+  ; POSITIVE: a well-formed posting reads back as exactly the three fields it
+  ; states, with the amount in exact thousandths.
+  (prop reads-a-posting []
+    (== (parse-posting "    assets:cash         -447.17 EUR")
+        (Some [Posting] (MkPosting "assets:cash" "EUR" (neg 447170)))))
+  ; NEGATIVE, both directions of "exactly three". Two properties rather than one
+  ; because a `<= 3` check and a `>= 3` check fail differently, and a single
+  ; example would let either mistake through.
+  (prop rejects-two-fields []
+    (== (parse-posting "    assets:cash         -447.17") (None [Posting])))
+  (prop rejects-four-fields []
+    (== (parse-posting "    assets:cash  10.00 USD @1.09") (None [Posting])))
+  (prop rejects-layout-only []
+    (== (parse-posting "        ") (None [Posting])))
+  ; And the two composed: an inline comment must be invisible to the parse, not
+  ; merely tolerated by it.
+  (prop inline-comment-changes-nothing []
+    (== (parse-posting (strip-comment "    assets:cash  -447.17 EUR   ; late"))
+        (parse-posting "    assets:cash  -447.17 EUR"))))
+
+; ---------------------------------------------------------------- rendering --
+
+(defn pad3 [] [(n Int)] Str
+  (if (< n 10) (str-append "00" (show-nat n))
+    (if (< n 100) (str-append "0" (show-nat n)) (show-nat n)))
+  (prop pads-zero [] (== (pad3 0) "000"))
+  (prop pads-seventeen [] (== (pad3 17) "017")))
+
+(defn show-abs [] [(n Amount)] Str
+  (str-append (show-nat (/ n 1000)) (str-append "." (pad3 (% n 1000))))
+  (prop zero [] (== (show-abs 0) "0.000")))
+
+; Thousandths back to a decimal string. The sign is written once, at the front,
+; so `-0.170` does not come back as `0.-170`.
+(defn show-amount [] [(n Amount)] Str
+  (if (< n 0) (SCons 45 (show-abs (neg n))) (show-abs n))
+  (prop zero [] (== (show-amount 0) "0.000"))
+  (prop negative [] (== (show-amount (neg 447170)) "-447.170"))
+  (prop positive [] (== (show-amount 50000000) "50000.000")))
+
+; The composite key, split back into "account commodity" for the report.
+(defn render-key [] [(k Str)] Str
+  (match (str-split 31 k)
+    ((Nil) k)
+    ((Cons a r)
+      (match r ((Nil) a) ((Cons c r2) (str-append a (SCons 32 c))))))
+  ; The round trip: a key built from a pair renders as that pair, separated by a
+  ; space. This is what licenses reporting the aggregate at all.
+  (prop rebuilds [] (== (render-key (bal-key "assets:cash" "EUR")) "assets:cash EUR")))
+
+; ------------------------------------------------------- transaction closing --
+
+(defn fail-line [] [(hdr Str) (comm Str) (residual Amount)] Str
+  (str-append "  unbalanced: " (str-append hdr
+    (str-append " [" (str-append comm
+      (str-append " residual " (str-append (show-amount residual) "]")))))))
+
+; The predicate the equivalence property below quantifies over: every commodity
+; named in `ks` nets to zero in `m`. Naming it is the point — without it the
+; claim "a transaction is reported clean exactly when it balances" has to be
+; written about `tx-errors`' own recursion, which would restate the
+; implementation instead of stating the contract.
+(defn all-zero [] [(ks Lines) (m StrMap)] Bool
+  (match ks
+    ((Nil) true)
+    ((Cons k t) (if (== (amt-of k m) 0) (all-zero t m) false)))
+  (prop nothing-is-balanced [(m StrMap)] (all-zero (Nil [Str]) m)))
+
+; Every commodity in the closing transaction whose postings do not net to zero,
+; each named with its residual. A balanced transaction produces nothing.
+(defn tx-errors [] [(hdr Str) (ks Lines) (m StrMap)] Errors
+  (match ks
+    ((Nil) (Nil [Str]))
+    ((Cons k t)
+      (if (== (amt-of k m) 0)
+          (tx-errors hdr t m)
+          (Cons [Str] (fail-line hdr k (amt-of k m)) (tx-errors hdr t m)))))
+  (prop nothing-to-check [(hdr Str) (m StrMap)]
+    (== (tx-errors hdr (Nil [Str]) m) (Nil [Str])))
+  ; A commodity that nets to zero is never named. This is the half that makes the
+  ; tool usable: a checker that cried wolf on balanced transactions would be
+  ; discarded on its first run over a real journal.
+  (prop silent-on-balanced [(hdr Str) (k Str) (m StrMap)]
+    (if (== (amt-of k m) 0)
+        (== (tx-errors hdr (Cons [Str] k (Nil [Str])) m) (Nil [Str]))
+        true))
+  ; THE EQUIVALENCE, stated directly rather than assembled from the two halves
+  ; above: a transaction produces NO failure exactly when it balances in every
+  ; commodity. Both directions in one biconditional — a checker that missed an
+  ; imbalance and a checker that invented one are the same property failing on
+  ; opposite sides, and a one-directional claim would catch only one of them.
+  ; Composed with `adjudicate.refuses-iff-failures` this is the whole safety
+  ; chain: balanced <-> no failure <-> a report rather than a refusal.
+  (prop errors-iff-imbalanced [(hdr Str) (ks Lines) (m StrMap)]
+    (== (== (length [Str] (tx-errors hdr ks m)) 0) (all-zero ks m))))
+
+(defn add-error [] [(msg Str) (st Scan)] Scan
+  (match st ((MkScan bal tot cur hdr errs nt np)
+    (MkScan bal tot cur hdr (append [Str] errs (Cons [Str] msg (Nil [Str]))) nt np)))
+  (prop keeps-balances [(msg Str) (st Scan)]
+    (== (scan-bal (add-error msg st)) (scan-bal st))))
+
+(defn add-errors [] [(msgs Errors) (st Scan)] Scan
+  (match msgs ((Nil) st) ((Cons m t) (add-errors t (add-error m st)))))
+
+; Close the transaction in progress: validate its per-commodity residuals, name
+; whatever failed, and clear the current-transaction map. Balances and global
+; totals are untouched — a failing transaction's postings still HAPPENED, and
+; dropping them would make the report disagree with the journal.
+(defn close-txn [] [(st Scan)] Scan
+  (match st ((MkScan bal tot cur hdr errs nt np)
+    (add-errors (tx-errors hdr (str-map-keys cur) cur)
+                (MkScan bal tot str-map-empty hdr errs nt np))))
+  (prop preserves-balances [(st Scan)]
+    (== (scan-bal (close-txn st)) (scan-bal st)))
+  (prop preserves-totals [(st Scan)]
+    (== (scan-tot (close-txn st)) (scan-tot st))))
+
+; ------------------------------------------------------------------ the fold --
+
+(defn start-txn [] [(line Str) (st Scan)] Scan
+  (match (close-txn st) ((MkScan bal tot cur hdr errs nt np)
+    (MkScan bal tot cur line errs (+ nt 1) np))))
+
+; One posting: into the account aggregate, into the global total, and into the
+; current transaction's residual. THREE bumps, one posting — and the second is
+; what makes the global commodity total a genuine cross-check on the first.
+(defn add-posting [] [(line Str) (st Scan)] Scan
+  (match (parse-posting line)
+    ((None) (add-error (str-append "  unreadable posting: " line) st))
+    ((Some p)
+      (match p ((MkPosting a cm n)
+        (match st ((MkScan bal tot cur hdr errs nt np)
+          (MkScan (bump (bal-key a cm) n bal) (bump cm n tot) (bump cm n cur)
+                  hdr errs nt (+ np 1)))))))))
+
+(defn scan-step [] [(line Str) (st Scan)] Scan
+  (let (s Str (strip-comment line))
+    (if (all-space s) st
+      (if (or (== (first-code s) 32) (== (first-code s) 9))
+          (add-posting s st)
+          (start-txn (trim-end s) st))))
+  (prop skips-blank [(st Scan)] (== (scan-step (SNil) st) st))
+  (prop skips-comment [(st Scan) (s Str)] (== (scan-step (SCons 59 s) st) st))
+  ; An INDENTED comment is a comment too. The predecessor's whole-line test
+  ; looked at the first codepoint, so this line would have been classified as a
+  ; posting and then reported as unreadable — a valid journal refused.
+  (prop skips-indented-comment [(st Scan)] (== (scan-step "    ; a note" st) st)))
+
+; The whole journal in one tail-recursive pass. The final `close-txn` is the last
+; transaction, which has no successor header to close it.
+(defn scan [] [(lines Lines) (st Scan)] Scan
+  (match lines
+    ((Nil) (close-txn st))
+    ((Cons h t) (scan t (scan-step h st)))))
+
+(defn empty-scan [] [] Scan
+  (MkScan str-map-empty str-map-empty str-map-empty "" (Nil [Str]) 0 0)
+  (prop starts-clean [] (== (scan-posts empty-scan) 0)))
+
+; ------------------------------------------------------------------- report --
+
+(defn bal-lines [] [(ks Lines) (m StrMap)] Lines
+  (match ks
+    ((Nil) (Nil [Str]))
+    ((Cons k t)
+      (Cons [Str] (str-append "  " (str-append (render-key k)
+                    (str-append "  " (show-amount (amt-of k m)))))
+            (bal-lines t m)))))
+
+(defn tot-lines [] [(ks Lines) (m StrMap)] Lines
+  (match ks
+    ((Nil) (Nil [Str]))
+    ((Cons k t)
+      (Cons [Str] (str-append "  " (str-append k
+                    (str-append "  " (show-amount (amt-of k m)))))
+            (tot-lines t m)))))
+
+; The report: per-(account, commodity) balances in key order, then the GLOBAL
+; per-commodity totals — which must every one be zero if the journal is sound,
+; and are printed whether they are or not.
+(defn report [] [(st Scan)] Str
+  (match st ((MkScan bal tot cur hdr errs nt np)
+    (str-join 10
+      (append [Str] (Cons [Str] "balances (account commodity amount):" (Nil [Str]))
+      (append [Str] (bal-lines (str-map-keys bal) bal)
+      (append [Str] (Cons [Str] "commodity totals:" (Nil [Str]))
+      (append [Str] (tot-lines (str-map-keys tot) tot)
+        (Cons [Str] (str-append "transactions: " (str-append (show-int nt)
+                      (str-append "  postings: " (show-int np))))
+              (Nil [Str]))))))))))
+
+; The adjudication. A journal with no named failure is reported; one with any
+; failure is REFUSED, and the refusal carries every failure, not a count.
+(defn adjudicate [] [(st Scan)] CliResult
+  (if (== (length [Str] (scan-errs st)) 0)
+      (Emit (report st))
+      (Refuse 1 (str-join 10
+        (append [Str] (Cons [Str] "journal REFUSED — transactions do not balance:" (Nil [Str]))
+                      (scan-errs st)))))
+  ; THE SAFETY CLAIM OF THE TOOL: it emits a report if and only if it found
+  ; nothing wrong. A checker that reported a journal it had also flagged would be
+  ; worse than no checker.
+  (prop refuses-iff-failures [(st Scan)]
+    (match (adjudicate st)
+      ((Emit r) (== (length [Str] (scan-errs st)) 0))
+      ((Refuse c m) (not (== (length [Str] (scan-errs st)) 0))))))
+
+; The entry. `readfile` is the only capability, so the analyser can confine it:
+; this program cannot reach anything but the file it was handed.
+(defn ledger-main [] [(caps {readfile (-> Str Str)}) (args Lines)] CliResult
+  (match args
+    ((Nil) (Refuse 2 "usage: ledger <journal>"))
+    ((Cons path rest)
+      (adjudicate (scan (str-split 10 ((. caps readfile) path)) empty-scan))))
+  ; Invoked with no journal, the tool refuses — and never touches the capability
+  ; to do so.
+  (prop no-args-refuses [(caps {readfile (-> Str Str)})]
+    (match (ledger-main caps (Nil [Str]))
+      ((Emit r) false)
+      ((Refuse c m) true))))
