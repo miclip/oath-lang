@@ -119,26 +119,38 @@ func TestTypeAliasNonRecord(t *testing.T) {
 	}
 }
 
-// Aliases are a put-time source convenience. The source-rewriting/dependency-classifying
-// paths — `oath publish` and `oath resolve` — refuse a (type ...) form with guidance
-// (expand inline; the objects are identical) rather than a generic "unknown form".
-func TestTypeAliasRefusedInPublish(t *testing.T) {
+// `oath publish` accepts aliases too (see publish_type_alias_test.go). What survives
+// is the INVARIANT that made the old refusal necessary: an alias declares no published
+// name, so every publish path must filter it out before asking for one. declaredName is
+// where that assumption would silently produce a name, so it refuses instead.
+func TestTypeAliasHasNoPublishedName(t *testing.T) {
 	forms, err := parseForms(`(type Cap {emit (-> Str Str)})`)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !isTypeAliasForm(forms[0]) {
+		t.Fatal("a (type ...) form must be recognised as an alias, or the publish paths will treat it as a definition")
+	}
 	_, derr := declaredName(forms[0])
-	if derr == nil || !strings.Contains(derr.Error(), "not supported in oath publish") {
-		t.Fatalf("expected a publish-refusal naming the workaround; got %v", derr)
+	if derr == nil || !strings.Contains(derr.Error(), "has no published name") {
+		t.Fatalf("declaredName must refuse an alias rather than invent a name for it; got %v", derr)
 	}
 }
 
-func TestTypeAliasRefusedInResolve(t *testing.T) {
+// `oath resolve` ACCEPTS aliases: the same source that put accepts elaborates here, and
+// the alias contributes no name of its own to the dependency set.
+func TestTypeAliasAcceptedInResolve(t *testing.T) {
 	st := aliasStore(t)
-	_, err := elaborateInto(st, `(type Cap {emit (-> Str Str)})
+	direct, err := elaborateInto(st, `(type Cap {emit (-> Str Str)})
 		(defn svc [] [(cap Cap)] Str ((. cap emit) "r") (prop p [(cap Cap)] (== (svc cap) ((. cap emit) "r"))))`)
-	if err == nil || !strings.Contains(err.Error(), "not supported in oath resolve") {
-		t.Fatalf("expected a resolve-refusal naming the workaround; got %v", err)
+	if err != nil {
+		t.Fatalf("resolve must accept a (type ...) alias: %v", err)
+	}
+	if direct["Str"] == "" {
+		t.Errorf("Str is referenced by the alias body and must be pinned; got %v", direct)
+	}
+	if _, ok := direct["Cap"]; ok {
+		t.Errorf("the alias name is not a dependency; got %v", direct)
 	}
 }
 

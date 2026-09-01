@@ -151,55 +151,79 @@ func registryFetcher(url string, s Signer, into *Store) (func(string) bool, func
 // same-batch even when that form is byte-identical to an external definition (a hash
 // collision). Names are captured (not reconstructed from hashes) because Resolve and
 // FindCtor both log the surface name the source actually used.
+//
+// (type ...) aliases participate: they store nothing and declare no batch name, but
+// their bodies reference external TYPES, and those references are captured through the
+// elaborator's own dependency log — see the type branch below for why the store-level
+// log cannot see them.
 func elaborateInto(tmp *Store, src string) (map[string]string, error) {
 	forms, err := parseForms(src)
 	if err != nil {
 		return nil, err
 	}
-	priorNames := map[string]bool{} // names DECLARED by earlier forms in this batch
-	external := map[string]string{} // direct external dependency: surface name -> hash
+	priorNames := map[string]bool{}   // names DECLARED by earlier forms in this batch
+	external := map[string]string{}   // direct external dependency: surface name -> hash
+	aliases := map[string]*aliasDef{} // batch-scoped type aliases, exactly as apiPut keeps them
+	// A resolution is EXTERNAL iff its surface name was not declared by an EARLIER
+	// form. By NAME, not by hash: a name is a same-batch reference only when this batch
+	// bound it first, regardless of whether the object it resolves to happens to equal
+	// an ambient definition under another name (structurally identical aliases are
+	// supported, CLAUDE.md). Order matters — an early reference to an ambient `foo`
+	// stays external even if a later form redeclares `foo` — so this is applied at each
+	// form's own position, against priorNames as of that moment.
+	noteExternal := func(logged map[string]string) {
+		for name, rh := range logged {
+			if !priorNames[name] {
+				external[name] = rh
+			}
+		}
+	}
 	for _, f := range forms {
 		if f.K != "list" || len(f.Kids) == 0 {
-			return nil, fmt.Errorf("top-level form must be (defn ...) or (data ...)")
+			return nil, fmt.Errorf("top-level form must be (defn ...), (data ...) or (type ...)")
 		}
-		// Type aliases are a put-time source convenience; `oath resolve` (lockfile
-		// generation, which classifies external dependencies by surface name) does not
-		// carry them. Because an alias is identity-transparent, expanding it inline yields
-		// the identical objects, so this is a source-shape restriction — the same one
-		// `oath publish` states.
+		// A (type Name ty) alias is identity-transparent surface sugar: it stores no
+		// object and declares no batch name, so it contributes nothing to the lock except
+		// its BODY's dependencies. Those are resolved HERE, once, at registration —
+		// every later use expands the already-canonical body without resolving anything.
+		// So they are captured through registerTypeAliasWith's request-local log rather
+		// than Store.resolveLog, which is armed around the using form and would see
+		// nothing at all. Expanded aliases produce byte-identical objects to the inline
+		// spelling, so the closure a lock pins is the same either way.
 		if f.Kids[0].isSym("type") {
-			return nil, fmt.Errorf("line %d: (type ...) aliases are not supported in oath resolve; "+
-				"expand the alias inline (the resolved objects are identical)", f.Line)
+			aliasDeps := map[string]string{}
+			if err := registerTypeAliasWith(tmp, f, aliases, aliasDeps); err != nil {
+				return nil, err
+			}
+			noteExternal(aliasDeps)
+			continue
+		}
+		// A data type declared LATER must not collide with a batch alias — the same
+		// guard apiPut applies, mirrored so `resolve` never writes a lock for source
+		// that `put` will then refuse.
+		if f.Kids[0].isSym("data") && len(f.Kids) >= 2 && f.Kids[1].K == "sym" {
+			if conflict := dataNameConflict(f.Kids[1].Sym, aliases); conflict != nil {
+				return nil, fmt.Errorf("line %d: %v", f.Line, conflict)
+			}
 		}
 		tmp.resolveLog = map[string]string{}
 		var d *Def
 		var m *Meta
 		switch {
 		case f.Kids[0].isSym("defn"):
-			d, m, err = elabFunc(tmp, f)
+			d, m, err = elabFuncWith(tmp, f, aliases)
 		case f.Kids[0].isSym("data"):
-			d, m, err = elabData(tmp, f)
+			d, m, err = elabDataWith(tmp, f, aliases)
 		default:
 			tmp.resolveLog = nil
-			return nil, fmt.Errorf("top-level form must be (defn ...) or (data ...), got %q", f.Kids[0].Sym)
+			return nil, fmt.Errorf("top-level form must be (defn ...), (data ...) or (type ...), got %q", f.Kids[0].Sym)
 		}
 		logged := tmp.resolveLog
 		tmp.resolveLog = nil
 		if err != nil {
 			return nil, err
 		}
-		// A resolution is EXTERNAL iff its surface name was not declared by an
-		// EARLIER form. By NAME, not by hash: a name is a same-batch reference only
-		// when this batch bound it first, regardless of whether the object it
-		// resolves to happens to equal an ambient definition under another name
-		// (structurally identical aliases are supported, CLAUDE.md). Order matters —
-		// an early reference to an ambient `foo` stays external even if a later form
-		// redeclares `foo`.
-		for name, rh := range logged {
-			if !priorNames[name] {
-				external[name] = rh
-			}
-		}
+		noteExternal(logged)
 		h, err := tmp.StoreObject(d, m)
 		if err != nil {
 			return nil, err

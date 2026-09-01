@@ -59,7 +59,7 @@ func TestTopoOrderPublishesDependenciesFirst(t *testing.T) {
 		`(defn team/f [] [(x Int)] Int x)`,
 	}
 	batch := map[string]bool{"team/f": true, "team/g": true}
-	ordered, err := topoOrderForms(forms, batch, nil)
+	ordered, err := topoOrderForms(forms, batch, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestTopoOrderToleratesOneSidedBinderCollision(t *testing.T) {
 		`(defn foo [] [] Int 1)`,
 	}
 	batch := map[string]bool{"foo": true, "bar": true}
-	ordered, err := topoOrderForms(forms, batch, nil)
+	ordered, err := topoOrderForms(forms, batch, nil, nil)
 	if err != nil {
 		t.Fatalf("a one-sided binder collision must not be read as a cycle: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestTopoOrderToleratesOneSidedBinderCollision(t *testing.T) {
 		`(defn a [] [(b Int)] Int b)`,
 		`(defn b [] [(a Int)] Int a)`,
 	}
-	if _, err := topoOrderForms(mutual, map[string]bool{"a": true, "b": true}, nil); err == nil {
+	if _, err := topoOrderForms(mutual, map[string]bool{"a": true, "b": true}, nil, nil); err == nil {
 		t.Error("a mutual reference must be reported as a cycle — it has no separate-envelope order")
 	}
 }
@@ -113,7 +113,7 @@ func TestConstructorUseOrdersAfterItsDatatype(t *testing.T) {
 	}
 	batch := map[string]bool{"team/h": true, "team/C": true}
 	ctorOwner := map[string]string{"MkC": "team/C"}
-	ordered, err := topoOrderForms(forms, batch, ctorOwner)
+	ordered, err := topoOrderForms(forms, batch, ctorOwner, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +234,7 @@ func TestTopoOrderRefusesACycle(t *testing.T) {
 		`(defn team/b [] [] Int (team/a))`,
 	}
 	batch := map[string]bool{"team/a": true, "team/b": true}
-	if _, err := topoOrderForms(forms, batch, nil); err == nil || !strings.Contains(err.Error(), "cycle") {
+	if _, err := topoOrderForms(forms, batch, nil, nil); err == nil || !strings.Contains(err.Error(), "cycle") {
 		t.Errorf("a dependency cycle should be reported, got: %v", err)
 	}
 }
@@ -260,7 +260,7 @@ func TestNamespacedClosureIsAcceptedByTheServer(t *testing.T) {
 
 	qsrc := qualifyNames(src, rename)
 	forms := splitTopLevelForms(qsrc)
-	ordered, err := topoOrderForms(forms, map[string]bool{"team/f": true, "team/g": true}, nil)
+	ordered, err := topoOrderForms(forms, map[string]bool{"team/f": true, "team/g": true}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

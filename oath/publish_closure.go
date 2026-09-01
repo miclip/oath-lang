@@ -28,15 +28,42 @@ import (
 // Identity is name-independent (names resolve to hashes), so nothing here changes
 // a hash, a verdict, or the spec.
 
-// cmdPublishClosure publishes every definition in src under the namespace, in
-// dependency order.
-func cmdPublishClosure(ctx context.Context, signer Signer, pubHex string, local *Store, endpoint, src, license, namespace string, dryRun, jsonOut, assumeYes bool) {
+// publishBatch is the SOURCE TRANSFORMATION a closure publication performs, computed
+// before anything is signed or sent. It is a pure function of (source, namespace,
+// local store) so it can be driven — and falsified — without a registry, a signer, or
+// a process exit.
+type publishBatch struct {
+	forms    []sx              // every top-level form, aliases included
+	rename   map[string]string // bare declared name -> qualified name (definitions only)
+	aliasExt map[string]string // type-alias external dependency: name -> the hash it resolved to
+	ordered  []qform           // the PUBLISHED definitions, in dependency order
+	// planText[i] is the EXACT source published for ordered[i]: the type aliases that
+	// definition needs, then the definition itself. It is what gets hashed, signed and
+	// re-elaborated by the registry — one text, so those cannot drift apart. It always
+	// declares exactly ONE definition, because one signature authorises one transition.
+	planText []string
+	// batchBare/batchQual are the whole closure laid out as ONE elaboration unit for
+	// the local identity control. They are NOT planText concatenated: an alias may be
+	// registered only once per batch, so here each appears once, at its first use.
+	batchBare []string
+	batchQual []string
+}
+
+// buildPublishBatch qualifies the source, classifies its type aliases, and orders the
+// definitions so each follows what it depends on — including what it depends on only
+// through an alias.
+func buildPublishBatch(local *Store, src, namespace string) (publishBatch, error) {
+	var zero publishBatch
 	forms, err := parseForms(src)
 	if err != nil {
-		fail(err)
+		return zero, err
 	}
 	if len(forms) == 0 {
-		fail(fmt.Errorf("no definitions to publish"))
+		return zero, fmt.Errorf("no definitions to publish")
+	}
+	parts := splitTopLevelForms(src)
+	if len(parts) != len(forms) {
+		return zero, fmt.Errorf("internal: split %d source forms from %d parsed definitions", len(parts), len(forms))
 	}
 
 	// The rename table (each declared name -> its namespaced form) and the batch's
@@ -44,45 +71,123 @@ func cmdPublishClosure(ctx context.Context, signer Signer, pubHex string, local 
 	// not itself qualified). applyNamespace validates the namespace pattern and
 	// refuses a source that already carries a prefix, so a name keeps ONE source of
 	// truth.
+	//
+	// (type ...) forms are skipped throughout: an alias binds no published name, so it
+	// takes no rename entry, occupies no duplicate-name slot, is no topology node, and
+	// becomes no plan and no envelope. It is carried alongside the definitions that
+	// need it instead.
 	rename := map[string]string{}
 	qualifiedSet := map[string]bool{}
 	ctorOwner := map[string]string{} // qualified ctor-owner: ctor name -> qualified datatype
-	for _, f := range forms {
+	declaredAt := map[string]int{}   // bare declared name -> its index in `forms`
+	var defIdx []int                 // indices of the forms that ARE published
+	for i, f := range forms {
+		if isTypeAliasForm(f) {
+			continue
+		}
 		name, err := declaredName(f)
 		if err != nil {
-			fail(err)
+			return zero, err
 		}
 		if _, dup := rename[name]; dup {
-			fail(fmt.Errorf("%q is declared twice in this file", name))
+			return zero, fmt.Errorf("%q is declared twice in this file", name)
 		}
 		q, err := applyNamespace(name, namespace)
 		if err != nil {
-			fail(err)
+			return zero, err
 		}
 		rename[name] = q
 		qualifiedSet[q] = true
+		declaredAt[name] = i
+		defIdx = append(defIdx, i)
 		for _, c := range constructorNames(f) {
 			ctorOwner[c] = q
 		}
 	}
+	if len(defIdx) == 0 {
+		return zero, fmt.Errorf("no definitions to publish: this file declares only (type ...) aliases, which are batch-local sugar with no published identity")
+	}
 
 	if err := collisionUnderQualification(forms, rename, namespace); err != nil {
-		fail(err)
+		return zero, err
 	}
 
 	qsrc := qualifyNames(src, rename)
-	qforms := splitTopLevelForms(qsrc)
-	if len(qforms) != len(forms) {
-		fail(fmt.Errorf("internal: qualified %d forms from %d definitions", len(qforms), len(forms)))
+	qparts := splitTopLevelForms(qsrc)
+	if len(qparts) != len(parts) {
+		return zero, fmt.Errorf("internal: qualified %d forms from %d definitions", len(qparts), len(parts))
+	}
+
+	// The type aliases and their dependencies, each classified at its OWN source
+	// position — the position where its body is elaborated, and so the only one at
+	// which its references mean what the published object will carry.
+	aliases, aerr := collectBatchAliases(forms, parts, qparts, declaredAt, local)
+	if aerr != nil {
+		return zero, aerr
+	}
+	bareAliasText := make([]string, len(aliases))
+	qualAliasText := make([]string, len(aliases))
+	aliasExt := map[string]string{}
+	for i, a := range aliases {
+		bareAliasText[i], qualAliasText[i] = a.bare, a.qual
+		for n, h := range a.ext {
+			aliasExt[n] = h
+		}
+	}
+
+	// Per published definition: which aliases it needs in scope, and the extra
+	// dependency edges those aliases contribute. A definition writing `(p Env)`
+	// mentions no batch name even when Env expands to one, so without these edges it
+	// could be ordered — and published — ahead of the datatype it actually depends on.
+	defBare := make([]string, len(defIdx))
+	defQual := make([]string, len(defIdx))
+	needs := make([][]int, len(defIdx))
+	extra := make([]map[string]bool, len(defIdx))
+	for k, i := range defIdx {
+		defBare[k], defQual[k] = parts[i], qparts[i]
+		needs[k] = aliasesNeededBy(forms[i], i, aliases)
+		extra[k] = map[string]bool{}
+		for _, ai := range needs[k] {
+			for b := range aliases[ai].batch {
+				if q, ok := rename[b]; ok {
+					extra[k][q] = true
+				}
+			}
+		}
 	}
 
 	// Dependency order, derived from which qualified names (and which batch
 	// constructors) each definition references. A dependent must be published
 	// after its deps.
-	ordered, err := topoOrderForms(qforms, qualifiedSet, ctorOwner)
+	ordered, err := topoOrderForms(defQual, qualifiedSet, ctorOwner, extra)
+	if err != nil {
+		return zero, err
+	}
+
+	out := publishBatch{forms: forms, rename: rename, aliasExt: aliasExt, ordered: ordered}
+	qualText := make([]string, len(ordered))
+	bareText := make([]string, len(ordered))
+	orderedNeeds := make([][]int, len(ordered))
+	out.planText = make([]string, len(ordered))
+	for i, qf := range ordered {
+		orderedNeeds[i] = needs[qf.idx]
+		qualText[i] = qf.text
+		bareText[i] = defBare[qf.idx]
+		out.planText[i] = planSource(qf.text, orderedNeeds[i], qualAliasText)
+	}
+	out.batchBare = batchSource(bareText, orderedNeeds, bareAliasText)
+	out.batchQual = batchSource(qualText, orderedNeeds, qualAliasText)
+	return out, nil
+}
+
+// cmdPublishClosure publishes every definition in src under the namespace, in
+// dependency order.
+func cmdPublishClosure(ctx context.Context, signer Signer, pubHex string, local *Store, endpoint, src, license, namespace string, dryRun, jsonOut, assumeYes bool) {
+	batch, err := buildPublishBatch(local, src, namespace)
 	if err != nil {
 		fail(err)
 	}
+	ordered := batch.ordered
 
 	// Seed store: a throwaway FILESYSTEM store holding the batch's external
 	// dependency closure, copied from the ACTIVE store `local` by hash — so it is
@@ -117,7 +222,7 @@ func cmdPublishClosure(ctx context.Context, signer Signer, pubHex string, local 
 	if err != nil {
 		die(err)
 	}
-	if err := seedResolutionStore(local, seed, rename, forms); err != nil {
+	if err := seedResolutionStore(local, seed, batch.rename, batch.forms, batch.aliasExt); err != nil {
 		die(fmt.Errorf("seeding the batch's dependencies from the active store: %w", err))
 	}
 
@@ -130,40 +235,18 @@ func cmdPublishClosure(ctx context.Context, signer Signer, pubHex string, local 
 	// variable, or a record-field label either fails to elaborate once qualified or
 	// hashes to a different object, and both are caught here rather than signing a
 	// definition the author never wrote.
-	bareByName := map[string]string{}
-	for _, bt := range splitTopLevelForms(src) {
-		pf, perr := parseForms(bt)
-		if perr != nil || len(pf) != 1 {
-			die(fmt.Errorf("re-parsing a definition: %v", perr))
-		}
-		n, nerr := declaredName(pf[0])
-		if nerr != nil {
-			die(nerr)
-		}
-		bareByName[n] = bt
-	}
-	qualToBare := map[string]string{}
-	for b, q := range rename {
-		qualToBare[q] = b
-	}
-	bareOrdered := make([]string, len(ordered))
-	qualOrdered := make([]string, len(ordered))
-	for i, qf := range ordered {
-		qualOrdered[i] = qf.text
-		bareOrdered[i] = bareByName[qualToBare[qf.name]]
-	}
 	// The bare closure must elaborate: a failure here is the closure's own defect,
 	// not the namespace's.
-	if err := putBatch(seed, bareOrdered, pubHex); err != nil {
+	if err := putBatch(seed, batch.batchBare, pubHex); err != nil {
 		die(fmt.Errorf("this closure does not elaborate: %w", err))
 	}
 	// The qualified closure must ALSO elaborate; a failure means qualification
 	// changed a definition's meaning.
-	if err := putBatch(seed, qualOrdered, pubHex); err != nil {
+	if err := putBatch(seed, batch.batchQual, pubHex); err != nil {
 		die(fmt.Errorf("qualifying this closure under %s changed a definition's meaning — a name may collide with a reserved word, a binder, or a record field; rename it: %w",
 			strings.TrimSuffix(namespace, "/*"), err))
 	}
-	for bare, qual := range rename {
+	for bare, qual := range batch.rename {
 		hb, okb := seed.Resolve(bare)
 		hq, okq := seed.Resolve(qual)
 		if !okb || !okq || hb != hq {
@@ -176,10 +259,18 @@ func cmdPublishClosure(ctx context.Context, signer Signer, pubHex string, local 
 	// --dry-run reader) must be able to inspect the artifact, parent, revision,
 	// license and exact bytes of each.
 	plans := make([]publishPlan, len(ordered))
+	sendText := make([]string, len(ordered))
 	for i, qf := range ordered {
-		plan, _, err := buildPublishPlan(seed, endpoint, pubHex, qf.text, license, "")
+		plan, _, send, err := buildPublishPlan(seed, endpoint, pubHex, batch.planText[i], license, "")
 		if err != nil {
 			die(fmt.Errorf("%s: %w", qf.name, err))
+		}
+		// planSource puts every alias ABOVE the definition, so there is nothing to trim
+		// and this is the plan text unchanged. Taken from the plan builder regardless, so
+		// the bytes validated and the bytes sent have one owner.
+		sendText[i] = send
+		if plan.Name != qf.name {
+			die(fmt.Errorf("internal: publishing %s produced a plan for %s — the alias-prefixed source declares more than the intended definition", qf.name, plan.Name))
 		}
 		plans[i] = plan
 	}
@@ -218,7 +309,7 @@ func cmdPublishClosure(ctx context.Context, signer Signer, pubHex string, local 
 				die(fmt.Errorf("aborted before signing %s (%d already published)", plans[i].Name, i))
 			}
 		}
-		if err := finalizePublish(ctx, signer, ordered[i].text, plans[i], endpoint, jsonOut); err != nil {
+		if err := finalizePublish(ctx, signer, sendText[i], plans[i], endpoint, jsonOut); err != nil {
 			die(fmt.Errorf("%s: %w", plans[i].Name, err))
 		}
 		// Confirm the definition actually bound before publishing anything that
@@ -310,7 +401,7 @@ func collisionUnderQualification(forms []sx, names map[string]string, namespace 
 	}
 	for bare := range names {
 		if nonRef[bare] {
-			return fmt.Errorf("%q is both a published name and a local binder, constructor, property, or record-field name in this closure; rename the local use so the published name is unambiguous", bare)
+			return fmt.Errorf("%q is both a published name and a batch-local name in this closure — a type alias, binder, constructor, property, or record-field name; rename the local use so the published name is unambiguous", bare)
 		}
 	}
 	return nil
@@ -332,6 +423,432 @@ func putBatch(st *Store, defs []string, author string) error {
 	return nil
 }
 
+// --- batch-local type aliases in a publish batch ---
+//
+// A (type Name ty) form is identity-transparent surface sugar (SPEC §1.4): it stores
+// no object, appends no journal entry, and has no published name. So it is NOT a unit
+// of publication — it takes no rename entry, no duplicate-name slot, no topology node,
+// no plan and no envelope. What it DOES carry is a dependency: its body names types,
+// and a definition using the alias depends on them just as if it had spelled the type
+// inline.
+//
+// Those dependencies are recorded by RESOLVED HASH, not by name, and that distinction
+// is the whole reason this type exists. An alias body is elaborated ONCE, at its own
+// position in the source, against whatever the names meant THERE. A later form
+// declaring the same name does not reach back and change it. Recording the name alone
+// would lose that: the batch-name filter in seeding would ERASE an external dependency
+// whose name a later batch form happens to reuse, and token qualification would
+// RETARGET the alias body at the batch's definition instead of the external one it
+// actually resolved to.
+type batchAlias struct {
+	formIdx int               // index in the source's top-level form list
+	name    string            // the alias's own name (batch-local; never published)
+	bare    string            // exact bare source text of the (type ...) form
+	qual    string            // exact qualified source text of the same form
+	uses    []int             // earlier aliases this body expands, ascending
+	batch   map[string]bool   // BARE batch names the body binds to (declared EARLIER)
+	ext     map[string]string // external name -> the hash it resolved to, pinned here
+}
+
+// isTypeAliasForm reports whether a top-level form is a (type ...) alias.
+func isTypeAliasForm(f sx) bool {
+	return f.K == "list" && len(f.Kids) > 0 && f.Kids[0].K == "sym" && f.Kids[0].Sym == "type"
+}
+
+// aliasFormName returns an alias form's declared name, or "?" if it is malformed.
+// registerTypeAlias does the real validation; this is only for messages.
+func aliasFormName(f sx) string {
+	if len(f.Kids) > 1 && f.Kids[1].K == "sym" {
+		return f.Kids[1].Sym
+	}
+	return "?"
+}
+
+// --- type-position analysis ---
+//
+// Alias dependencies are a question about TYPES, so they are read off the type
+// positions rather than off every symbol in the form. A flat symbol walk answers a
+// different question and answers it confidently: it reads record FIELD LABELS and value
+// BINDERS as type references, which refuses valid batches and transmits aliases a
+// definition never uses. (Both found by external review, on exactly those shapes.)
+//
+// The positions below are derived from the elaborator's own parseTy call sites, not
+// from the shapes that came to mind — that is the only way the set can be complete.
+// Under-collection is not silent: a missing dependency makes the batch fail to
+// elaborate in the validation put, with the same unknown-type message `put` gives.
+
+// collectTypeRefs walks TYPE syntax and records the symbols in type-NAME position.
+// parseTy accepts exactly: a record brace (odd kids are types, EVEN kids are labels), a
+// bare symbol, an arrow (every kid after `->`), or an application whose head is itself a
+// type name.
+func collectTypeRefs(x sx, out map[string]bool) {
+	switch x.K {
+	case "sym":
+		out[x.Sym] = true
+	case "brace":
+		for i := 1; i < len(x.Kids); i += 2 { // labels sit at the even indices
+			collectTypeRefs(x.Kids[i], out)
+		}
+	case "list":
+		if len(x.Kids) == 0 {
+			return
+		}
+		if x.Kids[0].isSym("->") {
+			for _, k := range x.Kids[1:] {
+				collectTypeRefs(k, out)
+			}
+			return
+		}
+		for _, k := range x.Kids { // (Name arg ...) — the head is a type name too
+			collectTypeRefs(k, out)
+		}
+	}
+}
+
+// collectParamTypeRefs reads the types out of a [(name ty) ...] binder list.
+func collectParamTypeRefs(brack sx, out map[string]bool) {
+	if brack.K != "brack" {
+		return
+	}
+	for _, p := range brack.Kids {
+		if p.K == "list" && len(p.Kids) == 2 {
+			collectTypeRefs(p.Kids[1], out)
+		}
+	}
+}
+
+// collectTermTypeRefs walks a TERM and records only what the elaborator parses as a
+// type there: a let's binder type, an fn's parameter types, and a call's [tyargs].
+func collectTermTypeRefs(x sx, out map[string]bool) {
+	// A record LITERAL {label expr ...} in a term position: the odd kids are TERMS and
+	// may carry types of their own (a let binder, an fn parameter, a call's tyargs).
+	// Returning early here missed an alias used only inside one, which then landed
+	// after its use in the batch layout and failed the validation put. Found by review.
+	if x.K == "brace" {
+		for i := 1; i < len(x.Kids); i += 2 {
+			collectTermTypeRefs(x.Kids[i], out)
+		}
+		return
+	}
+	if x.K != "list" || len(x.Kids) == 0 {
+		return
+	}
+	head := ""
+	if x.Kids[0].K == "sym" {
+		head = x.Kids[0].Sym
+	}
+	switch head {
+	case "let": // (let (x ty expr) body)
+		if len(x.Kids) > 1 && x.Kids[1].K == "list" && len(x.Kids[1].Kids) == 3 {
+			collectTypeRefs(x.Kids[1].Kids[1], out)
+			collectTermTypeRefs(x.Kids[1].Kids[2], out)
+		}
+		for _, k := range x.Kids[minInt(2, len(x.Kids)):] {
+			collectTermTypeRefs(k, out)
+		}
+	case "fn": // (fn [(p ty) ...] body)
+		if len(x.Kids) > 1 {
+			collectParamTypeRefs(x.Kids[1], out)
+		}
+		for _, k := range x.Kids[minInt(2, len(x.Kids)):] {
+			collectTermTypeRefs(k, out)
+		}
+	default:
+		// A named application may carry type arguments: (name [ty ...] arg ...).
+		if len(x.Kids) > 1 && x.Kids[0].K == "sym" && x.Kids[1].K == "brack" {
+			for _, k := range x.Kids[1].Kids {
+				collectTypeRefs(k, out)
+			}
+			for _, k := range x.Kids[2:] {
+				collectTermTypeRefs(k, out)
+			}
+			return
+		}
+		for _, k := range x.Kids {
+			collectTermTypeRefs(k, out)
+		}
+	}
+}
+
+// formTypeRefs returns every type a top-level form REFERENCES — the set that decides
+// which aliases it needs in scope. Binder names, property names, constructor names and
+// record labels are all excluded by construction, because none of them is a type.
+func formTypeRefs(f sx) map[string]bool {
+	out := map[string]bool{}
+	if f.K != "list" || len(f.Kids) == 0 || f.Kids[0].K != "sym" {
+		return out
+	}
+	// The form's own [tyvars] SHADOW aliases: parseTy resolves a bound type variable
+	// before it consults the alias map, so `(defn id [A] [(x A)] A x)` does not use an
+	// alias named A at all. Recording it prepends that alias to the plan, which can be
+	// refused at a registry holding a datatype of the same name. Found by review.
+	bound := map[string]bool{}
+	if len(f.Kids) > 2 {
+		collectTyvarBinders(f.Kids[2], bound)
+	}
+	// scoped adds refs that the form's type variables shadow; unscoped adds refs from a
+	// position where they do NOT. The distinction is load-bearing and was VERIFIED
+	// against the elaborator rather than read off it: elabFuncRaw builds a FRESH elab
+	// for each property WITHOUT the function's tyvars, so inside a property the same
+	// spelling resolves to the ALIAS. Subtracting the tyvars there would drop a genuine
+	// dependency and fail the validation put.
+	scoped := func(add func(map[string]bool)) {
+		got := map[string]bool{}
+		add(got)
+		for sym := range got {
+			if !bound[sym] {
+				out[sym] = true
+			}
+		}
+	}
+	switch f.Kids[0].Sym {
+	case "defn": // (defn n [tyvars] [(p ty)...] retTy body prop...)
+		if len(f.Kids) > 3 {
+			scoped(func(m map[string]bool) { collectParamTypeRefs(f.Kids[3], m) })
+		}
+		if len(f.Kids) > 4 {
+			scoped(func(m map[string]bool) { collectTypeRefs(f.Kids[4], m) })
+		}
+		if len(f.Kids) > 5 {
+			scoped(func(m map[string]bool) { collectTermTypeRefs(f.Kids[5], m) })
+		}
+		for _, p := range f.Kids[minInt(6, len(f.Kids)):] { // (prop n [(x ty)...] body)
+			if p.K != "list" {
+				continue
+			}
+			if len(p.Kids) > 2 { // NOT scoped — a property sees no tyvars
+				collectParamTypeRefs(p.Kids[2], out)
+			}
+			if len(p.Kids) > 3 {
+				collectTermTypeRefs(p.Kids[3], out)
+			}
+		}
+	case "data": // (data N [tyvars] (Ctor fieldTy...)...)
+		for _, c := range f.Kids[minInt(3, len(f.Kids)):] {
+			if c.K == "list" {
+				for _, ft := range c.Kids[1:] { // Kids[0] is the constructor NAME
+					scoped(func(m map[string]bool) { collectTypeRefs(ft, m) })
+				}
+			}
+		}
+	case "type":
+		for _, sym := range aliasBodySyms(f) {
+			out[sym] = true
+		}
+	}
+	return out
+}
+
+// aliasBodySyms returns the symbols in an alias's BODY that are genuine type
+// REFERENCES: the alias's own name and its bound type variables are removed.
+//
+// The tyvars are not cosmetic. parseTy resolves a bound type variable before it
+// consults aliases or the store, so in `(type A [Point] Point)` the body's `Point` IS
+// the parameter and names no type at all — reading it as a reference makes a valid
+// batch that later declares a datatype `Point` look like a forward reference and
+// refuses it. Found by external review, on exactly that source.
+func aliasBodySyms(f sx) []string {
+	if len(f.Kids) < 3 {
+		return nil
+	}
+	bound := map[string]bool{}
+	if f.Kids[2].K == "brack" { // the parametric form's [tyvars]
+		for _, k := range f.Kids[2].Kids {
+			if k.K == "sym" {
+				bound[k.Sym] = true
+			}
+		}
+	}
+	refs := map[string]bool{}
+	collectTypeRefs(f.Kids[len(f.Kids)-1], refs)
+	out := make([]string, 0, len(refs))
+	for sym := range refs {
+		if !bound[sym] {
+			out = append(out, sym)
+		}
+	}
+	sort.Strings(out) // deterministic, so a refusal names the same symbol every run
+	return out
+}
+
+// collectBatchAliases records every (type ...) form with its dependencies, classified
+// AT ITS OWN SOURCE POSITION — which is where its body is elaborated, and therefore the
+// only position at which "what does this name mean?" has the answer the published
+// object will carry.
+//
+// A body reference is: an EARLIER alias (expanded in place), an EARLIER batch
+// declaration (a same-batch dependency, which the using definition must follow), or an
+// external name, pinned to the hash it resolves to in `local` right now.
+//
+// The one case with no faithful publication is refused rather than approximated: a body
+// reference that resolves EXTERNALLY and whose name a LATER form in the same batch also
+// declares. `put` reads that source unambiguously (the alias binds the external object,
+// the later declaration binds afterwards), but publication cannot reproduce it —
+// qualification rewrites the token inside the alias body to the batch's qualified name,
+// and dependency ordering may place the batch declaration before the alias registers.
+// Either way the alias would silently mean a different type than the author wrote, and
+// a silently different type is exactly what a content-addressed publication must not
+// produce.
+func collectBatchAliases(forms []sx, parts, qparts []string, declaredAt map[string]int, local *Store) ([]batchAlias, error) {
+	var out []batchAlias
+	aliasIdx := map[string]int{} // alias name -> position in `out`
+	for i, f := range forms {
+		if !isTypeAliasForm(f) {
+			continue
+		}
+		a := batchAlias{
+			formIdx: i,
+			name:    aliasFormName(f),
+			bare:    parts[i],
+			qual:    qparts[i],
+			batch:   map[string]bool{},
+			ext:     map[string]string{},
+		}
+		seen := map[string]bool{}
+		for _, sym := range aliasBodySyms(f) {
+			if seen[sym] {
+				continue
+			}
+			seen[sym] = true
+			declIdx, isBatch := declaredAt[sym]
+			prior, isAlias := aliasIdx[sym] // only EARLIER aliases are in the map yet
+			switch {
+			case isAlias:
+				// an earlier alias: its own dependencies are already recorded
+				a.uses = append(a.uses, prior)
+			case isBatch && declIdx < i:
+				a.batch[sym] = true
+			case isBatch:
+				// Declared LATER in this batch — the two sub-cases fail for different
+				// reasons and both are refused, because publication REORDERS
+				// definitions and so cannot preserve either reading.
+				if _, ok := local.Resolve(sym); ok {
+					return nil, fmt.Errorf("line %d: the alias %q resolves %q to a definition outside this file, "+
+						"but %q is also declared later in the same file. Publication reorders definitions "+
+						"and (under a namespace) rewrites the name inside the alias body, either of which "+
+						"would silently retarget %q at the local declaration. Move that declaration above "+
+						"the alias, or rename one of them",
+						f.Line, a.name, sym, sym, a.name)
+				}
+				// Nothing resolves it here, so `put` reads this source as an unknown
+				// type. Publishing must not quietly accept it by reordering the
+				// declaration ahead of the alias.
+				return nil, fmt.Errorf("line %d: the alias %q references %q, which this file declares LATER "+
+					"and nothing outside it defines. Move the declaration of %q above the alias",
+					f.Line, a.name, sym, sym)
+			default:
+				if h, ok := local.Resolve(sym); ok {
+					a.ext[sym] = h
+				}
+				// otherwise a builtin, a type variable, or genuinely unknown — the
+				// elaborator is the authority on which, and reports it in context.
+			}
+		}
+		sort.Ints(a.uses)
+		aliasIdx[a.name] = len(out)
+		out = append(out, a)
+	}
+	return out, nil
+}
+
+// aliasesNeededBy returns the aliases a definition must have in scope to elaborate:
+// those it names, plus everything those expand, transitively. Ascending, so a chained
+// alias always follows the alias it expands. Over-collection (a binder spelled like an
+// alias) only prepends sugar the definition does not use, which elaborates to nothing.
+//
+// SCOPE IS BOUNDED BY SOURCE POSITION: only aliases declared ABOVE the definition (at
+// form index < defIdx) count. An alias declared below is not in scope for it — that is
+// what `put` does, and publication must not manufacture scope by hoisting the alias
+// above its use, which would let publish accept a file `put` rejects. Excluding it here
+// rather than refusing outright keeps the report identical to `put`'s: the definition
+// simply fails to elaborate with an unknown type, and a binder that merely SHARES a
+// later alias's spelling still costs nothing.
+func aliasesNeededBy(f sx, defIdx int, aliases []batchAlias) []int {
+	if len(aliases) == 0 {
+		return nil
+	}
+	byName := make(map[string]int, len(aliases))
+	for i, a := range aliases {
+		if a.formIdx < defIdx {
+			byName[a.name] = i
+		}
+	}
+	need := map[int]bool{}
+	var mark func(int)
+	mark = func(i int) {
+		if need[i] {
+			return
+		}
+		need[i] = true
+		for _, u := range aliases[i].uses {
+			mark(u)
+		}
+	}
+	for sym := range formTypeRefs(f) {
+		if i, ok := byName[sym]; ok {
+			mark(i)
+		}
+	}
+	idxs := make([]int, 0, len(need))
+	for i := range need {
+		idxs = append(idxs, i)
+	}
+	sort.Ints(idxs)
+	return idxs
+}
+
+// planSource is the EXACT source published for one definition: the aliases it needs,
+// then the definition. It must be self-contained, because the registry re-elaborates
+// these bytes and has no other way to learn what the alias means — and it must contain
+// exactly ONE definition, because one signature authorises one name transition.
+func planSource(defText string, need []int, aliasTexts []string) string {
+	if len(need) == 0 {
+		return defText
+	}
+	parts := make([]string, 0, len(need)+1)
+	for _, i := range need {
+		parts = append(parts, aliasTexts[i])
+	}
+	return strings.Join(append(parts, defText), "\n\n")
+}
+
+// batchSource lays the whole ordered batch out as ONE elaboration unit, for the local
+// validation puts. Each alias appears EXACTLY ONCE — registerTypeAlias refuses a
+// duplicate within a batch, so the per-plan texts (which each repeat the aliases they
+// need) cannot simply be concatenated.
+//
+// EVERY alias is emitted, including one no definition uses. That is not tidiness: the
+// validation puts are the only place a `publish` batch elaborates its aliases, so an
+// alias left out is an alias never checked — and a malformed one, a duplicate, or one
+// naming an unknown type would be silently DROPPED from the publication while `put`
+// refuses the same file. (Found by review, with exactly that source.)
+//
+// Placement: at the first definition that needs it, or — for an unused one — after
+// every definition, where any batch name it references is certainly bound. Both are in
+// scope, because an alias's same-batch dependencies are ordered ahead of every
+// definition needing it, and collectBatchAliases refuses a body that references a batch
+// name declared after the alias. Ties break by declaration order, so an alias expanding
+// an earlier alias always follows it.
+func batchSource(defTexts []string, needs [][]int, aliasTexts []string) []string {
+	emitted := make([]bool, len(aliasTexts))
+	out := make([]string, 0, len(defTexts)+len(aliasTexts))
+	for k, text := range defTexts {
+		for _, i := range needs[k] {
+			if !emitted[i] {
+				emitted[i] = true
+				out = append(out, aliasTexts[i])
+			}
+		}
+		out = append(out, text)
+	}
+	for i, text := range aliasTexts {
+		if !emitted[i] {
+			out = append(out, text)
+		}
+	}
+	return out
+}
+
 // declaredName returns the name a top-level (defn ...) or (data ...) form binds.
 func declaredName(f sx) (string, error) {
 	if f.K != "list" || len(f.Kids) < 2 || f.Kids[0].K != "sym" {
@@ -344,12 +861,13 @@ func declaredName(f sx) (string, error) {
 		}
 		return f.Kids[1].Sym, nil
 	case "type":
-		// Type aliases are batch-local elaboration sugar with no published identity, and
-		// the publish pipeline (qualification + dependency ordering) has no place to carry
-		// them. Because an alias is identity-transparent, expanding it inline yields the
-		// IDENTICAL object — so this is a source-shape restriction, not a lost capability.
-		return "", fmt.Errorf("line %d: (type ...) aliases are not supported in oath publish; "+
-			"expand the alias inline (the published object is identical)", f.Line)
+		// A (type ...) alias declares no PUBLISHED name — it is batch-local elaboration
+		// sugar with no object, no journal entry and no envelope. Callers must filter it
+		// out with isTypeAliasForm before asking for a declared name; reaching here means
+		// an alias leaked into the rename table, the topology, or the plan list, and
+		// inventing a name for it would publish sugar as if it were a definition.
+		return "", fmt.Errorf("line %d: internal: (type %s ...) has no published name; "+
+			"alias forms must be filtered before this point", f.Line, aliasFormName(f))
 	default:
 		return "", fmt.Errorf("line %d: unknown top-level form %q", f.Line, f.Kids[0].Sym)
 	}
@@ -446,6 +964,27 @@ func collectDeclared(x sx, out map[string]bool) {
 					collectDeclared(ft, out) // field types may contain record labels
 				}
 			}
+		}
+	case "type": // (type Name [tyvars] ty)
+		// The alias NAME is a batch-local declaration, not a reference — the same class
+		// as a binder or a field label, and it belongs in this set for the same reason:
+		// qualifyNames is token-based, so under a namespace it rewrites `(type f Int)` to
+		// `(type team/f Int)`, retargeting a declaration that publishes nothing. Where
+		// `team/f` is already a datatype, alias registration then refuses the generated
+		// source and blocks a legitimate replacement publication. Measured, not reasoned
+		// about; found by external review.
+		//
+		// It is REFUSED rather than repaired because token qualification cannot tell a
+		// type-position `f` (the alias) from a term-position `f` (the function), which is
+		// exactly why binders and field labels are refused here too.
+		if len(x.Kids) > 1 && x.Kids[1].K == "sym" {
+			out[x.Kids[1].Sym] = true
+		}
+		if len(x.Kids) > 2 {
+			collectTyvarBinders(x.Kids[2], out) // no-op unless the parametric form
+		}
+		for _, k := range x.Kids[minInt(2, len(x.Kids)):] {
+			collectDeclared(k, out) // the body may carry record-field labels
 		}
 	case "prop": // (prop pname [(x ty)...] body)
 		if len(x.Kids) > 1 && x.Kids[1].K == "sym" {
@@ -653,7 +1192,8 @@ func splitTopLevelForms(src string) []string {
 
 type qform struct {
 	name string // qualified declared name
-	text string // qualified source text
+	text string // qualified source text (the definition alone; aliases are prefixed later)
+	idx  int    // index in the caller's input order, so per-definition state stays attached
 }
 
 // topoOrderForms orders the qualified forms so every definition follows the batch
@@ -662,7 +1202,13 @@ type qform struct {
 // that uses a datatype only through a bare constructor still follows the datatype.
 // References outside the batch impose no ordering, and a cycle is reported rather
 // than silently broken.
-func topoOrderForms(qforms []string, batch map[string]bool, ctorOwner map[string]string) ([]qform, error) {
+//
+// extra carries edges the definition's own text does not show: the same-batch types
+// its type ALIASES depend on. An alias is expanded, not referenced, so `(p Env)`
+// mentions no batch name even when Env's body does — without these the definition
+// could be ordered before the datatype its alias expands to. Qualified names, index-
+// aligned with qforms; nil for a batch with no aliases.
+func topoOrderForms(qforms []string, batch map[string]bool, ctorOwner map[string]string, extra []map[string]bool) ([]qform, error) {
 	n := len(qforms)
 	names := make([]string, n)
 	deps := make([]map[string]bool, n)
@@ -687,6 +1233,13 @@ func topoOrderForms(qforms []string, batch map[string]bool, ctorOwner map[string
 		// separate one-name envelopes at all. So a cycle here is the right answer for
 		// the case that matters and an acceptable refusal for an adversarial one.
 		refs := map[string]bool{}
+		if extra != nil {
+			for r := range extra[i] {
+				if r != name {
+					refs[r] = true
+				}
+			}
+		}
 		for _, s := range walkSyms(f[0]) {
 			if s == name {
 				continue
@@ -719,7 +1272,7 @@ func topoOrderForms(qforms []string, batch map[string]bool, ctorOwner map[string
 		i := ready[0]
 		ready = ready[1:]
 		placed[i] = true
-		out = append(out, qform{name: names[i], text: qforms[i]})
+		out = append(out, qform{name: names[i], text: qforms[i], idx: i})
 		for j := 0; j < n; j++ {
 			if placed[j] || !deps[j][names[i]] {
 				continue
@@ -772,7 +1325,21 @@ func walkSyms(x sx) []string {
 // hash (content addressing makes the recomputed hash match), and the name is
 // bound so the qualified batch elaborates. Constructors of an external datatype
 // resolve through that datatype's object, so copying the datatype is enough.
-func seedResolutionStore(local, seed *Store, batch map[string]string, forms []sx) error {
+//
+// aliasExt is the union of every type alias's external dependencies, pinned to the HASH
+// each resolved to at its own position in the source, and it is seeded FIRST so an
+// alias's binding derives from what that alias ACTUALLY resolved rather than from a
+// second lookup of the same name.
+//
+// Stated honestly, because a guard whose reach is overclaimed is worse than none: this
+// is redundant TODAY. The name walk below already visits the alias forms, and the
+// datatype sweep already binds every datatype in `local`, so the one input on which the
+// two would disagree — an alias body resolving an external name that a LATER form in
+// the same batch also declares, which the walk's batch filter would drop — never
+// reaches here: collectBatchAliases refuses it. What this buys is that the refusal and
+// the seeding are not the SAME assumption written twice; if the refusal is ever
+// narrowed, the seeding is already derived from the recorded resolution.
+func seedResolutionStore(local, seed *Store, batch map[string]string, forms []sx, aliasExt map[string]string) error {
 	copied := map[string]bool{}
 	var copyClosure func(h string) error
 	copyClosure = func(h string) error {
@@ -811,6 +1378,16 @@ func seedResolutionStore(local, seed *Store, batch map[string]string, forms []sx
 			return fmt.Errorf("binding dependency %q: %w", name, err)
 		}
 		return nil
+	}
+
+	// The type aliases' external dependencies, by the hash each actually resolved to.
+	for name, h := range aliasExt {
+		if err := copyClosure(h); err != nil {
+			return fmt.Errorf("copying type-alias dependency %q (#%s): %w", name, shortHash(h), err)
+		}
+		if _, err := seed.Repoint(name, h); err != nil {
+			return fmt.Errorf("binding type-alias dependency %q: %w", name, err)
+		}
 	}
 
 	// Every datatype in the active store. A constructor name is metadata, not a

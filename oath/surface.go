@@ -315,6 +315,14 @@ type elab struct {
 	selfTyVars int
 	gensym     int                  // counter for fresh binder names introduced by desugaring
 	aliases    map[string]*aliasDef // batch-scoped type aliases (identity-transparent surface sugar)
+	// tyDeps, when non-nil, records every stored type name this elaborator resolves
+	// (surface name -> hash). It is REQUEST-LOCAL: it belongs to one elaboration, not
+	// to the Store, so two concurrent elaborations against a shared store cannot see
+	// each other's resolutions. Armed only by registerTypeAliasWith, because an alias
+	// body is the one type that is elaborated ONCE and then expanded many times — its
+	// dependencies are resolved at registration and are invisible to any log armed
+	// around a later using form.
+	tyDeps map[string]string
 }
 
 // aliasDef is a registered type alias. arity is the number of type parameters (0 for a
@@ -324,6 +332,20 @@ type elab struct {
 type aliasDef struct {
 	arity int
 	body  *Ty
+}
+
+// resolveTyName is the SOLE place a type body reaches a name in the store: both
+// parseTy paths that can mention a stored data type (the bare `Foo` and the applied
+// `(Foo a)`) go through it, so a type dependency cannot be reached without being
+// recorded. Placing the record at the resolution rather than at the call sites is what
+// makes the capture exhaustive over the type grammar — records, function types and
+// type applications all recurse back into parseTy and land here.
+func (e *elab) resolveTyName(name string) (string, bool) {
+	h, ok := e.st.Resolve(name)
+	if ok && e.tyDeps != nil {
+		e.tyDeps[name] = h
+	}
+	return h, ok
 }
 
 // cloneTy deep-copies a type so an expanded alias cannot alias (in the pointer sense)
@@ -438,7 +460,7 @@ func (e *elab) parseTy(x sx) (*Ty, error) {
 			}
 			return cloneTy(a.body), nil
 		}
-		if h, ok := e.st.Resolve(x.Sym); ok {
+		if h, ok := e.resolveTyName(x.Sym); ok {
 			d, err := e.st.GetDef(h)
 			if err != nil {
 				return nil, err
@@ -501,7 +523,7 @@ func (e *elab) parseTy(x sx) (*Ty, error) {
 			}
 			return tRec(args), nil
 		}
-		h, ok := e.st.Resolve(head.Sym)
+		h, ok := e.resolveTyName(head.Sym)
 		if !ok {
 			return nil, e.errAt(x, "unknown type %q", head.Sym)
 		}
@@ -1197,6 +1219,25 @@ func dataNameConflict(name string, aliases map[string]*aliasDef) error {
 // in scope (none, for the ground form), so it is closed over its parameters — a body
 // mentioning any other type variable is an unknown-type error. See parseTy for expansion.
 func registerTypeAlias(st *Store, x sx, aliases map[string]*aliasDef) error {
+	return registerTypeAliasWith(st, x, aliases, nil)
+}
+
+// registerTypeAliasWith is registerTypeAlias with a request-local dependency log. When
+// `deps` is non-nil, every stored type name the alias BODY resolves is recorded there as
+// surface name -> hash, pinned at the moment it resolved.
+//
+// This exists because an alias body is elaborated exactly ONCE, here. Every later use
+// expands the already-canonical body by cloning or substituting — it resolves nothing —
+// so a dependency-capturing log armed around a USING form observes no resolution at all
+// and the alias's external types vanish from the dependency set. The capture therefore
+// has to happen at registration, in state owned by this call.
+//
+// It is deliberately NOT Store.resolveLog. That field is shared mutable state on a Store
+// that outlives the request (the HTTP store serves concurrent elaborations), and it would
+// over-capture here: the alias-name conflict check below resolves the alias's OWN name
+// against the store, so `(type T ...)` in a store holding an unrelated function `T` would
+// record T as a dependency of the source. Only the body's resolutions are dependencies.
+func registerTypeAliasWith(st *Store, x sx, aliases map[string]*aliasDef, deps map[string]string) error {
 	if len(x.Kids) < 3 || x.Kids[1].K != "sym" {
 		return fmt.Errorf("line %d: type alias must be (type Name ty) or (type Name [tyvars] ty)", x.Line)
 	}
@@ -1227,7 +1268,7 @@ func registerTypeAlias(st *Store, x sx, aliases map[string]*aliasDef) error {
 	if len(x.Kids) != bodyIdx+1 {
 		return fmt.Errorf("line %d: type alias must be (type Name ty) or (type Name [tyvars] ty)", x.Line)
 	}
-	e := &elab{st: st, tyvars: tvs, aliases: aliases}
+	e := &elab{st: st, tyvars: tvs, aliases: aliases, tyDeps: deps}
 	body, err := e.parseTy(x.Kids[bodyIdx])
 	if err != nil {
 		return err

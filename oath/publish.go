@@ -88,24 +88,68 @@ func indentBytes(s string) string {
 //
 // Identity is untouched either way: the name is metadata, and the artifact hash is
 // the same definition wherever it is bound.
-func buildPublishPlan(local *Store, endpoint, pubHex, src, license, namespace string) (publishPlan, pubEnvelope, error) {
+// It returns the SOURCE TO TRANSMIT alongside the plan, which is not always the source
+// it was given: see the trailing-alias handling below. Validated bytes and transmitted
+// bytes have one owner so they cannot drift.
+func buildPublishPlan(local *Store, endpoint, pubHex, src, license, namespace string) (publishPlan, pubEnvelope, string, error) {
 	var zero publishPlan
 	forms, err := parseForms(src)
 	if err != nil {
-		return zero, pubEnvelope{}, err
+		return zero, pubEnvelope{}, "", err
 	}
-	if len(forms) != 1 {
-		return zero, pubEnvelope{}, fmt.Errorf("signed publication takes exactly one definition per envelope, found %d: a single signature must not cover several independent name transitions", len(forms))
+	parts := splitTopLevelForms(src)
+	if len(parts) != len(forms) {
+		return zero, pubEnvelope{}, "", fmt.Errorf("internal: split %d source forms from %d parsed definitions", len(parts), len(forms))
 	}
-	def, meta, err := elabForm(local, forms[0])
-	if err != nil {
-		return zero, pubEnvelope{}, err
+	// (type ...) aliases are batch-local elaboration sugar: they bind no name, produce
+	// no object and appear in no envelope, so they do not count toward the
+	// one-definition-per-envelope rule — they are CONTEXT for the definition that does.
+	//
+	// THE LOOP WALKS SOURCE ORDER AND ELABORATES THE DEFINITION WHERE IT SITS, so only
+	// aliases declared ABOVE it are in scope. That is not a stylistic choice: these exact
+	// bytes are sent to the registry, which runs apiPutSigned over them IN ORDER. A loop
+	// that gathered every alias first would elaborate `(defn f [] [(x A)] Int x)` ahead of
+	// a trailing `(type A Int)` and hash it happily, while the server — reading the same
+	// bytes in order — rejects `f` with `unknown type "A"`. The client would then have
+	// signed an artifact the registry can never produce. Found by external review.
+	//
+	// Scanning CONTINUES past the definition so a later alias is still registered and so
+	// still validated (malformed, duplicate, unknown type), exactly as apiPut validates it.
+	aliases := map[string]*aliasDef{}
+	var def *Def
+	var meta *Meta
+	var trailing []sx // aliases declared BELOW the definition
+	var keep []string // the source forms that are actually published
+	defs := 0
+	for i, f := range forms {
+		if isTypeAliasForm(f) {
+			if defs > 0 {
+				// Not in scope for the definition above it, and not yet checkable:
+				// the server binds the definition before reaching this alias, so an
+				// alias naming that very definition is legitimate. Deferred to after
+				// the definition exists — see below.
+				trailing = append(trailing, f)
+				continue
+			}
+			if err := registerTypeAlias(local, f, aliases); err != nil {
+				return zero, pubEnvelope{}, "", err
+			}
+			keep = append(keep, parts[i])
+			continue
+		}
+		defs++
+		if defs > 1 {
+			break // reported below; one signature must not cover two transitions
+		}
+		var eerr error
+		if def, meta, eerr = elabFormWith(local, f, aliases); eerr != nil {
+			return zero, pubEnvelope{}, "", eerr
+		}
+		keep = append(keep, parts[i])
 	}
-	qualified, nerr := applyNamespace(meta.Name, namespace)
-	if nerr != nil {
-		return zero, pubEnvelope{}, nerr
+	if defs != 1 {
+		return zero, pubEnvelope{}, "", fmt.Errorf("signed publication takes exactly one definition per envelope, found %d: a single signature must not cover several independent name transitions", defs)
 	}
-	meta.Name = qualified
 
 	// TYPECHECK BEFORE HASHING. checkDef MUTATES the definition — it resolves and
 	// normalises types in place — so identity is the hash of the TYPECHECKED AST,
@@ -121,13 +165,49 @@ func buildPublishPlan(local *Store, endpoint, pubHex, src, license, namespace st
 	// not the step after them, and nothing compared the two — which is why this
 	// survived until a definition happened to be mutated by typechecking.
 	if err := checkDef(local, def); err != nil {
-		return zero, pubEnvelope{}, err
+		return zero, pubEnvelope{}, "", err
 	}
 	h := hashDef(def)
 
+	// A TRAILING alias is validated the way the registry will validate it: against a
+	// store in which THIS definition is already bound. apiPutSigned stores and repoints
+	// each form before moving on, so `(data Point ...)` followed by `(type P Point)` is
+	// valid there — and validating the alias against the unmodified local store instead
+	// would reject a source the server accepts, making it unpublishable. The scratch is
+	// an in-memory copy, so nothing is written to the caller's store; it is built only
+	// when a trailing alias exists, which the closure path never produces (planSource
+	// puts every alias first). Found by external review, as a regression introduced by
+	// scoping aliases to source position. The same `aliases` map carries over, so a
+	// trailing alias duplicating an earlier one is still refused.
+	if len(trailing) > 0 {
+		scratch, serr := seedStore(local)
+		if serr != nil {
+			return zero, pubEnvelope{}, "", serr
+		}
+		if _, serr = scratch.StoreObject(def, meta); serr != nil {
+			return zero, pubEnvelope{}, "", serr
+		}
+		if _, serr = scratch.Repoint(meta.Name, h); serr != nil {
+			return zero, pubEnvelope{}, "", serr
+		}
+		for _, f := range trailing {
+			if err := registerTypeAlias(scratch, f, aliases); err != nil {
+				return zero, pubEnvelope{}, "", err
+			}
+		}
+	}
+
+	// The namespace is applied AFTER the trailing aliases are checked: they reference
+	// the definition by the name the SOURCE declares, which is what the server sees.
+	qualified, nerr := applyNamespace(meta.Name, namespace)
+	if nerr != nil {
+		return zero, pubEnvelope{}, "", nerr
+	}
+	meta.Name = qualified
+
 	parent, rev, err := remoteNameRevision(endpoint, meta.Name)
 	if err != nil {
-		return zero, pubEnvelope{}, err
+		return zero, pubEnvelope{}, "", err
 	}
 	if license == "" {
 		license = noLicense
@@ -135,37 +215,75 @@ func buildPublishPlan(local *Store, endpoint, pubHex, src, license, namespace st
 	env := pubEnvelope{Op: "put", Name: meta.Name, Artifact: h,
 		Parent: parent, ParentRev: revOf(rev), Author: pubHex, License: license}
 	if err := env.validate(); err != nil {
-		return zero, pubEnvelope{}, err
+		return zero, pubEnvelope{}, "", err
 	}
 	raw := string(envelopeEncode(env))
+
+	// A TRAILING alias is NOT TRANSMITTED. It publishes nothing and is not in scope for
+	// the definition above it, so dropping it cannot change what the registry derives —
+	// and sending it can lose the publication's atomicity outright. apiPutSigned stores
+	// and REPOINTS the definition before it reaches the alias, so an alias that is valid
+	// here but not there (its type present only in the local store) fails AFTER the name
+	// has irreversibly moved: the command reports failure over a publication that
+	// happened. Measured, not reasoned about. Found by external review.
+	//
+	// Only this case is trimmed; with no trailing alias the author's bytes are sent
+	// exactly as written, whitespace and comments included.
+	send := src
+	if len(trailing) > 0 {
+		send = strings.Join(keep, "\n\n")
+	}
 	return publishPlan{Name: env.Name, Artifact: env.Artifact, Parent: env.Parent,
 		ParentRev: env.ParentRev.String(), Author: env.Author, Op: env.Op,
-		License: env.License, Bytes: raw}, env, nil
+		License: env.License, Bytes: raw}, env, send, nil
 }
 
 // elabForm dispatches a top-level form the same way apiPut does, so the client
-// derives byte-identical identity to the server for the same source.
-func elabForm(st *Store, f sx) (*Def, *Meta, error) {
+// derives byte-identical identity to the server for the same source. It is the
+// no-alias entry point, for callers handling one self-contained definition.
+func elabForm(st *Store, f sx) (*Def, *Meta, error) { return elabFormWith(st, f, nil) }
+
+// elabFormWith is elabForm with a batch's type aliases in scope, so a definition
+// written against an alias elaborates to the same object the inline spelling would —
+// which is the identity the envelope binds.
+func elabFormWith(st *Store, f sx, aliases map[string]*aliasDef) (*Def, *Meta, error) {
 	if f.K != "list" || len(f.Kids) == 0 || f.Kids[0].K != "sym" {
 		return nil, nil, fmt.Errorf("line %d: top-level forms must be (data ...) or (defn ...)", f.Line)
 	}
 	switch f.Kids[0].Sym {
 	case "data":
-		return elabData(st, f)
+		// The same guard apiPut applies: a data type may not share a name with a batch
+		// alias, since bare uses of that name resolve to the alias.
+		if conflict := dataNameConflict(aliasFormName(f), aliases); conflict != nil {
+			return nil, nil, fmt.Errorf("line %d: %v", f.Line, conflict)
+		}
+		return elabDataWith(st, f, aliases)
 	case "defn":
-		return elabFunc(st, f)
+		return elabFuncWith(st, f, aliases)
 	}
 	return nil, nil, fmt.Errorf("line %d: unknown top-level form %q", f.Line, f.Kids[0].Sym)
 }
 
-// multiDefinition reports whether src declares more than one top-level form. It is
-// the signal that a bare `publish` (no namespace) should take the batch path
-// rather than the one-definition-per-envelope path (friction item 5). A source
-// that does not parse is NOT treated as a batch — the direct path re-parses it and
-// reports the error in context.
+// multiDefinition reports whether src declares more than one PUBLISHED definition. It
+// is the signal that a bare `publish` (no namespace) should take the batch path rather
+// than the one-definition-per-envelope path (friction item 5). A source that does not
+// parse is NOT treated as a batch — the direct path re-parses it and reports the error
+// in context.
+//
+// (type ...) aliases do not count: they publish nothing, so a single definition written
+// against an alias is still a single definition and belongs on the direct path.
 func multiDefinition(src string) bool {
 	forms, err := parseForms(src)
-	return err == nil && len(forms) > 1
+	if err != nil {
+		return false
+	}
+	n := 0
+	for _, f := range forms {
+		if !isTypeAliasForm(f) {
+			n++
+		}
+	}
+	return n > 1
 }
 
 // cmdPublish is the signing publication path.
@@ -216,7 +334,7 @@ func cmdPublish(local *Store, endpoint, keyPath, kmsKey, file, license, namespac
 		return
 	}
 
-	plan, _, err := buildPublishPlan(local, endpoint, pubHex, string(src), license, namespace)
+	plan, _, sendSrc, err := buildPublishPlan(local, endpoint, pubHex, string(src), license, namespace)
 	if err != nil {
 		fail(err)
 	}
@@ -241,7 +359,7 @@ func cmdPublish(local *Store, endpoint, keyPath, kmsKey, file, license, namespac
 		}
 	}
 
-	if err := finalizePublish(ctx, signer, string(src), plan, endpoint, jsonOut); err != nil {
+	if err := finalizePublish(ctx, signer, sendSrc, plan, endpoint, jsonOut); err != nil {
 		fail(err)
 	}
 }
