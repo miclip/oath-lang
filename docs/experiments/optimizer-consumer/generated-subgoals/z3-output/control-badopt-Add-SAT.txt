@@ -1,0 +1,7 @@
+$ { echo '(set-option :rlimit 15000000)'; cat bado-preserves-defs-instantiated-binder0-ctor1-Add.smt2; } | z3 -smt2 /dev/stdin
+
+sat
+(:rlimit 2023)
+(:reason-unknown "")
+
+(z3 4.16.0, Darwin 25.5.0 arm64; the script already carries its own (check-sat).)

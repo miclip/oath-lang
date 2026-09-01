@@ -1,0 +1,31 @@
+; NON-FABRICATION CONTROL for the opt.preserves instantiation experiment.
+; Same Expr and ev as optimizer.oath. `bado` mirrors `opt`'s SHAPE exactly --
+; recurse on both children, combine with a smart constructor -- but its smart
+; constructor is deliberately WRONG: it discards both operands and returns
+; (Lit 0). So it preserves literals and maps every Add and Mul parent to
+; (Lit 0), making (ev (bado e)) = (ev e) FALSE.
+;
+; Instantiating its subgoals by the same machinery must leave them SAT. If they
+; came back unsat, the instantiation procedure would be manufacturing proofs
+; rather than measuring them, and every unsat in this experiment would be void.
+
+(data Expr []
+  (Lit Int)
+  (Add Expr Expr)
+  (Mul Expr Expr))
+
+(defn ev [] [(e Expr)] Int
+  (match e
+    ((Lit n) n)
+    ((Add a b) (+ (ev a) (ev b)))
+    ((Mul a b) (* (ev a) (ev b)))))
+
+(defn zero-s [] [(a Expr) (b Expr)] Expr
+  (Lit 0))
+
+(defn bado [] [(e Expr)] Expr
+  (match e
+    ((Lit n) (Lit n))
+    ((Add a b) (zero-s (bado a) (bado b)))
+    ((Mul a b) (zero-s (bado a) (bado b))))
+  (prop preserves [(e Expr)] (== (ev (bado e)) (ev e))))

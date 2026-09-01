@@ -1,0 +1,78 @@
+package main
+
+// TEMPORARY INSTRUMENTATION — throwaway copy of the module only, never the
+// shared oath/ tree. It adds no behaviour: it calls the kernel's own
+// scriptAttempts seam (prove.go), which enumerates the scripts the strategy
+// sequence CAN emit for one property under the RECORDED lemma state, without
+// running a solver. Everything written out is bytes the prover produced.
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestZZExportSubgoals(t *testing.T) {
+	root := os.Getenv("OATH_STORE")
+	outDir := os.Getenv("SUBGOAL_OUT")
+	target := os.Getenv("SUBGOAL_DEF")
+	propWant := os.Getenv("SUBGOAL_PROP")
+	if root == "" || outDir == "" || target == "" || propWant == "" {
+		t.Skip("OATH_STORE / SUBGOAL_OUT / SUBGOAL_DEF / SUBGOAL_PROP required")
+	}
+	st, err := OpenStore(root)
+	if err != nil {
+		t.Fatalf("OpenStore: %v", err)
+	}
+	h, ok := st.Resolve(target)
+	if !ok {
+		t.Fatalf("no definition named %q", target)
+	}
+	d, err := st.GetDef(h)
+	if err != nil {
+		t.Fatalf("GetDef: %v", err)
+	}
+	m, err := st.GetMeta(h)
+	if err != nil {
+		t.Fatalf("GetMeta: %v", err)
+	}
+
+	// Report the datatype constructor ORDER so the ctor indices in the
+	// attempt details are labeled from the kernel's own table, not assumed.
+	c := newSmtCtx(st, d, h)
+	c.enumerate = true
+	loadLemmaLibrary(c, st, d, h, m, 0)
+	for sort, dt := range c.dtBySort {
+		fmt.Printf("CTORS\t%s\t%v\n", sort, dt.ctors)
+	}
+
+	pi := -1
+	for i := range d.Props {
+		if storedPropName(m, i) == propWant {
+			pi = i
+			break
+		}
+	}
+	if pi < 0 {
+		t.Fatalf("no property named %q on %s", propWant, target)
+	}
+	fmt.Printf("PROPINDEX\t%s.%s\t%d\thash=%s\n", target, propWant, pi, h)
+
+	ats, err := scriptAttempts(st, h, pi)
+	if err != nil {
+		t.Fatalf("scriptAttempts: %v", err)
+	}
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	for i, a := range ats {
+		fmt.Printf("ATTEMPT\t%d\tstrategy=%q\tdetail=%q\tbytes=%d\n",
+			i, a.strategy, a.detail, len(a.text))
+		fn := filepath.Join(outDir, fmt.Sprintf("attempt-%02d.smt2", i))
+		if err := os.WriteFile(fn, []byte(a.text), 0o644); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+	fmt.Printf("TOTAL\t%d\n", len(ats))
+}

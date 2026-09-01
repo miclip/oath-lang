@@ -1,0 +1,89 @@
+$ ./docs/experiments/optimizer-consumer/run.sh
+
+1 — the PIECES prove: per-step smart-constructor soundness is verifiable
+  [ok]   add-s.sound and mul-s.sound PROVEN — folding a step preserves the value
+2 — the WHOLE does not: end-to-end correctness diverges even with the pieces HINTED
+  [ok]   opt.preserves UNPROVEN with add-s.sound + mul-s.sound admitted — the composed induction does not discharge
+3 — it is NOT a tree-induction gap: the structural lemma proves and RESCUES the identity case
+  [ok]   ido.structure (ido e = e) PROVEN by induction, and ido.preserves PROVEN directly from it — tree induction works
+4 — but a genuine transformation has NO structural rescue: swap (correct by commutativity) does not prove
+  [ok]   swap.preserves UNPROVEN — a value-preserving tree transform whose correctness composes ev with swap does not discharge
+
+RESULT: PASS — 4/4; the composed-recursion demand reproduces under a capped z3
+
+exit status: 0
+
+================================================================================
+PROVENANCE
+================================================================================
+run from      : repository root (git worktree), no environment prefix
+script        : docs/experiments/optimizer-consumer/run.sh — UNCHANGED, byte-identical to HEAD
+commit        : fa96464a6428900f1978fc849470bcd7d1a39e68
+tree          : clean apart from this untracked file; codebase/ and fixtures/ untouched
+kernel        : oath/oath, built at that commit via `cd oath && go build -o oath .`
+go            : go1.25.6 darwin/arm64
+z3            : Z3 version 4.16.0 - 64 bit  (/opt/homebrew/bin/z3)
+host          : Darwin 25.5.0 arm64
+store         : the script's own `mktemp -d` throwaway (OATH_STORE), removed by its EXIT trap
+streams       : stdout and stderr MERGED into the transcript above (2>&1); on this run the
+                script emitted nothing on stderr, since no [FAIL]/SETUP FAILED branch fired
+
+================================================================================
+EFFECTIVE PROVER SETTINGS
+================================================================================
+No OATH_PROVE_* variable was set in the invoking shell (verified before the run), so
+every value below comes either from the script's own `cap()` wrapper or from the
+kernel's compiled-in default.
+
+SCOPE — `cap()` wraps ONLY the four `oath prove` invocations (add-s, mul-s, opt, ido,
+swap). The `oath put` and the two `oath hint` calls ran UNCAPPED, at kernel defaults.
+
+  setting                  under cap()      kernel default    source
+  ---------------------------------------------------------------------------------
+  rlimit, full goal        15,000,000       400,000,000       OATH_PROVE_RLIMIT
+                                                              effectiveRlimit(), prove.go:1241
+  rlimit, direct attempt    4,000,000         4,000,000       directRlimit(), prove.go:1267
+  rlimit, lemma-free 1st    4,000,000         4,000,000       lemmaFreeRlimit(), prove.go:1254
+  wall-clock cap              120 s             600 s         OATH_PROVE_WALLCAP_SEC
+                                                              proveWallCap(), prove.go:84
+  z3 memory_max_size          3000 MB        (unset/none)     OATH_PROVE_MEMORY_MB
+                                                              runZ3Budget(), prove.go:1292
+
+Notes, derived by reading oath/prove.go at the commit above (not transcribed from run.sh):
+
+  * The full-goal budget is reduced 26.7x from the normative proveRlimit
+    (400,000,000, prove.go:47). This is the setting that makes the two divergent
+    goals fail in seconds rather than exhausting the normative budget.
+  * directRlimit() and lemmaFreeRlimit() are each min(their constant, effectiveRlimit()),
+    so at a 15,000,000 override BOTH stay at their unclamped 4,000,000 constants
+    (prove.go:58, prove.go:72) — the override does not reach them, and the reduced
+    attempts are identical to a default run.
+  * The rlimit and memory_max_size options are prepended OUTSIDE the hashed core
+    script (SPEC §7.2), so the script BYTES are budget-independent; only the OUTCOME
+    may differ with the budget. The UNPROVEN verdicts here are therefore budget-relative
+    and are NOT a claim that the goals are unprovable at the normative rlimit.
+  * THE 120 s CAP DID NOT FIRE, and this is readable off the transcript rather than
+    assumed. A wall-cap hit is an INVALID attempt, never an outcome: runZ3Budget
+    returns capHit (prove.go:1303), proveOne sets sawInvalid and yields status
+    "invalidated" (prove.go:2143), and the summary printer gives that its OWN label,
+    `⚠ aborted ... environmental abort, no valid verdict` -- deliberately NOT
+    "unproven" (prove.go:2394-2407). Only status "unknown" prints `· unproven`
+    (prove.go:2424).
+    NOTE the evidence is INDIRECT: run.sh greps `oath prove` output for the literal
+    'unproven  preserves' but never echoes it, so that line is NOT visible in the
+    transcript above. It is established by checks 2 and 4 PASSING -- had either goal
+    been environmentally aborted, the line would have read `⚠ aborted`, the grep
+    would have missed, the check would have called bad(), and the run would have
+    ended `RESULT: FAIL`. It ended 4/4, so both greps matched.
+
+================================================================================
+NOT ESTABLISHED BY THIS BASELINE
+================================================================================
+  * Stability: the script was run ONCE. The 120 s cap is shown not to have fired on
+    THIS run (above), but the verdicts are not shown to be insensitive to host load,
+    nor to the 26.7x-reduced rlimit -- a goal that returns unknown at 15,000,000 is
+    not thereby unprovable at the normative 400,000,000.
+  * Timings: no per-goal wall time or consumed rlimit was captured, so this file cannot
+    detect a performance regression — only a change in verdicts.
+  * Stream attribution: stdout and stderr are merged and cannot be separated after the
+    fact.

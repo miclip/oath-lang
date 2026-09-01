@@ -1,0 +1,7 @@
+$ { echo '(set-option :rlimit 15000000)'; cat opt-preserves-induction-binder0-ctor2-Mul.smt2; echo '(get-info :rlimit)'; echo '(get-info :reason-unknown)'; } | z3 -smt2 /dev/stdin
+
+unknown
+(:rlimit 15000262)
+(:reason-unknown "canceled")
+
+(z3 4.16.0, Darwin 25.5.0 arm64; the script already carries its own (check-sat).)
