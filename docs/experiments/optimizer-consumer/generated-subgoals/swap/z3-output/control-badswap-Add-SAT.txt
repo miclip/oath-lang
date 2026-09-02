@@ -1,0 +1,5 @@
+$ z3 rlimit=15000000 -st badswap-preserves-defs-instantiated-binder0-ctor1-Add.smt2
+
+sat
+(:reason-unknown "")
+ :rlimit-count            1954

@@ -1,0 +1,4 @@
+$ z3 rlimit=15000000 -st swap-preserves-emitted-binder0-ctor2-Mul.smt2
+
+unknown
+ :rlimit-count                15000112

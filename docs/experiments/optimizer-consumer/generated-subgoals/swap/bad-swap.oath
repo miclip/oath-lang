@@ -1,0 +1,12 @@
+(data Expr []
+  (Lit Int)
+  (Add Expr Expr)
+  (Mul Expr Expr))
+(defn ev [] [(e Expr)] Int
+  (match e ((Lit n) n) ((Add a b) (+ (ev a) (ev b))) ((Mul a b) (* (ev a) (ev b)))))
+(defn swapb [] [(e Expr)] Expr
+  (match e
+    ((Lit n) (Lit n))
+    ((Add a b) (Add (swapb a) (swapb a)))
+    ((Mul a b) (Mul (swapb b) (swapb a))))
+  (prop preserves [(e Expr)] (== (ev (swapb e)) (ev e))))
