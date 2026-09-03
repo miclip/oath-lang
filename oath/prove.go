@@ -71,6 +71,16 @@ const proveDirectRlimit = 4_000_000
 // canonical attempt rather than reasoned about here.
 const proveLemmaFreeRlimit = 4_000_000
 
+// proveInstantiatedRlimit is the budget for the deterministic-instantiation
+// attempt on one structural-induction constructor subgoal (see
+// prove_instantiate.go). Measured: the composed-recursion subgoals that exhaust
+// 15,000,000 rlimit in their quantified form return `unsat` at 1,847
+// (swap.preserves) and 5,183 (opt.preserves) once the defining equations are
+// ground. A goal whose shape the instance schema does not fit fails here at
+// 1/100th of the full budget and falls through to the unchanged quantified
+// attempt.
+const proveInstantiatedRlimit = 4_000_000
+
 // proveWallCapDefault is the wall-clock safety cap on a single z3 attempt. It is
 // NOT part of any recorded verdict — a cap hit is an environmental abort, never
 // an outcome (SPEC §7.2; execZ3 is explicitly host-specific) — so the value is a
@@ -184,6 +194,14 @@ type smtCtx struct {
 	dtBySort   map[string]*dtInfo
 	fns        map[string]smtVal    // by instance key
 	arrows     map[string][2]string // array sort → (domain, codomain)
+
+	// fnEqns holds the substitution-ready defining equations of the functions
+	// that HAVE a quantified axiom, so deterministic instantiation can emit
+	// ground instances of them (prove_instantiate.go). Recorded on the totality
+	// branch of ensureFn, which is what makes the soundness gate inherited
+	// rather than restated.
+	fnEqns     []fnEqn
+	fnEqnByKey map[string]int
 	quantified bool
 	depth      int
 	intDivDefs bool // truncating-division bridge emitted? (SPEC §7.1, #71)
@@ -456,7 +474,8 @@ func (c *smtCtx) ensureIntDivDefs() {
 
 func newSmtCtx(st *Store, d *Def, h string) *smtCtx {
 	return &smtCtx{st: st, selfDef: d, selfHash: h,
-		dts: map[string]*dtInfo{}, dtBySort: map[string]*dtInfo{}, fns: map[string]smtVal{}}
+		dts: map[string]*dtInfo{}, dtBySort: map[string]*dtInfo{}, fns: map[string]smtVal{},
+		fnEqnByKey: map[string]int{}}
 }
 
 // metaOf is the ONLY way this file should read metadata: every consumer must see
@@ -672,6 +691,17 @@ func (c *smtCtx) ensureFn(h string, d *Def, args []Ty) (smtVal, error) {
 	// merely weaker (proofs that needed its definition come back `unknown`).
 	tm := c.metaOf(h)
 	if tm != nil && isTotal(tm.Termination) {
+		// Deterministic instantiation (prove_instantiate.go) may emit GROUND
+		// instances of this equation. Its soundness gate is exactly the totality
+		// test guarding this branch — a ground instance of `f(x) = body` is a
+		// theorem only where f is defined — so the metadata is recorded HERE and
+		// nowhere else: a function that gets no quantified axiom gets no
+		// substitution-ready data either, and cannot be instantiated at all.
+		c.fnEqnByKey[key] = len(c.fnEqns)
+		c.fnEqns = append(c.fnEqns, fnEqn{
+			hash: h, def: d, name: name, argSorts: argSorts, ret: ret,
+			bodyTerm: body, axiomIdx: len(c.axioms),
+		})
 		app := name
 		if len(env) > 0 {
 			var syms []string
@@ -1259,6 +1289,30 @@ func lemmaFreeRlimit() int64 {
 	return full
 }
 
+// instantiatedRlimit is the budget for the deterministic-instantiation preview
+// of a structural-induction subgoal. It is clamped to the full budget for the
+// same reason as directRlimit and lemmaFreeRlimit: an optional extra attempt
+// must never be STRONGER than the search it precedes, or lowering the full
+// budget under test would leave the preview outrunning the fallback that is
+// supposed to subsume it. The measured instantiated subgoals discharge at 1,847
+// and 5,183 rlimit, so this clears them by ~800x while failing fast on a goal
+// the schema does not fit.
+func instantiatedRlimit() int64 {
+	full := effectiveRlimit()
+	if proveInstantiatedRlimit < full {
+		return proveInstantiatedRlimit
+	}
+	return full
+}
+
+// instantiationEnabled reports whether the deterministic-instantiation preview
+// is active. It is OFF by default in Phase 1 (see the gate at its call site) and
+// enabled by setting OATH_PROVE_INSTANTIATE to any non-empty value. Phase 2 makes
+// it the default alongside the SPEC text and fixture regeneration.
+func instantiationEnabled() bool {
+	return os.Getenv("OATH_PROVE_INSTANTIATE") != ""
+}
+
 // directRlimit is the budget for the direct attempt on an inductive-eligible
 // goal. It is clamped to the full budget so the reduced attempt can never be
 // STRONGER than the full-budget fallback — otherwise lowering the full budget
@@ -1572,12 +1626,21 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 	// other component (declarations, defining-equation axioms, binder
 	// declarations, the negated goal) is byte-identical either way, so the
 	// canonical with-lemmas script that prove/scripts.txt pins is unchanged.
-	buildScript := func(extraDecls, extraAsserts []string, negated string, model bool, withLemmas bool) string {
+	// omitAxioms names quantified defining equations to LEAVE OUT — used only by
+	// the deterministic-instantiation attempt, which replaces the equations of
+	// the functions it instantiates with ground instances of those same
+	// equations. Every existing caller passes nil, so every script the rest of
+	// the strategy sequence emits is byte-identical to before; prove/scripts.txt
+	// and the induction bytes prove/attempts.txt pins are untouched.
+	buildScript := func(extraDecls, extraAsserts []string, negated string, model bool, withLemmas bool, omitAxioms map[int]bool) string {
 		var b strings.Builder
 		for _, x := range c.decls {
 			b.WriteString(x + "\n")
 		}
-		for _, x := range c.axioms {
+		for i, x := range c.axioms {
+			if omitAxioms[i] {
+				continue
+			}
 			b.WriteString(x + "\n")
 		}
 		// Canonical lemma order (script stability, part 2): emission sorted
@@ -1620,7 +1683,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 	// script is the canonical (with-lemmas) emission every existing strategy
 	// uses; prove/scripts.txt pins its direct-attempt form.
 	script := func(extraDecls, extraAsserts []string, negated string, model bool) string {
-		return buildScript(extraDecls, extraAsserts, negated, model, true)
+		return buildScript(extraDecls, extraAsserts, negated, model, true, nil)
 	}
 
 	// LEMMA-FREE FIRST ATTEMPT (SPEC §7.2, #53). A budget-limited solver is
@@ -1633,7 +1696,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 	// a fraction of one full attempt. Everything below is unchanged, so the
 	// recorded outcome is the UNION: anything provable before is still proven
 	// by a later strategy, plus the goals the library was strangling.
-	if lf, lfCap := c.solve("lemma-free", "", buildScript(nil, nil, goal, !c.quantified, false),
+	if lf, lfCap := c.solve("lemma-free", "", buildScript(nil, nil, goal, !c.quantified, false, nil),
 		func(sc string) (string, bool) { return runZ3Budget(sc, c.budget(lemmaFreeRlimit())) }); !lfCap {
 		if os.Getenv("OATH_PROVE_SPLIT") != "" {
 			pname := storedPropName(m, pi)
@@ -1767,6 +1830,54 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 			if err != nil {
 				allUnsat = false
 				break
+			}
+			// DETERMINISTIC INSTANTIATION, tried FIRST (docs/deterministic-
+			// instantiation.md). The quantified defining-equation axioms do not
+			// e-match to a proof on composed-recursion subgoals; ground instances
+			// of those same equations, at the terms this subgoal mentions,
+			// discharge them. Only `unsat` is taken — a `sat` under a case split
+			// is not a refutation, and an exhausted budget is not evidence — so
+			// the unchanged quantified attempt below runs on every other result
+			// and NO goal that proves today can regress. A wall-cap hit here is
+			// deliberately NOT recorded as an invalid attempt: this attempt is
+			// optional, the fallback runs regardless, and that fallback's own
+			// validity is what governs the negative case (SPEC §7.2). Treating
+			// the preview's environmental abort as invalidating would let a busy
+			// machine suppress verdicts the search still reached.
+			//
+			// NOT RECORDED BY `scriptAttempts`. Enumeration (#139) pins the
+			// candidate scripts of the strategies SPEC §7.2 names, and §7.2 does
+			// not yet name this one: its normative text and the fixture
+			// regeneration are the next phase. Emitting it into the walk now
+			// would rewrite prove/attempts.txt ahead of the specification that
+			// licenses the rows. The consequence is stated rather than hidden: a
+			// verdict this preview attempt decides is, for now, determined by a
+			// script no fixture pins — the same gap #139 closed for induction,
+			// reopened narrowly and deliberately until the SPEC text lands.
+			// PHASE 1 GATE (default OFF). The preview is opt-in behind
+			// OATH_PROVE_INSTANTIATE until Phase 2 lands the SPEC §7.2 text,
+			// prove/attempts.txt regeneration, and the oathrs blind
+			// re-derivation together. Rationale: default-ON the preview can only
+			// prove MORE-or-equal, so at the normative 400M budget it could
+			// discharge a committed property currently recorded `unproven` —
+			// a GAIN that would move outcomes.json and fork conformance against a
+			// quantified-only second kernel. Gated OFF, emission is unchanged and
+			// the committed corpus reproduces byte-identically; the strategy still
+			// runs under the flag for the witnessing tests and for anyone opting
+			// in. Flipping the default is a deliberate Phase 2 act, not this one.
+			if !c.enumerate && instantiationEnabled() {
+				if inst, omit := c.instantiatedSubgoal(d, h, p, i, dt, ci, fieldConsts); len(inst) > 0 {
+					iout, _ := c.solve("induction-instantiated",
+						fmt.Sprintf("binder %d ctor %d", i, ci),
+						buildScript(extraDecls, append(append([]string{}, inst...), extraAsserts...),
+							subgoal, false, false, omit),
+						func(sc string) (string, bool) {
+							return runZ3Budget(sc, c.budget(instantiatedRlimit()))
+						})
+					if strings.HasPrefix(iout, "unsat") {
+						continue
+					}
+				}
 			}
 			out, capHit := c.solve("induction", fmt.Sprintf("binder %d ctor %d", i, ci),
 				script(extraDecls, extraAsserts, subgoal, false), c.runFull)

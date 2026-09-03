@@ -287,7 +287,12 @@ func proofStateFingerprint(st *Store) string {
 	// discard) changes what a scan RECORDS while touching neither the store nor
 	// the config — so without the kernel version the corpus would sit unchanged
 	// behind a matching fingerprint, exactly the same trap one layer up.
-	fmt.Fprintf(h, "cfg:kernel=%s;rlimit=%d;wallcap=%ds;\n", kernelVersion, effectiveRlimit(), int64(proveWallCap()/time.Second))
+	// The deterministic-instantiation preview is the same kind of knob: it is
+	// outcome-affecting (it can newly prove a composed-recursion goal), so
+	// enabling it must re-arm the scan just like a larger wall-cap. Left out, a
+	// settled store would sit behind a matching fingerprint and the opt-in would
+	// silently no-op for bulk proving.
+	fmt.Fprintf(h, "cfg:kernel=%s;rlimit=%d;wallcap=%ds;instantiate=%t;\n", kernelVersion, effectiveRlimit(), int64(proveWallCap()/time.Second), instantiationEnabled())
 	for _, hash := range st.AllHashes() { // AllHashes is sorted → stable
 		m, err := st.GetMeta(hash)
 		if err != nil {
