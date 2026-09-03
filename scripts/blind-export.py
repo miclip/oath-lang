@@ -65,6 +65,13 @@ FORBIDDEN_BY_SECTION = {
     # containing the literal scripts with their hashes, so shipping it would
     # hand the subject the answer and the check together.
     "7.4": ("oath/", "codebase/", "docs/experiments/", "website/", "scripts/"),
+    # §7.2 (deterministic instantiation): repair oathrs against the new normative
+    # strategy. It needs oathrs/ and the conformance corpus, but MUST NOT see oath/
+    # (the reference instantiation lives in oath/prove_instantiate.go), nor
+    # docs/experiments/ (the algorithm writeups + instantiate-defs.py), nor
+    # docs/deterministic-instantiation.md — the last is excluded automatically
+    # because PROSE ships only docs/SPEC.md, so the design doc is never in ALLOW.
+    "7.2": ("oath/", "codebase/", "docs/experiments/", "website/"),
 }
 
 SURFACES = {
@@ -106,6 +113,16 @@ SURFACES = {
     # cannot run the tests already in the tree is a weaker subject than one that
     # can — reported by the round itself.
     "7.4": ([], ["oathrs/", "fixtures/campaign/"]),
+    # §7.2: the Rust kernel to repair and the full conformance corpus it must
+    # reproduce. NO normative data. The witnesses are the fixtures the kernel
+    # checks itself against and the corpus source conformance reads — none of
+    # which carries the instantiation ALGORITHM: prove/scripts.txt and
+    # prove/attempts.txt pin only the quantified direct/induction attempts (the
+    # instantiated attempt is deliberately outside that surface, §7.2), and
+    # prove/outcomes.json is a verdict target, not a derivation. The subject must
+    # derive the schema from §7.2 prose; the fixtures only tell it WHICH verdicts
+    # to reach, never HOW.
+    "7.2": ([], ["oathrs/", "fixtures/", "examples/", "apps/"]),
 }
 
 # NORMATIVE DATA: incorporated by reference, schema and interpretation defined in

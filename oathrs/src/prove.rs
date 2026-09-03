@@ -298,6 +298,151 @@ fn is_recursive(store: &Store, hash: &str) -> bool {
     matches!(store.def_by_hash.get(hash), Some(Def::Func { body, .. }) if has_self(body))
 }
 
+// ---------------------------------------------------------------------------
+// Deterministic instantiation (SPEC §7.2): composition detection
+// ---------------------------------------------------------------------------
+
+/// A detected COMPOSITION `g(f(b_i))` in a property body: a one-argument
+/// observer `g` applied to a one-argument transformer `f` applied to the
+/// induction binder, where BOTH `f` and `g` are recursive functions the kernel
+/// has proven total (§6.1) — the only functions whose defining equation the
+/// kernel may instantiate soundly.
+#[derive(Clone)]
+struct Composition {
+    g_hash: String,
+    g_cargs: Vec<Ty>,
+    f_hash: String,
+    f_cargs: Vec<Ty>,
+}
+
+/// Unwind an application spine `((h a1) a2 ... an)` to `(h, [a1..an])`.
+fn app_spine(t: &Term) -> (&Term, Vec<&Term>) {
+    let mut args: Vec<&Term> = Vec::new();
+    let mut cur = t;
+    while let Term::App { a, b } = cur {
+        args.push(b.as_ref());
+        cur = a;
+    }
+    args.reverse();
+    (cur, args)
+}
+
+/// Resolve an application head to a function hash plus its type arguments: a
+/// `Ref` names its callee directly; a `SelfRef` is the definition under proof.
+fn head_fn_hash(head: &Term, def_hash: &str) -> Option<(String, Vec<Ty>)> {
+    match head {
+        Term::Ref { hash, tyargs } => Some((hash.clone(), tyargs.clone())),
+        Term::SelfRef { tyargs } => Some((def_hash.to_string(), tyargs.clone())),
+        _ => None,
+    }
+}
+
+/// A recursive, proven-total function of exactly one parameter — the shape both
+/// `f` and `g` in a composition must have (the totality gate is the soundness
+/// requirement: only a total function's defining equation is a theorem at every
+/// argument, §7.2).
+fn one_param_rec_total(store: &Store, hash: &str) -> bool {
+    matches!(store.func_by_hash.get(hash), Some(fi) if fi.param_names.len() == 1)
+        && is_recursive(store, hash)
+        && is_total(store, hash)
+}
+
+/// Is `t` a de Bruijn reference to property binder `binder_k`, seen under
+/// `depth` additional binders (match-arm fields, lambdas, lets)? At added depth
+/// `d` the environment is `[b0..b_{n-1}, <d extra>]`, so binder `k` sits at
+/// SMT-env index `k` and `Var(i)` selects `env[(n+d)-1-i]`.
+fn var_is_binder(t: &Term, depth: usize, num_binders: usize, binder_k: usize) -> bool {
+    matches!(t, Term::Var(i) if (*i as usize) + binder_k + 1 == num_binders + depth)
+}
+
+/// Scan a property body for every distinct composition `g(f(b_i))` over the
+/// induction binder `binder_k` (SPEC §7.2). Structural and totality-gated: a
+/// non-total or non-recursive `f`/`g`, or a `g`/`f` of other than one argument,
+/// yields no composition. Duplicates (same `(g, f)`) are collapsed, keeping
+/// first-seen order, so the emitted instance set is a pure function of the body.
+#[allow(clippy::too_many_arguments)]
+fn detect_compositions(
+    store: &Store,
+    t: &Term,
+    depth: usize,
+    num_binders: usize,
+    binder_k: usize,
+    def_hash: &str,
+    out: &mut Vec<Composition>,
+) {
+    // Match a composition rooted at this node: g(<inner>), inner = f(binder_k).
+    let (head, args) = app_spine(t);
+    if args.len() == 1 {
+        if let Some((g_hash, g_ty)) = head_fn_hash(head, def_hash) {
+            let (ihead, iargs) = app_spine(args[0]);
+            if iargs.len() == 1 {
+                if let Some((f_hash, f_ty)) = head_fn_hash(ihead, def_hash) {
+                    if var_is_binder(iargs[0], depth, num_binders, binder_k)
+                        && one_param_rec_total(store, &g_hash)
+                        && one_param_rec_total(store, &f_hash)
+                    {
+                        // Type args are read at the (empty) top-level tyenv. A
+                        // composition is identified by the two functions AND their
+                        // type arguments (§7.2): the same polymorphic pair at two
+                        // instantiations is two distinct compositions — different
+                        // monomorphizations are different SMT symbols — so the
+                        // concrete type-argument vectors are part of the dedup key.
+                        let comp = Composition {
+                            g_hash,
+                            g_cargs: g_ty,
+                            f_hash,
+                            f_cargs: f_ty,
+                        };
+                        if !out.iter().any(|e| {
+                            e.g_hash == comp.g_hash
+                                && e.f_hash == comp.f_hash
+                                && e.g_cargs == comp.g_cargs
+                                && e.f_cargs == comp.f_cargs
+                        }) {
+                            out.push(comp);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Recurse into children, tracking binder depth so a nested reference to the
+    // induction binder is still recognised.
+    let rec = |sub: &Term, d: usize, out: &mut Vec<Composition>| {
+        detect_compositions(store, sub, d, num_binders, binder_k, def_hash, out);
+    };
+    match t {
+        Term::App { a, b } => {
+            rec(a, depth, out);
+            rec(b, depth, out);
+        }
+        Term::Prim { args, .. } | Term::Ctor { args, .. } | Term::Record { args, .. } => {
+            for a in args {
+                rec(a, depth, out);
+            }
+        }
+        Term::Match { a, arms, hash } => {
+            rec(a, depth, out);
+            let di = store.data_by_hash.get(hash);
+            for (i, arm) in arms.iter().enumerate() {
+                let nf = di.map(|d| d.ctors.get(i).map(|c| c.1.len()).unwrap_or(0)).unwrap_or(0);
+                rec(arm, depth + nf, out);
+            }
+        }
+        Term::Lam { a, .. } | Term::Field { a, .. } => rec(a, depth + matches!(t, Term::Lam { .. }) as usize, out),
+        Term::Let { a, b, .. } => {
+            rec(a, depth, out);
+            rec(b, depth + 1, out);
+        }
+        Term::If { a, b, c } => {
+            rec(a, depth, out);
+            rec(b, depth, out);
+            rec(c, depth, out);
+        }
+        _ => {}
+    }
+}
+
 fn is_total(store: &Store, hash: &str) -> bool {
     let mut v = HashSet::new();
     termination(store, hash, &mut v).total()
@@ -633,6 +778,70 @@ impl<'a> Cx<'a> {
             }
         }
         // else: body outside fragment — leave the callee uninterpreted.
+    }
+
+    /// SPEC §7.2. Unfold `hash`'s defining equation at a CONSTRUCTOR argument:
+    /// the `ci`-arm of the function's body with the constructor's fields bound
+    /// to the already-declared field constants — a selector-on-constructor
+    /// identity applied structurally, never a fresh axiom. Requires the body to
+    /// be a `match` on the single parameter over datatype `dhash`; returns None
+    /// otherwise (that instance is simply not emitted). `param_smt` stands in for
+    /// the whole scrutinee in the rare arm that names it.
+    fn unfold_at_ctor(
+        &mut self,
+        hash: &str,
+        cargs: &[Ty],
+        dhash: &str,
+        ci: usize,
+        param_smt: &str,
+        param_ty: &Ty,
+        field_consts: &[(String, Ty)],
+    ) -> Option<String> {
+        let body = match self.store.def_by_hash.get(hash) {
+            Some(Def::Func { body, .. }) => body.clone(),
+            _ => return None,
+        };
+        let inner = strip_lams(&body, 1);
+        let (mh, scrut, arms) = match inner {
+            Term::Match { hash: mh, a, arms } => (mh, a.as_ref(), arms),
+            _ => return None,
+        };
+        // The match must be on the parameter (Var 0) and over the induction
+        // datatype, so its arm indices line up with the subgoal's constructor.
+        if mh != dhash || !matches!(scrut, Term::Var(0)) || ci >= arms.len() {
+            return None;
+        }
+        // Arm environment: parameter at the bottom, then the constructor fields
+        // pushed in order (Var 0 selects the last field), matching `tr`'s own
+        // match-arm binding so the arm's de Bruijn references resolve directly to
+        // the field constants.
+        let mut env: Vec<(String, Ty)> = Vec::with_capacity(1 + field_consts.len());
+        env.push((param_smt.to_string(), param_ty.clone()));
+        for fc in field_consts {
+            env.push(fc.clone());
+        }
+        self.tr(&arms[ci], &env, cargs, hash, cargs).ok().map(|(e, _)| e)
+    }
+
+    /// SPEC §7.2. Unfold `hash`'s defining equation at an ARBITRARY argument
+    /// term (the transformer's result, or `f` applied to a recursive field):
+    /// the whole body with the single parameter bound to `arg_smt`. When the
+    /// argument's head is a known constructor the resulting `match` reduces under
+    /// z3's cheap selector/discriminator identities.
+    fn unfold_body(
+        &mut self,
+        hash: &str,
+        cargs: &[Ty],
+        arg_smt: &str,
+        arg_ty: &Ty,
+    ) -> Option<String> {
+        let body = match self.store.def_by_hash.get(hash) {
+            Some(Def::Func { body, .. }) => body.clone(),
+            _ => return None,
+        };
+        let inner = strip_lams(&body, 1);
+        let env = vec![(arg_smt.to_string(), arg_ty.clone())];
+        self.tr(inner, &env, cargs, hash, cargs).ok().map(|(e, _)| e)
     }
 
     /// Translate a term to (smt-expr, concrete-type). Err => outside fragment.
@@ -1137,6 +1346,28 @@ impl<'a> Prover<'a> {
         s
     }
 
+    /// As `assemble`, but the quantified defining-equation axioms whose ids are
+    /// in `omit` are DROPPED from the script (SPEC §7.2 deterministic
+    /// instantiation: `f` and `g`'s quantified axioms are replaced by the ground
+    /// instances the `tail` carries). Every declaration is preserved — dropping a
+    /// `declare-fun` would change which symbols exist — so only the `(assert
+    /// (forall …))` defining lines disappear.
+    fn assemble_omitting(cx: &Cx, tail: &str, omit: &BTreeSet<String>) -> String {
+        let mut s = String::new();
+        for line in &cx.sc.decls {
+            s.push_str(line);
+        }
+        for id in &cx.axiom_order {
+            if omit.contains(id) {
+                continue;
+            }
+            s.push_str(cx.axioms.get(id).unwrap());
+            s.push('\n');
+        }
+        s.push_str(tail);
+        s
+    }
+
     /// Load the lemma library (SPEC §7.2 construction sequence): translate EVERY
     /// candidate `(def-hash, prop-index, admissible)` in ascending (def-hash,
     /// prop-index) order — even inadmissible ones, so their declarations/axioms
@@ -1273,6 +1504,247 @@ impl<'a> Prover<'a> {
         }
     }
 
+    /// One-parameter function signature `(param_ty, return_ty)` at type
+    /// arguments `cargs`.
+    fn one_param_sig(&self, hash: &str, cargs: &[Ty]) -> Option<(Ty, Ty)> {
+        let fty = match self.store.def_by_hash.get(hash) {
+            Some(Def::Func { ty, .. }) => ty.clone(),
+            _ => return None,
+        };
+        let (ptys, ret) = param_types(&apply_tyenv(&fty, cargs), 1);
+        ptys.into_iter().next().map(|p| (p, ret))
+    }
+
+    /// SPEC §7.2 DETERMINISTIC INSTANTIATION, one constructor subgoal. Attempts
+    /// the SAME negated `C`-subgoal of single-binder structural induction with
+    /// the quantified defining-equation axioms of each composition's `f` and `g`
+    /// REPLACED by ground instances of those equations, at the reduced budget.
+    /// Returns `true` ONLY on `unsat` — sound, because the instances are finitely
+    /// many consequences of the omitted quantified equations (a strict subset of
+    /// the quantified attempt's premises), so a discharge here is a discharge
+    /// there. Any other result is DISCARDED (returns `false`) and the caller
+    /// proceeds to the unchanged quantified attempt, so no goal can regress. Like
+    /// the lemma-free first attempt this is optional and never taints the run.
+    #[allow(clippy::too_many_arguments)]
+    fn try_ctor_instantiation(
+        &self,
+        def_hash: &str,
+        prop: &Prop,
+        k: usize,
+        dhash: &str,
+        dargs: &[Ty],
+        ci: usize,
+        cname: &str,
+        cfields: &[Ty],
+        ind_sort: &str,
+        candidates: &[(String, usize, bool)],
+        comps: &[Composition],
+    ) -> bool {
+        let mut cx = Cx::new(self.store);
+        let lem = self.build_lemmas(&mut cx, candidates);
+        let sortname = sort_of(self.store, &prop.binders[k], &mut cx.sc);
+        let csmt = ctor_smt(cname, &sortname);
+        let fields: Vec<Ty> = cfields.iter().map(|f| inst_field(f, dargs, dhash)).collect();
+
+        let mut decls = String::new();
+        let mut base_env: Vec<Option<(String, Ty)>> = vec![None; prop.binders.len()];
+        for (j, bt) in prop.binders.iter().enumerate() {
+            if j == k {
+                continue;
+            }
+            let vname = format!("b{}", j);
+            let s = sort_of(self.store, bt, &mut cx.sc);
+            decls.push_str(&format!("(declare-const {} {})\n", vname, s));
+            base_env[j] = Some((vname, bt.clone()));
+        }
+        let mut field_consts = Vec::new();
+        for (j, ft) in fields.iter().enumerate() {
+            let vname = format!("f{}", j);
+            let s = sort_of(self.store, ft, &mut cx.sc);
+            decls.push_str(&format!("(declare-const {} {})\n", vname, s));
+            field_consts.push((vname, ft.clone()));
+        }
+        let constructed = if fields.is_empty() {
+            csmt.clone()
+        } else {
+            let mut e = format!("({}", csmt);
+            for (v, _) in &field_consts {
+                e.push(' ');
+                e.push_str(v);
+            }
+            e.push(')');
+            e
+        };
+
+        // Induction hypotheses — identical to the quantified subgoal.
+        let mut ih = String::new();
+        for (fi, ft) in fields.iter().enumerate() {
+            let fsort = {
+                let mut sc = Sorts::default();
+                sort_of(self.store, ft, &mut sc)
+            };
+            if fsort != ind_sort {
+                continue;
+            }
+            let mut env = base_env.clone();
+            env[k] = Some((field_consts[fi].0.clone(), ft.clone()));
+            let mut qdecls = String::new();
+            let mut qenv: Vec<(String, Ty)> = Vec::new();
+            for (j, slot) in env.iter().enumerate() {
+                if j == k {
+                    qenv.push(slot.clone().unwrap());
+                    continue;
+                }
+                let bt = &prop.binders[j];
+                let vname = format!("q{}", j);
+                let s = sort_of(self.store, bt, &mut cx.sc);
+                qdecls.push_str(&format!("({} {}) ", vname, s));
+                qenv.push((vname, bt.clone()));
+            }
+            if let Ok((be, _)) = cx.tr(&prop.body, &qenv, &[], def_hash, &[]) {
+                if qdecls.is_empty() {
+                    ih.push_str(&format!("(assert {})\n", be));
+                } else {
+                    ih.push_str(&format!("(assert (forall ({}) {}))\n", qdecls.trim_end(), be));
+                }
+            }
+        }
+
+        // The negated subgoal — identical to the quantified subgoal. Translating
+        // it registers `f`/`g` (their declarations and, being total, their ∀
+        // axioms); the axioms are dropped at assembly, the declarations kept.
+        let mut senv: Vec<(String, Ty)> = Vec::new();
+        for (j, slot) in base_env.iter().enumerate() {
+            if j == k {
+                senv.push((constructed.clone(), prop.binders[k].clone()));
+            } else {
+                senv.push(slot.clone().unwrap());
+            }
+        }
+        let goal = match cx.tr(&prop.body, &senv, &[], def_hash, &[]) {
+            Ok((g, _)) => g,
+            Err(_) => return false,
+        };
+
+        // Ground instances (SPEC §7.2), emitted in the specified order with exact
+        // duplicates dropped, and the ∀ axioms of every `f`/`g` collected for
+        // omission.
+        let ind_ty = prop.binders[k].clone();
+        let mut omit: BTreeSet<String> = BTreeSet::new();
+        let mut instances: Vec<String> = Vec::new();
+        let push_inst = |instances: &mut Vec<String>, lhs: String, rhs: String| {
+            let a = format!("(assert (= {} {}))\n", lhs, rhs);
+            if !instances.contains(&a) {
+                instances.push(a);
+            }
+        };
+        for comp in comps {
+            let (f_id, (_f_param, f_ret)) = match self.one_param_sig(&comp.f_hash, &comp.f_cargs) {
+                Some(sig) => (cx.register_fun(&comp.f_hash, &comp.f_cargs), sig),
+                None => continue,
+            };
+            let g_id = match self.one_param_sig(&comp.g_hash, &comp.g_cargs) {
+                Some(_) => cx.register_fun(&comp.g_hash, &comp.g_cargs),
+                None => continue,
+            };
+
+            // Build this composition's instances into a temporary list and commit
+            // them — and omit f/g's ∀ axioms — only if EVERY required instance
+            // translates (SPEC §7.2). A single UNTRANSLATABLE instance abandons the
+            // WHOLE composition (its functions keep their quantified axioms, no
+            // instances are emitted): a partial set could accept `unsat` a
+            // conforming kernel would not. Each instance is f/g's defining
+            // equation specialized to its argument and translated by the ordinary
+            // rules — the constructor-arm FOLD (`unfold_at_ctor`) when the body is
+            // a direct `match` on its parameter and the argument is a constructor,
+            // ELSE the whole body translated at the argument (`unfold_body`, a
+            // tester/selector `ite` chain). Both denote the same equation, so the
+            // fold is a convenience and never a precondition for attempting the
+            // composition.
+            let mut comp_insts: Vec<(String, String)> = Vec::new();
+
+            // (1) f((C x)): the arm fold when applicable, else the whole body.
+            let r = match cx
+                .unfold_at_ctor(
+                    &comp.f_hash, &comp.f_cargs, dhash, ci, &constructed, &ind_ty, &field_consts,
+                )
+                .or_else(|| cx.unfold_body(&comp.f_hash, &comp.f_cargs, &constructed, &ind_ty))
+            {
+                Some(r) => r,
+                None => continue,
+            };
+            comp_insts.push((format!("({} {})", f_id, constructed), r.clone()));
+
+            // (2) g((C x)): same fold-else-whole-body rule.
+            match cx
+                .unfold_at_ctor(
+                    &comp.g_hash, &comp.g_cargs, dhash, ci, &constructed, &ind_ty, &field_consts,
+                )
+                .or_else(|| cx.unfold_body(&comp.g_hash, &comp.g_cargs, &constructed, &ind_ty))
+            {
+                Some(sg) => comp_insts.push((format!("({} {})", g_id, constructed), sg)),
+                None => continue,
+            }
+
+            // (3) g(R), the observer at the transformer's result. R is an
+            // arbitrary term (constructor-headed only for a rebuilding
+            // transformer), so this is the whole-body translation at R.
+            match cx.unfold_body(&comp.g_hash, &comp.g_cargs, &r, &f_ret) {
+                Some(sg3) => comp_insts.push((format!("({} {})", g_id, r), sg3)),
+                None => continue,
+            }
+
+            // (4) g(f(xi)) for every RECURSIVE field xi of C — the terms the
+            // induction hypotheses already speak about.
+            let mut all_ok = true;
+            for (fi, ft) in fields.iter().enumerate() {
+                let fsort = {
+                    let mut sc = Sorts::default();
+                    sort_of(self.store, ft, &mut sc)
+                };
+                if fsort != ind_sort {
+                    continue;
+                }
+                let arg = format!("({} {})", f_id, field_consts[fi].0);
+                match cx.unfold_body(&comp.g_hash, &comp.g_cargs, &arg, &f_ret) {
+                    Some(sg4) => comp_insts.push((format!("({} {})", g_id, arg), sg4)),
+                    None => {
+                        all_ok = false;
+                        break;
+                    }
+                }
+            }
+            if !all_ok {
+                continue;
+            }
+
+            // Every required instance translated: commit them (deduped) and drop
+            // the quantified defining axioms of this composition's f and g.
+            omit.insert(f_id.clone());
+            omit.insert(g_id.clone());
+            for (lhs, rhs) in comp_insts {
+                push_inst(&mut instances, lhs, rhs);
+            }
+        }
+        if instances.is_empty() {
+            return false;
+        }
+
+        let mut tail = String::new();
+        tail.push_str(&lem);
+        tail.push_str(&decls);
+        tail.push_str(&ih);
+        for inst in &instances {
+            tail.push_str(inst);
+        }
+        tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
+        let budget = DIRECT_Z3_RLIMIT.min(z3_rlimit());
+        matches!(
+            run_z3(&Prover::assemble_omitting(&cx, &tail, &omit), budget),
+            Ok(Outcome::Unsat)
+        )
+    }
+
     /// Structural induction on binder `k` (a datatype). `Ok(true)` = proven,
     /// `Ok(false)` = validly failed (no proof), `Err(reason)` = an attempt was
     /// invalid and this strategy is tainted (SPEC §7.2 GRANULARITY).
@@ -1295,7 +1767,21 @@ impl<'a> Prover<'a> {
             let mut sc = Sorts::default();
             sort_of(self.store, &prop.binders[k], &mut sc)
         };
-        for (cname, cfields) in di.ctors.iter() {
+        // SPEC §7.2 deterministic instantiation: the compositions g(f(b_k)) over
+        // this induction binder, detected once (they depend only on the body).
+        let mut comps: Vec<Composition> = Vec::new();
+        detect_compositions(self.store, &prop.body, 0, prop.binders.len(), k, def_hash, &mut comps);
+        for (ci, (cname, cfields)) in di.ctors.iter().enumerate() {
+            // BEFORE the quantified subgoal attempt, try the reduced-budget
+            // instantiated attempt; only `unsat` discharges this constructor.
+            if !comps.is_empty()
+                && self.try_ctor_instantiation(
+                    def_hash, prop, k, &dhash, &dargs, ci, cname, cfields, &ind_sort, candidates,
+                    &comps,
+                )
+            {
+                continue;
+            }
             let mut cx = Cx::new(self.store);
             let lem = self.build_lemmas(&mut cx, candidates);
             let sortname = {

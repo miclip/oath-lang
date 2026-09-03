@@ -1305,12 +1305,14 @@ func instantiatedRlimit() int64 {
 	return full
 }
 
-// instantiationEnabled reports whether the deterministic-instantiation preview
-// is active. It is OFF by default in Phase 1 (see the gate at its call site) and
-// enabled by setting OATH_PROVE_INSTANTIATE to any non-empty value. Phase 2 makes
-// it the default alongside the SPEC text and fixture regeneration.
+// instantiationEnabled reports whether the deterministic-instantiation strategy
+// is active. It is NORMATIVE (SPEC §7.2) and therefore ON by default; the
+// OATH_PROVE_NO_INSTANTIATE escape hatch disables it, kept only so the regression
+// sweep can build an off-binary to diff against. Disabling it makes the kernel
+// non-conformant — it records `unproven` for composed-recursion goals the spec
+// says a kernel MUST attempt — so it is a debugging knob, never a supported mode.
 func instantiationEnabled() bool {
-	return os.Getenv("OATH_PROVE_INSTANTIATE") != ""
+	return os.Getenv("OATH_PROVE_NO_INSTANTIATE") == ""
 }
 
 // directRlimit is the budget for the direct attempt on an inductive-eligible
@@ -1846,25 +1848,18 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 			// machine suppress verdicts the search still reached.
 			//
 			// NOT RECORDED BY `scriptAttempts`. Enumeration (#139) pins the
-			// candidate scripts of the strategies SPEC §7.2 names, and §7.2 does
-			// not yet name this one: its normative text and the fixture
-			// regeneration are the next phase. Emitting it into the walk now
-			// would rewrite prove/attempts.txt ahead of the specification that
-			// licenses the rows. The consequence is stated rather than hidden: a
-			// verdict this preview attempt decides is, for now, determined by a
-			// script no fixture pins — the same gap #139 closed for induction,
-			// reopened narrowly and deliberately until the SPEC text lands.
-			// PHASE 1 GATE (default OFF). The preview is opt-in behind
-			// OATH_PROVE_INSTANTIATE until Phase 2 lands the SPEC §7.2 text,
-			// prove/attempts.txt regeneration, and the oathrs blind
-			// re-derivation together. Rationale: default-ON the preview can only
-			// prove MORE-or-equal, so at the normative 400M budget it could
-			// discharge a committed property currently recorded `unproven` —
-			// a GAIN that would move outcomes.json and fork conformance against a
-			// quantified-only second kernel. Gated OFF, emission is unchanged and
-			// the committed corpus reproduces byte-identically; the strategy still
-			// runs under the flag for the witnessing tests and for anyone opting
-			// in. Flipping the default is a deliberate Phase 2 act, not this one.
+			// candidate scripts §10 exposes, and SPEC §7.2 places THIS attempt
+			// outside that surface on purpose: like every induction-phase script it
+			// is compared across kernels by the VERDICT it produces, not pinned in
+			// prove/scripts.txt byte-for-byte. So it stays out of the walk — a
+			// second kernel reproduces the verdict from the §7.2 description, not
+			// these exact bytes.
+			// NORMATIVE and ON by default (SPEC §7.2 "Deterministic
+			// instantiation"). instantiationEnabled gates only the
+			// OATH_PROVE_NO_INSTANTIATE debugging escape hatch. The enumerate guard
+			// keeps the attempt out of scriptAttempts: its script is compared across
+			// kernels by the VERDICT it yields, not pinned byte-for-byte in
+			// prove/scripts.txt — like every induction-phase script (§7.2).
 			if !c.enumerate && instantiationEnabled() {
 				if inst, omit := c.instantiatedSubgoal(d, h, p, i, dt, ci, fieldConsts); len(inst) > 0 {
 					iout, _ := c.solve("induction-instantiated",

@@ -1390,6 +1390,67 @@ reproducibility (given the same solver):
   pattern-free `measure` axiom. Corpus witnesses: `replicate.length-is-n`
   (`length (replicate n x) = n`, decreasing counter) and `range.length-is-span`
   (`length (range lo hi) = hi − lo`, increasing counter, measure `hi − lo`).
+- **Deterministic instantiation (normative).** z3's search is non-monotone in its
+  axiom set, and on COMPOSED RECURSION — a recursive observer applied to the result
+  of a recursive transformer over the induction binder — the quantified
+  defining-equation axioms need not e-match to a proof at any budget. So on EACH
+  constructor subgoal of single-binder structural induction (above), BEFORE the
+  quantified subgoal attempt, a kernel MUST first attempt that subgoal with the
+  quantified defining-equation axioms of a selected set of functions REPLACED by
+  ground instances of those equations, at the reduced budget
+  `(set-option :rlimit 4000000)`. Only `unsat` is accepted — it discharges the SAME
+  negated subgoal from a SUBSET of the premises (finitely many ground instances in
+  place of the universally quantified equation, which entails them), so it is sound;
+  the recorded method is `induction on <binder>`, indistinguishable from the
+  quantified path. Any other result is DISCARDED and the constructor subgoal
+  proceeds to the unchanged quantified attempt, so no goal that discharges without
+  this strategy can regress.
+
+  The selection is STRUCTURAL and TOTALITY-GATED. Scanning the property body, a
+  kernel identifies each COMPOSITION `g(f(b_i))`: a one-argument function `g` (the
+  observer) applied to a one-argument function `f` (the transformer) applied to the
+  induction binder `b_i`, where BOTH `f` and `g` are recursive functions the kernel
+  has proven total (§6.1) and therefore axiomatizes. A non-total function has no
+  equation to instantiate and yields no composition; a body with no such composition
+  yields no attempt. For each composition and each constructor `C` with fresh field
+  constants `x0..xn` (the subgoal binds `b_i := (C x0..xn)`), a kernel emits exactly
+  these ground instances — each the function's defining equation specialized to the
+  named argument, which is a selector-on-constructor identity applied structurally,
+  never a fresh axiom:
+  - `f((C x0..xn))` — `f`'s equation at the constructed value;
+  - `g((C x0..xn))` — `g`'s equation at the constructed value;
+  - `g(R)`, where `R` is the RIGHT-HAND SIDE of the first instance as the kernel
+    translates it (with non-recursive callees inlined, per §7.2's inlining rule) —
+    the observer at the transformer's RESULT;
+  - `g((f xi))` for every RECURSIVE field `xi` of `C` — the terms the induction
+    hypotheses `g(f(xi)) = g(xi)` already speak about.
+  Each instance is the function's single defining equation SPECIALIZED to its
+  argument and translated by the ordinary rules (§7.1): when the body is a `match`
+  directly on its parameter and the argument is a constructor application, the
+  right-hand side is the selected arm with the constructor's fields substituted;
+  otherwise it is the whole body translated at the argument (a tester/selector `ite`
+  chain). Both denote the same equation — the fold is a convenience, not a
+  precondition — so a composition is attempted whatever the shape of `f` and `g`, and
+  yields no instances (proceeding to the quantified attempt) only if some required
+  instance is UNTRANSLATABLE. A composition is identified by the two functions AND
+  their type arguments: the same polymorphic pair at two instantiations is two
+  compositions, each instantiated at its own monomorphization. The quantified axioms
+  of `f` and `g` are OMITTED from this attempt's script (the instances replace them),
+  and every OTHER function keeps its quantified axiom; every other declaration, the induction hypotheses, and the negated subgoal
+  are exactly as in the quantified attempt. Instances are emitted in the order above
+  with duplicates dropped (so a `g = f` composition, e.g. `reverse (reverse xs)`,
+  collapses its first two instances), and this attempt's script is not pinned across
+  kernels, so instance order relative to the hypotheses carries no conformance
+  weight — only the VERDICT does. SOUNDNESS is the totality gate and nothing else: `f(t) = body(t)` is a
+  theorem only where `f` is defined, so a partial function's equation at an undefined
+  point would assert a falsehood — a kernel MUST instantiate only equations of
+  functions it has proven total. This attempt is NOT pinned in `prove/scripts.txt`;
+  like every induction-phase script it is compared across kernels by the VERDICT it
+  produces, not byte-for-byte. (Corpus witnesses: `opt.preserves` and
+  `commute.preserves` in examples/optimizer.oath, whose `Mul` subgoals exhaust the
+  full budget quantified and discharge in a few thousand rlimit instantiated; the
+  wrong-transform control in the reference test suite returns `sat`, so the schema
+  proves rather than fabricates.)
 - **Deterministic proof budget (normative).** The per-goal budget is z3's
   resource limit — `(set-option :rlimit 400000000)` as the script's first
   command — not wall-clock time: same script + same solver version + same

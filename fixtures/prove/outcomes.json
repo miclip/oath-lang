@@ -270,13 +270,13 @@
     {
       "name": "commute",
       "hash": "990efb3c072aae49479ec75fd9806028fbff8f38f1a4e7e095d0094ea3613e22",
-      "level": "tested",
-      "proven_count": 0,
+      "level": "proven",
+      "proven_count": 1,
       "prop_count": 1,
       "props": [
         {
           "name": "preserves",
-          "proven": false
+          "proven": true
         }
       ]
     },
@@ -2735,13 +2735,13 @@
     {
       "name": "opt",
       "hash": "4aa5368897539e97dcffb6df46c9ab36fb45a07192314b466ee193f8c1c85b78",
-      "level": "tested",
-      "proven_count": 0,
+      "level": "proven",
+      "proven_count": 1,
       "prop_count": 1,
       "props": [
         {
           "name": "preserves",
-          "proven": false
+          "proven": true
         }
       ]
     },

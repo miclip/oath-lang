@@ -71,10 +71,9 @@ const composedRecursionSrc = `
 // soundness lemma, so nothing but the defining equations is in play.
 func TestInstantiationProvesComposedRecursion(t *testing.T) {
 	requireZ3(t)
-	// The preview is opt-in in Phase 1 (default OFF); the witness turns it on.
-	// With it off, both goals return to `unproven` — which is exactly the
-	// revert-mutation this test is built to catch, now expressible as the flag.
-	t.Setenv("OATH_PROVE_INSTANTIATE", "1")
+	// Deterministic instantiation is normative and on by default (SPEC §7.2).
+	// Setting OATH_PROVE_NO_INSTANTIATE returns both goals to `unproven` — the
+	// revert-mutation this test is built to catch.
 	st := newStore(t)
 	put(t, st, composedRecursionSrc)
 
@@ -116,10 +115,8 @@ func TestInstantiationDoesNotFabricate(t *testing.T) {
 	// budget spends failing the quantified induction, which every `go test ./...`
 	// would otherwise pay.
 	t.Setenv("OATH_PROVE_RLIMIT", "15000000")
-	// The control only has force while the strategy actually runs: with the
-	// preview off, swapb is trivially unproven and a fabricating schema would
-	// slip through. Turn it on.
-	t.Setenv("OATH_PROVE_INSTANTIATE", "1")
+	// The strategy runs by default (SPEC §7.2), so the control has force: a
+	// fabricating schema would prove this false transform. It must not.
 	st := newStore(t)
 	put(t, st, `
 (data Expr []

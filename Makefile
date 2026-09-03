@@ -55,7 +55,7 @@ PROVABLE = length append sum count reverse map filter foldr foldl \
            req-method req-path req-headers req-body req-received-at header-first echo-handler \
            config-key config-has-key config-missing check-config \
            bytes-ok str-bytes hex-nibble hex-valid hex-decode-unchecked hex-decode within-window \
-           add-s mul-s
+           add-s mul-s opt commute
 # Props exist but sit outside the provable fragment (Int-recursion fuel
 # bounds, or / and % in bodies): mutation-scored, never proven. merge
 # graduated to PROVABLE when lexicographic induction landed (#17).

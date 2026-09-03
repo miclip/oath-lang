@@ -4,8 +4,9 @@
     "preserves"
   ],
   "guarantee": {
-    "level": "tested",
-    "cases": 200
+    "level": "proven",
+    "cases": 200,
+    "proven": 1
   },
   "termination": "structural",
   "spec_author": "claude-main",
@@ -16,5 +17,8 @@
   ],
   "confinement": [
     ""
+  ],
+  "proven_props": [
+    0
   ]
 }
