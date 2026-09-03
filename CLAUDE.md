@@ -721,12 +721,11 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               #139 — its three parts (scripts pinned, exposure
                               decision, full run scoped) are DELIVERED; what
                               remains is operational and composes with the
-                              wider-sharding work. **No longer bundled with the
-                              prove-worker delta in the last bucket** — they were
-                              paired because neither could be judged without the
-                              other's answer, and this one's answer now exists.
-                              Read the issue before assuming anything is left to
-                              design
+                              wider-sharding work. The prove-worker delta it was
+                              once bundled with has SHIPPED and left this table;
+                              they were paired because neither could be judged
+                              without the other's answer. Read the issue before
+                              assuming anything is left to design
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69,
                               #116 — the reproducibility premise is MEASURED
                               and fails; the disposition is recorded. Trigger:
@@ -763,13 +762,7 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               evidence is a person, which is why this one waits
                               on the first external contributor rather than on
                               any instrument
-  no CLOCK at all             #140 — the delta pass. Its falsifier has RUN and
-                              its acceptance criteria are stated on the issue
-                              (two populations establishing different claims),
-                              so the calibration reason it once shared with the
-                              conformance-scoping item above is spent — see that
-                              row. Nothing makes it cheaper or dearer to
-                              wait — the ordinary home of an unforced choice
+  no CLOCK at all             (none)
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
 below may ELABORATE a row; nothing may add an issue the table does not hold.**
@@ -966,15 +959,10 @@ the queue:**
 **Feedback/tooling — the window is NOT closing.** Improves confidence in future
 work; nothing depends on it immediately.
 
-  1. **#140, the prove-worker delta.** It was bundled with #139 on the ground
-     that both are *do not redo work whose answer is already determined* and
-     neither could be judged without the other's answer. **THAT BUNDLING IS
-     RETIRED: #139's answer exists.** Read both issues rather than this
-     paragraph — the table says which bucket each is in now, and the reasons
-     are on the issues.
-     **A NAME SHARED BY TWO WORK ITEMS IS NOT AN ORDERING**, which is why this
-     entry never called either a half or a part, and it still holds: more than
-     one distinct question has been filed as "#139". Say which one you mean.
+  **A NAME SHARED BY TWO WORK ITEMS IS NOT AN ORDERING.** More than one distinct
+  question has been filed as "#139" — the conformance-scoping one and the §10
+  exposure decision — so say which you mean; the table holds the row that is
+  live. That is why this entry never called either a half or a part.
 
 ### Standing instructions attached to the queue
 
@@ -991,8 +979,8 @@ work; nothing depends on it immediately.
   before starting one, state what result would show the current design is
   already correct — and prefer a falsifier that is MEASURABLE on the committed
   corpus over one that is merely arguable.
-  Worked example, #140: the issue argued for a delta pass without stating its
-  own "no". The sharp form turned out not to be *delta vs corpus* but *heavy
+  Worked example, the prove-worker delta pass: the issue argued for it without
+  stating its own "no". The sharp form turned out not to be *delta vs corpus* but *heavy
   tail outside the delta vs the whole tail*, because runtime is dominated by
   properties that never prove. Measuring it half-fired — median change
   re-attempts 0% of the tail, but a `List`-class change re-attempts 80% — which

@@ -1700,3 +1700,119 @@ trigger is *a second principal whose need is OBSERVED*, which is a judgment abou
 party, not a principal count, so a registry query would answer a neighbouring question
 with an authoritative-looking number. The queue entry now says so explicitly. Declining
 a claim is a repair.
+
+## The prove-worker delta, and the class of defect a dependency graph cannot see (2026-09-03)
+
+`oath prove-worker --scan` now re-attempts the dependents closure of what moved
+rather than the whole corpus. The measured saving is the issue's own: the median
+change re-attempts 0% of the heavy tail and 114 of 208 definitions re-attempt
+none, while a `List`-class change reaches 80% — small in the common case,
+bounded in the foundational one, which is why the 12-hour timeout stays
+load-bearing and the withdrawn sentence stays withdrawn.
+
+**What the work actually turned out to be about is not scoping.** A delta must
+answer one question — *which definitions could newly prove?* — and answering it
+needs four things to be right: the EDGES along which provability can travel, the
+TRIGGER that decides which movement along them counts, a complete OBSERVATION of
+the store, and an ORDERING consistent with those edges. Six defects surfaced in
+review; each broke exactly one of the four, and each broke it silently in the
+fail-open direction, so the definition is never proven and nothing records that
+it was skipped.
+
+    EDGES        author hints (#67) are admitted from OUTSIDE the dependency
+                 closure BY DESIGN, so a hint target that newly proves grows a
+                 consumer's lemma set with no AST edge to carry it
+    EDGES        a hint-only change (`oath hint`) moves neither hash nor proven
+                 set, so it was invisible to the fingerprint AND unseedable
+    TRIGGER      seeding on GROWTH alone: §7.2's solver is non-monotone, so
+                 REMOVING a lemma can newly prove a dependent
+    ORDERING     planning was taught the hint edges and scheduling was not, so a
+                 consumer could run beside its target and miss the lemma
+    OBSERVATION  a proof landing mid-scan was banked as the scan's own work,
+                 consuming the movement that would have re-seeded dependents
+    OBSERVATION  a failed read is not an absence. `GetDef`/`GetMeta` errors were
+                 taken as "this definition has no dependencies", dropping real
+                 edges; and `AllHashes` reports a failed ENUMERATION as an empty
+                 store, indistinguishable from a corpus with nothing in it. Both
+                 forms settle a scan over a graph it never saw
+
+**Stating it as "state that moves without moving a hash or a proven set" is
+wrong, and the first draft of this entry said exactly that** — three of the six
+DO move a proven set (the hint target, the shrink, the concurrent proof), and two
+are not state movement at all. The defect in that summary is the one this project
+keeps naming: a generalization that the evidence under it contradicts. The
+four-way split above is what the six actually share — and the SECOND draft got
+that wrong too, claiming three classes while listing four, which is the same
+error one turn later and is why the count is written out here rather than left to
+be inferred from the table.
+
+**The corpus witnessed the first one rather than an argument doing it**:
+`t-insert` and `q-push` both hint at `count-append`, which is in neither's
+dependency closure. That is what turned "hints might matter" into a test.
+
+**The equivalence CHECK had the same blind spot as the planner** — both read
+`sortedDepHashes` — so the instrument was green over precisely the defect it
+existed to catch. It now reads a test-local reimplementation, deliberately not
+the production helper, so the two are independent statements of one claim.
+
+**Three separate causes collapsed into one rule: CANNOT-SETTLE.** A hint cycle,
+an incomplete graph read, and a failed object listing all mean the scan cannot
+establish that it saw the whole graph, so recording "settled" is a claim it has
+not earned. It takes the pass and writes no marker. Repeating work is
+recoverable; banking a false settled is not, because the missed work leaves no
+trace in the fingerprint to re-arm it. Getting there took two wrong turns worth
+recording: declining the delta on a cycle does NOT repair it, because a full pass
+still banks the target's proof afterwards; and the cycle flag had to move ahead
+of the config check, since a cycle means never settle whatever else made the pass
+full.
+
+### The structural argument was sound and could not have found any of this
+
+Every prior equivalence test reasoned: excluded definitions face an identical
+lemma library, the prover is deterministic, therefore the proven sets match.
+True, and it never runs a pass — so it can only ever be as right as the notion of
+"lemma library" it uses, and it is blind to everything the argument assumes
+rather than checks. Against the four classes:
+
+    EDGES        it SHARED the defect. Both it and the planner read
+                 `sortedDepHashes`, so it was green over the missing hint edge
+    TRIGGER      invisible: it compares the excluded set against a marker, and
+                 never asks which movements should have seeded
+    ORDERING     invisible: the consumer IS in the attempt set. Nothing about
+                 exclusion is wrong; it simply runs at the wrong time
+    OBSERVATION  invisible: it reasons about a snapshot and says nothing about
+                 what may be banked afterwards
+
+So "the structural check could not have found these" is not a criticism of the
+argument, which is valid. It is the point that a proof about the excluded SET
+cannot reach errors in the edges it is stated over, in when work runs, or in what
+is recorded afterwards. The empirical test runs both passes with real z3 over two
+independently built stores and diffs the results — which reaches OUTCOMES, and so
+can in principle catch all four.
+
+**It failed first for a bug in the test**, and the bug is the familiar one: the
+legacy digest was captured AFTER the change, so the outer gate short-circuited
+and the "full pass" never ran — a real delta was being compared against a pass
+that did nothing. The control had asserted that a full pass was PLANNED, not that
+it RAN. What it establishes and what it does not is now written into the test:
+new-definition deltas only, not transitive unlock, not corpus-scale graphs.
+
+### An invalid control, found by running it
+
+A control applied to the wrong artefact reports exactly like one that passed. The
+listing-failure test passed under its own mutation because a SECOND guard caught
+the case: the plan-level listing check and the closure's own check each suffice,
+so removing either alone changes nothing and only removing both fails the test.
+That is now stated at the test, so neither guard reads as dead code and a future
+reader does not delete one as redundant.
+
+### A near-miss worth recording
+
+A layout-inspection command ran `oath put --new` WITHOUT `OATH_STORE`, so it
+defaulted to `codebase` and bound `dbl` and `quad` in the committed corpus —
+exactly the hazard the naming rules describe, with `--new` supplied by hand
+defeating the guard built for it. `TestCorpusCensus` caught it, the diff was
+confirmed to hold only those two unattributed puts and nothing authored, and the
+documented reset restored it. The names never reached a commit or the registry.
+The guard works on the act it was built for; what it cannot cover is an operator
+who supplies `--new` deliberately while pointing at the default store.
