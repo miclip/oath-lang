@@ -606,7 +606,7 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               realistic use. NOTHING IS FORCED
   more VALUABLE if delayed    #139/#140, #38 — after more evidence
                               has accumulated to calibrate them
-  waiting for a TRIGGER       #148 (operator provisioning), #117/#69, #128,
+  waiting for a TRIGGER       #148 (operator provisioning), #117/#69,
                               #116 — the reproducibility premise is MEASURED
                               and fails; the disposition is recorded. Trigger:
                               a party that needs to verify an artifact it did
@@ -828,15 +828,12 @@ work; nothing depends on it immediately.
      ordering. This one goes late because scoping a re-derivation you cannot yet
      byte-check is scoping it on faith.
 
-**Documentation hygiene.**
-
-  2. **#128** — DEFERRED UNTIL AFTER THE NEXT EXTERNALLY-VISIBLE MILESTONE. It
-     has a TRIGGER, not a position. It changes no semantics, unblocks no user,
-     and closes no narrowing window — and it is small and easy, which is
-     precisely why it would interrupt architectural momentum if it sat in the
-     middle of the queue. **Do not let "it is open" become "it is next."**
-
 ### Standing instructions attached to the queue
+
+- **A CHEAP, OPEN ITEM IS NOT THEREBY NEXT.** Being small and easy is exactly
+  what tempts an item to jump the queue and interrupt momentum, so cheapness is
+  a reason it can WAIT rather than a reason to start it. The bucket a thing sits
+  in is set by its CLOCK, never by how quick it looks.
 
 - **EVERY ARCHITECTURAL ISSUE MUST KEEP A CREDIBLE PATH TO "NO CHANGE
   REQUIRED".** A backlog of architectural questions is evidence of a stable

@@ -4,7 +4,7 @@ An experiment: what would a programming language look like if it were designed
 **only for AI authors** — no human ergonomics, no files, no style, just
 verifiability and locality?
 
-Oath is the v0 kernel of that idea: an identity/typecheck/eval core of ~4,600
+Oath is the v0 kernel of that idea: an identity/typecheck/eval core of ~5,200
 lines of dependency-free Go (`wc -l oath/{ast,canon,check,eval,surface}.go`),
 still small enough for one reader to audit end to end.
 Definitions are content-addressed (identity = SHA-256 of the canonical AST),

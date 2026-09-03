@@ -1456,10 +1456,14 @@ reproducibility (given the same solver):
   command — not wall-clock time: same script + same solver version + same
   rlimit yields the same outcome on any machine. A wall-clock safety cap
   (600s) exists only to contain pathological environments; a kernel whose
-  wall cap fires before rlimit exhausts MUST treat the run as
-  non-conformant rather than record an outcome — recording "unknown" on a
-  cap hit smuggles machine-dependence back in (a goal that proves at
-  minute four on one machine would be silently unproven on a slower one).
+  wall cap fires before rlimit exhausts on a goal MUST NOT record an
+  outcome for that goal — recording "unknown" on a cap hit smuggles
+  machine-dependence back in (a goal that proves at minute four on one
+  machine would be silently unproven on a slower one). Scope is PER GOAL,
+  not the whole run: a cap hit INVALIDATES that goal's attempt and is
+  handled by the per-property invalidity rule below (#72) — the goal is
+  reported aborted with its standing verdict unchanged, and its siblings
+  record normally.
   The cap must sit far above any legitimate budget exhaust: burning the
   full rlimit on quantifier-heavy goals takes minutes of wall time, which
   is why the cap is 600s and not lower. (History: the cap was first set at
