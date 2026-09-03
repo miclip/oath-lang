@@ -1375,3 +1375,78 @@ that (writing a partial `outcomes.json`) is already forbidden by "MUST NOT recor
 the non-fixpoint state," leaving just the exit-code, which is ordinary impl
 latitude. A single clean-target read, so weighed as such; the volunteered gaps are
 evidence it read rather than agreed.
+
+## Deterministic instantiation — §7.2's non-monotonicity resolved at the root, in both kernels
+
+The thread began as a friction log from an application (a ledger built on Oath):
+`oath prove` sometimes LOWERED a stored verdict, and #2c asked for `prove` to be
+made monotone. Diagnosis first, and it inverted the request: the drop is SPEC §7.2
+working as specified. z3's search is non-monotone in its axiom set, so a proof
+recorded in one pass need not re-derive from the final state; the `q-drop` corpus
+witness IS that phenomenon, and §7.2 handles it by iterating F to a fixpoint and
+DEMOTING what will not reproduce. The demand — "never lower a verdict" — is
+therefore unsound: it asks for history-dependent verdicts, and a `TestStaleProvenDemoted`
+run made the cost concrete, retaining a `proven` for an untranslatable property that
+can never be earned. Retention cannot be the fix because the demotion is the SPEC's
+guarantee that a verdict is a function of the artifact, not of proof order.
+
+So the fix removes the CAUSE. Deterministic instantiation replaces the quantified
+defining-equation axioms of a composed-recursion induction subgoal — a recursive
+observer applied to a recursive transformer over the induction binder — with GROUND
+instances at the terms the subgoal mentions, totality-gated. An experiment had
+cracked `opt.preserves` this way (15M rlimit exhausted → ~5,000, unsat); the go/no-go
+was whether it generalized, measured on `swap`/`commute` (correct by commutativity,
+a structurally different transform and the STUCK-UNPROVEN direction of the same
+non-monotonicity), with a wrong-transform control returning `sat`. It did. Because
+the instantiated proof no longer depends on the ambient lemma set, F becomes monotone
+for these goals — dissolving BOTH directions the friction named (proof-dropped, and
+provable-but-stuck) — which retention, being history-dependent, could never do.
+
+Phase 1 shipped the strategy OPT-IN (default off). The reason is a measurement, not
+caution: default-on could only prove more-or-equal, and the preview budget is fixed
+independent of the full budget, so a zero-gain sweep at 20M rlimit forces zero gains
+at the normative 400M — the committed corpus reproduces byte-identically with the
+flag off, and default-on has no committed beneficiary because the corpus holds no
+composed-recursion goal of that shape. The lever was real but had no caller. Phase 2
+was pulled into being by ADDING one — `examples/optimizer.oath`, a verified peephole
+optimizer whose two `preserves` properties are exactly the goals the strategy
+discharges. (Its operand-swap is named `commute`, not `swap`: a `swap` Pair
+combinator already lived in `inferred.oath`, and a stray `oath put` repointed it
+before the collision was caught — the permanence rule earned again, this time before
+a commit.)
+
+Phase 2 made instantiation NORMATIVE in §7.2, default-on, and — the load-bearing
+half — implemented it in the SECOND kernel BLIND. `scripts/blind-export.py` gained a
+§7.2 repair surface (oathrs + conformance witnesses, `oath/` and the algorithm
+writeups absent by construction, preflight-verified), and a fresh agent reconstructed
+the strategy in Rust from the §7.2 prose alone. It reproduced the verdicts: oracle
+conformance byte-identical, `opt`/`commute` proven in BOTH kernels. This is the whole
+N-version argument arriving on a new strategy — two independent derivations of the
+same behaviour from the specification.
+
+And it paid the same dividend #181 did, twice. The blind round volunteered §7.2
+ambiguities a single kernel hides — chiefly what happens when the observer's body is
+not a direct `match` on its parameter — and the text was tightened to the behaviour
+both kernels had reached. But `codex review` then caught that the tightening was
+ITSELF wrong: it said "fall through," while the reference actually emits the observer's
+WHOLE-BODY equation (a tester/selector chain), and the blind Rust emitted a PARTIAL
+instance set — three behaviours where the spec author believed there was one. That is
+the universe-from-the-claim tell landing on the prose, not the code: the claim is
+"instantiate the defining equation at the argument," whose owner is the ordinary
+translation rule, not a match-shape precondition. The corrected §7.2 states it once
+(folded arm or whole-body, attempted whatever the shape, abandoned only on an
+untranslatable instance; compositions distinct up to type arguments), and the fix
+went back to the blind agent — never to the Go source — preserving independence.
+Review caught a second latent gap too: the Rust deduped compositions without their
+type arguments, collapsing distinct monomorphizations. Both were masked on the corpus
+(`ev` is a direct match, monomorphic) and both are real.
+
+The honest miss is recorded because the file names its own cure: the local gate sweep
+enumerated `check-doc-numbers` and `check-web-docs` from memory and skipped
+`check-web-ledger`, so CI — not the author — caught a stale ledger sentence in an
+essay after the proven counts moved (143→145). `make ci-local` is the authoritative
+gate set and was green once run; the sweep should have started there. The history was
+then reshaped so every commit is individually green (one corpus-add commit had landed
+the checker-differential golden a commit too late), and the whole line — evidence,
+design, Phase 1, corpus beneficiary, Phase 2 — is on `main`, CI green across both
+kernels.
