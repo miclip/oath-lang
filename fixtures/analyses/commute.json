@@ -1,0 +1,11 @@
+{
+  "name": "commute",
+  "hash": "990efb3c072aae49479ec75fd9806028fbff8f38f1a4e7e095d0094ea3613e22",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}

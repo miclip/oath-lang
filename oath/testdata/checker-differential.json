@@ -777,6 +777,48 @@
     "infer_entries": 0
   },
   {
+    "name": "corpus:optimizer.oath#0:Expr",
+    "outcome": "accepted",
+    "hash_before": "ddac06decd6ee072261e336ed8a932dbb8ee53aee4a2957085118feb74cc6458",
+    "hash_after": "ddac06decd6ee072261e336ed8a932dbb8ee53aee4a2957085118feb74cc6458",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:optimizer.oath#1:ev",
+    "outcome": "accepted",
+    "hash_before": "c989d949248de60c723e745dd7a4da696760e563fc97b6978fa555edfb077583",
+    "hash_after": "c989d949248de60c723e745dd7a4da696760e563fc97b6978fa555edfb077583",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:optimizer.oath#2:add-s",
+    "outcome": "accepted",
+    "hash_before": "ef634ab12e7e4b1d9dbaeb293509b80f82cfaceb2376c92c337e438247756df8",
+    "hash_after": "ef634ab12e7e4b1d9dbaeb293509b80f82cfaceb2376c92c337e438247756df8",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:optimizer.oath#3:mul-s",
+    "outcome": "accepted",
+    "hash_before": "77c518be2f87c1cb33bac6adc037120b7e590eb7f7253ec7d85f72ddcc7dcbcb",
+    "hash_after": "77c518be2f87c1cb33bac6adc037120b7e590eb7f7253ec7d85f72ddcc7dcbcb",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:optimizer.oath#4:opt",
+    "outcome": "accepted",
+    "hash_before": "4aa5368897539e97dcffb6df46c9ab36fb45a07192314b466ee193f8c1c85b78",
+    "hash_after": "4aa5368897539e97dcffb6df46c9ab36fb45a07192314b466ee193f8c1c85b78",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:optimizer.oath#5:commute",
+    "outcome": "accepted",
+    "hash_before": "990efb3c072aae49479ec75fd9806028fbff8f38f1a4e7e095d0094ea3613e22",
+    "hash_after": "990efb3c072aae49479ec75fd9806028fbff8f38f1a4e7e095d0094ea3613e22",
+    "infer_entries": 0
+  },
+  {
     "name": "corpus:queue.oath#0:Queue",
     "outcome": "accepted",
     "hash_before": "0100c76d0cdad20fb0d97bc8e6df484a971c3377d1a221544d1ce9def9a01221",

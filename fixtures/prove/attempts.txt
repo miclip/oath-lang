@@ -11,6 +11,29 @@ abs	2	direct-fallback		c0bdef935b8dcf5a9393e4cf96cebc8c49c2666c02fd37e6d85741193
 abs-small	0	lemma-free		1989e9bccd5cc056fc6606847710ddfd34e42ca681a55aecb61955ac2a187c73
 abs-small	0	direct		08b828986b61c26376ff54cc00db7c13b024b80eae00a78327c9bf7071b0b5d3
 abs-small	0	direct-fallback		08b828986b61c26376ff54cc00db7c13b024b80eae00a78327c9bf7071b0b5d3
+add-s	0	lemma-free		6026e8c6aa03b9479e416f324f21f897c48db3425ad6ba322e39968d1f93bec3
+add-s	0	direct		6026e8c6aa03b9479e416f324f21f897c48db3425ad6ba322e39968d1f93bec3
+add-s	0	induction	binder 0 ctor 0	df9b55037c48a6c2e6d190924d7a5f28750b331269bfb0232bc460af7e57c6de
+add-s	0	induction	binder 0 ctor 1	0aa3ca9a3604f6410ec8a85eefab77aa78e25d3bac207bd12828b7c003209d50
+add-s	0	induction	binder 0 ctor 2	b5c9435c8d4abeb263a8a8a787b618867c7704dcd05df73f23f4af17ee185d09
+add-s	0	induction	binder 1 ctor 0	5620c4d123b12baac9de9e3e3806ad4e5965fbbd0e21122fa55deb319b5c940b
+add-s	0	induction	binder 1 ctor 1	29bb0a43236c48dd8fa44294405b35166327d7ca3412269b60e510fcb4f1e947
+add-s	0	induction	binder 1 ctor 2	d31de906a446a7e565884307389e91e6030b686653b83eb077408c8b2198f1cd
+add-s	0	lexicographic	binders 0,1 ctor 0 base	2a64de50ac0dbcf4db838f5637c8983f934e52f9faf9a28818cf4b8b0e48a603
+add-s	0	lexicographic	binders 0,1 ctor 1,0	1cd657ddd1ab71460fb1ff72a49b5ba69b57c97c56cbb442464645a18f3f2a51
+add-s	0	lexicographic	binders 0,1 ctor 1,1	269c90cb5e5af510a5b8ad6cb1d14633dfe8132ee8eaac0830a5091e2fc52f05
+add-s	0	lexicographic	binders 0,1 ctor 1,2	5680b8708da6a04f7cf47586ceb6b0d6c0f3be2c909b5ea762088a367c54e4cf
+add-s	0	lexicographic	binders 0,1 ctor 2,0	0b98421c5c724a7a717d1636c68a88e49393c57945384d535b6ea1aa36a462ec
+add-s	0	lexicographic	binders 0,1 ctor 2,1	6df383faa616c3658db20c776517f45862800fdbbfafe3b84e146d891523acf0
+add-s	0	lexicographic	binders 0,1 ctor 2,2	7f351c593e28b8141fed4ede3f429c2485827d8d9853f060797c7f23f3d366df
+add-s	0	lexicographic	binders 1,0 ctor 0 base	235e989f245bb3285bafe8f00748f31e179d96a3ca310b4f6838f691278dd99d
+add-s	0	lexicographic	binders 1,0 ctor 1,0	cd1af22af10304f1b98bd89a29025bddbc460efede4b40edda4fa2b158444e3e
+add-s	0	lexicographic	binders 1,0 ctor 1,1	aca95a6e52276168a17c182d28ba1d52788890a25c6d3398714d246a1a9add4a
+add-s	0	lexicographic	binders 1,0 ctor 1,2	b5499afbecc2d6c2cf95fffda74620768254b15a59a265c4f5e8990befcacd31
+add-s	0	lexicographic	binders 1,0 ctor 2,0	8ef7faa2a44e6798849fead7e9d77256676fcec52c54e3f95e361d66af4d6ef6
+add-s	0	lexicographic	binders 1,0 ctor 2,1	e022d935c28bd93e95349deae3db46d4e324c53b582763104f4f210fc9e33d68
+add-s	0	lexicographic	binders 1,0 ctor 2,2	7a7596e3a3e3e4f82709470d8fef3dfe03be826bfba96c1dabc54aa2bfdf3db0
+add-s	0	direct-fallback		6026e8c6aa03b9479e416f324f21f897c48db3425ad6ba322e39968d1f93bec3
 all	0	lemma-free		5ae9c4f4c403d1443738121eca96319a054d16ce92e9ab3f5e6dc24dc43a5d45
 all	0	direct		03b1cc3ecdbb5fd1e728d08b737387e51ff2fead93642a6fb28cd6c29a36c929
 all	1	lemma-free		ba039fae9ec1d9f3af20e9a5603f79a4c2aca18127140a77b1c2ccfba1e7ba08
@@ -186,6 +209,12 @@ clamp	1	direct-fallback		78ab6eea062e90c0295a6d8219309d8e5f4b870e07552edac79b484
 clamp	2	lemma-free		dcffd933f480bdb7f3d00742300a62ecaec51f7d0809ab718bd61f0111dcc9d2
 clamp	2	direct		62f85ac11dab81326d364ffcc74b3bb1485dd1476ce8b278d4b903179559f6be
 clamp	2	direct-fallback		62f85ac11dab81326d364ffcc74b3bb1485dd1476ce8b278d4b903179559f6be
+commute	0	lemma-free		939566c444807add464ed505f1411204e401f708ce504c77b695c6d00353dd55
+commute	0	direct		939566c444807add464ed505f1411204e401f708ce504c77b695c6d00353dd55
+commute	0	induction	binder 0 ctor 0	04a83a9ba9ca657a3da44a5cea86d8f858d9811d9b61d7e7a49aada7bb9020b7
+commute	0	induction	binder 0 ctor 1	f594ef65dda2020b3711b3025e13bf29598ebefa35a4585bff40e04c444f105a
+commute	0	induction	binder 0 ctor 2	89cdc5afc9a32da11c9b227ff9f63d820ec65c2778fb8d5d6934e73e2046c81e
+commute	0	direct-fallback		939566c444807add464ed505f1411204e401f708ce504c77b695c6d00353dd55
 config-has-key	0	lemma-free		4c1ac1810f3742580f8a4f883cd6cb16121b41b744d783aa83ca4ccc81d529ba
 config-has-key	0	direct		3ca8300a20c38ca306130e875245ccc8f4d883fce93e6c7d73104e3115083bc2
 config-has-key	0	induction	binder 0 ctor 0	80b31cde096b42552a29e1890a6b122ee56d893681cb89967fd63262b36dff6c
@@ -2061,10 +2090,39 @@ minimum	2	direct		17fa3598f5072b1c4a75abeb2f5e6f61b788824d88577569cfa4bcbbd02697
 minimum	2	induction	binder 1 ctor 0	a90d85e5a2566e67adf452c32faac9d3f428855fc7d9bdcec8ed6fd800b10911
 minimum	2	induction	binder 1 ctor 1	1a0854693ca3052a34c5da44544ebb41f9825dde68792a90db1cb67784c20e04
 minimum	2	direct-fallback		17fa3598f5072b1c4a75abeb2f5e6f61b788824d88577569cfa4bcbbd026978f
+mul-s	0	lemma-free		f388864c078e40a089bc483d93ba459afe4967febf067a77aa18c9e7a31bdcc5
+mul-s	0	direct		f388864c078e40a089bc483d93ba459afe4967febf067a77aa18c9e7a31bdcc5
+mul-s	0	induction	binder 0 ctor 0	b3f2e753909bbd290afdc7395df4207f3c38bb5011f6062902c49c7279e3b54f
+mul-s	0	induction	binder 0 ctor 1	ef625a4c31da737feef2215d630fb6d3c043a14323e305619952d8d97e8692ea
+mul-s	0	induction	binder 0 ctor 2	878fe3b07c9f4fc7d70aea92e9662f6ae0fa2c36e40e10b09ea7379f865e41a4
+mul-s	0	induction	binder 1 ctor 0	e82151166e97128cf55898fbad09e5bb706b2613f358012da589d71cdf9a33d6
+mul-s	0	induction	binder 1 ctor 1	317f9eef01b6e75091db2aac6059e7947df133253f7354b08c5cde7f03c17762
+mul-s	0	induction	binder 1 ctor 2	3ed506e439971a3d58c190e30ae2ba26328b0a0f047586f76ce00fc6cc646e3b
+mul-s	0	lexicographic	binders 0,1 ctor 0 base	061a426d86fa2d53d0300f41ccaa88418fea466dca7f503860ee14cb74b2c100
+mul-s	0	lexicographic	binders 0,1 ctor 1,0	cd01239e87533053eb642be583f8ce3ed73424d3961148598c1d18b57571a478
+mul-s	0	lexicographic	binders 0,1 ctor 1,1	14a9294dfdc910b0f5c8e8ead5a99838c5914c2adbfdb177477a5d9ad26cac2a
+mul-s	0	lexicographic	binders 0,1 ctor 1,2	eb98235bb112030fb4cb2293ae6d9d68470e235a1494e60156e7cd8a382e178f
+mul-s	0	lexicographic	binders 0,1 ctor 2,0	04f2a531f7002c094a9e19a75f2fcefd986dbc8b87dc66518da0153595cb456c
+mul-s	0	lexicographic	binders 0,1 ctor 2,1	61471b9ca6c47c4c4d6fea88ed8f664ce3a2fa0840db2a09630ebda365cfad6a
+mul-s	0	lexicographic	binders 0,1 ctor 2,2	59315ef3cd835f8a46e1a887422119acba6e1714105fba1cea215273b83f8226
+mul-s	0	lexicographic	binders 1,0 ctor 0 base	55dea90d78584eec5782817afb9aec70489f6441e5805bd9d54b587d6c96b01f
+mul-s	0	lexicographic	binders 1,0 ctor 1,0	de218c2c16b0231252da99851b6aab0a732c8a3a6db30ccf22717c0c7f256106
+mul-s	0	lexicographic	binders 1,0 ctor 1,1	5483b08e63488b81d4f7108e793a11760b75a1fe253a34a13a532cdb124099e3
+mul-s	0	lexicographic	binders 1,0 ctor 1,2	d344805ef6eaaf3002de12a48ae4589ea077706de0772433e01496509d459744
+mul-s	0	lexicographic	binders 1,0 ctor 2,0	81d1f61158b6c49594bbabd78a85294c59e0231bca7ca68b2b5da9d2b5b635c1
+mul-s	0	lexicographic	binders 1,0 ctor 2,1	d21e5fb29aefbe020921c93a2387216a618cc3a1ebb549267b08a0704938164f
+mul-s	0	lexicographic	binders 1,0 ctor 2,2	429394b87e180b2c0bcd05194b765ed6800de316dd18a024c86092e11ef86851
+mul-s	0	direct-fallback		f388864c078e40a089bc483d93ba459afe4967febf067a77aa18c9e7a31bdcc5
 one-two-three	0	lemma-free		c390d5a3dc43de548eab952a2549eb60f77583a87dd20c021ac62b7538f06b60
 one-two-three	0	direct		fec1a48e9b4e6de71d77c7b71896580e596e320e6c29075c1087f47c2a7ed604
 one-two-three	1	lemma-free		c81f8aa6f9aa057f4e97bab3d172271f68abad2248ae1db79410f77bf51294d4
 one-two-three	1	direct		22af5a5f4c537de60b7a7c13f0e3aed875ecd1f6172a013207466d54b9e0cd2c
+opt	0	lemma-free		1353d77da715714a0037d5780d45bf24546daa673de90f967303aa4d7999101c
+opt	0	direct		397f269b461f97713b5daa6cf23c9acaff4c0b6ce3105764f3a86b6592064e20
+opt	0	induction	binder 0 ctor 0	ebe09da3825fb4253233651311feda3d11ea150738195d64905e0e73e8190379
+opt	0	induction	binder 0 ctor 1	656e7fa708565e9fb9fa8394f69b3f725ca14b0f0aad82ba8fee08ad1105a371
+opt	0	induction	binder 0 ctor 2	b7ffb6a2e739a67d82335727668f2c98e7efe019c9b7c35b409a5096c10709af
+opt	0	direct-fallback		397f269b461f97713b5daa6cf23c9acaff4c0b6ce3105764f3a86b6592064e20
 or-else	0	lemma-free		036a818bbde482515e091bcad4efa0a76bf33cd2503c2a40270838e032275fec
 or-else	0	direct		8e3682605bddfadf8cd9eb9940de4af7789942e51f3c3ef02651f8d21aa1d904
 or-else	0	direct-fallback		8e3682605bddfadf8cd9eb9940de4af7789942e51f3c3ef02651f8d21aa1d904

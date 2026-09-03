@@ -1,0 +1,64 @@
+; A verified peephole optimizer over an arithmetic expression tree — the corpus's
+; composed-recursion exhibit. Its correctness properties (`ev (opt e) = ev e` and
+; `ev (swap e) = ev e`) are COMPOSED RECURSION: an inductive goal that unfolds a
+; recursive evaluator over terms built by another recursive function. z3's
+; e-matching on the two quantified defining equations diverges on the Mul case, so
+; these are the goals the DETERMINISTIC-INSTANTIATION strategy (SPEC §7.2,
+; docs/deterministic-instantiation.md) exists to discharge: it replaces the
+; quantified axioms with ground instances at the terms the subgoal mentions.
+;
+; The per-step soundness lemmas `add-s.sound` / `mul-s.sound` prove by the ordinary
+; quantified path; the end-to-end `preserves` properties are the ones that need
+; instantiation.
+
+(data Expr []
+  (Lit Int)
+  (Add Expr Expr)
+  (Mul Expr Expr))
+
+; Evaluate an expression to its integer value over exact ℤ.
+(defn ev [] [(e Expr)] Int
+  (match e
+    ((Lit n) n)
+    ((Add a b) (+ (ev a) (ev b)))
+    ((Mul a b) (* (ev a) (ev b)))))
+
+; Smart constructors: fold two literals into one, else rebuild. Their PER-STEP
+; soundness — that folding preserves the value — proves directly. (No wildcard
+; patterns, so the non-literal right operands are enumerated explicitly.)
+(defn add-s [] [(a Expr) (b Expr)] Expr
+  (match a
+    ((Lit m) (match b ((Lit n) (Lit (+ m n))) ((Add x y) (Add a b)) ((Mul x y) (Add a b))))
+    ((Add x y) (Add a b))
+    ((Mul x y) (Add a b)))
+  (prop sound [(a Expr) (b Expr)] (== (ev (add-s a b)) (+ (ev a) (ev b)))))
+
+(defn mul-s [] [(a Expr) (b Expr)] Expr
+  (match a
+    ((Lit m) (match b ((Lit n) (Lit (* m n))) ((Add x y) (Mul a b)) ((Mul x y) (Mul a b))))
+    ((Add x y) (Mul a b))
+    ((Mul x y) (Mul a b)))
+  (prop sound [(a Expr) (b Expr)] (== (ev (mul-s a b)) (* (ev a) (ev b)))))
+
+; The optimizer: constant-fold bottom-up through the smart constructors. Its
+; end-to-end correctness is composed recursion — `ev` over terms `opt` builds.
+(defn opt [] [(e Expr)] Expr
+  (match e
+    ((Lit n) (Lit n))
+    ((Add a b) (add-s (opt a) (opt b)))
+    ((Mul a b) (mul-s (opt a) (opt b))))
+  (prop preserves [(e Expr)] (== (ev (opt e)) (ev e))))
+
+; A second, structurally different value-preserving transform: commute every
+; node's operands. Correct because + and * commute — no smart-constructor lemma
+; is in play — and it rebuilds the tree, so no structural identity lemma rescues
+; it. Its correctness is the STUCK-UNPROVEN direction of §7.2's non-monotonicity.
+; (In the experiment writeups this transform is called `swap`; the corpus name is
+; `commute` because a different `swap` — a Pair combinator — already lives in
+; examples/inferred.oath, and corpus names are permanent.)
+(defn commute [] [(e Expr)] Expr
+  (match e
+    ((Lit n) (Lit n))
+    ((Add a b) (Add (commute b) (commute a)))
+    ((Mul a b) (Mul (commute b) (commute a))))
+  (prop preserves [(e Expr)] (== (ev (commute e)) (ev e))))

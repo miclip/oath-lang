@@ -1,0 +1,13 @@
+{
+  "name": "add-s",
+  "hash": "ef634ab12e7e4b1d9dbaeb293509b80f82cfaceb2376c92c337e438247756df8",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

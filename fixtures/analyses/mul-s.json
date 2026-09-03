@@ -1,0 +1,13 @@
+{
+  "name": "mul-s",
+  "hash": "77c518be2f87c1cb33bac6adc037120b7e590eb7f7253ec7d85f72ddcc7dcbcb",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

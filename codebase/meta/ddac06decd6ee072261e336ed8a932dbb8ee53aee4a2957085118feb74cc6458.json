@@ -1,0 +1,14 @@
+{
+  "name": "Expr",
+  "ctor_names": [
+    "Lit",
+    "Add",
+    "Mul"
+  ],
+  "guarantee": {
+    "level": "asserted"
+  },
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main"
+}

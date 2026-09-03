@@ -1,0 +1,11 @@
+{
+  "name": "opt",
+  "hash": "4aa5368897539e97dcffb6df46c9ab36fb45a07192314b466ee193f8c1c85b78",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "tested",
+  "cases": 200
+}
