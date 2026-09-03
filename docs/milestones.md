@@ -1450,3 +1450,253 @@ then reshaped so every commit is individually green (one corpus-add commit had l
 the checker-differential golden a commit too late), and the whole line — evidence,
 design, Phase 1, corpus beneficiary, Phase 2 — is on `main`, CI green across both
 kernels.
+
+## The startup instrument's fourth run: three of four findings were in the queue table itself (2026-09-03)
+
+A routine stateless read, dispatched to the read-only search target so nothing about
+work state reached it. Question 1 came back clean — no issue, no memory index, no
+commit digest, no handoff — with two borderline items reported rather than waved
+through: the deferred tool list names Oath subsystems (`prove`, `authority`,
+`license`), and `sinesync` tools capable of retrieving work state were present but
+never called. Both are domain rather than work state, so the run stood.
+
+**The finding belonged to a class step 3's taxonomy did not have, and establishing
+that was worth more than the finding.** The rule returned "nothing is forced" and the reader took bucket
+4's only item, #66 — whose own closing comment says it is trigger-gated with *nothing
+to build now*. It is tempting to record that as the instrument catching a misrouted
+reader. It is not, and `codex review` caught the miscalibration: step 3's criterion is
+EXCLUDES, not differs-from, and bucket 4 explicitly PERMITS an unforced choice without
+justification. The reader was inside the rule; the rule was working. What was wrong
+was the ASSIGNMENT, and that was established by reading the issue, not by the reader.
+
+So the reader's answer is not the evidence for the defect — it is evidence about its
+COST, which is a different and still useful thing: it demonstrated that a fully
+permitted path led to an item with nothing to build. Recording it the other way would
+have taught future runs to treat permitted choices as failures, which would
+manufacture a defect on almost every run.
+
+Filing it as `file vs gh` was then the SECOND wrong classification, caught the same
+way: that row means a status or coverage mismatch, both settled by a command that had
+already run and passed. An assignment error is neither — it is a third class, and
+step 3 had only two rows. **The taxonomy was incomplete, not misapplied**, and the
+repair added the row: an item correctly listed, correctly open, correctly covered, and
+sitting in a bucket its own issue contradicts. It is invisible to step 2 by
+construction and un-indictable by step 1, because a wrongly-bucketed item is still a
+permitted pick. Only reading the issue finds it — the pointer discipline paying out,
+and the concrete reason an entry cites an issue instead of describing it.
+
+Step 2 was green throughout, and that is the durable part: it validates membership,
+never assignment, so an issue can be correctly listed, correctly open, and in the
+wrong bucket with every check passing.
+
+Three more, all decidable from the artefacts and settled by inspection rather than by
+a second reader:
+
+- **The SKIM RULE was a competing entry point.** *"A reader looking for what to do
+  next should read the table"* is addressed to exactly the question the startup
+  sequence answers, names a different starting artefact, and carried no rebuttal — so
+  followed literally it skipped the stateless read and both `gh` checks. The two
+  rebuttals that DO exist (for the PHASE 5 heading and for the prefer-depending-on-Oath
+  instruction) sit inside step 4, reachable only by a reader who already resolved the
+  competition correctly. Repaired by derivation, not by a new rule: the skim rule now
+  says it governs how to read the section and that the table is never an entry point,
+  because it is the artefact the earlier steps check for staleness.
+- **A retired item's story was inside the live table.** Bucket 1 read "(none)" plus a
+  SHA and two lines on what that commit achieved — a retrospective in the one table the
+  file insists is read as live, and the first thing step 4 shows a reader. Its durable
+  lesson (a bound derived for one deployment environment is not inherited by a second)
+  was already hoisted; only the story remained, and it is below.
+- **#188's parenthetical read as "closed".** The word applied to the design question
+  settled on its predecessor, not to #188, which is open — the exact condition the
+  coverage check reports as a defect, sitting in the table the check passes.
+
+The pattern across all four: every one lived in the queue table or its immediate
+instructions, and every one was invisible to both `gh` checks by construction. What
+the reader measured was not whether the table's contents were true but whether a
+correct application of the rule lands somewhere useful — and the answer, on a green
+tree with green CI and a self-consistent file, was no.
+
+### The retired first-bucket item, moved here from the table
+
+`084531c` ran compiled programs on a large dedicated stack. The LLVM backend's
+recursion ceiling was ~3,949 records for the webhook consumer on the default 8 MB
+stack — below the ~25,000 an ordinary repo lifetime reaches, so the batch job died on
+realistic data. The emitted entry became a thin `@main` handing the program body to
+the runtime's `o_run`, which runs it on a ~1 GiB pthread and falls back to the main
+thread if none can be created: a smaller ceiling, never a lost guard. The stack
+guard's floor is re-derived from the WORKER thread, since the constructor's
+rlimit-derived main-thread floor would otherwise compare frame pointers against an
+unrelated region. Verified on the committed artifact: 40,000 records at exit 0 where
+it crashed at 3,949, and a recursion past 1 GiB refuses legibly rather than
+segfaulting. The next binding constraint is the HEAP, not the stack — past ~50,000
+records the immutable native Set's O(N²) rebuild into an unfreed request arena is
+OOM-killed. That limit was always present and was masked by the stack crash; fixing
+the stack revealed it, above realistic use, and it was filed apart (landing later as
+#180's arena fix).
+
+### A fifth finding, and the pointer discipline is what produced it
+
+The four above came from the reader. The fifth came from following the queue's own
+pointer to #139 instead of trusting the file's description of it — which is exactly
+what the pointer-over-description rule is for, working as designed.
+
+CLAUDE.md said full mode was *"the only thing exercising that half of §7.2 — which is
+a reason to pin those scripts too."* Both halves of that sentence had expired.
+`fixtures/prove/attempts.txt` pins the candidate scripts for every declared strategy,
+guarded by its own Go suite, so the STRATEGY dimension is closed on the
+reference-kernel side (the row count is deliberately not written here — it moves with
+the corpus, and the harness prints it from the fixture); and the cross-kernel candidate-SCRIPT comparison was
+DECLINED by the §10 decision the same file records a few hundred lines earlier —
+the SCRIPT comparison only, which is the distinction the next paragraph is about. So the file carried a
+standing instruction to do work that was half done and half refused, while elsewhere
+calling that same question settled — a self-contradiction that no gate reads and that
+step 2 cannot see, because both statements are prose about an issue that is correctly
+open.
+
+The first repair then overcorrected, and `codex review` caught it — the instance that
+earns this write-up. Told that the strategy dimension was closed and that §10 had
+declined the cross-kernel comparison, the new text said full mode buys the LEMMA-STATE
+dimension and named nothing else. `conformance.sh` names TWO residues, and §10 declined
+comparing candidate SCRIPTS while explicitly resting on the fact that the guarantee is
+*recoverable by empirical re-derivation* — which full mode is. So a goal whose direct
+attempt is inconclusive and whose induction succeeds has its cross-kernel outcome
+witnessed by re-derivation and not by the push gate, and the repair would have
+licensed a later #139 scoping pass to delete that coverage. A spent PINNING instruction is not a spent WITNESS; collapsing the
+two is the same move as reading a declined byte-comparison as an absent guarantee.
+
+A second review pass then narrowed the correction itself, which is the same lesson a
+third time: the repair called full mode the SOLE cross-kernel witness for those
+verdicts, and §7.5's `--merge-shards` is another — it self-checks the Rust union
+against the Go-derived seed S property-by-property and fails on any mismatch. It is
+`workflow_dispatch`-only today (#98 defers the wider sharding a scheduled run would
+need) and it works from the RECORDED lemma state, so what is genuinely unique to full
+mode is COLD reachability through the intermediate lemma sets — narrower again than
+the second draft, and narrower than the first by a different axis. Three passes, each
+correcting an overclaim the previous one introduced while fixing the last: the
+original said full mode was the only witness for a half of §7.2 that was already
+pinned; the first repair said the strategy question was closed so only lemma state
+remained; the second said full mode alone witnessed induction verdicts. A fourth pass
+then found that §7.5's merge CARRIES S FORWARD through an environmental abort —
+`ok()` is `mismatches.is_empty()`, and a carried verdict is not a mismatch — so a
+green merge may echo S rather than re-derive it, and the third draft's "second
+witness" was itself conditional.
+
+**Five drafts, five different reasons, and that is the missing-artefact trigger this
+file already names.** The repairs were not converging on a better sentence; each was
+routing around the absence of an authority. `conformance.sh`'s scope comment IS that
+authority — it enumerates the residues, it sits next to the code that implements them,
+and it moves when they move. So the fifth repair stopped summarising and made the
+paragraph a POINTER, keeping only the one claim that is a fact about CLAUDE.md rather
+than about the harness: the "pin the induction scripts too" instruction is spent, and
+a spent pinning instruction is not a spent witness. The pointer discipline was already
+the rule; a summary of a neighbouring component's scope is the same defect as a
+summary of an issue's status, and it took five wrong drafts to see that the rule
+applied here.
+
+What full mode still buys is deliberately NOT restated here either — this record would
+drift from the script exactly as the guidance did. `conformance.sh`'s scope comment is
+the authority. What this history contributes instead is the reason the queue
+ONCE bundled #139 with #140 as *more valuable if delayed* — scoping a re-derivation you
+cannot yet byte-check is scoping it on faith. That reason expired when the
+byte-checkable half landed, and the two were separated the same session (below). The
+queue's own entry was correct; the paragraph 1300 lines away describing the same work
+was not. The repair points at `conformance.sh`'s scope comment rather than restating
+it.
+
+### The taxonomy gap, and the check that closed it — found by review, validated on its first run
+
+Recording the assignment class as a third row of step 3 was the wrong shape of repair,
+and `codex review` named it against this file's own rule: **asserting an obligation
+cannot create the structure needed to satisfy it.** A new failure class had been
+documented with no instrument that could ever detect it — step 2 goes green over
+assignment by construction, and step 1 cannot indict it either, because a
+wrongly-bucketed item is still a PERMITTED pick. So another such error would stay
+invisible unless a session happened to choose it.
+
+The missing structure was small: **read every bucketed issue's own latest disposition,
+every startup.** The evidence was never hidden — it was on the issue, and the queue's
+pointer discipline meant the table deliberately did not repeat it, so nothing prompted
+anyone to look. The check excerpts each bucketed issue's last-updated date and the
+opening of BOTH its body and its most recent comment, with the same VOID discipline as
+its neighbours; every control was run and fires.
+
+**The first draft was narrower and review caught it overclaiming**, which is worth
+recording because the defect was in the verdict line rather than the query: it printed
+one truncated comment line and announced `READ ALL`. Two bucketed items have no
+comments at all and so were shown NOTHING while still counting toward that total —
+the check reporting completeness over items it had not displayed, this repo's most
+familiar failure appearing inside the instrument built to catch a different one. The
+fix widened the window and added the body fallback, and renamed the verdict to
+EXCERPTED, with the excerpt explicitly an instruction to open the issue when it does
+not settle the bucket.
+
+It stays honest about a second limit that no widening removes: a bucket encodes a
+CLOCK, which is judgment, and no command reads judgment. What it establishes is only
+that the judgment is made with the issue's own latest word in front of it.
+
+**It found two more assignment errors on its first execution**, which is the
+validation the instrument needed and could not have been given by argument:
+
+- **#139** — its latest comment reads *"Reversed the decline — the scoping gate is
+  finished and landed"*, and states all three parts delivered: induction scripts
+  pinned, exposure decision recorded, full run scoped. CLAUDE.md still filed it as
+  *more valuable if delayed* with the elaboration that scoping a re-derivation you
+  cannot yet byte-check is scoping it on faith — a reason that expired when the
+  byte-checking landed.
+- **#140** — bundled with #139 on the ground that neither could be judged without the
+  other's answer. That answer now exists, and #140's own falsifier has RUN, with two
+  populations and acceptance criteria stated on the issue. Its share of the
+  calibration reason is spent too, so it moves to the no-clock bucket — which
+  incidentally restores an unforced choice to the queue by evidence rather than by
+  rule, after the #66 correction had emptied it.
+
+Note what the disposition lines looked like: *landed*, *reversed*, *parked*,
+*blocked*, *reframed*. Those words are the signal, and they were sitting in `gh` the
+whole time. The session that recommended #139 as the next work — on the strength of
+CLAUDE.md's description of it — would have started an issue whose design work was
+already done, which is the same failure as #66 wearing different clothes and was
+caught only because the check ran before the work did.
+
+### The check's own drifted-anchor control was the last defect, and it was silent
+
+Review then found that the new instrument failed the very control the surrounding text
+required of it. Both startup snippets extract the bucket table with a `sed` RANGE, and
+the emptiness guard only catches a lost OPENING anchor: with the CLOSING anchor renamed,
+`sed` prints to end-of-file, the extraction is non-empty, and the check sails past its
+guard. Measured rather than reasoned about — the disposition check then queried **thirty**
+issues instead of ten and printed its success line.
+
+Two things about this are worth keeping. The failure is the repo's signature shape, in
+the instrument written to catch a different instance of it: *a probe that proves only
+that SOMETHING was produced*. And the first two attempts to TEST it were themselves
+invalid — `sed` was applied to the extracted script rather than to `CLAUDE.md`, so the
+guard correctly saw intact anchors and the control could never fire. It took building a
+scratch repository with a deliberately mutated `CLAUDE.md` to exercise it: an
+anchor-uniqueness assertion now fires on a missing opening anchor, a missing closing
+anchor, and a DUPLICATED one, and an intact copy passes through to the next stage.
+
+**A control applied to the wrong artefact reports exactly like a control that passed** —
+which is the same lesson one level up, and the reason the control list now names
+"a drifted anchor at EITHER END" instead of "a drifted anchor".
+
+One more round found the completeness assertion **comparing the loop against the same
+file the loop reads**. A list truncated from ten ids to five printed `EXCERPTED 5/5`
+and passed, because both sides of the comparison shrank together; the earlier
+truncation control had missed it by truncating only the loop's INPUT while the count
+still read the full file. The expected count is now taken from the TABLE before the
+list is written, and the same fix was applied to the coverage check, whose named-id
+loop had the identical shape. All three truncation cases VOID now.
+
+That is three consecutive defects in one small instrument, each found only by running
+a control rather than reading one, and each invisible to the previous control. The
+general form is the one this file already states — a probe that proves only that
+SOMETHING was produced — but the specific form is worth naming because it is so easy
+to write: **a completeness assertion whose expected value is derived from the same
+artefact it is checking asserts nothing at all.**
+
+One finding was declined rather than repaired. Review argued that #66's trigger should
+be derived from the live registry rather than read from the issue. It should not: the
+trigger is *a second principal whose need is OBSERVED*, which is a judgment about a real
+party, not a principal count, so a registry query would answer a neighbouring question
+with an authoritative-looking number. The queue entry now says so explicitly. Declining
+a claim is a repair.

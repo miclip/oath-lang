@@ -178,17 +178,25 @@ INSTRUMENT. IT IS THE STARTUP SEQUENCE, AND THERE IS ONLY ONE:**
      file and run it; it is POSIX `sh`, and it must be run rather than skimmed:
 
          cd "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null
-         [ -f CLAUDE.md ] || { echo "VOID — not at the repo root"; exit 1; }
+         [ -f CLAUDE.md ] && [ -f docs/SPEC.md ] && [ -f oathrs/conformance.sh ] \
+           || { echo "VOID — not the Oath repo root"; exit 1; }
+         o=$(grep -c '^The buckets encode DIFFERENT CLOCKS' CLAUDE.md)
+         c=$(grep -c '^\*\*THE TABLE ABOVE' CLAUDE.md)
+         [ "$o" = 1 ] && [ "$c" = 1 ] \
+           || { echo "VOID — table anchors not unique (open=$o close=$c); this check did NOT run"; exit 1; }
          t=$(mktemp -d) || exit 1
          ids() { grep -oE '#[0-9]+[a-zA-Z]*' "$1" | grep -vE '[a-zA-Z]$' | tr -d '#' | sort -u; }
          sed -n '/^The buckets encode DIFFERENT CLOCKS/,/^\*\*THE TABLE ABOVE/p' CLAUDE.md > "$t/tbl"
          ids "$t/tbl" > "$t/bucketed"; ids CLAUDE.md > "$t/named"; : > "$t/open"
+         want=$(ids CLAUDE.md | wc -l | tr -d ' '); seen=0   # counted independently
          while read -r n; do
            s=$(gh issue view "$n" --json state -q .state) || { echo FAIL > "$t/failed"; break; }
            [ "$s" = OPEN ] && echo "$n" >> "$t/open"
+           seen=$((seen+1))
          done < "$t/named"
          if [ ! -s "$t/bucketed" ]; then echo "VOID — table anchors did not match; this check did NOT run"
          elif [ -f "$t/failed" ]; then echo "VOID — a gh lookup failed; this check did NOT run"
+         elif [ "$seen" != "$want" ]; then echo "VOID — checked $seen of $want named ids; this check did NOT run"
          else
            echo "named+open but UNBUCKETED : $(grep -vxF -f "$t/bucketed" "$t/open" | tr '\n' ' ')"
            echo "bucketed but CLOSED       : $(grep -vxF -f "$t/open" "$t/bucketed" | tr '\n' ' ')"
@@ -197,8 +205,10 @@ INSTRUMENT. IT IS THE STARTUP SEQUENCE, AND THERE IS ONLY ONE:**
 
      Both lines must be empty and neither VOID branch may fire. **An empty pair
      is only meaningful if the VOID branches can fire**, so when editing this,
-     re-run the four controls: wrong repo, drifted anchor, failing `gh`, and a
-     deleted bucket row (which must name the dropped ids).
+     re-run the controls: wrong repo (including another repository that also has a
+     `CLAUDE.md` — filename presence is not identity), a drifted anchor at
+     EITHER END, failing `gh`, and a deleted bucket row (which must name the
+     dropped ids).
 
      **ITS UNIVERSE IS THE ISSUES THIS FILE NAMES, NOT THE REPOSITORY'S OPEN
      SET.** `gh` carries far more open issues than the table holds. So this
@@ -212,12 +222,102 @@ INSTRUMENT. IT IS THE STARTUP SEQUENCE, AND THERE IS ONLY ONE:**
      as missing. `sort -u` is lexicographic and `comm` is fine with it; `sort -un`
      is the hazard, and step 2's status snippet above uses it — so the two
      snippets differ in collation, and unifying them needs re-testing.
+     **Then EXCERPT EACH BUCKETED ISSUE'S OWN DISPOSITION. This is the only
+     check that can see a stale ASSIGNMENT**, and without it the third row of
+     step 3 is a category with no instrument. Save and run:
+
+         cd "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null
+         [ -f CLAUDE.md ] && [ -f docs/SPEC.md ] && [ -f oathrs/conformance.sh ] \
+           || { echo "VOID - not the Oath repo root"; exit 1; }
+         o=$(grep -c '^The buckets encode DIFFERENT CLOCKS' CLAUDE.md)
+         c=$(grep -c '^\*\*THE TABLE ABOVE' CLAUDE.md)
+         [ "$o" = 1 ] && [ "$c" = 1 ] \
+           || { echo "VOID - table anchors not unique (open=$o close=$c); this check did NOT run"; exit 1; }
+         t=$(mktemp -d) || exit 1
+         sed -n '/^The buckets encode DIFFERENT CLOCKS/,/^\*\*THE TABLE ABOVE/p' CLAUDE.md > "$t/tbl"
+         ids() { grep -oE '#[0-9]+[a-zA-Z]*' "$1" | grep -vE '[a-zA-Z]$' | tr -d '#' | sort -u; }
+         want=$(ids "$t/tbl" | wc -l | tr -d ' ')          # counted BEFORE, from the table
+         ids "$t/tbl" > "$t/b"
+         [ -s "$t/b" ] || { echo "VOID - table yielded no ids; this check did NOT run"; rm -rf "$t"; exit 1; }
+         [ "$(wc -l < "$t/b" | tr -d ' ')" = "$want" ] \
+           || { echo "VOID - item list truncated; this check did NOT run"; rm -rf "$t"; exit 1; }
+         n=0
+         while read -r i; do
+           gh issue view "$i" --json updatedAt,body,comments -q '
+             def ex($n): split("\n") | map(select(length > 0)) | .[0:$n] | .[] | "    " + .[0:110];
+             "### #'"$i"'  updated \(.updatedAt[0:10])  (\(.comments|length) comment(s))",
+             "  BODY:", (.body | ex(3)),
+             (if (.comments|length) > 0
+                then "  LAST COMMENT:", ((.comments|last|.body) | ex(4))
+                else empty end)' \
+             || { echo "VOID - a gh lookup failed; this check did NOT run"; rm -rf "$t"; exit 1; }
+           n=$((n+1))
+         done < "$t/b"
+         if [ "$n" = "$want" ]; then
+           echo "EXCERPTED $n/$want bucketed items - these are EXCERPTS, not verdicts."
+           echo "OPEN ANY ISSUE whose excerpt does not settle whether its bucket's reason still holds."
+         else
+           echo "VOID - excerpted $n of $want"
+         fi
+         rm -rf "$t"
+
+     **It shows BOTH the body and the last comment, deliberately, rather than
+     choosing between them.** An issue whose disposition was never revised keeps
+     it in the BODY; one that was reframed keeps it in the LAST COMMENT; and an
+     issue whose body was edited AFTER a comment has it in the body while a
+     last-comment query would show the older text and still count the item.
+     Either single source is stale in a case the other covers, and no timestamp
+     distinguishes them — `updatedAt` moves for both.
+
+     **WHAT IT ESTABLISHES, AND WHAT IT CANNOT — the verdict line says EXCERPTED
+     rather than READ for a reason.** It does NOT decide assignment: a bucket
+     encodes a CLOCK, which is judgment, and no command reads judgment. Nor does
+     six lines guarantee the disposition is even visible — a long issue can bury
+     it. **So an excerpt that does not settle the bucket is an instruction to
+     OPEN THE ISSUE, never permission to move on.** What the check removes is the
+     reason assignment errors survive: the evidence lives on the issue, the
+     queue's own pointer discipline means the table deliberately does not repeat
+     it, and nothing prompted anyone to look. It guarantees the PROMPT, every
+     startup, for every bucketed item — not only for the one a session picks.
+
+     A disposition saying *landed*, *shipped*, *reversed*, *parked*, *blocked* or
+     *reframed* is the signal: compare it against the bucket's stated reason to
+     wait, and if the reason is spent, MOVE THE ITEM before step 3.
+
+     **RE-RUN EVERY CONTROL WHEN EDITING THIS, and mutate `CLAUDE.md` rather
+     than the extracted script — a control applied to the wrong artefact reports
+     exactly like one that passed.** Wrong repo (including another repository
+     that merely HAS a `CLAUDE.md`); a drifted anchor at EITHER END, and a
+     duplicated one (a lost CLOSING anchor made an earlier draft read to EOF and
+     query thirty issues while printing its success line); a failing `gh`; and a
+     truncated ITEM LIST — caught only because `want` is counted from the TABLE
+     before the list is written, since comparing the loop against the same file
+     it reads shrinks both sides together and always passes. **The
+     count asserts that every bucketed id was
+     LOOKED UP, and nothing about the excerpt's content**: an issue that yields
+     a thin or empty excerpt still increments it. That is the check's blind
+     spot, and it is the reason the verdict line ends in an instruction to open
+     the issue rather than in a claim to have shown you anything.
+
   3. **NOW READ STEP 1'S ANSWER, and repair before starting work.** There are
-     two disagreements to look for and they indict different things:
+     three disagreements to look for and they indict different things:
 
          file vs `gh`         a status or coverage mismatch — the file is stale
          reader vs the queue  the reader landed somewhere the queue's rule
                               EXCLUDES — the file MISLEADS
+         item vs its ISSUE    the item is correctly listed, correctly open and
+                              correctly covered, but sits in a bucket its own
+                              issue contradicts — the ASSIGNMENT is stale
+
+     **THE THIRD ROW IS INVISIBLE TO EVERYTHING ELSE HERE, WHICH IS WHY IT IS A
+     ROW AND NOT A FOOTNOTE.** Step 2 goes green over it by construction (it
+     validates membership, never assignment), and step 1 cannot indict it
+     either: a wrongly-bucketed item is still a PERMITTED pick, so the reader
+     breaks no rule reaching it. It is caught only by reading the ISSUE — which
+     is the pointer discipline paying out, and the reason an entry cites an
+     issue instead of describing it. **Do not classify one of these as `file vs
+     `gh``**: that row is settled by a command that has already run and passed,
+     so filing it there records a finding no check will ever reproduce.
 
      **EXCLUDES, not "differs from".** The rule narrows to a bucket and often
      forces nothing at all (step 4), so there is frequently no single item to
@@ -276,8 +376,13 @@ every issue this file names and leaves open — but the ORDERING, the CHOICE of
 bucket, and the TRIGGERS are judgment recorded here, and no command can check
 them. An issue can be correctly listed, correctly open, and in the wrong bucket,
 and step 2 will be green. Do not let it read as a validated queue.
-What tests the judgment is step 1 — whether a stateless reader picks the right
-first task — which is exactly why the instrument is a READ and not a script.
+
+**AND STEP 1 DOES NOT TEST ASSIGNMENT EITHER — do not reach for it here.** A
+wrongly-bucketed item in an unforced bucket is a PERMITTED pick, so a reader
+breaks no rule by taking it and breaks no rule by taking something else; there
+is nothing for step 3's EXCLUDES criterion to catch. What step 1 tests is
+whether the file COMMUNICATES its rule. What prompts the assignment judgment is
+step 2's disposition excerpt, and the judgment itself stays with the session.
 
 Ask throughout: can a fresh reader orient correctly, quickly, and without acting
 on stale guidance? Do NOT substitute a line budget or a token budget; size is
@@ -573,9 +678,13 @@ until it exactly matched what had been demonstrated. Continue that.
 
 ### THE QUEUE — one ordering, in four buckets; position is not priority
 
-**SKIM RULE.** The bucket table below is the queue. A reader looking for what to
-do next should read the table and the entry for the item they pick, SKIP any
-closed-issue write-up, and **read to the end of the section, because the
+**SKIM RULE — IT GOVERNS HOW TO READ THIS SECTION, NOT WHERE A SESSION STARTS.**
+The bucket table below is the queue, and a session reaches it at the LAST step of
+the startup sequence near the top of this file, with the earlier steps already
+run. **The table is never an entry point of its own**: it is the artefact those
+steps check against `gh` for staleness, so reading it first is reading an
+unchecked queue. Once here: read the table and the entry for the item you pick,
+SKIP any closed-issue write-up, and **read to the end of the section, because the
 standing instructions after the entries are live and several apply to work in
 progress.** Skip-what, not stop-where — a reader who stops at the entries never
 reaches the standing instructions.
@@ -593,19 +702,31 @@ OUTSIDE §10's conformance surface** — decided, recorded on #139, and reflecte
 SPEC §7.2 and in `conformance.sh`'s output. `prove/attempts.txt` is a
 reference-kernel diagnostic guarded by the Go suite; a kernel that does not emit
 it is not deficient. The bytes remain DETERMINED by §7.2 for every kernel, so
-what was declined is the cross-kernel witness, not the obligation. **Do not
+what was declined is the cross-kernel SCRIPT-BYTE witness, not the obligation —
+**and NOT the cross-kernel witness for an induction-proved VERDICT, which is a
+separate claim with its own coverage and its own gaps** (`conformance.sh`'s
+scope comment is the authority on those; do not summarise it, here or below).
+§10 could decline the byte comparison precisely BECAUSE verdict coverage stays
+recoverable by empirical re-derivation — so keeping the two apart is what stops
+a #139 scoping pass reading this paragraph as permission to delete that. **Do not
 re-derive this from the harness output** — the reasoning is on the issue,
 because a later reader meeting only the absence would reasonably read it as
 missing coverage.
 
 The buckets encode DIFFERENT CLOCKS, not just different priorities:
 
-  more EXPENSIVE if delayed   (none) — the last item on this clock landed:
-                              084531c ran the compiled program on a large
-                              dedicated stack, raising the LLVM ceiling above
-                              realistic use. NOTHING IS FORCED
-  more VALUABLE if delayed    #139/#140, #38 — after more evidence
-                              has accumulated to calibrate them
+  more EXPENSIVE if delayed   (none) — NOTHING IS FORCED
+  more VALUABLE if delayed    #38 — after more evidence has accumulated to
+                              calibrate it
+                              #139 — its three parts (scripts pinned, exposure
+                              decision, full run scoped) are DELIVERED; what
+                              remains is operational and composes with the
+                              wider-sharding work. **No longer bundled with the
+                              prove-worker delta in the last bucket** — they were
+                              paired because neither could be judged without the
+                              other's answer, and this one's answer now exists.
+                              Read the issue before assuming anything is left to
+                              design
   waiting for a TRIGGER       #148 (operator provisioning), #117/#69,
                               #116 — the reproducibility premise is MEASURED
                               and fails; the disposition is recorded. Trigger:
@@ -619,7 +740,9 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               is ON THE ISSUE, in detail, because it is a
                               procedure that goes stale and a pointer does not
                               #188 — production hardening for `oath resolve`
-                              (the module/import tool, closed design-resolved):
+                              (the module/import tool; its DESIGN question is
+                              settled elsewhere — THIS issue is the hardening,
+                              and it is OPEN):
                               the three scoped edges the demonstrator left, none
                               touching identity/SPEC. NOT forcing — the
                               demonstrated fresh-store local flow hits none.
@@ -627,8 +750,26 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               store, against a policy-governed store, or a
                               constructor-only remote dep. The edges and their
                               fixes are ON THE ISSUE
-  no CLOCK at all             #66 —
-                              open, and neither cheaper nor dearer for waiting
+                              #66 — delegated token minting. TRIGGER: a
+                              SECOND real principal whose need is OBSERVED
+                              rather than assumed. Until then minting is
+                              ergonomics — a key that can sign can already
+                              publish. **NO CHECK DECIDES THIS TRIGGER**: an
+                              OBSERVED need is a judgment about a real party,
+                              not a principal count, so querying the registry
+                              would answer a neighbouring question. Startup's
+                              disposition excerpt PROMPTS the judgment; the
+                              reasoning is ON THE ISSUE, and the deciding
+                              evidence is a person, which is why this one waits
+                              on the first external contributor rather than on
+                              any instrument
+  no CLOCK at all             #140 — the delta pass. Its falsifier has RUN and
+                              its acceptance criteria are stated on the issue
+                              (two populations establishing different claims),
+                              so the calibration reason it once shared with the
+                              conformance-scoping item above is spent — see that
+                              row. Nothing makes it cheaper or dearer to
+                              wait — the ordinary home of an unforced choice
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
 below may ELABORATE a row; nothing may add an issue the table does not hold.**
@@ -638,6 +779,16 @@ and cite issues, legitimately, because each expands a row rather than competing
 with it. Note also TRIAGED, not open: `gh` carries far more open issues than this
 table holds, and claiming otherwise asserts what step 2's coverage check cannot
 establish. The fourth bucket exists so *named* and *bucketed* are the same set.
+
+**AND WHEN NEITHER BUCKET 1 NOR BUCKET 4 HOLDS ANYTHING, THE SESSION IS NOT
+THEREBY FORCED TO OVERRIDE SOMETHING.** That state is reachable and is not a
+defect: it means every TRIAGED item has a stated reason to wait. Two legitimate
+moves, and the second is the one a session will otherwise forget exists —
+**this table is TRIAGED, not the open set, and `gh` carries far more open issues
+than it holds.** So either override a bucket-2 or bucket-3 reason and say why
+now, or take untriaged open work from `gh` (and, if it deserves a clock, add it
+here). What is NOT available is treating an empty bucket 4 as permission to stop
+before work has begun.
 
 **ONLY THE FIRST BUCKET FORCES ANYTHING. If `more EXPENSIVE if delayed` is
 non-empty, its contents are what to start, and that is the whole of the rule. If
@@ -815,18 +966,15 @@ the queue:**
 **Feedback/tooling — the window is NOT closing.** Improves confidence in future
 work; nothing depends on it immediately.
 
-  1. **#139 SCOPING THE RE-DERIVATION with #140** (prove-worker delta) — one
-     item, deliberately: both are *do not redo work whose answer is already
-     determined*, one for re-deriving and one for proving, and neither can be
-     judged without the other's answer. Doing them apart means deciding twice
-     what "unchanged" means.
-     **NOT the same work as #139's §10 DECISION above** — that one asks whether
-     candidate-script exposure belongs in conformance; this one asks how much
-     empirical re-derivation the LEMMA-STATE path still needs, which the
-     fixtures deliberately do not pin. Both are "#139", which is why neither is
-     called a half or a part: an ordering whose items share a name is not an
-     ordering. This one goes late because scoping a re-derivation you cannot yet
-     byte-check is scoping it on faith.
+  1. **#140, the prove-worker delta.** It was bundled with #139 on the ground
+     that both are *do not redo work whose answer is already determined* and
+     neither could be judged without the other's answer. **THAT BUNDLING IS
+     RETIRED: #139's answer exists.** Read both issues rather than this
+     paragraph — the table says which bucket each is in now, and the reasons
+     are on the issues.
+     **A NAME SHARED BY TWO WORK ITEMS IS NOT AN ORDERING**, which is why this
+     entry never called either a half or a part, and it still holds: more than
+     one distinct question has been filed as "#139". Say which one you mean.
 
 ### Standing instructions attached to the queue
 
@@ -1887,11 +2035,17 @@ do not prove and each burns the full 400M rlimit through every strategy,
 serially. The instruction above used to omit the mode, which sent a session
 straight into the scheduled job while believing it was running the push gate.
 
-**What full mode still buys, stated narrowly:** `scripts.txt` pins DIRECT-attempt
-scripts only, so the oracle does not byte-check the structural, lexicographic or
-recursion-induction scripts. Full mode is the only thing exercising that half of
-§7.2 — which is a reason to pin those scripts too, not a reason to re-derive an
-unchanged corpus. See the issue on scoping it.
+**WHAT FULL MODE STILL BUYS IS ENUMERATED IN `conformance.sh`'S OWN SCOPE
+COMMENT. READ IT THERE.** It sits beside the code implementing it and moves with
+it, and every attempt to summarise it here has been wrong — so this file states
+no version of it, not even a count of its parts. `docs/milestones.md` carries
+why.
+
+The one thing that is a fact about THIS FILE rather than about the harness, and
+so belongs here: **a spent PINNING instruction is not a spent WITNESS.** Do not
+let a #139 scoping pass read "the scripts are pinned" or "§10 declined it" as
+permission to delete the re-derivation — those sentences are about script bytes,
+and verdict coverage is a separate claim.
 
 **DO NOT PUT A `CLAUDE.md` (or any session guidance) INSIDE `oathrs/`.** The
 §10.0a blind surface deliberately lifts the `oathrs/` prefix ban in order to ship
