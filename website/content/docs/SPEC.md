@@ -2311,7 +2311,12 @@ identity, recomputed by the merge, is what stops two runs from claiming the same
 verification from different contexts.
 
 **Per-attempt cost emission (OPTIONAL, pinned once offered).** A kernel offering
-sharded mode MAY additionally emit a COST RECORD per solver attempt. A kernel
+sharded mode MAY additionally emit a COST RECORD per §7.2 PROPERTY-PROOF attempt.
+That scope is narrower than "per solver call" and deliberately so: §6.1.1's
+termination-measure search also reaches the solver, per DEFINITION, with no
+property index to key a record to. Such calls are OUT of this emission, so a
+consumer must read it as the cost of proving properties and not as the whole
+solver cost of a run. A kernel
 that does not is NOT deficient, and no verdict, campaign identity, merge result
 or conformance outcome may depend on the emission or its absence — it is a
 diagnostic, in the sense §7.4 and `prove/attempts.txt` already use, and §10 does
@@ -2333,15 +2338,21 @@ wall-clock permission at the end of this subsection):
 
     hash        string   the definition's identity hash
     prop        integer  the property index within that definition
-    strategy    string   the §7.2 strategy that emitted the attempt
-    detail      string   that strategy's own discriminator, "" when it has none
+    strategy    string   an OPAQUE, kernel-chosen label for the §7.2 strategy
+                         that emitted the attempt
+    detail      string   an OPAQUE, kernel-chosen discriminator within that
+                         strategy, "" when it has none
     budget      integer  the effective rlimit for THIS attempt, which is not
                          always the run's nominal budget — §7.2's reduced-budget
                          attempts run at their own
-    consumed    integer  the solver's reported resource counter, or NULL when the
-                         attempt ended without the solver reporting one (an abort
-                         kills the process, and inventing a number there would
-                         report a measurement that was never taken)
+    consumed    integer  the solver's reported resource counter, or NULL when
+                         and only when the solver reported none. This is
+                         INDEPENDENT of `invalid` in both directions: §7.2
+                         classifies `memout` and a below-budget `canceled` as
+                         aborts, and both exit normally WITH a counter, while a
+                         killed process leaves none. A producer MUST NOT derive
+                         either member from the other, and MUST NOT invent a
+                         number for a measurement that was never taken.
     invalid     boolean  true iff the attempt was an abort (§7.2 #72) — a wall
                          cap, a memout, missing telemetry, any environmental
                          invalidating condition. An abort is NOT an outcome.
@@ -2366,6 +2377,17 @@ corrupt. Without a stated encoding and this flush rule the prefix guarantee is n
 implementable — a buffered array, a CSV, and a JSON document would all satisfy a
 list of fields while disagreeing about what a truncated file means.
 
+**`strategy` and `detail` are OPAQUE, and this is not an oversight.** §7.2 keeps
+its strategy labels, detail vocabulary, ordering and encoding DELIBERATELY
+unspecified — it says so, and it gives the reason: an obligation no reader could
+derive is not one to impose. A shared vocabulary here would contradict that
+directly, so this section does not create one. The only requirements are that the
+values DISTINGUISH a property's attempts from one another and be STABLE within a
+kernel, which is what makes a kernel's own emission joinable to its own scripts.
+Two kernels' labels are NOT comparable and a consumer MUST NOT join on them; the
+portable key is `(hash, prop)`. A reader wanting per-attempt correspondence across
+kernels is asking for the interchange format §7.2 declined to build.
+
 **Consumed resource is REPORTED, never compared.** The value is the solver's
 counter, and this specification requires only that a kernel report what its
 solver reports. Two kernels running byte-identical scripts under the same pinned
@@ -2380,6 +2402,13 @@ needs to survive: its attempts are the expensive ones, and an emission written
 only on completion loses precisely the records that motivated collecting it. So a
 consumer MUST be able to read a valid prefix of the emission from a run that was
 killed, and a kernel MUST NOT buffer records to the end of a shard.
+
+**What is portable, and what is not.** The FRAMING is fixed so that any consumer
+can mechanically read any kernel's emission: the encoding, the line discipline,
+the member names, and the types. The VALUES of `strategy` and `detail` are
+kernel-local, and §10 does not compare this emission across kernels at all. So
+"normative once offered" binds the shape a kernel writes, not an agreement between
+two kernels about what they wrote.
 
 **Wall-clock time MUST NOT be required.** A kernel MAY report it additionally,
 clearly distinguished, but it varies with the machine and cannot be part of an
