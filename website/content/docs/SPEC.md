@@ -2311,12 +2311,14 @@ identity, recomputed by the merge, is what stops two runs from claiming the same
 verification from different contexts.
 
 **Per-attempt cost emission (OPTIONAL, pinned once offered).** A kernel offering
-sharded mode MAY additionally emit a COST RECORD per §7.2 PROPERTY-PROOF attempt.
-That scope is narrower than "per solver call" and deliberately so: §6.1.1's
-termination-measure search also reaches the solver, per DEFINITION, with no
-property index to key a record to. Such calls are OUT of this emission, so a
-consumer must read it as the cost of proving properties and not as the whole
-solver cost of a run. A kernel
+sharded mode MAY additionally emit a COST RECORD per §7.2 property-proof SOLVER
+attempt. BOTH qualifiers bind. `solver`, because every member below describes a
+solver call: a property attempt that never reaches the solver — §7.2's
+translation bails — has no budget, no counter and no verdict to report, and is
+OUT. `property-proof`, because §6.1.1's termination-measure search also reaches
+the solver, per DEFINITION, with no property index to key a record to, and is
+equally OUT. So a consumer reads this as the solver cost of proving properties,
+neither as every property attempt nor as the whole solver cost of a run. A kernel
 that does not is NOT deficient, and no verdict, campaign identity, merge result
 or conformance outcome may depend on the emission or its absence — it is a
 diagnostic, in the sense §7.4 and `prove/attempts.txt` already use, and §10 does
@@ -2330,9 +2332,12 @@ the attempts that dominate it. The only place the full-budget cost of an attempt
 exists is the run that performs it.
 
 **Wire format (normative once offered).** The emission is UTF-8 text, ONE JSON
-object per line, each terminated by a single LF (`0x0A`). Records are written to a
-destination DISTINCT from the shard result of §7.5 above, so that consuming either
-never requires parsing the other. Each object MUST carry AT LEAST these members,
+object per line, each terminated by a single LF (`0x0A`). The emission MUST be
+SEPARATELY ADDRESSABLE: a consumer reads it without parsing, or even locating, a
+shard result. That is stated as a property of the emission rather than as a
+relation to the shard result, because this section pins no destination or encoding
+for the latter — a requirement phrased against an unpinned artifact could not be
+checked. Each object MUST carry AT LEAST these members,
 and MAY carry others (see the forward-compatibility rule below, and the
 wall-clock permission at the end of this subsection):
 
@@ -2344,7 +2349,12 @@ wall-clock permission at the end of this subsection):
                          strategy, "" when it has none
     budget      integer  the effective rlimit for THIS attempt, which is not
                          always the run's nominal budget — §7.2's reduced-budget
-                         attempts run at their own
+                         attempts run at their own. NEVER null: §7.2 requires an
+                         exact rlimit on every property-proof solver invocation
+                         and §7.5's campaign identity binds it, so an in-scope
+                         attempt always has one. A kernel whose solver imposed no
+                         such budget has not met §7.2 for that attempt, and
+                         reporting null here would let that pass as conforming
     consumed    integer  the solver's reported resource counter, or NULL when
                          and only when the solver reported none. This is
                          INDEPENDENT of `invalid` in both directions: §7.2
@@ -2382,8 +2392,12 @@ its strategy labels, detail vocabulary, ordering and encoding DELIBERATELY
 unspecified — it says so, and it gives the reason: an obligation no reader could
 derive is not one to impose. A shared vocabulary here would contradict that
 directly, so this section does not create one. The only requirements are that the
-values DISTINGUISH a property's attempts from one another and be STABLE within a
-kernel, which is what makes a kernel's own emission joinable to its own scripts.
+values DISTINGUISH a property's attempts from one another WITHIN ONE EMISSION —
+including attempts a driver repeats, which are separate attempts and MUST NOT
+collide — and be STABLE across one kernel BUILD, which is what makes a kernel's
+own emission joinable to its own scripts. Neither obligation reaches further: a
+label is not a compatibility surface across versions, and treating it as one would
+rebuild the interchange contract this section declines.
 Two kernels' labels are NOT comparable and a consumer MUST NOT join on them; the
 portable key is `(hash, prop)`. A reader wanting per-attempt correspondence across
 kernels is asking for the interchange format §7.2 declined to build.
