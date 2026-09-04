@@ -2310,6 +2310,81 @@ out-of-range shard is a loud failure, never a silent partial pass. A single
 identity, recomputed by the merge, is what stops two runs from claiming the same
 verification from different contexts.
 
+**Per-attempt cost emission (OPTIONAL, pinned once offered).** A kernel offering
+sharded mode MAY additionally emit a COST RECORD per solver attempt. A kernel
+that does not is NOT deficient, and no verdict, campaign identity, merge result
+or conformance outcome may depend on the emission or its absence — it is a
+diagnostic, in the sense §7.4 and `prove/attempts.txt` already use, and §10 does
+not compare it across kernels.
+
+It exists because the cost of a sharded campaign is not otherwise recoverable.
+Shard assignment is required above to be reproducible by an independent runner,
+which forbids deriving it from wall-clock time; and the campaign's own cost
+cannot be measured by a cheaper run, because a reduced budget truncates exactly
+the attempts that dominate it. The only place the full-budget cost of an attempt
+exists is the run that performs it.
+
+**Wire format (normative once offered).** The emission is UTF-8 text, ONE JSON
+object per line, each terminated by a single LF (`0x0A`). Records are written to a
+destination DISTINCT from the shard result of §7.5 above, so that consuming either
+never requires parsing the other. Each object MUST carry AT LEAST these members,
+and MAY carry others (see the forward-compatibility rule below, and the
+wall-clock permission at the end of this subsection):
+
+    hash        string   the definition's identity hash
+    prop        integer  the property index within that definition
+    strategy    string   the §7.2 strategy that emitted the attempt
+    detail      string   that strategy's own discriminator, "" when it has none
+    budget      integer  the effective rlimit for THIS attempt, which is not
+                         always the run's nominal budget — §7.2's reduced-budget
+                         attempts run at their own
+    consumed    integer  the solver's reported resource counter, or NULL when the
+                         attempt ended without the solver reporting one (an abort
+                         kills the process, and inventing a number there would
+                         report a measurement that was never taken)
+    invalid     boolean  true iff the attempt was an abort (§7.2 #72) — a wall
+                         cap, a memout, missing telemetry, any environmental
+                         invalidating condition. An abort is NOT an outcome.
+    verdict     string   "unsat" | "sat" | "unknown" when `invalid` is false, and
+                         NULL when it is true. §7.2 gives an aborted attempt no
+                         valid verdict, so there is none to write: a producer
+                         MUST NOT substitute "unknown", which is a real solver
+                         answer meaning the budget was spent without deciding,
+                         and a consumer that saw it there would count an
+                         environmental failure as a measurement.
+
+Unknown members MUST be ignored by a consumer, so the format can gain fields
+without breaking one — which is the same rule read from the producer's side, and
+the reason the list above is a floor rather than the whole object. A record MUST be complete on its line: a consumer reads
+whole lines and never reassembles an object across them.
+
+**A record MUST be written and flushed BEFORE the attempt that follows it
+begins.** This is what makes "a valid prefix" well defined rather than a hope: a
+run killed at any instant leaves a file whose every complete line is a complete
+record, and a consumer MUST treat a trailing partial line as absent rather than as
+corrupt. Without a stated encoding and this flush rule the prefix guarantee is not
+implementable — a buffered array, a CSV, and a JSON document would all satisfy a
+list of fields while disagreeing about what a truncated file means.
+
+**Consumed resource is REPORTED, never compared.** The value is the solver's
+counter, and this specification requires only that a kernel report what its
+solver reports. Two kernels running byte-identical scripts under the same pinned
+solver are expected to agree, but agreement is NOT required and a difference is
+NOT a conformance failure — the quantity is instrumentation about a search, not
+an observable semantic. A kernel MUST NOT admit it into a campaign identity, a
+proof outcome, or a merge decision.
+
+**Records MUST be emitted as they are produced, not assembled at the end.** A
+shard that exhausts its environment's time limit is the case the emission most
+needs to survive: its attempts are the expensive ones, and an emission written
+only on completion loses precisely the records that motivated collecting it. So a
+consumer MUST be able to read a valid prefix of the emission from a run that was
+killed, and a kernel MUST NOT buffer records to the end of a shard.
+
+**Wall-clock time MUST NOT be required.** A kernel MAY report it additionally,
+clearly distinguished, but it varies with the machine and cannot be part of an
+obligation a second implementer could satisfy.
+
 
 ## 8. The journal
 

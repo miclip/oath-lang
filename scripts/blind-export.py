@@ -65,6 +65,14 @@ FORBIDDEN_BY_SECTION = {
     # containing the literal scripts with their hashes, so shipping it would
     # hand the subject the answer and the check together.
     "7.4": ("oath/", "codebase/", "docs/experiments/", "website/", "scripts/"),
+    # §7.5 sharded verification + the per-attempt cost emission. `scripts/` is
+    # forbidden for a sharper reason than usual: scripts/prove-reasons.py
+    # SPECIFIES a per-attempt record format (strategy, detail, verdict, consumed,
+    # budget) and oath/ implements the observer seam that produces it — between
+    # them they are the answer to the emission this round asks the subject to
+    # derive from §7.5 alone. codebase/ carries recorded verdicts, and
+    # docs/experiments/ + website/ carry the measurement write-ups.
+    "7.5": ("oath/", "codebase/", "docs/experiments/", "website/", "scripts/"),
     # §7.2 (deterministic instantiation): repair oathrs against the new normative
     # strategy. It needs oathrs/ and the conformance corpus, but MUST NOT see oath/
     # (the reference instantiation lives in oath/prove_instantiate.go), nor
@@ -113,6 +121,18 @@ SURFACES = {
     # cannot run the tests already in the tree is a weaker subject than one that
     # can — reported by the round itself.
     "7.4": ([], ["oathrs/", "fixtures/campaign/"]),
+    # 7.5 sharded verification, incl. the OPTIONAL per-attempt cost emission. The
+    # subject needs the corpus it will shard and the seed S it verifies against
+    # (prove/outcomes.json carries both S and the author hints), plus oathrs/ as
+    # the tree it edits. No cost fixture is shipped and none exists: the emission
+    # is a diagnostic §10 does not compare, so there is nothing to hand over that
+    # would not be handing over the answer.
+    # fixtures/campaign/ is a BUILD dependency, not a witness: campaign.rs
+    # include_str!s vectors.txt, so without it `cargo test --no-run` fails and the
+    # subject cannot compile the tree it was asked to edit. Same reason §7.4 ships
+    # it, and it leaks nothing about the cost emission.
+    "7.5": ([], ["oathrs/", "fixtures/prove/outcomes.json", "fixtures/campaign/",
+                 "examples/", "apps/"]),
     # §7.2: the Rust kernel to repair and the full conformance corpus it must
     # reproduce. NO normative data. The witnesses are the fixtures the kernel
     # checks itself against and the corpus source conformance reads — none of
