@@ -353,23 +353,30 @@ jobs:
   # #98 sharded verification — the PARALLEL path that makes the union == S check
   # fit CI's window. The serial in-process --verify-shards is as slow as the cold
   # re-derivation, so it is the MATRIX, not that mode, that delivers throughput:
-  # each shard proves ~1/8 of the corpus on its own runner (the slow tail — 26
-  # goals, 94% of solver time — spread across the 8), emits its verdicts in the
-  # oath-sharded-verification/v1 wire format, and the merge job below runs the
-  # mandated union == S self-check over all emissions. Every job pins the SAME z3
-  # and leaves OATHRS_Z3_RLIMIT at its default, so their campaign identities match
-  # and the merge admits them; a shard produced under a different solver or budget
-  # would be rejected before the self-check (SPEC §7.5). Scheduled/dispatch only —
-  # 8 runners for a few hours each is not a per-push cost.
+  # each shard proves a 1/n slice of the corpus on its own runner, emits its
+  # verdicts in the oath-sharded-verification/v1 wire format, and the merge job
+  # below runs the mandated union == S self-check over all emissions. Every job
+  # pins the SAME z3 and leaves OATHRS_Z3_RLIMIT at its default, so their campaign
+  # identities match and the merge admits them; a shard produced under a different
+  # solver or budget would be rejected before the self-check (SPEC §7.5).
+  #
+  # THE SLICE IS EQUAL IN COUNT AND WILDLY UNEQUAL IN COST. `shard_of` partitions
+  # by definition hash, which is uniform over definitions and says nothing about
+  # how long they take: at n=8 the measured spread was >=104x while a count-based
+  # model predicted 1.61x. A handful of never-proving goals carry nearly all the
+  # solver time, so "1/n of the corpus" is not "1/n of the work" — do not size n
+  # by dividing the corpus. #98 carries the measurements.
+  #
+  # Dispatch only — n runners for a few hours each is not a per-push cost.
   rust-conformance-sharded:
-    name: independent kernel (Rust) — sharded verification (shard ${{ matrix.shard }}/8)
-    if: github.event_name == 'workflow_dispatch'  # dispatch-only, and now MEASURED rather than assumed: run 33815373169 (8-way) timed out 5 of 8 shards at the 350-minute cap, spread >=104x, so HASH assignment does not fit. Whether BALANCED n=8 would fit is still open -- aggregate capacity is 46.7 runner-hours against a measured lower bound of 31.4h, and the true total is unknown because 5 shards were truncated. Read #98 before changing n or the assignment rule.
+    name: independent kernel (Rust) — sharded verification (shard ${{ matrix.shard }}/32)
+    if: github.event_name == 'workflow_dispatch'  # dispatch-only. MEASURED at n=8 (run 33815373169): 5 of 8 shards hit the 350-minute cap, spread >=104x, so HASH assignment does not fit there. Now at n=32 to find out whether width alone is enough and, more importantly, to get shards that COMPLETE -- a truncated shard cannot report the cost of the goals that truncated it, which is why n=8 produced no cost table. Goal COUNT is not a cost proxy (fixtures predict 1.61x imbalance, observed >=104x). Read #98 before changing n or the assignment rule.
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -383,7 +390,7 @@ jobs:
           echo "$PWD/z3-4.16.0-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
       - name: build oathrs
         run: cargo build --release --manifest-path oathrs/Cargo.toml
-      - name: prove shard ${{ matrix.shard }} of 8
+      - name: prove shard ${{ matrix.shard }} of 32
         # Wall cap is safety-only and NOT part of the campaign identity (rlimit is),
         # so setting it here while the merge omits it does not desync the two.
         # The MEMORY cap is the same kind of thing and just as necessary: without
@@ -397,7 +404,7 @@ jobs:
           OATHRS_Z3_MEMORY_MB: "6000"
         run: |
           z3 --version
-          ./oathrs/target/release/oathrs prove --shard ${{ matrix.shard }}/8 \
+          ./oathrs/target/release/oathrs prove --shard ${{ matrix.shard }}/32 \
             --hints fixtures/prove/outcomes.json \
             examples/*.oath apps/*/*.oath > "shard-${{ matrix.shard }}.txt"
           head -4 "shard-${{ matrix.shard }}.txt"
@@ -409,7 +416,7 @@ jobs:
 
   rust-conformance-sharded-merge:
     name: independent kernel (Rust) — merge shards, verify union == S
-    if: github.event_name == 'workflow_dispatch'  # dispatch-only, and now MEASURED rather than assumed: run 33815373169 (8-way) timed out 5 of 8 shards at the 350-minute cap, spread >=104x, so HASH assignment does not fit. Whether BALANCED n=8 would fit is still open -- aggregate capacity is 46.7 runner-hours against a measured lower bound of 31.4h, and the true total is unknown because 5 shards were truncated. Read #98 before changing n or the assignment rule.
+    if: github.event_name == 'workflow_dispatch'  # dispatch-only. MEASURED at n=8 (run 33815373169): 5 of 8 shards hit the 350-minute cap, spread >=104x, so HASH assignment does not fit there. Now at n=32 to find out whether width alone is enough and, more importantly, to get shards that COMPLETE -- a truncated shard cannot report the cost of the goals that truncated it, which is why n=8 produced no cost table. Goal COUNT is not a cost proxy (fixtures predict 1.61x imbalance, observed >=104x). Read #98 before changing n or the assignment rule.
     needs: rust-conformance-sharded
     runs-on: ubuntu-latest
     steps:
@@ -434,10 +441,15 @@ jobs:
       - name: merge and verify union == S
         run: |
           z3 --version
+          # N is written ONCE and both the loop and --merge-shards derive from it:
+          # a hand-typed index list that disagrees with the count is a merge that
+          # silently verifies a partial union, which is the one failure this job
+          # exists to catch.
+          N=32
           args=""
-          for i in 0 1 2 3 4 5 6 7; do
+          for i in $(seq 0 $((N - 1))); do
             args="$args --shard-in shards/shard-$i/shard-$i.txt"
           done
-          ./oathrs/target/release/oathrs prove --merge-shards 8 \
+          ./oathrs/target/release/oathrs prove --merge-shards "$N" \
             --hints fixtures/prove/outcomes.json \
             $args examples/*.oath apps/*/*.oath
