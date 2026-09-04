@@ -363,7 +363,7 @@ jobs:
   # 8 runners for a few hours each is not a per-push cost.
   rust-conformance-sharded:
     name: independent kernel (Rust) — sharded verification (shard ${{ matrix.shard }}/8)
-    if: github.event_name == 'workflow_dispatch'  # dispatch-only: 8-way sharding times out on the heavy tail (see #98); needs 16-way or cost-aware assignment to fit a scheduled run, deferred
+    if: github.event_name == 'workflow_dispatch'  # dispatch-only, and now MEASURED rather than assumed: run 33815373169 (8-way) timed out 5 of 8 shards at the 350-minute cap, spread >=104x, so HASH assignment does not fit. Whether BALANCED n=8 would fit is still open -- aggregate capacity is 46.7 runner-hours against a measured lower bound of 31.4h, and the true total is unknown because 5 shards were truncated. Read #98 before changing n or the assignment rule.
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
@@ -409,7 +409,7 @@ jobs:
 
   rust-conformance-sharded-merge:
     name: independent kernel (Rust) — merge shards, verify union == S
-    if: github.event_name == 'workflow_dispatch'  # dispatch-only: 8-way sharding times out on the heavy tail (see #98); needs 16-way or cost-aware assignment to fit a scheduled run, deferred
+    if: github.event_name == 'workflow_dispatch'  # dispatch-only, and now MEASURED rather than assumed: run 33815373169 (8-way) timed out 5 of 8 shards at the 350-minute cap, spread >=104x, so HASH assignment does not fit. Whether BALANCED n=8 would fit is still open -- aggregate capacity is 46.7 runner-hours against a measured lower bound of 31.4h, and the true total is unknown because 5 shards were truncated. Read #98 before changing n or the assignment rule.
     needs: rust-conformance-sharded
     runs-on: ubuntu-latest
     steps:
