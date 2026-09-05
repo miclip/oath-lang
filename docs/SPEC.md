@@ -2263,21 +2263,53 @@ dependency closure; with the state fixed at `S`, each goal's candidate set — h
 its script bytes, hence its verdict — is a pure function of `(S, corpus, hints)`,
 independent of iteration order or partition.
 
-**Assignment (normative once offered).** Each function definition is assigned to
-shard `first_64_bits(definition_hash) mod n`, where `definition_hash` is the O1
-identity hash (§1) and `first_64_bits` is its leading 8 bytes read big-endian;
-`n ≥ 1`, shard index `i ∈ 0..n`. Every property-bearing function definition belongs to exactly one shard; a definition with no properties has no proof work and lies outside the partition (it can contribute nothing to `S`).
-Assignment MUST NOT depend on input-file position or elaboration order — those are
-unstable across file moves and cannot be reproduced by an independent runner.
+**Assignment (normative once offered).** The unit of assignment is a PROPERTY,
+not a definition. Property `p` of the definition whose O1 identity hash (§1) is
+`h` is assigned to shard
+
+    first_64_bits(SHA-256(h ++ "#" ++ decimal(p))) mod n
+
+where `h` is the 64-character lowercase hex hash as it appears in the store, `++`
+is byte concatenation of the US-ASCII spellings, `decimal(p)` is the property
+index in base ten with no leading zeros or sign, and `first_64_bits` is the
+digest's leading 8 bytes read big-endian; `n ≥ 1`, shard index `i ∈ 0..n`. Every
+property of every function definition belongs to exactly one shard. A definition
+with no properties has no proof work and lies outside the partition entirely (it
+can contribute nothing to `S`).
+
+Assignment MUST NOT depend on input-file position or elaboration order — those
+are unstable across file moves and cannot be reproduced by an independent runner.
 `n = 1` is exactly the unsharded seeded verifier.
+
+**WHY THE PROPERTY AND NOT THE DEFINITION, AND WHY NOT FINER.** A partition can
+never place a shard below its largest INDIVISIBLE unit, so the unit decides what
+sharding can achieve, and no `n` or assignment rule recovers a unit chosen too
+coarse. Measured on this corpus at the full budget: the heaviest DEFINITION is
+22.1% of the campaign's solver cost, so definition-level assignment could not put
+any shard under 22.1% however many shards were used — and observed runs did sit
+at 23.5%, already near that floor with no balancing headroom left. The heaviest
+PROPERTY is 6.9%.
+
+It does not go finer. §7.2's strategy sequence is SEQUENTIAL AND CONDITIONAL —
+the full-budget direct fallback runs only after structural and lexicographic
+induction have both failed — so the attempts within one property are not
+independent work and cannot be assigned to different shards without changing
+what runs. A property is the FINEST SOUND unit, and it is sound precisely because
+the seed `S` is fixed: a goal's candidate set does not depend on this run's own
+progress, so two properties never depend on each other's outcome here.
+
+A definition's properties therefore spread across shards. Nothing in the merge or
+the self-check depends on them staying together, because both are already stated
+per property.
 
 **Elaboration is GLOBAL.** All input definitions are parsed and elaborated
 regardless of shard. An elaboration failure fails the whole run, from every shard.
 A shard MUST NOT suppress an elaboration error because the affected definition
 lies outside it — doing so would turn a broken corpus into a green run.
 
-**Attempt.** Shard `i` attempts each property of its assigned definitions exactly
-once, with candidate lemmas drawn from `S` per §7.2. No rounds and no
+**Attempt.** Shard `i` attempts each property ASSIGNED TO IT exactly once, with
+candidate lemmas drawn from `S` per §7.2. It attempts no other property of a
+definition it holds a property of. No rounds and no
 within-shard dependency ordering are required, because a goal's candidate set does
 not depend on this run's own progress.
 
@@ -2290,8 +2322,20 @@ Only a VALID verdict (proven or unproven) that DIFFERS from `S` is a mismatch.
 **The self-check IS the mode (normative once offered).** Sharded verification is a
 VERIFIER, not a recomputation taken on trust. The union of all shards' verdicts
 MUST be compared to `S` property by property, and the run MUST FAIL LOUDLY on any
-mismatch: a valid verdict differing from `S`, a definition proved by no shard, or
-a definition attempted by more than one. A sharded run that merely completes is
+mismatch: a valid verdict differing from `S`, a PROPERTY ATTEMPTED by no shard,
+or a PROPERTY attempted by more than one.
+
+The coverage condition is ATTEMPTED, not proved, and the distinction is not
+cosmetic: a property legitimately absent from `S` is proved by no shard on every
+correct run, so a "proved by no shard" test would reject every campaign over a
+corpus that contains an unproven property — which is every real corpus. What the
+self-check needs from coverage is that the PARTITION held: each property was
+someone's work, exactly once. Its VERDICT is then checked separately against `S`,
+where being unproven is an ordinary answer.
+
+Both conditions are stated per property because the partition is: a definition is
+now normally split across shards, so "attempted by more than one" read per
+definition would be the ordinary case and would fire on every correct run. A sharded run that merely completes is
 not a pass — the equality is the pass. As a consequence this self-check is the
 only mechanism in the system that detects a seed `S` that is not run-stable
 (`F(S) ≠ S`); §7.2's producer does not itself record convergence.
@@ -2300,8 +2344,15 @@ only mechanism in the system that detects a seed `S` that is not run-stable
 throughput of this mode comes from running the shards as SEPARATE parallel jobs
 and merging their emitted results. An emitted shard result MUST carry a CAMPAIGN
 IDENTITY binding the FULL determinism context — the proven set `S`, the author
-hints, the solver version, and the effective rlimit (the inputs §7.2/§10.5 make a
-proof outcome a function of). A merge MUST reject any emission whose campaign
+hints, the solver version, the effective rlimit (the inputs §7.2/§10.5 make a
+proof outcome a function of), and THE PARTITION — both the assignment granularity
+and the shard count `n`. The partition belongs there because emissions produced
+under different ones are not one application of `F`: their union can
+double-attempt one property and miss another. The self-check would catch that,
+but it would report it as a corpus defect rather than as the mixed campaign it
+is. `n` matters as much as granularity — two campaigns identical in every input
+but sharded 8 ways and 16 ways produce overlapping shard indices, so a merge that
+bound granularity alone would accept a set of emissions drawn from both. A merge MUST reject any emission whose campaign
 identity differs from its own BEFORE running the self-check: verdicts produced
 under different hints, a different solver, or a different budget are not one
 application of `F`, and their union verifies nothing. The merge MUST also require
