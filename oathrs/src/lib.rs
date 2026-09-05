@@ -22,4 +22,6 @@ pub mod value;
 pub mod verify;
 
 #[cfg(feature = "prove")]
+pub mod cost;
+#[cfg(feature = "prove")]
 pub mod prove;

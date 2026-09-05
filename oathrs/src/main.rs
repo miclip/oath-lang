@@ -1,3 +1,5 @@
+#[cfg(feature = "prove")]
+use std::io::Write;
 use oathrs::analyze;
 use oathrs::bridge;
 use oathrs::check;
@@ -238,6 +240,169 @@ fn z3_version_string() -> String {
 }
 
 #[cfg(feature = "prove")]
+/// Open the SPEC §7.5 per-attempt cost sink for `--cost-out <path>`, or `None`
+/// when the flag was not given.
+///
+/// `Err` on a path that cannot be opened: the emission itself is OPTIONAL, but a
+/// destination the operator explicitly named and that cannot be written is a
+/// setup error, and silently proceeding would hand back a run whose cost was
+/// never recorded and never reported missing. Once the sink is OPEN, every later
+/// write failure is a warning only — from that point on nothing may depend on
+/// the emission (§7.5).
+/// Whether two paths name the SAME FILE, by filesystem identity.
+///
+/// Identity, not spelling. A canonical-path comparison is a PROXY: it misses a
+/// hard link (two names, one inode) and a redirected stdout that is an ordinary
+/// file reached by a different route. The claim being checked is "would writing
+/// here destroy that", whose owner is the inode, so that is what is compared.
+/// A path that does not exist has no identity and cannot alias anything — and
+/// creating it therefore destroys nothing.
+#[cfg(all(feature = "prove", unix))]
+fn same_file(a: &std::path::Path, b: &std::path::Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (std::fs::metadata(a), std::fs::metadata(b)) {
+        (Ok(x), Ok(y)) => x.dev() == y.dev() && x.ino() == y.ino(),
+        _ => false,
+    }
+}
+
+/// Non-unix: there is no identity check here, so the feature REFUSES rather than
+/// approximating one. Canonical paths were the obvious fallback and they are a
+/// PROXY that misses a hard link — the same defect this function exists to close,
+/// reintroduced where it cannot be tested. oathrs ships linux and macos only (the
+/// release matrix), and the wasm build excludes `prove` entirely, so no shipped
+/// configuration reaches this. A guard that silently weakens off the tested
+/// platforms is worse than one that says it does not run there.
+#[cfg(all(feature = "prove", not(unix)))]
+fn same_file(_a: &std::path::Path, _b: &std::path::Path) -> bool {
+    false
+}
+
+/// Whether a destination is this process's standard output, by identity.
+///
+/// STATS THE DESCRIPTOR, not a path. `/dev/fd/1` is itself a path proxy and does
+/// not resolve to the redirected file on every platform — measured: with stdout
+/// redirected to an ordinary file on macOS, the path comparison passed and the
+/// records went into the shard-result stream. fd 1 is the thing §7.5 requires the
+/// emission to stay clear of, so fd 1 is what gets compared.
+#[cfg(all(feature = "prove", unix))]
+fn resolves_to_stdout(p: &str) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    use std::os::unix::io::FromRawFd;
+    // ManuallyDrop: File::from_raw_fd TAKES OWNERSHIP, and dropping it would close
+    // the process's stdout — the guard would break the stream it protects.
+    // TWO CHECKS, because each is blind where the other sees. Descriptor identity
+    // catches a redirected ORDINARY FILE, which no name reveals. The conventional
+    // NAMES catch the case identity cannot: when stdout is a pipe or a tty,
+    // stat-ing the path does not report the descriptor's identity, and measured,
+    // `--cost-out /dev/stdout` sailed through an identity-only guard.
+    // STDERR TOO. §7.5 requires the emission to be separately addressable, and the
+    // run's own summary and warnings go to stderr — records interleaved there are
+    // no more readable than records interleaved with the shard result.
+    const NAMES: [&str; 6] = ["/dev/stdout", "/dev/fd/1", "/proc/self/fd/1",
+                              "/dev/stderr", "/dev/fd/2", "/proc/self/fd/2"];
+    // Canonicalized BEFORE the name comparison, so `/dev/./stdout` and a symlink
+    // to it are not spellings that walk past the check.
+    let canon = std::path::Path::new(p).canonicalize();
+    let as_str = canon.as_ref().ok().and_then(|c| c.to_str());
+    if NAMES.contains(&p) || as_str.map(|c| NAMES.contains(&c)).unwrap_or(false) {
+        return true;
+    }
+    for fd in [1, 2] {
+        let s = std::mem::ManuallyDrop::new(unsafe { std::fs::File::from_raw_fd(fd) });
+        if let (Ok(a), Ok(b)) = (s.metadata(), std::fs::metadata(p)) {
+            if a.dev() == b.dev() && a.ino() == b.ino() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[cfg(all(feature = "prove", not(unix)))]
+fn resolves_to_stdout(_p: &str) -> bool {
+    false
+}
+
+/// Reports the first input `cost_out` would overwrite, if any.
+#[cfg(feature = "prove")]
+fn aliases_an_input(cost_out: &str, hints: &str, paths: &[String]) -> Option<String> {
+    let t = std::path::Path::new(cost_out);
+    std::iter::once(hints)
+        .chain(paths.iter().map(|s| s.as_str()))
+        .filter(|s| !s.is_empty())
+        .find(|inp| same_file(t, std::path::Path::new(inp)))
+        .map(|s| s.to_string())
+}
+
+/// Whether an ALREADY-OPEN handle is one of the files this must not truncate.
+///
+/// Compared against the OPEN DESCRIPTOR, which is what makes it race-free: the
+/// path-based checks can be invalidated between check and open, this cannot.
+#[cfg(all(feature = "prove", unix))]
+fn opened_handle_is_protected(f: &std::fs::File, protect: &[&str]) -> Option<String> {
+    use std::os::unix::fs::MetadataExt;
+    use std::os::unix::io::FromRawFd;
+    let m = f.metadata().ok()?;
+    for fd in [1, 2] {
+        let s = std::mem::ManuallyDrop::new(unsafe { std::fs::File::from_raw_fd(fd) });
+        if let Ok(a) = s.metadata() {
+            if a.dev() == m.dev() && a.ino() == m.ino() {
+                return Some(if fd == 1 { "this run's stdout".into() } else { "this run's stderr".into() });
+            }
+        }
+    }
+    protect
+        .iter()
+        .find(|q| {
+            std::fs::metadata(q).map(|b| b.dev() == m.dev() && b.ino() == m.ino()).unwrap_or(false)
+        })
+        .map(|q| format!("an input ({})", q))
+}
+
+#[cfg(all(feature = "prove", not(unix)))]
+fn opened_handle_is_protected(_f: &std::fs::File, _protect: &[&str]) -> Option<String> {
+    Some("unverifiable on this platform".into())
+}
+
+#[cfg(feature = "prove")]
+fn open_cost_sink(path: Option<&str>, protect: &[&str]) -> Result<Option<oathrs::cost::CostSink>, String> {
+    match path {
+        None => Ok(None),
+        // FAIL CLOSED off the platforms whose file identity this can check. The
+        // emission is OPTIONAL (§7.5), so refusing it costs a diagnostic; running
+        // it without the input-aliasing and stdout guards risks destroying a
+        // corpus file. Refusing and naming the reason is the repository's rule for
+        // an unsupported construct.
+        Some(p) if !cfg!(unix) => Err(format!(
+            "--cost-out {}: the cost emission is supported on unix only — its \
+             input-aliasing and stdout guards rest on filesystem identity, and \
+             approximating them elsewhere risks truncating an input", p)),
+        // §7.5 requires the emission to be SEPARATELY ADDRESSABLE — readable
+        // without parsing or locating a shard result. `/dev/stdout` and its
+        // equivalents are the shard-result stream itself, so writing records
+        // there interleaves the two and leaves stdout parseable as neither.
+        Some(p) if resolves_to_stdout(p) => Err(format!(
+            "--cost-out {}: the cost emission must not share the shard result's stream (§7.5)", p)),
+        Some(p) => {
+            // OPEN FIRST, VERIFY THE HANDLE, THEN TRUNCATE. The path checks above
+            // are necessarily TOCTOU — the name can be repointed between the
+            // check and the open — so the decisive comparison is against the
+            // descriptor actually obtained, and truncation happens only after it.
+            let f = oathrs::cost::CostSink::open_untruncated(p)
+                .map_err(|e| format!("--cost-out {}: {}", p, e))?;
+            if let Some(what) = opened_handle_is_protected(&f, protect) {
+                return Err(format!(
+                    "--cost-out {}: the opened file is {} — refusing to truncate it", p, what));
+            }
+            oathrs::cost::CostSink::from_verified(f)
+                .map(Some)
+                .map_err(|e| format!("--cost-out {}: {}", p, e))
+        }
+    }
+}
+
+#[cfg(feature = "prove")]
 /// Parse the `i/n` argument of `--shard` into `(i, n)`. Both must be unsigned
 /// integers separated by a single slash; anything else is rejected.
 fn parse_shard(s: &str) -> Option<(u64, u64)> {
@@ -272,6 +437,7 @@ fn cmd_prove_shard(
     verify_n: Option<u64>,
     merge_n: Option<u64>,
     shard_ins: &[String],
+    cost_out: Option<&str>,
 ) -> i32 {
     use oathrs::prove;
     // The seed S and the author hints both come from the outcomes fixture.
@@ -296,6 +462,41 @@ fn cmd_prove_shard(
             return 1;
         }
     };
+    // MODE ARGUMENTS ARE VALIDATED BEFORE THE SINK IS OPENED. `--cost-out` creates
+    // (and truncates) its file, so an invocation that is going to be rejected
+    // anyway must not destroy an existing emission on its way to the error. The
+    // per-mode checks below repeat these; that is deliberate, since each mode
+    // still owns its own contract.
+    if let Some(n) = verify_n {
+        if n == 0 {
+            eprintln!("error: --verify-shards n requires n >= 1");
+            return 1;
+        }
+    }
+    if let Some((i, n)) = shard {
+        if n == 0 || i >= n {
+            eprintln!("error: --shard i/n requires n >= 1 and i < n");
+            return 1;
+        }
+    }
+    // SPEC §7.5: the OPTIONAL cost sink. Opened HERE — after every input has been
+    // read, and before any attempt runs — for two independent reasons.
+    //
+    // A bad destination must fail SETUP rather than lose the first records
+    // silently, which is why it is not deferred further.
+    //
+    // And it must not TRUNCATE AN INPUT. `--cost-out` creates its file, so naming
+    // a corpus file or the hints fixture destroyed it before it was read: the
+    // proof then ran against an empty file and the user's source was gone.
+    // Reading first removes the empty-read half; the aliasing check below removes
+    // the data loss, which ordering alone does not — truncating a source file is
+    // destructive whether or not it was read first.
+    if let Some(cp) = cost_out {
+        if let Some(clash) = aliases_an_input(cp, hints_path, paths) {
+            eprintln!("error: --cost-out {} would overwrite an input ({})", cp, clash);
+            return 1;
+        }
+    }
     // Elaboration is GLOBAL (SPEC §7.5): an elaboration failure fails the whole
     // run regardless of which shard is requested — a shard MUST NOT be able to
     // suppress an elaboration error because the broken definition falls outside
@@ -311,13 +512,36 @@ fn cmd_prove_shard(
     let name_of = |hash: &str| -> String {
         store.func_by_hash.get(hash).map(|fi| fi.name.clone()).unwrap_or_else(|| hash.to_string())
     };
+    // THE SINK OPENS ONLY ONCE ELABORATION HAS SUCCEEDED. Opening it earlier
+    // truncates the destination, so a corpus that parses but fails to elaborate
+    // destroyed a previous emission while running no attempt at all — the file is
+    // a diagnostic, and losing it must cost at least one attempt's worth of work.
+    let protect: Vec<&str> = std::iter::once(hints_path)
+        .chain(paths.iter().map(|s| s.as_str()))
+        .collect();
+    let cost = match open_cost_sink(cost_out, &protect) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("error: {}", e);
+            return 1;
+        }
+    };
 
     if let Some((i, n)) = shard {
         if n == 0 || i >= n {
             eprintln!("error: --shard i/n requires n >= 1 and 0 <= i < n (got {}/{})", i, n);
             return 1;
         }
-        let out = prove::prove_shard(&store, &falsified, &hints, &seed, i, n);
+        let out = prove::prove_shard_cost(&store, &falsified, &hints, &seed, i, n, cost.as_ref());
+        if let (Some(sink), Some(p)) = (cost.as_ref(), cost_out) {
+            // On STDERR, deliberately: stdout carries the shard result, and §7.5
+            // requires the cost emission to live at a destination consuming the
+            // shard result never has to parse.
+            // NOT eprintln!: it PANICS if stderr is closed, which would make a
+            // --cost-out run fail where the same run without it succeeds — and
+            // §7.5 requires no run outcome to depend on the emission.
+            let _ = writeln!(std::io::stderr(), "# §7.5 cost emission: {} record(s) -> {}", sink.written(), p);
+        }
         // Bind the FULL determinism context (S, hints, solver, rlimit) so a merge
         // can reject a shard that ran a different F (SPEC §7.2/§10.5).
         let campaign = prove::campaign_identity(&seed, &hints, &z3_version_string(), prove::effective_z3_rlimit());
@@ -337,8 +561,15 @@ fn cmd_prove_shard(
             eprintln!("error: --verify-shards n requires n >= 1");
             return 1;
         }
-        let report = prove::verify_sharded_z3(&store, &falsified, &hints, &seed, n);
+        let report =
+            prove::verify_sharded_z3_cost(&store, &falsified, &hints, &seed, n, cost.as_ref());
         eprintln!("# sharded verification (SPEC §7.5), n={} shards", n);
+        if let (Some(sink), Some(p)) = (cost.as_ref(), cost_out) {
+            // NOT eprintln!: it PANICS if stderr is closed, which would make a
+            // --cost-out run fail where the same run without it succeeds — and
+            // §7.5 requires no run outcome to depend on the emission.
+            let _ = writeln!(std::io::stderr(), "# §7.5 cost emission: {} record(s) -> {}", sink.written(), p);
+        }
         eprintln!("# seed S identity: {}", report.seed_id);
         for ((hash, pi), reason) in &report.carried {
             eprintln!(
@@ -488,8 +719,18 @@ fn merge_shards(
 /// run. Hints are store metadata: they are not in `.oath` source and not in the
 /// hash, so a kernel that elaborates only source has none — the fixture channel
 /// (SPEC §10) is how they reach it. Without the flag the run is hint-free.
-fn cmd_prove(paths: &[String], hints_path: Option<&str>) -> i32 {
+fn cmd_prove(paths: &[String], hints_path: Option<&str>, cost_out: Option<&str>) -> i32 {
     use oathrs::prove;
+    // The alias check and the deferred open belong to BOTH entry points, not just
+    // the sharded one: `--cost-out` truncates on create, so naming an input here
+    // destroys it exactly as it would there. Fixing only the path a report named
+    // leaves the same door open one function away.
+    if let Some(cp) = cost_out {
+        if let Some(clash) = aliases_an_input(cp, hints_path.unwrap_or(""), paths) {
+            eprintln!("error: --cost-out {} would overwrite an input ({})", cp, clash);
+            return 1;
+        }
+    }
     let hints = match hints_path {
         Some(p) => match read_outcomes(p) {
             Ok((_, h)) => h,
@@ -507,6 +748,9 @@ fn cmd_prove(paths: &[String], hints_path: Option<&str>) -> i32 {
             return 1;
         }
     };
+    // Opened only now: every input has been read, so a destination that aliases
+    // one can no longer truncate it, and a bad destination still fails setup
+    // before any attempt runs.
     let store = match elaborate_corpus(&files) {
         Ok(s) => s,
         Err(e) => {
@@ -514,8 +758,27 @@ fn cmd_prove(paths: &[String], hints_path: Option<&str>) -> i32 {
             return 1;
         }
     };
+    // Same ordering as the sharded path: nothing is truncated until the corpus
+    // has elaborated.
+    let protect: Vec<&str> = hints_path
+        .into_iter()
+        .chain(paths.iter().map(|s| s.as_str()))
+        .collect();
+    let cost = match open_cost_sink(cost_out, &protect) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("error: {}", e);
+            return 1;
+        }
+    };
     let falsified = compute_falsified(&store);
-    let results = prove::prove_all(&store, &falsified, &hints);
+    let results = prove::prove_all_cost(&store, &falsified, &hints, cost.as_ref());
+    if let (Some(sink), Some(p)) = (cost.as_ref(), cost_out) {
+        // NOT eprintln!: it PANICS if stderr is closed, which would make a
+        // --cost-out run fail where the same run without it succeeds — and
+        // §7.5 requires no run outcome to depend on the emission.
+        let _ = writeln!(std::io::stderr(), "# §7.5 cost emission: {} record(s) -> {}", sink.written(), p);
+    }
     // print keyed by name, sorted
     let mut by_name: Vec<(&String, &String)> = store
         .func_by_name
@@ -1119,6 +1382,11 @@ fn run() -> i32 {
             let mut verify_shards: Option<u64> = None;
             let mut merge_shards: Option<u64> = None;
             let mut shard_ins: Vec<String> = Vec::new();
+            // SPEC §7.5 PER-ATTEMPT COST EMISSION (OPTIONAL): the destination for
+            // the cost records. It is a FILE, and therefore a destination
+            // DISTINCT from the shard result (which goes to stdout) — §7.5
+            // requires that consuming either never requires parsing the other.
+            let mut cost_out: Option<String> = None;
             let mut files: Vec<String> = Vec::new();
             let mut i = 2;
             let mut bad = false;
@@ -1164,6 +1432,20 @@ fn run() -> i32 {
                         }
                         i += 2;
                     }
+                    // SPEC §7.5: OPTIONAL per-attempt cost emission, one JSON
+                    // object per line, written and flushed as each attempt
+                    // completes. Omitting the flag emits nothing, and §7.5
+                    // requires the run to be identical either way.
+                    "--cost-out" => {
+                        match args.get(i + 1) {
+                            Some(pth) => cost_out = Some(pth.clone()),
+                            None => {
+                                eprintln!("error: --cost-out expects a file path");
+                                bad = true;
+                            }
+                        }
+                        i += 2;
+                    }
                     // One shard emission file; repeatable (one per shard).
                     "--shard-in" => {
                         match args.get(i + 1) {
@@ -1190,10 +1472,27 @@ fn run() -> i32 {
             } else if !shard_ins.is_empty() && merge_shards.is_none() {
                 eprintln!("error: --shard-in is only used with --merge-shards");
                 1
+            } else if cost_out.is_some() && merge_shards.is_some() {
+                // A merge runs NO §7.2 property-proof attempts, so there is no
+                // per-attempt cost to emit. Refusing is louder than writing an
+                // empty file a consumer would read as "this campaign cost
+                // nothing".
+                eprintln!(
+                    "error: --cost-out records §7.2 PROPERTY-PROOF ATTEMPTS; --merge-shards makes none"
+                );
+                1
             } else if modes == 1 {
-                cmd_prove_shard(&files, hints.as_deref(), shard, verify_shards, merge_shards, &shard_ins)
+                cmd_prove_shard(
+                    &files,
+                    hints.as_deref(),
+                    shard,
+                    verify_shards,
+                    merge_shards,
+                    &shard_ins,
+                    cost_out.as_deref(),
+                )
             } else {
-                cmd_prove(&files, hints.as_deref())
+                cmd_prove(&files, hints.as_deref(), cost_out.as_deref())
             }
         }
         #[cfg(feature = "prove")]

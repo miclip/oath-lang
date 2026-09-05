@@ -5,12 +5,14 @@
 //! its admissible lemma set, pinned by the byte oracle in prove/scripts.txt.
 
 use crate::analyze::{termination, Term5};
+use crate::cost::{strategy, CostRecord, CostSink};
 use crate::elaborate::Store;
 use crate::hash::sha256_hex;
 use crate::ir::*;
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 // SPEC §7.1/§7.2: the per-goal budget is z3's machine-independent `rlimit`
@@ -1223,6 +1225,36 @@ impl<'a> Cx<'a> {
 /// prepended OUTSIDE the byte-oracle-hashed core script — the script bytes are
 /// byte-identical at either budget.
 fn run_z3(script: &str, budget: u64) -> Result<Outcome, String> {
+    run_z3_measured(script, budget).outcome
+}
+
+/// One z3 attempt together with the COST MEASUREMENTS SPEC §7.5's per-attempt
+/// emission reports. Identical to `run_z3` in every observable respect — the
+/// script bytes, the budget, the classification and the returned outcome are
+/// unchanged — it simply also carries out what the attempt consumed.
+///
+/// `consumed` is the SOLVER'S OWN counter (z3's `(get-info :rlimit)`), and is
+/// `None` exactly when the attempt ended without z3 reporting one: a spawn
+/// failure, a wall-cap kill, a crash mid-attempt. §7.5 forbids inventing a
+/// number there, "a measurement that was never taken". It is INDEPENDENT of
+/// validity: a cancel below budget is invalid and still reported a counter.
+///
+/// `consumed` is REPORTED and never compared (§7.5): nothing in this module
+/// reads it back, and it reaches no verdict, campaign identity or merge
+/// decision — it is handed to the sink and dropped.
+struct Attempt {
+    outcome: Result<Outcome, String>,
+    consumed: Option<u64>,
+    wall_ms: u64,
+}
+
+fn run_z3_measured(script: &str, budget: u64) -> Attempt {
+    let started = Instant::now();
+    let (outcome, consumed) = run_z3_inner(script, budget);
+    Attempt { outcome, consumed, wall_ms: started.elapsed().as_millis() as u64 }
+}
+
+fn run_z3_inner(script: &str, budget: u64) -> (Result<Outcome, String>, Option<u64>) {
     // The budget is the `(set-option :rlimit ...)` inside `script` (deterministic,
     // machine-independent). z3 returns `unknown` when the rlimit is reached — a
     // legitimate "unproven" verdict. We add NO wall-clock timeout to z3 itself
@@ -1240,11 +1272,16 @@ fn run_z3(script: &str, budget: u64) -> Result<Outcome, String> {
     {
         Ok(c) => c,
         Err(e) => {
-            return Err(format!(
-                "z3 failed to spawn ({}) — no attempt telemetry exists (SPEC §7.2 attempt \
-                 validity: missing telemetry)",
-                e
-            ))
+            // No process ran, so the solver reported no counter: `consumed` is
+            // NULL (§7.5) rather than an invented zero.
+            return (
+                Err(format!(
+                    "z3 failed to spawn ({}) — no attempt telemetry exists (SPEC §7.2 attempt \
+                     validity: missing telemetry)",
+                    e
+                )),
+                None,
+            )
         }
     };
     if let Some(mut sin) = child.stdin.take() {
@@ -1272,21 +1309,29 @@ fn run_z3(script: &str, budget: u64) -> Result<Outcome, String> {
                 if start.elapsed() > cap {
                     let _ = child.kill();
                     let _ = child.wait();
-                    return Err(format!(
-                        "z3 exceeded the {}ms wall-clock safety cap before its rlimit (SPEC §7.2 \
-                         attempt validity: the wall cap is one instance of the general \
-                         no-evidence rule)",
-                        z3_wall_cap_ms()
-                    ));
+                    // The abort KILLED the process, so no counter was reported:
+                    // `consumed` is NULL (§7.5), never a guess at the budget.
+                    return (
+                        Err(format!(
+                            "z3 exceeded the {}ms wall-clock safety cap before its rlimit (SPEC §7.2 \
+                             attempt validity: the wall cap is one instance of the general \
+                             no-evidence rule)",
+                            z3_wall_cap_ms()
+                        )),
+                        None,
+                    );
                 }
                 std::thread::sleep(Duration::from_millis(20));
             }
             Err(e) => {
-                return Err(format!(
-                    "z3 could not be waited on ({}) — the attempt produced no reliable telemetry \
-                     (SPEC §7.2 attempt validity: missing telemetry)",
-                    e
-                ))
+                return (
+                    Err(format!(
+                        "z3 could not be waited on ({}) — the attempt produced no reliable telemetry \
+                         (SPEC §7.2 attempt validity: missing telemetry)",
+                        e
+                    )),
+                    None,
+                )
             }
         }
     }
@@ -1294,23 +1339,112 @@ fn run_z3(script: &str, budget: u64) -> Result<Outcome, String> {
     if let Some(ref mut o) = sout {
         let _ = o.read_to_string(&mut s);
     }
+    // The solver's own resource counter, from the APPENDED `(get-info :rlimit)`
+    // telemetry (§7.5 `consumed`). Read for EVERY outcome, including `unsat` and
+    // `sat`: the verdict scan below returns early, so the counter is extracted
+    // first or a proven goal would report no cost at all. `None` when z3 emitted
+    // no parseable counter.
+    let consumed = info_int(&s, ":rlimit");
     // A verdict (`unsat`/`sat`) is an outcome unconditionally. The check-sat
     // result precedes the appended telemetry in z3's output, so the first such
     // line is the verdict.
     for line in s.lines() {
         match line.trim() {
-            "unsat" => return Ok(Outcome::Unsat),
-            "sat" => return Ok(Outcome::Sat),
+            "unsat" => return (Ok(Outcome::Unsat), consumed),
+            "sat" => return (Ok(Outcome::Sat), consumed),
             _ => {}
         }
     }
     // No verdict: `Ok(Unknown)` if the appended telemetry proves the attempt was
     // deterministic, else `Err` (an invalid, no-evidence attempt) (§7.2).
-    classify_nonverdict(&s, budget)
+    (classify_nonverdict(&s, budget), consumed)
+}
+
+/// Build the §7.5 cost record for one completed attempt. PURE — everything the
+/// record says is a function of the arguments, so every outcome is assertable
+/// without a solver (see the unit tests at the foot of this file).
+///
+/// The two members §7.5 warns hardest about are derived here, and they are
+/// derived SEPARATELY:
+///
+///   * `invalid` is a fact about THIS ATTEMPT, not about the property or the
+///     strategy that owns it: an attempt whose failure a strategy discards
+///     without tainting the run (the lemma-free first attempt, deterministic
+///     instantiation) is still an abort and is still recorded as one.
+///   * `consumed` is whatever the solver reported and NOTHING ELSE. §7.5:
+///     "This is INDEPENDENT of `invalid` in both directions … A producer MUST
+///     NOT derive either member from the other, and MUST NOT invent a number
+///     for a measurement that was never taken." Both cross cases are reachable
+///     here and are asserted: an abort that reported a counter (a memout or a
+///     below-budget `canceled` exits normally WITH one) keeps it, and a PROVED
+///     goal carries its cost like any other.
+///
+/// `retry` discriminates repeated passes over one property (see `Prover::retry`);
+/// it is appended to `detail`, and at 0 — every sharded attempt — `detail` is
+/// passed through unchanged.
+fn cost_record(
+    def_hash: &str,
+    pi: usize,
+    strategy: &str,
+    detail: &str,
+    budget: u64,
+    a: &Attempt,
+    retry: u32,
+) -> CostRecord {
+    let (invalid, verdict) = match &a.outcome {
+        Ok(Outcome::Unsat) => (false, Some("unsat")),
+        Ok(Outcome::Sat) => (false, Some("sat")),
+        Ok(Outcome::Unknown) => (false, Some("unknown")),
+        // §7.5: an aborted attempt has NO valid verdict, and a producer MUST NOT
+        // substitute "unknown", which is a real solver answer.
+        Err(_) => (true, None),
+    };
+    let detail = match retry {
+        0 => detail.to_string(),
+        n if detail.is_empty() => format!("retry={}", n),
+        n => format!("{},retry={}", detail, n),
+    };
+    CostRecord {
+        hash: def_hash.to_string(),
+        prop: pi,
+        strategy: strategy.to_string(),
+        detail,
+        budget,
+        // NOT `if invalid { None } else { a.consumed }` — that is the derivation
+        // §7.5 forbids, and it is wrong in both directions.
+        consumed: a.consumed,
+        invalid,
+        verdict: verdict.map(str::to_string),
+        wall_ms: Some(a.wall_ms),
+    }
 }
 
 struct Prover<'a> {
     store: &'a Store,
+    /// SPEC §7.5 PER-ATTEMPT COST EMISSION (OPTIONAL). When present, every
+    /// solver attempt this prover makes is reported to the sink as it completes.
+    ///
+    /// It is an `Option` because the emission is optional and "no verdict,
+    /// campaign identity, merge result or conformance outcome may depend on the
+    /// emission or its absence" — so the `None` prover and the `Some` prover
+    /// must run the same attempts, at the same budgets, over the same script
+    /// bytes, and reach the same verdicts. The sink is WRITE-ONLY from here:
+    /// nothing in the proof path ever reads a record back.
+    cost: Option<&'a CostSink>,
+    /// How many earlier PASSES this run has already made over the property now
+    /// being attempted — 0 on its first.
+    ///
+    /// §7.5 requires `strategy` and `detail` to DISTINGUISH a property's
+    /// attempts from one another. In sharded mode each property is attempted
+    /// exactly once, so the strategy sequence's own labels already do; this
+    /// counter is 0 throughout and the emission is unaffected. The unsharded
+    /// iterating driver (this kernel's own extension of the emission, see
+    /// `prove_all_cost`) may re-attempt a property in a later round under a
+    /// GROWN candidate set — different script bytes, same strategy, same
+    /// discriminator — and there the sequence's labels do NOT distinguish the
+    /// two. `retry=<n>` in `detail` is what restores that, using exactly the
+    /// freedom §7.5 grants: the discriminator is opaque and kernel-chosen.
+    retry: AtomicU32,
 }
 
 /// How recursion induction (§7.2, #56/#57) maps a property's binders to the
@@ -1324,6 +1458,64 @@ enum RecCase {
 }
 
 impl<'a> Prover<'a> {
+    /// A prover that emits no cost records (SPEC §7.5's emission is OPTIONAL).
+    fn new(store: &'a Store) -> Prover<'a> {
+        Prover { store, cost: None, retry: AtomicU32::new(0) }
+    }
+
+    /// A prover that additionally emits one §7.5 cost record per §7.2
+    /// property-proof attempt.
+    fn with_cost(store: &'a Store, cost: Option<&'a CostSink>) -> Prover<'a> {
+        Prover { store, cost, retry: AtomicU32::new(0) }
+    }
+
+    /// Declare that the property about to be attempted is being attempted for
+    /// the `n`th time in this run (0 = the first). Only the unsharded iterating
+    /// driver ever passes a non-zero value; see the `retry` field.
+    fn set_retry(&self, n: u32) {
+        self.retry.store(n, Ordering::Relaxed);
+    }
+
+    /// Run ONE solver attempt and, when a sink is attached, emit its §7.5 cost
+    /// record — written and FLUSHED before this call returns, hence before the
+    /// attempt that follows it begins.
+    ///
+    /// This is the single seam through which every §7.2 PROPERTY-PROOF attempt
+    /// reaches z3, so "one record per §7.2 property-proof attempt" is a property
+    /// of the code path rather than of a list of call sites someone remembered
+    /// to annotate. §7.5 scopes the emission to exactly that set and says so:
+    /// "§6.1.1's termination-measure search also reaches the solver, per
+    /// DEFINITION, with no property index to key a record to. Such calls are OUT
+    /// of this emission." `measure_site_unsat` therefore calls `run_z3` directly
+    /// and never this method, which is what makes the exclusion structural
+    /// rather than a habit.
+    ///
+    /// The returned value is exactly what `run_z3` would have returned, so
+    /// attaching or detaching a sink cannot change a verdict.
+    fn attempt(
+        &self,
+        def_hash: &str,
+        pi: usize,
+        strategy: &str,
+        detail: &str,
+        script: &str,
+        budget: u64,
+    ) -> Result<Outcome, String> {
+        let a = run_z3_measured(script, budget);
+        if let Some(sink) = self.cost {
+            sink.record(&cost_record(
+                def_hash,
+                pi,
+                strategy,
+                detail,
+                budget,
+                &a,
+                self.retry.load(Ordering::Relaxed),
+            ));
+        }
+        a.outcome
+    }
+
     /// Assemble the CORE self-contained script (the bytes the byte oracle
     /// hashes, SPEC §7.2): datatype declarations, then function declarations and
     /// defining-equation axioms in FIRST-TOUCH order of the canonical build,
@@ -1474,12 +1666,20 @@ impl<'a> Prover<'a> {
     fn try_direct(
         &self,
         def_hash: &str,
+        pi: usize,
         prop: &Prop,
         candidates: &[(String, usize, bool)],
         budget: u64,
+        strategy: &str,
     ) -> (Result<Outcome, String>, bool) {
         match self.direct_script(def_hash, prop, candidates) {
-            Some((script, quantified)) => (run_z3(&script, budget), quantified),
+            Some((script, quantified)) => (
+                self.attempt(def_hash, pi, strategy, "", &script, budget),
+                quantified,
+            ),
+            // No script: the goal is outside the provable fragment, so NO SOLVER
+            // ATTEMPT was made. §7.5 emits one record "per solver attempt", so
+            // there is nothing to report here (see REPORT.md).
             None => (Ok(Outcome::Unknown), true),
         }
     }
@@ -1494,12 +1694,16 @@ impl<'a> Prover<'a> {
     fn try_direct_lemma_free(
         &self,
         def_hash: &str,
+        pi: usize,
         prop: &Prop,
         candidates: &[(String, usize, bool)],
     ) -> bool {
         let budget = LEMMA_FREE_Z3_RLIMIT.min(z3_rlimit());
         match self.direct_script_opts(def_hash, prop, candidates, false) {
-            Some((script, _)) => matches!(run_z3(&script, budget), Ok(Outcome::Unsat)),
+            Some((script, _)) => matches!(
+                self.attempt(def_hash, pi, strategy::LEMMA_FREE, "", &script, budget),
+                Ok(Outcome::Unsat)
+            ),
             None => false,
         }
     }
@@ -1529,6 +1733,7 @@ impl<'a> Prover<'a> {
     fn try_ctor_instantiation(
         &self,
         def_hash: &str,
+        pi: usize,
         prop: &Prop,
         k: usize,
         dhash: &str,
@@ -1740,7 +1945,14 @@ impl<'a> Prover<'a> {
         tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
         let budget = DIRECT_Z3_RLIMIT.min(z3_rlimit());
         matches!(
-            run_z3(&Prover::assemble_omitting(&cx, &tail, &omit), budget),
+            self.attempt(
+                def_hash,
+                pi,
+                strategy::INSTANTIATION,
+                &format!("binder={},ctor={}", k, esc_detail(cname)),
+                &Prover::assemble_omitting(&cx, &tail, &omit),
+                budget,
+            ),
             Ok(Outcome::Unsat)
         )
     }
@@ -1751,6 +1963,7 @@ impl<'a> Prover<'a> {
     fn try_induction_binder(
         &self,
         def_hash: &str,
+        pi: usize,
         prop: &Prop,
         k: usize,
         candidates: &[(String, usize, bool)],
@@ -1776,8 +1989,8 @@ impl<'a> Prover<'a> {
             // instantiated attempt; only `unsat` discharges this constructor.
             if !comps.is_empty()
                 && self.try_ctor_instantiation(
-                    def_hash, prop, k, &dhash, &dargs, ci, cname, cfields, &ind_sort, candidates,
-                    &comps,
+                    def_hash, pi, prop, k, &dhash, &dargs, ci, cname, cfields, &ind_sort,
+                    candidates, &comps,
                 )
             {
                 continue;
@@ -1882,7 +2095,14 @@ impl<'a> Prover<'a> {
             // A subgoal must discharge (`unsat`). A valid non-unsat validly fails
             // the strategy; an invalid attempt taints it (SPEC §7.2 GRANULARITY).
             // Structural induction runs at the FULL budget (SPEC §7.2 #50).
-            match run_z3(&Prover::assemble(&cx, &tail), z3_rlimit()) {
+            match self.attempt(
+                def_hash,
+                pi,
+                strategy::INDUCTION,
+                &format!("binder={},ctor={}", k, esc_detail(cname)),
+                &Prover::assemble(&cx, &tail),
+                z3_rlimit(),
+            ) {
                 Ok(Outcome::Unsat) => {}
                 Ok(_) => return Ok(false),
                 Err(reason) => return Err(reason),
@@ -1930,6 +2150,7 @@ impl<'a> Prover<'a> {
     fn try_induction_lex(
         &self,
         def_hash: &str,
+        pi: usize,
         prop: &Prop,
         i: usize,
         j: usize,
@@ -1974,7 +2195,7 @@ impl<'a> Prover<'a> {
                 // Base case: i := c(fresh), other binders at goal constants, no
                 // hypotheses. j is NOT split.
                 match self.lex_subgoal(
-                    def_hash, prop, candidates, i, j, ci, cname_i, &fields_i, &rec_i, None,
+                    def_hash, pi, prop, candidates, i, j, ci, cname_i, &fields_i, &rec_i, None,
                     &ind_sort_j,
                 ) {
                     Ok(true) => {}
@@ -1987,6 +2208,7 @@ impl<'a> Prover<'a> {
                         cfields_j.iter().map(|f| inst_field(f, &dargs_j, &dhash_j)).collect();
                     match self.lex_subgoal(
                         def_hash,
+                        pi,
                         prop,
                         candidates,
                         i,
@@ -2016,6 +2238,7 @@ impl<'a> Prover<'a> {
     fn lex_subgoal(
         &self,
         def_hash: &str,
+        pi: usize,
         prop: &Prop,
         candidates: &[(String, usize, bool)],
         i: usize,
@@ -2120,7 +2343,18 @@ impl<'a> Prover<'a> {
         tail.push_str(&hyps);
         tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
         // Lexicographic induction runs at the FULL budget (SPEC §7.2 #50).
-        match run_z3(&Prover::assemble(&cx, &tail), z3_rlimit()) {
+        let detail = match jsplit {
+            Some((_, cname_j, _)) => format!("i={},j={},ctor={},ctor2={}", i, j, esc_detail(cname_i), esc_detail(cname_j)),
+            None => format!("i={},j={},ctor={}", i, j, esc_detail(cname_i)),
+        };
+        match self.attempt(
+            def_hash,
+            pi,
+            strategy::LEX,
+            &detail,
+            &Prover::assemble(&cx, &tail),
+            z3_rlimit(),
+        ) {
             Ok(Outcome::Unsat) => Ok(true),
             Ok(_) => Ok(false),
             Err(reason) => Err(reason),
@@ -2147,6 +2381,7 @@ impl<'a> Prover<'a> {
     fn try_recursion_induction(
         &self,
         def_hash: &str,
+        pi: usize,
         prop: &Prop,
         candidates: &[(String, usize, bool)],
     ) -> Result<bool, String> {
@@ -2290,7 +2525,14 @@ impl<'a> Prover<'a> {
                 tail.push_str(&format!("(assert (not {}))\n", guard_conj(&s.guards)));
             }
             tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
-            match run_z3(&Prover::assemble(&cx, &tail), budget) {
+            match self.attempt(
+                def_hash,
+                pi,
+                strategy::RECURSION_BASE,
+                "",
+                &Prover::assemble(&cx, &tail),
+                budget,
+            ) {
                 Ok(Outcome::Unsat) => {}
                 Ok(_) => return Ok(false),
                 Err(reason) => return Err(reason),
@@ -2302,7 +2544,7 @@ impl<'a> Prover<'a> {
         // A function with several recursive calls on one path (fib) thereby gets
         // all their hypotheses at once; single-call functions have one site per
         // guard, so their obligation is unchanged. ----
-        for group in &groups {
+        for (gi, group) in groups.iter().enumerate() {
             let mut cx = Cx::new(self.store);
             let lem = self.build_lemmas(&mut cx, candidates);
             let (sites, fresh_decls) = match collect_self_sites(&mut cx, def_hash, &param_env) {
@@ -2331,7 +2573,14 @@ impl<'a> Prover<'a> {
             tail.push_str(&format!("(assert {})\n", guard));
             tail.push_str(&ihs);
             tail.push_str(&format!("(assert (not {}))\n(check-sat)\n", goal));
-            match run_z3(&Prover::assemble(&cx, &tail), budget) {
+            match self.attempt(
+                def_hash,
+                pi,
+                strategy::RECURSION_STEP,
+                &format!("group={}", gi),
+                &Prover::assemble(&cx, &tail),
+                budget,
+            ) {
                 Ok(Outcome::Unsat) => {}
                 Ok(_) => return Ok(false),
                 Err(reason) => return Err(reason),
@@ -2353,6 +2602,7 @@ impl<'a> Prover<'a> {
     fn prove_prop(
         &self,
         def_hash: &str,
+        pi: usize,
         prop: &Prop,
         candidates: &[(String, usize, bool)],
     ) -> PropVerdict {
@@ -2365,7 +2615,7 @@ impl<'a> Prover<'a> {
         // just `true`. Anything else is discarded WITHOUT taint and the goal
         // proceeds through the unchanged strategies below, so the outcome is the
         // union of this attempt and the existing search.
-        if self.try_direct_lemma_free(def_hash, prop, candidates) {
+        if self.try_direct_lemma_free(def_hash, pi, prop, candidates) {
             return PropVerdict::Proven;
         }
 
@@ -2386,7 +2636,8 @@ impl<'a> Prover<'a> {
             z3_rlimit()
         };
 
-        let (direct, quantified) = self.try_direct(def_hash, prop, candidates, direct_budget);
+        let (direct, quantified) =
+            self.try_direct(def_hash, pi, prop, candidates, direct_budget, strategy::DIRECT);
         match direct {
             Ok(Outcome::Unsat) => return PropVerdict::Proven, // proven; a valid attempt wins
             Err(reason) => {
@@ -2407,7 +2658,7 @@ impl<'a> Prover<'a> {
                 if !matches!(prop.binders[k], Ty::Data { .. }) {
                     continue;
                 }
-                match self.try_induction_binder(def_hash, prop, k, candidates) {
+                match self.try_induction_binder(def_hash, pi, prop, k, candidates) {
                     Ok(true) => return PropVerdict::Proven,
                     Ok(false) => {}
                     Err(reason) => {
@@ -2425,7 +2676,7 @@ impl<'a> Prover<'a> {
                     if i == j || !matches!(prop.binders[j], Ty::Data { .. }) {
                         continue;
                     }
-                    match self.try_induction_lex(def_hash, prop, i, j, candidates) {
+                    match self.try_induction_lex(def_hash, pi, prop, i, j, candidates) {
                         Ok(true) => return PropVerdict::Proven,
                         Ok(false) => {}
                         Err(reason) => {
@@ -2437,7 +2688,7 @@ impl<'a> Prover<'a> {
             // SPEC §7.2 (#56): recursion induction, after structural and
             // lexicographic induction have failed. Fires only when the definition
             // under proof is `measure`-total, inducting along its OWN recursion.
-            match self.try_recursion_induction(def_hash, prop, candidates) {
+            match self.try_recursion_induction(def_hash, pi, prop, candidates) {
                 Ok(true) => return PropVerdict::Proven,
                 Ok(false) => {}
                 Err(reason) => {
@@ -2457,7 +2708,14 @@ impl<'a> Prover<'a> {
         // For a non-inductive goal the direct attempt already ran at the full
         // budget, so no fallback is needed.
         if inductive_eligible {
-            let (fb, _) = self.try_direct(def_hash, prop, candidates, z3_rlimit());
+            let (fb, _) = self.try_direct(
+                def_hash,
+                pi,
+                prop,
+                candidates,
+                z3_rlimit(),
+                strategy::DIRECT_FALLBACK,
+            );
             match fb {
                 Ok(Outcome::Unsat) => return PropVerdict::Proven,
                 Err(reason) => {
@@ -2820,7 +3078,7 @@ pub fn scripts_for(
     proven: &BTreeSet<(String, usize)>,
     hints: &Hints,
 ) -> Vec<(String, usize, String)> {
-    let prover = Prover { store };
+    let prover = Prover::new(store);
     let mut by_name: Vec<(String, String)> = store
         .func_by_name
         .iter()
@@ -3501,9 +3759,30 @@ pub fn prove_shard(
     i: u64,
     n: u64,
 ) -> ShardOutcome {
-    let prover = Prover { store };
-    prove_shard_with(store, falsified, hints, seed, |h| shard_of(h, n), i, |hash, _pi, prop, cands| {
-        prover.prove_prop(hash, prop, cands)
+    prove_shard_cost(store, falsified, hints, seed, i, n, None)
+}
+
+/// `prove_shard` with SPEC §7.5's OPTIONAL PER-ATTEMPT COST EMISSION attached.
+///
+/// `cost = None` is exactly `prove_shard`. `cost = Some(sink)` runs the SAME
+/// attempts at the SAME budgets over the SAME script bytes and additionally
+/// writes one record per solver attempt, each flushed before the next attempt
+/// begins. §7.5: "no verdict, campaign identity, merge result or conformance
+/// outcome may depend on the emission or its absence" — hence one code path with
+/// the sink as a pure observer, rather than a second sharded driver that could
+/// drift from this one.
+pub fn prove_shard_cost(
+    store: &Store,
+    falsified: &BTreeSet<String>,
+    hints: &Hints,
+    seed: &BTreeSet<(String, usize)>,
+    i: u64,
+    n: u64,
+    cost: Option<&CostSink>,
+) -> ShardOutcome {
+    let prover = Prover::with_cost(store, cost);
+    prove_shard_with(store, falsified, hints, seed, |h| shard_of(h, n), i, |hash, pi, prop, cands| {
+        prover.prove_prop(hash, pi, prop, cands)
     })
 }
 
@@ -3516,9 +3795,23 @@ pub fn verify_sharded_z3(
     seed: &BTreeSet<(String, usize)>,
     n: u64,
 ) -> MergeReport {
-    let prover = Prover { store };
-    verify_sharded(store, falsified, hints, seed, n, |hash, _pi, prop, cands| {
-        prover.prove_prop(hash, prop, cands)
+    verify_sharded_z3_cost(store, falsified, hints, seed, n, None)
+}
+
+/// `verify_sharded_z3` with SPEC §7.5's OPTIONAL per-attempt cost emission
+/// attached. As with `prove_shard_cost`, the sink observes and never steers:
+/// the merge report is identical with and without it.
+pub fn verify_sharded_z3_cost(
+    store: &Store,
+    falsified: &BTreeSet<String>,
+    hints: &Hints,
+    seed: &BTreeSet<(String, usize)>,
+    n: u64,
+    cost: Option<&CostSink>,
+) -> MergeReport {
+    let prover = Prover::with_cost(store, cost);
+    verify_sharded(store, falsified, hints, seed, n, |hash, pi, prop, cands| {
+        prover.prove_prop(hash, pi, prop, cands)
     })
 }
 
@@ -3570,6 +3863,18 @@ pub struct ParsedShard {
 /// True iff `s` is a well-formed O1 identity hash: exactly 64 lowercase hex
 /// characters (SPEC §1). Used to reject a malformed emission on parse — before any
 /// untrusted string reaches code that indexes or hashes it.
+/// Escapes an identifier interpolated into a `detail` string.
+///
+/// `detail` is a comma-separated `key=value` namespace, and a constructor name is
+/// user-controlled: `(data T [] (X,retry=1) (Y))` is a LEGAL declaration, so a raw
+/// name can forge a delimiter and make two different attempts produce the same
+/// `(strategy, detail)` pair — which §7.5 requires to be distinguishable within an
+/// emission. Percent-escaping the three characters that carry structure closes
+/// that, and `%` first so the escape is itself unambiguous.
+fn esc_detail(s: &str) -> String {
+    s.replace('%', "%25").replace(',', "%2C").replace('=', "%3D")
+}
+
 fn is_identity_hash(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
@@ -3716,9 +4021,45 @@ pub fn prove_all(
     falsified: &BTreeSet<String>,
     hints: &Hints,
 ) -> BTreeMap<String, ProofResult> {
-    let prover = Prover { store };
-    prove_all_with(store, falsified, hints, |hash, _pi, prop, cands| {
-        prover.prove_prop(hash, prop, cands)
+    prove_all_cost(store, falsified, hints, None)
+}
+
+/// `prove_all` with SPEC §7.5's OPTIONAL per-attempt cost emission attached.
+///
+/// §7.5 introduces the emission for a kernel offering SHARDED mode, and the
+/// sharded entry points above are where it is required to work. Offering it on
+/// the unsharded driver too is a CHOICE (see REPORT.md): the section forbids
+/// nothing here, the record shape does not mention shards, and the from-empty
+/// iteration is the run whose cost is otherwise least recoverable. Note the
+/// records of an iterating run are NOT one application of `F` — a goal
+/// re-attempted in a later round emits a second record under a larger lemma
+/// state — so a consumer summing them is measuring the whole iteration.
+///
+/// That re-attempt is also why this driver counts PASSES. §7.5 requires
+/// `strategy` and `detail` to DISTINGUISH a property's attempts; a goal
+/// re-attempted under a grown candidate set repeats the whole strategy sequence
+/// with the same labels over DIFFERENT script bytes, so the sequence's own
+/// labels no longer separate the two. The pass index goes into `detail` as
+/// `retry=<n>` (§7.5 leaves the discriminator opaque and kernel-chosen), and it
+/// is 0 — hence absent — on every first attempt and throughout sharded mode.
+///
+/// The counter is incremented HERE, at the point the driver decides to attempt a
+/// property again, rather than inside the prover: the driver serves an unchanged
+/// candidate set from its cache without reaching the solver at all, and a pass
+/// that makes no attempt must not advance the discriminator.
+pub fn prove_all_cost(
+    store: &Store,
+    falsified: &BTreeSet<String>,
+    hints: &Hints,
+    cost: Option<&CostSink>,
+) -> BTreeMap<String, ProofResult> {
+    let prover = Prover::with_cost(store, cost);
+    let mut passes: BTreeMap<(String, usize), u32> = BTreeMap::new();
+    prove_all_with(store, falsified, hints, |hash, pi, prop, cands| {
+        let n = passes.entry((hash.to_string(), pi)).or_insert(0);
+        prover.set_retry(*n);
+        *n += 1;
+        prover.prove_prop(hash, pi, prop, cands)
     })
 }
 
@@ -4545,7 +4886,7 @@ mod tests {
             candidate_lemmas(&self.store, &self.quad, pi, &self.prop(&self.quad, pi), &self.proven, hints)
         }
         fn script(&self, pi: usize, hints: &Hints) -> String {
-            let prover = Prover { store: &self.store };
+            let prover = Prover::new(&self.store);
             prover
                 .direct_script(&self.quad, &self.prop(&self.quad, pi), &self.cands(pi, hints))
                 .expect("goal is inside the provable fragment")
@@ -4652,7 +4993,7 @@ mod tests {
                 c.2 = true;
             }
         }
-        let prover = Prover { store: &f.store };
+        let prover = Prover::new(&f.store);
         let unsound_script = prover
             .direct_script(&f.quad, &f.prop(&f.quad, 1), &unsound)
             .expect("translates")
@@ -5673,4 +6014,107 @@ mod tests {
             ranged.mismatches
         );
     }
+
+    // =======================================================================
+    // SPEC §7.5 — the cost record's derived members, as a PURE function.
+    //
+    // `cost_record` is the only place `invalid`, `verdict` and `consumed` are
+    // decided, so every case the section names is assertable here without a
+    // solver — including the two that need an environment this kernel cannot
+    // conjure on demand (an abort that DID report a counter).
+    // =======================================================================
+
+    fn att(outcome: Result<Outcome, String>, consumed: Option<u64>) -> Attempt {
+        Attempt { outcome, consumed, wall_ms: 7 }
+    }
+
+    /// §7.5: "`consumed` … is INDEPENDENT of `invalid` in both directions … A
+    /// producer MUST NOT derive either member from the other, and MUST NOT
+    /// invent a number for a measurement that was never taken."
+    ///
+    /// All four combinations, and each is reachable in this kernel: an abort
+    /// WITH a counter is a `memout` or a below-budget `canceled` (both exit
+    /// normally, §7.2), an abort WITHOUT one is a wall-cap kill or a spawn
+    /// failure, and a valid attempt is missing its counter only if z3's
+    /// appended telemetry did not parse.
+    ///
+    /// FAILS IF: `consumed` is written as `if invalid { None } else { … }` (the
+    /// forbidden derivation, and the one the old parenthetical invited), or if
+    /// a `None` counter is filled in with 0.
+    #[test]
+    fn consumed_and_invalid_are_independent_in_both_directions() {
+        let abort = || Err("wall cap".to_string());
+
+        // invalid = true, counter PRESENT — the direction the derivation loses.
+        let r = cost_record("aa", 0, "s", "d", 100, &att(abort(), Some(42)), 0);
+        assert!(r.invalid);
+        assert_eq!(r.verdict, None, "an abort has no valid verdict");
+        assert_eq!(r.consumed, Some(42), "an abort that reported a counter KEEPS it");
+
+        // invalid = true, counter ABSENT.
+        let r = cost_record("aa", 0, "s", "d", 100, &att(abort(), None), 0);
+        assert!(r.invalid && r.verdict.is_none() && r.consumed.is_none());
+
+        // invalid = false, counter PRESENT — including a PROVED goal, which must
+        // record its cost or the emission misses exactly what it is for.
+        for (o, v) in [
+            (Outcome::Unsat, "unsat"),
+            (Outcome::Sat, "sat"),
+            (Outcome::Unknown, "unknown"),
+        ] {
+            let r = cost_record("aa", 0, "s", "d", 100, &att(Ok(o), Some(9)), 0);
+            assert!(!r.invalid);
+            assert_eq!(r.verdict.as_deref(), Some(v));
+            assert_eq!(r.consumed, Some(9), "a {} attempt records its cost", v);
+        }
+
+        // invalid = false, counter ABSENT — not invented.
+        let r = cost_record("aa", 0, "s", "d", 100, &att(Ok(Outcome::Unknown), None), 0);
+        assert!(!r.invalid);
+        assert_eq!(r.verdict.as_deref(), Some("unknown"));
+        assert_eq!(r.consumed, None, "a missing counter is NULL, never 0");
+
+        // And the record is well formed in every case, since well-formedness
+        // constrains invalid/verdict and says nothing about consumed.
+        for c in [None, Some(0), Some(5)] {
+            assert!(cost_record("aa", 0, "s", "d", 100, &att(abort(), c), 0).well_formed());
+            assert!(cost_record("aa", 0, "s", "d", 100, &att(Ok(Outcome::Unsat), c), 0).well_formed());
+        }
+    }
+
+    /// §7.5: an aborted attempt has NO valid verdict and a producer "MUST NOT
+    /// substitute `"unknown"`, which is a real solver answer".
+    ///
+    /// FAILS IF: the abort arm ever maps to a verdict string.
+    #[test]
+    fn an_abort_is_never_written_as_a_solver_answer() {
+        for reason in ["wall cap", "memout", "canceled below budget", ""] {
+            let r = cost_record("aa", 1, "s", "", 1, &att(Err(reason.into()), Some(3)), 0);
+            assert_eq!(r.verdict, None, "reason {:?} must yield no verdict", reason);
+        }
+    }
+
+    /// §7.5 requires `strategy`/`detail` to DISTINGUISH a property's attempts.
+    /// The iterating driver re-attempts a goal under a grown candidate set, so
+    /// the pass index is what separates the repeats; at pass 0 — every sharded
+    /// attempt — `detail` is passed through UNCHANGED, so the sharded emission
+    /// is byte-identical to one produced without this mechanism.
+    ///
+    /// FAILS IF: the retry suffix leaks into a first attempt, or two passes of
+    /// one strategy+subgoal produce the same `detail`.
+    #[test]
+    fn the_pass_index_discriminates_repeats_and_is_absent_on_the_first() {
+        let a = att(Ok(Outcome::Unknown), Some(1));
+        assert_eq!(cost_record("h", 0, "induction", "binder=0,ctor=Nil", 1, &a, 0).detail,
+                   "binder=0,ctor=Nil");
+        assert_eq!(cost_record("h", 0, "direct", "", 1, &a, 0).detail, "");
+
+        let mut seen = std::collections::BTreeSet::new();
+        for n in 0..4 {
+            assert!(seen.insert(cost_record("h", 0, "induction", "binder=0,ctor=Nil", 1, &a, n).detail));
+            assert!(seen.insert(cost_record("h", 0, "direct", "", 1, &a, n).detail));
+        }
+        assert_eq!(seen.len(), 8, "every pass of every subgoal is distinguishable: {:?}", seen);
+    }
+
 }
