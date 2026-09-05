@@ -125,9 +125,9 @@ NEEDS_ENV: dict[tuple[str, str], str] = {
         "provisions the runner's z3 for the sharded matrix; schedule/dispatch only",
     ("conformance", "build oathrs", "4111ddfccb69"):
         "builds the release kernel on the runner for the sharded matrix; schedule/dispatch only",
-    ("conformance", "prove shard ${{ matrix.shard }} of 32", "801ab5dda505"):
+    ("conformance", "prove shard ${{ matrix.shard }} of 128", "f9c4a051dc44"):
         "one parallel shard of the union==S check; schedule/dispatch only, needs CI runners",
-    ("conformance", "merge and verify union == S", "28ca52312849"):
+    ("conformance", "merge and verify union == S", "4dbb311e1461"):
         "merges the shard emissions and runs the union==S gate; schedule/dispatch only",
     ("stdlib-pr", "Compute the proposed registry delta", "41f545e50141"):
         "needs origin/<base_ref> and PR context",

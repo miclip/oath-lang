@@ -369,14 +369,14 @@ jobs:
   #
   # Dispatch only — n runners for a few hours each is not a per-push cost.
   rust-conformance-sharded:
-    name: independent kernel (Rust) — sharded verification (shard ${{ matrix.shard }}/32)
-    if: github.event_name == 'workflow_dispatch'  # dispatch-only. MEASURED at n=8 (run 33815373169): 5 of 8 shards hit the 350-minute cap, spread >=104x, so HASH assignment does not fit there. Now at n=32 to find out whether width alone is enough and, more importantly, to get shards that COMPLETE -- a truncated shard cannot report the cost of the goals that truncated it, which is why n=8 produced no cost table. Goal COUNT is not a cost proxy (fixtures predict 1.61x imbalance, observed >=104x). Read #98 before changing n or the assignment rule.
+    name: independent kernel (Rust) — sharded verification (shard ${{ matrix.shard }}/128)
+    if: github.event_name == 'workflow_dispatch'  # dispatch-only. n IS CHOSEN AGAINST A MEASUREMENT, NOT ASSUMED: the per-property cost table (#98) makes worst-shard share NON-MONOTONE in n -- 32 gives 10.4%, 80 gives 11.7%, 160 gives 10.3%, while 112/128/192 reach the 6.9% floor set by the single heaviest property. Collisions among a few heavy properties are luck, not density, so a larger n is NOT automatically better. 128 sits at the floor with margin either side of the dips. Re-derive from the cost artifacts before changing it; do not round it up by intuition.
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -390,7 +390,7 @@ jobs:
           echo "$PWD/z3-4.16.0-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
       - name: build oathrs
         run: cargo build --release --manifest-path oathrs/Cargo.toml
-      - name: prove shard ${{ matrix.shard }} of 32
+      - name: prove shard ${{ matrix.shard }} of 128
         # Wall cap is safety-only and NOT part of the campaign identity (rlimit is),
         # so setting it here while the merge omits it does not desync the two.
         # The MEMORY cap is the same kind of thing and just as necessary: without
@@ -428,7 +428,7 @@ jobs:
         # instrument run beforehand.
         run: |
           z3 --version
-          ./oathrs/target/release/oathrs prove --shard ${{ matrix.shard }}/32 \
+          ./oathrs/target/release/oathrs prove --shard ${{ matrix.shard }}/128 \
             --hints fixtures/prove/outcomes.json \
             --cost-out "cost-${{ matrix.shard }}.jsonl" \
             examples/*.oath apps/*/*.oath > "shard-${{ matrix.shard }}.txt"
@@ -450,7 +450,7 @@ jobs:
 
   rust-conformance-sharded-merge:
     name: independent kernel (Rust) — merge shards, verify union == S
-    if: github.event_name == 'workflow_dispatch'  # dispatch-only. MEASURED at n=8 (run 33815373169): 5 of 8 shards hit the 350-minute cap, spread >=104x, so HASH assignment does not fit there. Now at n=32 to find out whether width alone is enough and, more importantly, to get shards that COMPLETE -- a truncated shard cannot report the cost of the goals that truncated it, which is why n=8 produced no cost table. Goal COUNT is not a cost proxy (fixtures predict 1.61x imbalance, observed >=104x). Read #98 before changing n or the assignment rule.
+    if: github.event_name == 'workflow_dispatch'  # dispatch-only. n IS CHOSEN AGAINST A MEASUREMENT, NOT ASSUMED: the per-property cost table (#98) makes worst-shard share NON-MONOTONE in n -- 32 gives 10.4%, 80 gives 11.7%, 160 gives 10.3%, while 112/128/192 reach the 6.9% floor set by the single heaviest property. Collisions among a few heavy properties are luck, not density, so a larger n is NOT automatically better. 128 sits at the floor with margin either side of the dips. Re-derive from the cost artifacts before changing it; do not round it up by intuition.
     needs: rust-conformance-sharded
     runs-on: ubuntu-latest
     steps:
@@ -479,7 +479,7 @@ jobs:
           # a hand-typed index list that disagrees with the count is a merge that
           # silently verifies a partial union, which is the one failure this job
           # exists to catch.
-          N=32
+          N=128
           args=""
           for i in $(seq 0 $((N - 1))); do
             args="$args --shard-in shards/shard-$i/shard-$i.txt"
