@@ -2272,7 +2272,8 @@ not a definition. Property `p` of the definition whose O1 identity hash (§1) is
 where `h` is the 64-character lowercase hex hash as it appears in the store, `++`
 is byte concatenation of the US-ASCII spellings, `decimal(p)` is the property
 index in base ten with no leading zeros or sign, and `first_64_bits` is the
-digest's leading 8 bytes read big-endian; `n ≥ 1`, shard index `i ∈ 0..n`. Every
+digest's leading 8 bytes read big-endian; `n ≥ 1` and the shard index satisfies `0 ≤ i < n` (half-open, which `mod n` can
+never leave). Every
 property of every function definition belongs to exactly one shard. A definition
 with no properties has no proof work and lies outside the partition entirely (it
 can contribute nothing to `S`).
@@ -2325,6 +2326,17 @@ MUST be compared to `S` property by property, and the run MUST FAIL LOUDLY on an
 mismatch: a valid verdict differing from `S`, a PROPERTY ATTEMPTED by no shard,
 or a PROPERTY attempted by more than one.
 
+**A property counts as ATTEMPTED by a shard exactly when that shard's emission
+carries an ATTEMPT RESULT for it** — either a valid verdict or an abort. The
+neutral term is deliberate: §7.2 and the cost emission below both reserve
+"outcome" for a valid verdict, an abort being expressly not one, so defining
+coverage in terms of outcomes would have excluded the aborted properties that
+carry-forward exists to handle. The merge sees emissions and nothing else, so
+coverage has to be decided from what an emission carries; and an emission MUST
+NOT carry a separate membership list alongside its attempt results, because two
+accounts of the same fact can disagree and the check would then have to choose
+which to believe.
+
 The coverage condition is ATTEMPTED, not proved, and the distinction is not
 cosmetic: a property legitimately absent from `S` is proved by no shard on every
 correct run, so a "proved by no shard" test would reject every campaign over a
@@ -2342,8 +2354,22 @@ only mechanism in the system that detects a seed `S` that is not run-stable
 
 **Campaign identity across parallel shards (normative once offered).** The
 throughput of this mode comes from running the shards as SEPARATE parallel jobs
-and merging their emitted results. An emitted shard result MUST carry a CAMPAIGN
-IDENTITY binding the FULL determinism context — the proven set `S`, the author
+and merging their emitted results.
+
+**THIS IS A KERNEL-LOCAL INTERCHANGE, NOT A CROSS-KERNEL ONE, AND SAYING SO
+REPAIRS A CONTRADICTION THIS SECTION CARRIED.** §7.5 pins no encoding and no
+destination for a shard result, yet required one to CARRY things — and the
+cost-emission subsection below states, as a general principle, that a requirement
+phrased against an unpinned artifact cannot be checked. §10 does not reference
+§7.5 at all, so the obligation had no witness anywhere. The requirement is
+therefore scoped to what it can actually bind: a kernel's own emissions, merged
+by that same kernel. Two kernels are NOT expected to merge each other's shard
+results, and a kernel is free to choose the encoding, the spelling of the
+granularity, and the digest — none of that is observable semantics, and §10
+compares none of it.
+
+What remains normative is WHAT must be bound, not how. An emitted shard result
+MUST carry a CAMPAIGN IDENTITY binding the FULL determinism context — the proven set `S`, the author
 hints, the solver version, the effective rlimit (the inputs §7.2/§10.5 make a
 proof outcome a function of), and THE PARTITION — both the assignment granularity
 and the shard count `n`. The partition belongs there because emissions produced
