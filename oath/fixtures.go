@@ -21,6 +21,7 @@ package main
 import (
 	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -29,6 +30,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -423,6 +425,82 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 	}
 	fmt.Fprintf(&log, "prove/attempts.txt: %d script hashes across the full attempt sequence\n", attemptCount)
 
+	// prove/shards.txt — SPEC §7.5's shard assignment, pinned per property.
+	//
+	// EMITTED BY THIS KERNEL PRECISELY BECAUSE IT DOES NOT IMPLEMENT §7.5.
+	// Sharding lives in oathrs; the fixture that checks it must not come from
+	// oathrs, or it agrees with the implementation under test by construction and
+	// witnesses nothing. Computing it here is a second, independent reading of the
+	// same normative sentence — the N-version argument the second kernel exists
+	// for, applied to one rule.
+	//
+	// The rule is first_64_bits(SHA-256(h ++ "#" ++ decimal(p))) mod n over the
+	// hash's 64-character lowercase hex SPELLING. Every part of that is a claim
+	// about bytes with no other witness in the tree: the partition is
+	// deterministic and a merge recomputes it with the same function that produced
+	// it, so a kernel digesting the raw 32 bytes, or separating with ':', or
+	// reading the digest little-endian, is perfectly self-consistent and
+	// partitions the corpus differently from everyone else.
+	// NON-POWERS OF TWO ARE THE POINT, not padding. With only powers of two the
+	// vectors exercise the digest's low bits alone: `v & (n-1)` is then identical
+	// to `v % n`, and so is `digest[7] % n`, so a kernel doing either passes every
+	// row and still partitions wrongly at n=3. 3, 7 and 100 make the whole 64-bit
+	// value and the modulo operation itself observable.
+	shardNs := []uint64{1, 2, 3, 7, 8, 32, 100}
+	var shards strings.Builder
+	shards.WriteString("# SPEC §7.5 shard assignment — the WITNESS for the partition rule.\n")
+	shards.WriteString("#\n")
+	shards.WriteString("#   shard(h, p, n) = first_64_bits(SHA-256(h ++ \"#\" ++ decimal(p))) mod n\n")
+	shards.WriteString("#\n")
+	shards.WriteString("# `h` is the 64-char LOWERCASE HEX spelling, not the 32 bytes it denotes;\n")
+	shards.WriteString("# the separator is one '#'; decimal(p) is base ten, no padding, no sign;\n")
+	shards.WriteString("# first_64_bits is the digest's leading 8 bytes big-endian.\n")
+	shards.WriteString("#\n")
+	shards.WriteString("# n=1 is the unsharded verifier and is 0 throughout — the only column whose\n")
+	shards.WriteString("# correct value is known without computing a digest, and so the one that\n")
+	shards.WriteString("# catches a file regenerated from a broken rule.\n")
+	shards.WriteString("#\n")
+	shards.WriteString("# name\thash\tprop")
+	for _, n := range shardNs {
+		fmt.Fprintf(&shards, "\tn=%d", n)
+	}
+	shards.WriteString("\n")
+	// ONE ROW PER OBJECT, NOT PER NAME. Names alias — `rot` and `rot-f` are one
+	// object today — and the partition is a function of the definition's HASH, so
+	// an aliased object is attempted ONCE by one shard, not once per name. Keying
+	// rows by name emitted it twice, which is not wrong about any shard number but
+	// makes the file over-represent the corpus and makes "every property exactly
+	// once" false of the witness. The name column stays for readability and is the
+	// first alias in sorted order.
+	shardRows := 0
+	emitted := map[string]bool{}
+	for _, name := range keys {
+		hh := names[name]
+		if emitted[hh] {
+			continue
+		}
+		dd, err := st.GetDef(hh)
+		if err != nil || dd.K != "func" || len(dd.Props) == 0 {
+			continue
+		}
+		emitted[hh] = true
+		for pi := range dd.Props {
+			key := append([]byte(hh), '#')
+			key = strconv.AppendInt(key, int64(pi), 10)
+			sum := sha256.Sum256(key)
+			fmt.Fprintf(&shards, "%s\t%s\t%d", name, hh, pi)
+			for _, n := range shardNs {
+				fmt.Fprintf(&shards, "\t%d", binary.BigEndian.Uint64(sum[:8])%n)
+			}
+			shards.WriteString("\n")
+			shardRows++
+		}
+	}
+	if err := write(filepath.Join("prove", "shards.txt"), []byte(shards.String())); err != nil {
+		return "", err
+	}
+	fmt.Fprintf(&log, "prove/shards.txt: %d property assignments across %d shard counts\n", shardRows, len(shardNs))
+
 	// prove/scripts/ — full golden script TEXTS for a curated set, one per
 	// structural feature of the translation. scripts.txt pins all 161 by
 	// hash; these make a divergence debuggable (a hash tells you THAT you
@@ -674,8 +752,15 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
    one, and a witness defeated by its own carrier witnesses nothing.
 
 Files: hashes.txt, canonical/, encoding/, gate/, verify/, analyses/,
-prove/outcomes.json, campaign/vectors.txt, envelope/vectors.jsonl,
-gate/bytes/, license/vectors.jsonl, reserve/vectors.jsonl.
+prove/outcomes.json, prove/shards.txt, campaign/vectors.txt,
+envelope/vectors.jsonl, gate/bytes/, license/vectors.jsonl,
+reserve/vectors.jsonl.
+
+prove/shards.txt pins SPEC §7.5's shard assignment for every property at several
+shard counts. It is the only witness for that rule's BYTES, and it is emitted by
+THIS kernel — which does not implement §7.5 — so that it is independent of the
+kernel it checks. A fixture produced by the implementation it guards agrees with
+that implementation by construction.
 `, kernelVersion)
 	if err := write("MANIFEST.md", []byte(manifest)); err != nil {
 		return "", err
@@ -2038,8 +2123,8 @@ func writeReserveVectors(write func(string, []byte) error) error {
 		o, sg := signScopedDelFor(priv, opDelegate, "d9/*", ci, "d9/report", 1, 0)
 		_, _ = apiDelegate(st, o, sg, h)
 	}, 0x13, "d9/*", []string{ci}, []map[string]any{
-		cov(ci, "d9/report", true),  // the exact scoped name
-		cov(ci, "d9/other", false),  // any other name under the prefix
+		cov(ci, "d9/report", true),    // the exact scoped name
+		cov(ci, "d9/other", false),    // any other name under the prefix
 		cov(ci, "d9/report/x", false), // an exact-name scope is not a prefix
 	}, "DEL-SCOPE: an exact-name scope covers only that name"); err != nil {
 		return err

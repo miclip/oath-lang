@@ -2282,6 +2282,16 @@ Assignment MUST NOT depend on input-file position or elaboration order — those
 are unstable across file moves and cannot be reproduced by an independent runner.
 `n = 1` is exactly the unsharded seeded verifier.
 
+`prove/shards.txt` pins this rule for every property of the conformance corpus at
+several values of `n`, and is its only witness. Everything else about the
+partition is self-referential — the merge recomputes assignments with the same
+function that produced them, and the self-check compares a campaign against
+itself — so a kernel that digests the identity's raw bytes rather than its
+64-character hex spelling, or separates with something other than `#`, or reads
+the leading 8 bytes little-endian, agrees with itself perfectly and partitions
+the corpus differently from every other kernel. Only a pinned expectation
+computed OUTSIDE any kernel can say so.
+
 **WHY THE PROPERTY AND NOT THE DEFINITION, AND WHY NOT FINER.** A partition can
 never place a shard below its largest INDIVISIBLE unit, so the unit decides what
 sharding can achieve, and no `n` or assignment rule recovers a unit chosen too

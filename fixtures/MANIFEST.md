@@ -56,5 +56,12 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
    one, and a witness defeated by its own carrier witnesses nothing.
 
 Files: hashes.txt, canonical/, encoding/, gate/, verify/, analyses/,
-prove/outcomes.json, campaign/vectors.txt, envelope/vectors.jsonl,
-gate/bytes/, license/vectors.jsonl, reserve/vectors.jsonl.
+prove/outcomes.json, prove/shards.txt, campaign/vectors.txt,
+envelope/vectors.jsonl, gate/bytes/, license/vectors.jsonl,
+reserve/vectors.jsonl.
+
+prove/shards.txt pins SPEC §7.5's shard assignment for every property at several
+shard counts. It is the only witness for that rule's BYTES, and it is emitted by
+THIS kernel — which does not implement §7.5 — so that it is independent of the
+kernel it checks. A fixture produced by the implementation it guards agrees with
+that implementation by construction.

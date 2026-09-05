@@ -131,8 +131,14 @@ SURFACES = {
     # include_str!s vectors.txt, so without it `cargo test --no-run` fails and the
     # subject cannot compile the tree it was asked to edit. Same reason §7.4 ships
     # it, and it leaks nothing about the cost emission.
-    "7.5": ([], ["oathrs/", "fixtures/prove/outcomes.json", "fixtures/campaign/",
-                 "examples/", "apps/"]),
+    # fixtures/prove/shards.txt is shipped, and it is a WITNESS rather than an
+    # answer key: §7.5 states the assignment rule in full, so the subject derives
+    # it from the text and the fixture only says whether the derivation was right
+    # — which is what a conformance fixture is for. It also has to ship for a
+    # mechanical reason: oathrs/tests reads it, so without it the subject cannot
+    # run the suite it was asked to keep green.
+    "7.5": ([], ["oathrs/", "fixtures/prove/outcomes.json", "fixtures/prove/shards.txt",
+                 "fixtures/campaign/", "examples/", "apps/"]),
     # §7.2: the Rust kernel to repair and the full conformance corpus it must
     # reproduce. NO normative data. The witnesses are the fixtures the kernel
     # checks itself against and the corpus source conformance reads — none of
