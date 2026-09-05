@@ -399,13 +399,38 @@ jobs:
         # memory_max_size is never outcome-determining — it converts an OS death
         # into a clean memout — and is NOT in the campaign identity, so shards
         # (capped) and the merge (uncapped, it never proves) stay in sync.
+        #
+        # STEP timeout, well inside the JOB's 350. A job-level timeout CANCELS THE
+        # JOB — no later step runs, `if: always()` included — so a shard killed
+        # that way uploads NOTHING, and those are precisely the shards whose costs
+        # are wanted. A step timeout fails only the step and leaves the upload
+        # below reachable.
+        #
+        # THE MARGIN COVERS THE PRECEDING STEPS, NOT JUST THE UPLOAD. The two
+        # clocks start at different moments: the job's at checkout, this one when
+        # the step begins. A margin sized only for the upload is consumed by
+        # checkout, toolchain, the z3 download and a cold `cargo build --release`,
+        # after which the job deadline fires first and the emission is lost in
+        # exactly the case it was collected for. 50 minutes covers all of it.
+        timeout-minutes: 300
         env:
           OATHRS_Z3_WALL_CAP_MS: "3600000"
           OATHRS_Z3_MEMORY_MB: "6000"
+        #
+        # --cost-out collects the §7.5 per-attempt cost emission. It is a
+        # DIAGNOSTIC: no verdict, campaign identity or merge decision reads it,
+        # and the shard result still goes to stdout untouched. It is collected
+        # HERE, from the campaign itself, because a cheaper measurement does not
+        # extrapolate — a reduced budget truncates exactly the attempts that
+        # dominate the cost (#98) — and because records are flushed per attempt, a
+        # shard KILLED at the timeout still leaves the costs of everything it
+        # finished. That survivability is the whole reason this is not a separate
+        # instrument run beforehand.
         run: |
           z3 --version
           ./oathrs/target/release/oathrs prove --shard ${{ matrix.shard }}/32 \
             --hints fixtures/prove/outcomes.json \
+            --cost-out "cost-${{ matrix.shard }}.jsonl" \
             examples/*.oath apps/*/*.oath > "shard-${{ matrix.shard }}.txt"
           head -4 "shard-${{ matrix.shard }}.txt"
       - uses: actions/upload-artifact@v4
@@ -413,6 +438,15 @@ jobs:
           name: shard-${{ matrix.shard }}
           path: shard-${{ matrix.shard }}.txt
           if-no-files-found: error
+      # ALWAYS: a timed-out shard is the one whose costs are most wanted, and its
+      # partial emission is valid by construction (§7.5's flush rule). Uploading
+      # only on success would discard exactly the data this collection is for.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cost-${{ matrix.shard }}
+          path: cost-${{ matrix.shard }}.jsonl
+          if-no-files-found: warn
 
   rust-conformance-sharded-merge:
     name: independent kernel (Rust) — merge shards, verify union == S
