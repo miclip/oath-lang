@@ -2321,10 +2321,21 @@ unchanged; it is NOT a mismatch. This mirrors §7.2's run-stability carry-forwar
 Only a VALID verdict (proven or unproven) that DIFFERS from `S` is a mismatch.
 
 **The self-check IS the mode (normative once offered).** Sharded verification is a
-VERIFIER, not a recomputation taken on trust. The union of all shards' verdicts
-MUST be compared to `S` property by property, and the run MUST FAIL LOUDLY on any
+VERIFIER, not a recomputation taken on trust. The union of all shards' ATTEMPT
+RESULTS MUST be compared to `S` property by property, and the run MUST FAIL LOUDLY on any
 mismatch: a valid verdict differing from `S`, a PROPERTY ATTEMPTED by no shard,
 or a PROPERTY attempted by more than one.
+
+**AND THE MERGE MUST VERIFY THE ASSIGNMENT ITSELF, not only the coverage it
+produces.** For every attempt result an emission carries, the merge MUST
+recompute the property's shard from the rule above and FAIL if it does not equal
+the emitting shard's index. Without this the self-check has a blind spot exactly
+the size of the partition: two shards that swap their assignments wholesale
+produce a campaign in which every other stated failure condition is absent —
+each property attempted exactly once, every verdict agreeing with `S` — so a
+merge would PASS a run that violated "attempts each property ASSIGNED TO IT"
+throughout. Coverage establishes that the work was DONE; only recomputation
+establishes that it was done BY THE PARTITION THIS CAMPAIGN CLAIMS.
 
 **A property counts as ATTEMPTED by a shard exactly when that shard's emission
 carries an ATTEMPT RESULT for it** — either a valid verdict or an abort. The
@@ -2382,8 +2393,8 @@ bound granularity alone would accept a set of emissions drawn from both. A merge
 identity differs from its own BEFORE running the self-check: verdicts produced
 under different hints, a different solver, or a different budget are not one
 application of `F`, and their union verifies nothing. The merge MUST also require
-exactly one emission per shard index `0..n` — a missing, duplicate, or
-out-of-range shard is a loud failure, never a silent partial pass. A single
+exactly one emission per shard index `i` with `0 ≤ i < n` — a missing, duplicate,
+or out-of-range shard is a loud failure, never a silent partial pass. A single
 identity, recomputed by the merge, is what stops two runs from claiming the same
 verification from different contexts.
 

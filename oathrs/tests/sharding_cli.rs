@@ -472,3 +472,135 @@ fn a_duplicate_shard_index_fails_the_merge() {
     let _ = std::fs::remove_file(&corpus);
     let _ = std::fs::remove_file(&seed);
 }
+
+// ===========================================================================
+// SPEC §7.5 — the unit of assignment is a PROPERTY, end to end.
+//
+// The corpus above gives every definition exactly ONE property, which makes a
+// per-definition and a per-property partition indistinguishable from outside:
+// every test in this file would pass against either rule. These tests use a
+// corpus with a MULTI-PROPERTY definition, which is the only shape that can
+// tell them apart through the CLI.
+// ===========================================================================
+
+/// The same corpus with `quad` carrying TWO properties.
+const CORPUS_MULTIPROP: &str = r#"
+(defn twice [] [(n Int)] Int
+  (* 2 n)
+  (prop doubles [(n Int)] (== (twice n) (+ n n))))
+
+(defn quad [] [(n Int)] Int
+  (twice (twice n))
+  (prop unfolds [(n Int)] (== (quad n) (twice (twice n))))
+  (prop is-four-n [(n Int)] (== (quad n) (* 4 n))))
+"#;
+
+/// A seed marking `twice`'s single property and BOTH of `quad`'s proven.
+fn seed_json_multiprop(corpus: &std::path::Path) -> String {
+    let defs: Vec<String> = corpus_hashes(corpus)
+        .iter()
+        .map(|(name, hash)| {
+            let props = if name == "quad" {
+                "{\"name\":\"unfolds\",\"proven\":true},{\"name\":\"is-four-n\",\"proven\":true}"
+            } else {
+                "{\"name\":\"doubles\",\"proven\":true}"
+            };
+            format!("{{\"name\":\"{}\",\"hash\":\"{}\",\"props\":[{}]}}", name, hash, props)
+        })
+        .collect();
+    format!("{{\"definitions\":[{}]}}", defs.join(","))
+}
+
+/// The `(hash, prop)` pairs a shard emission carries, read off the verdict lines.
+fn emission_props(f: &std::path::PathBuf) -> Vec<(String, String)> {
+    std::fs::read_to_string(f)
+        .unwrap()
+        .lines()
+        .filter_map(|l| {
+            let mut it = l.split('\t');
+            let h = it.next()?;
+            if h.len() != 64 {
+                return None; // a `#` comment or a `shard`/`campaign` control line
+            }
+            Some((h.to_string(), it.next()?.to_string()))
+        })
+        .collect()
+}
+
+/// §7.5 end to end — a definition's properties SPREAD ACROSS SHARDS, the shard
+/// holding one attempts no other property of it, and the campaign still merges
+/// to a PASS. "A definition's properties therefore spread across shards. Nothing
+/// in the merge or the self-check depends on them staying together."
+///
+/// FAILS IF: assignment is per definition (no `n` ever splits `quad`, so the
+/// split assertion finds nothing), or the merge's coverage/partition conditions
+/// are read per definition (a split definition is then attempted by two shards
+/// and every correct run is reported as a double attempt).
+#[test]
+fn a_definitions_properties_split_across_shards_end_to_end() {
+    if !have_z3() {
+        eprintln!("skipping: z3 not on PATH");
+        return;
+    }
+    let corpus = tmp("corpus-multiprop.oath", CORPUS_MULTIPROP);
+    let seed = tmp("seed-multiprop.json", &seed_json_multiprop(&corpus));
+    let quad_hash = corpus_hashes(&corpus)
+        .into_iter()
+        .find(|(n, _)| n == "quad")
+        .expect("quad is in the corpus")
+        .1;
+
+    let mut saw_split = false;
+    let mut all_files = Vec::new();
+    for n in 2..=6u64 {
+        let files: Vec<_> = (0..n).map(|i| emit_shard(&seed, &corpus, i, n)).collect();
+
+        // Every property is attempted exactly once across the whole campaign.
+        let mut all: Vec<(String, String)> =
+            files.iter().flat_map(|f| emission_props(f)).collect();
+        let before = all.len();
+        all.sort();
+        all.dedup();
+        assert_eq!(before, all.len(), "n={}: no property is attempted twice", n);
+        assert_eq!(all.len(), 3, "n={}: twice/0, quad/0 and quad/1 are all attempted", n);
+
+        // Which emission holds each of quad's two properties?
+        let holder = |pi: &str| -> Option<u64> {
+            files.iter().position(|f| {
+                emission_props(f).iter().any(|(h, p)| *h == quad_hash && p == pi)
+            }).map(|ix| ix as u64)
+        };
+        let (h0, h1) = (holder("0").expect("quad/0 attempted"), holder("1").expect("quad/1 attempted"));
+        if h0 != h1 {
+            saw_split = true;
+            // The shard holding quad/0 attempts NO OTHER property of quad.
+            let held = emission_props(&files[h0 as usize]);
+            assert!(
+                !held.iter().any(|(h, p)| *h == quad_hash && p == "1"),
+                "n={}: the shard holding quad/0 must not attempt quad/1",
+                n
+            );
+        }
+
+        // And the campaign still verifies.
+        let merged = merge(&seed, &corpus, n, &files);
+        assert!(
+            merged.status.success(),
+            "n={}: a campaign with a split definition must still PASS: {}\n{}",
+            n,
+            String::from_utf8_lossy(&merged.stdout),
+            String::from_utf8_lossy(&merged.stderr)
+        );
+        all_files.extend(files);
+    }
+    assert!(
+        saw_split,
+        "some n must split quad's two properties across shards — otherwise assignment is not per property"
+    );
+
+    for f in &all_files {
+        let _ = std::fs::remove_file(f);
+    }
+    let _ = std::fs::remove_file(&corpus);
+    let _ = std::fs::remove_file(&seed);
+}
