@@ -400,19 +400,23 @@ jobs:
         # into a clean memout — and is NOT in the campaign identity, so shards
         # (capped) and the merge (uncapped, it never proves) stay in sync.
         #
-        # STEP timeout, well inside the JOB's 350. A job-level timeout CANCELS THE
-        # JOB — no later step runs, `if: always()` included — so a shard killed
-        # that way uploads NOTHING, and those are precisely the shards whose costs
-        # are wanted. A step timeout fails only the step and leaves the upload
-        # below reachable.
+        # STEP timeout, inside the JOB's 350. A job-level timeout CANCELS THE JOB —
+        # no later step runs, `if: always()` included — so a shard killed that way
+        # uploads NOTHING, and those are precisely the shards whose costs are
+        # wanted. A step timeout fails only the step and leaves the upload below
+        # reachable. The margin must also cover the PRECEDING steps, because the
+        # two clocks start at different moments: the job's at checkout, this one
+        # when the step begins.
         #
-        # THE MARGIN COVERS THE PRECEDING STEPS, NOT JUST THE UPLOAD. The two
-        # clocks start at different moments: the job's at checkout, this one when
-        # the step begins. A margin sized only for the upload is consumed by
-        # checkout, toolchain, the z3 download and a cold `cargo build --release`,
-        # after which the job deadline fires first and the emission is lost in
-        # exactly the case it was collected for. 50 minutes covers all of it.
-        timeout-minutes: 300
+        # 330, NOT 300, AND THE 30 MINUTES ARE MEASURED. The heaviest single
+        # property in the corpus is `gh-counts` prop 1 at 284 minutes of WALL time
+        # (#98) — and a property is indivisible, so 284 is the floor no shard count
+        # or assignment rule goes below. At 300 that left 16 minutes for setup,
+        # build and the three other properties sharing its shard, and run
+        # 33999840937 lost shard 81 by roughly a minute of overhead: 127 of 128
+        # passed. Observed setup+build is ~2 minutes, so 330 gives the floor ~46
+        # minutes of headroom while still leaving 20 for the upload.
+        timeout-minutes: 330
         env:
           OATHRS_Z3_WALL_CAP_MS: "3600000"
           OATHRS_Z3_MEMORY_MB: "6000"
