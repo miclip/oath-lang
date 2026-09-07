@@ -262,6 +262,78 @@ type smtCtx struct {
 	// observer, when set, receives per-attempt telemetry. Diagnostic only; see
 	// proveObserver below. nil on every normative path.
 	observer proveObserver
+
+	// solved memoizes the VALID outcomes of this goal's solver attempts, so the
+	// strategy sequence never spends the budget twice on one identical problem.
+	// SPEC §7.2 "Attempt reuse within one property" is the normative rule; it is
+	// a PERMISSION, so a kernel that reruns every duplicate is equally
+	// conformant, and this cache is an optimization rather than an obligation.
+	// Reset at the top of every proveOneInner call (`solved = nil` there), which
+	// is what makes "within one goal" a structural scope rather than a habit.
+	//
+	// THE KEY IS (SCRIPT BYTES, EFFECTIVE RLIMIT), NOT BYTES ALONE. §7.2 states
+	// the key as the TRIPLE (core script bytes, rlimit, solver version) and lets
+	// a kernel that cannot change solver within a sequence omit the third — which
+	// this one cannot: every attempt shells out to the same `z3` on PATH, so the
+	// version is constant for the sequence and a constant cannot distinguish two
+	// attempts. Hence a pair here, by that permission rather than by oversight. The reduced
+	// direct attempt and the full-budget fallback run byte-identical scripts
+	// (SPEC §7.2 puts the runner's budget outside the hashed script), and their
+	// whole point is that the second may answer where the first ran out. Keying
+	// on bytes would collapse them and silently delete the fallback. The other
+	// duplicates are a datatype's non-recursive constructor, which makes the
+	// lexicographic BASE subgoal byte-identical to the structural one, and an
+	// INDUCTIVE-ELIGIBLE goal with no admissible lemmas, which puts the
+	// lemma-free and direct attempts on identical bytes at the same 4M budget.
+	//
+	// WHY A VALID OUTCOME IS REUSABLE: z3 runs in a fresh subprocess per attempt
+	// with no state carried between them, so an outcome is a pure function of
+	// (script bytes, solver version, effective rlimit) — §7.2's own claim, and the
+	// one `conformance.sh`'s byte oracle already rests on. THE LEMMA STATE IS NOT
+	// A SEPARATE PARAMETER: admitted lemmas are emitted INTO the script as
+	// `(assert …)` lines, so a different lemma state is different bytes and
+	// therefore a different key. There is no way for the proof input to drift
+	// while the key stays put.
+	//
+	// ONLY VALID ATTEMPTS ARE CACHED (`invalid == false`). An environmental
+	// abort — wall cap, memout, an external cancel below budget, missing
+	// telemetry — is NOT an outcome (§7.2), so a duplicate must be RETRIED
+	// rather than served a remembered non-answer; caching it would let one
+	// unlucky machine moment suppress every later attempt at the same problem.
+	//
+	// SCOPED TO ONE GOAL AS A BOUND ON THE OPTIMIZATION, NOT AS A SOUNDNESS
+	// CONDITION — and the distinction matters, because a comment claiming the
+	// latter would send a future reader hunting for a lemma-state hazard that the
+	// paragraph above rules out. The same tuple stays valid across goals and
+	// across fixpoint rounds. What a process-wide cache would cost is
+	// ENGINEERING, not correctness: an unbounded map holding every script a run
+	// ever emitted, a lifecycle (when is it dropped? does `prove-worker`'s
+	// parallel scan share one?), and a reporting question, since `oath prove`'s
+	// telemetry and OATH_PROVE_SPLIT are written per goal. Those are worth
+	// answering separately, on evidence that the cross-goal duplicates exist and
+	// are expensive. This is the bounded version: it removes the duplicates the
+	// strategy sequence creates for ONE goal, which are the measured ones.
+	solved map[solveKey]string
+	// solveHits counts attempts served from `solved` — a test seam, and the only
+	// way to witness that a duplicate was suppressed rather than merely fast.
+	solveHits int
+	// lastSolveReused reports whether the MOST RECENT solve on this context was
+	// served from `solved` rather than run. It exists for the OATH_PROVE_SPLIT
+	// diagnostic, whose `consumed=` figure is read from a package-level cell that
+	// only the RUNNER publishes: a reused attempt publishes nothing, so without
+	// this the line would report the PREVIOUS attempt's consumption as though it
+	// were this one's — a measurement that was never taken, wearing a plausible
+	// number. Sound because a context proves one goal at a time and each SPLIT
+	// line is printed immediately after its own solve.
+	lastSolveReused bool
+}
+
+// solveKey identifies one solver attempt exactly: the bytes handed to z3 and
+// the EFFECTIVE rlimit spent on them (the strategy's nominal budget after
+// smtCtx.budget's clamp). Nothing else varies within one proveOneInner call.
+type solveKey struct {
+	script string
+	rlimit int64
 }
 
 // scriptAttempt is one script the strategy sequence can emit for a property.
@@ -274,8 +346,9 @@ type scriptAttempt struct {
 	text     string
 }
 
-// solve runs one script, or — under enumeration — records it and answers
-// `unsat` so the sequence keeps building every remaining script.
+// solve runs one script at `nominal` rlimit (clamped by this context's cap), or
+// — under enumeration — records it and answers `unsat` so the sequence keeps
+// building every remaining script.
 //
 // `unsat` is the correct enumeration answer at every site: within a strategy it
 // is what continues to the next constructor or subgoal, and the strategy's
@@ -283,19 +356,51 @@ type scriptAttempt struct {
 // into the strategies that follow. Answering `unknown` would stop each strategy
 // at its first constructor; answering `unsat` without bypassing the returns
 // would stop the walk at the first strategy.
-func (c *smtCtx) solve(strategy, detail, sc string, run func(string) (string, bool)) (string, bool) {
+//
+// IT TAKES THE NOMINAL BUDGET RATHER THAN A RUNNER, and that is what makes the
+// dedup key trustworthy rather than merely plausible. A caller that passed a
+// runner AND a key would be stating the budget twice, and the two statements
+// could drift — a strategy declaring 4M while running at 400M would silently
+// reuse a weaker attempt's answer. There is now exactly ONE expression for a
+// strategy's effective budget, and the key and the runner both read it.
+// It also makes smtCtx.budget's clamp unbypassable by construction: no strategy
+// can reach the solver without going through this line.
+func (c *smtCtx) solve(strategy, detail, sc string, nominal int64) (string, bool) {
+	rl := c.budget(nominal)
+	key := solveKey{script: sc, rlimit: rl}
+	if c.solved == nil {
+		c.solved = map[solveKey]string{}
+	}
 	if c.enumerate {
+		// Enumeration pins the scripts the prover CAN RUN, so it must suppress
+		// exactly what execution suppresses — otherwise attempts.txt would pin a
+		// script at a budget no run ever spends. Same key, same rule; recording
+		// the duplicate here would make the fixture claim an attempt that the
+		// cache means never happens.
+		if _, dup := c.solved[key]; dup {
+			c.solveHits++
+			return "unsat", false
+		}
+		c.solved[key] = "unsat"
 		c.attempts = append(c.attempts, scriptAttempt{strategy, detail, sc})
 		return "unsat", false
 	}
-	if c.observer == nil {
-		return run(sc)
+	c.lastSolveReused = false
+	if out, ok := c.solved[key]; ok {
+		// Only a VALID outcome is ever stored, so this IS the answer the solver
+		// would return — not an approximation of it. The observer is deliberately
+		// NOT notified: it reconciles its attempt count against z3Seq, and no
+		// subprocess ran, so notifying here would make a serial producer look
+		// like a concurrent one.
+		c.solveHits++
+		c.lastSolveReused = true
+		return out, false
 	}
 	// A HEURISTIC, AND SAID SO. lastZ3 is package-level, so telemetry read after
-	// run() is this attempt's only if nothing else published meanwhile. The delta
-	// catches the common interleavings and it is NOT a guarantee: z3Seq.Add and
-	// lastZ3.Store are separate operations, so a concurrent prover can leave the
-	// counter one higher than we started while the cell holds ANOTHER goal's
+	// the run is this attempt's only if nothing else published meanwhile. The
+	// delta catches the common interleavings and it is NOT a guarantee: z3Seq.Add
+	// and lastZ3.Store are separate operations, so a concurrent prover can leave
+	// the counter one higher than we started while the cell holds ANOTHER goal's
 	// telemetry — delta 1, accepted, wrong goal. Tightening it would mean a lock
 	// on the normative path, which a diagnostic may not buy.
 	//
@@ -305,10 +410,20 @@ func (c *smtCtx) solve(strategy, detail, sc string, run func(string) (string, bo
 	// cheap alarm for the case where that precondition has been broken, not the
 	// thing the correctness rests on. The producer asserts its own seriality.
 	before := z3Seq.Load()
-	out, capHit := run(sc)
-	t, _ := lastZ3.Load().(z3Telemetry)
-	c.observer.onAttempt(strategy, detail, sc, out, capHit, t, t.Seq-before)
-	return out, capHit
+	out, invalid := runZ3Budget(sc, rl)
+	// INVALID ATTEMPTS ARE NOT CACHED (SPEC §7.2: an environmental abort is not
+	// an outcome). A wall-cap hit, a memout, an external cancel below budget or
+	// missing telemetry all return invalid, and a later attempt at the same
+	// problem must be free to run for real — remembering the non-answer would let
+	// one unlucky machine moment suppress every duplicate after it.
+	if !invalid {
+		c.solved[key] = out
+	}
+	if c.observer != nil {
+		t, _ := lastZ3.Load().(z3Telemetry)
+		c.observer.onAttempt(strategy, detail, sc, out, invalid, t, t.Seq-before)
+	}
+	return out, invalid
 }
 
 // proveObserver watches the strategy sequence run. It is a DIAGNOSTIC seam: no
@@ -1240,12 +1355,13 @@ func (c *smtCtx) formulaWith(d *Def, h string, p *Prop, assign map[int]string) (
 // a racy value would be harmless — but keep it race-clean.
 var calibLastConsumed atomic.Int64
 
-// THERE IS DELIBERATELY NO UNCAPPED `runZ3` HELPER. Every solver attempt in the
-// strategy chain goes through a context, so removing the context-free runner is
-// what makes the cap below unbypassable BY CONSTRUCTION rather than by everyone
-// remembering to thread it. `c.runFull` is the full-budget runner; it is the
-// same thing with the clamp applied, and the clamp is inert (zero cap) on every
-// normative path.
+// THERE IS DELIBERATELY NO UNCAPPED `runZ3` HELPER, AND NO PER-STRATEGY RUNNER.
+// Every solver attempt in the strategy chain goes through `smtCtx.solve`, which
+// is the ONE place that turns a strategy's nominal budget into an effective one
+// and the ONE place that reaches the solver — so the cap below is unbypassable
+// BY CONSTRUCTION rather than by everyone remembering to thread it, and the
+// attempt cache cannot key on a budget different from the one actually spent.
+// The clamp is inert (zero cap) on every normative path.
 
 // budget clamps a strategy's nominal per-attempt budget to this context's cap.
 //
@@ -1261,9 +1377,17 @@ func (c *smtCtx) budget(nominal int64) int64 {
 	return nominal
 }
 
-// runFull is the default runner: the full per-goal budget, clamped by the cap.
-func (c *smtCtx) runFull(script string) (string, bool) {
-	return runZ3Budget(script, c.budget(effectiveRlimit()))
+// splitConsumed renders the OATH_PROVE_SPLIT `consumed=` field for the attempt
+// that just finished. A REUSED attempt (SPEC §7.2 attempt reuse) ran no solver
+// and therefore has no counter, so it reports `reused` rather than the last
+// figure some earlier attempt published — the distinction between "this attempt
+// spent N" and "N was the last number anyone measured", which are indis-
+// tinguishable once written as a bare integer.
+func (c *smtCtx) splitConsumed() string {
+	if c.lastSolveReused {
+		return "reused"
+	}
+	return strconv.FormatInt(calibLastConsumed.Load(), 10)
 }
 
 // effectiveRlimit is the full per-goal budget: the normative proveRlimit, or the
@@ -1585,6 +1709,19 @@ func forceAbortOnce(key string) bool {
 }
 
 func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propOutcome {
+	// PER-GOAL CACHE RESET. `solved` memoizes valid solver outcomes for THIS
+	// goal only (see smtCtx.solved). §7.2 scopes reuse to one EXECUTION of one
+	// property's strategy sequence, and this call is exactly that execution — a
+	// later fixpoint round re-enters here and starts cold, as the rule requires. Clearing it here — rather than relying on
+	// callers to hand over a fresh context — is what makes the BOUND structural:
+	// the map cannot outlive one goal however a caller reuses the context.
+	// This bounds a deliberate optimization; it is NOT protecting a soundness
+	// condition. Carrying an entry into a second goal would still return the
+	// right answer, because a changed lemma state is changed script bytes and so
+	// a different key. What the reset buys is a map that cannot grow without
+	// limit and a scope small enough to reason about.
+	c.solved = nil
+	c.solveHits = 0
 	pname := metaPropName(m, pi)
 	if fa := forceAbortProps(); fa != nil && fa[pname] {
 		return propOutcome{status: "invalidated", detail: "forced abort (OATH_PROVE_FORCE_ABORT)"}
@@ -1699,7 +1836,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 	// recorded outcome is the UNION: anything provable before is still proven
 	// by a later strategy, plus the goals the library was strangling.
 	if lf, lfCap := c.solve("lemma-free", "", buildScript(nil, nil, goal, !c.quantified, false, nil),
-		func(sc string) (string, bool) { return runZ3Budget(sc, c.budget(lemmaFreeRlimit())) }); !lfCap {
+		lemmaFreeRlimit()); !lfCap {
 		if os.Getenv("OATH_PROVE_SPLIT") != "" {
 			pname := storedPropName(m, pi)
 			v := "unknown"
@@ -1708,8 +1845,8 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 			} else if strings.HasPrefix(lf, "sat") {
 				v = "sat"
 			}
-			fmt.Fprintf(os.Stderr, "SPLIT\t%s.%s\tphase=lemma-free\tconsumed=%d\tverdict=%s\n",
-				m.Name, pname, calibLastConsumed.Load(), v)
+			fmt.Fprintf(os.Stderr, "SPLIT\t%s.%s\tphase=lemma-free\tconsumed=%s\tverdict=%s\n",
+				m.Name, pname, c.splitConsumed(), v)
 		}
 		if strings.HasPrefix(lf, "unsat") && !c.enumerate {
 			return propOutcome{status: "proven", method: "direct (lemma-free)"}
@@ -1760,10 +1897,9 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 	var out string
 	var capHit bool
 	if inductionEligible {
-		out, capHit = c.solve("direct", "", directScript,
-			func(sc string) (string, bool) { return runZ3Budget(sc, c.budget(directRlimit())) })
+		out, capHit = c.solve("direct", "", directScript, directRlimit())
 	} else {
-		out, capHit = c.solve("direct", "", directScript, c.runFull)
+		out, capHit = c.solve("direct", "", directScript, effectiveRlimit())
 	}
 	if os.Getenv("OATH_PROVE_SPLIT") != "" {
 		pname := storedPropName(m, pi)
@@ -1776,8 +1912,8 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 		case strings.HasPrefix(out, "sat"):
 			v = "sat"
 		}
-		fmt.Fprintf(os.Stderr, "SPLIT\t%s.%s\tphase=direct\thasDT=%v\twall=%s\tconsumed=%d\tverdict=%s\n",
-			m.Name, pname, hasDTBinder, time.Since(directStart), calibLastConsumed.Load(), v)
+		fmt.Fprintf(os.Stderr, "SPLIT\t%s.%s\tphase=direct\thasDT=%v\twall=%s\tconsumed=%s\tverdict=%s\n",
+			m.Name, pname, hasDTBinder, time.Since(directStart), c.splitConsumed(), v)
 	}
 	if capHit {
 		sawInvalid = true
@@ -1866,16 +2002,14 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 						fmt.Sprintf("binder %d ctor %d", i, ci),
 						buildScript(extraDecls, append(append([]string{}, inst...), extraAsserts...),
 							subgoal, false, false, omit),
-						func(sc string) (string, bool) {
-							return runZ3Budget(sc, c.budget(instantiatedRlimit()))
-						})
+						instantiatedRlimit())
 					if strings.HasPrefix(iout, "unsat") {
 						continue
 					}
 				}
 			}
 			out, capHit := c.solve("induction", fmt.Sprintf("binder %d ctor %d", i, ci),
-				script(extraDecls, extraAsserts, subgoal, false), c.runFull)
+				script(extraDecls, extraAsserts, subgoal, false), effectiveRlimit())
 			if capHit {
 				sawInvalid = true
 				allUnsat = false
@@ -1945,7 +2079,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 					}
 					out, capHit := c.solve("lexicographic",
 						fmt.Sprintf("binders %d,%d ctor %d base", i, j, ci),
-						script(declsI, nil, subgoal, false), c.runFull)
+						script(declsI, nil, subgoal, false), effectiveRlimit())
 					if capHit {
 						sawInvalid = true
 						allUnsat = false
@@ -2008,7 +2142,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 					}
 					out, capHit := c.solve("lexicographic",
 						fmt.Sprintf("binders %d,%d ctor %d,%d", i, j, ci, cj),
-						script(extraDecls, extraAsserts, subgoal, false), c.runFull)
+						script(extraDecls, extraAsserts, subgoal, false), effectiveRlimit())
 					if capHit {
 						sawInvalid = true
 						allUnsat = false
@@ -2123,8 +2257,7 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 				}
 				discharge := func(detail string, extraAsserts []string, negated string) (bool, bool) {
 					out, cap := c.solve("recursion-induction", detail,
-						script(nil, extraAsserts, negated, false),
-						func(sc string) (string, bool) { return runZ3Budget(sc, c.budget(directRlimit())) })
+						script(nil, extraAsserts, negated, false), directRlimit())
 					return strings.HasPrefix(out, "unsat"), cap
 				}
 				// BASE: the goal off the recursive region.
@@ -2221,8 +2354,15 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 	//
 	// Two conditions are NOT folded in, deliberately. An ENVIRONMENTALLY ABORTED
 	// first attempt (`capHit`) is retried, because a wall-cap abort is not a
-	// verdict and the second run may complete. And ENUMERATION still emits it, or
-	// `prove/attempts.txt` would lose a script it is supposed to pin.
+	// verdict and the second run may complete. And ENUMERATION reaches the seam
+	// rather than short-circuiting here, so the decision to record or suppress
+	// the fallback's bytes is made in ONE place — solve's key — instead of twice.
+	//
+	// THE ATTEMPT CACHE NOW SUBSUMES THIS SHORT-CIRCUIT ON THE EXECUTION PATH:
+	// clamped to one budget the two attempts share a key, so the second is served
+	// the first's answer and no budget is spent twice. The guard is kept because
+	// it says WHY that is correct at the point a reader meets the retry, and
+	// because it does not depend on the cache continuing to exist.
 	redundantFallback := !c.enumerate && !capHit &&
 		c.budget(directRlimit()) == c.budget(effectiveRlimit())
 	if inductionEligible && !redundantFallback {
@@ -2231,9 +2371,9 @@ func (c *smtCtx) proveOneInner(d *Def, h string, m *Meta, p *Prop, pi int) propO
 		// script hash; recording it makes that checkable rather than believed —
 		// TestFallbackReusesTheDirectScriptBytes reads the two attempts and
 		// compares them.
-		fb, fbCap := c.solve("direct-fallback", "", directScript, c.runFull)
+		fb, fbCap := c.solve("direct-fallback", "", directScript, effectiveRlimit())
 		if os.Getenv("OATH_PROVE_SPLIT") != "" {
-			fmt.Fprintf(os.Stderr, "SPLIT\t%s\tphase=direct-fallback\tconsumed=%d\n", m.Name, calibLastConsumed.Load())
+			fmt.Fprintf(os.Stderr, "SPLIT\t%s\tphase=direct-fallback\tconsumed=%s\n", m.Name, c.splitConsumed())
 		}
 		if fbCap {
 			sawInvalid = true

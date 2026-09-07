@@ -1338,6 +1338,76 @@ reproducibility (given the same solver):
     a soundness requirement, not a preference. Hints naming the definition under
     proof are in any case redundant — sibling lemmas are already admissible
     unconditionally — and authoring tools SHOULD refuse to record one.
+- **Attempt reuse within one property (normative, #98).** Several rules below
+  say a kernel MUST ATTEMPT a strategy or subgoal, and a strategy sequence can
+  build the SAME solver problem more than once for one property: a datatype's
+  non-recursive constructor makes the lexicographic BASE subgoal byte-identical
+  to the structural-induction one, and a goal with no admissible lemmas makes
+  the lemma-free attempt byte-identical to the direct attempt.
+  THE PERMISSION, AND ITS SCOPE. Fix one property and one execution of its
+  strategy sequence; call that execution THE SEQUENCE. Within the sequence, a
+  kernel MAY answer an attempt with an EARLIER VALID OUTCOME OF THAT SAME
+  SEQUENCE, if and only if the two attempts have the same KEY.
+  THE KEY IS THE TRIPLE (core script bytes, rlimit, solver version). The CORE
+  SCRIPT BYTES are the script as script stability below defines it — the emitted
+  script without the prepended runner options and without the appended telemetry
+  commands. The RLIMIT is the one this section assigns that attempt; this section
+  fixes every such value, so it is read off the strategy, never chosen. The
+  SOLVER VERSION is a component like the others, and a kernel that cannot change
+  solver within a sequence may omit it, because a constant cannot distinguish two
+  attempts; a kernel that could change solver MUST carry it.
+  Matching is PER SOLVER CALL, not per strategy: a multi-subgoal strategy matches
+  subgoal by subgoal. Such a reuse SATISFIES the `MUST attempt` requirement it
+  answers.
+  BOTH KEY COMPONENTS BIND: the reduced direct attempt and its full-budget
+  fallback are byte-identical and are NOT one another's reuse, because their
+  whole point is that the second may answer where the first ran out.
+  THE SEQUENCE IS THE UNIT, AND IT IS NARROWER THAN "THE PROPERTY". The two-level
+  fixpoint above may execute a property's strategy sequence again in a later
+  round; that is a DIFFERENT sequence. Nothing here licenses answering an attempt
+  of one sequence from an outcome of another — whether that other sequence
+  belongs to a later round or to a different property. THE LEMMA-GROWTH GATE
+  BELOW IS A SEPARATE PERMISSION WITH A DIFFERENT KEY, and this rule neither
+  grants nor limits it: that gate skips a whole GOAL on an unchanged lemma set,
+  where this rule answers ONE solver call on a matching key. A kernel may
+  implement either, both, or neither.
+  AN INVALID ATTEMPT (attempt validity, below) IS NOT AN OUTCOME. It MUST NOT be
+  reused, and it MUST NOT be recorded under its key, so a later attempt at that
+  key MUST run — otherwise one environmental abort would suppress every duplicate
+  after it. It also does NOT displace anything: if a key already holds a valid
+  outcome and a kernel nonetheless runs that key again and the run is invalid,
+  the earlier valid outcome STANDS and remains reusable. An invalid attempt adds
+  nothing and removes nothing. (Two DIFFERENT valid outcomes at one key cannot
+  arise — that is the purity this permission rests on — so a kernel needs no rule
+  for it and MUST NOT invent one that changes a verdict; failing loudly is a
+  legitimate response to the impossible.)
+  VALIDITY, NOT ACCEPTANCE, DECIDES WHAT MAY BE REUSED. Some strategies DISCARD
+  an outcome they are not allowed to act on — the lemma-free attempt below
+  accepts only `unsat` and discards everything else. Discarding governs what that
+  attempt may CONCLUDE; it does not make the outcome invalid, and a discarded
+  valid outcome is reusable at its key like any other. This changes nothing: a
+  later attempt at that key would have obtained the same answer by running.
+  A reuse makes no solver call, so it produces NO §7.5 cost record, in sharded
+  mode as anywhere else; §7.5's requirement that repeated attempts be
+  distinguishable is unaffected, since a reuse records nothing to collide with.
+  **REUSE IS OPTIONAL, AND BOTH CHOICES ARE CONFORMANT.** It is licensed because
+  the SOLVER's answer is a pure function of the key, so a reused outcome is the
+  one a rerun would have produced.
+  THAT DOES NOT MAKE THE TWO KERNELS' RECORDED STATE IDENTICAL, and the
+  difference is worth stating rather than leaving to be discovered. Every rerun is
+  a fresh exposure to attempt validity below: a duplicate the reusing kernel
+  answers from a valid outcome may, on the rerunning kernel, hit the wall cap or a
+  memout and be INVALID. So the rerunning kernel can report a property ABORTED
+  where the reusing kernel records a verdict. That is not a divergence between
+  them — it is the environmental boundary attempt validity already draws, which is
+  why a conformance re-derivation reports an aborted property as environmentally
+  inconclusive rather than as a mismatch. Reuse moves that boundary toward FEWER
+  environment-dependent records, and it never invents a verdict, since it only
+  replays an outcome the solver actually produced.
+  The key determines an outcome across sequences too, so WIDER REUSE WOULD BE
+  EQUALLY SOUND and is not declared wrong here; it is simply not what this rule
+  licenses, and a kernel wanting it needs a rule that says so rather than an
+  extension of this one.
 - **Lexicographic induction (normative).** When single-binder induction
   fails, kernels MUST attempt lexicographic induction on each ordered pair
   (i, j) of distinct datatype-sorted binders, in ascending (i, j) order,
@@ -1452,9 +1522,11 @@ reproducibility (given the same solver):
   wrong-transform control in the reference test suite returns `sat`, so the schema
   proves rather than fabricates.)
 - **Deterministic proof budget (normative).** The per-goal budget is z3's
-  resource limit — `(set-option :rlimit 400000000)` as the script's first
-  command — not wall-clock time: same script + same solver version + same
-  rlimit yields the same outcome on any machine. A wall-clock safety cap
+  resource limit — `(set-option :rlimit 400000000)`, PREPENDED BY THE RUNNER
+  ahead of the core script and therefore outside the hashed bytes (script
+  stability below), not part of the emitted script itself — not wall-clock time:
+  same script + same solver version + same rlimit yields the same outcome on any
+  machine. A wall-clock safety cap
   (600s) exists only to contain pathological environments; a kernel whose
   wall cap fires before rlimit exhausts on a goal MUST NOT record an
   outcome for that goal — recording "unknown" on a cap hit smuggles
@@ -1677,7 +1749,7 @@ reproducibility (given the same solver):
   lemma-free first attempt, each structural-induction constructor subgoal,
   each lexicographic subgoal, and each recursion-induction base and step
   obligation. `prove/scripts.txt` witnesses only the direct attempt — 569
-  of the 3628 scripts this corpus emits — so a kernel could reproduce it
+  of the 3215 scripts this corpus emits — so a kernel could reproduce it
   exactly while emitting different bytes for every inductive subgoal.
   Consequently the bytes of each such script are determined by the rules
   above for a given (goal, lemma state, strategy, subgoal) — a consequence
@@ -1730,25 +1802,21 @@ reproducibility (given the same solver):
   the LEMMA-STATE dimension open: they determine a goal's outcome given a
   lemma state, not the path by which the fixpoint reaches one. Empirical
   re-derivation remains the only check covering that path.
-- **Lexicographic induction (normative).** When single-binder induction
-  fails, kernels MUST attempt lexicographic induction on each ordered pair
-  (i, j) of distinct datatype-sorted binders, in ascending (i, j) order,
-  accepting the first pair whose subgoals all discharge. For each
-  constructor c of binder i's datatype: if c has no recursive fields, one
-  subgoal with i := c(fresh fields) and every other binder at its goal
-  constant, no hypotheses; otherwise, for each constructor c' of binder
-  j's datatype, one subgoal with i := c(fresh), j := c'(fresh), under
-  hypotheses (a) for each recursive field x of c: the property with
-  i := x and every other binder universally generalized, and (b) for each
-  recursive field y of c': the property with i pinned to the SAME
-  c(fresh) value, j := y, and remaining binders generalized. Sound by the
-  lexicographic subterm order. (The corpus witness is merge, whose
-  recursion shrinks either argument.)
 - Kernels MAY gate fixpoint re-attempts on lemma-set growth: a goal whose
   available lemma set has not changed since its last failed attempt need
   not be re-attempted — with a deterministic solver and fixed budget the
   outcome is identical, and the full-budget timeout burns on genuinely
   unprovable goals happen once instead of once per iteration (#24).
+  A FAILED ATTEMPT HERE MEANS A VALID ONE THAT DID NOT PROVE THE GOAL. An
+  INVALID attempt (attempt validity, above) produced no outcome, so an unchanged
+  lemma set has nothing to reproduce and the justification above does not reach
+  it. A kernel MAY still let one quiet the gate for the rest of the ITERATION it
+  occurred in — that costs nothing, since the iteration is over when the lemma
+  set stops growing — but it MUST NOT let an invalid attempt suppress the goal
+  PERMANENTLY: the goal MUST remain re-attemptable while the run continues.
+  Otherwise one environmental abort silences a goal for the whole run, which is
+  the harm the attempt-reuse rule forbids inside a sequence, arriving across
+  rounds instead.
 - Direct proof declares property binders as constants, translates the property,
   asserts its negation, and checks satisfiability. `unsat` proves it. `sat`
   refutes only when the formula is quantifier-free; otherwise `sat` is

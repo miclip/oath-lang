@@ -407,11 +407,22 @@ func TestBudgetClampsToTheContextCap(t *testing.T) {
 //
 // The claim is not "the cap is applied at the sites I know about". It is that
 // EVERY solver attempt the strategy chain can make derives its budget from
-// `c.budget`. A strategy added later that called `runZ3Budget(sc, directRlimit())`
-// would run at the full budget during adjudication and BREAK NO OUTPUT TEST: the
-// only symptom is a sweep that takes hours and reports verdicts the stated cap
-// says it could not have reached. That is a claim silently becoming false, which
-// is precisely what this repo keeps catching late.
+// `c.budget`. A strategy that reached the solver on its own would run at the
+// full budget during adjudication and BREAK NO OUTPUT TEST: the only symptom is
+// a sweep that takes hours and reports verdicts the stated cap says it could not
+// have reached. That is a claim silently becoming false, which is precisely what
+// this repo keeps catching late.
+//
+// THE CONTRACT IT PINS CHANGED WITH THE ATTEMPT CACHE, AND THE REPLACEMENT IS
+// STRICTLY TIGHTER. Strategies used to pass their own runner closure, so the
+// only checkable thing was that each closure named `c.budget`; a strategy could
+// still declare one budget and spend another because nothing compared them.
+// `smtCtx.solve` now takes a NOMINAL budget and is the sole solver call site, so
+// this pins three things instead of one: the seam clamps, the runner spends what
+// the clamp returned, and the DEDUP KEY records that same value. The third is
+// new and load-bearing — a key naming a different budget from the run would let
+// a reduced attempt's answer be served to a full-budget one, which is a wrong
+// verdict rather than a slow sweep.
 func TestEveryStrategyAttemptRoutesThroughTheCap(t *testing.T) {
 	fset := gotoken.NewFileSet()
 	file, err := parser.ParseFile(fset, "prove.go", nil, 0)
@@ -430,50 +441,30 @@ func TestEveryStrategyAttemptRoutesThroughTheCap(t *testing.T) {
 			"and would otherwise pass by inspecting nothing")
 	}
 
-	// usesCap reports whether an expression subtree calls c.budget(...).
-	usesCap := func(n ast.Node) bool {
-		found := false
-		ast.Inspect(n, func(x ast.Node) bool {
-			call, ok := x.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "budget" {
-				found = true
-			}
-			return true
-		})
-		return found
-	}
-
+	// PART 1 — the strategy chain reaches the solver ONLY through the seam.
+	// A direct runZ3Budget call would carry its own budget past the clamp.
 	var bypass []string
-	budgeted := 0
+	solves := 0
 	ast.Inspect(body, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
-		if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "runZ3Budget" {
-			if len(call.Args) < 2 || !usesCap(call.Args[1]) {
-				bypass = append(bypass, fmt.Sprintf("runZ3Budget with an uncapped budget at %s",
-					fset.Position(call.Pos())))
-			} else {
-				budgeted++
-			}
+		if id, ok := call.Fun.(*ast.Ident); ok &&
+			(id.Name == "runZ3" || id.Name == "runZ3Budget") {
+			bypass = append(bypass, fmt.Sprintf("%s at %s — it does not pass through c.budget",
+				id.Name, fset.Position(call.Pos())))
 		}
-		// A runner passed to c.solve as a bare identifier is a package-level
-		// function, which cannot see the context and therefore cannot honour the
-		// cap. Method values on the context (c.runFull) are checked separately
-		// below, at their definition.
-		// c.solve(strategy, detail, script, run) — the RUNNER is the last
-		// argument, and only it can reach the solver. Checking every argument
-		// instead flags the script and detail strings, which was this test's
-		// own first version and would have made it unsatisfiable.
-		if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "solve" && len(call.Args) == 4 {
-			if id, ok := call.Args[3].(*ast.Ident); ok {
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "solve" {
+			solves++
+			// The seam's budget argument is the 4th. A strategy that omitted it
+			// would not compile, so what is checked here is only that the shape
+			// this test reasons about is the shape in the file.
+			if len(call.Args) != 4 {
 				bypass = append(bypass, fmt.Sprintf(
-					"c.solve given package-level runner %q at %s — it cannot see the cap",
-					id.Name, fset.Position(call.Args[3].Pos())))
+					"c.solve with %d arguments at %s — this check reads the 4th as the "+
+						"nominal budget and can no longer locate it",
+					len(call.Args), fset.Position(call.Pos())))
 			}
 		}
 		return true
@@ -483,25 +474,110 @@ func TestEveryStrategyAttemptRoutesThroughTheCap(t *testing.T) {
 			"adjudication would silently run them at the FULL proof budget:\n  %s",
 			strings.Join(bypass, "\n  "))
 	}
-
-	// The context's own default runner must honour the cap too, or every
-	// `c.solve(..., c.runFull)` above is uncapped while looking capped.
-	runFull := fns["runFull"]
-	if runFull == nil {
-		t.Fatal("smtCtx.runFull not found — the default runner is the one every " +
-			"strategy without a custom budget uses; its absence voids this check")
-	}
-	if !usesCap(runFull.Body) {
-		t.Error("smtCtx.runFull does not route through smtCtx.budget, so every " +
-			"strategy on the default budget escapes the adjudication cap")
+	// THE CONTROL for part 1. All of the above passes trivially over zero call
+	// sites — a renamed seam, a mis-parse, a subject whose body moved. Requiring
+	// that solve calls were actually SEEN proves the walk reached real code.
+	if solves == 0 {
+		t.Error("found no c.solve call in proveOneInner — the walk is not seeing " +
+			"the strategy chain, so its silence is not evidence")
 	}
 
-	// THE CONTROL. All of the above passes trivially over zero call sites — a
-	// renamed runner, a mis-parse, a subject whose body moved. Requiring that
-	// capped attempts were actually SEEN proves the walk reached real code.
-	if budgeted == 0 {
-		t.Error("found no capped runZ3Budget call in proveOneInner — the walk is " +
-			"not seeing the strategy chain, so its silence is not evidence")
+	// PART 2 — the seam clamps, spends the clamped value, and KEYS ON IT.
+	solve := fns["solve"]
+	if solve == nil {
+		t.Fatal("smtCtx.solve not found — it is the only path from a strategy to " +
+			"the solver; its absence voids this check")
+	}
+	// The identifier assigned from c.budget(...). Everything below asks whether
+	// that same identifier reaches the runner and the cache key: naming one
+	// variable is what makes the three uses incapable of disagreeing.
+	clamped := ""
+	ast.Inspect(solve.Body, func(n ast.Node) bool {
+		as, ok := n.(*ast.AssignStmt)
+		if !ok || len(as.Lhs) != 1 || len(as.Rhs) != 1 {
+			return true
+		}
+		call, ok := as.Rhs[0].(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "budget" {
+			if id, ok := as.Lhs[0].(*ast.Ident); ok {
+				clamped = id.Name
+			}
+		}
+		return true
+	})
+	if clamped == "" {
+		t.Fatal("smtCtx.solve does not assign c.budget(...) to a variable, so every " +
+			"strategy escapes the adjudication cap and the dedup key cannot be " +
+			"shown to name the budget actually spent")
+	}
+
+	// The runner spends exactly the clamped value.
+	runs := 0
+	ast.Inspect(solve.Body, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		id, ok := call.Fun.(*ast.Ident)
+		if !ok || (id.Name != "runZ3" && id.Name != "runZ3Budget") {
+			return true
+		}
+		runs++
+		if len(call.Args) != 2 {
+			t.Errorf("%s in smtCtx.solve takes %d arguments; this check reads the "+
+				"2nd as the budget", id.Name, len(call.Args))
+			return true
+		}
+		arg, ok := call.Args[1].(*ast.Ident)
+		if !ok || arg.Name != clamped {
+			t.Errorf("smtCtx.solve runs the solver at an expression other than the "+
+				"clamped budget %q at %s — the cap is then advisory, and the dedup "+
+				"key describes a budget the run did not spend",
+				clamped, fset.Position(call.Args[1].Pos()))
+		}
+		return true
+	})
+	if runs != 1 {
+		t.Errorf("smtCtx.solve contains %d solver calls, want exactly 1 — the "+
+			"single-seam argument this test rests on is what makes the cap and the "+
+			"cache key exclusive", runs)
+	}
+
+	// The cache key records that same value. A key built from the NOMINAL budget
+	// would collapse the reduced direct attempt and the full-budget fallback into
+	// one entry, deleting the fallback silently.
+	keyed := false
+	ast.Inspect(solve.Body, func(n ast.Node) bool {
+		lit, ok := n.(*ast.CompositeLit)
+		if !ok {
+			return true
+		}
+		if id, ok := lit.Type.(*ast.Ident); !ok || id.Name != "solveKey" {
+			return true
+		}
+		for _, el := range lit.Elts {
+			kv, ok := el.(*ast.KeyValueExpr)
+			if !ok {
+				continue
+			}
+			k, ok := kv.Key.(*ast.Ident)
+			if !ok || k.Name != "rlimit" {
+				continue
+			}
+			if v, ok := kv.Value.(*ast.Ident); ok && v.Name == clamped {
+				keyed = true
+			}
+		}
+		return true
+	})
+	if !keyed {
+		t.Errorf("the solveKey built in smtCtx.solve does not take its rlimit from "+
+			"the clamped budget %q — two attempts at different budgets would share "+
+			"a cache entry, and the full-budget direct fallback would be served the "+
+			"reduced attempt's answer", clamped)
 	}
 }
 

@@ -12,7 +12,6 @@ abs-small	0	lemma-free		1989e9bccd5cc056fc6606847710ddfd34e42ca681a55aecb61955ac
 abs-small	0	direct		08b828986b61c26376ff54cc00db7c13b024b80eae00a78327c9bf7071b0b5d3
 abs-small	0	direct-fallback		08b828986b61c26376ff54cc00db7c13b024b80eae00a78327c9bf7071b0b5d3
 add-s	0	lemma-free		6026e8c6aa03b9479e416f324f21f897c48db3425ad6ba322e39968d1f93bec3
-add-s	0	direct		6026e8c6aa03b9479e416f324f21f897c48db3425ad6ba322e39968d1f93bec3
 add-s	0	induction	binder 0 ctor 0	df9b55037c48a6c2e6d190924d7a5f28750b331269bfb0232bc460af7e57c6de
 add-s	0	induction	binder 0 ctor 1	0aa3ca9a3604f6410ec8a85eefab77aa78e25d3bac207bd12828b7c003209d50
 add-s	0	induction	binder 0 ctor 2	b5c9435c8d4abeb263a8a8a787b618867c7704dcd05df73f23f4af17ee185d09
@@ -54,10 +53,8 @@ append	0	induction	binder 0 ctor 0	a27e5280dc13bdd63aff31be43c90716a8eddeea94bed
 append	0	induction	binder 0 ctor 1	16d41b5fa39f3699bf13afe64d8d15c31aa2f271d740efcc59baf40107021c44
 append	0	induction	binder 1 ctor 0	2a324d763db8b28f2cede034f99f16fe6c3a01c7f8d7ff7ee69cbc85d82d479a
 append	0	induction	binder 1 ctor 1	69d8accc70bc0af8e37c924b7aac1dc977a723c615e2e550ea5599a72bca8c69
-append	0	lexicographic	binders 0,1 ctor 0 base	a27e5280dc13bdd63aff31be43c90716a8eddeea94bedd8e955405cd8ec506f3
 append	0	lexicographic	binders 0,1 ctor 1,0	f2d2c746c1713db476db9ba781bf5417ef9c0bc61bc88161cd1dfe2afed564d9
 append	0	lexicographic	binders 0,1 ctor 1,1	603470f244989c5057457248bae90b0543183697ce83ce7196ab0e33addd2ae2
-append	0	lexicographic	binders 1,0 ctor 0 base	2a324d763db8b28f2cede034f99f16fe6c3a01c7f8d7ff7ee69cbc85d82d479a
 append	0	lexicographic	binders 1,0 ctor 1,0	9209c33ac828975b863e5ee292d38362c9d3ef08d555c404612a54d5ff40e036
 append	0	lexicographic	binders 1,0 ctor 1,1	42358b4c886a58bb7f7e20838bdd0d29a2c4d29eac81982f78008dfd8c103568
 append	0	direct-fallback		16e8b28a8111afd35e3a1c030cd2868b2d997fd0e57668f45dd814e2c151971a
@@ -74,27 +71,20 @@ append	2	induction	binder 1 ctor 0	1f493f96d2a1944643294d8593202d8fc18424fbafabf
 append	2	induction	binder 1 ctor 1	b04d083d4a033576fab4d005f06754d32c015b047b782279a3ab5094e748aff8
 append	2	induction	binder 2 ctor 0	2a31f8b24ccb2edae486bb1d40d540782de902b00f37d9841f0dedc8b217ca10
 append	2	induction	binder 2 ctor 1	6ef37a2a9f94357f757044821a9a2057a13a507e23c568ddf084b377fc8fedf8
-append	2	lexicographic	binders 0,1 ctor 0 base	f6f2bb2549ce890b6585916b91bb7a1356cfc4749a17282e35b71699fcfcc412
 append	2	lexicographic	binders 0,1 ctor 1,0	e8db2972962653a15b87fbfc557ec638e579574f90de2c588ba2fa76deadd601
 append	2	lexicographic	binders 0,1 ctor 1,1	48a4131c2fb21d41e6d34b4824a296e11e4e3349a189c09c3f15d9cbdbd35cd6
-append	2	lexicographic	binders 0,2 ctor 0 base	f6f2bb2549ce890b6585916b91bb7a1356cfc4749a17282e35b71699fcfcc412
 append	2	lexicographic	binders 0,2 ctor 1,0	776cf9af8a365a3fee46be36ca6483839be83b2c1353236d728937cade44f7c8
 append	2	lexicographic	binders 0,2 ctor 1,1	1ed2d8794b15c9e392a88afddfb856f635b2400543108558632a00ee5a58e24a
-append	2	lexicographic	binders 1,0 ctor 0 base	1f493f96d2a1944643294d8593202d8fc18424fbafabf95c59ead2e01d38da5a
 append	2	lexicographic	binders 1,0 ctor 1,0	20cc255b3e3f5b43289c7e147731927bcd90c76312d5cdc92532816289091357
 append	2	lexicographic	binders 1,0 ctor 1,1	60ac58a917cfcdaa4312fc5350c7832bbf6c84e85a25fa024157861c7db9e733
-append	2	lexicographic	binders 1,2 ctor 0 base	1f493f96d2a1944643294d8593202d8fc18424fbafabf95c59ead2e01d38da5a
 append	2	lexicographic	binders 1,2 ctor 1,0	20cdd40a300c7d0314d7ae2b42817926fa8833f0c25725147c115b21ab29623b
 append	2	lexicographic	binders 1,2 ctor 1,1	f3c1ab4feeb6373cb120e97043cf775008fd710ad9e732d72df6617c4095e6df
-append	2	lexicographic	binders 2,0 ctor 0 base	2a31f8b24ccb2edae486bb1d40d540782de902b00f37d9841f0dedc8b217ca10
 append	2	lexicographic	binders 2,0 ctor 1,0	9a977b7e786a2a704a9e7256e7511736cdbab91ef35aecf580836399ab66b50a
 append	2	lexicographic	binders 2,0 ctor 1,1	152d9e08e677227fd9590539814798d1ed6e9a4abbfb343a127ab28e72b30e99
-append	2	lexicographic	binders 2,1 ctor 0 base	2a31f8b24ccb2edae486bb1d40d540782de902b00f37d9841f0dedc8b217ca10
 append	2	lexicographic	binders 2,1 ctor 1,0	ea641c87d707fc7982044089f0330abca0867b95fa850c131c17efd02f65fbb6
 append	2	lexicographic	binders 2,1 ctor 1,1	1154f5c999da70cede001a7df75ae7def16278f10c4ebf571556828ee191050c
 append	2	direct-fallback		bd62165c51e7da75458fe222b96edb0fb20a046e39ac931bf6ab4e25ec39a574
 bad-reverse	0	lemma-free		ac64512fc06832621d9dde724aaeae4c69f20bde0c450825118199a15409f07b
-bad-reverse	0	direct		ac64512fc06832621d9dde724aaeae4c69f20bde0c450825118199a15409f07b
 bad-reverse	0	induction	binder 0 ctor 0	e9ffa23b7721d60a0f0437a9fb2f5c32dbf79a923d1f1e1bcd81f9150565c138
 bad-reverse	0	induction	binder 0 ctor 1	7c99f0cd5cbaf5db460a7c085fd948fe2b114366d0ab05085d790d452e381096
 bad-reverse	0	direct-fallback		ac64512fc06832621d9dde724aaeae4c69f20bde0c450825118199a15409f07b
@@ -104,10 +94,8 @@ bad-reverse	1	induction	binder 0 ctor 0	acfa208ca8b68a5f29f49e86a688059aa1ef886d
 bad-reverse	1	induction	binder 0 ctor 1	2471dbb874ee3bb8ff05cc846341aff7007d0fbda7db7154bdc0618a8a640239
 bad-reverse	1	induction	binder 1 ctor 0	0aefe70e6c253b5312e8897cfd6ecb4db82795f11630f87552e963e14d2b4214
 bad-reverse	1	induction	binder 1 ctor 1	dbbd2e1566ecaeb7bb6c6889a49583fb7d99e2b7bbe3eee6ae506942d36a2e7d
-bad-reverse	1	lexicographic	binders 0,1 ctor 0 base	acfa208ca8b68a5f29f49e86a688059aa1ef886de4ffc13c6a884affe2597f9a
 bad-reverse	1	lexicographic	binders 0,1 ctor 1,0	e2dc655fb9470210440a8bec8095e887bbb4e59d23329f06dbfdc481833dbaa4
 bad-reverse	1	lexicographic	binders 0,1 ctor 1,1	c52bb927aac2579a55050df9e632c266915b862ff62224796cef2a83a9b53166
-bad-reverse	1	lexicographic	binders 1,0 ctor 0 base	0aefe70e6c253b5312e8897cfd6ecb4db82795f11630f87552e963e14d2b4214
 bad-reverse	1	lexicographic	binders 1,0 ctor 1,0	f1c6c3fa0da7b386cd1471e76fd8a56b555a05cbdd69740a19109747eb4eb9d1
 bad-reverse	1	lexicographic	binders 1,0 ctor 1,1	4c9f33075654f0226f63bf9dd2b9f19087e114ca8c98da95d9ab4fcaaeb12dd7
 bad-reverse	1	direct-fallback		cf523f0174e34df463c388e8c6834c3f319199b32061cda18ad48856aef32e42
@@ -122,10 +110,8 @@ bytes-after	1	induction	binder 0 ctor 0	32c55869fa7d8b2a7eb3da75b242c0830f9b9a2a
 bytes-after	1	induction	binder 0 ctor 1	6ebd8c61cdad8323a6f78fda0441c12d4e17fc92fc8bf0ac9ad0d3816b63192a
 bytes-after	1	induction	binder 1 ctor 0	c7b9ed4961ab0c3278c0fed34a800264a21db900e02a20a889757be991e771f9
 bytes-after	1	induction	binder 1 ctor 1	b799f06395003dd6bdd30131fe33466da4f4e4e16a4d9d300e111adfa42792e5
-bytes-after	1	lexicographic	binders 0,1 ctor 0 base	32c55869fa7d8b2a7eb3da75b242c0830f9b9a2a56bc2a390fafb9b8b4570b6b
 bytes-after	1	lexicographic	binders 0,1 ctor 1,0	f4c815037366f5dc90812a53047d57735c65c38a98f66711bffc1f6afee67de5
 bytes-after	1	lexicographic	binders 0,1 ctor 1,1	9567fcba678c1620f14bfabcbbe38e36e49cf3881f889a7b93368e491664a837
-bytes-after	1	lexicographic	binders 1,0 ctor 0 base	c7b9ed4961ab0c3278c0fed34a800264a21db900e02a20a889757be991e771f9
 bytes-after	1	lexicographic	binders 1,0 ctor 1,0	c9a63e3590457f001cf42adfb8109886d69fc79c82978b53aeafdd5f7b17aa87
 bytes-after	1	lexicographic	binders 1,0 ctor 1,1	9136a9c733a5b6f574a46801d4eba586208cc450ce8090d061b180f4545a429d
 bytes-after	1	direct-fallback		140f307f7f280cb0225dd62114876348c095dc59f7d20928b4295675c0d04006
@@ -164,20 +150,16 @@ bytes-str	1	induction	binder 0 ctor 0	0c42bb4f492afb6b42bc7207e3595ff7fec41c96bd
 bytes-str	1	induction	binder 0 ctor 1	5852877c9953aeefcb57ad0315e40dee9f8aa8ca195a333d9c058db9436cef99
 bytes-str	1	direct-fallback		09e7607fa67081b332d4c978ee57bc2bdce1484840e56061381412fe232780c7
 caps-with	0	lemma-free		4995b8ce55790e00ae09145b34d0737a9a194f14620e0c014336f8f200556b0f
-caps-with	0	direct		4995b8ce55790e00ae09145b34d0737a9a194f14620e0c014336f8f200556b0f
 caps-with	0	induction	binder 1 ctor 0	59ea16a95c40dc6f07769b9f942526771c824e968f8d876fccd25daaf64afe91
 caps-with	0	induction	binder 1 ctor 1	cd0234f7984fce6b3968c675d84cb13d15b0844f4bbee4549b3a293d7b018283
 caps-with	0	direct-fallback		4995b8ce55790e00ae09145b34d0737a9a194f14620e0c014336f8f200556b0f
 caps-with	1	lemma-free		5bc4ed9eee704ca7507da133e995a63d5f356152ebf6788782def36a13b477ae
-caps-with	1	direct		5bc4ed9eee704ca7507da133e995a63d5f356152ebf6788782def36a13b477ae
 caps-with	1	induction	binder 1 ctor 0	2f274dbaf181061b6b38c0f22cf3db4495bd07b7e4710bfd257dec3572320551
 caps-with	1	induction	binder 1 ctor 1	f36e72be10cbfa5796a1bada4646e3ecca581603ca7b36604a50d49d60c79abe
 caps-with	1	induction	binder 2 ctor 0	c9a705069d03ac37b313d062f294f9e77f6a4e107575522402cdd5649394ae71
 caps-with	1	induction	binder 2 ctor 1	ea6a6e6d9a339ca8ef3cc8dfdc62d72703074daf4a9f61b10052967c55bb31ef
-caps-with	1	lexicographic	binders 1,2 ctor 0 base	2f274dbaf181061b6b38c0f22cf3db4495bd07b7e4710bfd257dec3572320551
 caps-with	1	lexicographic	binders 1,2 ctor 1,0	c58ef55ad3bd31d9b6bd7e665552707c5a4df59cf83224c99cbf66c8e2d57477
 caps-with	1	lexicographic	binders 1,2 ctor 1,1	917624e4cd2c3971efeb2d10e188df06d05af1ea18ed70c095ed3370fb7f743f
-caps-with	1	lexicographic	binders 2,1 ctor 0 base	c9a705069d03ac37b313d062f294f9e77f6a4e107575522402cdd5649394ae71
 caps-with	1	lexicographic	binders 2,1 ctor 1,0	3386672d09d3d0071e3eac592faea72d553578ad3cdcf959ecbf52f20a6b3d9d
 caps-with	1	lexicographic	binders 2,1 ctor 1,1	bd027a5758c56371df01a9ac7ce31f61017f8488540f474aac87fb1a97a7d40c
 caps-with	1	direct-fallback		5bc4ed9eee704ca7507da133e995a63d5f356152ebf6788782def36a13b477ae
@@ -191,7 +173,6 @@ check-config	1	induction	binder 0 ctor 0	182dde483a0c840d443cf08f007f8d492d11ef3
 check-config	1	induction	binder 1 ctor 0	26a1b2d7fe0a8c3aead04ce6e5ccccdd336bc40af1e8ea7ee9d20d1efea7a415
 check-config	1	induction	binder 1 ctor 1	39ba7ed7a812f0f5d1e2bbe0d1b9ec4b95f2363222ea5140520f3d934c04b45d
 check-config	1	lexicographic	binders 0,1 ctor 0 base	a69ec0356ba21b50f5817c2c9d0885158b91e58be59d05e3c3a73c78169c257e
-check-config	1	lexicographic	binders 1,0 ctor 0 base	26a1b2d7fe0a8c3aead04ce6e5ccccdd336bc40af1e8ea7ee9d20d1efea7a415
 check-config	1	lexicographic	binders 1,0 ctor 1,0	21635fb0200b24ff0f6b60aba901b64ff553d86fb4255c34a1f0e5e9cb99f8b1
 check-config	1	direct-fallback		350303235cb846df5becd01903ed2d8d7d888f081735011fe4c309595372523e
 circle	0	lemma-free		83ed40b139ed562a98600f0cc3662b8afcdd26c99f7b13d490ad56325d6f3e17
@@ -210,7 +191,6 @@ clamp	2	lemma-free		dcffd933f480bdb7f3d00742300a62ecaec51f7d0809ab718bd61f0111dc
 clamp	2	direct		62f85ac11dab81326d364ffcc74b3bb1485dd1476ce8b278d4b903179559f6be
 clamp	2	direct-fallback		62f85ac11dab81326d364ffcc74b3bb1485dd1476ce8b278d4b903179559f6be
 commute	0	lemma-free		939566c444807add464ed505f1411204e401f708ce504c77b695c6d00353dd55
-commute	0	direct		939566c444807add464ed505f1411204e401f708ce504c77b695c6d00353dd55
 commute	0	induction	binder 0 ctor 0	04a83a9ba9ca657a3da44a5cea86d8f858d9811d9b61d7e7a49aada7bb9020b7
 commute	0	induction	binder 0 ctor 1	f594ef65dda2020b3711b3025e13bf29598ebefa35a4585bff40e04c444f105a
 commute	0	induction	binder 0 ctor 2	89cdc5afc9a32da11c9b227ff9f63d820ec65c2778fb8d5d6934e73e2046c81e
@@ -226,10 +206,8 @@ config-has-key	1	induction	binder 0 ctor 0	ac96d23c1391fe470a09d5f05892e6e8d49d6
 config-has-key	1	induction	binder 0 ctor 1	9d552ff4f4a1d389bced20a8fd25a6a788d7e8938922f4c8400c2827fd9da218
 config-has-key	1	induction	binder 1 ctor 0	b7d5d3db94473de5d6fcc57493dc88e4d487b43e3edbe47204ede00f57b40b0c
 config-has-key	1	induction	binder 1 ctor 1	2f9dce4073448dc12f6e00004243156c3df0c34d8d6ca0d801d81145452fe402
-config-has-key	1	lexicographic	binders 0,1 ctor 0 base	ac96d23c1391fe470a09d5f05892e6e8d49d614b8773b32a5a3f36b4dd21d14b
 config-has-key	1	lexicographic	binders 0,1 ctor 1,0	71743b4b1ff7e984a6b7750c8272a32098b94f79af72603ed7c620abecefa3ae
 config-has-key	1	lexicographic	binders 0,1 ctor 1,1	1db509c4e9b9b0ac72eaed2a4bbcb68ba42da8ef7354569e094cd5b99fea6c54
-config-has-key	1	lexicographic	binders 1,0 ctor 0 base	b7d5d3db94473de5d6fcc57493dc88e4d487b43e3edbe47204ede00f57b40b0c
 config-has-key	1	lexicographic	binders 1,0 ctor 1,0	a1963c938895502bf97c255ce7e2659de6a284f3b3c3e269b177654b88435280
 config-has-key	1	lexicographic	binders 1,0 ctor 1,1	6b8027b7b5597cf1becd51403b42c9a97e18a8c6bd20bef5037613fd3c0f6b27
 config-has-key	1	direct-fallback		fc48b497f433673cdc079f816cdf93d3fe2d83da7049a3fe334f95595a9a3e8b
@@ -241,22 +219,16 @@ config-has-key	2	induction	binder 1 ctor 0	de228a6e3363d561a2093ad1f952ed62f2805
 config-has-key	2	induction	binder 1 ctor 1	6a792ade7919e03ab3c200483521ffd8f3f32c38253006bb524f917e7fc84044
 config-has-key	2	induction	binder 2 ctor 0	b2ad7b2028679161ef73f540ec998849906630c35755cb710be19fbfd5984f90
 config-has-key	2	induction	binder 2 ctor 1	3eedf35cd72353f9833fc4effdf8e0b54dc8eb37675fc8aadc8e111cd88ea537
-config-has-key	2	lexicographic	binders 0,1 ctor 0 base	0361804a56f1b021d17d00d0e7627052d6c78165cb6da185c6c9abb3b0f4a05c
 config-has-key	2	lexicographic	binders 0,1 ctor 1,0	30898d7476fb76e1fafcd45b86653dfd8d6f962b30846b90c9eaab8e669db408
 config-has-key	2	lexicographic	binders 0,1 ctor 1,1	0eb313ed7f266a8ed6a241dd09405a16a12541a17df6ad1d30246aa059ff03d9
-config-has-key	2	lexicographic	binders 0,2 ctor 0 base	0361804a56f1b021d17d00d0e7627052d6c78165cb6da185c6c9abb3b0f4a05c
 config-has-key	2	lexicographic	binders 0,2 ctor 1,0	a6dbdf732e1fe598cc9599f0faa36b7662eeb1a5307370233c213572a82d1889
 config-has-key	2	lexicographic	binders 0,2 ctor 1,1	3f16d51a171773a044bf7964402b3d0fec1f15806ae29ca43accac63ac278fe7
-config-has-key	2	lexicographic	binders 1,0 ctor 0 base	de228a6e3363d561a2093ad1f952ed62f280593943c08a7d97709b69ec8df814
 config-has-key	2	lexicographic	binders 1,0 ctor 1,0	da754bcb66d275c5f8649f45e8b04572dfa286a470bbce9a484b3fbe8728d6a0
 config-has-key	2	lexicographic	binders 1,0 ctor 1,1	97971132765c43f695bf7405b2e5d9834a7933fe58c6fabc0f5f846c03f9beef
-config-has-key	2	lexicographic	binders 1,2 ctor 0 base	de228a6e3363d561a2093ad1f952ed62f280593943c08a7d97709b69ec8df814
 config-has-key	2	lexicographic	binders 1,2 ctor 1,0	577b9217aae0708c4725ff8de3d946a3ad279503042ad273d3bb25b0f9aaf43b
 config-has-key	2	lexicographic	binders 1,2 ctor 1,1	74e8ea9b5f962f23859655319b833513b2c3f61e3ba376b980a805850a3b267c
-config-has-key	2	lexicographic	binders 2,0 ctor 0 base	b2ad7b2028679161ef73f540ec998849906630c35755cb710be19fbfd5984f90
 config-has-key	2	lexicographic	binders 2,0 ctor 1,0	f5bad1983c18044b70ad88686def502fa9cc77d79949c3547bafc43cd155f079
 config-has-key	2	lexicographic	binders 2,0 ctor 1,1	30dbd03f9d9fc821d42318970f43ee3dc48a5daf6d6a7b20d36d9a4548290be1
-config-has-key	2	lexicographic	binders 2,1 ctor 0 base	b2ad7b2028679161ef73f540ec998849906630c35755cb710be19fbfd5984f90
 config-has-key	2	lexicographic	binders 2,1 ctor 1,0	d60c4ae6e924e3937198276edf129da67b0ff987ad070e52304fa33d1eb6c12f
 config-has-key	2	lexicographic	binders 2,1 ctor 1,1	f8171a269e29131f76d2d4d727398279f1e5b1f219677057b1651fc06ee96a67
 config-has-key	2	direct-fallback		f57dfd53f6795d9f480cff3ff0aba3c4caa3872a6d0a96f10dd6a8a7af5aaae1
@@ -279,22 +251,16 @@ config-missing	1	induction	binder 1 ctor 0	807a86824bd9308673993454bcac3810c2337
 config-missing	1	induction	binder 1 ctor 1	2827f8837818cbfaa473047661c19a27b86af20bc2fd1be422ef69cf5ff5366b
 config-missing	1	induction	binder 2 ctor 0	21d417c6e8ca31562a7107877bb5223625e26ce3db823f6dd337587ac0db1dd9
 config-missing	1	induction	binder 2 ctor 1	d889b4eb515c50f976c149d9b03f8e3da1d358c0bd4cff0b2e5423c6eac78e9e
-config-missing	1	lexicographic	binders 0,1 ctor 0 base	a752f340b98d1cb0349d1e1acca97d40f8ba857bdd42d3140a436a26a3dcf7d6
 config-missing	1	lexicographic	binders 0,1 ctor 1,0	50557532209f9f0b809e75d1917694c271291aed72f446c319d11259efdd8fe7
 config-missing	1	lexicographic	binders 0,1 ctor 1,1	ebbd2833901170d0f12834d0ec092e7e990a2b18f79fa0edf7ac17d7d44ed4c7
-config-missing	1	lexicographic	binders 0,2 ctor 0 base	a752f340b98d1cb0349d1e1acca97d40f8ba857bdd42d3140a436a26a3dcf7d6
 config-missing	1	lexicographic	binders 0,2 ctor 1,0	f5e4de8a757613afcd1db9ab6a50b2cfd169fb7c929d7a73c47c0945e97fa265
 config-missing	1	lexicographic	binders 0,2 ctor 1,1	842d0e16f69db8f6fee2ed0b0d06a989bc0f939358435efaa799ae0ac283503e
-config-missing	1	lexicographic	binders 1,0 ctor 0 base	807a86824bd9308673993454bcac3810c2337c98b2aba25fc2226e7691a55d84
 config-missing	1	lexicographic	binders 1,0 ctor 1,0	0b1ae808c83aa92c587616bfbab4bf0e27f08e1789903919a66c9b250f7d751d
 config-missing	1	lexicographic	binders 1,0 ctor 1,1	541d186bed3c6c012674747378c14a85f13794c65a97a50e071d3403c9b73fd6
-config-missing	1	lexicographic	binders 1,2 ctor 0 base	807a86824bd9308673993454bcac3810c2337c98b2aba25fc2226e7691a55d84
 config-missing	1	lexicographic	binders 1,2 ctor 1,0	e17c4f55f4496de76b6d9eb1c6b5934b288a0782597f1a3d1d032b42ac4d0403
 config-missing	1	lexicographic	binders 1,2 ctor 1,1	7d41f13c9b6c46646774aaadd8c224c87bb2bc0d60cf80f775b27b3dfc1aa524
-config-missing	1	lexicographic	binders 2,0 ctor 0 base	21d417c6e8ca31562a7107877bb5223625e26ce3db823f6dd337587ac0db1dd9
 config-missing	1	lexicographic	binders 2,0 ctor 1,0	dc037d5fa61ff5bb4525f7f1f83ed40c9ed99b87b2866ccfd0448272604fd45a
 config-missing	1	lexicographic	binders 2,0 ctor 1,1	7c03367059e23d2c749bf3911faabd1b226f6a25a8f87a6f3316bdcbadac28f1
-config-missing	1	lexicographic	binders 2,1 ctor 0 base	21d417c6e8ca31562a7107877bb5223625e26ce3db823f6dd337587ac0db1dd9
 config-missing	1	lexicographic	binders 2,1 ctor 1,0	4e245c533363a2c37c12be4dcbfb45b6991887ee932877b39a44e1e664e8c365
 config-missing	1	lexicographic	binders 2,1 ctor 1,1	5a8a133bf871ccbb3057281ad95f58b602263ad99a706cf0470e8a66e3f7189a
 config-missing	1	direct-fallback		a0f66831ca91bd6629f6fd9936c190d95654964a1e6ccf980f003b83bf8a26c7
@@ -304,10 +270,8 @@ config-missing	2	induction	binder 0 ctor 0	9412538db877c99754cf2e63701d9772e079a
 config-missing	2	induction	binder 0 ctor 1	40ddb13fee4f567cd145877f84e26fa43a49b48fd34414724efef17c60322295
 config-missing	2	induction	binder 1 ctor 0	a620243f01c691dd93456c9c30fea3866c5ddb8ebf04cfaa2fa683f6895193af
 config-missing	2	induction	binder 1 ctor 1	afb5cd029674153425258e950a160fabbbbdb0369ca209026362f789de795c5a
-config-missing	2	lexicographic	binders 0,1 ctor 0 base	9412538db877c99754cf2e63701d9772e079a679472c18e6e33a30425e466c61
 config-missing	2	lexicographic	binders 0,1 ctor 1,0	8029727c4820fb824e0985a628acd013bac1e5c2c5af72fb013c372ebf50c9cd
 config-missing	2	lexicographic	binders 0,1 ctor 1,1	13d4167f2104cd0551477e0aace4930b2c4080e9118d03620b78a54859f0e381
-config-missing	2	lexicographic	binders 1,0 ctor 0 base	a620243f01c691dd93456c9c30fea3866c5ddb8ebf04cfaa2fa683f6895193af
 config-missing	2	lexicographic	binders 1,0 ctor 1,0	70f22c3ec5e5d6e420b518b68de301041504a9fb4952b1ce90d459292aae3af2
 config-missing	2	lexicographic	binders 1,0 ctor 1,1	fa59607002c53e3c13eab5279cfdcee87aa4ff4e9e1704bd0eb6ae830e45abc4
 config-missing	2	direct-fallback		b93bf430ae2ebe428c37e53e33a100842df5b43a8818e82416ba3ad593234dad
@@ -340,10 +304,8 @@ count-append	0	induction	binder 1 ctor 0	fcb4c5894091d153b786c5cae38f147fe5b0373
 count-append	0	induction	binder 1 ctor 1	0e718157bf26ee24c2b1d5fb8fa6d5b36fb47aab886681a3daada007c0423ad2
 count-append	0	induction	binder 2 ctor 0	770dd45993fc272593dfd47e96341a8a3a3fd4792acdcedf3093c3b4b20cafa7
 count-append	0	induction	binder 2 ctor 1	d321cc635ed2eea9c3f0906b896c5ed3bae7457e6231d1b5e261f0b8a70412e3
-count-append	0	lexicographic	binders 1,2 ctor 0 base	fcb4c5894091d153b786c5cae38f147fe5b037385ccd86f0f834a6bc8aaa4c38
 count-append	0	lexicographic	binders 1,2 ctor 1,0	41af4d28eeb1bc59dd3415300d1fef6e29a9cac5546e3af78915c21838fb63c7
 count-append	0	lexicographic	binders 1,2 ctor 1,1	dd34a35d758d89bd424dc45ab4c9411965f856fc4daad9911bb710c7f5bee3ac
-count-append	0	lexicographic	binders 2,1 ctor 0 base	770dd45993fc272593dfd47e96341a8a3a3fd4792acdcedf3093c3b4b20cafa7
 count-append	0	lexicographic	binders 2,1 ctor 1,0	2c92e9aabe081386e8fae4743f453639a2eafdc46eb4891ced789b9fbd9ee844
 count-append	0	lexicographic	binders 2,1 ctor 1,1	c506ef746c17e7bd0e7d826929c84bbc8af925b72ab57fe590a23f8ed9614c95
 count-append	0	direct-fallback		60b9447501d4a271c293352b46c4cd87bace8d350787e51d87e570b7528c17cd
@@ -353,7 +315,6 @@ count-by	0	induction	binder 0 ctor 0	d1d8d34b6c8801c3fbd0cc351d2fd4371f65830b22a
 count-by	0	induction	binder 2 ctor 0	2989de5fdb8b4036970b6dd56cff0ee68ba7f1e3cc81c33318b876da6d40e495
 count-by	0	induction	binder 2 ctor 1	decb354d1f19e54bc4417927c044146ea278bfe80ee1d3d54c1ad9d775f2abcf
 count-by	0	lexicographic	binders 0,2 ctor 0 base	7089c9ae09027083185cf0ffc2cb7c0c7777973e0d7961d8559d67155738ee9f
-count-by	0	lexicographic	binders 2,0 ctor 0 base	2989de5fdb8b4036970b6dd56cff0ee68ba7f1e3cc81c33318b876da6d40e495
 count-by	0	lexicographic	binders 2,0 ctor 1,0	ffdd97969abb2802f69ad15acab004e15afdb5663bca0422f30c2089fec1302c
 count-by	0	direct-fallback		b85e9802188aa4576ec3b4fdb6e16b6f9a4e99c4fbb71a2a526b9d6f414f9831
 count-by	1	lemma-free		0df21b78a4062a89edc7d537d9e26f689eef7d63241a127cc89ba1fdfbe479bb
@@ -362,7 +323,6 @@ count-by	1	induction	binder 0 ctor 0	4e05faa41e47bb198e47f59f23306e917b35f4cbfc6
 count-by	1	induction	binder 2 ctor 0	9e594822c46a69def9dafbb41a7deca878e0aba0f053b1d6fed7258bf182fc14
 count-by	1	induction	binder 2 ctor 1	e8014cf70259fac2eb25b591468462c4e2d505bdfc75498f57dbe486853ea950
 count-by	1	lexicographic	binders 0,2 ctor 0 base	b525da460d8ccc7a2e59d91728b9db1cf403ca912e9ef28d7e6de0adf9e87150
-count-by	1	lexicographic	binders 2,0 ctor 0 base	9e594822c46a69def9dafbb41a7deca878e0aba0f053b1d6fed7258bf182fc14
 count-by	1	lexicographic	binders 2,0 ctor 1,0	272d7a53adb56d5b3c237eb5e43c900fd5ee03758997231293bee916911b713c
 count-by	1	direct-fallback		d8a31229dc17d01acb736c9878d605bb454555b9f3d11a1d10a37681b491346b
 count-by	2	lemma-free		a399096932c98f0479d3ed2f514b95b49abb64770ed0a967c13795956f5f7a5d
@@ -371,7 +331,6 @@ count-by	2	induction	binder 0 ctor 0	14c9a170b9a183b8ac4657fd72b7f63f49b99562d42
 count-by	2	induction	binder 3 ctor 0	cc6c6e371d0ad473ed4c440d4993329603c486975d5691a7ec381d992de99731
 count-by	2	induction	binder 3 ctor 1	3be061a9781ace3bd48c022ee870a205fcb33a3fa6d3461ee9cb8fdc67279bca
 count-by	2	lexicographic	binders 0,3 ctor 0 base	f35485b5e04085f55d93b04bd60d827dd2fcaac575bfd40f5f547720d333811b
-count-by	2	lexicographic	binders 3,0 ctor 0 base	cc6c6e371d0ad473ed4c440d4993329603c486975d5691a7ec381d992de99731
 count-by	2	lexicographic	binders 3,0 ctor 1,0	f0e3f51c72b6e423dc0dff830e2ee809a378f5df551a5704fe7a1973ba72a2c2
 count-by	2	direct-fallback		f91676f33c13d66466dbc381e6a59d8ed12da73baba2a57876221666e80bc9f2
 count-matching	0	lemma-free		c2f825b6e77b5d22d894f0b750b8e5bb101cf9fb6983f2d90db1989f52a081cc
@@ -451,10 +410,8 @@ echo-handler	2	direct		eb5a99c780c21ebff55c465f4b8a13a70c6ca5bdda40fb5e2f73e8fa2
 echo-handler	2	induction	binder 0 ctor 0	eaf494cd8e62626dd5e378f5726ba2e7514886733bceab569346a0e992046bc8
 echo-handler	2	direct-fallback		eb5a99c780c21ebff55c465f4b8a13a70c6ca5bdda40fb5e2f73e8fa2a081a0a
 embed-add	0	lemma-free		c926cccc1f01184b1fe16815193beb7073d2e084c24316cd36b575f2433c6f71
-embed-add	0	direct		c926cccc1f01184b1fe16815193beb7073d2e084c24316cd36b575f2433c6f71
 embed-add	0	direct-fallback		c926cccc1f01184b1fe16815193beb7073d2e084c24316cd36b575f2433c6f71
 excluded-witness	0	lemma-free		1bec72d2a390455ae7327b3906f225d18f5006ac335a6946fa2cd5674b7c7873
-excluded-witness	0	direct		1bec72d2a390455ae7327b3906f225d18f5006ac335a6946fa2cd5674b7c7873
 excluded-witness	0	direct-fallback		1bec72d2a390455ae7327b3906f225d18f5006ac335a6946fa2cd5674b7c7873
 f-double	0	lemma-free		0d4409d7f7c2930f4eeaad24603c0d9c75ca7d1df6a056968cf4699ba1599b07
 f-double	0	direct		0d4409d7f7c2930f4eeaad24603c0d9c75ca7d1df6a056968cf4699ba1599b07
@@ -493,7 +450,6 @@ find	1	induction	binder 2 ctor 0	895bc0d375b69f836cecdad7d16c3a155e8a12ccf0d9961
 find	1	induction	binder 2 ctor 1	3738a94aa735fc9b62c7325db669cdf856bed972bdc8ab3cd698f0fa617a34cd
 find	1	direct-fallback		5f74f0ccae1a3c674bf851a6047fe34c9229c020129d687a67c8aa05a0c3084f
 first-or	0	lemma-free		bba3b0147007713dae02d7ac10c36eb754cda266ae1b2df9feab730ecbd5e46e
-first-or	0	direct		bba3b0147007713dae02d7ac10c36eb754cda266ae1b2df9feab730ecbd5e46e
 first-or	0	induction	binder 0 ctor 0	c0b76263deabc043fd05d09b4867a956751820dea72724daf5b93db4c1a9b105
 first-or	0	induction	binder 0 ctor 1	293b12d194d5a91b7326c1951156ca8f51ca91ee9fe7c498fb70d4bf59826d7a
 first-or	0	direct-fallback		bba3b0147007713dae02d7ac10c36eb754cda266ae1b2df9feab730ecbd5e46e
@@ -510,10 +466,8 @@ flatten	1	induction	binder 0 ctor 0	a9a76a3a2c03e28d08a0309c2e7b1a10d777b8193b99
 flatten	1	induction	binder 0 ctor 1	5787c94f6d2515c089d134f08eac657ea5ba3ae5ef157d6433c3ff5d118355fa
 flatten	1	induction	binder 1 ctor 0	a81b2bc7f54463cc835181e8feab452dba8a8c83a9e8f9a3b05dcaad1e225382
 flatten	1	induction	binder 1 ctor 1	96a247f56dcfd0ebbd3f1a3438d4d30d7d81b356a2f3c4df5810b12c5b3ec943
-flatten	1	lexicographic	binders 0,1 ctor 0 base	a9a76a3a2c03e28d08a0309c2e7b1a10d777b8193b99c627f13255c671c654dc
 flatten	1	lexicographic	binders 0,1 ctor 1,0	039f68585829818d4d257566a7674848181d9ae10a2a835a4405fc65c5be2b26
 flatten	1	lexicographic	binders 0,1 ctor 1,1	433631f853e32d79a58a26c5521d0e0b047200cbb2ab788d366106d89b185e7e
-flatten	1	lexicographic	binders 1,0 ctor 0 base	a81b2bc7f54463cc835181e8feab452dba8a8c83a9e8f9a3b05dcaad1e225382
 flatten	1	lexicographic	binders 1,0 ctor 1,0	441ad5676f99cb8abe70f966f79ef90757ae679847c3bda6052d69eb8c657bc6
 flatten	1	lexicographic	binders 1,0 ctor 1,1	727a100e5e7d50d035e8224969d609dc40d73a15d5bb69a72fce9568941c8ca4
 flatten	1	direct-fallback		92e0ad206f10b6124e1398544f7f1f58741425b2f7de3bbf19b9ef082b0c552c
@@ -523,10 +477,8 @@ flatten	2	induction	binder 0 ctor 0	6d36112b13cfa54416309f60b4daa563f8337090808a
 flatten	2	induction	binder 0 ctor 1	9d1633823948b074597fdaa7a6034e60aedccb297534f9a7e77c8c395aa28d9d
 flatten	2	induction	binder 1 ctor 0	472411eb08b91f15d7cc2388e12be8a4c82974d3000801143c55ff14e99a534e
 flatten	2	induction	binder 1 ctor 1	aeea872df793d615934d78a0e95a4973eda3bf5256497cd92b9b3f0911b0d84f
-flatten	2	lexicographic	binders 0,1 ctor 0 base	6d36112b13cfa54416309f60b4daa563f8337090808a07b2e14ca6852ae5345a
 flatten	2	lexicographic	binders 0,1 ctor 1,0	04fd530f288ec0d31a34c6088c4909b32f74718f68eeff1e44f6eefd5ab94508
 flatten	2	lexicographic	binders 0,1 ctor 1,1	d0faddb1e2ab3d7990569a6354f04a2ac9702321c24832d0cf8729c52d8c066a
-flatten	2	lexicographic	binders 1,0 ctor 0 base	472411eb08b91f15d7cc2388e12be8a4c82974d3000801143c55ff14e99a534e
 flatten	2	lexicographic	binders 1,0 ctor 1,0	af5741becdb1ee59d70061367edc9149283c1ad8b8c53d6eb86504c3a8b75ae7
 flatten	2	lexicographic	binders 1,0 ctor 1,1	b2f19a69cacc264ecf65f7618985588382b6d7cd80f82e420d17ddc2cc057423
 flatten	2	direct-fallback		73dfb0178a387e0e218a21202dfd8e4f5ed67724f2df720c8afd4ff92b2eda6f
@@ -562,15 +514,12 @@ full-name	1	induction	binder 0 ctor 0	de8193e8d7a98dfa0d2a50d85c7250ffdcc2217718
 full-name	1	induction	binder 0 ctor 1	6916c1ba60301dbf30c11079a2742b376f69f4ac0cd22e5934da55eb61ec29b5
 full-name	1	induction	binder 1 ctor 0	5aed5013e8477e40c7c0c61d090acb581ccf40e6b9e2a92638af3cc24c9099d6
 full-name	1	induction	binder 1 ctor 1	7dc3d45c409c78a3f9f0fd6d4faf536a1fcbd7c6256d0f9556f971d9a05763d6
-full-name	1	lexicographic	binders 0,1 ctor 0 base	de8193e8d7a98dfa0d2a50d85c7250ffdcc2217718c2c232ae74399102a6c46a
 full-name	1	lexicographic	binders 0,1 ctor 1,0	50600b23c4cd6f1d7bcf699d8efeadee00783fb45c9520f9a6289651e5efee35
 full-name	1	lexicographic	binders 0,1 ctor 1,1	e301728a6a3c9ff30da20f55401fe655f1185de062051854c1c7a6392cbc29e4
-full-name	1	lexicographic	binders 1,0 ctor 0 base	5aed5013e8477e40c7c0c61d090acb581ccf40e6b9e2a92638af3cc24c9099d6
 full-name	1	lexicographic	binders 1,0 ctor 1,0	9db1e5b8f046075d07350f20a3c93126d4ba5cc398f9b173632dc80dc4bab58a
 full-name	1	lexicographic	binders 1,0 ctor 1,1	5af68af1e819805ae74f8ed9db5fb545d8331370cd1d8cad77d190f55e9caea6
 full-name	1	direct-fallback		184c87b9a17b5935c29128aab56465012ffdccaa60bfa8df2eb332a83ad0b894
 gh-count-of	0	lemma-free		1411ef6db37d9fc52b6e6ac30164588c9011cc465f97c1a4f9cc5e786ba3072d
-gh-count-of	0	direct		1411ef6db37d9fc52b6e6ac30164588c9011cc465f97c1a4f9cc5e786ba3072d
 gh-count-of	0	induction	binder 0 ctor 0	03e3e6323613f5aa24c807a11155f2a794dcf986e81d377217e6a6621c666686
 gh-count-of	0	induction	binder 0 ctor 1	15231fbf45927b313e7af63c05e33aa3d41bcd8660a299061479dd4de6171bed
 gh-count-of	0	direct-fallback		1411ef6db37d9fc52b6e6ac30164588c9011cc465f97c1a4f9cc5e786ba3072d
@@ -586,15 +535,10 @@ gh-counts	1	induction	binder 1 ctor 1	7876b6e2e3350370ddfd39ed1ae9b6214543080c9d
 gh-counts	1	induction	binder 2 ctor 0	e54c95aef6c0781fde5078d344ce2e42a2caa0306d9ae299ab777d6d28c8a66c
 gh-counts	1	induction	binder 2 ctor 1	fb493edd86fd70da95d1b45d21b811ab16c7c0a4a6007a7a8586d67408567ab4
 gh-counts	1	lexicographic	binders 0,1 ctor 0 base	264dfd19f549c0bf002f7b817ebaa46a132ecf4cead4439532468b94870838e9
-gh-counts	1	lexicographic	binders 0,2 ctor 0 base	264dfd19f549c0bf002f7b817ebaa46a132ecf4cead4439532468b94870838e9
-gh-counts	1	lexicographic	binders 1,0 ctor 0 base	5c3aff78a1b93196ad7697ff0be52619816748c014834acfd0aab0914a1d51be
 gh-counts	1	lexicographic	binders 1,0 ctor 1,0	b3bbdfb6287d6c44470cdd93b3e6a8e11183fc9d468598797aa997701363210f
-gh-counts	1	lexicographic	binders 1,2 ctor 0 base	5c3aff78a1b93196ad7697ff0be52619816748c014834acfd0aab0914a1d51be
 gh-counts	1	lexicographic	binders 1,2 ctor 1,0	1a6fda2385668323bad7760cfce05e034c4e036b54292ff555f3dd592e1a5ae4
 gh-counts	1	lexicographic	binders 1,2 ctor 1,1	bdc61e3b534eab009e53cc49b89c86ce798a72614492aefcff0ffe161dc39485
-gh-counts	1	lexicographic	binders 2,0 ctor 0 base	e54c95aef6c0781fde5078d344ce2e42a2caa0306d9ae299ab777d6d28c8a66c
 gh-counts	1	lexicographic	binders 2,0 ctor 1,0	3080ff55a6f6a0148157a659069b987696eec5c2e8daeda9d3be7d67069ea691
-gh-counts	1	lexicographic	binders 2,1 ctor 0 base	e54c95aef6c0781fde5078d344ce2e42a2caa0306d9ae299ab777d6d28c8a66c
 gh-counts	1	lexicographic	binders 2,1 ctor 1,0	2c63e6532a25f70e29a8a007860f8d0335014e04b6f6cd73fb232a122e55423c
 gh-counts	1	lexicographic	binders 2,1 ctor 1,1	8ae76370e34da086586fc4d640ed9907a267fb3a160b398f093b6d5197051c0e
 gh-counts	1	direct-fallback		ea25765f88017f80287ec425b5b4a90a78072b8e574e7cf12eb4ef2ab0b205c3
@@ -622,7 +566,6 @@ gh-dedup	1	induction	binder 0 ctor 0	16a04c5d9ea279e1cbdc977922f669aadc5dc3d9812
 gh-dedup	1	induction	binder 1 ctor 0	6239f93d24cc287b164183afb77d886ce73ce63a2c791c9dfdc60d505110180d
 gh-dedup	1	induction	binder 1 ctor 1	b1fb272d8ca80c8dfd55b776c3c24fcafb93974974ff91a102b570ccb572fc8f
 gh-dedup	1	lexicographic	binders 0,1 ctor 0 base	1e5dee3bb25271934c4b6697ff4f0abba3eff4437e7a05b8eeb53fd4aa1b825f
-gh-dedup	1	lexicographic	binders 1,0 ctor 0 base	6239f93d24cc287b164183afb77d886ce73ce63a2c791c9dfdc60d505110180d
 gh-dedup	1	lexicographic	binders 1,0 ctor 1,0	62bbfcf363f647b74501dc59f06433d40dd4501fd377e8d46784421ba8a68333
 gh-dedup	1	direct-fallback		5590fd4974d5e2331e4f869631e279cffa71404c11095a7a8f4c77a6eb2ed146
 gh-dedup	2	lemma-free		321ca7bc9975525212a959c96b4684322bc51a47df0267cdec6fa217d9bd606c
@@ -633,15 +576,10 @@ gh-dedup	2	induction	binder 1 ctor 1	cba6015f36d9a769b77f7e086243deae7b0b9e0b2bf
 gh-dedup	2	induction	binder 2 ctor 0	bc22c1e27763ad98553849feff20a7481c23c721904ff416ce40cc941c8d8370
 gh-dedup	2	induction	binder 2 ctor 1	ad25035283acd824e1aa98ca694fd3ad0b80bc0d98c19a9eeb3c0417c96509a0
 gh-dedup	2	lexicographic	binders 0,1 ctor 0 base	0ca9069a70270bae91fece61b81d60bf6bbd24038c6e6c3c663dc8cca78e8a5d
-gh-dedup	2	lexicographic	binders 0,2 ctor 0 base	0ca9069a70270bae91fece61b81d60bf6bbd24038c6e6c3c663dc8cca78e8a5d
-gh-dedup	2	lexicographic	binders 1,0 ctor 0 base	bec23c26f67c5d5f2881e4514ab8f219d853771890a8a3566e3e0975ba994171
 gh-dedup	2	lexicographic	binders 1,0 ctor 1,0	002b4a6b0ff81adf432c831a46ebd9f2fb192ffc47a3d61cda76abdaadb76265
-gh-dedup	2	lexicographic	binders 1,2 ctor 0 base	bec23c26f67c5d5f2881e4514ab8f219d853771890a8a3566e3e0975ba994171
 gh-dedup	2	lexicographic	binders 1,2 ctor 1,0	a24cb5d8b3507e52115c2a3e70fd0780835559805f962411e2c92b3dbfa3c8c0
 gh-dedup	2	lexicographic	binders 1,2 ctor 1,1	49e480a996b7842b29aa9633c4db1f1563c790299cbe0aa9a89e0d7420650b24
-gh-dedup	2	lexicographic	binders 2,0 ctor 0 base	bc22c1e27763ad98553849feff20a7481c23c721904ff416ce40cc941c8d8370
 gh-dedup	2	lexicographic	binders 2,0 ctor 1,0	1cfd9840e2ca6ef4fe74a4479e9b534d15e805c8150561e19d634653c05afe71
-gh-dedup	2	lexicographic	binders 2,1 ctor 0 base	bc22c1e27763ad98553849feff20a7481c23c721904ff416ce40cc941c8d8370
 gh-dedup	2	lexicographic	binders 2,1 ctor 1,0	051c12f7a01344e114307bbffc5abf77e113a7e89bb3538a418001de2206a934
 gh-dedup	2	lexicographic	binders 2,1 ctor 1,1	fd3305da7f7e8f39e2d17b50547aeed6f17d293c7ffb364dfd412f2373217a25
 gh-dedup	2	direct-fallback		2797188f42cbab0c16d763afaa9aa620a84bbfff897e0656b9f77febcf1f12c1
@@ -653,15 +591,10 @@ gh-dedup	3	induction	binder 1 ctor 1	02dfd3c8aac3e13a88ef73b7764369feda669ce8a7a
 gh-dedup	3	induction	binder 2 ctor 0	b8455f4fa75c379b96de3e551d02d5468a0b6479c05ed2e1c2cb14846e78f853
 gh-dedup	3	induction	binder 2 ctor 1	1f7984d35085263d2f41ef247f9f1c5bc3995059827712209c936dd34da29778
 gh-dedup	3	lexicographic	binders 0,1 ctor 0 base	33245f495f181c2e40f48dde02b49bde781fb7815e9e3f71903851d2a683922f
-gh-dedup	3	lexicographic	binders 0,2 ctor 0 base	33245f495f181c2e40f48dde02b49bde781fb7815e9e3f71903851d2a683922f
-gh-dedup	3	lexicographic	binders 1,0 ctor 0 base	88fe7983eadedfc724872744b2a46c77fb9b7c932523adf5a0914a16dba7fcb1
 gh-dedup	3	lexicographic	binders 1,0 ctor 1,0	45234d6127b3ebc5a73bb8c7006ee10d571f52dce629cd70581f6f235fd116cf
-gh-dedup	3	lexicographic	binders 1,2 ctor 0 base	88fe7983eadedfc724872744b2a46c77fb9b7c932523adf5a0914a16dba7fcb1
 gh-dedup	3	lexicographic	binders 1,2 ctor 1,0	13cfdd2a97fef1ee057948bc6b3cf328d97ac408b894e1a8d16f15219ca945fb
 gh-dedup	3	lexicographic	binders 1,2 ctor 1,1	e756874dfd68c9a7743aa981bf3f89269127ab2d96b0e20fb8dda9b21f7657d4
-gh-dedup	3	lexicographic	binders 2,0 ctor 0 base	b8455f4fa75c379b96de3e551d02d5468a0b6479c05ed2e1c2cb14846e78f853
 gh-dedup	3	lexicographic	binders 2,0 ctor 1,0	3a839027d27db887e057605b98772a93d2c7db622bfcd9a4196c5da5d06c71f0
-gh-dedup	3	lexicographic	binders 2,1 ctor 0 base	b8455f4fa75c379b96de3e551d02d5468a0b6479c05ed2e1c2cb14846e78f853
 gh-dedup	3	lexicographic	binders 2,1 ctor 1,0	0fe533e9d01307562de9ae29596089022a1246c5b651fdddd799550c14c2b540
 gh-dedup	3	lexicographic	binders 2,1 ctor 1,1	28fe40840f834b159f0c7c4fd3d755c6d210ef1ef56a511f89534ff622d83013
 gh-dedup	3	direct-fallback		c4293c63e3adcc0476da4a2dcc77cdfe188864777d9d1dac6f987bb8a6579f85
@@ -673,7 +606,6 @@ gh-dedup	6	lemma-free		d48fa7a3f2c5ab5b1ae555d3b18f83e176a75d59e89fb7c0fa4b1a826
 gh-dedup	6	direct		899ed7ac67af4e507577e130d6a0b7af1f29682599dfe3eaac3be2119b02446c
 gh-dedup	6	induction	binder 0 ctor 0	899ed7ac67af4e507577e130d6a0b7af1f29682599dfe3eaac3be2119b02446c
 gh-dedup	6	induction	binder 0 ctor 1	0853bea624a8c3e26dcfc032c9c19f706d2713fbc52d9269576f8334bb30ff08
-gh-dedup	6	direct-fallback		899ed7ac67af4e507577e130d6a0b7af1f29682599dfe3eaac3be2119b02446c
 gh-drop-final-empty	0	lemma-free		cf5915cc3b8a3d054735d76631050c7c6d7b1d5fbf1724a5f5515527e015bbed
 gh-drop-final-empty	0	direct		cf5915cc3b8a3d054735d76631050c7c6d7b1d5fbf1724a5f5515527e015bbed
 gh-drop-final-empty	1	lemma-free		fb9671738b039a6979725ff5eb62969021eb2c530eecb04e1fa7982c56d62605
@@ -696,13 +628,10 @@ gh-drop-final-empty	5	induction	binder 0 ctor 0	e8be11b736b3f08c52e2858c142b4999
 gh-drop-final-empty	5	induction	binder 0 ctor 1	ec2a59a8228c53636dac7b765e751150ee4d8a6610f952d1598ee665cadfc0d0
 gh-drop-final-empty	5	induction	binder 1 ctor 0	9a7bd487fe075d6dfc4180269acdba9e030254a0ca9d18956c4ba1ba9628ba73
 gh-drop-final-empty	5	induction	binder 1 ctor 1	a9f9c4295d9be3c69ceb86b73bdcf515a8ae4ce4195e316d18713c003b2f10e6
-gh-drop-final-empty	5	lexicographic	binders 0,1 ctor 0 base	e8be11b736b3f08c52e2858c142b49999dcca39c63208ec76b1e70d17dedaf54
 gh-drop-final-empty	5	lexicographic	binders 0,1 ctor 1,0	15f821120669f0eedf024d5a194bdb7639972263301eb1b8302b45de1545f16e
 gh-drop-final-empty	5	lexicographic	binders 0,1 ctor 1,1	6143e9c6e82f643c87332c5d55d11a1b4eac419c054ff4be9e6f48024d33961f
-gh-drop-final-empty	5	lexicographic	binders 1,0 ctor 0 base	9a7bd487fe075d6dfc4180269acdba9e030254a0ca9d18956c4ba1ba9628ba73
 gh-drop-final-empty	5	lexicographic	binders 1,0 ctor 1,0	fbf5b581705081b64ec7e341982dab5fff0f7fae5f41a6a0e10d37ce97234ae4
 gh-drop-final-empty	5	lexicographic	binders 1,0 ctor 1,1	4eb98039c5f166ae5646f148c87143e24fc0f4ae10e4eefb4b9e280c813a75f5
-gh-drop-final-empty	5	direct-fallback		9a7bd487fe075d6dfc4180269acdba9e030254a0ca9d18956c4ba1ba9628ba73
 gh-field	0	lemma-free		6c8428f0d78bb5e7f6734cd98539bb082feff462f96adaba445a8dcb1667d35e
 gh-field	0	direct		91f3094326c1ee559bf922a9317f76321bc17ea5d32371086fb9d54e8b5d922c
 gh-field	1	lemma-free		36cca24152faedc22a8cfbd7b9788aeba9f4ec6c0ba1555a2ed65046aee531c6
@@ -749,7 +678,6 @@ gh-header-line	1	induction	binder 0 ctor 0	7333975290628866c686abf4846e21ab32e02
 gh-header-line	1	induction	binder 0 ctor 1	7ce7f029206016d6b8f2c23f734539e60f948ac18c8d8f3b9764b397fa5e29fb
 gh-header-line	1	direct-fallback		c942642ee61a5dcb310b083dd0527f9cfb851852ad93a175e3afeb5b60cb1b20
 gh-label-of	0	lemma-free		31922a9b91804a8a05196b5d62e103b7bc1940785281488649f714dd441ecfae
-gh-label-of	0	direct		31922a9b91804a8a05196b5d62e103b7bc1940785281488649f714dd441ecfae
 gh-label-of	0	induction	binder 0 ctor 0	02628253a60fe8d79747ea4dc789caff07a62e20710da09bdf55786649cd1672
 gh-label-of	0	induction	binder 0 ctor 1	f2a65787404427bce1fa0e8462281cb580c232c412e785d71b192c8db046bd2c
 gh-label-of	0	direct-fallback		31922a9b91804a8a05196b5d62e103b7bc1940785281488649f714dd441ecfae
@@ -779,40 +707,28 @@ gh-line-ok	6	induction	binder 2 ctor 0	d0f0860a76acbffa0722a63cc791425cd7496cfb9
 gh-line-ok	6	induction	binder 2 ctor 1	c838f702f422ea41e38eb60c9a4f0ed321db3f4b55fc31f49c208b0d1f03e6cb
 gh-line-ok	6	induction	binder 3 ctor 0	5b792cff93e7d87b696438ea16ba7356f536f51dd97e972dfdceee6b50bc659a
 gh-line-ok	6	induction	binder 3 ctor 1	db384d31d51a64d5bacaef922f14f640340b1ed433f166c15f1d8bdd9cf785e9
-gh-line-ok	6	lexicographic	binders 0,1 ctor 0 base	12142fbd8403139ca10829a5a9609c3cb16387c28cb1ef14420c222277c5ea02
 gh-line-ok	6	lexicographic	binders 0,1 ctor 1,0	26f5ddc61d46a1d96e0953caa1ba5a942e0c8047f744996da00056b90d8d1210
 gh-line-ok	6	lexicographic	binders 0,1 ctor 1,1	e608288da81049c9f35a4fef98c2aa3a900ab572e5d3694c76f57a634460028b
-gh-line-ok	6	lexicographic	binders 0,2 ctor 0 base	12142fbd8403139ca10829a5a9609c3cb16387c28cb1ef14420c222277c5ea02
 gh-line-ok	6	lexicographic	binders 0,2 ctor 1,0	f615744558142f649c40505514b379f3aac40e095ff2d1a255b257fa2004fafd
 gh-line-ok	6	lexicographic	binders 0,2 ctor 1,1	704ce0ff6b67bcaeefcc208b1d853423bd27a4085f338a114896ee5bf3a8a0f9
-gh-line-ok	6	lexicographic	binders 0,3 ctor 0 base	12142fbd8403139ca10829a5a9609c3cb16387c28cb1ef14420c222277c5ea02
 gh-line-ok	6	lexicographic	binders 0,3 ctor 1,0	c94520124e3e1d8eda108f9f7ccbc25648545872662a81f0f3da0eb60b8825c1
 gh-line-ok	6	lexicographic	binders 0,3 ctor 1,1	e5d7dbcf3fe296777b8ebb236d07f368bdde5998ae2178188ae0cc9cd3e51963
-gh-line-ok	6	lexicographic	binders 1,0 ctor 0 base	0a2751bac94cc2373a18c45c14cacbe63536892f27dd0503edf8183f5bf0cb64
 gh-line-ok	6	lexicographic	binders 1,0 ctor 1,0	d4f4fd0616b5c70afb1c9cf140f17b4d5e7620b902406369c478d4d7412f41d3
 gh-line-ok	6	lexicographic	binders 1,0 ctor 1,1	0bf6391e22882746c356d222448e698ebfc3647689ffe82c16e8296534315a89
-gh-line-ok	6	lexicographic	binders 1,2 ctor 0 base	0a2751bac94cc2373a18c45c14cacbe63536892f27dd0503edf8183f5bf0cb64
 gh-line-ok	6	lexicographic	binders 1,2 ctor 1,0	f42af5a185ee673cdc83f9a96762d7b25fd5818ccdce7ba0bd02241613fd5b39
 gh-line-ok	6	lexicographic	binders 1,2 ctor 1,1	52f602a00fc6cc9ee00c508cb72cf12376c742844227735d08ec28f91b6fe002
-gh-line-ok	6	lexicographic	binders 1,3 ctor 0 base	0a2751bac94cc2373a18c45c14cacbe63536892f27dd0503edf8183f5bf0cb64
 gh-line-ok	6	lexicographic	binders 1,3 ctor 1,0	42c954d467d344d2c277a02ba591222d5bd88c1564330e1635ddaf8c6e9a8c5f
 gh-line-ok	6	lexicographic	binders 1,3 ctor 1,1	0586853490169c231a536cfba7b1973230af273c7e499add0bd0b0a22e3e6b98
-gh-line-ok	6	lexicographic	binders 2,0 ctor 0 base	d0f0860a76acbffa0722a63cc791425cd7496cfb91426857d421ec353bc0635b
 gh-line-ok	6	lexicographic	binders 2,0 ctor 1,0	7ca42019b389c73c628c25c75b1c4913d3dd7239d4616c6eb065ced11d0d52d9
 gh-line-ok	6	lexicographic	binders 2,0 ctor 1,1	d1fcfaf8962d457c5a503507d82764adcb5b5d51f4195d959aacbcefcb961788
-gh-line-ok	6	lexicographic	binders 2,1 ctor 0 base	d0f0860a76acbffa0722a63cc791425cd7496cfb91426857d421ec353bc0635b
 gh-line-ok	6	lexicographic	binders 2,1 ctor 1,0	97b590e1c19abaed895f1d22cc7be437355e4cbf33c0fc5bb9dc4c1237188c57
 gh-line-ok	6	lexicographic	binders 2,1 ctor 1,1	0caf5b48758ab0fb0b06d1c524d49cfbbadd2e43d1a65f3a191d808f70c5ac66
-gh-line-ok	6	lexicographic	binders 2,3 ctor 0 base	d0f0860a76acbffa0722a63cc791425cd7496cfb91426857d421ec353bc0635b
 gh-line-ok	6	lexicographic	binders 2,3 ctor 1,0	0efe091881f5c776a40881a86cb2c0c2ae4d2a5a039d6ecfe5ea08c6f8271ee5
 gh-line-ok	6	lexicographic	binders 2,3 ctor 1,1	51611ca7981cfdc0e0f05efcbd61ed9d448cfa54b43698a290762f7ab65af2d8
-gh-line-ok	6	lexicographic	binders 3,0 ctor 0 base	5b792cff93e7d87b696438ea16ba7356f536f51dd97e972dfdceee6b50bc659a
 gh-line-ok	6	lexicographic	binders 3,0 ctor 1,0	94423b80e077af6f8fdf6c2a4ac63cb847dadf8bbe85f146996260f33c8da38c
 gh-line-ok	6	lexicographic	binders 3,0 ctor 1,1	e1d88bd925d476bcd7a278ec6b51971fb4b48b30288b89df6a1d1df5f17674ff
-gh-line-ok	6	lexicographic	binders 3,1 ctor 0 base	5b792cff93e7d87b696438ea16ba7356f536f51dd97e972dfdceee6b50bc659a
 gh-line-ok	6	lexicographic	binders 3,1 ctor 1,0	a6f79d4168180574c58d6a2bc0accd0178edf6f0f60ed004607d0f273127b6dd
 gh-line-ok	6	lexicographic	binders 3,1 ctor 1,1	2225eb7f4a0a3db9d0f8e40e1d8d6b0d26684338febaa4b37e84e68e6aa11fcd
-gh-line-ok	6	lexicographic	binders 3,2 ctor 0 base	5b792cff93e7d87b696438ea16ba7356f536f51dd97e972dfdceee6b50bc659a
 gh-line-ok	6	lexicographic	binders 3,2 ctor 1,0	8ac6331c7a459b9c02d6bc432d229330078a1243728befa15f7d50754f59df55
 gh-line-ok	6	lexicographic	binders 3,2 ctor 1,1	1bf8beb8597ae3334e1b2703a6697ebba6cdd8e16f6ccffe6a9bf59aaae24b31
 gh-line-ok	6	direct-fallback		cfdfce8963373b6aa15ba60163a3fb8c2c9b3dc495d002383f5805975ec141da
@@ -830,10 +746,8 @@ gh-refusal	0	induction	binder 0 ctor 0	1df2650e5857c026eb600da396963fbc55ecf8021
 gh-refusal	0	induction	binder 0 ctor 1	117a9b70b5ff0731e225f1d078e5af238bf3cacc9ccf0f39e36877bd447b1c84
 gh-refusal	0	induction	binder 1 ctor 0	8c504a60b3b8b2c27eca25503ba7e92574547ce81ca85bf1fd2133af5f50b56f
 gh-refusal	0	induction	binder 1 ctor 1	f8628b4f798ae35f3a9eb1dd23b9c07d46a82b320b890c8feb184db38480945f
-gh-refusal	0	lexicographic	binders 0,1 ctor 0 base	1df2650e5857c026eb600da396963fbc55ecf8021e962f06f712026a02c1e2da
 gh-refusal	0	lexicographic	binders 0,1 ctor 1,0	e9f8af680f1e881413ede63e8e9ca5141b0a8e687dcd99f104380852aa52c7f4
 gh-refusal	0	lexicographic	binders 0,1 ctor 1,1	cfab77514312ab0711b40f7726f88d4bb5bc772ed9df2e62d50eccaca1d4db10
-gh-refusal	0	lexicographic	binders 1,0 ctor 0 base	8c504a60b3b8b2c27eca25503ba7e92574547ce81ca85bf1fd2133af5f50b56f
 gh-refusal	0	lexicographic	binders 1,0 ctor 1,0	02dbed8728a6c60073018af23ad603865abcaf6e439e96494fcf6248fa0969cd
 gh-refusal	0	lexicographic	binders 1,0 ctor 1,1	4203c36c03a5bc7a561b40e532530ca941d774f0ffcb96709f2c692a4e241998
 gh-refusal	0	direct-fallback		498abe233437f9fa878fb227f9a55102eca732d6e43b2c1c4da54daeca9206b5
@@ -843,10 +757,8 @@ gh-refusal	1	induction	binder 0 ctor 0	f528615a58a3bcdcc91ade204cd64b58b3e6e308a
 gh-refusal	1	induction	binder 0 ctor 1	f5507de7a938236b9a929e91554b852a19c22cb7fea9a0b7b552712e59bd4ea5
 gh-refusal	1	induction	binder 1 ctor 0	3cd2fe0daa7ca5e0dd5ac00688e3b1d95b5deafa9b971e29d3a1df5141ba6246
 gh-refusal	1	induction	binder 1 ctor 1	34b937e4c6d20d778654995c04cf519d46cdad891c4f0ccf87c977b5ad2129db
-gh-refusal	1	lexicographic	binders 0,1 ctor 0 base	f528615a58a3bcdcc91ade204cd64b58b3e6e308aa2524606987ec52a75be637
 gh-refusal	1	lexicographic	binders 0,1 ctor 1,0	259ad0b6d73f2390a65b4e2d0e231384a4db45f02f5c1fecc8fa1e10889c631f
 gh-refusal	1	lexicographic	binders 0,1 ctor 1,1	d2cbe124e638a379bcdfe18064b59e133316ad374d91802f29efd3ef2269bbfc
-gh-refusal	1	lexicographic	binders 1,0 ctor 0 base	3cd2fe0daa7ca5e0dd5ac00688e3b1d95b5deafa9b971e29d3a1df5141ba6246
 gh-refusal	1	lexicographic	binders 1,0 ctor 1,0	3ff5fde681023a330fcc998baa123d6353c35250f97eb48712b023481e56b658
 gh-refusal	1	lexicographic	binders 1,0 ctor 1,1	5e79f1971679d72d9f5f5129cf26e2208068b327d9cec0086eb796edea95935d
 gh-refusal	1	direct-fallback		d4db39ff59a4aa37a8a3f772416b21f542ee3233cc920111ad73862470a66e0f
@@ -878,10 +790,8 @@ gh-rejected	3	induction	binder 0 ctor 0	1c883574462eae88ec099a4275586de514637650
 gh-rejected	3	induction	binder 0 ctor 1	b64dce8d5840c4d91b47de4e5ac3ee37359c6d4fc246ca47fee24581dcff6dc9
 gh-rejected	3	induction	binder 1 ctor 0	b87065e3d3ecbe8b6655bfe8a1ddc021234530f6d3766ea8024bc38974c6581a
 gh-rejected	3	induction	binder 1 ctor 1	e545a0135ed959bffbfff0df352d0eceede599759b420e6a7e1f7b2f18121d28
-gh-rejected	3	lexicographic	binders 0,1 ctor 0 base	1c883574462eae88ec099a4275586de514637650746ced0386a8507ca74dd068
 gh-rejected	3	lexicographic	binders 0,1 ctor 1,0	f9b77e41559aa329252212ca37d40d994c62829897e78dab386816bd8fc20252
 gh-rejected	3	lexicographic	binders 0,1 ctor 1,1	f61f9fc7feb976a1f68199050d3adbeb46da8356ca1820264167df2710ed6261
-gh-rejected	3	lexicographic	binders 1,0 ctor 0 base	b87065e3d3ecbe8b6655bfe8a1ddc021234530f6d3766ea8024bc38974c6581a
 gh-rejected	3	lexicographic	binders 1,0 ctor 1,0	a5cc7ad56e296e049ceff3bff820df1e1aa0b737ca089dd08a0efdeff9b420d7
 gh-rejected	3	lexicographic	binders 1,0 ctor 1,1	c19b9e5b758c74de5c8e2a513af90e1a981fc68c47c6b6aa0236baf93b3b3cb8
 gh-rejected	3	direct-fallback		3c98338a66eb2ec89f5dd3af428c4600ca2b08c92179757e7764c11e0c7d7a3a
@@ -891,10 +801,8 @@ gh-rejected	4	induction	binder 0 ctor 0	0ec81fce65da85e2a00dbb4a98cc5baf51f21a87
 gh-rejected	4	induction	binder 0 ctor 1	abe8e67e58a78b4ef9b60a147082787c81a10591be0a1d8a7b7c64e33d0a873a
 gh-rejected	4	induction	binder 1 ctor 0	ecac746020ef40a0186094b2e3b217b0e63932f6acf77a570491df80bac4cf90
 gh-rejected	4	induction	binder 1 ctor 1	21539b45fcc6291896a6eb264ffa7179ce2d200d73bb3dd18ffebd39f2ddd870
-gh-rejected	4	lexicographic	binders 0,1 ctor 0 base	0ec81fce65da85e2a00dbb4a98cc5baf51f21a879020ad33f356115882abcdef
 gh-rejected	4	lexicographic	binders 0,1 ctor 1,0	2e2ed02087c544e5fb04cd7a41c183691909399e68b5d3ddbf94269369de78f1
 gh-rejected	4	lexicographic	binders 0,1 ctor 1,1	93974c9c723ca7e5b564e29948532210da60cbcca5010f9f61234d890e38c0e1
-gh-rejected	4	lexicographic	binders 1,0 ctor 0 base	ecac746020ef40a0186094b2e3b217b0e63932f6acf77a570491df80bac4cf90
 gh-rejected	4	lexicographic	binders 1,0 ctor 1,0	2faa482dc604cd112bacfa6a8c36f9e8358ea34782bdbeccece6ab7e6192e375
 gh-rejected	4	lexicographic	binders 1,0 ctor 1,1	911d5c951695b8ba9a39bc264edc6f71dc866d9178f32ac323d6da56649d1200
 gh-rejected	4	direct-fallback		50c790e73612d4cdcb6dcb88f2c006970b8300b431b38bb7d4542a995ce47bbf
@@ -906,22 +814,16 @@ gh-rejected	5	induction	binder 1 ctor 0	04b97bb39e6e61c1ebe16bc380aa97d0d5d5bcb3
 gh-rejected	5	induction	binder 1 ctor 1	70ff996ba64ce2b94535c3bac9e6da0d2e8e1b949dc9dbe6bfe6722834e1c942
 gh-rejected	5	induction	binder 2 ctor 0	2b6355b5b18ceb28a4596eec84265d9adab40d652e4c8c7629e1a7cffc008d9d
 gh-rejected	5	induction	binder 2 ctor 1	d32fab823d91f293d58d1f5abea37342549320f5c9ed56b16167205a1660be40
-gh-rejected	5	lexicographic	binders 0,1 ctor 0 base	a0c642e3648b97fc7a7ef2a1a467ae5fe36745b40f55b905346df8d69ed18aaa
 gh-rejected	5	lexicographic	binders 0,1 ctor 1,0	92bdd766daa6ee5299771450f950fbac381ae6579691faa36b1c97353f7b1f4b
 gh-rejected	5	lexicographic	binders 0,1 ctor 1,1	1af23062655b79a9f52257231f7c690de48b7e62c545b48f2b7aff71014108ad
-gh-rejected	5	lexicographic	binders 0,2 ctor 0 base	a0c642e3648b97fc7a7ef2a1a467ae5fe36745b40f55b905346df8d69ed18aaa
 gh-rejected	5	lexicographic	binders 0,2 ctor 1,0	1a5de7ad3090c5f3edbdc61d3f408d913a301f97e88b4db1db0944b644877f88
 gh-rejected	5	lexicographic	binders 0,2 ctor 1,1	0c32b988136c479df6e0cbedb7f2f5d91648cbaec711aa8aad5074b73a7d4f97
-gh-rejected	5	lexicographic	binders 1,0 ctor 0 base	04b97bb39e6e61c1ebe16bc380aa97d0d5d5bcb30c6b9839dc2be9fd22fc3c17
 gh-rejected	5	lexicographic	binders 1,0 ctor 1,0	be8385edeb45559d9d1a378d4d9c4e1100624f07d467c6385b99caa60ba63a27
 gh-rejected	5	lexicographic	binders 1,0 ctor 1,1	28105b43456c48205be2b7c55290abe65e6a27a1503f257f84d5fe0026fdface
-gh-rejected	5	lexicographic	binders 1,2 ctor 0 base	04b97bb39e6e61c1ebe16bc380aa97d0d5d5bcb30c6b9839dc2be9fd22fc3c17
 gh-rejected	5	lexicographic	binders 1,2 ctor 1,0	1406c83980e7d45c1fbe831bb46388b974ec096ac0015d0629913ac6efb5efde
 gh-rejected	5	lexicographic	binders 1,2 ctor 1,1	77ff919076218f317483b5d631b9da7cb65ec62566ecf92dfe6d6f21b88fa16d
-gh-rejected	5	lexicographic	binders 2,0 ctor 0 base	2b6355b5b18ceb28a4596eec84265d9adab40d652e4c8c7629e1a7cffc008d9d
 gh-rejected	5	lexicographic	binders 2,0 ctor 1,0	df186a86302636f275d2ceb010d9711f71e4e09e8f168d2bf02a30671af55701
 gh-rejected	5	lexicographic	binders 2,0 ctor 1,1	22e228a3551c49d8cecdbf34ee9689aca356cadf1769ff4d77e142b04febb617
-gh-rejected	5	lexicographic	binders 2,1 ctor 0 base	2b6355b5b18ceb28a4596eec84265d9adab40d652e4c8c7629e1a7cffc008d9d
 gh-rejected	5	lexicographic	binders 2,1 ctor 1,0	bd6d0f0168b2bda9c8fc30f1c47e16e943e06259054bc7de17b7038eeceabc8f
 gh-rejected	5	lexicographic	binders 2,1 ctor 1,1	a525387ec570d65f762428f70c61aeb6ab89f1e6a0e33712fb419fa286b05ffb
 gh-rejected	5	direct-fallback		4a471fad17d9de87e8048fa2388904c1b63a5c321fbca3c575f954f26dd2c226
@@ -948,64 +850,44 @@ gh-request	0	induction	binder 3 ctor 0	f2b9155a98b83b437b55b26b3914fbd6a1f3f6884
 gh-request	0	induction	binder 3 ctor 1	1ffb9af9fdfba4d7ce36eab9bb020f1d7c5c207ecb16429e712cfb97867ddcd8
 gh-request	0	induction	binder 4 ctor 0	67055d063681f933d54d547a212994e8c67d3d4565b78fb172ba3348f0a44744
 gh-request	0	induction	binder 4 ctor 1	c01ddf4826986c6a6b34efd5f31696c7ac1f649513b9def51d681f27a3479b13
-gh-request	0	lexicographic	binders 0,1 ctor 0 base	cfbaae2598047037896eebe1c79f030da666a266a899aaab53c57bebeef26463
 gh-request	0	lexicographic	binders 0,1 ctor 1,0	c9fbcf194c17129b79c18e8d0dc6e78143593076a6d1fdb842e78bb8df7d2a02
 gh-request	0	lexicographic	binders 0,1 ctor 1,1	e3e25ab019e0f253f631719788d29ae594a0c2139309ae2a4519b593dd1d1037
-gh-request	0	lexicographic	binders 0,2 ctor 0 base	cfbaae2598047037896eebe1c79f030da666a266a899aaab53c57bebeef26463
 gh-request	0	lexicographic	binders 0,2 ctor 1,0	13591a9daf54ffa4856f65ddb75a282b323d0838a7bd2d28b8bb1360efbfe50c
 gh-request	0	lexicographic	binders 0,2 ctor 1,1	d0f70466b678a0469fd1e3002987778cbdcc20118183ab5e99eef87f3159348e
-gh-request	0	lexicographic	binders 0,3 ctor 0 base	cfbaae2598047037896eebe1c79f030da666a266a899aaab53c57bebeef26463
 gh-request	0	lexicographic	binders 0,3 ctor 1,0	afbbb88b33d453b5915ae566c8245e751d2525c396aac9b3b91672daed69afc2
 gh-request	0	lexicographic	binders 0,3 ctor 1,1	d38dbce07314937f9bd6d15ae0801219f58b7be8f1383217328d59ce0baf17e7
-gh-request	0	lexicographic	binders 0,4 ctor 0 base	cfbaae2598047037896eebe1c79f030da666a266a899aaab53c57bebeef26463
 gh-request	0	lexicographic	binders 0,4 ctor 1,0	e7ca18b786900ff2e6fc63b3c04be7304bed30b77ef83da646913f50d060f087
 gh-request	0	lexicographic	binders 0,4 ctor 1,1	b0606a620cbdccba2038885a66638f09cee9f00af4934e62b27ede11803627e3
-gh-request	0	lexicographic	binders 1,0 ctor 0 base	865efaa7cfd83cf631ffea60fbf3d84a24d64167e8d90f7eee1ce7f8448e5303
 gh-request	0	lexicographic	binders 1,0 ctor 1,0	9ea6fe742a319da64419bc6d133fc8bfb1c2619e3926955de64a7f57422c3d23
 gh-request	0	lexicographic	binders 1,0 ctor 1,1	fd62e08b231110e5af41424b3c9ede5c84da27fd32acb04ecabc6694377cb43b
-gh-request	0	lexicographic	binders 1,2 ctor 0 base	865efaa7cfd83cf631ffea60fbf3d84a24d64167e8d90f7eee1ce7f8448e5303
 gh-request	0	lexicographic	binders 1,2 ctor 1,0	9b5372b5671af82ef82e274898e043344efac3bddfe45c45e145914413ed4e8a
 gh-request	0	lexicographic	binders 1,2 ctor 1,1	27eb02a56da97393a74f74bc1189e71db3b8da43e48364047c9f42de16a0c379
-gh-request	0	lexicographic	binders 1,3 ctor 0 base	865efaa7cfd83cf631ffea60fbf3d84a24d64167e8d90f7eee1ce7f8448e5303
 gh-request	0	lexicographic	binders 1,3 ctor 1,0	3c3d3870eb6fe6d480ed9fa5d78d1381ea0c3040143c637480a39fb248bb4c4f
 gh-request	0	lexicographic	binders 1,3 ctor 1,1	9f1a26a389c660b3db1366c235b1da0e27d3d9ef6862fc78bed1bdafccbdc903
-gh-request	0	lexicographic	binders 1,4 ctor 0 base	865efaa7cfd83cf631ffea60fbf3d84a24d64167e8d90f7eee1ce7f8448e5303
 gh-request	0	lexicographic	binders 1,4 ctor 1,0	a970c2cfebbc27e2cb034069c2dd7bc454fe73990a976b174014c983d758910e
 gh-request	0	lexicographic	binders 1,4 ctor 1,1	424124d5bdd4a7e157f833fbcc58a383f6a3fad42658cf1ae43cfdd451ba8af1
-gh-request	0	lexicographic	binders 2,0 ctor 0 base	601cc15824c10d777b96ca079357a89f86331e4d722840f29eeb6663a26fc389
 gh-request	0	lexicographic	binders 2,0 ctor 1,0	05090dacb5f35df1cda2446e085e1c5f6f32d130ad78f7bacab32dde11d218ac
 gh-request	0	lexicographic	binders 2,0 ctor 1,1	917c67d6f62ed4183a01b2e386df2150ef37cb5cd2df1712335c111bb2886c4f
-gh-request	0	lexicographic	binders 2,1 ctor 0 base	601cc15824c10d777b96ca079357a89f86331e4d722840f29eeb6663a26fc389
 gh-request	0	lexicographic	binders 2,1 ctor 1,0	23e4c3c0e10bfa563edcdd793ff1bc51440a009b38f1cc6a2c14841aa95d84bb
 gh-request	0	lexicographic	binders 2,1 ctor 1,1	07ca5d27a1feb9a6a7a0c6e0774dd8212b5ef372bf2a61969492545e33b964d7
-gh-request	0	lexicographic	binders 2,3 ctor 0 base	601cc15824c10d777b96ca079357a89f86331e4d722840f29eeb6663a26fc389
 gh-request	0	lexicographic	binders 2,3 ctor 1,0	5e66c083b35d41374ed288be1b29aed8cdb01b949d47fec849b2ff600db8ba19
 gh-request	0	lexicographic	binders 2,3 ctor 1,1	55fbb716d95fce07a3b9d696985e407929392ec56e5d8e79b93fc2c1dc4daaed
-gh-request	0	lexicographic	binders 2,4 ctor 0 base	601cc15824c10d777b96ca079357a89f86331e4d722840f29eeb6663a26fc389
 gh-request	0	lexicographic	binders 2,4 ctor 1,0	e31834f1ffb7f3364bb50edb0ff5dbc149c7042566707526522aad0c4d862529
 gh-request	0	lexicographic	binders 2,4 ctor 1,1	b75c9d0ae357bfd729c42171fbb34815fa43dca872b6e394dca64717351dfe82
-gh-request	0	lexicographic	binders 3,0 ctor 0 base	f2b9155a98b83b437b55b26b3914fbd6a1f3f6884e043857a9cfefb70400390a
 gh-request	0	lexicographic	binders 3,0 ctor 1,0	4742e5bb0ce89aff123dabbee43da99bb598e2114c0dd6cd4fd12a9b0899c09a
 gh-request	0	lexicographic	binders 3,0 ctor 1,1	48d9a404ddac4cc7a3661ab47e340fba70dea5cc1ad1ada4403533cbec5e3cc3
-gh-request	0	lexicographic	binders 3,1 ctor 0 base	f2b9155a98b83b437b55b26b3914fbd6a1f3f6884e043857a9cfefb70400390a
 gh-request	0	lexicographic	binders 3,1 ctor 1,0	cd1b221e45c76b2ddbbbb308b73c6d2363b5e481cb82dd378c2d2b08268bb130
 gh-request	0	lexicographic	binders 3,1 ctor 1,1	eef70ff6396098560378e996a817adfb7f0aafa225f689fc11efc8db608ec26a
-gh-request	0	lexicographic	binders 3,2 ctor 0 base	f2b9155a98b83b437b55b26b3914fbd6a1f3f6884e043857a9cfefb70400390a
 gh-request	0	lexicographic	binders 3,2 ctor 1,0	c720e663476588906671cb57b388a2ec34a82c10cc0b28c1e10bbc2cfd55c0a3
 gh-request	0	lexicographic	binders 3,2 ctor 1,1	9d68c2b2f061f3422eb6bc8146e5541687b24278666bfc702da300cf7dbad95c
-gh-request	0	lexicographic	binders 3,4 ctor 0 base	f2b9155a98b83b437b55b26b3914fbd6a1f3f6884e043857a9cfefb70400390a
 gh-request	0	lexicographic	binders 3,4 ctor 1,0	f0ce00f0bfcf4922e38224fa78a84539690da544e4b4a5e6fe2a4440f551cd7e
 gh-request	0	lexicographic	binders 3,4 ctor 1,1	66968f6e77fb940b0ca4bb810c303459e3a2ef23d8d63c56662d6c9a297ad648
-gh-request	0	lexicographic	binders 4,0 ctor 0 base	67055d063681f933d54d547a212994e8c67d3d4565b78fb172ba3348f0a44744
 gh-request	0	lexicographic	binders 4,0 ctor 1,0	e0e26b095e30ae53801d6ee344351312fa21f8ef66919c716984516f3d9ff1a5
 gh-request	0	lexicographic	binders 4,0 ctor 1,1	6bcfbe2a57bbd46a8740a7cb4302d16cfd1fdb30d2a53a1ccb707311d56ef127
-gh-request	0	lexicographic	binders 4,1 ctor 0 base	67055d063681f933d54d547a212994e8c67d3d4565b78fb172ba3348f0a44744
 gh-request	0	lexicographic	binders 4,1 ctor 1,0	be0b478860523eac46e0b2165926964001f8fabcfdd3b1e8f6960bc6967521c9
 gh-request	0	lexicographic	binders 4,1 ctor 1,1	9dd7449dab23232776624eeaa49ac4492cf5c90963446b136aac771971438884
-gh-request	0	lexicographic	binders 4,2 ctor 0 base	67055d063681f933d54d547a212994e8c67d3d4565b78fb172ba3348f0a44744
 gh-request	0	lexicographic	binders 4,2 ctor 1,0	a27d858cbda5e41a0dd2530677fbbd43c65d9b8d608fd06d34c4250b6abf522c
 gh-request	0	lexicographic	binders 4,2 ctor 1,1	3f6f6d8e4bfe065af95c6cadda4db99d0506b88701ffedafeba3f0d3a5f30b9e
-gh-request	0	lexicographic	binders 4,3 ctor 0 base	67055d063681f933d54d547a212994e8c67d3d4565b78fb172ba3348f0a44744
 gh-request	0	lexicographic	binders 4,3 ctor 1,0	950ff39af5375af71f6f5bfcf09255784fe8a20424216afc1d094b18d8f35c1f
 gh-request	0	lexicographic	binders 4,3 ctor 1,1	2e02c3754df17f289530e00e6f7eba662e67c190178e502f10bb2550d742161b
 gh-request	0	direct-fallback		bd7f53ad3a2fb84a32cdbea1ceeac0466696fa1ce773e79fb326217ebd3dad2c
@@ -1021,64 +903,44 @@ gh-request	1	induction	binder 3 ctor 0	d5bf4759ccb3899d237c834c0b2592f7e467bc1b3
 gh-request	1	induction	binder 3 ctor 1	1299c013cf487f72ea9f5ededd49b4c7d93a127b602d6946a8930572858f7a67
 gh-request	1	induction	binder 4 ctor 0	3610595b61da42bd87c1da38e5733e73ba87a81b63ca5998307426badf774fd7
 gh-request	1	induction	binder 4 ctor 1	6247e4a14649801ad66ebf63c0a66d6133054d17046801edb461f6f9387f6525
-gh-request	1	lexicographic	binders 0,1 ctor 0 base	b6e7c1f9f78670b14e15ebe0db289e9cec65ef1e42de9cc48a56f34f9c17f628
 gh-request	1	lexicographic	binders 0,1 ctor 1,0	2d9eb5857d95cf231560415ea3d3a08ab00d8c7eed28518cd86bdef4692840fc
 gh-request	1	lexicographic	binders 0,1 ctor 1,1	1645056079313c98f39ff81811cfb7ee7b19cd87186c1c43697670146280ff8f
-gh-request	1	lexicographic	binders 0,2 ctor 0 base	b6e7c1f9f78670b14e15ebe0db289e9cec65ef1e42de9cc48a56f34f9c17f628
 gh-request	1	lexicographic	binders 0,2 ctor 1,0	cde3f60b11590bfd612d33f326259974a921b9bb5157cd85c9a380ca562b1ecf
 gh-request	1	lexicographic	binders 0,2 ctor 1,1	5e7f98a9c1b42d692040171435c7b470de020e21f3fd6ab2ff419b9ef1afc40f
-gh-request	1	lexicographic	binders 0,3 ctor 0 base	b6e7c1f9f78670b14e15ebe0db289e9cec65ef1e42de9cc48a56f34f9c17f628
 gh-request	1	lexicographic	binders 0,3 ctor 1,0	b984f0deec9180b9e62403369d67ca5261823000c923ea360cb0fb44e72dbb97
 gh-request	1	lexicographic	binders 0,3 ctor 1,1	d2130a23b1056a6e859e0aafc972a6466fe4aeda46c132a8ea8f9dd8d0dc064b
-gh-request	1	lexicographic	binders 0,4 ctor 0 base	b6e7c1f9f78670b14e15ebe0db289e9cec65ef1e42de9cc48a56f34f9c17f628
 gh-request	1	lexicographic	binders 0,4 ctor 1,0	b319f416ff883ff4b0af9bdb5bf00b8a847ba426eed0fc361c7fb81b880a6c62
 gh-request	1	lexicographic	binders 0,4 ctor 1,1	3ff5b454a7d3d4053bc0fd9421945e59503bc9b18f6b3c90157c9aca5103b27d
-gh-request	1	lexicographic	binders 1,0 ctor 0 base	b40804354885f9af458a0604b041cbe97123277c4ed02b0a92dd99f3992d3b72
 gh-request	1	lexicographic	binders 1,0 ctor 1,0	c6b0adc4b37dfa04966f27bd34e0c8e63deb64ab61ce3efba393927e3f678f46
 gh-request	1	lexicographic	binders 1,0 ctor 1,1	dd119a9115e7c305fe8d491767aca12b4fcbbf304fc0588e9d6f6dc342cc9256
-gh-request	1	lexicographic	binders 1,2 ctor 0 base	b40804354885f9af458a0604b041cbe97123277c4ed02b0a92dd99f3992d3b72
 gh-request	1	lexicographic	binders 1,2 ctor 1,0	154746654cdb917bb874827efcd963a2184eafdf9cdf0590b1620b84f4ff8bb8
 gh-request	1	lexicographic	binders 1,2 ctor 1,1	5bccbfe226d35fbf267d4f42f7ee96bc43f6cde1ba1b844f44522ae83a99e7c0
-gh-request	1	lexicographic	binders 1,3 ctor 0 base	b40804354885f9af458a0604b041cbe97123277c4ed02b0a92dd99f3992d3b72
 gh-request	1	lexicographic	binders 1,3 ctor 1,0	7a71eb56e93bd74273e552e3a5f27919320cdc142f55e1a911ac05f98058589b
 gh-request	1	lexicographic	binders 1,3 ctor 1,1	6b2dd566c6bebf4b6acf08bed727086ba84d67793199ded5a5793b7530c5b5a0
-gh-request	1	lexicographic	binders 1,4 ctor 0 base	b40804354885f9af458a0604b041cbe97123277c4ed02b0a92dd99f3992d3b72
 gh-request	1	lexicographic	binders 1,4 ctor 1,0	43611a08f1d47b5247b9c15f08ef56874519515b28287f5315557b40f4993c22
 gh-request	1	lexicographic	binders 1,4 ctor 1,1	fe5f8d2c16010fe8a89fc280bdec93b103879335c21814f3fa4d7b26fa287d40
-gh-request	1	lexicographic	binders 2,0 ctor 0 base	a41cf03d029ee56dcff1f84c7a8585ce1263469e1db8dc0908a3aacb105f7559
 gh-request	1	lexicographic	binders 2,0 ctor 1,0	3348d94bb7c645c7529a9cd2821f7e5e813dd9597cb5285995cb90f01620865c
 gh-request	1	lexicographic	binders 2,0 ctor 1,1	0e072a323afc57ede4c00be6f8245a497637a4c7358553de95c57bcb0b347d55
-gh-request	1	lexicographic	binders 2,1 ctor 0 base	a41cf03d029ee56dcff1f84c7a8585ce1263469e1db8dc0908a3aacb105f7559
 gh-request	1	lexicographic	binders 2,1 ctor 1,0	575f4ad341ce2e2e4bef591a3dd3f77f9612406627f603035e74f74b47c09420
 gh-request	1	lexicographic	binders 2,1 ctor 1,1	c28852374db7f724bee3048cd5d75a334fd526725d6400ec1fc44264e3381c9e
-gh-request	1	lexicographic	binders 2,3 ctor 0 base	a41cf03d029ee56dcff1f84c7a8585ce1263469e1db8dc0908a3aacb105f7559
 gh-request	1	lexicographic	binders 2,3 ctor 1,0	35dc5700086ce15e0fe1754fd6ecd596bccb155ac9565abe5db5f31cd0d24eeb
 gh-request	1	lexicographic	binders 2,3 ctor 1,1	e2b8fd7a072a593e8da8f5a9644043788404e7face7a3cccb5b538c13f048a85
-gh-request	1	lexicographic	binders 2,4 ctor 0 base	a41cf03d029ee56dcff1f84c7a8585ce1263469e1db8dc0908a3aacb105f7559
 gh-request	1	lexicographic	binders 2,4 ctor 1,0	7b55c743dc3d8e60b830f91806cd7b5cfa37e4f2269d618e81d5eab34d18d98e
 gh-request	1	lexicographic	binders 2,4 ctor 1,1	335396488b9b6d8ccd8ed45ee07d220004098ab859ac13d369357576e3249622
-gh-request	1	lexicographic	binders 3,0 ctor 0 base	d5bf4759ccb3899d237c834c0b2592f7e467bc1b382d44672358359298e935dc
 gh-request	1	lexicographic	binders 3,0 ctor 1,0	08c4e2959fef72a81556bd996a6c9a938042de4002ed9cedab1202181bb7c6b8
 gh-request	1	lexicographic	binders 3,0 ctor 1,1	035ed1b586299c092c494870df1731b4cb998d2fabe9e79ad6ebfa04e4f69311
-gh-request	1	lexicographic	binders 3,1 ctor 0 base	d5bf4759ccb3899d237c834c0b2592f7e467bc1b382d44672358359298e935dc
 gh-request	1	lexicographic	binders 3,1 ctor 1,0	ad5cd04d7dcec276d0a3838a6e2ab166702dd3caa1bcd4e8a5ab04b70f959b76
 gh-request	1	lexicographic	binders 3,1 ctor 1,1	f324b422f1a50e355abb15ca3866699fbb29e993fbf209231aaf5ecb47f63169
-gh-request	1	lexicographic	binders 3,2 ctor 0 base	d5bf4759ccb3899d237c834c0b2592f7e467bc1b382d44672358359298e935dc
 gh-request	1	lexicographic	binders 3,2 ctor 1,0	2613d9c2a6f74aa9bbc79cd15716df6114f0aaf3fc21e9a5fa8fd51737296ac4
 gh-request	1	lexicographic	binders 3,2 ctor 1,1	cdad737b9fdcc0633e88f0ae0cb3db3c1bcb96bf94ed00bbbb034826b22e0ea1
-gh-request	1	lexicographic	binders 3,4 ctor 0 base	d5bf4759ccb3899d237c834c0b2592f7e467bc1b382d44672358359298e935dc
 gh-request	1	lexicographic	binders 3,4 ctor 1,0	bb0c078b4f6a6136dd178464748db5df8afc36673979b4dbcd8a4bdf46c91084
 gh-request	1	lexicographic	binders 3,4 ctor 1,1	aff6edd84c009aed34038fb15e96be1348687c8d6f6498e43cabc88ef7b4a7a0
-gh-request	1	lexicographic	binders 4,0 ctor 0 base	3610595b61da42bd87c1da38e5733e73ba87a81b63ca5998307426badf774fd7
 gh-request	1	lexicographic	binders 4,0 ctor 1,0	453059ed53f2230b2eb6b145eb6014129ee48806472e442a5688b90912f30a7b
 gh-request	1	lexicographic	binders 4,0 ctor 1,1	eda4438304dbaaf7e06fcc96fb4ac4962a6e02bcedc08a0c791f3353acd9df30
-gh-request	1	lexicographic	binders 4,1 ctor 0 base	3610595b61da42bd87c1da38e5733e73ba87a81b63ca5998307426badf774fd7
 gh-request	1	lexicographic	binders 4,1 ctor 1,0	f932dd8206ac49ad192658c5999f027ee419d9b460c7e92c7efe4032b6196f4f
 gh-request	1	lexicographic	binders 4,1 ctor 1,1	c5de6a51e13b6fb9e9ce818bddd00e4957309ad37473040117f597d58a7e8dd2
-gh-request	1	lexicographic	binders 4,2 ctor 0 base	3610595b61da42bd87c1da38e5733e73ba87a81b63ca5998307426badf774fd7
 gh-request	1	lexicographic	binders 4,2 ctor 1,0	313bb76897975329c916830c34439a53e4c10c20464aff5137a77b592a4d27f9
 gh-request	1	lexicographic	binders 4,2 ctor 1,1	f9b636283dd8677758103ec6e65f2e9f13a12d41162f2a68258bc70b43a2def5
-gh-request	1	lexicographic	binders 4,3 ctor 0 base	3610595b61da42bd87c1da38e5733e73ba87a81b63ca5998307426badf774fd7
 gh-request	1	lexicographic	binders 4,3 ctor 1,0	403de880a8add2d40465ebd7631ce71c297f2cfbc0f7c587e9d446f6c42bdd52
 gh-request	1	lexicographic	binders 4,3 ctor 1,1	b582f2ed0044243f69f44b709588505b7e1b5f8f43fec4594b9364ee5d24490a
 gh-request	1	direct-fallback		2f9fbad7244803318e45bf326677f400f2deb2746634780fdbecb2a7d740bd61
@@ -1094,64 +956,44 @@ gh-request	2	induction	binder 3 ctor 0	87172528bf69425421edfcddfee99d2e0bccc8a9c
 gh-request	2	induction	binder 3 ctor 1	4fcfc467549eeeb2b3d96cd487994accff73e9ed243945699d19ac999b395590
 gh-request	2	induction	binder 4 ctor 0	eee7e1825252d4f76db874f237db6459ead65629ac9f0047c8f55245df63e35e
 gh-request	2	induction	binder 4 ctor 1	2f9094463b68c087cf19dca4655fcff3dd361040c4f6bd38aefe93d77f7846b8
-gh-request	2	lexicographic	binders 0,1 ctor 0 base	e1147c09624524ca36b85ca5a402d2674df958df1fc459f4802e3b2a5d581bd5
 gh-request	2	lexicographic	binders 0,1 ctor 1,0	665d0ffec3ccba3c159f0036d7b41c5ba9947c131bb65b78c6589e4b06eb85eb
 gh-request	2	lexicographic	binders 0,1 ctor 1,1	4f2c013e59c332e496f8e1ec081c7632e2aeafcdd7c1f54e29540849a106405d
-gh-request	2	lexicographic	binders 0,2 ctor 0 base	e1147c09624524ca36b85ca5a402d2674df958df1fc459f4802e3b2a5d581bd5
 gh-request	2	lexicographic	binders 0,2 ctor 1,0	a2877f6031ab91658db23678a503c6066b5d842d272794a57d9d9943b752a36d
 gh-request	2	lexicographic	binders 0,2 ctor 1,1	0bc86b2b57dce830fffddeafded1880e212dc617dec8986ea0f9ee6a85311387
-gh-request	2	lexicographic	binders 0,3 ctor 0 base	e1147c09624524ca36b85ca5a402d2674df958df1fc459f4802e3b2a5d581bd5
 gh-request	2	lexicographic	binders 0,3 ctor 1,0	6f121d056c2f7820507fb5dc18ffbcb1e12273c7a83e6e2e68879ab55855fc48
 gh-request	2	lexicographic	binders 0,3 ctor 1,1	a3e158d201fca3db941c476c7ee7469e74cd07d6e0017c7aea40c511a3184e49
-gh-request	2	lexicographic	binders 0,4 ctor 0 base	e1147c09624524ca36b85ca5a402d2674df958df1fc459f4802e3b2a5d581bd5
 gh-request	2	lexicographic	binders 0,4 ctor 1,0	28437465118b7472095b66021619e7c939c2ec403caafa8fbd3e608d590f9930
 gh-request	2	lexicographic	binders 0,4 ctor 1,1	e3fb61c0cf406b017b5e3caad486cc848f1ff323b6ef3bb953195e09c5223f77
-gh-request	2	lexicographic	binders 1,0 ctor 0 base	07adf91fdf074374bb3c3e4dd53419a9637dadf712ae9ad6deb7cc1ef21dbaf2
 gh-request	2	lexicographic	binders 1,0 ctor 1,0	c4fd7d3941c873ec53285f050d2788ff90ff80fd0ab77eef3a0a35b16da72746
 gh-request	2	lexicographic	binders 1,0 ctor 1,1	1d7c775d9e7b9d5c991ac1cd21f07310864b091a55c85f5afa398689ddd249b9
-gh-request	2	lexicographic	binders 1,2 ctor 0 base	07adf91fdf074374bb3c3e4dd53419a9637dadf712ae9ad6deb7cc1ef21dbaf2
 gh-request	2	lexicographic	binders 1,2 ctor 1,0	b73ddcd00f0a179290d939eeac29dcd248a2a429a0249cad23bb60e93cc5641c
 gh-request	2	lexicographic	binders 1,2 ctor 1,1	a7414f68d812a19754d45e9b2613377657e05ff5514de3d439f9992955caab42
-gh-request	2	lexicographic	binders 1,3 ctor 0 base	07adf91fdf074374bb3c3e4dd53419a9637dadf712ae9ad6deb7cc1ef21dbaf2
 gh-request	2	lexicographic	binders 1,3 ctor 1,0	1ca133530e2f98d2cd51ec39a49c443044421748b67b014fe3d62e70a3ce90fd
 gh-request	2	lexicographic	binders 1,3 ctor 1,1	24b66cd0f58fcee67cd94f8acac23905fa56e22835d0b5988a7b4ea7edec7ddf
-gh-request	2	lexicographic	binders 1,4 ctor 0 base	07adf91fdf074374bb3c3e4dd53419a9637dadf712ae9ad6deb7cc1ef21dbaf2
 gh-request	2	lexicographic	binders 1,4 ctor 1,0	56380a37623789c029380548de2eb23d3badef054e306e757d15dc41f2d4ff73
 gh-request	2	lexicographic	binders 1,4 ctor 1,1	88895a2dea4cf08c61d9b4631c13261e13c6ba6e0d0109c3b346b24d2736ee07
-gh-request	2	lexicographic	binders 2,0 ctor 0 base	a7038e9e7c162be6019bf9f901dde2dd66401c0aa90b1dac14c79998208fa113
 gh-request	2	lexicographic	binders 2,0 ctor 1,0	bdd0500f29d5244981718a19b9af95ac40029969b0be863576f3368bcfb49a77
 gh-request	2	lexicographic	binders 2,0 ctor 1,1	40f8440be1e2fceadd9faa84d9db14a184d876e048ac18c99e323438b6a7423a
-gh-request	2	lexicographic	binders 2,1 ctor 0 base	a7038e9e7c162be6019bf9f901dde2dd66401c0aa90b1dac14c79998208fa113
 gh-request	2	lexicographic	binders 2,1 ctor 1,0	f595231bbb70b5bef76f0b6108c94943b6644854ea1d2bf03d0c5a9b592e924c
 gh-request	2	lexicographic	binders 2,1 ctor 1,1	d8478fa7c00f75a83aeaa6a14802bac404736ddf44c23c1f91693eb1677c59d6
-gh-request	2	lexicographic	binders 2,3 ctor 0 base	a7038e9e7c162be6019bf9f901dde2dd66401c0aa90b1dac14c79998208fa113
 gh-request	2	lexicographic	binders 2,3 ctor 1,0	bf78d26048122e64398f8f0c64d8f77c296852ce95b469091f8fcb9daff5ef57
 gh-request	2	lexicographic	binders 2,3 ctor 1,1	29b1621046f9c7ecbab8c1a4eeac545ecd67994a7ef7f77a344ab7c1db326967
-gh-request	2	lexicographic	binders 2,4 ctor 0 base	a7038e9e7c162be6019bf9f901dde2dd66401c0aa90b1dac14c79998208fa113
 gh-request	2	lexicographic	binders 2,4 ctor 1,0	4f00ee86f2a291aed52c0a282b22439ddaeaa72bbedb348cd5844a2a6ef48bcd
 gh-request	2	lexicographic	binders 2,4 ctor 1,1	3e9caf1f1536ac3527da0e7b847e2301c51d13ba752d1ddfbd858ba853b49b9b
-gh-request	2	lexicographic	binders 3,0 ctor 0 base	87172528bf69425421edfcddfee99d2e0bccc8a9c7a34c73f5a8af3c5958ab42
 gh-request	2	lexicographic	binders 3,0 ctor 1,0	6e27d7f93d6d04f3597399d51dc12b08f9bf7018431d5815408c6a900ece7f39
 gh-request	2	lexicographic	binders 3,0 ctor 1,1	a5087b70235b80c2878cbdd8be97549c057fd20cf298f356454c63d785aa110c
-gh-request	2	lexicographic	binders 3,1 ctor 0 base	87172528bf69425421edfcddfee99d2e0bccc8a9c7a34c73f5a8af3c5958ab42
 gh-request	2	lexicographic	binders 3,1 ctor 1,0	d526511384b6e4c968e08d790204557405a8b06949e5fbf7824dac5fcca0ebf4
 gh-request	2	lexicographic	binders 3,1 ctor 1,1	e8b499aafd1de35230e122d6a67f7a958063398627631b501bd3470a2a28081c
-gh-request	2	lexicographic	binders 3,2 ctor 0 base	87172528bf69425421edfcddfee99d2e0bccc8a9c7a34c73f5a8af3c5958ab42
 gh-request	2	lexicographic	binders 3,2 ctor 1,0	b6c2f179883e47bbc8561ff4e14f8aa3cee6451070b110191524427f7b84f511
 gh-request	2	lexicographic	binders 3,2 ctor 1,1	ac65e77994e0b2ad7776b7e038bdc55d28027504a3032543076070e18e9b2b4c
-gh-request	2	lexicographic	binders 3,4 ctor 0 base	87172528bf69425421edfcddfee99d2e0bccc8a9c7a34c73f5a8af3c5958ab42
 gh-request	2	lexicographic	binders 3,4 ctor 1,0	d4a1b954224ee9b4d015a4a181d6bb4341ce31873420cdb1a1cc408f198980de
 gh-request	2	lexicographic	binders 3,4 ctor 1,1	2d8184fd270052fd11f1f1d1d632b49a20bf76178c47ed36f01a1477612a942f
-gh-request	2	lexicographic	binders 4,0 ctor 0 base	eee7e1825252d4f76db874f237db6459ead65629ac9f0047c8f55245df63e35e
 gh-request	2	lexicographic	binders 4,0 ctor 1,0	63e358f0edd0bf34d9b6c4334874e9b72d96049bc9e7a76f0377f7fb59c64cc5
 gh-request	2	lexicographic	binders 4,0 ctor 1,1	109a8527f072b0002986e73b30b67a7c7c1c9e28db053a10e044011269766e65
-gh-request	2	lexicographic	binders 4,1 ctor 0 base	eee7e1825252d4f76db874f237db6459ead65629ac9f0047c8f55245df63e35e
 gh-request	2	lexicographic	binders 4,1 ctor 1,0	8d7c042b8757041f34e04e3fe3e876c688584860614d3c270532f7ed00dd7901
 gh-request	2	lexicographic	binders 4,1 ctor 1,1	346dffb06136aeb28e2a05d8cf6a7f1ef50cfcfe7ac3a2b107dee6f24271f342
-gh-request	2	lexicographic	binders 4,2 ctor 0 base	eee7e1825252d4f76db874f237db6459ead65629ac9f0047c8f55245df63e35e
 gh-request	2	lexicographic	binders 4,2 ctor 1,0	542d5fcd3bcc969746d118dd095c4d12d356a2035a3fe0b77a080a030a10c4ba
 gh-request	2	lexicographic	binders 4,2 ctor 1,1	4cd74c0c68cd7c734079d7efb58cb5b8d98f891dce9a6d6ad63a6df4e0dea68a
-gh-request	2	lexicographic	binders 4,3 ctor 0 base	eee7e1825252d4f76db874f237db6459ead65629ac9f0047c8f55245df63e35e
 gh-request	2	lexicographic	binders 4,3 ctor 1,0	93745dd7ff711e0281e864431d2d4ae7c8ad65138d1df0e777300ab2e622df60
 gh-request	2	lexicographic	binders 4,3 ctor 1,1	57f6bfeb83c3980faf369c009c687e5a70cdd93175026ee8e9e62b504e7a83ba
 gh-request	2	direct-fallback		5097e60fa176a66530610e1b8ecab77b7130637b5fa19e01b20656d31117bb33
@@ -1178,30 +1020,22 @@ gh-tally	0	induction	binder 0 ctor 0	2ad9c9ceff97a5155ce1a04712a27c7271352ce95b1
 gh-tally	0	induction	binder 1 ctor 0	ab7a907f4f12217155ecda027fd928a95511df19e81f0444dadf54bdf0b1bfbc
 gh-tally	0	induction	binder 1 ctor 1	b3107de42c365e641d7289f2af992bfe5d4fd65049b3c00651b8db073e75e255
 gh-tally	0	lexicographic	binders 0,1 ctor 0 base	53660ac535a06b4f1e06f9d39a198d2cfee4a54ee171865f4e05b85ef5baf65e
-gh-tally	0	lexicographic	binders 1,0 ctor 0 base	ab7a907f4f12217155ecda027fd928a95511df19e81f0444dadf54bdf0b1bfbc
 gh-tally	0	lexicographic	binders 1,0 ctor 1,0	42cb2895e3dd8ad501f73f2f49b5abe780ccb2f96c31b2056d92b0e3dcc3de1f
 gh-tally	0	direct-fallback		3538e44e1d20165a00cf6ae5e3d74ceccee327461231360b6ebc0edc008bec7a
 gh-tally	1	lemma-free		54b8025089b5df8e6e123ad58a84147d66397178ebb0267d235585580b4c010d
-gh-tally	1	direct		54b8025089b5df8e6e123ad58a84147d66397178ebb0267d235585580b4c010d
 gh-tally	1	induction	binder 0 ctor 0	ccc1161a37a335f1166488432bee090ca8ef988b55de922d53a0dc10e85c3477
 gh-tally	1	direct-fallback		54b8025089b5df8e6e123ad58a84147d66397178ebb0267d235585580b4c010d
 gh-tally	2	lemma-free		814e122d5ca19f282929f0f355219f8b911efc22874a8d71f29d6648292887b0
-gh-tally	2	direct		814e122d5ca19f282929f0f355219f8b911efc22874a8d71f29d6648292887b0
 gh-tally	2	induction	binder 0 ctor 0	f4cbe7fb3728c65a9717b8568aabdc23e98e102cdd8f91dbbfd3ae2e8dabd550
 gh-tally	2	induction	binder 1 ctor 0	98076f7179b885acfec2e26097eaf870d19b59f0f50ab470520b5a617ed1a68b
 gh-tally	2	induction	binder 1 ctor 1	47c91b3e2850f7a7f75495a3a52cd7c630d07de0a266907fa1148c234b168248
 gh-tally	2	induction	binder 2 ctor 0	7a58a713dd3757f10e3d38278951ceddb44a5e206bbca00e41a035f3bd061215
 gh-tally	2	induction	binder 2 ctor 1	ce836cc6f5bb574449cf6410074dfd2e65d55676749527a7f669a0601fb47c55
 gh-tally	2	lexicographic	binders 0,1 ctor 0 base	5bcc6b7295361d24b0159eaf7be7b5031c0d7698b2a0a5537b6796d11c214a55
-gh-tally	2	lexicographic	binders 0,2 ctor 0 base	5bcc6b7295361d24b0159eaf7be7b5031c0d7698b2a0a5537b6796d11c214a55
-gh-tally	2	lexicographic	binders 1,0 ctor 0 base	98076f7179b885acfec2e26097eaf870d19b59f0f50ab470520b5a617ed1a68b
 gh-tally	2	lexicographic	binders 1,0 ctor 1,0	f15e73b4bf14631c05f383483aeda86dcbe6f7df8f14eaf90579fc09f711ecc6
-gh-tally	2	lexicographic	binders 1,2 ctor 0 base	98076f7179b885acfec2e26097eaf870d19b59f0f50ab470520b5a617ed1a68b
 gh-tally	2	lexicographic	binders 1,2 ctor 1,0	e876e0293638e07be65cb2553b25087fd6221ea97756635a56450eb2ae58362e
 gh-tally	2	lexicographic	binders 1,2 ctor 1,1	8eb65d8216414d4783f93ad92ff6c6c8e966915f130cb9b9f9011c4f1d3992eb
-gh-tally	2	lexicographic	binders 2,0 ctor 0 base	7a58a713dd3757f10e3d38278951ceddb44a5e206bbca00e41a035f3bd061215
 gh-tally	2	lexicographic	binders 2,0 ctor 1,0	fc70b0ce639cf56290cf02df4f79274146dc65de646a9f48e05546218fee34cb
-gh-tally	2	lexicographic	binders 2,1 ctor 0 base	7a58a713dd3757f10e3d38278951ceddb44a5e206bbca00e41a035f3bd061215
 gh-tally	2	lexicographic	binders 2,1 ctor 1,0	916badfb4996d5b57ed48c2f6f7cd18005daf26771b7365e8a631356068ccd26
 gh-tally	2	lexicographic	binders 2,1 ctor 1,1	9e02b4802d103726c116dd369b33b1b8b8c769c56879cfdbc0e9e3ee8465ae24
 gh-tally	2	direct-fallback		814e122d5ca19f282929f0f355219f8b911efc22874a8d71f29d6648292887b0
@@ -1211,7 +1045,6 @@ greet	0	induction	binder 0 ctor 0	52fffceab6e564e5ecf5f597d0dc0bfffb48e83bc7aa92
 greet	0	induction	binder 1 ctor 0	5eeaf25c57d6500a2da1e9373f3db6b885bdd0e0b2515cb956341f153b4b1f71
 greet	0	induction	binder 1 ctor 1	84e6f892c04d0cb9ce5c0c1ad230dd8a4d33f32701c4a3f22ee4ec3b9ae066cc
 greet	0	lexicographic	binders 0,1 ctor 0 base	9b9385aa90a150bda5578ad6389588146740d60ed57d324cc00415f73f570d24
-greet	0	lexicographic	binders 1,0 ctor 0 base	5eeaf25c57d6500a2da1e9373f3db6b885bdd0e0b2515cb956341f153b4b1f71
 greet	0	lexicographic	binders 1,0 ctor 1,0	8f2831ae375171c989039cf8b1234b29830c21efbdb52bbdca9ac0f4d357c87a
 greet	0	direct-fallback		019c34f0be75b40a6b39e73c044f42b0a57c5fd24fa986b8cf7ea18fb5dc03ff
 greet	1	lemma-free		0ac08069e40cf448bd32bf0f0f1484b50a08e14724a289976cfdfe20d959346e
@@ -1220,7 +1053,6 @@ greet	1	induction	binder 0 ctor 0	200182ec81ec9d4d658d70a5c6dfcd6d85155f78556f11
 greet	1	induction	binder 1 ctor 0	06d365c8f7bc2832aed2612af2808275ad90854974105d8c88f38627f7bb8b9b
 greet	1	induction	binder 1 ctor 1	f2a25fc05b95e081b4249e8f4dbfb574ec936b62d4e24f332b6756662816a747
 greet	1	lexicographic	binders 0,1 ctor 0 base	83dcaf507e60b6a3397405b9133f953b1cc1911350e5811bb42fe974f9951eb6
-greet	1	lexicographic	binders 1,0 ctor 0 base	06d365c8f7bc2832aed2612af2808275ad90854974105d8c88f38627f7bb8b9b
 greet	1	lexicographic	binders 1,0 ctor 1,0	76f72c60289831c43343bf0291b003113d1b262f75569877e2198206735d5776
 greet	1	direct-fallback		7520783a4dd1b54d17102f6032038343591a822fe68fc3eafc88934a8443e42a
 greet	2	lemma-free		e6d7b2db913bdc76d4987fd6415567af685a75c4a336332ac89c43aaaf3f176f
@@ -1229,7 +1061,6 @@ greet	2	induction	binder 0 ctor 0	52ee52778de36ded2abc82cc5dc8af2dade6accc7fb62f
 greet	2	induction	binder 1 ctor 0	f93e691da38ed6f081bca67a0ce8fdefeca2a99fa121877715c9883c9d8c6425
 greet	2	induction	binder 1 ctor 1	28ce9237a41099e0a97a8ac6ee5c2740a7a43cbe49a416e996417d1665fbc7a6
 greet	2	lexicographic	binders 0,1 ctor 0 base	543114c0365303bc80c2e018efd5261272befeeff865d577fb059b58023ff530
-greet	2	lexicographic	binders 1,0 ctor 0 base	f93e691da38ed6f081bca67a0ce8fdefeca2a99fa121877715c9883c9d8c6425
 greet	2	lexicographic	binders 1,0 ctor 1,0	3786493bb908e26b9c400b07f20de9e99d1637571bdf22284ac24e71d77ac253
 greet	2	direct-fallback		14a6c7a931373454a2795c14700a5defae68b5f2c3e0d77e802778a98ee895ba
 greet-or-guest	0	lemma-free		b38da5b3fa0d5750fc1cec476f5ecb7f6f9e88a0d608d8fbbbc4b954f7f92166
@@ -1242,7 +1073,6 @@ greet-or-guest	1	induction	binder 0 ctor 0	4985a86088a5221a2cf864ec63f2d5f1ef463
 greet-or-guest	1	induction	binder 1 ctor 0	82e6d69e7b933995c60a77995cebba0b341ef0e232ae2f5432773e9f2a55fd76
 greet-or-guest	1	induction	binder 1 ctor 1	94512c6376769cbfd62f80780a68624e7a6764b453575bd72c8c5017e3ba77be
 greet-or-guest	1	lexicographic	binders 0,1 ctor 0 base	a32505b05012001d546bbb422beb899fa07dca0cc23e6707b9ba0bbadd11fee3
-greet-or-guest	1	lexicographic	binders 1,0 ctor 0 base	82e6d69e7b933995c60a77995cebba0b341ef0e232ae2f5432773e9f2a55fd76
 greet-or-guest	1	lexicographic	binders 1,0 ctor 1,0	8ca12a58e4930e043ebaf0578ca42258115583d693c974e5bbbf1a733584d0de
 greet-or-guest	1	direct-fallback		9ffdeb8b7c71bd61b28f3e1d8b2cb030e3ff1e09eb14266eb226a93df01fba9c
 hdr-probe	0	lemma-free		0b56ce6ae298d1d593882dd6dca1497c79489e9f3481ea20b8bc6e466c0b8ea3
@@ -1262,22 +1092,16 @@ header-first	1	induction	binder 1 ctor 0	ff1c28c9f70557bcf6a1856ede34c61d2daa885
 header-first	1	induction	binder 1 ctor 1	e43dec51ad4be5e9c1c4fd610d74e6944fd5975ed6e57b772541fa67fc1d06c9
 header-first	1	induction	binder 2 ctor 0	227c7cc5c6029c498072a4c54ba9b97c5296084912ec6127c47ff786d0e4fda1
 header-first	1	induction	binder 2 ctor 1	f0f56a5a3e5005563bd5bd9752f31b57e945c1073557171b1453b3a63a3e845f
-header-first	1	lexicographic	binders 0,1 ctor 0 base	316f2032ac679fe081bf63b7b8ab325b2d185b0eaf4286b31c594a01c9ff40a4
 header-first	1	lexicographic	binders 0,1 ctor 1,0	02a3b7d5fd8e88bdb2960faf03eb4dfadc3d39b902d6f8e8f9af482fa78fd6c8
 header-first	1	lexicographic	binders 0,1 ctor 1,1	988f5a9e5a8549c7366cce0767dab5cf876e9cb4a9446ee329bbd278fc9927a9
-header-first	1	lexicographic	binders 0,2 ctor 0 base	316f2032ac679fe081bf63b7b8ab325b2d185b0eaf4286b31c594a01c9ff40a4
 header-first	1	lexicographic	binders 0,2 ctor 1,0	3fab7ef3099b879e440857a5d1b2c0133a2061ca90e29cbbbaa927da6495d5f1
 header-first	1	lexicographic	binders 0,2 ctor 1,1	4e91edb469a178e50480c31b3f543608bb20c512f32a7740178cd2e71e36a263
-header-first	1	lexicographic	binders 1,0 ctor 0 base	ff1c28c9f70557bcf6a1856ede34c61d2daa885b922ac2f3f9b9a5bfe51e99fd
 header-first	1	lexicographic	binders 1,0 ctor 1,0	03e54b796a3f95f1163350888ffa808dc9ac86819828a41b6fbfa02150b4f039
 header-first	1	lexicographic	binders 1,0 ctor 1,1	69dbb95b27508e610236a220064f0ef117c6dad4ef7afe72d78524f84f07e8ba
-header-first	1	lexicographic	binders 1,2 ctor 0 base	ff1c28c9f70557bcf6a1856ede34c61d2daa885b922ac2f3f9b9a5bfe51e99fd
 header-first	1	lexicographic	binders 1,2 ctor 1,0	5b48e2e4dd4fc8bd976d16496ea47227907ed55a271338011647c9576c85149a
 header-first	1	lexicographic	binders 1,2 ctor 1,1	62c7132621364960cea5b60928fb140e1921d7681253376366ae57eae42b92cd
-header-first	1	lexicographic	binders 2,0 ctor 0 base	227c7cc5c6029c498072a4c54ba9b97c5296084912ec6127c47ff786d0e4fda1
 header-first	1	lexicographic	binders 2,0 ctor 1,0	02eeca4907f5f05ab35fb66765e4a9b6e54e50962d49b34fb5ad0163147b2672
 header-first	1	lexicographic	binders 2,0 ctor 1,1	807ef7667aa6b763166780d26dc32d517baee261af27179cfa4dac537b40960b
-header-first	1	lexicographic	binders 2,1 ctor 0 base	227c7cc5c6029c498072a4c54ba9b97c5296084912ec6127c47ff786d0e4fda1
 header-first	1	lexicographic	binders 2,1 ctor 1,0	1eefbbc99d63a6ba8510507a70f1b444646499197502087f47a742a4f56cf458
 header-first	1	lexicographic	binders 2,1 ctor 1,1	f9569790f11d8d9b5fad115c7b10192e41feba9f472c5607d615ed781879484e
 header-first	1	direct-fallback		355c863a1ecebcc5986f296c0351a08723ea937bd3571648a4c110bbe2b87a5a
@@ -1291,40 +1115,28 @@ header-first	2	induction	binder 2 ctor 0	6d4e2d1c177b94ca154f825049678eaed5a7a00
 header-first	2	induction	binder 2 ctor 1	e6e1d0374abb0d7309ed16620991d9f87a2f5f0696156bbc876f9047f8904349
 header-first	2	induction	binder 3 ctor 0	15c8c7b3511179c79e163c1b713b574ab961d665e4a3fd545ee89d3bc975f3c2
 header-first	2	induction	binder 3 ctor 1	d2231898729e24747b4bbf313d2e5f78f6c2fb373ed3fd9471f860062130c817
-header-first	2	lexicographic	binders 0,1 ctor 0 base	9bc72d1139c4b1906ee95a3418a447fed40ed5a23c9b43d2f65e68ee9c82b417
 header-first	2	lexicographic	binders 0,1 ctor 1,0	86cd046793dec1192b3a98d7a1b9cb57aeca8909015b36144f30d704bae2b7d2
 header-first	2	lexicographic	binders 0,1 ctor 1,1	1d6d66cb85b2c2cadd0545b871ca2ec6d6e6167291ab8374417b2db1b722635a
-header-first	2	lexicographic	binders 0,2 ctor 0 base	9bc72d1139c4b1906ee95a3418a447fed40ed5a23c9b43d2f65e68ee9c82b417
 header-first	2	lexicographic	binders 0,2 ctor 1,0	df66763f1167dc7d2646f04b28428acdf552ab0d557d6f93ce3c04fa8c9d1273
 header-first	2	lexicographic	binders 0,2 ctor 1,1	403fadd69b3e193bc048dd5f727af8de57d0e0ed0eefa633a3cd620508516ed8
-header-first	2	lexicographic	binders 0,3 ctor 0 base	9bc72d1139c4b1906ee95a3418a447fed40ed5a23c9b43d2f65e68ee9c82b417
 header-first	2	lexicographic	binders 0,3 ctor 1,0	ff164f5261a9b171f4f562ecd861fab1fdf3aed180871f7878957efadfee24de
 header-first	2	lexicographic	binders 0,3 ctor 1,1	a4146da796c3f3289351f79473ebb1ab738bcf57d0b59b32485e416cb915f749
-header-first	2	lexicographic	binders 1,0 ctor 0 base	c0692eae10d120611e8200155c8110305d6de2e0ab5f2b153bfd6ddb15a46e5d
 header-first	2	lexicographic	binders 1,0 ctor 1,0	1bf1319faf537e370d4dc130abe6200f2979ee071c6e1ed999d0376edcd96c84
 header-first	2	lexicographic	binders 1,0 ctor 1,1	a7275eb36bc5108a015161078ccb4c1d1b0f2acca11ecf4da66ce5b5669ee238
-header-first	2	lexicographic	binders 1,2 ctor 0 base	c0692eae10d120611e8200155c8110305d6de2e0ab5f2b153bfd6ddb15a46e5d
 header-first	2	lexicographic	binders 1,2 ctor 1,0	b4d1a8ac806d79cdb590422857cdc403ba291c8635b54e9d3c164652a93cc990
 header-first	2	lexicographic	binders 1,2 ctor 1,1	d5a5988294f564e1a960184635af9615bad5ace93b75fc21650afdf32563917d
-header-first	2	lexicographic	binders 1,3 ctor 0 base	c0692eae10d120611e8200155c8110305d6de2e0ab5f2b153bfd6ddb15a46e5d
 header-first	2	lexicographic	binders 1,3 ctor 1,0	0a571816fd68e2f857455fb265cb3ff60b726bb677cf013df7ed191e29387e54
 header-first	2	lexicographic	binders 1,3 ctor 1,1	6b754036b4d1bdeef6462da9abf77b50b3f8f712e89f349d138a6fe8b65b5f08
-header-first	2	lexicographic	binders 2,0 ctor 0 base	6d4e2d1c177b94ca154f825049678eaed5a7a00861e8121132d3427bbe999ef4
 header-first	2	lexicographic	binders 2,0 ctor 1,0	6c9157b74075e1ddb220244b02ff322707a050474de960b725ad902e530ab368
 header-first	2	lexicographic	binders 2,0 ctor 1,1	5dd3ebb2d03d1de0f4f02eabef4398fb11ce436c2131c3d35b419e2758b58ef7
-header-first	2	lexicographic	binders 2,1 ctor 0 base	6d4e2d1c177b94ca154f825049678eaed5a7a00861e8121132d3427bbe999ef4
 header-first	2	lexicographic	binders 2,1 ctor 1,0	9a1009f907a3008acabc92748bb87dbf6261c2d95d82cf27deac328d35f3a436
 header-first	2	lexicographic	binders 2,1 ctor 1,1	255f66b2da5c1af41d23684aa7c58c00cfa8c9ee65a6cf30bd2c6f66623c6539
-header-first	2	lexicographic	binders 2,3 ctor 0 base	6d4e2d1c177b94ca154f825049678eaed5a7a00861e8121132d3427bbe999ef4
 header-first	2	lexicographic	binders 2,3 ctor 1,0	5836c3dafb67d72fbf30befa91d677bac0a6260dab3a278c2beb4ed4887089b5
 header-first	2	lexicographic	binders 2,3 ctor 1,1	5f2dccdff96bd82a156dfc7a8b360c8f8ef5958823cacf668afbdc28cabbcd1f
-header-first	2	lexicographic	binders 3,0 ctor 0 base	15c8c7b3511179c79e163c1b713b574ab961d665e4a3fd545ee89d3bc975f3c2
 header-first	2	lexicographic	binders 3,0 ctor 1,0	ad33ae2163583bb19b68b4d47b991f714b1042df34750bf73875267dfe35cfba
 header-first	2	lexicographic	binders 3,0 ctor 1,1	4c1b1344deabbeb8ad2c059f1c925400dacef5b2b6fbeca99a0348ef5c243ac5
-header-first	2	lexicographic	binders 3,1 ctor 0 base	15c8c7b3511179c79e163c1b713b574ab961d665e4a3fd545ee89d3bc975f3c2
 header-first	2	lexicographic	binders 3,1 ctor 1,0	41061faec2ca4985637b10fb5966b00e50fc78392364b3f987aa5b5d65cc2c6d
 header-first	2	lexicographic	binders 3,1 ctor 1,1	13efad6b7ab3bd257e011fa8715dd5a6a20bf0566baf28d3f10c71c309b8bd52
-header-first	2	lexicographic	binders 3,2 ctor 0 base	15c8c7b3511179c79e163c1b713b574ab961d665e4a3fd545ee89d3bc975f3c2
 header-first	2	lexicographic	binders 3,2 ctor 1,0	acea796105f930c7ba6fc22dfc63e6c5368618e1d5af88a9d0d8a327ab904d71
 header-first	2	lexicographic	binders 3,2 ctor 1,1	b9ba8f6fec74ccfec4fdf1b9fff8089a1e89cae802adffa9718ab0b13d531cba
 header-first	2	direct-fallback		e29b031894837498f13af7b237d4cf94927d7a09a697ea53626ed5c1a69c89b6
@@ -1334,10 +1146,8 @@ header-or	0	induction	binder 0 ctor 0	d75d86a4c577e85513f0427674be85641ff7a6eac2
 header-or	0	induction	binder 0 ctor 1	86902da1050fdd3cf54cee74fa1fb2419a47533ff0cc3152b981eaad1eb86588
 header-or	0	induction	binder 1 ctor 0	2d0cab35ecedef37442f3c17e0918b5b1d66beef2721f2e73f734f8a91de50ff
 header-or	0	induction	binder 1 ctor 1	bc750023ec0285dbb4e27bb6c599c85b5412f5c322b86ddb6c7406ce5ec40dda
-header-or	0	lexicographic	binders 0,1 ctor 0 base	d75d86a4c577e85513f0427674be85641ff7a6eac2920ddb3c2d3a1d024c1dd8
 header-or	0	lexicographic	binders 0,1 ctor 1,0	8d8d118020dc1bdeaa43ad4b1ba3fc24456587da3905c793cd27f8bbe6ec7963
 header-or	0	lexicographic	binders 0,1 ctor 1,1	5832ae194cbf2979e4df8bfed7b60f559bbf6a45e60a9414dbeb475517135601
-header-or	0	lexicographic	binders 1,0 ctor 0 base	2d0cab35ecedef37442f3c17e0918b5b1d66beef2721f2e73f734f8a91de50ff
 header-or	0	lexicographic	binders 1,0 ctor 1,0	6121810b9f8deaded266e9ff64526bdd33505926d6c47b786fdaf63f235b71ee
 header-or	0	lexicographic	binders 1,0 ctor 1,1	67df0fe7b4504800bd07e7c5bab6be2b044a3704ff08ad5e92ee63b2a4213445
 header-or	0	direct-fallback		d0e801c73b3e527ec726324f50bc5b632b7d9e539bc52cd93d26241afa268896
@@ -1349,22 +1159,16 @@ header-or	1	induction	binder 1 ctor 0	6c5d5698600982e754b82bd468ff3e2d6b7cb80140
 header-or	1	induction	binder 1 ctor 1	5306e7599a89bb72c72fbadc935fd4137c90130dbe63467837d936292cea552f
 header-or	1	induction	binder 2 ctor 0	f40e168acac531c812039b52f14bfecacff1e7a1eccce2a243504bd0b5d4004a
 header-or	1	induction	binder 2 ctor 1	11e9bb3fc719219c2c00ea2258a763751777471e5e4e4bd76ccf01aed8ba89fc
-header-or	1	lexicographic	binders 0,1 ctor 0 base	964d53d9f69c775e186805d6f90cc70d2d30012ee63d9d0ac296a5fc97b7b604
 header-or	1	lexicographic	binders 0,1 ctor 1,0	30c0833ebdc492da5003831f3b9ae9b5e08ca2322134fa5329507caf232b23f4
 header-or	1	lexicographic	binders 0,1 ctor 1,1	7c301cfc87235c879f42603d9d8afc4ff232df7423e1ee03f88e3e2ff67a3a32
-header-or	1	lexicographic	binders 0,2 ctor 0 base	964d53d9f69c775e186805d6f90cc70d2d30012ee63d9d0ac296a5fc97b7b604
 header-or	1	lexicographic	binders 0,2 ctor 1,0	8590176c81384fcba62ee0ecfdf3f5f0dcc4fe136e371c306fbaafd2d028262a
 header-or	1	lexicographic	binders 0,2 ctor 1,1	b30c592a2b5ce2109453619b5fd51219ad5c1081760fa5efb05c5615424d0079
-header-or	1	lexicographic	binders 1,0 ctor 0 base	6c5d5698600982e754b82bd468ff3e2d6b7cb80140b73d1590fe4da84dd617bf
 header-or	1	lexicographic	binders 1,0 ctor 1,0	6fd511f5f9224ff21a73f6b585499133628d7751876fef162502bfc549fca9d7
 header-or	1	lexicographic	binders 1,0 ctor 1,1	97a0b88ba3a3c5e854c46921432fd11685f01329820a79bab7e550064206bb8a
-header-or	1	lexicographic	binders 1,2 ctor 0 base	6c5d5698600982e754b82bd468ff3e2d6b7cb80140b73d1590fe4da84dd617bf
 header-or	1	lexicographic	binders 1,2 ctor 1,0	1b0a0e35c1c26ca55c49c19c40a8d470e4c1ff9a2535b42df445cc5b42443c0d
 header-or	1	lexicographic	binders 1,2 ctor 1,1	6faac6f1d78822333abda1a21367fbf2d1a1c4a43802c6ec08d45cb9aadd2d34
-header-or	1	lexicographic	binders 2,0 ctor 0 base	f40e168acac531c812039b52f14bfecacff1e7a1eccce2a243504bd0b5d4004a
 header-or	1	lexicographic	binders 2,0 ctor 1,0	9a7712e8bea021be59caeb7b968ea641d3246c7c0e3d62a3af249668e1372fd7
 header-or	1	lexicographic	binders 2,0 ctor 1,1	8d4eae4d1815a4aef7b14e6cfe5e82225175736e026d7b07202fd79ad0742ee8
-header-or	1	lexicographic	binders 2,1 ctor 0 base	f40e168acac531c812039b52f14bfecacff1e7a1eccce2a243504bd0b5d4004a
 header-or	1	lexicographic	binders 2,1 ctor 1,0	7ef977426d7210552540ad16a4386002826f7f80cd67de23138fe63eab654780
 header-or	1	lexicographic	binders 2,1 ctor 1,1	039cd14eed9abb4c63b70b47753fdeb23ea2352435b12daf28bf6b521273925b
 header-or	1	direct-fallback		108edbd7c43323ac893ef621190610b60e108da4a91fbfc878e66ad6ef22bc03
@@ -1558,7 +1362,6 @@ initials-or	1	induction	binder 0 ctor 0	c9a8659451988b94d7a26ece4ea2837285f54c12
 initials-or	1	induction	binder 1 ctor 0	fbb955b494b297bfcd660e7c8f792c01af2be478c8cd4d0a16f0c28594fc2ca8
 initials-or	1	induction	binder 1 ctor 1	a939cd4c9ccc2314adb51d699477d5468582a3c7664901236f0da61d15a464fb
 initials-or	1	lexicographic	binders 0,1 ctor 0 base	b8dce5bce715bb6616548a671c897d7cee09c6bebbcb358f0654cf532e82fbcb
-initials-or	1	lexicographic	binders 1,0 ctor 0 base	fbb955b494b297bfcd660e7c8f792c01af2be478c8cd4d0a16f0c28594fc2ca8
 initials-or	1	lexicographic	binders 1,0 ctor 1,0	d81328ed5b1274f22e0a479b56fb6b75b9def8d532bc5d0aa5781e51659aa52d
 initials-or	1	direct-fallback		56567436834450ea62f65154e620426be56829566e81fd1b9e92d8b1aaff4a56
 insert	0	lemma-free		be9cf792d72978e42854db25c3fd4779dfa7f0a57828a96bfe985385c838ff94
@@ -1597,7 +1400,6 @@ insert-by	0	induction	binder 0 ctor 0	7abd34e7ecddd4079a78daccad61afddefb31c2999
 insert-by	0	induction	binder 2 ctor 0	0226c8270e52fd481497d107ad21e70508001346a9c6b8ec2915d80a9315f77b
 insert-by	0	induction	binder 2 ctor 1	5023d9b3d1e60d7e65464991c108188a7ebcc52fa46768cbfa0fda6b5bc17502
 insert-by	0	lexicographic	binders 0,2 ctor 0 base	a85332b54296818482c07066ca9369295677ab242f62984f1d3c4becaa1d4f9c
-insert-by	0	lexicographic	binders 2,0 ctor 0 base	0226c8270e52fd481497d107ad21e70508001346a9c6b8ec2915d80a9315f77b
 insert-by	0	lexicographic	binders 2,0 ctor 1,0	1a9b21ea9651b9c7a9b5ca6fd820dc66f582e48be485636d6d9a7c90062ed4e7
 insert-by	0	direct-fallback		2ec75caffb5228d0c8f470ec5b8a14821e3eef545a5453fe2aae4dcaeb799d58
 insert-by	1	lemma-free		591a4937ab6e417387af06f67370b7377f42e379dc58d8a7a83f5a12a681512e
@@ -1607,12 +1409,8 @@ insert-by	1	induction	binder 1 ctor 0	2b41ad21b476af01e32373ca12643ae069c7d5cca3
 insert-by	1	induction	binder 4 ctor 0	dc075e7cb0dea64be717c98b885b6b2a2193422be13a696fedad60cf2d153070
 insert-by	1	induction	binder 4 ctor 1	2cc2eb1edfb5304a0ff7fb976438c04a3d47043b1f12e079a19b1724fcfd41c0
 insert-by	1	lexicographic	binders 0,1 ctor 0 base	0b23f65dfc41d1c0b167fe6b1d7a146586c11ba325a0a64ba88d5fa78cbb19a3
-insert-by	1	lexicographic	binders 0,4 ctor 0 base	0b23f65dfc41d1c0b167fe6b1d7a146586c11ba325a0a64ba88d5fa78cbb19a3
 insert-by	1	lexicographic	binders 1,0 ctor 0 base	717518c4c3730e0b1741cb9b20a5f719ab82d3f195266137378ccb44766bb1f0
-insert-by	1	lexicographic	binders 1,4 ctor 0 base	717518c4c3730e0b1741cb9b20a5f719ab82d3f195266137378ccb44766bb1f0
-insert-by	1	lexicographic	binders 4,0 ctor 0 base	dc075e7cb0dea64be717c98b885b6b2a2193422be13a696fedad60cf2d153070
 insert-by	1	lexicographic	binders 4,0 ctor 1,0	58c23c207a5585dc7be1142d449514029283be66f507788f6e5d2d57c52918dc
-insert-by	1	lexicographic	binders 4,1 ctor 0 base	dc075e7cb0dea64be717c98b885b6b2a2193422be13a696fedad60cf2d153070
 insert-by	1	lexicographic	binders 4,1 ctor 1,0	54fc9c2f900cf42fa96525562d43d13d33575d82a5be80278a3adac63af552ca
 insert-by	1	direct-fallback		0503257c6495fa2974fb1d90550312b6bb5f3cbd9555c4c4a30a7f209d769595
 insert-by	2	lemma-free		12c36d7387ceda3fc50c43af6acdde8a7acf879b3d797b5f59ebe5b58e10bde6
@@ -1621,11 +1419,9 @@ insert-by	2	induction	binder 0 ctor 0	87deb4a5bebae1214e843356ffa640aebf703a0863
 insert-by	2	induction	binder 3 ctor 0	dc7c0ba8e6c19703ca41ae92800c519bfd1c9c933501f27e322e4caa7ec2247e
 insert-by	2	induction	binder 3 ctor 1	b15809597a298a0ea40c3a3cbbba28e114b3394d58ba50e41f53c7851a110d20
 insert-by	2	lexicographic	binders 0,3 ctor 0 base	f53747875419671bf00e14c54a45b9d0898fac3e11e53d8f28c1fad1901966f6
-insert-by	2	lexicographic	binders 3,0 ctor 0 base	dc7c0ba8e6c19703ca41ae92800c519bfd1c9c933501f27e322e4caa7ec2247e
 insert-by	2	lexicographic	binders 3,0 ctor 1,0	d5c2e89e87e7a46c181eb27ca67bd7f20d95e9757585af0537e82402d03da153
 insert-by	2	direct-fallback		6172e5b50883f39c8a7a57f0bb5a13fb5e6444645d0610d7550b59e2eab52e2b
 int-embed	0	lemma-free		ea1b5204b9531be10a92ff871461cde3f5a923fdcb1ecc9be06e38c2ab6d644a
-int-embed	0	direct		ea1b5204b9531be10a92ff871461cde3f5a923fdcb1ecc9be06e38c2ab6d644a
 int-embed	0	direct-fallback		ea1b5204b9531be10a92ff871461cde3f5a923fdcb1ecc9be06e38c2ab6d644a
 is-none	0	lemma-free		dbb5ae59a0350792e8b2501613f9e35e1b58630415fd0576270d45b39a6c8d2f
 is-none	0	direct		d30bf383c4705ab1e782d6822ea809191342a686092ee3b16e3c56845b4177ed
@@ -1667,10 +1463,8 @@ join-with	1	induction	binder 0 ctor 0	3b53d2ce98d812f689b0668945fd9179e283602ce6
 join-with	1	induction	binder 0 ctor 1	58e9501962d2eab97e4a1e39fb514ab955f4243d2e3019f96a0dbaf70236cd6a
 join-with	1	induction	binder 1 ctor 0	d028d0ba88113a34a5e2beec9c374fc696dcbc2c2ff64aca4271682c98b44760
 join-with	1	induction	binder 1 ctor 1	16c75659d00d1eeb096f725a9246a18c4955f01cccbe5fca26842d13c85e8c5d
-join-with	1	lexicographic	binders 0,1 ctor 0 base	3b53d2ce98d812f689b0668945fd9179e283602ce62d947bbfb495b039915d8a
 join-with	1	lexicographic	binders 0,1 ctor 1,0	afc9edf738aaa45c3150a48504b7f3b2f1c393bb7021e68323ca7f92e3eec8f1
 join-with	1	lexicographic	binders 0,1 ctor 1,1	879b54bfa029a9dc418eb1fd18180cc8240e29ccf8ec9a6026a35f78a2d41612
-join-with	1	lexicographic	binders 1,0 ctor 0 base	d028d0ba88113a34a5e2beec9c374fc696dcbc2c2ff64aca4271682c98b44760
 join-with	1	lexicographic	binders 1,0 ctor 1,0	b3c39c13dff8704c9ab9d6a73fe7dfa5ab5ae872eeb1298d971e4078e9b68d68
 join-with	1	lexicographic	binders 1,0 ctor 1,1	61684e66ee0adda528c79793b490dfff3aa15d8e31998320f31570bab3fd887c
 join-with	1	direct-fallback		ad83c771d3f3307323c5df628a410240cbe69c0dac1fda1b62c9b0b56e1fcada
@@ -1682,22 +1476,16 @@ join-with	2	induction	binder 1 ctor 0	fd42fdec77ee6fedf1886d4dbf4dd9cd28b8781c64
 join-with	2	induction	binder 1 ctor 1	f6cfe2de7a18770cce976542f9092f699c323484252c55e615c97b8f34438e84
 join-with	2	induction	binder 2 ctor 0	3aa3d146c4e3b359fa7896877c29cb58f2169823b67224121ab16ccbe9aa3795
 join-with	2	induction	binder 2 ctor 1	999a6eb0d9239520dcf9bdb79910f9d523879fd6ef5b65c6b8cebc42be120127
-join-with	2	lexicographic	binders 0,1 ctor 0 base	3ccb5b3b63e84ad9cdb987857dbbf5fe1b778cddc09e0d3c5bae2fd77ec3f0e3
 join-with	2	lexicographic	binders 0,1 ctor 1,0	cf5f2655ecfee841fe62d609cc4f81fb798348a97edc50b79c7c3081fcae5ce1
 join-with	2	lexicographic	binders 0,1 ctor 1,1	8057ef30bc2897a57933eb6a4d5fa1c8a7afe193cd106fcaa2404fe82d89d4f7
-join-with	2	lexicographic	binders 0,2 ctor 0 base	3ccb5b3b63e84ad9cdb987857dbbf5fe1b778cddc09e0d3c5bae2fd77ec3f0e3
 join-with	2	lexicographic	binders 0,2 ctor 1,0	fddae69085555b06a0591b8354437c3e8fde7999c53868f6a2a504ffbad26f88
 join-with	2	lexicographic	binders 0,2 ctor 1,1	4375fcd4f5e0d8cc9d0cdee26b28f386c0f354242077ce6df68c8e0164ca6b0b
-join-with	2	lexicographic	binders 1,0 ctor 0 base	fd42fdec77ee6fedf1886d4dbf4dd9cd28b8781c64126e14bf2b94acfcf6ee25
 join-with	2	lexicographic	binders 1,0 ctor 1,0	705ed9f1c7ecefe374f91098e3e1ac08c1122fe498c9c9aa77e146014f7adf89
 join-with	2	lexicographic	binders 1,0 ctor 1,1	1aa474094eb5437b9c8e27132c3affcbbd5dea4765306ea34f183506ff70449a
-join-with	2	lexicographic	binders 1,2 ctor 0 base	fd42fdec77ee6fedf1886d4dbf4dd9cd28b8781c64126e14bf2b94acfcf6ee25
 join-with	2	lexicographic	binders 1,2 ctor 1,0	00e07d1b85e624b1e161e129d86891a20438d4d3a676332598aadb39d8efd7dc
 join-with	2	lexicographic	binders 1,2 ctor 1,1	98d22d2185c44a65eb50939b93631986fba45050426c6380b57df0a8af8fdd2a
-join-with	2	lexicographic	binders 2,0 ctor 0 base	3aa3d146c4e3b359fa7896877c29cb58f2169823b67224121ab16ccbe9aa3795
 join-with	2	lexicographic	binders 2,0 ctor 1,0	c2a1bed85afb86a77c422406042b5e899461af92cefcce67223d3581ab47764f
 join-with	2	lexicographic	binders 2,0 ctor 1,1	2638c8eaa899fdc24bfc01845377e08abb725b6984ad3abebb0f238e903a8213
-join-with	2	lexicographic	binders 2,1 ctor 0 base	3aa3d146c4e3b359fa7896877c29cb58f2169823b67224121ab16ccbe9aa3795
 join-with	2	lexicographic	binders 2,1 ctor 1,0	c19e91a88d05790e8084b51e20bcb7126793c84e01be12a0eee974d8cfc2c357
 join-with	2	lexicographic	binders 2,1 ctor 1,1	8293208b718e402b5160cbcbd4d9078698ae7d1c3a7c8a649c11d29fee103d05
 join-with	2	direct-fallback		d0aa7b9e90032513a31a8ecbbfdc78960f97203f2ca9e963ecd1670526c84849
@@ -1710,10 +1498,8 @@ kv-get	1	induction	binder 0 ctor 0	1f005a23d7875f3c24fd5969bc1a6d8c2b2bc56cfca4a
 kv-get	1	induction	binder 0 ctor 1	759c042d7bc0fb388193066d6ac6c0b0ef474564f04df01a3b8e261d8bea62a0
 kv-get	1	induction	binder 2 ctor 0	58ddb37a8273824c48cedd97dee0233c188edef38ddaf58363b6f872d2748a43
 kv-get	1	induction	binder 2 ctor 1	d7a5160bd3f5ebfea67e959219f33ef6ec4916f81784e1e820c97a3468c9f162
-kv-get	1	lexicographic	binders 0,2 ctor 0 base	1f005a23d7875f3c24fd5969bc1a6d8c2b2bc56cfca4a469c3da226b650f1d2d
 kv-get	1	lexicographic	binders 0,2 ctor 1,0	dd140647af221c96d1d5ab13c85309c11800ae14e644d5476fa1e12e23f440a4
 kv-get	1	lexicographic	binders 0,2 ctor 1,1	3144d0e642b0e867b244dddf43d89ba8154cc1d936f3a6bd799658efded84add
-kv-get	1	lexicographic	binders 2,0 ctor 0 base	58ddb37a8273824c48cedd97dee0233c188edef38ddaf58363b6f872d2748a43
 kv-get	1	lexicographic	binders 2,0 ctor 1,0	e65435b256d87d060e2306a58c33d33f31f1520c37c91a6608c094bbc4da05d1
 kv-get	1	lexicographic	binders 2,0 ctor 1,1	a7e67fc6f49e3b3599453f9f0f21cd02d7852a7ad22b0728b6cdfa8e50defd85
 kv-get	1	direct-fallback		c13b6424b8fb535a365217c51ceb37aa32782eb2c6c03afa0366d27a75c3ffb8
@@ -1723,10 +1509,8 @@ kv-put	0	induction	binder 0 ctor 0	b0816919770e1e58d04bf5cbbcc0b3d2173fb45f911cf
 kv-put	0	induction	binder 0 ctor 1	dabac1f0bfd2ed355c5c2c5cd066a7e43aafd990acc6943cdbd5b73d1b98de21
 kv-put	0	induction	binder 2 ctor 0	f9e1db9dd172591849900ee42e610ca2ee8aeff446567fbde7594771b71491d5
 kv-put	0	induction	binder 2 ctor 1	b2c7312b5e419361a3cff79bb30e77b90fe0816ee9b5853da6f944e2c9eedbe4
-kv-put	0	lexicographic	binders 0,2 ctor 0 base	b0816919770e1e58d04bf5cbbcc0b3d2173fb45f911cf51272b83c744ee13b3a
 kv-put	0	lexicographic	binders 0,2 ctor 1,0	dbd684394e8b6113000730e7f0c4769443a75f1a2bd3fbcfd4e54e68e433cef5
 kv-put	0	lexicographic	binders 0,2 ctor 1,1	ac218b68677431059d6fa5c0ba3d23eca1a150f9163e206c4dab07cb5b0406df
-kv-put	0	lexicographic	binders 2,0 ctor 0 base	f9e1db9dd172591849900ee42e610ca2ee8aeff446567fbde7594771b71491d5
 kv-put	0	lexicographic	binders 2,0 ctor 1,0	40b87aa68c9633c9a71a7b98d382354560da09521becb57cb1f16950302e4c56
 kv-put	0	lexicographic	binders 2,0 ctor 1,1	673980de44f20fa4b248ae5682cab5507760888965b6a32635b1a2c23a7200af
 kv-put	0	direct-fallback		089490ca7960dff1d95b7f42cc6f0a1f737c7ab4bdc0a05ad29c9d5000ce52fb
@@ -1736,10 +1520,8 @@ kv-put	1	induction	binder 0 ctor 0	6fc07ba76528fb26bbba93172e3413627661f729808fa
 kv-put	1	induction	binder 0 ctor 1	a772638697e6c1bd0ddf4130755db82c145257b86418de4c1c4cbc6c4ab5f7bc
 kv-put	1	induction	binder 3 ctor 0	85e45296580f317be9bc44536be29bad0f47b37965238187c1c482c60c0b3b37
 kv-put	1	induction	binder 3 ctor 1	c8776329ecdd66b68d76e2d3b802fde9c867c0eef2624a24e87ffef8c670c892
-kv-put	1	lexicographic	binders 0,3 ctor 0 base	6fc07ba76528fb26bbba93172e3413627661f729808fad019107c1fa7248a8e8
 kv-put	1	lexicographic	binders 0,3 ctor 1,0	3ee241de3f709fdc161b564c0caa10418baa70d7f7ba3b510dd96cdb420022d6
 kv-put	1	lexicographic	binders 0,3 ctor 1,1	cb43f8e085d3201376f77a189cf4e8945805137e92897d925d43040107f8f1cd
-kv-put	1	lexicographic	binders 3,0 ctor 0 base	85e45296580f317be9bc44536be29bad0f47b37965238187c1c482c60c0b3b37
 kv-put	1	lexicographic	binders 3,0 ctor 1,0	c6b61fef0639d09bf3f5d042a313826091f678b4c2ac468d5f584edd7e843f08
 kv-put	1	lexicographic	binders 3,0 ctor 1,1	56594e8d059d0cd70a106328bf713f27372e4aa2f239e3767a22a85e3ba65801
 kv-put	1	direct-fallback		bfab90ce8bc093a8fa0ca760337ddb8711f7bdf22d42550aec89f17892b05811
@@ -1751,22 +1533,16 @@ kv-put	2	induction	binder 2 ctor 0	98d4a625b7edebd87c62b6dfde293d87abb1cfe68f515
 kv-put	2	induction	binder 2 ctor 1	551e2fc2f856d850a1b2fc42671d56347e81fecb92884a35a67870b89013d480
 kv-put	2	induction	binder 3 ctor 0	3bed6676d899c44cacb87d7a286f1de07eed47b09b7774e99514cbc52e3752b4
 kv-put	2	induction	binder 3 ctor 1	72efda00b4b93bd63b13538f6829341a6b81da83a522e255f92fcaa269115ce4
-kv-put	2	lexicographic	binders 0,2 ctor 0 base	aed989f7738ddfdbec02c2c729ac5b8a7c0a7a79df3ac3f4e903ac9f4c882ef8
 kv-put	2	lexicographic	binders 0,2 ctor 1,0	f061f31b37620fd5b7f0c0786b314504984b95db1974f4b79ea5106f63cbc09e
 kv-put	2	lexicographic	binders 0,2 ctor 1,1	106102ec2356a11414d7c1d60184a146164edcc77bb322e045a8590bb1029034
-kv-put	2	lexicographic	binders 0,3 ctor 0 base	aed989f7738ddfdbec02c2c729ac5b8a7c0a7a79df3ac3f4e903ac9f4c882ef8
 kv-put	2	lexicographic	binders 0,3 ctor 1,0	6558134f4e665468b84384a4aa35d21661d55ba08e10331c0d1d86ce5697f21b
 kv-put	2	lexicographic	binders 0,3 ctor 1,1	05440603becf0b147a9bc571822c3e4fa3eef243235b26e94a7d67735fec407a
-kv-put	2	lexicographic	binders 2,0 ctor 0 base	98d4a625b7edebd87c62b6dfde293d87abb1cfe68f515f1608c701a2b761f939
 kv-put	2	lexicographic	binders 2,0 ctor 1,0	b5fa5fdb3895b48a287e79e9169115bc0ccf5bd2174ad10f6bd56f4e6526235d
 kv-put	2	lexicographic	binders 2,0 ctor 1,1	3029ac1210a4d51ff4170426a1cb0d8829c94871d7795d80f958893365c50da8
-kv-put	2	lexicographic	binders 2,3 ctor 0 base	98d4a625b7edebd87c62b6dfde293d87abb1cfe68f515f1608c701a2b761f939
 kv-put	2	lexicographic	binders 2,3 ctor 1,0	63014659206c6185afc01d71b5e4c357a9447777b05637274ff9810096137302
 kv-put	2	lexicographic	binders 2,3 ctor 1,1	3471278d8b28f763b85bcfccdad94d501becc13f96686eb773858df6eeabe975
-kv-put	2	lexicographic	binders 3,0 ctor 0 base	3bed6676d899c44cacb87d7a286f1de07eed47b09b7774e99514cbc52e3752b4
 kv-put	2	lexicographic	binders 3,0 ctor 1,0	dfdb4710e35c81036c4cf45565f7b326739cf986d74748f16bd90262f963e6c5
 kv-put	2	lexicographic	binders 3,0 ctor 1,1	40b4a001fb810de65aac72e1b7b956e9703e8521fb5263186f3ba0483d11551e
-kv-put	2	lexicographic	binders 3,2 ctor 0 base	3bed6676d899c44cacb87d7a286f1de07eed47b09b7774e99514cbc52e3752b4
 kv-put	2	lexicographic	binders 3,2 ctor 1,0	70bdf076949d31700ee6939db5d2d0eb7ac9fbbbcd725a15f5acb06877436409
 kv-put	2	lexicographic	binders 3,2 ctor 1,1	615f6ea6555dec99884c30f8ace237bd875285432b84c15e1c64253ff99f0c8b
 kv-put	2	direct-fallback		d1522612c0db311e7b7e107bbb6905c7d696cbb136e386fe570d9888c6ed5400
@@ -1810,15 +1586,10 @@ list-eq-by	1	induction	binder 1 ctor 1	d2f75e477b92db7f02f901fad21dd2794e7cbf303
 list-eq-by	1	induction	binder 2 ctor 0	b7b4c3a68f71e1673c14a5fcef982f19e812c1872488183196da621aac557a01
 list-eq-by	1	induction	binder 2 ctor 1	9a10e85c68807e7e75c8afb573644a4baa2641afbffbe09bd447cd6906c1aaa0
 list-eq-by	1	lexicographic	binders 0,1 ctor 0 base	4a710e38f7f0587718fceaaeb71f9bf00d360cbb66b2ed5a56f0a09274497595
-list-eq-by	1	lexicographic	binders 0,2 ctor 0 base	4a710e38f7f0587718fceaaeb71f9bf00d360cbb66b2ed5a56f0a09274497595
-list-eq-by	1	lexicographic	binders 1,0 ctor 0 base	32894b80070d488e69c7a18022b5a7a2f8e53ebf69438a1203c69106df40fb7e
 list-eq-by	1	lexicographic	binders 1,0 ctor 1,0	fdf8fe82c71df18c9be174e1d33fd7ee7b93f9a5d656a0f64d53f1b320d6059f
-list-eq-by	1	lexicographic	binders 1,2 ctor 0 base	32894b80070d488e69c7a18022b5a7a2f8e53ebf69438a1203c69106df40fb7e
 list-eq-by	1	lexicographic	binders 1,2 ctor 1,0	9734f033d3bafcbeae558b6d73c900f531e507cff2cf146917bddf5dc15718e1
 list-eq-by	1	lexicographic	binders 1,2 ctor 1,1	5c33316854e49d5493c85cf18cc808a9d9183b65638be681514ba80dbf276c81
-list-eq-by	1	lexicographic	binders 2,0 ctor 0 base	b7b4c3a68f71e1673c14a5fcef982f19e812c1872488183196da621aac557a01
 list-eq-by	1	lexicographic	binders 2,0 ctor 1,0	bae724d07bbc1390d47733cee5163ef60bab10cf38e60a1ca82b62dac65514d0
-list-eq-by	1	lexicographic	binders 2,1 ctor 0 base	b7b4c3a68f71e1673c14a5fcef982f19e812c1872488183196da621aac557a01
 list-eq-by	1	lexicographic	binders 2,1 ctor 1,0	b8ea583e1562179fec5763500525d3a1721b270e05f76902c47fc3de042e229e
 list-eq-by	1	lexicographic	binders 2,1 ctor 1,1	926a6953dafabf1dcd0e8f7fc004bbbaee994f0f3fc131e83ee252f15605da75
 list-eq-by	1	direct-fallback		cb0b38f60dd0f2254cfdd2499e6afa82e4f32f31d30e46ba06aa582394dac825
@@ -1830,15 +1601,10 @@ list-eq-by	2	induction	binder 3 ctor 1	c472dbc724aa9f590fae4f406fe9a420b3720c3d9
 list-eq-by	2	induction	binder 4 ctor 0	995b819725264e6e135f6de880d23b91e0ace28f6b2cdc029515485f7f65ca21
 list-eq-by	2	induction	binder 4 ctor 1	0f894229dbc7e801f69211f137fb510212715b1b1b842d5065ba163671163088
 list-eq-by	2	lexicographic	binders 0,3 ctor 0 base	3080da8228001813a5274eaf9e4da26acd640b7a559f038f1e5945c17cc6c3eb
-list-eq-by	2	lexicographic	binders 0,4 ctor 0 base	3080da8228001813a5274eaf9e4da26acd640b7a559f038f1e5945c17cc6c3eb
-list-eq-by	2	lexicographic	binders 3,0 ctor 0 base	b2db95e0b027ac68ceefe778c1faa6bdef5eebb11c3dae01745bf4021a5dc53a
 list-eq-by	2	lexicographic	binders 3,0 ctor 1,0	9e5a91b24c8076c2e97084552b9597d0d99bf909f1fb80ded8f16a8c1bc892fb
-list-eq-by	2	lexicographic	binders 3,4 ctor 0 base	b2db95e0b027ac68ceefe778c1faa6bdef5eebb11c3dae01745bf4021a5dc53a
 list-eq-by	2	lexicographic	binders 3,4 ctor 1,0	cb60b89f2d295f60a5aa866ecf8f59ee7dafb077648343d8c9040aa15a60a95a
 list-eq-by	2	lexicographic	binders 3,4 ctor 1,1	3916c146ebdd6131e9f36336a189339daa531f5e73bf43383233c2024a213700
-list-eq-by	2	lexicographic	binders 4,0 ctor 0 base	995b819725264e6e135f6de880d23b91e0ace28f6b2cdc029515485f7f65ca21
 list-eq-by	2	lexicographic	binders 4,0 ctor 1,0	fbfbcb2c923b9d688aace8cba8c58eb9ca62254b3a2839f86e60848ceca3427f
-list-eq-by	2	lexicographic	binders 4,3 ctor 0 base	995b819725264e6e135f6de880d23b91e0ace28f6b2cdc029515485f7f65ca21
 list-eq-by	2	lexicographic	binders 4,3 ctor 1,0	fa528a07bd3fe0b5e32bc7c520751bd098ec448b7a620fd956e404694eb35a2f
 list-eq-by	2	lexicographic	binders 4,3 ctor 1,1	b0bc11071e53261d6905d5480cf39c52b8100f0e606d12da514fc0f5f423eabb
 list-eq-by	2	direct-fallback		1de0513d0b9f8f8dfe226af227c9576598462493196cd806d96ca8d30a579e38
@@ -1866,15 +1632,10 @@ main-fetch	1	induction	binder 1 ctor 1	1be3172ef2ebfca27e6b5c2178ea90875cc2efce7
 main-fetch	1	induction	binder 2 ctor 0	07846bd047ca97da189ea863c7887f5b5624b1539fe552aa84901be8da53d0d7
 main-fetch	1	induction	binder 2 ctor 1	40e3cc8c151f30e8e9dac7fc631337be4638daa66d751a91c81eeecab4a1ef07
 main-fetch	1	lexicographic	binders 0,1 ctor 0 base	bae5a8237c4448b47d4d3bf8f7c8e892bf1437fd8ab3cc0daf36f11e162f691f
-main-fetch	1	lexicographic	binders 0,2 ctor 0 base	bae5a8237c4448b47d4d3bf8f7c8e892bf1437fd8ab3cc0daf36f11e162f691f
-main-fetch	1	lexicographic	binders 1,0 ctor 0 base	e42756a5d80a66b4df66507ca2823dd5f9226b7fff0d19a35b32740f6e405d2a
 main-fetch	1	lexicographic	binders 1,0 ctor 1,0	4682c2fdc02c25f162ff85931a1dfaaa81f65cc63a7237968c1f5633ab3222ad
-main-fetch	1	lexicographic	binders 1,2 ctor 0 base	e42756a5d80a66b4df66507ca2823dd5f9226b7fff0d19a35b32740f6e405d2a
 main-fetch	1	lexicographic	binders 1,2 ctor 1,0	3f3f51d869c6235493f9f55786ea7a3ee6e0253302b46286a154f588eca0f44a
 main-fetch	1	lexicographic	binders 1,2 ctor 1,1	36d3dd27862d69463febf914ba2f3738955f3f15048ae73644518c3b8433c022
-main-fetch	1	lexicographic	binders 2,0 ctor 0 base	07846bd047ca97da189ea863c7887f5b5624b1539fe552aa84901be8da53d0d7
 main-fetch	1	lexicographic	binders 2,0 ctor 1,0	032e1ad1823c5015dfeb45bf3c2508672be7c82fc277573eb8ac58c26dd95424
-main-fetch	1	lexicographic	binders 2,1 ctor 0 base	07846bd047ca97da189ea863c7887f5b5624b1539fe552aa84901be8da53d0d7
 main-fetch	1	lexicographic	binders 2,1 ctor 1,0	961b0e08c5d8317b4a3a3dd0a7c725a97aaa4f19205b246e75812b78cf87b403
 main-fetch	1	lexicographic	binders 2,1 ctor 1,1	5db6dd212e86365d28cf6e358993abe12680871e15a68231c812044dc246813e
 main-fetch	1	direct-fallback		32c832059cc26b9a62154ec01616dbeb77def264ce3f96a8ab6e7450a7e284f7
@@ -1884,7 +1645,6 @@ main-fetch	2	induction	binder 0 ctor 0	96055a3209c081c747a872ac969561c672286d479
 main-fetch	2	induction	binder 1 ctor 0	99c598f9659a1888dd0e0db93aa58373b85a86986ead42c357c02ed6fbe661d9
 main-fetch	2	induction	binder 1 ctor 1	6d5c1549a43d09644f7c9aec1839a760cceda35137d5ac5d5436d4cab42b3619
 main-fetch	2	lexicographic	binders 0,1 ctor 0 base	ccd3dee3d0deb8f4b2d9efb3ca445299468a2a078c8a47cd6d9c86a7efc2b1a6
-main-fetch	2	lexicographic	binders 1,0 ctor 0 base	99c598f9659a1888dd0e0db93aa58373b85a86986ead42c357c02ed6fbe661d9
 main-fetch	2	lexicographic	binders 1,0 ctor 1,0	0f97473bdb326eca5834029b4fd56d6026559e368a8dc643b86c07bf53ee21cb
 main-fetch	2	direct-fallback		fab38f42b4c67a4c7e7a3a5b7fb0cf3dfffa69d5848371282081ef08f0b56530
 map	0	lemma-free		34d4f024795e5f8e6faf939e8abe0e66210007dd84c370d31c570c5fd37e4968
@@ -1893,7 +1653,6 @@ map	0	induction	binder 1 ctor 0	58fafd1389eb8af44bbd90323ab7f2f047db908392ae7167
 map	0	induction	binder 1 ctor 1	1c1a7149b517dd8f2990d9518d0079e91edd37e3d3c8f0b5a06b078e2743e3bc
 map	0	direct-fallback		6b3ef63b273f875f47a59115e117580398ac55f2c56225fc22b7a7e93f2e9b26
 map-empty	0	lemma-free		745185b08d29b3fdf5ffe3c952be19452c316cd6af39cdde2f7a7a7f37347baf
-map-empty	0	direct		745185b08d29b3fdf5ffe3c952be19452c316cd6af39cdde2f7a7a7f37347baf
 map-empty	0	direct-fallback		745185b08d29b3fdf5ffe3c952be19452c316cd6af39cdde2f7a7a7f37347baf
 map-err	0	lemma-free		d9b6ba1a1d27c2492acf4c72d46b0bffaa15673a70f0486bf167668c4b3e9ce0
 map-err	0	direct		7d6b8e094a151ac0e559a0628a9cc3c560b412b5cdf39749918451753bd23b5a
@@ -1902,11 +1661,9 @@ map-err	1	lemma-free		ec4162899915a25d2b870e6193d1afabbd4bff0ff18ff3b12f5977b47a
 map-err	1	direct		e3fe7767c4397744ea07728e53d5c770b962236ab3f1a3082c56bb5b1d1e6e3a
 map-err	1	direct-fallback		e3fe7767c4397744ea07728e53d5c770b962236ab3f1a3082c56bb5b1d1e6e3a
 map-has	0	lemma-free		105e86db936a32bf88f2dd07642ee28afe74961c42e09cde74c5c2ec4b5cc127
-map-has	0	direct		105e86db936a32bf88f2dd07642ee28afe74961c42e09cde74c5c2ec4b5cc127
 map-has	0	induction	binder 2 ctor 0	128d68d63c25cd78926fbd2103553e5eb0efba60a6aea101ad0e61cb47c59f72
 map-has	0	direct-fallback		105e86db936a32bf88f2dd07642ee28afe74961c42e09cde74c5c2ec4b5cc127
 map-insert	0	lemma-free		229a2df2bd3ecef15c0e82136ae1334b1c84ea949c80c9258a9d12963a2506a9
-map-insert	0	direct		229a2df2bd3ecef15c0e82136ae1334b1c84ea949c80c9258a9d12963a2506a9
 map-insert	0	induction	binder 2 ctor 0	d8bab5c3a48c5d443e7864100743c8b57c2c160f581ebb566267e080ce5f881c
 map-insert	0	direct-fallback		229a2df2bd3ecef15c0e82136ae1334b1c84ea949c80c9258a9d12963a2506a9
 map-keys	0	lemma-free		378bef75774b1e8102fd4e6203b553377cd99d53476022b5c6f5b309c1683958
@@ -1914,14 +1671,11 @@ map-keys	0	direct		012d5e02e0c9757d902d47233f1d1e9349a7d34670735e3f82b458e55acc1
 map-keys	0	induction	binder 0 ctor 0	fd0c633aa192e3bafd4c6cdb9239ab6780d6b1429d86e01ff3d9b81ebd8a3243
 map-keys	0	direct-fallback		012d5e02e0c9757d902d47233f1d1e9349a7d34670735e3f82b458e55acc1873
 map-lookup	0	lemma-free		745185b08d29b3fdf5ffe3c952be19452c316cd6af39cdde2f7a7a7f37347baf
-map-lookup	0	direct		745185b08d29b3fdf5ffe3c952be19452c316cd6af39cdde2f7a7a7f37347baf
 map-lookup	0	direct-fallback		745185b08d29b3fdf5ffe3c952be19452c316cd6af39cdde2f7a7a7f37347baf
 map-merge	0	lemma-free		42008901fc8c70b986c6d45e22cb3b1ac72b3b9713113c9b2f4dad24e32330f2
-map-merge	0	direct		42008901fc8c70b986c6d45e22cb3b1ac72b3b9713113c9b2f4dad24e32330f2
 map-merge	0	induction	binder 0 ctor 0	e141f4a8b736312a118d2f94f90a6e752b5b759a0720caedf3da8cf059539d26
 map-merge	0	direct-fallback		42008901fc8c70b986c6d45e22cb3b1ac72b3b9713113c9b2f4dad24e32330f2
 map-merge	1	lemma-free		1e74dbf16c421feaa6a568ce84f0e44b31073006326e29642b5b17c73e0afd5e
-map-merge	1	direct		1e74dbf16c421feaa6a568ce84f0e44b31073006326e29642b5b17c73e0afd5e
 map-merge	1	induction	binder 2 ctor 0	25829025365ee7223a52d8ac72bb02875c35178a2a87710d9498e6013896cb70
 map-merge	1	direct-fallback		1e74dbf16c421feaa6a568ce84f0e44b31073006326e29642b5b17c73e0afd5e
 map-option	0	lemma-free		cd42558a8461908a3321836afed05f296f02b228f3a65a058c85dc272ee8421c
@@ -1987,10 +1741,8 @@ media-type-is	1	induction	binder 0 ctor 0	922a3ae2fd0ed03d488615b6f2168302e05d91
 media-type-is	1	induction	binder 0 ctor 1	f6a8247f5ff376b87c7c4cfcdd3da5dd3847e14a136dc86d5b0b2ddf9d92d0aa
 media-type-is	1	induction	binder 1 ctor 0	a07a7d4976268a20a9d23f9d12ab0138d0a7cdfd498a36b2116ec2c8000a3a88
 media-type-is	1	induction	binder 1 ctor 1	a8f4bbb3027be32a1b37d65758e0e8193e7593d258f9e1baa5e6917506572bab
-media-type-is	1	lexicographic	binders 0,1 ctor 0 base	922a3ae2fd0ed03d488615b6f2168302e05d9171c80be90acafe85aa4963966c
 media-type-is	1	lexicographic	binders 0,1 ctor 1,0	b1ade8de2cfbbccf4adc6b9b86a3a41b5fdda3d3b30b593036fc551743ea5a42
 media-type-is	1	lexicographic	binders 0,1 ctor 1,1	b7912af4ba8ee281d37637f73072746aa7f676fd3ca6d650b9034006368527b7
-media-type-is	1	lexicographic	binders 1,0 ctor 0 base	a07a7d4976268a20a9d23f9d12ab0138d0a7cdfd498a36b2116ec2c8000a3a88
 media-type-is	1	lexicographic	binders 1,0 ctor 1,0	73b25450e055738e6d12776f5ddd4d866f6c1c696534cb278b91ad58a409e723
 media-type-is	1	lexicographic	binders 1,0 ctor 1,1	eac72157f200ada66add25a480f124517d4d6a06a2b6a087073864f98ff3de7a
 media-type-is	1	direct-fallback		9cd092a8740f902b500e78dc7f2ab73f4daf1e9cc1906d833652c04976665d25
@@ -2000,10 +1752,8 @@ media-type-is	2	induction	binder 0 ctor 0	9abadb6e9c65c436adee0c77fb4c5d35c78106
 media-type-is	2	induction	binder 0 ctor 1	7b4a0a6b51e945facd711313bbb948398c634f45a4ae3e46b18a13079b997597
 media-type-is	2	induction	binder 1 ctor 0	644f11a2d9083ff68064d41f6f0d8f05b769965224f26fbae5b5997eb6156127
 media-type-is	2	induction	binder 1 ctor 1	da7f64d72803023f779b0daf2f566d867cd597ebc8f7b5de98be5b8e3c26412d
-media-type-is	2	lexicographic	binders 0,1 ctor 0 base	9abadb6e9c65c436adee0c77fb4c5d35c78106eb60e541d845998782dd52f73b
 media-type-is	2	lexicographic	binders 0,1 ctor 1,0	d5c9110e2f1490b0ada2ad980a769d89969ef241af4be9542c498f0f29a3f6c2
 media-type-is	2	lexicographic	binders 0,1 ctor 1,1	c34b4bf30c0f86596a714807f37e17f758dd5ccbc04c02001cb84b8e19565fc3
-media-type-is	2	lexicographic	binders 1,0 ctor 0 base	644f11a2d9083ff68064d41f6f0d8f05b769965224f26fbae5b5997eb6156127
 media-type-is	2	lexicographic	binders 1,0 ctor 1,0	cadfd735cea215a9397f78fb31e122443c95550e8bb443a2717e411d8e3c4946
 media-type-is	2	lexicographic	binders 1,0 ctor 1,1	6875cd7a2b121c2ffd74aa36797642aa822b7fd96aac5848a712639c6f7d5541
 media-type-is	2	direct-fallback		e54688a909be4a21e279f48e0c74e732813634c68c07f4c2f704d72455ff673c
@@ -2013,10 +1763,8 @@ merge	0	induction	binder 0 ctor 0	740c4e2a05b92fb8729269343c440a44c8af9180d8af1b
 merge	0	induction	binder 0 ctor 1	8d9fa1d576433627f8af0116794d671ef9ece6b19e187ea324cfb3d3519e4c04
 merge	0	induction	binder 1 ctor 0	1c15c39ac74736d9ca6f44a36d766e183588f4e85a456bc8317b2a9b57fcc2b9
 merge	0	induction	binder 1 ctor 1	cd0797dbfc71227e71ca9d07342f923d04fbbd0a8cb40a7f9254cab83391e241
-merge	0	lexicographic	binders 0,1 ctor 0 base	740c4e2a05b92fb8729269343c440a44c8af9180d8af1b1fcd365d112d788fcb
 merge	0	lexicographic	binders 0,1 ctor 1,0	d70176af134fda544dd77177c0a7e648a4ed269c1c611fc831fe5d303183bcda
 merge	0	lexicographic	binders 0,1 ctor 1,1	0c270e853d6ef8fbe281fd9165a7cf0e489c62109fd3203c5cf3167342ad450f
-merge	0	lexicographic	binders 1,0 ctor 0 base	1c15c39ac74736d9ca6f44a36d766e183588f4e85a456bc8317b2a9b57fcc2b9
 merge	0	lexicographic	binders 1,0 ctor 1,0	9248a27228816637576930dfa152dc52b6844ec1d141ed00911687758b9d0c99
 merge	0	lexicographic	binders 1,0 ctor 1,1	b663c93f3e462b10befa3ddc191a7625751ebe2cf23b1fc02ae54257f22ccf86
 merge	0	direct-fallback		9aa5264dbe3fde73be3d8b3d73d1ee5a900a465075c4bee77819ee0f9bccdaa5
@@ -2026,10 +1774,8 @@ merge	1	induction	binder 1 ctor 0	41fd187dadd258f09a84c713b0cc08fe9aee0929448589
 merge	1	induction	binder 1 ctor 1	7121c8156c4679675c743024062a9b23b632ceddb014e232226f5b4a588b16b4
 merge	1	induction	binder 2 ctor 0	06bae53f4e55c4aaae047e76424af9a1c648a1e27502a95a1ec88f794ddde93f
 merge	1	induction	binder 2 ctor 1	0818e6b97118a94ddaba28f2f41dcff73e14730aa321a437e10ed6938fe6a5e7
-merge	1	lexicographic	binders 1,2 ctor 0 base	41fd187dadd258f09a84c713b0cc08fe9aee09294485896928d11bbb4c04024b
 merge	1	lexicographic	binders 1,2 ctor 1,0	d9cd29af5f2420fe173aeff7f74fd157c8291d0189b4411eab92e7e2ff566895
 merge	1	lexicographic	binders 1,2 ctor 1,1	41f6503ca9a640aeec5bb6ad0432833433e459432f54437cc030be2a06178079
-merge	1	lexicographic	binders 2,1 ctor 0 base	06bae53f4e55c4aaae047e76424af9a1c648a1e27502a95a1ec88f794ddde93f
 merge	1	lexicographic	binders 2,1 ctor 1,0	4cd4d92cff7a89666d301c1789286e92c6d78845cfc5e7e5579f2d85cf45df14
 merge	1	lexicographic	binders 2,1 ctor 1,1	60782ae4237a33aed708b4ed9a3a0964f234175d41f8f2b5964754b3400ef74a
 merge	1	direct-fallback		edc5d86748924d021b54970aa4a08eaa3b6cf72b2e00e55b3521044066bc917b
@@ -2039,15 +1785,12 @@ merge	2	induction	binder 0 ctor 0	2b0f8372d0f91dcc396e86568ef0be9b300e4aa07e4f7d
 merge	2	induction	binder 0 ctor 1	cd11666740cec1a899e47b2a1dc616e1ecdd59e2cd33cc15015b46ec5e2d294c
 merge	2	induction	binder 1 ctor 0	52d5990ce717064fc0349bc60255be079f20c828a8bed8f4771db7f4de961d40
 merge	2	induction	binder 1 ctor 1	5138b8f3c12ad5517fbff5f47bf8f816eda2e54acf0957bb3e0a9264c419a55d
-merge	2	lexicographic	binders 0,1 ctor 0 base	2b0f8372d0f91dcc396e86568ef0be9b300e4aa07e4f7d14f54aed4943e5a936
 merge	2	lexicographic	binders 0,1 ctor 1,0	79d36dbab018cab0d01d60472158b654e55b94a58385f86f2c90d92b265ef069
 merge	2	lexicographic	binders 0,1 ctor 1,1	e256190f1e66b4c707fb3b52577b65eb72ddd454d23ab6f7a5b6f1e4f8c03110
-merge	2	lexicographic	binders 1,0 ctor 0 base	52d5990ce717064fc0349bc60255be079f20c828a8bed8f4771db7f4de961d40
 merge	2	lexicographic	binders 1,0 ctor 1,0	37edcee7e3dd6c1c9fbcc81a152ed197c0a93c5bfaa795217b6030ecc31c7631
 merge	2	lexicographic	binders 1,0 ctor 1,1	bec500a3bd1be2d83e09d59303c7acd95640c577fe9486312b0f3df8414f53b7
 merge	2	direct-fallback		eb9db144288035d0a803820bbbc749caab4299d82d62e1add9c6fefbecd073e9
 mi-insert	0	lemma-free		7bfd88d209a778a70a42e8d163e789d056569d9ed5d8bc66ff5208cfbce3fbbc
-mi-insert	0	direct		7bfd88d209a778a70a42e8d163e789d056569d9ed5d8bc66ff5208cfbce3fbbc
 mi-insert	0	induction	binder 2 ctor 0	5e102aa0106bec67b96a4e7f04f1ee2e37d18eeeb94968649febb729680da327
 mi-insert	0	induction	binder 2 ctor 1	35898ff9b6cc2330b1b984ea814a34e1f3f3662a74be08e5fc8f319c3383d24e
 mi-insert	0	direct-fallback		7bfd88d209a778a70a42e8d163e789d056569d9ed5d8bc66ff5208cfbce3fbbc
@@ -2057,10 +1800,8 @@ mi-keys	0	induction	binder 0 ctor 0	c4f4342e01a6672ae0bb879dfb9daf9e69bb28d50ddf
 mi-keys	0	induction	binder 0 ctor 1	2f6be0e1f71ab6af5aa36d3da9099fe84cf9415fa192abea71984b8881e959ae
 mi-keys	0	direct-fallback		02280c536f59d53e7f9b483e15cf12667e024eee28d4f5df1c079a543dc4fdb0
 mi-lookup	0	lemma-free		304cb14c7e88cf95c9933660985817c67a91a3f53b8151d47933d1cf33bb5c89
-mi-lookup	0	direct		304cb14c7e88cf95c9933660985817c67a91a3f53b8151d47933d1cf33bb5c89
 mi-lookup	0	direct-fallback		304cb14c7e88cf95c9933660985817c67a91a3f53b8151d47933d1cf33bb5c89
 mi-merge	0	lemma-free		f3b4f3f8e156288faba8faeee3ba95700c6e0c7b11466da1b5c1ddeb6b3cab51
-mi-merge	0	direct		f3b4f3f8e156288faba8faeee3ba95700c6e0c7b11466da1b5c1ddeb6b3cab51
 mi-merge	0	induction	binder 0 ctor 0	c712268629f8d84d342b7386d365434ba7784a762958e17fad158dc74c66c798
 mi-merge	0	induction	binder 0 ctor 1	145c4f99b70ab87ac0c96640e86c102c5322901aa45e5dcffc5cb96fa453c280
 mi-merge	0	direct-fallback		f3b4f3f8e156288faba8faeee3ba95700c6e0c7b11466da1b5c1ddeb6b3cab51
@@ -2091,7 +1832,6 @@ minimum	2	induction	binder 1 ctor 0	a90d85e5a2566e67adf452c32faac9d3f428855fc7d9
 minimum	2	induction	binder 1 ctor 1	1a0854693ca3052a34c5da44544ebb41f9825dde68792a90db1cb67784c20e04
 minimum	2	direct-fallback		17fa3598f5072b1c4a75abeb2f5e6f61b788824d88577569cfa4bcbbd026978f
 mul-s	0	lemma-free		f388864c078e40a089bc483d93ba459afe4967febf067a77aa18c9e7a31bdcc5
-mul-s	0	direct		f388864c078e40a089bc483d93ba459afe4967febf067a77aa18c9e7a31bdcc5
 mul-s	0	induction	binder 0 ctor 0	b3f2e753909bbd290afdc7395df4207f3c38bb5011f6062902c49c7279e3b54f
 mul-s	0	induction	binder 0 ctor 1	ef625a4c31da737feef2215d630fb6d3c043a14323e305619952d8d97e8692ea
 mul-s	0	induction	binder 0 ctor 2	878fe3b07c9f4fc7d70aea92e9662f6ae0fa2c36e40e10b09ea7379f865e41a4
@@ -2134,7 +1874,6 @@ parse-nat	0	direct		db387eb50e7cb44f30f50c7b6a2b5557490235ba0e35f4c05b5fb1adbf46
 parse-nat	1	lemma-free		8fe56e631e112008a53d7e203848d6004ab0f537bb92d655759578bd07dcfc7c
 parse-nat	1	direct		f1e88b7f3cf937a4c96434656651ef7a68e2fab27883a33591680745a9f5bdaa
 parse-nat-go	0	lemma-free		2f3696d68ad9762d34fb91300738907b28dbba17ba7cb01b9db589710fbdd596
-parse-nat-go	0	direct		2f3696d68ad9762d34fb91300738907b28dbba17ba7cb01b9db589710fbdd596
 parse-nat-go	0	direct-fallback		2f3696d68ad9762d34fb91300738907b28dbba17ba7cb01b9db589710fbdd596
 path-is	0	lemma-free		aeca05967f9cdc3ee786d07b01721bf7a937747dd756cd41246dcc3b4ebd63c1
 path-is	0	direct		5d499081bd44d4e6430962d7d4572502741a5cac3c60915f0e28ed8f3d3700c3
@@ -2147,10 +1886,8 @@ path-is	1	induction	binder 0 ctor 0	3f6ce384646e8ea30f2b01b0d832c92b4a72473d9eb4
 path-is	1	induction	binder 0 ctor 1	1478c7f780c665946eed35394cc069dc2886aaf608162d63fb450732f572d5f6
 path-is	1	induction	binder 1 ctor 0	16226eddc918fc6eee37a2d934bb043fa3ba2312c5989e533e7078442ca90f1c
 path-is	1	induction	binder 1 ctor 1	3f53d2ec65e2417737eb2f20f78f5b60efec00fa98f7ffe4103099cac110e925
-path-is	1	lexicographic	binders 0,1 ctor 0 base	3f6ce384646e8ea30f2b01b0d832c92b4a72473d9eb40621749578cec7fc9b44
 path-is	1	lexicographic	binders 0,1 ctor 1,0	9514078e9626fdada9e447b9ca280d15da8ab95deae056955e23cfdfe16682ce
 path-is	1	lexicographic	binders 0,1 ctor 1,1	1fc3f2fb658f0aef1a8667d0676fcc39d9a0ad3996baf4191205cc2d8aaaeb67
-path-is	1	lexicographic	binders 1,0 ctor 0 base	16226eddc918fc6eee37a2d934bb043fa3ba2312c5989e533e7078442ca90f1c
 path-is	1	lexicographic	binders 1,0 ctor 1,0	29dc73e02331fa5afec7b0de226729506f62239def4c5694beb0049428c0efc9
 path-is	1	lexicographic	binders 1,0 ctor 1,1	b75d9138456fbffa2a54fe1b28153770f5bbbeaac6b244129ff2e9fe31c7cc5f
 path-is	1	direct-fallback		c372bb43cf8e2cc8f157f33b4729c21d7375df5787991d4c651892e86e7ea1ec
@@ -2160,10 +1897,8 @@ path-is	2	induction	binder 0 ctor 0	e8a81be9d35bc79814472a2f3d78c2c0bbef6c5ca2e9
 path-is	2	induction	binder 0 ctor 1	1f47b59d5bf95d709723df8fbbfbd900b4dc862e5c3168a752c3e80641fc2131
 path-is	2	induction	binder 1 ctor 0	5a3f46dc55cd77914efc8a51e952ebddec7e62d8bbedf40583460bd06b0300d5
 path-is	2	induction	binder 1 ctor 1	c440323d8874d5162099a42131eb820903793024629f7ede8360228430a1adf3
-path-is	2	lexicographic	binders 0,1 ctor 0 base	e8a81be9d35bc79814472a2f3d78c2c0bbef6c5ca2e93e06bd0f59d6e536b13e
 path-is	2	lexicographic	binders 0,1 ctor 1,0	0dde9e1f16354eab80a735a718a8a87579f22e5caeaab96b187dcf31cb66b4df
 path-is	2	lexicographic	binders 0,1 ctor 1,1	d445919a14c6f4d514eb053bb4b3300912af19e3d3405c9fb185ad3189030691
-path-is	2	lexicographic	binders 1,0 ctor 0 base	5a3f46dc55cd77914efc8a51e952ebddec7e62d8bbedf40583460bd06b0300d5
 path-is	2	lexicographic	binders 1,0 ctor 1,0	b5e84b1be000af63e2e8d6b7a3bfa36ec2893a19da32f79bdef1b879fb4617e1
 path-is	2	lexicographic	binders 1,0 ctor 1,1	2494e091e48e3b7bf7bed4c5cf15fc2603b3336bcd4415b9f96b11db1cb96152
 path-is	2	direct-fallback		35abdf620835ee9e65cbf394c088da97ee1bd2227eff879a04141c99206e5cc1
@@ -2201,10 +1936,8 @@ q-drop	0	induction	binder 1 ctor 0	0babecaa0fd372dc321b629c715256c24399fbe0abe75
 q-drop	0	induction	binder 1 ctor 1	615b0c7692dbd364749296f4d4305e582f13fd07dac4b56f736f48a5b22d2057
 q-drop	0	induction	binder 2 ctor 0	c9a7929332ed810dd5c488aae3df7110c3593c2161b8badc13fd3de32f7058fb
 q-drop	0	induction	binder 2 ctor 1	87d47dee3a4b14dea7e8f42dd40525dbc79b262f087934f28845f9adcc2dcac5
-q-drop	0	lexicographic	binders 1,2 ctor 0 base	0babecaa0fd372dc321b629c715256c24399fbe0abe75493313254037fe85f7f
 q-drop	0	lexicographic	binders 1,2 ctor 1,0	ea6baf79e5274e72f4eac4c9982afc9c48393128acbada0d53c40b62d7081a62
 q-drop	0	lexicographic	binders 1,2 ctor 1,1	bebcc604dcad418ebae2fedf63c12fcbf02d69c527cae469bde1d951ca31db26
-q-drop	0	lexicographic	binders 2,1 ctor 0 base	c9a7929332ed810dd5c488aae3df7110c3593c2161b8badc13fd3de32f7058fb
 q-drop	0	lexicographic	binders 2,1 ctor 1,0	b54f69fccff7065511813dea570d6ee083b6028f2c78cb48b8b31c4b2081282f
 q-drop	0	lexicographic	binders 2,1 ctor 1,1	cada2b30bed8991dae49388fbff92ddac0f7c7f1d7592a17730e51bbe07f280b
 q-drop	0	direct-fallback		6858564d68908cfcfba75ee772eaf1faeefd7036b15bbe8d570478b62a606116
@@ -2221,10 +1954,8 @@ q-drop	3	induction	binder 0 ctor 0	9d70c963d5c5c7f4201dd4b7287a47c5a332b847e8d9a
 q-drop	3	induction	binder 0 ctor 1	8eaf621abfd5b0e4b01ee751f42d7edaf8b148a7ac3438ad3094a5e845faf686
 q-drop	3	induction	binder 1 ctor 0	2dd3f963313662a15423f3e739580c9f31e4d8eb65626b5b57a91fe69e497920
 q-drop	3	induction	binder 1 ctor 1	32d20c949b80c84712251c10c89a8e0e654fa5334b59eed4490e307553392c06
-q-drop	3	lexicographic	binders 0,1 ctor 0 base	9d70c963d5c5c7f4201dd4b7287a47c5a332b847e8d9aa9d67e4dfc7ea26acf5
 q-drop	3	lexicographic	binders 0,1 ctor 1,0	8911cca1089ea6aa53ca6e7eb46cc7a9f9d78d84124f0c340fb675d66863f60f
 q-drop	3	lexicographic	binders 0,1 ctor 1,1	0fd72ccaa9bb51dcfd38c4a46b32f38755358fecd4e0e2c098a7a01318ca9c79
-q-drop	3	lexicographic	binders 1,0 ctor 0 base	2dd3f963313662a15423f3e739580c9f31e4d8eb65626b5b57a91fe69e497920
 q-drop	3	lexicographic	binders 1,0 ctor 1,0	c97bd58a15b86ebd7de653b6068d196d0192c864b94102ccb51b5f74251ac08c
 q-drop	3	lexicographic	binders 1,0 ctor 1,1	d32efdb5d1f6fe7ec67b6ca99b04b75c59693591e49bdf8641d29183cc492dbf
 q-drop	3	direct-fallback		b9744417af577b43ad2dc4e10cfc7af725422494d387a287f156ddc51e64848a
@@ -2234,10 +1965,8 @@ q-drop	4	induction	binder 0 ctor 0	2460ce1bbafcedba5c9a79eb47838ff7f080710ab709d
 q-drop	4	induction	binder 0 ctor 1	376dec43c174c71ce792584c538f0dce27412ee5ceb8d66c76d5274e029084ad
 q-drop	4	induction	binder 1 ctor 0	ed3f6541f6f07cbaede7d06f89bc8ab68230c5dd1f6516cb676605c90294f7eb
 q-drop	4	induction	binder 1 ctor 1	a47aacf4e2a937ef6d67f2342109e358e7597b787eab95b6d9d11d25ecbe628b
-q-drop	4	lexicographic	binders 0,1 ctor 0 base	2460ce1bbafcedba5c9a79eb47838ff7f080710ab709dfe80fe7fcbb0304011c
 q-drop	4	lexicographic	binders 0,1 ctor 1,0	e589b7794b7cbbf4a40071510ada6459e14cb34a8c20f661ba1ddcd182de0b56
 q-drop	4	lexicographic	binders 0,1 ctor 1,1	927133b0c34e4b68231fbddcd34aa6730d960908d928f68a56630595a60e04a2
-q-drop	4	lexicographic	binders 1,0 ctor 0 base	ed3f6541f6f07cbaede7d06f89bc8ab68230c5dd1f6516cb676605c90294f7eb
 q-drop	4	lexicographic	binders 1,0 ctor 1,0	a1475db43198422ff762697da5204a838390e0492d46623c5db36c7c951e3207
 q-drop	4	lexicographic	binders 1,0 ctor 1,1	e270c68ede81cd4625b232533087efc64b6a80f34c95faf52d80618198b863f6
 q-drop	4	direct-fallback		edc373fb760900c0e1098e9377c0c8318a54bae89305e16e20318d2a8dacf892
@@ -2247,10 +1976,8 @@ q-peek	0	induction	binder 1 ctor 0	d4800d1fa889ec9fbe53f9867ee5e224ea3b0c23443e8
 q-peek	0	induction	binder 1 ctor 1	c9c97fc6bb2554e0554aeb15ed49729448dd9a488bbf044a68b1ad04ffe7c294
 q-peek	0	induction	binder 2 ctor 0	d0aeecadc156274e9357261e8b9cc6d9a2cd7dea28d08975fd1201f7a1f1475d
 q-peek	0	induction	binder 2 ctor 1	2969e5b733d86396cd7177fd9a9f43cbaf85c2e8acedfc8ad0f58dbb0b89fea1
-q-peek	0	lexicographic	binders 1,2 ctor 0 base	d4800d1fa889ec9fbe53f9867ee5e224ea3b0c23443e85d45c12a0963c40e233
 q-peek	0	lexicographic	binders 1,2 ctor 1,0	e239444f34e3800f8bf6b7140d2233803dffb19931ec99e83d96230e18af7132
 q-peek	0	lexicographic	binders 1,2 ctor 1,1	aadd304954c0034db70d24a6ec290041f32bd0fe2f09ee64f96340828db55eab
-q-peek	0	lexicographic	binders 2,1 ctor 0 base	d0aeecadc156274e9357261e8b9cc6d9a2cd7dea28d08975fd1201f7a1f1475d
 q-peek	0	lexicographic	binders 2,1 ctor 1,0	983b9fd59cd8ce0d596fc5c4dcec925f921721b49b1f100328aaccf0fcef01cc
 q-peek	0	lexicographic	binders 2,1 ctor 1,1	6e89eb17d935631089eac91c253c6fccf9dbbe897e542aad7a68ecf9abec4c97
 q-peek	0	direct-fallback		255dcbb3893892a2196eccaef9082449962d61453ca85840402bf6dad3a9740d
@@ -2267,10 +1994,8 @@ q-peek	3	induction	binder 0 ctor 0	dbe8b65dc3870fa2e172cccaccf62df7845742ddc22e6
 q-peek	3	induction	binder 0 ctor 1	37a5400076661bc11025265d9a3b12b79bf17c692505f5a6b89512cfa4afcc96
 q-peek	3	induction	binder 2 ctor 0	5ce22ed3deaf3fecd4f052c004d7ce84ee864f3442a905aec831bc2886899e79
 q-peek	3	induction	binder 2 ctor 1	4e06a42267ffb3f1b8cbf502bfed23c55c8131943b9dad8ed78dbce67f938453
-q-peek	3	lexicographic	binders 0,2 ctor 0 base	dbe8b65dc3870fa2e172cccaccf62df7845742ddc22e62a6c791aab6fd1f7ad7
 q-peek	3	lexicographic	binders 0,2 ctor 1,0	5935b9149a2dae71181f5511dce852532b72ff3ac8e904a2fd0578f024412aaf
 q-peek	3	lexicographic	binders 0,2 ctor 1,1	4a6c75355e1c427228d5d665118c2bd39c6bdbe42e4c02eab53f53ddb7a52ac8
-q-peek	3	lexicographic	binders 2,0 ctor 0 base	5ce22ed3deaf3fecd4f052c004d7ce84ee864f3442a905aec831bc2886899e79
 q-peek	3	lexicographic	binders 2,0 ctor 1,0	f4184825e078c8ec57d0199eaa708d47a80a56c06395025bb7d0e7b79c0d4a33
 q-peek	3	lexicographic	binders 2,0 ctor 1,1	7d0cbdd561c9e216884d85b40fc33a6d9d4dbd0a3a0be9c4db87316ff707457a
 q-peek	3	direct-fallback		fe3705d510bb5886db86079366e96f782ae809c419229276fa68258d8aa1b923
@@ -2280,10 +2005,8 @@ q-peek	4	induction	binder 0 ctor 0	e9393966609e6b608ea5af4be750c8ecd40f0956c324c
 q-peek	4	induction	binder 0 ctor 1	b47672141e76e08273d24b7e08b010f4af1561da1f6807e8ee7a059903225fcf
 q-peek	4	induction	binder 1 ctor 0	29083e1744c6e0be9a8424480eb9dbe20c9c2ae0124d97f5dcec51552fce8151
 q-peek	4	induction	binder 1 ctor 1	92ce274203aa4daa1e3a0d60ff972d19574f4bf86bdd2247dee6ab7213f626bd
-q-peek	4	lexicographic	binders 0,1 ctor 0 base	e9393966609e6b608ea5af4be750c8ecd40f0956c324c0c61f8ab8c10a61f082
 q-peek	4	lexicographic	binders 0,1 ctor 1,0	bf0def722db987f41cbe0569fd078357d4f9b4afb7dbcf8cae5c2bf6de291a2c
 q-peek	4	lexicographic	binders 0,1 ctor 1,1	ef273b4a7fdaf34753654f6208f83b36fd395b196a7234f829fed04506b57489
-q-peek	4	lexicographic	binders 1,0 ctor 0 base	29083e1744c6e0be9a8424480eb9dbe20c9c2ae0124d97f5dcec51552fce8151
 q-peek	4	lexicographic	binders 1,0 ctor 1,0	435be8b8b8d862905aceafcb9faeb0bfc254117117f34e746ee39d75b8a84024
 q-peek	4	lexicographic	binders 1,0 ctor 1,1	3114e3327b54357a1148bf73c284012bd581087be6d3070822dd8a4160ccccef
 q-peek	4	direct-fallback		2ac363576eaaf385c76750acedb68c1b4c04991ba2764236a001b3aa0b5b8057
@@ -2304,10 +2027,8 @@ q-push	3	induction	binder 0 ctor 0	2660d95c626c14d60e275d466f30051fa607c924b9b39
 q-push	3	induction	binder 0 ctor 1	fd2ab5d05f78cb8dea9335419a46972dfb483a24ecb9f630e7438fbbf224cbbb
 q-push	3	induction	binder 1 ctor 0	e80e419ba2554cd827c85abb262dd93fd1caec37194ec9611cf693775ec29908
 q-push	3	induction	binder 1 ctor 1	e00e13dc31b91043fc8c135854f2fd28ec37cc5cb6b085e029d1fa92571b24fd
-q-push	3	lexicographic	binders 0,1 ctor 0 base	2660d95c626c14d60e275d466f30051fa607c924b9b39c4d2d0355929e999fe4
 q-push	3	lexicographic	binders 0,1 ctor 1,0	b6e934fa971725dd182ad48fb540a3b6be84d03efbee4e2ac4237caa88e458bf
 q-push	3	lexicographic	binders 0,1 ctor 1,1	830b7034ca5b2574c5497edb9979422c3256f5e615e28bd4362bb45c037edc8c
-q-push	3	lexicographic	binders 1,0 ctor 0 base	e80e419ba2554cd827c85abb262dd93fd1caec37194ec9611cf693775ec29908
 q-push	3	lexicographic	binders 1,0 ctor 1,0	df6b8569eb168e484668e5d693e95462441b2de29d52908a13a1c1217293daa9
 q-push	3	lexicographic	binders 1,0 ctor 1,1	05d70376ae7bf70771e15e7cb6c4f4002f1d9f78dc388bfd2ef67ecb4feba441
 q-push	3	direct-fallback		0c61d1adcb79c5242438bb5e77348479ef4552532f7f5cf802b9afa45ea5fdf7
@@ -2319,10 +2040,8 @@ q-to-list	0	induction	binder 0 ctor 0	de303e4fc6d2df2ac587381194fc906bd66221d5a3
 q-to-list	0	induction	binder 0 ctor 1	a00a14cd7b0060f272e088e3f7f240bff167bc5c7df6c26880047afab2df477d
 q-to-list	0	induction	binder 1 ctor 0	8fe2a89ea2c8f4395a2ecf38eeacf2216c78920ab17a93fc0ab0e45660525670
 q-to-list	0	induction	binder 1 ctor 1	16429c9da9652ce31d9378cae124db8c6562587a5f3db87c2dc258f3987e9e03
-q-to-list	0	lexicographic	binders 0,1 ctor 0 base	de303e4fc6d2df2ac587381194fc906bd66221d5a3240b2365f66f57e4041ab1
 q-to-list	0	lexicographic	binders 0,1 ctor 1,0	7853f0f51dc63f3c493ecd2611ffca5f45bd3f9265449fa3ead6a46cde68b410
 q-to-list	0	lexicographic	binders 0,1 ctor 1,1	99ba0b2d344f97dc3a6478ec332226270e709ac6a22ff2fbceffd06c24298687
-q-to-list	0	lexicographic	binders 1,0 ctor 0 base	8fe2a89ea2c8f4395a2ecf38eeacf2216c78920ab17a93fc0ab0e45660525670
 q-to-list	0	lexicographic	binders 1,0 ctor 1,0	b1233048c8a23d8444bcda5997c24287fb91deeef4e6bdcb2f3db4a1fcb88b61
 q-to-list	0	lexicographic	binders 1,0 ctor 1,1	525b143830e01570cf6fad3149e9f049d6b4d5f773a98ff9b1b0ffbce166b52f
 q-to-list	0	direct-fallback		5a44f46ad377cb178926c4530f525f82dd8452baf91e359db887c2950438db37
@@ -2342,10 +2061,8 @@ q-to-list	3	induction	binder 0 ctor 0	06ac901ad704bea376e693024286be33ca70efbf81
 q-to-list	3	induction	binder 0 ctor 1	85fc127db6a5c79557b3ba489459b1f1c7c382ec55bee5745f8ffef17d1af768
 q-to-list	3	induction	binder 1 ctor 0	d399f96166255455e1f392d988ace43da8f66ad2252b82c87c0f14e416c8fcac
 q-to-list	3	induction	binder 1 ctor 1	1aefb115c64540781c63635e83f18ca87894f8c548b2c652c899cda43fe56633
-q-to-list	3	lexicographic	binders 0,1 ctor 0 base	06ac901ad704bea376e693024286be33ca70efbf812b28c45e46ca65748b2c2f
 q-to-list	3	lexicographic	binders 0,1 ctor 1,0	0e34c1a4431d841f2929d66bdf28947bb89e5444e3b15b02ce6fd97d5765bcd8
 q-to-list	3	lexicographic	binders 0,1 ctor 1,1	f00fa84ef7d4fd5b12843fa04254effbbd61168fa59186030cd1c26df5f269a0
-q-to-list	3	lexicographic	binders 1,0 ctor 0 base	d399f96166255455e1f392d988ace43da8f66ad2252b82c87c0f14e416c8fcac
 q-to-list	3	lexicographic	binders 1,0 ctor 1,0	05aab51e5df908e3caaa4c222231560db07df6ff851ace16a907042fb9e956d6
 q-to-list	3	lexicographic	binders 1,0 ctor 1,1	ed3aa2f69980d93b625873cf75d4f166eacc82c6b58bdfbede111bcdc7f8131d
 q-to-list	3	direct-fallback		d12640874ce3141652fc93fc40d5c421aa9ec6a228cded29ebd78b3e565d61db
@@ -2410,7 +2127,6 @@ replicate	2	recursion-induction	base	d81493b65ec45be7f5a637d75d77901f4031f4c1615
 replicate	2	recursion-induction	step 0	3e14eb155e6b503c4b0f50f252e71b2401f3a394acb06842f0a92193c96cccca
 replicate	2	direct-fallback		760ff00c3b192555fc83447c250958aadf3b0d46896c4d588ac32afdfe0dbf38
 req-body	0	lemma-free		84ac03dec385826c006f811a9bcff4942bf8e0eacf4bb6c3a9c375c7410a3b7c
-req-body	0	direct		84ac03dec385826c006f811a9bcff4942bf8e0eacf4bb6c3a9c375c7410a3b7c
 req-body	0	induction	binder 0 ctor 0	d4497be95bdd7746f7f84606bb0ee4d751cb797204e0193ec10e974373590fb4
 req-body	0	induction	binder 0 ctor 1	b4250c4e1c968c0459fec60af40d1d695b3bb2a41dc0aa9562588fb0bd6b2249
 req-body	0	induction	binder 1 ctor 0	61f77905d0c940dc578b660dfd86fa8130342934a1ad6d5b46a311c40a72b724
@@ -2419,45 +2135,32 @@ req-body	0	induction	binder 2 ctor 0	e64056d76385fddff04df1bea289b770196ef997ae1
 req-body	0	induction	binder 2 ctor 1	94de763f296fdaab0e148cd418152723264d8b9beee1c26bd494974d5b5eb252
 req-body	0	induction	binder 3 ctor 0	2e1eafaaee012470b5c316278c5c303da9ce44e212a202a92a7d95358d88025a
 req-body	0	induction	binder 3 ctor 1	3a18ec23ae9415719215e4ccc3a83b0730a94988f1fcd412e6ddbb3a9e257096
-req-body	0	lexicographic	binders 0,1 ctor 0 base	d4497be95bdd7746f7f84606bb0ee4d751cb797204e0193ec10e974373590fb4
 req-body	0	lexicographic	binders 0,1 ctor 1,0	5059831788f5dd6cee7234abd63063c9a0399ec92cf97936396de983efe024af
 req-body	0	lexicographic	binders 0,1 ctor 1,1	56f2111f484174276c3f81031b068489aa4f8052718ff8e5cfd86e65db38aa90
-req-body	0	lexicographic	binders 0,2 ctor 0 base	d4497be95bdd7746f7f84606bb0ee4d751cb797204e0193ec10e974373590fb4
 req-body	0	lexicographic	binders 0,2 ctor 1,0	f83a913a5811e0ac638123bbc79b1c1179f0f8c459561e8668cf632357c72956
 req-body	0	lexicographic	binders 0,2 ctor 1,1	a2898a50033028dd16b487a768fdaa77b0739a807f49031135455cca65bb529e
-req-body	0	lexicographic	binders 0,3 ctor 0 base	d4497be95bdd7746f7f84606bb0ee4d751cb797204e0193ec10e974373590fb4
 req-body	0	lexicographic	binders 0,3 ctor 1,0	dec239be6cb1ee1a90ef587b4b46534e606aa954dd974566a530a98d50370d2a
 req-body	0	lexicographic	binders 0,3 ctor 1,1	155e7e5a4734636f757192b2f5ced3484db615813a2ba1dd1b6a4a827aa5bdd9
-req-body	0	lexicographic	binders 1,0 ctor 0 base	61f77905d0c940dc578b660dfd86fa8130342934a1ad6d5b46a311c40a72b724
 req-body	0	lexicographic	binders 1,0 ctor 1,0	308678b7e4f656f5de1b83ff185124bbea70e1e68a82c942ee846a2264834460
 req-body	0	lexicographic	binders 1,0 ctor 1,1	cd17dcaa1fb2cb42aeb79d67900aa9fcd152edf2bab1e386bac844a49e983767
-req-body	0	lexicographic	binders 1,2 ctor 0 base	61f77905d0c940dc578b660dfd86fa8130342934a1ad6d5b46a311c40a72b724
 req-body	0	lexicographic	binders 1,2 ctor 1,0	5d4e736b0ac857f95fc0734a617424f85b8fcf04bc15fdacba54704ef76389ad
 req-body	0	lexicographic	binders 1,2 ctor 1,1	cde26c0abbb69eb3cc5d06a605d340ac593d66ad508607bbe86f2bb64f52f2e1
-req-body	0	lexicographic	binders 1,3 ctor 0 base	61f77905d0c940dc578b660dfd86fa8130342934a1ad6d5b46a311c40a72b724
 req-body	0	lexicographic	binders 1,3 ctor 1,0	bf331aad340bf707a87eb4da5e8b1a6637e20b1661ed978f5a8348a3be4e4275
 req-body	0	lexicographic	binders 1,3 ctor 1,1	b50042ba7eb8eea45bf1b6bc25812c4199195e4a6067916cfca254045dbcee44
-req-body	0	lexicographic	binders 2,0 ctor 0 base	e64056d76385fddff04df1bea289b770196ef997ae1c43a1511a401078df3e23
 req-body	0	lexicographic	binders 2,0 ctor 1,0	f3fb3d20dfd7a5e33fa27f90518fc622d95cb37eff47f72288af4af503cd213e
 req-body	0	lexicographic	binders 2,0 ctor 1,1	b36de78975e83d4d1536e6c4b2a75b4e0ee70814e2bdb2ebedb0ae910f0251d2
-req-body	0	lexicographic	binders 2,1 ctor 0 base	e64056d76385fddff04df1bea289b770196ef997ae1c43a1511a401078df3e23
 req-body	0	lexicographic	binders 2,1 ctor 1,0	0c3869842be7ddfd139b8416f71c24351227226e0155d32113ba2638c0355ea6
 req-body	0	lexicographic	binders 2,1 ctor 1,1	ad07a882710ac0e737d35e8c3c8000d9fb5daac17ad6a0f6a294321d48142da6
-req-body	0	lexicographic	binders 2,3 ctor 0 base	e64056d76385fddff04df1bea289b770196ef997ae1c43a1511a401078df3e23
 req-body	0	lexicographic	binders 2,3 ctor 1,0	5424d894d5a0e61acea87cbac49f7b0bd00ee6d982d681cfd3ff8282886fd421
 req-body	0	lexicographic	binders 2,3 ctor 1,1	2529ab3a79df9512301fa68eea22930956996ccae8121ed73b117a3507503f9d
-req-body	0	lexicographic	binders 3,0 ctor 0 base	2e1eafaaee012470b5c316278c5c303da9ce44e212a202a92a7d95358d88025a
 req-body	0	lexicographic	binders 3,0 ctor 1,0	b79057d75b676cbadb00aa0e77e518fe51a3898eca4254d3e3ab779624505969
 req-body	0	lexicographic	binders 3,0 ctor 1,1	0094ec5d03c1a8bab68fbfd5e3dc453b50d084863416c1932f9963021877b2ff
-req-body	0	lexicographic	binders 3,1 ctor 0 base	2e1eafaaee012470b5c316278c5c303da9ce44e212a202a92a7d95358d88025a
 req-body	0	lexicographic	binders 3,1 ctor 1,0	ce74c0bef02fd3125c080710137e72094793d8d62c6b130d0cb8cad9f7db82f9
 req-body	0	lexicographic	binders 3,1 ctor 1,1	97815716ff9adbbd4041df564890d0e2135a940506056eb54af83b24aee4b355
-req-body	0	lexicographic	binders 3,2 ctor 0 base	2e1eafaaee012470b5c316278c5c303da9ce44e212a202a92a7d95358d88025a
 req-body	0	lexicographic	binders 3,2 ctor 1,0	f2fba52cc2e45f6f4a5b6278fa3fd1f9ec02e765ffe9f7c654a951a4b1622372
 req-body	0	lexicographic	binders 3,2 ctor 1,1	6ec52a204c348b9c8c1267ea69aec62caf14987ce9ccd00024587e47ae11742b
 req-body	0	direct-fallback		84ac03dec385826c006f811a9bcff4942bf8e0eacf4bb6c3a9c375c7410a3b7c
 req-headers	0	lemma-free		a91cb75a57e92e3171353e12d0c65473f41c8e6a2aa2a19d693a75340134df4e
-req-headers	0	direct		a91cb75a57e92e3171353e12d0c65473f41c8e6a2aa2a19d693a75340134df4e
 req-headers	0	induction	binder 0 ctor 0	ebe0ca7e88599510dca48a79d6084c8e6df8656865120ee23bc38e5e6d13a54e
 req-headers	0	induction	binder 0 ctor 1	654ae1ee39fd14637b886f687e8030ef3697e16cd9603aae7a24678ec1f68158
 req-headers	0	induction	binder 1 ctor 0	9db3b849162c36ea5781aee5b5715aa59b6e5cbd5002f888a3abfe56651938fe
@@ -2466,45 +2169,32 @@ req-headers	0	induction	binder 2 ctor 0	e0f8e688e3248f69beb1a635157dcdc6e93c21d2
 req-headers	0	induction	binder 2 ctor 1	b7fbd5957451f334baf9b9dd3e2078351c8a8789764e50d2c43da994a22d3a2a
 req-headers	0	induction	binder 3 ctor 0	f7725f9527f76cf8363e5fdbc4ed335b1ef8e636bf0bfb2ee579fbf06736cafa
 req-headers	0	induction	binder 3 ctor 1	7b5ad2e23237a2f8eea571f53c34b1fd590b342141fe357d8413cc67b4cc8392
-req-headers	0	lexicographic	binders 0,1 ctor 0 base	ebe0ca7e88599510dca48a79d6084c8e6df8656865120ee23bc38e5e6d13a54e
 req-headers	0	lexicographic	binders 0,1 ctor 1,0	2b93df98864c504e666ad0e114e147dba410546825a16bae9af2fade3c3839f0
 req-headers	0	lexicographic	binders 0,1 ctor 1,1	0180d30ce3d2ad97e7c4deab81e76d8f1837707f1cd3fac53c3832e99822d59b
-req-headers	0	lexicographic	binders 0,2 ctor 0 base	ebe0ca7e88599510dca48a79d6084c8e6df8656865120ee23bc38e5e6d13a54e
 req-headers	0	lexicographic	binders 0,2 ctor 1,0	9a31787337c706c26eec72b0f8f5e4da4cf1a0f763b0acb46fc04a771a6058bf
 req-headers	0	lexicographic	binders 0,2 ctor 1,1	aaf792f2f5178e620f68c4ff80677e587888bb3915b9050b79e4e7609c19b101
-req-headers	0	lexicographic	binders 0,3 ctor 0 base	ebe0ca7e88599510dca48a79d6084c8e6df8656865120ee23bc38e5e6d13a54e
 req-headers	0	lexicographic	binders 0,3 ctor 1,0	a035915ffa0061658fdc909ad6ca9cae81083f3e80ba638710310ffb2d9634f0
 req-headers	0	lexicographic	binders 0,3 ctor 1,1	bcbe8e55a1b68f6942ab643d7617eb60cd86d85fe453d5ae05f6891aec08c242
-req-headers	0	lexicographic	binders 1,0 ctor 0 base	9db3b849162c36ea5781aee5b5715aa59b6e5cbd5002f888a3abfe56651938fe
 req-headers	0	lexicographic	binders 1,0 ctor 1,0	e60f0d6308a9a383e614206672fe98ef2675163204d156bee0aebb417cde2d25
 req-headers	0	lexicographic	binders 1,0 ctor 1,1	16ef5812ba1a7cf81275e8c4eabfe5fdcb17fa59db90ec1dfe73ae3fdcdae46c
-req-headers	0	lexicographic	binders 1,2 ctor 0 base	9db3b849162c36ea5781aee5b5715aa59b6e5cbd5002f888a3abfe56651938fe
 req-headers	0	lexicographic	binders 1,2 ctor 1,0	96b101a57dd512e069b06fb9208ada2fed23e6f5b1875117220e468b19bf310c
 req-headers	0	lexicographic	binders 1,2 ctor 1,1	92a7d8c2cbee474295a031b365566cb10bd69de58c7ae2940515c8457a62c2f6
-req-headers	0	lexicographic	binders 1,3 ctor 0 base	9db3b849162c36ea5781aee5b5715aa59b6e5cbd5002f888a3abfe56651938fe
 req-headers	0	lexicographic	binders 1,3 ctor 1,0	8a6a5e9a42f9b20f4df9e191541a0cc09c8619359d0a7a0e919abfd6ba34aa22
 req-headers	0	lexicographic	binders 1,3 ctor 1,1	c769351bf94f67186bb8fdafcbad9d567025967ad87c9631067b3a8d12216173
-req-headers	0	lexicographic	binders 2,0 ctor 0 base	e0f8e688e3248f69beb1a635157dcdc6e93c21d20ea1799a15ab0e85c25dfc8e
 req-headers	0	lexicographic	binders 2,0 ctor 1,0	e0e39d7817c48f7a8db4aab168fc414af78151db83660014162beb656fdf284c
 req-headers	0	lexicographic	binders 2,0 ctor 1,1	3aee54edfe992cb26ba8463018d7c03bb9fbaa6b22a8136276d4c1d7da2c151c
-req-headers	0	lexicographic	binders 2,1 ctor 0 base	e0f8e688e3248f69beb1a635157dcdc6e93c21d20ea1799a15ab0e85c25dfc8e
 req-headers	0	lexicographic	binders 2,1 ctor 1,0	8cc0412035aa002d79bd0cc76cdcf6bd10bbfc6801cce2ad631de17d6cac8f44
 req-headers	0	lexicographic	binders 2,1 ctor 1,1	98117f4ee9b454eb5755e961d21193b1c2cf4938356dcc085a52a503e3534ccd
-req-headers	0	lexicographic	binders 2,3 ctor 0 base	e0f8e688e3248f69beb1a635157dcdc6e93c21d20ea1799a15ab0e85c25dfc8e
 req-headers	0	lexicographic	binders 2,3 ctor 1,0	6899ae6775632a1ef7706354020517b430a85a1935fda06d6a609a947e9685d4
 req-headers	0	lexicographic	binders 2,3 ctor 1,1	b5a7e139d43cdd3ed740606e1ed4f17131d2d17c6114d838cc2a6eaf3e5e1210
-req-headers	0	lexicographic	binders 3,0 ctor 0 base	f7725f9527f76cf8363e5fdbc4ed335b1ef8e636bf0bfb2ee579fbf06736cafa
 req-headers	0	lexicographic	binders 3,0 ctor 1,0	cafc3020c79e4b99a12d110bc49b3573df4418b6621db154cdfbbed18df12129
 req-headers	0	lexicographic	binders 3,0 ctor 1,1	622f766fd61ceb37d7051635e994d9412f0c2b969b348933c5af9c006070c164
-req-headers	0	lexicographic	binders 3,1 ctor 0 base	f7725f9527f76cf8363e5fdbc4ed335b1ef8e636bf0bfb2ee579fbf06736cafa
 req-headers	0	lexicographic	binders 3,1 ctor 1,0	080f3f6cbf2d251442c2b1dcf357fb154f4c390b09f55d2ab778df0dc3e0f85f
 req-headers	0	lexicographic	binders 3,1 ctor 1,1	2ddaba35f7f25afaa5737d32d93e0bd4e8fffe8470a6e6838717023930511186
-req-headers	0	lexicographic	binders 3,2 ctor 0 base	f7725f9527f76cf8363e5fdbc4ed335b1ef8e636bf0bfb2ee579fbf06736cafa
 req-headers	0	lexicographic	binders 3,2 ctor 1,0	e089aabaca829b57073f80d3a0ee13eca4402987ebd9722ebb3ccde99e4b5bf0
 req-headers	0	lexicographic	binders 3,2 ctor 1,1	7994583f53074ff51157758f99b4c8dd1a47ca7ca7161dc0cd7502bc2e2a813f
 req-headers	0	direct-fallback		a91cb75a57e92e3171353e12d0c65473f41c8e6a2aa2a19d693a75340134df4e
 req-method	0	lemma-free		8100d6baeb71c40a5d355449ff3115788587a421bc2be93804ff981a1b5079e3
-req-method	0	direct		8100d6baeb71c40a5d355449ff3115788587a421bc2be93804ff981a1b5079e3
 req-method	0	induction	binder 0 ctor 0	c1508e774240d7f6dfbb96fa1bada5d36a4c7da2fdc8974f77609cb3e695700e
 req-method	0	induction	binder 0 ctor 1	887cb56d39937ca04e22aa453e877bb6d43080f453566e23c9bcda6012f878a1
 req-method	0	induction	binder 1 ctor 0	dc2c0838acda77f2ebaf532db725d32ab913d419e70ad630f1a3d682afa69fe4
@@ -2513,45 +2203,32 @@ req-method	0	induction	binder 2 ctor 0	7b5df1d25ea81d97a9f44c805889638d014bb5e17
 req-method	0	induction	binder 2 ctor 1	b5e93e7f392c08f5fe4ca6524a607f24961755ac34a76e930393d9869b4f1832
 req-method	0	induction	binder 3 ctor 0	31529e070edb54041dd1f1606d8e3301f7d81b3ea68a47d50de18f9ff9e0c1c4
 req-method	0	induction	binder 3 ctor 1	8fabac53fd99ddf4e1f4f2160720cd05d2ea71bda69e3e791b31c01601fe2305
-req-method	0	lexicographic	binders 0,1 ctor 0 base	c1508e774240d7f6dfbb96fa1bada5d36a4c7da2fdc8974f77609cb3e695700e
 req-method	0	lexicographic	binders 0,1 ctor 1,0	ae1b7cabaa1bcc7321ec54597fe858535a30195e459973388745398285bedfc0
 req-method	0	lexicographic	binders 0,1 ctor 1,1	32b3fde2704c36a259925a0ba01e101bdc8bc5c735ea7a058cbb3f7c985d4396
-req-method	0	lexicographic	binders 0,2 ctor 0 base	c1508e774240d7f6dfbb96fa1bada5d36a4c7da2fdc8974f77609cb3e695700e
 req-method	0	lexicographic	binders 0,2 ctor 1,0	fad6d4950aedb10c0ac0e37b94f91984ceccec867583cd3468c338404de9b812
 req-method	0	lexicographic	binders 0,2 ctor 1,1	51c6fc2b54d85e66d3447de5dadff80a01f66a451a9adbe434331916426cc587
-req-method	0	lexicographic	binders 0,3 ctor 0 base	c1508e774240d7f6dfbb96fa1bada5d36a4c7da2fdc8974f77609cb3e695700e
 req-method	0	lexicographic	binders 0,3 ctor 1,0	e9190f147ddbc9e8cf926306bf1acd9bf8271eeb2b672a67ab896f255b0bade8
 req-method	0	lexicographic	binders 0,3 ctor 1,1	08a467aadfc66471ab22b2b1d3677a64f279f63bfc21e8f47d5408a1e2a059e1
-req-method	0	lexicographic	binders 1,0 ctor 0 base	dc2c0838acda77f2ebaf532db725d32ab913d419e70ad630f1a3d682afa69fe4
 req-method	0	lexicographic	binders 1,0 ctor 1,0	ecb24f163de5347a86a9b7f9fc0785896e532321b65b17d4a0f634c4aeef0b60
 req-method	0	lexicographic	binders 1,0 ctor 1,1	076e127c21914cb0e5922235584552f69a012277b05d3955139176bc8b638940
-req-method	0	lexicographic	binders 1,2 ctor 0 base	dc2c0838acda77f2ebaf532db725d32ab913d419e70ad630f1a3d682afa69fe4
 req-method	0	lexicographic	binders 1,2 ctor 1,0	9205bd923cb0e3f53b1059a5927bb743603c34f6bd279cfa42e0ad25a6f9de05
 req-method	0	lexicographic	binders 1,2 ctor 1,1	eac59b91f695562c3b69177e27b2960919b84050bdfbceffb70ce4235c0946a4
-req-method	0	lexicographic	binders 1,3 ctor 0 base	dc2c0838acda77f2ebaf532db725d32ab913d419e70ad630f1a3d682afa69fe4
 req-method	0	lexicographic	binders 1,3 ctor 1,0	03b43bc888a7a9aaed5077eaec61d6399ac3c8a4ad324030464ba52616899d1c
 req-method	0	lexicographic	binders 1,3 ctor 1,1	00eec92690b0b5b8cc6ec761e229ef3a6a5aea850d132f85294ed4a3dadc1039
-req-method	0	lexicographic	binders 2,0 ctor 0 base	7b5df1d25ea81d97a9f44c805889638d014bb5e17729f97ca690af2c3fc28895
 req-method	0	lexicographic	binders 2,0 ctor 1,0	f3e086dcd695c1a59fa1ad3702e6858a5080d98c68ff32c36dc45e169b4418c0
 req-method	0	lexicographic	binders 2,0 ctor 1,1	6a2268a63501db3c2f373a8f7fb85e514f0421bbc97d6d8d1e2f202f5b0fb2d6
-req-method	0	lexicographic	binders 2,1 ctor 0 base	7b5df1d25ea81d97a9f44c805889638d014bb5e17729f97ca690af2c3fc28895
 req-method	0	lexicographic	binders 2,1 ctor 1,0	e919cffd268731141c0b829dbe0fc451191048032004213f8a721784a6b31bde
 req-method	0	lexicographic	binders 2,1 ctor 1,1	e5ecf09bd39d2f8901465011a1b847472fcb53219f158a77033e0f65efc72ef3
-req-method	0	lexicographic	binders 2,3 ctor 0 base	7b5df1d25ea81d97a9f44c805889638d014bb5e17729f97ca690af2c3fc28895
 req-method	0	lexicographic	binders 2,3 ctor 1,0	900e20cb119c5bdf915d732b88971284da2f64556e1c772ed70fc82a5cc7601c
 req-method	0	lexicographic	binders 2,3 ctor 1,1	430077f07e8b0f45439d7280192219d0ca9542100bd3d11926805caf5f48f190
-req-method	0	lexicographic	binders 3,0 ctor 0 base	31529e070edb54041dd1f1606d8e3301f7d81b3ea68a47d50de18f9ff9e0c1c4
 req-method	0	lexicographic	binders 3,0 ctor 1,0	f46c174ee6020fa58c02253dec50e0ebc2d85c1073b1ba2ad7b476b89bbb765e
 req-method	0	lexicographic	binders 3,0 ctor 1,1	c6afe1e13cb6ab0e72d9b63aef82ac37d419d8ffafcf4fe48bb28a8c39426881
-req-method	0	lexicographic	binders 3,1 ctor 0 base	31529e070edb54041dd1f1606d8e3301f7d81b3ea68a47d50de18f9ff9e0c1c4
 req-method	0	lexicographic	binders 3,1 ctor 1,0	fea88d192803c94506614f13155dc2cd33052b26d2f26ef9aa8ece6195f415a3
 req-method	0	lexicographic	binders 3,1 ctor 1,1	5113c465aed16499cabd4658bb05357c85cc53eb9ba2ffe138b32deb146a5a81
-req-method	0	lexicographic	binders 3,2 ctor 0 base	31529e070edb54041dd1f1606d8e3301f7d81b3ea68a47d50de18f9ff9e0c1c4
 req-method	0	lexicographic	binders 3,2 ctor 1,0	373e0b3db33f423530983934210b53cb8a010df50d8074d76552d4003178c0fc
 req-method	0	lexicographic	binders 3,2 ctor 1,1	b19c6f170c84af1e65465e0f960b52b188afa9632671831011f20bf51547b9b1
 req-method	0	direct-fallback		8100d6baeb71c40a5d355449ff3115788587a421bc2be93804ff981a1b5079e3
 req-path	0	lemma-free		58529e6fd45e273a0d07ff9d63c6ccc6670c604bb59268cdc8549123af6ad09d
-req-path	0	direct		58529e6fd45e273a0d07ff9d63c6ccc6670c604bb59268cdc8549123af6ad09d
 req-path	0	induction	binder 0 ctor 0	a357d3e5095b8fbd031f443c8025807dd6fe22dec13b1fc8690a1b9a85f897b0
 req-path	0	induction	binder 0 ctor 1	70b4f8dc9fdc43a83862caeb883683a9a9f7e06c80ba95f3f38dc4e00fee327e
 req-path	0	induction	binder 1 ctor 0	0d3211f5f8e98b62a2352b29c772c1a038ee4194026a69e0e9ab02bbb17c4bd4
@@ -2560,45 +2237,32 @@ req-path	0	induction	binder 2 ctor 0	db2089f9d19c9c44d31a67e1634bc8338793c30d1b0
 req-path	0	induction	binder 2 ctor 1	45ad95e396e1d166732f5016a99842c121a3e1044da8cc9d9e22859e6867716d
 req-path	0	induction	binder 3 ctor 0	6407bc148c5af024e6a61b2e192c85b34f17c73c4ff723bd6fd72e29f45a5733
 req-path	0	induction	binder 3 ctor 1	997148586b7177a33da6793947d7a79b2d2917eeb85b398d993d09e54566fac9
-req-path	0	lexicographic	binders 0,1 ctor 0 base	a357d3e5095b8fbd031f443c8025807dd6fe22dec13b1fc8690a1b9a85f897b0
 req-path	0	lexicographic	binders 0,1 ctor 1,0	39efb423d47e4c7657c105dfed99efe09310fc0e81a4f365789f6c89d05cf326
 req-path	0	lexicographic	binders 0,1 ctor 1,1	f8ad5945dacb0a3c936e0112cd01fb06ee1806692e4a64be4af8e3c1355e04af
-req-path	0	lexicographic	binders 0,2 ctor 0 base	a357d3e5095b8fbd031f443c8025807dd6fe22dec13b1fc8690a1b9a85f897b0
 req-path	0	lexicographic	binders 0,2 ctor 1,0	936d72a4d2f0e5648a86422801c2b526d42e87beca874b97fe03c1c4b2da54a5
 req-path	0	lexicographic	binders 0,2 ctor 1,1	d6e9c85e04e3996bd62f2f1bc5c4e722dfb078c83cc028b2ecb2388d84de4afa
-req-path	0	lexicographic	binders 0,3 ctor 0 base	a357d3e5095b8fbd031f443c8025807dd6fe22dec13b1fc8690a1b9a85f897b0
 req-path	0	lexicographic	binders 0,3 ctor 1,0	f76ffcb7ab07fa7600e02cfd6b33039a2aa9f681bfeff83b2dc4ab94cc06e305
 req-path	0	lexicographic	binders 0,3 ctor 1,1	5a4ebf3b34fc45b90c8ee9aa9598beec2bb1e4ffb9225bdba3af6c7225dae310
-req-path	0	lexicographic	binders 1,0 ctor 0 base	0d3211f5f8e98b62a2352b29c772c1a038ee4194026a69e0e9ab02bbb17c4bd4
 req-path	0	lexicographic	binders 1,0 ctor 1,0	bedb9c9b92b676beab4aba5dd207aff24a97efc9a856cd322886f698568e4d45
 req-path	0	lexicographic	binders 1,0 ctor 1,1	292195dc71725de9af972e44d72f5004c0d50c21932af66404833490d808c436
-req-path	0	lexicographic	binders 1,2 ctor 0 base	0d3211f5f8e98b62a2352b29c772c1a038ee4194026a69e0e9ab02bbb17c4bd4
 req-path	0	lexicographic	binders 1,2 ctor 1,0	d51531662013b6c3c8ee6149c83cb212ca5008947838fbea8fceb7666e325a62
 req-path	0	lexicographic	binders 1,2 ctor 1,1	00ddf1d941639f79e130f0fdcb2032e9bf1fada6281a1f912d13defeaa04d35e
-req-path	0	lexicographic	binders 1,3 ctor 0 base	0d3211f5f8e98b62a2352b29c772c1a038ee4194026a69e0e9ab02bbb17c4bd4
 req-path	0	lexicographic	binders 1,3 ctor 1,0	9ef19f6328f2a46975939b5bc5ad80a2a1aa23cf91dedb1683cc530b2c28ac35
 req-path	0	lexicographic	binders 1,3 ctor 1,1	ee1c28f9050438456a2c127fafc2891e8f0d137653ce40a034fa831cf2f36721
-req-path	0	lexicographic	binders 2,0 ctor 0 base	db2089f9d19c9c44d31a67e1634bc8338793c30d1b05e3421077c893be30a302
 req-path	0	lexicographic	binders 2,0 ctor 1,0	a7e3774755d084f13848d3c60a4c6b5e97df80d8bfd2b9a6c1df303b96f1463e
 req-path	0	lexicographic	binders 2,0 ctor 1,1	721b34802df3d7a03b2174736d1f5d13c517ea06a7a69e5a51458366026e1026
-req-path	0	lexicographic	binders 2,1 ctor 0 base	db2089f9d19c9c44d31a67e1634bc8338793c30d1b05e3421077c893be30a302
 req-path	0	lexicographic	binders 2,1 ctor 1,0	3e5a949b3ad7d71de6fbc189e4295f63e0c5802040986cc21dcb350758c5c220
 req-path	0	lexicographic	binders 2,1 ctor 1,1	c77f8017e29a52891cf51b8fa526075166d5521d1ef3151b111bcaff9b0444e5
-req-path	0	lexicographic	binders 2,3 ctor 0 base	db2089f9d19c9c44d31a67e1634bc8338793c30d1b05e3421077c893be30a302
 req-path	0	lexicographic	binders 2,3 ctor 1,0	75555d6f44ea55eaed33d683b7c4e0dc5a2a50fe0b2991fcafbd9790c68d5c5e
 req-path	0	lexicographic	binders 2,3 ctor 1,1	fbbb0b3d4e331359a85c17e9208e2593b86b0e9d25a25bdcf41db2ced1b0fcf9
-req-path	0	lexicographic	binders 3,0 ctor 0 base	6407bc148c5af024e6a61b2e192c85b34f17c73c4ff723bd6fd72e29f45a5733
 req-path	0	lexicographic	binders 3,0 ctor 1,0	4403674e574166a66db4c9cc78b92e826db2903c1b70b8d43465d390a8a8b049
 req-path	0	lexicographic	binders 3,0 ctor 1,1	de4cfff4904927631cae8754565f7449f422c6d1e0a27702ca9af6131016bf91
-req-path	0	lexicographic	binders 3,1 ctor 0 base	6407bc148c5af024e6a61b2e192c85b34f17c73c4ff723bd6fd72e29f45a5733
 req-path	0	lexicographic	binders 3,1 ctor 1,0	957c917220b8e4fda3f87c19ff2bb01f60cc776ea12ab667b3f1b2f1386a8ddf
 req-path	0	lexicographic	binders 3,1 ctor 1,1	6f8416694b733c086735fd598175b54e4cba8f7a8d43589fc190a05897dc7b9d
-req-path	0	lexicographic	binders 3,2 ctor 0 base	6407bc148c5af024e6a61b2e192c85b34f17c73c4ff723bd6fd72e29f45a5733
 req-path	0	lexicographic	binders 3,2 ctor 1,0	53a2aff4f798528293ef7ae89a207c18d4993d081dc342aa2bb5ee7c0c498c53
 req-path	0	lexicographic	binders 3,2 ctor 1,1	3223eccf1f7fc6ef0afe87a67b9f0b13f53770abba40933160b239a671c6178a
 req-path	0	direct-fallback		58529e6fd45e273a0d07ff9d63c6ccc6670c604bb59268cdc8549123af6ad09d
 req-received-at	0	lemma-free		64f65a5bb9517bb40f80306d81d3539bb794669b78fd468b26f6a93fd5e9ce66
-req-received-at	0	direct		64f65a5bb9517bb40f80306d81d3539bb794669b78fd468b26f6a93fd5e9ce66
 req-received-at	0	induction	binder 0 ctor 0	398b39eaf0b544e9c652d94a10a58113030b017e6b532b6a2d3d1a9bf37d19dd
 req-received-at	0	induction	binder 0 ctor 1	2330fa8eceac459e7758fcf2c419dc8b80ba56bf6610e747b4d48f55123f7556
 req-received-at	0	induction	binder 1 ctor 0	5f7769549a3c028ae0ea96aad2c2c9f3e62d5b699b16b6a33de9bbddd8910251
@@ -2607,40 +2271,28 @@ req-received-at	0	induction	binder 2 ctor 0	b4d6c096f399c74dcf385a27a89dd39d0aae
 req-received-at	0	induction	binder 2 ctor 1	d9f277dcd59f5d891d7668248159fc02bceb5edb384b31a281bfdf32603bf93f
 req-received-at	0	induction	binder 3 ctor 0	287dfd5d1169170281abf3905a3f95adbe61e3b9bf3b902dbb65cb24b8e77124
 req-received-at	0	induction	binder 3 ctor 1	fd79cc7d768f82ab591c01eb183eef5bcb6d56ac18bddc4efd89156e76764d41
-req-received-at	0	lexicographic	binders 0,1 ctor 0 base	398b39eaf0b544e9c652d94a10a58113030b017e6b532b6a2d3d1a9bf37d19dd
 req-received-at	0	lexicographic	binders 0,1 ctor 1,0	ad7be4665cba0a138a015cf78d01e81b4b36b1473fa24cacdef161ff744febf8
 req-received-at	0	lexicographic	binders 0,1 ctor 1,1	d45ae8e20f45d82911fbb707512ac60802c478047b962f94e6953925a54c0047
-req-received-at	0	lexicographic	binders 0,2 ctor 0 base	398b39eaf0b544e9c652d94a10a58113030b017e6b532b6a2d3d1a9bf37d19dd
 req-received-at	0	lexicographic	binders 0,2 ctor 1,0	95c1a4ccbfc77d3110918ddc8384708ad871d04cf5af950f7893d6489a80d3e4
 req-received-at	0	lexicographic	binders 0,2 ctor 1,1	1d96f4e1d8cf9e398c0d114850944f76a7eae4abf1e9d832df55135c53de86c8
-req-received-at	0	lexicographic	binders 0,3 ctor 0 base	398b39eaf0b544e9c652d94a10a58113030b017e6b532b6a2d3d1a9bf37d19dd
 req-received-at	0	lexicographic	binders 0,3 ctor 1,0	96ecc0917187cbf1bf6ef8fde1500b6aacc2cd225107e8205174eaec0f2f5132
 req-received-at	0	lexicographic	binders 0,3 ctor 1,1	b5ee27de3e15889541f85ae0af6801127b0ff865fd9c6fab86d5b478c5c830ef
-req-received-at	0	lexicographic	binders 1,0 ctor 0 base	5f7769549a3c028ae0ea96aad2c2c9f3e62d5b699b16b6a33de9bbddd8910251
 req-received-at	0	lexicographic	binders 1,0 ctor 1,0	8b1ea8440385347912ff066a192d25a9af0e75e7b9869c3fa954d4782906f1c3
 req-received-at	0	lexicographic	binders 1,0 ctor 1,1	43bf6e53111e0103e3699ebc20e4e35b811c19947a34696de2dbda16ed6dd698
-req-received-at	0	lexicographic	binders 1,2 ctor 0 base	5f7769549a3c028ae0ea96aad2c2c9f3e62d5b699b16b6a33de9bbddd8910251
 req-received-at	0	lexicographic	binders 1,2 ctor 1,0	4c3df40a6d14a3e535f92031675f531847c3ee0865a9fdf604c9a37d15ec9b6a
 req-received-at	0	lexicographic	binders 1,2 ctor 1,1	b8463c22ab8e33343401c07a983526130375ca3de63b19ebbcab56c5f13377a3
-req-received-at	0	lexicographic	binders 1,3 ctor 0 base	5f7769549a3c028ae0ea96aad2c2c9f3e62d5b699b16b6a33de9bbddd8910251
 req-received-at	0	lexicographic	binders 1,3 ctor 1,0	0d71696c21f25db939ef861a29442aaddd7faf2703beb472c376ec1e8bf5121f
 req-received-at	0	lexicographic	binders 1,3 ctor 1,1	ac0a6620b773860f8ec92e9a2eed68d8c02dcb263e468f3162821a66a8f8deea
-req-received-at	0	lexicographic	binders 2,0 ctor 0 base	b4d6c096f399c74dcf385a27a89dd39d0aae83597cd20a88549f4655d4c33066
 req-received-at	0	lexicographic	binders 2,0 ctor 1,0	a95cbae141d4688b3e3a533dfbc27a87bcbb46e46cee51766b9ec0209a7f88a0
 req-received-at	0	lexicographic	binders 2,0 ctor 1,1	532df517e4ad4087b99251aba6f2a302cdfc918e88008393d6cb9b48b494d5ea
-req-received-at	0	lexicographic	binders 2,1 ctor 0 base	b4d6c096f399c74dcf385a27a89dd39d0aae83597cd20a88549f4655d4c33066
 req-received-at	0	lexicographic	binders 2,1 ctor 1,0	d1ec3bc6d587277c3233766247103891f0dcd077abb0a959f44a096c08d88696
 req-received-at	0	lexicographic	binders 2,1 ctor 1,1	b61be5a9b18d5a242e54286ac49f78dddeadd2fb4f18302e5b52460101ac8418
-req-received-at	0	lexicographic	binders 2,3 ctor 0 base	b4d6c096f399c74dcf385a27a89dd39d0aae83597cd20a88549f4655d4c33066
 req-received-at	0	lexicographic	binders 2,3 ctor 1,0	ab6fce84127df5a0a7739affd4fda8af6da2fc171725652a292898d7ef5f795a
 req-received-at	0	lexicographic	binders 2,3 ctor 1,1	01e57d08826a8b0ba333d9a5b73a9dda13243c56909d0405b0bbaa9253d7970a
-req-received-at	0	lexicographic	binders 3,0 ctor 0 base	287dfd5d1169170281abf3905a3f95adbe61e3b9bf3b902dbb65cb24b8e77124
 req-received-at	0	lexicographic	binders 3,0 ctor 1,0	4e5837769ceba1d46eb6214358fa1be1878fc24b7a48071d3f9d2c8cb732efb6
 req-received-at	0	lexicographic	binders 3,0 ctor 1,1	fd49392a78d977a92aa2234a0b217e9def247781f74e15a9070b6f4a9ac9bcd6
-req-received-at	0	lexicographic	binders 3,1 ctor 0 base	287dfd5d1169170281abf3905a3f95adbe61e3b9bf3b902dbb65cb24b8e77124
 req-received-at	0	lexicographic	binders 3,1 ctor 1,0	7576bb2922e603fa54a4c3b1f4f7b1101f62d035afd49987202d1b49573a37eb
 req-received-at	0	lexicographic	binders 3,1 ctor 1,1	1587042ca036213f753c02deb86ee944b720616c0a8c5220608b2c46be978049
-req-received-at	0	lexicographic	binders 3,2 ctor 0 base	287dfd5d1169170281abf3905a3f95adbe61e3b9bf3b902dbb65cb24b8e77124
 req-received-at	0	lexicographic	binders 3,2 ctor 1,0	c3a5e4b0eb42eb9e694f39d259e40bae3eda1fb0c57b3ef091f715b2185b0f1e
 req-received-at	0	lexicographic	binders 3,2 ctor 1,1	a3f79248946dd5177e3039b0031342411630d5b8c74f3e9f0dce13bc838d287a
 req-received-at	0	direct-fallback		64f65a5bb9517bb40f80306d81d3539bb794669b78fd468b26f6a93fd5e9ce66
@@ -2655,10 +2307,8 @@ reverse	1	induction	binder 0 ctor 0	d3814a8be6dbe9ba5e9cfc9dda5b0b94d9214e85dea7
 reverse	1	induction	binder 0 ctor 1	da82adc4ca41ad79d126ac563256febd03444b46ee9df82878b4412457538069
 reverse	1	induction	binder 1 ctor 0	f55e30d71fb1d9be5c5924dfcccc305461b6c56d028c9648e709c00d4a9d0f6f
 reverse	1	induction	binder 1 ctor 1	f291faf1f7c6c513ecee92f91537a73508961dcb281f77f632508e41959187b7
-reverse	1	lexicographic	binders 0,1 ctor 0 base	d3814a8be6dbe9ba5e9cfc9dda5b0b94d9214e85dea7cfba11eefd5fdf9298a8
 reverse	1	lexicographic	binders 0,1 ctor 1,0	633c0f25fdbea8cc3698df14d455832ae72f2f27eb88ebde354bea7b0ab0de77
 reverse	1	lexicographic	binders 0,1 ctor 1,1	79882f3c8c17a9fd306cdffda6f54dff9ad419ed6b479b40bec898956e806d25
-reverse	1	lexicographic	binders 1,0 ctor 0 base	f55e30d71fb1d9be5c5924dfcccc305461b6c56d028c9648e709c00d4a9d0f6f
 reverse	1	lexicographic	binders 1,0 ctor 1,0	22bc7c04661c1f3e7337ec48bea29696a4c410aaa45fade1c60244146a0572ad
 reverse	1	lexicographic	binders 1,0 ctor 1,1	370aa7a7c71ac019b4a5bc1f2cccfb41b9f1c9b12726cf455a96e67cf3309cad
 reverse	1	direct-fallback		70a3c844701f9c323c1a5eb93b076faff94c2573825dec0878bf0862cac85bd0
@@ -2673,10 +2323,8 @@ reverse-onto	1	induction	binder 1 ctor 0	9e97dd1452cb154730d5f9775c08f62afd25852
 reverse-onto	1	induction	binder 1 ctor 1	a7056dc0c6d4bba5b51d24994dbaac6cedd02fc9544d5a4f1f49e46ddf083fb9
 reverse-onto	1	induction	binder 2 ctor 0	8f5c0f1ea4e38199a9410dc489867e4de7f9adb30502541892d9d38b16113ea7
 reverse-onto	1	induction	binder 2 ctor 1	353505c0b30aa55c7b4d0b29e6f4334b66aa121f3735d5b164ee10dfc51f464c
-reverse-onto	1	lexicographic	binders 1,2 ctor 0 base	9e97dd1452cb154730d5f9775c08f62afd25852a2895e8b84c17dd034270f88a
 reverse-onto	1	lexicographic	binders 1,2 ctor 1,0	3a3b068119fb0d65a519f8563caa451301bfbcf1423f99a1f365ec94b65c8932
 reverse-onto	1	lexicographic	binders 1,2 ctor 1,1	5022d8868b81c7f93cb7c661bf29de10fe6ae5eb195bde7380a1d7bb18130e2a
-reverse-onto	1	lexicographic	binders 2,1 ctor 0 base	8f5c0f1ea4e38199a9410dc489867e4de7f9adb30502541892d9d38b16113ea7
 reverse-onto	1	lexicographic	binders 2,1 ctor 1,0	9a6be9530bdecce1ed293e35152c670a9bbad88e9eea5817c424f448d6e574d1
 reverse-onto	1	lexicographic	binders 2,1 ctor 1,1	701c9846405264f790291372a4ee0375d8182cc15b87100229590f663af9c6df
 reverse-onto	1	direct-fallback		24dd77c7ddebe2caa4b84ed9029af482f03458357706a2e489da60efbd4155f1
@@ -2686,10 +2334,8 @@ reverse-onto	2	induction	binder 0 ctor 0	12705202633c2d68b2a8a731f940b80ab356af2
 reverse-onto	2	induction	binder 0 ctor 1	6e5cf1383e984af8b19ce6c2dbd8ee5cba5eb0de5252a2b084c25c9b2a40c911
 reverse-onto	2	induction	binder 1 ctor 0	cc99fd53d957c56533bdbebdd0ea5c3b1926829e0239028fa0fea7147d04667f
 reverse-onto	2	induction	binder 1 ctor 1	13ebe5e118279e7ad49e77de6c09f02205c686a187376bc48924585284f32454
-reverse-onto	2	lexicographic	binders 0,1 ctor 0 base	12705202633c2d68b2a8a731f940b80ab356af2041f606c8a78e087bf382ee9d
 reverse-onto	2	lexicographic	binders 0,1 ctor 1,0	4c941b1d32be7723aefdd482c2730e33fb8cf678b4e08218c3bdfa2d2e517593
 reverse-onto	2	lexicographic	binders 0,1 ctor 1,1	320c68b5ecebe7ef2771ec4d694e96ef6cb0b3aa4736edfff2540c7e1032f8b0
-reverse-onto	2	lexicographic	binders 1,0 ctor 0 base	cc99fd53d957c56533bdbebdd0ea5c3b1926829e0239028fa0fea7147d04667f
 reverse-onto	2	lexicographic	binders 1,0 ctor 1,0	1b6a7bc8af01832446a8c72dfef09f4c60f0a82011b05c71542ccc95707e1c43
 reverse-onto	2	lexicographic	binders 1,0 ctor 1,1	82f859ece9e96a7a0d90b96120428ad9c7060667be3db2caeaea32a6e0788831
 reverse-onto	2	direct-fallback		9ad4e7adf5de365ecfe5f78bc9f3f2a253ea9a66566cd6c897bd903f8ce561f2
@@ -2701,7 +2347,6 @@ rle-decode	1	induction	binder 0 ctor 0	ac1b95f4983f9da24056d2b1cc0ed36eaa43d4b95
 rle-decode	1	induction	binder 1 ctor 0	38930c93d453a11612b96cf621f45b1602ca7ff1497a0ca55abcd3f1302921b8
 rle-decode	1	induction	binder 1 ctor 1	32eacd09b14d81f823999bf0249668629fe9569f0f9a1035c2b4b87d8be983e7
 rle-decode	1	lexicographic	binders 0,1 ctor 0 base	246c7448de4908d779cfca4616768b618c3c6e802176d2426c6d1d3ed8710d51
-rle-decode	1	lexicographic	binders 1,0 ctor 0 base	38930c93d453a11612b96cf621f45b1602ca7ff1497a0ca55abcd3f1302921b8
 rle-decode	1	lexicographic	binders 1,0 ctor 1,0	d8aed5f35b2e81551a5bac2fbe0ea134d1f94f83109af0fb3107c69529eac276
 rle-decode	1	direct-fallback		f89201ce8b164dab2ef510be357685e53ff19e39ff9441f811cce5efea1dc85b
 rle-decode	2	lemma-free		fec2d405b5a775bebc5da48745a02a2aa934ee582a7803d118ab8272dad1b7ec
@@ -2710,10 +2355,8 @@ rle-decode	2	induction	binder 0 ctor 0	ba21870b462117aab2ec4f9eb93cbb1cb2d6c3e98
 rle-decode	2	induction	binder 0 ctor 1	aa8f8c3a231819c613bef0e58c2a5e3305b2ea1d7aca423f595d363652f87650
 rle-decode	2	induction	binder 1 ctor 0	7533f75db7355ded71642ebc8fac4226937344a2f7740ca7c272f8f837cfc1c0
 rle-decode	2	induction	binder 1 ctor 1	514d945fdfee85e2b1750462d417b51f446a80beab41239670adf1b5cc55ab0a
-rle-decode	2	lexicographic	binders 0,1 ctor 0 base	ba21870b462117aab2ec4f9eb93cbb1cb2d6c3e9877211f852b8d99620f0fb3b
 rle-decode	2	lexicographic	binders 0,1 ctor 1,0	d736edc531f2c773057a3019edaffcefcebe601d4c9a34255ea11fd07235e264
 rle-decode	2	lexicographic	binders 0,1 ctor 1,1	b24f52078e6b11d99eaf7d5190b4b18206d3e3028035dbf57325cb3db659a5c1
-rle-decode	2	lexicographic	binders 1,0 ctor 0 base	7533f75db7355ded71642ebc8fac4226937344a2f7740ca7c272f8f837cfc1c0
 rle-decode	2	lexicographic	binders 1,0 ctor 1,0	a5bc6143fd2740582b5b061b73bdd2f14d432cffc88483641696d7c446492dd6
 rle-decode	2	lexicographic	binders 1,0 ctor 1,1	b503f3e767b1d19166a34a0a06d1fc3dad786a49646912b5d90ced5f9971ef1c
 rle-decode	2	direct-fallback		87898cbc238e8b3891a1ff64400e438deebea31fa332f3c3dd6573694377eaa2
@@ -3010,7 +2653,6 @@ si-inter	0	induction	binder 0 ctor 0	13f677360e7449cdbdf50608eb2e46449594dd1f7b8
 si-inter	0	induction	binder 0 ctor 1	698d37284fa4e873a0354cf57c8efe4c560db3d93052be350bfc92a8804b0f40
 si-inter	0	direct-fallback		c455f4e72fce48dc27d2552bfde43321798a3f28cf02912b22dcf86cd88b5f9b
 si-member	0	lemma-free		14f850229cbb78662bc82f8118aa62d764152afbecf9cf0fc73d1ab610e80f26
-si-member	0	direct		14f850229cbb78662bc82f8118aa62d764152afbecf9cf0fc73d1ab610e80f26
 si-member	0	direct-fallback		14f850229cbb78662bc82f8118aa62d764152afbecf9cf0fc73d1ab610e80f26
 si-union	0	lemma-free		1b81053732de1578c5ce451a7fd744ab06f88baa6223995ab1619fe1c2fbc971
 si-union	0	direct		c70324547e8643509be04e8f763a0ba4e786742becbaf58f896d6cfabc4b522d
@@ -3035,10 +2677,8 @@ smi-insert	0	induction	binder 0 ctor 0	77372d79948fcea874191bea2390e9e86afcbed24
 smi-insert	0	induction	binder 0 ctor 1	61f2ba0d5e7a758a9a72648094881e6b8586b2ebd516b4278ee774b73727e5f4
 smi-insert	0	induction	binder 2 ctor 0	6da00876043359f6a94abc0ae52d097c7913c618e56a0ab85f071365b8bdf827
 smi-insert	0	induction	binder 2 ctor 1	ff7a62629eeb28e620a8d562bcef9a680e3eee59d2221bc7c1c8337c105b39c1
-smi-insert	0	lexicographic	binders 0,2 ctor 0 base	77372d79948fcea874191bea2390e9e86afcbed246868b38ef173cd010b89e07
 smi-insert	0	lexicographic	binders 0,2 ctor 1,0	5e3553be1c68b7054ccdfa974312bfc601b5d8e99227575e5d1fce6afe5927fa
 smi-insert	0	lexicographic	binders 0,2 ctor 1,1	c1124b0e9904c7ec9f87a2d5f1ffb09b8cd5d39e7680d73f6a622f8288cf1996
-smi-insert	0	lexicographic	binders 2,0 ctor 0 base	6da00876043359f6a94abc0ae52d097c7913c618e56a0ab85f071365b8bdf827
 smi-insert	0	lexicographic	binders 2,0 ctor 1,0	505ce1c6df8f2031f9cc64a7752e3593a90af91f79b0e03386951362f0146b21
 smi-insert	0	lexicographic	binders 2,0 ctor 1,1	f8f12e1a0e688291361ffb5067149418391227fc470a13fd2ec2f1973bc5d098
 smi-insert	0	direct-fallback		696c5b3b3dad8cfb368cb1ee5e91ebc339e1aa40fa1c26dfa31c0ea75a0de557
@@ -3116,7 +2756,6 @@ sort-by	0	induction	binder 0 ctor 0	bc1f3efe639bb7db23219eba82c02ba78f477163bb9e
 sort-by	0	induction	binder 1 ctor 0	a8e7fac349bcb588b41eabbb341bfa0b87857d0f67806f6225cdd70b3b697afc
 sort-by	0	induction	binder 1 ctor 1	0529e54024889eda00dcfa357b1f50e7320165cd049b958a56d131365a7e51b4
 sort-by	0	lexicographic	binders 0,1 ctor 0 base	0206a675d7845ec95a12de1f1ec77609e72569f93464822b525ca531f7444cc3
-sort-by	0	lexicographic	binders 1,0 ctor 0 base	a8e7fac349bcb588b41eabbb341bfa0b87857d0f67806f6225cdd70b3b697afc
 sort-by	0	lexicographic	binders 1,0 ctor 1,0	5afa4d510add7de001b284e5fd5cc4e5dd8453697159a85d5af7a78177844148
 sort-by	0	direct-fallback		a58cf3407b943739ee3cd35b827e5063b0310081ad96dfc7943cec7a7bde3687
 sort-by	1	lemma-free		f5df3f2cc4d125a7ce4929713c2abe34a3551bb57ea7d90d53c9c2fbea8baafd
@@ -3126,12 +2765,8 @@ sort-by	1	induction	binder 1 ctor 0	8c99debec0ee136456c57dcb90d912dd1a0adb7c4c19
 sort-by	1	induction	binder 3 ctor 0	5692628e1318b81b644556e2e246f9762f7e861035ce71bec290b698a8b447ef
 sort-by	1	induction	binder 3 ctor 1	5b5f5c6dd6ca5fd4c09c2823218370daea7c213c3032ee75f3ee375000859f6d
 sort-by	1	lexicographic	binders 0,1 ctor 0 base	02b3ed59f5936d4455ff3c48c6c912563873bb2f9b6f1a59a1c778dc5d65989a
-sort-by	1	lexicographic	binders 0,3 ctor 0 base	02b3ed59f5936d4455ff3c48c6c912563873bb2f9b6f1a59a1c778dc5d65989a
 sort-by	1	lexicographic	binders 1,0 ctor 0 base	c784ee332966e583e50b75f9659e8e053c3b9a804109b2c2ff9078802ef6ea93
-sort-by	1	lexicographic	binders 1,3 ctor 0 base	c784ee332966e583e50b75f9659e8e053c3b9a804109b2c2ff9078802ef6ea93
-sort-by	1	lexicographic	binders 3,0 ctor 0 base	5692628e1318b81b644556e2e246f9762f7e861035ce71bec290b698a8b447ef
 sort-by	1	lexicographic	binders 3,0 ctor 1,0	24a3e6a87b2eb4e2a462aee5389907d0df83c6dcf49bef5aec699abe43913823
-sort-by	1	lexicographic	binders 3,1 ctor 0 base	5692628e1318b81b644556e2e246f9762f7e861035ce71bec290b698a8b447ef
 sort-by	1	lexicographic	binders 3,1 ctor 1,0	868bb6ce7e3f960fc978ca5b27b1df2fbc29a890237a5c618d22ffdc7a5d06ca
 sort-by	1	direct-fallback		d73d08fde2ba0e87b7e48f4c9945a07f6a1ff669bd0f5087812306aa3f04b24e
 sort-by	2	lemma-free		eec01c713a3f57fa25b47a758206e70c3bed5bdea995c623bb70965745354087
@@ -3140,11 +2775,9 @@ sort-by	2	induction	binder 0 ctor 0	b4ee172e9f3e0adbc7fa2813e3a1c7c2467b182e1aad
 sort-by	2	induction	binder 2 ctor 0	d5953eccb230d0d2c05580e688a55adfd4ee9417a57ba8c48bf665bdaebfa295
 sort-by	2	induction	binder 2 ctor 1	8b7c602e3f07fc4596b6b8f8b9c9383befbb5cab973830580ec6210f2738f34e
 sort-by	2	lexicographic	binders 0,2 ctor 0 base	11b31430a50bcb7b3545050376e11702245aeed28d58b935cf3aca88c9d1bd2a
-sort-by	2	lexicographic	binders 2,0 ctor 0 base	d5953eccb230d0d2c05580e688a55adfd4ee9417a57ba8c48bf665bdaebfa295
 sort-by	2	lexicographic	binders 2,0 ctor 1,0	1cfaa693e94771de355b88fb32a5fda5441bbe689d003125e652ce269c86aae0
 sort-by	2	direct-fallback		392368470be9907d3a0af88ca7a997acb1fec7f44ba65d9b146fa14f3419b4f2
 spin	0	lemma-free		c28faf50415a6bdc118bf23c040c1b656b8e05443d4e52da3ccd396bf163ca27
-spin	0	direct		c28faf50415a6bdc118bf23c040c1b656b8e05443d4e52da3ccd396bf163ca27
 spin	0	direct-fallback		c28faf50415a6bdc118bf23c040c1b656b8e05443d4e52da3ccd396bf163ca27
 str-append	0	lemma-free		ec975238f185c761de5b22255edb7bc13ca8b9d7c8760da67624d46b3be5b8bb
 str-append	0	direct		99fdba1966c844b4fdbd48a7ec03b59253a106a1015703cf2c0dcd1387241f2e
@@ -3157,10 +2790,8 @@ str-append	1	induction	binder 0 ctor 0	5793dfe92ea77f10ad7210fd11a150ed35a362f19
 str-append	1	induction	binder 0 ctor 1	9f9c399df4a8d63910437b4f52aee4579b3d2ced7dd80db30c7945ab649e696f
 str-append	1	induction	binder 1 ctor 0	c424d3fb7f08136a8e69550debeb7122a85cab9a86d848cac44692a72e936bce
 str-append	1	induction	binder 1 ctor 1	f6e3f7244a14da47f7528cb5656d0cef3f7c08a942ffeceeb2ed558e4e32a286
-str-append	1	lexicographic	binders 0,1 ctor 0 base	5793dfe92ea77f10ad7210fd11a150ed35a362f19c649ff07d340accdfc7677c
 str-append	1	lexicographic	binders 0,1 ctor 1,0	755f65427bcde24fb285298283ba8aa671c616e22d20edb00305b73c4d0d3541
 str-append	1	lexicographic	binders 0,1 ctor 1,1	a249ef32d0d4eb14a263a31b1e411aa04a4714d99137dd0e2561c128c7ff9bb8
-str-append	1	lexicographic	binders 1,0 ctor 0 base	c424d3fb7f08136a8e69550debeb7122a85cab9a86d848cac44692a72e936bce
 str-append	1	lexicographic	binders 1,0 ctor 1,0	e5cce393d842e28b56fb9972ee88df0a2258ec30786fc4ff99cdd3908705067e
 str-append	1	lexicographic	binders 1,0 ctor 1,1	fe0da35812692e898dc6f07b49de6aa75cb8b1b07b34d42c7bc12a20f6b68716
 str-append	1	direct-fallback		333081c54ccf73db457147e7f26ca888566c466cb6e64ca1661fb2db548b8b1f
@@ -3174,30 +2805,24 @@ str-bytes	1	direct-fallback		90a3284cccad423c04ef56bb668e33e60d58f70fed6cfab66a8
 str-code	0	lemma-free		533c56386ee97d4571321e55b5ea02ee0a695a5a0eb6fd5576b0dcdc4aeecbf2
 str-code	0	direct		533c56386ee97d4571321e55b5ea02ee0a695a5a0eb6fd5576b0dcdc4aeecbf2
 str-code	1	lemma-free		e685e3342d0d48bf8f51bf70091f38b733f9f08d0d5e82ce09f9f3e3898747fc
-str-code	1	direct		e685e3342d0d48bf8f51bf70091f38b733f9f08d0d5e82ce09f9f3e3898747fc
 str-code	1	induction	binder 0 ctor 0	c70e02eb56104f554ea3da67d9514f9f363c259b4549c95d54e8d8913dd2be3b
 str-code	1	induction	binder 0 ctor 1	75418aecf1739752e6b94c6bb8df06f931ba727aeffa29acfabd9de9b547c600
 str-code	1	direct-fallback		e685e3342d0d48bf8f51bf70091f38b733f9f08d0d5e82ce09f9f3e3898747fc
 str-code	2	lemma-free		1901d430f2dced2304a94f31d55438b70ef266c50669a2f5da8831ae6dafd1ae
-str-code	2	direct		1901d430f2dced2304a94f31d55438b70ef266c50669a2f5da8831ae6dafd1ae
 str-code	2	induction	binder 0 ctor 0	ab8d3515ea508a0087779fec240cacdd5a9dc6fdf686d15852deedc73dea35d9
 str-code	2	induction	binder 0 ctor 1	23c7a3eb77b8d08f9d547fed04abda53647e3c46f0ce921dc22848b5a3953475
 str-code	2	direct-fallback		1901d430f2dced2304a94f31d55438b70ef266c50669a2f5da8831ae6dafd1ae
 str-code	3	lemma-free		cc130f8bdc8dfb31d001511c2b0e35c09c5665284bd29028766c7c5799e4173a
-str-code	3	direct		cc130f8bdc8dfb31d001511c2b0e35c09c5665284bd29028766c7c5799e4173a
 str-code	3	induction	binder 1 ctor 0	eca1134fa3b95bbbfdce3fdb9514fb30d5baf07dd1623ea88252478ae1b89ba8
 str-code	3	induction	binder 1 ctor 1	d20a95d145d0482543909598a5fe99c784e256b03e488b4509b29d582f136eb2
 str-code	3	direct-fallback		cc130f8bdc8dfb31d001511c2b0e35c09c5665284bd29028766c7c5799e4173a
 str-code	4	lemma-free		f18eb799ee87d0abd41f6ca622bfce82bd90deec0e897281a4cb0f45f98636d2
-str-code	4	direct		f18eb799ee87d0abd41f6ca622bfce82bd90deec0e897281a4cb0f45f98636d2
 str-code	4	induction	binder 0 ctor 0	226f03145cc8ca4d0166a43a99ac16c8820395080b1f64df90a732acf11759e0
 str-code	4	induction	binder 0 ctor 1	a0eb5899390efe265cd27b1330637742f23215ba35e5ee6dc00c8556eb8bd570
 str-code	4	induction	binder 1 ctor 0	0405a334076a7eda4f635091717cb136197181d163f42b3e9fec4de1e69fede0
 str-code	4	induction	binder 1 ctor 1	5d92e38e817cebf369000b7cd998d092d9dcf022eb649bb83790e04a84f22554
-str-code	4	lexicographic	binders 0,1 ctor 0 base	226f03145cc8ca4d0166a43a99ac16c8820395080b1f64df90a732acf11759e0
 str-code	4	lexicographic	binders 0,1 ctor 1,0	560d136aac90a5f345677abcb72ee0d3c999fcff9f5d5f727fb2e6f8c3530ce1
 str-code	4	lexicographic	binders 0,1 ctor 1,1	501d3d52faefbf008018a939ae5fc998dff552465c2d9ff454ea1fcf3b9178fc
-str-code	4	lexicographic	binders 1,0 ctor 0 base	0405a334076a7eda4f635091717cb136197181d163f42b3e9fec4de1e69fede0
 str-code	4	lexicographic	binders 1,0 ctor 1,0	14a90d8f5615b43e4246124522fb371929257dccd4d6f62343d6f5bc25dd67cb
 str-code	4	lexicographic	binders 1,0 ctor 1,1	1cc8a43539e6c4fad0f567414c04de3adfe4995accc09fa975d3552b9a204694
 str-code	4	direct-fallback		f18eb799ee87d0abd41f6ca622bfce82bd90deec0e897281a4cb0f45f98636d2
@@ -3228,12 +2853,10 @@ str-join	0	induction	binder 1 ctor 0	1a5d15b117315e6e5383fa5292954bb11c90a0ef779
 str-join	0	induction	binder 1 ctor 1	a68a6b1781d3de321bbbb0c9c364281cbc98971528db3fca7be34076f3b1e700
 str-join	0	direct-fallback		69fb7714ba5cd637aebb5fcbfa9933e412f053d16e45d927a3193e2559d23b4c
 str-len	0	lemma-free		4859b889609fd1a64396d2e2afbcbf9994019b142e9018c57a0a861abd4fc926
-str-len	0	direct		4859b889609fd1a64396d2e2afbcbf9994019b142e9018c57a0a861abd4fc926
 str-len	0	induction	binder 0 ctor 0	6958c21590679c135b22e00f831059086904bb265c8f6e4fc6b058aacc060dca
 str-len	0	induction	binder 0 ctor 1	46d9d8a0ab3032c61eadb19b3be4144ee84481e7fb5f9b5deceb5d6933d056c2
 str-len	0	direct-fallback		4859b889609fd1a64396d2e2afbcbf9994019b142e9018c57a0a861abd4fc926
 str-lt	0	lemma-free		995abb194779a21ba7348ffc6011840a1c72b0e58225cc8a90e1333eddce73ba
-str-lt	0	direct		995abb194779a21ba7348ffc6011840a1c72b0e58225cc8a90e1333eddce73ba
 str-lt	0	induction	binder 0 ctor 0	f330a413610d00c3f99722bfe2af06b078cd9072c664d6572e505af3a4087005
 str-lt	0	induction	binder 0 ctor 1	ce7df75f9e320d4a6753c47d82387445544f2e17b97df714cb405f1f30bd2109
 str-lt	0	direct-fallback		995abb194779a21ba7348ffc6011840a1c72b0e58225cc8a90e1333eddce73ba
@@ -3247,7 +2870,6 @@ str-map-has	0	direct		94c807a19454020b2a6f98fea55cc53ad474050533c916e735d6b28209
 str-map-has	0	induction	binder 0 ctor 0	039c8ea9be15f382ac0cc960c5406b59a191c3a25602589b8b25bf3f2fd0c274
 str-map-has	0	induction	binder 0 ctor 1	3ac028f21d45b6565ea29fa54e6ca76fc4fdada92a5e30d5b904064c3473fe58
 str-map-has	0	induction	binder 2 ctor 0	2f3398310c290fea03b45882603c1bff309db673f109f27f2bfca755beb80862
-str-map-has	0	lexicographic	binders 0,2 ctor 0 base	039c8ea9be15f382ac0cc960c5406b59a191c3a25602589b8b25bf3f2fd0c274
 str-map-has	0	lexicographic	binders 0,2 ctor 1,0	4f858eba83059dbecf7af7e8e7046600d22f0082f1de50ad2e2437c90fafbf05
 str-map-has	0	lexicographic	binders 2,0 ctor 0 base	7004e27876f1af0d66b59e298bcef7f08d9db1c7bea71d0d1752ed434338a28c
 str-map-has	0	direct-fallback		94c807a19454020b2a6f98fea55cc53ad474050533c916e735d6b28209541de4
@@ -3256,7 +2878,6 @@ str-map-insert	0	direct		03153413c6359d57dfc7b659c301932a3090489de0fec92c6895663
 str-map-insert	0	induction	binder 0 ctor 0	642b6f342fd69a70ddcebc33811026e9490d364cd099e9702b07f8575ddb35ef
 str-map-insert	0	induction	binder 0 ctor 1	0b76aef8dd7837337d185276e7cdf38d6bb94ec539ac47f59345b3c1b75db1a3
 str-map-insert	0	induction	binder 2 ctor 0	c441723553913452d8581655685a05a5273d5628fae4ef20ef6599890901edfa
-str-map-insert	0	lexicographic	binders 0,2 ctor 0 base	642b6f342fd69a70ddcebc33811026e9490d364cd099e9702b07f8575ddb35ef
 str-map-insert	0	lexicographic	binders 0,2 ctor 1,0	b4cfb8926dee2358d10c6b65106db9de33c86e3b74adf03bb0ad28e6ffbb6561
 str-map-insert	0	lexicographic	binders 2,0 ctor 0 base	c3fbb0d97fa49350b349335d4d54dbb8edfe6249bd9c156b62bf1b64a9cee7e0
 str-map-insert	0	direct-fallback		03153413c6359d57dfc7b659c301932a3090489de0fec92c6895663ffa510bc3
@@ -3283,7 +2904,6 @@ str-nub	1	induction	binder 0 ctor 0	a11e080782a384652e1bb6eace42a578a102dbd44de7
 str-nub	1	induction	binder 1 ctor 0	1ac2d197447ff9edc618220bc29603298d870c6f86e6395a57dba461885d5ae8
 str-nub	1	induction	binder 1 ctor 1	6cdb85d1b71acb8ed46f0e28abdb2a3baf5373907f273863c9f032f4088bc132
 str-nub	1	lexicographic	binders 0,1 ctor 0 base	c39189a297a6188cfeff0fb180537a4a041182bda2f424b3f6aa88d028a391da
-str-nub	1	lexicographic	binders 1,0 ctor 0 base	1ac2d197447ff9edc618220bc29603298d870c6f86e6395a57dba461885d5ae8
 str-nub	1	lexicographic	binders 1,0 ctor 1,0	c032ce24943ae2287506cb659e71a6eaa49235ff1ffd82fb0e9d7fdf0ad220bc
 str-nub	1	direct-fallback		be4f0ad5a76d11163a6fe52d77e29b66ebbd7363b572083786aa459f8ef5897c
 str-nub	2	lemma-free		76dab1afc5fb303e5dcf3eff88e3045655f48766034ad1f5fe0b4e57018e13ff
@@ -3294,15 +2914,10 @@ str-nub	2	induction	binder 1 ctor 1	9d2ae796d28a44e6cf0d17eb2ec1e73bd5c7d708bf84
 str-nub	2	induction	binder 2 ctor 0	7ebb46904e6f685bec0c59598b41b45bb275ff59c15b48fc8249469c76b9a017
 str-nub	2	induction	binder 2 ctor 1	afc2604a8fc906649c6262274cff3446775736bd661697128480fbd6e8888f2f
 str-nub	2	lexicographic	binders 0,1 ctor 0 base	ec5c280f25633feaf2cb20ba87c3d44667631921586cdbf7ff95b555b67b7ad4
-str-nub	2	lexicographic	binders 0,2 ctor 0 base	ec5c280f25633feaf2cb20ba87c3d44667631921586cdbf7ff95b555b67b7ad4
-str-nub	2	lexicographic	binders 1,0 ctor 0 base	fd1eb846825063bed6f0644130a4129bf6470e5274de093737379ac6eda5235a
 str-nub	2	lexicographic	binders 1,0 ctor 1,0	356565bf9e9fafe16ddfb9ab791e8686710e974cc98db9ef895763506c772ff6
-str-nub	2	lexicographic	binders 1,2 ctor 0 base	fd1eb846825063bed6f0644130a4129bf6470e5274de093737379ac6eda5235a
 str-nub	2	lexicographic	binders 1,2 ctor 1,0	40b9f2445ba8803f14b60a4bf87a13d37c11bdd789dc1fdf74d70df283b20ce9
 str-nub	2	lexicographic	binders 1,2 ctor 1,1	8d40143f9cd3f458c2cacceeef713d1b1f3ae44fe6a82cb4f46bab5bf2674330
-str-nub	2	lexicographic	binders 2,0 ctor 0 base	7ebb46904e6f685bec0c59598b41b45bb275ff59c15b48fc8249469c76b9a017
 str-nub	2	lexicographic	binders 2,0 ctor 1,0	6465d80dd93fbb5cef2c549a15d8d1814e610802a913ac554d505ceb18d9b620
-str-nub	2	lexicographic	binders 2,1 ctor 0 base	7ebb46904e6f685bec0c59598b41b45bb275ff59c15b48fc8249469c76b9a017
 str-nub	2	lexicographic	binders 2,1 ctor 1,0	712213aaa6f24b8da62270f78a4b90a9a714c3aa739d572f744da0ed94cd9a33
 str-nub	2	lexicographic	binders 2,1 ctor 1,1	c1cf5b9b18f6b23a91c758f3e14d1975506952ecdc2cda11c6a34fde24ca3aec
 str-nub	2	direct-fallback		88c150c3732fc8c9ef331528cdce4a88dc6aa4beb16052e7b8588683fdf5d135
@@ -3314,15 +2929,10 @@ str-nub	3	induction	binder 1 ctor 1	955d65fb3f3c0ea829634b424b17d3fcdc4143321ec1
 str-nub	3	induction	binder 2 ctor 0	bd93228a5681572c713f63dcdc74e380ac49d90adeb1110cc3e6e289cf989393
 str-nub	3	induction	binder 2 ctor 1	67e2ce2a38c0c4d52f6d2d86c4ae88e28f1998da821eedd38a968e404b2639fe
 str-nub	3	lexicographic	binders 0,1 ctor 0 base	a16b71204f312ac5fcb32fb0a3b7a4b500c33a129d9d9599f994e26c561e1b21
-str-nub	3	lexicographic	binders 0,2 ctor 0 base	a16b71204f312ac5fcb32fb0a3b7a4b500c33a129d9d9599f994e26c561e1b21
-str-nub	3	lexicographic	binders 1,0 ctor 0 base	2dc160451513a8e6718506d1718ef4f7b9b796451abe2da0c124c05a1eee95c9
 str-nub	3	lexicographic	binders 1,0 ctor 1,0	6973d124bc4e88a5679294896764c6f4737df2c3008931abc16f1e080e7407ea
-str-nub	3	lexicographic	binders 1,2 ctor 0 base	2dc160451513a8e6718506d1718ef4f7b9b796451abe2da0c124c05a1eee95c9
 str-nub	3	lexicographic	binders 1,2 ctor 1,0	0deaca012b6fe92a1708543945e306a691fe70e96b4eb92d3654cfac4d809e01
 str-nub	3	lexicographic	binders 1,2 ctor 1,1	f0ea0c45db29d6d1a9e29768274aad3a5fb5dfc586662ad8fa85e6339e54372f
-str-nub	3	lexicographic	binders 2,0 ctor 0 base	bd93228a5681572c713f63dcdc74e380ac49d90adeb1110cc3e6e289cf989393
 str-nub	3	lexicographic	binders 2,0 ctor 1,0	bc77e5805d57976b0519fcf6a14d633ad63c9efa6753f2a477836c21ea4c79c6
-str-nub	3	lexicographic	binders 2,1 ctor 0 base	bd93228a5681572c713f63dcdc74e380ac49d90adeb1110cc3e6e289cf989393
 str-nub	3	lexicographic	binders 2,1 ctor 1,0	ac277a37569aa79ae245a21a6fa1f3dec281c838c64e64a342f860fc6038e0cb
 str-nub	3	lexicographic	binders 2,1 ctor 1,1	feeb1cf33d75baa7626fe00936e57b08e4bcce3768e3fae6ccec9f1f33e0fedd
 str-nub	3	direct-fallback		ddfba517e14f00ade550e3e4b92847c33f7131abcb654ad23cfbb643e44eb1c3
@@ -3332,10 +2942,8 @@ str-nub	4	induction	binder 0 ctor 0	f5fde13e88876b35a01e0017c1be4e6b038996d1508a
 str-nub	4	induction	binder 0 ctor 1	7a954827f81dc06de2a4c20fdd741a1ec22ddc3c9e09730e2313588c0562ebe4
 str-nub	4	induction	binder 1 ctor 0	e430e4e94b94272df67a33c46a54f93fc68e4cb6ccff7dab2e4dc4daeaa09c83
 str-nub	4	induction	binder 1 ctor 1	e9edf7c718c9b647f9c211c96ac54b5bd4c45c9ef33f73de1f72c49a3bb8ae2e
-str-nub	4	lexicographic	binders 0,1 ctor 0 base	f5fde13e88876b35a01e0017c1be4e6b038996d1508add677803a7d6429870c9
 str-nub	4	lexicographic	binders 0,1 ctor 1,0	25e33999e3e97b63f4582db289507c016b39dfa1d6fa3182b3823604d8ba2a2c
 str-nub	4	lexicographic	binders 0,1 ctor 1,1	e8a3b2a3171293e90b12d30556b4f4f576542bea0168c3f2d26f151fe13e1507
-str-nub	4	lexicographic	binders 1,0 ctor 0 base	e430e4e94b94272df67a33c46a54f93fc68e4cb6ccff7dab2e4dc4daeaa09c83
 str-nub	4	lexicographic	binders 1,0 ctor 1,0	dadf9ae78aa07c074e62bb7b2f1d2e15fe63e73da1c8ecde05a0cd7a019dc3f3
 str-nub	4	lexicographic	binders 1,0 ctor 1,1	621d1adba9df9c15c4177439aff6305c183242128593ed2b1f27111c1183641a
 str-nub	4	direct-fallback		32ac5c4f8b9b70e49e49e55a0fd0d95d63cf99db83be39e73564d6c3645ee83e
@@ -3374,36 +2982,30 @@ str-prefix	2	induction	binder 0 ctor 0	d3884533a763224116ec2610c11e5762d3d2fb7c5
 str-prefix	2	induction	binder 0 ctor 1	0b49610f2b8c23e2051c12dbed91d276a2f2b34a298cca4a2c8427869301eec8
 str-prefix	2	induction	binder 1 ctor 0	b7e99e5c6ee74a9dff8cab05a30d1187cdf96db7e90bd2052b85748c5d2ec233
 str-prefix	2	induction	binder 1 ctor 1	904e4671e8ff378b466d1a3e4ffff890f6f80cac099124075bff9f1d21eb5aa6
-str-prefix	2	lexicographic	binders 0,1 ctor 0 base	d3884533a763224116ec2610c11e5762d3d2fb7c5ee1e6426ef712c7cf62537f
 str-prefix	2	lexicographic	binders 0,1 ctor 1,0	9e00ed1b8b51e0c21bdf63807e5ee08fd2fd5b2275fc3f3047f96e2efa0487f8
 str-prefix	2	lexicographic	binders 0,1 ctor 1,1	b887f3c3830189db4ef763963a20aa5f459389baf4fb704ecc3cdc074820f8c7
-str-prefix	2	lexicographic	binders 1,0 ctor 0 base	b7e99e5c6ee74a9dff8cab05a30d1187cdf96db7e90bd2052b85748c5d2ec233
 str-prefix	2	lexicographic	binders 1,0 ctor 1,0	57d3f7313594234a7dd5408040014a92e957aa857545271258f63fe8eaa55d56
 str-prefix	2	lexicographic	binders 1,0 ctor 1,1	004016112c39af252980112484eb890dca08f1372879f5db4e2b74c21e387d8b
 str-prefix	2	direct-fallback		d653e2a8519a7c1a070517135fd0acea6aa07ba5061b40ee976f11f5e9f352d3
 str-scalars	0	lemma-free		6739dd56b9931f53a4d7410020159cdc1490e3d28a78d36357db12a25687a8ff
 str-scalars	0	direct		6739dd56b9931f53a4d7410020159cdc1490e3d28a78d36357db12a25687a8ff
 str-scalars	1	lemma-free		8fa29d16beec3995e1a06ee963748bcdcc19bd38267d797fd7a5699c2205fcce
-str-scalars	1	direct		8fa29d16beec3995e1a06ee963748bcdcc19bd38267d797fd7a5699c2205fcce
 str-scalars	1	induction	binder 0 ctor 0	fed0d442487db585177bbc0a33b4e949b28709b87c4c661a1e0636dea2476906
 str-scalars	1	induction	binder 0 ctor 1	100b70676e1765e38dba94cb55c4eefe7ffad7085d47871190c468d4bee6ecaa
 str-scalars	1	direct-fallback		8fa29d16beec3995e1a06ee963748bcdcc19bd38267d797fd7a5699c2205fcce
 str-scalars	2	lemma-free		e0e093856a7ec34e5418734d71ebd5f49d635dc736acb2071f0600bcbb985d44
-str-scalars	2	direct		e0e093856a7ec34e5418734d71ebd5f49d635dc736acb2071f0600bcbb985d44
 str-scalars	2	induction	binder 0 ctor 0	662ec40d502c95e8d7a5f24aa9b92ba905919c63563460792f5e88870182424b
 str-scalars	2	induction	binder 0 ctor 1	12302c59de7e7c735a3b3f34fe583edc6b6a1ad16825a65ee358d5832dce6876
 str-scalars	2	direct-fallback		e0e093856a7ec34e5418734d71ebd5f49d635dc736acb2071f0600bcbb985d44
 str-scalars	3	lemma-free		a2746753025fb46ec30e5f9d0905c299311283ea94e061d83a748f01d741940f
 str-scalars	3	direct		a2746753025fb46ec30e5f9d0905c299311283ea94e061d83a748f01d741940f
 str-scalars	4	lemma-free		89fbd0efc3d64c111a43cf151df1572d4459cf13c6eeb6f5095b33ee05b8d47a
-str-scalars	4	direct		89fbd0efc3d64c111a43cf151df1572d4459cf13c6eeb6f5095b33ee05b8d47a
 str-scalars	4	induction	binder 1 ctor 0	36dba74b8984123147918c3e342c825940610c2f6bdc62e994d5d515d13efa01
 str-scalars	4	induction	binder 1 ctor 1	feabe16e28b47fcacc86dc095b59b27878f33db263cd3d83eab44401d7a77407
 str-scalars	4	direct-fallback		89fbd0efc3d64c111a43cf151df1572d4459cf13c6eeb6f5095b33ee05b8d47a
 str-spaces	0	lemma-free		b9a8599e42352b2e0236ff730544445b3dcfd35869f757f3c95137000064c672
 str-spaces	0	direct		b9a8599e42352b2e0236ff730544445b3dcfd35869f757f3c95137000064c672
 str-spaces	1	lemma-free		00239c1165f35d4db13f067f39b1a947f1ab372bff43fd7a77223d153ae841eb
-str-spaces	1	direct		00239c1165f35d4db13f067f39b1a947f1ab372bff43fd7a77223d153ae841eb
 str-spaces	1	recursion-induction	base	6065ba4572766766c75c92a4c2d488cb7a7953499a6232ca13fdbcac690d9154
 str-spaces	1	recursion-induction	step 0	58f12ad8092a9bbf487a129f0132d4dac52d08d87ece67f906324b88c881e8bf
 str-spaces	1	direct-fallback		00239c1165f35d4db13f067f39b1a947f1ab372bff43fd7a77223d153ae841eb
@@ -3415,7 +3017,6 @@ str-spaces	2	direct-fallback		006a59d8815cfc3747c1d414dbaccebb5e07107583a34e47bd
 str-spaces	3	lemma-free		d9a3f28ccb09aec7ac1299de2b0c7f6c383dd67af3d84720549ef5fed6d0cc3e
 str-spaces	3	direct		d9a3f28ccb09aec7ac1299de2b0c7f6c383dd67af3d84720549ef5fed6d0cc3e
 str-split	0	lemma-free		c4a721943378c27b61b7443b65fb97948a57712c54d3903e2218328388d3a003
-str-split	0	direct		c4a721943378c27b61b7443b65fb97948a57712c54d3903e2218328388d3a003
 str-split	0	induction	binder 1 ctor 0	713552abdbee0be894ac0986891736ce397557de6603784151de3a8ec7c9b077
 str-split	0	induction	binder 1 ctor 1	71dd6b5bbbd49365601dc3eb47a38a6d2cb2e7e97a0aeb42e0b58b3c6fdcd8ad
 str-split	0	direct-fallback		c4a721943378c27b61b7443b65fb97948a57712c54d3903e2218328388d3a003
@@ -3425,7 +3026,6 @@ str-split-join	0	induction	binder 1 ctor 0	a10a2ddb40abd45ae4e3ba80f6ad9664d3fad
 str-split-join	0	induction	binder 1 ctor 1	40686ccd4b30363b25fbd196d416917d28175d1a29a5d5df505af14f28bead3f
 str-split-join	0	direct-fallback		8d2f73f465941072de4e8c3aea1d23b2b2e49e65a87be6f22224138100859acf
 str-take	0	lemma-free		3b401dfb1c618a78f43c09a662fe8650eee0b7f6194294228e923d6a22dea47c
-str-take	0	direct		3b401dfb1c618a78f43c09a662fe8650eee0b7f6194294228e923d6a22dea47c
 str-take	0	induction	binder 0 ctor 0	75ae6a53b811f190ff172306934c54288d6167bde0ca158ec32742bf284351a8
 str-take	0	induction	binder 0 ctor 1	6cb334ecd689922c548f619171d2fa08356622f391e6d27f2cc216c563a60699
 str-take	0	direct-fallback		3b401dfb1c618a78f43c09a662fe8650eee0b7f6194294228e923d6a22dea47c
@@ -3435,10 +3035,8 @@ sum	0	induction	binder 0 ctor 0	cdd641d417772c587319942a11890b01636946b951348c8b
 sum	0	induction	binder 0 ctor 1	a80550f0fa904dc51bd9e15c3c840beda3760af783661546983e88d01426ca5e
 sum	0	induction	binder 1 ctor 0	8e6450d420efa593b3ce41e68f2f7d56798201049003627a91faffad2b4352b8
 sum	0	induction	binder 1 ctor 1	877da3d6e3918e342004c4a8bba1063150d87eb2a7dfac10679ecf94fde4a3b9
-sum	0	lexicographic	binders 0,1 ctor 0 base	cdd641d417772c587319942a11890b01636946b951348c8b6a2d874f29fde510
 sum	0	lexicographic	binders 0,1 ctor 1,0	c036a8c5f6f63d4df7f589793450d2129ba4928bfca17ca2002792a8dca21f9c
 sum	0	lexicographic	binders 0,1 ctor 1,1	8ad1ba338daf9194a76e759b7244c24360c6cb1f83ddb9bf4f8dedf3dfb299c9
-sum	0	lexicographic	binders 1,0 ctor 0 base	8e6450d420efa593b3ce41e68f2f7d56798201049003627a91faffad2b4352b8
 sum	0	lexicographic	binders 1,0 ctor 1,0	a8ac362b4aa50603e2a4ba3ad5170e59b97fbd80f0c5ff324817ade705e641c2
 sum	0	lexicographic	binders 1,0 ctor 1,1	369cbecc1f702d258424bf65cbb9795151d72f0796e6f8911e0a6e7654da73a2
 sum	0	direct-fallback		9173a6aabec605f0bb3756d494eadfe27f7fe683e9a10123878d5b733af5729a
@@ -3448,7 +3046,6 @@ sum	1	induction	binder 0 ctor 0	3c4d6185367fc5941cd20a4e103dba0712452e5b6ef05cfc
 sum	1	induction	binder 0 ctor 1	a29d592ea2714b99504064484ae063630d30b4ef840a243af37464fcc0be754f
 sum	1	direct-fallback		fb4e84629e5db94caaae17e5fcbfb931f48a1d67bbf0be9871153f5f854798ed
 swap	0	lemma-free		f815df1ed81120c9a45e810bfaaeff31f75f32179c3c256b7c2351af11061573
-swap	0	direct		f815df1ed81120c9a45e810bfaaeff31f75f32179c3c256b7c2351af11061573
 swap	0	direct-fallback		f815df1ed81120c9a45e810bfaaeff31f75f32179c3c256b7c2351af11061573
 t-flatten	0	lemma-free		da4bca1682aaf9b831e7d1ac4abbfd30873346fb1ed23455f835573631a53e83
 t-flatten	0	direct		6ec7c21ca50bddabf95af5b78b0f23f9ddfd4cf328e57bff4b81e00bd532bbf1
@@ -3459,10 +3056,8 @@ t-flatten	1	induction	binder 0 ctor 0	c5ed14406a1ac3d9c77af03e5100ea92b99459a17e
 t-flatten	1	induction	binder 0 ctor 1	780daa4e25f733bf6894ef5253db3edc67a78295a2c8a0778c65842b6f2672b1
 t-flatten	1	induction	binder 2 ctor 0	a6d55f1acd8fd2e8785d72511066f26cbb937ca630d44932d559938a357b9c4c
 t-flatten	1	induction	binder 2 ctor 1	7298a7e82a0cb44450e5cb634504334c395a747c67c0f584a2be1f1fb3ea883b
-t-flatten	1	lexicographic	binders 0,2 ctor 0 base	c5ed14406a1ac3d9c77af03e5100ea92b99459a17ee019606540a7de7f9f5806
 t-flatten	1	lexicographic	binders 0,2 ctor 1,0	6704ec9d93f42e299bfef6e5ec35697c9e96225dd4937601b7516f3173415979
 t-flatten	1	lexicographic	binders 0,2 ctor 1,1	9ef7ca7c31fc8b6efefcc157f372a6f497ab5ed333f210787d189b43d8fac168
-t-flatten	1	lexicographic	binders 2,0 ctor 0 base	a6d55f1acd8fd2e8785d72511066f26cbb937ca630d44932d559938a357b9c4c
 t-flatten	1	lexicographic	binders 2,0 ctor 1,0	c4341fe3a2801e13c99eb73e36cc2f55817e7c1dc191a1656279e4d693befcd2
 t-flatten	1	lexicographic	binders 2,0 ctor 1,1	8a45203cf400f92e116b07c8a4ba57452eb537d56c18c469c6cfc7feabf5cfa2
 t-flatten	1	direct-fallback		fbed8913e63ba5e25aaccbc2c60c998376c32db2eef729fa2d7866402a82b034
@@ -3501,10 +3096,8 @@ t-member	1	induction	binder 0 ctor 0	b272d3a2ef66610a1ec22cdc4fcef4d264aa63b363a
 t-member	1	induction	binder 0 ctor 1	c354feb67c60e88a905828420e1a42b7265386b05fcd2785b6579db071ccbb02
 t-member	1	induction	binder 2 ctor 0	293aaf29d3dfccf91d8016e0b033213a60f7d6481cb8a89286309f2f233766dd
 t-member	1	induction	binder 2 ctor 1	d7e742d0ab438b26ce6c33efd740ef021e11e58e9affac7248b11357874545ff
-t-member	1	lexicographic	binders 0,2 ctor 0 base	b272d3a2ef66610a1ec22cdc4fcef4d264aa63b363a5a9757062cf8ff2b673ab
 t-member	1	lexicographic	binders 0,2 ctor 1,0	38bbc0f9acd73010c1165c8f8fa62d579f5d00ef7b40f0233769c572ecf659ee
 t-member	1	lexicographic	binders 0,2 ctor 1,1	909c04e079fa8ef8655065723dd319173310ed2bfb903a88b1b19ffafcede258
-t-member	1	lexicographic	binders 2,0 ctor 0 base	293aaf29d3dfccf91d8016e0b033213a60f7d6481cb8a89286309f2f233766dd
 t-member	1	lexicographic	binders 2,0 ctor 1,0	e047dc459f3263ec5f2bcbca43f8164d1ce74b735ee9e317225d5b681a1a0986
 t-member	1	lexicographic	binders 2,0 ctor 1,1	e734adec029c0d4186658365e303600078e48afe986dd7be9280399577cb0f8c
 t-member	1	direct-fallback		9d4e167ed18141150b8016dbc32b6415eab0333fab37c63feb4db81328096c29
@@ -3527,10 +3120,8 @@ t-size	1	induction	binder 0 ctor 0	efe22ea921a76c4e8a6a26c2292c8bda966c9ec063be4
 t-size	1	induction	binder 0 ctor 1	14cf5b25a5be3072da78a5b67541e9e47c0d600c1ce977a6093c38b89016802b
 t-size	1	induction	binder 2 ctor 0	d045a502f1065afef8740d233fbe00ac867618623240d501442be52dc852dbb9
 t-size	1	induction	binder 2 ctor 1	688ff5ea11cf4fec0f1cadeb2e3eb91e3f7087545771c43b49087730b3fedae5
-t-size	1	lexicographic	binders 0,2 ctor 0 base	efe22ea921a76c4e8a6a26c2292c8bda966c9ec063be4284c9f1b1bd38742065
 t-size	1	lexicographic	binders 0,2 ctor 1,0	ea950e7b43067efb3dba154a0cc2a054eceba53260b4657b411f461a1cd8fd9a
 t-size	1	lexicographic	binders 0,2 ctor 1,1	dabb7bd8657ce3585a129be6f62f1bb4138fac83cfbdc020a9d5ed4d672fd87d
-t-size	1	lexicographic	binders 2,0 ctor 0 base	d045a502f1065afef8740d233fbe00ac867618623240d501442be52dc852dbb9
 t-size	1	lexicographic	binders 2,0 ctor 1,0	f40d244b12000a941e19dc52b8ce3c96960806672f30c3769ef430ae89954bfe
 t-size	1	lexicographic	binders 2,0 ctor 1,1	21b1847776ab0751dbb7b9f20c8d6ef7d8cc29b9a182be1481bd540a685b0016
 t-size	1	direct-fallback		4b425dcd1e2230571a24b068811e8ab7bfe37b8e6dea2d662313fc1d8ff72c6c
@@ -3597,10 +3188,8 @@ zip	2	induction	binder 1 ctor 0	1e057d5043c9322a13519324e4be9385cf3165139deedfb4
 zip	2	induction	binder 1 ctor 1	3787861b2fff8f3adfb6da53e903246ec9edcded6f0bcfc1761f03f81b3fa51f
 zip	2	induction	binder 3 ctor 0	7040a7c93815517df4c6b0202d44dd7ddf66b4448d58fdb2e88d7cd0d2deb045
 zip	2	induction	binder 3 ctor 1	855256423cf604d5bb401c1ad3e8fa78e019f2af126f80c033b7397a84f971e2
-zip	2	lexicographic	binders 1,3 ctor 0 base	1e057d5043c9322a13519324e4be9385cf3165139deedfb45f22a1217b7d0f40
 zip	2	lexicographic	binders 1,3 ctor 1,0	84ec0c4eb1df5a4537fd26c72028938657308a4884839fb2d6d677317fbfc79c
 zip	2	lexicographic	binders 1,3 ctor 1,1	99745a2beb9e29f860eee9508e0bde7273bda20b51ebe9dcabc320035546afd3
-zip	2	lexicographic	binders 3,1 ctor 0 base	7040a7c93815517df4c6b0202d44dd7ddf66b4448d58fdb2e88d7cd0d2deb045
 zip	2	lexicographic	binders 3,1 ctor 1,0	f0508c0c4fd060048bde89a0f211ce6279a6bece3e7dc516d69751ce30691cb2
 zip	2	lexicographic	binders 3,1 ctor 1,1	e2d92d5c57621b6360bc5053978f3fa7e49431a54a6930811b2d9ddc3ec8c682
 zip	2	direct-fallback		477fdcb692f6aa8a6a07c5bd0c74d6aec5e521340b28b99bb5349a03b5fa1c34
@@ -3620,10 +3209,8 @@ zip-with	2	induction	binder 2 ctor 0	44e0244db5a1c1f9e5a4e201973414c13ab628ee79e
 zip-with	2	induction	binder 2 ctor 1	a91beb7c74b546212c97912b7773d68cc399e13b217c2167420abda5c261ce4c
 zip-with	2	induction	binder 4 ctor 0	eb99f707eee212d88f1b970fe7fef73a1401c5c764cc69d380434ab76e205801
 zip-with	2	induction	binder 4 ctor 1	cc046f9615f8db7813faa7d005912448d680a4a44cfa8c3db92cfd84df3cef89
-zip-with	2	lexicographic	binders 2,4 ctor 0 base	44e0244db5a1c1f9e5a4e201973414c13ab628ee79e0520252e5997548420b65
 zip-with	2	lexicographic	binders 2,4 ctor 1,0	451f0f94a3ff911c84f03922f88df759d307dff02bfa1d85568232001f397f84
 zip-with	2	lexicographic	binders 2,4 ctor 1,1	909814e84e8d71fe477267b46b95044d3c162346d265437d5f82a60383cb5243
-zip-with	2	lexicographic	binders 4,2 ctor 0 base	eb99f707eee212d88f1b970fe7fef73a1401c5c764cc69d380434ab76e205801
 zip-with	2	lexicographic	binders 4,2 ctor 1,0	ce41bc232ddb8f97abd25847177975b1241789a423b33f270e669334c7b8ee16
 zip-with	2	lexicographic	binders 4,2 ctor 1,1	11b40b3beb6a4f66dabb3d8ba3823541811f8e21de651d5c9e698d3d7870da2e
 zip-with	2	direct-fallback		8eebbd5e3cd4d8a131d4ca63c180ae518f10319033166d4b404af9e1b2fd9734
