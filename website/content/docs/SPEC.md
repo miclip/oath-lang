@@ -1340,10 +1340,20 @@ reproducibility (given the same solver):
     unconditionally — and authoring tools SHOULD refuse to record one.
 - **Attempt reuse within one property (normative, #98).** Several rules below
   say a kernel MUST ATTEMPT a strategy or subgoal, and a strategy sequence can
-  build the SAME solver problem more than once for one property: a datatype's
-  non-recursive constructor makes the lexicographic BASE subgoal byte-identical
-  to the structural-induction one, and a goal with no admissible lemmas makes
-  the lemma-free attempt byte-identical to the direct attempt.
+  build the SAME solver problem more than once for one property. Two ways, and
+  each is NARROWER THAN IT FIRST LOOKS — stated at its true width because an
+  overstated example sends an implementer looking for reuse that cannot occur:
+  a ZERO-FIELD non-recursive constructor makes the lexicographic BASE subgoal
+  byte-identical to the structural-induction one. The zero-field qualifier is
+  load-bearing: script stability below names single-binder induction's field
+  constants `f<fi>` and the lexicographic ones `g<fi>`, so a constructor WITH
+  fields differs in every field-constant token and shares no key. Both kinds
+  occur in this corpus, and no figure for either is recorded here: a count of
+  them is a fact about the corpus, which `fixtures/` derives and prose rots.
+  Separately, a goal with no admissible lemmas makes the lemma-free attempt
+  byte-identical to the direct attempt — but that yields REUSE only where the
+  two also share a budget, which is on an inductive-eligible goal; where the
+  direct attempt runs at the full budget the bytes agree and the KEY does not.
   THE PERMISSION, AND ITS SCOPE. Fix one property and one execution of its
   strategy sequence; call that execution THE SEQUENCE. Within the sequence, a
   kernel MAY answer an attempt with an EARLIER VALID OUTCOME OF THAT SAME
@@ -1359,9 +1369,10 @@ reproducibility (given the same solver):
   Matching is PER SOLVER CALL, not per strategy: a multi-subgoal strategy matches
   subgoal by subgoal. Such a reuse SATISFIES the `MUST attempt` requirement it
   answers.
-  BOTH KEY COMPONENTS BIND: the reduced direct attempt and its full-budget
-  fallback are byte-identical and are NOT one another's reuse, because their
-  whole point is that the second may answer where the first ran out.
+  EVERY KEY COMPONENT BINDS, AND THE BUDGET IS THE ONE THAT CATCHES A READER
+  OUT: the reduced direct attempt and its full-budget fallback are
+  byte-identical and are NOT one another's reuse, because their whole point is
+  that the second may answer where the first ran out.
   THE SEQUENCE IS THE UNIT, AND IT IS NARROWER THAN "THE PROPERTY". The two-level
   fixpoint above may execute a property's strategy sequence again in a later
   round; that is a DIFFERENT sequence. Nothing here licenses answering an attempt
@@ -1372,9 +1383,11 @@ reproducibility (given the same solver):
   where this rule answers ONE solver call on a matching key. A kernel may
   implement either, both, or neither.
   AN INVALID ATTEMPT (attempt validity, below) IS NOT AN OUTCOME. It MUST NOT be
-  reused, and it MUST NOT be recorded under its key, so a later attempt at that
-  key MUST run — otherwise one environmental abort would suppress every duplicate
-  after it. It also does NOT displace anything: if a key already holds a valid
+  reused, and it MUST NOT be recorded under its key, so a later attempt at a key
+  holding NO valid outcome MUST run — otherwise one environmental abort would
+  suppress every duplicate after it. (The qualifier is what keeps this from
+  contradicting the next sentence: where a valid outcome already stands, that
+  outcome remains reusable and no rerun is owed.) It also does NOT displace anything: if a key already holds a valid
   outcome and a kernel nonetheless runs that key again and the run is invalid,
   the earlier valid outcome STANDS and remains reusable. An invalid attempt adds
   nothing and removes nothing. (Two DIFFERENT valid outcomes at one key cannot
@@ -1404,6 +1417,26 @@ reproducibility (given the same solver):
   inconclusive rather than as a mismatch. Reuse moves that boundary toward FEWER
   environment-dependent records, and it never invents a verdict, since it only
   replays an outcome the solver actually produced.
+  THAT EXCUSE COVERS THE ABORTED PROPERTY AND NOT ITS SIBLINGS, which is worth
+  stating rather than leaving to be found. An aborted property that has NEVER
+  BEEN PROVEN contributes no lemma (a carried-forward proof still does — run
+  stability below), so a SIBLING that was itself validly attempted may be
+  recorded unproven on the aborting run and proven on a run that did not abort.
+  THAT IS A REPRODUCIBILITY FACT ABOUT TWO RUNS, AND IT ADDS NOTHING TO THE
+  CARRY-FORWARD CAVEAT BELOW — the claim is about the SIBLING and no wider.
+  The sibling records UNPROVEN, so it contributes no recorded proof for
+  self-certification to re-derive; and where the aborted property carries a
+  proof, that proof's lemma is in the final set, so the sibling is unaffected in
+  that case too. Whatever the carried proof itself does to self-certification is
+  the existing modulo-aborted-properties caveat, unchanged by any of this. The
+  sibling's own verdict is recorded normally under attempt validity above and
+  compared exactly by §10; nothing here licenses withholding it.
+  This is not created by
+  reuse: it is the pre-existing consequence of an abort suppressing a lemma, and
+  it is reachable by any two kernels that abort differently. Reuse only changes
+  how OFTEN a duplicate is exposed to it. So the honest claim is the narrow one —
+  reuse never invents a verdict — and NOT that two kernels choosing differently
+  must record identical outcomes.
   The key determines an outcome across sequences too, so WIDER REUSE WOULD BE
   EQUALLY SOUND and is not declared wrong here; it is simply not what this rule
   licenses, and a kernel wanting it needs a rule that says so rather than an
@@ -1583,8 +1616,13 @@ reproducibility (given the same solver):
   The direct attempt on an inductive-eligible goal is almost always futile
   (the goal needs induction) yet at the full budget burns minutes of wall
   time before failing; every direct proof that SUCCEEDS in the corpus consumes
-  under ~3K rlimit, so the reduced budget cannot change a direct success, only
-  fail a futile attempt ~100x faster. To preserve the budget-part-of-identity
+  under ~3K rlimit. IN THIS CORPUS, therefore, the reduced budget has never
+  changed a direct success — it only fails a futile attempt ~100x faster. That
+  is a measurement over the exhibits this project chose, NOT a property of the
+  budget scheme: a goal needing between the reduced and the full budget is
+  admitted by these rules and would be answered only by the fallback below,
+  which is why the fallback exists and why its attempt is keyed separately from
+  the reduced one (attempt reuse, above). To preserve the budget-part-of-identity
   invariant, after structural and lexicographic induction both fail the kernel
   MUST retry the direct attempt at the FULL budget (the fallback); a goal
   provable only by heavy direct search thereby keeps its verdict, and the
