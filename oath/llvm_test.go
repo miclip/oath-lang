@@ -223,36 +223,56 @@ func TestLLVMLaunchGate(t *testing.T) {
 	}
 }
 
-// Two backends may support different subsets of the SAME vocabulary, and the
-// neutral layer does not have to care. A kind this backend cannot lower is a
-// COMPILE failure naming the kind — and the identical program builds on the Go
-// backend, which is what makes this a property of the backend rather than of the
-// program.
-func TestLLVMRefusesAKindItCannotLower(t *testing.T) {
-	st := llvmStore(t)
-	put(t, st, `(defn grab [] [(w {fetch (-> Str Str)}) (args (List Str))] Str
-		((. w fetch) "http://example.invalid/"))`)
-	markVerified(t, st, "grab")
-
-	prog, err := planProgram(st, "grab")
-	if err != nil {
-		t.Fatalf("planProgram: %v", err)
+// THE CAPABILITY BOUNDARY, AND WHY THIS TEST CHANGED SHAPE.
+//
+// It used to build a program requiring http_request and assert the LLVM backend
+// REFUSED it while the Go backend accepted it — the divergence being the point.
+// Linking libcurl removed that divergence: this backend now covers the WHOLE
+// capability vocabulary, so no real kind is left to witness a refusal with.
+//
+// By the rule this repo works to, the replacement must pin the new contract at
+// least as tightly as the old pinned the old. A refusal test alone no longer
+// can, because there is nothing left to refuse — and simply deleting it would
+// retire the refusal MECHANISM from the suite while leaving it in the code,
+// where the next kind added to the vocabulary is the thing that needs it.
+//
+// So the claim is split, and together the two halves are strictly stronger than
+// the single refusal was:
+//
+//	COVERAGE   every kind the neutral vocabulary declares has a provider here.
+//	           The old test could not state this; it only knew about one kind.
+//	MECHANISM  a kind WITHOUT a provider is refused, named, and lists what is
+//	           supported — exercised through a synthetic kind, because no real
+//	           one is outside any more.
+func TestLLVMCoversTheVocabularyAndStillRefusesAnUnknownKind(t *testing.T) {
+	for kind := range capabilityKinds() {
+		if kind == capRequiredValue {
+			continue // not an authority: provided through its own entry point
+		}
+		if _, ok := llvmProviders[kind]; !ok {
+			t.Errorf("the neutral vocabulary declares %s and this backend has no provider "+
+				"for it. Either add one, or say so here — an untracked gap is how a "+
+				"backend silently stops covering the language it claims to compile", kind)
+		}
 	}
-	_, err = emitLLVM(st, prog)
+
+	// The mechanism, through a kind that exists only for this assertion. It must
+	// survive the table being complete: the refusal path is what a FUTURE kind
+	// meets, and a suite that exercised it only through http_request stopped
+	// exercising it the moment http_request was implemented.
+	_, err := llvmProviderFor(CapabilityRequirement{Field: "ghost", Kind: capabilityKind("no_such_kind")})
 	if err == nil {
-		t.Fatal("the LLVM backend accepted http_request, which it cannot provide")
+		t.Fatal("a kind with no provider was accepted; the refusal path is dead code")
 	}
-	if !strings.Contains(err.Error(), string(capHTTPRequest)) {
-		t.Fatalf("refusal does not name the kind: %v", err)
+	for _, want := range []string{"no_such_kind", "ghost"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal does not name %q: %v", want, err)
+		}
 	}
-
-	// The same program, the same neutral description, the other backend.
-	prog2, err := planProgram(st, "grab")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := emitProgram(st, prog2); err != nil {
-		t.Fatalf("the Go backend refused a program only the LLVM backend cannot lower: %v", err)
+	// It must also say what IS supported, or the reader cannot tell a typo from
+	// an unimplemented capability.
+	if !strings.Contains(err.Error(), string(capProcessEnv)) {
+		t.Errorf("refusal does not list the supported kinds: %v", err)
 	}
 }
 

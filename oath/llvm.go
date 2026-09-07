@@ -42,6 +42,7 @@ package main
 // this trustworthy.
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -67,6 +68,12 @@ type llvmProvider struct {
 	// It returns the capability value, or NULL with *err set to why THIS host
 	// cannot supply it.
 	Fn string
+	// NeedsCurl marks a provider whose runtime code requires libcurl. The flag is
+	// per-PROVIDER rather than a property of the backend so the dependency is
+	// paid only by programs that actually require that capability: a build with
+	// no http_request requirement defines no O_HTTP, compiles no libcurl code,
+	// and links exactly as it did before this existed.
+	NeedsCurl bool
 }
 
 // llvmProviders is deliberately SMALLER than the Go backend's table, and that is
@@ -75,14 +82,16 @@ type llvmProvider struct {
 // backend cannot lower is a COMPILE failure naming the kind — the same refusal
 // path #114 built, reached by a different backend.
 //
-// http_request is absent because a correct HTTP client (TLS included) is not
-// something to hand-roll into a runtime for a first slice, and shelling out to a
-// program that may not exist would make the capability's contract depend on the
-// host's PATH.
+// http_request WAS absent for a first slice, on the ground that hand-rolling a
+// TLS client is not something to own and shelling out to `curl` would make the
+// contract depend on the host's PATH. It is present now via libcurl, which is
+// neither: a linked library, detected at build time, refused by name when
+// missing. The reasoning is on the kind's runtime provider.
 var llvmProviders = map[capabilityKind]llvmProvider{
-	capProcessEnv: {Fn: "o_cap_env"},
-	capFileRead:   {Fn: "o_cap_readfile"},
-	capRecordSink: {Fn: "o_cap_emit"},
+	capProcessEnv:  {Fn: "o_cap_env"},
+	capFileRead:    {Fn: "o_cap_readfile"},
+	capRecordSink:  {Fn: "o_cap_emit"},
+	capHTTPRequest: {Fn: "o_cap_http", NeedsCurl: true},
 }
 
 func llvmProviderFor(r CapabilityRequirement) (llvmProvider, error) {
@@ -146,12 +155,12 @@ type llvmEmitter struct {
 	strMapOptNone  int
 	strMapOptSome  int
 	strMapPairCtor int
-	tmp            int // SSA temporary counter
-	lam         int      // hoisted lambda counter
-	str         int      // string constant counter
-	guard       int      // stack-guard block counter, unique per module
-	block       string   // the label of the block currently being emitted
-	pending     []string // hoisted lambda bodies, appended after the current function
+	tmp            int      // SSA temporary counter
+	lam            int      // hoisted lambda counter
+	str            int      // string constant counter
+	guard          int      // stack-guard block counter, unique per module
+	block          string   // the label of the block currently being emitted
+	pending        []string // hoisted lambda bodies, appended after the current function
 	// Type tracking for record field resolution, threaded exactly as the kernel's
 	// checker is elsewhere: a field projection needs the record's type to know
 	// which slot a name refers to.
@@ -1635,6 +1644,7 @@ const llvmRuntimeC = `
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include <limits.h> /* INT_MAX / LONG_MAX: used by the http sink and header parse */
 #include <setjmp.h>
 #include <errno.h>
 #include <time.h>
@@ -3918,6 +3928,1023 @@ static OVal *cap_readfile_code(OVal **env, OVal *arg) {
 }
 OVal *o_cap_readfile(char **err) { (void)err; return o_closure(cap_readfile_code, NULL); }
 
+/* http_request. THE ONLY CAPABILITY WITH A LINK-TIME DEPENDENCY, and the whole
+   body is behind O_HTTP so a program that does not require the capability emits
+   no reference to libcurl and links exactly as before. The backend defines
+   O_HTTP and adds -lcurl only when a requirement of this kind is present, so
+   "clang and nothing else" remains true of every program that does not fetch.
+
+   WHY A LIBRARY AND NOT A HAND-ROLLED CLIENT. The capability's URL is a RUNTIME
+   value, so the backend cannot know at build time whether a program will pass
+   https. A plain-HTTP client would therefore return the failure value for https
+   at runtime -- indistinguishable from an unreachable host, and a silent
+   divergence from the Go backend, which is exactly what this backend's
+   refuse-and-name discipline exists to prevent. Certificate validation is also
+   most of the security surface of a TLS client and not something to own here;
+   libcurl follows the host trust store.
+
+   CONTRACT MATCHED TO THE GO PROVIDER, deliberately and narrowly: an HTTP GET,
+   returning the response body, or the failure value on any error. Not the status
+   code -- the Go provider returns the body for a 404 as readily as a 200, and a
+   backend that refused non-2xx here would be answering a different question. */
+#ifdef O_HTTP
+#include <curl/curl.h>
+
+struct o_http_buf {
+  char *p;
+  size_t len, cap;
+  /* loc_seen is "a Location header appeared at all"; has_loc is "and its value
+     was non-empty". They must be separate: the reference reads the FIRST
+     Location, so an empty first followed by a non-empty second is NOT a
+     redirect there, and collapsing the two would follow the second. */
+  int status, has_loc, loc_seen, discard, stopped, loc_overflow, hdrs_done;
+  long clen; /* the advertised Content-Length, or -1 when unknown */
+  size_t dropped;
+  /* THE LOCATION IS SIZED BY THE SERVER, so it is not a fixed buffer. A 4 KiB
+     cap turned every longer redirect into the failure value, while the
+     reference follows them — and the length is remote-controlled, so the
+     boundary would have been reachable by whoever served the redirect. */
+  char *loc;
+  size_t loc_cap;
+};
+
+/* The five statuses the reference actually follows. A 300 Multiple Choices
+   carries a Location and is NOT one of them: net/http returns its body, so
+   treating every 3xx as a redirect would both discard a body the reference
+   keeps and follow a hop it does not take. */
+static int o_http_is_redirect(int code) {
+  return code == 301 || code == 302 || code == 303 || code == 307 || code == 308;
+}
+
+/* A REDIRECT'S OWN BODY IS NOT THE RESULT, AND MUST NOT BE BUFFERED. It is
+   discarded on the way past instead: the reference reads at most a couple of
+   kilobytes of an intermediate body before following, so an attacker-controlled
+   302 carrying a huge payload costs it nothing — while buffering it here would
+   spend the declared heap budget and fail the request with CURLE_WRITE_ERROR
+   where the reference reaches the final response. The header callback is what
+   makes the decision available BEFORE the body arrives; headers always precede
+   it, so status and Location are both known by then. */
+static size_t o_http_hdr(char *data, size_t sz, size_t n, void *ud) {
+  struct o_http_buf *b = (struct o_http_buf *)ud;
+  size_t len = sz * n;
+  if (len && sz && len / sz != n) return 0;
+  if (len >= 5 && memcmp(data, "HTTP/", 5) == 0) {
+    /* A fresh status line — including a proxy's CONNECT response, which is why
+       this resets rather than accumulates. */
+    b->status = 0;
+    b->has_loc = 0;
+    b->loc_seen = 0;
+    b->discard = 0;
+    b->hdrs_done = 0;
+    b->loc_overflow = 0;
+    if (b->loc) b->loc[0] = 0;
+    b->clen = -1;
+    size_t i = 0;
+    while (i < len && data[i] != ' ') i++;
+    while (i < len && data[i] == ' ') i++;
+    int code = 0, digits = 0;
+    while (i < len && data[i] >= '0' && data[i] <= '9') {
+      code = code * 10 + (data[i] - '0');
+      i++;
+      digits++;
+    }
+    if (digits) b->status = code;
+  }
+  /* A TRAILER IS NOT A HEADER. libcurl delivers trailing fields through this
+     same callback, AFTER the body — and the reference has already decided
+     whether to redirect by then, from the initial header block alone. Without
+     this, a chunked 302 carrying Location only as a trailer would send the
+     LLVM backend on an extra request the reference never makes. */
+  if (b->hdrs_done) return len;
+  /* INDEPENDENT TESTS, NOT AN else-if CHAIN. Chained, "Content-Length: ..."
+     satisfies the Location branch's length guard first, fails its name compare,
+     and never reaches this one — so the length was never parsed and the
+     header-time abort below could not fire. */
+  if (len >= 9) {
+    static const char loc[9] = {'l', 'o', 'c', 'a', 't', 'i', 'o', 'n', ':'};
+    int same = 1;
+    for (size_t k = 0; k < 9; k++) {
+      char c = data[k];
+      if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+      if (c != loc[k]) { same = 0; break; }
+    }
+    if (same) {
+      /* THE LOCATION IS CAPTURED HERE RATHER THAN READ BACK FROM
+         CURLINFO_REDIRECT_URL, because the transfer may be stopped early and
+         that info is not populated for an aborted transfer — which silently
+         turned every stopped redirect into an empty result. Resolved against
+         the current URL below by libcurl's own URL parser, so no relative
+         reference logic is hand-written here either. */
+      size_t k = 9;
+      while (k < len && (data[k] == ' ' || data[k] == '\t')) k++;
+      int first = !b->loc_seen;
+      b->loc_seen = 1;
+      (void)first;
+      size_t e = len;
+      while (e > k && (data[e - 1] == '\r' || data[e - 1] == '\n' ||
+                       data[e - 1] == ' ' || data[e - 1] == '\t'))
+        e--;
+      size_t vl = e - k;
+      if (vl > 0 && vl + 1 > b->loc_cap) {
+        char *nl = (char *)realloc(b->loc, vl + 1);
+        if (!nl) {
+          b->loc_overflow = 1; /* reported as a refusal, never as "no redirect" */
+        } else {
+          b->loc = nl;
+          b->loc_cap = vl + 1;
+        }
+      }
+      if (b->loc_overflow) {
+        /* nothing more to do; the caller refuses */
+      } else if (vl > 0 && first) {
+        /* THE FIRST Location WINS. The reference reads this with Header.Get,
+           which returns the first value, so overwriting on each callback would
+           send the two backends to different destinations whenever a response
+           carries more than one — an ambiguity a hostile server chooses. */
+        /* An EMPTY Location is not a redirect: the reference returns the
+           response body in that case, so has_loc stays clear and the body is
+           kept rather than discarded. */
+        memcpy(b->loc, data + k, vl);
+        b->loc[vl] = 0;
+        b->has_loc = 1;
+      }
+    }
+  }
+  if (len >= 15) {
+    static const char cl[15] = {'c', 'o', 'n', 't', 'e', 'n', 't', '-',
+                               'l', 'e', 'n', 'g', 't', 'h', ':'};
+    int same = 1;
+    for (size_t k = 0; k < 15; k++) {
+      char c = data[k];
+      if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+      if (c != cl[k]) { same = 0; break; }
+    }
+    if (same) {
+      size_t k = 15;
+      while (k < len && (data[k] == ' ' || data[k] == '\t')) k++;
+      long v = 0;
+      int digits = 0;
+      /* SATURATE, DO NOT OVERFLOW. Content-Length is server-controlled, and
+         multiplying past LONG_MAX is undefined behaviour inside a libcurl
+         callback. Saturating is also the right ANSWER: anything this large is
+         far beyond the slurp limit, which is the only question asked of it. */
+      while (k < len && data[k] >= '0' && data[k] <= '9') {
+        int d = data[k] - '0';
+        if (v > (LONG_MAX - d) / 10) {
+          v = LONG_MAX;
+          while (k < len && data[k] >= '0' && data[k] <= '9') k++;
+          digits++;
+          break;
+        }
+        v = v * 10 + d;
+        k++;
+        digits++;
+      }
+      if (digits) b->clen = v;
+    }
+  }
+  if (o_http_is_redirect(b->status) && b->has_loc) b->discard = 1;
+  /* THE BLANK LINE ENDS THE HEADERS, and it is the last moment the body can be
+     refused before waiting for it. The reference closes a redirect response
+     whose advertised length exceeds its slurp limit WITHOUT reading any of it,
+     so a body that is large, slow, or never sent costs it nothing — while
+     waiting here for 2 KiB that may never arrive hangs the program, and no
+     request timeout is configured to end it. Aborting from the HEADER callback
+     is what makes this reachable at all: the write callback is never called for
+     a body that does not come. */
+  if ((len == 2 && data[0] == '\r' && data[1] == '\n') ||
+      (len == 1 && data[0] == '\n')) {
+    b->hdrs_done = 1;
+    if (b->discard && b->clen > 2048) {
+      b->stopped = 1;
+      return 0;
+    }
+  }
+  return len;
+}
+
+static size_t o_http_sink(char *data, size_t sz, size_t n, void *ud) {
+  struct o_http_buf *b = (struct o_http_buf *)ud;
+  size_t add = sz * n;
+  if (add && add / n != sz) return 0; /* overflow: refuse rather than truncate */
+  /* A redirect's body is dropped — and after 2 KiB the TRANSFER IS STOPPED, not
+     merely the copying. Returning add keeps it out of memory but still waits
+     for every byte, so a redirect advertising a huge Content-Length, or
+     trickling one slowly, stalls the program. The reference reads at most
+     2 KiB of an intermediate body and closes, and a short return from this
+     callback is how libcurl is told to do the same: it ends the transfer with
+     CURLE_WRITE_ERROR, which the caller recognises by stopped and treats as a
+     completed hop rather than a failure. */
+  if (b->discard) {
+    /* At most 2048 bytes are consumed, never a chunk more: the cap is the
+       reference's slurp limit, not an approximation of it. */
+    /* REACHING the limit ends it, not exceeding it. The reference stops as soon
+       as CopyN has taken 2048 bytes and follows the redirect; waiting for one
+       more byte lets a body that stalls at exactly 2048 hang the program. */
+    if (b->dropped + add >= 2048) {
+      b->stopped = 1;
+      return 0;
+    }
+    b->dropped += add;
+    return add;
+  }
+  /* A Str's length is an int, so a body past INT_MAX cannot be represented and
+     must be refused HERE — a later cast would wrap to a negative slen, which
+     o_utf8_valid accepts without scanning and memcmp reads out of bounds. */
+  if (add > (size_t)INT_MAX - b->len - 1) return 0;
+  if (b->len + add + 1 > b->cap) {
+    size_t want = b->cap ? b->cap : 4096;
+    while (want < b->len + add + 1) {
+      if (want > (size_t)-1 / 2) return 0;
+      want *= 2;
+    }
+    /* THE BUDGET IS CHECKED HERE, BEFORE xalloc, AND THAT IS THE WHOLE POINT.
+       xalloc refuses by longjmping to the server loop — from INSIDE a libcurl
+       callback, unwinding past curl_easy_perform and abandoning the easy handle
+       and its live transfer state. Under a handler with OATH_HEAP_BUDGET set,
+       one large response would strand a handle per request.
+       So the exhaustion is detected BEFORE the allocation that would raise it,
+       and reported the way a write callback is supposed to report failure: a
+       short return, which makes curl_easy_perform fail with CURLE_WRITE_ERROR.
+       libcurl then unwinds its OWN frames, cap_http_code cleans up, and the
+       body never leaves the arena's ownership — so there is nothing to free on
+       any path and no way for a refusal to escape through the library.
+       The response is thereby held to the SAME declared budget as everything
+       else the program allocates, rather than growing beside it on the host
+       heap where o_heap_used cannot see it. */
+    /* THE COST IS THE BLOCK'S, NOT THE REQUEST'S. o_carve serves a request
+       smaller than O_ARENA_BLOCK by allocating a WHOLE block when the head has
+       no room, so checking want approves an allocation that then asks
+       o_block_new for 64 KiB — and with a remaining budget between the two,
+       o_heap_exhausted fires and longjmps through this callback, which is the
+       precise failure the pre-check exists to prevent. Mirror the allocator's
+       own arithmetic instead, and assume a fresh block: the head's spare room
+       is unknown here, so the estimate is deliberately CONSERVATIVE. It can
+       refuse a body that would just have fitted; it cannot let an unwind
+       escape, and only one of those two errors is unsafe. */
+    size_t need = (want + (O_ARENA_ALIGN - 1)) & ~(size_t)(O_ARENA_ALIGN - 1);
+    size_t cost = need >= O_ARENA_BLOCK ? need : O_ARENA_BLOCK;
+    if (need < want) return 0; /* rounding wrapped */
+    if (o_heap_budget != 0 && cost > o_heap_budget - o_heap_used) return 0;
+    char *nb = (char *)xalloc(want);
+    if (b->len) memcpy(nb, b->p, b->len);
+    b->p = nb; b->cap = want;
+  }
+  memcpy(b->p + b->len, data, add);
+  b->len += add;
+  return add;
+}
+
+/* Case-insensitive because url.Parse lowercases the scheme, so the reference
+   accepts HTTP:// as readily as http://. Written out rather than reaching for
+   strncasecmp, which is not in the headers this runtime already includes. */
+static int o_streq_ci(const char *a, const char *b) {
+  size_t i = 0;
+  for (; a[i] && b[i]; i++) {
+    char c = a[i];
+    if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+    if (c != b[i]) return 0;
+  }
+  return a[i] == 0 && b[i] == 0;
+}
+
+/* NO static ARRAY OF THE TWO SCHEMES, deliberately: the runtime forbids static
+   storage for values, and a table here would be exactly that. Two calls cost
+   nothing and keep the invariant intact. */
+static int o_http_prefix_ci(const char *u, const char *pre) {
+  size_t i = 0;
+  for (; pre[i]; i++) {
+    char c = u[i];
+    if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+    if (c != pre[i]) return 0;
+  }
+  return 1;
+}
+
+static int o_http_scheme_ok(const char *u) {
+  return o_http_prefix_ci(u, "http://") || o_http_prefix_ci(u, "https://");
+}
+
+/* THE PROXY ENVIRONMENT IS READ THE WAY THE REFERENCE READS IT. libcurl honours
+   only the LOWERCASE http_proxy, on purpose — an uppercase HTTP_PROXY is
+   attacker-settable in a CGI environment, where it arrives from the
+   Proxy: request header. net/http has no such scruple and honours both, so a
+   deployment setting only HTTP_PROXY routes the Go backend through its egress
+   proxy and would send the LLVM artifact direct: a different response, or a
+   bypassed network control. Matching the reference means reading both, in the
+   reference's order.
+   Compiled artifacts are not CGI, so libcurl's reason does not apply here — but
+   it is a real reason, and this is the note saying it was weighed rather than
+   missed. */
+/* THE LOOPBACK RULE IS DECIDED HERE, NOT DELEGATED TO CURLOPT_NOPROXY. That
+   option's matcher only learned CIDR notation in 7.86, so 127.0.0.0/8 would be
+   inert on the 7.84 and 7.85 builds this provider otherwise accepts — and
+   silently, exempting nothing. net/http makes this decision itself (host ==
+   "localhost", or an IP that IsLoopback), so making it here matches the
+   reference AND removes a dependency on a libcurl version feature. */
+/* ::1 in any legal spelling: eight groups, the first seven zero and the last
+   one. A single "::" stands for the run of zero groups it replaces, so the
+   groups before and after it are counted and the gap is whatever is missing. */
+static int o_http_is_ipv4_127(const char *host, size_t n);
+
+static int o_http_is_ipv6_loopback(const char *h, size_t n) {
+  int groups[8];
+  int before = 0, after = 0, sawGap = 0;
+  int *cur = groups;
+  size_t i = 0;
+  if (n == 0) return 0;
+  if (n >= 2 && h[0] == ':' && h[1] == ':') { sawGap = 1; i = 2; }
+  else if (h[0] == ':') return 0;
+  while (i < n) {
+    if (h[i] == ':') {
+      if (sawGap) return 0; /* only one "::" is legal */
+      sawGap = 1;
+      i++;
+      continue;
+    }
+    int val = 0, digits = 0;
+    while (i < n && h[i] != ':') {
+      char c = h[i];
+      int d;
+      if (c >= '0' && c <= '9') d = c - '0';
+      else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
+      else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
+      else return 0; /* an embedded IPv4 tail is not handled; see the caller */
+      val = val * 16 + d;
+      if (++digits > 4) return 0;
+      i++;
+    }
+    if (digits == 0) return 0;
+    if (before + after >= 8) return 0;
+    cur[before + after] = val;
+    if (sawGap) after++;
+    else before++;
+    if (i < n && h[i] == ':') {
+      i++;
+      if (i == n) return 0; /* a trailing single ':' is malformed */
+    }
+  }
+  int total = before + after;
+  if (sawGap) {
+    if (total >= 8) return 0; /* "::" must stand for at least one group */
+  } else if (total != 8) {
+    return 0;
+  }
+  /* REBUILD THE FULL EIGHT GROUPS AND THEN ASK ONE QUESTION. The leading groups
+     sit at the front, the trailing groups at the back, and the elision is
+     whatever zeros lie between — writing the test against before and after
+     directly is where an earlier version got it wrong, by requiring the leading
+     groups to be zero in the no-gap case, which rejects 0:0:0:0:0:0:0:1. */
+  int full[8];
+  for (int k = 0; k < 8; k++) full[k] = 0;
+  for (int k = 0; k < before; k++) full[k] = groups[k];
+  for (int k = 0; k < after; k++) full[8 - after + k] = groups[before + k];
+  for (int k = 0; k < 7; k++) {
+    if (full[k] != 0) return 0;
+  }
+  return full[7] == 1;
+}
+
+/* The host, lowercased, and the port if the URL carries one. */
+static void o_http_url_host_port(const char *url, char *host, size_t hcap,
+                                 char *port, size_t pcap) {
+  host[0] = 0;
+  port[0] = 0;
+  const char *p = strstr(url, "://");
+  if (!p) return;
+  p += 3;
+  /* THE AUTHORITY ENDS AT '/', '?' OR '#', and stopping only at '/' is a
+     PROXY BYPASS, not a parsing nicety: in
+     http://external.example?next=@localhost the '@' sits in the QUERY, so a
+     scan that runs past '?' reads the host as localhost, concludes loopback,
+     and disables an egress proxy for a request that then goes to
+     external.example. */
+  const char *at = NULL, *q;
+  for (q = p; *q && *q != '/' && *q != '?' && *q != '#'; q++) {
+    if (*q == '@') at = q; /* userinfo precedes the host */
+  }
+  if (at) p = at + 1;
+  size_t n = 0;
+  if (*p == '[') { /* an IPv6 literal is bracketed */
+    p++;
+    while (*p && *p != ']' && n < hcap - 1) host[n++] = *p++;
+    if (*p == ']') p++;
+  } else {
+    while (*p && *p != '/' && *p != ':' && *p != '?' && *p != '#' && n < hcap - 1)
+      host[n++] = *p++;
+  }
+  host[n] = 0;
+  /* THE CASE IS PRESERVED. The reference's built-in exemption compares against
+     the literal lowercase "localhost", so LOCALHOST is NOT exempt there and
+     still goes through the proxy — lowercasing here would exempt it and hand a
+     caller a way around the configured egress. NO_PROXY matching lowercases its
+     own copy below, where case-insensitivity IS the reference's behaviour. */
+  if (*p == ':') {
+    p++;
+    size_t m = 0;
+    while (*p >= '0' && *p <= '9' && m < pcap - 1) port[m++] = *p++;
+    port[m] = 0;
+  }
+}
+
+static int o_http_host_is_loopback(const char *host) {
+  size_t n = strlen(host);
+  if (n == 0) return 0;
+  if (strcmp(host, "localhost") == 0) return 1;
+  /* EVERY SPELLING OF THE IPv6 LOOPBACK, not just the canonical one. The
+     reference parses the literal, so [0:0:0:0:0:0:0:1] and [::0001] are
+     loopback to it and would be sent through a proxy by an exact-match test
+     here — exposing localhost traffic the reference keeps local. */
+  if (o_http_is_ipv6_loopback(host, n)) return 1;
+  /* 127.0.0.0/8, BUT ONLY FOR A HOST THE REFERENCE WOULD PARSE AS AN IP.
+     A digits-and-dots test is not that: it accepts 127.1, which net.ParseIP
+     REJECTS — so the reference proxies that URL while libcurl resolves it to
+     127.0.0.1, and the disagreement is an egress proxy silently bypassed.
+     Strict here means what the reference means: exactly four octets, each with
+     no redundant leading zero, each at most 255.
+     ONE KNOWN GAP, in the safe direction: an IPv4-mapped literal such as
+     [::ffff:127.0.0.1] is loopback to the reference and not to this, so the
+     proxy would be USED where the reference skips it. That fails toward
+     honouring the deployment's configuration rather than around it. */
+  return o_http_is_ipv4_127(host, n);
+}
+
+/* Strict dotted-quad, the way the reference parses one: exactly four octets, no
+   redundant leading zero, each at most 255. */
+static int o_http_is_ipv4(const char *host, size_t n) {
+  {
+    int octets = 0;
+    size_t i = 0;
+    while (i < n && octets < 4) {
+      size_t start = i;
+      int val = 0;
+      while (i < n && host[i] >= '0' && host[i] <= '9') {
+        val = val * 10 + (host[i] - '0');
+        i++;
+        if (i - start > 3) return 0;
+      }
+      if (i == start) return 0;                          /* empty octet */
+      if (host[start] == '0' && i - start > 1) return 0; /* leading zero */
+      if (val > 255) return 0;
+      octets++;
+      if (octets < 4) {
+        if (i >= n || host[i] != '.') return 0;
+        i++;
+      }
+    }
+    if (octets != 4 || i != n) return 0;
+    return 1;
+  }
+}
+
+static int o_http_is_ipv4_127(const char *host, size_t n) {
+  if (!o_http_is_ipv4(host, n)) return 0;
+  return host[0] == '1' && host[1] == '2' && host[2] == '7' && host[3] == '.';
+}
+
+/* AN IP LITERAL IS NEVER MATCHED AS A DOMAIN. The reference applies its domain
+   matchers only to names: for NO_PROXY=2.1 and the host 192.0.2.1 it keeps the
+   proxy, where a suffix test sees ".2.1" at the end and drops it — an egress
+   proxy bypassed by a URL, which is runtime-controlled. */
+static int o_http_host_is_ip(const char *host) {
+  if (strchr(host, ':')) return 1; /* an IPv6 literal, already unbracketed */
+  return o_http_is_ipv4(host, strlen(host));
+}
+
+/* NO_PROXY IS MATCHED HERE, NOT HANDED TO CURLOPT_NOPROXY, because the two
+   matchers disagree and the disagreement is a PROXY BYPASS. For
+   NO_PROXY=.example.com the reference still proxies the exact host
+   example.com — a leading dot means subdomains only — while libcurl treats the
+   dot as matching that host too and connects direct, past the deployment's
+   egress control. CIDR entries diverge again on 7.84 and 7.85, where libcurl
+   does not understand them at all.
+   AN ENTRY THIS CANNOT HOLD IS SIMPLY NOT MATCHED, which means the proxy is
+   USED. That is the safe direction: erring toward the proxy can differ from the
+   reference on an obscure entry, while erring away from it silently bypasses a
+   control the deployment configured. */
+static int o_http_np_entry_matches(char *e, const char *host, const char *port,
+                                   int host_is_ip) {
+  if (e[0] == '*' && e[1] == 0) return 1;
+  if (e[0] == '*' && e[1] == '.') e = e + 1; /* "*.foo" behaves as ".foo" */
+  /* An optional :port qualifier, recognised only when there is exactly one
+     colon and no bracket — an IPv6 literal has several and is left alone. */
+  char *ep = NULL;
+  if (!strchr(e, '[')) {
+    char *c1 = strchr(e, ':');
+    if (c1 && strchr(c1 + 1, ':') == NULL) {
+      *c1 = 0;
+      ep = c1 + 1;
+    }
+  }
+  if (ep && *ep && !(port && strcmp(ep, port) == 0)) return 0;
+  int match_exact = 1;
+  const char *h = e;
+  if (h[0] == '.') {
+    h = e + 1;
+    match_exact = 0;
+  }
+  size_t hl = strlen(h), nl = strlen(host);
+  if (hl == 0) return 0;
+  if (host_is_ip) {
+    /* Only the literal itself. A CIDR entry is not interpreted here, so it does
+       not match — erring toward USING the proxy, never around it. */
+    return nl == hl && memcmp(host, h, hl) == 0;
+  }
+  if (match_exact && nl == hl && memcmp(host, h, hl) == 0) return 1;
+  if (nl > hl && host[nl - hl - 1] == '.' && memcmp(host + nl - hl, h, hl) == 0) return 1;
+  return 0;
+}
+
+static int o_http_np_excludes(const char *host_in, const char *port, const char *np) {
+  /* NO_PROXY comparison is case-insensitive, so this works on a lowered copy —
+     separately from the loopback exemption, which is case-SENSITIVE. */
+  char host[256];
+  size_t hn = strlen(host_in);
+  if (hn >= sizeof host) return 0;
+  for (size_t k = 0; k <= hn; k++) {
+    char c = host_in[k];
+    host[k] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+  }
+  int host_is_ip = o_http_host_is_ip(host);
+  size_t i = 0, n = strlen(np);
+  while (i < n) {
+    size_t j = i;
+    while (j < n && np[j] != ',') j++;
+    size_t a = i, b = j;
+    while (a < b && (np[a] == ' ' || np[a] == '\t')) a++;
+    while (b > a && (np[b - 1] == ' ' || np[b - 1] == '\t')) b--;
+    if (b > a && (b - a) < 256) {
+      char e[256];
+      size_t el = b - a;
+      memcpy(e, np + a, el);
+      e[el] = 0;
+      for (size_t k = 0; k < el; k++) {
+        if (e[k] >= 'A' && e[k] <= 'Z') e[k] = (char)(e[k] - 'A' + 'a');
+      }
+      if (o_http_np_entry_matches(e, host, port, host_is_ip)) return 1;
+    }
+    i = (j < n) ? j + 1 : j;
+  }
+  return 0;
+}
+
+static const char *o_env_any2(const char *a, const char *b) {
+  const char *v = getenv(a);
+  if (v && *v) return v;
+  v = getenv(b);
+  if (v && *v) return v;
+  return NULL;
+}
+
+/* HOST HEAP, NOT THE ARENA. These run while a libcurl handle and header list
+   are live, and xalloc refuses by longjmping straight to the server loop —
+   which would strand both. malloc reports failure by returning NULL, which the
+   callers turn into an ordinary refusal after cleaning up. */
+static char *o_http_dup(const char *s) {
+  size_t n = strlen(s);
+  char *d = (char *)malloc(n + 1);
+  if (d) memcpy(d, s, n + 1);
+  return d;
+}
+
+/* RESOLVE THE REDIRECT WITHOUT RE-ENCODING IT, which is why curl_url is not
+   used for this. Its parser normalizes as it goes — a raw space in a query
+   becomes "+", a non-ASCII byte becomes a percent escape — and the reference
+   does neither: net/http keeps the raw query and sends it verbatim, so a server
+   reading the raw request target answers the two backends differently, and one
+   of them may get a 400 the other never sees. Measured, not assumed.
+   The structure follows RFC 3986's reference resolution, which is what the
+   reference implements; only the bytes are left alone. */
+static char *o_http_resolve(const char *base, const char *loc) {
+  /* An absolute reference is taken verbatim: nothing to merge, nothing to
+     normalize. */
+  /* ANY scheme-bearing reference is ABSOLUTE, not just one spelled "://".
+     Location: foo:bar and Location: http:/path are absolute URIs to the
+     reference, which then rejects them for an unsupported scheme or a missing
+     host. Requiring "://" here merged them into the CURRENT origin instead and
+     fetched a path of the server's choosing — the opposite of failing closed.
+     Returned verbatim, the scheme check upstream refuses them. */
+  {
+    const char *q = loc;
+    if ((*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z')) {
+      q++;
+      while ((*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z') ||
+             (*q >= '0' && *q <= '9') || *q == '+' || *q == '-' || *q == '.')
+        q++;
+      if (*q == ':') return o_http_dup(loc);
+    }
+  }
+  const char *sep = strstr(base, "://");
+  if (!sep) return NULL;
+  size_t scheme_len = (size_t)(sep - base);
+  const char *auth = sep + 3;
+  const char *apath = auth;
+  while (*apath && *apath != '/' && *apath != '?' && *apath != '#') apath++;
+  size_t auth_len = (size_t)(apath - auth);
+  size_t prefix_len = scheme_len + 3 + auth_len; /* scheme://authority */
+
+  if (loc[0] == '/' && loc[1] == '/') { /* network-path reference */
+    size_t ll = strlen(loc);
+    char *r = (char *)malloc(scheme_len + 1 + ll + 1);
+    if (!r) return NULL;
+    memcpy(r, base, scheme_len);
+    r[scheme_len] = ':';
+    memcpy(r + scheme_len + 1, loc, ll + 1);
+    return r;
+  }
+
+  /* The base path, without its query or fragment. */
+  const char *bp = apath;
+  const char *bq = bp;
+  while (*bq && *bq != '?' && *bq != '#') bq++;
+  size_t bpath_len = (size_t)(bq - bp);
+
+  if (loc[0] == 0) { /* an empty reference keeps the base, query included */
+    return o_http_dup(base);
+  }
+  if (loc[0] == '?' || loc[0] == '#') {
+    /* A QUERY reference REPLACES the base query; a FRAGMENT-only reference
+       KEEPS it. The reference preserves ?token=x across Location: #next, so
+       collapsing the two cases dropped the query from the next hop — a
+       different request, and a redirect loop turned into a success. */
+    size_t keep = bpath_len;
+    if (loc[0] == '#') {
+      const char *bf = base + prefix_len + bpath_len;
+      while (*bf && *bf != '#') bf++;
+      keep = (size_t)(bf - (base + prefix_len));
+    }
+    size_t ll = strlen(loc);
+    char *r = (char *)malloc(prefix_len + keep + ll + 1);
+    if (!r) return NULL;
+    memcpy(r, base, prefix_len + keep);
+    memcpy(r + prefix_len + keep, loc, ll + 1);
+    return r;
+  }
+
+  /* Merge, then remove dot segments from the PATH only — the query and
+     fragment are copied byte for byte. */
+  const char *lq = loc;
+  while (*lq && *lq != '?' && *lq != '#') lq++;
+  size_t lpath_len = (size_t)(lq - loc);
+  size_t tail_len = strlen(lq);
+
+  size_t merged_cap = bpath_len + lpath_len + 2;
+  char *merged = (char *)malloc(merged_cap + 1);
+  if (!merged) return NULL;
+  size_t m = 0;
+  if (loc[0] == '/') {
+    memcpy(merged, loc, lpath_len);
+    m = lpath_len;
+  } else {
+    size_t cut = 0;
+    for (size_t k = 0; k < bpath_len; k++) {
+      if (bp[k] == '/') cut = k + 1;
+    }
+    if (bpath_len == 0) merged[m++] = '/';
+    memcpy(merged + m, bp, cut);
+    m += cut;
+    memcpy(merged + m, loc, lpath_len);
+    m += lpath_len;
+  }
+  merged[m] = 0;
+  /* THE DOT SEGMENTS ARE LEFT FOR libcurl, which squashes them while parsing
+     the URL — and does so the way the reference does, which is MEASURED rather
+     than assumed (TestDotSegmentsAreResolvedBeforeSending, against a handler
+     that does not clean paths, agrees with the reference either way). A second
+     implementation here was dead code: unwitnessed, and duplicating a decision
+     the library already makes correctly. What libcurl does NOT do is re-encode
+     the query, which is the whole reason this merge is byte-preserving. */
+  size_t ml = strlen(merged);
+
+  char *r = (char *)malloc(prefix_len + ml + tail_len + 1);
+  if (!r) {
+    free(merged);
+    return NULL;
+  }
+  memcpy(r, base, prefix_len);
+  memcpy(r + prefix_len, merged, ml);
+  memcpy(r + prefix_len + ml, lq, tail_len + 1);
+  free(merged);
+  return r;
+}
+
+
+/* THE REFERER MUST NOT CARRY CREDENTIALS. A URL may hold userinfo, and a
+   cross-host redirect would hand user:pass to the next server — net/http drops
+   URL.User when it builds this header, so keeping it is both a disclosure and a
+   divergence. Everything from the scheme through the host is kept; the userinfo
+   between them is dropped. */
+static char *o_http_referer_header(const char *u) {
+  const char *p = strstr(u, "://");
+  size_t pre = p ? (size_t)(p - u) + 3 : 0;
+  const char *a = u + pre;
+  const char *at = NULL, *q;
+  for (q = a; *q && *q != '/' && *q != '?' && *q != '#'; q++) {
+    if (*q == '@') at = q;
+  }
+  const char *rest = at ? at + 1 : a;
+  size_t rn = strlen(rest);
+  char *s = (char *)malloc(9 + pre + rn + 1);
+  if (!s) return NULL;
+  memcpy(s, "Referer: ", 9);
+  memcpy(s + 9, u, pre);
+  memcpy(s + 9 + pre, rest, rn + 1);
+  return s;
+}
+
+/* REDIRECTS ARE FOLLOWED BY HAND, NOT BY CURLOPT_FOLLOWLOCATION, AND THE REASON
+   IS THE PROXY DECISION. That decision depends on the URL — its scheme picks
+   HTTP_PROXY or HTTPS_PROXY, and a loopback host disables proxying entirely —
+   and net/http RE-EVALUATES it for every hop. A transfer-wide CURLOPT_PROXY
+   cannot: a loopback URL that redirects to an external one would carry the
+   first hop's "no proxy" out to the internet, bypassing the deployment's egress
+   control, while the reference proxies that second request. One value cannot
+   express a per-hop decision, so the loop is the only way to make the two agree.
+   libcurl still does the hard part: CURLINFO_REDIRECT_URL resolves the Location
+   against the current URL, so no relative-reference logic lives here. */
+static OVal *cap_http_code(OVal **env, OVal *arg) {
+  (void)env;
+  /* A NUL in the URL cannot reach a C string API, and every other capability
+     here refuses it for the same reason rather than truncating silently. */
+  if (o_has_nul(arg)) return o_str(CAP_FAIL);
+  const char *url0 = o_cstr(arg);
+  char what[160];
+  snprintf(what, sizeof what, "the response body from %.120s", url0);
+
+  struct o_http_buf b = {0};
+  const char *cur = url0;
+  char *cur_owned = NULL; /* host-heap backing for cur once it is a redirect */
+  char *ref_hdr = NULL;   /* "Referer: ..." for THIS request, or NULL */
+#define O_HTTP_DONE(v)                                                         \
+  do {                                                                         \
+    free(cur_owned);                                                           \
+    free(ref_hdr);                                                             \
+    free(b.loc);                                                               \
+    return (v);                                                                \
+  } while (0)
+
+  for (int hop = 0;; hop++) {
+    /* AN EXPLICIT http:// OR https:// SCHEME IS REQUIRED, because libcurl
+       GUESSES one and the Go reference does not. Given example.com/path libcurl
+       performs a real HTTP request while net/http refuses it as an unsupported
+       scheme. Re-checked every hop, because a redirect target is a fresh URL. */
+    if (!o_http_scheme_ok(cur)) O_HTTP_DONE(o_str(CAP_FAIL));
+
+    int is_https = o_http_prefix_ci(cur, "https://");
+    const char *px = is_https ? o_env_any2("HTTPS_PROXY", "https_proxy")
+                              : o_env_any2("HTTP_PROXY", "http_proxy");
+    /* httpoxy (CVE-2016-5385). Under CGI the request's own Proxy: header
+       arrives as HTTP_PROXY, so honouring it lets a caller redirect the
+       program's egress. net/http REFUSES an http-scheme proxy whenever
+       REQUEST_METHOD is set — it returns an error rather than connecting
+       directly, so this is a refusal and not a proxy-clearing. The order
+       matters: the reference raises this BEFORE its loopback exemption, so a
+       loopback URL under CGI with a proxy set also fails. */
+    {
+      const char *rm = getenv("REQUEST_METHOD");
+      if (!is_https && px && rm && *rm) O_HTTP_DONE(o_str(CAP_FAIL));
+    }
+    /* net/http NEVER proxies a loopback destination, whatever the environment
+       says, and libcurl has no such rule. Decided here rather than through
+       CURLOPT_NOPROXY, whose matcher only learned CIDR in 7.86. */
+    char o_host[256], o_port[8];
+    o_http_url_host_port(cur, o_host, sizeof o_host, o_port, sizeof o_port);
+    /* A URL WITHOUT A PORT STILL HAS ONE for matching purposes: the reference
+       canonicalizes to the scheme's default before comparing, so a NO_PROXY
+       entry of example.com:80 covers http://example.com/ there. Leaving this
+       empty kept the proxy in a common configuration the reference skips. */
+    if (o_port[0] == 0) {
+      const char *dp = is_https ? "443" : "80";
+      size_t dl = strlen(dp);
+      memcpy(o_port, dp, dl + 1);
+    }
+    if (o_http_host_is_loopback(o_host)) px = NULL;
+    /* NO_PROXY is applied HERE and libcurl's own matcher is disabled below, so
+       one implementation decides — the reference's. */
+    {
+      const char *np = o_env_any2("NO_PROXY", "no_proxy");
+      if (px && np && o_http_np_excludes(o_host, o_port, np)) px = NULL;
+    }
+
+    CURL *h = curl_easy_init();
+    if (!h) O_HTTP_DONE(o_str(CAP_FAIL));
+    b.len = 0; /* a redirect's own body is not part of the result */
+    b.status = 0;
+    b.has_loc = 0;
+    b.loc_seen = 0;
+    b.discard = 0;
+    b.hdrs_done = 0;
+    b.stopped = 0;
+    b.dropped = 0;
+    b.loc_overflow = 0;
+    if (b.loc) b.loc[0] = 0;
+    b.clen = -1;
+    curl_easy_setopt(h, CURLOPT_URL, cur);
+    curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, o_http_sink);
+    curl_easy_setopt(h, CURLOPT_WRITEDATA, (void *)&b);
+    curl_easy_setopt(h, CURLOPT_HEADERFUNCTION, o_http_hdr);
+    curl_easy_setopt(h, CURLOPT_HEADERDATA, (void *)&b);
+    curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
+    /* net/http advertises gzip and decodes it transparently; libcurl returns
+       the compressed bytes unless asked. The value is "gzip" and NOT the empty
+       string: empty advertises every encoding THIS libcurl was built with
+       (brotli, zstd), so a server that varies on Accept-Encoding would answer
+       the two backends differently, depending on optional build features. */
+    curl_easy_setopt(h, CURLOPT_ACCEPT_ENCODING, "gzip");
+    /* The request headers are part of the observable behaviour: net/http sends
+       User-Agent: Go-http-client/1.1 and NO Accept header, where libcurl sends
+       no user agent and adds Accept. An empty-valued header REMOVES one. */
+    curl_easy_setopt(h, CURLOPT_USERAGENT, "Go-http-client/1.1");
+    /* THE EMPTY STRING IS NOT THE SAME AS LEAVING THIS UNSET: unset, libcurl
+       consults ALL_PROXY/all_proxy, which net/http never reads. */
+    curl_easy_setopt(h, CURLOPT_PROXY, px ? px : "");
+    /* EMPTIED, NOT PASSED THROUGH: the exclusion decision was made above, and
+       leaving libcurl a second matcher would let the two disagree again. */
+    curl_easy_setopt(h, CURLOPT_NOPROXY, "");
+
+    /* THE CAPABILITY IS http_request, AND libcurl SPEAKS FAR MORE THAN HTTP.
+       Unrestricted, fetch would perform file://, ftp://, scp:// and smb:// — so
+       a program holding ONLY http_request could read local files through
+       file:///etc/passwd, authority the artifact never declared and oath
+       provenance would not show.
+       THIS FAILS CLOSED, which is why its result is checked and the others' are
+       not: the header picks the branch at COMPILE time while the shared library
+       answers at RUN time, so a newer header over an older ABI-compatible
+       runtime returns CURLE_UNKNOWN_OPTION and an ignored return would leave
+       libcurl's DEFAULT protocol set live. The redirect form still matters even
+       though hops are taken by hand — a single perform can be redirected
+       internally by some protocols — and costs nothing to keep. */
+    CURLcode pr, rr;
+#if LIBCURL_VERSION_NUM >= 0x075500 /* 7.85.0 introduced the string form */
+    pr = curl_easy_setopt(h, CURLOPT_PROTOCOLS_STR, "http,https");
+    rr = curl_easy_setopt(h, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
+#else
+    pr = curl_easy_setopt(h, CURLOPT_PROTOCOLS, (long)(CURLPROTO_HTTP | CURLPROTO_HTTPS));
+    rr = curl_easy_setopt(h, CURLOPT_REDIR_PROTOCOLS, (long)(CURLPROTO_HTTP | CURLPROTO_HTTPS));
+#endif
+    if (pr != CURLE_OK || rr != CURLE_OK) {
+      curl_easy_cleanup(h);
+      O_HTTP_DONE(o_str(CAP_FAIL));
+    }
+
+    struct curl_slist *hdrs = curl_slist_append(NULL, "Accept:");
+    if (!hdrs) {
+      curl_easy_cleanup(h);
+      O_HTTP_DONE(o_str(CAP_FAIL));
+    }
+    if (ref_hdr) {
+      /* net/http sets Referer to the preceding URL, and OMITS it on an
+         https -> http downgrade. Built explicitly rather than by AUTOREFERER:
+         the hops are ours now, and AUTOREFERER knows neither the downgrade rule
+         nor the credential stripping. */
+      struct curl_slist *h2 = curl_slist_append(hdrs, ref_hdr);
+      if (!h2) {
+        curl_slist_free_all(hdrs);
+        curl_easy_cleanup(h);
+        O_HTTP_DONE(o_str(CAP_FAIL));
+      }
+      hdrs = h2;
+    }
+    curl_easy_setopt(h, CURLOPT_HTTPHEADER, hdrs);
+
+    CURLcode rc = curl_easy_perform(h);
+    /* A transfer this code stopped on purpose is not a failure: the headers are
+       in, the hop is decided, and the rest of the body was never wanted. */
+    if (rc == CURLE_WRITE_ERROR && b.stopped) rc = CURLE_OK;
+    char *next = NULL;
+    int dup_failed = 0;
+    if (rc == CURLE_OK && o_http_is_redirect(b.status) && b.has_loc) {
+      /* Resolve the Location against the current URL. curl_url does the RFC
+         3986 work, so a relative target needs no parsing of ours. */
+      next = o_http_resolve(cur, b.loc);
+      if (!next) dup_failed = 1;
+    }
+    if (b.loc_overflow) dup_failed = 1;
+    curl_easy_cleanup(h);
+    /* Freed BEFORE any path that can refuse: the UTF-8 check below unwinds. */
+    curl_slist_free_all(hdrs);
+    if (rc != CURLE_OK || dup_failed) {
+      free(next);
+      O_HTTP_DONE(o_str(CAP_FAIL));
+    }
+
+    if (next) {
+      /* NINE REDIRECTS, NOT TEN. Go's policy errors when len(via) >= 10, which
+         rejects the request that would follow the tenth hop — so a chain of ten
+         fails there. Measured against the reference at 8, 9, 10 and 11. */
+      if (hop >= 9) {
+        free(next);
+        O_HTTP_DONE(o_str(CAP_FAIL));
+      }
+      char *nr = NULL;
+      if (!(o_http_prefix_ci(cur, "https://") && o_http_prefix_ci(next, "http://"))) {
+        nr = o_http_referer_header(cur);
+        if (!nr) {
+          free(next);
+          O_HTTP_DONE(o_str(CAP_FAIL));
+        }
+      }
+      /* cur is released only AFTER the referer has been taken from it. */
+      free(ref_hdr);
+      ref_hdr = nr;
+      free(cur_owned);
+      cur_owned = next;
+      cur = next;
+      continue;
+    }
+    break;
+  }
+  free(cur_owned);
+  free(ref_hdr);
+  free(b.loc);
+  cur_owned = NULL;
+  ref_hdr = NULL;
+  b.loc = NULL;
+#undef O_HTTP_DONE
+
+  /* The body is ARENA memory, so there is nothing to free on any path here and
+     the UTF-8 refusal below may unwind freely. A short write from the sink —
+     budget exhausted, or a body past INT_MAX — arrives as a non-OK rc. */
+  if (!b.p) return o_str(CAP_FAIL);
+  b.p[b.len] = 0;
+  return o_strn_host(b.p, (int)b.len, what);
+}
+
+/* PROVISION FAILS THE LAUNCH, it does not degrade. curl_global_init is the one
+   step that can fail before any Oath code runs, and o_require exits 70 on a
+   non-NULL err -- the same path an unwritable sink takes. A program that cannot
+   initialise TLS must not start and then return the failure value forever. */
+OVal *o_cap_http(char **err) {
+  /* NO static GUARD, deliberately: the runtime forbids static storage because a
+     capability could retain a request's memory there, and an exemption for a flag
+     would be an exemption the next reader has to re-justify. None is needed —
+     libcurl refcounts repeated initialisation, so a program declaring two
+     http_request fields is fine without one.
+     THE THREADING CONDITION IS DISCHARGED BY A FEATURE CHECK, NOT BY ORDERING.
+     An earlier version of this comment claimed provisioning runs before any
+     other thread exists; it does not — o_program runs inside the pthread o_run
+     creates, so the main thread is already live here. libcurl before 7.84
+     requires curl_global_init to run with no other thread in existence, a
+     condition this runtime cannot meet without reordering startup. Builds that
+     advertise CURL_VERSION_THREADSAFE have no such requirement, so the check
+     below refuses the ones that do rather than racing quietly. */
+  /* THE INSPECTION PRECEDES THE INITIALISATION, because on a build without
+     CURL_VERSION_THREADSAFE it is curl_global_init ITSELF that is unsafe to
+     call with another thread already running — checking afterwards would report
+     the hazard only once it had been taken. curl_version_info needs no prior
+     init. */
+  /* THE CAPABILITY IS PROVISIONED OR IT IS NOT — a libcurl built without TLS
+     would provision happily and then fail every https:// URL at run time, which
+     is exactly the silent partial implementation this backend refuses to ship.
+     The URL is a RUNTIME value, so build-time refusal is the only honest place:
+     a program cannot be told at launch which schemes it will be handed, and
+     "returns the failure value for https" is indistinguishable from an
+     unreachable host. Checked against the LOADED library rather than the
+     headers, which is the same header/runtime split the setopt check covers. */
+  {
+    curl_version_info_data *vi = curl_version_info(CURLVERSION_NOW);
+    int has_http = 0, has_https = 0;
+    if (!vi) {
+      *err = "libcurl did not report its version information";
+      return NULL;
+    }
+    for (const char *const *pr = vi->protocols; pr && *pr; pr++) {
+      if (o_streq_ci(*pr, "http")) has_http = 1;
+      if (o_streq_ci(*pr, "https")) has_https = 1;
+    }
+    if (!has_http || !has_https) {
+      *err = "libcurl lacks http/https support; http_request cannot be provided";
+      return NULL;
+    }
+    /* ADVERTISING gzip OBLIGES US TO DECODE IT. The request sends
+       Accept-Encoding: gzip to match the Go transport, so a libcurl built
+       without zlib would receive a gzip response and fail the transfer with an
+       unsupported-encoding error — returning the capability's failure value
+       exactly where the reference returns a decoded body. Refusing at
+       provisioning keeps that a launch failure rather than a silent divergence
+       that only some servers reveal. */
+    if (!(vi->features & CURL_VERSION_LIBZ)) {
+      *err = "libcurl lacks gzip support; http_request cannot be provided";
+      return NULL;
+    }
+#ifdef CURL_VERSION_THREADSAFE
+    if (!(vi->features & CURL_VERSION_THREADSAFE)) {
+      *err = "libcurl is not thread-safe (pre-7.84); http_request cannot be provided";
+      return NULL;
+    }
+#else
+    *err = "libcurl headers predate thread-safe init (7.84); http_request cannot be provided";
+    return NULL;
+#endif
+  }
+  if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
+    *err = "libcurl could not be initialised";
+    return NULL;
+  }
+  return o_closure(cap_http_code, NULL);
+}
+#endif
+
 /* The sink FOLLOWS ITS PATH: the launch check opens and closes, each write
    reopens. Holding the descriptor would leave a rotated sink receiving records at
    the old inode forever while the program still reported success. */
@@ -6021,6 +7048,7 @@ declare i32 @o_int_le(ptr, ptr)
 declare ptr @o_cap_env(ptr)
 declare ptr @o_cap_readfile(ptr)
 declare ptr @o_cap_emit(ptr)
+declare ptr @o_cap_http(ptr)
 `
 
 // ---------- this backend's answer for each entry shape ----------
@@ -6616,6 +7644,124 @@ func llvmAssemble(prog *CompiledProgram, e *llvmEmitter, body *strings.Builder, 
 // it with defer.
 var llvmExtraCFlags []string
 
+// llvmNeedsCurl reports whether this program requires a capability whose runtime
+// code uses libcurl. Derived from the program's REQUIREMENTS rather than from a
+// build flag, so the dependency cannot be switched on by accident and cannot be
+// switched off by a program that needs it.
+func llvmNeedsCurl(prog *CompiledProgram) bool {
+	for _, r := range prog.Requirements {
+		if p, ok := llvmProviders[r.Kind]; ok && p.NeedsCurl {
+			return true
+		}
+	}
+	return false
+}
+
+// llvmCurlFlags probes for libcurl and returns the flags to compile against it.
+//
+// REFUSES BY NAME WHEN IT IS ABSENT, rather than letting clang fail with a
+// linker error about a symbol nobody asked about. That keeps this backend's
+// contract intact: an unsupported construct is refused and named, never
+// approximated and never left to surface as somebody else's diagnostic.
+//
+// `curl-config` first because it is the interface curl itself documents and it
+// reports the flags for wherever curl actually lives. The bare fallback exists
+// for hosts that ship the library and headers without the script; it is tried
+// only after, and a failure of BOTH is what produces the refusal.
+func llvmCurlFlags() ([]string, error) {
+	if path, err := exec.LookPath("curl-config"); err == nil {
+		cf, e1 := exec.Command(path, "--cflags").Output()
+		// --libs NAMES libcurl; on a STATIC-ONLY installation it does not name
+		// libcurl's own dependencies (OpenSSL, zlib), which a static link must
+		// also resolve — so the build would fail with undefined symbols on a
+		// host that has perfectly usable development files. --static-libs is the
+		// complete list, and --built-shared is curl-config's own answer to which
+		// installation this is, rather than a guess from the filesystem.
+		libsFlag := "--libs"
+		if sh, e := exec.Command(path, "--built-shared").Output(); e == nil &&
+			strings.EqualFold(strings.TrimSpace(string(sh)), "no") {
+			libsFlag = "--static-libs"
+		}
+		lf, e2 := exec.Command(path, libsFlag).Output()
+		// A curl-config too old for --static-libs answers with an error, not with
+		// empty output; fall back rather than emit a link line with no library.
+		if e2 != nil || len(strings.Fields(string(lf))) == 0 {
+			lf, e2 = exec.Command(path, "--libs").Output()
+		}
+		if e1 == nil && e2 == nil {
+			flags := append(strings.Fields(string(cf)), strings.Fields(string(lf))...)
+			// PROBE THE FLAGS, DO NOT TRUST THEM. curl-config can succeed while
+			// naming a stale prefix, headers clang cannot use, or a library that
+			// is not there — and an unprobed answer turns the capability-specific
+			// refusal below into a raw compiler error later in the build, which
+			// tells the user nothing about http_request.
+			if probeCurlFlags(flags) {
+				return flags, nil
+			}
+		}
+	}
+	if probeCurlFlags([]string{"-lcurl"}) {
+		return []string{"-lcurl"}, nil
+	}
+	return nil, fmt.Errorf(
+		"capability http_request needs libcurl, which this host does not provide to the %s backend\n"+
+			"  install libcurl development files (e.g. `apt install libcurl4-openssl-dev`, `brew install curl`)\n"+
+			"  or build with the Go backend (`oath build` with no --backend), which needs no library",
+		llvmBackendVersion)
+}
+
+// probeCurlHeader compiles a two-line program rather than looking for a file: a
+// header present but unusable (wrong arch, broken include path) must count as
+// absent, and only the compiler can say.
+func probeCurlHeader() bool { return probeCurlFlags([]string{"-lcurl"}) }
+
+// probeCurlFlags compiles AND LINKS with exactly the flags the build would use,
+// which is the only way to know they work: a header that is present but
+// unusable, or a library named by a stale curl-config, both look fine until
+// clang is asked.
+func probeCurlFlags(flags []string) bool {
+	dir, err := os.MkdirTemp("", "oath-curl-probe-")
+	if err != nil {
+		return false
+	}
+	defer os.RemoveAll(dir)
+	src := "#include <curl/curl.h>\nint main(void){ return curl_easy_init() ? 0 : 1; }\n"
+	if err := os.WriteFile(filepath.Join(dir, "p.c"), []byte(src), 0o644); err != nil {
+		return false
+	}
+	args := []string{"-o", filepath.Join(dir, "p")}
+	for _, f := range flags {
+		if strings.HasPrefix(f, "-I") || strings.HasPrefix(f, "-D") {
+			args = append(args, f)
+		}
+	}
+	args = append(args, "p.c")
+	for _, f := range flags {
+		if !strings.HasPrefix(f, "-I") && !strings.HasPrefix(f, "-D") {
+			args = append(args, f)
+		}
+	}
+	cmd := exec.Command("clang", args...)
+	cmd.Dir = dir
+	if cmd.Run() != nil {
+		return false
+	}
+	// LINKING IS NOT LOADING. A -L directory with no matching rpath links
+	// cleanly and then fails in the dynamic loader at launch — which would
+	// happen to the real artifact, after the build reported success and before
+	// o_cap_http could refuse. The probe returns 0 or 1 by design, so any other
+	// status is the loader, not the program.
+	run := exec.Command(filepath.Join(dir, "p"))
+	run.Dir = dir
+	if err := run.Run(); err != nil {
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) || ee.ExitCode() != 1 {
+			return false
+		}
+	}
+	return true
+}
+
 func llvmBuild(st *Store, prog *CompiledProgram, out string) error {
 	if _, err := exec.LookPath("clang"); err != nil {
 		return fmt.Errorf("clang is not on PATH; the %s backend emits textual IR and lets clang assemble it", llvmBackendVersion)
@@ -6640,7 +7786,31 @@ func llvmBuild(st *Store, prog *CompiledProgram, out string) error {
 		return err
 	}
 	args := append([]string{"-O1", "-pthread"}, llvmExtraCFlags...)
+	// The libcurl dependency is added ONLY for a program that requires the
+	// capability, and its absence is refused here — before clang runs, so the
+	// diagnostic names the capability rather than a missing symbol.
+	// LINK FLAGS GO AFTER THE INPUTS. A GNU-style linker resolves left to right,
+	// so `-lcurl` placed before rt.c is searched before any reference to it is
+	// known — and with static libcurl or --as-needed the library is discarded,
+	// leaving undefined symbols in a program that is otherwise correct. Compile
+	// flags (-D, -I) must still precede the inputs, so the two are split.
+	var linkFlags []string
+	if llvmNeedsCurl(prog) {
+		cf, err := llvmCurlFlags()
+		if err != nil {
+			return err
+		}
+		args = append(args, "-DO_HTTP")
+		for _, f := range cf {
+			if strings.HasPrefix(f, "-I") || strings.HasPrefix(f, "-D") {
+				args = append(args, f)
+			} else {
+				linkFlags = append(linkFlags, f)
+			}
+		}
+	}
 	args = append(args, "-o", abs, "rt.c", "prog.ll")
+	args = append(args, linkFlags...)
 	cmd := exec.Command("clang", args...)
 	cmd.Dir = tmp
 	if b, err := cmd.CombinedOutput(); err != nil {
