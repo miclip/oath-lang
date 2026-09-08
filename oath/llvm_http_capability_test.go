@@ -719,6 +719,12 @@ func TestUppercaseHTTPProxyIsHonouredLikeTheReference(t *testing.T) {
 // egress hop the reference keeps local, and a different response from it.
 func TestExpandedIPv6LoopbackIsNotProxied(t *testing.T) {
 	requireClang(t)
+	// THE LIBCURL GATE BELONGS ON EVERY TEST THAT BUILDS AN http_request PROGRAM,
+	// and this one was written without it — so on a runner with clang but no
+	// libcurl development files it reached buildLLVM and FATALED on the
+	// provider's own refusal instead of skipping. That is what broke CI; the
+	// refusal was correct and the test was not gated to expect it.
+	requireUsableLibcurl(t)
 	ln, err := net.Listen("tcp", "[::1]:0")
 	if err != nil {
 		t.Skip("no IPv6 loopback on this host")
