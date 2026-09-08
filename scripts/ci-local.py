@@ -74,6 +74,11 @@ RUN: set[tuple[str, str]] = {
     ("conformance", "build", "824452667570"),
     ("conformance", "unit tests", "230135e255a8"),
     ("conformance", "fingerprint instrument check (#139)", "58a5a527a296"),
+    # #98 exclusion-scoped campaign. Prover-free and read-only: it validates the
+    # artefact, re-derives the partition and runs the pin. Runnable here, and it
+    # is the SAME code the dispatch-only matrix step calls, so classifying that
+    # step needs-ci does not narrow what actually gets checked locally.
+    ("conformance", "campaign exclusions are pinned, sound and non-stale (#98)", "15847c50e71e"),
     ("conformance", "playground corpus mirrors the committed store (#145)", "b119401a74f0"),
     ("conformance", "mutation boundary (release binary contains no rule-disable path)", "a5ac2d616a34"),
     ("conformance", "documented numbers match the machine's ledger (#96)", "4d2da9c20b5b"),
@@ -125,10 +130,13 @@ NEEDS_ENV: dict[tuple[str, str], str] = {
         "provisions the runner's z3 for the sharded matrix; schedule/dispatch only",
     ("conformance", "build oathrs", "4111ddfccb69"):
         "builds the release kernel on the runner for the sharded matrix; schedule/dispatch only",
-    ("conformance", "prove shard ${{ matrix.shard }} of 128", "f9c4a051dc44"):
+    ("conformance", "prove shard ${{ matrix.shard }} of ${{ needs.rust-conformance-sharded-matrix.outputs.n }}", "4934bf820403"):
         "one parallel shard of the union==S check; schedule/dispatch only, needs CI runners",
-    ("conformance", "merge and verify union == S", "4dbb311e1461"):
-        "merges the shard emissions and runs the union==S gate; schedule/dispatch only",
+    ("conformance", "merge and verify union == S over the named subset", "6dbbfcc8516c"):
+        "merges the shard emissions and runs the EXCLUSION-SCOPED union==S gate; dispatch only",
+    ("conformance", "derive the executed shard matrix from the exclusion artefact", "9bc8c107ef29"):
+        "writes $GITHUB_OUTPUT, which does not exist here; the derivation ITSELF is exercised "
+        "locally by the `campaign exclusions` step above, so this is not a narrowing",
     ("stdlib-pr", "Compute the proposed registry delta", "41f545e50141"):
         "needs origin/<base_ref> and PR context",
     ("stdlib-pr", "Dry-run publication plan (unsigned)", "de22e02100ad"):

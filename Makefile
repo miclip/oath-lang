@@ -166,6 +166,23 @@ check-doc-numbers:
 # began emitting seven-line /2 — every other gate passed throughout, because the
 # kernel, the fixtures and their agreement were all self-consistent. Only an
 # independent implementation reading the prose would have noticed, and one did.
+# SPEC §7.5 exclusion-scoped campaign (#98). READ-ONLY and prover-free: it
+# validates the exclusion artefact, re-derives the partition, and refuses an
+# exclusion whose shard also holds in-scope work. The unit tests carry the PIN
+# that makes adding an exclusion a deliberate act.
+.PHONY: check-campaign-exclusions
+check-campaign-exclusions:
+	@python3 scripts/campaign-subset.py check
+	@python3 -m unittest discover -s scripts -p 'test_campaign_subset.py' -q
+
+# The same harness END TO END against the real oathrs binary, on a two-file
+# corpus. ~17 MINUTES, because it actually proves — which is why it is NOT in the
+# per-push gate above and must not be moved there. It needs a release oathrs and
+# z3 on PATH, and SKIPS with the reason when either is missing.
+.PHONY: check-campaign-integration
+check-campaign-integration:
+	@python3 scripts/test_campaign_subset_integration.py
+
 .PHONY: check-spec-bytes
 check-spec-bytes:
 	@python3 scripts/check-spec-vs-fixtures.py

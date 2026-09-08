@@ -2479,6 +2479,60 @@ not a pass — the equality is the pass. As a consequence this self-check is the
 only mechanism in the system that detects a seed `S` that is not run-stable
 (`F(S) ≠ S`); §7.2's producer does not itself record convergence.
 
+**EXCLUSION-SCOPED CAMPAIGN (normative once offered, #98).** A campaign MAY
+declare a set `E` of properties it does not attempt, and report equality over the
+corpus MINUS `E`. This exists because the coverage rule above is all-or-nothing
+and one property can make the whole campaign unrunnable: a property is
+INDIVISIBLE, so where a single property's attempt exceeds the runner's ceiling no
+`n` and no assignment rule reaches below it, and the campaign never completes.
+
+**WHEN `E` IS EMPTY THIS SECTION IS UNCHANGED.** Everything above — every
+property attempted exactly once, union equal to `S` — is the rule, and an empty
+`E` is the ordinary case. What follows applies only to a campaign that declares a
+non-empty one.
+
+For a non-empty `E`:
+
+- **`E` MUST be an ARTEFACT the campaign reads, not a value compiled into it**,
+  and each member MUST carry the property's identity (definition hash and
+  property index), the REASON it is excluded, and the CONDITION under which it
+  returns. A campaign that cannot say why it skipped something has not narrowed
+  its claim, it has weakened it silently.
+- **NO SHARD HOLDING A MEMBER OF `E` MAY HOLD AN IN-SCOPE PROPERTY.** A shard is
+  the unit a campaign can decline to run, so a declined shard holding an in-scope
+  property drops that property too — a silent widening of `E` beyond what it
+  names. The campaign MUST refuse an `n` that does not satisfy this.
+  THE RULE IS EXACTLY ITS REASON, AND NOT THE STRONGER ONE IT IS TEMPTING TO
+  WRITE. "Every member is ALONE in its shard" would also be sufficient, and is
+  the ordinary case with a single exclusion, but it forbids something harmless:
+  two MEMBERS sharing a shard drop only each other, and both are named. What
+  must never happen is an UNNAMED property going with them.
+- **COVERAGE NARROWS, THE OTHER CONDITIONS DO NOT.** Each property NOT in `E`
+  MUST still be attempted exactly once and its verdict MUST still equal `S`. Each
+  property IN `E` MUST be attempted by NO shard: a member that was attempted
+  anyway is a campaign disagreeing with its own scope, and is a failure, not a
+  bonus.
+- **THE REPORTED IDENTITY MUST BIND `E`.** A campaign identity binding the
+  determinism context and the partition but not the exclusion set would let two
+  runs covering different subsets claim the same verification. The identity a
+  scoped campaign reports MUST therefore bind both the base campaign identity
+  above and the exclusion artefact.
+- **A PASS MUST NAME WHAT IT DID NOT COVER**, at the point the result is
+  reported, and MUST state that the full-corpus guarantee is not established. A
+  scoped pass establishes `F(S) = S` over the corpus MINUS `E` and NOTHING
+  WIDER — it is a strictly weaker claim than this section's ordinary one, and
+  reporting it as though it were the ordinary one is the defect the whole
+  self-check exists to prevent.
+
+**WHAT IT COSTS, STATED RATHER THAN SOLD.** The guarantee stops covering the
+whole corpus. For each member of `E` the campaign no longer verifies that the
+property's verdict under `S` is still what `S` records — including, where the
+member is recorded UNPROVEN, that it is still unproven. That is a real reduction
+in what a green campaign means. What it buys is that the campaign RUNS: a check
+that completes over a stated subset is worth more than one that has never
+completed over everything, and the subset is stated precisely so a reader can see
+which of the two they have.
+
 **Campaign identity across parallel shards (normative once offered).** The
 throughput of this mode comes from running the shards as SEPARATE parallel jobs
 and merging their emitted results.

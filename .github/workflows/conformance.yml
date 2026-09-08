@@ -89,6 +89,15 @@ jobs:
       - name: mutation boundary (release binary contains no rule-disable path)
         run: make mutation-boundary
 
+      # An EXCLUSION LIST is the artefact that grows silently: each entry is
+      # defensible on its own and nothing re-reads the set. This gate re-derives
+      # the partition, refuses a stale or malformed entry, refuses an exclusion
+      # whose shard also holds in-scope work, and runs the PIN that makes adding
+      # one a deliberate act. Prover-free, so it runs on every push even though
+      # the campaign it scopes is dispatch-only.
+      - name: campaign exclusions are pinned, sound and non-stale (#98)
+        run: make check-campaign-exclusions
+
       # Numbers in prose are claims. README/DESIGN carried "99 fully proven (299
       # properties)" long after the real figures were 123 and 348/427 — nothing was
       # wrong with the kernel, the prose drifted and no check read it.
@@ -368,15 +377,44 @@ jobs:
   # by dividing the corpus. #98 carries the measurements.
   #
   # Dispatch only — n runners for a few hours each is not a per-push cost.
+  # THE EXECUTED MATRIX IS DERIVED FROM THE EXCLUSION ARTEFACT, NOT TYPED HERE.
+  # A hand-written index list and a hand-written exclusion list are two accounts
+  # of one fact, and they drift; the harness emits the list it will later merge
+  # against, so the shards that RUN and the shards that are DECLINED come from
+  # one source. It also refuses an n that does not isolate every exclusion.
+  rust-conformance-sharded-matrix:
+    name: independent kernel (Rust) — derive the executed shard matrix
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.derive.outputs.matrix }}
+      excluded: ${{ steps.derive.outputs.excluded }}
+      n: ${{ steps.derive.outputs.n }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: derive the executed shard matrix from the exclusion artefact
+        id: derive
+        run: |
+          python3 scripts/campaign-subset.py check
+          echo "matrix=$(python3 scripts/campaign-subset.py matrix)" >> "$GITHUB_OUTPUT"
+          echo "excluded=$(python3 scripts/campaign-subset.py excluded-shards)" >> "$GITHUB_OUTPUT"
+          # THE PARTITION SIZE IS DERIVED, NEVER SPELLED TWICE. The matrix and the
+          # merge already read it from the artefact; a literal in the worker command
+          # would go on proving against the old n after the artefact moved, which no
+          # pin detects — the pin guards the artefact's bytes, not a copy of one of
+          # its fields living in this file.
+          echo "n=$(python3 scripts/campaign-subset.py n)" >> "$GITHUB_OUTPUT"
+
   rust-conformance-sharded:
-    name: independent kernel (Rust) — sharded verification (shard ${{ matrix.shard }}/128)
-    if: github.event_name == 'workflow_dispatch'  # dispatch-only. n IS CHOSEN AGAINST A MEASUREMENT, NOT ASSUMED: the per-property cost table (#98) makes worst-shard share NON-MONOTONE in n -- 32 gives 10.4%, 80 gives 11.7%, 160 gives 10.3%, while 112/128/192 reach the 6.9% floor set by the single heaviest property. Collisions among a few heavy properties are luck, not density, so a larger n is NOT automatically better. 128 sits at the floor with margin either side of the dips. Re-derive from the cost artifacts before changing it; do not round it up by intuition.
+    name: independent kernel (Rust) — sharded verification (shard ${{ matrix.shard }}/${{ needs.rust-conformance-sharded-matrix.outputs.n }})
+    if: github.event_name == 'workflow_dispatch'  # dispatch-only. n=177 IS CHOSEN AGAINST A MEASUREMENT AND A CONSTRAINT, NOT ASSUMED: the per-property cost table (#98) makes worst-shard share NON-MONOTONE in n, and 112/128/192 all reach the 6.9% floor set by the single heaviest property -- but the floor is not the binding constraint any more. `gh-counts` prop 1 is PROJECTED at ~647 minutes ALONE (two runs were CUT at 283/284 min without finishing it) and a property is INDIVISIBLE, so the campaign is EXCLUSION-SCOPED (SPEC 7.5, scripts/campaign-exclusions.json) and n must ISOLATE every excluded property in a shard of its own -- otherwise declining that shard silently drops in-scope work with it. 177 does; scripts/campaign-subset.py REFUSES any n that does not, so this number is checked rather than trusted. Re-derive from the cost artifacts before changing it.
+    needs: rust-conformance-sharded-matrix
     runs-on: ubuntu-latest
     timeout-minutes: 350
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127]
+        shard: ${{ fromJSON(needs.rust-conformance-sharded-matrix.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -390,7 +428,7 @@ jobs:
           echo "$PWD/z3-4.16.0-x64-glibc-2.39/bin" >> "$GITHUB_PATH"
       - name: build oathrs
         run: cargo build --release --manifest-path oathrs/Cargo.toml
-      - name: prove shard ${{ matrix.shard }} of 128
+      - name: prove shard ${{ matrix.shard }} of ${{ needs.rust-conformance-sharded-matrix.outputs.n }}
         # Wall cap is safety-only and NOT part of the campaign identity (rlimit is),
         # so setting it here while the merge omits it does not desync the two.
         # The MEMORY cap is the same kind of thing and just as necessary: without
@@ -409,8 +447,9 @@ jobs:
         # when the step begins.
         #
         # 330, NOT 300, AND THE 30 MINUTES ARE MEASURED. The heaviest single
-        # property in the corpus is `gh-counts` prop 1 at 284 minutes of WALL time
-        # (#98) — and a property is indivisible, so 284 is the floor no shard count
+        # property in the corpus is `gh-counts` prop 1, PROJECTED at ~647 minutes of
+        # WALL time (#98; two runs were CUT at 283/284 min without ever finishing
+        # it) — and a property is indivisible, so that is the floor no shard count
         # or assignment rule goes below. At 300 that left 16 minutes for setup,
         # build and the three other properties sharing its shard, and run
         # 33999840937 lost shard 81 by roughly a minute of overhead: 127 of 128
@@ -432,7 +471,7 @@ jobs:
         # instrument run beforehand.
         run: |
           z3 --version
-          ./oathrs/target/release/oathrs prove --shard ${{ matrix.shard }}/128 \
+          ./oathrs/target/release/oathrs prove --shard ${{ matrix.shard }}/${{ needs.rust-conformance-sharded-matrix.outputs.n }} \
             --hints fixtures/prove/outcomes.json \
             --cost-out "cost-${{ matrix.shard }}.jsonl" \
             examples/*.oath apps/*/*.oath > "shard-${{ matrix.shard }}.txt"
@@ -454,8 +493,8 @@ jobs:
 
   rust-conformance-sharded-merge:
     name: independent kernel (Rust) — merge shards, verify union == S
-    if: github.event_name == 'workflow_dispatch'  # dispatch-only. n IS CHOSEN AGAINST A MEASUREMENT, NOT ASSUMED: the per-property cost table (#98) makes worst-shard share NON-MONOTONE in n -- 32 gives 10.4%, 80 gives 11.7%, 160 gives 10.3%, while 112/128/192 reach the 6.9% floor set by the single heaviest property. Collisions among a few heavy properties are luck, not density, so a larger n is NOT automatically better. 128 sits at the floor with margin either side of the dips. Re-derive from the cost artifacts before changing it; do not round it up by intuition.
-    needs: rust-conformance-sharded
+    if: github.event_name == 'workflow_dispatch'  # dispatch-only. n=177 IS CHOSEN AGAINST A MEASUREMENT AND A CONSTRAINT, NOT ASSUMED: the per-property cost table (#98) makes worst-shard share NON-MONOTONE in n, and 112/128/192 all reach the 6.9% floor set by the single heaviest property -- but the floor is not the binding constraint any more. `gh-counts` prop 1 is PROJECTED at ~647 minutes ALONE (two runs were CUT at 283/284 min without finishing it) and a property is INDIVISIBLE, so the campaign is EXCLUSION-SCOPED (SPEC 7.5, scripts/campaign-exclusions.json) and n must ISOLATE every excluded property in a shard of its own -- otherwise declining that shard silently drops in-scope work with it. 177 does; scripts/campaign-subset.py REFUSES any n that does not, so this number is checked rather than trusted. Re-derive from the cost artifacts before changing it.
+    needs: [rust-conformance-sharded-matrix, rust-conformance-sharded]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -476,18 +515,31 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: shards
-      - name: merge and verify union == S
+      - name: merge and verify union == S over the named subset
+        # SPEC §7.5 EXCLUSION-SCOPED CAMPAIGN. The merge itself is unchanged and
+        # still does every structural check — campaign identity, one emission per
+        # index, assignment recomputation, one-owner partition, union == S. What
+        # the harness adds is narrow and stated: it synthesizes the EMPTY envelope
+        # for each declined shard (so the merge's own "exactly one emission per
+        # shard index" rule still applies to it), and it accepts the merge's
+        # failure ONLY when the complete mismatch set is exactly the properties
+        # the artefact names. Any other mismatch — a differing verdict, a
+        # double-attempted property, an uncovered property nobody declared — is
+        # re-raised untouched.
+        #
+        # THE PASS LINE SAYS WHAT IT DID NOT COVER. A pass that does not name its
+        # exclusions is the defect this whole issue is about.
         run: |
           z3 --version
-          # N is written ONCE and both the loop and --merge-shards derive from it:
-          # a hand-typed index list that disagrees with the count is a merge that
-          # silently verifies a partial union, which is the one failure this job
-          # exists to catch.
-          N=128
-          args=""
-          for i in $(seq 0 $((N - 1))); do
-            args="$args --shard-in shards/shard-$i/shard-$i.txt"
-          done
-          ./oathrs/target/release/oathrs prove --merge-shards "$N" \
+          # The shard indices come from the SAME artefact the merge adjudicates
+          # against, so the set that ran and the set that was declined cannot drift.
+          mkdir -p merged
+          for d in shards/shard-*; do cp "$d"/shard-*.txt merged/ 2>/dev/null || true; done
+          python3 scripts/campaign-subset.py synthesize \
+            --out merged \
+            --campaign-from "$(ls merged/shard-*.txt | head -1)"
+          python3 scripts/campaign-subset.py merge \
+            --shard-dir merged \
             --hints fixtures/prove/outcomes.json \
-            $args examples/*.oath apps/*/*.oath
+            --oathrs ./oathrs/target/release/oathrs \
+            examples/*.oath apps/*/*.oath

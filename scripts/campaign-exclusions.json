@@ -1,0 +1,36 @@
+{
+  "format": "oath-campaign-exclusions/v1",
+  "_doc": [
+    "SPEC §7.5 EXCLUSION-SCOPED CAMPAIGN. Each entry names one property the",
+    "sharded union==S campaign does NOT attempt. The campaign's claim is thereby",
+    "narrowed: equality holds over the corpus MINUS these properties, and the",
+    "full-corpus guarantee is NOT established while this list is non-empty.",
+    "",
+    "It lives beside its reader and its pin, NOT under fixtures/, because a fixture is",
+    "something a kernel REGENERATES and this is a DECISION nothing derives. The",
+    "fixture-integrity gate says so and is right.",
+    "",
+    "`n` is part of the artefact because an exclusion is only sound when the",
+    "excluded property is ALONE in its shard: a shard is the unit a campaign can",
+    "decline to run, so an entry that shares its shard with an in-scope property",
+    "would silently drop that property too. scripts/campaign-subset.py refuses",
+    "any n but this one, and refuses any excluded shard holding an in-scope",
+    "property.",
+    "",
+    "Adding an entry here is NOT sufficient to change the campaign: the pin in",
+    "scripts/test_campaign_subset.py must be edited in the same change, or the",
+    "guard fails. That is deliberate — see the honesty note in that test."
+  ],
+  "n": 177,
+  "exclusions": [
+    {
+      "name": "gh-counts",
+      "hash": "ae09e70ae58547c85e425a9633f803e24f364356970e7c357820d527fae20fa5",
+      "prop": 1,
+      "prop_name": "every-group-is-present",
+      "shard": 140,
+      "reason": "The heaviest single property in the corpus, and its cost is a PROJECTION, not a measurement: two campaign runs were CUT inside its attempt sequence — 284.0 min at a 300-minute step cap (9 of 20 attempts) and 283.0 min at a 330-minute cap (11 of 20, the shard itself recorded at 330.7 min). NEITHER RUN FINISHED IT, so those figures are where the runs stopped, not what the property costs. From the seven substantive attempts actually observed (mean 40.4 min) the projected total is ~647 minutes for this one property, against a 360-minute GitHub job ceiling. A property is INDIVISIBLE (SPEC §7.5: the strategy sequence is sequential and conditional), so no shard count or assignment rule puts it below that floor. It is recorded UNPROVEN in the seed S, so excluding it removes no proof from S — what is lost is the VERIFICATION that its verdict under S is still unproven.",
+      "return_condition": "It returns to scope as soon as one seeded attempt sequence COMPLETES inside the per-shard ceiling — COMPLETION, not elapsed time. Directly observable: run `oathrs prove --shard 140/177 --hints fixtures/prove/outcomes.json examples/*.oath apps/*/*.oath` under the campaign's step timeout; if it exits 0 within the ceiling, delete this entry and the matching pin in scripts/test_campaign_subset.py. DO NOT read the 283/284-minute figures as evidence that this already holds — that inference is the specific error #98 recorded twice (\"you cannot measure the tail with a run that gets cut off in the tail\"), and the 330-cap run was itself cut at 330.7 minutes."
+    }
+  ]
+}

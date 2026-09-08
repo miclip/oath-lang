@@ -176,3 +176,80 @@ The purity confirmations and the two cracks (A: unenforced convergence; B: abort
 carry-forward) came from an adversarial review dispatched to refute the original
 theorem. The original doc overstated an unconditional per-goal identity; this
 version states the verifier form the review showed is actually sound.
+
+## The attempt-position cap: measured, then WITHDRAWN
+
+An attempt-position cap was designed as an answer to the campaign's one
+unrunnable property: bound the §7.2 strategy sequence so no single property can
+exceed the runner's ceiling. It was measured and then withdrawn. Two findings
+survive it, and they are recorded here because a future attempt would otherwise
+rediscover them at the same cost.
+
+**1. A CAP COUNTED IN EXECUTED ATTEMPTS LETS AN OPTIONAL PERMISSION CHANGE A
+RECORDED OUTCOME.** §7.2's attempt reuse is a PERMISSION — "a kernel that reruns
+every duplicate is equally conformant". Measured over all 383 recorded-proven
+properties: the three `merge` properties (`length-adds`, `preserves-counts`,
+`keeps-sortedness`) each discharge at EXECUTED attempt 8 with one duplicate
+served from the attempt cache, and therefore need NINE solver requests on a
+kernel that declines the permission. A cap of 8 counted in executions keeps those
+proofs on a reusing kernel and loses them on a rerunning one — two conformant
+kernels, different recorded outcomes, which §10 compares exactly. **So any future
+cap MUST count sequence POSITIONS (every request for a solver outcome, counted
+BEFORE the reuse lookup) or make reuse mandatory.** Counting executions is not a
+smaller version of the same rule; it is a different and broken one.
+
+**2. THE WARM DISCHARGING-INDEX DISTRIBUTION, AND WHY IT DOES NOT BOUND THE COLD
+PATH.** Over all 383 properties the committed corpus records PROVEN, measured at
+the normative budget through the prover's own observer seam, the discharging
+executed-attempt index is:
+
+    index  1: 282    index  4:  54    index  6:   4
+    index  2:  20    index  5:  18    index  8:   3
+    index  3:   2
+
+Maximum 8 (9 in positions). **That is the WARM path — every goal seen at the
+settled lemma state — and it does NOT bound the cold path**, which §10's full
+re-derivation actually runs. The obvious way to make a cold measurement
+affordable is to attempt only the properties that end the run proven, on the
+premise that an unproven property contributes no lemma. **That premise is FALSE
+and the witness is `e-div` property 0**: it proves TRANSIENTLY under an
+intermediate lemma set, contributes its lemma, and is not in the recorded proven
+set — so restricting the run hides it. Measured directly by running one
+definition's cold inner fixpoint twice, once attempting every property and once
+attempting only the eventually-proven ones, and comparing the (epoch, lemma-state
+fingerprint) seen before each eventually-proven attempt: `excluded-witness` and
+`e-mod` agreed at every point, `e-div` differed at all three. One definition in
+three. **A cold measurement restricted this way is unsound; the honest cold
+derivation is the multi-hour job.**
+
+The cap was withdrawn because the only value that fits the runner's ceiling is
+below a proof the corpus already has.
+
+## What replaced it: an EXCLUSION-SCOPED campaign
+
+The campaign is narrowed to a named subset instead. `scripts/campaign-exclusions.json`
+names each excluded property with its identity, its REASON and the CONDITION
+under which it returns; `scripts/campaign-subset.py` reads it, derives the
+executed shard matrix from it, refuses an `n` that does not isolate an exclusion
+in its own shard, synthesizes the empty envelope for each declined shard, and
+accepts the merge's failure ONLY when the complete mismatch set is exactly the
+named exclusions. SPEC §7.5 carries the normative form.
+
+**THE COST, IN THOSE WORDS: the guarantee stops covering the whole corpus.** For
+`gh-counts` prop 1 the campaign no longer verifies that its verdict under `S` is
+still what `S` records — and `S` records it UNPROVEN, so what is lost is the
+confirmation that it is still unproven. That is a real reduction in what a green
+campaign means, and it is not a fix. What it buys is that the check RUNS: five
+dispatches have ended without a merge, and a check that completes over a stated
+subset is worth more than one that has never completed over everything.
+
+**One thing to test before keeping the exclusion — and it is a test, not an
+expectation.** At `n=177` the excluded property is ALONE in shard 140, which is
+what makes the exclusion sound at this `n`; at `n=128` it shared a shard with
+three others. Its cost is PROJECTED at ~647 minutes of wall time against a
+330-minute step ceiling — **well OUTSIDE it**, so on present evidence the
+exclusion is needed. The projection is not a measurement, though: two runs were
+CUT at 283 and 284 minutes without ever finishing the property, and the 330-cap
+run was itself cut at 330.7. So the return condition is directly testable — run
+shard 140 alone under the step timeout and see whether it COMPLETES — and it
+should be tested rather than assumed in either direction.
