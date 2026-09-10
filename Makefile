@@ -84,10 +84,66 @@ verify: build
 # (reverse-involution depends on its own antidistribution law).
 # Single pass: apiProve reaches the SPEC 7.2 self-lemma fixpoint internally
 # (with lemma-growth gating, #24), so the historical two-pass ritual is gone.
+# THE SET COMES FROM THE STORE, NOT FROM A HAND-WRITTEN LIST — the same repair
+# `mutate` already carries, four lines down, and for the same reason it records
+# there: "A list kept in sync with content by discipline is a list that
+# eventually is not." PROVABLE had drifted exactly as that comment predicts.
+# `union == S` (SPEC 7.5) measured the drift: 109 properties across 43
+# definitions PROVE under a seeded re-derivation and are absent from
+# outcomes.json, because 39 of those definitions are in neither PROVABLE nor
+# TESTED_ONLY and were never attempted, and 4 are in PROVABLE but no committed
+# run had recorded them (#192). A list is not the authority on what the corpus
+# contains; the corpus is.
+#
+# COST, MEASURED, so nobody discovers it: `scorable` is 236 definitions against
+# PROVABLE's 119, and the added half is where the goals that never prove live. A
+# from-cold pass over the whole set is ~38 HOURS serially (summed shard time from
+# the 177-way campaign, run 34285817138). Subsequent passes are cheap — the
+# lemma-growth gate (#24) and the attempt-reuse rule (7.2) skip settled goals —
+# but the FIRST pass over a definition is not, and `make check` runs this.
+# PROVE_SET overrides the set for a bounded run: `make prove PROVE_SET="a b c"`.
+# IT ITERATES TO A FIXPOINT, because a derived set has no dependency ORDER and a
+# single pass therefore cannot reach what a seeded run reached. The old PROVABLE
+# list carried that order as data — hand-sorted so a definition came after the
+# laws it consumes — and deriving the set from the store necessarily throws it
+# away (`scorable` is alphabetical). Measured instance: `str-pad-left` sorts
+# before its dependency `str-spaces`, proves 4/5 on the first pass, and a
+# one-pass target would record that and never retry it; iterating reaches 5/5.
+# This is the SAME rule SPEC 7.2 puts on the kernel's own lemma fixpoint, applied
+# one level up, including its refusal: a bound reached while the store is still
+# moving is NOT a fixpoint and MUST NOT be reported as success.
+PROVE_PASSES ?= 8
+PROVE_SET ?=
 prove: build
-	@for n in $(PROVABLE); do \
-		$(OATH) prove $$n | tail -1 | sed "s/^/  $$n: /"; \
-	done
+	@set -e; \
+	names=$$(printf '%s' "$(PROVE_SET)" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $$//'); \
+	if [ -z "$$names" ]; then names=$$($(OATH) scorable) || { \
+		echo "prove: 'oath scorable' FAILED — refusing to run, because an empty set" >&2; \
+		echo "       would let this target prove NOTHING and still exit 0." >&2; exit 1; }; fi; \
+	if [ -z "$$names" ]; then \
+		echo "prove: the proof set is EMPTY. A verification target that verifies" >&2; \
+		echo "       nothing must not report success." >&2; exit 1; fi; \
+	prev=""; \
+	for pass in $$(seq 1 $(PROVE_PASSES)); do \
+		for n in $$names; do \
+			out=$$($(OATH) prove $$n) || { \
+				echo "prove: '$(OATH) prove $$n' FAILED — stopping." >&2; \
+				echo "       A pipeline through tail/sed would have hidden this, and the" >&2; \
+				echo "       next pass would then report CONVERGENCE because nothing moved." >&2; \
+				exit 1; }; \
+			printf '%s\n' "$$out" | tail -1 | sed "s/^/  $$n: /"; \
+		done; \
+		now=$$(find codebase/meta -type f -exec shasum -a 256 {} + 2>/dev/null | shasum -a 256); \
+		if [ "$$now" = "$$prev" ]; then \
+			echo "prove: converged after pass $$pass (the store stopped moving)"; \
+			exit 0; \
+		fi; \
+		prev="$$now"; \
+	done; \
+	echo "prove: NOT CONVERGED — the store was still moving at the $(PROVE_PASSES)-pass bound." >&2; \
+	echo "       A truncated fixpoint must not be reported as success (SPEC 7.2)." >&2; \
+	echo "       Raise PROVE_PASSES rather than accepting this state." >&2; \
+	exit 1
 
 # Everything with properties gets a spec-strength score — and that is now TRUE
 # rather than aspirational: the set comes from `oath scorable`, which reads the

@@ -7,8 +7,9 @@
     "three-is-three-spaces"
   ],
   "guarantee": {
-    "level": "tested",
-    "cases": 200
+    "level": "proven",
+    "cases": 200,
+    "proven": 4
   },
   "termination": "measure",
   "spec_author": "claude-main",
@@ -19,5 +20,11 @@
   ],
   "confinement": [
     ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3
   ]
 }

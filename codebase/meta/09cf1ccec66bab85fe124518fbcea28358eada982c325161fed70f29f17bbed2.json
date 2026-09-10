@@ -4,11 +4,15 @@
     "is-empty"
   ],
   "guarantee": {
-    "level": "tested",
-    "cases": 200
+    "level": "proven",
+    "cases": 200,
+    "proven": 1
   },
   "termination": "nonrecursive",
   "spec_author": "claude-main",
   "body_author": "claude-main",
-  "author": "claude-main"
+  "author": "claude-main",
+  "proven_props": [
+    0
+  ]
 }

@@ -6,8 +6,9 @@
     "prefix-alone-is-not-a-match"
   ],
   "guarantee": {
-    "level": "tested",
-    "cases": 200
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
   },
   "termination": "nonrecursive",
   "spec_author": "claude-main",
@@ -20,5 +21,10 @@
   "confinement": [
     "",
     ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
   ]
 }

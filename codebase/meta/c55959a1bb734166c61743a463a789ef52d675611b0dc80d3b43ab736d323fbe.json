@@ -6,8 +6,9 @@
     "it-pairs-each-label-with-its-count"
   ],
   "guarantee": {
-    "level": "tested",
-    "cases": 200
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
   },
   "termination": "structural",
   "spec_author": "claude-main",
@@ -20,5 +21,10 @@
   "confinement": [
     "",
     ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
   ]
 }

@@ -10,7 +10,8 @@
   ],
   "guarantee": {
     "level": "tested",
-    "cases": 200
+    "cases": 200,
+    "proven": 5
   },
   "termination": "nonrecursive",
   "spec_author": "claude-main",
@@ -23,5 +24,12 @@
   "confinement": [
     "",
     ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3,
+    4
   ]
 }

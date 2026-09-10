@@ -4,8 +4,9 @@
     "finds"
   ],
   "guarantee": {
-    "level": "tested",
-    "cases": 200
+    "level": "proven",
+    "cases": 200,
+    "proven": 1
   },
   "mutants_killed": 6,
   "mutants_total": 10,
@@ -22,5 +23,8 @@
     "",
     "",
     ""
+  ],
+  "proven_props": [
+    0
   ]
 }

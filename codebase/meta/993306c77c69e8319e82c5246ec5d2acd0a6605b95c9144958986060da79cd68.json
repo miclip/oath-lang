@@ -11,7 +11,8 @@
   ],
   "guarantee": {
     "level": "tested",
-    "cases": 200
+    "cases": 200,
+    "proven": 6
   },
   "termination": "structural",
   "spec_author": "claude-main",
@@ -22,5 +23,13 @@
   ],
   "confinement": [
     ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
   ]
 }
