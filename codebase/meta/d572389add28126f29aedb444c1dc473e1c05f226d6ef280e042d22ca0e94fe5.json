@@ -4,8 +4,9 @@
     "finds-inserted"
   ],
   "guarantee": {
-    "level": "tested",
-    "cases": 200
+    "level": "proven",
+    "cases": 200,
+    "proven": 1
   },
   "mutants_killed": 1,
   "mutants_total": 1,
@@ -22,5 +23,8 @@
     "",
     "",
     ""
+  ],
+  "proven_props": [
+    0
   ]
 }

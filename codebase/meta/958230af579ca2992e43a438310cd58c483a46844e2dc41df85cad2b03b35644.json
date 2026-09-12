@@ -4,8 +4,9 @@
     "present-after-insert"
   ],
   "guarantee": {
-    "level": "tested",
-    "cases": 200
+    "level": "proven",
+    "cases": 200,
+    "proven": 1
   },
   "mutants_killed": 2,
   "mutants_total": 2,
@@ -20,5 +21,8 @@
   "confinement": [
     "",
     ""
+  ],
+  "proven_props": [
+    0
   ]
 }

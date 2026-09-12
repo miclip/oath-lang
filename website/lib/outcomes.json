@@ -2343,26 +2343,26 @@
     {
       "name": "map-has",
       "hash": "958230af579ca2992e43a438310cd58c483a46844e2dc41df85cad2b03b35644",
-      "level": "tested",
-      "proven_count": 0,
+      "level": "proven",
+      "proven_count": 1,
       "prop_count": 1,
       "props": [
         {
           "name": "present-after-insert",
-          "proven": false
+          "proven": true
         }
       ]
     },
     {
       "name": "map-insert",
       "hash": "d572389add28126f29aedb444c1dc473e1c05f226d6ef280e042d22ca0e94fe5",
-      "level": "tested",
-      "proven_count": 0,
+      "level": "proven",
+      "proven_count": 1,
       "prop_count": 1,
       "props": [
         {
           "name": "finds-inserted",
-          "proven": false
+          "proven": true
         }
       ]
     },
