@@ -225,31 +225,63 @@ derivation is the multi-hour job.**
 The cap was withdrawn because the only value that fits the runner's ceiling is
 below a proof the corpus already has.
 
-## What replaced it: an EXCLUSION-SCOPED campaign
+## What replaced it: an EXCLUSION-SCOPED campaign — now with NOTHING excluded
 
-The campaign is narrowed to a named subset instead. `scripts/campaign-exclusions.json`
-names each excluded property with its identity, its REASON and the CONDITION
-under which it returns; `scripts/campaign-subset.py` reads it, derives the
-executed shard matrix from it, refuses an `n` that does not isolate an exclusion
-in its own shard, synthesizes the empty envelope for each declined shard, and
-accepts the merge's failure ONLY when the complete mismatch set is exactly the
-named exclusions. SPEC §7.5 carries the normative form.
+The mechanism is in place and its exclusion set is EMPTY, which is the
+full-corpus case. `scripts/campaign-exclusions.json` names each excluded property
+with its identity, its REASON and the CONDITION under which it returns;
+`scripts/campaign-subset.py` reads it, derives the executed matrix, refuses an `n`
+whose excluded shard holds in-scope work, synthesizes the empty envelope for each
+declined shard, and accepts the merge's failure ONLY when the complete mismatch
+set is exactly the named exclusions. SPEC §7.5 carries the normative form and says
+an empty set leaves the ordinary all-or-nothing rule unchanged.
 
-**THE COST, IN THOSE WORDS: the guarantee stops covering the whole corpus.** For
-`gh-counts` prop 1 the campaign no longer verifies that its verdict under `S` is
-still what `S` records — and `S` records it UNPROVEN, so what is lost is the
-confirmation that it is still unproven. That is a real reduction in what a green
-campaign means, and it is not a fix. What it buys is that the check RUNS: five
-dispatches have ended without a merge, and a check that completes over a stated
-subset is worth more than one that has never completed over everything.
+**IT WAS BUILT TO EXCLUDE `gh-counts` prop 1, AND THE EXCLUSION WAS THEN TESTED
+AND WITHDRAWN.** That sequence is the point, so it is recorded rather than tidied.
 
-**One thing to test before keeping the exclusion — and it is a test, not an
-expectation.** At `n=177` the excluded property is ALONE in shard 140, which is
-what makes the exclusion sound at this `n`; at `n=128` it shared a shard with
-three others. Its cost is PROJECTED at ~647 minutes of wall time against a
-330-minute step ceiling — **well OUTSIDE it**, so on present evidence the
-exclusion is needed. The projection is not a measurement, though: two runs were
-CUT at 283 and 284 minutes without ever finishing the property, and the 330-cap
-run was itself cut at 330.7. So the return condition is directly testable — run
-shard 140 alone under the step timeout and see whether it COMPLETES — and it
-should be tested rather than assumed in either direction.
+The exclusion rested on a PROJECTION of ~647 minutes against a 330-minute step
+ceiling. (That figure is HISTORY, not a live estimate — it is what the exclusion
+was justified by, and the measurement below replaced it.) The artefact's own return condition said to test it before keeping it.
+
+**The first test was wrong, and is recorded so it is not repeated.** It ran shard
+140 alone under the DEFAULT 600000ms per-attempt wall cap, finished in 100
+minutes, and the property ABORTED. That is a configuration six times more
+aggressive than the campaign's, which sets `OATHRS_Z3_WALL_CAP_MS=3600000`, so it
+could not speak to the question asked. `codex review` caught it before the
+exclusion was removed on that basis. The step timeout was honoured and the
+per-attempt cap was not — an easy pair to conflate, and the whole difference.
+
+**The correct test:**
+
+```
+shard 140 of 177, alone, OATHRS_Z3_WALL_CAP_MS=3600000
+  EXIT=0, ELAPSED 218 minutes
+  ae09e70a… prop 1 → unproven
+```
+
+218 minutes, inside the ceiling, and a real VERDICT — `unproven`, matching what
+`S` records — not an abort. So including the shard verifies the property rather
+than merely attempting it.
+
+**One difference from the campaign remains, and it is stated rather than
+glossed.** The test ran at `OATHRS_Z3_MEMORY_MB=3000`, the cap this machine
+mandates; the CI worker sets 6000. 3000 is TIGHTER, so a memout is not the
+untested direction — completing under the tighter cap is the harder case. What is
+untested is the reverse: with more memory z3 may explore further on an attempt it
+would otherwise abandon, so the shard could take LONGER in CI than 218 minutes
+against a 330-minute ceiling. Even then the campaign is not wrong, only slower or
+failed: the property is not in `S`, and an abort on a non-member is not a
+mismatch. The dispatch is the real test of the remaining 112 minutes of headroom,
+and a shard-140 timeout is the signal to restore the entry.
+
+**Why the projection was wrong, twice over.** It extrapolated from two runs CUT
+at 283 and 284 minutes that never finished the property — the trap this issue had
+already recorded twice. And the attempt-reuse rule landed in `37c074a` had since
+taken this property from 20 attempts to 15. The "REDUCED, not SOLVED" verdict on
+that work was correct on the evidence then, and is superseded by measurement.
+
+**What the machinery is still for.** It stays because §7.5's rule stays, and
+because an empty list is a state a reader must be able to SEE — delete the
+artefact and nothing says the campaign covers everything. Its guards are
+exercised against a synthetic entry, so the validator does not retire the moment
+there is nothing to validate.

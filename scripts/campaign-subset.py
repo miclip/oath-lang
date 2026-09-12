@@ -2,7 +2,7 @@
 """SPEC §7.5 EXCLUSION-SCOPED sharded campaign (#98).
 
 The full-corpus `union == S` campaign has never completed: one property,
-`gh-counts` prop 1, is PROJECTED at ~647 minutes for a single seeded attempt
+`gh-counts` prop 1, MEASURED at 218 minutes for a single seeded attempt
 sequence and a property is INDIVISIBLE, so no shard count reaches below it.
 This harness runs the campaign over the corpus MINUS a NAMED set of properties
 and reports exactly what it did not cover.

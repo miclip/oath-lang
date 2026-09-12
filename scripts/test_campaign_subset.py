@@ -49,18 +49,17 @@ _spec.loader.exec_module(cs)
 # says only THAT the bytes changed, which makes a legitimate edit and a smuggled
 # entry look identical in the failure. The structural pin says WHAT changed, so
 # the reviewer reads the diff rather than a hex mismatch.
-PINNED_SHA256 = "decb58051dbc3bba7bef35ba6f3a56b01dd81a0b51684aac95ef86c42ffc887f"
+PINNED_SHA256 = "7316eeea6ca6597377499df7cc987e82371cd0524fdf95851666759e35bb56e1"
 
 PINNED_N = 177
-PINNED = [
-    {
-        "name": "gh-counts",
-        "hash": "ae09e70ae58547c85e425a9633f803e24f364356970e7c357820d527fae20fa5",
-        "prop": 1,
-        "prop_name": "every-group-is-present",
-        "shard": 140,
-    },
-]
+# EMPTY, AND THAT IS A PINNED VALUE LIKE ANY OTHER. The campaign covers the FULL
+# corpus; an exclusion cannot be added without editing this list, which is the
+# point of pinning it. gh-counts prop 1 was excluded and is not any more: shard
+# 140 alone, under the campaign's own per-attempt wall cap, finished in 218
+# minutes with the property recorded `unproven` — a verdict matching S, not an
+# abort. See the artefact's _doc for the measurement and for the earlier,
+# WRONG test that used the default cap.
+PINNED = []
 
 
 def _pin_check(n, exclusions):
@@ -98,7 +97,8 @@ class Pin(unittest.TestCase):
         """The guard must BITE, not merely exist."""
         with open(cs.ARTEFACT, encoding="utf-8") as fh:
             doc = json.loads(fh.read())
-        extra = copy.deepcopy(doc["exclusions"][0])
+        before = len(doc["exclusions"])
+        extra = copy.deepcopy(SYNTHETIC)
         extra.update(name="append", prop=0, prop_name="length-adds",
                      hash="0" * 64, shard=0, reason="r", return_condition="c")
         doc["exclusions"].append(extra)
@@ -111,7 +111,8 @@ class Pin(unittest.TestCase):
             self.assertNotEqual(_artefact_sha256(p), PINNED_SHA256,
                                 "adding an entry to the artefact alone did NOT fail the byte "
                                 "pin — the guard is decorative")
-        self.assertEqual(len(ex), 2, "the mutated artefact should carry two entries")
+        self.assertEqual(len(ex), before + 1,
+                         "the mutated artefact should carry one more entry than the live one")
         self.assertFalse(_pin_check(n, ex),
                          "adding an entry to the artefact alone did NOT fail the structural "
                          "pin — the guard is decorative")
@@ -120,12 +121,18 @@ class Pin(unittest.TestCase):
         """A justification must not be rewritable without a check noticing."""
         with open(cs.ARTEFACT, encoding="utf-8") as fh:
             doc = json.loads(fh.read())
-        doc["exclusions"][0]["reason"] = "because it is slow"
+        doc["exclusions"] = [copy.deepcopy(SYNTHETIC)]
         with tempfile.TemporaryDirectory() as d:
-            p = os.path.join(d, "campaign-exclusions.json")
-            with open(p, "w", encoding="utf-8") as fh:
+            a = os.path.join(d, "a.json")
+            with open(a, "w", encoding="utf-8") as fh:
                 fh.write(json.dumps(doc))
-            self.assertNotEqual(_artefact_sha256(p), PINNED_SHA256)
+            first = _artefact_sha256(a)
+            doc["exclusions"][0]["reason"] = "because it is slow"
+            b = os.path.join(d, "b.json")
+            with open(b, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(doc))
+            self.assertNotEqual(_artefact_sha256(b), first,
+                                "revising ONLY a reason did not change the digest")
 
 
 # ------------------------------------------------------- the partition rule ---
@@ -145,19 +152,46 @@ class Rule(unittest.TestCase):
         finally:
             cs.shard_of = orig
 
-    def test_the_pinned_exclusion_is_alone_in_its_shard(self):
+    def test_no_shard_is_excluded_and_the_isolation_rule_still_holds(self):
+        """With nothing excluded the campaign declines NO shard. The isolation
+        RULE is still exercised, against the synthetic entry, because a future
+        exclusion depends on it and an empty list must not retire it."""
         rows, _ = cs.load_universe()
         n, ex, _ = cs.load_exclusions()
-        shards, members = cs.resolve(n, ex, rows)
-        self.assertEqual(shards, {140})
-        self.assertEqual([(m[0], m[2]) for m in members[140]], [("gh-counts", 1)])
+        shards, _ = cs.resolve(n, ex, rows)
+        self.assertEqual(shards, set(), "no exclusions, so no shard may be declined")
+        self.assertEqual(len(ex), 0, "the live artefact is expected to be empty")
+        shards2, members2 = cs.resolve(n, [copy.deepcopy(SYNTHETIC)], rows)
+        self.assertEqual(shards2, {140})
+        self.assertEqual([(m[0], m[2]) for m in members2[140]], [("gh-counts", 1)])
 
 
 # ------------------------------------------------------ artefact validation ---
 
+# A SYNTHETIC ENTRY, SO THE MACHINERY IS TESTED WHETHER OR NOT ANYTHING IS
+# EXCLUDED TODAY. These tests validate the VALIDATOR — stale entries, duplicates,
+# malformed hashes, missing reasons, shard isolation. Building their fixtures by
+# mutating the live artefact's first entry silently disables every one of them
+# the moment the exclusion list goes empty, which is exactly when the validator
+# most needs to work: the next person to add an exclusion is relying on it. A
+# REAL corpus property, so the stale-entry and shard-rule checks compare against
+# something true.
+SYNTHETIC = {
+    "name": "gh-counts",
+    "hash": "ae09e70ae58547c85e425a9633f803e24f364356970e7c357820d527fae20fa5",
+    "prop": 1,
+    "prop_name": "every-group-is-present",
+    "shard": 140,
+    "reason": "synthetic entry used only by these tests",
+    "return_condition": "never — this entry exists only in a temporary fixture",
+}
+
+
 def _artefact(**over):
     with open(cs.ARTEFACT, encoding="utf-8") as fh:
         doc = json.loads(fh.read())
+    if not doc["exclusions"]:
+        doc["exclusions"] = [copy.deepcopy(SYNTHETIC)]
     doc.update(over)
     return doc
 

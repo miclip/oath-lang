@@ -407,7 +407,7 @@ jobs:
 
   rust-conformance-sharded:
     name: independent kernel (Rust) — sharded verification (shard ${{ matrix.shard }}/${{ needs.rust-conformance-sharded-matrix.outputs.n }})
-    if: github.event_name == 'workflow_dispatch'  # dispatch-only. n=177 IS CHOSEN AGAINST A MEASUREMENT AND A CONSTRAINT, NOT ASSUMED: the per-property cost table (#98) makes worst-shard share NON-MONOTONE in n, and 112/128/192 all reach the 6.9% floor set by the single heaviest property -- but the floor is not the binding constraint any more. `gh-counts` prop 1 is PROJECTED at ~647 minutes ALONE (two runs were CUT at 283/284 min without finishing it) and a property is INDIVISIBLE, so the campaign is EXCLUSION-SCOPED (SPEC 7.5, scripts/campaign-exclusions.json) and n must ISOLATE every excluded property in a shard of its own -- otherwise declining that shard silently drops in-scope work with it. 177 does; scripts/campaign-subset.py REFUSES any n that does not, so this number is checked rather than trusted. Re-derive from the cost artifacts before changing it.
+    if: github.event_name == 'workflow_dispatch'  # dispatch-only. n=177 IS CHOSEN AGAINST A MEASUREMENT AND A CONSTRAINT, NOT ASSUMED: the per-property cost table (#98) makes worst-shard share NON-MONOTONE in n, and 112/128/192 all reach the 6.9% floor set by the single heaviest property -- but the floor is not the binding constraint any more. `gh-counts` prop 1 is MEASURED at 218 minutes ALONE, inside the 330-minute step ceiling, so it is no longer the binding constraint and the campaign is EXCLUSION-SCOPED (SPEC 7.5, scripts/campaign-exclusions.json) and its exclusion set is currently EMPTY, so this is the ordinary FULL-CORPUS campaign; n must still keep any excluded shard free of in-scope work and scripts/campaign-subset.py REFUSES an n that does not, so this number is checked rather than trusted. 177 was chosen when gh-counts prop 1 was excluded, because it isolates that property in shard 140; the exclusion was then TESTED and WITHDRAWN -- shard 140 alone finishes in 218 minutes under the campaign's own wall cap with a real `unproven` verdict. Re-derive from the cost artifacts before changing it.
     needs: rust-conformance-sharded-matrix
     runs-on: ubuntu-latest
     timeout-minutes: 350
@@ -447,9 +447,12 @@ jobs:
         # when the step begins.
         #
         # 330, NOT 300, AND THE 30 MINUTES ARE MEASURED. The heaviest single
-        # property in the corpus is `gh-counts` prop 1, PROJECTED at ~647 minutes of
-        # WALL time (#98; two runs were CUT at 283/284 min without ever finishing
-        # it) — and a property is indivisible, so that is the floor no shard count
+        # property in the corpus is `gh-counts` prop 1, MEASURED at 218 minutes of
+        # WALL time running shard 140 alone under this job's own wall cap (#98;
+        # the earlier ~647-min PROJECTION extrapolated from two runs CUT at
+        # 283/284 min that never finished it, and attempt reuse has since taken
+        # the property from 20 attempts to 15) — a property is indivisible, so
+        # that is the floor no shard count
         # or assignment rule goes below. At 300 that left 16 minutes for setup,
         # build and the three other properties sharing its shard, and run
         # 33999840937 lost shard 81 by roughly a minute of overhead: 127 of 128
@@ -493,7 +496,7 @@ jobs:
 
   rust-conformance-sharded-merge:
     name: independent kernel (Rust) — merge shards, verify union == S
-    if: github.event_name == 'workflow_dispatch'  # dispatch-only. n=177 IS CHOSEN AGAINST A MEASUREMENT AND A CONSTRAINT, NOT ASSUMED: the per-property cost table (#98) makes worst-shard share NON-MONOTONE in n, and 112/128/192 all reach the 6.9% floor set by the single heaviest property -- but the floor is not the binding constraint any more. `gh-counts` prop 1 is PROJECTED at ~647 minutes ALONE (two runs were CUT at 283/284 min without finishing it) and a property is INDIVISIBLE, so the campaign is EXCLUSION-SCOPED (SPEC 7.5, scripts/campaign-exclusions.json) and n must ISOLATE every excluded property in a shard of its own -- otherwise declining that shard silently drops in-scope work with it. 177 does; scripts/campaign-subset.py REFUSES any n that does not, so this number is checked rather than trusted. Re-derive from the cost artifacts before changing it.
+    if: github.event_name == 'workflow_dispatch'  # dispatch-only. n=177 IS CHOSEN AGAINST A MEASUREMENT AND A CONSTRAINT, NOT ASSUMED: the per-property cost table (#98) makes worst-shard share NON-MONOTONE in n, and 112/128/192 all reach the 6.9% floor set by the single heaviest property -- but the floor is not the binding constraint any more. `gh-counts` prop 1 is MEASURED at 218 minutes ALONE, inside the 330-minute step ceiling, so it is no longer the binding constraint and the campaign is EXCLUSION-SCOPED (SPEC 7.5, scripts/campaign-exclusions.json) and its exclusion set is currently EMPTY, so this is the ordinary FULL-CORPUS campaign; n must still keep any excluded shard free of in-scope work and scripts/campaign-subset.py REFUSES an n that does not, so this number is checked rather than trusted. 177 was chosen when gh-counts prop 1 was excluded, because it isolates that property in shard 140; the exclusion was then TESTED and WITHDRAWN -- shard 140 alone finishes in 218 minutes under the campaign's own wall cap with a real `unproven` verdict. Re-derive from the cost artifacts before changing it.
     needs: [rust-conformance-sharded-matrix, rust-conformance-sharded]
     runs-on: ubuntu-latest
     steps:
