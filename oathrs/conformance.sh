@@ -342,13 +342,64 @@ echo "        cap makes a slow run LONGER, never shorter. Throughput needs proof
 echo "        sharding; until then this job may still exceed a CI time limit, and that"
 echo "        is a scheduling fact rather than a kernel divergence."
 
+# A HEARTBEAT, BECAUSE THIS PHASE USED TO EMIT NOTHING UNTIL IT FINISHED. The
+# proving call below is hours long and its only output was the wall time printed
+# AFTER it returned — so a run killed by a CI job limit produced no signal at
+# all: not how far it got, not what fraction remained, not what limit would have
+# sufficed. Six consecutive scheduled/dispatched runs were cancelled at the
+# 350-minute cap before anyone noticed, precisely because there was nothing to
+# notice (#193).
+#
+# IT READS THE PROVER'S OWN PROGRESS STREAM, NOT prove.txt. The first version of
+# this counted lines in prove.txt, on the assumption that a per-definition
+# println! meant streaming. It does not: cmd_prove runs prove_all_cost to
+# COMPLETION and only then prints, sorted by name — so prove.txt is empty for the
+# entire solver phase and every heartbeat would have reported "0 definitions".
+# A progress meter that always reads zero is worse than none: it looks like
+# instrumentation while carrying no information.
+#
+# OATHRS_PROVE_PROGRESS is the stream built for this, and it already carries a
+# DENOMINATOR, so nothing here has to invent one:
+#     [prove] r0 proving str-code (47/236)
+# Round, definition, index, total. It is stderr-only, in no fixture, and has zero
+# effect on verdicts or bytes.
 _t0=$(date +%s)
-"$BIN" prove --hints "$FIX/prove/outcomes.json" $SRC > "$TMP/prove.txt" 2> "$TMP/prove.err"
+OATHRS_PROVE_PROGRESS=1 "$BIN" prove --hints "$FIX/prove/outcomes.json" $SRC \
+  > "$TMP/prove.txt" 2> "$TMP/prove.err" &
+_pid=$!
+# IT SLEEPS IN SHORT STEPS, NOT ONE LONG ONE. A single `sleep 300` keeps this
+# subshell — and the sleep it spawned — alive for up to five minutes after
+# proving finishes, holding the inherited stdout open and delaying the harness
+# past its own verdict. This repo has been bitten by exactly that shape before.
+# Stepping means it notices within 15 seconds and exits on its own.
+(
+  _tick=0
+  while kill -0 "$_pid" 2>/dev/null; do
+    sleep 15
+    _tick=$((_tick + 1))
+    [ $((_tick % 20)) -eq 0 ] || continue
+    kill -0 "$_pid" 2>/dev/null || break
+    _m=$(( ($(date +%s) - _t0) / 60 ))
+    _last=$(grep '^\[prove\] ' "$TMP/prove.err" 2>/dev/null | tail -1)
+    echo "  ... ${_m}m elapsed — ${_last:-no progress line yet}"
+  done
+) &
+_hb=$!
+wait "$_pid"
 pstat=$?
+# Kill the subshell AND the sleep it is inside: killing the parent alone leaves
+# an orphaned sleep holding stdout.
+pkill -P "$_hb" 2>/dev/null
+kill "$_hb" 2>/dev/null
+wait "$_hb" 2>/dev/null
 _elapsed=$(( $(date +%s) - _t0 ))
 echo "  proving wall time: ${_elapsed}s"
 if [ $pstat -ne 0 ]; then
-  echo "  FAIL: prove command errored (exit $pstat)"; sed -n '1,5p' "$TMP/prove.err"; fail=1
+  # FILTER THE PROGRESS LINES OUT OF THE ERROR EXCERPT. They share stderr with
+  # the diagnostic, and there are thousands of them, so an unfiltered head would
+  # show progress where the error should be.
+  echo "  FAIL: prove command errored (exit $pstat)"
+  grep -v '^\[prove\] ' "$TMP/prove.err" | sed -n '1,5p'; fail=1
 fi
 # SPEC §7.2 attempt validity is PER PROPERTY (#72): an environmental abort (wall
 # cap, missing telemetry, memout) no longer invalidates the run — the run

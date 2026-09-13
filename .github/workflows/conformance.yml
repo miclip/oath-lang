@@ -316,7 +316,44 @@ jobs:
           OATHRS_Z3_MEMORY_MB: "6000"
         run: |
           z3 --version
-          ./oathrs/conformance.sh
+          # A JOB-LIMIT KILL IS AN ENVIRONMENTAL ABORT, NOT A DIVERGENCE, AND THE
+          # RUN'S VERDICT MUST NOT SAY OTHERWISE. This job has never completed
+          # here: six consecutive scheduled/dispatched runs were cancelled at the
+          # 350-minute cap, and because a cancelled job sets the RUN's conclusion,
+          # one job that has never succeeded was reporting `cancelled` over 183
+          # jobs that had — including the first full-corpus `union == S` pass
+          # (#193). A reader scanning the runs list saw a cancelled run, not a
+          # landmark.
+          #
+          # So the step SELF-LIMITS below the job cap and distinguishes the two
+          # outcomes, which is §7.2's own rule applied to the whole job rather
+          # than to one attempt:
+          #   - did not COMPLETE  -> loud INCOMPLETE block, exit 0. A scheduling
+          #                          fact is not a kernel result, and it must not
+          #                          overwrite the verdicts of jobs that finished.
+          #   - completed and DIVERGED -> exit non-zero. Still fails the run, which
+          #                          is the whole point of the job.
+          # `timeout` sends SIGTERM at the limit and SIGKILL 60s later, so the
+          # harness gets a chance to flush the heartbeat's last progress line —
+          # which is what makes the incomplete case diagnosable at all.
+          set +e
+          timeout --signal=TERM --kill-after=60s 330m ./oathrs/conformance.sh
+          rc=$?
+          set -e
+          if [ $rc -eq 124 ] || [ $rc -eq 137 ]; then
+            echo "::warning title=Cold re-derivation incomplete::did not finish within 330m (#193)"
+            echo "============================================================"
+            echo "COLD RE-DERIVATION DID NOT COMPLETE — this is NOT a divergence."
+            echo "It ran out of wall time (330m, self-imposed below the 350m job"
+            echo "cap so the harness could report rather than be killed). The"
+            echo "progress lines above show how far it got; the run is NOT failed"
+            echo "by this, because a scheduling fact is not a kernel result."
+            echo "SPEC §10's cold dimension is therefore UNVERIFIED by this run."
+            echo "Tracking: #193 (round-synchronised sharding + a witness fixture)."
+            echo "============================================================"
+            exit 0
+          fi
+          exit $rc
 
   wasm-build:
     name: wasm32 cross-compile

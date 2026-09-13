@@ -122,7 +122,7 @@ NEEDS_ENV: dict[tuple[str, str], str] = {
         "provisions the runner's z3; the gate itself pins the version it used",
     ("conformance", "pin z3 4.16.0", "947e3becff78"):
         "provisions the runner's z3",
-    ("conformance", "six-check conformance (cold prove at the SPEC budget)", "bd65366a170a"):
+    ("conformance", "six-check conformance (cold prove at the SPEC budget)", "5721e52d4891"):
         "the 9+ hour cold re-derivation; schedule/dispatch only",
     # #98 sharded verification (matrix + merge). Schedule/dispatch only, and each
     # needs a CI runner with the pinned z3 — the same class as the full job above.
