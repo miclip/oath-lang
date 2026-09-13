@@ -35,31 +35,23 @@ EXHIBITS = undertested nontotal bad_reverse float
 # Listed AFTER the examples, whose definitions it depends on.
 APPS = apps/github-webhook/webhook.oath apps/github-webhook/hdr-probe.oath \
        apps/github-webhook/report.oath
-PROVABLE = length append sum count reverse map filter foldr foldl \
-           reverse-onto flatten all any snoc find last init \
-           product maximum minimum take-while drop-while count-matching zip zip-with \
-           contains index-of is-sorted insert \
-           merge t-flatten t-insert t-member t-size \
-           i-contains i-overlaps i-intersect i-hull \
-           q-to-list q-push q-peek q-drop rle-encode \
-           sort count-append count-by list-eq-by min-by max-by insert-by sort-by \
-           take drop max2 abs sign clamp or-else shout full-name \
-           greet greet-or-guest initials-or \
-           map-option flat-map-option is-some is-none \
-           map-result map-err unwrap-or \
-           kv-get kv-put rename-key safe-get \
-           join-with lengths main-echo main-fetch \
-           set-member set-add set-union set-inter \
-           map-size map-keys map-values map-insert map-lookup map-has map-merge \
-           str-len str-append str-prefix str-take str-drop str-split str-join str-split-join \
-           req-method req-path req-headers req-body req-received-at header-first echo-handler \
-           config-key config-has-key config-missing check-config \
-           bytes-ok str-bytes hex-nibble hex-valid hex-decode-unchecked hex-decode within-window \
-           add-s mul-s opt commute
-# Props exist but sit outside the provable fragment (Int-recursion fuel
-# bounds, or / and % in bodies): mutation-scored, never proven. merge
-# graduated to PROVABLE when lexicographic induction landed (#17).
-TESTED_ONLY = rle-expand rle-decode e-mod e-div rot
+# THE PROVABLE / TESTED_ONLY LISTS ARE GONE, and their absence is the point.
+# They were hand-written enumerations of what `make prove` should attempt, and
+# they drifted: 112 of 236 corpus definitions ended up in NEITHER, so nothing
+# ever attempted them, and `union == S` (SPEC 7.5) measured the result as 109
+# properties that PROVE under re-derivation and were missing from
+# outcomes.json (#192). `make prove` and `make mutate` now both DERIVE their
+# set from the store, so there is no list left to drift — and a dead list that
+# still looks authoritative is worse than none, because the next reader
+# believes it.
+#
+# What the lists knew that the store does not, kept because it is still true:
+# some definitions have properties that sit OUTSIDE the provable fragment
+# (Int-recursion fuel bounds, `/` and `%` in bodies) and are mutation-scored
+# but never proven. That is a fact about those goals, not a set to maintain —
+# attempting one costs a budget and records nothing, which is why deriving the
+# set is affordable rather than free. `merge` graduated out of that group when
+# lexicographic induction landed (#17).
 
 OATH = ./oath/oath
 AUTHOR ?= claude-main
