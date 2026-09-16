@@ -89,12 +89,16 @@ type specStrength struct {
 // orchestrated toward the same mistake. No signing arrangement can close that
 // gap, so no rung claims to.
 const (
-	// authSamePrincipal: spec and body signed by the same key.
+	// authSamePrincipal: spec and body attributed to the same principal.
 	authSamePrincipal = "SAME_PRINCIPAL"
-	// authDistinctKeys: different keys signed, but the registry has no evidence
-	// that CONTROL was separated — one process holding both key files produces
-	// exactly this record. This is the honest ceiling until custody is attestable.
-	authDistinctKeys = "DISTINCT_KEYS_CUSTODY_UNVERIFIED"
+	// authDistinctPrincipals: different principals, but the registry has no
+	// evidence that CONTROL was separated — one process holding both key files
+	// produces exactly this record, and so do two write-scoped bearer tokens,
+	// which involve no key at all. The rung is named for PRINCIPALS rather than
+	// keys deliberately: authorshipLevel does not consult signedness (see below),
+	// so it cannot claim a key was ever held. This is the honest ceiling until
+	// custody is attestable.
+	authDistinctPrincipals = "DISTINCT_PRINCIPALS_CUSTODY_UNVERIFIED"
 	// authSeparateCustody: the signing arrangement provides independently
 	// checkable evidence that one process could not use both keys. Not yet
 	// reachable — no mechanism here yet earns it, so nothing emits it.
@@ -150,7 +154,7 @@ func authorshipLevel(specAuthor, bodyAuthor string) string {
 	if specAuthor == bodyAuthor {
 		return authSamePrincipal
 	}
-	return authDistinctKeys
+	return authDistinctPrincipals
 }
 
 // unsignedAttribution reports whether this artifact's recorded authorship rests
@@ -392,17 +396,21 @@ func explainLimitations(st *Store, p *explainPkg, m *Meta) []string {
 	if len(m.WaivedMutants) > 0 {
 		out = append(out, fmt.Sprintf("%d surviving mutant(s) WAIVED as equivalent — judgement calls, listed with their justifications", len(m.WaivedMutants)))
 	}
-	// Authorship limitations, one per rung. The DISTINCT_KEYS case still carries a
-	// limitation: two key files on one machine, used by one process, produce
-	// exactly that record, and dropping the caveat there would let the registry
-	// vouch for control separation it cannot observe.
+	// Authorship limitations, one per rung. The DISTINCT_PRINCIPALS case still
+	// carries a limitation: two key files on one machine, used by one process,
+	// produce exactly that record — as do two write-scoped bearer tokens, with no
+	// key involved — and dropping the caveat there would let the registry vouch
+	// for control separation it cannot observe. The text says PRINCIPALS rather
+	// than keys for that second reason: this rung is computed from the author
+	// strings alone, so it cannot assert that anything was signed. Whether the
+	// attribution rests on signed entries is the separate axis reported above.
 	switch p.Provenance.Authorship {
 	case authUnattributed:
 		out = append(out, "authorship is UNATTRIBUTED — no principal is recorded for the spec or the body, so there is nothing to hold accountable for either")
 	case authSamePrincipal:
 		out = append(out, "spec and body share an author — no authorship separation, so the specification was not written independently of the code")
-	case authDistinctKeys:
-		out = append(out, "spec and body were signed by DISTINCT KEYS, but key custody and independent control were NOT verified — one process holding both keys produces this same record, so this is not evidence of independent authorship")
+	case authDistinctPrincipals:
+		out = append(out, "spec and body are attributed to DISTINCT PRINCIPALS, but custody and independent control were NOT verified — one process holding both keys produces this same record, as do two bearer tokens holding no key at all, so this is not evidence of independent authorship")
 	}
 	// Licensing. The publisher's terms are an assertion; nothing here has evaluated
 	// them against the dependency closure, and saying so is the point — a consumer who

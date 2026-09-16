@@ -35,12 +35,40 @@ change the trust story:
 }
 ```
 
-- `require_authorship_separation` — the split-agent result made structural:
-  spec and body lineage must belong to different principals. Attribution is
-  computed by diffing against the name's previous object: unchanged props
-  inherit the spec author, unchanged body inherits the body author, changes
-  assign the submitter. One principal cannot both write the promises and
-  the code that keeps them, on names that matter.
+- `require_authorship_separation` — spec and body lineage must belong to
+  different principals. Attribution is computed by diffing against the name's
+  previous object: unchanged props inherit the spec author, unchanged body
+  inherits the body author, changes assign the submitter. So ONE KEY cannot
+  both write the promises and the code that keeps them, on names that matter.
+
+  **A PRINCIPAL STRING, NOT A PARTY, AND THE DIFFERENCE IS THE WHOLE CEILING
+  (#82).** The check is a comparison of two author strings, and a principal is
+  whichever of two things authenticated the write:
+
+  - under SIGNATURE auth, a keypair — so one person holding two defeats the
+    check completely, and not as an exotic attack: running `oath keygen` on a
+    laptop and again on a desktop produces exactly it;
+  - under BEARER auth, a server-vouched LABEL from the tokens file. Two
+    write-scoped tokens naming `alice` and `bob` satisfy this policy with NO
+    key possession whatsoever, by anyone holding both tokens.
+
+  So the policy does not establish distinct parties, and does not even
+  establish distinct key possession — only distinct principal strings. The
+  registry can verify what authenticated a write; it cannot verify who wrote
+  it, and nothing in the journal distinguishes two parties from one party
+  wearing two principals.
+
+  The kernel says so rather than implying otherwise, across TWO axes that it
+  deliberately keeps apart. `oath explain` reports this arrangement as
+  `DISTINCT_PRINCIPALS_CUSTODY_UNVERIFIED` — named for principals, not keys,
+  because the rung is computed from the author strings alone and so cannot
+  claim a key was ever held. Whether the attribution is evidence or the
+  registry's word is the SECOND axis, reported as its own limitation: a
+  bearer-authenticated write leaves an unsigned journal entry, and `explain`
+  says so. The rung above, `SEPARATE_CUSTODY_ATTESTED`, is deliberately
+  unreachable: no mechanism here earns it, so nothing emits it.
+  Read the policy as what it is — a real constraint on key reuse, and a
+  discipline rather than a proof about people.
 - `require_total` — termination must be proven (structural/nonrecursive).
 - `forbid_falsified` — falsified objects cannot hold the name.
 - `min_mutation_score` — spec strength floor, computed as (killed + waived)

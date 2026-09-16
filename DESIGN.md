@@ -607,9 +607,12 @@ Phases 1–3 are COMPLETE, beyond the original ambitions:
   recursion remains out.
 - **Phase 3 ✓** — MCP over stdio and over HTTP with authenticated
   principals (the team store), spec-only context slices by token budget,
-  and a repoint policy that makes authorship separation enforcement, not
-  procedure (docs/teamstore.md). Cross-kernel CI guards it all on every
-  push.
+  and a repoint policy that makes authorship separation CHECKABLE rather
+  than procedural — checkable at the PRINCIPAL STRING, which is the honest
+  ceiling: one party holding two keypairs, or two write-scoped bearer
+  tokens, defeats it, so `explain` reports that rung as
+  DISTINCT_PRINCIPALS_CUSTODY_UNVERIFIED rather than as separation (#82,
+  docs/teamstore.md). Cross-kernel CI guards it all on every push.
 - **Phase 4 (open)** — the flywheel: verification as an unfakeable reward
   signal. Scoped experiments ran (docs/experiments): the split-agent
   workflow validated spec-blind implementation; the 2×2 rematch showed the

@@ -186,7 +186,8 @@ naming a key could not be tied to the caller.
   operations). Historical replay IS prevented; two correctly signed publications
   naming the same parent can still both verify. The transactional store is the
   prerequisite, not an optimisation.
-- **Custody separation.** Distinct keys for spec and body are not evidence of
-  independent authorship: one process holding both key files produces an
-  identical record. `oath explain` reports
-  `DISTINCT_KEYS_CUSTODY_UNVERIFIED` and keeps the limitation (#82).
+- **Custody separation.** Distinct principals for spec and body are not
+  evidence of independent authorship: one process holding both key files
+  produces an identical record, and two write-scoped bearer tokens produce it
+  with no key at all. `oath explain` reports
+  `DISTINCT_PRINCIPALS_CUSTODY_UNVERIFIED` and keeps the limitation (#82).
