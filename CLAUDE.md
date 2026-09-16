@@ -762,6 +762,24 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               evidence is a person, which is why this one waits
                               on the first external contributor rather than on
                               any instrument
+                              #193 — CI has no passing evidence for §10's COLD
+                              dimension. The legibility work has landed; what
+                              remains needs capabilities in the BLIND kernel, so
+                              it is a SPEC change plus a blind round, never a
+                              workflow edit. TWO TRIGGERS, either sufficient: a
+                              reason to want the cold dimension in CI
+                              SPECIFICALLY — not a feeling that the job ought to
+                              pass, since `union == S` already covers the seeded
+                              dimension over the full corpus; or the run
+                              COMPLETING inside the harness's own self-limit,
+                              stated against THAT rather than the platform
+                              ceiling because a run costing more than the
+                              self-limit is invisible, and a trigger nothing can
+                              observe is not one. A §7.5 draft FAILED its blind
+                              read — read the issue before writing another, the
+                              reason is structural. Everything else, including
+                              why sharding is the repair and what a witness for
+                              it can and cannot be, is ON THE ISSUE
   no CLOCK at all             (none)
 
 **THE TABLE ABOVE IS THE ONLY PLACE THAT INTRODUCES AN ISSUE AS WORK. Prose
