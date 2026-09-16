@@ -80,6 +80,15 @@ FORBIDDEN_BY_SECTION = {
     # docs/deterministic-instantiation.md — the last is excluded automatically
     # because PROSE ships only docs/SPEC.md, so the design doc is never in ALLOW.
     "7.2": ("oath/", "codebase/", "docs/experiments/", "website/"),
+    # §8.6 (#87): implement signed publication IN oathrs from the SPEC alone, so
+    # oathrs/ ships and oath/ must not — oath/envelope.go is the reference
+    # implementation of the exact rule under test, and the canonical envelope
+    # bytes are what a publication signature is computed over, so a single
+    # copied byte-order decision would destroy the whole N-version result.
+    # scripts/ is forbidden for the §7.4 reason: several scripts restate parts
+    # of §8.6 (publication-receipt.py builds envelopes, check-spec-vs-fixtures.py
+    # encodes the vector contract), which is the answer sitting beside the task.
+    "8.6": ("oath/", "codebase/", "docs/experiments/", "website/", "scripts/"),
 }
 
 SURFACES = {
@@ -89,7 +98,21 @@ SURFACES = {
     # omission in this table: if the section turns out to need an artifact it
     # never declared, that is a finding for the round rather than something to
     # quietly supply here.
-    "8.6": ([], ["fixtures/envelope/vectors.jsonl", "fixtures/MANIFEST.md"]),
+    # §8.6 declares NO normative data. That is the honest current state, not an
+    # omission in this table: if the section turns out to need an artifact it
+    # never declared, that is a finding for the round rather than something to
+    # quietly supply here.
+    #
+    # oathrs/ ships because #87 is a REPAIR of the Rust kernel, not a from-scratch
+    # implementation. fixtures/campaign/ and fixtures/prove/ are BUILD
+    # dependencies rather than witnesses and leak nothing about envelopes:
+    # campaign.rs include_str!s the campaign vectors, so without them `cargo test`
+    # does not compile at all, and the prove fixtures are read by the existing
+    # sharding tests. A blind subject that cannot run the suite already in the
+    # tree is a weaker subject than one that can.
+    "8.6": ([], ["oathrs/", "fixtures/envelope/vectors.jsonl", "fixtures/campaign/",
+                 "fixtures/prove/outcomes.json", "fixtures/prove/shards.txt",
+                 "fixtures/MANIFEST.md"]),
     # #103: repair oathrs against SPEC §10.0a. The Rust kernel and the fixture
     # corpus it must reproduce; NOT oath/, which implements the same rule.
     "10.0a": ([], ["oathrs/", "fixtures/canonical/", "fixtures/hashes.txt",
