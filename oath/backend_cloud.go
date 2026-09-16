@@ -87,6 +87,13 @@ func (c *cloudBackend) completeProof(h string) error { return c.index.completePr
 func (c *cloudBackend) proofDepth() int              { return c.index.proofDepth() }
 func (c *cloudBackend) lock() (func(), error)        { return c.index.lock() }
 
+// appliedVia: pgIndex takes a session-level pg_advisory_lock(1); it opens no
+// transaction, and writeNames is a whole-index delete-then-insert under that
+// lock (docs/store-drivers.md records the row-level transactional repoint as
+// still-to-do). So this is advisory-lock and MUST NOT report transactional-cas
+// until the compare, the name update and the journal append are one operation.
+func (c *cloudBackend) appliedVia() string { return appliedViaAdvisory }
+
 var _ backend = (*cloudBackend)(nil)
 
 // ---------------------------------------------------------------------------

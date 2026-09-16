@@ -45,6 +45,15 @@ type backend interface {
 	// lock serializes the mutable read-modify-write sections. The returned
 	// release is always safe to call.
 	lock() (func(), error)
+
+	// appliedVia reports the serialization mechanism in force RIGHT NOW, for
+	// SPEC §8.6.3's journal member. It is a method rather than a constant per
+	// driver because the regime is not a property of the backend TYPE: the fs
+	// lock is a no-op unless OATH_STORE_LOCK is set, so one fs store can write
+	// some entries with a lock held and some without. Answering from the type
+	// would stamp "advisory-lock" on writes where no lock was ever taken —
+	// precisely the false claim the member exists to make detectable.
+	appliedVia() string
 }
 
 // ---------------------------------------------------------------------------
@@ -202,6 +211,14 @@ func (f *fsBackend) proofDepth() int {
 // via OATH_STORE_LOCK so local single-process use pays nothing.
 func (f *fsBackend) lock() (func(), error) { return fsFileLock(f.root) }
 
+// appliedVia: the fs lock is conditional, so this is answered per call.
+func (f *fsBackend) appliedVia() string {
+	if storeLockEnabled() {
+		return appliedViaAdvisory
+	}
+	return appliedViaNone
+}
+
 // ---------------------------------------------------------------------------
 // memBackend — an in-memory backend, so the whole store test suite can run
 // backend-agnostically and prove the seam is faithful (docs/store-drivers.md).
@@ -280,6 +297,13 @@ func (m *memBackend) completeProof(hash string) error {
 func (m *memBackend) proofDepth() int { return len(m.queue) }
 
 func (m *memBackend) lock() (func(), error) { m.mu.Lock(); return m.mu.Unlock, nil }
+
+// appliedVia: a mutex serializes each critical section, but AppendLog takes the
+// lock independently of the name write, so the transition as a whole is not
+// indivisible — the window is narrowed, not closed, which is exactly what
+// advisory-lock states. NOT transactional-cas, which would require the compare,
+// the name update and the append to be one operation.
+func (m *memBackend) appliedVia() string { return appliedViaAdvisory }
 
 var _ backend = (*fsBackend)(nil)
 var _ backend = (*memBackend)(nil)

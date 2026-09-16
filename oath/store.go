@@ -540,11 +540,45 @@ type LogEntry struct {
 	//
 	// Empty on entries written before this field existed; see nameTransitionOf.
 	NameTransition string `json:"name_transition,omitempty"`
-	Chain          string `json:"chain,omitempty"` // tamper-evidence: SHA-256(prev chain + this entry sans chain)
+	// AppliedVia is the STORE's statement about how it applied this transition
+	// (SPEC §8.6.3): "none", "advisory-lock" or "transactional-cas". It is the
+	// first member here that is neither re-derivable from content nor
+	// attributable to the author, so it is handled differently in three places:
+	//
+	//   - it is STORE-assigned, so signedContent zeroes it (§8.4). Leaving it in
+	//     would break every signed entry — the author cannot know which mechanism
+	//     the store will use, so a signer signs it empty while the store persists
+	//     it populated, and honest records would fail their own verification;
+	//   - EMPTY IS A FOURTH STATE, not "none". Absence means the journal does not
+	//     say. Writing "none" for historical entries would fabricate the weakest
+	//     possible claim about writes that never carried one;
+	//   - surfaces MUST render it apart from re-derived evidence (§8.6.5).
+	AppliedVia string `json:"applied_via,omitempty"`
+	Chain      string `json:"chain,omitempty"` // tamper-evidence: SHA-256(prev chain + this entry sans chain)
+}
+
+// How a store applied a transition (SPEC §8.6.3). These name the MECHANISM and
+// assert no guarantee; the empty string is the distinct "not recorded" state.
+const (
+	appliedViaNone     = "none"              // no serialization mechanism
+	appliedViaAdvisory = "advisory-lock"     // narrows the shared-writer window; does not close it
+	appliedViaTxnCAS   = "transactional-cas" // compare, name update and journal append are ONE atomic operation
+)
+
+// validAppliedVia reports whether v is a defined value or the "not recorded"
+// empty state. Written as a total function over the member rather than as a
+// check at one call site: §8.2.1 makes an unknown member value a journal-level
+// error, so every reader needs the same answer.
+func validAppliedVia(v string) bool {
+	switch v {
+	case "", appliedViaNone, appliedViaAdvisory, appliedViaTxnCAS:
+		return true
+	}
+	return false
 }
 
 // signedContent is the deterministic byte string a signer signs: the entry with
-// the store-assigned fields (seq, time, verifier, chain) and the signature
+// the store-assigned fields (seq, time, verifier, applied_via, chain) and the signature
 // itself zeroed. So the signature covers exactly the AUTHORED fields — pubkey,
 // author label, name, kind, status, object hash, prior hash, verdicts, context —
 // independent of where the entry lands in the log. The chain seals ordering on
@@ -704,6 +738,7 @@ func signedContent(e *LogEntry) []byte {
 	c.Seq = 0
 	c.Time = ""
 	c.Verifier = ""
+	c.AppliedVia = "" // store-assigned (§8.4): the author cannot know it, so it is not signed
 	c.Chain = ""
 	c.Sig = ""
 	// Canonical encoder, not json.Marshal: the signature is over these bytes, so the
@@ -747,6 +782,9 @@ func (s *Store) AppendLog(e *LogEntry) error {
 	defer release()
 	e.Verifier = kernelVersion
 	e.Time = time.Now().UTC().Format(time.RFC3339)
+	// Stamped AFTER the lock is held, so it reports the regime that actually
+	// applied to this write rather than the one in force when the caller began.
+	e.AppliedVia = s.be.appliedVia()
 	prior, _ := s.be.readJournal() // absent → empty prefix, anchor = sha256("")
 	e.Seq = strings.Count(string(prior), "\n") + 1
 	// Sign the authored fields before chaining, so the chain seals the signature
@@ -790,6 +828,13 @@ func (s *Store) VerifyLog() error {
 		var e LogEntry
 		if err := json.Unmarshal(raw, &e); err != nil {
 			return fmt.Errorf("journal line %d is not valid JSON: %v", line, err)
+		}
+		if !validAppliedVia(e.AppliedVia) {
+			// A DEFINED member carrying an undefined value round-trips the §8.2.1
+			// canonical re-encode unchanged, so the unknown-member rule cannot see
+			// it. Checked explicitly, or a store could write any string here and a
+			// consumer would have to guess whether it named a mechanism.
+			return fmt.Errorf("journal line %d records applied_via %q, which is not a defined mechanism (SPEC §8.6.3)", line, e.AppliedVia)
 		}
 		if e.Seq != line {
 			return fmt.Errorf("journal line %d has seq %d: entries are missing or reordered", line, e.Seq)
@@ -1015,7 +1060,8 @@ func decodeEnvelopeB64(s string) ([]byte, error) {
 var journalFieldOrder = []string{
 	"seq", "time", "author", "verifier", "name", "kind", "status", "hash", "prev",
 	"error", "guarantee", "termination", "context", "pubkey", "sig",
-	"envelope_b64", "author_pubkey", "author_sig", "parent_rev", "name_transition", "chain",
+	"envelope_b64", "author_pubkey", "author_sig", "recipient_sig", "parent_rev",
+	"name_transition", "applied_via", "chain",
 }
 
 // canonicalJournalLine re-encodes an entry to its canonical compact JSON.

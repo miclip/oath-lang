@@ -2845,7 +2845,7 @@ order:
 seq, time, author, verifier, name, kind, status, hash, prev, error,
 guarantee, termination, context, pubkey, sig,
 envelope_b64, author_pubkey, author_sig, recipient_sig, parent_rev,
-name_transition, chain
+name_transition, applied_via, chain
 ```
 
 Field order is NORMATIVE, not a formatting preference. `chain` (§8) and the
@@ -2967,9 +2967,16 @@ it verify).
   *signed content*.
 
 The **signed content** is the entry's compact JSON with the store-assigned
-fields `seq`, `time`, `verifier`, and `chain`, and the `sig` field itself, all
-set empty/omitted — i.e. the signature covers exactly the authored fields
-(including `pubkey`), independent of where the entry lands in the log. A signer
+fields `seq`, `time`, `verifier`, `applied_via`, and `chain`, and the `sig` field
+itself, all set empty/omitted — i.e. the signature covers exactly the authored
+fields (including `pubkey`), independent of where the entry lands in the log.
+
+The exclusion list is exactly the set the STORE assigns rather than the author.
+`applied_via` (§8.6.3) belongs to it for a reason worth stating, because
+including it would break signatures in a way that looks like tampering: the
+author cannot know which mechanism the store will use, so a signer would
+necessarily sign the member empty while the store persists it populated, and
+every signed entry would then fail verification against its own honest record. A signer
 sets `pubkey` and `sig` before the `chain` is computed, so the chain covers the
 signature too.
 
@@ -3235,6 +3242,35 @@ envelope are the safe designs.
   touches no name. Deriving either dimension from the other is not reliable, so
   both are recorded.
 
+- `applied_via`: the serialization mechanism the store applied this entry under
+  — `none`, `advisory-lock`, or `transactional-cas`. It is recorded on every
+  entry a store writes, not only on those that move a name: the regime is a fact
+  about the write, and an auditor reading a store's history needs it to be
+  continuous rather than to appear only where a transition happened. **Absent is a fourth state and is not
+  `none`.** Absence is the absence of a record; `none` is a positive statement
+  that no coordination mechanism was used. Collapsing them would retroactively
+  make a claim on behalf of every entry written before this member existed, and
+  the fabricated claim would be the WEAKEST one — describing a store's own
+  history as uncoordinated when the journal simply never asked.
+
+  The values name the MECHANISM and assert no guarantee by themselves:
+
+  - `none` — the store states no serialization mechanism was used (a
+    single-process local store).
+  - `advisory-lock` — the store states it used a lock that narrows the
+    shared-writer window without closing it.
+  - `transactional-cas` — the store states that the parent/revision comparison,
+    the name update, AND the journal append all participate in ONE atomic
+    operation. All three are required: a transaction around the name update
+    alone leaves exactly the lost-update window this value exists to rule out,
+    so "a transaction was used" is not the property being claimed —
+    "the compare and the apply were indivisible" is.
+
+  Unlike every other member in this section, this is the STORE's statement about
+  its own behaviour rather than the author's. It is therefore store-assigned and
+  excluded from the entry signature (§8.4), and §8.6.5 governs how it may be
+  read.
+
 These are metadata and never part of definition identity (§9). Their position in
 the entry's member order is normative — see §8.2.1.
 
@@ -3383,6 +3419,31 @@ other. Historical **replay** is prevented — an old envelope fails the parent o
 revision check — but concurrent same-parent publication is not. A store claiming
 atomic signed transitions MUST enforce the comparison and the update in a single
 atomic operation; an implementation that cannot MUST NOT claim it.
+
+That prohibition is made OBSERVABLE by `applied_via` (§8.6.3), which gives the
+claim somewhere to be made and somewhere to be read. A store recording
+`transactional-cas` while applying the transition by any other means is
+non-conformant in a way an auditor can detect from the journal alone; a store
+that records nothing claims nothing, and absence MUST NOT be read as a claim of
+weakness.
+
+**`applied_via` is a self-declaration, not re-derivable evidence, and a
+conformant surface MUST present it as one.** Unlike a guarantee or a termination
+verdict, the mechanism is not a function of any bytes the artifact carries — it
+is a statement about how a write happened, and it is unobservable after the
+fact. What the chain adds is only that the store said this at write time and has
+not since changed its story. It never establishes that the statement was true.
+A surface reporting it therefore MUST keep it separate from re-derived evidence
+and MUST NOT present it as verified.
+
+**No signature ever covers it, on any entry.** §8.4 excludes `applied_via` from
+the signed content because the store assigns it, so a surface MUST NOT describe
+the member as attested, signed, or authenticated — not even on an entry whose
+`sig` verifies. What a valid entry signature establishes is authorship of the
+AUTHORED fields, and the mechanism is not among them. The journal chain DOES
+cover the member, since the chain is computed over the whole entry; that is the
+strongest available statement about it, it is strictly weaker than attestation,
+and it holds only for a verifier that has actually checked the chain.
 
 Distinct signing keys for spec and body are also not evidence of independent
 authorship: one process holding both keys produces an identical record. Custody

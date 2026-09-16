@@ -87,6 +87,22 @@ func cmdAudit(st *Store) {
 		}
 	}
 
+	// Rendered in its OWN section, below the verified evidence and never mixed
+	// into it: SPEC §8.6.5 requires a surface to keep a self-declaration apart
+	// from what it re-derives. Every other number above is recomputed from bytes;
+	// this one is only repeated back.
+	if mech := appliedViaCensus(entries); len(mech) > 0 {
+		fmt.Printf("\nAPPLICATION MECHANISM (DECLARED BY THE STORE, NOT VERIFIED):\n")
+		for _, k := range sortedByCount(mech) {
+			fmt.Printf("  %6d  %s\n", mech[k], appliedViaLabel(k))
+		}
+		fmt.Printf("  This is the store's own statement about how it applied each write.\n")
+		fmt.Printf("  It cannot be reconstructed from any artifact: the mechanism leaves no\n")
+		fmt.Printf("  trace in the bytes. The chain establishes only that the store said this\n")
+		fmt.Printf("  at write time and has not since changed its story — never that it was\n")
+		fmt.Printf("  true. Entries recording nothing claim nothing; absence is not weakness.\n")
+	}
+
 	if unsigned > 0 {
 		fmt.Printf("\nWHAT THE UNSIGNED ENTRIES DO AND DO NOT ESTABLISH:\n")
 		fmt.Printf("  The chain proves they have not been altered since they were written.\n")
@@ -219,4 +235,34 @@ func foldedTransition(entries []LogEntry, want LogEntry) (transition, source str
 		}
 	}
 	return want.nameTransitionOf(), src
+}
+
+// appliedViaCensus counts the declared application mechanism across entries,
+// keyed by the raw member value. The "" key is kept deliberately and rendered as
+// NOT RECORDED: folding absent into "none" would report a positive claim of
+// uncoordinated writing on behalf of every entry written before the member
+// existed (SPEC §8.6.3).
+func appliedViaCensus(entries []LogEntry) map[string]int {
+	m := map[string]int{}
+	for _, e := range entries {
+		m[e.AppliedVia]++
+	}
+	return m
+}
+
+// appliedViaLabel renders one mechanism WITHOUT asserting it. Each string says
+// who is speaking ("the store states"), because the value is a declaration and
+// §8.6.5 forbids presenting it as verified.
+func appliedViaLabel(v string) string {
+	switch v {
+	case "":
+		return "NOT RECORDED — the journal does not say (distinct from a stated \"none\")"
+	case appliedViaNone:
+		return "the store states NO serialization mechanism was used"
+	case appliedViaAdvisory:
+		return "the store states an ADVISORY LOCK was used — the shared-writer window is narrowed, not closed"
+	case appliedViaTxnCAS:
+		return "the store states a TRANSACTIONAL CAS was used — compare, name update and append indivisible"
+	}
+	return "unrecognised value " + v
 }

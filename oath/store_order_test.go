@@ -13,12 +13,17 @@ import (
 // A drift here is invisible until a second implementation computes different chain
 // hashes from the same logical entry.
 func TestJournalFieldOrderIsNormative(t *testing.T) {
-	// Every field populated, so omitempty hides nothing.
+	// EVERY field populated, so omitempty hides nothing. This is the whole
+	// instrument: a member left empty here is invisible to the comparison below,
+	// so the guard silently stops covering it. Two members were missing when
+	// applied_via was added — applied_via itself and recipient_sig, which had
+	// drifted out of journalFieldOrder unnoticed for exactly this reason.
 	e := &LogEntry{Seq: 1, Time: "t", Author: "a", Verifier: "v", Name: "n", Kind: "func",
 		Status: "accepted", Hash: "h", Prev: "p", Error: "e", Guarantee: "g",
 		Termination: "structural", Context: "c", Pubkey: "pk", Sig: "s",
-		EnvelopeB64: "ZQ==", AuthorPubkey: "apk", AuthorSig: "as", ParentRev: "37",
-		NameTransition: transitionApplied, Chain: "ch"}
+		EnvelopeB64: "ZQ==", AuthorPubkey: "apk", AuthorSig: "as", RecipientSig: "rs",
+		ParentRev: "37", NameTransition: transitionApplied,
+		AppliedVia: appliedViaAdvisory, Chain: "ch"}
 	b, err := json.Marshal(e)
 	if err != nil {
 		t.Fatal(err)

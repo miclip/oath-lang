@@ -132,6 +132,17 @@ type explainProv struct {
 	// prefix. They are listed separately from the holder and MUST NOT be rendered
 	// as owners: a delegate holds revocable permission, never authority.
 	NamespaceDelegates []string `json:"namespace_delegates,omitempty"`
+	// AppliedVia is the store's DECLARATION of how it applied the write that bound
+	// this name (SPEC §8.6.3). Empty means the journal does not say.
+	//
+	// THERE IS DELIBERATELY NO "SIGNED" COMPANION FIELD. §8.4 excludes this member
+	// from the entry signature because the STORE assigns it, so no signature ever
+	// covers it — for any entry, signed or not. A flag pairing it with the entry's
+	// signedness would invite exactly the reading it must never receive: that a
+	// signed entry's mechanism is attested. The journal CHAIN does seal it (the
+	// chain is computed over the whole entry), which is a weaker and different
+	// claim, and one `oath audit` is what verifies.
+	AppliedVia string `json:"applied_via,omitempty"`
 	// License is the terms the PUBLISHER asserted in the signed publication envelope.
 	// It is an assertion, never a derivation: the registry can later evaluate
 	// compatibility across a dependency closure, and reporting the two as one claim is
@@ -262,6 +273,7 @@ func buildExplain(st *Store, name string) (*explainPkg, error) {
 		},
 	}
 
+	pkg.Provenance.AppliedVia = bindingAppliedVia(st, name, h)
 	pkg.Provenance.Owner, pkg.Provenance.OwnerSource = nameOwner(st, name)
 	if r, ok := governingReservation(st, name); ok {
 		pkg.Provenance.Namespace, pkg.Provenance.NamespaceHolder = r.Namespace, r.Pubkey
@@ -412,6 +424,21 @@ func explainLimitations(st *Store, p *explainPkg, m *Meta) []string {
 	case authDistinctPrincipals:
 		out = append(out, "spec and body are attributed to DISTINCT PRINCIPALS, but custody and independent control were NOT verified — one process holding both keys produces this same record, as do two bearer tokens holding no key at all, so this is not evidence of independent authorship")
 	}
+	// The store's own declaration, rendered in its own right and never folded into
+	// the verified findings above (SPEC §8.6.5). The wording tracks what is actually
+	// present: calling an UNSIGNED entry's field attested would be the overclaim this
+	// member exists to prevent, one layer further in.
+	if av := p.Provenance.AppliedVia; av != "" {
+		// Two things this must NOT say, both of which an earlier draft did. Not
+		// "signed": §8.4 excludes the member from the entry signature, so it is
+		// unsigned even on a signed entry. Not "chain-sealed" as an established
+		// fact: this command does not run VerifyLog, so the seal is a property of
+		// the format here, not a verification that has happened.
+		out = append(out, "registry-RECORDED: the store declares this name was bound via "+av+
+			" — its own statement about how the write happened. No signature covers it (§8.4 excludes it), "+
+			"it cannot be reconstructed from the artifact, and it is NOT verified here; `oath audit` checks the chain that seals it")
+	}
+
 	// Licensing. The publisher's terms are an assertion; nothing here has evaluated
 	// them against the dependency closure, and saying so is the point — a consumer who
 	// reads a licence off an artifact and acts on it is making a legal decision, and
@@ -572,4 +599,38 @@ func assertedLicense(st *Store, name string) string {
 		}
 	}
 	return lic
+}
+
+// bindingAppliedVia finds the store's declared application mechanism for the
+// write that actually bound this name to this hash.
+//
+// It selects the entry by the DERIVED transition (§8.6.4
+// ENV-VERIFY-DERIVED-TRANSITION), not by the stored `name_transition` member.
+// That distinction is the whole correctness of this function: the member is
+// absent on every entry predating it and on paths that never set it, so testing
+// it directly treats "the entry did not say" as "this entry may have bound the
+// name" — and a later `prove` write, which moves no name, then lends its
+// mechanism to a binding it had nothing to do with. Both entries are honest
+// about themselves, so the misattribution is invisible downstream.
+//
+// Deriving requires knowing what the name was bound to immediately before each
+// entry, so this walks FORWARD maintaining that state rather than backward from
+// the end. Returns "" when the journal does not say, which is the common case
+// for anything published before the member existed and MUST NOT be rendered as
+// a mechanism.
+func bindingAppliedVia(st *Store, name, hash string) string {
+	bound, found := "", ""
+	for _, e := range st.ReadLog() {
+		if e.Name != name {
+			continue
+		}
+		if deriveTransition(&e, bound) != transitionApplied {
+			continue
+		}
+		bound = e.Hash
+		if e.Hash == hash {
+			found = e.AppliedVia // keep the LAST binding to this hash
+		}
+	}
+	return found
 }
