@@ -257,6 +257,10 @@ check-transformation-table:
 check-coaching-leak:
 	@python3 scripts/check-coaching-leak.py
 
+.PHONY: check-spec-member-lists
+check-spec-member-lists:
+	@python3 scripts/check-spec-member-lists.py
+
 .PHONY: check-implementability
 check-implementability:
 	@python3 scripts/check-implementability.py

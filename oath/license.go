@@ -479,6 +479,7 @@ func evaluateLicensingSubject(st *Store, name, subjectArtifact, subjectLicense, 
 // no publication in this store.
 func licenseOfHash(st *Store, hash string) (license, name, pubDigest string) {
 	entries := st.ReadLog()
+	dt := derivedTransitions(entries)
 	for i := range entries {
 		e := &entries[i]
 		if e.Hash != hash || e.EnvelopeB64 == "" {
@@ -486,10 +487,10 @@ func licenseOfHash(st *Store, hash string) (license, name, pubDigest string) {
 		}
 		// Only ACCEPTED publications assert terms (LICENSE-ASSERTED-BY-PUBLICATION). A
 		// refused or blocked attempt is validly journaled WITH its signed envelope, but
-		// it moved no name — nameTransitionOf reports `none` — so consuming its terms
+		// it moved no name — the derived transition is `none` — so consuming its terms
 		// would let a rejected assertion override an accepted one. This mirrors
 		// assertedLicense's own `transitionNone` skip.
-		if e.nameTransitionOf() == transitionNone {
+		if dt[e.Seq] == transitionNone {
 			continue
 		}
 		octets, err := decodeEnvelopeB64(e.EnvelopeB64)

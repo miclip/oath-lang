@@ -441,12 +441,14 @@ func signedPublicationBy(st *Store, name, pubkey string) bool {
 	if pubkey == "" {
 		return false
 	}
-	for _, e := range st.ReadLog() {
+	entries := st.ReadLog()
+	dt := derivedTransitions(entries)
+	for _, e := range entries {
 		if e.Name != name {
 			continue
 		}
 		// Any ACCEPTED publication corroborates, not only one that MOVED the name.
-		// This deliberately does NOT use repointedName(), which is `applied`-only:
+		// This deliberately does NOT test for `applied` only:
 		// re-publishing identical content signs an `unchanged` transition, and that
 		// is exactly what signing an existing corpus produces — so an
 		// applied-only test would make adoption impossible for the very campaign
@@ -457,7 +459,7 @@ func signedPublicationBy(st *Store, name, pubkey string) bool {
 		// mistake in this codebase (see §8.6.4 clause 5 and
 		// LICENSE-ASSERTED-BY-PUBLICATION): an `unchanged` transition is still a
 		// publication.
-		if e.nameTransitionOf() == transitionNone {
+		if dt[e.Seq] == transitionNone {
 			continue
 		}
 		if e.AuthorPubkey == pubkey && e.EnvelopeB64 != "" && e.AuthorSig != "" {
@@ -500,11 +502,13 @@ func nameOwnerUnderPolicy(st *Store, pol *Policy, name string) (owner, source st
 }
 
 func nameOwner(st *Store, name string) (owner, source string) {
-	for _, e := range st.ReadLog() {
+	entries := st.ReadLog()
+	dt := derivedTransitions(entries)
+	for _, e := range entries {
 		// repointedName, not Status: a FALSIFIED but applied first publication does
 		// establish the name; rejected, blocked and pending do not, or a failed
 		// submission would squat a name for free.
-		if e.Name != name || !e.repointedName() {
+		if e.Name != name || dt[e.Seq] != transitionApplied {
 			continue
 		}
 		if e.EnvelopeB64 != "" && e.AuthorPubkey != "" && e.AuthorSig != "" {
@@ -548,8 +552,10 @@ func ownerIsCryptographic(source string) bool {
 // registry wrote and no verifier can check, while sequence is the order the
 // journal actually records.
 func nameFirstBoundSeq(st *Store, name string) int {
-	for _, e := range st.ReadLog() {
-		if e.Name == name && e.repointedName() {
+	entries := st.ReadLog()
+	dt := derivedTransitions(entries)
+	for _, e := range entries {
+		if e.Name == name && dt[e.Seq] == transitionApplied {
 			return e.Seq
 		}
 	}

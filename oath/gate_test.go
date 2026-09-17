@@ -154,9 +154,10 @@ func TestNameRevisionCountsRepointsOnly(t *testing.T) {
 		{"blocked", false},
 		{"pending", false},
 	} {
-		e := &LogEntry{Status: tc.status}
-		if got := e.repointedName(); got != tc.moves {
-			t.Fatalf("status %q: repointedName()=%v, want %v", tc.status, got, tc.moves)
+		// Hash differs from `bound`, so a status that binds derives `applied`.
+		e := &LogEntry{Status: tc.status, Hash: "h2"}
+		if got := deriveTransition(e, "h1") == transitionApplied; got != tc.moves {
+			t.Fatalf("status %q: applied=%v, want %v", tc.status, got, tc.moves)
 		}
 	}
 }
@@ -302,26 +303,37 @@ func TestEnvelopeSurvivesNonTransitions(t *testing.T) {
 	}
 }
 
-// Legacy entries have no name_transition, so it is derived — and the derivation must
-// exclude kinds that never touched a name. Missing that is how a proof-worker entry
-// inflates a name's revision.
-func TestLegacyTransitionDerivationExcludesNonPutKinds(t *testing.T) {
+// The transition is DERIVED from history for every entry (SPEC §8.6.2), and the
+// derivation must exclude kinds that never touched a name — counting one inflates
+// a name's revision — while INCLUDING the kinds that did.
+//
+// The `bound` column is what the name points at when the entry is reached, which
+// is the state only a fold has. The superseded per-entry version took `prev`
+// instead; that is the test §8.6.2 rules out, because a legacy no-op carries no
+// `prev` at all.
+func TestTransitionDerivationCoversExactlyTheNameMovingKinds(t *testing.T) {
 	for _, tc := range []struct {
-		kind, status, prev, hash, want string
+		kind, status, bound, hash, want string
 	}{
 		{"func", "accepted", "", "h", transitionApplied},
 		{"data", "accepted", "", "h", transitionApplied},
 		{"func", "falsified", "", "h", transitionApplied},
 		{"func", "accepted", "h", "h", transitionUnchanged},
+		// `put` is §8.5's verification-worker repoint. It was missing from this
+		// list, so a gate-bound name never advanced its revision.
+		{"put", "accepted", "g", "h", transitionApplied},
+		{"put", "accepted", "h", "h", transitionUnchanged},
+		{"put", "blocked", "g", "h", transitionNone},
+		// Controls: widening the kind list must not sweep these in.
 		{"prove", "accepted", "", "h", transitionNone},
 		{"cross", "accepted", "", "h", transitionNone},
 		{"cross", "falsified", "", "h", transitionNone},
 		{"func", "rejected", "", "h", transitionNone},
 		{"func", "blocked", "", "h", transitionNone},
 	} {
-		e := &LogEntry{Kind: tc.kind, Status: tc.status, Prev: tc.prev, Hash: tc.hash}
-		if got := e.nameTransitionOf(); got != tc.want {
-			t.Fatalf("legacy %s/%s: derived %q, want %q", tc.kind, tc.status, got, tc.want)
+		e := &LogEntry{Kind: tc.kind, Status: tc.status, Hash: tc.hash}
+		if got := deriveTransition(e, tc.bound); got != tc.want {
+			t.Fatalf("%s/%s bound=%q: derived %q, want %q", tc.kind, tc.status, tc.bound, got, tc.want)
 		}
 	}
 }

@@ -34,12 +34,18 @@ func TestPendingEntriesSortCanonically(t *testing.T) {
 // envelopes prepared against a state that never changed.
 func TestProveEntriesAreNotNameTransitions(t *testing.T) {
 	e := &LogEntry{Name: "n", Kind: "prove", Status: "accepted", NameTransition: transitionNone}
-	if e.repointedName() {
+	if deriveTransition(e, "h") == transitionApplied {
 		t.Fatal("a prove entry counted as a name transition")
 	}
-	// Legacy prove entries carry no field and must derive the same way.
+	// An entry carrying NO member must derive the same way: the derivation never
+	// consults the member, so its presence or absence cannot change the answer.
 	legacy := &LogEntry{Name: "n", Kind: "prove", Status: "accepted"}
-	if legacy.nameTransitionOf() != transitionNone {
-		t.Fatalf("legacy prove entry derived %q, want %q", legacy.nameTransitionOf(), transitionNone)
+	if got := deriveTransition(legacy, "h"); got != transitionNone {
+		t.Fatalf("prove entry without a stated member derived %q, want %q", got, transitionNone)
+	}
+	// And a LYING member must not be believed — the fail-open path §8.6.4 names.
+	lying := &LogEntry{Name: "n", Kind: "prove", Status: "accepted", NameTransition: transitionApplied}
+	if got := deriveTransition(lying, "h"); got != transitionNone {
+		t.Fatalf("a stored member overrode the derivation: got %q, want %q", got, transitionNone)
 	}
 }

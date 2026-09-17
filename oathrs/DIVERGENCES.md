@@ -2706,3 +2706,143 @@ reading that keeps `n = 1` exactly equal to the unsharded seeded verifier.
    of green `--shard` jobs run under different hints, a different z3, a different
    rlimit, or a different partition cannot be assembled into an unsound hybrid no
    single application of `F` produced.
+
+## 88. Signed publication (#87, §8.6) — IMPLEMENTED against all 32 vectors; ONE OUTRIGHT CONTRADICTION, and three byte-level forks nothing witnesses
+
+Blind round against `4f54cdc`: §8.6 implemented in Rust from `docs/SPEC.md` and
+`fixtures/envelope/vectors.jsonl` alone, with `oath/` absent from the dispatch
+tree rather than merely forbidden. Four new modules; Ed25519 and base64 written
+by hand (no crate was reachable offline). All 32 fixture records pass.
+
+**The strongest single result, and why it is worth more than the vector count.**
+The fixture's `seed_b64` reproduces the recorded public key AND the recorded
+signature over the recorded octets, byte for byte. §8.6.4a makes signing
+deterministic, so that one assertion exercises field arithmetic, scalar
+reduction, hash ordering and envelope encoding together, against values this
+kernel did not produce. RFC 8032 §7.1 TEST 1 passes as independent corroboration
+of the curve code.
+
+### 88.1 §8.6.2 and §8.6.4 require opposite things — NOT an ambiguity, a contradiction
+
+§8.6.2: *"An entry has applied a transition if and only if its `name_transition`
+member is `applied`"*, and the legacy fold *"MUST NOT be extended to entries
+that carry the member"*.
+
+§8.6.4 ENV-VERIFY-DERIVED-TRANSITION: a verifier *"MUST DERIVE the transition
+from the journal history preceding the entry (§8.6.2), and MUST NOT take it from
+the entry's `name_transition` member"*.
+
+For an entry carrying the member, §8.6.2 says read it and do not fold; §8.6.4
+says fold and do not read it. §8.6.4 even cites §8.6.2 as the source of a
+derivation §8.6.2 restricts to legacy entries. Both cannot be obeyed.
+
+The subject chose §8.6.4, **inferred** from the fact that only §8.6.4 attaches a
+threat model (a store labels a transition `unchanged`, attaches a genuine
+signature over an unrelated envelope, and clause 5 never runs). That matches the
+reference kernel, whose `deriveTransition` is documented as authoritative with
+the stored member cross-checked against it — but the subject could not know
+that, and a reader who picked the other side would be equally justified by the
+text. This is the round's headline defect and the repair is §8.6.2's.
+
+### 88.2 Three byte-level forks with no fixture anywhere
+
+Each determines `chain`, entry signatures and entry digests, so two kernels
+disagreeing reject each other's journals wholesale — the exact failure §8.2.1
+opens by describing. All three were resolved by **guess or convention**:
+
+- **§8.2.1 — the case of the hex digits in `\u00XX`.** Never stated. Chose
+  lowercase.
+- **§8 — is the chain `anchor` hex TEXT or raw BYTES?** `chain` is defined as a
+  rendered lowercase-hex value, so "the chain of the most recent entry" admits
+  both readings. Chose the text.
+- **§8 — what "the entire byte prefix before this entry" includes.** Chose
+  including the preceding entries' LF separators, from the word "entire", noting
+  the tension with §8.2.1's "the record separator is NOT part of entry
+  identity".
+
+### 88.3 §8's member list has drifted from §8.2.1's, and it fails OPEN
+
+§8 enumerates the entry's members and says *"This list names the members;
+§8.2.1 fixes their bytes"* — but omits `parent_rev` and `applied_via`, both of
+which §8.2.1 orders and §8.6.3 defines normatively. A reader building the entry
+type from §8 alone silently drops `parent_rev`, which skips ENV-VERIFY-REVISION
+— the only check that catches ABA replay — **while every vector still passes**.
+
+Two sources for one fact, drifted twice: `parent_rev` before this round, and
+`applied_via` in the commit that added it (1641a5e) three commits earlier.
+
+### 88.4 §8.6.4a leaves two Ed25519 conditions undefined
+
+- *"Canonical point encodings"* is used and never defined. Chose RFC 8032
+  §5.1.3 — `y` as a 255-bit little-endian integer must be `< p`, the encoding
+  must name a point, `x = 0` with the sign bit set is refused. A kernel reading
+  "canonical" as merely "decodes to a point" accepts `y >= p` and diverges.
+  **Inferred from RFC 8032**, which §8.6.4a cites for the verification equation
+  but not for this.
+- SIG-SMALL-ORDER constrains `A` and says nothing about `R`, so **no order
+  condition is imposed on `R`**. Reported as the text as written, not as a
+  judgement that it is harmless.
+
+### 88.5 §8.5's `put`-kind entry cannot advance a revision under §8.6.2
+
+§8.6.2 restricts applying entries to `kind` ∈ {`data`, `func`, absent}. §8.5
+describes a verification worker repointing a name by journaling *"a `put`-kind
+entry with `prev`"* — a kind that applies nothing, so a genuine repoint would
+never advance the revision. Followed §8.6.2, which owns the rule. No fixture
+reaches it.
+
+### 88.6 Two clauses that cannot be witnessed, measured rather than argued
+
+The subject applied §10.1's own delete-a-rule method to its own work. Six of
+~25 rules were deletable with the suite green; four were exactly the clauses
+§10.1 already lists as unwitnessed. Two are structural:
+
+- **ENV-VERIFY-SIGNATURE's *"not over a re-encoding of the parsed envelope"* is
+  unfalsifiable here.** Mutating the verifier to sign over `encode()` of the
+  parse survives every test — it must, because ENV-REENCODE makes the two
+  byte-identical for any envelope that parses. The clause is a safety margin for
+  a NON-strict parser and cannot be witnessed by a strict one.
+- **ENV-REENCODE is currently redundant.** Deleting it alone changes no verdict;
+  deleting ENV-REV-CANONICAL's leading-zero clause alone changes no verdict;
+  deleting both lets `parent_rev=01` through. `encode` is a function of the
+  parsed fields and every field rule admits one text per value, so the parse is
+  already injective. Kept anyway — a later field with real spelling freedom
+  makes the redundancy vanish with nothing announcing it.
+
+### 88.7 The fixture's journal line is not a valid journal under §8.2
+
+`vectors.jsonl`'s journal record carries `"seq":0`, while §8.2 fixes `seq` as one
+plus the number of existing records and §8 requires rejecting a gap. It is
+evidently a template for the §8.6.4 obligations rather than a store's log — but
+a blind implementation that wires it into a whole-journal verifier fails *because
+it is correct*. The subject routed the fixture through the per-entry obligation
+path instead.
+
+### 88.8 Smaller underdeterminations
+
+- **Empty `license=`** is neither admitted nor refused: §8.6.1 gives
+  `SPDX | -` and says the field is deliberately not validated. Accepted it, since
+  refusing would be the validation the section forbids. **Inferred.**
+- **How many licence states a `/1` envelope needs.** §8.6.1 requires reporting
+  the no-assertion state *"rather than as an empty field"* and distinguishes
+  "the format had no licence line" from "the publisher chose to say nothing",
+  without saying whether that is two states or three. Chose three. Requirement
+  derived, shape inferred.
+- **ENV-STORE-PRINCIPAL** says only to verify the signing key is the
+  authenticated principal. Also required the envelope's `author` to equal it,
+  reading §8.6.4 clause 3 forward — admitting a publication that would fail
+  journal verification on landing is not defensible. No vector distinguishes the
+  readings.
+- **Reject record 14** is labelled *"wrong format version"* but carries an
+  `oath-publish/2` tag with six fields, so the reachable rule under the current
+  §8.6.1 is ENV-FIELD-COUNT, not ENV-TAG. A leftover from the era §8.6.1's own
+  note describes. The fixture test therefore asserts REFUSAL only: §8.6.1 states
+  its rules as a conjunction with no precedence, so which rule fires first is not
+  fixed by the specification and is not a portable claim.
+
+### What the round did not cover
+
+No CLI surface (nothing in the dispatch root wires one and §8.6 requires none);
+§8.7 is out of scope, so `recipient_sig` is carried as an opaque member in the
+normative position and nothing interprets it; the Ed25519 is not constant-time
+and says so at the site — everything §8.6 verifies is public data.

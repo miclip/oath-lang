@@ -85,6 +85,7 @@ RUN: set[tuple[str, str]] = {
     ("conformance", "normative prose describes the bytes the kernel emits", "6dfee53dcfa9"),
     ("conformance", "independent-implementability ledger (SPEC §13)", "1fc7c0ec8b93"),
     ("conformance", "no coaching leak into always-loaded context", "734a42986146"),
+    ("conformance", "The journal's two member lists still agree (§8 vs §8.2.1)", "90a37369b1b1"),
     ("conformance", "§14's transformation is a total single-valued mapping", "cf40474ee9a9"),
     ("conformance", "identity constants are findable in the spec (SPEC §13)", "75e7abdc3809"),
     ("conformance", "bridge-obligation bytes match SPEC §7.4", "79e07338aadd"),

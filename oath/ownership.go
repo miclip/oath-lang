@@ -113,8 +113,10 @@ func lastPublisher(st *Store, name string) string {
 	// nameOwner deliberately KEEPS repointedName(): establishing who first BOUND a
 	// name does require a transition that applied, or a no-op would establish it.
 	who := ""
-	for _, e := range st.ReadLog() {
-		if e.Name == name && e.nameTransitionOf() != transitionNone {
+	entries := st.ReadLog()
+	dt := derivedTransitions(entries)
+	for _, e := range entries {
+		if e.Name == name && dt[e.Seq] != transitionNone {
 			if e.AuthorPubkey != "" {
 				who = e.AuthorPubkey
 			} else {

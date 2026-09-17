@@ -609,10 +609,33 @@ const (
 // must not advance a revision — otherwise an invalid attempt could invalidate an
 // already-prepared legitimate envelope, or make client and registry disagree about
 // the current parent.
-// repointedName is valid ONLY for entries that declare their transition. Legacy
-// entries cannot be classified in isolation — see nameTransitions.
-func (e *LogEntry) repointedName() bool {
-	return e.nameTransitionOf() == transitionApplied
+// derivedTransitions folds the WHOLE journal once and returns every entry's
+// effective transition by `seq`.
+//
+// THIS IS THE SINGLE AUTHORITY §8.6.2 REQUIRES: the transition is derived from
+// journal history for EVERY entry, and a stored `name_transition` is only ever
+// cross-checked against it. The per-entry method this replaced did the opposite
+// twice over — it returned the stored member when present (the fail-open path
+// §8.6.4 names: a store labels an applied transition `unchanged`, attaches a
+// genuine signature over an unrelated envelope, and clause 5 never runs), and
+// fell back to the `prev == hash` test §8.6.2 explicitly rules out, which misses
+// not some no-ops but ALL of them.
+//
+// A map keyed by seq rather than a per-entry call, because the answer is not a
+// property of an entry: it depends on what the name was bound to at that point,
+// which only a fold knows.
+func derivedTransitions(entries []LogEntry) map[int]string {
+	bound := map[string]string{} // name -> what it is bound to, as of entries seen
+	out := make(map[int]string, len(entries))
+	for i := range entries {
+		e := &entries[i]
+		t := deriveTransition(e, bound[e.Name])
+		out[e.Seq] = t
+		if t == transitionApplied {
+			bound[e.Name] = e.Hash
+		}
+	}
+	return out
 }
 
 // nameTransitions folds the journal for one name, yielding each of its entries with
@@ -683,49 +706,20 @@ func nameTransitions(entries []LogEntry, name string) []struct {
 // nothing to cross-check, and the result is reported as reconstructed.
 func deriveTransition(e *LogEntry, bound string) string {
 	switch e.Kind {
-	case "data", "func", "":
+	case "data", "func", "put", "":
 	default:
 		// `prove` and `cross` entries concern an ARTIFACT and touch no name.
 		return transitionNone
 	}
+	// `put` is here because §8.5's verification worker repoints a name with a
+	// `put`-kind `accepted` entry. Omitting it made every gate-bound name derive
+	// `none` for a write that DID move the binding, so the revision never
+	// advanced and ABA replay protection lapsed for those names. Invisible to the
+	// committed corpus, which is published directly and contains no `put` entry
+	// at all — the defect lives only where the async gate runs.
 	switch e.Status {
 	case "accepted", "falsified":
 		if e.Hash != "" && e.Hash == bound {
-			return transitionUnchanged
-		}
-		return transitionApplied
-	}
-	return transitionNone
-}
-
-// nameTransitionOf returns the entry's name transition, deriving it only for
-// LEGACY entries written before the field existed.
-//
-// The legacy derivation is quarantined here rather than spread through callers, so
-// there is exactly one place where inference happens and it is visibly confined to
-// old data. New entries state their transition and are never inferred.
-//
-// Legacy rules, and why each is what it is:
-//   - kinds other than data/func never touched a name (`prove` and `cross` entries
-//     concern an artifact), so they are `none` regardless of status. Missing this is
-//     how a proof-worker entry could inflate a name's revision;
-//   - accepted/falsified DID bind the name, so they are transitions. Falsified must
-//     stay included: falsified entries in the committed corpus carry `prev`;
-//   - a legacy entry whose prev EQUALS its hash was a no-op, so `unchanged`. Old
-//     entries collapsed an unchanged binding to prev="", so this is rarely
-//     detectable in practice — which is precisely why the collapse was removed.
-func (e *LogEntry) nameTransitionOf() string {
-	if e.NameTransition != "" {
-		return e.NameTransition
-	}
-	switch e.Kind {
-	case "data", "func", "":
-	default:
-		return transitionNone
-	}
-	switch e.Status {
-	case "accepted", "falsified":
-		if e.Prev != "" && e.Prev == e.Hash {
 			return transitionUnchanged
 		}
 		return transitionApplied
@@ -816,6 +810,11 @@ func (s *Store) VerifyLog() error {
 	}
 	var prev string
 	chained := false
+	// What each name is bound to as of the entries verified so far. VerifyLog
+	// reads the journal in order, so the §8.6.2 fold is available here for free —
+	// and it is REQUIRED here, because this is where a store's stored
+	// name_transition gets cross-checked against history.
+	boundByName := map[string]string{}
 	pos := 0 // byte offset of the current line, for the legacy-prefix anchor
 	line := 0
 	for pos < len(b) {
@@ -828,6 +827,18 @@ func (s *Store) VerifyLog() error {
 		var e LogEntry
 		if err := json.Unmarshal(raw, &e); err != nil {
 			return fmt.Errorf("journal line %d is not valid JSON: %v", line, err)
+		}
+		// SPEC §8.6.2 + §8.6.4 ENV-VERIFY-DERIVED-TRANSITION. Derive from history;
+		// never read the stored member; fail on disagreement. Reading it instead
+		// was the fail-open path: a store labels an applied transition
+		// `unchanged`, attaches a genuine signature over an unrelated envelope,
+		// and the clause below never runs.
+		tr := deriveTransition(&e, boundByName[e.Name])
+		if e.NameTransition != "" && e.NameTransition != tr {
+			return fmt.Errorf("journal line %d records name_transition %q but the name's history derives %q (SPEC §8.6.4 ENV-VERIFY-DERIVED-TRANSITION)", line, e.NameTransition, tr)
+		}
+		if tr == transitionApplied {
+			boundByName[e.Name] = e.Hash
 		}
 		if !validAppliedVia(e.AppliedVia) {
 			// A DEFINED member carrying an undefined value round-trips the §8.2.1
@@ -949,7 +960,7 @@ func (s *Store) VerifyLog() error {
 				// Scoped with an `if` rather than a `continue`: continuing would skip to the
 				// next entry and bypass this entry's CHAIN verification too, silently
 				// weakening tamper-evidence in the name of narrowing one clause.
-				if e.nameTransitionOf() == transitionApplied {
+				if tr == transitionApplied {
 					parent := e.Prev
 					if parent == "" {
 						parent = noParent

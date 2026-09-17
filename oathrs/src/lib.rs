@@ -7,16 +7,20 @@
 //! wasm port surfaced (notably the evaluator's host-stack recursion, §3.1).
 
 pub mod analyze;
+pub mod base64;
 pub mod bridge;
 pub mod campaign;
 pub mod check;
 pub mod crypto;
+pub mod ed25519;
 pub mod elaborate;
+pub mod envelope;
 pub mod eval;
 pub mod fixture;
 pub mod gen;
 pub mod hash;
 pub mod ir;
+pub mod journal;
 pub mod sexpr;
 pub mod value;
 pub mod verify;

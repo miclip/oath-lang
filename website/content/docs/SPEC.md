@@ -2696,11 +2696,24 @@ Append-only, one JSON object per line: `seq`, `time` (RFC3339 UTC),
 `guarantee`, `termination`, `context`, `pubkey` (optional; §8.4), `sig`
 (optional; §8.4), `envelope_b64`, `author_pubkey`, `author_sig` (the author's
 publication statement; optional, all-or-none; §8.6.3), `recipient_sig` (the
-SECOND signature over the same octets, transfer only; §8.7), `name_transition`
-(`applied`|`unchanged`|`none`; §8.6.2), `chain`.
+SECOND signature over the same octets, transfer only; §8.7), `parent_rev` (the
+revision the author SIGNED AGAINST, a decimal string; §8.6.3), `name_transition`
+(`applied`|`unchanged`|`none`; §8.6.2), `applied_via` (the store's declared
+application mechanism; §8.6.3), `chain`.
 
 The exact member ORDER, the omission rule, and string escaping are normative — see
-§8.2.1. This list names the members; §8.2.1 fixes their bytes.
+§8.2.1. This list names the members; §8.2.1 fixes their bytes, and §8.2.1's order
+is the authoritative enumeration — if the two ever disagree, §8.2.1 is right and
+this list is stale.
+
+> **This list omitted `parent_rev` and `applied_via`, and the omission failed
+> OPEN.** A reader building the entry type from this section alone silently drops
+> `parent_rev` and therefore skips ENV-VERIFY-REVISION — the only check that
+> catches ABA replay — while every conformance vector still passes, because no
+> vector exercises the revision. One member drifted out unnoticed; the second was
+> never added when §8.6.3 introduced it. Two hand-maintained enumerations of one
+> fact disagree eventually, so `make check-spec-member-lists` now derives the
+> comparison rather than trusting either.
 
 Note that `prev` is the previous binding on EVERY publication of an existing name,
 including one that re-publishes the hash already bound; it is omitted only when the
@@ -2732,6 +2745,18 @@ where `entry-bytes` is the entry's compact JSON with `chain` empty (omitted),
 and `anchor` is the `chain` of the most recent chained entry — or, when no
 chained entry exists yet (a journal predating this field), the SHA-256 of the
 entire byte prefix before this entry, which retroactively seals legacy lines.
+
+`anchor` is the 64-character lowercase HEX TEXT in both cases, never the 32 raw
+bytes it renders, and `+` is concatenation of that text with the LF and the entry
+bytes. The legacy prefix is every byte of the file before this entry's first
+byte, INCLUDING the LF separators that terminate the preceding entries. Both are
+stated because neither is recoverable from the surrounding prose: `chain` is
+defined as a rendered value, so "the `chain` of the most recent entry" reads
+equally as the text or as the bytes, and "entire" does not by itself say whether
+a record separator belongs to the prefix. A kernel choosing differently on either
+point computes different chain values for the same journal, and the two then
+reject each other's logs wholesale — with no fixture anywhere to catch it. Found
+by an independent implementation that had to guess both.
 A verifier MUST reject a journal containing an unparseable line, a `seq` gap
 or reorder, an unchained entry after a chained one, or a `chain` mismatch.
 One limitation is inherent and disclosed rather than papered over: deleting
@@ -2868,7 +2893,12 @@ when empty.
 
 String values are escaped MINIMALLY: only `"`, `\`, and characters below U+0020
 are escaped, using JSON's short forms where they exist (`\"`, `\\`, `\b`, `\f`,
-`\n`, `\r`, `\t`) and `\u00XX` otherwise. All other characters, INCLUDING
+`\n`, `\r`, `\t`) and `\u00XX` otherwise, where `XX` is LOWERCASE hex (`\u001f`,
+never `\u001F`). The case is normative for the same reason the member order is:
+the chain, the entry signature and the entry digest are all computed over these
+bytes, so two kernels spelling one control character differently fork every
+journal containing one. The rule was silent on it until an independent
+implementation picked lowercase by convention and said so. All other characters, INCLUDING
 non-ASCII, appear as literal UTF-8. `<`, `>`, `&` and `/` MUST NOT be escaped.
 
 Two exceptions, both required: U+2028 and U+2029 MUST be escaped as `\u2028` and
@@ -3160,17 +3190,23 @@ harmless no-op would invalidate every envelope prepared against a state that nev
 changed. ABA protection is unaffected: A → B → A increments twice, so an envelope
 naming the first A carries the wrong revision even though the hash matches again.
 
-An entry has applied a transition if and only if its `name_transition` member is
-`applied`. This MUST NOT be inferred from `status`, `kind`, `prev`, or artifact
-equality for any entry that carries the member.
+Whether an entry applied a transition is DERIVED from journal history, for EVERY
+entry, and is never read from the entry's `name_transition` member. An
+implementation MUST derive it as follows:
 
-For LEGACY entries written before `name_transition` existed, an implementation
-MUST derive it as follows, and MUST NOT extend this derivation to entries that
-carry the member:
-
-- entries whose `kind` is neither `data` nor `func` (nor absent) applied nothing.
-  A `prove` (§8.5) or `cross` entry concerns an ARTIFACT and touches no name, so
-  counting it would inflate a name's revision;
+- entries whose `kind` is none of `data`, `func`, `put` (nor absent) applied
+  nothing. A `prove` (§8.5) or `cross` entry concerns an ARTIFACT and touches no
+  name, so counting it would inflate a name's revision. `put` IS a name-moving
+  kind and its omission here was a defect: §8.5's verification worker repoints a
+  name by journaling exactly a `put`-kind `accepted` entry, so excluding it made
+  a genuine repoint derive as `none` and the revision never advance — silently,
+  since such an entry moves the binding whether or not the fold counts it. The
+  effect is confined to names bound through the async proof gate, and it weakens
+  precisely the ABA protection this section exists to provide, for those names
+  only. No conformance vector reaches it and the reference corpus contains no
+  `put` entry, because that corpus is built by direct publication rather than
+  through the gate — so nothing available to either kernel could have caught it.
+  Found by an independent implementation reading §8.5 and §8.6.2 together;
 - otherwise, `accepted` and `falsified` applied a transition, EXCEPT where the
   entry's `hash` already equals what the name is bound to at that point in the log,
   which is a no-op (`unchanged`);
@@ -3178,7 +3214,32 @@ carry the member:
 
 The derivation is a FOLD over the name's entries, not a per-entry predicate. It
 must track what the name is bound to as it goes, and compare each entry's `hash`
-against that running value.
+against that running value. Entries written before `name_transition` existed
+carry no member and need no special case: the fold is the same computation for
+every entry, which is what makes the member's absence harmless.
+
+The stored `name_transition` member (§8.6.3) is a RECORD of what the store
+computed, never the authority for it. §8.6.4's ENV-VERIFY-DERIVED-TRANSITION
+requires a verifier to derive the value and to FAIL any entry whose stored member
+disagrees — so the member is redundant by construction, kept for diagnosis and
+for cross-checking the store, and an implementation MUST NOT take it as the
+answer for any entry.
+
+> **This paragraph required the OPPOSITE until an independent implementation
+> found it could not obey the specification at all.** It read *"an entry has
+> applied a transition if and only if its `name_transition` member is
+> `applied`"*, and confined the fold above to legacy entries — while §8.6.4 said
+> a verifier MUST derive the transition and MUST NOT take it from the member, and
+> cited THIS section for a derivation this section forbade it to use. Each
+> sentence was defensible alone; together they were unsatisfiable.
+>
+> Resolved toward §8.6.4 because only §8.6.4 states a failure direction: reading
+> the member inverts the trust model for exactly the field that decides whether
+> clause 5 runs, so a store could label a transition `unchanged`, attach a
+> genuine signature over an unrelated envelope, and never be checked. A
+> specification that determines no answer determines no interoperability, and
+> the blind implementation had to GUESS which half to obey — it guessed the one
+> the reference kernel had also chosen, which is luck rather than derivation.
 
 > A per-entry test — "`prev` equals `hash`, so it was a no-op" — cannot work, and
 > the first draft of this section specified exactly that. The rule legacy entries
@@ -3394,9 +3455,30 @@ reject. This version pins them.
 - **SIG-S-CANONICAL.** the encoded `S` is canonical, i.e. strictly less than the group order `L`.
   Non-canonical `S` values admit a second signature over the same message under
   the same key, which contradicts an envelope being *the author's statement*;
-- **SIG-POINTS-CANONICAL.** `R` and `A` are canonical point encodings.
+- **SIG-POINTS-CANONICAL.** `R` and `A` are canonical point encodings. A
+  **canonical point encoding** is one where the 32 octets, read as a 255-bit
+  little-endian `y` plus a sign bit, satisfy ALL of: `y` is strictly less than
+  `p = 2^255 - 19`; `y` names a point on the curve; and the encoding is not
+  `x = 0` with the sign bit set. The definition is spelled out because
+  "canonical" alone does not carry it: a verifier reading the word as merely
+  "decodes to some point" accepts `y >= p`, which re-admits the second encoding
+  of a point that this rule exists to exclude. RFC 8032 §5.1.3 is the same rule;
+  citing it for the verification equation and not for this left the strictest
+  half of the convention to the reader.
 
-**SIG-SMALL-ORDER.** A small-order `A` MUST be **rejected**.
+**SIG-SMALL-ORDER.** A small-order `A` MUST be **rejected**. A point is
+small-order iff `[8]A` is the identity — stated as the cofactor condition rather
+than as a list of the eight points, because an enumeration is a set someone wrote
+down and the condition is what it was written from.
+
+**No order condition is imposed on `R`.** That is the rule as written and it is
+deliberate here only in the sense that nothing in this version depends on it;
+SIG-SMALL-ORDER constrains `A` alone. It is stated explicitly because the
+surrounding text constrains `R` in SIG-POINTS-CANONICAL, so its absence from
+SIG-SMALL-ORDER otherwise reads as an oversight a careful implementer would
+"repair" — and a verifier that rejects small-order `R` rejects signatures a
+conformant one accepts, which is the portability failure this section opens by
+describing.
 
 > This was previously a MAY, which is not a tenable option in this position: if two
 > conforming verifiers may disagree about whether one signature is valid, then

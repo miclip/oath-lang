@@ -187,3 +187,38 @@ func TestAppliedViaIsNeverRenderedAsSigned(t *testing.T) {
 		}
 	}
 }
+
+// §8.5's verification worker repoints a name by journaling a `put`-kind
+// `accepted` entry. §8.6.2's kind list omitted `put`, so that write derived as
+// `none`: the binding moved and the revision did not, which lapses ABA replay
+// protection for every name bound through the async proof gate.
+//
+// Nothing available to either kernel could catch this. No conformance vector
+// reaches it, and the committed corpus contains no `put` entry at all — it is
+// published directly rather than through the gate — so the defect lives only
+// where the worker runs. Found by reading §8.5 and §8.6.2 together.
+func TestPutKindRepointAppliesATransition(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		e      LogEntry
+		bound  string
+		expect string
+	}{
+		{"worker repoint moves the binding",
+			LogEntry{Name: "n", Kind: "put", Status: "accepted", Hash: "h2", Prev: "h1"}, "h1", transitionApplied},
+		{"worker repoint to the SAME hash is still a no-op",
+			LogEntry{Name: "n", Kind: "put", Status: "accepted", Hash: "h1"}, "h1", transitionUnchanged},
+		{"a blocked put moves nothing",
+			LogEntry{Name: "n", Kind: "put", Status: "blocked", Hash: "h2"}, "h1", transitionNone},
+		// Controls: the kinds that must STILL apply nothing, or widening the list
+		// would inflate every name's revision instead of correcting one case.
+		{"prove concerns an artifact",
+			LogEntry{Name: "n", Kind: "prove", Status: "accepted", Hash: "h2"}, "h1", transitionNone},
+		{"cross concerns an artifact",
+			LogEntry{Name: "n", Kind: "cross", Status: "accepted", Hash: "h2"}, "h1", transitionNone},
+	} {
+		if got := deriveTransition(&tc.e, tc.bound); got != tc.expect {
+			t.Errorf("%s: derived %q, want %q", tc.name, got, tc.expect)
+		}
+	}
+}

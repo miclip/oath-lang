@@ -171,10 +171,10 @@ func cmdAuditEntry(st *Store, ref, mode string) {
 		// The FOLDED transition, not the per-entry derivation: a legacy no-op cannot be
 		// identified from one entry, so displaying nameTransitionOf here would show
 		// every re-publication as a state change while nameRevision counts correctly.
-		// Source as well as value: after the fold these two cases are not equally
-		// direct, and showing only the value would imply they are. A declared
-		// transition is what the store recorded; a derived one is what the history
-		// implies about an entry written before the field existed.
+		// Source as well as value: the transition is ALWAYS derived from history
+		// (§8.6.2), and the source line says whether a stored member was present
+		// and agreed. That is a statement about corroboration, never about where
+		// the answer came from — the answer always comes from the fold.
 		tr, src := foldedTransition(entries, e)
 		fmt.Printf("   name transition: %s\n   transition source: %s\n", tr, src)
 		fmt.Printf("   artifact %s\n", orNone(e.Hash))
@@ -225,16 +225,21 @@ func envelopeTextOf(e LogEntry) string {
 // foldedTransition resolves one entry's effective transition by folding its name's
 // history — the only way a legacy no-op is identifiable (see nameTransitions).
 func foldedTransition(entries []LogEntry, want LogEntry) (transition, source string) {
-	src := "declared"
-	if want.NameTransition == "" {
-		src = "derived-from-legacy-history"
+	// ALWAYS derived (SPEC §8.6.2): the fold is the authority for every entry, so
+	// the source cannot be "declared" — a stored member is a cross-check, and
+	// VerifyLog has already rejected the journal if one disagreed. Reporting
+	// "declared" whenever the member was present said the opposite of the rule it
+	// was displaying, and it said it for every modern entry.
+	src := "derived-from-history"
+	if want.NameTransition != "" {
+		src = "derived-from-history (a stored member agrees)"
 	}
 	for _, t := range nameTransitions(entries, want.Name) {
 		if t.Entry.Seq == want.Seq {
 			return t.Transition, src
 		}
 	}
-	return want.nameTransitionOf(), src
+	return deriveTransition(&want, ""), src
 }
 
 // appliedViaCensus counts the declared application mechanism across entries,
