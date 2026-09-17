@@ -286,17 +286,22 @@ func TestRejectsIdentityKey(t *testing.T) {
 	}
 }
 
-// Every derived small-order encoding must be refused, and ordinary keys must not be.
+// Every canonical small-order encoding must be refused, and ordinary keys must not be.
 //
-// Both halves matter. A blocklist that rejects too little leaves the hole open; one
+// The list is now the CONTROL, not the implementation: rejectWeakKey computes
+// [8]A == identity, and this asserts the computation agrees with the eight points
+// a reader can check against RFC 8032 by hand. A rewrite that silently stopped
+// refusing one of them would otherwise look like a passing refactor.
+//
+// Both halves matter. A check that rejects too little leaves the hole open; one
 // that rejects too much would refuse real authors, and a check that refuses
 // everything would "pass" a rejection test while breaking the system.
 func TestRejectsAllSmallOrderKeys(t *testing.T) {
-	if len(smallOrderEncodings) != 8 {
-		t.Fatalf("blocklist has %d entries, expected 8 — the 8-torsion subgroup of Ed25519 has exactly 8 points", len(smallOrderEncodings))
+	if len(smallOrderCanonicalEncodings) != 8 {
+		t.Fatalf("blocklist has %d entries, expected 8 — the 8-torsion subgroup of Ed25519 has exactly 8 points", len(smallOrderCanonicalEncodings))
 	}
 	seen := map[[32]byte]bool{}
-	for i, k := range smallOrderEncodings {
+	for i, k := range smallOrderCanonicalEncodings {
 		if seen[k] {
 			t.Fatalf("blocklist entry %d is a duplicate: the derivation emitted the same point twice", i)
 		}
@@ -335,7 +340,7 @@ func TestRejectsAllSmallOrderKeys(t *testing.T) {
 // An envelope naming any small-order author must fail verification before the
 // signature is even considered.
 func TestEnvelopeRejectsEverySmallOrderAuthor(t *testing.T) {
-	for _, k := range smallOrderEncodings {
+	for _, k := range smallOrderCanonicalEncodings {
 		e := testEnvelope()
 		e.Author = hex.EncodeToString(k[:])
 		if err := envelopeVerify(e, strings.Repeat("aa", 64)); err == nil {

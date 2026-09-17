@@ -425,14 +425,18 @@ func resVerify(e resEnvelope, sigHex string) error {
 	if err != nil || len(pub) != ed25519.PublicKeySize {
 		return fmt.Errorf("reservation pubkey is not a usable public key")
 	}
-	if ruleOn("SIG-SMALL-ORDER") {
-		if err := rejectWeakKey(pub); err != nil {
-			return err
-		}
+	// Gating lives INSIDE rejectWeakKey: it owns both of §8.6.4a's conditions on
+	// `A`, each under its own rule id, so disabling one cannot silently disable
+	// the other.
+	if err := rejectWeakKey(pub); err != nil {
+		return err
 	}
 	sig, err := hex.DecodeString(sigHex)
 	if err != nil || len(sig) != ed25519.SignatureSize {
 		return fmt.Errorf("reservation signature is not a %d-byte hex signature", ed25519.SignatureSize)
+	}
+	if err := rejectNonCanonicalR(sig); err != nil {
+		return err
 	}
 	if ruleOn("ENV-VERIFY-SIGNATURE") && !ed25519.Verify(ed25519.PublicKey(pub), resEncode(e), sig) {
 		return fmt.Errorf("reservation signature does not verify: the envelope was altered in transit, or it was not signed by %s", e.Pubkey)

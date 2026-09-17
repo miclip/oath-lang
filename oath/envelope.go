@@ -273,14 +273,18 @@ func envelopeVerify(e pubEnvelope, sigHex string) error {
 	if err != nil || len(pub) != ed25519.PublicKeySize {
 		return fmt.Errorf("envelope author is not a usable public key")
 	}
-	if ruleOn("SIG-SMALL-ORDER") {
-		if err := rejectWeakKey(pub); err != nil {
-			return err
-		}
+	// Gating lives INSIDE rejectWeakKey: it owns both of §8.6.4a's conditions on
+	// `A`, each under its own rule id, so disabling one cannot silently disable
+	// the other.
+	if err := rejectWeakKey(pub); err != nil {
+		return err
 	}
 	sig, err := hex.DecodeString(sigHex)
 	if err != nil || len(sig) != ed25519.SignatureSize {
 		return fmt.Errorf("publication signature is not a %d-byte hex signature", ed25519.SignatureSize)
+	}
+	if err := rejectNonCanonicalR(sig); err != nil {
+		return err
 	}
 	if ruleOn("ENV-VERIFY-SIGNATURE") && !ed25519.Verify(ed25519.PublicKey(pub), envelopeEncode(e), sig) {
 		return fmt.Errorf("publication signature does not verify: the envelope was altered in transit, or it was not signed by %s", e.Author)
@@ -445,7 +449,13 @@ func bytesEqual(a, b []byte) bool {
 // Every entry verified on-curve with [8]P = identity and order dividing 8;
 // the base point is verified NOT to be among them, so the derivation cannot
 // pass vacuously. Re-run the script to reproduce this list.
-var smallOrderEncodings = [][32]byte{
+// smallOrderCanonicalEncodings is NOT the implementation any more — it is the
+// CONTROL. rejectWeakKey computes the cofactor condition, and the test asserts
+// that the computation refuses exactly these eight and admits an ordinary key.
+// Kept because a published list is checkable by a reader against RFC 8032 in a
+// way a field-arithmetic routine is not, and because a rewrite that silently
+// stopped rejecting one of them would otherwise look like a passing refactor.
+var smallOrderCanonicalEncodings = [][32]byte{
 	{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // order 4
 	{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80}, // order 4
 	{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // order 1
@@ -456,16 +466,60 @@ var smallOrderEncodings = [][32]byte{
 	{0xec, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f}, // order 2
 }
 
+// rejectWeakKey is the SINGLE admission gate for a public key, and it owns BOTH
+// of §8.6.4a's conditions on `A` because they are not separable in practice: the
+// order test needs a decoded point, so a caller that skipped canonicity would be
+// asking for the order of something that is not a point.
+//
+// Each condition is gated by its OWN rule id, inside. Previously the call sites
+// wrapped this in `ruleOn("SIG-SMALL-ORDER")`, which meant disabling that one
+// rule also disabled the canonical-encoding check — the mutation harness would
+// then attribute a canonicity failure to the small-order rule, and a rule can
+// only be witnessed if exactly it is what fails.
 func rejectWeakKey(pub []byte) error {
 	if len(pub) != ed25519.PublicKeySize {
 		return fmt.Errorf("public key is %d bytes, expected %d", len(pub), ed25519.PublicKeySize)
 	}
-	var k [32]byte
-	copy(k[:], pub)
-	for _, bad := range smallOrderEncodings {
-		if k == bad {
-			return fmt.Errorf("public key %s… has small order: such a key cannot carry an authorship claim, since signatures under it verify for parties who do not hold it (SPEC §8.6.4a)", hex.EncodeToString(pub[:6]))
+	x, y, ok := edDecode(pub)
+	if !ok {
+		if ruleOn("SIG-POINTS-CANONICAL") {
+			return fmt.Errorf("public key %s… is not a canonical point encoding: y must be less than p, must name a point on the curve, and x=0 with the sign bit set is refused (SPEC §8.6.4a SIG-POINTS-CANONICAL)", hex.EncodeToString(pub[:6]))
 		}
+		// Canonicity is OFF, so fall through to the reading a permissive kernel
+		// would take. The order test must still run: y = p reduces to y = 0, a
+		// point of order 4, and returning early here would let disabling ONE rule
+		// switch off the other — which would make the harness attribute a
+		// small-order failure to the canonicity rule.
+		x, y, ok = edDecodePermissive(pub)
+		if !ok {
+			return nil // names no point under either reading
+		}
+	}
+	if ruleOn("SIG-SMALL-ORDER") && edIsSmallOrder(x, y) {
+		return fmt.Errorf("public key %s… has small order: such a key cannot carry an authorship claim, since signatures under it verify for parties who do not hold it (SPEC §8.6.4a)", hex.EncodeToString(pub[:6]))
+	}
+	return nil
+}
+
+// rejectNonCanonicalR applies SIG-POINTS-CANONICAL to the OTHER point the rule
+// names. §8.6.4a requires `R` and `A` to be canonical point encodings; checking
+// only `A` would leave the registered rule narrower than the obligation it
+// claims, so disabling it could never measure the whole clause.
+//
+// The reference kernel already refuses a non-canonical `R` — crypto/ed25519's
+// decoder does — but that is the primitive's behaviour, not this kernel's rule,
+// and it is exactly the kind of borrowed defence that made the old blocklist
+// look sufficient. Enforcing it here means the obligation is one this kernel
+// discharges and a mutation can switch off.
+func rejectNonCanonicalR(sig []byte) error {
+	if len(sig) != ed25519.SignatureSize {
+		return nil // a malformed signature is ENV-VERIFY-SIGNATURE's to refuse
+	}
+	if !ruleOn("SIG-POINTS-CANONICAL") {
+		return nil
+	}
+	if _, _, ok := edDecode(sig[:32]); !ok {
+		return fmt.Errorf("signature R %s… is not a canonical point encoding (SPEC §8.6.4a SIG-POINTS-CANONICAL)", hex.EncodeToString(sig[:6]))
 	}
 	return nil
 }

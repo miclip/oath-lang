@@ -87,6 +87,7 @@ var normativeRules = []normativeRule{
 	{"ENV-STORE-REV", "§8.6.4", "the signed revision must be current (ABA)", familyEnvelope},
 	{"ENV-VERIFY-SIGNATURE", "§8.6.4a", "the signature must verify over the decoded octets", familyEnvelope},
 	{"SIG-SMALL-ORDER", "§8.6.4a", "a small-order author key must be rejected", familyEnvelope},
+	{"SIG-POINTS-CANONICAL", "§8.6.4a", "a key that is not a canonical point encoding must be rejected", familyEnvelope},
 
 	// LICENSE EVALUATION (DESIGN.md "What belongs inside identity"). These govern a
 	// consumer-visible derived claim with legal consequence, so the dangerous direction

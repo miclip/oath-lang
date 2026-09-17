@@ -22,6 +22,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -1055,6 +1056,78 @@ func writeEnvelopeVectors(write func(string, []byte) error) error {
 		"octets_b64": encodeEnvelopeB64(envelopeEncode(o4Env)), "author_pubkey": order4, "author_sig": sig,
 		"verdict": "reject",
 		"reason":  "y=0 is a point of order 4 — small-order regardless of whether it admits a forgery (SPEC §8.6.4a)"}); err != nil {
+		return err
+	}
+
+	// A NON-CANONICAL point encoding: y = p. Reducing mod p gives y = 0, which is
+	// the ORDER-FOUR point — not the identity, which is y = 1. The distinction
+	// matters here because the forgery below depends on the order being 4.
+	//
+	// The signature is a genuine forgery against the PERMISSIVE reading rather
+	// than the real key's signature reused: with R = the identity and S = 0, the
+	// equation [S]B = R + [k]A becomes identity = identity + [k]A, which holds
+	// exactly when [k]A is the identity — and since this A has order 4, when k is
+	// divisible by 4. k hashes (R, A, message), so the name is ground until it
+	// is. Reusing the real signature would make every kernel refuse the vector for
+	// signature mismatch, witnessing nothing at all.
+	//
+	// WHAT THIS VECTOR CANNOT DO, stated because the obvious reading is wrong: it
+	// does NOT isolate SIG-POINTS-CANONICAL. A kernel that reduces y mod p but
+	// enforces SIG-SMALL-ORDER correctly refuses it too, because y = p reduces to
+	// a point of order 4. So it witnesses "non-canonical encodings do not get in",
+	// not "the canonicity rule is implemented".
+	//
+	// AND NO VECTOR CAN ISOLATE IT. The non-canonical encodings are exactly
+	// y in [p, 2^255), which is 19 values, reducing to y = 0..18. Isolating the
+	// rule needs one whose reduced point is NOT small-order and whose signature
+	// still verifies — and producing that signature requires the discrete log of
+	// a large-order point. The rule is therefore enforced and UNWITNESSED, in the
+	// §10.1 sense: a real obligation with no vector that can fail for it alone.
+	// Recorded here rather than papered over with a vector that looks like one.
+	nonCanon := make([]byte, 32)
+	nonCanon[0] = 0xed
+	for i := 1; i < 31; i++ {
+		nonCanon[i] = 0xff
+	}
+	nonCanon[31] = 0x7f
+	ncHex := hex.EncodeToString(nonCanon)
+	ncX, ncY, ncOK := edDecodePermissive(nonCanon)
+	if !ncOK || !edIsSmallOrder(ncX, ncY) {
+		return fmt.Errorf("the y=p encoding does not reduce to a small-order point, so no forgery exists for it")
+	}
+	rIdent := make([]byte, 32)
+	rIdent[0] = 0x01 // R = the identity point (y = 1)
+	edL, _ := new(big.Int).SetString("7237005577332262213973186563042994240857116359379907606001950938285454250989", 10)
+	var ncEnv pubEnvelope
+	var forgedNC []byte
+	found := false
+	for i := 0; i < 4096 && !found; i++ {
+		ncEnv = env
+		ncEnv.Author = ncHex
+		ncEnv.Name = fmt.Sprintf("double-nc%d", i)
+		msg := envelopeEncode(ncEnv)
+		h := sha512.Sum512(append(append(append([]byte{}, rIdent...), nonCanon...), msg...))
+		le := make([]byte, 64)
+		for j := range le {
+			le[j] = h[63-j]
+		}
+		k := new(big.Int).Mod(new(big.Int).SetBytes(le), edL)
+		if new(big.Int).Mod(k, big.NewInt(4)).Sign() == 0 {
+			forgedNC = append(append([]byte{}, rIdent...), make([]byte, 32)...) // S = 0
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("no non-canonical forgery found in 4096 attempts; the vector would be vacuous")
+	}
+	if envelopeVerify(ncEnv, hex.EncodeToString(forgedNC)) == nil {
+		return fmt.Errorf("non-canonical point vector VERIFIES against the reference kernel")
+	}
+	if err := emit(map[string]any{"kind": "signature", "label": "non-canonical point encoding (y = p) with a forgery",
+		"octets_b64": encodeEnvelopeB64(envelopeEncode(ncEnv)), "author_pubkey": ncHex,
+		"author_sig": hex.EncodeToString(forgedNC),
+		"verdict":    "reject",
+		"reason":     "y = p is a SECOND encoding of the order-4 point y = 0 (the identity is y = 1), and SIG-POINTS-CANONICAL requires y < p. The signature is a real forgery under the permissive reading — R = identity, S = 0, and the message ground so the challenge is divisible by the point's order — so a kernel that reduces y mod p AND omits both point rules accepts it. Note this does not isolate SIG-POINTS-CANONICAL: a permissive kernel that still enforces SIG-SMALL-ORDER refuses it on the reduced point's order. No vector can isolate the canonicity rule, since the only non-canonical encodings reduce to y = 0..18 and a verifying signature for a large-order one would need its discrete log (SPEC §8.6.4a)"}); err != nil {
 		return err
 	}
 

@@ -165,14 +165,17 @@ func xferVerify(e xferEnvelope, holderSig, recipientSig string) error {
 		if err != nil || len(pub) != ed25519.PublicKeySize {
 			return fmt.Errorf("%s key is not a usable public key", side.who)
 		}
-		if ruleOn("SIG-SMALL-ORDER") {
-			if err := rejectWeakKey(pub); err != nil {
-				return fmt.Errorf("%s key: %w", side.who, err)
-			}
+		// Gating lives INSIDE rejectWeakKey: it owns both of §8.6.4a's conditions
+		// on `A`, each under its own rule id.
+		if err := rejectWeakKey(pub); err != nil {
+			return fmt.Errorf("%s key: %w", side.who, err)
 		}
 		sig, err := hex.DecodeString(side.sig)
 		if err != nil || len(sig) != ed25519.SignatureSize {
 			return fmt.Errorf("%s signature is not a %d-byte hex signature — a transfer needs consent from BOTH sides", side.who, ed25519.SignatureSize)
+		}
+		if err := rejectNonCanonicalR(sig); err != nil {
+			return fmt.Errorf("%s: %w", side.who, err)
 		}
 		if ruleOn("ENV-VERIFY-SIGNATURE") && !ed25519.Verify(ed25519.PublicKey(pub), octets, sig) {
 			return fmt.Errorf("%s signature does not verify over the transfer statement", side.who)
