@@ -28,6 +28,20 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
    verdicts are relative to. It is an INPUT, not an expectation: the specification
    deliberately does not fix the table, so without this file the vectors would be the
    only description of it and every row no vector exercises would be unconstrained.
+11. journal/vectors.jsonl + journal/digests.txt (SPEC §10 point 6): the JOURNAL
+   BYTE corpus. Nine entries built to REACH what a real store does not: the
+   committed store was measured and carries no control character, no non-ASCII
+   byte, no U+2028/9, no pre-chain prefix and none of the signing members, so on
+   its own it witnesses member order for a routine put and nothing about §8.2.1's
+   escaping. Here: a two-entry PRE-CHAIN prefix (so the legacy anchor is
+   exercised), every member populated at least once, the C0 controls where the
+   hex CASE becomes observable, U+2028/9 which MUST be escaped, the four
+   characters that MUST NOT be, literal non-ASCII, and the always-present members
+   left EMPTY. digests.txt pins seq/entry-digest/recomputed-chain — a committed
+   ANSWER rather than something a harness recomputes on both sides, which would
+   prove only that one program is deterministic.
+   This is an ENCODING corpus, not a verification one: check 9 compares bytes, so
+   it does not undertake §8.6.4's cross-member obligations on every entry.
 10. envelope/vectors.jsonl (SPEC §8.6): every "canonical" record's octets reproduce
    EXACTLY, every "reject" record is refused, and every "signature" record verifies
    or fails as its verdict says. These octets are what a publication signature is
@@ -58,7 +72,7 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
 Files: hashes.txt, canonical/, encoding/, gate/, verify/, analyses/,
 prove/outcomes.json, prove/shards.txt, campaign/vectors.txt,
 envelope/vectors.jsonl, gate/bytes/, license/vectors.jsonl,
-reserve/vectors.jsonl.
+reserve/vectors.jsonl, journal/vectors.jsonl, journal/digests.txt.
 
 prove/shards.txt pins SPEC §7.5's shard assignment for every property at several
 shard counts. It is the only witness for that rule's BYTES, and it is emitted by

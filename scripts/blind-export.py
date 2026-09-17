@@ -110,9 +110,9 @@ SURFACES = {
     # does not compile at all, and the prove fixtures are read by the existing
     # sharding tests. A blind subject that cannot run the suite already in the
     # tree is a weaker subject than one that can.
-    "8.6": ([], ["oathrs/", "fixtures/envelope/vectors.jsonl", "fixtures/campaign/",
-                 "fixtures/prove/outcomes.json", "fixtures/prove/shards.txt",
-                 "fixtures/MANIFEST.md"]),
+    "8.6": ([], ["oathrs/", "fixtures/envelope/vectors.jsonl", "fixtures/journal/",
+                 "fixtures/campaign/", "fixtures/prove/outcomes.json",
+                 "fixtures/prove/shards.txt", "fixtures/MANIFEST.md"]),
     # #103: repair oathrs against SPEC §10.0a. The Rust kernel and the fixture
     # corpus it must reproduce; NOT oath/, which implements the same rule.
     "10.0a": ([], ["oathrs/", "fixtures/canonical/", "fixtures/hashes.txt",

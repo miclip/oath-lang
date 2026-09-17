@@ -4286,9 +4286,23 @@ A candidate kernel conforms if, against a reference store:
 5. Proof outcomes match, given the same solver version (proof *methods* —
    direct vs induction binder — should match but MAY differ where multiple
    proofs exist).
+6. **It produces byte-identical JOURNAL bytes**: for every entry, the canonical
+   encoding of §8.2.1, the entry digest of §8.2.2, and the `chain` of §8
+   recomputed from the preceding bytes. The chain must be RECOMPUTED rather than
+   read back — a kernel that echoes the stored value has demonstrated that it can
+   copy, which is not the claim.
+
+   This point is separable from the other five and was added last, because the
+   corpus that witnesses it had to be built. A store's real journal exercises
+   member order and the ordinary chain path, and in the reference store exercises
+   NOTHING ELSE in §8.2.1: measured there, 1972 entries contain no control
+   character, no non-ASCII byte, no U+2028/9 and no pre-chain prefix. A conforming
+   suite therefore needs a corpus constructed to reach the escaping rules, the
+   characters that MUST NOT be escaped, and the legacy-anchor path, or agreement
+   on it means only that two kernels agree about the easy cases.
 
 The `examples/` corpus plus the journal of a reference store constitutes
-the initial conformance suite. Cross-kernel agreement on all five points is
+the initial conformance suite. Cross-kernel agreement on all six points is
 the intended CI gate for any second implementation.
 
 The conformance suite SHOULD be materialized as fixtures, not only prose:
@@ -4303,6 +4317,13 @@ fixtures/
   prove/*.smt2              emitted obligations or obligation hashes
   prove/outcomes.json       solver version, outcome, method, detail;
                             per-property author hints (#67)
+  journal/vectors.jsonl     a journal built to REACH §8.2.1's escaping rules and
+                            §8's legacy anchor: C0 controls, the short escapes,
+                            U+2028/9, the characters that must stay literal, every
+                            member populated, and a pre-chain prefix
+  journal/digests.txt       the reference kernel's seq/entry-digest/recomputed-chain
+                            for that corpus, pinned so a harness compares against a
+                            committed answer rather than recomputing both sides
   api/*.txt                 stable CLI/MCP text outputs
 ```
 

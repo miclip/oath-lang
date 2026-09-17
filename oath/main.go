@@ -100,6 +100,20 @@ func main() {
 	// and, by creating ./codebase, modify — the directory it is inspected from,
 	// which is wrong for the one command meant to answer "what is this thing?"
 	// about an artifact you have no context for and may not want to execute.
+	// journal-digest reads a JOURNAL FILE and consults no store, so it is dispatched
+	// here for the same reason as provenance below: reaching the store switch would
+	// CREATE ./codebase relative to the caller. A conformance utility that modifies
+	// the directory it is run from is the casual-write hazard this repo already has
+	// a guard for, arriving through a command added for a gate.
+	if args[0] == "journal-digest" {
+		// Early dispatch skips the shared unknown-flag guard, so it makes the same
+		// check itself rather than reading a mistyped flag as a filename.
+		if len(args) != 2 || strings.HasPrefix(args[1], "--") {
+			fail(fmt.Errorf("usage: oath journal-digest <log.jsonl>   (no flags)"))
+		}
+		cmdJournalDigest(args[1])
+		return
+	}
 	if args[0] == "provenance" {
 		// Dispatching early means this command never reaches the shared
 		// unknown-flag guard, so it makes the same check itself rather than

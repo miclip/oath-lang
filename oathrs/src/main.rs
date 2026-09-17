@@ -1540,6 +1540,14 @@ fn run() -> i32 {
             }
         }
         "bridge-obligation" => cmd_bridge_obligation(&args[2..]),
+        "journal-digest" => {
+            if args.len() < 3 {
+                eprintln!("usage: oathrs journal-digest <log.jsonl>");
+                exit(1);
+            }
+            cmd_journal_digest(&args[2]);
+            0
+        }
         "enctest" => {
             if args.len() < 3 {
                 eprintln!("usage: oathrs enctest <encoding-dir>");
@@ -1551,5 +1559,64 @@ fn run() -> i32 {
             eprintln!("unknown command: {}", other);
             1
         }
+    }
+}
+
+/// Conformance check 9 (§10): emit one line per journal entry — its `seq`, its
+/// §8.2.2 entry digest, and its `chain` RECOMPUTED from the preceding bytes.
+///
+/// Agreement with a second kernel on these three columns is agreement on
+/// §8.2.1's member order, omission rule and string escaping, and on §8's chain
+/// construction — including the anchor's TYPE (the chain's hex text, not the
+/// bytes it renders) and what the legacy prefix contains (every byte before this
+/// entry, separators included). Neither had any fixture before this check.
+///
+/// The chain is recomputed, never read back: printing the stored value would
+/// compare what each kernel can copy rather than what each kernel computes, and
+/// the two are indistinguishable in the output.
+fn cmd_journal_digest(path: &str) {
+    let bytes = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("journal-digest: {path}: {e}");
+            exit(1);
+        }
+    };
+    let mut pos = 0usize;
+    let mut lineno = 0usize;
+    let mut last_chain: Option<String> = None;
+    while pos < bytes.len() {
+        let mut end = pos;
+        while end < bytes.len() && bytes[end] != b'\n' {
+            end += 1;
+        }
+        lineno += 1;
+        let raw = match std::str::from_utf8(&bytes[pos..end]) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("journal line {lineno}: not UTF-8: {e}");
+                exit(1);
+            }
+        };
+        // STRICT (§8.2.1). A lenient read would let each kernel normalize a
+        // non-canonical line into agreement, which is the one verdict this check
+        // must be unable to produce.
+        let entry = match oathrs::journal::parse_line(raw) {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!("journal line {lineno}: {e}");
+                exit(1);
+            }
+        };
+        let chain = oathrs::journal::chain_value(&entry, last_chain.as_deref(), &bytes[..pos]);
+        println!("{} {} {}", entry.seq, entry.digest(), chain);
+        if !entry.chain.is_empty() {
+            last_chain = Some(entry.chain.clone());
+        }
+        pos = end + 1;
+    }
+    if lineno == 0 {
+        eprintln!("journal-digest: {path} holds no entries; check 9 would compare two empty streams");
+        exit(1);
     }
 }

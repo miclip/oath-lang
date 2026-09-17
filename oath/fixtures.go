@@ -19,6 +19,7 @@ package main
 //   MANIFEST.md           what this tree is and how to regenerate it
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/binary"
@@ -250,6 +251,9 @@ func apiFixtures(st *Store, outdir string) (string, error) {
 	//              REQUEST (signed octets, signature, authenticated principal, and the
 	//              artifact the store recomputed), with the expected verdict
 	if err := writeReserveVectors(write); err != nil {
+		return "", err
+	}
+	if err := writeJournalVectors(write); err != nil {
 		return "", err
 	}
 	if err := writeEnvelopeVectors(write); err != nil {
@@ -724,6 +728,20 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
    verdicts are relative to. It is an INPUT, not an expectation: the specification
    deliberately does not fix the table, so without this file the vectors would be the
    only description of it and every row no vector exercises would be unconstrained.
+11. journal/vectors.jsonl + journal/digests.txt (SPEC §10 point 6): the JOURNAL
+   BYTE corpus. Nine entries built to REACH what a real store does not: the
+   committed store was measured and carries no control character, no non-ASCII
+   byte, no U+2028/9, no pre-chain prefix and none of the signing members, so on
+   its own it witnesses member order for a routine put and nothing about §8.2.1's
+   escaping. Here: a two-entry PRE-CHAIN prefix (so the legacy anchor is
+   exercised), every member populated at least once, the C0 controls where the
+   hex CASE becomes observable, U+2028/9 which MUST be escaped, the four
+   characters that MUST NOT be, literal non-ASCII, and the always-present members
+   left EMPTY. digests.txt pins seq/entry-digest/recomputed-chain — a committed
+   ANSWER rather than something a harness recomputes on both sides, which would
+   prove only that one program is deterministic.
+   This is an ENCODING corpus, not a verification one: check 9 compares bytes, so
+   it does not undertake §8.6.4's cross-member obligations on every entry.
 10. envelope/vectors.jsonl (SPEC §8.6): every "canonical" record's octets reproduce
    EXACTLY, every "reject" record is refused, and every "signature" record verifies
    or fails as its verdict says. These octets are what a publication signature is
@@ -754,7 +772,7 @@ A candidate kernel conforms (SPEC §10) if, against this tree:
 Files: hashes.txt, canonical/, encoding/, gate/, verify/, analyses/,
 prove/outcomes.json, prove/shards.txt, campaign/vectors.txt,
 envelope/vectors.jsonl, gate/bytes/, license/vectors.jsonl,
-reserve/vectors.jsonl.
+reserve/vectors.jsonl, journal/vectors.jsonl, journal/digests.txt.
 
 prove/shards.txt pins SPEC §7.5's shard assignment for every property at several
 shard counts. It is the only witness for that rule's BYTES, and it is emitted by
@@ -2152,4 +2170,174 @@ func writeReserveVectors(write func(string, []byte) error) error {
 		return err
 	}
 	return write("reserve/vectors.jsonl", []byte(out.String()))
+}
+
+// journalVectorEntries builds the ENCODING corpus for conformance check 9
+// (SPEC 10, point 6).
+//
+// WHAT IT IS: a journal whose entries are well-formed under 8.2.1 and whose
+// chain is valid under 8, built so EVERY member appears at least once with a
+// non-empty value and every escaping rule is reached. WHAT IT IS NOT: a
+// verification corpus. Check 9 compares BYTES -- canonical encoding, entry
+// digest, recomputed chain -- so this does not undertake to satisfy 8.6.4's
+// cross-member obligations on every entry, and says so here rather than leaving
+// a later reader to find out by running a verifier over it. (The envelope
+// fixture's own journal line carries seq 0, which is not a journal under 8.2 at
+// all; that surprise is the one this corpus must not repeat.)
+//
+// The committed store cannot serve as this corpus, and that was MEASURED: its
+// entries carry no control character, no non-ASCII byte, no U+2028/9, no
+// pre-chain prefix, and none of the signing members. Comparing kernels over it
+// witnesses member order for what a routine put happens to carry, and NOTHING
+// about 8.2.1's escaping.
+//
+//	1-2  no chain: a PRE-CHAIN prefix, so entry 3's anchor is the SHA-256 of the
+//	     whole preceding byte span, separators included.
+//	3    every scalar member populated, plus a REAL store signature, so the order
+//	     is exercised across pubkey/sig rather than around them.
+//	4    the short escapes and the C0 controls that have none, which is where the
+//	     hex CASE inside a unicode escape becomes observable at all.
+//	5    U+2028 and U+2029, which MUST be escaped though JSON permits them raw.
+//	6    the four characters that MUST NOT be escaped, and literal non-ASCII.
+//	7    time, author, verifier, name and status EMPTY: the omission rule's
+//	     exception, which nothing else in either corpus reaches.
+//	8    a real author statement (envelope_b64 + author_pubkey + author_sig) with
+//	     hash/prev/parent_rev agreeing with the envelope's own fields.
+//	9    recipient_sig, the second signature over the same octets (8.7). Present
+//	     for its POSITION and hex encoding; check 9 does not interpret it.
+func journalVectorEntries() []LogEntry {
+	// Fixed seeds: the corpus is committed, so a random key would change the
+	// bytes on every regeneration and make the fixture useless as a pin.
+	storeKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x11}, ed25519.SeedSize))
+	authorKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x33}, ed25519.SeedSize))
+	recipKey := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x22}, ed25519.SeedSize))
+	authorHex := hex.EncodeToString(authorKey.Public().(ed25519.PublicKey))
+
+	env := pubEnvelope{
+		Op: "put", Name: "journal/authored",
+		Artifact:  "5555555555555555555555555555555555555555555555555555555555555555",
+		Parent:    "6666666666666666666666666666666666666666666666666666666666666666",
+		ParentRev: big.NewInt(7), Author: authorHex, License: "MIT",
+	}
+	octets := envelopeEncode(env)
+
+	full := LogEntry{Seq: 3, Time: "2026-01-01T00:00:02Z", Author: "a", Verifier: "v",
+		Name: "full/members", Kind: "func", Status: "accepted", Hash: "h3",
+		Prev: "h1", Error: "e", Guarantee: "proven", Termination: "structural",
+		Context: "ctx", ParentRev: "7", NameTransition: transitionApplied,
+		AppliedVia: appliedViaAdvisory}
+	full.Pubkey = hex.EncodeToString(storeKey.Public().(ed25519.PublicKey))
+	full.Sig = hex.EncodeToString(ed25519.Sign(storeKey, signedContent(&full)))
+
+	authored := LogEntry{Seq: 8, Time: "2026-01-01T00:00:07Z", Author: authorHex,
+		Verifier: "v", Name: env.Name, Kind: "func", Status: "accepted",
+		Hash: env.Artifact, Prev: env.Parent, ParentRev: "7",
+		NameTransition: transitionApplied, AppliedVia: appliedViaTxnCAS,
+		EnvelopeB64: encodeEnvelopeB64(octets), AuthorPubkey: authorHex,
+		AuthorSig: hex.EncodeToString(ed25519.Sign(authorKey, octets))}
+
+	recip := authored
+	recip.Seq = 9
+	recip.Time = "2026-01-01T00:00:08Z"
+	recip.Name = "journal/second-signature"
+	recip.NameTransition = transitionUnchanged
+	recip.AppliedVia = appliedViaNone
+	recip.RecipientSig = hex.EncodeToString(ed25519.Sign(recipKey, octets))
+
+	return []LogEntry{
+		{Seq: 1, Time: "2026-01-01T00:00:00Z", Author: "a", Verifier: "v",
+			Name: "legacy/first", Kind: "func", Status: "accepted", Hash: "h1"},
+		{Seq: 2, Time: "2026-01-01T00:00:01Z", Author: "a", Verifier: "v",
+			Name: "legacy/second", Kind: "func", Status: "rejected",
+			Error: "refused: parent mismatch"},
+		full,
+		{Seq: 4, Time: "2026-01-01T00:00:03Z", Author: "a", Verifier: "v",
+			Name: "escapes/short", Kind: "func", Status: "rejected",
+			Error:     "quote=\" backslash=\\ bs=\b ff=\f nl=\n cr=\r tab=\t nul=\x00 us=\x1f",
+			Guarantee: "\x01\x02\x03"},
+		{Seq: 5, Time: "2026-01-01T00:00:04Z", Author: "a", Verifier: "v",
+			Name: "escapes/line-separators", Kind: "func", Status: "rejected",
+			Error: "ls=\u2028 ps=\u2029 between"},
+		{Seq: 6, Time: "2026-01-01T00:00:05Z", Author: "a", Verifier: "v",
+			Name: "escapes/literal", Kind: "func", Status: "rejected",
+			Error:     "lt=< gt=> amp=& slash=/ e-acute=\u00e9 cjk=\u65e5\u672c\u8a9e",
+			Guarantee: "</script>"},
+		{Seq: 7, Time: "", Author: "", Verifier: "", Name: "", Status: "", Hash: "h7"},
+		authored,
+		recip,
+	}
+}
+
+// buildJournalVectors renders the corpus: entries 1-2 unchained, the rest
+// chained against the running anchor exactly as AppendLog would.
+func buildJournalVectors() ([]byte, error) {
+	var out bytes.Buffer
+	for i, e := range journalVectorEntries() {
+		e := e
+		if i >= 2 {
+			prior := append([]byte(nil), out.Bytes()...)
+			e.Chain = ""
+			body, err := canonicalJournalLine(&e)
+			if err != nil {
+				return nil, err
+			}
+			e.Chain = chainHash(chainAnchor(prior), body)
+		}
+		line, err := canonicalJournalLine(&e)
+		if err != nil {
+			return nil, err
+		}
+		out.Write(line)
+		out.WriteByte('\n')
+	}
+	return out.Bytes(), nil
+}
+
+// journalVectorDigests renders what `oath journal-digest` emits: seq, the 8.2.2
+// entry digest, and the chain RECOMPUTED from the preceding bytes. Pinning it
+// makes the reference answer a committed artifact; a harness that recomputes
+// both sides proves only that one program is deterministic.
+func journalVectorDigests(journal []byte) ([]byte, error) {
+	var out bytes.Buffer
+	pos := 0
+	for pos < len(journal) {
+		end := pos
+		for end < len(journal) && journal[end] != '\n' {
+			end++
+		}
+		e, err := strictJournalLine(journal[pos:end])
+		if err != nil {
+			return nil, err
+		}
+		d, err := entryDigest(e)
+		if err != nil {
+			return nil, err
+		}
+		anchor := chainAnchor(journal[:pos])
+		saved := e.Chain
+		e.Chain = ""
+		body, err := canonicalJournalLine(e)
+		if err != nil {
+			return nil, err
+		}
+		e.Chain = saved
+		fmt.Fprintf(&out, "%d %s %s\n", e.Seq, d, chainHash(anchor, body))
+		pos = end + 1
+	}
+	return out.Bytes(), nil
+}
+
+func writeJournalVectors(write func(string, []byte) error) error {
+	corpus, err := buildJournalVectors()
+	if err != nil {
+		return err
+	}
+	if err := write(filepath.Join("journal", "vectors.jsonl"), corpus); err != nil {
+		return err
+	}
+	digests, err := journalVectorDigests(corpus)
+	if err != nil {
+		return err
+	}
+	return write(filepath.Join("journal", "digests.txt"), digests)
 }

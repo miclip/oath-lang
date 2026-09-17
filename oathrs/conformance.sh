@@ -176,6 +176,97 @@ done
 [ $vbad -eq 0 ] && echo "  PASS: $vn verify/*.txt byte-identical (verdicts + counterexamples)"
 
 # ---------------------------------------------------------------------------
+# Check 9: journal bytes (SPEC 8.2.1 encoding, 8.2.2 digest, 8 chain)
+#
+# TWO CORPORA, WITNESSING DIFFERENT THINGS, and neither is redundant.
+#
+#  (a) fixtures/journal/vectors.jsonl against a pinned expected output. Six
+#      entries built to reach the rules nothing else does: the C0 controls and
+#      the hex CASE inside a unicode escape, U+2028/9 which MUST be escaped
+#      though JSON permits them raw, the four characters that MUST NOT be
+#      escaped, literal non-ASCII, every member populated so the normative order
+#      is exercised whole, and a two-entry PRE-CHAIN prefix so the legacy anchor
+#      path runs at all.
+#
+#  (b) codebase/log.jsonl verified AGAINST ITSELF: the chain this kernel
+#      recomputes for each of ~1972 real entries must equal the chain the store
+#      recorded. No fixture, so no churn as the corpus grows, and it is the
+#      stronger evidence of practical agreement.
+#
+# Corpus (b) alone would be blind to most of (a): it was measured to contain no
+# control character, no non-ASCII byte, no U+2028/9 and no pre-chain prefix. A
+# kernel emitting UPPERCASE hex in a unicode escape is caught by (a) and not by
+# (b) -- verified by mutating the kernel, not by reasoning about it.
+#
+# Chains are RECOMPUTED, never read back, so agreement is a claim about what the
+# kernel COMPUTES. Reading them back would compare what it can copy.
+# ---------------------------------------------------------------------------
+echo "== Check 9: journal bytes (encoding, entry digest, chain) =="
+jbad=0
+JV="$ROOT/fixtures/journal/vectors.jsonl"
+JD="$ROOT/fixtures/journal/digests.txt"
+if [ ! -f "$JV" ] || [ ! -f "$JD" ]; then
+  echo "  FAIL: the journal encoding corpus or its pinned digests are missing; this check did NOT run"
+  jbad=1; fail=1
+elif ! "$BIN" journal-digest "$JV" > "$TMP/jd-rs.txt" 2> "$TMP/jd-rs.err"; then
+  echo "  FAIL: oathrs could not read the encoding corpus"; sed 's/^/    /' "$TMP/jd-rs.err"
+  jbad=1; fail=1
+else
+  jn=$(wc -l < "$TMP/jd-rs.txt" | tr -d ' ')
+  want=$(wc -l < "$JV" | tr -d ' ')
+  if [ "$jn" != "$want" ] || [ "$jn" = 0 ]; then
+    # Two empty streams compare equal, so the count is asserted rather than
+    # trusted: a truncated run must not be able to read as agreement.
+    echo "  FAIL: the corpus has $want entries but oathrs emitted $jn rows"; jbad=1; fail=1
+  elif cmp -s "$JD" "$TMP/jd-rs.txt"; then
+    echo "  PASS: journal/vectors.jsonl -- $jn entries, digest and recomputed chain match the pinned output"
+  else
+    echo "  FAIL: journal bytes diverge on the encoding corpus"
+    diff "$JD" "$TMP/jd-rs.txt" | head -6 | sed 's/^/    /'
+    jbad=1; fail=1
+  fi
+fi
+
+# (b) the real store, verified against the chains it already carries.
+JL="$ROOT/codebase/log.jsonl"
+if [ ! -f "$JL" ]; then
+  echo "  FAIL: codebase/log.jsonl is missing; this check did NOT run"; jbad=1; fail=1
+elif ! "$BIN" journal-digest "$JL" > "$TMP/jd-live.txt" 2> "$TMP/jd-live.err"; then
+  echo "  FAIL: oathrs could not read the committed journal"; sed 's/^/    /' "$TMP/jd-live.err"
+  jbad=1; fail=1
+else
+  python3 - "$JL" "$TMP/jd-live.txt" <<'PYJ'
+import json, sys
+stored = {}
+with open(sys.argv[1], encoding="utf-8") as fh:
+    for line in fh:
+        e = json.loads(line)
+        stored[e["seq"]] = e.get("chain", "")
+n = bad = skipped = 0
+with open(sys.argv[2], encoding="utf-8") as fh:
+    for row in fh:
+        seq, _digest, chain = row.split()
+        seq = int(seq)
+        n += 1
+        if not stored.get(seq):
+            skipped += 1          # pre-chain legacy entry: nothing recorded to compare
+            continue
+        if stored[seq] != chain:
+            bad += 1
+            if bad <= 3:
+                print(f"    seq {seq}: recomputed {chain[:16]}... but the store recorded {stored[seq][:16]}...")
+if n == 0 or n != len(stored):
+    print(f"  FAIL: emitted {n} rows for {len(stored)} entries; this check did NOT run")
+    sys.exit(1)
+if bad:
+    print(f"  FAIL: {bad} of {n} recomputed chains differ from the store's own record")
+    sys.exit(1)
+print(f"  PASS: codebase/log.jsonl -- {n - skipped} of {n} chains recomputed and equal to the record")
+PYJ
+  [ $? -eq 0 ] || { jbad=1; fail=1; }
+fi
+
+# ---------------------------------------------------------------------------
 # Checks 5-6 come in two modes. FULL (default): cold re-derivation of every
 # proof outcome — z3 at the SPEC §7.2 rlimit budget, run-stability fixpoint
 # included. This is HOURS of solver time and is the definitive empirical
@@ -269,7 +360,7 @@ if [ "$MODE" = "oracle" ]; then
 
   echo
   if [ $fail -eq 0 ]; then
-    echo "CONFORMANCE: PASS (checks 1-4 + byte oracle over the direct attempts)"
+    echo "CONFORMANCE: PASS (checks 1-4, 9 + byte oracle over the direct attempts)"
   else
     echo "CONFORMANCE: FAIL"
   fi
@@ -291,7 +382,7 @@ if [ $fail -eq 0 ] && [ -n "$CONF_FP" ] && [ -f "$FP_FILE" ] && [ "$(head -1 "$F
   echo "  last recorded full run. Re-deriving recomputes an answer the bytes fixed."
   echo "  Force one with: rm $FP_FILE   (or change any pin)"
   echo
-  echo "CONFORMANCE: PASS (checks 1-4; full re-derivation gated — pins unchanged, #139)"
+  echo "CONFORMANCE: PASS (checks 1-4, 9; full re-derivation gated — pins unchanged, #139)"
   exit 0
 fi
 
@@ -471,7 +562,7 @@ done
 
 echo
 if [ $fail -eq 0 ]; then
-  echo "CONFORMANCE: PASS (checks 1-6)"
+  echo "CONFORMANCE: PASS (checks 1-6, 9)"
   # Record the fingerprint so an unchanged tree skips the full re-derivation next
   # time (#139). Commit it with the fixtures.
   {
