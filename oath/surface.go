@@ -1163,7 +1163,7 @@ func elabFuncRaw(st *Store, x sx, aliases map[string]*aliasDef) (*Def, *Meta, er
 // elabData and elabFunc wrap elaboration with ADMISSION (#149).
 //
 // The check lives HERE, at construction, and not at each call site. It was
-// originally placed in apiPutSigned alone, which is where I happened to be
+// originally placed in apiPut alone, which is where I happened to be
 // looking — and external review found three other endpoints that elaborate
 // user-supplied source and then typecheck or PROVE it (apiFindSpec,
 // apiFindImplies, buildPublishPlan). A shallow source with a long string

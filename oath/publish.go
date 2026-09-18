@@ -117,12 +117,14 @@ func buildPublishPlan(local *Store, endpoint, pubHex, src, license, namespace st
 	// one-definition-per-envelope rule — they are CONTEXT for the definition that does.
 	//
 	// THE LOOP WALKS SOURCE ORDER AND ELABORATES THE DEFINITION WHERE IT SITS, so only
-	// aliases declared ABOVE it are in scope. That is not a stylistic choice: these exact
-	// bytes are sent to the registry, which runs apiPutSigned over them IN ORDER. A loop
-	// that gathered every alias first would elaborate `(defn f [] [(x A)] Int x)` ahead of
-	// a trailing `(type A Int)` and hash it happily, while the server — reading the same
-	// bytes in order — rejects `f` with `unknown type "A"`. The client would then have
-	// signed an artifact the registry can never produce. Found by external review.
+	// aliases declared ABOVE it are in scope. That is not a stylistic choice: it is the
+	// order source publication (apiPut) reads the same bytes in, so what this plan
+	// signs is what `oath put` of the same file would bind. A loop that gathered every
+	// alias first would elaborate `(defn f [] [(x A)] Int x)` ahead of a trailing
+	// `(type A Int)` and hash it happily, while apiPut — reading the same bytes in
+	// order — rejects `f` with `unknown type "A"`. When the registry still
+	// re-elaborated submitted source, that meant signing an artifact the registry
+	// could never produce. Found by external review.
 	//
 	// Scanning CONTINUES past the definition so a later alias is still registered and so
 	// still validated (malformed, duplicate, unknown type), exactly as apiPut validates it.
@@ -180,8 +182,8 @@ func buildPublishPlan(local *Store, endpoint, pubHex, src, license, namespace st
 	}
 	h := hashDef(def)
 
-	// A TRAILING alias is validated the way the registry will validate it: against a
-	// store in which THIS definition is already bound. apiPutSigned stores and repoints
+	// A TRAILING alias is validated the way source publication validates it: against
+	// a store in which THIS definition is already bound. apiPut stores and repoints
 	// each form before moving on, so `(data Point ...)` followed by `(type P Point)` is
 	// valid there — and validating the alias against the unmodified local store instead
 	// would reject a source the server accepts, making it unpublishable. The scratch is
@@ -232,7 +234,7 @@ func buildPublishPlan(local *Store, endpoint, pubHex, src, license, namespace st
 
 	// A TRAILING alias is NOT TRANSMITTED. It publishes nothing and is not in scope for
 	// the definition above it, so dropping it cannot change what the registry derives —
-	// and sending it can lose the publication's atomicity outright. apiPutSigned stores
+	// and sending it can lose the publication's atomicity outright. apiPut stores
 	// and REPOINTS the definition before it reaches the alias, so an alias that is valid
 	// here but not there (its type present only in the local store) fails AFTER the name
 	// has irreversibly moved: the command reports failure over a publication that

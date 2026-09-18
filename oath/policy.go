@@ -43,7 +43,7 @@ type PolicyRule struct {
 	// prohibited here.
 	//
 	// AND THE VISIBILITY IS WEAKER ON THIS EXACT PATH THAN ELSEWHERE. A name
-	// held `pending` here is journalled before `apiPutSigned` copies `auth`
+	// held `pending` here is journalled before `admitPut` copies `auth`
 	// into the entry, and `ProofJob` carries no envelope, so the worker's later
 	// `accepted` put has no `AuthorSig`. The hashes are recorded; the
 	// publisher's signature is not. So a weakened contract admitted through the

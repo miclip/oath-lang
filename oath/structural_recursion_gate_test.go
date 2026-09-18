@@ -499,7 +499,7 @@ func TestEveryContinuationGoesThroughPush(t *testing.T) {
 // TestAdmissionCannotBeBypassed pins that every construction of a Def from
 // external input passes through admission.
 //
-// The check began in apiPutSigned alone — the one call site I was looking at —
+// The check began in apiPut alone — the one call site I was looking at —
 // and external review found three more elaboration endpoints (apiFindSpec,
 // apiFindImplies, buildPublishPlan) plus the bundle-import path, all of which
 // built and then processed structures `put` correctly refuses. The claim

@@ -244,7 +244,14 @@ func TestTopoOrderRefusesACycle(t *testing.T) {
 // ACCEPTS it — because the transform qualified the declared names and the
 // reference, and the definitions go up in dependency order so the dependent
 // resolves its qualified dep. This is the whole fix, run against the real
-// publication gate (no network: apiPutSigned is the server path).
+// publication gate (no network: apiPutObject is the server path).
+//
+// The object carries its dependencies by HASH, so the reference is checked on
+// the object that binds rather than inferred from the names that bound: `team/g`
+// must depend on the object `team/f` resolves to. Without that, this test would
+// pass for a `g` whose reference was never qualified, provided something called
+// `f` happened to elaborate — the failure the control below used to stand
+// against when the server still read the source's own names.
 func TestNamespacedClosureIsAcceptedByTheServer(t *testing.T) {
 	st := newMemStoreForTest(t)
 	kHex, k := newKey(t)
@@ -284,26 +291,42 @@ func TestNamespacedClosureIsAcceptedByTheServer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		reps, err := apiPutSigned(st, qf.text, kHex, "",
+		reps, err := publishObject(t, st, qf.text, kHex,
 			&pubAuth{Bytes: string(envelopeEncode(env)), Sig: sig, Pubkey: kHex})
 		if err != nil || len(reps) == 0 || reps[0].Status != "accepted" {
 			t.Fatalf("%s rejected under its own namespace: err=%v rep=%+v", name, err, reps)
 		}
 	}
 
-	if _, ok := st.Resolve("team/g"); !ok {
+	gh, ok := st.Resolve("team/g")
+	if !ok {
 		t.Fatalf("team/g did not bind")
 	}
-	if _, ok := st.Resolve("team/f"); !ok {
+	fh, ok := st.Resolve("team/f")
+	if !ok {
 		t.Fatalf("team/f did not bind")
+	}
+	g, err := st.GetDef(gh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !collectDeps(g)[fh] {
+		t.Fatalf("team/g's object does not depend on team/f's (%s): the reference was not qualified, deps=%v", shortHash(fh), collectDeps(g))
 	}
 }
 
-// The control that makes the test above mean something: the OLD --namespace
-// behaviour — a prefixed envelope name over a BARE-named source — is REJECTED by
-// the same gate, with the name-mismatch this fix removes. Without this, the test
-// above could pass for a reason unrelated to the qualification.
-func TestBareSourceWithPrefixedEnvelopeIsRejected(t *testing.T) {
+// The control for the test above, restated for a server that receives OBJECTS.
+//
+// It used to assert that the OLD --namespace behaviour — a prefixed envelope name
+// over a BARE-named source — was REJECTED as a name mismatch (#185). That mismatch
+// existed because the server elaborated the source and so held a second spelling
+// of the name. An object is name-free (§1): the envelope's name is the only one
+// the server has, so the same submission now binds `team/f` — and the property
+// worth holding is the one the mismatch was protecting, which is that the
+// source's declared name does not leak into the store. Nothing named `f` may
+// bind. The rule ENV-STORE-NAME itself is witnessed as a pure function in
+// gate_test.go.
+func TestBareSourceWithPrefixedEnvelopeBindsOnlyTheSignedName(t *testing.T) {
 	st := newMemStoreForTest(t)
 	kHex, k := newKey(t)
 	resOct, resSig := signRes(t, k, "team/*", noAuthority, 0)
@@ -319,12 +342,15 @@ func TestBareSourceWithPrefixedEnvelopeIsRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reps, _ := apiPutSigned(st, src, kHex, "",
+	reps, err := publishObject(t, st, src, kHex,
 		&pubAuth{Bytes: string(envelopeEncode(env)), Sig: sig, Pubkey: kHex})
-	if len(reps) == 0 || reps[0].Status == "accepted" {
-		t.Fatalf("a prefixed envelope over bare source was accepted; the name mismatch went unchecked: %+v", reps)
+	if err != nil || len(reps) != 1 || reps[0].Status != "accepted" || reps[0].Name != "team/f" {
+		t.Fatalf("a prefixed statement over a bare-named object was not published as the signed name: %+v (%v)", reps, err)
 	}
-	if !strings.Contains(reps[0].Error, "does not match the requested transition") {
-		t.Errorf("rejection is not the name mismatch #185 addresses: %q", reps[0].Error)
+	if got, ok := st.Resolve("team/f"); !ok || got != h {
+		t.Fatalf("team/f resolves to %q (ok=%v), want the signed artifact %s", got, ok, h)
+	}
+	if _, ok := st.Resolve("f"); ok {
+		t.Fatal("the source's declared name `f` was bound: the store took a name from the source rather than from the statement")
 	}
 }

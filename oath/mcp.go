@@ -365,42 +365,43 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 		if principal != "" {
 			a.Author = principal
 		}
-		// An author statement is only meaningful from a SIGNED request: the signing
-		// key must be the authenticated principal, so a bearer-token caller cannot
-		// present a statement attributed to somebody else's key.
-		var auth *pubAuth
+		// REFUSED, NOT IGNORED. `put` once accepted an author statement beside the
+		// source and re-elaborated the source to check it (#83); that path is
+		// gone (#102), and `put_object` is where a signed publication goes. These
+		// fields were never in `put`'s declared schema, but a client that sends
+		// them is making a claim — that these bytes are bound to its key — and a
+		// server that dropped the claim on the floor would journal an UNSIGNED
+		// publication the caller believes it signed. Either field alone is
+		// enough to refuse: a client that sends one meant to sign.
 		if a.Envelope != "" || a.Signature != "" {
-			if !signed {
-				return "", fmt.Errorf("an author statement (envelope/signature) requires a SIGNED request: with a bearer token the principal is server-vouched, so a statement naming a key could not be tied to this caller")
-			}
-			if a.Envelope == "" || a.Signature == "" {
-				return "", fmt.Errorf("author statement is incomplete: both envelope and signature are required, since either alone attests to nothing")
-			}
-			auth = &pubAuth{Bytes: a.Envelope, Sig: a.Signature, Pubkey: principal}
+			return "", fmt.Errorf("`put` publishes SOURCE and is unsigned: it no longer accepts an author statement (envelope/signature), because the registry would have to re-elaborate the source to check it and the statement would then cover a derivation the registry made rather than the object you signed. A signed publication submits the object it signed — use `put_object` (SPEC §8.6.4), which `oath publish` does")
 		}
 		// THE FREEZE (legacy.go). On a HOSTED registry, creating a name is creating
 		// permanent authority state, and it must begin with a verifiable authority
 		// event rather than a server-vouched label. `hosted` rather than `!signed`:
 		// local stdio serve is the invoking user's own store, where there is no
-		// principal to establish and nothing to spoof.
+		// principal to establish and nothing to spoof. And a SIGNED request does
+		// not lift it: source publication carries no statement, so a signature on
+		// the transport proves who is asking, not what they are publishing —
+		// creation needs `put_object`.
 		//
 		// Narrow on purpose. This refuses CREATION, not publication — an existing
 		// legacy name may still be updated under operator policy, which is what
 		// "preserve legacy ambiguity" means. A name that already has a cryptographic
 		// owner is governed by the ownership rules, not by this one.
-		if hosted && auth == nil {
+		if hosted {
 			for _, n := range sourceNames(a.Source) {
 				if !nameExists(st, n) {
 					return "", fmt.Errorf(bearerRefusal, n)
 				}
 				if !isLegacyUnowned(st, n) {
-					return "", fmt.Errorf("%q is not in the frozen legacy set, so an unsigned request may not "+
-						"repoint it: it was created by a signed publication and only a signed request from an "+
-						"authorized principal may move it", n)
+					return "", fmt.Errorf("%q is not in the frozen legacy set, so an unsigned source publication may not "+
+						"repoint it: it was created by a signed publication and only a signed object publication "+
+						"(`put_object`) from an authorized principal may move it", n)
 				}
 			}
 		}
-		results, err := apiPutSigned(st, a.Source, a.Author, a.Context, auth)
+		results, err := apiPut(st, a.Source, a.Author, a.Context)
 		out := renderPutReports(results)
 		if err != nil {
 			return "", fmt.Errorf("%s%w", out, err)

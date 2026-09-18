@@ -51,7 +51,7 @@ func TestNonOperatorKeyReservesPublishesLicensedAndIsThirdPartyVerifiable(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	reps, err := apiPutSigned(st, src, aliceHex, "",
+	reps, err := publishObject(t, st, src, aliceHex,
 		&pubAuth{Bytes: string(envelopeEncode(env)), Sig: sig, Pubkey: aliceHex})
 	if err != nil || reps[0].Status != "accepted" {
 		t.Fatalf("licensed publication into own namespace failed: %v %+v", err, reps[0])
@@ -70,8 +70,15 @@ func TestNonOperatorKeyReservesPublishesLicensedAndIsThirdPartyVerifiable(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	reps, _ = apiPutSigned(st, bsrc, bobHex, "",
+	reps, err = publishObject(t, st, bsrc, bobHex,
 		&pubAuth{Bytes: string(envelopeEncode(benv)), Sig: bsig, Pubkey: bobHex})
+	// A POLICY refusal is reported, not errored: bob's statement is valid, so the
+	// object path stores the object and the shared admission sequence blocks the
+	// name. An error here would mean the statement gate fired instead — the
+	// wrong gate, which the assertion on the message below also rules out.
+	if err != nil {
+		t.Fatalf("bob's well-formed statement was refused before policy ran: %v", err)
+	}
 	if reps[0].Status == "accepted" {
 		t.Fatalf("bob published inside alice's reserved namespace")
 	}

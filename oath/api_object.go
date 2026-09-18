@@ -137,22 +137,18 @@ func apiPutObject(st *Store, objectB64 string, naming *objectNaming, auth *pubAu
 		}
 	}
 	fitNaming(m, def)
-	// THE STATEMENT IS VERIFIED BEFORE ANYTHING IS STORED, and only this path can
-	// do that. The shared sequence checks it after StoreObject because SOURCE
-	// publication cannot know the artifact hash until it has elaborated — so the
-	// object is already written when the statement is judged. That is harmless
-	// for source (an unreferenced object is inert, and to reach an existing
-	// object's metadata you would have to submit source elaborating to exactly
-	// it), and it is NOT harmless here: the caller supplies the bytes directly
-	// AND the vocabulary, so a publication that is about to be rejected could
-	// otherwise rewrite the rendered names of a definition someone else has
-	// bound.
+	// THE STATEMENT IS VERIFIED BEFORE ANYTHING IS STORED. The shared sequence
+	// checks it after StoreObject, where it sat when source publication could
+	// also carry a statement and could not know the artifact hash until it had
+	// elaborated. That order is NOT harmless here: the caller supplies the bytes
+	// directly AND the vocabulary, so a publication that is about to be rejected
+	// could otherwise rewrite the rendered names of a definition someone else
+	// has bound.
 	//
 	// Object publication has the hash in hand before it stores anything, which
 	// is the structural advantage of receiving the object rather than deriving
-	// it — so the check moves to where it belongs. admitPut checks again; the
-	// check is pure and cheap, and a duplicated refusal is the right kind of
-	// redundancy.
+	// it — so the check runs here first. admitPut checks again; the check is
+	// pure and cheap, and a duplicated refusal is the right kind of redundancy.
 	h := hashDef(def)
 	curParent, curRev := nameRevision(st, env.Name)
 	if cerr := checkPublication(env, auth.Sig, auth.Pubkey, env.Name, h, curParent, curRev); cerr != nil {

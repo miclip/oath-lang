@@ -27,9 +27,31 @@ func artifactHashOf(t *testing.T, st *Store, src string) string {
 	return hashDef(def)
 }
 
+// publishObject is the test's CLIENT: it elaborates src once, exactly as `oath
+// publish` does, and submits the OBJECT it elaborated together with the author's
+// statement — the only path a signed publication has (#102; source publication
+// is unsigned). Aliases in src are registered in order and contribute no object,
+// so a plan's exact bytes elaborate here the way the client elaborates them.
+func publishObject(t *testing.T, st *Store, src, author string, auth *pubAuth) ([]putReport, error) {
+	t.Helper()
+	def, meta, err := elabAliasPlan(t, st, src)
+	if err != nil {
+		t.Fatalf("client elaboration of %q failed: %v", src, err)
+	}
+	naming := &objectNaming{TyVarNames: meta.TyVarNames, CtorNames: meta.CtorNames,
+		PropNames: meta.PropNames, ParamNames: meta.ParamNames}
+	return apiPutObject(st, encodeEnvelopeB64(encodeDef(def)), naming, auth, author, "")
+}
+
 // The gate must accept an honest statement and PERSIST it verbatim, and must
 // reject every statement that does not describe the transition being requested —
 // without moving the name.
+//
+// A refused statement comes back as an ERROR with no report: object publication
+// checks the statement before it stores anything, so there is no stored object
+// for a report to describe. The source path, when it could carry a statement,
+// had already stored the object and reported `rejected` — the same refusal, at
+// the point the path can first make it.
 func TestAuthorStatementGate(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(nil)
 	pubHex := hex.EncodeToString(pub)
@@ -50,7 +72,7 @@ func TestAuthorStatementGate(t *testing.T) {
 	t.Run("honest statement is accepted and persisted verbatim", func(t *testing.T) {
 		st, env, sig := build(t)
 		raw := string(envelopeEncode(env))
-		reps, err := apiPutSigned(st, gateSrc, pubHex, "", &pubAuth{Bytes: raw, Sig: sig, Pubkey: pubHex})
+		reps, err := publishObject(t, st, gateSrc, pubHex, &pubAuth{Bytes: raw, Sig: sig, Pubkey: pubHex})
 		if err != nil {
 			t.Fatalf("honest signed publication failed: %v (%+v)", err, reps)
 		}
@@ -90,7 +112,6 @@ func TestAuthorStatementGate(t *testing.T) {
 		wantErr string
 	}{
 		{"signature does not verify", func(e *pubEnvelope) { e.Artifact = strings.Repeat("9", 64) }, false, "does not verify"},
-		{"signed a different name", func(e *pubEnvelope) { e.Name = "other" }, true, "signed name"},
 		{"signed a different artifact", func(e *pubEnvelope) { e.Artifact = strings.Repeat("8", 64) }, true, "submitted content hashes to"},
 		{"claims a parent on a fresh name", func(e *pubEnvelope) { e.Parent, e.ParentRev = strings.Repeat("7", 64), revOf(2) }, true, "currently points at"},
 	} {
@@ -105,18 +126,51 @@ func TestAuthorStatementGate(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			reps, _ := apiPutSigned(st, gateSrc, pubHex, "", &pubAuth{Bytes: raw, Sig: sig, Pubkey: pubHex})
-			if len(reps) == 0 || reps[0].Status != "rejected" {
+			reps, err := publishObject(t, st, gateSrc, pubHex, &pubAuth{Bytes: raw, Sig: sig, Pubkey: pubHex})
+			if err == nil {
 				t.Fatalf("statement was not rejected: %+v", reps)
 			}
-			if !strings.Contains(reps[0].Error, tc.wantErr) {
-				t.Fatalf("error %q does not mention %q", reps[0].Error, tc.wantErr)
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("error %q does not mention %q", err.Error(), tc.wantErr)
 			}
 			if _, ok := st.Resolve("dbl"); ok {
 				t.Fatal("the name MOVED on a rejected statement")
 			}
+			// The attempt is RETAINED: a refusal before storage must not also be a
+			// refusal before the record.
+			log := st.ReadLog()
+			if len(log) == 0 || log[len(log)-1].Status != "rejected" {
+				t.Fatalf("a rejected statement left no rejected journal entry: %+v", log)
+			}
 		})
 	}
+
+	// A statement for a DIFFERENT NAME is not a mismatch on this path — it is a
+	// publication of that name. Source publication had two spellings of the name
+	// (the source's and the envelope's) and ENV-STORE-NAME compared them; an
+	// object is name-free (§1), so the envelope is the only spelling there is,
+	// and what the rule guarantees here is that the store binds the SIGNED name
+	// and nothing else. The rule itself is still witnessed as a pure function
+	// below, because the conformance vectors state it for every kernel.
+	t.Run("a statement names the binding it makes, and no other", func(t *testing.T) {
+		st, env, _ := build(t)
+		env.Name = "other"
+		sig, err := envelopeSign(priv, env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		reps, err := publishObject(t, st, gateSrc, pubHex,
+			&pubAuth{Bytes: string(envelopeEncode(env)), Sig: sig, Pubkey: pubHex})
+		if err != nil || len(reps) != 1 || reps[0].Status != "accepted" || reps[0].Name != "other" {
+			t.Fatalf("a valid statement for `other` did not publish `other`: %+v (%v)", reps, err)
+		}
+		if _, ok := st.Resolve("other"); !ok {
+			t.Fatal("the signed name did not bind")
+		}
+		if _, ok := st.Resolve("dbl"); ok {
+			t.Fatal("the source's declared name `dbl` was bound: the object path took a name from somewhere other than the statement")
+		}
+	})
 
 	// A statement signed for a different key must not be accepted just because it
 	// verifies against the key it names — the signer must be the AUTHENTICATED
@@ -124,15 +178,48 @@ func TestAuthorStatementGate(t *testing.T) {
 	t.Run("envelope key is not the authenticated principal", func(t *testing.T) {
 		st, env, sig := build(t)
 		other, _, _ := ed25519.GenerateKey(nil)
-		reps, _ := apiPutSigned(st, gateSrc, pubHex, "",
+		reps, err := publishObject(t, st, gateSrc, pubHex,
 			&pubAuth{Bytes: string(envelopeEncode(env)), Sig: sig, Pubkey: hex.EncodeToString(other)})
-		if len(reps) == 0 || reps[0].Status != "rejected" {
+		if err == nil {
 			t.Fatalf("statement accepted for a key that did not authenticate: %+v", reps)
 		}
-		if !strings.Contains(reps[0].Error, "authenticated as") {
-			t.Fatalf("unexpected error: %q", reps[0].Error)
+		if !strings.Contains(err.Error(), "authenticated as") {
+			t.Fatalf("unexpected error: %q", err.Error())
+		}
+		if _, ok := st.Resolve("dbl"); ok {
+			t.Fatal("the name MOVED on a replayed statement")
 		}
 	})
+}
+
+// ENV-STORE-NAME as the RULE, independent of any publication path. Source
+// publication used to witness it end to end (a signed name against a source's
+// declared name); object publication cannot, because the signed name is the
+// only name it has. The rule stays normative — the conformance vectors state it
+// for every kernel, including ones whose publication surface is not this one —
+// so it is witnessed where the vectors witness it: on checkPublication itself.
+func TestStoreNameRuleRefusesAMismatchedName(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	pubHex := hex.EncodeToString(pub)
+	env := pubEnvelope{Op: "put", Name: "team/f", Artifact: strings.Repeat("1", 64),
+		Parent: noParent, ParentRev: firstRev(), Author: pubHex, License: noLicense}
+	sig, err := envelopeSign(priv, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Control: the same statement authorises the transition it names.
+	if err := checkPublication(env, sig, pubHex, "team/f", env.Artifact, noParent, 0); err != nil {
+		t.Fatalf("an honest statement was refused: %v", err)
+	}
+	err = checkPublication(env, sig, pubHex, "f", env.Artifact, noParent, 0)
+	if err == nil {
+		t.Fatal("a statement signed for team/f authorised publishing f")
+	}
+	for _, want := range []string{"signed name", "does not match the requested transition"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal %q does not say %q", err.Error(), want)
+		}
+	}
 }
 
 // The revision must count entries that MOVED the name, not merely accepted ones,
@@ -177,18 +264,22 @@ func TestRejectedAttemptDoesNotDisturbRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A bogus attempt lands in the journal as rejected...
+	// A bogus attempt lands in the journal as rejected... It claims a parent the
+	// fresh name does not have (a different NAME would not be bogus on the object
+	// path — it would publish that name; see TestAuthorStatementGate).
 	bogus := honest
-	bogus.Name = "elsewhere"
+	bogus.Parent, bogus.ParentRev = strings.Repeat("7", 64), revOf(2)
 	bogusRaw := string(envelopeEncode(bogus))
 	bogusSig, _ := envelopeSign(priv, bogus)
-	_, _ = apiPutSigned(st, gateSrc, pubHex, "", &pubAuth{Bytes: bogusRaw, Sig: bogusSig, Pubkey: pubHex})
+	if _, err := publishObject(t, st, gateSrc, pubHex, &pubAuth{Bytes: bogusRaw, Sig: bogusSig, Pubkey: pubHex}); err == nil {
+		t.Fatal("setup: the bogus statement was accepted")
+	}
 
 	if p, r := nameRevision(st, "dbl"); p != noParent || r != 0 {
 		t.Fatalf("a rejected attempt disturbed the transition: parent=%s rev=%d", p, r)
 	}
 	// ...and the envelope prepared BEFORE it must still be accepted.
-	reps, err := apiPutSigned(st, gateSrc, pubHex, "", &pubAuth{Bytes: string(envelopeEncode(honest)), Sig: sig, Pubkey: pubHex})
+	reps, err := publishObject(t, st, gateSrc, pubHex, &pubAuth{Bytes: string(envelopeEncode(honest)), Sig: sig, Pubkey: pubHex})
 	if err != nil || len(reps) == 0 || reps[0].Status != "accepted" {
 		t.Fatalf("a previously prepared envelope was invalidated by an unrelated rejected attempt: %+v (%v)", reps, err)
 	}
@@ -213,7 +304,7 @@ func TestSameHashRepublicationKeepsJournalValid(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		reps, err := apiPutSigned(st, gateSrc, pubHex, "", &pubAuth{
+		reps, err := publishObject(t, st, gateSrc, pubHex, &pubAuth{
 			Bytes: string(envelopeEncode(env)), Sig: sig, Pubkey: pubHex})
 		if err != nil {
 			t.Fatalf("publish failed: %v", err)

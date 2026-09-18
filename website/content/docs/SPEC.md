@@ -3453,9 +3453,32 @@ A store accepting a publication MUST, **before** the name moves:
   > rather than preventing it. A store that receives the object cannot have that
   > class of disagreement, because there is only one derivation and the re-encode
   > check is decidable against the bytes in hand.
-- **ENV-STORE-NAME.** require the signed `name` to be the name being published;
+- **ENV-STORE-NAME.** require the signed `name` to be the name being published.
+  Where the submission carries no separate target — object publication does not,
+  since a canonical object is name-free (§1) — the signed `name` IS the name
+  being published, and the rule's content is that a store binds THAT name and no
+  other. The rule is not thereby retired: it still binds any interface that
+  accepts a target alongside a statement, and such an interface MUST refuse a
+  target that differs from the signed name rather than preferring either;
 - **ENV-STORE-CAS.** require the signed `parent` to be the name's current binding;
 - **ENV-STORE-REV.** require the signed `parent_rev` to be the name's current revision. This is what makes ABA replay detectable, since a hash alone is not monotonic.
+
+**A SIGNED PUBLICATION SUBMITS THE OBJECT, AND SOURCE PUBLICATION IS UNSIGNED.**
+A store MUST NOT accept an author statement alongside submitted SOURCE, and MUST
+REFUSE such a request rather than ignoring the statement: a caller that sends one
+is claiming these bytes are bound to its key, and a store that dropped the claim
+would journal an unsigned publication the caller believes it signed. The two are
+separate operations because they make different claims — source publication asks
+the store to elaborate and the store owns the resulting identity; object
+publication asks it to validate and store an object the publisher already
+identified and signed.
+
+The combination this forbids is the one that reads as strongest and is not: a
+signed envelope plus source the store elaborates independently means the
+signature covers one derivation while the stored object is another, with the
+checks above reduced to comparing two results that agree today. Requiring them to
+agree does not make them one, and the failure mode is a valid publication being
+refused in production the first time they diverge.
 
 A statement failing any check MUST NOT move the name. The object itself MAY still
 be stored: storage is idempotent under content addressing and an unreferenced

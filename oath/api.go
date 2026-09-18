@@ -40,15 +40,6 @@ func apiObjectPayload(st *Store, hash string) (string, error) {
 // prints them) and the MCP server (which returns them as tool results).
 // None of these exit the process; errors come back as errors.
 
-// apiPut elaborates, gates, stores, verifies, and journals every form in
-// src. It stops at the first rejection or elaboration error; results
-// accumulated so far are returned alongside any error. ctxHash, when the
-// author supplies one, is the context-slice hash it built against (#4) and
-// is stamped on every journal entry this submission produces.
-func apiPut(st *Store, src string, author string, ctxHash string) ([]putReport, error) {
-	return apiPutSigned(st, src, author, ctxHash, nil)
-}
-
 // pubAuth is an author's signed publication statement, as received: the EXACT
 // bytes and the signature over them. The bytes are never re-serialized between
 // arrival and journalling — they are the author's historical statement, and
@@ -59,11 +50,23 @@ type pubAuth struct {
 	Pubkey string // authenticated principal's key (NOT taken from the envelope)
 }
 
-// apiPutSigned is apiPut with an optional author statement. When auth is non-nil
-// the statement is verified BEFORE the name moves, so an invalid signature can
-// never appear as an accepted publication (#83). Verification order matters: each
-// check below is cheap relative to the next, and none of them mutate the name.
-func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pubAuth) ([]putReport, error) {
+// apiPut elaborates, gates, stores, verifies, and journals every form in
+// src. It stops at the first rejection or elaboration error; results
+// accumulated so far are returned alongside any error. ctxHash, when the
+// author supplies one, is the context-slice hash it built against (#4) and
+// is stamped on every journal entry this submission produces.
+//
+// SOURCE PUBLICATION IS UNSIGNED, BY CONSTRUCTION. This function once took an
+// optional author statement (#83): the client elaborated, signed the result,
+// and sent SOURCE for the registry to elaborate a second time, with
+// ENV-STORE-ARTIFACT catching disagreement between the two derivations. That
+// is two derivations compared for agreement where one would do, and every
+// future difference in normalisation, defaults or kernel version reopened the
+// split (#101). A signed publication now submits the object it signed
+// (apiPutObject, #102), so there is no statement for this path to carry — and
+// no parameter through which one could be carried, which is the point: the
+// split-brain path does not exist rather than merely having no caller.
+func apiPut(st *Store, src string, author string, ctxHash string) ([]putReport, error) {
 	if author == "" {
 		author = "unattributed"
 	}
@@ -114,7 +117,7 @@ func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pu
 			_ = st.AppendLog(&LogEntry{Author: author, Name: formName, Status: "rejected", Error: err.Error(), Context: ctxHash})
 			return results, err
 		}
-		rep, stop, err := admitPut(st, def, meta, auth, author, ctxHash)
+		rep, stop, err := admitPut(st, def, meta, nil, author, ctxHash)
 		if err != nil {
 			// The report is NOT appended on error. admitPut builds it optimistically
 			// and fills the outcome in as it goes, so on an error path it can still
@@ -2257,12 +2260,16 @@ func admitPut(st *Store, def *Def, meta *Meta, auth *pubAuth, author, ctxHash st
 		}
 	}
 
-	// THE AUTHOR-STATEMENT GATE. Everything here happens after elaboration (so
-	// the artifact hash is known) and before Repoint (so a failure leaves the
-	// name exactly where it was). The object itself is already stored, which is
-	// correct and harmless: content addressing makes storage idempotent, and an
-	// unreferenced object is inert. What must not happen is a NAME moving on an
-	// unverified statement.
+	// THE AUTHOR-STATEMENT GATE. Only OBJECT publication (apiPutObject) supplies
+	// a statement — source publication is unsigned and passes nil — and that
+	// caller has already checked it before storing anything. It is checked
+	// AGAIN here, before Repoint, because this sequence is the single authority
+	// on what may move a name: a caller that stored first and forgot the check
+	// would otherwise bind a name on an unverified statement, and nothing
+	// downstream of this function would know. The check is pure and cheap; a
+	// duplicated refusal is the right kind of redundancy. The object is already
+	// stored, which is harmless: storage is idempotent under content addressing
+	// and an unreferenced object is inert.
 	if auth != nil {
 		env, perr := envelopeParse([]byte(auth.Bytes))
 		var gerr error

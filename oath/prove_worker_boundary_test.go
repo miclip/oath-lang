@@ -24,8 +24,8 @@ func TestWorkerIsNotAnAdmissionPath(t *testing.T) {
 
 	// Calls that would put the worker on the hosted publication path.
 	for _, forbidden := range []string{
-		"remotePut", "remotePutSigned", "remoteText", "mcpCallSigned",
-		"mcpCallTool", "apiPutSigned", "handleRPC",
+		"remotePut", "remotePutObject", "remoteText", "mcpCallSigned",
+		"mcpCallTool", "apiPut", "apiPutObject", "handleRPC",
 	} {
 		if strings.Contains(body, forbidden+"(") {
 			t.Errorf("prove_worker.go calls %s: the worker must not write through the hosted "+

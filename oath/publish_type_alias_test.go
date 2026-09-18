@@ -275,9 +275,9 @@ func TestPublishRefusesAliasShadowedByALaterDeclaration(t *testing.T) {
 }
 
 // THE SERVER-SIDE WITNESS, and the point of requirement "one published definition":
-// the EXACT bytes each plan sends re-elaborate at the registry, under the same
-// publication gate a real put goes through, and bind exactly one name. apiPutSigned IS
-// the server path — no network, no stub.
+// the EXACT bytes each plan holds elaborate to ONE object, which goes up through the
+// same admission sequence a real publication goes through and binds exactly one
+// name. apiPutObject IS the server path — no network, no stub.
 func TestPublishedAliasSourceIsAcceptedByTheServer(t *testing.T) {
 	st := newMemStoreForTest(t)
 	kHex, k := newKey(t)
@@ -325,13 +325,13 @@ func TestPublishedAliasSourceIsAcceptedByTheServer(t *testing.T) {
 		if serr != nil {
 			t.Fatal(serr)
 		}
-		reps, perr := apiPutSigned(st, text, kHex, "",
+		reps, perr := publishObject(t, st, text, kHex,
 			&pubAuth{Bytes: string(envelopeEncode(env)), Sig: sig, Pubkey: kHex})
 		if perr != nil {
 			t.Fatalf("%s rejected: %v", name, perr)
 		}
 		// EXACTLY ONE published definition per envelope — the alias must contribute no
-		// report, or a single signature would be covering two name transitions.
+		// object, or a single signature would be covering two name transitions.
 		if len(reps) != 1 {
 			t.Fatalf("%s: the published source must yield exactly one definition, got %d: %+v", name, len(reps), reps)
 		}
@@ -552,8 +552,8 @@ func TestPublishAcceptsAnAliasBelowItsDefinition(t *testing.T) {
 
 // ATOMICITY. A trailing alias must NOT be transmitted. It publishes nothing and is not
 // in scope for the definition above it, so dropping it cannot change what the registry
-// derives — but SENDING it can destroy the publication's atomicity: apiPutSigned stores
-// and REPOINTS the definition before it reaches the alias, so an alias valid on the
+// derives — but SENDING it can destroy the publication's atomicity: source publication
+// (apiPut) stores and REPOINTS the definition before it reaches the alias, so an alias valid on the
 // client and not on the registry fails after the name has irreversibly moved, and the
 // command reports failure over a publication that happened. Found by external review.
 func TestPublishDoesNotTransmitTrailingAliases(t *testing.T) {
@@ -561,7 +561,7 @@ func TestPublishDoesNotTransmitTrailingAliases(t *testing.T) {
 	// exists, and it is asserted so the reason cannot quietly stop being true.
 	server := newMemStoreForTest(t)
 	hazard := "(data Point [] (Pt Int))\n(type P LocalOnly)" // LocalOnly is absent there
-	reps, serr := apiPutSigned(server, hazard, "author", "", nil)
+	reps, serr := apiPut(server, hazard, "author", "")
 	if serr == nil {
 		t.Fatal("control dead: the server accepted an alias over a type it does not hold")
 	}
@@ -588,7 +588,7 @@ func TestPublishDoesNotTransmitTrailingAliases(t *testing.T) {
 	}
 	// And the trimmed bytes are what the registry accepts, cleanly.
 	fresh := newMemStoreForTest(t)
-	reps2, err2 := apiPutSigned(fresh, send, "author", "", nil)
+	reps2, err2 := apiPut(fresh, send, "author", "")
 	if err2 != nil || len(reps2) != 1 || reps2[0].Status != "accepted" {
 		t.Fatalf("the transmitted bytes must publish exactly one definition cleanly: err=%v reps=%+v", err2, reps2)
 	}
