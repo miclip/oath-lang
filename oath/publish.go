@@ -43,6 +43,17 @@ type publishPlan struct {
 	License   string `json:"license"`
 	// Bytes is the exact canonical envelope that will be signed and transmitted.
 	Bytes string `json:"bytes"`
+	// Object is the base64 canonical object octets whose hash `Artifact` names,
+	// and Naming the readable vocabulary that travels beside them. These are what
+	// is TRANSMITTED under #102: the registry stores these octets rather than
+	// re-deriving an object from source, so the bytes signed here and the bytes
+	// stored there are one sequence.
+	//
+	// `json:"-"` because the plan is what the author reviews before signing, and
+	// the decision content is the artifact HASH — a screenful of base64 is noise
+	// in a prompt whose entire job is being read.
+	Object string        `json:"-"`
+	Naming *objectNaming `json:"-"`
 }
 
 func (p publishPlan) render() string {
@@ -235,7 +246,13 @@ func buildPublishPlan(local *Store, endpoint, pubHex, src, license, namespace st
 	}
 	return publishPlan{Name: env.Name, Artifact: env.Artifact, Parent: env.Parent,
 		ParentRev: env.ParentRev.String(), Author: env.Author, Op: env.Op,
-		License: env.License, Bytes: raw}, env, send, nil
+		License: env.License, Bytes: raw,
+		// The object the hash above was taken from, carried so the registry
+		// receives it rather than re-deriving it.
+		Object: encodeEnvelopeB64(encodeDef(def)),
+		Naming: &objectNaming{TyVarNames: meta.TyVarNames, CtorNames: meta.CtorNames,
+			PropNames: meta.PropNames, ParamNames: meta.ParamNames},
+	}, env, send, nil
 }
 
 // elabForm dispatches a top-level form the same way apiPut does, so the client
@@ -365,18 +382,30 @@ func cmdPublish(local *Store, endpoint, keyPath, kmsKey, file, license, namespac
 }
 
 // finalizePublish signs the plan's EXACT bytes, transmits them unchanged, and
-// verifies the registry persisted the same bytes. `source` is the definition text
-// the server re-elaborates. It returns an error rather than calling fail() so a
-// closure publish can stop cleanly mid-batch; the single-def path turns that error
-// into fail(). The bytes signed are plan.Bytes, not a re-encoding of the envelope:
-// a re-encoding that differed by one byte would sign something the registry never
-// sees.
+// verifies the registry persisted the same bytes.
+//
+// IT SENDS THE OBJECT, NOT SOURCE (#102). The registry no longer re-elaborates
+// to decide what to store, so the artifact hash signed here and the object
+// stored there are one derivation rather than two compared for agreement. The
+// `source` parameter is retained for the caller's error reporting and is no
+// longer transmitted.
+//
+// A consequence worth noticing: the elaborate-in-source-order reasoning in
+// buildPublishPlan exists because the SERVER re-elaborated the same text and
+// could disagree about alias scope. Sending the object removes the server's
+// elaboration from the picture entirely, so that whole class of client/server
+// divergence has nothing left to occur in.
+//
+// It returns an error rather than calling fail() so a closure publish can stop
+// cleanly mid-batch; the single-def path turns that error into fail(). The bytes
+// signed are plan.Bytes, not a re-encoding of the envelope: a re-encoding that
+// differed by one byte would sign something the registry never sees.
 func finalizePublish(ctx context.Context, signer Signer, source string, plan publishPlan, endpoint string, jsonOut bool) error {
 	sig, err := signStatement(ctx, signer, []byte(plan.Bytes), plan.Author, jsonOut)
 	if err != nil {
 		return err
 	}
-	out, err := remotePutSigned(endpoint, source, plan.Bytes, sig, plan.Author)
+	out, err := remotePutObject(endpoint, plan.Object, plan.Naming, plan.Bytes, sig)
 	if err != nil {
 		// A stale parent/revision is the one failure with a specific remedy, and the
 		// remedy is deliberately NOT automatic — see the file comment.

@@ -119,17 +119,21 @@ func apiPutObject(st *Store, objectB64 string, naming *objectNaming, auth *pubAu
 			if err := requireSurfaceSymbol(label, n); err != nil {
 				return nil, err
 			}
-			// DISTINCT, because each of these vocabularies names POSITIONS. Two
-			// type variables spelled `a` make the projection ambiguous in a way
-			// that is worse than unreadable: printing renders index 1 as `a`,
-			// re-reading resolves `a` to index 0, and the displayed source
-			// therefore elaborates to a DIFFERENT object than the one signed. A
-			// path whose whole claim is that stored bytes are signed bytes cannot
-			// hand out a rendering that contradicts them.
-			if seen[n] {
-				return nil, fmt.Errorf("%ss must be distinct: %q appears twice, and a repeated positional name makes the readable projection resolve to a different object than the one signed", label, n)
-			}
-			seen[n] = true
+			// DUPLICATES ARE NOT REFUSED, and an earlier version of this refused
+			// them. The reasoning was sound and the placement was wrong: a
+			// repeated positional name does make a projection ambiguous, but the
+			// LANGUAGE already produces them — `(defn f [] [(x Int) (x Int)] …)`
+			// and `(data D [a a] …)` both elaborate and are accepted by source
+			// publication, which stores the duplicates as-is. Measured, not
+			// assumed.
+			//
+			// So refusing here would have made object publication reject
+			// definitions source publication accepts — reintroducing exactly the
+			// divergence between the two paths that #102 exists to remove, and
+			// doing it AFTER the author had signed. The ambiguity is real and it
+			// belongs to the surface projection for both paths; it is not this
+			// path's to fix unilaterally by narrowing what may be published.
+			_ = seen
 		}
 	}
 	fitNaming(m, def)
@@ -273,7 +277,11 @@ func fitNaming(m *Meta, def *Def) {
 		out := make([]string, want)
 		next := 0
 		for i := 0; i < want; i++ {
-			if i < len(have) && have[i] != "" && !used[have[i]] {
+			// A supplied name is kept VERBATIM, duplicates included: the language
+			// produces them and source publication stores them, so rewriting one
+			// here would make the same definition carry different vocabulary
+			// depending on which path published it.
+			if i < len(have) && have[i] != "" {
 				out[i] = have[i]
 				used[out[i]] = true
 				continue

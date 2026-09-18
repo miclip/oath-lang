@@ -232,12 +232,36 @@ func remoteObject(ctx context.Context, endpoint string, s Signer, hash string) (
 	return d, &m, nil
 }
 
-// remotePutSigned publishes source with an author statement. envBytes is sent
-// EXACTLY as signed.
-func remotePutSigned(endpoint, source, envBytes, sig, pubHex string) (string, error) {
-	return mcpCallSignedBy(context.Background(), endpoint, clientSigner, "put", map[string]any{
-		"source": source, "envelope": envBytes, "signature": sig,
-	})
+// remotePutObject publishes an ALREADY-ELABORATED object with its author
+// statement (#102). The registry stores exactly these octets.
+//
+// Both byte strings travel base64: the envelope because that is the canonical
+// dialect every signed-envelope tool uses, and the object because a canonical
+// object is arbitrary binary and JSON has no way to carry it otherwise. The
+// envelope is base64 of the EXACT bytes signed — not a re-encoding of a parsed
+// envelope, which could differ by a byte and would then attest to something the
+// registry never sees.
+func remotePutObject(endpoint, objectB64 string, naming *objectNaming, envBytes, sig string) (string, error) {
+	return mcpCallSignedBy(context.Background(), endpoint, clientSigner, "put_object",
+		putObjectArgs(objectB64, naming, envBytes, sig))
+}
+
+// putObjectArgs shapes the request. Split out as a PURE function because it is
+// the part that can silently be wrong: sending base64 of a re-encoded envelope
+// rather than of the exact signed bytes would attest to a statement the registry
+// never sees, and nothing downstream would notice — the signature would verify
+// against the wrong octets or not at all, which is a failure the client reports
+// as the registry's.
+func putObjectArgs(objectB64 string, naming *objectNaming, envBytes, sig string) map[string]any {
+	args := map[string]any{
+		"object":    objectB64,
+		"envelope":  encodeEnvelopeB64([]byte(envBytes)),
+		"signature": sig,
+	}
+	if naming != nil {
+		args["naming"] = naming
+	}
+	return args
 }
 
 // remotePut publishes source to a registry over MCP, authenticated by an

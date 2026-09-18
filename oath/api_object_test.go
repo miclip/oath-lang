@@ -216,30 +216,45 @@ func TestObjectPublicationRefusesNonSurfaceNames(t *testing.T) {
 	}
 }
 
-// Each positional vocabulary names distinct positions, so a repeated name is
-// worse than unreadable: `printTy` renders type variable 1 as `a` while
-// `lookupTyVar` resolves `a` to index 0, so the projection a consumer reads
-// elaborates to a DIFFERENT object than the one that was signed. A path whose
-// claim is "stored bytes are signed bytes" cannot hand out that contradiction.
-func TestObjectPublicationRefusesDuplicatePositionalNames(t *testing.T) {
+// Object publication must accept EXACTLY what source publication accepts. The
+// language produces duplicate positional names — `(defn f [] [(x Int) (x Int)]
+// …)` and `(data D [a a] …)` both elaborate — and source publication stores
+// them, so refusing them here would reject definitions the other path accepts,
+// after the author has signed. That divergence between the two paths is the
+// thing #102 exists to remove, so reintroducing it in the new path is the one
+// regression this change must not contain.
+func TestObjectPublicationAcceptsWhateverSourcePublicationAccepts(t *testing.T) {
 	st := newMemStoreForTest(t)
 	_, priv, _ := ed25519.GenerateKey(nil)
-	reps, err := apiPut(st, "(defn twice [] [(n Int)] Int (+ n n))", "author", "")
-	if err != nil {
-		t.Fatal(err)
+	// Duplicates, straight from the elaborator.
+	reps, err := apiPut(st, "(defn dup [] [(x Int) (x Int)] Int x)", "author", "")
+	if err != nil || reps[0].Status != "accepted" {
+		t.Fatalf("source publication refused the duplicate-name definition: %v %+v", err, reps)
 	}
+	m, _ := st.GetMeta(reps[0].Hash)
 	def, _ := st.GetDef(reps[0].Hash)
 	raw := encodeDef(def)
-	auth := signObjectPublication(t, "twice", raw, priv)
-	_, err = apiPutObject(newMemStoreForTest(t), base64.StdEncoding.EncodeToString(raw),
-		&objectNaming{TyVarNames: []string{"a", "a"}}, auth, "author", "")
-	if err == nil {
-		t.Fatal("duplicate type-variable names were accepted")
+	auth := signObjectPublication(t, "dup", raw, priv)
+	out, err := apiPutObject(newMemStoreForTest(t), encodeEnvelopeB64(raw),
+		&objectNaming{ParamNames: m.ParamNames}, auth, "author", "")
+	if err != nil {
+		t.Fatalf("object publication refused what source publication accepted: %v", err)
 	}
-	// Control: distinct names must still be accepted.
-	if _, err := apiPutObject(newMemStoreForTest(t), base64.StdEncoding.EncodeToString(raw),
-		&objectNaming{TyVarNames: []string{"a", "b"}}, auth, "author", ""); err != nil {
-		t.Fatalf("distinct names were refused: %v", err)
+	if len(out) != 1 || out[0].Status != "accepted" {
+		t.Fatalf("expected acceptance, got %+v", out)
+	}
+	// And the vocabulary survives VERBATIM: fitNaming keeps supplied names as
+	// given, so the same definition carries the same names whichever path
+	// published it.
+	fitted := &Meta{Name: "dup", ParamNames: append([]string(nil), m.ParamNames...)}
+	fitNaming(fitted, def)
+	if len(fitted.ParamNames) != len(m.ParamNames) {
+		t.Fatalf("fitting changed the vocabulary length: %v -> %v", m.ParamNames, fitted.ParamNames)
+	}
+	for i := range m.ParamNames {
+		if fitted.ParamNames[i] != m.ParamNames[i] {
+			t.Fatalf("fitting rewrote a supplied name: %v -> %v", m.ParamNames, fitted.ParamNames)
+		}
 	}
 }
 
@@ -260,11 +275,13 @@ func TestFittedNamesAreUniqueEvenWhenSuppliedNamesLookGenerated(t *testing.T) {
 	if def.TyVars != 2 {
 		t.Fatalf("expected 2 type variables, got %d", def.TyVars)
 	}
+	// Only cases with a name to GENERATE. A payload of supplied duplicates is
+	// NOT included: those are kept verbatim by design, because the language
+	// produces them and source publication stores them.
 	for _, supplied := range [][]string{
-		{"t1", ""},   // the generated name for slot 1 would collide
-		{"", "t0"},   // ...and for slot 0
-		{"t0", "t0"}, // an outright duplicate
-		{},           // nothing supplied at all
+		{"t1", ""}, // the generated name for slot 1 would collide with the supplied one
+		{"", "t0"}, // ...and for slot 0
+		{},         // nothing supplied at all
 	} {
 		m := &Meta{Name: "pair", TyVarNames: append([]string(nil), supplied...)}
 		fitNaming(m, def)
@@ -303,7 +320,9 @@ func TestParamNamesAreFittedToTheBinderCount(t *testing.T) {
 	if n := lambdaBinders(def.Body); n != 2 {
 		t.Fatalf("expected 2 binders, counted %d", n)
 	}
-	for _, supplied := range [][]string{{"x0"}, {}, {"a"}, {"a", "a"}} {
+	// {"a", "a"} is deliberately absent: supplied duplicates are preserved, since
+	// the elaborator emits them for legal source and both paths must agree.
+	for _, supplied := range [][]string{{"x0"}, {}, {"a"}} {
 		m := &Meta{Name: "add2", ParamNames: append([]string(nil), supplied...)}
 		fitNaming(m, def)
 		if len(m.ParamNames) != 2 {
