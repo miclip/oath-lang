@@ -3434,6 +3434,25 @@ A store accepting a publication MUST, **before** the name moves:
   the signed `artifact`. Because identity is a pure function of content (§1), this
   makes agreement between the client's and the store's elaboration an enforced
   precondition;
+
+  **What `artifact` REFERS TO.** Where the submitted content is the canonical
+  OBJECT octets, `artifact` is the hash of exactly those octets, and a store MUST
+  validate and store the octets it received rather than deriving the object again
+  from source. A store MAY decode them — decoding is total and injective over
+  canonical bytes (§1.5), so a store can CHECK its reconstruction by re-encoding
+  and comparing, and MUST refuse the publication if the result differs. Source
+  MAY accompany the request for display, provenance and reproducible rebuilding;
+  it MUST NOT be the input from which the stored object's identity is derived.
+
+  > The distinction is not decoration, and the weaker arrangement is the tempting
+  > one. If the publisher signs the result of ONE elaboration and the store
+  > elaborates SOURCE a second time to decide what to store, then this rule is a
+  > guard over two independent derivations rather than a property of one: any
+  > later difference in normalisation, defaults, dependency resolution or kernel
+  > version reopens the split, and the guard reports it as a refused publication
+  > rather than preventing it. A store that receives the object cannot have that
+  > class of disagreement, because there is only one derivation and the re-encode
+  > check is decidable against the bytes in hand.
 - **ENV-STORE-NAME.** require the signed `name` to be the name being published;
 - **ENV-STORE-CAS.** require the signed `parent` to be the name's current binding;
 - **ENV-STORE-REV.** require the signed `parent_rev` to be the name's current revision. This is what makes ABA replay detectable, since a hash alone is not monotonic.

@@ -114,166 +114,19 @@ func apiPutSigned(st *Store, src string, author string, ctxHash string, auth *pu
 			_ = st.AppendLog(&LogEntry{Author: author, Name: formName, Status: "rejected", Error: err.Error(), Context: ctxHash})
 			return results, err
 		}
-		meta.Author = author
-
-		// The kernel gate: nothing enters the codebase without typechecking.
-		// Rejections store no object, but the journal retains the attempt.
-		if err := checkDef(st, def); err != nil {
-			_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K, Status: "rejected", Error: err.Error(), Context: ctxHash})
-			results = append(results, putReport{Name: meta.Name, Kind: def.K, Status: "rejected", Error: err.Error()})
-			return results, nil
-		}
-
-		// Storage is unconditional past the gate (content addressing); the
-		// NAME only moves if repoint policy passes, after verdicts exist.
-		h, err := st.StoreObject(def, meta)
+		rep, stop, err := admitPut(st, def, meta, auth, author, ctxHash)
 		if err != nil {
+			// The report is NOT appended on error. admitPut builds it optimistically
+			// and fills the outcome in as it goes, so on an error path it can still
+			// read "accepted" for a definition whose name never moved — and the CLI
+			// renders reports before it renders the error, so the caller would see a
+			// success line above the failure.
 			return results, err
-		}
-
-		rep := putReport{Name: meta.Name, Hash: h, Kind: def.K, Status: "accepted", Ctors: len(def.Ctors)}
-		if def.K == "func" {
-			reports, err := verifyDef(st, h)
-			if err != nil {
-				return results, err
-			}
-			m, _ := st.GetMeta(h)
-			m.Termination = terminationOf(st, def, h)
-			m.Confinement = confinementOf(st, def)
-			if err := st.SetMeta(h, m); err != nil {
-				return results, err
-			}
-			rep.Guarantee = guaranteeString(m.Guarantee)
-			rep.Termination = m.Termination
-			rep.Confinement = confinementString(m)
-			if m.Guarantee.Level == "falsified" {
-				rep.Status = "falsified"
-			}
-			for _, r := range reports {
-				label, text, hasDetail := r.Detail()
-				rep.Props = append(rep.Props, propJSON{
-					Name: r.Name, Passed: r.Passed, Indeterminate: r.Indet,
-					Outcome: string(r.Outcome), Failed: r.Falsified(),
-					Counterexample: r.Counter, Error: r.Err,
-					Headline: r.Headline(), DetailLabel: label, Detail: text, HasDetail: hasDetail,
-				})
-			}
-		}
-
-		// THE AUTHOR-STATEMENT GATE. Everything here happens after elaboration (so
-		// the artifact hash is known) and before Repoint (so a failure leaves the
-		// name exactly where it was). The object itself is already stored, which is
-		// correct and harmless: content addressing makes storage idempotent, and an
-		// unreferenced object is inert. What must not happen is a NAME moving on an
-		// unverified statement.
-		if auth != nil {
-			env, perr := envelopeParse([]byte(auth.Bytes))
-			var gerr error
-			if perr != nil {
-				gerr = fmt.Errorf("author envelope is not canonical: %v", perr)
-			} else {
-				curParent, curRev := nameRevision(st, meta.Name)
-				gerr = checkPublication(env, auth.Sig, auth.Pubkey, meta.Name, h, curParent, curRev)
-			}
-			if gerr != nil {
-				rep.Status = "rejected"
-				rep.Error = gerr.Error()
-				results = append(results, rep)
-				_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K,
-					Status: "rejected", Hash: h, Error: rep.Error,
-					NameTransition: transitionNone})
-				continue
-			}
-		}
-
-		specAuthor, bodyAuthor := attributeAuthorship(st, meta.Name, def, author)
-		pol, err := LoadPolicy(st.Root)
-		if err != nil {
-			return results, err
-		}
-		if ok, reason := evalPolicy(st, pol, meta.Name, h, def, specAuthor, bodyAuthor); !ok {
-			rep.Status = "blocked"
-			rep.Error = reason
-			_ = st.AppendLog(&LogEntry{
-				Author: author, Name: meta.Name, Kind: def.K, Status: "blocked",
-				Hash: h, Error: reason, Guarantee: rep.Guarantee, Termination: rep.Termination,
-				Context: ctxHash,
-			})
-			results = append(results, rep)
-			continue
-		}
-
-		// The asynchronous half: a require_proven name cannot bind until the
-		// object is SMT-proven, and proving is too heavy to run here. Defer the
-		// bind — store stays put, object is queued for the worker (#14).
-		gm, _ := st.GetMeta(h)
-		switch state, greason := provenGate(pol, meta.Name, gm, def); state {
-		case "blocked":
-			rep.Status = "blocked"
-			rep.Error = greason
-			_ = st.AppendLog(&LogEntry{
-				Author: author, Name: meta.Name, Kind: def.K, Status: "blocked",
-				Hash: h, Error: greason, Guarantee: rep.Guarantee, Termination: rep.Termination,
-				Context: ctxHash,
-			})
-			results = append(results, rep)
-			continue
-		case "pending":
-			rep.Status = "pending"
-			rep.Error = greason
-			if err := st.EnqueueProof(ProofJob{Hash: h, Name: meta.Name, Submitter: author, Gate: true}); err != nil {
-				return results, err
-			}
-			_ = st.AppendLog(&LogEntry{
-				Author: author, Name: meta.Name, Kind: def.K, Status: "pending",
-				Hash: h, Error: greason, Guarantee: rep.Guarantee, Termination: rep.Termination,
-				Context: ctxHash,
-			})
-			results = append(results, rep)
-			continue
-		}
-
-		prev, err := st.Repoint(meta.Name, h)
-		if err != nil {
-			return results, err
-		}
-		rep.Prev = prev
-		if m, err := st.GetMeta(h); err == nil {
-			m.SpecAuthor, m.BodyAuthor = specAuthor, bodyAuthor
-			_ = st.SetMeta(h, m)
-		}
-		le := &LogEntry{
-			Author: author, Name: meta.Name, Kind: def.K, Status: rep.Status,
-			Hash: h, Prev: prev, Guarantee: rep.Guarantee, Termination: rep.Termination,
-			Context: ctxHash,
-			// Reached only after Repoint succeeded, so a name operation happened —
-			// but not necessarily a state CHANGE. A publication of the hash already
-			// bound is a recorded no-op: valid, journalled, and not a new version of
-			// the binding. Distinguishing them here is what keeps parent_rev a state
-			// version rather than a publication counter.
-			NameTransition: nameTransition(prev, h),
-		}
-		if auth != nil {
-			// Verbatim. Not re-encoded from the parsed envelope: the bytes ARE the
-			// statement, and a round-trip through the encoder would substitute this
-			// kernel's rendering for the author's.
-			le.EnvelopeB64, le.AuthorPubkey, le.AuthorSig = encodeEnvelopeB64([]byte(auth.Bytes)), auth.Pubkey, auth.Sig
-			// The revision the author SIGNED AGAINST, preserved as their claim
-			// rather than recomputed later (§8.2.1). The journal keeps everything
-			// the publisher signed and nothing the registry merely computed.
-			if env, perr := envelopeParse([]byte(auth.Bytes)); perr == nil {
-				le.ParentRev = env.ParentRev.String()
-			}
-		}
-		if err := st.AppendLog(le); err == nil {
-			// The publication's own identity, so a client can address and verify the
-			// exact accepted transition rather than searching by artifact hash.
-			rep.JournalPosition = le.Seq
-			if d, derr := entryDigest(le); derr == nil {
-				rep.JournalEntry = d
-			}
 		}
 		results = append(results, rep)
+		if stop {
+			return results, nil
+		}
 	}
 	return results, nil
 }
@@ -2342,4 +2195,176 @@ func nameTransition(prev, h string) string {
 		return transitionUnchanged
 	}
 	return transitionApplied
+}
+
+// admitDef is THE admission sequence for one definition: the kernel gate,
+// storage, verdicts, the author-statement gate, policy, the proof gate, the
+// repoint and the journal entry. Extracted so that source publication and OBJECT
+// publication (#102) share it rather than each carrying its own copy.
+//
+// That sharing is the point, not a tidiness: two admission sequences are two
+// authorities on what may enter the codebase, and they drift in the direction
+// nobody is watching. The difference between the two paths is confined to how a
+// `*Def` is OBTAINED — elaborated from source, or decoded from signed bytes —
+// and nothing downstream of that should be able to tell which happened.
+//
+// Returns the report, whether the caller must STOP the batch, and any error.
+// The gate rejection stops; policy and statement failures do not, because a
+// batch of independent definitions should report all of its outcomes.
+func admitPut(st *Store, def *Def, meta *Meta, auth *pubAuth, author, ctxHash string) (putReport, bool, error) {
+	meta.Author = author
+
+	// The kernel gate: nothing enters the codebase without typechecking.
+	// Rejections store no object, but the journal retains the attempt.
+	if err := checkDef(st, def); err != nil {
+		_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K, Status: "rejected", Error: err.Error(), Context: ctxHash})
+		return putReport{Name: meta.Name, Kind: def.K, Status: "rejected", Error: err.Error()}, true, nil
+	}
+
+	// Storage is unconditional past the gate (content addressing); the
+	// NAME only moves if repoint policy passes, after verdicts exist.
+	h, err := st.StoreObject(def, meta)
+	if err != nil {
+		return putReport{Name: meta.Name, Kind: def.K}, true, err
+	}
+
+	rep := putReport{Name: meta.Name, Hash: h, Kind: def.K, Status: "accepted", Ctors: len(def.Ctors)}
+	if def.K == "func" {
+		reports, err := verifyDef(st, h)
+		if err != nil {
+			return rep, true, err
+		}
+		m, _ := st.GetMeta(h)
+		m.Termination = terminationOf(st, def, h)
+		m.Confinement = confinementOf(st, def)
+		if err := st.SetMeta(h, m); err != nil {
+			return rep, true, err
+		}
+		rep.Guarantee = guaranteeString(m.Guarantee)
+		rep.Termination = m.Termination
+		rep.Confinement = confinementString(m)
+		if m.Guarantee.Level == "falsified" {
+			rep.Status = "falsified"
+		}
+		for _, r := range reports {
+			label, text, hasDetail := r.Detail()
+			rep.Props = append(rep.Props, propJSON{
+				Name: r.Name, Passed: r.Passed, Indeterminate: r.Indet,
+				Outcome: string(r.Outcome), Failed: r.Falsified(),
+				Counterexample: r.Counter, Error: r.Err,
+				Headline: r.Headline(), DetailLabel: label, Detail: text, HasDetail: hasDetail,
+			})
+		}
+	}
+
+	// THE AUTHOR-STATEMENT GATE. Everything here happens after elaboration (so
+	// the artifact hash is known) and before Repoint (so a failure leaves the
+	// name exactly where it was). The object itself is already stored, which is
+	// correct and harmless: content addressing makes storage idempotent, and an
+	// unreferenced object is inert. What must not happen is a NAME moving on an
+	// unverified statement.
+	if auth != nil {
+		env, perr := envelopeParse([]byte(auth.Bytes))
+		var gerr error
+		if perr != nil {
+			gerr = fmt.Errorf("author envelope is not canonical: %v", perr)
+		} else {
+			curParent, curRev := nameRevision(st, meta.Name)
+			gerr = checkPublication(env, auth.Sig, auth.Pubkey, meta.Name, h, curParent, curRev)
+		}
+		if gerr != nil {
+			rep.Status = "rejected"
+			rep.Error = gerr.Error()
+			_ = st.AppendLog(&LogEntry{Author: author, Name: meta.Name, Kind: def.K,
+				Status: "rejected", Hash: h, Error: rep.Error,
+				NameTransition: transitionNone})
+			return rep, false, nil
+		}
+	}
+
+	specAuthor, bodyAuthor := attributeAuthorship(st, meta.Name, def, author)
+	pol, err := LoadPolicy(st.Root)
+	if err != nil {
+		return rep, true, err
+	}
+	if ok, reason := evalPolicy(st, pol, meta.Name, h, def, specAuthor, bodyAuthor); !ok {
+		rep.Status = "blocked"
+		rep.Error = reason
+		_ = st.AppendLog(&LogEntry{
+			Author: author, Name: meta.Name, Kind: def.K, Status: "blocked",
+			Hash: h, Error: reason, Guarantee: rep.Guarantee, Termination: rep.Termination,
+			Context: ctxHash,
+		})
+		return rep, false, nil
+	}
+
+	// The asynchronous half: a require_proven name cannot bind until the
+	// object is SMT-proven, and proving is too heavy to run here. Defer the
+	// bind — store stays put, object is queued for the worker (#14).
+	gm, _ := st.GetMeta(h)
+	switch state, greason := provenGate(pol, meta.Name, gm, def); state {
+	case "blocked":
+		rep.Status = "blocked"
+		rep.Error = greason
+		_ = st.AppendLog(&LogEntry{
+			Author: author, Name: meta.Name, Kind: def.K, Status: "blocked",
+			Hash: h, Error: greason, Guarantee: rep.Guarantee, Termination: rep.Termination,
+			Context: ctxHash,
+		})
+		return rep, false, nil
+	case "pending":
+		rep.Status = "pending"
+		rep.Error = greason
+		if err := st.EnqueueProof(ProofJob{Hash: h, Name: meta.Name, Submitter: author, Gate: true}); err != nil {
+			return rep, true, err
+		}
+		_ = st.AppendLog(&LogEntry{
+			Author: author, Name: meta.Name, Kind: def.K, Status: "pending",
+			Hash: h, Error: greason, Guarantee: rep.Guarantee, Termination: rep.Termination,
+			Context: ctxHash,
+		})
+		return rep, false, nil
+	}
+
+	prev, err := st.Repoint(meta.Name, h)
+	if err != nil {
+		return rep, true, err
+	}
+	rep.Prev = prev
+	if m, err := st.GetMeta(h); err == nil {
+		m.SpecAuthor, m.BodyAuthor = specAuthor, bodyAuthor
+		_ = st.SetMeta(h, m)
+	}
+	le := &LogEntry{
+		Author: author, Name: meta.Name, Kind: def.K, Status: rep.Status,
+		Hash: h, Prev: prev, Guarantee: rep.Guarantee, Termination: rep.Termination,
+		Context: ctxHash,
+		// Reached only after Repoint succeeded, so a name operation happened —
+		// but not necessarily a state CHANGE. A publication of the hash already
+		// bound is a recorded no-op: valid, journalled, and not a new version of
+		// the binding. Distinguishing them here is what keeps parent_rev a state
+		// version rather than a publication counter.
+		NameTransition: nameTransition(prev, h),
+	}
+	if auth != nil {
+		// Verbatim. Not re-encoded from the parsed envelope: the bytes ARE the
+		// statement, and a round-trip through the encoder would substitute this
+		// kernel's rendering for the author's.
+		le.EnvelopeB64, le.AuthorPubkey, le.AuthorSig = encodeEnvelopeB64([]byte(auth.Bytes)), auth.Pubkey, auth.Sig
+		// The revision the author SIGNED AGAINST, preserved as their claim
+		// rather than recomputed later (§8.2.1). The journal keeps everything
+		// the publisher signed and nothing the registry merely computed.
+		if env, perr := envelopeParse([]byte(auth.Bytes)); perr == nil {
+			le.ParentRev = env.ParentRev.String()
+		}
+	}
+	if err := st.AppendLog(le); err == nil {
+		// The publication's own identity, so a client can address and verify the
+		// exact accepted transition rather than searching by artifact hash.
+		rep.JournalPosition = le.Seq
+		if d, derr := entryDigest(le); derr == nil {
+			rep.JournalEntry = d
+		}
+	}
+	return rep, false, nil
 }

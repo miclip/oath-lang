@@ -45,6 +45,9 @@ func mcpTools() []map[string]any {
 		return s
 	}
 	str := func(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
+	arr := func(desc string) map[string]any {
+		return map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": desc}
+	}
 	return []map[string]any{
 		{
 			"name":        "context",
@@ -62,6 +65,22 @@ func mcpTools() []map[string]any {
 				"author":  str("principal id for the journal (defaults to unattributed)"),
 				"context": str("the context-hash line from the `context` tool output this code was authored against; journaled for stale-spec audits"),
 			}, "source"),
+		},
+		{
+			"name":        "put_object",
+			"description": "Publish an ALREADY-ELABORATED canonical object (SPEC §8.6.4). Submit the exact canonical object octets you hashed and signed, base64-encoded, plus the signed publication envelope and its signature. The registry validates and stores THOSE octets: it does not re-derive the object from source, so the bytes you signed and the bytes stored are one sequence rather than two derivations checked for agreement. Always signed — there is no unsigned form, because without a statement there is nothing binding the bytes to a principal and `put` already covers that case. Optional `naming` carries the readable vocabulary (type-variable, constructor, property and parameter names), which is metadata and never part of identity, so it travels unsigned without weakening the signature.",
+			"inputSchema": obj(map[string]any{
+				"object":    str("base64 of the exact canonical object octets that were hashed and signed"),
+				"envelope":  str("base64 of the exact canonical publication envelope octets that were signed"),
+				"signature": str("hex Ed25519 signature over the envelope octets"),
+				"context":   str("the context-hash line from the `context` tool output this code was authored against; journaled for stale-spec audits"),
+				"naming": obj(map[string]any{
+					"tyvar_names": arr("type-variable names, positional"),
+					"ctor_names":  arr("constructor names, positional"),
+					"prop_names":  arr("property names, positional"),
+					"param_names": arr("parameter names, positional"),
+				}),
+			}, "object", "envelope", "signature"),
 		},
 		{
 			"name":        "reserve",
@@ -205,8 +224,17 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 		// The author's signed publication statement (#83). Envelope carries the
 		// EXACT canonical bytes that were signed; the server must not normalise,
 		// re-encode or pretty-print them at any point on the way to the journal.
-		Envelope  string `json:"envelope"`
-		Signature string `json:"signature"`
+		// Object publication (#102): the exact canonical object octets the author
+		// hashed and signed, with the readable vocabulary carried separately
+		// because it is metadata and not identity.
+		Object string `json:"object"`
+		// An OBJECT on the wire, not a JSON string. Declared as one in the schema,
+		// so typing it as a string here would make a client that followed the
+		// documentation fail to unmarshal, and force everyone else to
+		// double-encode.
+		Naming    json.RawMessage `json:"naming"`
+		Envelope  string          `json:"envelope"`
+		Signature string          `json:"signature"`
 		// RecipientSignature is transfer only: the SECOND signature over the SAME
 		// octets, carrying the receiving key's consent to custody.
 		RecipientSignature string `json:"recipient_signature"`
@@ -244,7 +272,7 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 	// and moves names; `cross --record` writes the journal. A read-only bearer
 	// token can still read, discover, and re-verify — just not author. Sign the
 	// request or use a write-scoped token. (#14)
-	if (name == "put" || name == "reserve" || name == "delegate" || (name == "cross" && a.Record)) && !canWrite {
+	if (name == "put" || name == "put_object" || name == "reserve" || name == "delegate" || (name == "cross" && a.Record)) && !canWrite {
 		// The remedy depends on HOW the caller authenticated, and getting this
 		// wrong wastes real time: telling someone who already signed to "sign the
 		// request" hides the actual cause. It cannot be inferred from the
@@ -261,6 +289,78 @@ func mcpCallTool(st *Store, name string, args json.RawMessage, principal string,
 			return "", fmt.Errorf("context needs at least one name")
 		}
 		return apiContext(st, a.Names, a.Budget)
+	case "put_object":
+		// Object publication is ALWAYS signed, so the same reasoning as `put`'s
+		// author statement applies and applies unconditionally: with a bearer
+		// token the principal is server-vouched, so a statement naming a key
+		// could not be tied to this caller.
+		// `hosted && !signed` rather than `!signed`, for the reason THE FREEZE
+		// below already gives: local stdio serve is the invoking user's own store,
+		// where there is no principal to establish and nothing to spoof. An
+		// unconditional check made this tool unusable through the default local
+		// interface — which is also the interface the publishing client will use.
+		if hosted && !signed {
+			return "", fmt.Errorf("put_object requires a SIGNED request on a hosted registry: the publication binds bytes to a key, and a bearer token's principal is server-vouched rather than proven")
+		}
+		if a.Object == "" || a.Envelope == "" || a.Signature == "" {
+			return "", fmt.Errorf("put_object requires object, envelope and signature: any one alone attests to nothing")
+		}
+		naming, nerr := parseObjectNaming(a.Naming)
+		if nerr != nil {
+			return "", nerr
+		}
+		// The author IS the key that signed the statement, never the caller's
+		// `author` field. put_object's whole claim is that these bytes are bound to
+		// a principal, so accepting a self-declared label beside a signature would
+		// let a request sign with one key and be journalled — and policy-evaluated
+		// for ownership and authorship separation — as another. Resolved below to
+		// the transport principal where there is one, and to the envelope's own
+		// author on the local store where there is not.
+		author := ""
+		// BASE64 for the envelope, as every other signed-envelope tool does
+		// (reserve, delegate, transfer). Envelope octets contain LFs, and a
+		// transport that carries them as an escaped JSON string invites a client
+		// to send a re-rendered statement rather than the bytes it signed — which
+		// is the same substitution this whole path exists to prevent, one layer
+		// out. `put`'s undeclared envelope input passes raw octets; that path is
+		// what #102 will remove, so the new tool does not inherit its convention.
+		//
+		// NOT YET THE PATH THE CLI USES. `oath publish` still goes through `put`
+		// with source, so the split this tool exists to close is still open for
+		// the normal workflow — switching the client is the next increment of
+		// #102, and saying so here beats a comment that reads as if it were done.
+		envOct, derr := decodeEnvelopeB64(a.Envelope)
+		if derr != nil {
+			return "", fmt.Errorf("envelope is not standard padded base64: %w", derr)
+		}
+		// The principal the statement is checked against. On a hosted registry it
+		// is the TRANSPORT-authenticated key, which is what makes
+		// ENV-STORE-PRINCIPAL mean "the caller holds the key the envelope names".
+		// Locally there is no transport principal, so it degenerates to the
+		// envelope's own author and the check reduces to "the signature verifies
+		// under the key the envelope names" — strictly weaker, and all a local
+		// store can establish. Stated rather than left implicit, because a reader
+		// comparing the two modes should not have to infer which guarantee they
+		// are getting.
+		statementKey := principal
+		if statementKey == "" {
+			env, perr := envelopeParse(envOct)
+			if perr != nil {
+				return "", fmt.Errorf("author envelope is not canonical: %w", perr)
+			}
+			statementKey = env.Author
+		}
+		// UNCONDITIONAL. Leaving it empty would journal a correctly signed
+		// publication as unattributed and fail the ownership and
+		// authorship-separation policies, which read the author; taking it from
+		// the request would let a caller sign with one key and be attributed to
+		// another.
+		author = statementKey
+		reports, perr := apiPutObject(st, a.Object, naming, &pubAuth{Bytes: string(envOct), Sig: a.Signature, Pubkey: statementKey}, author, a.Context)
+		if perr != nil {
+			return "", perr
+		}
+		return renderPutReports(reports), nil
 	case "put":
 		if principal != "" {
 			a.Author = principal

@@ -195,5 +195,24 @@ func admitDef(d *Def) error {
 	if _, ok := countCanonicalNodes(d, maxCanonicalNodes); !ok {
 		return errTooManyNodes()
 	}
+	// SCALAR cardinalities, which the node count does not see. `TyVars` is one
+	// u32 — one node — so a ten-byte object can declare 2^24 type variables and
+	// pass the structural budget completely. The decoder's plausibility cap stops
+	// it being 2^32, but 2^24 string headers is still a few hundred megabytes
+	// allocated by anything that materialises a slice per type variable, from an
+	// input small enough to send repeatedly.
+	//
+	// Bounded by the NODE budget because that is what makes it meaningful rather
+	// than arbitrary: a definition cannot reference more type variables than it
+	// has nodes in which to reference them, so anything above this bound is
+	// unusable by construction and refusing it removes no expressible program.
+	//
+	// Here rather than at the one caller that allocates: this function is the
+	// documented single answer to "what does this profile admit?", and a check
+	// added beside a particular allocation would protect that allocation and
+	// nothing added later.
+	if d.TyVars < 0 || d.TyVars > maxCanonicalNodes {
+		return fmt.Errorf("definition declares %d type variables, above the portable profile's bound of %d: a definition cannot reference more type variables than it has nodes", d.TyVars, maxCanonicalNodes)
+	}
 	return nil
 }
