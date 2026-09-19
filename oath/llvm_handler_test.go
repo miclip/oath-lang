@@ -2051,14 +2051,16 @@ func TestHostFieldIsLiftedNotValidated(t *testing.T) {
 	} {
 		t.Run(host, func(t *testing.T) {
 			raw := "GET /hook HTTP/1.1\r\nHost: " + host + "\r\nContent-Length: 0\r\n\r\n"
+			before := time.Now().Unix()
 			llStatus, llBody := llvmSend(t, llAddr, raw)
 			goStatus, goBody := llvmSend(t, goAddr, raw)
+			after := time.Now().Unix()
 
 			if llStatus != goStatus {
 				t.Errorf("the backends disagree on the STATUS for Host %q: llvm=%d go=%d — "+
 					"§14.0 asks them to agree about whether a Request exists", host, llStatus, goStatus)
 			}
-			if llBody != goBody {
+			if agreeableBody(t, llBody, before, after) != agreeableBody(t, goBody, before, after) {
 				t.Errorf("the backends disagree on the LIFTED VALUE for Host %q:\n  llvm=%q\n  go=%q\n"+
 					"row 5 says the field becomes the host entry, so a difference here is a "+
 					"difference in the Request itself", host, llBody, goBody)
@@ -2172,10 +2174,12 @@ func TestBothBackendsFrameTheSmugglingShapeAlike(t *testing.T) {
 	raw := "POST /d HTTP/1.1\r\nHost: h\r\nTransfer-Encoding: chunked\r\n" +
 		"Content-Length: 1\r\n\r\n1\r\n\x04\r\n0\r\n\r\n"
 
+	before := time.Now().Unix()
 	llStatus, llBody := llvmSend(t, llAddr, raw)
 	goStatus, goBody := llvmSend(t, goAddr, raw)
+	after := time.Now().Unix()
 
-	if llStatus != goStatus || llBody != goBody {
+	if llStatus != goStatus || agreeableBody(t, llBody, before, after) != agreeableBody(t, goBody, before, after) {
 		t.Errorf("the backends disagree on the smuggling shape: llvm=%d/%q go=%d/%q — "+
 			"§14.0 binds them to one Request from these octets", llStatus, llBody, goStatus, goBody)
 	}
@@ -2185,5 +2189,101 @@ func TestBothBackendsFrameTheSmugglingShapeAlike(t *testing.T) {
 	if llStatus != 250 {
 		t.Errorf("answered %d, want 250: the Transfer-Encoding must override the "+
 			"Content-Length and the chunked octet must arrive as itself", llStatus)
+	}
+}
+
+// agreeableBody is what two backends may be required to agree on: the Request,
+// without each backend's own OBSERVATION of when it looked.
+//
+// It delegates to splitReceivedAt (llvm_http_agreement_test.go) rather than
+// re-deriving "is the last line a timestamp". That function already exists to
+// tell an observation from arbitrary trailing digits, and a second, weaker
+// version here would discard a final digit line in cases it was written to
+// refuse — hiding a genuine Request disagreement behind a helper meant to hide
+// only the clock.
+//
+// WHY ANY OF THIS IS NEEDED. received-at is authoritative about the observer and
+// checkable by nobody else. The two servers get the same request milliseconds
+// apart, so when that gap straddles a second boundary they report times one
+// apart and a whole-body comparison fails with nothing having disagreed. Found
+// as a flake in a ci-local run: llvm="…\n1789784196" vs go="…\n1789784197" —
+// a defect rather than noise to re-run past, since the assertion then fails for
+// a reason unrelated to its claim, at a rate set by where the run lands in a
+// second.
+func agreeableBody(t *testing.T, body string, before, after int64) string {
+	t.Helper()
+	head, at, ok := splitReceivedAt(body)
+	if !ok {
+		// No observation to remove: compare the body whole rather than guessing.
+		return body
+	}
+	// VALIDATED BEFORE IT IS EXCLUDED, which is splitReceivedAt's own contract.
+	// Removing any trailing decimal unchecked would mean a backend that froze its
+	// clock, or emitted some other numeric tail, had that defect silently
+	// discarded by the very helper meant to discard only the clock — the
+	// comparison would then pass over a real response defect. The window is the
+	// exchange itself, widened a second at each end because the value has
+	// one-second resolution.
+	if at < before-1 || at > after+1 {
+		t.Errorf("received-at %d is outside the exchange window [%d, %d]: the body's "+
+			"trailing number is not this backend's observation of now, so excluding "+
+			"it from the comparison would hide whatever it actually is", at, before-1, after+1)
+	}
+	return head
+}
+
+// agreeableBody must remove exactly the observation and nothing else — a
+// version that dropped the last line unconditionally would hide a real
+// disagreement in whatever the last line happened to be.
+func TestAgreeableBodyRemovesOnlyTheObservation(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		// The real shape, and the real flake.
+		{"GET /hook\nhost=[1:2:3]\n1789784196", "GET /hook\nhost=[1:2:3]\n"},
+		{"GET /hook\nhost=[1:2:3]\n1789784197", "GET /hook\nhost=[1:2:3]\n"},
+		// A trailing line that is NOT a bare decimal is content, not an
+		// observation, and must survive whole.
+		// Not a bare decimal, so there is NO observation to remove and the body is
+		// compared whole. Refusing to strip when unsure is the safe direction: the
+		// cost is a comparison that includes one more line, where the opposite
+		// error hides a Request disagreement.
+		{"GET /hook\nhost=h\nbody=42x", "GET /hook\nhost=h\nbody=42x"},
+		{"single-line", "single-line"},
+	} {
+		if got := agreeableBody(t, tc.in, 1789784195, 1789784198); got != tc.want {
+			t.Errorf("agreeableBody(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+	// The property the fix exists for: two observations one second apart are not
+	// a disagreement.
+	a := "GET /hook\nhost=[1:2:3]\n1789784196"
+	b := "GET /hook\nhost=[1:2:3]\n1789784197"
+	if a == b {
+		t.Fatal("control: the two bodies are meant to differ before the observation is removed")
+	}
+	if agreeableBody(t, a, 1789784195, 1789784198) != agreeableBody(t, b, 1789784195, 1789784198) {
+		t.Fatal("bodies differing only in received-at still compare unequal")
+	}
+	// And a REAL difference must still be caught.
+	if agreeableBody(t, a, 1789784195, 1789784198) == agreeableBody(t, "GET /hook\nhost=OTHER\n1789784196", 1789784195, 1789784198) {
+		t.Fatal("a genuine host difference was removed too")
+	}
+}
+
+// The window check must actually fire, or excluding the observation is
+// unconditional stripping wearing a validation's name.
+func TestAgreeableBodyRefusesATimestampOutsideTheExchange(t *testing.T) {
+	stale := "GET /hook\nhost=h\n1000000000" // a frozen clock, far from the window
+	probe := &testing.T{}
+	agreeableBody(probe, stale, 1789784195, 1789784198)
+	if !probe.Failed() {
+		t.Fatal("a received-at far outside the exchange window was excluded silently, " +
+			"so a backend with a frozen clock would pass the comparison")
+	}
+	// Control: an in-window value must NOT fail, or the check would refuse every
+	// honest exchange and the assertion above would mean nothing.
+	ok := &testing.T{}
+	agreeableBody(ok, "GET /hook\nhost=h\n1789784196", 1789784195, 1789784198)
+	if ok.Failed() {
+		t.Fatal("an in-window observation was rejected")
 	}
 }

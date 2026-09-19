@@ -131,6 +131,9 @@ jobs:
       - name: The journal's two member lists still agree (§8 vs §8.2.1)
         run: make check-spec-member-lists
 
+      - name: Structural figures in prose match the repository (#153)
+        run: make check-structural-numbers
+
       # #122 closed on a STRUCTURAL criterion rather than on a blind round
       # reporting fewer unresolved items: every transport distinction has exactly
       # one disposition owned by exactly one layer. That is only the better

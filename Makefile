@@ -261,6 +261,11 @@ check-coaching-leak:
 check-spec-member-lists:
 	@python3 scripts/check-spec-member-lists.py
 
+.PHONY: check-structural-numbers
+check-structural-numbers:
+	@python3 scripts/test_check_structural_numbers.py
+	@python3 scripts/check-structural-numbers.py
+
 .PHONY: check-implementability
 check-implementability:
 	@python3 scripts/check-implementability.py
