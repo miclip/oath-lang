@@ -394,6 +394,7 @@ check-web-ledger:
 	@diff -q fixtures/prove/outcomes.json website/lib/outcomes.json >/dev/null \
 		&& echo "web ledger in sync ✓" \
 		|| { echo "ERROR: website/lib/outcomes.json drifted from fixtures/prove/outcomes.json — run 'make fixtures'"; exit 1; }
+	@python3 scripts/test_check_essay_claims.py
 	@python3 scripts/check-essay-claims.py
 
 # The website renders the tutorials from docs/tutorial/*.md (the single source),
