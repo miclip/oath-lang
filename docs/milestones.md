@@ -1816,3 +1816,62 @@ confirmed to hold only those two unattributed puts and nothing authored, and the
 documented reset restored it. The names never reached a commit or the registry.
 The guard works on the act it was built for; what it cannot cover is an operator
 who supplies `--new` deliberately while pointing at the default store.
+
+## A watched hypothesis promoted: checks that fail by sharing their subject's notation (#143, 2026-09-19)
+
+#143 was filed as an observation under deliberate restraint — three instances,
+one of them hours old, kept OUT of `CLAUDE.md` so the promotion decision would be
+made on evidence rather than on whoever remembered it. It asked for a fourth to
+have somewhere to land. Three arrived in one day, and the last two were expensive
+enough to settle it.
+
+**The four earlier instances**, each a control that recognised its subject by the
+subject's own spelling: the structural-recursion gate's three passes (`[]Term`,
+`args[i].Args`, `args[1:]` — one relation written four ways), and the
+contamination check that proved only that identifiers were absent.
+
+**The fifth** was `check-spec-member-lists`, built to stop §8 and §8.2.1 drifting
+apart. It read member names as backticked lowercase words — which is also how §8
+spells status VALUES (`accepted`, `pending`, `require_proven`), so it reported
+nine false positives on its first run; and the same pattern excluded digits, so
+`envelope_b64` matched as `envelope_b` and was reported MISSING from a list
+containing it. Both defects are the check adopting its subject's notation as
+though that notation distinguished what was being counted. It does not: in that
+artefact the spelling is shared by members, values and vocabulary alike.
+
+**The sixth and seventh were measured in review rounds.**
+`check-structural-numbers` took nine; the essay-claims ratchet took fourteen.
+Every round was correct about the previous omission and blind to the next:
+
+    check                    recognised                  missed
+    ---------------------------------------------------------------------------
+    structural-numbers       number-then-(command)       "`wc …` reports 5,200"
+                             docs/*.md                   docs/tutorial/, experiments/
+                             docs/**/*.md                apps/, plugin/, mirrors
+                             substring `wc -l`           `wc --lines`
+                             first token is `wc`         `env …`, `cd x && …`
+                             any `wc` token              grep's PATTERN
+    essay ratchet            a count of numbers          an exchange
+                             `\d[\d,]*`                  -12, .5, 1e6, 12:22Z
+                             skip className LINES        prose beside an attribute
+                             strip attributes only       `<code>10</code>` keyed on the tag
+                             key on preceding word       `<span>43 definitions`
+                             scan line by line           next-line qualifiers; reflow
+                             four pages, listed          what-remains, then the index
+
+**What made the cost visible rather than invisible** is that both checks fail
+OPEN: a recogniser short by one form does not error, it silently matches less,
+and every artefact it did match still passes. Without a reviewer reading the
+recogniser itself, each would have reported success over a population smaller
+than the one it named.
+
+**Promoted as a general form rather than a fourth bullet**, per this file's own
+preference for finding the parent: the structural-recursion case is ONE instance
+of *a check written in its subject's own notation inherits its subject's
+ambiguities*, and markdown punctuation and shell-command-shaped text are others.
+The rule in `CLAUDE.md` carries the prospective test (*can I say what this
+recognises without quoting the subject's syntax?*), the sequence diagnostic
+(three consecutive repairs each blind to the next), and the repair — an authority
+that already owns the answer: git's index, a parse, the canonical hash.
+
+The instances live here; the rule lives there. #143 closed on promotion.

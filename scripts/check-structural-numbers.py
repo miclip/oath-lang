@@ -37,6 +37,15 @@ WAS WRITTEN, at the precision it was written to.
 A figure written WITHOUT `~` is exact, because exactness is the safe default and
 approximation should be a deliberate mark rather than an assumption.
 
+A figure written in a form this tokenizer does not recognise as a complete token
+is not seen. It matches a decimal-comma integer with optional surrounding
+punctuation, and deliberately not identifiers, references, versions, dates,
+times or components of any of them.
+
+A claim inside an INDENTED BLOCK (four spaces or a tab) is treated as a code
+example and not scanned. That is markdown's own reading, and the converse rule
+fires on every table here.
+
 WHAT THIS CANNOT SEE, stated because the gap is the reason to cite. It checks a
 figure that CITES its derivation. A bare structural number — "three backends",
 "N guarded files" — cites nothing, and no gate can recompute a claim whose
@@ -139,7 +148,30 @@ def is_count_invocation(cmd: str) -> bool:
 
 
 INVOCATION_SPAN = re.compile(r"`(?P<cmd>[^`]+)`")
-FIGURE = re.compile(r"(?P<approx>[~≈])?(?P<num>\d[\d,]*)(?!\S)")
+# A figure may be followed by PUNCTUATION — a quote, comma, period, paren. The
+# `(?!\S)` boundary required whitespace, so `reports 5,200"` had no figure at all
+# and the citation beside it was reported as unassociated. Found when this gate
+# ran over prose describing this gate.
+# Trailing punctuation is allowed — a quote, comma, period, paren — but a NUMERIC
+# SEPARATOR followed by more digits means this is a COMPONENT of a compound
+# token, not a figure. Without that second guard, allowing punctuation turned
+# `2026-09-19` into three figures and `12:22Z` into one, any of which could then
+# be associated with a nearby citation.
+# BOTH directions, and a figure may not START mid-number. A forward guard alone
+# rejected `2026` in `2026-09-19` and still matched `19`; adding the separator
+# lookbehind still matched `9`, because a match may begin at any character.
+# Each miss was caught by the test rather than by review, which is the point of
+# having pinned the tokenizer at all.
+#
+# A REFERENCE IS NOT A FIGURE: `#143`, `§11`, `v2`, `SHA256` name things. The
+# start boundary excludes any WORD character, not a list of prefixes — excluding
+# just `v` still read `256` out of `SHA256.` and `2` out of `V2)`. Allowing trailing
+# punctuation made `For #143, \`wc -l f\` reports 10.` associate the citation with
+# 143 rather than 10 — a false failure on ordinary prose, and the nearest-figure
+# rule makes the wrong one win.
+FIGURE = re.compile(
+    r"(?P<approx>[~≈])?(?<![\w,#§.-])(?<![\w][-:./])(?P<num>\d[\d,]*)(?![\d,]*\w)(?![-:./]\d)"
+)
 LOOKBACK = 120
 
 
@@ -210,6 +242,19 @@ def main() -> int:
         # error as reading `find --equiv` as the shell's find.
         raw = re.sub(r"```.*?```", " ", raw, flags=re.S)
         raw = re.sub(r"~~~.*?~~~", " ", raw, flags=re.S)  # markdown's other fence
+        # INDENTED code blocks are code too. A four-space-indented table of
+        # examples is markdown's oldest code form, and this repo's prose uses it
+        # constantly — so a table DESCRIBING commands read as prose CITING them.
+        # Four or more spaces, or a tab: markdown's indented code block. More
+        # deeply indented examples were left in prose by an exactly-four rule.
+        # The converse is accepted deliberately — a list continuation indented
+        # that far is treated as code and not scanned — because the alternative
+        # fires on every table in this repository, and a gate that cries wolf is
+        # one people stop reading. Recorded with the other limits below.
+        raw = "\n".join(
+            " " if re.match(r"^(?: {4,}|\t)", line) and line.strip() else line
+            for line in raw.split("\n")
+        )
         text = re.sub(r"\s+", " ", raw)
         for m in INVOCATION_SPAN.finditer(text):
             cmd = m.group("cmd")

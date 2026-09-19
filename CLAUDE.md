@@ -1430,6 +1430,34 @@ one relation written four ways. The gate became useful only when its
 representation matched the claim — *any recursive cycle carrying a structural
 descendant* — rather than the four spellings already in mind.
 
+**AND THE GENERAL FORM, WHICH THAT IS ONE INSTANCE OF: A CHECK WRITTEN IN ITS
+SUBJECT'S OWN NOTATION INHERITS ITS SUBJECT'S AMBIGUITIES.** Recognising Go AST
+shapes by their Go spelling is the version above. Recognising markdown claims by
+their markdown punctuation, or shell invocations by what a command looks like as
+text, are the same move in other notations — and each fails the same way, because
+a notation shared with the subject cannot distinguish the categories the subject
+uses it for. Backticked lowercase in prose spells member names, status values and
+vocabulary alike; a number beside a backticked span is a citation, a version, or
+nothing.
+
+**IT FAILS OPEN, WHICH IS WHY IT SURVIVES REVIEW.** A recogniser short by one
+form does not error — it silently matches less, and every artefact it did match
+still passes. So the check reports success while covering a population smaller
+than the one it names, and nothing distinguishes that from a clean run.
+
+**THE DIAGNOSTIC IS A SEQUENCE, NOT A SYMPTOM: consecutive repairs each correct
+about the previous omission and blind to the next.** One miss is a bug; three in
+a row means the recogniser is enumerating spellings rather than deriving a
+population, and the fourth repair will be found the same way the third was.
+Notice the shape and stop patching.
+
+**THE PROSPECTIVE TEST, askable before the check is written:** *can I say what
+this recognises without quoting the subject's syntax?* If the only honest
+description is a pattern, the population is that pattern rather than the claim's.
+The repair is always an authority that already owns the answer — git's index for
+what files exist, a parse for what a command runs, the canonical hash for whether
+two declarations are the same — never a better regex.
+
 **AND OWNERSHIP MUST BE DEMONSTRATED, NOT DECLARED — or the rule repeats the
 defect one level higher.** A comment saying "this is the single entry point" is
 worth nothing; the enforcement is what makes it true. Each of the repairs above

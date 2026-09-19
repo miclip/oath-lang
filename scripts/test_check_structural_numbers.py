@@ -54,6 +54,26 @@ AMBIGUOUS = [
 # An approximate figure admits what ROUNDS to it at the precision written; an
 # exact one admits only itself. The band is read off the claim rather than
 # declared, so this is where that reading is pinned.
+# A figure may end in PUNCTUATION. Requiring whitespace after it meant
+# `reports 5,200"` carried no figure, so the citation beside it was reported as
+# unassociated — found when the gate ran over prose describing the gate.
+PUNCTUATED = [
+    ('reports 5,200"', "5,200"),
+    ("holds 236.", "236"),
+    ("(43)", "43"),
+    ("5,184 lines", "5,184"),
+]
+
+# A component of a compound token is NOT a figure. Allowing trailing punctuation
+# without this turned a date into three figures and a timestamp into one.
+NOT_FIGURES = ["2026-09-19", "12:22Z", "4.16.0", "1/2",
+               # References name things; they are not quantities.
+               "#143", "§11", "v2", "SHA256.", "V2)", "O1", "Z3,",
+               "SHA-256.", "RFC-3339)", "issue-143.", "file.go:5006)",
+               # A match must begin at a COMPLETE token: a sign or decimal point
+               # before the digits means this is a suffix, not the figure.
+               "-12.", ".5,"]
+
 BANDS = [
     ("5,200", True, 5150, 5249),
     ("2,000", True, 1500, 2499),   # 3,727 is outside: the #128 defect
@@ -79,22 +99,44 @@ def main() -> int:
         got = could and not gate.is_count_invocation(cmd)
         if got != want:
             bad.append(f"ambiguous({cmd!r}) = {got}, want {want}")
+    for text, want in PUNCTUATED:
+        got = [m.group("num") for m in gate.FIGURE.finditer(text)]
+        if want not in got:
+            bad.append(f"FIGURE over {text!r} = {got}, want it to include {want!r}")
+    for text in NOT_FIGURES:
+        got = [m.group("num") for m in gate.FIGURE.finditer(text)]
+        if got:
+            bad.append(f"FIGURE over compound token {text!r} yielded {got}")
     for text, approx, lo, hi in BANDS:
         got = gate.band(text, approx)
         if got != (lo, hi):
             bad.append(f"band({text!r}, approx={approx}) = {got}, want {(lo, hi)}")
 
     # The controls must be able to fail: an empty table would pass vacuously.
-    if not INVOCATIONS or not BANDS:
-        print("STRUCTURAL-NUMBERS TESTS: VOID — no cases", file=sys.stderr)
+    # EVERY table, not the two that existed when this guard was written. An
+    # emptied population runs no assertions and prints PASS, which is the
+    # vacuous-success case the whole file exists to prevent — and the guard
+    # itself had it for three of its five tables.
+    tables = {"INVOCATIONS": INVOCATIONS, "PUNCTUATED": PUNCTUATED,
+              "NOT_FIGURES": NOT_FIGURES, "BANDS": BANDS, "AMBIGUOUS": AMBIGUOUS}
+    if empty := [name for name, rows in tables.items() if not rows]:
+        print(f"STRUCTURAL-NUMBERS TESTS: VOID — empty population(s): "
+              f"{', '.join(empty)}; those behaviours were not tested",
+              file=sys.stderr)
         return 1
     if bad:
         print("STRUCTURAL-NUMBERS TESTS: FAIL")
         for b in bad:
             print(f"  {b}")
         return 1
+    # The summary counts EVERY table it ran. It listed four of five for a while,
+    # which is the same defect these gates exist to remove — a report that
+    # understates its own coverage is as misleading as one that overstates it,
+    # and it is the half nobody checks.
     print(f"STRUCTURAL-NUMBERS TESTS: PASS — {len(INVOCATIONS)} invocation(s), "
-          f"{len(BANDS)} band(s), {len(AMBIGUOUS)} ambiguity case(s)")
+          f"{len(BANDS)} band(s), {len(PUNCTUATED)} punctuation case(s), "
+          f"{len(NOT_FIGURES)} compound-token case(s), "
+          f"{len(AMBIGUOUS)} ambiguity case(s)")
     return 0
 
 
