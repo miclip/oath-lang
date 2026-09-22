@@ -1,0 +1,12 @@
+{
+  "name": "utf8-cp",
+  "hash": "1d4d9d504ee8a18723d7dc15a70166ef4aeb5e6f66b5560f0d1ff0be11cc0017",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

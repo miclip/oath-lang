@@ -1,0 +1,12 @@
+{
+  "name": "bytes-in-range",
+  "hash": "3a23873a4b4061847f59f2ae0fa7d1d80d28af6658c2f569bf74f25aa02cafd0",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

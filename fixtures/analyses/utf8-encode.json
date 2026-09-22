@@ -1,0 +1,12 @@
+{
+  "name": "utf8-encode",
+  "hash": "3ec52f7c1e12bd6a3839a6e9b54bf032c53ce1fe43eac7b82720efad651b56b7",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 2
+}

@@ -1,0 +1,12 @@
+{
+  "name": "Byte",
+  "ctor_names": [
+    "MkByte"
+  ],
+  "guarantee": {
+    "level": "asserted"
+  },
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main"
+}

@@ -1,0 +1,10 @@
+{
+  "name": "byte-val",
+  "hash": "e1770a2d78e07309d543281810f392d55ba2a3d6398fc77f31b2cf7971452b10",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "asserted"
+}

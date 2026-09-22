@@ -1,0 +1,28 @@
+{
+  "name": "utf8-cp",
+  "prop_names": [
+    "always-in-range",
+    "surrogates-are-replaced",
+    "ascii-is-one-byte"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 3
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "c"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2
+  ]
+}

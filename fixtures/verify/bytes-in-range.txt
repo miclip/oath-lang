@@ -1,0 +1,1 @@
+✓ prop empty-is-in-range        passed 200 cases

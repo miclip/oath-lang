@@ -1,0 +1,10 @@
+{
+  "name": "byte-in-range",
+  "hash": "19d3161b7c34424208033dfd1bf91c2eb811ba4e22fba5152034485188b73d99",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "asserted"
+}

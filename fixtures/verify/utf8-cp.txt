@@ -1,0 +1,3 @@
+✓ prop always-in-range          passed 200 cases
+✓ prop surrogates-are-replaced  passed 200 cases
+✓ prop ascii-is-one-byte        passed 200 cases

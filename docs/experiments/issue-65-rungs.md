@@ -147,12 +147,12 @@ the PROOF is the filter, not the signature".
 **And the measurement already existed, committed, in
 `oath/rung2_measure_test.go`.** `TestRung2CorpusCensus` reports:
 
-    corpus: 223 live-named func defs, 622 query properties (353 with body-embedded types)
-    pairs admitted — exact-signature: 978 ; signature-compatible: 1314 ; DELTA: 336
-    delta pairs that TYPECHECK after re-typing binders: 89
-    rejected as ill-typed (rung-3 residue): 247
+    corpus: 251 live-named func defs, 649 query properties (366 with body-embedded types)
+    pairs admitted — exact-signature: 1044 ; signature-compatible: 1394 ; DELTA: 350
+    delta pairs that TYPECHECK after re-typing binders: 93
+    rejected as ill-typed (rung-3 residue): 257
 
-**247 is NOT rung 3's population, and reading it as one was the second mistake
+**The ill-typed residue is NOT rung 3's population, and reading it as one was the second mistake
 this section made.** It counts every signature-compatible pair `checkDef`
 refused — for any reason. Rung 3 threads type generalization through a property
 BODY's type arguments, so it can only unblock a pair whose body HAS them.
@@ -160,9 +160,9 @@ BODY's type arguments, so it can only unblock a pair whose body HAS them.
 figures**, so a corpus change that moves them fails the test rather than quietly
 leaving this section sizing the rung from stale numbers:
 
-    ill-typed delta pairs (the census's number)                     247
+    ill-typed delta pairs (the census's number)                     257
       query body carries type arguments — RUNG 3 UPPER BOUND         21
-      rejected for other reasons — rung 3 certainly cannot help     226
+      rejected for other reasons — rung 3 certainly cannot help     236
 
 **At most twenty-one — of ONE HALF of the rung.** Rung 3 reaches two surfaces:
 the PROOF path (`--implies`, where cross-type candidates are rejected by
@@ -181,7 +181,8 @@ actually become well-typed means applying the substitution — which is
 implementing the rung.
 
 Four readings of this population have now been recorded, and the sequence is the
-point: **zero** (from names, wrong), **247** (from a rejection counter, wrong),
+point: **zero** (from names, wrong), **the whole ill-typed residue** (from a
+rejection counter, wrong),
 **21** (measured, but a necessary-not-sufficient bound), **≤21 for the proof
 half only** (the hash half never counted). Each was a number my reasoning or the
 implementation produced, read as a fact about the claim — the substitution this
@@ -212,7 +213,7 @@ the cross-primitive matches a first draft of this record argued could not exist:
 So the corpus DOES contain cross-primitive implications; the draft's name-based
 reasoning missed them because names are not how the prover finds things.
 
-**Extrapolating a rate to rung 3's 247 would be an extrapolation, not a
+**Extrapolating a rate to the whole ill-typed residue would be an extrapolation, not a
 measurement**, and the two populations differ in kind — rung 3's are ill-typed
 today precisely because their bodies carry types, which is a different obstacle
 from a re-typed binder. What the rung-2 result establishes is a favourable
@@ -243,7 +244,7 @@ corpus; only one is worth shipping.
   typechecks. `checkDef` still gates well-typedness and Z3 still gates truth, so
   this admits more WELL-TYPED augmentations, never more proofs — the PROVER is
   the filter, which is exactly why this surface can afford liberal cross-type
-  admission. `TestRung3ProofHalfConnects` pins how many of the 247 ill-typed
+  admission. `TestRung3ProofHalfConnects` pins how many of the ill-typed
   delta pairs become well-typed with body retyping: **0** (the 21 that carry
   body types all fail the binder-concreteness obstacle too). Both new body
   traversals are iterative — `crossTypeRetypeBody` over the term and
@@ -311,7 +312,7 @@ measured demand behind it.
   motivating example is already served by `--implies`, and its remaining
   argument is scale, which 223 non-redundant definitions cannot exercise;
 - rung 3 — **proof half SHIPPED, hash half DECLINED; both measured at ZERO.**
-  The proof half (`find --implies`) connects 0 of the 247 ill-typed delta pairs
+  The proof half (`find --implies`) connects 0 of the ill-typed delta pairs
   (`TestRung3ProofHalfConnects` pins 0) and is worth shipping because the prover
   filters that surface. The hash half (`find --spec`) surfaces 0 too, and was
   declined: `propHashGeneral` is a persisted demand key, so churning it for zero

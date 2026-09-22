@@ -28,6 +28,69 @@
     "infer_entries": 0
   },
   {
+    "name": "corpus:bytes.oath#0:Byte",
+    "outcome": "accepted",
+    "hash_before": "b9a2eb7d5615c45f59076f899a05e0462f56383ba987e7a2844f1333173c6730",
+    "hash_after": "b9a2eb7d5615c45f59076f899a05e0462f56383ba987e7a2844f1333173c6730",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:bytes.oath#1:byte-val",
+    "outcome": "accepted",
+    "hash_before": "e1770a2d78e07309d543281810f392d55ba2a3d6398fc77f31b2cf7971452b10",
+    "hash_after": "e1770a2d78e07309d543281810f392d55ba2a3d6398fc77f31b2cf7971452b10",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:bytes.oath#2:byte-in-range",
+    "outcome": "accepted",
+    "hash_before": "19d3161b7c34424208033dfd1bf91c2eb811ba4e22fba5152034485188b73d99",
+    "hash_after": "19d3161b7c34424208033dfd1bf91c2eb811ba4e22fba5152034485188b73d99",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:bytes.oath#3:bytes-in-range",
+    "outcome": "accepted",
+    "hash_before": "3a23873a4b4061847f59f2ae0fa7d1d80d28af6658c2f569bf74f25aa02cafd0",
+    "hash_after": "3a23873a4b4061847f59f2ae0fa7d1d80d28af6658c2f569bf74f25aa02cafd0",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:bytes.oath#4:utf8-cp",
+    "outcome": "accepted",
+    "hash_before": "1d4d9d504ee8a18723d7dc15a70166ef4aeb5e6f66b5560f0d1ff0be11cc0017",
+    "hash_after": "1d4d9d504ee8a18723d7dc15a70166ef4aeb5e6f66b5560f0d1ff0be11cc0017",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:bytes.oath#5:utf8-encode",
+    "outcome": "accepted",
+    "hash_before": "3ec52f7c1e12bd6a3839a6e9b54bf032c53ce1fe43eac7b82720efad651b56b7",
+    "hash_after": "3ec52f7c1e12bd6a3839a6e9b54bf032c53ce1fe43eac7b82720efad651b56b7",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:bytes.oath#6:utf8-decode",
+    "outcome": "accepted",
+    "hash_before": "0139d97df5e7ee0e16f43ee16ca5f58f2cc5f55f91508d0a3c23cf0349a60bc4",
+    "hash_after": "0139d97df5e7ee0e16f43ee16ca5f58f2cc5f55f91508d0a3c23cf0349a60bc4",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:bytes.oath#7:str-all-below",
+    "outcome": "accepted",
+    "hash_before": "44a2a1cbb7106c0828cf840be47e805109ab3d2a770f7d1e207efe17bd5d8e7f",
+    "hash_after": "44a2a1cbb7106c0828cf840be47e805109ab3d2a770f7d1e207efe17bd5d8e7f",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:bytes.oath#8:utf8-roundtrips",
+    "outcome": "accepted",
+    "hash_before": "5cb615ef14e25e500958222f9595d8d918d0235484e9f6bb6b7a6ce898f16c52",
+    "hash_after": "5cb615ef14e25e500958222f9595d8d918d0235484e9f6bb6b7a6ce898f16c52",
+    "infer_entries": 0
+  },
+  {
     "name": "corpus:circle.oath#0:parse-nat-go",
     "outcome": "accepted",
     "hash_before": "5492d77957cdc464628301003b095974422ce222a033c2cfd4c0836c09a64ef9",

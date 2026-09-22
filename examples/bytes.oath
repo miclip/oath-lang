@@ -1,0 +1,147 @@
+; BYTES ARE A DIFFERENT TYPE FROM TEXT, and in Oath that has to be arranged
+; structurally rather than nominally.
+;
+; `Str` is a list of CODEPOINTS; a request body is a list of BYTES. Both were
+; `(List Int)`-shaped, so nothing could tell them apart — and the webhook
+; receiver proved that is not theoretical: a non-ASCII secret handed codepoints
+; above 255 to hmac-sha256 and the handler died with "byte list element out of
+; range 0..255", serving dropped connections while a health check saw a
+; listening port. A Latin-1 secret would have been worse: every codepoint in
+; byte range, nothing raised, the digest silently wrong forever.
+;
+; WHY THIS SHAPE, measured rather than chosen:
+;   a wrapper over (List Int)   IS NOT A NEW TYPE. Two single-field wrappers
+;                               over the same payload hash identically — Oath's
+;                               identity is structural, constructor names are
+;                               metadata — so `Bytes` and `Text` wrappers would
+;                               be one object with two names.
+;   a monomorphic byte list     IS `Str`. (data B [] (BNil) (BCons Int B)) has
+;                               exactly Str's hash.
+;   (List Byte)                 distinct from both, and inherits every
+;                               polymorphic List law already proven.
+(data Byte [] (MkByte Int))
+
+(defn byte-val [] [(b Byte)] Int
+  (match b ((MkByte n) n)))
+
+; The range predicate. It is a PROPERTY OF PRODUCERS, not of the type: `MkByte`
+; is a public constructor and Oath has no way to seal one, so `(MkByte 999)` is
+; writable. What can be established is that every byte THIS MODULE produces is
+; in range — which is the guarantee the crash needed.
+(defn byte-in-range [] [(b Byte)] Bool
+  (and (<= 0 (byte-val b)) (<= (byte-val b) 255)))
+
+(defn bytes-in-range [] [(bs (List Byte))] Bool
+  (match bs
+    ((Nil) true)
+    ((Cons b rest) (and (byte-in-range b) (bytes-in-range rest))))
+  (prop empty-is-in-range [] (bytes-in-range (Nil [Byte]))))
+
+; UTF-8 ENCODE: total, because every input has an encoding. A codepoint outside
+; Unicode's range encodes as U+FFFD rather than failing — that is what real
+; encoders do, and a partial function here would push the error to every caller
+; for a case the type cannot exclude (Str holds Int, so a negative "codepoint"
+; is writable).
+;
+; Arithmetic rather than bit-twiddling because the kernel has no bitwise ops and
+; e-div/e-mod are already proven. The shifts are exact: /64 is >>6, /4096 is
+; >>12, /262144 is >>18.
+(defn utf8-cp [] [(c Int)] (List Byte)
+  ; SURROGATES ARE NOT ENCODABLE. RFC 3629 forbids D800..DFFF in UTF-8 — they
+  ; exist only as a UTF-16 pairing mechanism — and without this guard they fall
+  ; into the three-byte branch and produce ED A0 80, which is invalid output
+  ; from a function whose contract says non-encodable input becomes U+FFFD. Str
+  ; holds arbitrary Int, so the range is reachable.
+  (if (or (or (< c 0) (< 1114111 c)) (and (<= 55296 c) (<= c 57343)))
+      (Cons [Byte] (MkByte 239) (Cons [Byte] (MkByte 191) (Cons [Byte] (MkByte 189) (Nil [Byte]))))
+    (if (< c 128)
+        (Cons [Byte] (MkByte c) (Nil [Byte]))
+      (if (< c 2048)
+          (Cons [Byte] (MkByte (+ 192 (e-div c 64)))
+            (Cons [Byte] (MkByte (+ 128 (e-mod c 64))) (Nil [Byte])))
+        (if (< c 65536)
+            (Cons [Byte] (MkByte (+ 224 (e-div c 4096)))
+              (Cons [Byte] (MkByte (+ 128 (e-mod (e-div c 64) 64)))
+                (Cons [Byte] (MkByte (+ 128 (e-mod c 64))) (Nil [Byte]))))
+          (Cons [Byte] (MkByte (+ 240 (e-div c 262144)))
+            (Cons [Byte] (MkByte (+ 128 (e-mod (e-div c 4096) 64)))
+              (Cons [Byte] (MkByte (+ 128 (e-mod (e-div c 64) 64)))
+                (Cons [Byte] (MkByte (+ 128 (e-mod c 64))) (Nil [Byte]))))))))) 
+  ; THE PROPERTY THE CRASH NEEDED. Not "the programmer remembered" but "no input
+  ; produces a byte outside 0..255" — including the negative and above-Unicode
+  ; codepoints a Str can legally hold.
+  (prop always-in-range [(c Int)] (bytes-in-range (utf8-cp c)))
+  (prop surrogates-are-replaced [(c Int)]
+    (if (and (<= 55296 c) (<= c 57343))
+        (== (utf8-cp c) (utf8-cp 1114112))
+      true))
+  (prop ascii-is-one-byte [(c Int)]
+    (if (and (<= 0 c) (< c 128)) (== (length [Byte] (utf8-cp c)) 1) true)))
+
+; And over a whole string.
+(defn utf8-encode [] [(s Str)] (List Byte)
+  (match s
+    ((SNil) (Nil [Byte]))
+    ((SCons c rest) (append [Byte] (utf8-cp c) (utf8-encode rest))))
+  (prop empty-encodes-empty [] (== (utf8-encode (SNil)) (Nil [Byte])))
+  (prop always-in-range [(s Str)] (bytes-in-range (utf8-encode s))))
+
+; UTF-8 DECODE: PARTIAL, and that is the whole point. The friction log records
+; that `bytes-str`'s inverse "does not exist and cannot be written correctly",
+; and the reason was never the algorithm — it was that both sides were
+; `(List Int)`, so a decode had nothing to say about a byte list that is not
+; valid UTF-8 except to reinterpret it and produce mojibake silently.
+;
+; With Bytes distinct, the failure is expressible: invalid input returns None
+; instead of a plausible-looking Str. A continuation byte where a lead byte
+; belongs, a truncated sequence, an overlong encoding and a value above Unicode
+; are all refused rather than repaired.
+(defn utf8-decode [] [(bs (List Byte))] (Option Str)
+  (match bs
+    ((Nil) (Some [Str] (SNil)))
+    ((Cons b rest)
+      (let (x Int (byte-val b))
+        (if (or (< x 0) (< 255 x)) (None [Str])
+          (if (< x 128)
+              (match (utf8-decode rest)
+                ((None) (None [Str]))
+                ((Some tl) (Some [Str] (SCons x tl))))
+            (if (< x 194) (None [Str])
+              (if (< x 224)
+                  (match rest
+                    ((Nil) (None [Str]))
+                    ((Cons b2 r2)
+                      (let (y Int (byte-val b2))
+                        (if (or (< y 128) (< 191 y)) (None [Str])
+                          (match (utf8-decode r2)
+                            ((None) (None [Str]))
+                            ((Some tl)
+                              (Some [Str] (SCons (+ (* (- x 192) 64) (- y 128)) tl))))))))
+                (None [Str]))))))))
+  (prop empty-decodes-empty [] (== (utf8-decode (Nil [Byte])) (Some [Str] (SNil))))
+  (prop lone-continuation-is-refused [(b Byte)]
+    (if (and (<= 128 (byte-val b)) (<= (byte-val b) 191))
+        (== (utf8-decode (Cons [Byte] b (Nil [Byte]))) (None [Str]))
+      true)))
+
+; COVERAGE, stated rather than implied: utf8-decode handles one- and two-byte
+; sequences and refuses three- and four-byte lead bytes. That is a REFUSAL, not
+; a misreading — the case it cannot yet decode returns None, so the gap is
+; visible to a caller instead of producing a plausible wrong Str. Extending it
+; is ordinary work; silently reinterpreting was the defect.
+(defn str-all-below [] [(limit Int) (s Str)] Bool
+  (match s
+    ((SNil) true)
+    ((SCons c rest) (and (and (<= 0 c) (< c limit)) (str-all-below limit rest))))
+  (prop empty-satisfies [(limit Int)] (str-all-below limit (SNil))))
+
+; THE INVERSE PROPERTY. The friction log's finding was that this could not be
+; written correctly at all, because both sides were (List Int) and a decode had
+; no way to refuse. Over the range decode covers, encode and decode are now
+; inverse — and outside it, decode says None rather than guessing.
+(defn utf8-roundtrips [] [(s Str)] Bool
+  (match (utf8-decode (utf8-encode s))
+    ((None) false)
+    ((Some t) (== t s)))
+  (prop holds-below-2048 [(s Str)]
+    (if (str-all-below 2048 s) (utf8-roundtrips s) true)))

@@ -1,0 +1,2 @@
+✓ prop empty-decodes-empty      passed 200 cases
+✓ prop lone-continuation-is-refused passed 200 cases

@@ -1,0 +1,13 @@
+{
+  "name": "str-all-below",
+  "hash": "44a2a1cbb7106c0828cf840be47e805109ab3d2a770f7d1e207efe17bd5d8e7f",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}

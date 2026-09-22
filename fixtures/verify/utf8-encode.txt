@@ -1,0 +1,2 @@
+✓ prop empty-encodes-empty      passed 200 cases
+✓ prop always-in-range          passed 200 cases

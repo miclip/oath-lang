@@ -18,7 +18,7 @@
 #     list, so `make verify` never re-put them. That is how the live registry
 #     ended up with no rational family at all — a corpus push driven by this
 #     list cannot push what the list omits.
-EXAMPLES = list str records arith inferred sort generic merge tree interval queue rle ediv extras rot_hl rot_f \
+EXAMPLES = list str records arith inferred sort generic merge tree interval queue rle ediv bytes extras rot_hl rot_f \
            rot_h2 rot_h3 rot ints rat convert service leaky stateful cli netcli set map strmap circle http webhook config exclusion optimizer
 # float belongs here, not in EXAMPLES: it carries deliberate FALSIFIED exhibits
 # (f-tenths — 0.1+0.2 ≠ 0.3 — and f-scale-inv, float scaling not being

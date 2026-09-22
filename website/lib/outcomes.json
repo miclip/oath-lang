@@ -137,6 +137,19 @@
       ]
     },
     {
+      "name": "bytes-in-range",
+      "hash": "3a23873a4b4061847f59f2ae0fa7d1d80d28af6658c2f569bf74f25aa02cafd0",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "empty-is-in-range",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "bytes-ok",
       "hash": "d2406871baf1bde2e17ad756e82e61cdbcdfeea8d7b74a382306e894c7450e98",
       "level": "proven",
@@ -3992,6 +4005,19 @@
       ]
     },
     {
+      "name": "str-all-below",
+      "hash": "44a2a1cbb7106c0828cf840be47e805109ab3d2a770f7d1e207efe17bd5d8e7f",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "empty-satisfies",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "str-append",
       "hash": "7d158d0455d341a46cfcc678cfd41d35db89b574dc45158746ad922b8874e3a4",
       "level": "proven",
@@ -4608,6 +4634,74 @@
         },
         {
           "name": "err-defaults",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "utf8-cp",
+      "hash": "1d4d9d504ee8a18723d7dc15a70166ef4aeb5e6f66b5560f0d1ff0be11cc0017",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "always-in-range",
+          "proven": true
+        },
+        {
+          "name": "surrogates-are-replaced",
+          "proven": true
+        },
+        {
+          "name": "ascii-is-one-byte",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "utf8-decode",
+      "hash": "0139d97df5e7ee0e16f43ee16ca5f58f2cc5f55f91508d0a3c23cf0349a60bc4",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-decodes-empty",
+          "proven": true
+        },
+        {
+          "name": "lone-continuation-is-refused",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "utf8-encode",
+      "hash": "3ec52f7c1e12bd6a3839a6e9b54bf032c53ce1fe43eac7b82720efad651b56b7",
+      "level": "proven",
+      "proven_count": 2,
+      "prop_count": 2,
+      "props": [
+        {
+          "name": "empty-encodes-empty",
+          "proven": true
+        },
+        {
+          "name": "always-in-range",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "utf8-roundtrips",
+      "hash": "5cb615ef14e25e500958222f9595d8d918d0235484e9f6bb6b7a6ce898f16c52",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "holds-below-2048",
           "proven": true
         }
       ]

@@ -17,7 +17,7 @@ import "fmt"
 // threshold. The floor, from `go test -run TestMeasure` (oath/resource_profile_test.go):
 //
 //	                     corpus max   profile   headroom
-//	syntax nesting               17       512        30x
+//	syntax nesting               20       512        25x
 //	canonical nodes/def       1,406    65,536        46x
 //
 // The deepest real canonical structure is 68 (`hmac-kat-rfc4231-2`, whose depth
