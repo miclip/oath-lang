@@ -147,10 +147,10 @@ the PROOF is the filter, not the signature".
 **And the measurement already existed, committed, in
 `oath/rung2_measure_test.go`.** `TestRung2CorpusCensus` reports:
 
-    corpus: 251 live-named func defs, 649 query properties (366 with body-embedded types)
-    pairs admitted — exact-signature: 1044 ; signature-compatible: 1394 ; DELTA: 350
-    delta pairs that TYPECHECK after re-typing binders: 93
-    rejected as ill-typed (rung-3 residue): 257
+    corpus: 254 live-named func defs, 656 query properties (371 with body-embedded types)
+    pairs admitted — exact-signature: 1085 ; signature-compatible: 1452 ; DELTA: 367
+    delta pairs that TYPECHECK after re-typing binders: 97
+    rejected as ill-typed (rung-3 residue): 270
 
 **The ill-typed residue is NOT rung 3's population, and reading it as one was the second mistake
 this section made.** It counts every signature-compatible pair `checkDef`
@@ -160,9 +160,9 @@ BODY's type arguments, so it can only unblock a pair whose body HAS them.
 figures**, so a corpus change that moves them fails the test rather than quietly
 leaving this section sizing the rung from stale numbers:
 
-    ill-typed delta pairs (the census's number)                     257
+    ill-typed delta pairs (the census's number)                     270
       query body carries type arguments — RUNG 3 UPPER BOUND         21
-      rejected for other reasons — rung 3 certainly cannot help     236
+      rejected for other reasons — rung 3 certainly cannot help     249
 
 **At most twenty-one — of ONE HALF of the rung.** Rung 3 reaches two surfaces:
 the PROOF path (`--implies`, where cross-type candidates are rejected by

@@ -17,8 +17,15 @@ import "fmt"
 // threshold. The floor, from `go test -run TestMeasure` (oath/resource_profile_test.go):
 //
 //	                     corpus max   profile   headroom
-//	syntax nesting               20       512        25x
+//	syntax nesting               24       512        21x
 //	canonical nodes/def       1,406    65,536        46x
+//
+// The nesting maximum is `examples/bytes.oath` — the UTF-8 decoder, whose
+// four-byte branch is nested `if`/`match` all the way down because each width
+// must reject a short sequence, a bad continuation, an overlong form and an
+// out-of-range scalar before it accepts. It is the deepest SOURCE form the
+// corpus has, and it moved the measured max from 20; the POLICY did not move,
+// which is the point of recording the two separately.
 //
 // The deepest real canonical structure is 68 (`hmac-kat-rfc4231-2`, whose depth
 // is the SCons spine of a hex literal) against a syntax nesting of far less —

@@ -1,12 +1,12 @@
 {
   "name": "utf8-roundtrips",
-  "hash": "5cb615ef14e25e500958222f9595d8d918d0235484e9f6bb6b7a6ce898f16c52",
+  "hash": "984240db9bb657f04f6fe01b5094fd68d8fbcbaae7b653ec5c038f5b49573afc",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
     ""
   ],
-  "level": "proven",
+  "level": "tested",
   "cases": 200,
   "proven": 1
 }

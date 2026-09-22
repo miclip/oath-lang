@@ -4319,6 +4319,19 @@
       ]
     },
     {
+      "name": "str-scalar",
+      "hash": "8440d3fdd3744ee782d6e20ca5e8b29bed359b1b21860edbc7fc47500ba63d09",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "empty-is-scalar",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "str-scalars",
       "hash": "47093590174ac96e5f9dc709b3783e92a3fb3e2c0bf443e79dcedadef0de3cc8",
       "level": "proven",
@@ -4661,13 +4674,33 @@
     },
     {
       "name": "utf8-decode",
-      "hash": "0139d97df5e7ee0e16f43ee16ca5f58f2cc5f55f91508d0a3c23cf0349a60bc4",
+      "hash": "65a0a46144bddae04fd75eb57434bfd70c71561fb10e0a09fa7a24ff3d6ad8b9",
       "level": "proven",
-      "proven_count": 2,
-      "prop_count": 2,
+      "proven_count": 7,
+      "prop_count": 7,
       "props": [
         {
           "name": "empty-decodes-empty",
+          "proven": true
+        },
+        {
+          "name": "refuses-overlong-nul",
+          "proven": true
+        },
+        {
+          "name": "refuses-overlong-three",
+          "proven": true
+        },
+        {
+          "name": "refuses-encoded-surrogate",
+          "proven": true
+        },
+        {
+          "name": "refuses-above-max",
+          "proven": true
+        },
+        {
+          "name": "refuses-bad-continuation",
           "proven": true
         },
         {
@@ -4695,14 +4728,18 @@
     },
     {
       "name": "utf8-roundtrips",
-      "hash": "5cb615ef14e25e500958222f9595d8d918d0235484e9f6bb6b7a6ce898f16c52",
-      "level": "proven",
+      "hash": "984240db9bb657f04f6fe01b5094fd68d8fbcbaae7b653ec5c038f5b49573afc",
+      "level": "tested",
       "proven_count": 1,
-      "prop_count": 1,
+      "prop_count": 2,
       "props": [
         {
           "name": "holds-below-2048",
           "proven": true
+        },
+        {
+          "name": "holds-for-scalars",
+          "proven": false
         }
       ]
     },

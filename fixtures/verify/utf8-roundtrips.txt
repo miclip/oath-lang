@@ -1,1 +1,2 @@
 ✓ prop holds-below-2048         passed 200 cases
+✓ prop holds-for-scalars        passed 200 cases

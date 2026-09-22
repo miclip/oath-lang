@@ -66,7 +66,7 @@
           (Cons [Byte] (MkByte (+ 240 (e-div c 262144)))
             (Cons [Byte] (MkByte (+ 128 (e-mod (e-div c 4096) 64)))
               (Cons [Byte] (MkByte (+ 128 (e-mod (e-div c 64) 64)))
-                (Cons [Byte] (MkByte (+ 128 (e-mod c 64))) (Nil [Byte]))))))))) 
+                (Cons [Byte] (MkByte (+ 128 (e-mod c 64))) (Nil [Byte])))))))))
   ; THE PROPERTY THE CRASH NEEDED. Not "the programmer remembered" but "no input
   ; produces a byte outside 0..255" — including the negative and above-Unicode
   ; codepoints a Str can legally hold.
@@ -94,8 +94,20 @@
 ;
 ; With Bytes distinct, the failure is expressible: invalid input returns None
 ; instead of a plausible-looking Str. A continuation byte where a lead byte
-; belongs, a truncated sequence, an overlong encoding and a value above Unicode
-; are all refused rather than repaired.
+; belongs, a truncated sequence, an overlong encoding, an encoded surrogate and
+; a value above Unicode are all refused rather than repaired.
+;
+; PARTIAL describes the FUNCTION, not its coverage: every well-formed sequence
+; of one to four bytes decodes. What it declines to do is invent a result for
+; input that is not an encoding of anything.
+; Continuation-byte predicates, factored out so the decoder's branches stay
+; readable. A continuation byte is 10xxxxxx — 128..191 — and carries six bits.
+(defn cont-ok [] [(b Byte)] Bool
+  (and (<= 128 (byte-val b)) (<= (byte-val b) 191)))
+
+(defn cont-val [] [(b Byte)] Int
+  (- (byte-val b) 128))
+
 (defn utf8-decode [] [(bs (List Byte))] (Option Str)
   (match bs
     ((Nil) (Some [Str] (SNil)))
@@ -117,18 +129,90 @@
                             ((None) (None [Str]))
                             ((Some tl)
                               (Some [Str] (SCons (+ (* (- x 192) 64) (- y 128)) tl))))))))
-                (None [Str]))))))))
+                (if (< x 240)
+                    ; THREE BYTES. Rejects a short sequence, a bad continuation,
+                    ; an OVERLONG form (a codepoint below 2048 that a shorter
+                    ; sequence should have carried) and a SURROGATE — all four
+                    ; are ways a decoder can accept bytes that no encoder should
+                    ; have produced, and accepting them is how a "valid" string
+                    ; ends up meaning something different downstream.
+                    (match rest
+                      ((Nil) (None [Str]))
+                      ((Cons b2 r2)
+                        (match r2
+                          ((Nil) (None [Str]))
+                          ((Cons b3 r3)
+                            (let (cp Int (+ (* (- x 224) 4096)
+                                            (+ (* (cont-val b2) 64) (cont-val b3))))
+                              (if (and (and (cont-ok b2) (cont-ok b3))
+                                       (and (<= 2048 cp)
+                                            (or (< cp 55296) (< 57343 cp))))
+                                  (match (utf8-decode r3)
+                                    ((None) (None [Str]))
+                                    ((Some tl) (Some [Str] (SCons cp tl))))
+                                (None [Str])))))))
+                  (if (< x 245)
+                      ; FOUR BYTES. Same refusals, plus the upper bound: F4 90 ..
+                      ; encodes above U+10FFFF, which is not a codepoint at all.
+                      (match rest
+                        ((Nil) (None [Str]))
+                        ((Cons b2 r2)
+                          (match r2
+                            ((Nil) (None [Str]))
+                            ((Cons b3 r3)
+                              (match r3
+                                ((Nil) (None [Str]))
+                                ((Cons b4 r4)
+                                  (let (cp Int (+ (* (- x 240) 262144)
+                                                  (+ (* (cont-val b2) 4096)
+                                                     (+ (* (cont-val b3) 64) (cont-val b4)))))
+                                    (if (and (and (and (cont-ok b2) (cont-ok b3)) (cont-ok b4))
+                                             (and (<= 65536 cp) (<= cp 1114111)))
+                                        (match (utf8-decode r4)
+                                          ((None) (None [Str]))
+                                          ((Some tl) (Some [Str] (SCons cp tl))))
+                                      (None [Str])))))))))
+                    (None [Str]))))))))))
   (prop empty-decodes-empty [] (== (utf8-decode (Nil [Byte])) (Some [Str] (SNil))))
+  ; THE HOSTILE SPELLINGS, pinned as properties rather than left to a comment.
+  ; Each is a byte string a conforming encoder never emits, and each is a way a
+  ; lenient decoder hands its caller a value that compares unequal to the one a
+  ; strict decoder would produce.
+  (prop refuses-overlong-nul []                       ; C0 80 — NUL in two bytes
+    (match (utf8-decode (Cons [Byte] (MkByte 192) (Cons [Byte] (MkByte 128) (Nil [Byte]))))
+      ((None) true) ((Some x) false)))
+  (prop refuses-overlong-three []                     ; E0 80 80 — NUL in three
+    (match (utf8-decode (Cons [Byte] (MkByte 224)
+             (Cons [Byte] (MkByte 128) (Cons [Byte] (MkByte 128) (Nil [Byte])))))
+      ((None) true) ((Some x) false)))
+  (prop refuses-encoded-surrogate []                  ; ED A0 80 — U+D800
+    (match (utf8-decode (Cons [Byte] (MkByte 237)
+             (Cons [Byte] (MkByte 160) (Cons [Byte] (MkByte 128) (Nil [Byte])))))
+      ((None) true) ((Some x) false)))
+  (prop refuses-above-max []                          ; F4 90 80 80 — U+110000
+    (match (utf8-decode (Cons [Byte] (MkByte 244)
+             (Cons [Byte] (MkByte 144) (Cons [Byte] (MkByte 128)
+               (Cons [Byte] (MkByte 128) (Nil [Byte]))))))
+      ((None) true) ((Some x) false)))
+  (prop refuses-bad-continuation []                   ; E4 B8 20 — ASCII tail
+    (match (utf8-decode (Cons [Byte] (MkByte 228)
+             (Cons [Byte] (MkByte 184) (Cons [Byte] (MkByte 32) (Nil [Byte])))))
+      ((None) true) ((Some x) false)))
   (prop lone-continuation-is-refused [(b Byte)]
     (if (and (<= 128 (byte-val b)) (<= (byte-val b) 191))
         (== (utf8-decode (Cons [Byte] b (Nil [Byte]))) (None [Str]))
       true)))
 
-; COVERAGE, stated rather than implied: utf8-decode handles one- and two-byte
-; sequences and refuses three- and four-byte lead bytes. That is a REFUSAL, not
-; a misreading — the case it cannot yet decode returns None, so the gap is
-; visible to a caller instead of producing a plausible wrong Str. Extending it
-; is ordinary work; silently reinterpreting was the defect.
+; COVERAGE: utf8-decode now handles all four widths. What it REFUSES is the set
+; of byte strings no encoder should have produced — a truncated sequence, a bad
+; continuation byte, an OVERLONG form (a codepoint encoded in more bytes than it
+; needs), a SURROGATE, and anything above U+10FFFF.
+;
+; Refusing overlong forms is not pedantry. `C0 80` is a two-byte spelling of NUL
+; that a length check or a delimiter scan reads as harmless while a lenient
+; decoder turns it back into NUL — the shape behind a long line of path- and
+; filter-bypass bugs. A decoder that accepts more than one spelling of a value
+; hands its callers two strings that compare unequal and mean the same thing.
 (defn str-all-below [] [(limit Int) (s Str)] Bool
   (match s
     ((SNil) true)
@@ -139,9 +223,30 @@
 ; written correctly at all, because both sides were (List Int) and a decode had
 ; no way to refuse. Over the range decode covers, encode and decode are now
 ; inverse — and outside it, decode says None rather than guessing.
+; A Unicode SCALAR VALUE: in range, and not a surrogate. This is exactly the set
+; encode maps injectively — surrogates and out-of-range codepoints both become
+; U+FFFD, so they cannot round-trip and must be excluded from the claim rather
+; than quietly weakening it.
+(defn str-scalar [] [(s Str)] Bool
+  (match s
+    ((SNil) true)
+    ((SCons c rest)
+      (and (and (and (<= 0 c) (<= c 1114111))
+                (or (< c 55296) (< 57343 c)))
+           (str-scalar rest))))
+  (prop empty-is-scalar [] (str-scalar (SNil))))
+
 (defn utf8-roundtrips [] [(s Str)] Bool
   (match (utf8-decode (utf8-encode s))
     ((None) false)
     ((Some t) (== t s)))
+  ; BOTH, and keeping the narrower one is not redundancy. `holds-for-scalars` is
+  ; the logically stronger claim — every scalar value rather than the range the
+  ; decoder used to handle — but a stronger claim is not stronger EVIDENCE if it
+  ; only reaches `tested` while the one it would replace was PROVEN. Dropping
+  ; the proven property to state a bigger unproven one trades verification for
+  ; ambition, which is the direction this project does not go.
   (prop holds-below-2048 [(s Str)]
-    (if (str-all-below 2048 s) (utf8-roundtrips s) true)))
+    (if (str-all-below 2048 s) (utf8-roundtrips s) true))
+  (prop holds-for-scalars [(s Str)]
+    (if (str-scalar s) (utf8-roundtrips s) true)))

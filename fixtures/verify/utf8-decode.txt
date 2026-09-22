@@ -1,2 +1,7 @@
 ✓ prop empty-decodes-empty      passed 200 cases
+✓ prop refuses-overlong-nul     passed 200 cases
+✓ prop refuses-overlong-three   passed 200 cases
+✓ prop refuses-encoded-surrogate passed 200 cases
+✓ prop refuses-above-max        passed 200 cases
+✓ prop refuses-bad-continuation passed 200 cases
 ✓ prop lone-continuation-is-refused passed 200 cases

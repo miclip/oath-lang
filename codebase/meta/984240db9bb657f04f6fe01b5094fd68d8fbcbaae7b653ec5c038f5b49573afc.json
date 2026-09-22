@@ -1,0 +1,25 @@
+{
+  "name": "utf8-roundtrips",
+  "prop_names": [
+    "holds-below-2048",
+    "holds-for-scalars"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200,
+    "proven": 1
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "s"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0
+  ]
+}

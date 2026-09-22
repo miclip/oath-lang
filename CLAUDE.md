@@ -2058,9 +2058,14 @@ every ambiguity found this way.
 
 This is the gate **every push runs in CI**, and it is the one that decides
 whether a change is safe. It checks 1-4 live and settles 5-6 by byte oracle: an
-outcome is a pure function of (script bytes, solver version, rlimit), so 447
+outcome is a pure function of (script bytes, solver version, rlimit), so
 byte-identical direct-attempt scripts under a pinned z3 DETERMINE identical
-outcomes — including the ones that never prove.
+outcomes — including the ones that never prove. **The COUNT of those scripts is
+derived, so it is not written here**: it moves with the corpus, and the copy
+that used to sit in this sentence said 447 long after the ledger had passed 500.
+`fixtures/prove/outcomes.json` is the authority, and `check-doc-numbers` holds
+the prose that quotes it to that authority — which is precisely why the figure
+belongs there and not in a sentence no gate reads.
 
 The bare `./oathrs/conformance.sh` defaults to `full`, the cold empirical
 re-derivation. CI runs that only on `schedule` / `workflow_dispatch` with a

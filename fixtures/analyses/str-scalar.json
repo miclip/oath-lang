@@ -1,6 +1,6 @@
 {
-  "name": "utf8-decode",
-  "hash": "65a0a46144bddae04fd75eb57434bfd70c71561fb10e0a09fa7a24ff3d6ad8b9",
+  "name": "str-scalar",
+  "hash": "8440d3fdd3744ee782d6e20ca5e8b29bed359b1b21860edbc7fc47500ba63d09",
   "kind": "func",
   "termination": "structural",
   "confinement": [
@@ -8,5 +8,5 @@
   ],
   "level": "proven",
   "cases": 200,
-  "proven": 7
+  "proven": 1
 }

@@ -1,0 +1,10 @@
+{
+  "name": "cont-ok",
+  "hash": "97f642b9363de2fe605436dd8ca0477eaba2cd2c0ebe4b1e5a1dbbf5af52494e",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "asserted"
+}

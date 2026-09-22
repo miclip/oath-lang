@@ -35,6 +35,20 @@
     "infer_entries": 0
   },
   {
+    "name": "corpus:bytes.oath#10:str-scalar",
+    "outcome": "accepted",
+    "hash_before": "8440d3fdd3744ee782d6e20ca5e8b29bed359b1b21860edbc7fc47500ba63d09",
+    "hash_after": "8440d3fdd3744ee782d6e20ca5e8b29bed359b1b21860edbc7fc47500ba63d09",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:bytes.oath#11:utf8-roundtrips",
+    "outcome": "accepted",
+    "hash_before": "984240db9bb657f04f6fe01b5094fd68d8fbcbaae7b653ec5c038f5b49573afc",
+    "hash_after": "984240db9bb657f04f6fe01b5094fd68d8fbcbaae7b653ec5c038f5b49573afc",
+    "infer_entries": 0
+  },
+  {
     "name": "corpus:bytes.oath#1:byte-val",
     "outcome": "accepted",
     "hash_before": "e1770a2d78e07309d543281810f392d55ba2a3d6398fc77f31b2cf7971452b10",
@@ -70,24 +84,31 @@
     "infer_entries": 0
   },
   {
-    "name": "corpus:bytes.oath#6:utf8-decode",
+    "name": "corpus:bytes.oath#6:cont-ok",
     "outcome": "accepted",
-    "hash_before": "0139d97df5e7ee0e16f43ee16ca5f58f2cc5f55f91508d0a3c23cf0349a60bc4",
-    "hash_after": "0139d97df5e7ee0e16f43ee16ca5f58f2cc5f55f91508d0a3c23cf0349a60bc4",
+    "hash_before": "97f642b9363de2fe605436dd8ca0477eaba2cd2c0ebe4b1e5a1dbbf5af52494e",
+    "hash_after": "97f642b9363de2fe605436dd8ca0477eaba2cd2c0ebe4b1e5a1dbbf5af52494e",
     "infer_entries": 0
   },
   {
-    "name": "corpus:bytes.oath#7:str-all-below",
+    "name": "corpus:bytes.oath#7:cont-val",
+    "outcome": "accepted",
+    "hash_before": "447acb26e0552a8a957652d3f5f375ddd2da4c8c52667ca7fbdee6dbad29a445",
+    "hash_after": "447acb26e0552a8a957652d3f5f375ddd2da4c8c52667ca7fbdee6dbad29a445",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:bytes.oath#8:utf8-decode",
+    "outcome": "accepted",
+    "hash_before": "65a0a46144bddae04fd75eb57434bfd70c71561fb10e0a09fa7a24ff3d6ad8b9",
+    "hash_after": "65a0a46144bddae04fd75eb57434bfd70c71561fb10e0a09fa7a24ff3d6ad8b9",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:bytes.oath#9:str-all-below",
     "outcome": "accepted",
     "hash_before": "44a2a1cbb7106c0828cf840be47e805109ab3d2a770f7d1e207efe17bd5d8e7f",
     "hash_after": "44a2a1cbb7106c0828cf840be47e805109ab3d2a770f7d1e207efe17bd5d8e7f",
-    "infer_entries": 0
-  },
-  {
-    "name": "corpus:bytes.oath#8:utf8-roundtrips",
-    "outcome": "accepted",
-    "hash_before": "5cb615ef14e25e500958222f9595d8d918d0235484e9f6bb6b7a6ce898f16c52",
-    "hash_after": "5cb615ef14e25e500958222f9595d8d918d0235484e9f6bb6b7a6ce898f16c52",
     "infer_entries": 0
   },
   {

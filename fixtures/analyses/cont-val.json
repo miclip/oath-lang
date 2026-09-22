@@ -1,0 +1,10 @@
+{
+  "name": "cont-val",
+  "hash": "447acb26e0552a8a957652d3f5f375ddd2da4c8c52667ca7fbdee6dbad29a445",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    ""
+  ],
+  "level": "asserted"
+}
