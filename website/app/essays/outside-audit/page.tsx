@@ -30,7 +30,7 @@ export default function OutsideAudit() {
         The strongest evidence is real. The current <code>fixtures/prove/outcomes.json</code>{" "}
         ledger says kernel <code>oath-kernel/0.7</code>, Z3 4.16.0, 247 definitions with
         properties, 682 properties, 521 proven properties, and 192 fully proven
-        definitions. It also keeps 51 tested definitions and 4 falsified definitions in
+        definitions. It also keeps 51 tested definitions and 3 falsified definitions in
         view. That is a serious artifact, and the site’s browsable corpus data is copied
         from that ledger rather than maintained as a parallel claim.
       </p>

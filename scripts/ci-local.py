@@ -74,6 +74,11 @@ RUN: set[tuple[str, str]] = {
     ("conformance", "build", "824452667570"),
     ("conformance", "unit tests", "230135e255a8"),
     ("conformance", "fingerprint instrument check (#139)", "58a5a527a296"),
+    # READ-ONLY: it generates the whole fixture tree into a CLEAN TEMP DIR and
+    # compares; nothing under fixtures/ is written, so this is RUN and not
+    # MUTATES. Contrast `make fixtures`, which writes verdicts back into
+    # codebase/ and is exactly what must not run from a sweep.
+    ("conformance", "committed fixtures are exactly their generators' output (#195)", "23c93ff956ef"),
     # #98 exclusion-scoped campaign. Prover-free and read-only: it validates the
     # artefact, re-derives the partition and runs the pin. Runnable here, and it
     # is the SAME code the dispatch-only matrix step calls, so classifying that

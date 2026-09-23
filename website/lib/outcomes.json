@@ -4134,7 +4134,7 @@
     {
       "name": "spin",
       "hash": "086cb1f933536eadf637402bd14bed014b55818b9994a8bda60683d80036c571",
-      "level": "falsified",
+      "level": "asserted",
       "proven_count": 0,
       "prop_count": 1,
       "props": [

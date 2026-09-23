@@ -68,6 +68,30 @@ jobs:
       - name: playground corpus mirrors the committed store (#145)
         run: make check-playground-snapshot
 
+      # FIXTURE INTEGRITY BELONGS HERE, NOT ONLY IN THE STDLIB PR JOB (#195).
+      # The claim is "every committed fixture is exactly its generator's
+      # output", which quantifies over the whole tree — so the thing that can
+      # break it is anything changing how a fixture is PRODUCED, and that is
+      # the KERNEL. stdlib-pr runs this check, but triggers on stdlib/**,
+      # examples/** and two scripts, so a change under oath/ never reached it.
+      # That is how ec8ebf7 -- which deliberately made property outcomes
+      # three-valued, so an unevaluable case stopped being reported as a
+      # refutation -- left analyses/spin.json recording `falsified` for a
+      # definition whose property is INDETERMINATE. The fixture went on
+      # asserting a refutation the kernel had stopped making, and no gate on
+      # that PR had the tree in its universe.
+      #
+      # A path list is an ENUMERABLE PROXY for a population; this one is
+      # repo-wide, so it runs on the unfiltered workflow instead. ~11s.
+      #
+      # --skip-solver-dependent for the reason stdlib-pr gives: regenerating
+      # prove/outcomes.json re-runs Z3, and under CI load a goal times out and
+      # records fewer proven props, which compares the runner's throughput
+      # rather than the kernel. Presence checks on the prove family still
+      # apply; only content comparison is skipped.
+      - name: committed fixtures are exactly their generators' output (#195)
+        run: python3 scripts/check-fixture-integrity.py --skip-solver-dependent
+
       - name: re-verify examples against committed store
         # make verify re-puts every example; on a checkout this must
         # reproduce the committed hashes (names.json diff = identity drift).
