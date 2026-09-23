@@ -1,6 +1,6 @@
 {
   "name": "gh-counts",
-  "hash": "ae09e70ae58547c85e425a9633f803e24f364356970e7c357820d527fae20fa5",
+  "hash": "3b04f218be8200e0e72548a0e3473292a91d549e2a00e6ded1456b0fa216168e",
   "kind": "func",
   "termination": "structural",
   "confinement": [
@@ -8,6 +8,5 @@
     ""
   ],
   "level": "tested",
-  "cases": 200,
-  "proven": 2
+  "cases": 200
 }

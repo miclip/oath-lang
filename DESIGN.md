@@ -598,7 +598,7 @@ Phases 1–3 are COMPLETE, beyond the original ambitions:
   waivers, and an O1 binary identity encoding that inherits nothing from
   any host language (SPEC §1; store migrated wholesale, mappings journaled).
 - **Phase 2 ✓ (mostly)** — SMT proofs are real INCLUDING structural
-  induction with a relevance-filtered lemma library (§7.2): 190 definitions
+  induction with a relevance-filtered lemma library (§7.2): 192 definitions
   fully PROVEN, insertion sort 7/7. The Rust kernel exists — built BLIND
   from docs/SPEC.md + fixtures by an agent that never saw the Go source,
   conforming byte-for-byte on all six checks, wasm32-ready. Effects
@@ -691,7 +691,7 @@ proven.*
 
 ### Hard limits — the blocking gaps
 
-**Coverage.** 272 definitions, deep but narrow: list, sort, tree, queue,
+**Coverage.** 276 definitions, deep but narrow: list, sort, tree, queue,
 interval, map, set, string, rational, plus honest exhibits — and, since #120,
 one APPLICATION (`apps/github-webhook`) that a system outside the project
 actually calls. Those twenty-one definitions are the first entries in this

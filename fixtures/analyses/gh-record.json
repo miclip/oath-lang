@@ -1,6 +1,6 @@
 {
   "name": "gh-record",
-  "hash": "53219da891359a19a4c39e6261bddaceb9326f0f14f37c8ec45e9056e6f9f253",
+  "hash": "11dc5883ba4a58778a82dd59945d19ebee28f5fb9dd26d4d9606891d49ca83d2",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

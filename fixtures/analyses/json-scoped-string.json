@@ -1,6 +1,6 @@
 {
   "name": "json-scoped-string",
-  "hash": "457b1fa82b61c8294edac51083a4103d0f2faf15c3c4dd89cc7306c3d6e79ad4",
+  "hash": "b15aeb2bf3c3d31b6f51bce9e7f560694a82dad8a3559ea58b158c1834086007",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

@@ -1,0 +1,36 @@
+{
+  "name": "secret-is-usable",
+  "prop_names": [
+    "empty-is-not-usable",
+    "short-is-not-usable",
+    "a-space-is-not-usable",
+    "a-tab-is-not-usable",
+    "cyrillic-is-usable",
+    "latin1-is-usable",
+    "usable-encodes"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 7
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "secret"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ]
+}

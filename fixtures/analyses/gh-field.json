@@ -1,6 +1,6 @@
 {
   "name": "gh-field",
-  "hash": "b79708d33499db5dfe812855820a5ce888d8c80a0c10895e021799660ad4d6d7",
+  "hash": "16ba49acd70c9841199d62d9528c5af51a5ccef2000b8d80ec473cb90f9cbc26",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
@@ -8,6 +8,5 @@
     ""
   ],
   "level": "tested",
-  "cases": 200,
-  "proven": 5
+  "cases": 200
 }

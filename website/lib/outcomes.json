@@ -150,6 +150,27 @@
       ]
     },
     {
+      "name": "bytes-ints",
+      "hash": "9387919ede5b3ff278fbb1d5f8e953aded83439b142e085d9f0cf58fe500dd53",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "preserves-length",
+          "proven": true
+        },
+        {
+          "name": "range-agrees",
+          "proven": true
+        },
+        {
+          "name": "utf8-is-octets",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "bytes-ok",
       "hash": "d2406871baf1bde2e17ad756e82e61cdbcdfeea8d7b74a382306e894c7450e98",
       "level": "proven",
@@ -861,14 +882,14 @@
     },
     {
       "name": "gh-counts",
-      "hash": "ae09e70ae58547c85e425a9633f803e24f364356970e7c357820d527fae20fa5",
+      "hash": "3b04f218be8200e0e72548a0e3473292a91d549e2a00e6ded1456b0fa216168e",
       "level": "tested",
-      "proven_count": 2,
+      "proven_count": 0,
       "prop_count": 6,
       "props": [
         {
           "name": "an-empty-log-changes-nothing",
-          "proven": true
+          "proven": false
         },
         {
           "name": "every-group-is-present",
@@ -876,7 +897,7 @@
         },
         {
           "name": "one-line-counts-one",
-          "proven": true
+          "proven": false
         },
         {
           "name": "the-same-group-twice-counts-two",
@@ -894,7 +915,7 @@
     },
     {
       "name": "gh-dedup",
-      "hash": "075ffb16e999bab5dfe2bc18768ef2b2b4ae1329886394f247328c8b781672b5",
+      "hash": "82a31da3b6375ec9b033e1a76d635a802698ba5762cedf7f2ee22371e83bb2ea",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 7,
@@ -964,30 +985,30 @@
     },
     {
       "name": "gh-field",
-      "hash": "b79708d33499db5dfe812855820a5ce888d8c80a0c10895e021799660ad4d6d7",
+      "hash": "16ba49acd70c9841199d62d9528c5af51a5ccef2000b8d80ec473cb90f9cbc26",
       "level": "tested",
-      "proven_count": 5,
+      "proven_count": 0,
       "prop_count": 6,
       "props": [
         {
           "name": "the-tag-is-field-zero",
-          "proven": true
+          "proven": false
         },
         {
           "name": "the-delivery-is-field-one",
-          "proven": true
+          "proven": false
         },
         {
           "name": "the-event-is-field-two",
-          "proven": true
+          "proven": false
         },
         {
           "name": "the-repository-is-field-three",
-          "proven": true
+          "proven": false
         },
         {
           "name": "past-the-end-is-empty",
-          "proven": true
+          "proven": false
         },
         {
           "name": "it-reads-the-receivers-columns",
@@ -997,14 +1018,14 @@
     },
     {
       "name": "gh-group",
-      "hash": "fee877df0bf7d6dd4eaae974a9457b24f03396daeae2f1b87ba40fea2c886fa4",
+      "hash": "f79b014981808066b1b1620a3fd5c37058d0c153a2ec8ba604a53da98c35a0af",
       "level": "tested",
-      "proven_count": 2,
+      "proven_count": 0,
       "prop_count": 4,
       "props": [
         {
           "name": "it-is-repository-then-event",
-          "proven": true
+          "proven": false
         },
         {
           "name": "it-reads-the-receivers-record",
@@ -1016,24 +1037,24 @@
         },
         {
           "name": "it-separates-two-repositories",
-          "proven": true
+          "proven": false
         }
       ]
     },
     {
       "name": "gh-group-labels",
-      "hash": "f5386ab88f45e5b272824695d854a0c94dfd13fc4fb8af63a39920a99b1c875b",
-      "level": "proven",
-      "proven_count": 2,
+      "hash": "ea6b2442b4cbaab21954cee2272a29a2260919001cf7a1d26999cfbb1964c819",
+      "level": "tested",
+      "proven_count": 0,
       "prop_count": 2,
       "props": [
         {
           "name": "it-preserves-length",
-          "proven": true
+          "proven": false
         },
         {
           "name": "nothing-in-nothing-out",
-          "proven": true
+          "proven": false
         }
       ]
     },
@@ -1090,9 +1111,9 @@
     },
     {
       "name": "gh-line-ok",
-      "hash": "69045e0b375d4cb850a3669d7ef9cc8250737f05de3141dece53ebaa45d7cef4",
+      "hash": "13f43ab3b71aa45fdd98e7f4ea1711572d7c7da869802f0800c372856fbf978a",
       "level": "tested",
-      "proven_count": 4,
+      "proven_count": 0,
       "prop_count": 7,
       "props": [
         {
@@ -1101,11 +1122,11 @@
         },
         {
           "name": "an-accepted-line-carries-the-tag",
-          "proven": true
+          "proven": false
         },
         {
           "name": "an-accepted-line-has-five-fields",
-          "proven": true
+          "proven": false
         },
         {
           "name": "the-old-four-field-record-is-refused",
@@ -1117,11 +1138,11 @@
         },
         {
           "name": "a-blank-line-is-refused",
-          "proven": true
+          "proven": false
         },
         {
           "name": "a-foreign-tag-is-refused",
-          "proven": true
+          "proven": false
         }
       ]
     },
@@ -1152,7 +1173,7 @@
     },
     {
       "name": "gh-record",
-      "hash": "53219da891359a19a4c39e6261bddaceb9326f0f14f37c8ec45e9056e6f9f253",
+      "hash": "11dc5883ba4a58778a82dd59945d19ebee28f5fb9dd26d4d9606891d49ca83d2",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 3,
@@ -1173,68 +1194,68 @@
     },
     {
       "name": "gh-refusal",
-      "hash": "e2e129fadb31446f3512f748d42349883405afbb04fd8a1298a5de10ab35a03e",
-      "level": "proven",
-      "proven_count": 2,
+      "hash": "e0c211d67d41798e4de71e676530a7701ab66724d898eac601d347ebf241818b",
+      "level": "tested",
+      "proven_count": 0,
       "prop_count": 2,
       "props": [
         {
           "name": "the-headline-count-matches-the-listing",
-          "proven": true
+          "proven": false
         },
         {
           "name": "it-names-the-refusal",
-          "proven": true
+          "proven": false
         }
       ]
     },
     {
       "name": "gh-refused-lines",
-      "hash": "4239a1ac8d1d5825d0a822cb50a45893db931eafe8142bb4ea1d344c286bfb87",
-      "level": "proven",
-      "proven_count": 2,
+      "hash": "47c01c9846abf6be5508160963820ea6796dacfc58538bed28f97abcf23fe93c",
+      "level": "tested",
+      "proven_count": 0,
       "prop_count": 2,
       "props": [
         {
           "name": "it-lists-exactly-the-rejected",
-          "proven": true
+          "proven": false
         },
         {
           "name": "a-clean-log-lists-nothing",
-          "proven": true
+          "proven": false
         }
       ]
     },
     {
       "name": "gh-rejected",
-      "hash": "993306c77c69e8319e82c5246ec5d2acd0a6605b95c9144958986060da79cd68",
+      "hash": "4b026402ebd3aa6b6614a893da726ed67061d81f8021b0957d6ccd3629ed0e93",
       "level": "tested",
-      "proven_count": 6,
+      "proven_count": 0,
       "prop_count": 7,
       "props": [
         {
           "name": "nothing-rejects-nothing",
-          "proven": true
+          "proven": false
         },
         {
           "name": "it-is-never-negative",
-          "proven": true
+          "proven": false
         },
         {
           "name": "it-is-bounded-by-the-line-count",
-          "proven": true
+          "proven": false
         },
         {
           "name": "the-cons-ledger",
-          "proven": true
+          "proven": false
         },
         {
           "name": "one-bad-line-is-enough",
-          "proven": true
+          "proven": false
         },
         {
           "name": "a-bad-line-deeper-in-is-enough",
-          "proven": true
+          "proven": false
         },
         {
           "name": "zero-rejected-means-every-line-passed",
@@ -1278,7 +1299,7 @@
     },
     {
       "name": "gh-report",
-      "hash": "328a51f6c5c9d8e3c91a5a23a99f785e2d2f4f5dbce74dc20224099688025338",
+      "hash": "251a046ef5382637f8e733c505f6bb39c52601e51efc5be41ceb8041c5b21ecd",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 6,
@@ -1311,7 +1332,7 @@
     },
     {
       "name": "gh-report-main",
-      "hash": "0e5c6867f2610768f775c7941100f496c6718bdc831560bf317e4d7fb4e3e5cb",
+      "hash": "2292207abfde025e576e2639a1fc3969aa6f384ac1fadfc81173300b074e5474",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 2,
@@ -1349,7 +1370,7 @@
     },
     {
       "name": "gh-schema",
-      "hash": "67177f89dde634878290afc77cd15b796ca7cc5bab8528618a5f884a4c8136d4",
+      "hash": "b818642fb4f82b9da2bfd9f997287d2a8964d67095a6613e2d72f81d2d1caa7e",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 1,
@@ -1362,10 +1383,10 @@
     },
     {
       "name": "gh-sign",
-      "hash": "bf2bf8a950ef0645cdbefd03d63e4321485e3b0b9eb7f104747986c6f30e190b",
+      "hash": "16986abc2e65c1e7cb960c118264b2a52b78eea59f637ba407826b9ca146211e",
       "level": "tested",
       "proven_count": 0,
-      "prop_count": 2,
+      "prop_count": 3,
       "props": [
         {
           "name": "carries-the-algorithm",
@@ -1373,6 +1394,10 @@
         },
         {
           "name": "survives-gh-signature",
+          "proven": false
+        },
+        {
+          "name": "matches-openssl-for-a-non-ascii-key",
           "proven": false
         }
       ]
@@ -1404,7 +1429,7 @@
     },
     {
       "name": "gh-spec-secret",
-      "hash": "64468c9d46cc0bdd71f88d30d96a1b1dfa127a47533becbac35a96d680db4db7",
+      "hash": "0129592f5b01451d844ee302c57ced93ae6d149cee1cda52c09a953e4a8a52a6",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 1,
@@ -1417,7 +1442,7 @@
     },
     {
       "name": "gh-summary",
-      "hash": "e4b3d10616ab85743f5b990dbab45e35e64d6bb5de654198d91051e24c76f037",
+      "hash": "9ac9fa7c0e1af0a78cfbdca127695a46ffcd608809e8fff79c655582ff24c70f",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 3,
@@ -1459,7 +1484,7 @@
     },
     {
       "name": "gh-webhook",
-      "hash": "552ec5bd9d1893e035bfec422a94a2a57b1c027a2822bfa30a433feff3ed3711",
+      "hash": "cad4458a77fb9d238b274640863e015e9d282822be2f9b7b37162f5580a9a3ad",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 14,
@@ -2029,6 +2054,43 @@
       ]
     },
     {
+      "name": "ints-bytes",
+      "hash": "941f48375acb47ae3b8652189bac4adab3d5e084b8d3013dbaf95a8814425462",
+      "level": "proven",
+      "proven_count": 7,
+      "prop_count": 7,
+      "props": [
+        {
+          "name": "preserves-length",
+          "proven": true
+        },
+        {
+          "name": "range-agrees",
+          "proven": true
+        },
+        {
+          "name": "inverts-bytes-ints",
+          "proven": true
+        },
+        {
+          "name": "inverted-by-bytes-ints",
+          "proven": true
+        },
+        {
+          "name": "refuses-out-of-range-lead",
+          "proven": true
+        },
+        {
+          "name": "refuses-negative",
+          "proven": true
+        },
+        {
+          "name": "refuses-out-of-range-continuation",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "is-none",
       "hash": "2ba7f9f256616ab855b5ebde66b5544feb26922287b3ac209e42516fd74cb9eb",
       "level": "proven",
@@ -2114,10 +2176,10 @@
     },
     {
       "name": "json-scoped-string",
-      "hash": "457b1fa82b61c8294edac51083a4103d0f2faf15c3c4dd89cc7306c3d6e79ad4",
+      "hash": "b15aeb2bf3c3d31b6f51bce9e7f560694a82dad8a3559ea58b158c1834086007",
       "level": "tested",
       "proven_count": 0,
-      "prop_count": 3,
+      "prop_count": 5,
       "props": [
         {
           "name": "absent-scope-is-marked",
@@ -2129,6 +2191,14 @@
         },
         {
           "name": "value-has-no-tab",
+          "proven": false
+        },
+        {
+          "name": "non-ascii-value-is-recovered-exactly",
+          "proven": false
+        },
+        {
+          "name": "malformed-utf8-is-refused-not-mojibaked",
           "proven": false
         }
       ]
@@ -2705,7 +2775,7 @@
     },
     {
       "name": "no-field-can-inject",
-      "hash": "6da67355b5ae7f9960e41a1d85b1476485f1f1fc83af722f7a80e395734bccf0",
+      "hash": "f397905be1c132f0cd9682264f095926f15d95348c690b2e3d3db027e2b04189",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 4,
@@ -3133,7 +3203,7 @@
     },
     {
       "name": "record-under",
-      "hash": "2bed447f1a3e248f31d2c01b306712292a75e147a1d08e146818e23ff835721b",
+      "hash": "bafdf777369488953cca8ace3a19df96619d374596915a2a0047c1a81d7b6a67",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 3,
@@ -3583,31 +3653,101 @@
       ]
     },
     {
+      "name": "secret-char-ok",
+      "hash": "fbe12996e6374123f60b3851d56d4a788faa0eeeb44c326bd2164db02fec80e6",
+      "level": "proven",
+      "proven_count": 8,
+      "prop_count": 8,
+      "props": [
+        {
+          "name": "space-is-refused",
+          "proven": true
+        },
+        {
+          "name": "tab-is-refused",
+          "proven": true
+        },
+        {
+          "name": "del-is-refused",
+          "proven": true
+        },
+        {
+          "name": "nbsp-is-refused",
+          "proven": true
+        },
+        {
+          "name": "ideographic-space-is-refused",
+          "proven": true
+        },
+        {
+          "name": "ascii-graphic-is-allowed",
+          "proven": true
+        },
+        {
+          "name": "cyrillic-is-allowed",
+          "proven": true
+        },
+        {
+          "name": "latin1-letter-is-allowed",
+          "proven": true
+        }
+      ]
+    },
+    {
+      "name": "secret-chars-ok",
+      "hash": "5210c75a95e2611426ca5d14bea03bf6cc8de26d5fc006e7234e98ca91f2dd0a",
+      "level": "proven",
+      "proven_count": 3,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "empty-is-ok",
+          "proven": true
+        },
+        {
+          "name": "a-space-anywhere-fails",
+          "proven": true
+        },
+        {
+          "name": "a-tab-anywhere-fails",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "secret-is-usable",
-      "hash": "5365b4a06be5318b3a497de3ff551947d6460883c99f6bb111ec753774425a5c",
-      "level": "tested",
-      "proven_count": 0,
-      "prop_count": 5,
+      "hash": "67bbe1d9f5f6aa78afa5552c99db79291ed332921f64af402c77de04c323b61f",
+      "level": "proven",
+      "proven_count": 7,
+      "prop_count": 7,
       "props": [
         {
           "name": "empty-is-not-usable",
-          "proven": false
+          "proven": true
         },
         {
           "name": "short-is-not-usable",
-          "proven": false
+          "proven": true
         },
         {
-          "name": "non-ascii-is-not-usable",
-          "proven": false
+          "name": "a-space-is-not-usable",
+          "proven": true
         },
         {
-          "name": "latin1-is-not-usable",
-          "proven": false
+          "name": "a-tab-is-not-usable",
+          "proven": true
+        },
+        {
+          "name": "cyrillic-is-usable",
+          "proven": true
+        },
+        {
+          "name": "latin1-is-usable",
+          "proven": true
         },
         {
           "name": "usable-encodes",
-          "proven": false
+          "proven": true
         }
       ]
     },

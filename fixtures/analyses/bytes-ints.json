@@ -1,0 +1,12 @@
+{
+  "name": "bytes-ints",
+  "hash": "9387919ede5b3ff278fbb1d5f8e953aded83439b142e085d9f0cf58fe500dd53",
+  "kind": "func",
+  "termination": "structural",
+  "confinement": [
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 3
+}

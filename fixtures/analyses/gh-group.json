@@ -1,12 +1,11 @@
 {
   "name": "gh-group",
-  "hash": "fee877df0bf7d6dd4eaae974a9457b24f03396daeae2f1b87ba40fea2c886fa4",
+  "hash": "f79b014981808066b1b1620a3fd5c37058d0c153a2ec8ba604a53da98c35a0af",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
     ""
   ],
   "level": "tested",
-  "cases": 200,
-  "proven": 2
+  "cases": 200
 }

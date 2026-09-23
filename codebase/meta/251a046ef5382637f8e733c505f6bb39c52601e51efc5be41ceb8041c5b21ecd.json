@@ -1,0 +1,27 @@
+{
+  "name": "gh-report",
+  "prop_names": [
+    "a-clean-log-is-summarised",
+    "any-bad-line-refuses",
+    "an-empty-file-is-not-a-refusal",
+    "a-foreign-log-is-refused",
+    "it-reproduces-the-shell-report",
+    "it-reproduces-the-shell-refusal"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "path",
+    "text"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

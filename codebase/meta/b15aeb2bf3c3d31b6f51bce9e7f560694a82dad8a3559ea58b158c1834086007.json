@@ -1,0 +1,28 @@
+{
+  "name": "json-scoped-string",
+  "prop_names": [
+    "absent-scope-is-marked",
+    "value-has-no-quote",
+    "value-has-no-tab",
+    "non-ascii-value-is-recovered-exactly",
+    "malformed-utf8-is-refused-not-mojibaked"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "scope",
+    "key",
+    "body"
+  ],
+  "confinement": [
+    "",
+    "",
+    ""
+  ]
+}

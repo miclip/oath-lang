@@ -162,8 +162,8 @@ class Rule(unittest.TestCase):
         self.assertEqual(shards, set(), "no exclusions, so no shard may be declined")
         self.assertEqual(len(ex), 0, "the live artefact is expected to be empty")
         shards2, members2 = cs.resolve(n, [copy.deepcopy(SYNTHETIC)], rows)
-        self.assertEqual(shards2, {140})
-        self.assertEqual([(m[0], m[2]) for m in members2[140]], [("gh-counts", 1)])
+        self.assertEqual(shards2, {79})
+        self.assertEqual([(m[0], m[2]) for m in members2[79]], [("foldr", 0)])
 
 
 # ------------------------------------------------------ artefact validation ---
@@ -175,13 +175,15 @@ class Rule(unittest.TestCase):
 # the moment the exclusion list goes empty, which is exactly when the validator
 # most needs to work: the next person to add an exclusion is relying on it. A
 # REAL corpus property, so the stale-entry and shard-rule checks compare against
-# something true.
+# something true. It must be ALONE in its shard at the live n and SHARE one at
+# n=128, and it should live where the corpus rarely moves: `foldr` (list.oath)
+# replaced `gh-counts`, whose hash moves with every change to the webhook app.
 SYNTHETIC = {
-    "name": "gh-counts",
-    "hash": "ae09e70ae58547c85e425a9633f803e24f364356970e7c357820d527fae20fa5",
-    "prop": 1,
-    "prop_name": "every-group-is-present",
-    "shard": 140,
+    "name": "foldr",
+    "hash": "5b345e9d645f4488680668303ad5dfb0b938e9699473825767b4ba12fd5f032d",
+    "prop": 0,
+    "prop_name": "empty-is-seed",
+    "shard": 79,
     "reason": "synthetic entry used only by these tests",
     "return_condition": "never — this entry exists only in a temporary fixture",
 }
@@ -270,7 +272,8 @@ class Validation(unittest.TestCase):
         """At n=128 the same property shares its shard — the narrowing is unsound there."""
         rows, _ = cs.load_universe()
         doc = _artefact(n=128)
-        doc["exclusions"][0]["shard"] = cs.shard_of(doc["exclusions"][0]["hash"], 1, 128)
+        e0 = doc["exclusions"][0]
+        e0["shard"] = cs.shard_of(e0["hash"], e0["prop"], 128)
         n, ex, _ = cs.load_exclusions(_write(doc))
         with self.assertRaises(cs.Bad) as cm:
             cs.resolve(n, ex, rows)

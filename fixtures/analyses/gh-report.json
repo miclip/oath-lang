@@ -1,6 +1,6 @@
 {
   "name": "gh-report",
-  "hash": "328a51f6c5c9d8e3c91a5a23a99f785e2d2f4f5dbce74dc20224099688025338",
+  "hash": "251a046ef5382637f8e733c505f6bb39c52601e51efc5be41ceb8041c5b21ecd",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

@@ -1,0 +1,38 @@
+{
+  "name": "secret-char-ok",
+  "prop_names": [
+    "space-is-refused",
+    "tab-is-refused",
+    "del-is-refused",
+    "nbsp-is-refused",
+    "ideographic-space-is-refused",
+    "ascii-graphic-is-allowed",
+    "cyrillic-is-allowed",
+    "latin1-letter-is-allowed"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 8
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "c"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ]
+}

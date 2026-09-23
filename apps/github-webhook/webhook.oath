@@ -117,11 +117,14 @@
 ;
 ; Every one of those is a property a parser would give for free.
 
-; Bytes back to text. `str-bytes` exists and is PROVEN; its inverse does not,
-; and this is NOT it — Str is a list of CODEPOINTS and a body is a list of
-; BYTES, so this reinterprets rather than decodes. For ASCII the two coincide.
-; For a UTF-8 repository name it produces mojibake, silently. The type system
-; cannot see the difference because both are the same shape.
+; THE FORMERLY DEFECTIVE TEXT PATH, kept only because a bound name cannot be
+; unbound and the source must still reproduce the store. NOTHING CALLS IT NOW.
+; It is not a decoder: Str is a list of CODEPOINTS and a body is a list of
+; BYTES, so this reinterprets each byte as a codepoint. For ASCII the two
+; coincide; for a UTF-8 repository name it produced mojibake, silently — `é`
+; arrives as C3 A9 and came out as `Ã©`. `json-scoped-string` now decodes
+; through `ints-bytes` and `utf8-decode` (examples/bytes.oath) instead, which
+; refuses what is not UTF-8 rather than inventing text for it.
 (defn bytes-str [] [(bs (List Int))] Str
   (match bs ((Nil) (SNil)) ((Cons b rest) (SCons b (bytes-str rest))))
 
@@ -186,13 +189,23 @@
 
 ; Read a JSON string field by literal key search, scoped to the first object
 ; that opens at `scope`.
+;
+; BOTH DIRECTIONS CROSS THE TEXT/BYTES LINE, AND BOTH USED TO CROSS IT WRONG.
+; The body is raw octets (SPEC §14), and JSON on the wire is UTF-8. So the
+; search strings are UTF-8-ENCODED before they are compared with body bytes —
+; `str-bytes` would search for codepoints, which only coincide below 128 — and
+; the extracted value is UTF-8-DECODED on the way out. Octets that are not valid
+; UTF-8 are refused and reported as absent, never turned into plausible text.
 (defn json-scoped-string [] [(scope Str) (key Str) (body (List Int))] Str
-  (match (bytes-after (str-bytes scope) body)
+  (match (bytes-after (bytes-ints (utf8-encode scope)) body)
     ((None) "-")
     ((Some inner)
-      (match (bytes-after (str-bytes (str-append (str-append "\"" key) "\":\"")) inner)
+      (match (bytes-after (bytes-ints (utf8-encode (str-append (str-append "\"" key) "\":\""))) inner)
         ((None) "-")
-        ((Some v) (bytes-str (json-string-value v))))))
+        ((Some v)
+          (match (utf8-decode (ints-bytes (json-string-value v)))
+            ((None) "-")
+            ((Some t) t))))))
 
   ; ABSENCE IS A VALUE, not an empty string. The record is tab-separated and a
   ; sink failure is signalled by an empty string; an empty field would collide
@@ -205,7 +218,21 @@
   (prop value-has-no-quote [(scope Str) (key Str) (body (List Int))]
     (not (contains 34 (str-bytes (json-scoped-string scope key body)))))
   (prop value-has-no-tab [(scope Str) (key Str) (body (List Int))]
-    (not (contains 9 (str-bytes (json-scoped-string scope key body))))))
+    (not (contains 9 (str-bytes (json-scoped-string scope key body)))))
+  ; THE CONTROL THE DECODE EXISTS FOR: a non-ASCII repository name, sent the way
+  ; GitHub sends it (UTF-8 octets), comes back as exactly the text that was sent.
+  ; `bytes-str` returned `octo/cafÃ©` here.
+  (prop non-ascii-value-is-recovered-exactly []
+    (== (json-scoped-string "\"repository\":{" "full_name"
+          (bytes-ints (utf8-encode "{\"repository\":{\"full_name\":\"octo/café\"}}")))
+        "octo/café"))
+  ; And the refusal: C3 28 is a lead byte followed by an ASCII `(` — not UTF-8.
+  ; A lenient reading yields `Ã(`; this yields the absent marker.
+  (prop malformed-utf8-is-refused-not-mojibaked []
+    (== (json-scoped-string "\"repository\":{" "full_name"
+          (append [Int] (bytes-ints (utf8-encode "{\"repository\":{\"full_name\":\"octo/"))
+            (Cons [Int] 195 (Cons [Int] 40 (bytes-ints (utf8-encode "\"}}"))))))
+        "-")))
 
 ; ---------------------------------------------------------------------------
 ; MODIFICATION 4 — make the record say what it is.
@@ -363,10 +390,12 @@
 ; almost nothing. Sixteen is the floor, and refusing below it is deliberate —
 ; a receiver that accepts a weak key has the appearance of authentication.
 ;
-; THE SECOND CONJUNCT IS THE CODEPOINT/BYTE CONFLATION BITING THE FILE THAT
-; DOCUMENTS IT. `str-bytes` maps a Str's CODEPOINTS to a (List Int); `hmac-sha256`
-; wants BYTES. A length check alone admitted a 32-character non-ASCII secret,
-; and the result was not a wrong digest — it was a crash:
+; THERE USED TO BE A SECOND CONJUNCT — printable ASCII only — and it existed to
+; paper over the codepoint/byte conflation biting the file that documents it.
+; The key was signed as `(str-bytes secret)`, which maps a Str's CODEPOINTS to
+; a (List Int), while `hmac-sha256` wants BYTES. A length check alone admitted a
+; 32-character non-ASCII secret, and the result was not a wrong digest — it was
+; a crash:
 ;
 ;   $ GITHUB_WEBHOOK_SECRET=ключключключключключключключключ ./gh-webhookd &
 ;   $ curl ... -H "X-Hub-Signature-256: sha256=<correct>" ...
@@ -382,35 +411,93 @@
 ; general problem was written down at the top of this file and the specific
 ; instance was left in it, because `Str` and `(List Int)` are the same shape and
 ; nothing in the type of `secret` says which one it holds. Found by review.
+;
+; THE OLD RULE BUNDLED TWO JUSTIFICATIONS, AND ONLY ONE HAS EXPIRED.
+;
+;   ENCODING — "ASCII is the only range where str-bytes and UTF-8 agree." A
+;   workaround, and retired: every call site now keys the HMAC with
+;   `(bytes-ints (utf8-encode secret))`, the secret's UTF-8 bytes, which is what
+;   GitHub and openssl sign, and `utf8-encode` is PROVEN to yield only bytes in
+;   range for every Str. So the rest of Unicode is admitted.
+;
+;   OPERATOR ERROR — no whitespace, no control characters. Nothing to do with
+;   encoding, and still true: a secret with a space or a tab in it is waiting to
+;   be shell-quoted or copy-pasted wrong, an invisible one cannot be checked by
+;   eye, and `openssl rand -hex` (what the README suggests) never produces one.
+;   Kept, deliberately, as its own rule: `secret-char-ok` below.
+;
+; WHAT THE SECRET'S BYTES ARE is settled by the provisioning boundary, and was
+; MEASURED rather than assumed: both backends refuse a required value that is
+; not valid UTF-8 BEFORE LAUNCH (exit 70, "refusing rather than substituting
+; U+FFFD" — compile.go oathProvideValue, llvm.go o_require_value), checked by
+; launching this receiver with a lone FF byte and with the overlong C0 80. So
+; the Str here is the environment variable's exact UTF-8, and re-encoding it
+; reproduces the operator's bytes. An invalid-UTF-8 secret is never signed with
+; U+FFFD in its place; the program does not start. acceptance.sh pins that.
+
+; A character a secret may contain: anything EXCEPT Unicode general category Cc
+; (controls: 0..31, 127..159) and the Unicode White_Space property (PropList:
+; 9..13, 32, 133, 160, 5760, 8192..8202, 8232, 8233, 8239, 8287, 12288). Below 33
+; also covers the negative Ints a Str can hold. Both sets are closed lists from
+; the Unicode Character Database, not a judgment made here.
+(defn secret-char-ok [] [(c Int)] Bool
+  (not (or (< c 33)
+       (or (and (<= 127 c) (<= c 160))
+       (or (== c 5760)
+       (or (and (<= 8192 c) (<= c 8202))
+       (or (== c 8232)
+       (or (== c 8233)
+       (or (== c 8239)
+       (or (== c 8287) (== c 12288))))))))))
+
+  (prop space-is-refused [] (not (secret-char-ok 32)))
+  (prop tab-is-refused [] (not (secret-char-ok 9)))
+  (prop del-is-refused [] (not (secret-char-ok 127)))
+  (prop nbsp-is-refused [] (not (secret-char-ok 160)))
+  (prop ideographic-space-is-refused [] (not (secret-char-ok 12288)))
+  (prop ascii-graphic-is-allowed [(c Int)]
+    (if (and (<= 33 c) (<= c 126)) (secret-char-ok c) true))
+  (prop cyrillic-is-allowed [] (secret-char-ok 1082))
+  (prop latin1-letter-is-allowed [] (secret-char-ok 233)))
+
+; Every character of the secret passes `secret-char-ok`. Written as first-order
+; recursion over the Str rather than `all` over `str-bytes`, so the prover can
+; reach it: a function passed to a higher-order combinator is outside its
+; fragment, and the rule this guards should be PROVEN, not merely tested.
+(defn secret-chars-ok [] [(s Str)] Bool
+  (match s
+    ((SNil) true)
+    ((SCons c rest) (and (secret-char-ok c) (secret-chars-ok rest))))
+
+  (prop empty-is-ok [] (secret-chars-ok (SNil)))
+  (prop a-space-anywhere-fails [(a Str) (b Str)]
+    (not (secret-chars-ok (str-append a (SCons 32 b)))))
+  (prop a-tab-anywhere-fails [(a Str) (b Str)]
+    (not (secret-chars-ok (str-append a (SCons 9 b))))))
+
 (defn secret-is-usable [] [(secret Str)] Bool
-  (and (<= 16 (str-len secret))
-       (all [Int] (fn [(c Int)] (and (<= 33 c) (<= c 126))) (str-bytes secret)))
-  ; PRINTABLE, NON-WHITESPACE ASCII — 33..126, excluding space. Narrowing the
-  ; contract rather than widening the check: a secret with a space in it is an
-  ; operator error waiting to be shell-quoted wrong, and `openssl rand -hex`
-  ; (what the README suggests) never produces one.
+  (and (<= 16 (str-len secret)) (secret-chars-ok secret))
 
   (prop empty-is-not-usable [] (not (secret-is-usable (SNil))))
   (prop short-is-not-usable [(s Str)]
     (if (< (str-len s) 16) (not (secret-is-usable s)) true))
-  ; A secret this receiver cannot encode as bytes is not usable, whatever its
-  ; length. `к` is U+043A.
-  (prop non-ascii-is-not-usable [(s Str)]
-    (not (secret-is-usable (str-append "ключключключключключключключключ" s))))
-  ; LATIN-1 IS THE HARDER HALF, and `bytes-ok` was not enough for it. `é` is
-  ; U+00E9: str-bytes yields [233], which IS in byte range, so nothing errors —
-  ; while GitHub and openssl sign the environment variable's UTF-8 bytes,
-  ; [195, 169]. The digests disagree, every legitimate delivery gets a 401, and
-  ; the operator debugs a signature mismatch that is really an encoding
-  ; mismatch. ASCII is the only range where `str-bytes` and UTF-8 agree, and it
-  ; is what the README promises, so it is what this enforces.
-  (prop latin1-is-not-usable [(s Str)]
-    (not (secret-is-usable (str-append "ééééééééééééééééééééééééééééééé" s))))
-
-  ; And the converse, so the check is not simply refusing everything: a usable
-  ; secret is exactly one that is long enough AND agrees with UTF-8.
+  ; THE OPERATOR-ERROR RULE, and the only reason this was ever refused.
+  (prop a-space-is-not-usable [] (not (secret-is-usable "0123456789 abcdef")))
+  ; The universal forms — a space or a tab ANYWHERE — are proven one level down,
+  ; on `secret-chars-ok`, where induction reaches them; here the closed instance.
+  (prop a-tab-is-not-usable [] (not (secret-is-usable "0123456789\tabcdef")))
+  ; THE SECRETS THE ENCODING RULE REFUSED ARE NOW ACCEPTED, and these are the
+  ; controls that say so — without them "usable" could still quietly mean ASCII.
+  ; `к` is U+043A (two UTF-8 bytes); `é` is U+00E9, the quiet case: in byte
+  ; range, so `str-bytes` signed [233] where GitHub signs [195, 169].
+  (prop cyrillic-is-usable [] (secret-is-usable "ключключключключ"))
+  (prop latin1-is-usable []
+    (secret-is-usable "ééééééééééééééééééééééééééééééé"))
+  ; And what makes accepting them safe: whatever a usable secret contains, the
+  ; key handed to hmac-sha256 satisfies its byte guard. This is the property the
+  ; crash violated.
   (prop usable-encodes [(s Str)]
-    (if (secret-is-usable s) (bytes-ok (str-bytes s)) true)))
+    (if (secret-is-usable s) (bytes-ok (bytes-ints (utf8-encode s))) true)))
 
 ; ---------------------------------------------------------------------------
 ; MODIFICATION 3 — say no to requests this receiver cannot honestly serve.
@@ -472,7 +559,13 @@
 ; circular for exactly one step and is stated rather than hidden: what pins
 ; hmac-sha256 itself is the RFC 4231 known-answer test in examples/webhook.oath,
 ; and — for this application — the fact that openssl computes the same digest
-; over the wire in deliver.sh. Neither of those is inside this file.
+; over the wire in deliver.sh. What pins the KEY ENCODING, which RFC 4231's
+; ASCII keys cannot see, is `gh-sign`'s own openssl known answer below.
+;
+; THE BODY WAS NEVER THE DEFECT. SPEC §14 delivers it as the raw request octets,
+; exactly the bytes GitHub signed, and every HMAC here takes `(req-body r)`
+; unchanged. Only the two TEXT crossings were wrong: the secret signed as
+; codepoints, and the repository name read back as codepoints.
 
 ; A secret that satisfies secret-is-usable, for properties that need one.
 (defn gh-spec-secret [] [] Str
@@ -481,25 +574,38 @@
 
 ; The header value GitHub sends, built the way GitHub builds it.
 (defn gh-sign [] [(secret Str) (body (List Int))] Str
-  (str-append "sha256=" (hex-encode (hmac-sha256 (str-bytes secret) body)))
+  (str-append "sha256=" (hex-encode (hmac-sha256 (bytes-ints (utf8-encode secret)) body)))
 
-  ; Both guards are the SAME missing refinement, met for the fourth and fifth
-  ; time in this file: hmac-sha256 takes byte lists, `Str` and `(List Int)` can
-  ; carry anything, and the mismatch is a runtime error rather than a type
-  ; error. `{b : Int | 0 <= b <= 255}` (#69) would delete every one of them.
+  ; ONE GUARD NOW, NOT TWO. The key is UTF-8-encoded, which is proven in range
+  ; for every Str, so the secret no longer needs one. The body still does: it is
+  ; raw request octets, `(List Int)` can carry anything, and that mismatch is a
+  ; runtime error rather than a type error — the missing refinement
+  ; `{b : Int | 0 <= b <= 255}` (#69).
   (prop carries-the-algorithm [(secret Str) (body (List Int))]
-    (if (and (bytes-ok (str-bytes secret)) (bytes-ok body))
+    (if (bytes-ok body)
         (str-prefix "sha256=" (gh-sign secret body))
         true))
   ; Round-trips through the receiver's own reader — the digest that comes back
   ; out of gh-signature is the one hex-encode put in.
   (prop survives-gh-signature [(secret Str) (body (List Int))]
-    (if (and (bytes-ok (str-bytes secret)) (bytes-ok body))
+    (if (bytes-ok body)
         (== (gh-signature (Cons [(Pair Str Str)]
                             (Pair [Str Str] "x-hub-signature-256" (gh-sign secret body))
                             (Nil [(Pair Str Str)])))
-            (Some [Str] (hex-encode (hmac-sha256 (str-bytes secret) body))))
-        true)))
+            (Some [Str] (hex-encode (hmac-sha256 (bytes-ints (utf8-encode secret)) body))))
+        true))
+  ; THE KNOWN ANSWER, from OUTSIDE this file. Every property above shares
+  ; hmac-sha256 and the key encoding with the handler, so they would all agree
+  ; with a receiver that encoded the key wrong. This digest was computed by
+  ; openssl (`openssl dgst -sha256 -mac HMAC -macopt key:ключключключключ`, the
+  ; way GitHub's documentation computes one) and matched by Python's hmac, over a
+  ; non-ASCII key AND a non-ASCII body: `ключключключключ` and
+  ; `{"repository":{"full_name":"octo/café"}}`, both UTF-8. `str-bytes` keys
+  ; produced a different digest here; this is the property that tells them apart.
+  (prop matches-openssl-for-a-non-ascii-key []
+    (== (gh-sign "ключключключключ"
+                 (bytes-ints (utf8-encode "{\"repository\":{\"full_name\":\"octo/café\"}}")))
+        "sha256=8c5baf40721ffe8a4c63ebd8a1649321e6eb707181a09ea84353d89768f26a78")))
 
 ; A delivery shaped the way GitHub shapes one. The signature is a PARAMETER
 ; rather than computed here, so a property can supply a wrong one, an
@@ -598,7 +704,9 @@
     (Cons [(Pair Str Str)] (Pair [Str Str] "x-github-delivery" delivery)
       (Cons [(Pair Str Str)] (Pair [Str Str] "x-github-event" event)
         (Nil [(Pair Str Str)])))
-    (str-bytes (str-append "{\"repository\":{\"full_name\":\"" (str-append repo "\"}}")))
+    ; UTF-8, as GitHub sends it — so a non-ASCII name reaches `record-field` as
+    ; the text it is, and what that call site contributes stays witnessed.
+    (bytes-ints (utf8-encode (str-append "{\"repository\":{\"full_name\":\"" (str-append repo "\"}}"))))
     0))
 
   ; THE CONTROL, without which none of the injection properties discriminate:
@@ -617,11 +725,27 @@
   ; redundancy — but an unwitnessed guard is one refactor from being deleted as
   ; dead, so this pins what `record-field` uniquely contributes there.
   ;
-  ; Byte 200 is not a boundary hazard; it is a UTF-8 continuation byte, which
-  ; `bytes-str` reinterprets as codepoint 200 and writes into the log as
-  ; mojibake. `record-field` marks the field absent instead. A repository name
-  ; the receiver cannot faithfully represent is reported as one it does not
-  ; have, which is true, rather than as a name that is subtly not the real one.
+  ; U+00C8 is not a boundary hazard. The body carries it as C3 88, the JSON scan
+  ; now DECODES that correctly to `È`, and so the only thing standing between it
+  ; and the log is `record-field`, whose contract is printable ASCII: the record
+  ; is a tab-separated line for report.sh, and it marks the field absent rather
+  ; than widen that contract here. Delete `record-field` from the repository
+  ; call site and this property falsifies — which is its whole job.
+  ;
+  ; SO A CORRECTLY DECODED NON-ASCII NAME IS LOGGED AS ABSENT, and that is
+  ; tolerated rather than fixed, for a reason that was checked, not remembered.
+  ; The REPOSITORY half of `full_name` cannot be non-ASCII: GitHub's
+  ; documentation says repository names "can only contain ASCII letters,
+  ; digits, and the characters ., -, and _" (docs.github.com, "Creating a new
+  ; repository", read 2026-09-22). The OWNER half is not covered by that page,
+  ; and no github.com page found states its charset — the only one found governs
+  ; Enterprise externally-authenticated usernames. So the tolerance rests on
+  ; `-` being TRUE — "this receiver cannot represent that name" — never on a
+  ; name being wrong; widening `record-field` is a change to report.sh's format.
+  ;
+  ; (It used to read byte 200 raw through `bytes-str`, as mojibake. That path is
+  ; gone: malformed UTF-8 is now refused one step earlier, by the decoder, and
+  ; `json-scoped-string` pins that separately.)
   (prop a-non-ascii-repository-is-marked-absent []
     (== (record-under "d-1" "push" (SCons 200 (SNil)))
         "oath-gh/1\td-1\tpush\t-\t0")))
@@ -666,7 +790,7 @@
               ((None) (Resp 401 (Nil [(Pair Str Str)]) (Nil [Int])))
               ((Some given)
                 (if (not (bytes-eq-ct (hex-decode given)
-                                      (hmac-sha256 (str-bytes secret) (req-body r))))
+                                      (hmac-sha256 (bytes-ints (utf8-encode secret)) (req-body r))))
                     (Resp 401 (Nil [(Pair Str Str)]) (Nil [Int]))
                     ; Authenticated from here: the caller holds the secret.
                     (if (not (path-is "/hook" (req-path r)))
@@ -730,7 +854,7 @@
   ; this, the property above is satisfied by a receiver that rejects everything
   ; the generator happens to produce, which is every request it produces anyway.
   (prop unusable-secret-refuses-a-valid-signature [(sink (-> Str Str)) (body (List Int)) (weak Str)]
-    (if (and (bytes-ok body) (and (bytes-ok (str-bytes weak)) (not (secret-is-usable weak))))
+    (if (and (bytes-ok body) (not (secret-is-usable weak)))
         (== (match (gh-webhook (caps-with sink weak)
                      (gh-request (gh-sign weak body) "push" "/hook" "application/json" body))
               ((Resp s h b) s))
@@ -765,7 +889,7 @@
   (prop unprefixed-signature-is-rejected [(sink (-> Str Str)) (body (List Int))]
     (if (bytes-ok body)
         (== (match (gh-webhook (caps-with sink (gh-spec-secret))
-                     (gh-request (hex-encode (hmac-sha256 (str-bytes (gh-spec-secret)) body))
+                     (gh-request (hex-encode (hmac-sha256 (bytes-ints (utf8-encode (gh-spec-secret))) body))
                                  "push" "/hook" "application/json" body))
               ((Resp s h b) s))
             401)

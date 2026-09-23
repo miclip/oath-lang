@@ -1,12 +1,11 @@
 {
   "name": "gh-line-ok",
-  "hash": "69045e0b375d4cb850a3669d7ef9cc8250737f05de3141dece53ebaa45d7cef4",
+  "hash": "13f43ab3b71aa45fdd98e7f4ea1711572d7c7da869802f0800c372856fbf978a",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
     ""
   ],
   "level": "tested",
-  "cases": 200,
-  "proven": 4
+  "cases": 200
 }

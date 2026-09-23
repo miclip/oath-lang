@@ -953,7 +953,7 @@ func TestRung3UpperBound(t *testing.T) {
 	// is the drift check-doc-numbers exists to stop for prose and this stops for
 	// a test's own output.
 	const (
-		wantIllTyped      = 270
+		wantIllTyped      = 318
 		wantWithBodyTypes = 21
 	)
 	if illTyped != wantIllTyped || withBodyTypes != wantWithBodyTypes {

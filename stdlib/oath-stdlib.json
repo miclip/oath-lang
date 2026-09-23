@@ -850,7 +850,7 @@
       "name": "bytes-ok",
       "membership": "project-publication",
       "artifact": "d2406871baf1bde2e17ad756e82e61cdbcdfeea8d7b74a382306e894c7450e98",
-      "source": "examples/http.oath",
+      "source": "examples/bytes.oath",
       "license": "Apache-2.0",
       "standing": {
         "type": "project-authored",

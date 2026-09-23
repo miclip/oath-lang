@@ -1,0 +1,3 @@
+✓ prop preserves-length         passed 200 cases
+✓ prop range-agrees             passed 200 cases
+✓ prop utf8-is-octets           passed 200 cases

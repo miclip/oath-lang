@@ -1,0 +1,24 @@
+{
+  "name": "gh-summary",
+  "prop_names": [
+    "it-always-has-a-heading",
+    "the-counts-come-from-the-deduplicated-log",
+    "one-line-per-distinct-deduplicated-group"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "path",
+    "ls"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

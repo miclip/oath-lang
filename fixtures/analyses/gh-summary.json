@@ -1,6 +1,6 @@
 {
   "name": "gh-summary",
-  "hash": "e4b3d10616ab85743f5b990dbab45e35e64d6bb5de654198d91051e24c76f037",
+  "hash": "9ac9fa7c0e1af0a78cfbdca127695a46ffcd608809e8fff79c655582ff24c70f",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

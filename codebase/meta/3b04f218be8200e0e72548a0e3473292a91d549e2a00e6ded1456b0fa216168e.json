@@ -1,0 +1,27 @@
+{
+  "name": "gh-counts",
+  "prop_names": [
+    "an-empty-log-changes-nothing",
+    "every-group-is-present",
+    "one-line-counts-one",
+    "the-same-group-twice-counts-two",
+    "two-different-groups-stay-apart",
+    "the-key-count-is-the-distinct-group-count"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "m",
+    "ls"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

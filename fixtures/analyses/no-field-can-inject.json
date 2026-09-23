@@ -1,6 +1,6 @@
 {
   "name": "no-field-can-inject",
-  "hash": "6da67355b5ae7f9960e41a1d85b1476485f1f1fc83af722f7a80e395734bccf0",
+  "hash": "f397905be1c132f0cd9682264f095926f15d95348c690b2e3d3db027e2b04189",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

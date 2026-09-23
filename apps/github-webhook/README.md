@@ -100,7 +100,7 @@ captured a valid body and signature and varies the id on each replay.
 
 | variable | |
 |---|---|
-| `OATH_VALUE_SECRET` | the shared secret, a **required value** (#126): absent or empty and the program does not start — exit `70`, before the port is bound. Beyond that, **minimum 16 characters, printable non-whitespace ASCII** (`!` through `~`) is application policy and answers `500` per request. Non-ASCII is rejected rather than mis-signed: `str-bytes` yields codepoints, and a codepoint above 255 crashed the request handler before this was checked. |
+| `OATH_VALUE_SECRET` | the shared secret, a **required value** (#126): absent, empty, or **not valid UTF-8** and the program does not start — exit `70`, before the port is bound (the host refuses rather than substituting U+FFFD). Beyond that, application policy answers `500` per request: **minimum 16 characters, and no whitespace or control characters** (Unicode `White_Space` and category `Cc` — a space or tab is an operator error waiting to be shell-quoted wrong). Any other Unicode is allowed, and the HMAC is keyed with the secret's **UTF-8 bytes** — what GitHub and `openssl` sign. Non-ASCII secrets used to be refused: the key was the secret's codepoints, which crashed the handler for Cyrillic and silently mis-signed Latin-1. |
 | `OATH_EMIT_PATH` | the record sink. Checked at launch: an unwritable path means the program does not start. |
 | `OATH_HTTP_ADDR` | listen address, default `:8080`. |
 

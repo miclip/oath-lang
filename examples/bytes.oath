@@ -250,3 +250,86 @@
     (if (str-all-below 2048 s) (utf8-roundtrips s) true))
   (prop holds-for-scalars [(s Str)]
     (if (str-scalar s) (utf8-roundtrips s) true)))
+
+; --- the (List Int) boundary --------------------------------------------------
+; Crypto and the Request body stay (List Int) — SPEC §14 and both adapters carry
+; request octets that way, and `Byte` enforces no range, so moving the
+; primitives to (List Byte) would churn identity without adding safety. What
+; the boundary needs instead is a pair of TOTAL conversions and the laws that
+; let a guarantee cross them: range in one representation is range in the
+; other, and neither direction loses anything.
+;
+; THE INT-SIDE RANGE GUARD, moved here unchanged from http.oath (its hash is
+; unchanged) so the conversions below can state range in the same predicate the
+; crypto properties already use, without a codec depending on HTTP. Its original
+; note, verbatim:
+; This is exactly the case refinement types (#69) exist for: {b: Int | 0 <= b <=
+; 255} would say it in the type. Until then it is an explicit predicate, and
+; every property that reaches the crypto must guard on it — the generator
+; otherwise produces negative "bytes" and falsifies by construction.
+(defn bytes-ok [] [(bs (List Int))] Bool
+  (match bs
+    ((Nil) true)
+    ((Cons b rest) (and (and (<= 0 b) (<= b 255)) (bytes-ok rest))))
+  (prop empty-is-ok [] (bytes-ok (Nil [Int])))
+  (prop rejects-negative [(rest (List Int))] (not (bytes-ok (Cons [Int] -1 rest))))
+  (prop rejects-oversized [(rest (List Int))] (not (bytes-ok (Cons [Int] 256 rest)))))
+
+; Bytes out to the (List Int) boundary: what hands `utf8-encode`'s output to
+; hmac-sha256.
+(defn bytes-ints [] [(bs (List Byte))] (List Int)
+  (match bs
+    ((Nil) (Nil [Int]))
+    ((Cons b rest) (Cons [Int] (byte-val b) (bytes-ints rest))))
+  (prop preserves-length [(bs (List Byte))]
+    (== (length [Int] (bytes-ints bs)) (length [Byte] bs)))
+  ; An IFF, not an implication: range is neither gained nor lost crossing over.
+  (prop range-agrees [(bs (List Byte))]
+    (== (bytes-ok (bytes-ints bs)) (bytes-in-range bs)))
+  ; THE BRIDGE the crypto needed: an encoded secret always satisfies the guard
+  ; hmac-sha256's properties are stated under — for every Str, including the
+  ; negative and above-Unicode codepoints encode replaces with U+FFFD.
+  (prop utf8-is-octets [(s Str)] (bytes-ok (bytes-ints (utf8-encode s)))))
+
+; The (List Int) boundary back in to bytes: what hands raw request octets to
+; `utf8-decode`. TOTAL — it wraps rather than checks, and that has a
+; consequence to state rather than hide: `Byte` enforces no range, so an Int of
+; 300 becomes `(MkByte 300)`, which is NOT A BYTE. What makes that safe is a
+; claim about the DECODER, not about callers: `utf8-decode` refuses any element
+; outside 0..255 — as a lead byte by its first test, as a continuation byte by
+; the 128..191 test — so an out-of-range Int becomes a decode REFUSAL, never a
+; wrong Str. The closed properties below pin that at a lead, a negative and a
+; continuation position; no call site has to remember a guard for them to hold.
+;
+; It is not a claim about other consumers of `(List Byte)`. Anything else
+; reading these bytes must check `bytes-in-range` itself.
+(defn ints-bytes [] [(xs (List Int))] (List Byte)
+  (match xs
+    ((Nil) (Nil [Byte]))
+    ((Cons x rest) (Cons [Byte] (MkByte x) (ints-bytes rest))))
+  (prop preserves-length [(xs (List Int))]
+    (== (length [Byte] (ints-bytes xs)) (length [Int] xs)))
+  (prop range-agrees [(xs (List Int))]
+    (== (bytes-in-range (ints-bytes xs)) (bytes-ok xs)))
+  ; Both round trips, unconditionally: the conversions are mutually inverse
+  ; over ALL values, in range or not, so neither direction can alter a body.
+  (prop inverts-bytes-ints [(bs (List Byte))] (== (ints-bytes (bytes-ints bs)) bs))
+  (prop inverted-by-bytes-ints [(xs (List Int))] (== (bytes-ints (ints-bytes xs)) xs))
+  ; THE DECODER'S RANGE REFUSAL, PINNED BY CLOSED PROPERTIES. They need no
+  ; generator, so they cannot pass vacuously, and each input is chosen so that an
+  ; `ints-bytes` reducing mod 256 — or a decoder that dropped its range test —
+  ; would DECODE it to real text. Only the range refusal stops them.
+  ;   [300]       lead position: 300 mod 256 is 44, a valid `,`
+  ;   [-212]      negative: -212 mod 256 is also 44
+  ;   [195, 425]  continuation position: 425 mod 256 is 169, and C3 A9 is `é`
+  ; These establish the refusal at those three shapes, not for every list. What
+  ; keeps out-of-range values away from the decoder in the application is SPEC
+  ; §14 (request octets are in 0..255) together with `range-agrees` and the two
+  ; round trips above; these properties are what still hold if that ever fails.
+  (prop refuses-out-of-range-lead []
+    (== (utf8-decode (ints-bytes (Cons [Int] 300 (Nil [Int])))) (None [Str])))
+  (prop refuses-negative []
+    (== (utf8-decode (ints-bytes (Cons [Int] -212 (Nil [Int])))) (None [Str])))
+  (prop refuses-out-of-range-continuation []
+    (== (utf8-decode (ints-bytes (Cons [Int] 195 (Cons [Int] 425 (Nil [Int])))))
+        (None [Str]))))

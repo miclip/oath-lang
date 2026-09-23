@@ -322,6 +322,12 @@ post() { # post <url> <content-type> <event> <delivery> <sig> <body-file>
     -H "X-Hub-Signature-256: $5" --data-binary "@$6"
 }
 sign() { openssl dgst -sha256 -mac HMAC -macopt "key:$1" -binary < "$2" | od -An -v -tx1 | tr -d ' \n'; }
+# The same MAC under a key given as HEX, for keys that are not the secret's
+# UTF-8 bytes: the controls that prove the receiver signs UTF-8 and nothing else.
+sign_hexkey() { openssl dgst -sha256 -mac HMAC -macopt "hexkey:$1" -binary < "$2" | od -An -v -tx1 | tr -d ' \n'; }
+key_hex() { # key_hex <text> <python codec> -- the text's bytes in that encoding, as hex
+  python3 -c 'import sys; print(sys.argv[1].encode(sys.argv[2]).hex())' "$1" "$2"
+}
 
 # The launch gate probes, before anything is served: an unwritable sink must stop
 # the program starting, not make every write fail silently.
@@ -581,23 +587,40 @@ sys.stderr.write('held\\n'); sys.stderr.flush(); time.sleep(30)" 2> "$work_b/hel
 
   kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true; pid=""
 
-  # A NON-ASCII SECRET. `str-bytes` yields codepoints and hmac-sha256 wants bytes,
-  # so before secret-is-usable checked for it, a correctly signed delivery under a
-  # 32-character Cyrillic secret PANICKED the request handler: empty reply, stack
-  # trace, process still listening. 500 is the answer; a dropped connection is not.
-  env OATH_VALUE_SECRET="ключключключключключключключключ" OATH_EMIT_PATH="$work_b/utf8.log" \
+  # A NON-ASCII SECRET — formerly a CRASH, now signed correctly.
+  #
+  # The receiver used to key the HMAC with `str-bytes secret`, the CODEPOINTS,
+  # and `к` is 1082: not a byte. A correctly signed delivery under a 32-character
+  # Cyrillic secret PANICKED the request handler — empty reply, stack trace,
+  # process still listening. The workaround was to refuse non-ASCII secrets
+  # (500). The repair keys the HMAC with the secret's UTF-8 bytes, which is what
+  # GitHub and openssl sign, so the secret is now usable. TWO HALVES, because a
+  # bare 202 would pass on a receiver that accepts anything:
+  #   - signed over the UTF-8 bytes (what `sign` passes openssl) -> 202
+  #   - signed over another encoding of the SAME text -> 401. The literal old
+  #     key has no bytes to sign with — codepoints above 255 are not a byte
+  #     string, which was the crash — so the control is windows-1251, the
+  #     single-byte Cyrillic encoding a misconfigured tool would plausibly
+  #     produce. The Latin-1 case below carries the exact old-key control.
+  cyr="ключключключключключключключключ"
+  env OATH_VALUE_SECRET="$cyr" OATH_EMIT_PATH="$work_b/utf8.log" \
     OATH_HTTP_ADDR=":$port" "$bin" > /dev/null 2>&1 &
   pid=$!
   await_ours "$pid" "http://127.0.0.1:$port/"
-  utf8sig=$(python3 -c "import hmac,hashlib;print(hmac.new('ключключключключключключключключ'.encode(),open('$work_b/body.json','rb').read(),hashlib.sha256).hexdigest())")
-  check "a non-encodable secret is refused, not a panic" \
-        "500" "$(post "$url" application/json push utf8 "sha256=$utf8sig" "$work_b/body.json")"
+  check "a cyrillic secret signs as UTF-8: accepted" \
+        "202" "$(post "$url" application/json push utf8-a "sha256=$(sign "$cyr" "$work_b/body.json")" "$work_b/body.json")"
+  check "  ...and a non-UTF-8 key for it is not" \
+        "401" "$(post "$url" application/json push utf8-b "sha256=$(sign_hexkey "$(key_hex "$cyr" cp1251)" "$work_b/body.json")" "$work_b/body.json")"
   kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true; pid=""
 
-  # LATIN-1 IS THE QUIET ONE. Every codepoint is in byte range so nothing errors,
-  # but str-bytes yields the codepoint while openssl signs UTF-8 — the digests
-  # disagree and every legitimate delivery would 401 forever. 500 says the
-  # configuration is wrong, which is what it is.
+  # LATIN-1 WAS THE QUIET ONE. Every codepoint is in byte range, so the old
+  # `str-bytes` key never errored — it signed [233] where openssl signs UTF-8's
+  # [195, 169], the digests disagreed, and every legitimate delivery would have
+  # 401ed forever. The workaround refused it (500). Now it is signed as UTF-8,
+  # and THIS is where the old key is exactly reproducible: its codepoints ARE
+  # its Latin-1 bytes. So both halves are asserted — UTF-8 accepted, and the
+  # old codepoint key REJECTED — which witnesses that the receiver moved to
+  # UTF-8 rather than merely becoming permissive.
   latin1="ééééééééééééééééééééééééééééééé"
   env OATH_VALUE_SECRET="$latin1" OATH_EMIT_PATH="$work_b/latin1.log" \
     OATH_HTTP_ADDR=":$port" "$bin" > /dev/null 2>&1 &
@@ -648,10 +671,16 @@ sys.stderr.write('held\\n'); sys.stderr.flush(); time.sleep(30)" 2> "$work_b/hel
                     "$work_b/body.json"); then :; else
     sp_code="curl reached no answer from a live server"
   fi
+  # THE SPACE RULE OUTLIVED THE ASCII RULE, deliberately. The old 33..126 range
+  # bundled an encoding workaround with an operator-error guard, and only the
+  # first expired: a secret with a space is waiting to be shell-quoted wrong,
+  # which has nothing to do with encoding. `secret-char-ok` keeps it.
   check "a secret with a space is refused" "500" "$sp_code"
   kill "$sp" 2>/dev/null || true; wait "$sp" 2>/dev/null || true; sp=""
-  check "a latin-1 secret is refused, not mis-signed" \
-        "500" "$(post "$url" application/json push l1 "sha256=$(sign "$latin1" "$work_b/body.json")" "$work_b/body.json")"
+  check "a latin-1 secret signs as UTF-8: accepted" \
+        "202" "$(post "$url" application/json push l1-a "sha256=$(sign "$latin1" "$work_b/body.json")" "$work_b/body.json")"
+  check "  ...and the old codepoint key is not" \
+        "401" "$(post "$url" application/json push l1-b "sha256=$(sign_hexkey "$(key_hex "$latin1" latin-1)" "$work_b/body.json")" "$work_b/body.json")"
   kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true; pid=""
 
   # THE FAIL-OPEN, and it is now closed STRUCTURALLY rather than answered.
@@ -670,6 +699,16 @@ sys.stderr.write('held\\n'); sys.stderr.flush(); time.sleep(30)" 2> "$work_b/hel
         "$(launch_code -u OATH_VALUE_SECRET OATH_EMIT_PATH="$work_b/forged.log" OATH_HTTP_ADDR=":$port")"
   check "an EMPTY secret: refuses to launch" "70" \
         "$(launch_code OATH_VALUE_SECRET="" OATH_EMIT_PATH="$work_b/forged.log" OATH_HTTP_ADDR=":$port")"
+  # A SECRET WHOSE BYTES ARE NOT UTF-8 has no Str value, and the host refuses it
+  # BEFORE LAUNCH rather than substituting U+FFFD. This is the guard on the
+  # boundary the repair rests on: `utf8-encode` reproduces the operator's bytes
+  # only because every secret that reaches it arrived as valid UTF-8. If a host
+  # ever substituted instead, the receiver would sign different bytes from
+  # GitHub and no length or charset rule could see it.
+  check "a non-UTF-8 secret: refuses to launch" "70" \
+        "$(launch_code OATH_VALUE_SECRET="$(printf '0123456789abcdef\377')" OATH_EMIT_PATH="$work_b/forged.log" OATH_HTTP_ADDR=":$port")"
+  check "  ...nor an overlong spelling" "70" \
+        "$(launch_code OATH_VALUE_SECRET="$(printf '0123456789abcdef\300\200')" OATH_EMIT_PATH="$work_b/forged.log" OATH_HTTP_ADDR=":$port")"
   check "  ...and nothing was recorded" "0" "$(wc -l < "$work_b/forged.log" 2>/dev/null | tr -d ' ' || echo 0)"
 
   # MISSING AND EMPTY ARE DIFFERENT OPERATOR MISTAKES and say so. Collapsing them
@@ -684,7 +723,7 @@ sys.stderr.write('held\\n'); sys.stderr.flush(); time.sleep(30)" 2> "$work_b/hel
 
   # AND APPLICATION POLICY STAYS IN OATH. A secret that is present and non-empty
   # satisfies PROVISIONING, so the program launches; `secret-is-usable`'s length
-  # and printable-ASCII rules are the artifact's own and still answer 500. #126
+  # and no-whitespace/no-control rules are the artifact's own and still answer 500. #126
   # makes one class of misconfiguration unreachable; it does not absorb policy.
 
   if [ "$fail" = "0" ]; then

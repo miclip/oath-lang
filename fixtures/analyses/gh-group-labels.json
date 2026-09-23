@@ -1,12 +1,11 @@
 {
   "name": "gh-group-labels",
-  "hash": "f5386ab88f45e5b272824695d854a0c94dfd13fc4fb8af63a39920a99b1c875b",
+  "hash": "ea6b2442b4cbaab21954cee2272a29a2260919001cf7a1d26999cfbb1964c819",
   "kind": "func",
   "termination": "structural",
   "confinement": [
     ""
   ],
-  "level": "proven",
-  "cases": 200,
-  "proven": 2
+  "level": "tested",
+  "cases": 200
 }

@@ -1,0 +1,7 @@
+✓ prop preserves-length         passed 200 cases
+✓ prop range-agrees             passed 200 cases
+✓ prop inverts-bytes-ints       passed 200 cases
+✓ prop inverted-by-bytes-ints   passed 200 cases
+✓ prop refuses-out-of-range-lead passed 200 cases
+✓ prop refuses-negative         passed 200 cases
+✓ prop refuses-out-of-range-continuation passed 200 cases

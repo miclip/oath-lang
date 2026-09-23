@@ -1,3 +1,5 @@
 ✓ prop absent-scope-is-marked   passed 200 cases
 ✓ prop value-has-no-quote       passed 200 cases
 ✓ prop value-has-no-tab         passed 200 cases
+✓ prop non-ascii-value-is-recovered-exactly passed 200 cases
+✓ prop malformed-utf8-is-refused-not-mojibaked passed 200 cases

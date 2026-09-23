@@ -1,0 +1,26 @@
+{
+  "name": "gh-rejected",
+  "prop_names": [
+    "nothing-rejects-nothing",
+    "it-is-never-negative",
+    "it-is-bounded-by-the-line-count",
+    "the-cons-ledger",
+    "one-bad-line-is-enough",
+    "a-bad-line-deeper-in-is-enough",
+    "zero-rejected-means-every-line-passed"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "ls"
+  ],
+  "confinement": [
+    ""
+  ]
+}

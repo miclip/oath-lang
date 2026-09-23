@@ -1,0 +1,36 @@
+{
+  "name": "ints-bytes",
+  "prop_names": [
+    "preserves-length",
+    "range-agrees",
+    "inverts-bytes-ints",
+    "inverted-by-bytes-ints",
+    "refuses-out-of-range-lead",
+    "refuses-negative",
+    "refuses-out-of-range-continuation"
+  ],
+  "guarantee": {
+    "level": "proven",
+    "cases": 200,
+    "proven": 7
+  },
+  "termination": "structural",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "xs"
+  ],
+  "confinement": [
+    ""
+  ],
+  "proven_props": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ]
+}

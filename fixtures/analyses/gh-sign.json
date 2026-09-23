@@ -1,15 +1,12 @@
 {
   "name": "gh-sign",
-  "hash": "bf2bf8a950ef0645cdbefd03d63e4321485e3b0b9eb7f104747986c6f30e190b",
+  "hash": "16986abc2e65c1e7cb960c118264b2a52b78eea59f637ba407826b9ca146211e",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [
     "",
     ""
   ],
-  "mutants_killed": 22,
-  "mutants_total": 22,
-  "mutation_campaign": "07168cf452fdcb457a8e09408e5f17b6a862b2b7c82e9cbe74bf8f50ead73b8b",
   "level": "tested",
   "cases": 200
 }
