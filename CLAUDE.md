@@ -740,8 +740,9 @@ The buckets encode DIFFERENT CLOCKS, not just different priorities:
                               procedure that goes stale and a pointer does not
                               #188 — production hardening for `oath resolve`
                               (the module/import tool; its DESIGN question is
-                              settled elsewhere — THIS issue is the hardening,
-                              and it is OPEN):
+                              settled elsewhere — THIS issue is the HARDENING,
+                              a separate item from that settled design and not
+                              discharged by it):
                               the three scoped edges the demonstrator left, none
                               touching identity/SPEC. NOT forcing — the
                               demonstrated fresh-store local flow hits none.
@@ -1048,8 +1049,12 @@ work; nothing depends on it immediately.
   termination (lexicographic), confinement (closure-tracking), spec strength
   (mutation + justified waivers), provenance (append-only tamper-evident
   journal, authenticated principals on the HTTP store).
-- ~105 definitions fully PROVEN (insertion sort 7/7, reverse-involution, the
-  KV world laws, native set/map laws, queue/tree/interval); honest exhibits
+- The fully-PROVEN count is DERIVED and climbs whenever fixtures regenerate, so
+  it is not written here: `fixtures/prove/outcomes.json` is the authority, and
+  `check-doc-numbers` holds the prose that quotes it to that authority. What the
+  population CONTAINS is stable and worth naming: insertion sort 7/7,
+  reverse-involution, the KV world laws, native set/map laws,
+  queue/tree/interval. Honest exhibits
   remain deliberately: bad-reverse (falsified), spin (termination unproven),
   abs-small (tested-but-refuted), and the SMT-incomplete/non-theorem defs stay
   `tested`.
