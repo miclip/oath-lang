@@ -275,6 +275,42 @@ input. A conforming surface elaborator MUST therefore match these rules:
   function currently being defined (emits `self`), constructor, stored function.
   Constructor lookup scans the current name index in ascending name order and
   chooses the first ADT whose metadata contains the constructor name.
+  A local variable resolves to the INNERMOST binder of that spelling, so among
+  duplicate parameter names the RIGHTMOST wins.
+- Name resolution for a bare type symbol is, in order: the primitive types
+  `Int`, `Rat`, `Float`, `Bool`; then the definition's declared type variables,
+  where among duplicate spellings the LEFTMOST wins; then the datatype currently
+  being defined; then a type alias, where the elaborator accepts them; then
+  stored data names. `Str` is an ordinary datatype, so it resolves at the last
+  step. Duplicate parameter and type-variable spellings are NOT rejected, and
+  neither is a type variable spelled like a primitive type or a datatype. Where
+  the losing candidate is a declared type variable or parameter (a duplicate, or
+  a type variable spelled `Int`), that position is declared and simply unused.
+  Where it is a datatype (a type variable spelled `Str`), the type variable is
+  used and the datatype cannot be named by a bare symbol inside that definition
+  (this order governs bare symbols only; the application form `(Str)` still
+  resolves to the datatype). Because names
+  are not identity (§9), this is the whole effect —
+  `(data D [a a] (MkD a))` is the same object as `(data D [a b] (MkD a))`.
+  The same shadowing reaches the datatype BEING DEFINED, which is the surprising
+  case and so is stated rather than left to the order: a type variable spelled
+  like its own datatype wins, and the declaration is parametric where it reads
+  as recursive — `(data D [D] (MkD D))` is the same object as
+  `(data D [t] (MkD t))`, NOT a type whose field is a `D`.
+
+  THE TWO DUPLICATE RULES ABOVE HAVE DIFFERENT STANDING, and stating them
+  together would otherwise invite a reader to take both for consequences of the
+  calculus. The PARAMETER rule is FORCED: parameters become nested `lam` binders
+  addressed by de Bruijn index, so "the innermost binder of that spelling" is
+  already what a variable reference means, and "rightmost among duplicates" only
+  restates ordinary shadowing. The TYPE-VARIABLE rule is a CHOICE: a definition's
+  type variables are one flat, simultaneously declared list with no nesting among
+  them, so no scope rule decides which duplicate a reference reaches. An order is
+  nevertheless REQUIRED, because the two candidates are different positions and
+  therefore different objects with different hashes — a kernel resolving the
+  other way would disagree with this one on an identity, not merely render
+  differently. This specification pins LEFTMOST because a choice had to be made
+  and recorded, not because leftmost is derivable from anything.
 - A constructor term is saturated by all remaining arguments in its surface
   application. Other applications elaborate to left-associated `app` chains.
 - A `defn` body is wrapped in one `lam` per parameter, from last parameter to
@@ -4313,6 +4349,29 @@ Everything else is metadata, mutable without changing identity: all names
 (definition, type-variable, constructor, property, parameter), guarantee
 level and history, termination/confinement verdicts, spec strength, proven
 property indices, author, the name→hash index, and the journal.
+
+A `Def` stores only POSITIONS: a count of type variables and `var` indices into
+them, `lam` binders and de Bruijn indices, constructor and property indices. The
+naming vocabularies in metadata are unhashed labels for those positions. Some of
+them are used by surface tools — constructor names resolve constructor terms
+and patterns during elaboration (§1.4), and property names identify properties
+in reports and commands — but PARAMETER and TYPE-VARIABLE names play no part in
+a formed `Def`'s internal references: once elaborated, every such reference is
+an index. Those two vocabularies are therefore not required to be distinct or
+to avoid spellings that another resolution rule takes first (§1.4). A parameter
+or type-variable vocabulary that renders two positions alike is not an
+ambiguous object, since the object never contained the names.
+
+**Projections are non-normative.** The human renderings a kernel produces from
+an object and its metadata — `get`, `context`/`explain` spec projections, and
+the like — are for reading. They MAY be lossy, and they are NOT source: a kernel
+need not make them re-elaborate at all, let alone to the same hash, and nothing
+in this specification promises that pasting one back into a file reproduces the
+object. A projection may therefore read ambiguously, as when a vocabulary
+repeats a name or spells a type variable `Int`; that is a property of the
+rendering, not of the definition. A MACHINE consumer that needs the definition
+MUST use the canonical object bytes (§1) and verify that they hash to the
+expected identity, never a projection.
 
 ## 10. Conformance
 

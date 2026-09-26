@@ -111,7 +111,6 @@ func apiPutObject(st *Store, objectB64 string, naming *objectNaming, auth *pubAu
 		"constructor name": m.CtorNames, "property name": m.PropNames,
 		"parameter name": m.ParamNames, "type-variable name": m.TyVarNames,
 	} {
-		seen := map[string]bool{}
 		for _, n := range names {
 			if n == "" {
 				continue // absent is legal; fitNaming supplies a positional name
@@ -130,10 +129,10 @@ func apiPutObject(st *Store, objectB64 string, naming *objectNaming, auth *pubAu
 			// So refusing here would have made object publication reject
 			// definitions source publication accepts — reintroducing exactly the
 			// divergence between the two paths that #102 exists to remove, and
-			// doing it AFTER the author had signed. The ambiguity is real and it
-			// belongs to the surface projection for both paths; it is not this
-			// path's to fix unilaterally by narrowing what may be published.
-			_ = seen
+			// doing it AFTER the author had signed. And #194 settled that the
+			// ambiguity is not a defect at all: the object is positional, names
+			// are unhashed labels, and projections are non-normative renderings
+			// that need not re-elaborate (SPEC §9).
 		}
 	}
 	fitNaming(m, def)
@@ -313,45 +312,35 @@ func fitNaming(m *Meta, def *Def) {
 	// unfitted was wrong. The printer takes these as a `preset` and generates
 	// `x0`, `x1`... for binders past the end — so a partial payload of {"x0"} on
 	// a two-binder function renders BOTH binders `x0`, and a body referring to
-	// the outer one displays as referring to the inner one. That projection
-	// re-elaborates to a different object than the signed bytes, which is the
-	// one outcome this path must never produce. Bounds-checked consumption is not
-	// the same property as unambiguous naming.
+	// the outer one displays as referring to the inner one. A projection is a
+	// non-normative rendering (SPEC §9) and may repeat a name the PUBLISHER
+	// supplied; what fitting guarantees is that a repetition is never one the
+	// kernel INVENTED while filling a gap.
 	m.ParamNames = fit(m.ParamNames, lambdaBinders(def.Body), "x")
 }
 
 // WHAT VOCABULARY VALIDATION DOES AND DOES NOT ESTABLISH.
 //
-// It establishes that every supplied name is a single Oath symbol and that names
-// within one positional vocabulary are distinct. Those two make a projection
-// well-formed and unambiguous.
+// It establishes that every supplied name is a single Oath symbol, so each can
+// be written and referenced in source. It does NOT require names within one
+// vocabulary to be distinct, nor to avoid spellings another resolution rule
+// takes first (a type variable named `Int`, a parameter named like a keyword or
+// like the definition itself). Source publication stores all of these, and the
+// object path accepts exactly what the source path accepts.
 //
-// It does NOT establish that a projection carrying the vocabulary MEANS the same
-// definition. A type variable named `Int` lexes fine and is distinct, but a
-// printed type renders it as `Int` while a reader resolves `Int` to the builtin
-// before consulting type variables — so the projection describes a monomorphic
-// artifact that is not the object signed. Parameter names colliding with a
-// keyword or with the definition's own name shadow the same way.
+// #194 SETTLED THIS AS "NO CHANGE REQUIRED", deliberately without a blocklist
+// or a round-trip check. The object stores only positions; names are unhashed
+// metadata, so a vocabulary that renders two positions alike leaves another
+// valid but unused position, not an ambiguous object. `get`/printDef and
+// printSpec are NON-NORMATIVE human projections: they may be lossy and need not
+// re-elaborate, and a machine consumer must use the canonical object bytes and
+// verify the hash (SPEC §9). A reserved-word list would have been the wrong fix
+// in any case — a set someone writes down, short by one — and a source-emitting
+// projector is not needed for a promise the kernel does not make.
 //
-// THE FIX IS NOT A LIST OF RESERVED WORDS. Enumerating builtins, keywords and
-// self-references is a set someone writes down, and the identical defect was
-// repaired in §8.6.4a's small-order check earlier by replacing exactly such a
-// list with the condition it was written from. The condition here is a
-// ROUND TRIP: render the definition with its vocabulary, re-elaborate the
-// rendering, and require the same hash. That is decidable and closes the whole
-// class — reserved names, shadowing, and whatever a future surface change adds.
-//
-// It is not implemented because the artefact it needs does not exist yet:
-// printDef and printSpec emit a human rendering rather than re-parseable source,
-// so there is nothing to feed back through the elaborator. Recorded on #102 as
-// the identified next piece rather than approximated here, because a partial
-// reserved-word list would look like the general check and would not be one.
-//
-// The exposure meanwhile is bounded and worth stating exactly: a publisher can
-// attach a misleading vocabulary to THEIR OWN publication. Identity is
-// unaffected (the object is the bytes), other objects are unaffected (naming is
-// restored on refusal), and audits are unaffected (no unverified evidence is
-// journalled). What suffers is the readability of the publisher's own artifact.
+// The residual exposure is cosmetic and bounded to the publisher's own
+// artifact: identity is the bytes, other objects are unaffected (naming is
+// restored on refusal), and nothing unverified is journalled.
 
 // requireSurfaceSymbol refuses a name that is not a single Oath symbol.
 //

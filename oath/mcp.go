@@ -114,7 +114,7 @@ func mcpTools() []map[string]any {
 		},
 		{
 			"name":        "get",
-			"description": "Full human projection of one definition: body, properties, hash, guarantee, termination, confinement, deps.",
+			"description": "Full human projection of one definition: body, properties, hash, guarantee, termination, confinement, deps. A rendering for reading, NOT source: it may be lossy and need not re-elaborate to the same definition. To obtain the definition itself, use `object` and verify the canonical bytes hash to the expected identity.",
 			"inputSchema": obj(map[string]any{"name": str("definition name")}, "name"),
 		},
 		{

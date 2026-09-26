@@ -114,7 +114,11 @@ The codebase database lives in `./codebase` (override with `OATH_STORE`).
 
 The s-expression syntax is an *input format*, not the language — it elaborates
 to the canonical AST and is thrown away. `oath get` prints a projection back
-out for human auditors.
+out for human auditors. That projection is for READING, not source: it may be
+lossy and is not promised to re-elaborate to the same definition (names are
+unhashed labels on positions, so a vocabulary can repeat a name or spell a type
+variable `Int`). A tool that needs the definition itself reads the canonical
+object bytes and checks their hash — SPEC §9.
 
 ```lisp
 (data List [a]

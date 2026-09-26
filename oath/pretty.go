@@ -29,8 +29,12 @@ func fmtFloat(f float64) string {
 // The projection printer renders canonical definitions back into readable
 // text for human auditors. This direction is lossy-in-reverse: generated
 // binder names (x0, x1, ...) replace whatever names the author used, because
-// the canonical form never stored them. What you read here is guaranteed to
-// be what the kernel checked — there is no other source of truth to drift from.
+// the canonical form never stored them. The structure rendered is the object
+// the kernel checked — there is no other source of truth to drift from — but
+// the NAMES are metadata labels, and the rendering is NON-NORMATIVE (SPEC §9):
+// it is not source, need not re-elaborate, and may read ambiguously when a
+// vocabulary repeats a name or spells a type variable like a builtin (#194).
+// Machine consumers use the canonical object bytes and verify the hash.
 
 func dataName(st *Store, h string) string {
 	if m, err := st.GetMeta(h); err == nil {
