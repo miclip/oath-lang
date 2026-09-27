@@ -187,7 +187,10 @@ naming a key could not be tied to the caller.
   naming the same parent can still both verify. The transactional store is the
   prerequisite, not an optimisation.
 - **Custody separation.** Distinct principals for spec and body are not
-  evidence of independent authorship: one process holding both key files
-  produces an identical record, and two write-scoped bearer tokens produce it
-  with no key at all. `oath explain` reports
-  `DISTINCT_PRINCIPALS_CUSTODY_UNVERIFIED` and keeps the limitation (#82).
+  evidence of independent authorship. Two write-scoped bearer tokens produce
+  that record with no key at all, and `oath explain` reports it as
+  `DISTINCT_PRINCIPALS_CUSTODY_UNVERIFIED`. Where the journal shows each
+  lineage's establishing write signed by that principal's own key (SPEC §8.6.6;
+  `spec_lineage` / `body_lineage` in `explain`), the rung is
+  `DISTINCT_KEYS_CUSTODY_UNVERIFIED` — and it keeps the limitation, because one
+  process holding both key files produces that record too (#82).

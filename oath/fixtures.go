@@ -871,6 +871,8 @@ func writeEnvelopeVectors(write func(string, []byte) error) error {
 	rejects := []struct{ label, witnesses, octets, reason string }{
 		{"uppercase hex artifact", "ENV-HEX-LOWERCASE", strings.Replace(valid, hex64, strings.ToUpper(hex64), 1),
 			"hashes are compared as bytes, so ABAB… and abab… would be two statements about one artifact"},
+		{"uppercase hex author key", "ENV-AUTHOR-HEX", strings.Replace(valid, key64, strings.ToUpper(key64), 1),
+			"the author key is compared as bytes too, so an uppercase spelling names a principal no record matches"},
 		{"non-canonical revision (leading zero)", "ENV-REV-CANONICAL",
 			"oath-publish/1\nop=put\nname=n\nartifact=" + hex64 + "\nparent=" + strings.Repeat("cd", 32) + "\nparent_rev=01\nauthor=" + key64 + "\n",
 			"\"01\" and \"1\" would be different bytes for one revision"},

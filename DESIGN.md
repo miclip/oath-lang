@@ -519,6 +519,45 @@ substrate where agents submit small units, get deterministic verdicts,
 retrieve dependency contracts sized to a token budget, and regenerate safely.
 The syntax is disposable; the substrate is the product.
 
+## Authorship evidence is derived, not stored (#82)
+
+`require_authorship_separation` compares two principal LABELS, and meta carries
+those labels forward across revisions. Two write-scoped bearer tokens therefore
+satisfy it with no key held by anyone, and until this change `explain` rendered
+that exactly as it rendered two Ed25519 keys signing. The journal, however, holds
+what separates the two cases: an author envelope on the write that established
+each lineage.
+
+**The credible "no change required" was tested, and it failed.** It would have
+held if the ladder was only declining to restate a fact any reader could already
+recover. It was not, for two reasons:
+
+- The ladder did not expose the distinction at all. `authorshipLevel` read only
+  the labels, and the one signedness check beside it answered a different
+  question.
+- That check, `unsignedAttribution`, walked the name's entire `prev` chain and
+  accepted the STORE's entry signature as author evidence. It never identified the
+  write that established each lineage. So it was neither the derivation nor a
+  conservative approximation of it: a store-signed chain passed it, and a signed
+  spec lineage under an unsigned body repoint could not be told apart from the
+  reverse.
+
+**The route: derive on every call, never store.** A per-lineage key field in meta
+would duplicate what the journal determines, and would be correct only until the
+journal grew. SPEC §8.6.6 defines the derivation. It replays the name's effective
+`applied` transitions, compares the immutable objects each one replaced (props;
+body with constructors), and verifies the establishing entry's author envelope
+against the replayed parent and revision. It returns `KEY_SIGNED` or a reasoned
+`UNKNOWN`, never a negative, because a missing envelope does not prove a missing
+key.
+
+**What it bought** is one rung, `DISTINCT_KEYS_CUSTODY_UNVERIFIED`, plus
+per-lineage evidence that `explain` exposes whatever the rung. **What it did not
+buy** is custody: one process holding both key files produces the same record, so
+`SEPARATE_CUSTODY_ATTESTED` stays unreachable. The committed corpus predates
+author envelopes, so every lineage in it derives `UNKNOWN` — which is the honest
+answer, not a regression.
+
 ## Prior art
 
 Oath is a synthesis, not an invention; the pieces have owners:
@@ -608,11 +647,14 @@ Phases 1–3 are COMPLETE, beyond the original ambitions:
 - **Phase 3 ✓** — MCP over stdio and over HTTP with authenticated
   principals (the team store), spec-only context slices by token budget,
   and a repoint policy that makes authorship separation CHECKABLE rather
-  than procedural — checkable at the PRINCIPAL STRING, which is the honest
-  ceiling: one party holding two keypairs, or two write-scoped bearer
-  tokens, defeats it, so `explain` reports that rung as
-  DISTINCT_PRINCIPALS_CUSTODY_UNVERIFIED rather than as separation (#82,
-  docs/teamstore.md). Cross-kernel CI guards it all on every push.
+  than procedural — checkable at the PRINCIPAL STRING. Two write-scoped
+  bearer tokens defeat that with no key at all, so `explain` separates the
+  two cases by deriving from the journal whether each lineage's establishing
+  write was signed by its principal's key (SPEC §8.6.6): distinct labels alone
+  are DISTINCT_PRINCIPALS_CUSTODY_UNVERIFIED, distinct signing keys are
+  DISTINCT_KEYS_CUSTODY_UNVERIFIED. Neither is separation, since one party
+  holding two keypairs produces the second (#82, docs/teamstore.md).
+  Cross-kernel CI guards it all on every push.
 - **Phase 4 (open)** — the flywheel: verification as an unfakeable reward
   signal. Scoped experiments ran (docs/experiments): the split-agent
   workflow validated spec-blind implementation; the 2×2 rematch showed the

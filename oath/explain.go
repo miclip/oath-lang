@@ -91,14 +91,18 @@ type specStrength struct {
 const (
 	// authSamePrincipal: spec and body attributed to the same principal.
 	authSamePrincipal = "SAME_PRINCIPAL"
-	// authDistinctPrincipals: different principals, but the registry has no
-	// evidence that CONTROL was separated — one process holding both key files
-	// produces exactly this record, and so do two write-scoped bearer tokens,
-	// which involve no key at all. The rung is named for PRINCIPALS rather than
-	// keys deliberately: authorshipLevel does not consult signedness (see below),
-	// so it cannot claim a key was ever held. This is the honest ceiling until
-	// custody is attestable.
+	// authDistinctPrincipals: different principals, and the journal does NOT
+	// show both lineages established by valid author signatures from those
+	// principals' keys — so whether any key was held is unknown. Two
+	// write-scoped bearer tokens, which involve no key at all, produce exactly
+	// this record.
 	authDistinctPrincipals = "DISTINCT_PRINCIPALS_CUSTODY_UNVERIFIED"
+	// authDistinctKeys: different principals, and each lineage's establishing
+	// write carries a valid author envelope signed by that principal's key
+	// (lineageEvidence) — so two distinct keys demonstrably signed. CONTROL
+	// separation is still unobserved: one process holding both key files
+	// produces exactly this record. That is the gap the rung above names.
+	authDistinctKeys = "DISTINCT_KEYS_CUSTODY_UNVERIFIED"
 	// authSeparateCustody: the signing arrangement provides independently
 	// checkable evidence that one process could not use both keys. Not yet
 	// reachable — no mechanism here yet earns it, so nothing emits it.
@@ -113,6 +117,13 @@ type explainProv struct {
 	BodyAuthor string `json:"body_author,omitempty"`
 	// Authorship is the ladder rung this artifact's record actually supports.
 	Authorship string `json:"authorship"`
+	// SpecLineage and BodyLineage are the journal-derived evidence for who
+	// ESTABLISHED each lineage (#82): the entry where it last changed, and
+	// whether a valid author signature covers that exact transition. Exposed
+	// whatever the rung, so a mixed or unrecoverable history stays observable
+	// rather than being summarised away. Derived on every call, never stored.
+	SpecLineage lineageTier `json:"spec_lineage"`
+	BodyLineage lineageTier `json:"body_lineage"`
 	// Owner is the principal that FIRST published this name (#84) — who may repoint
 	// it, where trust-on-first-publish is enabled. OwnerSource says where that
 	// authority came from, which is as decision-relevant as its strength: a key
@@ -151,80 +162,32 @@ type explainProv struct {
 	License string `json:"license,omitempty"`
 }
 
-// authorshipLevel places an artifact on the ladder from recorded state alone.
+// authorshipLevel places an artifact on the ladder.
 //
-// It deliberately does NOT consult whether the journal entries were signed —
-// that is a separate axis (is the attribution evidence or the registry's word?)
-// reported as its own limitation. Folding the two together would let a signed
-// same-key artifact outrank an unsigned distinct-key one on a scale that is
-// supposed to measure only control separation.
-func authorshipLevel(specAuthor, bodyAuthor string) string {
+// Signedness raises a rung only where it changes what separation means: two
+// DISTINCT labels backed by two valid author signatures are two keys, which is
+// strictly more than two labels. It never lifts SAME_PRINCIPAL — one key
+// signing both lineages is still one author — so a signed same-key artifact
+// cannot outrank an unsigned distinct-principal one.
+//
+// Each lineage must be signed by the key its OWN label names — both the
+// per-hash label in meta and the per-NAME label the establishing entry records.
+// A signature by some other key establishes that key, not the recorded
+// principal. The name-scoped check matters because meta is shared by every name
+// bound to the object: an alias publication can rewrite those labels to match
+// another name's signing keys.
+func authorshipLevel(specAuthor, bodyAuthor string, spec, body lineageTier) string {
 	if specAuthor == "" || bodyAuthor == "" {
 		return authUnattributed
 	}
 	if specAuthor == bodyAuthor {
 		return authSamePrincipal
 	}
+	if spec.Tier == lineageKeySigned && spec.Pubkey == specAuthor && spec.Principal == specAuthor &&
+		body.Tier == lineageKeySigned && body.Pubkey == bodyAuthor && body.Principal == bodyAuthor {
+		return authDistinctKeys
+	}
 	return authDistinctPrincipals
-}
-
-// unsignedAttribution reports whether this artifact's recorded authorship rests
-// on unsigned journal entries — i.e. whether an auditor must take the registry's
-// word for who authored it.
-//
-// It walks the whole NAME LINEAGE backwards through Prev, not just the entry for
-// this hash, because spec_author is INHERITED: when a put leaves the props
-// unchanged, the spec author carries over from the object the name previously
-// pointed at. So "which key signed the spec" is only answerable if the earlier
-// entry that introduced those props was itself signed. One unsigned link makes
-// the inherited half of the attribution unverifiable, however well-signed the
-// most recent put was.
-//
-// Conservative by construction: an object with no accepted entry at all, or a
-// lineage that runs out, counts as unverifiable rather than clean. Absence of a
-// record is not evidence of authorship.
-func unsignedAttribution(st *Store, h string) bool {
-	accepted := map[string][]LogEntry{}
-	for _, e := range st.ReadLog() {
-		if e.Status == "accepted" && e.Hash != "" {
-			accepted[e.Hash] = append(accepted[e.Hash], e)
-		}
-	}
-	seen := map[string]bool{}
-	for cur := h; cur != ""; {
-		if seen[cur] { // a repoint cycle (A→B→A) is finite evidence, not an error
-			return false
-		}
-		seen[cur] = true
-		es, ok := accepted[cur]
-		if !ok {
-			return true
-		}
-		signed, prev := false, ""
-		for _, e := range es {
-			// The AUTHOR's envelope is what makes attribution verifiable: it binds a
-			// key to this exact publication. The registry's own Pubkey/Sig pair proves
-			// CUSTODY (the entry has not been altered since it was written) and says
-			// nothing about who authored it — a registry could sign an entry naming
-			// anyone. Either is accepted here because both were once the only
-			// available form, but they are not equivalent, and the envelope is the one
-			// a third party can check without trusting the registry.
-			if e.EnvelopeB64 != "" && e.AuthorSig != "" && e.AuthorPubkey != "" {
-				signed = true
-			}
-			if e.Sig != "" && e.Pubkey != "" {
-				signed = true
-			}
-			if e.Prev != "" {
-				prev = e.Prev
-			}
-		}
-		if !signed {
-			return true
-		}
-		cur = prev
-	}
-	return false
 }
 
 // buildExplain assembles the decision package for one definition.
@@ -265,13 +228,30 @@ func buildExplain(st *Store, name string) (*explainPkg, error) {
 		Confinement: m.Confinement,
 		Provenance: explainProv{
 			Author: m.Author, SpecAuthor: m.SpecAuthor, BodyAuthor: m.BodyAuthor,
-			// The split-agent result made structural: spec and body written by
-			// different principals is a stronger artifact than one author's
-			// self-assessment, and a consumer should be able to see which it is —
-			// but only as far up the ladder as the record actually reaches.
-			Authorship: authorshipLevel(m.SpecAuthor, m.BodyAuthor),
 		},
 	}
+	// The split-agent result made structural: spec and body written by
+	// different principals is a stronger artifact than one author's
+	// self-assessment, and a consumer should be able to see which it is — but
+	// only as far up the ladder as the record actually reaches.
+	pkg.Provenance.SpecLineage, pkg.Provenance.BodyLineage = lineageEvidenceAt(st, name, h)
+	// NAME-SCOPED principals when the derivation supplies them. `m.SpecAuthor`
+	// and `m.BodyAuthor` live in metadata keyed by HASH, and structurally
+	// identical definitions are ONE object with several names — so an unrelated
+	// alias first-publishing this object can rewrite them, and a definition whose
+	// lineages really were established by distinct keys would read SAME_PRINCIPAL
+	// because of a write under another name. The lineage derivation replays THIS
+	// name's journal, so its principals are the ones this name's ladder must use;
+	// the metadata fields remain the fallback for a lineage that reports none.
+	specPrincipal, bodyPrincipal := m.SpecAuthor, m.BodyAuthor
+	if p := pkg.Provenance.SpecLineage.Principal; p != "" {
+		specPrincipal = p
+	}
+	if p := pkg.Provenance.BodyLineage.Principal; p != "" {
+		bodyPrincipal = p
+	}
+	pkg.Provenance.Authorship = authorshipLevel(specPrincipal, bodyPrincipal,
+		pkg.Provenance.SpecLineage, pkg.Provenance.BodyLineage)
 
 	pkg.Provenance.AppliedVia = bindingAppliedVia(st, name, h)
 	pkg.Provenance.Owner, pkg.Provenance.OwnerSource = nameOwner(st, name)
@@ -408,21 +388,60 @@ func explainLimitations(st *Store, p *explainPkg, m *Meta) []string {
 	if len(m.WaivedMutants) > 0 {
 		out = append(out, fmt.Sprintf("%d surviving mutant(s) WAIVED as equivalent — judgement calls, listed with their justifications", len(m.WaivedMutants)))
 	}
-	// Authorship limitations, one per rung. The DISTINCT_PRINCIPALS case still
-	// carries a limitation: two key files on one machine, used by one process,
-	// produce exactly that record — as do two write-scoped bearer tokens, with no
-	// key involved — and dropping the caveat there would let the registry vouch
-	// for control separation it cannot observe. The text says PRINCIPALS rather
-	// than keys for that second reason: this rung is computed from the author
-	// strings alone, so it cannot assert that anything was signed. Whether the
-	// attribution rests on signed entries is the separate axis reported above.
+	// Authorship limitations, one per rung. Neither distinct rung drops its
+	// caveat: two key files on one machine, used by one process, produce the
+	// DISTINCT_KEYS record, and dropping the caveat there would let the registry
+	// vouch for control separation it cannot observe. DISTINCT_PRINCIPALS says
+	// key possession is UNKNOWN, not absent — the journal cannot tell a bearer
+	// write from a key-holder's write that left no envelope.
 	switch p.Provenance.Authorship {
 	case authUnattributed:
 		out = append(out, "authorship is UNATTRIBUTED — no principal is recorded for the spec or the body, so there is nothing to hold accountable for either")
 	case authSamePrincipal:
 		out = append(out, "spec and body share an author — no authorship separation, so the specification was not written independently of the code")
 	case authDistinctPrincipals:
-		out = append(out, "spec and body are attributed to DISTINCT PRINCIPALS, but custody and independent control were NOT verified — one process holding both keys produces this same record, as do two bearer tokens holding no key at all, so this is not evidence of independent authorship")
+		// Say only what the lineage evidence leaves unestablished: when one
+		// lineage IS key-signed, "whether either held a key is unknown" would
+		// discard evidence the journal does carry.
+		possession := "whether either held a signing key is UNKNOWN from this record — two bearer tokens holding no key at all produce it"
+		if p.Provenance.SpecLineage.Tier == lineageKeySigned || p.Provenance.BodyLineage.Tier == lineageKeySigned {
+			possession = "the journal does NOT show each lineage signed by its own principal's key (see the per-lineage evidence below)"
+		}
+		out = append(out, "spec and body are attributed to DISTINCT PRINCIPALS, but "+possession+" — and custody and independent control were NOT verified, so this is not evidence of independent authorship")
+	case authDistinctKeys:
+		out = append(out, "spec and body lineages were each established by a valid author signature from a DISTINCT KEY, but custody and independent control were NOT verified — one process holding both key files produces this same record, so this is not evidence of independent authorship")
+	}
+	// Per-lineage evidence, disclosed wherever it falls short. UNKNOWN is not
+	// "unsigned": the establishing write may predate author envelopes, or be a
+	// worker's repoint of a signed submission, and the journal does not say.
+	if p.Provenance.Authorship != authUnattributed {
+		for _, l := range []struct {
+			what, meta string
+			ev         lineageTier
+		}{
+			{"spec", p.Provenance.SpecAuthor, p.Provenance.SpecLineage},
+			{"body", p.Provenance.BodyAuthor, p.Provenance.BodyLineage},
+		} {
+			// The NAME-scoped principal is what the establishing entry recorded.
+			// Meta's label is per-hash and an alias can rewrite it, so it is only
+			// the fallback when no establishing entry was identified.
+			label := l.ev.Principal
+			if label == "" {
+				label = l.meta
+			}
+			switch {
+			case l.ev.Tier == lineageUnknown:
+				out = append(out, fmt.Sprintf("key possession for the %s lineage is UNKNOWN (%s) — the recorded principal %q is the registry's attribution, not something an auditor can tie to a key from the journal; this does not mean it was unsigned",
+					l.what, lineageWhere(l.ev), label))
+			case l.ev.Pubkey != label:
+				out = append(out, fmt.Sprintf("the %s lineage was established by a valid signature from key %s… (journal seq %d), but that entry attributes it to %q — the signature evidences that key, not the recorded principal",
+					l.what, shortHash(l.ev.Pubkey), l.ev.Seq, label))
+			}
+			if l.ev.Principal != "" && l.meta != l.ev.Principal {
+				out = append(out, fmt.Sprintf("the %s author shown above (%q) is the object's SHARED attribution, rewritten by another name bound to the same object; under THIS name the establishing entry (journal seq %d) records %q",
+					l.what, l.meta, l.ev.Seq, l.ev.Principal))
+			}
+		}
 	}
 	// The store's own declaration, rendered in its own right and never folded into
 	// the verified findings above (SPEC §8.6.5). The wording tracks what is actually
@@ -478,15 +497,6 @@ func explainLimitations(st *Store, p *explainPkg, m *Meta) []string {
 			p.Provenance.Namespace, shortHash(p.Provenance.NamespaceHolder),
 			len(p.Provenance.NamespaceDelegates), shortHash(p.Provenance.NamespaceDelegates[0])))
 	}
-	// A separate axis from the ladder: is the attribution EVIDENCE, or the
-	// registry's word for it? An unsigned journal entry records a pubkey the
-	// registry chose to write down. It may well have verified a signature at
-	// request time, but that verification left no artifact, so no third party can
-	// re-derive who authored this — and unverifiable attribution is exactly what
-	// the rest of this system refuses to report as fact.
-	if p.Provenance.Authorship != authUnattributed && unsignedAttribution(st, p.Hash) {
-		out = append(out, "the authorship above is NOT independently verifiable — the journal entries recording it carry no signature, so the recorded principals are the registry's assertion rather than evidence an auditor can check")
-	}
 	if len(out) == 0 {
 		out = append(out, "none recorded")
 	}
@@ -522,6 +532,8 @@ func cmdExplain(st *Store, name string, asJSON bool) {
 	fmt.Fprintf(&b, "\nPROVENANCE: author=%s spec=%s body=%s\n            authorship: %s\n",
 		orNone(pkg.Provenance.Author), orNone(pkg.Provenance.SpecAuthor),
 		orNone(pkg.Provenance.BodyAuthor), pkg.Provenance.Authorship)
+	fmt.Fprintf(&b, "            spec lineage: %s\n            body lineage: %s\n",
+		lineageLine(pkg.Provenance.SpecLineage), lineageLine(pkg.Provenance.BodyLineage))
 	if l := pkg.Provenance.License; l != "" && l != noLicense {
 		fmt.Fprintf(&b, "            license: %s (ASSERTED by the publisher, signed; NOT evaluated)\n", l)
 	}
@@ -633,4 +645,25 @@ func bindingAppliedVia(st *Store, name, hash string) string {
 		}
 	}
 	return found
+}
+
+// lineageWhere renders an UNKNOWN lineage's reason with its establishing entry
+// when one was identified.
+func lineageWhere(ev lineageTier) string {
+	if ev.Seq > 0 {
+		return fmt.Sprintf("%s; journal seq %d", ev.Reason, ev.Seq)
+	}
+	return ev.Reason
+}
+
+// lineageLine is the text rendering of one lineage's evidence.
+func lineageLine(ev lineageTier) string {
+	who := ""
+	if ev.Principal != "" {
+		who = fmt.Sprintf(", recorded principal %q", ev.Principal)
+	}
+	if ev.Tier == lineageKeySigned {
+		return fmt.Sprintf("%s by key %s… (journal seq %d%s)", lineageKeySigned, shortHash(ev.Pubkey), ev.Seq, who)
+	}
+	return fmt.Sprintf("%s (%s%s)", ev.Tier, lineageWhere(ev), who)
 }

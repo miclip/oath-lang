@@ -172,6 +172,12 @@ SURFACES = {
     # derive the schema from §7.2 prose; the fixtures only tell it WHICH verdicts
     # to reach, never HOW.
     "7.2": ([], ["oathrs/", "fixtures/", "examples/", "apps/"]),
+    # §8.6.6 (#82): lineage evidence, derived from a journal and its objects.
+    # NO normative data and NO witnesses: the section's claim is that its prose
+    # determines each lineage's outcome, and no vector for it exists. The
+    # subject's input stores are built and run by the dispatcher only AFTER the
+    # subject has reported its inferences, so they are never part of the surface.
+    "8.6.6": ([], []),
 }
 
 # NORMATIVE DATA: incorporated by reference, schema and interpretation defined in

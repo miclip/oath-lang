@@ -2805,7 +2805,7 @@ The reference filesystem store layout is normative for local conformance:
 
 ```
 codebase/
-  objects/<hash>.bin   compact canonical Def JSON
+  objects/<hash>.bin   canonical O1 Def bytes (§1)
   meta/<hash>.json      indented metadata JSON, two-space indent
   names.json            indented object mapping name -> current hash
   log.jsonl             append-only compact JSON log entries
@@ -3608,7 +3608,139 @@ and it holds only for a verifier that has actually checked the chain.
 Distinct signing keys for spec and body are also not evidence of independent
 authorship: one process holding both keys produces an identical record. Custody
 separation is a separate, stronger claim and is not established by any mechanism in
-this version.
+this version. Whether distinct keys signed at all is itself derived, not recorded —
+§8.6.6.
+
+#### 8.6.6 Lineage evidence (derived)
+
+A definition's metadata attributes its properties and its body to principals, and
+carries each attribution forward across a repoint that leaves that part unchanged.
+Those attributions are labels (§9): they name a principal and do not say whether a
+key stood behind it — a bearer-authenticated write and a key-signed one can record
+the same pair of distinct strings. Whether a key did is a DERIVED fact, re-derivable
+from the journal and the immutable objects, and it is not stored. A kernel MAY omit
+this derivation. A kernel or surface that REPORTS whether a lineage was key-signed
+MUST derive it exactly as below, and MUST NOT persist the result as metadata: a
+stored copy of what the journal determines is correct only until the journal grows.
+
+**Lineages.** The PROPS lineage of a definition is its property list. The BODY
+lineage is its body together with its constructor list. A component the
+definition's kind does not carry is absent, and absent equals absent. The declared
+type and the type-variable count belong to neither lineage. A transition CHANGES a
+lineage when that component of the new object differs from the same component of
+the object it replaced, compared structurally over the decoded `Def` (§1).
+
+An object is PRESENT when it loads as §8.1 requires: its bytes hash to its name,
+decode (§1), and re-validate (§2). An object that fails any of these is ABSENT for
+this derivation, exactly as if its file did not exist.
+
+The derivation reads the journal as recorded and does NOT itself verify it (§8,
+§8.4, §8.6.4). An entry that would fail §8.6.4 is judged by the rule below like any
+other, and comes out UNKNOWN. Whether the journal as a whole verifies is a separate
+result, and a surface reporting it reports it separately.
+
+It does not verify the journal, but it MUST read ALL of it. If any line of the
+journal cannot be decoded as an entry, both lineages are UNKNOWN (a line does not
+parse) and no replay is performed. Not verifying is not the same as tolerating a
+gap: the replay walks POSITIONS, so a decoder that skipped an unreadable line
+would renumber everything after it and could present a later entry as a first
+transition — reaching KEY_SIGNED from a history it never saw. A positive verdict
+must never rest on a record that was not read in full, and an incomplete journal
+is the one case where absence of evidence is silently indistinguishable from
+evidence.
+
+**Replay.** If `N` is not bound, both lineages are UNKNOWN (the name is not bound)
+and no replay is performed. Otherwise, to derive the evidence for name `N`,
+currently bound to hash `H`:
+
+1. Compute every entry's EFFECTIVE transition by the fold of §8.6.2 — derived from
+   history, never read from a stored `name_transition`. Visit, in journal (line)
+   order, only the entries for `N` whose effective transition is `applied`. Order
+   and association are by POSITION, not by `seq`: this derivation does not verify
+   the journal, so `seq` values are not assumed unique. Every other entry is
+   skipped — whatever its kind or status, and including `unchanged` republications,
+   refused, blocked and pending attempts, `prove` and `cross` records, and all
+   entries for other names.
+2. Track the replayed binding `B` (initially none) and revision `R` (initially 0).
+   For each visited entry `E`, its PARENT is `B` and its PARENT REVISION is `R`;
+   then set `B` to `E.hash` and increment `R`. For each `E`:
+   - If `E` RECORDS a `prev` that differs from its parent, the history is
+     INCONSISTENT. This includes a first visited entry that records a `prev`: the
+     journal names a predecessor it never shows.
+     `E` RECORDS a `prev` exactly when the field is present AND its value is not
+     the empty string; an absent field and an empty one are the same state here,
+     namely NO recorded predecessor, and neither makes a history inconsistent.
+     Stated because the distinction is otherwise decidable two ways and they
+     disagree on the outcome rather than on a detail: read the other way, a first
+     entry carrying `prev: ""` would make every such lineage UNKNOWN
+     (inconsistent) where this reading can reach KEY_SIGNED.
+   - If `E` has no parent (a first publication) and its object is present, `E`
+     establishes BOTH lineages. If its object is absent, both become unestablished.
+   - Otherwise, if either `E`'s object or its parent's object is absent, both
+     lineages become unestablished. If both are present, `E` establishes each
+     lineage it changes; a lineage it does not change keeps its establishing entry.
+3. After the replay, both lineages are UNKNOWN if `B` is not `H` (the history does
+   not reach the current binding, including a name with no visited entry), and
+   otherwise both are UNKNOWN if the history is INCONSISTENT. Otherwise each
+   lineage is judged separately: an unestablished lineage is UNKNOWN (an object it
+   depends on is missing), and an established one is judged by its establishing
+   entry `E`, with `E`'s parent and parent revision from step 2.
+
+**Judging an establishing entry.** The lineage is KEY_SIGNED by key `A` if and only
+if all of the following hold. Otherwise it is UNKNOWN.
+
+- `E` carries `envelope_b64`, `author_pubkey` and `author_sig`.
+- The decoded octets parse as a publication envelope (§8.6.1).
+- The envelope's author is `A`, and `A` equals `author_pubkey`.
+- `author_sig` verifies under §8.6.4a over the decoded octets themselves, never
+  over a re-encoding under a different format version (§8.6.1).
+- The envelope's `name`, `artifact`, `parent` and `parent_rev` equal `N`, `E.hash`,
+  `E`'s parent (`-` when there is none), and `E`'s parent revision.
+
+The replayed parent and revision are used, not the entry's recorded `prev` or
+`parent_rev`, so an envelope replayed onto a later transition (A → B → A) is not
+evidence for it. Only the author's envelope counts. The §8.4 entry signature seals
+the store's record, not authorship (§8.6), and MUST NOT make a lineage KEY_SIGNED.
+
+**Outcomes.** There are exactly two, and an UNKNOWN carries exactly one of seven
+reasons: a journal line does not parse, so the history may be incomplete; the name
+is not bound; the history does not reach the binding; the history is inconsistent;
+an object is missing; the establishing entry carries NONE of `envelope_b64`,
+`author_pubkey` and `author_sig` (no author envelope); or it carries any of them and
+the judging rule fails (the envelope does not verify for this transition). UNKNOWN MUST NOT be reported as "not key-signed" or "unsigned". An
+entry with no envelope may predate envelopes while its principal was itself a key,
+or be a bearer write; the journal does not say which, so no journal state
+establishes the negative.
+
+**The async gate.** A `put`-kind entry is judged by the same rule as any other
+entry; there is no special case. Under §8.5 the author's statement accompanies the
+`pending` entry, which applies no transition, and the binding is applied later by
+the worker's `put`-kind entry, which carries no author envelope. So a lineage
+established through the gate comes out UNKNOWN (no author envelope). Nothing in the
+journal links the worker's entry to a particular pending statement, and the name
+may have moved between the two, so a kernel MUST NOT borrow a pending entry's
+envelope as evidence for the worker's transition.
+
+**Stability.** An entry's effective transition depends only on the entries before
+it, and objects are immutable. So an appended entry can change the outcome only by
+being an applied transition of `N` that changes the binding. Entries for other
+names, `unchanged` republications and `none` entries leave it identical.
+
+*Informative — the reference `explain` ladder.* The reference kernel places spec and
+body authorship on a ladder, as a projection (§9) of the attribution labels and this
+derivation:
+
+| rung | recorded state |
+|---|---|
+| `UNATTRIBUTED` | a spec or body principal is not recorded |
+| `SAME_PRINCIPAL` | one principal for both, whatever signed |
+| `DISTINCT_PRINCIPALS_CUSTODY_UNVERIFIED` | distinct principals; key possession UNKNOWN for at least one lineage, or a signature by a key other than that lineage's principal |
+| `DISTINCT_KEYS_CUSTODY_UNVERIFIED` | distinct principals, each lineage KEY_SIGNED by the key its establishing entry records as its principal under this name — not by a label another name bound to the same object supplied |
+| `SEPARATE_CUSTODY_ATTESTED` | defined and UNREACHABLE — no mechanism in this version establishes custody |
+
+The top reachable rung still establishes only that two keys signed. It does not
+establish that separate parties held them: one process holding both key files
+produces the same record.
 
 ### 8.7 Namespace reservation (prefix authority)
 

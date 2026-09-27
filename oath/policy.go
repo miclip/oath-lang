@@ -222,10 +222,10 @@ func attributeAuthorship(st *Store, name string, newDef *Def, submitter string) 
 		}
 		return "unattributed"
 	}
-	if jsonEq(newDef.Props, prevDef.Props) {
+	if sameProps(newDef, prevDef) {
 		specAuthor = inherit(prevMeta.SpecAuthor, prevMeta.Author)
 	}
-	if jsonEq(newDef.Body, prevDef.Body) && jsonEq(newDef.Ctors, prevDef.Ctors) {
+	if sameBody(newDef, prevDef) {
 		bodyAuthor = inherit(prevMeta.BodyAuthor, prevMeta.Author)
 	}
 	return

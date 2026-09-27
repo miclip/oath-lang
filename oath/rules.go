@@ -68,7 +68,8 @@ const (
 // cannot attribute a failure to either.
 var normativeRules = []normativeRule{
 	{"ENV-TAG", "§8.6.1", "the first line must be exactly the format tag", familyEnvelope},
-	{"ENV-HEX-LOWERCASE", "§8.6.1", "hashes and keys must be lowercase hex", familyEnvelope},
+	{"ENV-HEX-LOWERCASE", "§8.6.1", "the artifact hash must be lowercase hex", familyEnvelope},
+	{"ENV-AUTHOR-HEX", "§8.6.1", "the author key must be lowercase hex", familyEnvelope},
 	{"ENV-REV-CANONICAL", "§8.6.1", "parent_rev must be canonical decimal", familyEnvelope},
 	{"ENV-PARENT-CONSISTENT", "§8.6.1", "the parent sentinel and revision 0 hold iff each other", familyEnvelope},
 	{"ENV-VALUE-CHARS", "§8.6.1", "values must exclude LF, CR and control characters", familyEnvelope},

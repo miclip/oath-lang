@@ -58,15 +58,25 @@ change the trust story:
   it, and nothing in the journal distinguishes two parties from one party
   wearing two principals.
 
-  The kernel says so rather than implying otherwise, across TWO axes that it
-  deliberately keeps apart. `oath explain` reports this arrangement as
-  `DISTINCT_PRINCIPALS_CUSTODY_UNVERIFIED` — named for principals, not keys,
-  because the rung is computed from the author strings alone and so cannot
-  claim a key was ever held. Whether the attribution is evidence or the
-  registry's word is the SECOND axis, reported as its own limitation: a
-  bearer-authenticated write leaves an unsigned journal entry, and `explain`
-  says so. The rung above, `SEPARATE_CUSTODY_ATTESTED`, is deliberately
-  unreachable: no mechanism here earns it, so nothing emits it.
+  The kernel says so rather than implying otherwise. `oath explain` derives,
+  from the journal, which write ESTABLISHED each lineage — the entry where the
+  props, or the body and constructors, last changed — and whether that exact
+  transition carries a valid author signature (SPEC §8.6.6). It reports both as
+  `spec_lineage` and `body_lineage`: `KEY_SIGNED` with the key and journal
+  `seq`, or `UNKNOWN` with a named reason. `UNKNOWN` is never reported as
+  unsigned, because the journal cannot tell a bearer write from a key-holder's
+  write that left no envelope.
+
+  The authorship rung follows from that. Two distinct principals whose
+  lineages are each `KEY_SIGNED` by their own key reach
+  `DISTINCT_KEYS_CUSTODY_UNVERIFIED`. Two bearer tokens, or any lineage still
+  `UNKNOWN`, stay at `DISTINCT_PRINCIPALS_CUSTODY_UNVERIFIED`, and `explain`
+  says key possession is unknown. Neither rung claims custody: one process
+  holding both key files produces the distinct-keys record. The rung above,
+  `SEPARATE_CUSTODY_ATTESTED`, is deliberately unreachable: no mechanism here
+  earns it, so nothing emits it. A name bound through the `require_proven`
+  worker stays `UNKNOWN` even when its author signed, since the worker's
+  binding entry carries no envelope and nothing links it to the pending one.
   Read the policy as what it is — a real constraint on key reuse, and a
   discipline rather than a proof about people.
 - `require_total` — termination must be proven (structural/nonrecursive).

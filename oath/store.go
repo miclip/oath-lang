@@ -262,6 +262,16 @@ func (s *Store) GetDef(h string) (*Def, error) {
 	if ok {
 		return d0, nil
 	}
+	return s.getDefFromBackend(h)
+}
+
+// getDefFromBackend is GetDef WITHOUT the cache: it reads the object, checks its
+// bytes hash to their own name, decodes and re-validates. A reader whose claim
+// is that an object IS PRESENT must use this — `GetDef` answers from memory, so
+// in a long-lived process a definition loaded before its object was deleted or
+// tampered with still reads as present, and a derivation resting on presence
+// would report a positive result about a store that no longer holds it.
+func (s *Store) getDefFromBackend(h string) (*Def, error) {
 	b, ok, err := s.be.getObject(h)
 	if err != nil {
 		return nil, err
@@ -625,12 +635,27 @@ const (
 // property of an entry: it depends on what the name was bound to at that point,
 // which only a fold knows.
 func derivedTransitions(entries []LogEntry) map[int]string {
-	bound := map[string]string{} // name -> what it is bound to, as of entries seen
+	byIndex := derivedTransitionsByIndex(entries)
 	out := make(map[int]string, len(entries))
+	for i := range entries {
+		out[entries[i].Seq] = byIndex[i]
+	}
+	return out
+}
+
+// derivedTransitionsByIndex is the same fold, keyed by POSITION in the journal
+// rather than by `seq`. The two agree on any journal VerifyLog accepts, where
+// seq equals line number; they differ only on a journal with duplicate or
+// out-of-place seqs, where a seq-keyed map lets a later entry's transition
+// overwrite an earlier one's. A reader that does not verify the journal first
+// (lineage evidence, SPEC §8.6.6) must use this form.
+func derivedTransitionsByIndex(entries []LogEntry) []string {
+	bound := map[string]string{} // name -> what it is bound to, as of entries seen
+	out := make([]string, len(entries))
 	for i := range entries {
 		e := &entries[i]
 		t := deriveTransition(e, bound[e.Name])
-		out[e.Seq] = t
+		out[i] = t
 		if t == transitionApplied {
 			bound[e.Name] = e.Hash
 		}
@@ -941,7 +966,13 @@ func (s *Store) VerifyLog() error {
 				if env.Author != e.AuthorPubkey {
 					return fmt.Errorf("journal line %d: envelope names author %s but the entry records %s", line, env.Author, e.AuthorPubkey)
 				}
-				if verr := envelopeVerify(env, e.AuthorSig); verr != nil {
+				// Over the OCTETS, not a re-encoding. The comment above already
+				// said "verify over the RECOVERED OCTETS" while the code
+				// re-encoded under the CURRENT format — so a valid `/1`
+				// publication failed here, because `/2` appends a `license`
+				// line its author never signed (§8.6.1: a historical statement
+				// is checked against the bytes its author signed).
+				if verr := envelopeVerifyOver(env, octets, e.AuthorSig); verr != nil {
 					return fmt.Errorf("journal line %d: author signature does not verify: %w", line, verr)
 				}
 				// The duplicated fields are an INTERPRETATION of the signed bytes, so any
@@ -1004,21 +1035,57 @@ func (s *Store) VerifyLog() error {
 }
 
 func (s *Store) ReadLog() []LogEntry {
+	out, _ := s.readLogWhole()
+	return out
+}
+
+// readLogWhole is ReadLog plus the one fact ReadLog discards: whether every
+// line PARSED. A dropped line is invisible in the slice, and a reader that
+// replays positions cannot tell a journal with a hole from a shorter journal —
+// so it can treat a later entry as a first transition and reach a POSITIVE
+// verdict on evidence it never saw. Any reader deriving a claim from the
+// journal's completeness must use this form and refuse when whole is false;
+// ReadLog stays lossy for the callers that only display or scan entries.
+func (s *Store) readLogWhole() (entries []LogEntry, whole bool) {
 	b, err := s.be.readJournal()
 	if err != nil {
-		return nil
+		return nil, false
 	}
-	var out []LogEntry
-	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
-		if line == "" {
+	whole = true
+	// Remove ONLY the single record terminator, not arbitrary edge whitespace.
+	// TrimSpace would delete a leading blank line and any extra trailing one —
+	// the very holes this reports — so the completeness check would pass over
+	// exactly the damage at the edges that it catches in the middle.
+	text := strings.TrimSuffix(string(b), "\n")
+	if text == "" {
+		// An empty journal is whole. Splitting "" yields one empty string, which
+		// the blank-line rule below would otherwise read as damage.
+		return nil, true
+	}
+	for _, line := range strings.Split(text, "\n") {
+		// ONE condition, derived rather than enumerated: a line belongs to a
+		// whole journal exactly when it decodes to a JSON OBJECT. Four separate
+		// repairs here each named a SHAPE of damage — truncated, blank, a blank
+		// at an edge, the literal `null` — and each was correct about the
+		// previous omission and blind to the next, which is the signature of a
+		// recogniser listing spellings instead of deciding a population. `null`
+		// is the one that shows why: it unmarshals into LogEntry perfectly well
+		// and yields a zero entry, so a check asking "did decoding fail?" calls
+		// a hole whole. Requiring an object refuses every such line, including
+		// the ones nobody has thought of.
+		var obj map[string]json.RawMessage
+		if json.Unmarshal([]byte(line), &obj) != nil || obj == nil {
+			whole = false
 			continue
 		}
 		var e LogEntry
-		if json.Unmarshal([]byte(line), &e) == nil {
-			out = append(out, e)
+		if json.Unmarshal([]byte(line), &e) != nil {
+			whole = false
+			continue
 		}
+		entries = append(entries, e)
 	}
-	return out
+	return entries, whole
 }
 
 // AllHashes lists every object in the store, sorted.

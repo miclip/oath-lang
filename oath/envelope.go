@@ -231,8 +231,15 @@ func (e pubEnvelope) validate() error {
 	if len(e.Author) != ed25519.PublicKeySize*2 {
 		return fmt.Errorf("envelope author %q is not a 32-byte hex public key", e.Author)
 	}
-	if _, err := hex.DecodeString(e.Author); err != nil {
-		return fmt.Errorf("envelope author is not valid hex: %w", err)
+	// LOWERCASE, per ENV-AUTHOR-HEX. hex.DecodeString accepts uppercase, so the
+	// previous check admitted an envelope the specification forbids while the
+	// independent kernel refused it. Reuses isHash rather than restating the
+	// rule: it is the same "64 lowercase hex" predicate, written once for the
+	// hex-case hole found in campaign identity. The spelling is COMPARED, not
+	// decoded, so one uppercase character makes a signed publication
+	// unrecognisable rather than merely unusual.
+	if ruleOn("ENV-AUTHOR-HEX") && !isHash(e.Author) {
+		return fmt.Errorf("envelope author %q is not 64 lowercase hex characters", e.Author)
 	}
 	return nil
 }
@@ -266,6 +273,22 @@ func envelopeSign(priv ed25519.PrivateKey, e pubEnvelope) (string, error) {
 // that key is authorized — verifying a signature establishes who signed, never
 // whether they were permitted to.
 func envelopeVerify(e pubEnvelope, sigHex string) error {
+	// Validate BEFORE encoding: envelopeEncode panics on an invalid envelope,
+	// and this is an error-returning path.
+	if err := e.validate(); err != nil {
+		return err
+	}
+	return envelopeVerifyOver(e, envelopeEncode(e), sigHex)
+}
+
+// envelopeVerifyOver checks the signature over the GIVEN bytes rather than a
+// re-encoding under the current format. A historical statement must be checked
+// against the octets its author actually signed (§8.6.1): a `/1` envelope
+// re-encoded as `/2` gains a license line nobody signed, and a valid signature
+// would fail. The caller is responsible for msg being the canonical encoding of
+// e under its recorded format — envelopeParse's strictness guarantees that for
+// persisted octets it has just parsed.
+func envelopeVerifyOver(e pubEnvelope, msg []byte, sigHex string) error {
 	if err := e.validate(); err != nil {
 		return err
 	}
@@ -286,7 +309,7 @@ func envelopeVerify(e pubEnvelope, sigHex string) error {
 	if err := rejectNonCanonicalR(sig); err != nil {
 		return err
 	}
-	if ruleOn("ENV-VERIFY-SIGNATURE") && !ed25519.Verify(ed25519.PublicKey(pub), envelopeEncode(e), sig) {
+	if ruleOn("ENV-VERIFY-SIGNATURE") && !ed25519.Verify(ed25519.PublicKey(pub), msg, sig) {
 		return fmt.Errorf("publication signature does not verify: the envelope was altered in transit, or it was not signed by %s", e.Author)
 	}
 	return nil
