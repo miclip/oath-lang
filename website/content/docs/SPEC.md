@@ -4654,7 +4654,21 @@ compares a file with itself and passes.
 
 ### 10.1 Signed-publication vectors
 
-`fixtures/envelope/vectors.jsonl` is the conformance surface for §8.6. It is JSONL,
+`fixtures/envelope/vectors.jsonl` is the conformance surface for §8.6, and the
+independent kernel DOES read it — through `oathrs/tests/envelope_vectors.rs`,
+which CI runs on pushes to `main` and on pull requests, and NOT through
+`oathrs/conformance.sh`. The distinction is worth stating only because that
+script is otherwise what "the conformance gate" means here, and §8.6 is not among
+the families it consumes.
+
+WHAT THAT TEST COVERS IS NOT RESTATED HERE, deliberately. Four successive
+attempts to write it down were each wrong in a new way — the CI trigger, the
+`analyses` family, whether the vectors are the whole of it — because every one
+restated a fact the test file and the workflow already determine, which is the
+duplicated-authority defect this specification warns about elsewhere. Read
+`oathrs/tests/envelope_vectors.rs` and `.github/workflows/conformance.yml`. What
+this section owns, and what follows, is the OBLIGATION and the measured gaps in
+the VECTORS — never a record of what some harness ran. It is JSONL,
 and every octet string is carried as canonical base64 (§8.6.3) — deliberately, so
 reading the fixtures requires no knowledge of any implementation's string-literal
 syntax. A fixture format that presumes the reference language is not a cross-kernel
@@ -4706,10 +4720,15 @@ NOT witnessed, and each is a real gap rather than an oversight:
   `author_pubkey` while the envelope names someone else; clause 5 needs an entry
   disagreeing with its envelope, and the file contains exactly one journal line — the
   honest one.
-- **§8.2.1's escaping, §8.2.2's entry digest, §8.4's signed content, and §8's chain.**
-  There is no journal fixture family and no expected digest or chain value anywhere in
-  the tree, so two implementations can compute different publication identities and
-  both conform.
+- **§8.4's signed content.** Still unwitnessed: no vector carries an entry whose
+  signed content is checked independently of the envelope.
+  §8.2.1's escaping, §8.2.2's entry digest and §8's chain were listed here too, on
+  the grounds that no journal fixture family existed anywhere in the tree. THAT IS
+  NO LONGER TRUE: `fixtures/journal/` exists and pins entries, their digests and a
+  chain. Whether and where those pins are exercised is the harness's to state, not
+  this section's. How the bullet went stale is the reason for the warning above —
+  a hand-maintained record of coverage drifts in BOTH directions, understating it
+  here while the paragraph above overstated it, and neither announces itself.
 - **The reachable majority of §8.6.1's value-character rule.** LF is unreachable from
   the parse side, but CR, DEL and NUL are not: `name=a\rb` is seven well-formed lines
   whose value contains a forbidden character.
