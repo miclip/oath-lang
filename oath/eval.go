@@ -37,6 +37,93 @@ type evaluator struct {
 	st    *Store
 	fuel  int64
 	depth int64
+	// branch, when non-nil, accumulates which way each `if` in the evaluated
+	// term went, keyed by the node itself. A property's body is ONE tree
+	// evaluated once per generated case, so these pointers are stable across
+	// cases and the counts compose without inventing node identities.
+	//
+	// It exists because the guarantee report cannot distinguish `200 passed`
+	// from `200 skipped`: a guarded property is vacuously true whenever its
+	// guard fails, and nothing connected "a guard was added to a body" to "a
+	// property about another path stopped testing anything". Deriving that from
+	// the EVALUATOR is the only account that does not depend on recognising a
+	// guard's spelling in source.
+	//
+	// nil in every production path, so the cost is one nil check per `if`.
+	branch map[*Term]*branchCount
+}
+
+// branchCount is how many generated cases reached something and how many
+// short-circuited to a literal `true` at one `if`.
+type branchCount struct{ Substantive, Trivial int }
+
+// note records whether this case reached a SUBSTANTIVE branch of `t` or
+// short-circuited to a constant `true`.
+//
+// That distinction is the whole signal, and "which branch was taken" is not it:
+// a guard written `(if G conclusion true)` whose G always holds takes `then`
+// every time and tests the conclusion every time, while the same shape with G
+// never holding takes `else` every time and tests nothing. One-sidedness cannot
+// tell those apart — only whether the branch the case LANDED IN is the
+// tautological one can.
+func (e *evaluator) note(t *Term, took bool) {
+	if e.branch == nil {
+		return
+	}
+	b := e.branch[t]
+	if b == nil {
+		b = &branchCount{}
+		e.branch[t] = b
+	}
+	landed, other := t.C, t.B
+	if took {
+		landed, other = t.B, t.C
+	}
+	// A case is SKIPPED when it lands on a literal `true` whose sibling carries
+	// the real content. Both halves are needed:
+	//
+	//   (if G X true)  landing on `true`  -> G is a PRECONDITION, X untested
+	//   (if P true false) landing on `true` -> P IS the assertion, and a case
+	//                                          where it holds is a PASS
+	//
+	// Classifying by the landed arm alone calls the second vacuous, which would
+	// reject a perfectly good predicate. When BOTH arms are literals the `if`
+	// encodes a boolean, not an implication, so there is no conclusion to skip.
+	// SKIPPED iff the case landed on a literal `true` that stands where an
+	// IMPLICATION puts it — the ELSE arm — or where neither arm can be refuted.
+	//
+	// The literal's POSITION is what separates the two readings, and nothing
+	// else does. `G -> X` is written `(if G X true)`, so a case landing on the
+	// else arm failed the guard and left X untested. A disjunction `P or Q` is
+	// written `(if P true Q)`, so a case landing on the THEN arm satisfied P,
+	// which is the property doing its job. The two are indistinguishable by
+	// asking only whether the sibling is a literal:
+	//
+	//   (if G X true)     else -> guard failed, X untested            SKIPPED
+	//   (if P true Q)     then -> P held; that IS the property        tested
+	//   (if P true false) then -> P held, sibling refutes             tested
+	//   (if G true X)     then -> G held; a disjunction again         tested
+	//   (if G true true)  ---- -> neither arm can refute anything     SKIPPED
+	boolLit := func(x *Term) bool { return x != nil && x.K == "bool" }
+	trueLit := func(x *Term) bool { return boolLit(x) && x.Bool }
+	switch {
+	case !trueLit(landed):
+		// Landed somewhere that can be refuted. Tested.
+	case trueLit(other):
+		// BOTH arms are `true`: nothing either way can refute. Tautological.
+		b.Trivial++
+		return
+	case boolLit(other):
+		// Both arms literal, not both true — `(if P true false)` or its
+		// negation `(if P false true)`. The CONDITION is the assertion, so a
+		// case that evaluated it is a pass, whichever arm it landed on.
+	case !took:
+		// A literal `true` in the ELSE arm with real content opposite: the
+		// shape of `G -> X`. The guard failed and X went untested.
+		b.Trivial++
+		return
+	}
+	b.Substantive++
 }
 
 // maxEvalDepth bounds recursion depth separately from fuel: fuel limits total
@@ -144,6 +231,7 @@ func (e *evaluator) evalInner(env []Value, slf string, t *Term) (Value, error) {
 		if err != nil {
 			return Value{}, err
 		}
+		e.note(t, c.Bool)
 		if c.Bool {
 			return e.eval(env, slf, t.B)
 		}
