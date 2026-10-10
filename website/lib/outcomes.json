@@ -1111,21 +1111,17 @@
     },
     {
       "name": "gh-line-ok",
-      "hash": "13f43ab3b71aa45fdd98e7f4ea1711572d7c7da869802f0800c372856fbf978a",
+      "hash": "3a8dba7ca427aa597ec4133bf4f68888377f9452990efa596e23ca064ef2743d",
       "level": "tested",
       "proven_count": 0,
-      "prop_count": 7,
+      "prop_count": 6,
       "props": [
         {
           "name": "a-receiver-record-is-accepted",
           "proven": false
         },
         {
-          "name": "an-accepted-line-carries-the-tag",
-          "proven": false
-        },
-        {
-          "name": "an-accepted-line-has-five-fields",
+          "name": "a-tagged-line-with-extra-fields-is-refused",
           "proven": false
         },
         {
@@ -1194,7 +1190,7 @@
     },
     {
       "name": "gh-refusal",
-      "hash": "e0c211d67d41798e4de71e676530a7701ab66724d898eac601d347ebf241818b",
+      "hash": "7bf00db3bddb77e4678e06fd8fb140d8104d6220738c45dd76556e989d2c1748",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 2,
@@ -1211,7 +1207,7 @@
     },
     {
       "name": "gh-refused-lines",
-      "hash": "47c01c9846abf6be5508160963820ea6796dacfc58538bed28f97abcf23fe93c",
+      "hash": "eddf3a14cdda737035afad855ba526b02972eede45223d63cfe0bf4eff28d0a0",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 2,
@@ -1228,7 +1224,7 @@
     },
     {
       "name": "gh-rejected",
-      "hash": "4b026402ebd3aa6b6614a893da726ed67061d81f8021b0957d6ccd3629ed0e93",
+      "hash": "c4b7c07fb87e4e8a25a9c6bc7fca61a216abccfebd16d11269966d54732cf164",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 7,
@@ -1299,7 +1295,7 @@
     },
     {
       "name": "gh-report",
-      "hash": "251a046ef5382637f8e733c505f6bb39c52601e51efc5be41ceb8041c5b21ecd",
+      "hash": "dfcd73999f576f6f41ad0b03886d9add772d17343cd88422121b88d308d052c5",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 6,
@@ -1332,7 +1328,7 @@
     },
     {
       "name": "gh-report-main",
-      "hash": "2292207abfde025e576e2639a1fc3969aa6f384ac1fadfc81173300b074e5474",
+      "hash": "e102d9df757d081729c1b478d178ffb8b95d485fefae4fb73fc742e410b89291",
       "level": "tested",
       "proven_count": 0,
       "prop_count": 2,
@@ -1484,10 +1480,10 @@
     },
     {
       "name": "gh-webhook",
-      "hash": "cad4458a77fb9d238b274640863e015e9d282822be2f9b7b37162f5580a9a3ad",
+      "hash": "99ae46cb08692e24a67b3fc2b38871a9c9a844d6bc603cd7c145bfb3eced463d",
       "level": "tested",
       "proven_count": 0,
-      "prop_count": 14,
+      "prop_count": 17,
       "props": [
         {
           "name": "status-is-one-of-seven",
@@ -1506,11 +1502,23 @@
           "proven": false
         },
         {
+          "name": "a-short-printable-secret-refuses-everything",
+          "proven": false
+        },
+        {
           "name": "unusable-secret-refuses-a-valid-signature",
           "proven": false
         },
         {
           "name": "unsigned-is-401",
+          "proven": false
+        },
+        {
+          "name": "unsigned-is-401-under-a-cyrillic-secret",
+          "proven": false
+        },
+        {
+          "name": "unsigned-is-401-under-a-latin1-secret",
           "proven": false
         },
         {
@@ -3748,6 +3756,27 @@
         {
           "name": "usable-encodes",
           "proven": true
+        }
+      ]
+    },
+    {
+      "name": "secret-tail",
+      "hash": "ef4ac723d36cb61a03c580d7a1fcaee0321abd6acea6b7946da9181b6128c8e5",
+      "level": "tested",
+      "proven_count": 0,
+      "prop_count": 3,
+      "props": [
+        {
+          "name": "lands-in-the-allowed-alphabet",
+          "proven": false
+        },
+        {
+          "name": "preserves-length",
+          "proven": false
+        },
+        {
+          "name": "empty-maps-to-empty",
+          "proven": false
         }
       ]
     },

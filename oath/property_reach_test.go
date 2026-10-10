@@ -51,17 +51,16 @@ func ownIfPaths(t *Term, path string, out map[*Term]string) {
 // defect would repeat the mutation-score error of reporting the GENERATOR'S
 // REACH as the specification's strength.
 var vacuousTestedOnly = map[string]bool{
-	// The four the corpus carried when this ratchet was written. Listed rather
-	// than repaired because each needs its generator to reach the guard or the
-	// input constructed in the property, which is per-property work and a
-	// separate decision — but none of them may multiply quietly meanwhile.
+	// EMPTY, and that is the state to defend. Four entries sat here when this
+	// ratchet was written; all four were repaired rather than inherited. Two
+	// (gh-line-ok's) were tautologies restating their own subject and were
+	// replaced by a quantified witness; two (gh-webhook's) were real claims
+	// whose guards could not hold under generation, and now pin the method and
+	// the secret while leaving path, headers, body and time quantified.
 	//
-	// `gh-webhook/unsigned-is-401` is the one worth reading twice: it claims the
-	// receiver answers 401 to an unsigned delivery, and it tests nothing.
-	"gh-line-ok/an-accepted-line-carries-the-tag":   true,
-	"gh-line-ok/an-accepted-line-has-five-fields":   true,
-	"gh-webhook/unsigned-is-401":                    true,
-	"gh-webhook/unusable-secret-refuses-everything": true,
+	// Six vacuous guards remain in the corpus and none is listed, because every
+	// one is PROVEN: a proof covers every input, so a guard the generator never
+	// reaches costs nothing there.
 }
 
 func TestPropertyVacuityRatchet(t *testing.T) {

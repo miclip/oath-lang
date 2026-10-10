@@ -2,8 +2,11 @@
 ✓ prop never-leaks-a-body       passed 200 cases
 ✓ prop non-post-is-405          passed 200 cases
 ✓ prop unusable-secret-refuses-everything passed 200 cases
+✓ prop a-short-printable-secret-refuses-everything passed 200 cases
 ✓ prop unusable-secret-refuses-a-valid-signature passed 200 cases
 ✓ prop unsigned-is-401          passed 200 cases
+✓ prop unsigned-is-401-under-a-cyrillic-secret passed 200 cases
+✓ prop unsigned-is-401-under-a-latin1-secret passed 200 cases
 ✓ prop tampering-is-rejected    passed 200 cases
 ✓ prop unprefixed-signature-is-rejected passed 200 cases
 ✓ prop trailing-junk-after-a-valid-digest-is-rejected passed 200 cases

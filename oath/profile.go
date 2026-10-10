@@ -18,7 +18,7 @@ import "fmt"
 //
 //	                     corpus max   profile   headroom
 //	syntax nesting               24       512        21x
-//	canonical nodes/def       1,406    65,536        46x
+//	canonical nodes/def       1,571    65,536        41x
 //
 // The nesting maximum is `examples/bytes.oath` — the UTF-8 decoder, whose
 // four-byte branch is nested `if`/`match` all the way down because each width
@@ -26,6 +26,10 @@ import "fmt"
 // out-of-range scalar before it accepts. It is the deepest SOURCE form the
 // corpus has, and it moved the measured max from 20; the POLICY did not move,
 // which is the point of recording the two separately.
+//
+// The node maximum is `gh-webhook`, the webhook handler: a definition's
+// PROPERTIES are part of it, so adding one grows the object, and this figure
+// tracks specification work rather than body size.
 //
 // The deepest real canonical structure is 68 (`hmac-kat-rfc4231-2`, whose depth
 // is the SCons spine of a hex literal) against a syntax nesting of far less —

@@ -1,6 +1,6 @@
 {
   "name": "gh-refusal",
-  "hash": "e0c211d67d41798e4de71e676530a7701ab66724d898eac601d347ebf241818b",
+  "hash": "7bf00db3bddb77e4678e06fd8fb140d8104d6220738c45dd76556e989d2c1748",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

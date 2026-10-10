@@ -161,9 +161,34 @@ class Rule(unittest.TestCase):
         shards, _ = cs.resolve(n, ex, rows)
         self.assertEqual(shards, set(), "no exclusions, so no shard may be declined")
         self.assertEqual(len(ex), 0, "the live artefact is expected to be empty")
-        shards2, members2 = cs.resolve(n, [copy.deepcopy(SYNTHETIC)], rows)
-        self.assertEqual(shards2, {79})
-        self.assertEqual([(m[0], m[2]) for m in members2[79]], [("foldr", 0)])
+
+        # THE ISOLATING n IS DERIVED, NOT PINNED. Pinning it made this test a
+        # standing tax on corpus work: the synthetic entry stops being alone
+        # whenever ANY definition's hash lands in its shard, which happened twice
+        # in one sitting from edits to the webhook app — `foldr` never moved. The
+        # entry's subject cannot be chosen to avoid that, and neither can a fixed
+        # n, so the only stable choice is to ask for one.
+        #
+        # The live n stays whatever the campaign wants; what the RULE needs is an
+        # n where the entry is alone, which is a fact about the current corpus.
+        entry = copy.deepcopy(SYNTHETIC)
+        iso = None
+        for cand in range(128, 512):
+            # Membership computed directly, NOT through resolve: resolve RAISES
+            # on a non-isolating n, so probing with it would throw on the first
+            # candidate instead of moving to the next.
+            want = cs.shard_of(entry["hash"], entry["prop"], cand)
+            held = [(r[0], r[2]) for r in rows
+                    if cs.shard_of(r[1], r[2], cand) == want]
+            if held == [("foldr", 0)]:
+                iso = (cand, want)
+                break
+        self.assertIsNotNone(iso, "no n in 128..511 isolates the synthetic entry")
+        cand, shard = iso
+        entry["shard"] = shard
+        shards2, members2 = cs.resolve(cand, [entry], rows)
+        self.assertEqual(shards2, {shard})
+        self.assertEqual([(m[0], m[2]) for m in members2[shard]], [("foldr", 0)])
 
 
 # ------------------------------------------------------ artefact validation ---
@@ -178,6 +203,14 @@ class Rule(unittest.TestCase):
 # something true. It must be ALONE in its shard at the live n and SHARE one at
 # n=128, and it should live where the corpus rarely moves: `foldr` (list.oath)
 # replaced `gh-counts`, whose hash moves with every change to the webhook app.
+#
+# CHOOSING A STABLE SUBJECT IS NOT ENOUGH, AND NEITHER IS A PINNED n. `foldr`
+# never moved; other definitions did, and their new hashes landed in its shard
+# twice in one sitting, each time from edits to the webhook app. The colliding
+# member can be ANY property in the corpus, so no subject avoids it — and no
+# fixed n does either, which is why the isolation test DERIVES one from the
+# current corpus instead. `shard` below is the value at the live n and is not
+# relied on by that test; it documents where the entry sits today.
 SYNTHETIC = {
     "name": "foldr",
     "hash": "5b345e9d645f4488680668303ad5dfb0b938e9699473825767b4ba12fd5f032d",

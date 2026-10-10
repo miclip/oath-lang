@@ -1,6 +1,6 @@
 {
   "name": "gh-rejected",
-  "hash": "4b026402ebd3aa6b6614a893da726ed67061d81f8021b0957d6ccd3629ed0e93",
+  "hash": "c4b7c07fb87e4e8a25a9c6bc7fca61a216abccfebd16d11269966d54732cf164",
   "kind": "func",
   "termination": "structural",
   "confinement": [

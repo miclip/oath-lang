@@ -700,57 +700,58 @@ gh-label-of	0	lemma-free		fe6550c4266269380477a8ecfcd32d498d4b3d85741a1182dee8d2
 gh-label-of	0	induction	binder 0 ctor 0	02628253a60fe8d79747ea4dc789caff07a62e20710da09bdf55786649cd1672
 gh-label-of	0	induction	binder 0 ctor 1	f2a65787404427bce1fa0e8462281cb580c232c412e785d71b192c8db046bd2c
 gh-label-of	0	direct-fallback		fe6550c4266269380477a8ecfcd32d498d4b3d85741a1182dee8d2959ebcb4b1
-gh-line-ok	1	lemma-free		22a161184ba14faeccca2da691c4a40e8729404bf5efb875db83824db1eeff1c
-gh-line-ok	1	direct		d6881f3a112a1a391ef55416307d7a500c2e4e1e29363b1fcd4079121fea5b83
-gh-line-ok	1	induction	binder 0 ctor 0	f74570f6cfce40dfc5d0bbab157526e954aff28018ec82b897c4f6b61c4b2940
-gh-line-ok	1	induction	binder 0 ctor 1	a7b297213f7cb2c343eea139026ccd42f55ce21de482458297fc62d3ebf3593d
-gh-line-ok	1	direct-fallback		d6881f3a112a1a391ef55416307d7a500c2e4e1e29363b1fcd4079121fea5b83
-gh-line-ok	2	lemma-free		a043dbc9f7104b0545f89af8b96371b65a92b801084ba78bfc6f3f748a93421f
-gh-line-ok	2	direct		d0d9f4b7165e4f40d278d86cca497ff6f923236968c123eb579f49539bc9b343
-gh-line-ok	2	induction	binder 0 ctor 0	551931c101211d35865526578c4ca41838aa662e2ff635f89a5012fd57db23d6
-gh-line-ok	2	induction	binder 0 ctor 1	12b4b5e5bff90f34196b98c468513cc64e3504f94327513e499c1697efb93ce8
-gh-line-ok	2	direct-fallback		d0d9f4b7165e4f40d278d86cca497ff6f923236968c123eb579f49539bc9b343
-gh-line-ok	3	lemma-free		2144dbc9a78eb6d2a5b1804c83aa76fed53353d8b78649e52f64212e96277c3a
-gh-line-ok	3	direct		78a5fe43da5f76ad90c8db85ab656d74b71bb65f973e861271eb060d980986b9
-gh-line-ok	4	lemma-free		dca9c494d93e9fd31552c36b0a3e6c390d631480520161a0ecfc91b86abf0e2d
-gh-line-ok	4	direct		adc78ccf51e5c706dce9a56738976d1735b63eff42ef359be7d702b8f0005d9d
-gh-line-ok	5	lemma-free		7fb26e15603f29b4c26b8195a07a7504cdd0e846adaae79dc9ce6e2cf2a3c8df
-gh-line-ok	5	direct		95567381f7f15b3c5b386d6e92dc0c09e7cc0db2e91e338b2f99542353537321
-gh-line-ok	6	lemma-free		63611098d34a91fde08ed239a37756dbc046a6a50923079688cbb224dacc86c8
-gh-line-ok	6	direct		e2d7621330c3dcc9c0facfd0a7c60fde4bdb03392e71bb6b2426cd1cac422171
-gh-line-ok	6	induction	binder 0 ctor 0	2d727cce551e574cfc9eaef88bf4427112dc79ce915f5915debe41ae680b3652
-gh-line-ok	6	induction	binder 0 ctor 1	3d20ea517b15ea9e3495dfc5103e9cc7890cfb215390ed05e7362048bcc03e22
-gh-line-ok	6	induction	binder 1 ctor 0	b7b680dfa7cc4b05a2de87c13e1560da8a84cc7d1209cde16cd76ffc61ca92a1
-gh-line-ok	6	induction	binder 1 ctor 1	8987f31616732702c8cc9837e6c1d16aa4ea64c5f2d448687fc834ab89bc05ad
-gh-line-ok	6	induction	binder 2 ctor 0	651be2b5508b57fea62fd93708ef959634ddaaa9b7bd2d0caa873f751d5ee6a2
-gh-line-ok	6	induction	binder 2 ctor 1	7e69c839fc08fa6a6d3e6f0093d31457e2550fa525e7f448fa95d11fc71304b7
-gh-line-ok	6	induction	binder 3 ctor 0	53e2700ac55741b83a7a04732b7dcb374dadc6cac295d92e27f40d225bf6482e
-gh-line-ok	6	induction	binder 3 ctor 1	efc9657b974c62e87a709469c5f7e7f71e7e542e278dab76260da32a514f1ffc
-gh-line-ok	6	lexicographic	binders 0,1 ctor 1,0	3665862391a9b42874157bd39e1995a5ee5cd6d6d637c75cc7562aeb2d4da506
-gh-line-ok	6	lexicographic	binders 0,1 ctor 1,1	829b9c92dc1e5fad1b971c802dcf3ab36ce547a7d671332a9b1b338a72349527
-gh-line-ok	6	lexicographic	binders 0,2 ctor 1,0	4c23a0afe7faef48a169a9bc6882a5c2801d23942f10362427f4aa4827627bef
-gh-line-ok	6	lexicographic	binders 0,2 ctor 1,1	a41f9ca4a864af660b7b1218875d0f9f40a96b16109da0bab31c9f1e6df23116
-gh-line-ok	6	lexicographic	binders 0,3 ctor 1,0	321b5e2e841fbbcb56d9349367c00fcb5e4fc921dd607ea5962f88f40adcfe71
-gh-line-ok	6	lexicographic	binders 0,3 ctor 1,1	e5c867abd40015c2a20a4dce20365d90f42b895931878ac800535303edf36a5b
-gh-line-ok	6	lexicographic	binders 1,0 ctor 1,0	7c5b5e7c9c2441dec696e4d4da7a7b7e9d5572e2b68d73d4b8b55b2c707a614a
-gh-line-ok	6	lexicographic	binders 1,0 ctor 1,1	95abcea2ef16e38f9f537ea2a8bbe2a1f575a65264e328212c00ba5ad999b3ff
-gh-line-ok	6	lexicographic	binders 1,2 ctor 1,0	aec3382b95befeccc0bf6590211bb352abaaf3caa991502c5bff4aad926e62f6
-gh-line-ok	6	lexicographic	binders 1,2 ctor 1,1	1085ff81f8706a2740cd789e1ff63b36c395f9887621c79640c6f6735e06d0ee
-gh-line-ok	6	lexicographic	binders 1,3 ctor 1,0	816e624e8055b120852dcc8fd72b356325bd8a95a1d5d083ac59b7c9e147d6d7
-gh-line-ok	6	lexicographic	binders 1,3 ctor 1,1	d8648617c51dd6db689ce2d7b349da708a567c373d805050956b5a1970463e39
-gh-line-ok	6	lexicographic	binders 2,0 ctor 1,0	f6ec30f30518b208e62ace67af6b08eb6162662cf64bd7c32b3171aefcce9573
-gh-line-ok	6	lexicographic	binders 2,0 ctor 1,1	6f45ca218edf8fee583e048a025a74b11df19149624043a2c5941c4ecb2531ed
-gh-line-ok	6	lexicographic	binders 2,1 ctor 1,0	42a59ab44725065feaed218ec5db3e59c0dcac92fe8979a5c5b1e34d3191cb04
-gh-line-ok	6	lexicographic	binders 2,1 ctor 1,1	fbe0804a46387301b654ed8fc78cd98b5995219313e11ae9b2b67199fe525047
-gh-line-ok	6	lexicographic	binders 2,3 ctor 1,0	aa6d7f30e632052406671aa36a0e00fab7b05c79312f3d25d0ccb952c1134c50
-gh-line-ok	6	lexicographic	binders 2,3 ctor 1,1	cf7c95562f3e066104fc6197825bdafadc8adfd8ffed21be530106acc7a7108d
-gh-line-ok	6	lexicographic	binders 3,0 ctor 1,0	c702be761e6065e4afba3b6dcde6d0feec87c26ee1e4aadfb14e0545a6b4b3c8
-gh-line-ok	6	lexicographic	binders 3,0 ctor 1,1	819e501156f9c20dfb08e7253f8b419b4b2e4b3fa491a8ead449fc9aa2cb4eb0
-gh-line-ok	6	lexicographic	binders 3,1 ctor 1,0	3e05f689f6a8cd12075dfc40d589a9a39e86cce57a0643857b6c5b4deaaf1a41
-gh-line-ok	6	lexicographic	binders 3,1 ctor 1,1	c36e8e2c3c81eb5a481251c9522c7d8d2ec0c2e12f7a02e745bd345927418b8b
-gh-line-ok	6	lexicographic	binders 3,2 ctor 1,0	31600c86dc8da2c47ae32d169e8c988151b402d925f774f0128950d1583686b1
-gh-line-ok	6	lexicographic	binders 3,2 ctor 1,1	35089b2794739a135780bdb0c7ec6be8f10cce094171719acd15beaa54fe1148
-gh-line-ok	6	direct-fallback		e2d7621330c3dcc9c0facfd0a7c60fde4bdb03392e71bb6b2426cd1cac422171
+gh-line-ok	1	lemma-free		0a73b19b1ba383e05ce2f362eefa0f4568ce4405e87cbaf6d17c431695bd17c0
+gh-line-ok	1	direct		daf1e2c74074b3dfda110e624cca8291c33428caac690ada264d0d69bc95a4ac
+gh-line-ok	1	induction	binder 0 ctor 0	f45f82ee57e2c52533e90ff0782f049244ab734e510a55080389b56b020a3854
+gh-line-ok	1	induction	binder 0 ctor 1	f8b9535c5ab60347081a730bed4db2e28c7b81e188bd5fcc4208930c4f643d3a
+gh-line-ok	1	induction	binder 1 ctor 0	4f0173f12334735414cfecbff86337eb89ea4e6ac05f7cc6c5dbd2db848b60c6
+gh-line-ok	1	induction	binder 1 ctor 1	864d6249cfeb312e55969a407ea90bb190fc37fc946d3afe14a4c38e6688c40f
+gh-line-ok	1	lexicographic	binders 0,1 ctor 1,0	6ce641ae92676d69f436e07cf15f93d21a60060a3b8a5ea0833968f6fff9008e
+gh-line-ok	1	lexicographic	binders 0,1 ctor 1,1	24e278f6cb5617009361be8b5ed05fe861c360db402228271570828e5817ea2b
+gh-line-ok	1	lexicographic	binders 1,0 ctor 1,0	a24841ada86e9818f51871a604f0b85283e97e1568578cdd315c5a6001ed5d81
+gh-line-ok	1	lexicographic	binders 1,0 ctor 1,1	c8c79aa0cb9729af909c3f00385d1f11d1fbe82a36700369a0e9cf7a85d5fbaf
+gh-line-ok	1	direct-fallback		daf1e2c74074b3dfda110e624cca8291c33428caac690ada264d0d69bc95a4ac
+gh-line-ok	2	lemma-free		2144dbc9a78eb6d2a5b1804c83aa76fed53353d8b78649e52f64212e96277c3a
+gh-line-ok	2	direct		78a5fe43da5f76ad90c8db85ab656d74b71bb65f973e861271eb060d980986b9
+gh-line-ok	3	lemma-free		dca9c494d93e9fd31552c36b0a3e6c390d631480520161a0ecfc91b86abf0e2d
+gh-line-ok	3	direct		adc78ccf51e5c706dce9a56738976d1735b63eff42ef359be7d702b8f0005d9d
+gh-line-ok	4	lemma-free		7fb26e15603f29b4c26b8195a07a7504cdd0e846adaae79dc9ce6e2cf2a3c8df
+gh-line-ok	4	direct		95567381f7f15b3c5b386d6e92dc0c09e7cc0db2e91e338b2f99542353537321
+gh-line-ok	5	lemma-free		63611098d34a91fde08ed239a37756dbc046a6a50923079688cbb224dacc86c8
+gh-line-ok	5	direct		e2d7621330c3dcc9c0facfd0a7c60fde4bdb03392e71bb6b2426cd1cac422171
+gh-line-ok	5	induction	binder 0 ctor 0	2d727cce551e574cfc9eaef88bf4427112dc79ce915f5915debe41ae680b3652
+gh-line-ok	5	induction	binder 0 ctor 1	3d20ea517b15ea9e3495dfc5103e9cc7890cfb215390ed05e7362048bcc03e22
+gh-line-ok	5	induction	binder 1 ctor 0	b7b680dfa7cc4b05a2de87c13e1560da8a84cc7d1209cde16cd76ffc61ca92a1
+gh-line-ok	5	induction	binder 1 ctor 1	8987f31616732702c8cc9837e6c1d16aa4ea64c5f2d448687fc834ab89bc05ad
+gh-line-ok	5	induction	binder 2 ctor 0	651be2b5508b57fea62fd93708ef959634ddaaa9b7bd2d0caa873f751d5ee6a2
+gh-line-ok	5	induction	binder 2 ctor 1	7e69c839fc08fa6a6d3e6f0093d31457e2550fa525e7f448fa95d11fc71304b7
+gh-line-ok	5	induction	binder 3 ctor 0	53e2700ac55741b83a7a04732b7dcb374dadc6cac295d92e27f40d225bf6482e
+gh-line-ok	5	induction	binder 3 ctor 1	efc9657b974c62e87a709469c5f7e7f71e7e542e278dab76260da32a514f1ffc
+gh-line-ok	5	lexicographic	binders 0,1 ctor 1,0	3665862391a9b42874157bd39e1995a5ee5cd6d6d637c75cc7562aeb2d4da506
+gh-line-ok	5	lexicographic	binders 0,1 ctor 1,1	829b9c92dc1e5fad1b971c802dcf3ab36ce547a7d671332a9b1b338a72349527
+gh-line-ok	5	lexicographic	binders 0,2 ctor 1,0	4c23a0afe7faef48a169a9bc6882a5c2801d23942f10362427f4aa4827627bef
+gh-line-ok	5	lexicographic	binders 0,2 ctor 1,1	a41f9ca4a864af660b7b1218875d0f9f40a96b16109da0bab31c9f1e6df23116
+gh-line-ok	5	lexicographic	binders 0,3 ctor 1,0	321b5e2e841fbbcb56d9349367c00fcb5e4fc921dd607ea5962f88f40adcfe71
+gh-line-ok	5	lexicographic	binders 0,3 ctor 1,1	e5c867abd40015c2a20a4dce20365d90f42b895931878ac800535303edf36a5b
+gh-line-ok	5	lexicographic	binders 1,0 ctor 1,0	7c5b5e7c9c2441dec696e4d4da7a7b7e9d5572e2b68d73d4b8b55b2c707a614a
+gh-line-ok	5	lexicographic	binders 1,0 ctor 1,1	95abcea2ef16e38f9f537ea2a8bbe2a1f575a65264e328212c00ba5ad999b3ff
+gh-line-ok	5	lexicographic	binders 1,2 ctor 1,0	aec3382b95befeccc0bf6590211bb352abaaf3caa991502c5bff4aad926e62f6
+gh-line-ok	5	lexicographic	binders 1,2 ctor 1,1	1085ff81f8706a2740cd789e1ff63b36c395f9887621c79640c6f6735e06d0ee
+gh-line-ok	5	lexicographic	binders 1,3 ctor 1,0	816e624e8055b120852dcc8fd72b356325bd8a95a1d5d083ac59b7c9e147d6d7
+gh-line-ok	5	lexicographic	binders 1,3 ctor 1,1	d8648617c51dd6db689ce2d7b349da708a567c373d805050956b5a1970463e39
+gh-line-ok	5	lexicographic	binders 2,0 ctor 1,0	f6ec30f30518b208e62ace67af6b08eb6162662cf64bd7c32b3171aefcce9573
+gh-line-ok	5	lexicographic	binders 2,0 ctor 1,1	6f45ca218edf8fee583e048a025a74b11df19149624043a2c5941c4ecb2531ed
+gh-line-ok	5	lexicographic	binders 2,1 ctor 1,0	42a59ab44725065feaed218ec5db3e59c0dcac92fe8979a5c5b1e34d3191cb04
+gh-line-ok	5	lexicographic	binders 2,1 ctor 1,1	fbe0804a46387301b654ed8fc78cd98b5995219313e11ae9b2b67199fe525047
+gh-line-ok	5	lexicographic	binders 2,3 ctor 1,0	aa6d7f30e632052406671aa36a0e00fab7b05c79312f3d25d0ccb952c1134c50
+gh-line-ok	5	lexicographic	binders 2,3 ctor 1,1	cf7c95562f3e066104fc6197825bdafadc8adfd8ffed21be530106acc7a7108d
+gh-line-ok	5	lexicographic	binders 3,0 ctor 1,0	c702be761e6065e4afba3b6dcde6d0feec87c26ee1e4aadfb14e0545a6b4b3c8
+gh-line-ok	5	lexicographic	binders 3,0 ctor 1,1	819e501156f9c20dfb08e7253f8b419b4b2e4b3fa491a8ead449fc9aa2cb4eb0
+gh-line-ok	5	lexicographic	binders 3,1 ctor 1,0	3e05f689f6a8cd12075dfc40d589a9a39e86cce57a0643857b6c5b4deaaf1a41
+gh-line-ok	5	lexicographic	binders 3,1 ctor 1,1	c36e8e2c3c81eb5a481251c9522c7d8d2ec0c2e12f7a02e745bd345927418b8b
+gh-line-ok	5	lexicographic	binders 3,2 ctor 1,0	31600c86dc8da2c47ae32d169e8c988151b402d925f774f0128950d1583686b1
+gh-line-ok	5	lexicographic	binders 3,2 ctor 1,1	35089b2794739a135780bdb0c7ec6be8f10cce094171719acd15beaa54fe1148
+gh-line-ok	5	direct-fallback		e2d7621330c3dcc9c0facfd0a7c60fde4bdb03392e71bb6b2426cd1cac422171
 gh-log-lines	0	lemma-free		880c86b52bd9ec8b42eeb7fc122ec0bd7bce059e21c44473d8eb53ab27643141
 gh-log-lines	0	direct		5cb527d5ad46496a1fecf9f5f9438cff6fd6ba8a1b5a1bf2bc4522c4f7efb1bf
 gh-log-lines	1	lemma-free		9e166ab94b0f93fa66f906ced0d31d891866cab3b3299cef52dff8441c1957b1
@@ -2697,6 +2698,18 @@ secret-is-usable	6	direct		9f12b4ae03c005a51842ef188ee20c4f19bac7322d791f529ae59
 secret-is-usable	6	induction	binder 0 ctor 0	d5e9ad59b3e03bc0320854ae6c471164b4b09841900d5702f26ecfbbc46ad964
 secret-is-usable	6	induction	binder 0 ctor 1	1b2a9afbadbb1bc5b3ee811ab9c69b878f4e753b6cceeed1d5a49bb3df7090ad
 secret-is-usable	6	direct-fallback		9f12b4ae03c005a51842ef188ee20c4f19bac7322d791f529ae591ada28043a1
+secret-tail	0	lemma-free		2648749680ce74a895b932611bb59fd2490ac9dec03279d2858517a1922b732d
+secret-tail	0	direct		78ca6768393089580ee9b81f3d679a2fb86ac3c9bf00dce402ab775be49f7c68
+secret-tail	0	induction	binder 0 ctor 0	bca805fc7fa4b93db28535759a2d30c2aa0a6fe8d425214a88deedc3d274e001
+secret-tail	0	induction	binder 0 ctor 1	7a3e411ea4fc7e00e43d422189164d47bba6668c0a91bb9b9656b29f838e7332
+secret-tail	0	direct-fallback		78ca6768393089580ee9b81f3d679a2fb86ac3c9bf00dce402ab775be49f7c68
+secret-tail	1	lemma-free		ef7de44e5355fd06e6c43357b17a932f9a7352d9701d2a77e1cac4da188fc597
+secret-tail	1	direct		dfae0c2453a4dc753d624d6fe7607901e089da9fad9cb308323a6d4ba353468d
+secret-tail	1	induction	binder 0 ctor 0	b5d046c2a8a681361bfa8558182e6e0a3cae3ab4c41f418d2b91b933530d9c59
+secret-tail	1	induction	binder 0 ctor 1	c9129dfceb9e4fbfac0763730ad3b720739c9bb1a53397bf5672eec3e736b89b
+secret-tail	1	direct-fallback		dfae0c2453a4dc753d624d6fe7607901e089da9fad9cb308323a6d4ba353468d
+secret-tail	2	lemma-free		982c4c1cbc82db1250e0d0a238658a4142ac63e007e106fec8258f6518a974bc
+secret-tail	2	direct		55fa184547f907893711ed4bc2efe243e42e10ea80597c5bf27144f9ed11076a
 set-add	0	lemma-free		b716f122f6e657b741b4053e5e4ef0b33d709e1ebacd6fd56994758dde40e220
 set-add	0	direct		1a2b2c06048a7f83448de070ae641ce460dd30d0aa9820f0c53e079ec47b6bda
 set-add	0	induction	binder 1 ctor 0	e94bc8d9fd7a6f3bc30420ba036618c098b6d087aadbb5e01fc0bc4c7425c3ec

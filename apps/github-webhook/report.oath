@@ -217,11 +217,31 @@
 
   (prop a-receiver-record-is-accepted []
     (gh-line-ok (record-under "d-1" "push" "miclip/oath-lang")))
-  ; The two halves, separately, so deleting either conjunct falsifies something.
-  (prop an-accepted-line-carries-the-tag [(line Str)]
-    (if (gh-line-ok line) (== (gh-field 0 line) (gh-schema)) true))
-  (prop an-accepted-line-has-five-fields [(line Str)]
-    (if (gh-line-ok line) (== (length [Str] (str-split 9 line)) 5) true))
+  ; THE FIELD-COUNT CONJUNCT, QUANTIFIED. A line carrying OUR tag and more than
+  ; five fields must be refused, whatever the middle fields hold.
+  ;
+  ; This replaces two properties that claimed to pin the two conjuncts
+  ; separately and pinned neither. They were written
+  ;   (if (gh-line-ok line) (== (gh-field 0 line) (gh-schema)) true)
+  ; whose guard IS this function, so each said `(A and B) -> A` — true by logic,
+  ; independent of any implementation. Measured, not argued: deleting either
+  ; conjunct from the body above left both of them reporting `passed 200 cases`,
+  ; while the concrete records below falsified. A property whose guard restates
+  ; its subject cannot witness its subject.
+  ;
+  ; Extra fields rather than too few, deliberately: a tab inside `a` or `b` can
+  ; only ADD fields, so the count stays away from five however the generator
+  ; fills them. Guarding on tab-free inputs instead would reintroduce a
+  ; precondition for no gain.
+  (prop a-tagged-line-with-extra-fields-is-refused [(a Str) (b Str)]
+    (not (gh-line-ok
+           (str-join 9 (Cons [Str] (gh-schema)
+                        (Cons [Str] a (Cons [Str] b
+                         (Cons [Str] "x" (Cons [Str] "y"
+                          (Cons [Str] "z" (Nil [Str])))))))))))
+  ; The TAG conjunct needs no companion here: `a-foreign-tag-is-refused` below
+  ; is already quantified and already the only property that notices when it is
+  ; deleted.
   ; The three shapes the shell script names, concretely.
   (prop the-old-four-field-record-is-refused []
     (not (gh-line-ok "oath-gh/1\td-1\tpush\t0")))

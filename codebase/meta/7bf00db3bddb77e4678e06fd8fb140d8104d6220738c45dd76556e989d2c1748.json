@@ -1,0 +1,23 @@
+{
+  "name": "gh-refusal",
+  "prop_names": [
+    "the-headline-count-matches-the-listing",
+    "it-names-the-refusal"
+  ],
+  "guarantee": {
+    "level": "tested",
+    "cases": 200
+  },
+  "termination": "nonrecursive",
+  "spec_author": "claude-main",
+  "body_author": "claude-main",
+  "author": "claude-main",
+  "param_names": [
+    "path",
+    "ls"
+  ],
+  "confinement": [
+    "",
+    ""
+  ]
+}

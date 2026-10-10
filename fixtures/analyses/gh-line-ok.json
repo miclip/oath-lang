@@ -1,6 +1,6 @@
 {
   "name": "gh-line-ok",
-  "hash": "13f43ab3b71aa45fdd98e7f4ea1711572d7c7da869802f0800c372856fbf978a",
+  "hash": "3a8dba7ca427aa597ec4133bf4f68888377f9452990efa596e23ca064ef2743d",
   "kind": "func",
   "termination": "nonrecursive",
   "confinement": [

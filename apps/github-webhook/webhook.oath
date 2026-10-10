@@ -568,6 +568,27 @@
 ; codepoints, and the repository name read back as codepoints.
 
 ; A secret that satisfies secret-is-usable, for properties that need one.
+; A GENERATED Str MAPPED INTO THE SECRET ALPHABET, so a property can quantify
+; over usable secrets instead of reusing one fixture.
+;
+; Guarding on usability instead does not work, and the reason is a fact about the
+; GENERATOR rather than about secrets: `Str` codepoints are drawn from -20..20
+; while `secret-char-ok` rejects everything below 33, so
+; `(secret-is-usable (str-append (gh-spec-secret) tail))` is satisfied ONLY when
+; tail is empty — the guard would hold while testing exactly one secret, which is
+; the fixture-special-casing hole the quantification exists to close.
+;
+; 33..126 is printable non-space ASCII, inside the allowed set by construction,
+; so the mapped suffix needs no guard at all.
+(defn secret-tail [] [(s Str)] Str
+  (match s
+    ((SNil) (SNil))
+    ((SCons c cs) (SCons (+ 33 (e-mod c 94)) (secret-tail cs))))
+
+  (prop lands-in-the-allowed-alphabet [(s Str)] (secret-chars-ok (secret-tail s)))
+  (prop preserves-length [(s Str)] (== (str-len (secret-tail s)) (str-len s)))
+  (prop empty-maps-to-empty [] (== (secret-tail (SNil)) (SNil))))
+
 (defn gh-spec-secret [] [] Str
   "0123456789abcdef0123456789abcdef"
   (prop is-usable [] (secret-is-usable (gh-spec-secret))))
@@ -843,10 +864,39 @@
   ; THE PROPERTY THAT WOULD HAVE CAUGHT THE FAIL-OPEN, and the reason
   ; modification 2 exists: with no usable secret, NOTHING is accepted — not a
   ; forged request, not a genuine one, not any request the generator can build.
-  (prop unusable-secret-refuses-everything [(caps {emit (-> Str Str) secret Str}) (r Request)]
-    (if (and (== (req-method r) "POST")
-             (not (secret-is-usable (. caps secret))))
-        (== (match (gh-webhook caps r) ((Resp s h b) s)) 500)
+  ; UNGUARDED, because the guard it used to carry never held. It was written
+  ;   (if (and (== (req-method r) "POST") (not (secret-is-usable (. caps secret)))) ...)
+  ; over a generated Request and a generated capability record — and a generated
+  ; Str is "POST" essentially never, so the property reported `passed 200 cases`
+  ; having tested nothing. Pinning the method and the secret removes the guard
+  ; entirely: the empty secret is unusable (`empty-is-not-usable`), so every case
+  ; now reaches the conclusion, with path, headers, body and time still
+  ; quantified.
+  ; The SECRET STAYS QUANTIFIED; only the METHOD is pinned. Pinning the secret to
+  ; "" would have removed the vacuity and the claim with it: a handler returning
+  ; 500 for the empty secret and 401 for a too-short one would pass. The guard is
+  ; kept because `not usable` is satisfied by almost every generated Str — it was
+  ; never the conjunct that failed. `(== (req-method r) "POST")` was.
+  (prop unusable-secret-refuses-everything
+      [(sink (-> Str Str)) (weak Str) (p Str) (h (List (Pair Str Str))) (b (List Int)) (t Int)]
+    (if (not (secret-is-usable weak))
+        (== (match (gh-webhook (caps-with sink weak) (Req "POST" p h b t))
+              ((Resp s hh bb) s))
+            500)
+        true))
+
+  ; UNUSABLE BY LENGTH ALONE, which the property above cannot reach. Its `weak`
+  ; is a raw generated Str, and the generator draws codepoints from -20..20 — so
+  ; every non-empty value it produces is unusable because of its CHARACTERS, and
+  ; a handler answering 500 for a control-laden secret while answering 401 for
+  ; "abc" would satisfy it. Mapping through `secret-tail` makes the secret
+  ; printable, leaving length as the only thing wrong with it.
+  (prop a-short-printable-secret-refuses-everything
+      [(sink (-> Str Str)) (weak Str) (p Str) (h (List (Pair Str Str))) (b (List Int)) (t Int)]
+    (if (not (secret-is-usable (secret-tail weak)))
+        (== (match (gh-webhook (caps-with sink (secret-tail weak)) (Req "POST" p h b t))
+              ((Resp s hh bb) s))
+            500)
         true))
 
   ; And the same claim reached through the ACCEPT path rather than around it: a
@@ -865,11 +915,58 @@
   ;
   ; An unsigned request is rejected without consulting the sink. Conditioned on
   ; a POST with a usable secret, because the two failures above outrank it.
-  (prop unsigned-is-401 [(caps {emit (-> Str Str) secret Str}) (r Request)]
-    (if (and (== (req-method r) "POST")
-             (and (secret-is-usable (. caps secret))
-                  (== (gh-signature (req-headers r)) (None [Str]))))
-        (== (match (gh-webhook caps r) ((Resp s h b) s)) 401)
+  ; The METHOD and the SECRET are pinned; the absence of a signature stays a
+  ; guard. Of the three conjuncts this property used to carry, two could never
+  ; hold under generation — a generated Str is not "POST" and is not a usable
+  ; secret — so it tested nothing. The third is different in kind: a generated
+  ; header list essentially always lacks a signature header, so that conjunct is
+  ; satisfied almost every case and keeping it costs no reach while leaving the
+  ; headers quantified.
+  ; A FAMILY of usable secrets, not one fixture. `gh-spec-secret` alone would let
+  ; a handler special-case that string and still pass — and since #82 made every
+  ; non-whitespace spelling usable, the Cyrillic and Latin-1 secrets the
+  ; acceptance suite exercises are in the claim's domain too. Appending a
+  ; generated suffix to a known-usable prefix keeps the length above the floor
+  ; while varying the value, and the usability guard is what makes the family
+  ; well-defined rather than assumed: `secret-tail` maps every generated
+  ; codepoint into printable non-space ASCII, so the appended secret is usable by
+  ; construction and needs no usability guard — only the absence of a signature
+  ; stays a condition.
+  ;
+  ; ITS DOMAIN IS ASCII AND SHARES ONE PREFIX, so the two properties after it
+  ; carry the non-ASCII secrets #82 made usable. Those are concrete rather than
+  ; quantified because the generator cannot produce a usable non-ASCII secret at
+  ; all, and a claim about secrets it cannot build would be another vacuous
+  ; guard wearing different clothes.
+  (prop unsigned-is-401
+      [(sink (-> Str Str)) (tail Str) (p Str) (h (List (Pair Str Str))) (b (List Int)) (t Int)]
+    (if (== (gh-signature h) (None [Str]))
+        (== (match (gh-webhook
+                     (caps-with sink (str-append (gh-spec-secret) (secret-tail tail)))
+                     (Req "POST" p h b t))
+              ((Resp s hh bb) s))
+            401)
+        true))
+
+  ; THE NON-ASCII USABLE SECRETS, concretely. #82 made every non-whitespace
+  ; spelling usable, and the acceptance suite drives exactly these two, so a
+  ; handler that answered 401 only for ASCII secrets would pass everything above
+  ; and fail in deployment.
+  (prop unsigned-is-401-under-a-cyrillic-secret
+      [(sink (-> Str Str)) (p Str) (h (List (Pair Str Str))) (b (List Int)) (t Int)]
+    (if (== (gh-signature h) (None [Str]))
+        (== (match (gh-webhook (caps-with sink "ключключключключключключключключ")
+                     (Req "POST" p h b t))
+              ((Resp s hh bb) s))
+            401)
+        true))
+  (prop unsigned-is-401-under-a-latin1-secret
+      [(sink (-> Str Str)) (p Str) (h (List (Pair Str Str))) (b (List Int)) (t Int)]
+    (if (== (gh-signature h) (None [Str]))
+        (== (match (gh-webhook (caps-with sink "ééééééééééééééééééééééééééééééé")
+                     (Req "POST" p h b t))
+              ((Resp s hh bb) s))
+            401)
         true))
 
   ; A tampered body is not accepted under a signature computed for the original.

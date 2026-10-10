@@ -1,6 +1,6 @@
 {
   "name": "gh-refused-lines",
-  "hash": "47c01c9846abf6be5508160963820ea6796dacfc58538bed28f97abcf23fe93c",
+  "hash": "eddf3a14cdda737035afad855ba526b02972eede45223d63cfe0bf4eff28d0a0",
   "kind": "func",
   "termination": "structural",
   "confinement": [
