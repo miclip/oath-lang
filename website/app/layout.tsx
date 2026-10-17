@@ -1,27 +1,40 @@
 import type { Metadata } from "next";
-import { Cormorant, Inter, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { SITE_ORIGIN } from "@/lib/site";
 import "./globals.css";
 
-const serif = Cormorant({
-  subsets: ["latin"],
-  weight: ["500", "600"],
+// SELF-HOSTED, not `next/font/google`. Those three families were fetched from
+// fonts.googleapis.com during `next build`, which made a production deploy
+// depend on a third party reachable and answering in a parseable shape at build
+// time — and on 2026-10-16 it was not: the loader got something its regex did
+// not match and the build died on `Cannot read properties of null (reading
+// '1')` in a file nothing had touched since August. The same commit deployed
+// fine on retry, which is the signature of a dependency that is not ours.
+//
+// The files are the LATIN subset Google itself serves, committed under
+// fonts/OFL.txt. Each family is ONE file carrying a weight AXIS, which is why a
+// range is declared rather than a list: requesting 500 and 600 of Cormorant
+// returned byte-identical responses, so shipping two copies would have been two
+// names for one variable font.
+const serif = localFont({
+  src: "./fonts/Cormorant.woff2",
+  weight: "500 600",
   variable: "--font-serif",
   fallback: ["Georgia", "Times New Roman", "serif"],
   display: "swap",
 });
 
-const sans = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500"],
+const sans = localFont({
+  src: "./fonts/Inter.woff2",
+  weight: "400 500",
   variable: "--font-sans",
   fallback: ["system-ui", "-apple-system", "sans-serif"],
   display: "swap",
 });
 
-const mono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
+const mono = localFont({
+  src: "./fonts/JetBrainsMono.woff2",
+  weight: "400 500",
   variable: "--font-mono",
   fallback: ["ui-monospace", "SF Mono", "Menlo", "monospace"],
   display: "swap",
