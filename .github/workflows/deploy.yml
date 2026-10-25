@@ -46,7 +46,7 @@ jobs:
       REGION: ${{ vars.GCP_REGION || 'us-central1' }}
       AR_REPO: oath
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v5
         with:

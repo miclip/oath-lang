@@ -21,7 +21,7 @@ jobs:
     name: oath kernel (Go — all platforms)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
@@ -56,7 +56,7 @@ jobs:
           - { runner: macos-latest, os: macos, targets: "aarch64-apple-darwin:darwin-arm64 x86_64-apple-darwin:darwin-amd64" }
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: build + archive each target
         run: |
@@ -82,7 +82,7 @@ jobs:
       # This job built nothing and needed no checkout until the notes moved into
       # docs/releases.md, and the omission could not surface until a tag was cut
       # after that change — which is why it failed on its first real run.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v4
         with:
           path: dist
