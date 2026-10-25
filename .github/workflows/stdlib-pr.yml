@@ -43,7 +43,7 @@ jobs:
     # and this job must have neither.
     steps:
       - name: Check out the PROPOSED tree
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # The merge commit GitHub computes for the PR, so validation describes
           # what would land rather than what the contributor branched from.

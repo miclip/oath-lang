@@ -30,7 +30,7 @@ jobs:
     name: reference kernel (Go)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # SPEC §13 binds each implementability claim to a surface digest that is
           # RECOMPUTED by re-exporting the recorded source commit. A shallow clone
@@ -243,7 +243,7 @@ jobs:
     name: independent kernel (Rust) vs fixtures (byte-oracle mode)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: pin z3 4.16.0 (proof outcomes are solver-version-sensitive, SPEC §10.5)
         run: |
@@ -310,7 +310,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: pin z3 4.16.0
         run: |
@@ -389,7 +389,7 @@ jobs:
     name: wasm32 cross-compile
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-wasip1
@@ -414,7 +414,7 @@ jobs:
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
@@ -458,7 +458,7 @@ jobs:
       excluded: ${{ steps.derive.outputs.excluded }}
       n: ${{ steps.derive.outputs.n }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: derive the executed shard matrix from the exclusion artefact
         id: derive
         run: |
@@ -483,7 +483,7 @@ jobs:
       matrix:
         shard: ${{ fromJSON(needs.rust-conformance-sharded-matrix.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: pin z3 4.16.0
         run: |
@@ -567,7 +567,7 @@ jobs:
     needs: [rust-conformance-sharded-matrix, rust-conformance-sharded]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: pin z3 4.16.0
         # The merge does not prove, but it recomputes the campaign identity — which

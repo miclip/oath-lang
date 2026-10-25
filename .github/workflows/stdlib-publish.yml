@@ -56,7 +56,7 @@ jobs:
     outputs:
       changed: ${{ steps.delta.outputs.changed }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 2
       - uses: actions/setup-go@v5
@@ -130,7 +130,7 @@ jobs:
     environment: stdlib-publish
     steps:
       - name: Check out the MERGED commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # The PARENT commit must be reachable: the delta is computed against
           # HEAD~1, and a shallow clone makes that lookup fail. See the fallback
