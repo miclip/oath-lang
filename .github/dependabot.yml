@@ -30,6 +30,28 @@ updates:
     groups:
       website-minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # z3-solver's VERSION IS A PINNED PROTOCOL FACT, not a dependency choice.
+      # This package is the playground's solver — `gen-z3-assets.mjs` builds
+      # `z3-built.wasm` from it — and `conformance.yml` pins z3 4.16.0 because
+      # "proof outcomes are solver-version-sensitive" (SPEC §10.5). A major bump
+      # would run the playground on a different solver from the one that produced
+      # every recorded verdict, while the site claims its numbers come from the
+      # machine's own ledger. No build check can see that: it compiles fine and
+      # disagrees with the corpus. Moving it is a deliberate act that re-derives
+      # the ledger, so it must not arrive as a weekly PR.
+      # ANY version above 4.16.0, not just a major. The pin is to an EXACT
+      # version, so 4.16.1 changes the solver as surely as 5.x does — and a
+      # minor would be swept into the grouped PR above, where it would get a
+      # "did the gates stay green" review instead of a decision.
+      - dependency-name: z3-solver
+        versions: ["> 4.16.0"]
+      # TypeScript 7 breaks `@/*` path-alias resolution — demonstrated by the
+      # preview build on #204, which could not resolve `@/lib/site`,
+      # `@/components/CodeBlock` or `@/lib/playground/kernel`. Pinned below 7
+      # rather than re-proposed and re-closed every week.
+      - dependency-name: typescript
+        versions: [">=7.0.0"]
 
   # The INDEPENDENT kernel's two crates — sha2 and num-bigint. Both are load
   # bearing for identity: `sha2` computes the hashes that ARE artifact identity,
