@@ -24,7 +24,7 @@ sha2 = "0.10"
 # Arbitrary-precision integers: `Int` is ℤ (SPEC §3). The Go kernel uses
 # math/big; this is the analogous crate. Default features only (no rand/serde),
 # so it cross-compiles to wasm unchanged.
-num-bigint = "0.4"
+num-bigint = "0.5"
 
 [profile.release]
 opt-level = 2
