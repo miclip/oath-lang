@@ -1,0 +1,72 @@
+# Dependency updates.
+#
+# THE RISK HERE IS LOPSIDED, AND THE CADENCES SAY SO. The default kernel build is
+# dependency-free and the conformance job enforces that; `website/` carries ~190
+# transitive npm packages and ships them to production on every deploy. So npm is
+# weekly and the rest are monthly, rather than giving four ecosystems one cadence
+# and calling it even.
+#
+# WHAT MAKES THIS SAFE TO ADOPT rather than a stream of noise: a bump that breaks
+# anything is caught before merge. `conformance.yml` runs on every pull request
+# with no path filter — the Go kernel, the independent Rust kernel against the
+# fixtures, wasm32 cross-compile and the Postgres integration — so a dependency
+# that changes behaviour fails a gate rather than landing quietly.
+#
+# PATCH AND MINOR ARE GROUPED, MAJORS ARE NOT. A grouped PR is reviewed as "did
+# the gates stay green"; a major is reviewed as a decision. Keeping them in one
+# PR would collapse those two questions into whichever is easier to answer.
+#
+# This file covers VERSION updates only. Security ALERTS for the transitive
+# packages are a repository setting (Settings → Code security), not something a
+# manifest can switch on.
+version: 2
+updates:
+  # The real surface: Next.js and its tree, served to the public site.
+  - package-ecosystem: npm
+    directory: /website
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      website-minor-and-patch:
+        update-types: [minor, patch]
+
+  # The INDEPENDENT kernel's two crates — sha2 and num-bigint. Both are load
+  # bearing for identity: `sha2` computes the hashes that ARE artifact identity,
+  # and `num-bigint` is this kernel's ℤ (SPEC §3). A behaviour change in either
+  # shows up as a cross-kernel divergence, which is exactly what the conformance
+  # gate is for, so an update here is informative rather than risky.
+  - package-ecosystem: cargo
+    directory: /oathrs
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      oathrs-minor-and-patch:
+        update-types: [minor, patch]
+
+  # `lib/pq`, and only that. It is imported solely from a file behind
+  # `//go:build cloud`, so it is absent from the default binary and from every
+  # conformance and wasm build — but it IS in the cloud build, which is
+  # integration-tested and deployable, so a security fix to it is real. Monthly,
+  # because treating it like the npm tree would be noise about a driver most
+  # builds never link.
+  - package-ecosystem: gomod
+    directory: /oath
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+
+  # The workflows themselves: checkout, setup-go, setup-node, upload-artifact,
+  # rust-toolchain, setup-gcloud, auth, setup-terraform. Worth watching because
+  # two of those authenticate to GCP and one can reach a signing path — an
+  # action's supply chain is as much a dependency as a library's, and this repo
+  # already treats the publish workflow's threat model explicitly.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      actions-minor-and-patch:
+        update-types: [minor, patch]
