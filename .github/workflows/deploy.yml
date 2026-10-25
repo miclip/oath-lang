@@ -63,7 +63,7 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOYER_SA }}
 
-      - uses: google-github-actions/setup-gcloud@v2
+      - uses: google-github-actions/setup-gcloud@v3
 
       - name: resolve image ref
         run: echo "IMAGE=${REGION}-docker.pkg.dev/${PROJECT}/${AR_REPO}/oath:${GITHUB_SHA}" >> "$GITHUB_ENV"
