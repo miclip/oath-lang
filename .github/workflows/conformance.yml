@@ -37,7 +37,7 @@ jobs:
           # cannot reach historical commits, so the check could not run at all —
           # and a check that cannot run must not be the reason CI is green.
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.25"
           cache-dependency-path: oath/go.mod
@@ -415,7 +415,7 @@ jobs:
           --health-timeout 5s --health-retries 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.25"
           cache-dependency-path: oath/go.mod
