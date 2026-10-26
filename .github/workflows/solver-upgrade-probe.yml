@@ -49,6 +49,10 @@ on:
         description: "per-goal budget. 400000000 is the normative proveRlimit; anything less cannot confirm a regression."
         required: true
         default: "400000000"
+      z3_memory_mb:
+        description: "z3 memory_max_size, 0 = UNSET and that is the default. Only raise it to RETRY a goal the runner OOM-killed, and only above z3's ~21GB arena reservation — a smaller bound invalidates goals that would have completed."
+        required: true
+        default: "0"
       wallcap_sec:
         description: "per-attempt wall cap (safety only, never an outcome). Must be generous: a cap hit is an INVALID attempt, so too small a value reports aborts instead of verdicts."
         required: true
@@ -154,6 +158,65 @@ jobs:
           z3 --version | grep -qF "$VER" \
             || { echo "z3 on PATH is not $VER"; exit 1; }
 
+      - name: the dispatch budgets are values the kernel will actually HONOUR
+        env:
+          MEM: ${{ inputs.z3_memory_mb }}
+          RL: ${{ inputs.rlimit }}
+          WC: ${{ inputs.wallcap_sec }}
+        run: |
+          set -euo pipefail
+          # PRESENCE IS NOT ACCEPTANCE, and this is the same trap the sweep's own
+          # rlimit guard documents. prove.go ignores OATH_PROVE_MEMORY_MB when
+          # ParseInt fails or the value is <= 0, so `8GB` or `-1` passes a
+          # set/unset check and the job then runs with NO memory bound while
+          # claiming one — and takes the OS-level kill this input exists to
+          # prevent, hours in. Same for the other two: a non-numeric rlimit
+          # falls back to the normative default silently.
+          # PARSED AS A NUMBER IN THE SAME RANGE GO PARSES, not merely checked
+          # for digits. `00` and anything past int64 are all-digits and are
+          # still rejected by ParseInt-plus-positivity on the kernel side, which
+          # falls back to a DIFFERENT budget without saying so — and the job
+          # would print "accepted" and then run for hours under limits nobody
+          # chose. Only z3_memory_mb may be 0, which is its documented "unset".
+          python3 - "$MEM" "$RL" "$WC" <<'PY'
+          import sys
+          I64 = 2**63 - 1
+          names = ('z3_memory_mb', 'rlimit', 'wallcap_sec')
+          for nm, raw in zip(names, sys.argv[1:4]):
+              if not raw.isdigit():
+                  sys.exit(f"{nm}={raw!r} is not a non-negative integer; "
+                           "the kernel would silently ignore it and use its own default")
+              if raw != str(int(raw)):
+                  sys.exit(f"{nm}={raw!r} has a leading zero; pass it canonically "
+                           "so what is dispatched is what gets honoured")
+              v = int(raw)
+              # EACH LIMIT IS CHECKED AGAINST THE RANGE ITS OWN CONSUMER HAS.
+              # wallcap_sec is multiplied by time.Second before use, so its
+              # ceiling is int64 NANOSECONDS, not int64 seconds: a value past
+              # I64/1e9 parses fine, overflows time.Duration, and yields some
+              # other cap entirely — which invalidates the probe instantly while
+              # this step reports the dispatched value as honoured.
+              # z3 PARSES BOTH SOLVER OPTIONS AS UNSIGNED INT, so their real
+              # ceiling is 2^32-1, not int64. VERIFIED against z3 5.3.1 rather
+              # than assumed — 4294967296 draws
+              #   (error "invalid value '4294967296' for unsigned int parameter")
+              # for :rlimit and for :memory_max_size alike, and the Go side just
+              # formats the accepted int64 into the SMT header, so every attempt
+              # is then invalidated while this step reports the budget honoured.
+              # The wall cap is a different consumer with a different range: it
+              # is multiplied by time.Second, so its ceiling is int64 NANOseconds.
+              ceiling = (I64 // 1_000_000_000 if nm == 'wallcap_sec'
+                         else 2**32 - 1)
+              if v > ceiling:
+                  sys.exit(f"{nm}={raw} exceeds {ceiling}, past what its consumer can "
+                           "represent, so the kernel would use a different limit than this "
+                           "job claims")
+              if v == 0 and nm != 'z3_memory_mb':
+                  sys.exit(f"{nm} must be positive; 0 makes the kernel use its default")
+          print(f"budgets accepted: rlimit={sys.argv[2]} wallcap={sys.argv[3]}s "
+                f"z3_memory={sys.argv[1]}MB (0 = unbounded)")
+          PY
+
       - name: the named property is ledger-PROVEN (else this job proves nothing)
         id: target
         env:
@@ -209,18 +272,56 @@ jobs:
           OATH_SWEEP_ALL: "1"
           OATH_PROVE_RLIMIT: ${{ inputs.rlimit }}
           OATH_PROVE_WALLCAP_SEC: ${{ inputs.wallcap_sec }}
+          # UNSET BY DEFAULT, AND SOUNDNESS IS NOT THE REASON — it is why the
+          # knob is OFFERED at all, and the two must not be confused.
+          #
+          # The bound is SOUND here: prove.go's hazard is that a bound below
+          # z3's ~21GB arena reservation kills attempts that would otherwise
+          # run, such a kill surfaces as `invalidated`, and this workflow maps
+          # that to INDETERMINATE — so a bound can only ever downgrade a
+          # would-be verdict to "not measured", never manufacture a
+          # CONFIRMED-REGRESSION, which requires a clean `unknown`.
+          #
+          # But sound is not useful. A bound under the reservation invalidates
+          # the goals this job exists to measure, so a default would make every
+          # dispatch produce INDETERMINATE and nothing else — perfectly sound
+          # and perfectly worthless. The evidence is direct: the one goal that
+          # produced a verdict here did so in 23 seconds with z3 UNBOUNDED.
+          # So it stays off, and it is a RETRY tool for a specific goal the
+          # runner killed — set above the reservation, on that goal alone.
+          OATH_PROVE_MEMORY_MB: ${{ inputs.z3_memory_mb != '0' && inputs.z3_memory_mb || '' }}
           OATH_SWEEP_OUT: ${{ github.workspace }}/probe.jsonl
         run: |
+          # `set +e` IS LOAD-BEARING AND IS NOT REDUNDANT WITH THE LINE BELOW.
+          # GitHub's default shell is `bash -eo pipefail`, so -e is ALREADY ON
+          # when this script starts and `set -uo pipefail` does not clear it.
+          # Without +e the step aborts the instant the sweep exits nonzero —
+          # which is exactly the case the verdict step exists to classify — so
+          # the classification is SKIPPED and the job reports a bare failure
+          # instead of an honest INDETERMINATE. Observed: a goal killed by the
+          # runner's OOM supervisor at 3.7 minutes reported `failure` with no
+          # verdict and no artifact.
+          set +e
           set -uo pipefail
           # SELF-LIMIT BELOW THE JOB CAP. A job-limit kill sets the whole RUN's
           # conclusion to `cancelled`, which is how one never-completing job
           # came to report over 183 that had. Exiting on our own terms keeps
           # "ran out of wall clock" distinguishable from "measured something".
           cd oath
+          T0=$(date +%s)
           OATH_SWEEP_ONLY="$TARGET" timeout --signal=TERM --kill-after=60 320m \
             go test -run TestProveReasonsSweep -count=1 -timeout 340m . 2>&1 | tail -40
           rc=${PIPESTATUS[0]}
           echo "selflimit_rc=$rc" >> "$GITHUB_OUTPUT"
+          # ELAPSED TIME DISAMBIGUATES 137, WHICH THE EXIT CODE ALONE CANNOT.
+          # GNU timeout returns 137 ITSELF when the process ignores its TERM and
+          # --kill-after escalates to SIGKILL — the same code the runner's OOM
+          # supervisor produces. Both are environmental and both end as
+          # INDETERMINATE, so the VERDICT is unaffected; the DIAGNOSIS is not,
+          # and "out of memory" after a five-hour run would send the next
+          # reader after the wrong constraint. Elapsed near the self-limit is
+          # the distinguishing evidence, so it is recorded rather than guessed.
+          echo "elapsed_s=$(( $(date +%s) - T0 ))" >> "$GITHUB_OUTPUT"
           [ "$rc" = 124 ] && echo "SELF-LIMITED at 320m — this is an ENVIRONMENTAL ABORT, not a verdict"
           exit 0
 
@@ -240,16 +341,60 @@ jobs:
           PROP: ${{ matrix.prop }}
           RC: ${{ steps.probe.outputs.selflimit_rc }}
           RLIMIT: ${{ inputs.rlimit }}
+          ELAPSED: ${{ steps.probe.outputs.elapsed_s }}
+          SELFLIMIT_S: "19200"
         run: |
           set -euo pipefail
-          python3 - "$PROP" "$RC" "$RLIMIT" <<'PY'
-          import json, os, sys
+          python3 - "$PROP" "$RC" "$RLIMIT" "$ELAPSED" "$SELFLIMIT_S" <<'PY'
+          import json, os, re, sys
           prop, rc, rlimit = sys.argv[1], sys.argv[2], sys.argv[3]
+          elapsed = int(sys.argv[4] or 0); selflimit = int(sys.argv[5])
           path = os.path.join(os.environ['GITHUB_WORKSPACE'], 'probe.jsonl')
+
+          # THE EXIT STATUS IS CLASSIFIED BEFORE THE RECORD IS READ, AND THE
+          # ORDER IS THE WHOLE POINT. The sweep flushes its record only after
+          # proveOne RETURNS, so in the signal cases — which are the ones this
+          # classification exists for — probe.jsonl exists and is EMPTY. Reading
+          # it first sends every OOM and every timeout down a generic
+          # "no record" path and the specific diagnosis is never reached in its
+          # primary case. An earlier version of this script had exactly that
+          # bug: the right text, unreachable.
+          if rc not in ('0', ''):
+              # 137 IS AMBIGUOUS FROM THE CODE ALONE and is read with the clock.
+              # GNU timeout returns 137 itself when the process ignores its TERM
+              # and --kill-after escalates to SIGKILL, which is the same code the
+              # runner's memory supervisor produces. Both are environmental and
+              # both land as INDETERMINATE, so the VERDICT never depends on
+              # telling them apart — but the DIAGNOSIS does, and "out of memory"
+              # after a five-hour run would send the next reader after the wrong
+              # constraint entirely.
+              # NO SLACK, AND THE ASYMMETRY IS THE POINT. GNU timeout cannot
+              # send anything BEFORE its deadline, so any kill at elapsed <
+              # selflimit is definitively not ours — it is the runner. An
+              # earlier version allowed 120s of slack for clock skew, which
+              # inverted the diagnosis in precisely the window the timing was
+              # added to resolve: an OOM two minutes before the deadline was
+              # reported as our own timeout. The deadline must actually have
+              # passed.
+              near_limit = elapsed >= selflimit
+              if rc == '124':
+                  why = f"self-limited on wall clock after {elapsed}s"
+              elif rc in ('137', '143'):
+                  sig = 9 if rc == '137' else 15
+                  why = (f"killed by signal {sig} after {elapsed}s, at or past this step's "
+                         f"own {selflimit}s self-limit" if near_limit else
+                         f"killed by signal {sig} after {elapsed}s, BEFORE the {selflimit}s "
+                         "self-limit could fire — so this is the runner's memory supervisor, "
+                         "and the goal does not fit this runner class")
+              else:
+                  why = f"the sweep exited {rc} after {elapsed}s (one of its own controls failed)"
+              print(f"INDETERMINATE {prop}: {why} — not measured, and NOT a regression")
+              sys.exit(0)
+
           try:
               rec = json.loads(open(path).read().strip())
           except Exception as e:
-              print(f"INDETERMINATE {prop}: no record ({e}); rc={rc}")
+              print(f"INDETERMINATE {prop}: the sweep exited 0 but left no readable record ({e})")
               sys.exit(0)
 
           # A CONFIRMED REGRESSION IS A CLAIM ABOUT THE NORMATIVE BUDGET, so the
@@ -258,47 +403,24 @@ jobs:
           # more budget) and a higher one hides them. The normative figure is
           # DERIVED from prove.go rather than written here, because a second
           # copy of it is correct exactly once.
-          import re
-          src = open('oath/prove.go').read()
-          m = re.search(r'proveRlimit\s*=\s*([0-9_]+)', src)
+          m = re.search(r'proveRlimit\s*=\s*([0-9_]+)', open('oath/prove.go').read())
           if not m:
               print(f"INDETERMINATE {prop}: cannot read proveRlimit from oath/prove.go, "
                     "so there is nothing to compare this run's budget against")
               sys.exit(0)
           normative = int(m.group(1).replace('_', ''))
-          non_normative = int(rlimit) != normative
 
-          # ANY NONZERO EXIT MEANS THE INSTRUMENT ITSELF FAILED. The probe step
-          # masks go test's status on purpose so a self-limit is not a job
-          # failure, but the sweep also fails on its OWN controls — a one-sided
-          # script pin, telemetry it cannot vouch for. A record written by a run
-          # that then failed a control is not evidence, and reading a verdict
-          # off it would report the instrument's broken state as the solver's.
-          if rc not in ('0', ''):
-              reason = "self-limited on wall clock" if rc == '124' else f"the sweep exited {rc} (a control failed)"
-              print(f"INDETERMINATE {prop}: {reason} — not measured, and NOT a regression")
-              sys.exit(0)
-
-          # THE STATUS VOCABULARY DECIDES THIS, AND ONLY `unknown` IS A VALID
-          # NEGATIVE. prove.go defines `invalidated` as "a strategy attempt was
-          # environmentally aborted and no remaining strategy proved the goal —
-          # NO VALID NEGATIVE VERDICT EXISTS (SPEC §7.2)", so reading it as a
-          # regression inverts its meaning. A capHit is likewise a host fact,
-          # never an outcome. And `refuted` is not a lost proof at all: it is
-          # the candidate solver claiming a COUNTEREXAMPLE to something the
-          # pinned one proved, which is a disagreement about truth and the
-          # loudest thing this job can find.
           st = rec['status']
           caps = sum(1 for a in rec.get('attempts', ()) if a.get('verdict') == 'capHit')
           pin = rec.get('pinned_script_match')
           print(f"{prop}: status={st} caps={caps} pin_match={pin} rlimit={rlimit} "
-                f"wall={rec['wall_seconds']:.0f}s attempts={len(rec.get('attempts', ()))}")
+                f"normative={normative} wall={rec['wall_seconds']:.0f}s "
+                f"attempts={len(rec.get('attempts', ()))}")
 
           if pin is False:
               print(f"INDETERMINATE {prop}: the script did not match fixtures/prove/scripts.txt, "
                     "so this record describes a different experiment than the pinned one")
-              sys.exit(0)
-          if st == 'proven' and int(rlimit) > normative:
+          elif st == 'proven' and int(rlimit) > normative:
               # ASYMMETRIC WITH THE REGRESSION CASE, DELIBERATELY. A proof at or
               # BELOW the normative budget clears the property a fortiori: the
               # candidate needed no more than the ledger allows. A proof ABOVE it
@@ -309,19 +431,25 @@ jobs:
           elif st == 'proven':
               print(f"NOT-A-REGRESSION {prop}: proves at {rlimit} (<= the normative {normative})")
           elif st == 'refuted':
-              print(f"::error::SOLVER-DISAGREEMENT {prop}: REFUTED at {rlimit}, but the ledger PROVES it. "
-                    "This is a disagreement about truth, not a lost proof — do not file it as a regression.")
+              print(f"::error::SOLVER-DISAGREEMENT {prop}: REFUTED at {rlimit}, but the ledger "
+                    "PROVES it. This is a disagreement about truth, not a lost proof — do not "
+                    "file it as a regression.")
               sys.exit(1)
           elif st == 'invalidated' or caps:
-              print(f"INDETERMINATE {prop}: environmentally aborted (status={st}, capHit={caps}) — "
-                    "not measured, and NOT a regression")
-          elif st == 'unknown' and non_normative:
+              # prove.go: `invalidated` is "a strategy attempt was environmentally
+              # aborted and no remaining strategy proved the goal — NO VALID
+              # NEGATIVE VERDICT EXISTS (SPEC §7.2)". Reading it as a lost proof
+              # inverts its meaning. A capHit is likewise a host fact.
+              print(f"INDETERMINATE {prop}: environmentally aborted (status={st}, capHit={caps}) "
+                    "— not measured, and NOT a regression")
+          elif st == 'unknown' and int(rlimit) != normative:
               print(f"INDETERMINATE {prop}: unknown, but at {rlimit} rather than the normative "
-                    f"{normative}. A smaller budget invents regressions and a larger one hides them, "
-                    "so this says nothing either way")
+                    f"{normative}. A smaller budget invents regressions and a larger one hides "
+                    "them, so this says nothing either way")
           elif st == 'unknown':
-              print(f"::warning::CONFIRMED-REGRESSION {prop}: unknown at the normative {normative} "
-                    "on a script matching the pin — the candidate solver does not prove what the ledger does")
+              print(f"::warning::CONFIRMED-REGRESSION {prop}: unknown at the normative "
+                    f"{normative} on a script matching the pin — the candidate solver does not "
+                    "prove what the ledger does")
           else:
               print(f"INDETERMINATE {prop}: unrecognised status {st!r}")
           PY
