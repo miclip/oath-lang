@@ -130,6 +130,13 @@ type sweepRecord struct {
 	//	             compared and the control did not run.
 	ControlRoute string  `json:"script_control_route,omitempty"`
 	WallSeconds  float64 `json:"wall_seconds"`
+
+	// WasProven is the ledger's verdict for this property BEFORE this sweep ran,
+	// and it is only ever set under OATH_SWEEP_ALL. A POINTER, and omitted when
+	// unset, so the default sweep's records stay byte-identical to the format
+	// prove-reasons.py validates: absent says "this run did not widen", which is
+	// a different fact from false ("it widened and this property was unproven").
+	WasProven *bool `json:"was_proven,omitempty"`
 }
 
 // sweepObserver collects one property's attempts off the prover's own solve
@@ -204,11 +211,12 @@ func readPinnedScripts(t *testing.T, path string) map[[2]string]string {
 }
 
 type sweepTarget struct {
-	hash     string
-	pi       int
-	name     string // canonical name: always a live name of the object
-	propName string
-	nAttempt int // how many scripts the sequence can emit (from the enumerator)
+	hash      string
+	pi        int
+	name      string // canonical name: always a live name of the object
+	propName  string
+	nAttempt  int  // how many scripts the sequence can emit (from the enumerator)
+	wasProven bool // the ledger's verdict before this sweep; only meaningful under OATH_SWEEP_ALL
 }
 
 func TestProveReasonsSweep(t *testing.T) {
@@ -266,8 +274,23 @@ func TestProveReasonsSweep(t *testing.T) {
 	}
 	sort.Strings(hashes)
 
+	// OATH_SWEEP_ALL WIDENS THE UNIVERSE FROM THE NON-PROVEN SET TO EVERY
+	// PROPERTY OF EVERY LIVE OBJECT, which is the universe of a SOLVER-VERSION
+	// claim rather than of a why-is-this-not-proven report. The two directions an
+	// upgrade has to answer are not the same question: whether an unproven goal
+	// newly proves, and whether a proven one STILL proves. The narrow universe
+	// can only see the first, and a regression in the second would be invisible
+	// to it while looking like a clean run.
+	//
+	// RE-ATTEMPTING A PROVEN PROPERTY IS A REAL RE-DERIVATION, NOT A
+	// RESTATEMENT. loadLemmaLibrary admits the definition's own recorded proven
+	// props as lemmas, so the goal would otherwise be asserted as its own
+	// hypothesis and come back unsat having shown nothing; the admission filter
+	// drops it (`ownIdx != pi`), which is what makes this measurable at all.
+	all := os.Getenv("OATH_SWEEP_ALL") != ""
+
 	var targets []sweepTarget
-	nonProven := 0
+	nonProven, total := 0, 0
 	for _, h := range hashes {
 		d, err := st.GetDef(h)
 		if err != nil {
@@ -285,10 +308,13 @@ func TestProveReasonsSweep(t *testing.T) {
 			proven[i] = true
 		}
 		for pi := range d.Props {
-			if proven[pi] {
+			total++
+			if !proven[pi] {
+				nonProven++
+			}
+			if proven[pi] && !all {
 				continue
 			}
-			nonProven++
 			// "Emits a candidate script" comes from the prover's OWN enumerator,
 			// not from a reading of the fixture: the fixture is derived from this
 			// function, and deriving the universe from the derived artefact would
@@ -298,6 +324,7 @@ func TestProveReasonsSweep(t *testing.T) {
 			targets = append(targets, sweepTarget{
 				hash: h, pi: pi, name: m.Name,
 				propName: metaPropName(m, pi), nAttempt: len(ats),
+				wasProven: proven[pi],
 			})
 		}
 	}
@@ -316,11 +343,22 @@ func TestProveReasonsSweep(t *testing.T) {
 	// Both numbers are reported, and the second is deliberately NOT called
 	// coverage: every one of the %d is swept. The split says how many goals the
 	// strategy sequence could translate at all.
-	t.Logf("universe: %d non-proven properties (per-object), ALL swept. %d emit at least one "+
-		"candidate script; %d emit none and reach no solver — a fact about those goals, "+
-		"not a gap in this sweep", nonProven, withScript, nonProven-withScript)
-	if len(targets) != nonProven {
-		t.Fatalf("internal: %d targets for %d non-proven properties", len(targets), nonProven)
+	want := nonProven
+	if all {
+		want = total
+		t.Logf("universe: WIDENED by OATH_SWEEP_ALL to all %d properties of live objects "+
+			"(%d non-proven, %d already proven), ALL swept. This output is a SUPERSET of "+
+			"prove-reasons.py's universe and does NOT reconcile against the census — it is a "+
+			"solver-version measurement, not a why-is-this-not-proven report.",
+			total, nonProven, total-nonProven)
+	} else {
+		t.Logf("universe: %d non-proven properties (per-object), ALL swept.", nonProven)
+	}
+	t.Logf("%d of %d emit at least one candidate script; %d emit none and reach no solver "+
+		"— a fact about those goals, not a gap in this sweep",
+		withScript, len(targets), len(targets)-withScript)
+	if len(targets) != want {
+		t.Fatalf("internal: %d targets for %d properties in the universe", len(targets), want)
 	}
 	if len(targets) == 0 {
 		t.Fatal("empty universe; a sweep over nothing is not a sweep")
@@ -420,6 +458,10 @@ func TestProveReasonsSweep(t *testing.T) {
 			Status: o.status, Method: o.method, Detail: o.detail,
 			Rlimit: rlimit, HasDatatypeBinder: obs.hasDT,
 			Attempts: obs.attempts, WallSeconds: wall.Seconds(),
+		}
+		if all {
+			wp := tg.wasProven
+			rec.WasProven = &wp
 		}
 		if rec.Attempts == nil {
 			rec.Attempts = []sweepAttempt{}
