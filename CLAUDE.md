@@ -2091,6 +2091,41 @@ let a #139 scoping pass read "the scripts are pinned" or "§10 declined it" as
 permission to delete the re-derivation — those sentences are about script bytes,
 and verdict coverage is a separate claim.
 
+**EVALUATING A CANDIDATE z3 IS TWO MEASUREMENTS, AND THE CHEAP ONE CANNOT
+SUBSTITUTE FOR THE OTHER.** Proof outcomes are a pure function of (script bytes,
+solver version, rlimit), so a version bump moves verdicts and the ledger is
+settled under ONE pinned version. `.github/workflows/solver-upgrade-probe.yml`
+is the dispatch-only probe; read its header for what it does and does not
+establish. The ORDER is what a session needs here:
+
+  1. sweep the whole corpus at a SMALL budget under the candidate
+     (`OATH_SWEEP_ALL=1` with an explicit `OATH_PROVE_RLIMIT`; read-only, writes
+     no verdict), and
+  2. dispatch the probe with the candidates THAT sweep derived — the
+     ledger-proven properties it did not prove.
+
+**THE TWO DIRECTIONS HAVE DIFFERENT EPISTEMIC STANDING AND MUST NOT BE REPORTED
+ALIKE.** A GAIN at a reduced budget is sound and conservative: the candidate
+reached it with less than the ledger allowed. A LOSS at a reduced budget is a
+CANDIDATE and nothing more, because that budget cannot distinguish *lost the
+proof* from *ran out of budget* — only the normative `proveRlimit` can, which is
+the probe's whole purpose. **And never let the workflow's stored default property
+list stand in for step 1**: it holds the candidates derived for one past
+version, so dispatching it against a different solver confirms the old set and
+silently misses the new one.
+
+**ONLY `unknown` IS A VALID NEGATIVE.** `invalidated` is SPEC §7.2's "no valid
+negative verdict exists", a capHit is a host fact, a signal death is the runner,
+and `refuted` on a ledger-proven property is a DISAGREEMENT ABOUT TRUTH rather
+than a lost proof. Each maps to "not measured" or to something louder — never to
+a regression. This is the general rule about implementation limits reported as
+semantic facts, arriving where it costs a wrong upgrade decision.
+
+**AND THE CHEAP SWEEP UNDERSTATES AN UPGRADE BY CONSTRUCTION**, because it proves
+against the SETTLED lemma library while a real upgrade re-derives cold, where an
+unproven lemma is simply absent downstream. Those are different claims; do not
+report one as the other. `docs/milestones.md` carries what the 5.3.1 run found.
+
 **DO NOT PUT A `CLAUDE.md` (or any session guidance) INSIDE `oathrs/`.** The
 §10.0a blind surface deliberately lifts the `oathrs/` prefix ban in order to ship
 the Rust to a blind subject, so a nested guidance file gets EXPORTED — and

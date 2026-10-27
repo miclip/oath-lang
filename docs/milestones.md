@@ -1875,3 +1875,100 @@ recognises without quoting the subject's syntax?*), the sequence diagnostic
 that already owns the answer: git's index, a parse, the canonical hash.
 
 The instances live here; the rule lives there. #143 closed on promotion.
+
+## z3 5.3.1 measured against the 4.16.0 ledger — one confirmed regression, in the flagship
+
+Homebrew moved local z3 to 5.3.1 while CI pins 4.16.0, so every local conformance
+run was red and the upgrade needed sizing rather than assuming. The answer came
+out the opposite way from the first evidence, and the arc is the point.
+
+**A 4M sweep of all 680 corpus properties (per-object) found 32 GAINS and no
+regression**, which reads irresistibly as "strictly more, nothing less". 22 of
+the 32 discharge LEMMA-FREE on the first attempt, 20 are in the webhook app, and
+`bad-reverse.involution` — genuinely true, since that definition's body is `xs`
+— takes 84 rlimit units where 4.16.0 failed at 400M. Zero script-hash mismatches
+against `fixtures/prove/scripts.txt`, so the comparison was byte-identical
+scripts at one budget with the solver as the only variable.
+
+**Then the normative budget contradicted it.** `sort.preserves-counts` —
+insertion sort's 7/7, the exhibit named first in `CLAUDE.md` — comes back
+`unknown` at 400M with zero capHits, a matching pin and a clean exit. Every
+escape is closed, so it is a verdict and not a candidate: `sort` becomes 6/7.
+`insert.commutative` is also unproven at 4M — but that is a CANDIDATE, not a
+second regression: its 400M job was OOM-killed with no record, and 4M cannot
+separate a lost proof from an exhausted budget. One confirmed loss, one
+unmeasured.
+
+    target             status        caps  pin    wall    verdict
+    ------------------------------------------------------------------
+    str-code:3         proven        0     True     23s   not a regression
+    config-has-key:1   proven        0     True    753s   not a regression
+    sort:2             unknown       0     True   3045s   CONFIRMED REGRESSION
+    insert:4           no record     -     -       222s   indeterminate (runner OOM)
+    rot-h3:6           invalidated   2     True   7218s   indeterminate (wall cap)
+    rot-hl:6           invalidated   2     True   7213s   indeterminate (wall cap)
+
+**WHY THE CHEAP SWEEP COULD NOT HAVE FOUND IT, which is the durable lesson. A
+REDUCED BUDGET CANNOT DISTINGUISH "LOST THE PROOF" FROM "RAN OUT OF BUDGET", so
+its gains are sound and its regressions are only CANDIDATES.** A gain at 4M is
+conservative — the candidate reached it with 100x less than the ledger allowed,
+and a smaller budget cannot flatter it. A loss at 4M says nothing until the
+normative budget is spent on it. The two directions of one measurement had
+different epistemic standing, and treating them alike in either direction
+produces a confident wrong answer: downplaying the gains, or inventing six
+regressions where one was real.
+
+**AND THE MEASUREMENT UNDERSTATES THE UPGRADE COST BY CONSTRUCTION.** The sweep
+loads the SETTLED lemma library — the verdicts 4.16.0 recorded — which is
+correct for isolating the solver as the only variable, and means every goal was
+proved against lemmas the ledger holds rather than against what 5.3.1 can
+re-establish. A real upgrade re-derives cold: an unproven lemma is not recorded,
+and everything downstream attempts its proof without it.
+
+That bites on the CONFIRMED loss without needing the unmeasured one. Within one
+object, earlier proven props become axioms for later ones, so
+`sort.preserves-counts` is a lemma available to props 3-6 of `sort` — and all
+four of those (`snoc-is-insert`, `sorted-is-fixpoint`, `idempotent`,
+`reverse-invariant`) passed here WITH it recorded. Cold, they would attempt
+their proofs without it. So *proves N fewer on the committed lemma state* and
+*re-deriving the corpus yields N fewer* are different claims, and only the
+second is the upgrade.
+
+**THE CASCADE IS UNMEASURED IN SIZE AND IN DIRECTION, AND THE SECOND HALF OF
+THAT IS EASY TO GET WRONG — a draft of this paragraph asserted the direction was
+"not in doubt" while the next paragraph refuted it.** Solver search is NOT
+MONOTONIC in its lemma set: `q-peek.peek-is-head` below proves in 2,294 rlimit
+lemma-free and diverges at 400M with its twelve lemmas, so REMOVING
+`preserves-counts` from props 3-6 could leave them unchanged, break them, or
+make them cheaper. What is established is that cold re-derivation asks a
+DIFFERENT question of those four properties than this measurement did. Which way
+it answers needs the cold job that has never completed in CI (#193).
+
+**`oath hint` is not the remedy, and the kernel says why.** Three admitted count
+lemmas did not recover the proof at 4M, and at 400M the hinted run grew to
+4109MB in 15 minutes against an unhinted CI run that completed in 51 — consistent
+with `prove.go`'s own measured note that admitting legitimately-relevant lemmas
+can strangle a goal (`q-peek.peek-is-head`: 2,294 rlimit lemma-free, divergent
+at 400M with its 12). The 400M hinted attempt was guard-aborted, so it is
+unmeasured rather than refuted.
+
+Disposition: **stay on 4.16.0 and downgrade local Homebrew to match.** Not
+because 5.3.1 is worse at proving — it is better at 32 things — but because the
+one thing it is worse at is the exhibit the project cites as evidence it works,
+and the cold-derivation cascade is unmeasured. The procedure for evaluating a LATER candidate is an
+instruction and lives in `CLAUDE.md`, not here — its defaults are 5.3.1's
+candidate set and a session reading only this file would dispatch them against a
+different solver.
+
+**Three instrument defects worth keeping, because all three reported health while
+measuring something else.** A watchdog on `vm_stat` available held flat at
+~2800MB through the entire memory emergency, because inactive pages count as
+available while swap drains. Its replacement, on swap free, then nearly aborted a
+healthy run at 332/680 — macOS had RESIZED total swap 5120->4096MB, so the
+denominator moved rather than the pressure, and an unrelated stalled process was
+holding 2.47GB. Both measured a population the run does not own; keying on the
+run's OWN z3 RSS is what worked. And the probe's verdict step read the record
+BEFORE classifying the exit status, while the sweep flushes only after `proveOne`
+returns — so on every signal kill the file existed and was empty, and the
+signal-specific diagnosis was unreachable in precisely its primary case. The
+right words existed and nothing could reach them.
