@@ -1456,7 +1456,14 @@
     "infer_entries": 0
   },
   {
-    "name": "corpus:sort.oath#4:sort",
+    "name": "corpus:sort.oath#4:count-insert",
+    "outcome": "accepted",
+    "hash_before": "9a35a277f494d422d4b0df5bc457259c2befc6ceaca95d0327c17ce1e37f02b4",
+    "hash_after": "9a35a277f494d422d4b0df5bc457259c2befc6ceaca95d0327c17ce1e37f02b4",
+    "infer_entries": 0
+  },
+  {
+    "name": "corpus:sort.oath#5:sort",
     "outcome": "accepted",
     "hash_before": "8ed4b7e956f376fb0f06f5a72f90e76be50ddb02da09045ea9bb8f8dafeb2760",
     "hash_after": "8ed4b7e956f376fb0f06f5a72f90e76be50ddb02da09045ea9bb8f8dafeb2760",

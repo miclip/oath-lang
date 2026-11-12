@@ -1822,8 +1822,8 @@ reproducibility (given the same solver):
   script the strategy sequence emits, not only the direct attempt: the
   lemma-free first attempt, each structural-induction constructor subgoal,
   each lexicographic subgoal, and each recursion-induction base and step
-  obligation. `prove/scripts.txt` witnesses only the direct attempt — 617
-  of the 3399 scripts this corpus emits — so a kernel could reproduce it
+  obligation. `prove/scripts.txt` witnesses only the direct attempt — 618
+  of the 3404 scripts this corpus emits — so a kernel could reproduce it
   exactly while emitting different bytes for every inductive subgoal.
   Consequently the bytes of each such script are determined by the rules
   above for a given (goal, lemma state, strategy, subgoal) — a consequence

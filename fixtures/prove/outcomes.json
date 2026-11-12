@@ -450,6 +450,19 @@
       ]
     },
     {
+      "name": "count-insert",
+      "hash": "9a35a277f494d422d4b0df5bc457259c2befc6ceaca95d0327c17ce1e37f02b4",
+      "level": "proven",
+      "proven_count": 1,
+      "prop_count": 1,
+      "props": [
+        {
+          "name": "counts-through-insert",
+          "proven": true
+        }
+      ]
+    },
+    {
       "name": "count-matching",
       "hash": "c2f6fe6558cad0045cb6e4a3daabe4e2532f5c2e956a2b4edabf435ca563ed4f",
       "level": "proven",
@@ -4119,7 +4132,13 @@
         },
         {
           "name": "preserves-counts",
-          "proven": true
+          "proven": true,
+          "hints": [
+            {
+              "def": "9a35a277f494d422d4b0df5bc457259c2befc6ceaca95d0327c17ce1e37f02b4",
+              "prop": 0
+            }
+          ]
         },
         {
           "name": "snoc-is-insert",

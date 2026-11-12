@@ -87,6 +87,29 @@
         (== (insert x xs) (Cons [Int] x xs))
         true)))
 
+; count's missing counterpart to count-append, and it is here because of a
+; MEASURED fragility rather than a gap in the corpus. sort.preserves-counts
+; proved under one z3 version and not another at the SAME budget on the SAME
+; script bytes: structural induction discharges the Nil case in 6,140 rlimit and
+; burns the full 400M on Cons. Closing Cons needs a CASE SPLIT on whether the
+; inserted element is the one being counted, and the two lemmas that supply it —
+; insert.adds-one-occurrence and insert.preserves-other-counts — are each
+; already CONDITIONED on that split, so the solver has to DISCOVER it. One
+; version does and another does not, which makes the proof a fact about solver
+; search rather than about the lemma chain.
+;
+; Stated unconditionally, the Cons case closes by REWRITING instead of by
+; search: 53.4M rlimit under either solver, against unprovable at 400M without
+; it. Same stepping-stone shape as count-append (#67) — the body is the witness,
+; the law is the property — and `oath hint` admits it into the one goal that
+; asks for it, which leaves every other definition's identity untouched.
+(defn count-insert [] [(x Int) (y Int) (xs (List Int))] Int
+  (+ (if (== y x) 1 0) (count x xs))
+  (prop counts-through-insert [(x Int) (y Int) (xs (List Int))]
+    (== (count x (insert y xs))
+        (+ (if (== y x) 1 0) (count x xs)))))
+
+
 (defn sort [] [(xs (List Int))] (List Int)
   (match xs
     ((Nil) (Nil [Int]))

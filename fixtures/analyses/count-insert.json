@@ -1,0 +1,14 @@
+{
+  "name": "count-insert",
+  "hash": "9a35a277f494d422d4b0df5bc457259c2befc6ceaca95d0327c17ce1e37f02b4",
+  "kind": "func",
+  "termination": "nonrecursive",
+  "confinement": [
+    "",
+    "",
+    ""
+  ],
+  "level": "proven",
+  "cases": 200,
+  "proven": 1
+}
